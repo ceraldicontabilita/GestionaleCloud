@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **985 endpoint** in **104 gruppi**.
+> Totale **986 endpoint** in **104 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 637 · ext esterni = 76 · — da verificare = 272
+**Riepilogo uso:** ✓ frontend = 637 · ext esterni = 76 · — da verificare = 273
 
 ## AI Parser  (11)
 
@@ -1169,7 +1169,7 @@
 | GET | `/api/previsioni-acquisti/prodotti` | — | previsioni_acquisti |
 | GET | `/api/previsioni-acquisti/statistiche` | ✓ | previsioni_acquisti |
 
-## Prima Nota  (67)
+## Prima Nota  (68)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1223,6 +1223,7 @@
 | POST | `/api/prima-nota/provvisori/auto-conferma-per-metodo` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/conferma` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/conferma-divisione` | ✓ | prima_nota_module.sync |
+| POST | `/api/prima-nota/pulizia-pre-anno` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/recalculate-balances` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/regenerate-from-invoices` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/registra-fattura` | — | prima_nota_module.sync |

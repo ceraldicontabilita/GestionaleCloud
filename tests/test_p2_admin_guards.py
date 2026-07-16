@@ -40,6 +40,7 @@ def test_endpoint_distruttivi_sono_admin_only():
         ("/force-reimport", "POST"),
         ("/reimporta-da-filesystem", "POST"),
         ("/cleanup-orphan-movements", "POST"),
+        ("/pulizia-pre-anno", "POST"),
         ("/migrazione-pulisci-bancari-cassa", "POST"),
         ("/cleanup-duplicati-forte", "POST"),
         ("/mittenti/migra-legacy", "POST"),

@@ -283,6 +283,84 @@ async def fix_versamenti_duplicati(anno: Optional[int] = Query(None)) -> Dict:
     }
 
 
+# Regola utente 16/07/2026: in contabilità devono restare SOLO i dati
+# dall'anno operativo in poi (2026) — i movimenti/fatture/corrispettivi di
+# anni vecchi (2021-2022, residui di backfill e import storici) falsavano
+# riporti e saldi. Collection ripulite e campi data usati per stabilire
+# l'anno del documento (in ordine di priorità; un documento senza nessuna
+# data riconoscibile NON viene mai eliminato).
+COLLEZIONI_PULIZIA_PRE_ANNO = {
+    "prima_nota_cassa": ["data"],
+    "prima_nota_banca": ["data"],
+    "prima_nota_salari": ["data"],
+    "corrispettivi": ["data"],
+    "invoices": ["invoice_date", "data_fattura", "data_ricezione"],
+    "fatture_emesse": ["invoice_date", "data_emissione"],
+    "estratto_conto_movimenti": ["data_contabile", "data"],
+    "movimenti_contabili": ["data"],
+    "partite_aperte": ["data_documento", "data"],
+}
+
+
+def _estrai_anno(valore) -> Optional[int]:
+    """Anno da una data stringa ISO (YYYY-...) o italiana (GG/MM/AAAA)."""
+    s = str(valore or "")
+    if len(s) >= 4 and s[:4].isdigit():
+        return int(s[:4])
+    if "/" in s:
+        coda = s.split("/")[-1][:4]
+        if len(coda) == 4 and coda.isdigit():
+            return int(coda)
+    return None
+
+
+async def pulizia_dati_pre_anno(
+    anno_da_mantenere: int = Query(2026, description="Primo anno da MANTENERE"),
+    dry_run: bool = Query(True, description="Solo conteggio, non elimina"),
+    _admin: Dict = Depends(get_current_admin_user),
+) -> Dict:
+    """Elimina da tutte le collection operative i documenti con data
+    anteriore ad anno_da_mantenere. Con dry_run=true (default) restituisce
+    solo i conteggi per collection/anno, senza toccare nulla."""
+    db = Database.get_db()
+    report = {}
+    totale_eliminati = 0
+
+    for collection, campi_data in COLLEZIONI_PULIZIA_PRE_ANNO.items():
+        proiezione = {"_id": 0, "id": 1, **{c: 1 for c in campi_data}}
+        docs = await db[collection].find({}, proiezione).to_list(200000)
+        da_eliminare = []
+        per_anno: Dict[int, int] = {}
+        for d in docs:
+            anno_doc = None
+            for campo in campi_data:
+                anno_doc = _estrai_anno(d.get(campo))
+                if anno_doc is not None:
+                    break
+            if anno_doc is not None and anno_doc < anno_da_mantenere and d.get("id"):
+                da_eliminare.append(d["id"])
+                per_anno[anno_doc] = per_anno.get(anno_doc, 0) + 1
+
+        eliminati = 0
+        if da_eliminare and not dry_run:
+            for i in range(0, len(da_eliminare), 500):
+                r = await db[collection].delete_many({"id": {"$in": da_eliminare[i:i + 500]}})
+                eliminati += r.deleted_count
+        report[collection] = {
+            "trovati_pre_anno": len(da_eliminare),
+            "per_anno": {str(k): v for k, v in sorted(per_anno.items())},
+            "eliminati": eliminati if not dry_run else 0,
+        }
+        totale_eliminati += eliminati
+
+    return {
+        "dry_run": dry_run,
+        "anno_da_mantenere": anno_da_mantenere,
+        "collections": report,
+        "totale_eliminati": totale_eliminati,
+    }
+
+
 async def fix_date_formato_italiano() -> Dict:
     """Normalizza in ISO (YYYY-MM-DD) le date salvate come GG/MM/AAAA in
     prima_nota_cassa e prima_nota_banca.
