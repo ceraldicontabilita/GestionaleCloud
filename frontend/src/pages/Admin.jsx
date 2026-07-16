@@ -1185,6 +1185,8 @@ function AnnoImportazioneCard() {
   const [anno, setAnno] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const [caricando, setCaricando] = useState(true);
+  const [importando, setImportando] = useState(false);
+  const [esitoImport, setEsitoImport] = useState(null);
 
   const annoCorrente = new Date().getFullYear();
   const opzioniAnno = Array.from({ length: 6 }, (_, i) => annoCorrente - 4 + i);
@@ -1210,30 +1212,78 @@ function AnnoImportazioneCard() {
     }
   };
 
+  const importaAnno = async () => {
+    setImportando(true);
+    setEsitoImport(null);
+    try {
+      const res = await api.post('/api/config-import/importa-anno', { anno });
+      setEsitoImport(res.data);
+      toast.success(`Import ${anno} completato`);
+    } catch (e) {
+      toast.error('Errore import: ' + (e.response?.data?.detail || e.message));
+    } finally {
+      setImportando(false);
+    }
+  };
+
   return (
-    <Card title="📅 Anno di importazione attivo">
+    <Card title="📅 Import per anno (Drive)">
       <p style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 12 }}>
-        Solo i documenti (fatture e corrispettivi) con data in questo anno vengono importati
-        automaticamente da Drive nel flusso contabile attivo (Prima Nota, scadenzario, alert,
-        magazzino). Gli anni precedenti vengono archiviati per sola consultazione, senza toccare
-        Prima Nota. Non riguarda il caricamento manuale via UI, sempre attivo.
+        Seleziona l'anno e premi "Importa": il sistema legge la data di ogni file nelle
+        cartelle Drive (fatture e corrispettivi) e importa nel flusso contabile attivo
+        (Prima Nota, scadenzario, alert) <strong>solo i documenti di quell'anno</strong>.
+        Gli altri anni vengono archiviati per sola consultazione; i documenti dell'anno
+        scelto già finiti in archivio in passato vengono ripresi e importati anche loro.
+        Non riguarda il caricamento manuale via UI, sempre attivo.
       </p>
       {caricando ? (
         <span style={{ fontSize: 13, color: COLORS.textMuted }}>Caricamento...</span>
       ) : (
-        <Select
-          value={anno ?? ''}
-          onChange={e => salva(parseInt(e.target.value, 10))}
-          disabled={salvando}
-          data-testid="select-anno-importazione-attivo"
-          style={{ minWidth: 140 }}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Select
+            value={anno ?? ''}
+            onChange={e => salva(parseInt(e.target.value, 10))}
+            disabled={salvando || importando}
+            data-testid="select-anno-importazione-attivo"
+            style={{ minWidth: 140 }}
+          >
+            {opzioniAnno.map(a => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </Select>
+          <Button
+            onClick={importaAnno}
+            disabled={salvando || importando || !anno}
+            data-testid="importa-anno-btn"
+          >
+            {importando ? `Import ${anno} in corso...` : `📥 Importa ${anno ?? ''} da Drive`}
+          </Button>
+        </div>
+      )}
+      {esitoImport && (
+        <div
+          style={{
+            marginTop: 12, fontSize: 12, background: '#f0fdf4',
+            border: '1px solid #bbf7d0', borderRadius: 8, padding: 10,
+          }}
+          data-testid="esito-import-anno"
         >
-          {opzioniAnno.map(a => (
-            <option key={a} value={a}>
-              {a}
-            </option>
-          ))}
-        </Select>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Esito import {esitoImport.anno}</div>
+          <div>
+            Drive fatture: {esitoImport.sync_fatture?.importate ?? esitoImport.sync_fatture?.imported ?? esitoImport.sync_fatture?.skipped ?? JSON.stringify(esitoImport.sync_fatture)}
+          </div>
+          <div>
+            Drive corrispettivi: {esitoImport.sync_corrispettivi?.importati ?? esitoImport.sync_corrispettivi?.imported ?? esitoImport.sync_corrispettivi?.skipped ?? JSON.stringify(esitoImport.sync_corrispettivi)}
+          </div>
+          <div>
+            Ripresi dall'archivio: {esitoImport.promozione_archivio?.corrispettivi_promossi ?? 0} corrispettivi,{' '}
+            {esitoImport.promozione_archivio?.fatture_promosse ?? 0} fatture
+            {(esitoImport.promozione_archivio?.fatture_senza_xml ?? 0) > 0 &&
+              ` (${esitoImport.promozione_archivio.fatture_senza_xml} fatture senza XML salvato, non riprese)`}
+          </div>
+        </div>
       )}
     </Card>
   );

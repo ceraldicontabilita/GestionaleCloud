@@ -330,6 +330,19 @@ distinto da uno automatico né controllato per duplicati.
   Il rebuild inoltre non crea mai due entrate per lo stesso
   (giorno, matricola, totale) anche se in collection restano documenti
   corrispettivi duplicati.
+- **Import "pulito per anno" da Drive (16/07/2026)**: in Admin → Fatture,
+  card "Import per anno (Drive)": selezioni l'anno e premi "Importa". Il
+  sistema legge la data dentro ogni file delle cartelle Drive (fatture e
+  corrispettivi) e importa nel flusso contabile attivo SOLO i documenti di
+  quell'anno; gli altri finiscono in archivio storico per consultazione.
+  In più, i documenti dell'anno scelto già archiviati in passato (quando
+  era attivo un altro anno: il file su Drive è ormai in Elaborate e il
+  sync non lo rivedrebbe mai) vengono **ripresi dall'archivio** e fatti
+  entrare nel flusso attivo — i corrispettivi con i due movimenti canonici
+  di cassa + POS banca, le fatture ripassando l'XML originale salvato
+  nella pipeline completa (fornitore, prima nota provvisoria, eventi).
+  Endpoint admin: `POST /api/config-import/importa-anno` (imposta anche
+  l'anno attivo condiviso, `PUT /api/config-import/anno`).
 - **REGOLA (utente, 16/07/2026): in contabilità restano SOLO i dati
   dall'anno operativo 2026 in poi.** I dati di anni precedenti (movimenti
   2021-2022 da vecchi backfill, fatture 2021-2022, salari 2023-2025,
