@@ -34,6 +34,8 @@ from .pagamento import (
 
 # Archivio e Lista
 router.add_api_route("/archivio", get_archivio_fatture, methods=["GET"])
+from .export_selezione import export_fatture_selezionate
+router.add_api_route("/export-selezione", export_fatture_selezionate, methods=["POST"])
 router.add_api_route("/fornitori", get_fornitori, methods=["GET"])
 router.add_api_route("/statistiche", get_statistiche, methods=["GET"])
 router.add_api_route("/pulisci-duplicati", pulisci_duplicati_invoices, methods=["POST"])

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api';
+import { toast } from 'sonner';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import {
   formatEuro,
@@ -75,6 +76,50 @@ export default function ArchivioFatture() {
   const [fornitori, setFornitori] = useState([]);
   const [statistiche, setStatistiche] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Selezione multipla per export (richiesta utente 16/07/2026: "permettimi
+  // di selezionare le fatture e di poterle scaricare in pdf ed excel").
+  const [selezionate, setSelezionate] = useState(() => new Set());
+  const [exportInCorso, setExportInCorso] = useState(null); // 'pdf' | 'excel' | null
+
+  const toggleSelezione = id => {
+    setSelezionate(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelezionaTutte = () => {
+    setSelezionate(prev =>
+      prev.size === fatture.length ? new Set() : new Set(fatture.map(f => f.id))
+    );
+  };
+
+  const scaricaSelezione = async formato => {
+    if (selezionate.size === 0) return;
+    setExportInCorso(formato);
+    try {
+      const res = await api.post(
+        '/api/fatture-ricevute/export-selezione',
+        { ids: [...selezionate], formato },
+        { responseType: 'blob' }
+      );
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = formato === 'pdf' ? 'fatture_selezionate.pdf' : 'fatture_selezionate.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error('Errore export: ' + (e.response?.data?.detail || e.message));
+    } finally {
+      setExportInCorso(null);
+    }
+  };
 
   // Deep-link a una specifica fattura (es. dal modale PayPal):
   // /fatture?invoice_id=<id> — dopo il caricamento scrolla alla riga,
@@ -156,6 +201,7 @@ export default function ArchivioFatture() {
         });
       }
       setFatture(items);
+      setSelezionate(new Set()); // nuova lista → selezione azzerata
     } catch (err) {
       console.error('Errore caricamento fatture:', err);
     }
@@ -443,6 +489,52 @@ export default function ArchivioFatture() {
         </div>
       </Card>
 
+      {/* Barra selezione: appare quando almeno una fattura è spuntata */}
+      {selezionate.size > 0 && (
+        <div
+          data-testid="barra-selezione-fatture"
+          style={{
+            position: 'sticky', top: 8, zIndex: 20,
+            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+            background: '#0f2744', color: 'white',
+            borderRadius: BORDER_RADIUS.lg, padding: '10px 14px',
+            marginBottom: 12, boxShadow: SHADOWS.md,
+          }}
+        >
+          <strong style={{ fontSize: 13 }}>
+            {selezionate.size} {selezionate.size === 1 ? 'fattura selezionata' : 'fatture selezionate'}
+          </strong>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!!exportInCorso}
+            onClick={() => scaricaSelezione('pdf')}
+            data-testid="scarica-selezione-pdf"
+          >
+            {exportInCorso === 'pdf' ? '⏳ PDF...' : '📄 Scarica PDF'}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!!exportInCorso}
+            onClick={() => scaricaSelezione('excel')}
+            data-testid="scarica-selezione-excel"
+          >
+            {exportInCorso === 'excel' ? '⏳ Excel...' : '📊 Scarica Excel'}
+          </Button>
+          <button
+            onClick={() => setSelezionate(new Set())}
+            style={{
+              marginLeft: 'auto', background: 'transparent', border: 'none',
+              color: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+            }}
+            title="Deseleziona tutto"
+          >
+            ✕ Deseleziona
+          </button>
+        </div>
+      )}
+
       {/* Tabella Fatture */}
       <Card>
         {loading ? (
@@ -460,6 +552,21 @@ export default function ArchivioFatture() {
         ) : isMobile ? (
           // VISTA MOBILE: card per ogni fattura
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <label
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5,
+                color: COLORS.textMuted, fontWeight: 600, padding: '2px 2px 0',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={fatture.length > 0 && selezionate.size === fatture.length}
+                onChange={toggleSelezionaTutte}
+                style={{ width: 18, height: 18, accentColor: '#0f2744' }}
+                data-testid="seleziona-tutte-fatture"
+              />
+              Seleziona tutte ({fatture.length})
+            </label>
             {fatture.map((f, idx) => {
               const isPaid = f.pagato || f.status === 'paid' || f.stato_pagamento === 'pagata';
               // Determina metodo EFFETTIVO del pagamento guardando:
@@ -580,6 +687,13 @@ export default function ArchivioFatture() {
                       gap: 8,
                     }}
                   >
+                    <input
+                      type="checkbox"
+                      checked={selezionate.has(f.id)}
+                      onChange={() => toggleSelezione(f.id)}
+                      style={{ width: 20, height: 20, marginTop: 1, flexShrink: 0, accentColor: '#0f2744' }}
+                      data-testid={`seleziona-fattura-${f.id}`}
+                    />
                     <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
                       {/* Su mobile niente P.IVA: è nel "Vedi", qui ruba solo
                           una riga per card (richiesta utente 10-07-2026) */}
@@ -651,6 +765,16 @@ export default function ArchivioFatture() {
             <Table>
               <thead>
                 <tr>
+                  <Th align="center" style={{ width: 36 }}>
+                    <input
+                      type="checkbox"
+                      checked={fatture.length > 0 && selezionate.size === fatture.length}
+                      onChange={toggleSelezionaTutte}
+                      style={{ width: 16, height: 16, accentColor: '#0f2744', cursor: 'pointer' }}
+                      title="Seleziona tutte"
+                      data-testid="seleziona-tutte-fatture"
+                    />
+                  </Th>
                   <Th>Data</Th>
                   <Th>Numero</Th>
                   <Th>Fornitore</Th>
@@ -724,6 +848,15 @@ export default function ArchivioFatture() {
                         transition: 'background 300ms, box-shadow 300ms',
                       }}
                     >
+                      <Td align="center">
+                        <input
+                          type="checkbox"
+                          checked={selezionate.has(f.id)}
+                          onChange={() => toggleSelezione(f.id)}
+                          style={{ width: 16, height: 16, accentColor: '#0f2744', cursor: 'pointer' }}
+                          data-testid={`seleziona-fattura-${f.id}`}
+                        />
+                      </Td>
                       <Td>{formatDateIT(f.invoice_date || f.data_documento)}</Td>
                       <Td style={{ fontWeight: 600, color: COLORS.primary }}>
                         {f.invoice_number || f.numero_documento}
