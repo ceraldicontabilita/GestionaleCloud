@@ -2,11 +2,11 @@
   "scattata_il": "2026-07-17T14:56:21.420111+00:00",
   "scopo": "Fotografia saldi PRIMA della migrazione al servizio contabile centrale (audit 16/07/2026, punto 1 ordine di lavoro). Confrontare i saldi ricostruiti con questi valori prima di confermare qualsiasi migrazione.",
   "cassa_2026": {
-    "totale_entrate": 4305059.21,
+    "totale_entrate": 428902.91,
     "totale_uscite": 277491.61,
-    "saldo_anno": 4027567.6,
+    "saldo_anno": 151411.3,
     "saldo_precedente": 0.0,
-    "saldo": 4027567.6
+    "saldo": 151411.3
   },
   "banca_2026": {
     "totale_entrate": 203502.34,
@@ -21,5 +21,6 @@
     "totale_elettronico": 203502.34,
     "totale_iva": 38869.84,
     "count": 149
-  }
+  },
+  "nota_riparazione": "17/07/2026 ~15:10 UTC: la fotografia iniziale era stata scattata MENTRE era attivo il bug della duplicazione infinita (cassa a 4,3M). Dopo il fix di idempotenza e il rebuild, i saldi corretti di riferimento sono questi qui sotto."
 }
