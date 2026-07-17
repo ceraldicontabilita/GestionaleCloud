@@ -671,9 +671,12 @@ function PrimaNotaDesktop() {
   // Calculate category totals for Cassa
   const totalePOS =
     cassaData.movimenti?.filter(m => m.categoria === 'POS').reduce((s, m) => s + m.importo, 0) || 0;
+  // Entrambe le categorie storiche dei versamenti di contanti in banca:
+  // "Versamento" (righe automatiche da estratto conto) e "Versamento Banca"
+  // (registrazioni manuali dell'utente) — la card ne mostrava solo una.
   const totaleVersamenti =
     cassaData.movimenti
-      ?.filter(m => m.categoria === 'Versamento')
+      ?.filter(m => m.categoria === 'Versamento' || m.categoria === 'Versamento Banca')
       .reduce((s, m) => s + m.importo, 0) || 0;
   const totaleFattureCassa =
     cassaData.movimenti
