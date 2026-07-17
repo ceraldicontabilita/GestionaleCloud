@@ -1,0 +1,25 @@
+{
+  "scattata_il": "2026-07-17T14:56:21.420111+00:00",
+  "scopo": "Fotografia saldi PRIMA della migrazione al servizio contabile centrale (audit 16/07/2026, punto 1 ordine di lavoro). Confrontare i saldi ricostruiti con questi valori prima di confermare qualsiasi migrazione.",
+  "cassa_2026": {
+    "totale_entrate": 4305059.21,
+    "totale_uscite": 277491.61,
+    "saldo_anno": 4027567.6,
+    "saldo_precedente": 0.0,
+    "saldo": 4027567.6
+  },
+  "banca_2026": {
+    "totale_entrate": 203502.34,
+    "totale_uscite": 536516.8,
+    "saldo_anno": -333014.46,
+    "saldo_precedente": 0.0,
+    "saldo": -333014.46
+  },
+  "corrispettivi_totali": {
+    "totale_generale": 427748.08,
+    "totale_contanti": 95040.53,
+    "totale_elettronico": 203502.34,
+    "totale_iva": 38869.84,
+    "count": 149
+  }
+}

@@ -287,9 +287,32 @@ async def _sync_corrispettivi_impl(anno: int = None) -> Dict:
     for c in corrispettivi:
         corr_id = c.get("id", "")
 
+        # Bug corretto 17/07/2026 (verificato live: cassa da 428k a 4,3M in
+        # 24 ore): i corrispettivi legacy SENZA campo id producevano qui
+        # corr_id="" — il find_one({"corrispettivo_id": ""}) non matchava mai
+        # il movimento scritto (corrispettivo_id None) e il sync ricreava
+        # l'entrata a ogni giro. Ora: 1) al documento senza id viene
+        # assegnato un id stabile; 2) il dedup copre anche il caso per
+        # data (un solo registratore → una sola entrata per giornata).
+        if not corr_id:
+            corr_id = str(uuid.uuid4())
+            await db["corrispettivi"].update_one(
+                {"data": c.get("data"), "id": {"$exists": False},
+                 "created_at": c.get("created_at")},
+                {"$set": {"id": corr_id}},
+            )
+            c["id"] = corr_id
+
         # Check dedup: se questo corrispettivo ha già un movimento cassa
         # (da questo stesso sync o dal caricamento diretto), non rigenerare.
-        existing = await db[COLLECTION_PRIMA_NOTA_CASSA].find_one({"corrispettivo_id": corr_id})
+        existing = await db[COLLECTION_PRIMA_NOTA_CASSA].find_one({"$or": [
+            {"corrispettivo_id": corr_id},
+            # Stessa chiave (data+matricola) della guardia di idempotenza del
+            # writer: il giorno del risigillo (cambio matricola) restano
+            # legittime due entrate nella stessa data.
+            {"data": c.get("data"), "tipo": "entrata", "categoria": "Corrispettivi",
+             "matricola_rt": c.get("matricola_rt") or c.get("id_dispositivo") or None},
+        ]})
         if existing:
             duplicati += 1
             continue

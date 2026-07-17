@@ -205,6 +205,40 @@ async def _create_prima_nota_movements(db, corr_doc: Dict[str, Any]) -> Dict[str
     cassa_uscita_pos_id = None
     banca_id = None
 
+    # IDEMPOTENZA (17/07/2026, verificato live): un solo registratore → UNA
+    # sola entrata "Corrispettivi" per giornata, sempre. Guardia definitiva
+    # contro i chiamanti multipli non coordinati (audit: decine di writer):
+    # i corrispettivi legacy SENZA campo id mandavano in tilt il dedup del
+    # catch-up scheduler (cercava corrispettivo_id:"" ma il movimento aveva
+    # None), che ricreava l'entrata a ogni giro — la cassa era risalita da
+    # 428k a 4,3M in 24 ore. I percorsi legittimi di rigenerazione (update
+    # ingest, rebuild) PURGANO sempre prima di chiamare questa funzione,
+    # quindi non vengono mai bloccati dalla guardia.
+    # La chiave è (data + matricola): il giorno del risigillo triennale il
+    # registratore cambia matricola e possono esistere DUE corrispettivi
+    # legittimi nella stessa data (regola utente 15/07/2026) — quelli non
+    # vanno mai bloccati; il loop dei duplicati aveva sempre stessa data e
+    # stessa matricola.
+    matricola = corr_doc.get("matricola_rt") or corr_doc.get("id_dispositivo") or None
+    if data and totale > 0:
+        gia_presente = await db["prima_nota_cassa"].find_one({
+            "data": data,
+            "tipo": "entrata",
+            "categoria": "Corrispettivi",
+            "matricola_rt": matricola,
+            "source": {"$in": [
+                "corrispettivo_import", "corrispettivi_sync", "corrispettivo_xml",
+                "xml_import", "manuale_da_xml", "corrispettivo_manuale",
+            ]},
+        })
+        if gia_presente:
+            return {
+                "prima_nota_cassa_id": gia_presente.get("id"),
+                "prima_nota_cassa_uscita_pos_id": None,
+                "prima_nota_banca_id": None,
+                "gia_esistente": True,
+            }
+
     if totale > 0:
         cassa_id = str(uuid.uuid4())
         mov_cassa = {
@@ -223,6 +257,8 @@ async def _create_prima_nota_movements(db, corr_doc: Dict[str, Any]) -> Dict[str
             "source": "corrispettivo_import",
             "anno": anno,
             "mese": mese,
+            # Chiave dell'idempotenza (data+matricola): vedi guardia sopra.
+            "matricola_rt": matricola,
             "imponibile": round(imponibile, 2),
             "iva": round(iva, 2),
             "contanti": round(contanti, 2),

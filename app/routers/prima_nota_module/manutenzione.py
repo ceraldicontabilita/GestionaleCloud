@@ -489,14 +489,25 @@ async def sposta_movimento(req: SpostaMovimentoRequest) -> Dict:
     if not mov and da == "banca":
         mov = await db["estratto_conto_movimenti"].find_one({"id": movimento_id})
         if mov:
-            # Il movimento è nell'estratto conto: copialo in prima_nota_cassa e rimuovilo dall'estratto conto
+            # Il movimento è nell'estratto conto: viene COPIATO in cassa e la
+            # riga originale MARCATA come spostata — mai eliminata. L'estratto
+            # conto è il documento bancario originale: cancellarlo perderebbe
+            # per sempre l'origine documentale (audit 16/07/2026; prima qui
+            # c'era una delete_one).
             mov.pop("_id", None)
             mov["moved_from"] = "banca_estratto_conto"
             mov["moved_at"] = datetime.now(timezone.utc).isoformat()
             mov["source"] = mov.get("source", "estratto_conto")
             # Assicura che sia un'uscita (addebito) o entrata (accredito) coerente
             await db[dest_coll].insert_one(mov)
-            await db["estratto_conto_movimenti"].delete_one({"id": movimento_id})
+            await db["estratto_conto_movimenti"].update_one(
+                {"id": movimento_id},
+                {"$set": {
+                    "escluso_da_vista_banca": True,
+                    "spostato_in": a,
+                    "spostato_at": datetime.now(timezone.utc).isoformat(),
+                }},
+            )
 
             # --- EVENT BUS: propaga evento trasferimento (ramo EC→prima_nota) ---
             try:

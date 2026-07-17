@@ -158,12 +158,22 @@ async def delete_movimento_banca(
     
     mov = await db[COLLECTION_PRIMA_NOTA_BANCA].find_one({"id": movimento_id})
     if not mov:
-        # Movimento dell'estratto conto mostrato nella vista Banca
+        # Movimento dell'estratto conto mostrato nella vista Banca: la riga
+        # originale è il documento bancario, IMMUTABILE — non si elimina mai
+        # (audit 16/07/2026, prima qui c'era una delete_one). Viene solo
+        # esclusa dalla vista Banca, recuperabile in qualunque momento.
         mov_ec = await db["estratto_conto_movimenti"].find_one({"id": movimento_id})
         if not mov_ec:
             raise HTTPException(status_code=404, detail="Movimento non trovato")
-        await db["estratto_conto_movimenti"].delete_one({"id": movimento_id})
-        return {"success": True, "message": "Movimento estratto conto eliminato"}
+        await db["estratto_conto_movimenti"].update_one(
+            {"id": movimento_id},
+            {"$set": {
+                "escluso_da_vista_banca": True,
+                "escluso_at": datetime.now(timezone.utc).isoformat(),
+            }},
+        )
+        return {"success": True,
+                "message": "Movimento estratto conto escluso dalla vista (l'originale resta nell'estratto conto)"}
 
     validation = BusinessRules.can_delete_movement(mov)
 

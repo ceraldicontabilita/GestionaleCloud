@@ -215,7 +215,9 @@ function PrimaNotaDesktop() {
         return POS_ACCREDITO_KEYWORDS.some(k => desc.includes(k)) ||
           cat.startsWith('Ricavi - Incasso tramite POS');
       };
-      const movimentiEC = (ecData.movimenti || []).filter(m => !isAccreditoPos(m)).map(m => ({
+      const movimentiEC = (ecData.movimenti || [])
+        .filter(m => !m.escluso_da_vista_banca)
+        .filter(m => !isAccreditoPos(m)).map(m => ({
         ...m,
         tipo: m.tipo || (m.importo >= 0 ? 'entrata' : 'uscita'),
         importo: Math.abs(m.importo || 0),
@@ -262,7 +264,10 @@ function PrimaNotaDesktop() {
       const saldoPrec = riportoManuale
         ? bancaManRes.data.saldo_precedente || 0
         : ecData.saldo_precedente || 0;
-      const saldoAnno = (ecData.totale_entrate || 0) - (ecData.totale_uscite || 0);
+      // saldo_anno sulle STESSE righe unite mostrate in tabella e nelle card
+      // (prima veniva dal solo estratto conto: card su insiemi diversi).
+      const saldoAnno = movimentiUniti.reduce(
+        (sum, m) => sum + (m.tipo === 'entrata' ? 1 : -1) * Math.abs(m.importo || 0), 0);
       setBancaData({
         movimenti: movimentiUniti,
         // Totali coerenti con la TABELLA: estratto conto + movimenti manuali
@@ -1612,7 +1617,7 @@ function PrimaNotaDesktop() {
             onDelete={id => handleDeleteMovimento('cassa', id)}
             onEdit={updated => handleEditMovimento('cassa', updated)}
             onSposta={handleSpostaMovimento}
-            saldoPrecedente={0}
+            saldoPrecedente={cassaData.saldo_precedente || 0}
           />
         </section>
       )}
@@ -2842,8 +2847,9 @@ function MovementsTable({
                     )}
                   </div>
                 )}
-                {/* riga 3: saldo progressivo | documento + azioni */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 8, minWidth: 0 }}>
+                {/* riga 3: saldo progressivo | documento + azioni (va a capo
+                    su schermi molto stretti: le azioni non escono mai dalla card) */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 8, minWidth: 0, flexWrap: 'wrap' }}>
                   <div style={{ fontSize: 11.5, color: '#64748b', whiteSpace: 'nowrap' }}>
                     Saldo{' '}
                     <span
@@ -2857,7 +2863,7 @@ function MovementsTable({
                       {formatEuroD(mov.saldoProgressivo)}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
                     {documentoBadge(mov, idx, true)}
                     {!readOnly && (
                       <>
