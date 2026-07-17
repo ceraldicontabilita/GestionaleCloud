@@ -1618,6 +1618,7 @@ function PrimaNotaDesktop() {
             onEdit={updated => handleEditMovimento('cassa', updated)}
             onSposta={handleSpostaMovimento}
             saldoPrecedente={cassaData.saldo_precedente || 0}
+            onModificaRiporto={() => handleModificaRiporto('cassa', cassaData.saldo_precedente)}
           />
         </section>
       )}
@@ -1748,6 +1749,7 @@ function PrimaNotaDesktop() {
             onSposta={handleSpostaMovimento}
             readOnly={false}
             saldoPrecedente={bancaData.saldo_precedente || 0}
+            onModificaRiporto={() => handleModificaRiporto('banca', bancaData.saldo_precedente)}
           />
         </section>
       )}
@@ -2206,6 +2208,7 @@ function MovementsTable({
   onSposta,
   readOnly = false,
   saldoPrecedente = 0,
+  onModificaRiporto,
 }) {
   // Rifattorizzazione grafica (richiesta utente 16/07/2026): su telefono i
   // movimenti diventano CARD — tutto di un giorno in un blocco leggibile
@@ -2302,11 +2305,25 @@ function MovementsTable({
       movimentiFiltrati = movimentiFiltrati.filter(m => Math.abs(m.importo || 0) <= max);
   }
 
+  // REGISTRO IN ORDINE CRONOLOGICO (richiesta utente 17/07/2026: "come la
+  // prima nota cassa sul web con il riporto progressivo"): 1° gennaio in
+  // alto, si scende verso oggi. Dentro la stessa giornata le ENTRATE
+  // vengono PRIMA delle uscite (prima l'entrata del corrispettivo, poi
+  // l'uscita POS — mai al contrario), a parità di tipo per created_at.
+  // Lo STESSO ordinamento governa sia la visualizzazione sia il calcolo
+  // del saldo progressivo: prima erano diversi (video discendente, saldo
+  // cronologico) e il registro si leggeva "al contrario".
+  const ordineRegistro = (a, b) =>
+    (a.data || '').localeCompare(b.data || '') ||
+    (a.tipo === 'entrata' ? 0 : 1) - (b.tipo === 'entrata' ? 0 : 1) ||
+    (a.created_at || '').localeCompare(b.created_at || '');
+
+  movimentiFiltrati = [...movimentiFiltrati].sort(ordineRegistro);
+
   const totalPages = Math.ceil(movimentiFiltrati.length / itemsPerPage);
   const start = (currentPage - 1) * itemsPerPage;
   const _currentMovimenti = movimentiFiltrati.slice(start, start + itemsPerPage);
 
-  // Calculate running balance using reduce - ordina FORWARD (cronologico ASC) per calcolo corretto
   const saldoIniziale = saldoPrecedente || 0;
   // Il saldo progressivo va calcolato SEMPRE su tutti i movimenti del
   // periodo (mai su "movimentiFiltrati"): filtrando per es. "F24" o una
@@ -2314,14 +2331,7 @@ function MovementsTable({
   // filtrata, non il saldo reale del conto — fuorviante e potenzialmente
   // letto come "quanto ho davvero in cassa/banca". Si calcola una volta
   // sola sull'elenco completo e si applica ai movimenti filtrati per id.
-  // Ordine: cronologico per data movimento; a parità di data, per ordine di
-  // inserimento (created_at) — così l'uscita POS segue sempre l'entrata
-  // corrispettivo dello stesso giorno e il saldo intermedio è coerente.
-  const movimentiForward = [...movimenti].sort(
-    (a, b) =>
-      (a.data || '').localeCompare(b.data || '') ||
-      (a.created_at || '').localeCompare(b.created_at || '')
-  );
+  const movimentiForward = [...movimenti].sort(ordineRegistro);
   const balanceMap = {};
   movimentiForward.reduce((prevBal, m) => {
     const newBal = m.tipo === 'entrata' ? prevBal + (m.importo || 0) : prevBal - (m.importo || 0);
@@ -2792,6 +2802,44 @@ function MovementsTable({
           niente scroll orizzontale). Su tablet/monitor: tabella completa. */}
       {isMobile ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '10px 12px' }}>
+          {currentPage === 1 && (
+            <div
+              data-testid={`riga-saldo-iniziale-${tipo}`}
+              style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                gap: 8, padding: '10px 12px', background: '#fffbeb',
+                border: '1px solid #d97706', borderRadius: 10, minWidth: 0,
+              }}
+            >
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#92400e' }}>
+                🏁 Saldo iniziale 01/01
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span
+                  style={{
+                    fontWeight: 800, fontSize: 14.5,
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    color: saldoIniziale >= 0 ? '#0f2744' : '#dc2626',
+                  }}
+                >
+                  {formatEuroD(saldoIniziale)}
+                </span>
+                {onModificaRiporto && (
+                  <button
+                    onClick={onModificaRiporto}
+                    title="Modifica saldo iniziale"
+                    data-testid={`modifica-saldo-iniziale-${tipo}`}
+                    style={{
+                      background: '#fef3c7', border: '1px solid #d97706', borderRadius: 8,
+                      padding: '6px 9px', fontSize: 13, cursor: 'pointer',
+                    }}
+                  >
+                    ✏️
+                  </button>
+                )}
+              </span>
+            </div>
+          )}
           {(() => {
             // Card raggruppate PER GIORNATA (audit 16/07/2026): intestazione
             // con data, numero movimenti e netto del giorno, poi le card.
@@ -3056,6 +3104,44 @@ function MovementsTable({
             </tr>
           </thead>
           <tbody>
+            {currentPage === 1 && (
+              <tr
+                data-testid={`riga-saldo-iniziale-${tipo}`}
+                style={{ background: '#fffbeb', borderBottom: '2px solid #d97706' }}
+              >
+                <td colSpan={5} style={{ padding: '8px', fontWeight: 700, fontSize: 12, color: '#92400e' }}>
+                  🏁 Saldo iniziale al 01/01 (riporto anno precedente)
+                </td>
+                <td />
+                <td />
+                <td
+                  style={{
+                    padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: 12,
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    color: saldoIniziale >= 0 ? '#0f2744' : '#dc2626', whiteSpace: 'nowrap',
+                  }}
+                >
+                  {formatEuroD(saldoIniziale)}
+                </td>
+                <td style={{ padding: '8px', textAlign: 'center' }}>
+                  {onModificaRiporto && (
+                    <button
+                      onClick={onModificaRiporto}
+                      title="Modifica saldo iniziale"
+                      data-testid={`modifica-saldo-iniziale-${tipo}`}
+                      style={{
+                        background: '#fef3c7', border: '1px solid #d97706', borderRadius: 6,
+                        padding: '5px 10px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                        color: '#92400e', whiteSpace: 'nowrap',
+                      }}
+                    >
+                      ✏️ Modifica
+                    </button>
+                  )}
+                </td>
+                {!readOnly && <td />}
+              </tr>
+            )}
             {currentWithBalance.map((mov, idx) => (
               <tr
                 key={mov.id || idx}
