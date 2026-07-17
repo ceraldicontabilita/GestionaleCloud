@@ -191,6 +191,29 @@ def _frontend_index_path() -> str | None:
     return None
 
 
+# Bug segnalato dall'utente 17/07/2026 ("non vedo niente di live"): l'index
+# veniva servito SENZA Cache-Control, quindi il browser (specie la PWA su
+# telefono) applicava la cache euristica e continuava a caricare i chunk JS
+# vecchi anche dopo il deploy. no-cache = il browser riconvalida l'index a
+# ogni apertura (costa un 304 da pochi byte) e prende subito il bundle nuovo.
+_INDEX_HEADERS = {"Cache-Control": "no-cache"}
+
+
+def _index_response(index_path: str) -> FileResponse:
+    return FileResponse(index_path, headers=_INDEX_HEADERS)
+
+
+def _static_response(file_path: str) -> FileResponse:
+    # I file dentro /assets hanno l'hash del contenuto nel nome: se cambiano,
+    # cambia l'URL — la cache lunga e "immutable" è sicura e velocizza l'app.
+    if f"{os.sep}assets{os.sep}" in file_path:
+        return FileResponse(
+            file_path, headers={"Cache-Control": "public, max-age=31536000, immutable"}
+        )
+    # Altri file statici (icone, manifest, service-worker): riconvalida.
+    return FileResponse(file_path, headers=_INDEX_HEADERS)
+
+
 def _safe_frontend_file(root: str, requested_path: str) -> str | None:
     safe_path = os.path.normpath(requested_path).lstrip("/\\")
     if not safe_path:
@@ -208,7 +231,7 @@ async def root(request: Request):
     if "text/html" in accept:
         index_path = _frontend_index_path()
         if index_path:
-            return FileResponse(index_path)
+            return _index_response(index_path)
     return {"app": settings.APP_NAME, "version": settings.APP_VERSION, "status": "online"}
 
 
@@ -245,10 +268,19 @@ docs_path = "./docs"
 os.makedirs(docs_path, exist_ok=True)
 app.mount("/api/download", StaticFiles(directory=docs_path), name="download")
 
+class _HashedAssets(StaticFiles):
+    """Asset con hash nel nome (index-BJ8lb5ff.js): cache lunga sicura."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
 if os.path.isdir(_FRONTEND_DIST):
     assets_path = os.path.join(_FRONTEND_DIST, "assets")
     if os.path.isdir(assets_path):
-        app.mount("/assets", StaticFiles(directory=assets_path), name="frontend-assets")
+        app.mount("/assets", _HashedAssets(directory=assets_path), name="frontend-assets")
 
     @app.get("/{full_path:path}", include_in_schema=False, response_model=None)
     async def serve_spa_dist(request: Request, full_path: str) -> FileResponse | JSONResponse:
@@ -256,8 +288,8 @@ if os.path.isdir(_FRONTEND_DIST):
             return JSONResponse({"detail": "Not found"}, status_code=404)
         static_file = _safe_frontend_file(_FRONTEND_DIST, full_path)
         if static_file:
-            return FileResponse(static_file)
-        return FileResponse(os.path.join(_FRONTEND_DIST, "index.html"))
+            return _static_response(static_file)
+        return _index_response(os.path.join(_FRONTEND_DIST, "index.html"))
 
     logger.info("Frontend dist montato")
 elif os.path.isdir(_FRONTEND_PUBLIC):
@@ -268,8 +300,8 @@ elif os.path.isdir(_FRONTEND_PUBLIC):
             return JSONResponse({"detail": "Not found"}, status_code=404)
         static_file = _safe_frontend_file(_FRONTEND_PUBLIC, full_path)
         if static_file:
-            return FileResponse(static_file)
-        return FileResponse(os.path.join(_FRONTEND_PUBLIC, "index.html"))
+            return _static_response(static_file)
+        return _index_response(os.path.join(_FRONTEND_PUBLIC, "index.html"))
 
     logger.info("Frontend public montato")
 
