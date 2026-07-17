@@ -453,10 +453,36 @@ nulla: non rappresenta mai un pagamento fornitore.
   (cedolino, PagoPA, INPS, INAIL, PayPal, cartella esattoriale) se un giorno
   servisse un mittente attendibile per quei canali.
 
-**Saldo progressivo**: ogni movimento porta il saldo aggiornato a quel punto, in
-ordine cronologico. Un movimento retrodatato ricalcola a cascata i saldi successivi.
-A parità di giorno l'ordine di inserimento è garantito (la quota contanti in cassa e
-la quota POS in banca nascono dallo stesso corrispettivo, in sequenza).
+**Versamenti di contanti (doppia scrittura, 17/07/2026)**: un versamento di
+contanti in banca è per definizione **due movimenti collegati**: un'**uscita in
+Prima Nota Cassa** (il contante lascia il cassetto, categoria "Versamento") e
+un'**entrata in Prima Nota Banca** (lo stesso denaro arriva sul conto). La fonte
+di verità è l'**estratto conto**: ogni riga con causale versamento (la banca —
+Banco BPM — scrive "VERS. CONTANTI", riconosciuta insieme alla forma estesa
+"VERSAMENTO CONTANTI") genera automaticamente la doppia scrittura all'import.
+Per il pregresso esiste `POST /api/estratto-conto-movimenti/ripara-versamenti-cassa`
+(opzionale `?anno=`): riesamina tutte le righe dell'estratto conto e crea le
+gambe mancanti in modo **idempotente** — non duplica mai un versamento già
+registrato a mano (categoria "Versamento Banca") né l'entrata banca già creata
+dal sync dell'import; la riga di estratto conto viene marcata riconciliata
+(`tipo_riconciliazione: "versamento_contanti"`). Il versamento non è mai un
+costo né un ricavo: è denaro che si sposta da cassa a banca, il patrimonio
+complessivo non cambia.
+
+**Ordine del registro (17/07/2026)**: a video i movimenti sono ordinati **dal
+più recente al meno recente** (i giorni scendono da oggi verso il 1° gennaio);
+dentro la stessa giornata però la lettura resta quella naturale: **prima
+l'entrata del corrispettivo, poi l'uscita del POS verso banca** — mai al
+contrario. La riga gialla del "Saldo iniziale 01/01" (riporto modificabile a
+mano) sta quindi **in fondo all'ultima pagina**, sotto il movimento più vecchio
+dell'anno.
+
+**Saldo progressivo**: ogni movimento porta il saldo aggiornato a quel punto,
+calcolato **sempre in ordine cronologico** (indipendente dall'ordine a video) e
+sempre sull'elenco completo del periodo, mai sulla selezione filtrata. Un
+movimento retrodatato ricalcola a cascata i saldi successivi. A parità di giorno
+l'ordine di inserimento è garantito (la quota contanti in cassa e la quota POS
+in banca nascono dallo stesso corrispettivo, in sequenza).
 
 **Protezioni**: un doppio click su "Conferma" non può creare movimenti doppi
 (la seconda richiesta viene rifiutata); ogni azione registra chi/quando (audit log).

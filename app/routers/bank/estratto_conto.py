@@ -1608,9 +1608,19 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
     Il controllo è stato corretto per i NUOVI import, ma le righe già
     importate risultano già marcate riconciliato=True (l'entrata banca
     generica le aveva già chiuse) e quindi non vengono più riprocessate
-    automaticamente: questo endpoint ripara lo storico, cercando le
-    causali VERS.+CONTANT già in estratto_conto_movimenti prive della
-    corrispondente uscita in prima_nota_cassa e creandola.
+    automaticamente: questo endpoint ripara lo storico.
+
+    Estensione (richiesta utente 17/07/2026: "estrai tutti i versamenti in
+    banca dall'estratto conto e inserisci l'uscita in prima nota cassa
+    perché è un versamento e poi lo carichi in prima nota banca perché è
+    un'entrata di denaro"): per OGNI versamento di contanti trovato
+    nell'estratto conto genera la DOPPIA scrittura di prima nota —
+    USCITA in prima_nota_cassa (il contante esce dal cassetto) ed
+    ENTRATA in prima_nota_banca (lo stesso denaro entra sul conto) —
+    in modo idempotente: nessuna delle due gambe viene mai duplicata se
+    esiste già (per estratto_conto_id o per pari data+importo, comprese
+    le registrazioni manuali "Versamento Banca" fatte a mano dall'utente
+    e le entrate create dal sync generico dell'import).
     """
     import uuid as _uuid
     db = Database.get_db()
@@ -1621,9 +1631,16 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
 
     movimenti = await db["estratto_conto_movimenti"].find(query, {"_id": 0}).to_list(100000)
 
-    riparati = 0
-    gia_presenti = 0
+    # Categorie storicamente usate per la gamba cassa del versamento:
+    # "Versamento" (automatiche) e "Versamento Banca" (manuali utente).
+    CATEGORIE_VERSAMENTO_CASSA = ["Versamento", "Versamento Banca"]
+
+    creati_cassa = 0
+    creati_banca = 0
+    gia_presenti_cassa = 0
+    gia_presenti_banca = 0
     analizzati = 0
+    ec_da_marcare: List[str] = []
 
     for mov in movimenti:
         desc = mov.get("descrizione_originale") or mov.get("descrizione") or ""
@@ -1631,35 +1648,84 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
             continue
         analizzati += 1
         mid = mov.get("id")
+        data = mov.get("data")
+        importo = abs(mov.get("importo") or 0)
+        if not data or not importo:
+            continue
+        now_iso = datetime.now(timezone.utc).isoformat()
 
-        esistente = await db["prima_nota_cassa"].find_one({
-            "categoria": "Versamento",
+        # ── Gamba 1: USCITA di cassa (il contante lascia il cassetto) ──
+        esistente_cassa = await db["prima_nota_cassa"].find_one({
+            "tipo": "uscita",
             "$or": [
                 {"estratto_conto_id": mid},
-                {"data": mov.get("data"), "importo": mov.get("importo")},
+                {"data": data, "importo": importo,
+                 "categoria": {"$in": CATEGORIE_VERSAMENTO_CASSA}},
             ],
         })
-        if esistente:
-            gia_presenti += 1
-            continue
+        if esistente_cassa:
+            gia_presenti_cassa += 1
+        else:
+            await db["prima_nota_cassa"].insert_one({
+                "id": str(_uuid.uuid4()),
+                "data": data,
+                "tipo": "uscita",
+                "importo": importo,
+                "descrizione": f"Versamento in banca - {desc[:100]}",
+                "categoria": "Versamento",
+                "estratto_conto_id": mid,
+                "source": "estratto_conto_auto_versamento_riparazione",
+                "created_at": now_iso,
+            })
+            creati_cassa += 1
 
-        await db["prima_nota_cassa"].insert_one({
-            "id": str(_uuid.uuid4()),
-            "data": mov.get("data"),
-            "tipo": "uscita",
-            "importo": mov.get("importo"),
-            "descrizione": f"Versamento in banca - {desc[:100]}",
-            "categoria": "Versamento",
-            "estratto_conto_id": mid,
-            "source": "estratto_conto_auto_versamento_riparazione",
-            "created_at": datetime.now(timezone.utc).isoformat(),
+        # ── Gamba 2: ENTRATA in banca (lo stesso denaro arriva sul conto) ──
+        esistente_banca = await db["prima_nota_banca"].find_one({
+            "tipo": "entrata",
+            "$or": [
+                {"estratto_conto_id": mid},
+                # entrata già creata dal sync generico all'import o a mano
+                {"data": data, "importo": importo,
+                 "categoria": {"$in": CATEGORIE_VERSAMENTO_CASSA + ["Ricavi - Deposito contanti"]}},
+                {"data": data, "importo": importo, "source": "estratto_conto_auto"},
+            ],
         })
-        riparati += 1
+        if esistente_banca:
+            gia_presenti_banca += 1
+        else:
+            await db["prima_nota_banca"].insert_one({
+                "id": str(_uuid.uuid4()),
+                "data": data,
+                "tipo": "entrata",
+                "importo": importo,
+                "descrizione": f"Versamento contanti da cassa - {desc[:100]}",
+                "categoria": "Versamento",
+                "estratto_conto_id": mid,
+                "source": "estratto_conto_auto_versamento_riparazione",
+                "created_at": now_iso,
+            })
+            creati_banca += 1
+
+        ec_da_marcare.append(mid)
+
+    # Marca le righe EC come riconciliate da versamento: la doppia
+    # scrittura esiste, nessun processo successivo deve ricrearla.
+    if ec_da_marcare:
+        await db["estratto_conto_movimenti"].update_many(
+            {"id": {"$in": ec_da_marcare}},
+            {"$set": {"riconciliato": True,
+                      "tipo_riconciliazione": "versamento_contanti"}},
+        )
 
     return {
         "success": True,
         "anno": anno,
         "movimenti_versamento_trovati": analizzati,
-        "riparati": riparati,
-        "gia_presenti": gia_presenti,
+        "creati_cassa": creati_cassa,
+        "creati_banca": creati_banca,
+        "gia_presenti_cassa": gia_presenti_cassa,
+        "gia_presenti_banca": gia_presenti_banca,
+        # compatibilità con la vecchia risposta
+        "riparati": creati_cassa,
+        "gia_presenti": gia_presenti_cassa,
     }

@@ -51,6 +51,10 @@ def _matches(doc, query):
             if not str(doc.get(k, "")).startswith(v["$regex"].lstrip("^")):
                 return False
             continue
+        if isinstance(v, dict) and "$in" in v:
+            if doc.get(k) not in v["$in"]:
+                return False
+            continue
         if doc.get(k) != v:
             return False
     return True
@@ -68,6 +72,11 @@ class _FakeCollection:
 
     async def insert_one(self, doc, *a, **k):
         self.docs.append(dict(doc))
+
+    async def update_many(self, query, update, *a, **k):
+        for d in self.docs:
+            if _matches(d, query):
+                d.update(update.get("$set", {}))
 
     def find(self, query=None, projection=None, *a, **k):
         return _FakeCursor([d for d in self.docs if _matches(d, query or {})])
@@ -112,8 +121,8 @@ def test_ripara_versamenti_cassa_crea_uscita_mancante(monkeypatch):
     res = _run(mod.ripara_versamenti_cassa(anno=2026))
 
     assert res["movimenti_versamento_trovati"] == 1
-    assert res["riparati"] == 1
-    assert res["gia_presenti"] == 0
+    assert res["creati_cassa"] == 1
+    assert res["gia_presenti_cassa"] == 0
 
     cassa = db["prima_nota_cassa"].docs
     assert len(cassa) == 1
@@ -121,6 +130,33 @@ def test_ripara_versamenti_cassa_crea_uscita_mancante(monkeypatch):
     assert cassa[0]["categoria"] == "Versamento"
     assert cassa[0]["importo"] == 5000.0
     assert cassa[0]["estratto_conto_id"] == "EC-vecchio"
+
+
+def test_ripara_versamenti_crea_anche_entrata_banca(monkeypatch):
+    """Richiesta utente 17/07/2026: il versamento è una DOPPIA scrittura —
+    uscita di cassa (il contante lascia il cassetto) ed entrata in banca
+    (lo stesso denaro arriva sul conto)."""
+    db = _FakeDb()
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+
+    db["estratto_conto_movimenti"].docs = [{
+        "id": "EC-vers", "data": "2026-07-01", "importo": 7880.0,
+        "tipo": "entrata", "descrizione_originale": "VERS. CONTANTI - VVVVV",
+    }]
+
+    res = _run(mod.ripara_versamenti_cassa(anno=2026))
+
+    assert res["creati_cassa"] == 1
+    assert res["creati_banca"] == 1
+    banca = db["prima_nota_banca"].docs
+    assert len(banca) == 1
+    assert banca[0]["tipo"] == "entrata"
+    assert banca[0]["importo"] == 7880.0
+    assert banca[0]["estratto_conto_id"] == "EC-vers"
+    # la riga EC resta (immutabile) ma viene marcata riconciliata
+    ec = db["estratto_conto_movimenti"].docs[0]
+    assert ec["riconciliato"] is True
+    assert ec["tipo_riconciliazione"] == "versamento_contanti"
 
 
 def test_ripara_versamenti_cassa_idempotente(monkeypatch):
@@ -136,6 +172,41 @@ def test_ripara_versamenti_cassa_idempotente(monkeypatch):
     _run(mod.ripara_versamenti_cassa(anno=2026))
     res2 = _run(mod.ripara_versamenti_cassa(anno=2026))
 
-    assert res2["riparati"] == 0
-    assert res2["gia_presenti"] == 1
+    assert res2["creati_cassa"] == 0
+    assert res2["creati_banca"] == 0
+    assert res2["gia_presenti_cassa"] == 1
+    assert res2["gia_presenti_banca"] == 1
     assert len(db["prima_nota_cassa"].docs) == 1
+    assert len(db["prima_nota_banca"].docs) == 1
+
+
+def test_ripara_versamenti_rispetta_registrazioni_manuali(monkeypatch):
+    """L'utente aveva già registrato a mano alcune uscite di cassa con
+    categoria "Versamento Banca" (source versamento_contanti): la
+    riparazione NON deve duplicarle — riconosce pari data+importo anche
+    con categoria diversa. Idem per l'entrata banca già creata dal sync
+    generico all'import (source estratto_conto_auto)."""
+    db = _FakeDb()
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+
+    db["estratto_conto_movimenti"].docs = [{
+        "id": "EC-2", "data": "2026-06-26", "importo": 4000.0,
+        "tipo": "entrata", "descrizione_originale": "VERS. CONTANTI - VVVVV",
+    }]
+    db["prima_nota_cassa"].docs = [{
+        "id": "man-1", "data": "2026-06-26", "tipo": "uscita", "importo": 4000.0,
+        "categoria": "Versamento Banca", "source": "versamento_contanti",
+    }]
+    db["prima_nota_banca"].docs = [{
+        "id": "auto-1", "data": "2026-06-26", "tipo": "entrata", "importo": 4000.0,
+        "categoria": "Ricavi - Deposito contanti", "source": "estratto_conto_auto",
+    }]
+
+    res = _run(mod.ripara_versamenti_cassa(anno=2026))
+
+    assert res["creati_cassa"] == 0
+    assert res["creati_banca"] == 0
+    assert res["gia_presenti_cassa"] == 1
+    assert res["gia_presenti_banca"] == 1
+    assert len(db["prima_nota_cassa"].docs) == 1
+    assert len(db["prima_nota_banca"].docs) == 1
