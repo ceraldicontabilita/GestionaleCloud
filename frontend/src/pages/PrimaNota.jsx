@@ -222,7 +222,9 @@ function PrimaNotaDesktop() {
         tipo: m.tipo || (m.importo >= 0 ? 'entrata' : 'uscita'),
         importo: Math.abs(m.importo || 0),
         descrizione: m.descrizione || m.descrizione_originale || '',
-        categoria: m.categoria || 'Movimento bancario',
+        // Nome canonico Prima Nota calcolato dal backend (mappa_categoria_ec):
+        // la tassonomia bancaria originale resta sulla riga di estratto conto.
+        categoria: m.categoria_canonica || m.categoria || 'Movimento bancario',
         fattura_id: m.fattura_id || m.dettagli_riconciliazione?.fattura_id || null,
         bonifico_pdf_id: m.bonifico_pdf_id || null,
         _source: 'estratto_conto',

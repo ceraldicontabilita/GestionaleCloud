@@ -57,6 +57,48 @@ def is_versamento_contanti(descrizione: str) -> bool:
     return "VERSAMENTO" in desc_upper or bool(re.search(r"VERS\.?\s*CONTANT", desc_upper))
 
 
+# Mapping categorie dell'estratto conto (tassonomia "Categoria -
+# Sottocategoria" del CSV bancario) sulle categorie canoniche della Prima
+# Nota (richiesta utente 17/07/2026: "mappa anche le categorie dell'estratto
+# conto sulle canoniche"). NON tocca i dati salvati: l'estratto conto resta
+# immutabile, il nome canonico viene calcolato al volo nella risposta
+# (campo `categoria_canonica`) e usato dalla vista Banca.
+_CATEGORIE_EC_ESATTE = {
+    # il deposito di contanti È il versamento (doppia scrittura cassa/banca)
+    "Ricavi - Deposito contanti": "Versamento Banca",
+    # il leasing viaggia con fatture periodiche del concedente
+    "Altre passività - Leasing": "Fatture",
+}
+_CATEGORIE_EC_PREFISSI = {
+    "Fornitori": "Fatture",
+    "Utenze": "Fatture",
+    "Servizi": "Fatture",
+    "Assicurazione": "Fatture",
+    "Operazioni Finanziarie": "Commissioni bancarie",
+    "Tasse": "F24",
+    "Risorse Umane": "Stipendi",
+    "Ricavi": "Incasso cliente",
+    "Altre passività": "Altro",
+    "Altre spese": "Altro",
+    # copre "Intercompany in entrata" e "Intercompany in uscita"
+    "Intercompany in entrata": "Altro",
+    "Intercompany in uscita": "Altro",
+    "Intercompany": "Altro",
+}
+
+
+def mappa_categoria_ec(categoria: Optional[str]) -> Optional[str]:
+    """Nome canonico di Prima Nota per una categoria dell'estratto conto.
+
+    Ritorna None se la categoria non è mappata (resta quella originale)."""
+    if not categoria:
+        return None
+    if categoria in _CATEGORIE_EC_ESATTE:
+        return _CATEGORIE_EC_ESATTE[categoria]
+    prefisso = categoria.split(" - ")[0].strip()
+    return _CATEGORIE_EC_PREFISSI.get(prefisso)
+
+
 def is_prelievo_contanti(descrizione: str) -> bool:
     """Riconosce la causale di un prelievo di contanti dal conto (bancomat,
     sportello, ATM): il movimento opposto del versamento — il denaro esce
@@ -627,7 +669,10 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                     "tipo": mov["tipo"],
                     "importo": mov["importo"],
                     "descrizione": mov.get("descrizione") or mov.get("descrizione_originale") or "",
-                    "categoria": mov.get("categoria") or "Da categorizzare",
+                    # in Prima Nota entra il nome canonico; l'originale
+                    # bancario resta sulla riga di estratto conto
+                    "categoria": mappa_categoria_ec(mov.get("categoria"))
+                                 or mov.get("categoria") or "Da categorizzare",
                     "estratto_conto_id": mid,
                     "source": "estratto_conto_auto",
                     "created_at": now_iso,
@@ -1029,6 +1074,10 @@ async def get_movimenti(
             m["importo"] = float(m.get("importo", 0))
         except (ValueError, TypeError):
             m["importo"] = 0.0
+        # Nome canonico Prima Nota per la vista Banca (calcolato, non salvato)
+        canonica = mappa_categoria_ec(m.get("categoria"))
+        if canonica:
+            m["categoria_canonica"] = canonica
 
     # §6.4: totali/riporto/saldo dalla funzione UNICA di saldo (stessa formula
     # di cassa/banca). query_base_precedente={} riproduce il comportamento
