@@ -2791,8 +2791,45 @@ function MovementsTable({
       {/* Su telefono: una CARD per movimento (tutto il giorno in un blocco,
           niente scroll orizzontale). Su tablet/monitor: tabella completa. */}
       {isMobile ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '10px 12px' }}>
-          {currentWithBalance.map((mov, idx) => {
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '10px 12px' }}>
+          {(() => {
+            // Card raggruppate PER GIORNATA (audit 16/07/2026): intestazione
+            // con data, numero movimenti e netto del giorno, poi le card.
+            const gruppi = [];
+            currentWithBalance.forEach((mov, idx) => {
+              const ultimo = gruppi[gruppi.length - 1];
+              if (!ultimo || ultimo.data !== mov.data) {
+                gruppi.push({ data: mov.data, righe: [] });
+              }
+              gruppi[gruppi.length - 1].righe.push([mov, idx]);
+            });
+            return gruppi.map(g => {
+              const nettoGiorno = g.righe.reduce(
+                (s, [m]) => s + (m.tipo === 'entrata' ? 1 : -1) * Math.abs(m.importo || 0), 0);
+              return (
+                <div key={g.data || 'senza-data'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div
+                    style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      gap: 8, padding: '6px 10px', background: '#0f2744', color: 'white',
+                      borderRadius: 8, fontSize: 12, fontWeight: 700, minWidth: 0,
+                    }}
+                  >
+                    <span style={{ whiteSpace: 'nowrap' }}>📅 {formatDate(g.data)}</span>
+                    <span style={{ fontWeight: 500, fontSize: 11, opacity: 0.85 }}>
+                      {g.righe.length} mov.
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                        color: nettoGiorno >= 0 ? '#86efac' : '#fca5a5',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {nettoGiorno >= 0 ? '+' : ''}{formatEuroD(nettoGiorno)}
+                    </span>
+                  </div>
+                  {g.righe.map(([mov, idx]) => {
             const entrata = mov.tipo === 'entrata';
             const { numero, descr } = splitNumeroFattura(mov);
             return (
@@ -2915,7 +2952,11 @@ function MovementsTable({
                 </div>
               </div>
             );
-          })}
+                  })}
+                </div>
+              );
+            });
+          })()}
         </div>
       ) : (
       <div style={{ overflowX: 'auto' }}>

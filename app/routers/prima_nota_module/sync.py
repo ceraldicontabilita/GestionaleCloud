@@ -1136,15 +1136,12 @@ async def collega_fatture_movimenti() -> Dict:
 async def auto_conferma_provvisori_per_metodo(
     anno: int = Query(..., description="Anno da processare"),
 ) -> Dict[str, Any]:
-    """Ex auto-confermazione bulk delle fatture provvisorie per i fornitori
-    marcati "pagamento certo". Il concetto di "pagamento certo" è stato
-    rimosso: il sistema non può sapere con certezza dove imputare il
-    pagamento di una fattura solo dal metodo impostato in anagrafica (vedi
-    memoria/moduli/FATTURE_RICEVUTE.md) — quindi questa funzione non sposta
-    più nulla automaticamente. Resta solo per compatibilità con l'endpoint
-    già esposto al frontend (PuliziaPrimaNota.jsx) e per produrre il report
-    di classificazione: ogni fattura provvisoria resta sempre in Provvisoria,
-    in attesa di conferma manuale dell'utente.
+    """Applica al PREGRESSO dell'anno la regola metodo-fornitore (utente
+    17/07/2026, la stessa dell'ingresso fattura XML): fornitore con metodo
+    univoco cassa/banca → la fattura provvisoria viene registrata subito
+    nella prima nota corrispondente; misto/senza metodo/ambiguo → resta in
+    Provvisoria. Le fatture già pagate o con un movimento esistente non
+    vengono mai toccate (nessun doppio movimento possibile).
     """
     db = Database.get_db()
     now = datetime.now(timezone.utc).isoformat()
@@ -1229,19 +1226,42 @@ async def auto_conferma_provvisori_per_metodo(
 
             metodo = metodo_per_piva.get(piva, "")
 
-            # --- CLASSIFICAZIONE SOLO INFORMATIVA (stessa regola condivisa
-            # con la pagina Provvisori) — non sposta più nulla: il "pagamento
-            # certo" che permetteva l'auto-conferma bulk è stato rimosso, ogni
-            # fattura resta sempre in Provvisoria in attesa di conferma manuale.
-            destinazione_calcolata = classifica_metodo_fornitore(metodo)
-
-            if destinazione_calcolata == "sospesa":
-                if metodo:
-                    report["restate_in_provvisoria_paypal_o_carta"] += 1
-                else:
-                    report["restate_in_provvisoria_fornitore_senza_metodo"] += 1
-            else:
+            # Fattura già marcata pagata (es. "segna pagata manualmente",
+            # pagamento fuori sistema): mai creare un movimento nuovo, si
+            # duplicherebbe una spesa già avvenuta altrove.
+            if pagata or f.get("pagato"):
                 report["restate_in_provvisoria_richiede_conferma_manuale"] += 1
+                continue
+
+            # --- REGOLA utente 17/07/2026 (applicata anche al pregresso):
+            # fornitore con metodo UNIVOCO cassa/banca → registrazione
+            # diretta nella prima nota corrispondente; misto/assente/ambiguo
+            # → resta provvisoria. Stessa identica implementazione usata
+            # all'ingresso della fattura XML (auto_registra_prima_nota).
+            from app.routers.invoices.fatture_upload import auto_registra_prima_nota
+            update = await auto_registra_prima_nota(db, f, None)
+
+            if update:
+                if update.get("prima_nota_tipo") == "cassa":
+                    report["mosse_cassa"] += 1
+                else:
+                    report["mosse_banca"] += 1
+                if len(report["dettaglio_mosse"]) < 100:
+                    report["dettaglio_mosse"].append({
+                        "fattura_id": fid,
+                        "fornitore": f.get("supplier_name") or f.get("cedente_denominazione"),
+                        "importo": f.get("total_amount") or f.get("importo_totale"),
+                        "destinazione": update.get("prima_nota_tipo"),
+                    })
+            else:
+                destinazione_calcolata = classifica_metodo_fornitore(metodo)
+                if destinazione_calcolata == "sospesa":
+                    if metodo:
+                        report["restate_in_provvisoria_paypal_o_carta"] += 1
+                    else:
+                        report["restate_in_provvisoria_fornitore_senza_metodo"] += 1
+                else:
+                    report["restate_in_provvisoria_richiede_conferma_manuale"] += 1
 
         except Exception as e:
             logger.exception(f"Errore auto-conferma fattura {f.get('id')}: {e}")
@@ -1252,7 +1272,11 @@ async def auto_conferma_provvisori_per_metodo(
 
     return {
         "success": True,
-        "message": "Il 'pagamento certo' è stato rimosso: nessuna fattura viene più spostata automaticamente, restano tutte in Provvisoria per la conferma manuale.",
+        "message": (
+            f"Regola metodo-fornitore applicata: {report['mosse_cassa']} fatture "
+            f"registrate in Cassa, {report['mosse_banca']} in Banca; le fatture di "
+            "fornitori misto/senza metodo/ambiguo restano in Provvisoria."
+        ),
         **report,
     }
 
