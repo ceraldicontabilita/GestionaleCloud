@@ -27,15 +27,20 @@ async def on_trasferimento_crea_lato_opposto(event: Dict[str, Any], db) -> Optio
     if not movimento_id or not importo or not origine:
         return None
 
-    # Determina collection di destinazione
+    # Determina collection di destinazione. Categorie unificate (utente
+    # 17/07/2026): cassa→banca = "Versamento Banca", banca→cassa =
+    # "Prelevamento Banca" (prima entrambe finivano in un generico
+    # "trasferimento_interno" che a video non si capiva).
     if origine == "cassa":
         dest_coll = "prima_nota_banca"
         dest_tipo = "entrata"
         dest_desc = f"Versamento contanti da cassa - {data}"
+        dest_categoria = "Versamento Banca"
     elif origine == "banca":
         dest_coll = "prima_nota_cassa"
         dest_tipo = "entrata"
-        dest_desc = f"Prelievo banca per cassa - {data}"
+        dest_desc = f"Prelevamento da banca - {data}"
+        dest_categoria = "Prelevamento Banca"
     else:
         return None
 
@@ -54,7 +59,7 @@ async def on_trasferimento_crea_lato_opposto(event: Dict[str, Any], db) -> Optio
         "causale": "trasferimento_interno",
         "importo": round(abs(importo), 2),
         "tipo": dest_tipo,
-        "categoria": "trasferimento_interno",
+        "categoria": dest_categoria,
         "stato": "confermato",
         "provvisorio": False,
         "trasferimento_collegato_id": movimento_id,

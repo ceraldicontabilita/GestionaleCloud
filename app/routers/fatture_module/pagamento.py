@@ -546,7 +546,7 @@ async def backfill_autoroute_da_metodo_fornitore(_admin: Dict[str, Any] = Depend
                 "causale": "Pagamento fattura fornitore",
                 "importo": importo,
                 "tipo": "uscita",
-                "categoria": "fornitori",
+                "categoria": "Fatture",
                 "stato": "confermato",
                 "fattura_id": fattura_id,
                 "fattura_collegata": fattura_id,

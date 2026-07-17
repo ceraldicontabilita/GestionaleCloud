@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **988 endpoint** in **104 gruppi**.
+> Totale **989 endpoint** in **104 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 639 · ext esterni = 76 · — da verificare = 273
+**Riepilogo uso:** ✓ frontend = 639 · ext esterni = 76 · — da verificare = 274
 
 ## AI Parser  (11)
 
@@ -1171,7 +1171,7 @@
 | GET | `/api/previsioni-acquisti/prodotti` | — | previsioni_acquisti |
 | GET | `/api/previsioni-acquisti/statistiche` | ✓ | previsioni_acquisti |
 
-## Prima Nota  (68)
+## Prima Nota  (69)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1242,6 +1242,7 @@
 | POST | `/api/prima-nota/sposta-scrittura` | ✓ | prima_nota_module.sync |
 | GET | `/api/prima-nota/stats` | ✓ | prima_nota_module.stats |
 | POST | `/api/prima-nota/sync-corrispettivi` | — | prima_nota_module.sync |
+| POST | `/api/prima-nota/unifica-categorie` | — | prima_nota_module.manutenzione |
 | GET | `/api/prima-nota/verifica-metodo-fattura/{fattura_id}` | — | prima_nota_module.manutenzione |
 
 ## Prima Nota Salari  (14)

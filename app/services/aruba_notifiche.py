@@ -292,7 +292,7 @@ async def registra_anticipo(db, attesa_id: str, metodo: str, fonte: str = "manua
         "id": movimento_id,
         "data": attesa.get("data_documento") or (attesa.get("email_date") or now)[:10],
         "tipo": "uscita",
-        "categoria": "Pagamento fornitore",
+        "categoria": "Fatture",
         "importo": importo,
         "descrizione": f"Pagamento fattura {numero} - {fornitore} (annunciata da email, XML in arrivo)",
         "riferimento": f"ATTESA-{attesa_id}",

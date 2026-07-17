@@ -80,7 +80,7 @@ async def sync_fattura_to_prima_nota(fattura_id: str, db) -> Dict[str, Any]:
         "tipo": "uscita",
         "importo": importo,
         "descrizione": f"Fattura {numero} - {fornitore}",
-        "categoria": "Fornitori",
+        "categoria": "Fatture",
         "metodo": "contanti" if collection == "prima_nota_cassa" else "bonifico",
         "fornitore": fornitore,
         "numero_fattura": numero,
@@ -172,11 +172,13 @@ async def match_fatture_con_prima_nota_cassa(db) -> Dict[str, Any]:
         "details": []
     }
     
-    # Prendi tutti i movimenti prima nota cassa - pagamenti fornitori
-    # Categoria può essere "Pagamento fornitore" o "Fornitori"
+    # Prendi tutti i movimenti prima nota cassa - pagamenti fornitori.
+    # Dopo l'unificazione (17/07/2026) la categoria canonica è "Fatture";
+    # i nomi storici restano nel filtro per lo storico non ancora migrato.
     movimenti_cassa = await db["prima_nota_cassa"].find({
         "tipo": "uscita",
         "$or": [
+            {"categoria": "Fatture"},
             {"categoria": "Pagamento fornitore"},
             {"categoria": "Fornitori"},
             {"categoria": {"$regex": "fornitore", "$options": "i"}}

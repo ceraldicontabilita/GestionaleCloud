@@ -121,7 +121,7 @@ def test_multi_pagamento_fattura_normale_resta_uscita(monkeypatch):
 
     banca = db["prima_nota_banca"].docs
     assert banca[0]["tipo"] == "uscita"
-    assert banca[0]["categoria"] == "Pagamento fornitore"
+    assert banca[0]["categoria"] == "Fatture"
 
 
 def test_conferma_proposta_nota_credito_entrata(monkeypatch):
@@ -156,4 +156,4 @@ def test_conferma_proposta_fattura_normale_resta_uscita(monkeypatch):
 
     banca = db["prima_nota_banca"].docs
     assert banca[0]["tipo"] == "uscita"
-    assert banca[0]["categoria"] == "Pagamento fornitore"
+    assert banca[0]["categoria"] == "Fatture"

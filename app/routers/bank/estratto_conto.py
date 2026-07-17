@@ -57,6 +57,16 @@ def is_versamento_contanti(descrizione: str) -> bool:
     return "VERSAMENTO" in desc_upper or bool(re.search(r"VERS\.?\s*CONTANT", desc_upper))
 
 
+def is_prelievo_contanti(descrizione: str) -> bool:
+    """Riconosce la causale di un prelievo di contanti dal conto (bancomat,
+    sportello, ATM): il movimento opposto del versamento — il denaro esce
+    dalla banca ed entra in cassa."""
+    desc_upper = (descrizione or "").upper()
+    if "PRELIEVO" not in desc_upper and "PRELEV" not in desc_upper:
+        return False
+    return any(k in desc_upper for k in ("BANCOMAT", "CONTANT", "SPORTELLO", " ATM"))
+
+
 def estrai_fornitore_pulito(descrizione: str) -> Optional[str]:
     """Estrae il nome fornitore dalla descrizione, pulendolo."""
     if not descrizione:
@@ -629,8 +639,8 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                     cassa_batch.append({
                         "id": str(_uuid.uuid4()), "data": mov["data"], "tipo": "entrata",
                         "importo": mov["importo"],
-                        "descrizione": f"Prelievo da banca - {(mov.get('descrizione') or '')[:100]}",
-                        "categoria": "Prelievo",
+                        "descrizione": f"Prelevamento da banca - {(mov.get('descrizione') or '')[:100]}",
+                        "categoria": "Prelevamento Banca",
                         "estratto_conto_id": mid,
                         "source": "estratto_conto_auto_prelievo",
                         "created_at": now_iso,
@@ -640,7 +650,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                         "id": str(_uuid.uuid4()), "data": mov["data"], "tipo": "uscita",
                         "importo": mov["importo"],
                         "descrizione": f"Versamento in banca - {(mov.get('descrizione') or '')[:100]}",
-                        "categoria": "Versamento",
+                        "categoria": "Versamento Banca",
                         "estratto_conto_id": mid,
                         "source": "estratto_conto_auto_versamento",
                         "created_at": now_iso,
@@ -1631,22 +1641,30 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
 
     movimenti = await db["estratto_conto_movimenti"].find(query, {"_id": 0}).to_list(100000)
 
-    # Categorie storicamente usate per la gamba cassa del versamento:
-    # "Versamento" (automatiche) e "Versamento Banca" (manuali utente).
+    # Tutti i nomi storicamente usati per le gambe di versamenti/prelievi
+    # (prima dell'unificazione del 17/07/2026 in "Versamento Banca" e
+    # "Prelevamento Banca"): servono nel dedup per non duplicare mai le
+    # registrazioni gia' esistenti, comprese quelle manuali dell'utente.
     CATEGORIE_VERSAMENTO_CASSA = ["Versamento", "Versamento Banca"]
+    CATEGORIE_PRELIEVO = ["Prelievo", "Prelevamento Banca", "trasferimento_interno"]
 
     creati_cassa = 0
     creati_banca = 0
     gia_presenti_cassa = 0
     gia_presenti_banca = 0
     analizzati = 0
+    prelievi_trovati = 0
     ec_da_marcare: List[str] = []
 
     for mov in movimenti:
         desc = mov.get("descrizione_originale") or mov.get("descrizione") or ""
-        if not is_versamento_contanti(desc):
+        versamento = is_versamento_contanti(desc)
+        prelievo = not versamento and is_prelievo_contanti(desc)
+        if not versamento and not prelievo:
             continue
         analizzati += 1
+        if prelievo:
+            prelievi_trovati += 1
         mid = mov.get("id")
         data = mov.get("data")
         importo = abs(mov.get("importo") or 0)
@@ -1654,13 +1672,35 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
             continue
         now_iso = datetime.now(timezone.utc).isoformat()
 
-        # ── Gamba 1: USCITA di cassa (il contante lascia il cassetto) ──
+        if versamento:
+            # versamento: USCITA cassa (contante via dal cassetto),
+            # ENTRATA banca (lo stesso denaro arriva sul conto)
+            tipo_cassa, tipo_banca = "uscita", "entrata"
+            cat = "Versamento Banca"
+            desc_cassa = f"Versamento in banca - {desc[:100]}"
+            desc_banca = f"Versamento contanti da cassa - {desc[:100]}"
+            dedup_cat_cassa = CATEGORIE_VERSAMENTO_CASSA
+            dedup_cat_banca = CATEGORIE_VERSAMENTO_CASSA + ["Ricavi - Deposito contanti"]
+            tipo_riconciliazione = "versamento_contanti"
+        else:
+            # prelievo (regola utente 17/07/2026): ENTRATA in cassa
+            # ("prelevamento banca") e USCITA in banca ("prelevamento
+            # verso cassa")
+            tipo_cassa, tipo_banca = "entrata", "uscita"
+            cat = "Prelevamento Banca"
+            desc_cassa = f"Prelevamento da banca - {desc[:100]}"
+            desc_banca = f"Prelevamento verso cassa - {desc[:100]}"
+            dedup_cat_cassa = CATEGORIE_PRELIEVO
+            dedup_cat_banca = CATEGORIE_PRELIEVO
+            tipo_riconciliazione = "prelievo_contanti"
+
+        # ── Gamba 1: CASSA ──
         esistente_cassa = await db["prima_nota_cassa"].find_one({
-            "tipo": "uscita",
+            "tipo": tipo_cassa,
             "$or": [
                 {"estratto_conto_id": mid},
                 {"data": data, "importo": importo,
-                 "categoria": {"$in": CATEGORIE_VERSAMENTO_CASSA}},
+                 "categoria": {"$in": dedup_cat_cassa}},
             ],
         })
         if esistente_cassa:
@@ -1669,24 +1709,24 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
             await db["prima_nota_cassa"].insert_one({
                 "id": str(_uuid.uuid4()),
                 "data": data,
-                "tipo": "uscita",
+                "tipo": tipo_cassa,
                 "importo": importo,
-                "descrizione": f"Versamento in banca - {desc[:100]}",
-                "categoria": "Versamento",
+                "descrizione": desc_cassa,
+                "categoria": cat,
                 "estratto_conto_id": mid,
                 "source": "estratto_conto_auto_versamento_riparazione",
                 "created_at": now_iso,
             })
             creati_cassa += 1
 
-        # ── Gamba 2: ENTRATA in banca (lo stesso denaro arriva sul conto) ──
+        # ── Gamba 2: BANCA ──
         esistente_banca = await db["prima_nota_banca"].find_one({
-            "tipo": "entrata",
+            "tipo": tipo_banca,
             "$or": [
                 {"estratto_conto_id": mid},
-                # entrata già creata dal sync generico all'import o a mano
+                # gamba già creata dal sync generico all'import o a mano
                 {"data": data, "importo": importo,
-                 "categoria": {"$in": CATEGORIE_VERSAMENTO_CASSA + ["Ricavi - Deposito contanti"]}},
+                 "categoria": {"$in": dedup_cat_banca}},
                 {"data": data, "importo": importo, "source": "estratto_conto_auto"},
             ],
         })
@@ -1696,31 +1736,33 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
             await db["prima_nota_banca"].insert_one({
                 "id": str(_uuid.uuid4()),
                 "data": data,
-                "tipo": "entrata",
+                "tipo": tipo_banca,
                 "importo": importo,
-                "descrizione": f"Versamento contanti da cassa - {desc[:100]}",
-                "categoria": "Versamento",
+                "descrizione": desc_banca,
+                "categoria": cat,
                 "estratto_conto_id": mid,
                 "source": "estratto_conto_auto_versamento_riparazione",
                 "created_at": now_iso,
             })
             creati_banca += 1
 
-        ec_da_marcare.append(mid)
+        ec_da_marcare.append((mid, tipo_riconciliazione))
 
-    # Marca le righe EC come riconciliate da versamento: la doppia
-    # scrittura esiste, nessun processo successivo deve ricrearla.
-    if ec_da_marcare:
-        await db["estratto_conto_movimenti"].update_many(
-            {"id": {"$in": ec_da_marcare}},
-            {"$set": {"riconciliato": True,
-                      "tipo_riconciliazione": "versamento_contanti"}},
-        )
+    # Marca le righe EC come riconciliate: la doppia scrittura esiste,
+    # nessun processo successivo deve ricrearla.
+    for tipo_ric in ("versamento_contanti", "prelievo_contanti"):
+        ids = [mid for mid, t in ec_da_marcare if t == tipo_ric]
+        if ids:
+            await db["estratto_conto_movimenti"].update_many(
+                {"id": {"$in": ids}},
+                {"$set": {"riconciliato": True, "tipo_riconciliazione": tipo_ric}},
+            )
 
     return {
         "success": True,
         "anno": anno,
-        "movimenti_versamento_trovati": analizzati,
+        "movimenti_versamento_trovati": analizzati - prelievi_trovati,
+        "movimenti_prelievo_trovati": prelievi_trovati,
         "creati_cassa": creati_cassa,
         "creati_banca": creati_banca,
         "gia_presenti_cassa": gia_presenti_cassa,

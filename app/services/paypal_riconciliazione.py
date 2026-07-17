@@ -351,7 +351,7 @@ async def riconcilia_pagamenti_paypal(
                         "causale": "Pagamento fattura fornitore via PayPal",
                         "importo": float(importo),
                         "tipo": "uscita",
-                        "categoria": "fornitori",
+                        "categoria": "Fatture",
                         "stato": "confermato",
                         "fattura_id": fattura_id,
                         "fattura_collegata": fattura_id,

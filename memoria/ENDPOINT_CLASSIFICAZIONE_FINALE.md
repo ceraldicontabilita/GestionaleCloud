@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 988 · tenere: 654 · verificare: 314 · admin-only (migrazione/manutenzione): 20
+**Totale endpoint:** 989 · tenere: 654 · verificare: 315 · admin-only (migrazione/manutenzione): 20
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -601,7 +601,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/gestione-riservata/login` | gestione_riservata | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/gestione-riservata/movimenti` | gestione_riservata | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/gestione-riservata/movimenti` | gestione_riservata | sì | — | — | — | — | tenere | in uso: FE |
-| `DELETE /api/gestione-riservata/movimenti/{movimento_id}` | gestione_riservata | sì | — | — | — | — | tenere | in uso: FE |
+| `DELETE /api/gestione-riservata/movimenti/{movimento_id}` | gestione_riservata | sì | — | — | — | sì | tenere | in uso: FE |
 | `PUT /api/gestione-riservata/movimenti/{movimento_id}` | gestione_riservata | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/gestione-riservata/riepilogo` | gestione_riservata | sì | — | sì | — | sì | tenere | in uso: FE, chat |
 | `GET /api/gestione-riservata/volume-affari-reale` | gestione_riservata | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -801,7 +801,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `DELETE /api/prima-nota/banca/delete-by-source/{source}` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/banca/sync-estratto-conto` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/banca/template-csv` | prima_nota_module | sì | — | — | — | — | tenere | in uso: FE |
-| `DELETE /api/prima-nota/banca/{movimento_id}` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
+| `DELETE /api/prima-nota/banca/{movimento_id}` | prima_nota_module.banca | sì | — | — | — | sì | tenere | in uso: FE |
 | `PUT /api/prima-nota/banca/{movimento_id}` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/banca/{movimento_id}/fattura` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/cassa` | prima_nota_module.cassa | sì | — | — | — | — | tenere | in uso: FE |
@@ -853,10 +853,11 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/prima-nota/saldo-iniziale` | prima_nota_module.stats | sì | — | — | — | sì | tenere | in uso: FE |
 | `PUT /api/prima-nota/saldo-iniziale` | prima_nota_module.stats | sì | — | — | — | sì | tenere | in uso: FE |
 | `DELETE /api/prima-nota/saldo-iniziale/{tipo}/{anno}` | prima_nota_module.stats | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/prima-nota/sposta-movimento` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/prima-nota/sposta-movimento` | prima_nota_module.manutenzione | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota/sposta-scrittura` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/stats` | prima_nota_module.stats | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/sync-corrispettivi` | prima_nota_module.sync | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/prima-nota/unifica-categorie` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota/verifica-metodo-fattura/{fattura_id}` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/privacy` | legal_pages | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/proposte` | dati_provvisori | — | sì | — | — | — | tenere | in uso: scheduler |

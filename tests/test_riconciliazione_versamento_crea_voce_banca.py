@@ -118,7 +118,7 @@ def test_versamento_riconciliato_crea_movimento_banca(monkeypatch):
     }]
     db["prima_nota_cassa"].docs = [{
         "id": "cassa-1", "data": "2026-07-10", "importo": 500.0,
-        "categoria": "Versamento", "tipo": "uscita", "riconciliato": False,
+        "categoria": "Versamento Banca", "tipo": "uscita", "riconciliato": False,
     }]
 
     res = _run(mod.riconcilia_movimenti_banca())
@@ -136,6 +136,6 @@ def test_versamento_riconciliato_crea_movimento_banca(monkeypatch):
     assert len(banca) == 1
     assert banca[0]["tipo"] == "entrata"
     assert banca[0]["importo"] == 500.0
-    assert banca[0]["categoria"] == "Versamento"
+    assert banca[0]["categoria"] == "Versamento Banca"
     assert banca[0]["estratto_conto_id"] == "EC-1"
     assert banca[0]["prima_nota_cassa_id"] == "cassa-1"

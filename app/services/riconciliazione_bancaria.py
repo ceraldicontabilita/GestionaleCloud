@@ -1005,7 +1005,7 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                 if any(kw in descrizione.upper() for kw in ['VERS', 'VERSAMENTO', 'CONTANTI']):
                     versamento = await db[COLLECTION_PRIMA_NOTA_CASSA].find_one({
                         "data": data_ec,
-                        "categoria": "Versamento",
+                        "categoria": "Versamento Banca",
                         "importo": {"$gte": importo - 0.05, "$lte": importo + 0.05},
                         "riconciliato": {"$ne": True}
                     })
@@ -1039,7 +1039,7 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                             "tipo": "entrata",
                             "importo": versamento.get("importo", importo),
                             "descrizione": f"Versamento contanti in banca - {descrizione[:100]}",
-                            "categoria": "Versamento",
+                            "categoria": "Versamento Banca",
                             "estratto_conto_id": mov_id,
                             "prima_nota_cassa_id": versamento["id"],
                             "source": "riconciliazione_ec_versamento",

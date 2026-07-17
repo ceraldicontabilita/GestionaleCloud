@@ -127,7 +127,7 @@ def test_ripara_versamenti_cassa_crea_uscita_mancante(monkeypatch):
     cassa = db["prima_nota_cassa"].docs
     assert len(cassa) == 1
     assert cassa[0]["tipo"] == "uscita"
-    assert cassa[0]["categoria"] == "Versamento"
+    assert cassa[0]["categoria"] == "Versamento Banca"
     assert cassa[0]["importo"] == 5000.0
     assert cassa[0]["estratto_conto_id"] == "EC-vecchio"
 
@@ -210,3 +210,43 @@ def test_ripara_versamenti_rispetta_registrazioni_manuali(monkeypatch):
     assert res["gia_presenti_banca"] == 1
     assert len(db["prima_nota_cassa"].docs) == 1
     assert len(db["prima_nota_banca"].docs) == 1
+
+
+def test_ripara_prelievo_crea_doppia_scrittura(monkeypatch):
+    """Regola utente 17/07/2026: il prelievo di contanti dall'estratto conto
+    genera l'ENTRATA in prima nota cassa ("prelevamento banca") e l'USCITA
+    in prima nota banca ("prelevamento verso cassa")."""
+    db = _FakeDb()
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+
+    db["estratto_conto_movimenti"].docs = [{
+        "id": "EC-prel", "data": "2026-05-10", "importo": 500.0,
+        "tipo": "uscita", "descrizione_originale": "PRELIEVO CONTANTI SPORTELLO",
+    }]
+
+    res = _run(mod.ripara_versamenti_cassa(anno=2026))
+
+    assert res["movimenti_prelievo_trovati"] == 1
+    cassa = db["prima_nota_cassa"].docs
+    banca = db["prima_nota_banca"].docs
+    assert len(cassa) == 1 and cassa[0]["tipo"] == "entrata"
+    assert cassa[0]["categoria"] == "Prelevamento Banca"
+    assert cassa[0]["descrizione"].startswith("Prelevamento da banca")
+    assert len(banca) == 1 and banca[0]["tipo"] == "uscita"
+    assert banca[0]["categoria"] == "Prelevamento Banca"
+    assert banca[0]["descrizione"].startswith("Prelevamento verso cassa")
+    assert db["estratto_conto_movimenti"].docs[0]["tipo_riconciliazione"] == "prelievo_contanti"
+
+    # idempotente
+    res2 = _run(mod.ripara_versamenti_cassa(anno=2026))
+    assert res2["creati_cassa"] == 0 and res2["creati_banca"] == 0
+    assert len(db["prima_nota_cassa"].docs) == 1
+    assert len(db["prima_nota_banca"].docs) == 1
+
+
+def test_prelievo_non_confuso_con_versamento():
+    assert mod.is_prelievo_contanti("PRELIEVO CONTANTI SPORTELLO") is True
+    assert mod.is_prelievo_contanti("PRELEV. BANCOMAT CARTA 123") is True
+    assert mod.is_prelievo_contanti("VERS. CONTANTI - VVVVV") is False
+    assert mod.is_prelievo_contanti("PRELIEVO ASSEGNO - DM 00000") is False
+    assert mod.is_prelievo_contanti("") is False

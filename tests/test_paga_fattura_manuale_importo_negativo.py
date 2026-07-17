@@ -88,7 +88,7 @@ def test_importo_positivo_resta_uscita_normale(monkeypatch):
     assert res["success"] is True
     banca = db["prima_nota_banca"].docs
     assert banca[0]["tipo"] == "uscita"
-    assert banca[0]["categoria"] == "Pagamento fornitore"
+    assert banca[0]["categoria"] == "Fatture"
     assert banca[0]["importo"] == 100.0
 
 

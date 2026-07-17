@@ -240,7 +240,7 @@ async def fix_versamenti_duplicati(anno: Optional[int] = Query(None)) -> Dict:
     """Rimuove i versamenti duplicati con importo errato."""
     db = Database.get_db()
     
-    query = {"categoria": "Versamento"}
+    query = {"categoria": {"$in": ["Versamento", "Versamento Banca"]}}
     if anno:
         query["data"] = {"$regex": f"^{anno}"}
     
@@ -359,6 +359,49 @@ async def pulizia_dati_pre_anno(
         "collections": report,
         "totale_eliminati": totale_eliminati,
     }
+
+
+# Unificazione categorie (richiesta utente 17/07/2026, screenshot del filtro
+# con 8 nomi diversi): un solo nome per concetto. Regole di rinomina, in
+# ordine di applicazione: (collection, filtro, nuova categoria).
+REGOLE_UNIFICA_CATEGORIE = [
+    # Pagamenti fatture fornitori → "Fatture" (il nome già usato dal 90%)
+    ("prima_nota_cassa", {"categoria": {"$in": ["Pagamento fornitore", "Fornitori", "fornitori"]}}, "Fatture"),
+    ("prima_nota_banca", {"categoria": {"$in": ["Pagamento fornitore", "Fornitori", "fornitori"]}}, "Fatture"),
+    # Contanti da cassa a banca → "Versamento Banca"
+    ("prima_nota_cassa", {"categoria": "Versamento", "tipo": "uscita"}, "Versamento Banca"),
+    ("prima_nota_banca", {"categoria": "Versamento", "tipo": "entrata"}, "Versamento Banca"),
+    ("prima_nota_banca", {"categoria": "trasferimento_interno", "tipo": "entrata"}, "Versamento Banca"),
+    # Contanti da banca a cassa → "Prelevamento Banca" (prelievi)
+    ("prima_nota_cassa", {"categoria": {"$in": ["trasferimento_interno", "Prelievo"]}, "tipo": "entrata"}, "Prelevamento Banca"),
+    ("prima_nota_banca", {"categoria": {"$in": ["trasferimento_interno", "Prelievo"]}, "tipo": "uscita"}, "Prelevamento Banca"),
+]
+
+
+async def unifica_categorie(
+    dry_run: bool = Query(True, description="Solo conteggio, non rinomina"),
+    _admin: Dict = Depends(get_current_admin_user),
+) -> Dict:
+    """Rinomina le categorie storiche di Prima Nota nei tre nomi canonici:
+    "Fatture" (pagamenti fatture fornitori), "Versamento Banca" (contanti
+    cassa→banca), "Prelevamento Banca" (contanti banca→cassa). Idempotente:
+    rieseguirla non cambia più nulla."""
+    db = Database.get_db()
+    report = []
+    totale = 0
+    for collection, filtro, nuova in REGOLE_UNIFICA_CATEGORIE:
+        if dry_run:
+            n = await db[collection].count_documents(filtro)
+        else:
+            r = await db[collection].update_many(filtro, {"$set": {"categoria": nuova}})
+            n = r.modified_count
+        if n:
+            report.append({
+                "collection": collection, "filtro": str(filtro),
+                "nuova_categoria": nuova, "movimenti": n,
+            })
+        totale += n
+    return {"dry_run": dry_run, "totale_movimenti": totale, "rinomine": report}
 
 
 async def fix_date_formato_italiano() -> Dict:

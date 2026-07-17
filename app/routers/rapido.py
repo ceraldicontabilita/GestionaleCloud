@@ -79,7 +79,7 @@ async def rapido_versamento(payload: Dict[str, Any] = Body(...)) -> Dict[str, An
         "data": data,
         "tipo": "uscita", "importo": importo,
         "descrizione": descrizione,
-        "categoria": "Versamento", "source": "rapido_versamento",
+        "categoria": "Versamento Banca", "source": "rapido_versamento",
         "created_at": datetime.now(timezone.utc).isoformat()
     })
     mov_banca_id = str(uuid.uuid4())
@@ -88,7 +88,7 @@ async def rapido_versamento(payload: Dict[str, Any] = Body(...)) -> Dict[str, An
         "data": data,
         "tipo": "entrata", "importo": importo,
         "descrizione": descrizione,
-        "categoria": "Versamento", "source": "rapido_versamento",
+        "categoria": "Versamento Banca", "source": "rapido_versamento",
         "movimento_cassa_id": mov_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     })
@@ -144,7 +144,7 @@ async def rapido_paga_fattura(
         "id": mov_id, "data": datetime.now().strftime("%Y-%m-%d"),
         "tipo": "uscita", "importo": abs(imp),
         "descrizione": f"Pagamento fattura {fattura.get('invoice_number', '')}",
-        "categoria": "fornitori", "fattura_id": invoice_id,
+        "categoria": "Fatture", "fattura_id": invoice_id,
         "source": "rapido_paga_fattura",
         "created_at": datetime.now(timezone.utc).isoformat()
     })

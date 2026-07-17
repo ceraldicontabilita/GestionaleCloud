@@ -577,7 +577,7 @@ function PrimaNotaDesktop() {
         tipo: 'uscita', // AVERE
         importo: parseFloat(versamento.importo),
         descrizione: `Versamento in banca ${versamento.data}`,
-        categoria: 'Versamento',
+        categoria: 'Versamento Banca',
         source: 'manual_entry',
       });
       setVersamento({ data: today, importo: '' });
@@ -3464,10 +3464,10 @@ function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
   // categoria valida, perché React non trova l'<option> corrispondente.
   const categorieBase =
     tipo === 'cassa'
-      ? ['Corrispettivi', 'POS', 'POS Verso Banca', 'Versamento', 'Pagamento fornitore',
-         'Nota credito fornitore', 'Fatture', 'Incasso', 'Spese', 'Altro']
-      : ['Pagamento fornitore', 'Nota credito fornitore', 'Incasso cliente', 'Fatture',
-         'Corrispettivi POS', 'Bonifico', 'Assegno', 'F24', 'Altro'];
+      ? ['Corrispettivi', 'POS', 'POS Verso Banca', 'Versamento Banca', 'Prelevamento Banca',
+         'Fatture', 'Nota credito fornitore', 'Incasso', 'Spese', 'Altro']
+      : ['Fatture', 'Nota credito fornitore', 'Incasso cliente', 'Versamento Banca',
+         'Prelevamento Banca', 'Corrispettivi POS', 'Bonifico', 'Assegno', 'F24', 'Altro'];
   // Difensivo: qualunque sia la categoria reale del movimento (anche se non
   // ancora censita sopra), resta sempre selezionabile invece di sparire.
   const categorie = movimento.categoria && !categorieBase.includes(movimento.categoria)

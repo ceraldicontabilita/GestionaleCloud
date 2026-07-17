@@ -17,12 +17,16 @@ TIPO_MOVIMENTO = {
     "uscita": {"label": "Uscita", "sign": -1}
 }
 
-# Categorie predefinite cassa
+# Categorie predefinite cassa. Unificazione (utente 17/07/2026):
+# "Fatture" = tutti i pagamenti fatture fornitori (prima anche "Pagamento
+# fornitore"/"Fornitori"/"fornitori"); "Versamento Banca" = contanti da
+# cassa a banca; "Prelevamento Banca" = contanti da banca a cassa (prima
+# anche "Versamento"/"Prelievo"/"trasferimento_interno").
 CATEGORIE_CASSA = [
-    "Pagamento fornitore",
+    "Fatture",
     "Incasso cliente",
-    "Prelievo",
-    "Versamento",
+    "Prelevamento Banca",
+    "Versamento Banca",
     "Spese generali",
     "Corrispettivi",
     "Altro"
@@ -30,8 +34,10 @@ CATEGORIE_CASSA = [
 
 # Categorie predefinite banca
 CATEGORIE_BANCA = [
-    "Pagamento fornitore",
+    "Fatture",
     "Incasso cliente",
+    "Versamento Banca",
+    "Prelevamento Banca",
     "Bonifico in entrata",
     "Bonifico in uscita",
     "Addebito assegno",

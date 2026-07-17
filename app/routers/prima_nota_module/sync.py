@@ -54,7 +54,10 @@ def determina_tipo_movimento_fattura(fattura: Dict) -> tuple:
     elif is_fattura_attiva:
         return ("entrata", "Incasso cliente", "Incasso fattura")
     else:
-        return ("uscita", "Pagamento fornitore", "Pagamento fattura")
+        # Unificazione categorie (utente 17/07/2026): tutti i pagamenti di
+        # fatture fornitori usano la categoria unica "Fatture" (prima
+        # convivevano "Pagamento fornitore", "Fornitori", "fornitori").
+        return ("uscita", "Fatture", "Pagamento fattura")
 
 
 def costruisci_campi_movimento_fattura(

@@ -232,7 +232,7 @@ async def handler_matching_estratto_conto(payload: Dict[str, Any], db) -> Dict[s
                     "descrizione": (f"Pagamento fattura "
                                     f"{best_fattura.get('numero_documento', '')} "
                                     f"- {best_fattura.get('fornitore_ragione_sociale', '')}"),
-                    "categoria": "Fornitori",
+                    "categoria": "Fatture",
                     "source": "estratto_conto_auto",
                     "confidenza": best_score,
                     "created_at": datetime.now(timezone.utc).isoformat(),

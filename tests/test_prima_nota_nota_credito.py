@@ -117,7 +117,7 @@ def test_determina_tipo_movimento_fattura_normale():
         _fattura(tipo_documento="TD01")
     )
     assert tipo == "uscita"
-    assert categoria == "Pagamento fornitore"
+    assert categoria == "Fatture"
 
 
 def test_conferma_fattura_provvisoria_nota_credito_entrata_categoria_corretta(monkeypatch):
@@ -145,7 +145,7 @@ def test_conferma_fattura_provvisoria_fattura_normale_resta_uscita(monkeypatch):
 
     cassa = db["prima_nota_cassa"].docs
     assert cassa[0]["tipo"] == "uscita"
-    assert cassa[0]["categoria"] == "Pagamento fornitore"
+    assert cassa[0]["categoria"] == "Fatture"
 
 
 def test_sync_fatture_pagate_nota_credito_entrata(monkeypatch):

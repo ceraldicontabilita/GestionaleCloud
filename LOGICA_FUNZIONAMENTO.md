@@ -453,6 +453,25 @@ nulla: non rappresenta mai un pagamento fornitore.
   (cedolino, PagoPA, INPS, INAIL, PayPal, cartella esattoriale) se un giorno
   servisse un mittente attendibile per quei canali.
 
+**Categorie unificate (17/07/2026)**: un solo nome per concetto, ovunque:
+- **"Fatture"** = tutti i pagamenti di fatture fornitori (prima convivevano
+  anche "Pagamento fornitore", "Fornitori", "fornitori");
+- **"Versamento Banca"** = contanti che vanno da cassa a banca (prima anche
+  "Versamento" e "trasferimento_interno" lato banca);
+- **"Prelevamento Banca"** = contanti che vanno da banca a cassa (prima
+  "Prelievo" e "trasferimento_interno" lato cassa).
+Tutti i punti del gestionale che scrivono in prima nota usano questi nomi;
+lo storico è stato rinominato con `POST /api/prima-nota/unifica-categorie`
+(admin, dry_run di default, idempotente).
+
+**Prelevamenti di contanti (doppia scrittura, 17/07/2026)**: regola speculare
+al versamento — quando nell'estratto conto c'è un prelievo di contanti
+(bancomat/sportello/ATM), il sistema registra l'**entrata in Prima Nota
+Cassa** ("Prelevamento da banca") e l'**uscita in Prima Nota Banca**
+("Prelevamento verso cassa"), categoria "Prelevamento Banca" su entrambe.
+Vale sia per i nuovi import sia per il pregresso (stesso endpoint
+`ripara-versamenti-cassa`, idempotente).
+
 **Versamenti di contanti (doppia scrittura, 17/07/2026)**: un versamento di
 contanti in banca è per definizione **due movimenti collegati**: un'**uscita in
 Prima Nota Cassa** (il contante lascia il cassetto, categoria "Versamento") e
