@@ -173,12 +173,20 @@ fonte.
    - l'aggancio per nome (quando la P.IVA non è ancora in anagrafica) scatta solo a
      nome **identico**, mai a prefisso, e mai se il fornitore trovato ha già una
      P.IVA diversa: in quel caso è un'azienda diversa e se ne crea una nuova.
-3. La fattura eredita il metodo di pagamento del fornitore:
-   - **Cassa** → si paga col bottone "Paga in Cassa" (movimento in Prima Nota Cassa);
-   - **Banca** → "Paga in Banca" (movimento in Prima Nota Banca);
-   - **Misto** → la fattura va in Prima Nota **Provvisoria**: confermi tu la
-     divisione tra cassa e banca, e solo dopo nascono i movimenti veri;
-   - **Non definito** → avviso: serve una tua scelta.
+3. La fattura eredita il metodo di pagamento del fornitore. **REGOLA
+   aggiornata dall'utente il 17/07/2026** (supera la precedente "sempre
+   provvisoria"): all'ingresso della fattura XML,
+   - fornitore con metodo **Cassa** (contanti) → l'uscita viene registrata
+     **subito** in Prima Nota Cassa e la fattura risulta pagata contanti;
+   - fornitore con metodo **Banca** (bonifico/SEPA/RID/SDD) → uscita
+     registrata **subito** in Prima Nota Banca, fattura pagata bonifico;
+   - fornitore **Misto**, senza metodo, o con metodo ambiguo (paypal,
+     carta, da_configurare) → la fattura resta in Prima Nota
+     **Provvisoria**: confermi tu la divisione tra cassa e banca, e solo
+     dopo nascono i movimenti veri.
+   La registrazione automatica usa il writer canonico dei pagamenti
+   (riferimento FATT-{id}, idempotente: mai due movimenti per la stessa
+   fattura, anche su reimport).
 4. **Data scadenza**: quella scritta in fattura è solo informativa. Diventa una
    scadenza operativa (pagina Scadenze, con avvisi) **solo se la fattura indica
    pagamento a mezzo agente** ("pagamento a mezzo agente", "rimessa diretta agente",

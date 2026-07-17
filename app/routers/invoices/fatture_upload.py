@@ -471,18 +471,74 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
                                    session=None) -> Optional[Dict[str, Any]]:
     """Applica la REGOLA prima nota all'import.
 
-    Per maggiore sicurezza (vedi memoria/moduli/FATTURE_RICEVUTE.md): il metodo
-    impostato sul fornitore è solo un SUGGERIMENTO, mai una registrazione
-    automatica — una fattura può finire pagata diversamente da come previsto,
-    quindi resta sempre provvisoria in attesa di conferma manuale dell'utente
-    da Prima Nota → Provvisori. Il "pagamento certo" che permetteva di saltare
-    questa conferma per singoli fornitori è stato rimosso: il sistema non può
-    sapere con certezza dove imputare il pagamento solo dal metodo impostato
-    in anagrafica.
+    REGOLA (utente, 17/07/2026 — supera la scelta precedente "sempre
+    provvisoria" di memoria/moduli/FATTURE_RICEVUTE.md): quando la fattura
+    XML entra nel gestionale,
+      - fornitore con metodo pagamento UNIVOCO "cassa" (contanti) → uscita
+        registrata SUBITO in Prima Nota Cassa;
+      - fornitore con metodo UNIVOCO "banca" (bonifico/SEPA/RID/SDD) →
+        uscita registrata SUBITO in Prima Nota Banca;
+      - fornitore "misto", senza metodo, o con metodo ambiguo (paypal,
+        carta, da_configurare) → resta PROVVISORIA in attesa della
+        divisione manuale cassa/banca dell'utente.
 
-    Ritorna sempre None: la fattura resta provvisoria.
+    La scrittura usa il writer canonico registra_pagamento_fattura
+    (idempotente per fattura: riferimento FATT-{id}, mai due movimenti per
+    la stessa fattura). Ritorna il dict di update applicato alla fattura
+    (già persistito), oppure None se resta provvisoria.
     """
-    return None
+    piva = (invoice.get("supplier_vat") or invoice.get("cedente_piva") or "").strip()
+    if not piva:
+        return None
+
+    forn = await db["fornitori"].find_one(
+        {"$or": [{"partita_iva": piva}, {"piva": piva}, {"vat_number": piva}]},
+        {"_id": 0, "metodo_pagamento": 1},
+        session=session,
+    )
+    metodo = ((forn or {}).get("metodo_pagamento") or "").strip().lower()
+    if not metodo:
+        return None
+
+    is_cassa = "contant" in metodo or metodo == "cassa" or "cash" in metodo
+    is_banca = (
+        "bonific" in metodo or metodo == "banca" or "bank" in metodo
+        or "sepa" in metodo or "rid" in metodo or "sdd" in metodo
+        or "addebito" in metodo
+    )
+    if is_cassa == is_banca:
+        # misto, ambiguo o sconosciuto → provvisoria (divisione manuale)
+        return None
+
+    destinazione = "cassa" if is_cassa else "banca"
+    # NB: registra_pagamento_fattura scrive fuori dalla transazione
+    # dell'import (non accetta session); è idempotente per fattura, quindi
+    # un eventuale abort dell'import lascia al più un movimento riferito a
+    # una fattura che verrà reimportata subito dopo con lo stesso id.
+    from app.routers.prima_nota_module.sync import registra_pagamento_fattura
+    esito = await registra_pagamento_fattura(invoice, destinazione)
+    mov_id = esito.get(destinazione)
+    if not mov_id:
+        return None
+
+    update: Dict[str, Any] = {
+        "pagato": True,
+        "paid": True,
+        "stato_pagamento": "pagata",
+        "metodo_pagamento": "contanti" if is_cassa else "bonifico",
+        "data_pagamento": invoice.get("invoice_date") or invoice.get("data_fattura"),
+        "prima_nota_id": mov_id,
+        "prima_nota_tipo": destinazione,
+        "registrata_auto_da_metodo_fornitore": True,
+    }
+    update["prima_nota_cassa_id" if is_cassa else "prima_nota_banca_id"] = mov_id
+
+    fattura_id = invoice.get("id") or invoice.get("invoice_key")
+    if fattura_id:
+        await db[Collections.INVOICES].update_one(
+            {"id": fattura_id}, {"$set": update}, session=session
+        )
+    return update
 
 
 async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upload.xml") -> Dict[str, Any]:
