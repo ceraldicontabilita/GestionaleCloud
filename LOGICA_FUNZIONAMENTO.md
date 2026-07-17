@@ -453,6 +453,21 @@ nulla: non rappresenta mai un pagamento fornitore.
   (cedolino, PagoPA, INPS, INAIL, PayPal, cartella esattoriale) se un giorno
   servisse un mittente attendibile per quei canali.
 
+**Categorie = OPERAZIONI (regola utente 17/07/2026)**: in Prima Nota la
+categoria dice l'operazione, sintetica al massimo — mai la classificazione
+della banca; il dettaglio (chi, cosa, riferimento) sta nella descrizione.
+Le voci operative della Banca sono: Fatture, Utenze, Versamento Banca,
+Prelevamento Banca, Corrispettivi POS, Pagamento PayPal, Rimborso, Assegni,
+Commissioni bancarie, F24, Stipendi, Altro. Le righe dell'estratto conto
+mostrate nella vista Banca vengono tradotte al volo in queste voci
+(`mappa_categoria_ec`, campo calcolato `categoria_canonica` — la
+classificazione bancaria originale resta intatta sulla riga di estratto
+conto): prima la causale (PayPal — che la banca classifica in 3 modi
+diversi —, versamento contanti, prelievo, utenza), poi la tassonomia del
+CSV (Fornitori/Servizi/Assicurazione/Leasing → Fatture, Utenze → Utenze,
+Operazioni Finanziarie → Commissioni bancarie, Tasse → F24, Risorse Umane →
+Stipendi, Ricavi residui → Rimborso, resto → Altro).
+
 **Categorie unificate (17/07/2026)**: un solo nome per concetto, ovunque:
 - **"Fatture"** = tutti i pagamenti di fatture fornitori (prima convivevano
   anche "Pagamento fornitore", "Fornitori", "fornitori");

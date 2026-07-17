@@ -57,40 +57,53 @@ def is_versamento_contanti(descrizione: str) -> bool:
     return "VERSAMENTO" in desc_upper or bool(re.search(r"VERS\.?\s*CONTANT", desc_upper))
 
 
-# Mapping categorie dell'estratto conto (tassonomia "Categoria -
-# Sottocategoria" del CSV bancario) sulle categorie canoniche della Prima
-# Nota (richiesta utente 17/07/2026: "mappa anche le categorie dell'estratto
-# conto sulle canoniche"). NON tocca i dati salvati: l'estratto conto resta
-# immutabile, il nome canonico viene calcolato al volo nella risposta
-# (campo `categoria_canonica`) e usato dalla vista Banca.
+# REGOLA (utente 17/07/2026): in Prima Nota Banca la categoria dice
+# L'OPERAZIONE, sintetica al massimo — mai la classificazione della banca.
+# Il dettaglio (chi, cosa, riferimento) sta nella DESCRIZIONE. Il
+# riconoscimento parte dalla causale (PayPal, versamento, prelievo,
+# utenza), poi ricade sulla tassonomia del CSV bancario. NON tocca i dati
+# salvati: l'estratto conto resta immutabile, il nome operativo viene
+# calcolato al volo nella risposta (campo `categoria_canonica`).
 _CATEGORIE_EC_ESATTE = {
     # il deposito di contanti È il versamento (doppia scrittura cassa/banca)
     "Ricavi - Deposito contanti": "Versamento Banca",
     # il leasing viaggia con fatture periodiche del concedente
     "Altre passività - Leasing": "Fatture",
+    "Ricavi - Rimborsi diversi": "Rimborso",
 }
 _CATEGORIE_EC_PREFISSI = {
     "Fornitori": "Fatture",
-    "Utenze": "Fatture",
+    "Utenze": "Utenze",
     "Servizi": "Fatture",
     "Assicurazione": "Fatture",
     "Operazioni Finanziarie": "Commissioni bancarie",
     "Tasse": "F24",
     "Risorse Umane": "Stipendi",
-    "Ricavi": "Incasso cliente",
+    "Ricavi": "Rimborso",
     "Altre passività": "Altro",
     "Altre spese": "Altro",
-    # copre "Intercompany in entrata" e "Intercompany in uscita"
     "Intercompany in entrata": "Altro",
     "Intercompany in uscita": "Altro",
     "Intercompany": "Altro",
 }
 
 
-def mappa_categoria_ec(categoria: Optional[str]) -> Optional[str]:
-    """Nome canonico di Prima Nota per una categoria dell'estratto conto.
+def mappa_categoria_ec(categoria: Optional[str], descrizione: Optional[str] = None) -> Optional[str]:
+    """Categoria OPERATIVA di Prima Nota per una riga di estratto conto.
 
-    Ritorna None se la categoria non è mappata (resta quella originale)."""
+    Prima la causale (che batte la classificazione della banca: PayPal
+    finisce classificato dalla banca in 3 modi diversi), poi la tassonomia
+    del CSV. Ritorna None se non riconosciuta (resta l'originale)."""
+    desc = (descrizione or "").upper()
+    if desc:
+        if "PAYPAL" in desc:
+            return "Pagamento PayPal"
+        if is_versamento_contanti(desc):
+            return "Versamento Banca"
+        if is_prelievo_contanti(desc):
+            return "Prelevamento Banca"
+        if "UTENZ" in desc:
+            return "Utenze"
     if not categoria:
         return None
     if categoria in _CATEGORIE_EC_ESATTE:
@@ -669,10 +682,10 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                     "tipo": mov["tipo"],
                     "importo": mov["importo"],
                     "descrizione": mov.get("descrizione") or mov.get("descrizione_originale") or "",
-                    # in Prima Nota entra il nome canonico; l'originale
+                    # in Prima Nota entra il nome operativo; l'originale
                     # bancario resta sulla riga di estratto conto
-                    "categoria": mappa_categoria_ec(mov.get("categoria"))
-                                 or mov.get("categoria") or "Da categorizzare",
+                    "categoria": mappa_categoria_ec(mov.get("categoria"), desc_upper)
+                                 or mov.get("categoria") or "Altro",
                     "estratto_conto_id": mid,
                     "source": "estratto_conto_auto",
                     "created_at": now_iso,
@@ -1074,8 +1087,11 @@ async def get_movimenti(
             m["importo"] = float(m.get("importo", 0))
         except (ValueError, TypeError):
             m["importo"] = 0.0
-        # Nome canonico Prima Nota per la vista Banca (calcolato, non salvato)
-        canonica = mappa_categoria_ec(m.get("categoria"))
+        # Categoria operativa per la vista Banca (calcolata, non salvata)
+        canonica = mappa_categoria_ec(
+            m.get("categoria"),
+            m.get("descrizione_originale") or m.get("descrizione"),
+        )
         if canonica:
             m["categoria_canonica"] = canonica
 

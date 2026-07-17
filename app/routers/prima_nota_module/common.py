@@ -32,16 +32,17 @@ CATEGORIE_CASSA = [
     "Altro"
 ]
 
-# Categorie predefinite banca
+# Categorie predefinite banca: OPERAZIONI sintetiche (regola utente
+# 17/07/2026), il dettaglio sta nella descrizione.
 CATEGORIE_BANCA = [
     "Fatture",
-    "Incasso cliente",
+    "Utenze",
     "Versamento Banca",
     "Prelevamento Banca",
-    "Bonifico in entrata",
-    "Bonifico in uscita",
-    "Addebito assegno",
-    "Accredito assegno",
+    "Corrispettivi POS",
+    "Pagamento PayPal",
+    "Rimborso",
+    "Assegni",
     "Commissioni bancarie",
     "F24",
     "Stipendi",

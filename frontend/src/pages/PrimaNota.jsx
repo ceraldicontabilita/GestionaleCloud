@@ -222,9 +222,10 @@ function PrimaNotaDesktop() {
         tipo: m.tipo || (m.importo >= 0 ? 'entrata' : 'uscita'),
         importo: Math.abs(m.importo || 0),
         descrizione: m.descrizione || m.descrizione_originale || '',
-        // Nome canonico Prima Nota calcolato dal backend (mappa_categoria_ec):
-        // la tassonomia bancaria originale resta sulla riga di estratto conto.
-        categoria: m.categoria_canonica || m.categoria || 'Movimento bancario',
+        // Categoria OPERATIVA calcolata dal backend (mappa_categoria_ec):
+        // la tassonomia bancaria originale resta sulla riga di estratto
+        // conto. Il residuo non riconosciuto finisce in 'Altro'.
+        categoria: m.categoria_canonica || m.categoria || 'Altro',
         fattura_id: m.fattura_id || m.dettagli_riconciliazione?.fattura_id || null,
         bonifico_pdf_id: m.bonifico_pdf_id || null,
         _source: 'estratto_conto',
@@ -3468,8 +3469,9 @@ function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
     tipo === 'cassa'
       ? ['Corrispettivi', 'POS', 'POS Verso Banca', 'Versamento Banca', 'Prelevamento Banca',
          'Fatture', 'Nota credito fornitore', 'Incasso', 'Spese', 'Altro']
-      : ['Fatture', 'Nota credito fornitore', 'Incasso cliente', 'Versamento Banca',
-         'Prelevamento Banca', 'Corrispettivi POS', 'Bonifico', 'Assegno', 'F24', 'Altro'];
+      : ['Fatture', 'Utenze', 'Versamento Banca', 'Prelevamento Banca',
+         'Corrispettivi POS', 'Pagamento PayPal', 'Rimborso', 'Nota credito fornitore',
+         'Stipendi', 'Commissioni bancarie', 'Assegni', 'F24', 'Altro'];
   // Difensivo: qualunque sia la categoria reale del movimento (anche se non
   // ancora censita sopra), resta sempre selezionabile invece di sparire.
   const categorie = movimento.categoria && !categorieBase.includes(movimento.categoria)
