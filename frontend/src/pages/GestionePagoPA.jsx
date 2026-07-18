@@ -100,7 +100,7 @@ export default function GestionePagoPA() {
   });
 
   return (
-    <PageLayout title="Gestione PagoPA" subtitle="Ricevute e riconciliazione pagamenti PagoPA">
+    <PageLayout>
       <div style={{ maxWidth: 1400, margin: '0 auto' }} data-testid="gestione-pagopa">
         {/* Header */}
         <div

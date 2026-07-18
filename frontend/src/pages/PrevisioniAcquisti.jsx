@@ -70,7 +70,7 @@ export default function PrevisioniAcquisti() {
   };
 
   return (
-    <PageLayout title="Previsioni Acquisti" subtitle="Analisi consumi e previsioni ordinazioni">
+    <PageLayout>
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
         {/* Header */}
         <div style={{ marginBottom: 20 }}>

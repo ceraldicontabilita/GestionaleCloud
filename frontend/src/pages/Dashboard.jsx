@@ -216,7 +216,7 @@ export default function Dashboard() {
   const rispostaAttiva = RISPOSTE.find(r => r.id === domanda);
 
   return (
-    <PageLayout title="Dashboard" icon="📊" subtitle={`Numeri di ${etichettaPeriodo}`}>
+    <PageLayout>
       {/* ── BARRA FILTRI: Anno (globale) + Mese ── */}
       <div style={STILI.barraFiltri} data-testid="dashboard-filtri">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

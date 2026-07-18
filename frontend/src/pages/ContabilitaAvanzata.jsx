@@ -236,18 +236,14 @@ export default function ContabilitaAvanzata() {
 
   if (loading) {
     return (
-      <PageLayout title="Contabilità Avanzata" icon="📈" subtitle="Caricamento...">
+      <PageLayout>
         <div style={styles.loading}>Caricamento dati contabili...</div>
       </PageLayout>
     );
   }
 
   return (
-    <PageLayout
-      title={`Contabilità Avanzata - ${selectedYear}`}
-      icon="📈"
-      subtitle="Calcolo IRES/IRAP e categorizzazione intelligente"
-    >
+    <PageLayout>
       <div data-testid="contabilita-avanzata-page">
         {/* Header Actions */}
         <div style={styles.headerActions}>

@@ -378,7 +378,7 @@ export default function GestioneCespiti() {
       : '-';
 
   return (
-    <PageLayout title="Cespiti & TFR" icon="🏢" subtitle={`Anno ${anno}`}>
+    <PageLayout>
       {/* handleTabChange (non setActiveTab): il cambio tab deve aggiornare
           anche l'URL (/cespiti/{tab}), altrimenti deep-link e tasto indietro
           non riflettono mai la tab attiva. */}

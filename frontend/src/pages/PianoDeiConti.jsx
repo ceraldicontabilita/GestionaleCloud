@@ -213,7 +213,7 @@ export default function PianoDeiConti() {
   }
 
   return (
-    <PageLayout title="Piano dei Conti" subtitle="Contabilità Generale - Sistema di Partita Doppia">
+    <PageLayout>
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
         {/* Header */}
         <div style={{ marginBottom: 20, borderLeft: `4px solid ${COLORS.primary}`, paddingLeft: 14 }}>

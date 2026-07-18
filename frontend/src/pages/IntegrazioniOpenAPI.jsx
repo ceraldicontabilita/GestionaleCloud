@@ -99,7 +99,7 @@ export default function IntegrazioniOpenAPI() {
   }
 
   return (
-    <PageLayout title="Integrazioni OpenAPI.it" subtitle="XBRL (Bilanci Camera di Commercio)">
+    <PageLayout>
       <div style={{ padding: `0 ${SPACING.xl}px ${SPACING.xl}px` }}>
         <div style={STYLES.pageHeader}>
           <div>
