@@ -22,6 +22,7 @@ import logging
 
 from app.database import Database
 from app.engines.prima_nota_engine import decide_destinazione_fattura
+from app.services.scritture_contabili import scrivi_movimento
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sync", tags=["Sincronizzazione Dati"])
@@ -155,7 +156,7 @@ async def sync_corrispettivo_to_prima_nota(corrispettivo_id: str, db) -> Dict[st
     else:
         movimento_data["id"] = str(uuid.uuid4())
         movimento_data["created_at"] = datetime.now(timezone.utc).isoformat()
-        await db["prima_nota_cassa"].insert_one(movimento_data.copy())
+        await scrivi_movimento(db, "cassa", movimento_data)
         return {"success": True, "action": "created"}
 
 

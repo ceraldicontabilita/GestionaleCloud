@@ -7,6 +7,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List
+from app.services.scritture_contabili import scrivi_movimento
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ async def handler_prima_nota_corrispettivi(payload: Dict[str, Any], db) -> Dict[
                 "created_at":      datetime.now(timezone.utc).isoformat(),
             }
 
-            await db["prima_nota_cassa"].insert_one(movimento.copy())
+            await scrivi_movimento(db, "cassa", movimento)
             scritti += 1
 
             # Se c'è quota elettronica significativa → segna per riconciliazione POS

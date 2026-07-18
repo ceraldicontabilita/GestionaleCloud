@@ -15,6 +15,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Tuple
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.services.scritture_contabili import scrivi_movimento
 
 logger = logging.getLogger(__name__)
 
@@ -364,7 +365,7 @@ async def riconcilia_pagamenti_paypal(
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
                     
-                    await db["prima_nota_banca"].insert_one(movimento)
+                    await scrivi_movimento(db, "banca", movimento)
                     risultato["riconciliati"] += 1
                 else:
                     risultato["aggiornati_metodo"] += 1

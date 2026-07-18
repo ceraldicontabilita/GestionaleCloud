@@ -11,6 +11,7 @@ import logging
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
+from app.services.scritture_contabili import scrivi_movimento
 
 logger = logging.getLogger(__name__)
 
@@ -222,7 +223,7 @@ async def handler_matching_estratto_conto(payload: Dict[str, Any], db) -> Dict[s
                     }}
                 )
                 # Scrive in prima nota banca
-                await db["prima_nota_banca"].insert_one({
+                await scrivi_movimento(db, "banca", {
                     "id": str(uuid.uuid4()),
                     "fattura_id":  best_fattura["id"],
                     "movimento_id": mov_id,

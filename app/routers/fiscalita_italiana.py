@@ -39,6 +39,7 @@ from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel, Field
 
 from app.database import Database
+from app.services.scritture_contabili import scrivi_movimento
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -602,7 +603,11 @@ async def crea_scrittura(db, data: str, ref: str, righe: List[Dict], tipo: str =
     if abs(total_dare - total_avere) > 0.01:
         raise HTTPException(status_code=400, detail=f"Non bilanciato: DARE {total_dare} ≠ AVERE {total_avere}")
     
-    await db["prima_nota_cassa"].insert_one({
+    # MOTORE UNICO (18/07/2026): questo header di partita doppia NON è un
+    # movimento di Prima Nota Cassa (nessun importo/tipo/categoria) — prima
+    # inquinava prima_nota_cassa con uno schema alieno; ora vive nella sua
+    # collezione dedicata (nessun lettore esistente da aggiornare).
+    await db["scritture_partita_doppia"].insert_one({
         "id": move_id, "date": data, "ref": ref, "journal_type": tipo,
         "total_debit": round_currency(total_dare), "total_credit": round_currency(total_avere),
         "state": "posted", "created_at": now

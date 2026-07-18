@@ -15,6 +15,7 @@ from app.database import Database
 from app.utils.error_handler import handle_errors
 from app.routers.prima_nota_module.common import aggrega_saldo_prima_nota
 from app.routers.prima_nota_module.sync import costruisci_campi_movimento_fattura
+from app.services.scritture_contabili import scrivi_movimento
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -573,7 +574,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                     # fornitore in uscita: stessa regola già applicata in
                     # prima_nota_module/sync.py (bug segnalato dall'utente
                     # 14/07/2026, qui era hardcoded "uscita"/"Fatture").
-                    await db["prima_nota_banca"].insert_one({
+                    await scrivi_movimento(db, "banca", {
                         "id": pn_id, "data": match.get("data") or match.get("data_contabile") or f.get("invoice_date", ""),
                         **costruisci_campi_movimento_fattura(f, importo),
                         "fattura_id": f["id"],
@@ -729,10 +730,10 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
 
                 ec_da_marcare.append(mid)
 
-            if banca_batch:
-                await db["prima_nota_banca"].insert_many(banca_batch)
-            if cassa_batch:
-                await db["prima_nota_cassa"].insert_many(cassa_batch)
+            for _mov_batch in banca_batch:
+                await scrivi_movimento(db, "banca", _mov_batch)
+            for _mov_batch in cassa_batch:
+                await scrivi_movimento(db, "cassa", _mov_batch)
             if ec_da_marcare:
                 await db["estratto_conto_movimenti"].update_many(
                     {"id": {"$in": ec_da_marcare}},
@@ -1916,7 +1917,7 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
         if esistente_cassa:
             gia_presenti_cassa += 1
         else:
-            await db["prima_nota_cassa"].insert_one({
+            await scrivi_movimento(db, "cassa", {
                 "id": str(_uuid.uuid4()),
                 "data": data,
                 "tipo": tipo_cassa,
@@ -1945,7 +1946,7 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
         if esistente_banca:
             gia_presenti_banca += 1
         else:
-            await db["prima_nota_banca"].insert_one({
+            await scrivi_movimento(db, "banca", {
                 "id": str(_uuid.uuid4()),
                 "data": data,
                 "tipo": tipo_banca,

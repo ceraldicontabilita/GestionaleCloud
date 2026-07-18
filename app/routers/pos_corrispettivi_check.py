@@ -35,6 +35,7 @@ COLLECTION_CHIUSURE_POS = "chiusure_pos_manuali"
 # La descrizione degli accrediti NUMIA/BPM contiene il giorno di VENDITA:
 # "INC.POS CARTE CREDIT - NUMIA-INTER DEL 02/04/26 PDV ..." → 2026-04-02
 import re as _re
+from app.services.scritture_contabili import scrivi_movimento
 _GIORNO_POS_RE = _re.compile(r"DEL\s+(\d{2})/(\d{2})/(\d{2})\b")
 
 
@@ -636,7 +637,7 @@ async def upsert_chiusura_giornaliera(
         if note:
             nuovo_mov["note_modifica"] = note
         
-        await db["prima_nota_banca"].insert_one(nuovo_mov)
+        await scrivi_movimento(db, "banca", nuovo_mov)
         action = "created"
         importo_precedente = 0.0
     

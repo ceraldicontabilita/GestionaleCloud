@@ -8,6 +8,7 @@ import uuid
 import logging
 
 from app.database import Database
+from app.services.scritture_contabili import scrivi_movimento
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -57,7 +58,7 @@ async def rapido_corrispettivo(payload: Dict[str, Any] = Body(...)) -> Dict[str,
         "source": "rapido_corrispettivo",
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db["prima_nota_cassa"].insert_one(movimento)
+    await scrivi_movimento(db, "cassa", movimento)
     return {"success": True, "id": mov_id, "message": "Corrispettivo registrato in cassa"}
 
 
@@ -74,7 +75,7 @@ async def rapido_versamento(payload: Dict[str, Any] = Body(...)) -> Dict[str, An
     data = payload.get("data", datetime.now().strftime("%Y-%m-%d"))
     descrizione = payload.get("descrizione", "Versamento in banca")
     mov_id = str(uuid.uuid4())
-    await db["prima_nota_cassa"].insert_one({
+    await scrivi_movimento(db, "cassa", {
         "id": mov_id,
         "data": data,
         "tipo": "uscita", "importo": importo,
@@ -83,7 +84,7 @@ async def rapido_versamento(payload: Dict[str, Any] = Body(...)) -> Dict[str, An
         "created_at": datetime.now(timezone.utc).isoformat()
     })
     mov_banca_id = str(uuid.uuid4())
-    await db["prima_nota_banca"].insert_one({
+    await scrivi_movimento(db, "banca", {
         "id": mov_banca_id,
         "data": data,
         "tipo": "entrata", "importo": importo,
@@ -186,7 +187,7 @@ async def rapido_acconto(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         )
 
     mov_id = str(uuid.uuid4())
-    await db["prima_nota_cassa"].insert_one({
+    await scrivi_movimento(db, "cassa", {
         "id": mov_id, "data": payload.get("data", datetime.now().strftime("%Y-%m-%d")),
         "tipo": "uscita", "importo": importo,
         "descrizione": f"Acconto a dipendente {nome_dipendente}".strip(),

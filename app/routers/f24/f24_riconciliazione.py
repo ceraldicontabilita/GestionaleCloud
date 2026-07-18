@@ -15,6 +15,7 @@ import uuid
 import base64
 import logging
 from app.utils.error_handler import handle_errors
+from app.services.scritture_contabili import scrivi_movimento
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -274,7 +275,7 @@ async def upload_f24_commercialista(
             "anno": int(data_vers[:4]) if data_vers and len(data_vers) >= 4 else datetime.now().year,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
-        await db["prima_nota_banca"].insert_one(mov_f24.copy())
+        await scrivi_movimento(db, "banca", mov_f24)
         await db[COLL_F24_COMMERCIALISTA].update_one(
             {"id": file_id}, {"$set": {"prima_nota_banca_id": mov_f24["id"]}})
     

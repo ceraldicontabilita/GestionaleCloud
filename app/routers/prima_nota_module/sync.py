@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 # Tipi documento fatture attive (vendite - ENTRATE)
 TIPI_FATTURA_ATTIVA = ["TD24", "TD25", "TD26", "TD27"]
 from app.constants.tipi_documento import TIPI_NOTA_CREDITO
+from app.services.scritture_contabili import scrivi_movimento
 
 # Metodi fornitore -> destinazione Prima Nota: REGOLA UNICA, delegata al
 # motore centralizzato app.engines.prima_nota_engine (prima esistevano liste
@@ -1572,7 +1573,7 @@ async def sposta_fatture_cassa_pagate_in_banca(
         if esistente:
             pn_id = esistente["id"]
         else:
-            await db["prima_nota_banca"].insert_one({
+            await scrivi_movimento(db, "banca", {
                 "id": pn_id,
                 "data": match.get("data") or riga.get("data"),
                 **costruisci_campi_movimento_fattura(fatt, float(riga.get("importo") or 0)),

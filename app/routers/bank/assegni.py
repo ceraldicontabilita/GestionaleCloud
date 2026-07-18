@@ -12,6 +12,7 @@ import logging
 from app.database import Database
 from app.models.stati import STATI_PAGATI
 from app.routers.bank.assegni_auto_match import _f, _norm_piva, TOLL, MAX_RATE
+from app.services.scritture_contabili import scrivi_movimento
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -847,7 +848,7 @@ async def _crea_mov_banca_manuale(db, assegno: Dict[str, Any], quota: float, fat
         "riconciliato": False,
         "created_at": now,
     }
-    await db["prima_nota_banca"].insert_one(mov)
+    await scrivi_movimento(db, "banca", mov)
 
 
 @router.put("/{assegno_id}/fatture-collegate")
@@ -1055,7 +1056,7 @@ async def emetti_assegno(
             "anno": int(data_emissione[:4]) if data_emissione and len(str(data_emissione)) >= 4 and str(data_emissione)[:4].isdigit() else datetime.now(timezone.utc).year,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
-        await db["prima_nota_banca"].insert_one(mov.copy())
+        await scrivi_movimento(db, "banca", mov)
         await db[COLLECTION_ASSEGNI].update_one(
             {"$or": [{"id": assegno_id}, {"numero": assegno_id}]},
             {"$set": {"prima_nota_banca_id": mov["id"]}}

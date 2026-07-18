@@ -38,6 +38,7 @@ from itertools import combinations
 from typing import Any, Dict, List, Optional, Tuple
 import logging
 import uuid
+from app.services.scritture_contabili import scrivi_movimento
 
 logger = logging.getLogger(__name__)
 
@@ -577,7 +578,7 @@ async def _crea_mov_banca(db, assegno: Dict[str, Any], quota: float, fattura_id:
         "riconciliato": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    await db["prima_nota_banca"].insert_one(mov.copy())
+    await scrivi_movimento(db, "banca", mov)
     return 1
 
 

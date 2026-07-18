@@ -38,6 +38,7 @@ import re
 import itertools
 
 from app.database import Database, Collections
+from app.services.scritture_contabili import scrivi_movimento
 
 # Fuzzy matching per nomi fornitori
 try:
@@ -1033,7 +1034,7 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                         # riconciliato, l'EC esce dalla query di riga 534 e
                         # non viene mai riprocessato.
                         banca_versamento_id = str(uuid.uuid4())
-                        await db["prima_nota_banca"].insert_one({
+                        await scrivi_movimento(db, "banca", {
                             "id": banca_versamento_id,
                             "data": data_ec,
                             "tipo": "entrata",

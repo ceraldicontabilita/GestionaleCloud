@@ -14,6 +14,7 @@ import io
 from app.database import Database
 from app.parsers.corrispettivi_parser import parse_corrispettivo_xml
 from app.utils.error_handler import handle_errors
+from app.services.scritture_contabili import scrivi_movimento
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -359,7 +360,7 @@ async def sincronizza_corrispettivi_prima_nota() -> Dict[str, Any]:
                     "fonte": "sincronizzazione",
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }
-                await db["prima_nota_cassa"].insert_one(nuovo_movimento.copy())
+                await scrivi_movimento(db, "cassa", nuovo_movimento)
                 risultato["creati"] += 1
 
             # La quota elettronica/POS del corrispettivo va SEMPRE anche in
@@ -383,7 +384,7 @@ async def sincronizza_corrispettivi_prima_nota() -> Dict[str, Any]:
                         }}
                     )
                 else:
-                    await db["prima_nota_banca"].insert_one({
+                    await scrivi_movimento(db, "banca", {
                         "id": f"corr_pos_{corr.get('id', str(uuid.uuid4()))}",
                         "data": data_corr,
                         "tipo": "entrata",
@@ -1507,12 +1508,12 @@ async def inserisci_corrispettivo_manuale(data: Dict[str, Any] = Body(...)) -> D
             "source": "conferma_corrispettivo_manuale",
             "created_at": now_iso,
         }
-        await db["prima_nota_cassa"].insert_one(movimento_entrata.copy())
+        await scrivi_movimento(db, "cassa", movimento_entrata)
         movimenti_cassa = {"entrata_id": entrata_id, "uscita_pos_id": None}
 
         if pos_reale is not None and pos_reale > 0:
             uscita_id = str(uuid.uuid4())
-            await db["prima_nota_cassa"].insert_one({
+            await scrivi_movimento(db, "cassa", {
                 "id": uscita_id,
                 "data": data_str,
                 "tipo": "uscita",
@@ -1561,7 +1562,7 @@ async def inserisci_corrispettivo_manuale(data: Dict[str, Any] = Body(...)) -> D
             )
             if res_upd.matched_count == 0:
                 # POS aggiunto solo al secondo invio: crea l'uscita mancante
-                await db["prima_nota_cassa"].insert_one({
+                await scrivi_movimento(db, "cassa", {
                     "id": str(uuid.uuid4()),
                     "data": data_str,
                     "tipo": "uscita",
@@ -1594,7 +1595,7 @@ async def inserisci_corrispettivo_manuale(data: Dict[str, Any] = Body(...)) -> D
             pos_result = {"action": "aggiornato", "id": existing_pos["id"]}
         else:
             pos_id = str(uuid.uuid4())
-            await db["prima_nota_banca"].insert_one({
+            await scrivi_movimento(db, "banca", {
                 "id": pos_id,
                 "data": data_str,
                 "date": data_str,

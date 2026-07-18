@@ -28,24 +28,7 @@ APP = pathlib.Path(__file__).resolve().parents[1] / "app"
 # motore unico. Se questo test fallisce per un file NUOVO: usare
 # app/services/scritture_contabili.scrivi_movimento, non insert diretti.
 WRITER_STORICI_CONGELATI = {
-    "services/scritture_contabili.py",  # il motore stesso
-    "services/riconciliazione_bancaria.py",
-    "services/dati_provvisori_service.py",
-    "services/paypal_riconciliazione.py",
-    "handlers/estratto_conto.py",
-    "handlers/corrispettivi.py",
-    "routers/pos_corrispettivi_check.py",
-    "routers/fiscalita_italiana.py",
-    "routers/sync_relazionale.py",
-    "routers/rapido.py",
-    "routers/mutui.py",
-    "routers/f24/f24_riconciliazione.py",
-    "routers/invoices/corrispettivi_helpers.py",
-    "routers/invoices/corrispettivi.py",
-    "routers/bank/estratto_conto.py",
-    "routers/bank/assegni_auto_match.py",
-    "routers/bank/assegni.py",
-    "routers/prima_nota_module/sync.py",
+    "services/scritture_contabili.py",  # il motore: UNICO punto di insert
 }
 
 _RE_WRITE = re.compile(r'\b(?:prima_nota_cassa|prima_nota_banca)"?\]\s*\.\s*insert_(?:one|many)')

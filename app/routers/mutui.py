@@ -23,6 +23,7 @@ from bson import ObjectId
 import logging
 
 from app.database import Database
+from app.services.scritture_contabili import scrivi_movimento
 
 router = APIRouter(tags=["Mutui"])
 logger = logging.getLogger(__name__)
@@ -421,7 +422,7 @@ async def riconcilia_mutui_con_estratto_conto(
                             "anno": int(data_movimento[:4]) if data_movimento else datetime.now().year,
                             "created_at": datetime.now(timezone.utc).isoformat()
                         }
-                        await db["prima_nota_banca"].insert_one(mov_mutuo.copy())
+                        await scrivi_movimento(db, "banca", mov_mutuo)
                         await db.mutui.update_one(
                             {"mutuo_id": mutuo_id, "rate.numero_rata": rata["numero_rata"]},
                             {"$set": {"rate.$.prima_nota_banca_id": mov_mutuo["id"]}}

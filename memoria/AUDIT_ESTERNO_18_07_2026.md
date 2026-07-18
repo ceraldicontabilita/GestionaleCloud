@@ -38,7 +38,7 @@ unico), invarianti `trasferimento_pos_speculare` e
 | # | Punto audit | Stato |
 |---|---|---|
 | P0-1 | Logica POS/Corrispettivi contraddittoria (3 flussi diversi) | ✅ FATTO — i tre flussi (import XML, sync scheduler, propagazione eventi) delegano tutti a `registra_corrispettivo` del motore unico secondo la regola canonica; migrazione del pregresso 2026 eseguita su prod (141 giorni, trasferimenti €294.286,70, 729 accrediti EC riconciliati) |
-| P0-2 | Manca un motore unico di scrittura contabile (>50 writer diretti) | 🟡 IN CORSO PER GRADI — motore creato (`scritture_contabili.py`, validazione obbligatoria), corrispettivi/POS migrati, test-guardia congela i 18 writer storici reali (la lista può solo restringersi). Restano da migrare: fatture, assegni, F24, PayPal, mutui, riconciliazioni |
+| P0-2 | Manca un motore unico di scrittura contabile (>50 writer diretti) | ✅ FATTO — TUTTI i flussi migrati (fatture, assegni, F24, PayPal, mutui, riconciliazioni, versamenti, rapido, sync EC): l'unico file che scrive in prima_nota_cassa/banca è `app/services/scritture_contabili.py`, con validazione obbligatoria (data/importo>0/tipo/categoria/source); il test-guardia vieta qualsiasi nuovo insert diretto. Bonus: scoperto e isolato uno schema alieno di partita doppia che fiscalita_italiana scriveva in prima_nota_cassa (ora in collezione dedicata) |
 | P0-3 | Il collaudo POS usava XML contro banca | ✅ FATTO — gerarchia corretta: chiusura manuale = operativo, XML = fiscale (+ controllo trascrizione), EC = accredito reale che riconcilia il trasferimento, attribuzione al giorno di vendita dalla causale |
 
 ## P1 Sicurezza
@@ -86,7 +86,7 @@ unico), invarianti `trasferimento_pos_speculare` e
 
 | Punto | Stato |
 |---|---|
-| Motore unico di scrittura | 🟡 in corso per gradi (vedi P0-2) |
+| Motore unico di scrittura | ✅ completato (vedi P0-2) |
 | Corrispettivi → Cassa → POS → Banca definitivo | ✅ regola canonica applicata e migrata |
 | Migrazione righe sintetiche POS | ✅ eseguita (104 convertite + 37 create, EC riconciliati) |
 | Verbali → driver → trattenuta cedolino | ❌ da fare |

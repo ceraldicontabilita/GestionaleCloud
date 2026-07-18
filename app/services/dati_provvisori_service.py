@@ -9,6 +9,7 @@ import re
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
+from app.services.scritture_contabili import scrivi_movimento
 
 logger = logging.getLogger(__name__)
 
@@ -211,7 +212,7 @@ async def conferma_proposta(db, proposta_id: str) -> Dict[str, Any]:
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     
-    await db["prima_nota_banca"].insert_one(movimento)
+    await scrivi_movimento(db, "banca", movimento)
     
     # Aggiorna fattura
     await db["invoices"].update_one(
