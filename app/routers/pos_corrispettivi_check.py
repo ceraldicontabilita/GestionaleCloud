@@ -343,34 +343,38 @@ async def riepilogo_mensile_pos_corrispettivi(
         
         corr_result = await db["corrispettivi"].aggregate(pipeline_corr).to_list(1)
         
-        # POS BANCARI REALI del mese (ESCLUDI import manuali pos.xlsx!)
-        # FIX 2026-04-22: uso whitelist categorie esatta invece di regex sulla descrizione.
-        # Il regex precedente intercettava bonifici in uscita, stipendi, fornitori, ecc. perché 
-        # contenevano "POS" o "NUMIA" nella descrizione tecnica (VS.DISP., codici transazione).
-        # Le categorie qui sotto sono le uniche che rappresentano accrediti POS veri da provider.
+        # POS BANCARI REALI del mese: stessa fonte e stessa logica della
+        # verifica giornaliera (verifica_coerenza_pos_corrispettivi sopra) —
+        # ESTRATTO CONTO, non prima_nota_banca. FIX 18/07/2026: questa
+        # funzione non era stata migrata insieme alle altre e usava ancora
+        # prima_nota_banca con una whitelist categorie senza "Corrispettivi
+        # POS" (categoria scritta dal motore unico): il totale POS annuo
+        # risultava gonfiato/svuotato in modo incoerente con la vista
+        # giornaliera, che invece torna corretta — segnalato dall'utente
+        # ("riepilogo mensile non usabile").
         CATEGORIE_POS_ACCREDITATI = [
             "Ricavi - Incasso tramite POS-Carte di credito",
             "Ricavi - Incasso tramite POS",
             "Incasso POS",
             "Accredito POS",
-            "POS",
-            "pos",
         ]
         pipeline_pos = [
             {"$match": {
                 "data": {"$gte": data_da, "$lte": data_a},
-                "importo": {"$gt": 0},  # Solo entrate
-                "source": {"$ne": "import_manuale_pos"},  # ESCLUDI chiusure manuali
-                "categoria": {"$in": CATEGORIE_POS_ACCREDITATI}
+                "tipo": {"$ne": "uscita"},
+                "$or": [
+                    {"categoria": {"$in": CATEGORIE_POS_ACCREDITATI}},
+                    {"descrizione_originale": {"$regex": "NUMIA|INCAS\\. TRAMITE P\\.O\\.S|INC\\.POS", "$options": "i"}},
+                ],
             }},
             {"$group": {
                 "_id": None,
-                "totale": {"$sum": "$importo"},
+                "totale": {"$sum": {"$abs": "$importo"}},
                 "count": {"$sum": 1}
             }}
         ]
-        
-        pos_result = await db["prima_nota_banca"].aggregate(pipeline_pos).to_list(1)
+
+        pos_result = await db["estratto_conto_movimenti"].aggregate(pipeline_pos).to_list(1)
         
         elettronico = corr_result[0]["elettronico"] if corr_result else 0
         pos = pos_result[0]["totale"] if pos_result else 0

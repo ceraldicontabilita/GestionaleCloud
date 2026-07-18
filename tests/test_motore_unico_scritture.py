@@ -79,6 +79,21 @@ def test_guardia_coerenza_pos_non_legge_prima_nota_banca():
     assert 'db["prima_nota_banca"]' not in accrediti
 
 
+def test_guardia_riepilogo_mensile_pos_non_legge_prima_nota_banca():
+    """FIX 18/07/2026: riepilogo_mensile_pos_corrispettivi era rimasta
+    l'unica funzione del router non migrata (leggeva prima_nota_banca con
+    una whitelist categorie senza "Corrispettivi POS", il totale annuo
+    risultava incoerente con la vista giornaliera — segnalato dall'utente).
+    Stessa fonte delle altre: l'ESTRATTO CONTO."""
+    testo = (APP / "routers" / "pos_corrispettivi_check.py").read_text(encoding="utf-8")
+    inizio = testo.find("async def riepilogo_mensile_pos_corrispettivi")
+    fine = testo.find("\nasync def ", inizio + 10)
+    blocco = testo[inizio:fine if fine != -1 else len(testo)]
+    pos_query = blocco[blocco.find("pipeline_pos"):blocco.find("pos_result =") + 200]
+    assert 'db["estratto_conto_movimenti"]' in pos_query
+    assert 'db["prima_nota_banca"]' not in pos_query
+
+
 def _run(c):
     loop = asyncio.new_event_loop()
     try:

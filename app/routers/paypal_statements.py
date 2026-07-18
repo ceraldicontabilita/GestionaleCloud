@@ -943,13 +943,17 @@ async def auto_associa_transazioni() -> Dict[str, Any]:
                 if any(w in forn for w in parole):
                     scelta = c
                     break
-        # Senza nome controparte per corroborare il match, un solo candidato per
-        # importo non è una prova sufficiente: lo segnaliamo come "solo_importo"
-        # (bassa confidenza) invece di scriverlo come collegamento certo.
-        confidenza_bassa = False
-        if scelta is None and len(cands) == 1:
-            scelta = cands[0]
-            confidenza_bassa = not parole
+        # FIX 18/07/2026 (segnalato dall'utente: un pagamento Spotify era
+        # collegato alla fattura di "Ricambi Manzo sas", un altro puntava a
+        # una fattura ormai cancellata — "Fattura non trovata"): un solo
+        # candidato con lo stesso importo, SENZA alcun riscontro sul nome
+        # del fornitore, non è una prova — è una coincidenza. Specialmente
+        # per le controparti PayPal-native/estere (Spotify, OpenAI, ecc.)
+        # che non hanno MAI una fattura italiana nel gestionale, questo
+        # produceva collegamenti a fatture completamente estranee scritti
+        # come se fossero certi. Niente più scritture "a indovinare": senza
+        # corroborazione sul nome, la transazione resta non associata (la
+        # si troverà con "Cerca fattura via email" o a mano).
         if scelta is None:
             continue
         await db[COLL_PAYPAL_TRANSACTIONS].update_one(
@@ -962,12 +966,45 @@ async def auto_associa_transazioni() -> Dict[str, Any]:
                 "importo": scelta.get("total_amount"),
                 "view_url": f"/api/fatture-ricevute/fattura/{scelta['id']}/view-assoinvoice",
                 "auto": True,
-                "match": "solo_importo" if confidenza_bassa else "nome_e_importo",
+                "match": "nome_e_importo",
             }}},
         )
         associate += 1
 
     return {"success": True, "analizzate": len(txs), "associate": associate}
+
+
+@router.post("/pulisci-match-solo-importo")
+async def pulisci_match_solo_importo(dry_run: bool = Query(True)) -> Dict[str, Any]:
+    """Rimuove le associazioni fattura scritte dal vecchio auto-match a
+    bassa confidenza (match="solo_importo", un solo candidato per importo
+    SENZA riscontro sul nome fornitore) — segnalato dall'utente 18/07/2026:
+    un pagamento Spotify risultava collegato alla fattura di "Ricambi Manzo
+    sas", un altro a una fattura ormai cancellata ("Fattura non trovata").
+    auto_associa_transazioni non scrive più questi match; qui si ripulisce
+    lo storico. Le transazioni tornano "non associate" (si ritrovano con
+    Cerca fattura via email o a mano)."""
+    db = Database.get_db()
+    query = {"fattura_associata.match": "solo_importo"}
+    interessate = await db[COLL_PAYPAL_TRANSACTIONS].find(
+        query, {"_id": 0, "transaction_id": 1, "nome_controparte": 1, "fattura_associata": 1}
+    ).to_list(2000)
+    if not dry_run:
+        await db[COLL_PAYPAL_TRANSACTIONS].update_many(
+            query, {"$unset": {"fattura_associata": ""}}
+        )
+    return {
+        "dry_run": dry_run,
+        "trovate": len(interessate),
+        "esempi": [
+            {
+                "transaction_id": t.get("transaction_id"),
+                "controparte": t.get("nome_controparte"),
+                "fattura_agganciata_erroneamente": t.get("fattura_associata", {}).get("fornitore"),
+            }
+            for t in interessate[:20]
+        ],
+    }
 
 
 @router.post("/auto-cerca-gmail")

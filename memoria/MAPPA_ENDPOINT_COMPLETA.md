@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1019 endpoint** in **108 gruppi**.
+> Totale **1020 endpoint** in **108 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 647 · ext esterni = 76 · — da verificare = 296
+**Riepilogo uso:** ✓ frontend = 647 · ext esterni = 76 · — da verificare = 297
 
 ## AI Parser  (11)
 
@@ -1133,7 +1133,7 @@
 | GET | `/api/partite-aperte/scadute` | — | partite_aperte_api |
 | GET | `/api/partite-aperte/stats` | ✓ | partite_aperte_api |
 
-## PayPal  (13)
+## PayPal  (14)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1143,6 +1143,7 @@
 | POST | `/api/paypal-statements/import-all-local` | — | paypal_statements |
 | POST | `/api/paypal-statements/import-csv` | ✓ | paypal_statements |
 | POST | `/api/paypal-statements/import-pdf` | — | paypal_statements |
+| POST | `/api/paypal-statements/pulisci-match-solo-importo` | — | paypal_statements |
 | GET | `/api/paypal-statements/report` | ✓ | paypal_statements |
 | POST | `/api/paypal-statements/riconcilia-banca` | — | paypal_statements |
 | GET | `/api/paypal-statements/statements` | ✓ | paypal_statements |
