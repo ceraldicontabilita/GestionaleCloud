@@ -18,6 +18,7 @@ import logging
 import uuid
 
 from app.database import Database
+from app.utils.upload_validation import verifica_pdf_reale
 
 router = APIRouter(tags=["Mutui Parser PDF"])
 logger = logging.getLogger(__name__)
@@ -156,10 +157,12 @@ async def parse_mutuo_pdf_endpoint(file: UploadFile = File(...)):
         # Verifica estensione
         if not file.filename.lower().endswith('.pdf'):
             raise HTTPException(status_code=400, detail="Il file deve essere un PDF")
-        
+
+        content = await file.read()
+        verifica_pdf_reale(content, file.filename)
+
         # Salva temporaneamente
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
-            content = await file.read()
             tmp.write(content)
             tmp_path = tmp.name
         
@@ -204,10 +207,12 @@ async def import_mutuo_from_pdf(
         # Verifica estensione
         if not file.filename.lower().endswith('.pdf'):
             raise HTTPException(status_code=400, detail="Il file deve essere un PDF")
-        
+
+        content = await file.read()
+        verifica_pdf_reale(content, file.filename)
+
         # Salva temporaneamente
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
-            content = await file.read()
             tmp.write(content)
             tmp_path = tmp.name
         
@@ -327,9 +332,15 @@ async def parse_multiple_pdfs(files: List[UploadFile] = File(...)):
                     "error": "Non è un file PDF"
                 })
                 continue
-            
+
+            content = await file.read()
+            try:
+                verifica_pdf_reale(content, file.filename)
+            except HTTPException as e:
+                results.append({"filename": file.filename, "success": False, "error": e.detail})
+                continue
+
             with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
-                content = await file.read()
                 tmp.write(content)
                 tmp_path = tmp.name
             
