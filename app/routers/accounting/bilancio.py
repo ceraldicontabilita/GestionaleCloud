@@ -113,34 +113,20 @@ async def get_stato_patrimoniale(
     data_inizio = f"{anno}-01-01"
     
     # === ATTIVO ===
-    
-    # Cassa
-    pipeline_cassa = [
-        {"$match": {**PRIMA_NOTA_MATCH, "data": {"$lte": data_fine}}},
-        {"$group": {
-            "_id": None,
-            "entrate": {"$sum": {"$cond": [{"$eq": ["$tipo", "entrata"]}, "$importo", 0]}},
-            "uscite": {"$sum": {"$cond": [{"$eq": ["$tipo", "uscita"]}, "$importo", 0]}}
-        }}
-    ]
-    cassa_result = await db[COLLECTION_PRIMA_NOTA_CASSA].aggregate(pipeline_cassa).to_list(1)
-    saldo_cassa = 0
-    if cassa_result:
-        saldo_cassa = cassa_result[0].get("entrate", 0) - cassa_result[0].get("uscite", 0)
-    
-    # Banca
-    pipeline_banca = [
-        {"$match": {**PRIMA_NOTA_MATCH, "data": {"$lte": data_fine}}},
-        {"$group": {
-            "_id": None,
-            "entrate": {"$sum": {"$cond": [{"$eq": ["$tipo", "entrata"]}, "$importo", 0]}},
-            "uscite": {"$sum": {"$cond": [{"$eq": ["$tipo", "uscita"]}, "$importo", 0]}}
-        }}
-    ]
-    banca_result = await db[COLLECTION_PRIMA_NOTA_BANCA].aggregate(pipeline_banca).to_list(1)
-    saldo_banca = 0
-    if banca_result:
-        saldo_banca = banca_result[0].get("entrate", 0) - banca_result[0].get("uscite", 0)
+
+    # Cassa e Banca: FUNZIONE UNICA di saldo (§6.4) — stessa formula della
+    # Prima Nota, incluso il riporto iniziale impostato a mano dall'utente
+    # (prima il bilancio sommava solo i movimenti e ignorava il riporto:
+    # appena impostato, SP e Prima Nota mostravano due saldi diversi).
+    from app.routers.prima_nota_module.common import aggrega_saldo_prima_nota
+
+    query_anno = {**PRIMA_NOTA_MATCH, "data": {"$gte": data_inizio, "$lte": data_fine}}
+    saldi_cassa = await aggrega_saldo_prima_nota(
+        db, COLLECTION_PRIMA_NOTA_CASSA, query_anno, anno)
+    saldo_cassa = saldi_cassa["saldo"]
+    saldi_banca = await aggrega_saldo_prima_nota(
+        db, COLLECTION_PRIMA_NOTA_BANCA, query_anno, anno)
+    saldo_banca = saldi_banca["saldo"]
     
     # Crediti (fatture emesse non pagate - dalla collection fatture_emesse)
     # NOTA: La collection 'invoices' contiene solo fatture RICEVUTE (da fornitori = DEBITI)
@@ -1153,34 +1139,16 @@ async def _get_stato_patrimoniale_data(anno: int, mese: int = None) -> Dict[str,
     else:
         data_fine = f"{anno}-12-31"
     
-    # Cassa
-    pipeline_cassa = [
-        {"$match": {**PRIMA_NOTA_MATCH, "data": {"$lte": data_fine}}},
-        {"$group": {
-            "_id": None,
-            "entrate": {"$sum": {"$cond": [{"$eq": ["$tipo", "entrata"]}, "$importo", 0]}},
-            "uscite": {"$sum": {"$cond": [{"$eq": ["$tipo", "uscita"]}, "$importo", 0]}}
-        }}
-    ]
-    cassa_result = await db[COLLECTION_PRIMA_NOTA_CASSA].aggregate(pipeline_cassa).to_list(1)
-    saldo_cassa = 0
-    if cassa_result:
-        saldo_cassa = cassa_result[0].get("entrate", 0) - cassa_result[0].get("uscite", 0)
-    
-    # Banca
-    pipeline_banca = [
-        {"$match": {**PRIMA_NOTA_MATCH, "data": {"$lte": data_fine}}},
-        {"$group": {
-            "_id": None,
-            "entrate": {"$sum": {"$cond": [{"$eq": ["$tipo", "entrata"]}, "$importo", 0]}},
-            "uscite": {"$sum": {"$cond": [{"$eq": ["$tipo", "uscita"]}, "$importo", 0]}}
-        }}
-    ]
-    banca_result = await db[COLLECTION_PRIMA_NOTA_BANCA].aggregate(pipeline_banca).to_list(1)
-    saldo_banca = 0
-    if banca_result:
-        saldo_banca = banca_result[0].get("entrate", 0) - banca_result[0].get("uscite", 0)
-    
+    # Cassa e Banca: FUNZIONE UNICA di saldo (§6.4), incluso il riporto
+    # iniziale impostato a mano — stessa formula della Prima Nota.
+    from app.routers.prima_nota_module.common import aggrega_saldo_prima_nota
+
+    query_anno = {**PRIMA_NOTA_MATCH, "data": {"$gte": f"{anno}-01-01", "$lte": data_fine}}
+    saldo_cassa = (await aggrega_saldo_prima_nota(
+        db, COLLECTION_PRIMA_NOTA_CASSA, query_anno, anno))["saldo"]
+    saldo_banca = (await aggrega_saldo_prima_nota(
+        db, COLLECTION_PRIMA_NOTA_BANCA, query_anno, anno))["saldo"]
+
     # Crediti — esclude anche le fatture eliminate (status="deleted" da
     # cascade_operations.py), prima mancava.
     crediti = await db[Collections.INVOICES].aggregate([

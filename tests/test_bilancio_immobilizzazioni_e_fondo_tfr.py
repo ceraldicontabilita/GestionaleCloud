@@ -34,6 +34,13 @@ class _FakeCollection:
     def find(self, query=None, projection=None, *a, **k):
         return _FakeCursor([d for d in self.docs if self._matches_or(d, query or {})])
 
+    async def find_one(self, query=None, projection=None, *a, **k):
+        # usato da get_saldo_iniziale_manuale (riporto): nessun riporto nei test
+        for d in self.docs:
+            if self._matches_or(d, query or {}):
+                return dict(d)
+        return None
+
     def aggregate(self, pipeline, *a, **k):
         match = pipeline[0].get("$match", {}) if pipeline else {}
         matched = [d for d in self.docs if self._matches_or(d, match)]

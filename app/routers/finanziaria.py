@@ -66,6 +66,17 @@ async def get_financial_summary(
         banca_result = await db["prima_nota_banca"].aggregate(banca_pipeline).to_list(100)
         banca_entrate = sum(r["total"] for r in banca_result if r["_id"] == "entrata")
         banca_uscite = sum(r["total"] for r in banca_result if r["_id"] == "uscita")
+
+        # Riporto iniziale (impostato a mano dall'utente o cumulato anni
+        # precedenti): senza, i saldi qui differivano dalla Prima Nota
+        # appena l'utente impostava il riporto al 01/01.
+        from app.routers.prima_nota_module.common import get_saldo_iniziale_manuale, calcola_saldo_anni_precedenti
+        riporto_cassa = await get_saldo_iniziale_manuale(db, "prima_nota_cassa", anno)
+        if riporto_cassa is None:
+            riporto_cassa = await calcola_saldo_anni_precedenti(db, "prima_nota_cassa", anno)
+        riporto_banca = await get_saldo_iniziale_manuale(db, "prima_nota_banca", anno)
+        if riporto_banca is None:
+            riporto_banca = await calcola_saldo_anni_precedenti(db, "prima_nota_banca", anno)
         
         # Get Salari totals
         salari_pipeline = [
@@ -182,12 +193,14 @@ async def get_financial_summary(
             "cassa": {
                 "entrate": round(cassa_entrate, 2),
                 "uscite": round(cassa_uscite, 2),
-                "saldo": round(cassa_entrate - cassa_uscite, 2)
+                "riporto": round(riporto_cassa, 2),
+                "saldo": round(riporto_cassa + cassa_entrate - cassa_uscite, 2)
             },
             "banca": {
                 "entrate": round(banca_entrate, 2),
                 "uscite": round(banca_uscite, 2),  # Include già salari e F24
-                "saldo": round(banca_entrate - banca_uscite, 2)
+                "riporto": round(riporto_banca, 2),
+                "saldo": round(riporto_banca + banca_entrate - banca_uscite, 2)
             },
             "salari": {
                 "totale": round(salari_totale, 2),
@@ -210,10 +223,12 @@ async def get_financial_summary(
                 "count": fatt_count,
                 "iva": round(iva_credito, 2)
             },
-            # Campi H1 richiesti dalla specifica
-            "saldo_cassa": round(cassa_entrate - cassa_uscite, 2),
-            "saldo_banca": round(banca_entrate - banca_uscite, 2),
-            "saldo_totale": round((cassa_entrate - cassa_uscite) + (banca_entrate - banca_uscite), 2),
+            # Campi H1 richiesti dalla specifica (con riporto iniziale)
+            "saldo_cassa": round(riporto_cassa + cassa_entrate - cassa_uscite, 2),
+            "saldo_banca": round(riporto_banca + banca_entrate - banca_uscite, 2),
+            "saldo_totale": round(
+                riporto_cassa + riporto_banca
+                + (cassa_entrate - cassa_uscite) + (banca_entrate - banca_uscite), 2),
             # Payables/Receivables
             "payables": round(payables, 2),
             "receivables": 0  # Non gestiamo fatture attive per ora

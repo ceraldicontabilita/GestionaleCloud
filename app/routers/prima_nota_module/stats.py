@@ -123,12 +123,18 @@ async def get_prima_nota_stats(
     """Statistiche aggregate prima nota cassa e banca."""
     db = Database.get_db()
     
-    match_filter = {}
+    # Stesse esclusioni di tutte le altre query di riepilogo (§6.4): prima
+    # qui i movimenti eliminati (soft-delete) e i duplicati POS venivano
+    # ancora sommati, e le stats non tornavano con la Prima Nota.
+    match_filter = {
+        "status": {"$nin": ["deleted", "archived"]},
+        **ESCLUSIONI_PRIMA_NOTA,
+    }
     if data_da:
         match_filter["data"] = {"$gte": data_da}
     if data_a:
         match_filter.setdefault("data", {})["$lte"] = data_a
-    
+
     cassa_pipeline = [
         {"$match": match_filter} if match_filter else {"$match": {}},
         {"$group": {
@@ -153,22 +159,39 @@ async def get_prima_nota_stats(
     
     cassa = cassa_stats[0] if cassa_stats else {"entrate": 0, "uscite": 0, "count": 0}
     banca = banca_stats[0] if banca_stats else {"entrate": 0, "uscite": 0, "count": 0}
-    
+
+    # Riporto iniziale: se il periodo parte dal 1° gennaio, il saldo include
+    # il riporto dell'anno (manuale o cumulato) — come nella Prima Nota.
+    riporto_cassa = riporto_banca = 0.0
+    if data_da and data_da.endswith("-01-01"):
+        anno_riporto = int(data_da[:4])
+        from .common import get_saldo_iniziale_manuale, calcola_saldo_anni_precedenti
+        rc = await get_saldo_iniziale_manuale(db, COLLECTION_PRIMA_NOTA_CASSA, anno_riporto)
+        riporto_cassa = rc if rc is not None else await calcola_saldo_anni_precedenti(
+            db, COLLECTION_PRIMA_NOTA_CASSA, anno_riporto)
+        rb = await get_saldo_iniziale_manuale(db, COLLECTION_PRIMA_NOTA_BANCA, anno_riporto)
+        riporto_banca = rb if rb is not None else await calcola_saldo_anni_precedenti(
+            db, COLLECTION_PRIMA_NOTA_BANCA, anno_riporto)
+
+    saldo_cassa = riporto_cassa + cassa.get("entrate", 0) - cassa.get("uscite", 0)
+    saldo_banca = riporto_banca + banca.get("entrate", 0) - banca.get("uscite", 0)
     return {
         "cassa": {
-            "saldo": cassa.get("entrate", 0) - cassa.get("uscite", 0),
+            "saldo": round(saldo_cassa, 2),
+            "riporto": round(riporto_cassa, 2),
             "entrate": cassa.get("entrate", 0),
             "uscite": cassa.get("uscite", 0),
             "movimenti": cassa.get("count", 0)
         },
         "banca": {
-            "saldo": banca.get("entrate", 0) - banca.get("uscite", 0),
+            "saldo": round(saldo_banca, 2),
+            "riporto": round(riporto_banca, 2),
             "entrate": banca.get("entrate", 0),
             "uscite": banca.get("uscite", 0),
             "movimenti": banca.get("count", 0)
         },
         "totale": {
-            "saldo": (cassa.get("entrate", 0) - cassa.get("uscite", 0)) + (banca.get("entrate", 0) - banca.get("uscite", 0)),
+            "saldo": round(saldo_cassa + saldo_banca, 2),
             "entrate": cassa.get("entrate", 0) + banca.get("entrate", 0),
             "uscite": cassa.get("uscite", 0) + banca.get("uscite", 0)
         }
@@ -191,7 +214,9 @@ async def get_saldo_finale(
         "status": {"$nin": ["deleted", "archived"]},
         **ESCLUSIONI_PRIMA_NOTA,
     }
-    saldi = await aggrega_saldo_prima_nota(db, collection, query, anno=None)
+    # anno passato ad aggrega: il saldo FINALE include il riporto iniziale
+    # (manuale o cumulato) — prima veniva ignorato (anno=None).
+    saldi = await aggrega_saldo_prima_nota(db, collection, query, anno=anno)
     movimenti_count = await db[collection].count_documents(query)
 
     return {
