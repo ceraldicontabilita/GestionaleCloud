@@ -430,18 +430,27 @@ async def ripristina_provvisori_metodo_errato(
         movimenti = await db[collection].find(
             {
                 "tipo": "uscita",
-                "fattura_id": {"$nin": [None, ""]},
+                # anche le righe legacy con fattura_id vuoto ma riferimento
+                # FATT-<id> (vecchio sync_fatture): la fattura si ricava dal
+                # riferimento — prima sfuggivano alla riparazione (caso ABC
+                # 19/03, riga superstite segnalata dall'utente 18/07).
+                "$or": [
+                    {"fattura_id": {"$nin": [None, ""]}},
+                    {"riferimento": {"$regex": "^FATT-"}},
+                ],
                 "source": {"$in": SOURCES_FATTURE_AUTO},
                 "status": {"$nin": ["deleted", "archived"]},
                 "data": {"$regex": f"^{anno}"},
             },
-            {"_id": 0, "id": 1, "fattura_id": 1, "importo": 1, "data": 1, "descrizione": 1,
-             "source": 1, "riconciliato": 1, "estratto_conto_id": 1},
+            {"_id": 0, "id": 1, "fattura_id": 1, "riferimento": 1, "importo": 1, "data": 1,
+             "descrizione": 1, "source": 1, "riconciliato": 1, "estratto_conto_id": 1},
         ).to_list(20000)
 
         for mov in movimenti:
+            fid = mov.get("fattura_id") or (mov.get("riferimento") or "")[5:]
+            mov["fattura_id"] = fid
             fattura = await db["invoices"].find_one(
-                {"id": mov["fattura_id"]},
+                {"id": fid},
                 {"_id": 0, "supplier_vat": 1, "cedente_piva": 1, "invoice_number": 1, "supplier_name": 1},
             )
             if not fattura:
