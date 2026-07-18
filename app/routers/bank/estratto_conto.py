@@ -796,6 +796,134 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     }
 
 
+@router.post("/pulizia-non-in-csv")
+@handle_errors
+async def pulizia_movimenti_non_in_csv(
+    file: UploadFile = File(...),
+    dry_run: bool = Query(True, description="Solo conteggio, non elimina"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Richiesta utente 18/07/2026: l'export completo della banca è la fonte
+    di verità — "importa le operazioni mancanti, elimina i dati in memoria,
+    ripopola prima nota banca". Questo endpoint fa la parte distruttiva in
+    sicurezza: elimina i movimenti di estratto conto NON presenti nel CSV
+    (nel suo intervallo di date e SOLO per i segni presenti nel file: un
+    export di sole entrate non tocca mai le uscite), scollegando a cascata
+    le righe di Prima Nota e riportando "da pagare" le fatture coinvolte.
+    La parte additiva resta l'import standard (/api/estratto-conto/import),
+    che dopo l'inserimento riesegue tutta la pipeline (fatture, paghe,
+    assegni, sync banca+cassa)."""
+    from collections import Counter
+
+    db = Database.get_db()
+    contents = await file.read()
+    text = None
+    for encoding in ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']:
+        try:
+            text = contents.decode(encoding)
+            break
+        except (UnicodeDecodeError, Exception):
+            continue
+    if not text:
+        raise HTTPException(status_code=400, detail="Impossibile decodificare il file CSV")
+
+    attesi: Counter = Counter()
+    date_csv = []
+    has_entrate = has_uscite = False
+    for row in csv.DictReader(io.StringIO(text), delimiter=';'):
+        data_it = (row.get('Data contabile') or row.get('Data') or '').strip().strip('"')
+        importo_str = (row.get('Importo') or '').strip().strip('"').replace('.', '').replace(',', '.')
+        descr = (row.get('Descrizione') or '').strip().strip('"')
+        try:
+            parts = data_it.split('/')
+            data_iso = f"{int(parts[2]):04d}-{int(parts[1]):02d}-{int(parts[0]):02d}"
+            importo = float(importo_str)
+        except (ValueError, TypeError, IndexError):
+            continue
+        if importo >= 0:
+            has_entrate = True
+        else:
+            has_uscite = True
+        date_csv.append(data_iso)
+        attesi[(data_iso, round(abs(importo), 2), descr[:80])] += 1
+
+    if not date_csv:
+        raise HTTPException(status_code=400, detail="Nessun movimento leggibile nel CSV")
+    data_min, data_max = min(date_csv), max(date_csv)
+
+    movimenti_db = await db["estratto_conto_movimenti"].find(
+        {"data": {"$gte": data_min, "$lte": data_max}},
+        {"_id": 0, "id": 1, "data": 1, "importo": 1, "tipo": 1,
+         "descrizione_originale": 1, "descrizione": 1, "riconciliato": 1},
+    ).sort("created_at", 1).to_list(50000)
+
+    rimasti = Counter(attesi)
+    da_eliminare = []
+    esempi = []
+    for m in movimenti_db:
+        e_uscita = m.get("tipo") == "uscita" or float(m.get("importo") or 0) < 0
+        if (e_uscita and not has_uscite) or ((not e_uscita) and not has_entrate):
+            continue  # segno non coperto dall'export: mai toccato
+        chiave = ((m.get("data") or "")[:10],
+                  round(abs(float(m.get("importo") or 0)), 2),
+                  (m.get("descrizione_originale") or m.get("descrizione") or "")[:80])
+        if rimasti.get(chiave, 0) > 0:
+            rimasti[chiave] -= 1  # presente nel CSV: resta (link intatti)
+        else:
+            da_eliminare.append(m)
+            if len(esempi) < 20:
+                esempi.append({"data": chiave[0], "importo": chiave[1],
+                               "descrizione": chiave[2][:60],
+                               "riconciliato": bool(m.get("riconciliato"))})
+
+    prima_nota_scollegate = fatture_resettate = 0
+    if not dry_run and da_eliminare:
+        ids = [m["id"] for m in da_eliminare]
+        now = datetime.now(timezone.utc).isoformat()
+        for coll in ("prima_nota_banca", "prima_nota_cassa"):
+            legate = await db[coll].find(
+                {"estratto_conto_id": {"$in": ids},
+                 "status": {"$nin": ["deleted", "archived"]}},
+                {"_id": 0, "id": 1, "fattura_id": 1},
+            ).to_list(20000)
+            for pn in legate:
+                await db[coll].update_one(
+                    {"id": pn["id"]},
+                    {"$set": {"status": "deleted", "deleted": True,
+                              "deleted_reason": "movimento_ec_non_in_csv",
+                              "deleted_at": now}})
+                prima_nota_scollegate += 1
+                if pn.get("fattura_id"):
+                    await db["invoices"].update_one(
+                        {"id": pn["fattura_id"]},
+                        {"$set": {"pagato": False, "paid": False,
+                                  "stato_pagamento": "da_pagare",
+                                  "prima_nota_id": None, "prima_nota_tipo": None,
+                                  "prima_nota_banca_id": None,
+                                  "riconciliato_con_ec": None}})
+                    fatture_resettate += 1
+        r = await db["invoices"].update_many(
+            {"riconciliato_con_ec": {"$in": ids}},
+            {"$set": {"pagato": False, "paid": False, "stato_pagamento": "da_pagare",
+                      "prima_nota_id": None, "riconciliato_con_ec": None}})
+        fatture_resettate += r.modified_count
+        await db["estratto_conto_movimenti"].delete_many({"id": {"$in": ids}})
+
+    mancanti_nel_db = sum(v for v in rimasti.values() if v > 0)
+    return {
+        "dry_run": dry_run,
+        "intervallo": [data_min, data_max],
+        "segni_nel_csv": {"entrate": has_entrate, "uscite": has_uscite},
+        "movimenti_csv": len(date_csv),
+        "movimenti_db_in_scope": len(movimenti_db),
+        "eliminati" if not dry_run else "da_eliminare": len(da_eliminare),
+        "prima_nota_scollegate": prima_nota_scollegate,
+        "fatture_resettate": fatture_resettate,
+        "mancanti_nel_db_da_importare": mancanti_nel_db,
+        "esempi": esempi,
+    }
+
+
 @router.post("/force-reimport")
 @router.post("/reimport")  # alias onesto: NON cancella nulla (vedi P0.6)
 @handle_errors

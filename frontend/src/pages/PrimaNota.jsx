@@ -621,7 +621,7 @@ function Provvisori({ provvisori, attese, onRicarica }) {
             <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 13.5, color: BLU }}>{p.fornitore || p.supplier_name || '—'}</div>
               <div style={{ fontSize: 12, color: '#64748b' }}>
-                Fatt. {p.numero_fattura || p.invoice_number || '—'} del {formatDateIT(p.data || p.invoice_date)}
+                Fatt. {p.fattura_numero || p.numero_fattura || p.invoice_number || '—'} del {formatDateIT(p.fattura_data || p.data || p.invoice_date)}
                 {p.suggerimento === 'sospesa' && ' — ⏸ sospesa'}
               </div>
             </div>

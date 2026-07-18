@@ -26,25 +26,26 @@ class _Coll:
         self.docs = docs
         self.updates = []
 
+    def _match(self, d, query):
+        for key, cond in query.items():
+            if key == "$or":
+                if not any(self._match(d, sub) for sub in cond):
+                    return False
+                continue
+            v = d.get(key)
+            if isinstance(cond, dict):
+                if "$ne" in cond and v == cond["$ne"]:
+                    return False
+                if "$lt" in cond and not (v is not None and v < cond["$lt"]):
+                    return False
+                if "$regex" in cond and cond["$regex"].lower() not in str(v or "").lower():
+                    return False
+            elif v != cond:
+                return False
+        return True
+
     def find(self, query=None, *a, **k):
-        query = query or {}
-        out = []
-        for d in self.docs:
-            ok = True
-            for key, cond in query.items():
-                v = d.get(key)
-                if isinstance(cond, dict):
-                    if "$ne" in cond and v == cond["$ne"]:
-                        ok = False
-                    if "$lt" in cond and not (v is not None and v < cond["$lt"]):
-                        ok = False
-                    if "$regex" in cond and cond["$regex"].lower() not in str(v or "").lower():
-                        ok = False
-                elif v != cond:
-                    ok = False
-            if ok:
-                out.append(dict(d))
-        return _Cursor(out)
+        return _Cursor([dict(d) for d in self.docs if self._match(d, query or {})])
 
     async def update_one(self, filtro, update):
         self.updates.append((filtro, update))
@@ -89,10 +90,15 @@ def test_associa_bonifico_per_nome_e_importo():
                 {"id": "S2", "dipendente": "VESPA VINCENZO", "anno": 2026, "mese": 4,
                  "importo_busta": 1461.0, "riconciliato": False}],
         movimenti=[
-            {"id": "M1", "data": "2026-04-03", "importo": -530.0,
-             "descrizione": "VOSTRA DISPOSIZIONE - VS.DISP. RIF. X FAVORE Pocci Salvatore - ADD.TOT"},
-            {"id": "M2", "data": "2026-04-03", "importo": -600.0,
-             "descrizione": "VOSTRA DISPOSIZIONE - VS.DISP. RIF. X FAVORE Dolciaria Acquaviva S.p.A. NOTPROVIDE - ADD.TOT"},
+            # formato reale post-import: importo ASSOLUTO + tipo "uscita",
+            # descrizione in descrizione_originale
+            {"id": "M1", "data": "2026-04-03", "importo": 530.0, "tipo": "uscita",
+             "descrizione_originale": "VOSTRA DISPOSIZIONE - VS.DISP. RIF. X FAVORE Pocci Salvatore - ADD.TOT"},
+            {"id": "M2", "data": "2026-04-03", "importo": 600.0, "tipo": "uscita",
+             "descrizione_originale": "VOSTRA DISPOSIZIONE - VS.DISP. RIF. X FAVORE Dolciaria Acquaviva S.p.A. NOTPROVIDE - ADD.TOT"},
+            # un'ENTRATA con "FAVORE" nel testo non è mai un pagamento stipendio
+            {"id": "M3", "data": "2026-04-03", "importo": 530.0, "tipo": "entrata",
+             "descrizione_originale": "STORNO FAVORE Pocci Salvatore"},
         ])
     r = _run(associa_bonifici_stipendi(db))
     assert r["bonifici_associati"] == 1

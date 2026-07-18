@@ -68,10 +68,14 @@ async def associa_bonifici_stipendi(
     for gruppo in per_nome.values():
         gruppo.sort(key=lambda r: (r.get("anno") or 0, r.get("mese") or 0))
 
+    # NB: l'import dell'estratto conto salva l'importo in valore ASSOLUTO
+    # con campo tipo "entrata"/"uscita" — mai filtrare per importo negativo.
     movimenti = await db["estratto_conto_movimenti"].find(
-        {"riconciliato": {"$ne": True}, "importo": {"$lt": 0},
-         "descrizione": {"$regex": "FAVORE", "$options": "i"}},
-        {"_id": 0, "id": 1, "data": 1, "importo": 1, "descrizione": 1},
+        {"riconciliato": {"$ne": True},
+         "$or": [{"descrizione": {"$regex": "FAVORE", "$options": "i"}},
+                 {"descrizione_originale": {"$regex": "FAVORE", "$options": "i"}}]},
+        {"_id": 0, "id": 1, "data": 1, "importo": 1, "tipo": 1,
+         "descrizione": 1, "descrizione_originale": 1},
     ).sort("data", 1).to_list(10000)
 
     now = datetime.now(timezone.utc).isoformat()
@@ -79,7 +83,12 @@ async def associa_bonifici_stipendi(
     dettaglio: List[Dict[str, Any]] = []
 
     for mov in movimenti:
-        nome = estrai_nome_favore(mov.get("descrizione") or "")
+        importo_grezzo = float(mov.get("importo") or 0)
+        e_uscita = mov.get("tipo") == "uscita" or importo_grezzo < 0
+        if not e_uscita:
+            continue
+        nome = estrai_nome_favore(
+            mov.get("descrizione_originale") or mov.get("descrizione") or "")
         if not nome:
             continue
         gruppo = per_nome.get(_tokens(nome))
@@ -89,7 +98,7 @@ async def associa_bonifici_stipendi(
         pendenti = [r for r in gruppo if not r.get("riconciliato")]
         if not pendenti:
             continue
-        importo_mov = abs(float(mov.get("importo") or 0))
+        importo_mov = abs(importo_grezzo)
         mese_mov = (mov.get("data") or "")[:7]
 
         # priorità: stesso importo della busta → stesso mese → più vecchia
