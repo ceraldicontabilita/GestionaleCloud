@@ -29,7 +29,6 @@ import {
   Clock,
   Menu,
   ArrowLeftRight,
-  FolderArchive,
 } from 'lucide-react';
 
 export const APP_DIPENDENTI_URL = 'https://appdipendenti.onrender.com';
@@ -54,7 +53,6 @@ export const NAV_ALTRO = [
   { to: '/contabilita', label: 'Contabilita', Icon: FileBarChart },
   { to: '/documenti', label: 'Documenti', Icon: BookMarked },
   { to: '/documenti/import', label: 'Import Documenti', Icon: Upload },
-  { to: '/documenti-fiscali', label: 'Documenti fiscali', Icon: FolderArchive },
   { to: '/riconciliazione/coerenza-pos', label: 'Incassi POS', Icon: CreditCard },
   { to: '/noleggio', label: 'Noleggi', Icon: Car },
   { to: '/scadenze', label: 'Scadenze', Icon: Clock },
