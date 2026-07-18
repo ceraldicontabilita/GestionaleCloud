@@ -42,6 +42,7 @@ const FattureHub = lazy(() => import("./pages/hub/FattureHub.jsx"));
 // === STANDALONE PAGES ===
 const InserimentoRapido = lazy(() => import("./pages/InserimentoRapido.jsx"));
 const Scadenze = lazy(() => import("./pages/Scadenze.jsx"));
+const Ritenute = lazy(() => import("./pages/Ritenute.jsx"));
 const GestioneRiservata = lazy(() => import("./pages/GestioneRiservata.jsx"));
 const DettaglioVerbale = lazy(() => import("./pages/DettaglioVerbale.jsx"));
 const ImpostazioniF24Email = lazy(() => import("./pages/ImpostazioniF24Email.jsx"));
@@ -171,6 +172,7 @@ const router = createBrowserRouter([
       
       // === SCADENZE ===
       { path: "scadenze", element: <LazyPage><Scadenze /></LazyPage> },
+      { path: "ritenute", element: <LazyPage><Ritenute /></LazyPage> },
       { path: "scadenze/:anno", element: <LazyPage><Scadenze /></LazyPage> },
       { path: "scadenze/:anno/:mese", element: <LazyPage><Scadenze /></LazyPage> },
       

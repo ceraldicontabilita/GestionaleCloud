@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
+import ModalFattura from '../components/ModalFattura';
 import {
   COLORS,
   STYLES,
@@ -395,6 +396,27 @@ function TabAlert({ alerts, alertPerModulo, filter, setFilter, onRefresh, isMobi
    TAB PARTITE APERTE — Dettaglio per tipo
    ================================================================ */
 function TabPartite({ stats, isMobile }) {
+  const [fatturaView, setFatturaView] = useState(null);
+  const [registrando, setRegistrando] = useState(false);
+
+  // registra la partita direttamente in cassa/banca (stesso endpoint del
+  // tab Provvisori della Prima Nota) e ricarica l'elenco
+  const registraPartita = async (p, metodo) => {
+    if (registrando) return;
+    setRegistrando(true);
+    try {
+      await api.post('/api/prima-nota/provvisori/conferma', {
+        fattura_id: p.documento_id,
+        metodo,
+      });
+      caricaPartite(tipoFiltro);
+    } catch (e) {
+      alert('Registrazione non riuscita: ' + (e.response?.data?.detail || e.response?.data?.message || e.message));
+    } finally {
+      setRegistrando(false);
+    }
+  };
+
   const [partite, setPartite] = useState([]);
   const [tipoFiltro, setTipoFiltro] = useState('');
   const [loading, setLoading] = useState(false);
@@ -465,6 +487,7 @@ function TabPartite({ stats, isMobile }) {
                 <Th>Residuo</Th>
                 <Th>Scadenza</Th>
                 <Th>Stato</Th>
+                <Th>Azioni</Th>
               </tr>
             </thead>
             <tbody>
@@ -497,11 +520,34 @@ function TabPartite({ stats, isMobile }) {
                       {p.stato}
                     </Badge>
                   </Td>
+                  <Td style={{ whiteSpace: 'nowrap' }}>
+                    {/* Azioni (richiesta utente 18/07: "devo poter associare
+                        e spostare, altrimenti non mi occorre") */}
+                    {(p.tipo === 'fattura_fornitore' || p.tipo === 'fattura') && p.documento_id ? (
+                      <span style={{ display: 'inline-flex', gap: 6 }}>
+                        <Button size="sm" variant="info" onClick={() => setFatturaView({ id: p.documento_id })}>
+                          👁 Vedi
+                        </Button>
+                        {p.stato !== 'chiusa' && (
+                          <>
+                            <Button size="sm" variant="success" onClick={() => registraPartita(p, 'cassa')}>
+                              💵 Cassa
+                            </Button>
+                            <Button size="sm" variant="primary" onClick={() => registraPartita(p, 'banca')}>
+                              🏦 Banca
+                            </Button>
+                          </>
+                        )}
+                      </span>
+                    ) : (
+                      '—'
+                    )}
+                  </Td>
                 </tr>
               ))}
               {(!partite || partite.length === 0) && (
                 <tr>
-                  <Td colSpan={6} style={{ textAlign: 'center', color: COLORS.textMuted }}>
+                  <Td colSpan={7} style={{ textAlign: 'center', color: COLORS.textMuted }}>
                     Nessuna partita
                   </Td>
                 </tr>
@@ -509,6 +555,9 @@ function TabPartite({ stats, isMobile }) {
             </tbody>
           </Table>
         </TableWrap>
+      )}
+      {fatturaView && (
+        <ModalFattura fatturaId={fatturaView.id} onClose={() => setFatturaView(null)} />
       )}
     </div>
   );

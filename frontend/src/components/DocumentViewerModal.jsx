@@ -49,12 +49,32 @@ export default function DocumentViewerModal({
   const [fit, setFit] = useState('width'); // 'width' | 'page' | null
   const cardRef = useRef(null);
   const scrollRef = useRef(null);
+  const iframeRef = useRef(null);
   const originRef = useRef(null);
 
   const zoomIn = useCallback(() => { setFit(null); setZoom(z => Math.min(ZOOM_MAX, z + ZOOM_STEP)); }, []);
   const zoomOut = useCallback(() => { setFit(null); setZoom(z => Math.max(ZOOM_MIN, z - ZOOM_STEP)); }, []);
   const fitWidth = useCallback(() => { setFit('width'); setZoom(1); }, []);
   const fitPage = useCallback(() => { setFit('page'); setZoom(1); }, []);
+
+  // 🖨️ Stampa (richiesta utente 18/07/2026: "non posso neanche stamparla"):
+  // stampa il contenuto dell'iframe; se il browser lo impedisce apre il
+  // documento in una scheda nuova, da cui si stampa col menu del browser.
+  const stampa = useCallback(() => {
+    try {
+      const w = iframeRef.current?.contentWindow;
+      if (w) {
+        w.focus();
+        w.print();
+        return;
+      }
+    } catch (e) {
+      /* cross-origin o viewer PDF: fallback sotto */
+    }
+    const url = src || blobUrl;
+    if (url) window.open(url, '_blank', 'noopener');
+  }, [src, blobUrl]);
+
 
   // Ricorda il pulsante di origine e ripristina il focus alla chiusura (§8.2).
   useEffect(() => {
@@ -264,6 +284,9 @@ export default function DocumentViewerModal({
               style={btn({ width: 'auto', padding: '0 10px', fontSize: 16, opacity: fit === 'page' ? 1 : 0.7 })}>⤢</button>
             <button onClick={apriSchermoIntero} aria-label="Schermo intero" title="Schermo intero"
               data-testid={`${testIdPrefix}-fullscreen`} style={btn({ fontSize: 18 })}>⛶</button>
+            <button onClick={stampa} aria-label="Stampa documento" title="Stampa"
+              data-testid={`${testIdPrefix}-print`}
+              style={btn({ width: 'auto', padding: '0 12px', fontSize: 13, gap: 6 })}>🖨️ Stampa</button>
             {onDownload && (
               <button onClick={onDownload} aria-label="Scarica documento" title="Scarica"
                 data-testid={`${testIdPrefix}-download`}
@@ -300,7 +323,8 @@ export default function DocumentViewerModal({
               background: '#f8fafc',
             }}
           >
-            <iframe title={title || 'Documento'} src={iframeSrc} style={iframeStyle} />
+            <iframe
+              ref={iframeRef} title={title || 'Documento'} src={iframeSrc} style={iframeStyle} />
           </div>
         ) : (
           <div

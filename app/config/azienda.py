@@ -119,6 +119,14 @@ class ConfigContabilita:
         "6033": "Versamento IVA trimestrale 3° trimestre",
         "6034": "Versamento IVA trimestrale 4° trimestre",
         "6035": "Versamento IVA trimestrale - acconto",
+        # Ravvedimento operoso (richiesta utente 18/07/2026: sezione codici
+        # tributo con la logica dei ravvedimenti — art. 13 D.Lgs. 472/1997)
+        "8906": "Sanzione pecuniaria sostituti d'imposta (ravvedimento ritenute)",
+        "1989": "Interessi sul ravvedimento - IRPEF e ritenute",
+        "8904": "Sanzione pecuniaria IVA (ravvedimento)",
+        "1991": "Interessi sul ravvedimento - IVA",
+        "8901": "Sanzione pecuniaria IRPEF (ravvedimento)",
+        "1990": "Interessi sul ravvedimento - IRES",
     }
 
 

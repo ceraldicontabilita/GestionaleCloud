@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 993 · tenere: 652 · verificare: 321 · admin-only (migrazione/manutenzione): 20
+**Totale endpoint:** 996 · tenere: 655 · verificare: 321 · admin-only (migrazione/manutenzione): 20
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -882,6 +882,9 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/ricerca-globale` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/riconciliazione/stats` | riconciliazione_stats_api | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/rifiuta/{proposta_id}` | dati_provvisori | — | sì | — | — | sì | tenere | in uso: scheduler |
+| `GET /api/ritenute` | ritenute | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/ritenute/codici-ravvedimento` | ritenute | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/ritenute/scan` | ritenute | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/scadenzario-fornitori/` | scadenzario_fornitori | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/scadenzario-fornitori/aggiorna-scadenza` | scadenzario_fornitori | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/scadenzario-fornitori/aging` | scadenzario_fornitori | sì | — | — | — | — | tenere | in uso: FE |

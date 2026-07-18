@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **993 endpoint** in **104 gruppi**.
+> Totale **996 endpoint** in **105 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 635 · ext esterni = 76 · — da verificare = 282
+**Riepilogo uso:** ✓ frontend = 638 · ext esterni = 76 · — da verificare = 282
 
 ## AI Parser  (11)
 
@@ -1333,6 +1333,14 @@
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/riconciliazione/stats` | ✓ | riconciliazione_stats_api |
+
+## Ritenute  (3)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/ritenute` | ✓ | ritenute |
+| GET | `/api/ritenute/codici-ravvedimento` | ✓ | ritenute |
+| POST | `/api/ritenute/scan` | ✓ | ritenute |
 
 ## Scadenzario  (6)
 
