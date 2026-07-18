@@ -558,6 +558,15 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-PN-RICONCILIA] errore: {e}")
         try:
+            from app.database import Database
+            from app.services.stipendi_bonifici import associa_bonifici_stipendi
+            r = await associa_bonifici_stipendi(Database.get_db())
+            if r.get("bonifici_associati"):
+                logger.info(f"[SCHEDULER-STIPENDI-BONIFICI] associati={r['bonifici_associati']} "
+                            f"complete={r['righe_stipendio_completate']}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-STIPENDI-BONIFICI] errore: {e}")
+        try:
             from app.routers.fatture_module.crud import pulisci_duplicati_invoices
             r = await pulisci_duplicati_invoices()
             if r.get("fatture_eliminate"):

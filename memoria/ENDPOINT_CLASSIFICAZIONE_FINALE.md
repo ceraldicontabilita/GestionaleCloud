@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 998 · tenere: 656 · verificare: 321 · admin-only (migrazione/manutenzione): 21
+**Totale endpoint:** 1000 · tenere: 658 · verificare: 321 · admin-only (migrazione/manutenzione): 21
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -696,6 +696,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/openapi/xbrl/status` | openapi_it | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/openapi/xbrl/storico-richieste` | openapi_it | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/operazioni-da-confermare/smart/analizza` | operazioni_module.smart | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/operazioni-da-confermare/smart/associa-stipendi-auto` | operazioni_module | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/operazioni-da-confermare/smart/banca-veloce` | operazioni_module.smart | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/operazioni-da-confermare/smart/cerca-f24` | operazioni_module.smart | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/operazioni-da-confermare/smart/cerca-fatture` | operazioni_module.smart | sì | — | — | — | — | tenere | in uso: FE |
@@ -705,6 +706,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/operazioni-da-confermare/smart/movimento/{movimento_id}` | operazioni_module.smart | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/operazioni-da-confermare/smart/riconcilia-auto` | operazioni_module.smart | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/operazioni-da-confermare/smart/riconcilia-manuale` | operazioni_module.smart | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/operazioni-da-confermare/smart/riconcilia-stipendio` | operazioni_module | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/pagamenti/assegno-multi-fatture` | multi_pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/pagamenti/fattura-multi-metodo` | multi_pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/pagamenti/fattura/{fattura_id}` | multi_pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

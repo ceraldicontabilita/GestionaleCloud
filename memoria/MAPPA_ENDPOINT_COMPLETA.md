@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **998 endpoint** in **105 gruppi**.
+> Totale **1000 endpoint** in **105 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 639 · ext esterni = 76 · — da verificare = 283
+**Riepilogo uso:** ✓ frontend = 640 · ext esterni = 76 · — da verificare = 284
 
 ## AI Parser  (11)
 
@@ -1047,11 +1047,12 @@
 | GET | `/api/openapi/xbrl/status` | ext | openapi_it |
 | GET | `/api/openapi/xbrl/storico-richieste` | ext | openapi_it |
 
-## Operazioni  (10)
+## Operazioni  (12)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/operazioni-da-confermare/smart/analizza` | ✓ | operazioni_module.smart |
+| POST | `/api/operazioni-da-confermare/smart/associa-stipendi-auto` | — | operazioni_module |
 | GET | `/api/operazioni-da-confermare/smart/banca-veloce` | ✓ | operazioni_module.smart |
 | GET | `/api/operazioni-da-confermare/smart/cerca-f24` | ✓ | operazioni_module.smart |
 | GET | `/api/operazioni-da-confermare/smart/cerca-fatture` | — | operazioni_module.smart |
@@ -1061,6 +1062,7 @@
 | GET | `/api/operazioni-da-confermare/smart/movimento/{movimento_id}` | — | operazioni_module.smart |
 | POST | `/api/operazioni-da-confermare/smart/riconcilia-auto` | — | operazioni_module.smart |
 | POST | `/api/operazioni-da-confermare/smart/riconcilia-manuale` | ✓ | operazioni_module.smart |
+| POST | `/api/operazioni-da-confermare/smart/riconcilia-stipendio` | ✓ | operazioni_module |
 
 ## PIN Login  (2)
 

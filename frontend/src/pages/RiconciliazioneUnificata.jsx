@@ -412,9 +412,29 @@ export default function RiconciliazioneUnificata() {
   const handleConferma = async (movimento, tipo, associazioni) => {
     setProcessing(movimento.movimento_id || movimento.id);
     try {
+      const tipoEff = tipo || movimento.tipo;
+      if (tipoEff === 'stipendio' && !movimento.movimento_id) {
+        // Riga stipendio pendente (prima_nota_salari): cerca in estratto
+        // conto il bonifico "FAVORE <nome dipendente>" e associa (18/07/2026)
+        const res = await api.post('/api/operazioni-da-confermare/smart/riconcilia-stipendio', {
+          stipendio_id: movimento.id,
+        });
+        if (res.data?.success) {
+          const d = res.data.dettaglio?.[0];
+          toast.success('Bonifico associato', {
+            description: d ? `${d.dipendente}: € ${d.importo} del ${d.data_bonifico}` : undefined,
+          });
+        } else {
+          toast.error('Nessun bonifico trovato', {
+            description: res.data?.message,
+          });
+        }
+        loadAllData();
+        return;
+      }
       await api.post('/api/operazioni-da-confermare/smart/riconcilia-manuale', {
         movimento_id: movimento.movimento_id,
-        tipo: tipo || movimento.tipo,
+        tipo: tipoEff,
         associazioni: associazioni || movimento.suggerimenti?.slice(0, 1) || [],
         categoria: movimento.categoria,
       });
@@ -434,7 +454,7 @@ export default function RiconciliazioneUnificata() {
     setProcessing(movimento.movimento_id || movimento.id);
     try {
       await api.post('/api/operazioni-da-confermare/smart/ignora', {
-        movimento_id: movimento.movimento_id,
+        movimento_id: movimento.movimento_id || movimento.id,
       });
       toast.success('Movimento ignorato');
       loadAllData();

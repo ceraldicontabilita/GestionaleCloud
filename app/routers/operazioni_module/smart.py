@@ -326,12 +326,12 @@ async def cerca_stipendi_per_associazione(
     """Cerca stipendi per associazione manuale."""
     db = Database.get_db()
     
-    query = {"riconciliato": {"$ne": True}}
-    
+    query = {"riconciliato": {"$ne": True}, "ignorato": {"$ne": True}}
+
     if importo:
         tolleranza = importo * 0.05
         query["importo"] = {"$gte": importo - tolleranza, "$lte": importo + tolleranza}
-    
+
     if dipendente:
         query["$or"] = [
             {"nome_dipendente": {"$regex": dipendente, "$options": "i"}},
