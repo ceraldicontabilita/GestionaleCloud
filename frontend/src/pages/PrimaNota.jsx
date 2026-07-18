@@ -195,11 +195,22 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
 
   useEffect(() => { setPagina(1); }, [mese, cerca, fCategoria, fTipo]);
 
+  // ORDINE DENTRO LA GIORNATA (regola utente 17/07/2026): prima il
+  // CORRISPETTIVO, poi l'uscita del POS, poi i pagamenti delle fatture,
+  // per ultimo il versamento in banca. Vale sia a video sia per il
+  // calcolo del saldo progressivo.
+  const rango = m => {
+    if (m.tipo === 'entrata') return m.categoria === 'Corrispettivi' ? 0 : 1;
+    if (m.categoria === 'POS Verso Banca' || m.categoria === 'Corrispettivi POS') return 2;
+    if (m.categoria === 'Versamento Banca') return 4;
+    return 3; // fatture, utenze e altre uscite
+  };
+
   // SALDO PROGRESSIVO CONTINUO: sempre in ordine CRONOLOGICO su TUTTO
   // l'anno (mai sulla selezione filtrata), partendo dal riporto.
   const cronologico = (a, b) =>
     (a.data || '').localeCompare(b.data || '') ||
-    (a.tipo === 'entrata' ? 0 : 1) - (b.tipo === 'entrata' ? 0 : 1) ||
+    rango(a) - rango(b) ||
     (a.created_at || '').localeCompare(b.created_at || '');
   const saldoDi = useMemo(() => {
     const mappa = {};
@@ -227,7 +238,7 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
     }
     return [...lista].sort((a, b) =>
       (b.data || '').localeCompare(a.data || '') ||
-      (a.tipo === 'entrata' ? 0 : 1) - (b.tipo === 'entrata' ? 0 : 1) ||
+      rango(a) - rango(b) ||
       (a.created_at || '').localeCompare(b.created_at || ''));
   }, [movimenti, mese, fCategoria, fTipo, cerca]);
 
@@ -721,16 +732,35 @@ export default function PrimaNota() {
   };
   useEffect(() => { carica(); }, [anno]);
 
-  const modificaRiporto = async tipo => {
+  // Modale dedicata (niente window.prompt: su telefono/PWA è inaffidabile)
+  const [riportoModal, setRiportoModal] = useState(null); // {tipo}
+  const [riportoInput, setRiportoInput] = useState('');
+  const [riportoErr, setRiportoErr] = useState('');
+  const [riportoSaving, setRiportoSaving] = useState(false);
+
+  const modificaRiporto = tipo => {
     const attuale = (tipo === 'cassa' ? cassa : banca).saldo_precedente || 0;
-    const input = window.prompt(
-      `Saldo iniziale ${tipo.toUpperCase()} al 01/01/${anno} (riporto anno precedente):`,
-      String(attuale).replace('.', ','));
-    if (input === null) return;
-    const importo = parseImportoIT(input);
-    if (importo === null) return;
-    await api.put('/api/prima-nota/saldo-iniziale', { tipo, anno, importo });
-    carica();
+    setRiportoInput(attuale ? String(attuale).replace('.', ',') : '');
+    setRiportoErr('');
+    setRiportoModal({ tipo });
+  };
+
+  const salvaRiporto = async () => {
+    const importo = parseImportoIT(riportoInput);
+    if (importo === null) {
+      setRiportoErr('Scrivi un importo valido, es. 12.500,00');
+      return;
+    }
+    setRiportoSaving(true);
+    try {
+      await api.put('/api/prima-nota/saldo-iniziale', { tipo: riportoModal.tipo, anno, importo });
+      setRiportoModal(null);
+      carica();
+    } catch (e) {
+      setRiportoErr(e.response?.data?.message || e.response?.data?.detail || e.message);
+    } finally {
+      setRiportoSaving(false);
+    }
   };
 
   const datiAttivi = sezione === 'banca' ? banca : cassa;
@@ -817,6 +847,43 @@ export default function PrimaNota() {
             onModificaRiporto={() => modificaRiporto(sezione)}
           />
         </>
+      )}
+
+      {riportoModal && (
+        <div
+          onClick={() => setRiportoModal(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(15,39,68,0.55)', zIndex: 1000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14,
+          }}
+        >
+          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, padding: 18, width: '100%', maxWidth: 400 }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: 15, color: BLU }}>
+              🏁 Saldo iniziale {riportoModal.tipo === 'cassa' ? 'Cassa' : 'Banca'} al 01/01/{anno}
+            </h3>
+            <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 10 }}>
+              È il riporto dell'anno precedente: il saldo che avevi in {riportoModal.tipo} a fine {anno - 1}.
+              Tutti i saldi progressivi ripartono da qui.
+            </div>
+            <input
+              placeholder="es. 12.500,00" inputMode="decimal" value={riportoInput} autoFocus
+              onChange={e => setRiportoInput(e.target.value)}
+              style={{ width: '100%', padding: '11px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 16, boxSizing: 'border-box', marginBottom: 8 }}
+            />
+            {riportoErr && <div style={{ color: ROSSO, fontSize: 13, marginBottom: 8 }}>{riportoErr}</div>}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setRiportoModal(null)} style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #d1d5db', background: 'white', cursor: 'pointer' }}>
+                Annulla
+              </button>
+              <button
+                onClick={salvaRiporto} disabled={riportoSaving}
+                style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: BLU, color: 'white', fontWeight: 700, cursor: 'pointer', opacity: riportoSaving ? 0.6 : 1 }}
+              >
+                {riportoSaving ? '⏳…' : '💾 Salva'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

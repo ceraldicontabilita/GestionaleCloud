@@ -440,6 +440,24 @@ async def ripristina_provvisori_metodo_errato(
                 {"_id": 0, "supplier_vat": 1, "cedente_piva": 1, "invoice_number": 1, "supplier_name": 1},
             )
             if not fattura:
+                # Movimento ORFANO: la fattura collegata non esiste più in
+                # archivio — un pagamento automatico senza documento non ha
+                # ragione di restare nei saldi (caso FLA 4-FE, 02/01/2026).
+                report[lato].append({
+                    "fattura": "(fattura inesistente)",
+                    "fornitore": (mov.get("descrizione") or "")[:40],
+                    "importo": mov.get("importo"),
+                    "data": mov.get("data"),
+                    "metodo_fornitore": "-",
+                    "destinazione_giusta": "eliminato (orfano)",
+                })
+                corretti += 1
+                if not dry_run:
+                    await db[collection].update_one(
+                        {"id": mov["id"]},
+                        {"$set": {"status": "deleted",
+                                  "deleted_reason": "movimento_auto_orfano_senza_fattura"}},
+                    )
                 continue
             piva = str(fattura.get("supplier_vat") or fattura.get("cedente_piva") or "").strip()
             destinazione = classifica_metodo_fornitore(metodo_per_piva.get(piva, ""))
@@ -987,9 +1005,32 @@ async def dedup_fatture_prima_nota(
                 # fallback: numero + importo + data (protegge da omonimie)
                 chiave = f"num:{num}|imp:{m.get('importo')}|d:{m.get('data')}"
             else:
-                continue  # non fattura, ignoro
+                continue  # non fattura, ignoro (le anonime sono gestite sotto)
 
             gruppi.setdefault(chiave, []).append(m)
+
+        # Righe ANONIME (senza fattura_id/riferimento/numero, es. vecchio
+        # sync_fatture: "Fattura  - GB FOOD SRL"): sono duplicati se esiste
+        # una riga IDENTIFICATA con stessa data, stesso importo e lo stesso
+        # fornitore citato nella descrizione (caso GB FOOD 02/01/2026,
+        # segnalato dall'utente 18/07: la stessa fattura appariva due volte).
+        identificate: Dict[tuple, list] = {}
+        for m in movimenti:
+            if m.get("fattura_id") or (m.get("riferimento") or "").startswith("FATT-") or m.get("numero_fattura"):
+                k = (m.get("data"), round(float(m.get("importo") or 0), 2))
+                identificate.setdefault(k, []).append((m.get("descrizione") or "").upper())
+        anonime_dup = []
+        for m in movimenti:
+            if m.get("fattura_id") or (m.get("riferimento") or "").startswith("FATT-") or m.get("numero_fattura"):
+                continue
+            if m.get("categoria") != "Fatture" and "FATT" not in (m.get("descrizione") or "").upper():
+                continue
+            nome = (m.get("descrizione") or "").split(" - ")[-1].strip().upper()
+            if len(nome) < 4:
+                continue
+            k = (m.get("data"), round(float(m.get("importo") or 0), 2))
+            if any(nome in d for d in identificate.get(k, [])):
+                anonime_dup.append(m)
 
         duplicati_trovati = []
         ids_da_eliminare = []
@@ -1009,6 +1050,18 @@ async def dedup_fatture_prima_nota(
                 "eliminati_ids": [d.get("id") for d in da_eliminare],
             })
             ids_da_eliminare.extend(d.get("id") for d in da_eliminare if d.get("id"))
+
+        for m in anonime_dup:
+            duplicati_trovati.append({
+                "chiave": f"anonima:{m.get('data')}|{m.get('importo')}",
+                "tenuto_id": "(la riga identificata con fattura)",
+                "tenuto_importo": m.get("importo"),
+                "tenuto_data": m.get("data"),
+                "eliminati_count": 1,
+                "eliminati_ids": [m.get("id")],
+            })
+            if m.get("id"):
+                ids_da_eliminare.append(m["id"])
 
         # Soft delete (reversibile)
         deleted = 0
