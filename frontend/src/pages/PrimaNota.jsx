@@ -1,3667 +1,823 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useMemo, useState, useEffect } from 'react';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import {
-  formatEuro,
-  formatEuroD,
-  formatDateIT,
-  STYLES,
-  COLORS,
-  button,
-  badge,
-  useIsMobile,
-  RG,
-  pagePad,
-} from '../lib/utils';
+import { formatEuroD, formatDateIT, useIsMobile } from '../lib/utils';
 import { useHashState } from '../hooks/useHashState';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import ModalFattura from '../components/ModalFattura';
 
 /**
- * Prima Nota - Due sezioni separate: Cassa e Banca
+ * PRIMA NOTA — ricostruita da zero (richiesta utente 17/07/2026).
  *
- * CASSA:
- * - DARE (Entrate): Corrispettivi (al lordo IVA), Finanziamento soci
- * - AVERE (Uscite): POS, Versamenti, Fatture pagate cassa
+ * LOGICA UNICA, SEMPLICE:
+ *  - Registro con SALDO PROGRESSIVO CONTINUO: riporto iniziale (modificabile)
+ *    + ogni movimento aggiorna il saldo in ordine cronologico.
+ *  - CASSA: si alimenta dal corrispettivo giornaliero — il TOTALE in DARE
+ *    (entrata "Corrispettivi") e in AVERE la sola quota del PAGAMENTO
+ *    ELETTRONICO (uscita "POS Verso Banca"). Più versamenti, prelevamenti
+ *    e fatture pagate in contanti.
+ *  - BANCA: solo operazioni del gestionale (Corrispettivi POS, Versamenti,
+ *    Fatture, Utenze, F24, Stipendi, Assegni, PayPal). L'estratto conto
+ *    NON viene sommato qui: sta nella pagina Riconciliazione.
+ *  - A video dal più recente al meno recente; dentro la giornata prima
+ *    l'entrata del corrispettivo, poi l'uscita POS.
  *
- * BANCA:
- * - AVERE (Uscite): Fatture riconciliate (pagate bonifico/assegno)
+ * Niente card doppie, niente pannelli paralleli: 4 numeri (Riporto,
+ * Entrate, Uscite, Saldo) e il registro.
  */
-export default function PrimaNota() {
-  const isMobile = useIsMobile();
-  // La pagina è responsive e funziona sia su desktop che mobile
-  return <PrimaNotaDesktop />;
+
+const BLU = '#0f2744';
+const VERDE = '#16a34a';
+const ROSSO = '#dc2626';
+const MESI = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
+const PER_PAGINA = 50;
+
+const CATEGORIE = {
+  cassa: ['Corrispettivi', 'POS Verso Banca', 'Versamento Banca', 'Prelevamento Banca',
+    'Fatture', 'Spese', 'Altro'],
+  banca: ['Corrispettivi POS', 'Versamento Banca', 'Prelevamento Banca', 'Fatture', 'Utenze',
+    'Pagamento PayPal', 'Rimborso', 'Stipendi', 'Commissioni bancarie', 'Assegni', 'F24', 'Altro'],
+};
+
+const eur = v => formatEuroD(v || 0);
+
+function parseImportoIT(input) {
+  const v = parseFloat(String(input ?? '').replace(/\./g, '').replace(',', '.'));
+  return isNaN(v) ? null : v;
 }
 
-function PrimaNotaDesktop() {
-  const isMobile = useIsMobile();
-  const navigate = useNavigate();
-  const confirm = useConfirm();
-  const { anno: selectedYear } = useAnnoGlobale();
-  const currentYear = new Date().getFullYear();
-
-  // Data default: se anno globale = anno corrente usa oggi, altrimenti usa 1 gennaio dell'anno selezionato
-  const getDefaultDate = year => {
-    if (year === currentYear) return new Date().toISOString().split('T')[0];
-    return `${year}-01-01`;
-  };
-  const today = getDefaultDate(selectedYear);
-
-  // Anno selezionato viene dal context globale
-  const [_availableYears, setAvailableYears] = useState([currentYear]);
-
-  // Deep link: sezione e mese sincronizzati con URL hash
-  // es: /prima-nota#sezione=banca&mese=3
-  const [hs, setHs] = useHashState({ sezione: 'cassa', mese: '' });
-  const activeSection = hs.sezione || 'cassa';
-  const setActiveSection = v => setHs('sezione', v);
-  const selectedMonth = hs.mese === '' ? null : parseInt(hs.mese, 10);
-  const setSelectedMonth = v => setHs('mese', v === null ? '' : String(v));
-
-  // Data state
-  const [cassaData, setCassaData] = useState({
-    movimenti: [],
-    saldo: 0,
-    totale_entrate: 0,
-    totale_uscite: 0,
-  });
-  const [bancaData, setBancaData] = useState({
-    movimenti: [],
-    saldo: 0,
-    totale_entrate: 0,
-    totale_uscite: 0,
-  });
-  const [loading, setLoading] = useState(true);
-
-  // Provvisori
-  const [provvisori, setProvvisori] = useState([]);
-  // Fatture annunciate dalle notifiche email Aruba, XML non ancora arrivato
-  const [attese, setAttese] = useState([]);
-  const [provLoading, setProvLoading] = useState(false);
-  // Modale "Pagamento parziale" (Misto) — sostituisce il vecchio prompt()
-  // del browser, che non mostrava un riepilogo e non permetteva di
-  // correggere l'importo prima di confermare.
-  const [parzialeModal, setParzialeModal] = useState(null); // provvisorio | null
-  const [parzialeImportoCassa, setParzialeImportoCassa] = useState('');
-  const [parzialeSaving, setParzialeSaving] = useState(false);
-  const [resolveModal, setResolveModal] = useState(null);
-  const [feedbackModal, setFeedbackModal] = useState(null);
-  const [fatturaView, setFatturaView] = useState(null);
-
-  // Quick entry forms - CASSA
-  const [corrispettivo, setCorrispettivo] = useState({ data: today, importo: '' });
-  const [pos, setPos] = useState({ data: today, pos1: '', pos2: '', pos3: '' });
-  const [versamento, setVersamento] = useState({ data: today, importo: '' });
-  const [movimento, setMovimento] = useState({
-    data: today,
-    tipo: 'uscita',
-    importo: '',
-    descrizione: '',
-  });
-
-  // Saving states
-  const [savingCorrisp, setSavingCorrisp] = useState(false);
-  const [savingPos, setSavingPos] = useState(false);
-  const [savingVers, setSavingVers] = useState(false);
-  const [savingMov, setSavingMov] = useState(false);
-  const [importingCSV, setImportingCSV] = useState(false);
-  const cassaCSVRef = useRef(null);
-  const bancaCSVRef = useRef(null);
-
-  // Nomi mesi
-  const mesiNomi = [
-    'Gen',
-    'Feb',
-    'Mar',
-    'Apr',
-    'Mag',
-    'Giu',
-    'Lug',
-    'Ago',
-    'Set',
-    'Ott',
-    'Nov',
-    'Dic',
-  ];
-
-  // Carica anni disponibili all'avvio
-  useEffect(() => {
-    loadAvailableYears();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Carica dati quando cambia l'anno o il mese selezionato
-  useEffect(() => {
-    loadAllData();
-    // Reset form dates quando cambia anno
-    const defDate = getDefaultDate(selectedYear);
-    setCorrispettivo(p => ({ ...p, data: defDate }));
-    setPos(p => ({ ...p, data: defDate }));
-    setVersamento(p => ({ ...p, data: defDate }));
-    setMovimento(p => ({ ...p, data: defDate }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedYear, selectedMonth]);
-
-  // Funzione per caricare gli anni disponibili
-  const loadAvailableYears = async () => {
-    try {
-      const res = await api.get('/api/prima-nota/anni-disponibili');
-      const years = res.data.anni || [currentYear];
-      // Assicurati che l'anno corrente sia sempre presente
-      if (!years.includes(currentYear)) {
-        years.push(currentYear);
-      }
-      setAvailableYears(years.sort((a, b) => b - a)); // Ordina decrescente
-    } catch (error) {
-      console.error('Error loading available years:', error);
-      setAvailableYears([currentYear]);
-    }
-  };
-
-  const loadAllData = async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams();
-      params.append('limit', '10000');
-      params.append('anno', selectedYear.toString());
-
-      // Se è selezionato un mese specifico, aggiungi filtro date
-      if (selectedMonth !== null) {
-        const monthStr = String(selectedMonth + 1).padStart(2, '0');
-        const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
-        params.append('data_da', `${selectedYear}-${monthStr}-01`);
-        params.append('data_a', `${selectedYear}-${monthStr}-${daysInMonth}`);
-      }
-
-      // MODELLO SEMPLICE (regola utente 17/07/2026: "in banca ogni operazione
-      // registrata NON in base all'estratto conto, ma per operazione"):
-      // la Prima Nota Banca è un registro di SOLE operazioni del gestionale
-      // (Corrispettivi POS, Versamenti, Fatture, Utenze, F24, Stipendi,
-      // Assegni, PayPal...) — identico alla Cassa. L'estratto conto NON
-      // viene più fuso qui: resta nella pagina Riconciliazione come
-      // controllo. Prima la fusione contava due volte le stesse uscite
-      // (pagamento registrato dal gestionale + addebito bancario con data
-      // diversa) e i saldi risultavano errati.
-      const [cassaRes, bancaRes, provRes, atteseRes] = await Promise.all([
-        api.get(`/api/prima-nota/cassa?${params}`),
-        api.get(`/api/prima-nota/banca?${params}`),
-        api
-          .get(`/api/prima-nota/provvisori?anno=${selectedYear}`)
-          .catch(() => ({ data: { provvisori: [] } })),
-        api
-          .get(`/api/prima-nota/attese?anno=${selectedYear}`)
-          .catch(() => ({ data: { attese: [] } })),
-      ]);
-      setProvvisori(provRes.data?.provvisori || []);
-      setAttese(atteseRes.data?.attese || []);
-
-      setCassaData(cassaRes.data);
-      setBancaData(bancaRes.data);
-
-      // Aggiorna anni disponibili dopo caricamento
-      loadAvailableYears();
-    } catch (error) {
-      console.error('Error loading prima nota:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getErrorMessage = error =>
-    error?.response?.data?.detail || error?.response?.data?.message || error?.message || 'Errore imprevisto';
-
-  // Riporto iniziale (saldo al 1° gennaio) modificabile a mano: quando
-  // impostato sostituisce il riporto calcolato dagli anni precedenti
-  // (PUT /api/prima-nota/saldo-iniziale, vedi prima_nota_module/stats.py).
-  const handleModificaRiporto = async (tipo, valoreAttuale) => {
-    const input = window.prompt(
-      `Riporto iniziale ${tipo === 'cassa' ? 'Cassa' : 'Banca'} al 1° gennaio ${selectedYear} (es. saldo finale ${selectedYear - 1}):`,
-      valoreAttuale != null ? String(valoreAttuale) : '0'
-    );
-    if (input === null) return;
-    const importo = parseFloat(String(input).replace(/\./g, '').replace(',', '.'));
-    if (Number.isNaN(importo)) {
-      showFeedback('Riporto non valido', `"${input}" non è un importo. Usa il formato 12345,67.`, 'error');
-      return;
-    }
-    try {
-      await api.put('/api/prima-nota/saldo-iniziale', {
-        tipo,
-        anno: selectedYear,
-        importo,
-        note: 'Inserito manualmente da Prima Nota',
-      });
-      loadAllData();
-    } catch (error) {
-      showFeedback('Errore salvataggio riporto', getErrorMessage(error), 'error');
-    }
-  };
-
-  const showFeedback = (title, message, tone = 'info') => {
-    setFeedbackModal({ title, message, tone });
-  };
-
-  const confirmYearMismatch = async data => {
-    if (!data || data.startsWith(selectedYear.toString())) return true;
-    return confirm({
-      title: 'Data fuori anno',
-      message: `La data ${formatDateIT(data)} non appartiene all'anno ${selectedYear} selezionato in alto.\n\nVuoi procedere comunque?`,
-      confirmText: 'Procedi',
-      cancelText: 'Correggi data',
-      variant: 'warning',
-    });
-  };
-
-  const handleResolveProvvisorio = async (provvisorio, metodo) => {
-    if (!provvisorio?.fattura_id) return;
-    if (metodo === 'misto') {
-      setParzialeImportoCassa('');
-      setParzialeModal(provvisorio);
-      return;
-    }
-
-    try {
-      const res = await api.post('/api/prima-nota/provvisori/conferma', {
-        fattura_id: provvisorio.fattura_id,
-        metodo,
-      });
-
-      if (metodo === 'sospesa') {
-        if (res.data?.success) {
-          setProvvisori(v =>
-            v.map(x => (x.fattura_id === provvisorio.fattura_id ? { ...x, suggerimento: 'sospesa' } : x))
-          );
-        } else {
-          showFeedback(
-            'Operazione non completata',
-            `Il backend ha risposto senza conferma valida.\n\n${JSON.stringify(res.data)}`,
-            'warning'
-          );
-        }
-        return;
-      }
-
-      setProvvisori(v => v.filter(x => x.fattura_id !== provvisorio.fattura_id));
-    } catch (error) {
-      showFeedback('Errore conferma provvisorio', getErrorMessage(error), 'danger');
-    }
-  };
-
-  // La sincronizzazione fatture/corrispettivi/riconciliazione gira in
-  // AUTOMATICO sul server ogni 30 minuti (job "Automazioni Prima Nota"):
-  // nessun pulsante manuale da ricordare.
-
-  // Import CSV Prima Nota Cassa
-  // === I movimenti di cassa si inseriscono manualmente (corrispettivi, POS, versamenti) ===
-  // === L'estratto conto bancario si importa dalla sezione Estratto Conto ===
-
-  // Import CSV estratto conto (aggiornamento incrementale - salta duplicati)
-  const handleImportCSVBanca = async e => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setImportingCSV(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await api.post('/api/estratto-conto-movimenti/import', formData);
-      const sync = res.data.sync_prima_nota || {};
-      const msg = `${res.data.message}\nInseriti: ${res.data.movimenti_importati || res.data.inseriti || 0}\nDuplicati saltati: ${res.data.duplicati_saltati || 0}\nRegistrati in Prima Nota Banca: ${sync.inseriti_banca || 0}\nRegistrati in Prima Nota Cassa (prelievi/versamenti): ${sync.inseriti_cassa || 0}`;
-      showFeedback('Import completato', msg);
-      loadAllData();
-    } catch (error) {
-      showFeedback('Errore import', getErrorMessage(error), 'danger');
-    } finally {
-      setImportingCSV(false);
-      if (bancaCSVRef.current) bancaCSVRef.current.value = '';
-    }
-  };
-
-  // FORZA REIMPORT: cancella anni del CSV e reinserisce tutto (per correggere saldo)
-  const bancaForceReimportRef = useRef(null);
-  const [forceReimporting, setForceReimporting] = useState(false);
-
-  const handleForceReimportBanca = async e => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const confirmed = await confirm({
-      title: 'Forza reimport estratto conto',
-      message:
-        'Questa operazione cancellerà tutti i movimenti degli anni presenti nel CSV e li reinserirà completamente, incluse eventuali commissioni duplicate.\n\nVuoi continuare?',
-      confirmText: 'Reimporta',
-      cancelText: 'Annulla',
-      variant: 'warning',
-    });
-    if (!confirmed) {
-      if (bancaForceReimportRef.current) bancaForceReimportRef.current.value = '';
-      return;
-    }
-
-    setForceReimporting(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await api.post('/api/estratto-conto-movimenti/force-reimport', formData);
-      const d = res.data;
-      showFeedback(
-        'Reimport completato',
-        `✅ ${d.message}\n\nAnni aggiornati: ${d.anni_aggiornati?.join(', ')}\nRecord cancellati: ${d.record_cancellati}\nMovimenti importati: ${d.movimenti_importati}\n\nEntrate: € ${d.totale_entrate?.toLocaleString('it-IT')}\nUscite: € ${d.totale_uscite?.toLocaleString('it-IT')}\nSaldo: € ${d.saldo?.toLocaleString('it-IT')}`
-      );
-      loadAllData();
-    } catch (error) {
-      showFeedback('Errore reimport', getErrorMessage(error), 'danger');
-    } finally {
-      setForceReimporting(false);
-      if (bancaForceReimportRef.current) bancaForceReimportRef.current.value = '';
-    }
-  };
-
-  // Visualizza F24 — fetch autenticato (via api.js, che allega il JWT).
-  // Bug segnalato dall'utente 15/07/2026: il bottone era un <a href> diretto
-  // a /api/f24/{id}, che richiede login (get_current_user) ma un <a> non
-  // porta con sé l'header Authorization — risultato: 401 "Authentication
-  // required" ad ogni click. Le uniche route PDF già esistenti per l'F24
-  // sono pubbliche (nessun controllo accesso): usarle qui avrebbe esposto
-  // documenti fiscali a chiunque avesse il link, quindi si passa dal
-  // dettaglio JSON autenticato invece che da un link diretto al PDF.
-  const handleViewF24 = async f24Id => {
-    try {
-      const res = await api.get(`/api/f24/${f24Id}`);
-      const f24 = res.data;
-      if (f24?.error) {
-        showFeedback('F24 non trovato', f24.error, 'warning');
-        return;
-      }
-      const righe = Object.entries(f24 || {})
-        .filter(([k]) => !['_id', 'id'].includes(k))
-        .map(
-          ([k, v]) =>
-            `<tr><td style="padding:6px 10px;font-weight:bold;border-bottom:1px solid #e5e7eb">${k}</td>` +
-            `<td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">${
-              typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v ?? '')
-            }</td></tr>`
-        )
-        .join('');
-      const win = window.open('', '_blank');
-      win.document.write(
-        `<html><head><title>F24 ${f24Id}</title><style>
-          body{font-family:Arial,sans-serif;padding:20px;color:#0f2744}
-          table{width:100%;border-collapse:collapse;font-size:13px}
-        </style></head><body><h2>Dettaglio F24</h2><table>${righe}</table></body></html>`
-      );
-      win.document.close();
-    } catch (error) {
-      showFeedback('Errore apertura F24', getErrorMessage(error), 'danger');
-    }
-  };
-
-  // Download template CSV
-  const handleDownloadTemplate = async tipo => {
-    try {
-      const res = await api.get(`/api/prima-nota/${tipo}/template-csv`, { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `template_prima_nota_${tipo}.csv`;
-      a.click();
-    } catch (error) {
-      showFeedback('Errore download template', getErrorMessage(error), 'danger');
-    }
-  };
-
-  // === SAVE HANDLERS CASSA ===
-
-  // Corrispettivo (DARE/Entrata) - Importo al LORDO IVA
-  // NOTA: Questo è un dato PROVVISORIO per vedere il saldo cassa.
-  // Quando arriva l'XML dei corrispettivi, questo verrà SOVRASCRITTO.
-  const handleSaveCorrispettivo = async () => {
-    if (!corrispettivo.importo) {
-      showFeedback('Dato mancante', "Inserisci l'importo del corrispettivo.", 'warning');
-      return;
-    }
-    if (!(await confirmYearMismatch(corrispettivo.data))) return;
-    setSavingCorrisp(true);
-    try {
-      await api.post('/api/prima-nota/cassa', {
-        data: corrispettivo.data,
-        tipo: 'entrata', // DARE
-        importo: parseFloat(corrispettivo.importo),
-        descrizione: `Corrispettivo giornaliero ${corrispettivo.data} (provvisorio)`,
-        categoria: 'Corrispettivi',
-        source: 'manual_entry',
-        provvisorio: true, // Sarà sovrascritto quando arriva XML
-      });
-      setCorrispettivo({ data: today, importo: '' });
-      loadAllData();
-    } catch (error) {
-      showFeedback('Errore salvataggio corrispettivo', getErrorMessage(error), 'danger');
-    } finally {
-      setSavingCorrisp(false);
-    }
-  };
-
-  // POS (AVERE/Uscita) - Escono dalla cassa - Campo unificato
-  // NOTA: Questo è un dato PROVVISORIO per vedere il saldo cassa.
-  // Quando arriva l'XML dei corrispettivi, questo verrà SOVRASCRITTO.
-  const handleSavePos = async () => {
-    const totale = parseFloat(pos.pos1) || 0;
-    if (totale === 0) {
-      showFeedback('Dato mancante', "Inserisci l'importo POS.", 'warning');
-      return;
-    }
-    if (!(await confirmYearMismatch(pos.data))) return;
-    setSavingPos(true);
-    try {
-      await api.post('/api/prima-nota/cassa', {
-        data: pos.data,
-        tipo: 'uscita', // AVERE - escono dalla cassa
-        importo: totale,
-        descrizione: `POS giornaliero ${pos.data} (provvisorio)`,
-        categoria: 'POS',
-        source: 'manual_pos',
-        provvisorio: true, // Sarà sovrascritto quando arriva XML
-      });
-      setPos({ data: today, pos1: '', pos2: '', pos3: '' });
-      loadAllData();
-    } catch (error) {
-      showFeedback('Errore salvataggio POS', getErrorMessage(error), 'danger');
-    } finally {
-      setSavingPos(false);
-    }
-  };
-
-  // Versamento (AVERE/Uscita da cassa)
-  const handleSaveVersamento = async () => {
-    if (!versamento.importo) {
-      showFeedback('Dato mancante', "Inserisci l'importo del versamento.", 'warning');
-      return;
-    }
-    if (!(await confirmYearMismatch(versamento.data))) return;
-    setSavingVers(true);
-    try {
-      await api.post('/api/prima-nota/cassa', {
-        data: versamento.data,
-        tipo: 'uscita', // AVERE
-        importo: parseFloat(versamento.importo),
-        descrizione: `Versamento in banca ${versamento.data}`,
-        categoria: 'Versamento Banca',
-        source: 'manual_entry',
-      });
-      setVersamento({ data: today, importo: '' });
-      loadAllData();
-      showFeedback('Versamento salvato', 'Il movimento è stato registrato correttamente.');
-    } catch (error) {
-      showFeedback('Errore salvataggio versamento', getErrorMessage(error), 'danger');
-    } finally {
-      setSavingVers(false);
-    }
-  };
-
-  // Movimento generico
-  const handleSaveMovimento = async () => {
-    if (!movimento.importo || !movimento.descrizione) {
-      showFeedback('Campi mancanti', 'Compila importo e descrizione del movimento.', 'warning');
-      return;
-    }
-    if (!(await confirmYearMismatch(movimento.data))) return;
-    setSavingMov(true);
-    try {
-      await api.post('/api/prima-nota/cassa', {
-        data: movimento.data,
-        tipo: movimento.tipo,
-        importo: parseFloat(movimento.importo),
-        descrizione: movimento.descrizione,
-        categoria: movimento.tipo === 'entrata' ? 'Incasso' : 'Spese',
-        source: 'manual_entry',
-      });
-      setMovimento({ data: today, tipo: 'uscita', importo: '', descrizione: '' });
-      loadAllData();
-      showFeedback('Movimento salvato', 'Il movimento è stato registrato correttamente.');
-    } catch (error) {
-      showFeedback('Errore salvataggio movimento', getErrorMessage(error), 'danger');
-    } finally {
-      setSavingMov(false);
-    }
-  };
-
-  const handleDeleteMovimento = async (tipo, id) => {
-    try {
-      const res = await api.delete(`/api/prima-nota/${tipo}/${id}`);
-      if (res.data?.require_force) {
-        const avvisi = (res.data.warnings || []).join('\n');
-        const confirmed = await confirm({
-          title: 'Eliminazione con impatti collegati',
-          message: `${avvisi}\n\nVuoi eliminare comunque questo movimento?`,
-          confirmText: 'Elimina comunque',
-          cancelText: 'Annulla',
-          variant: 'danger',
-        });
-        if (confirmed) {
-          await api.delete(`/api/prima-nota/${tipo}/${id}?force=true`);
-        }
-      }
-      loadAllData();
-    } catch (error) {
-      showFeedback('Errore eliminazione movimento', getErrorMessage(error), 'danger');
-    }
-  };
-
-  const handleEditMovimento = async (tipo, updated) => {
-    // Ricarica i dati dopo la modifica
-    loadAllData();
-  };
-
-  // Sposta movimento tra Cassa e Banca
-  const handleSpostaMovimento = async (movimentoId, da, a) => {
-    try {
-      const res = await api.post('/api/prima-nota/sposta-movimento', {
-        movimento_id: movimentoId,
-        da: da,
-        a: a,
-      });
-      loadAllData();
-      // Feedback visivo opzionale
-      if (res.data.fattura_aggiornata) {
-        
-      }
-    } catch (error) {
-      showFeedback('Errore spostamento movimento', getErrorMessage(error), 'danger');
-    }
-  };
-
-  // Format helpers
-  const formatDate = dateStr => formatDateIT(dateStr);
-
-  const posTotale =
-    (parseFloat(pos.pos1) || 0) + (parseFloat(pos.pos2) || 0) + (parseFloat(pos.pos3) || 0);
-
-  // Calculate category totals for Cassa
-  const totalePOS =
-    cassaData.movimenti?.filter(m => m.categoria === 'POS').reduce((s, m) => s + m.importo, 0) || 0;
-  // Entrambe le categorie storiche dei versamenti di contanti in banca:
-  // "Versamento" (righe automatiche da estratto conto) e "Versamento Banca"
-  // (registrazioni manuali dell'utente) — la card ne mostrava solo una.
-  const totaleVersamenti =
-    cassaData.movimenti
-      ?.filter(m => m.categoria === 'Versamento' || m.categoria === 'Versamento Banca')
-      .reduce((s, m) => s + m.importo, 0) || 0;
-  const totaleFattureCassa =
-    cassaData.movimenti
-      ?.filter(m => ['Pagamento fornitore', 'Fatture', 'fornitori'].includes(m.categoria))
-      .reduce((s, m) => s + m.importo, 0) || 0;
-  const totaleCorrispettivi =
-    cassaData.movimenti
-      ?.filter(m => m.categoria === 'Corrispettivi')
-      .reduce((s, m) => s + m.importo, 0) || 0;
-  // Quota elettronica dei corrispettivi (uscita cassa → banca), creata da
-  // corrispettivi_helpers.py::_create_prima_nota_movements con categoria
-  // "POS Verso Banca". Distinta dalla categoria "POS" (form manuale di
-  // questa pagina), che viene ripulita non appena arriva il corrispettivo
-  // reale — per questo serve una card separata per non farla sparire.
-  const totaleElettronico =
-    cassaData.movimenti
-      ?.filter(m => m.categoria === 'POS Verso Banca')
-      .reduce((s, m) => s + m.importo, 0) || 0;
-
-  // Giorno record
-  const giornoRecord = cassaData.movimenti?.reduce((best, m) => {
-    if (m.tipo === 'entrata' && m.importo > (best?.importo || 0)) return m;
-    return best;
-  }, null);
-
-  // eslint-disable-next-line no-unused-vars
-  const inputStyle = STYLES.input;
-
-  const inputStyleCompact = {
-    padding: '6px 8px',
-    borderRadius: 6,
-    border: `1px solid ${COLORS.grayLight}`,
-    fontSize: 12,
-    width: '100%',
-    boxSizing: 'border-box',
-  };
-
-  // eslint-disable-next-line no-unused-vars
-  const buttonStyle = (color, disabled) =>
-    button(color === COLORS.success ? 'primary' : 'secondary', disabled);
-
-  const buttonStyleCompact = (color, disabled) => ({
-    padding: '6px 12px',
-    background: disabled ? '#ccc' : color,
-    color: 'white',
-    border: 'none',
-    borderRadius: 6,
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    fontWeight: 'bold',
-    fontSize: 12,
-    width: '100%',
-  });
-
+/* ------------------------------ card numero ------------------------------ */
+function Card({ titolo, valore, colore, onEdit, testId }) {
   return (
-    <div style={{ ...STYLES.page, padding: 0 }}>
-      {/* HEADER COMPATTO */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '12px 16px',
-          background: '#0f2744',
-          borderRadius: 8,
-          marginBottom: 12,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span
-            style={{
-              padding: '6px 14px',
-              fontSize: 14,
-              fontWeight: 'bold',
-              borderRadius: 6,
-              background: 'rgba(255,255,255,0.9)',
-              color: COLORS.primary,
-            }}
-          >
-            📅 Anno: {selectedYear}
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div
+      style={{
+        background: 'white', borderRadius: 12, border: '1px solid #e2e8f0',
+        borderLeft: `4px solid ${colore}`, padding: '10px 14px', minWidth: 0,
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+          {titolo}
+        </span>
+        {onEdit && (
           <button
-            onClick={() => navigate('/prima-nota/pulizia')}
+            onClick={onEdit}
+            data-testid={testId}
+            title="Modifica"
             style={{
-              padding: '6px 12px',
-              background: 'rgba(255,255,255,0.2)',
-              color: 'white',
-              border: '1px solid rgba(255,255,255,0.3)',
-              borderRadius: 6,
-              cursor: 'pointer',
-              fontWeight: '600',
-              fontSize: 12,
+              background: '#fef3c7', border: '1px solid #d97706', borderRadius: 6,
+              padding: '2px 7px', fontSize: 12, cursor: 'pointer',
             }}
-            title="Pulisci duplicati fatture e corrispettivi mancanti"
           >
-            🗑️ Pulisci duplicati
+            ✏️
           </button>
-
-        </div>
+        )}
       </div>
-
-
       <div
         style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 8,
-          marginBottom: 16,
-          position: 'sticky',
-          top: 0,
-          zIndex: 100,
-          background: '#f1f5f9',
-          padding: '8px 0',
+          fontSize: 17, fontWeight: 800, color: colore, whiteSpace: 'nowrap',
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
         }}
       >
-        <button
-          data-testid="btn-prima-nota-cassa"
-          onClick={() => setActiveSection('cassa')}
-          style={{
-            flex: 1,
-            padding: isMobile ? '10px 6px' : '12px 16px',
-            fontSize: isMobile ? 12 : 14,
-            fontWeight: 'bold',
-            background: activeSection === 'cassa' ? '#0f2744' : '#fff',
-            color: activeSection === 'cassa' ? 'white' : '#64748b',
-            border: `1px solid ${activeSection === 'cassa' ? '#0f2744' : '#e2e8f0'}`,
-            borderRadius: 6,
-            minHeight: 40,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: isMobile ? 4 : 8,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          <span style={{ fontSize: isMobile ? 15 : 18 }}>💵</span>
-          {isMobile ? 'CASSA' : `CASSA ${selectedYear}`}
-        </button>
-
-        <button
-          data-testid="btn-prima-nota-banca"
-          onClick={() => setActiveSection('banca')}
-          style={{
-            flex: 1,
-            padding: isMobile ? '10px 6px' : '12px 16px',
-            fontSize: isMobile ? 12 : 14,
-            fontWeight: 'bold',
-            background: activeSection === 'banca' ? '#0f2744' : '#fff',
-            color: activeSection === 'banca' ? 'white' : '#64748b',
-            border: `1px solid ${activeSection === 'banca' ? '#0f2744' : '#e2e8f0'}`,
-            borderRadius: 6,
-            minHeight: 40,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: isMobile ? 4 : 8,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          <span style={{ fontSize: isMobile ? 15 : 18 }}>🏦</span>
-          {isMobile ? 'BANCA' : `BANCA ${selectedYear}`}
-        </button>
-        <button
-          data-testid="btn-prima-nota-provvisori"
-          onClick={() => setActiveSection('provvisori')}
-          style={{
-            flex: 1,
-            padding: isMobile ? '10px 6px' : '12px 16px',
-            fontSize: isMobile ? 12 : 14,
-            fontWeight: 'bold',
-            background: activeSection === 'provvisori' ? '#0f2744' : '#fff',
-            color: activeSection === 'provvisori' ? 'white' : '#64748b',
-            border: `1px solid ${activeSection === 'provvisori' ? '#0f2744' : '#e2e8f0'}`,
-            borderRadius: 6,
-            minHeight: 40,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: isMobile ? 4 : 8,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          <span style={{ fontSize: isMobile ? 15 : 18 }}>⚠️</span>
-          PROVVISORI{provvisori.length > 0 ? ` (${provvisori.length})` : ''}
-        </button>
+        {eur(valore)}
       </div>
-
-      {/* ===== FATTURE ANNUNCIATE DA EMAIL (in arrivo) ===== */}
-      {activeSection === 'provvisori' && attese.length > 0 && (
-        <div
-          style={{
-            background: '#eff6ff',
-            border: '1px solid #2563eb',
-            borderRadius: 12,
-            padding: '14px 16px',
-            marginBottom: 16,
-          }}
-        >
-          <div style={{ fontWeight: 800, color: '#1e40af', fontSize: 15, marginBottom: 4 }}>
-            📩 {attese.length} Fatture annunciate (in arrivo)
-          </div>
-          <div style={{ fontSize: 12, color: '#1e40af', marginBottom: 10 }}>
-            Avvisi da Aruba: l&apos;XML non è ancora arrivato. Se il fornitore ha metodo
-            certo l&apos;anticipo è già registrato da solo; qui decidi tu i casi dubbi.
-            All&apos;arrivo dell&apos;XML tutto si aggancia da solo, senza doppioni.
-          </div>
-          {attese.map(a => (
-            <div
-              key={a.id}
-              style={{
-                background: 'white',
-                borderRadius: 10,
-                padding: '12px 14px',
-                marginBottom: 8,
-                border: '1px solid #bfdbfe',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: 8,
-              }}
-            >
-              <div style={{ flex: 1, minWidth: 160 }}>
-                <span style={{ fontWeight: 700, fontSize: 14, color: '#0f2744' }}>
-                  {(a.fornitore_nome || 'Fornitore da verificare').substring(0, 32)}
-                </span>
-                <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 6 }}>
-                  #{a.numero_fattura || '?'}
-                </span>
-                <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                  📧 {formatDate((a.email_date || '').slice(0, 10))}
-                  {a.stato === 'confermata_anticipo' && (
-                    <span style={{ color: '#16a34a', fontWeight: 700, marginLeft: 8 }}>
-                      ✓ anticipo in {a.metodo_confermato}
-                      {a.conferma_fonte === 'auto_metodo_fornitore' ? ' (auto)' : ''}
-                    </span>
-                  )}
-                  {a.stato === 'da_verificare' && (
-                    <span style={{ color: '#dc2626', fontWeight: 700, marginLeft: 8 }}>
-                      ⚠ dati incompleti
-                    </span>
-                  )}
-                </div>
-              </div>
-              <span style={{ fontWeight: 800, fontSize: 15, color: '#0f2744' }}>
-                {a.importo ? formatEuro(a.importo) : '—'}
-              </span>
-              {a.stato === 'in_attesa_xml' && (
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {['cassa', 'banca'].map(m => (
-                    <button
-                      key={m}
-                      onClick={async () => {
-                        try {
-                          await api.post('/api/prima-nota/attese/conferma', {
-                            attesa_id: a.id,
-                            metodo: m,
-                          });
-                          await loadAllData();
-                          showFeedback(
-                            'Anticipo registrato',
-                            `Fattura ${a.numero_fattura || ''} registrata in ${m}: sarà agganciata all'XML in automatico.`
-                          );
-                        } catch (error) {
-                          showFeedback('Errore', getErrorMessage(error), 'danger');
-                        }
-                      }}
-                      style={{
-                        padding: '6px 10px',
-                        background:
-                          a.suggerimento === m ? '#0f2744' : '#fff',
-                        color: a.suggerimento === m ? 'white' : '#64748b',
-                        border: `1px solid ${a.suggerimento === m ? '#0f2744' : '#e2e8f0'}`,
-                        borderRadius: 6,
-                        fontWeight: 700,
-                        fontSize: 12,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                      title={
-                        a.suggerimento === m
-                          ? 'Metodo suggerito dal fornitore'
-                          : `Registra in ${m}`
-                      }
-                    >
-                      {m === 'cassa' ? '💵 Cassa' : '🏦 Banca'}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ===== TAB PROVVISORI ===== */}
-      {activeSection === 'provvisori' && provvisori.length > 0 && (
-        <div
-          style={{
-            background: '#fffbeb',
-            border: '1px solid #d97706',
-            borderRadius: 12,
-            padding: '16px',
-            marginBottom: 16,
-            position: 'relative',
-            zIndex: 10,
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 12,
-              flexWrap: 'wrap',
-              gap: 8,
-            }}
-          >
-            <span style={{ fontWeight: 800, color: '#92400e', fontSize: 16 }}>
-              ⚠️ {provvisori.length} Fatture da Confermare
-            </span>
-            <button
-              onClick={async () => {
-                // "sospesa" non è un metodo di registrazione: il backend la
-                // lascia intenzionalmente nei provvisori (nessuna
-                // destinazione certa, richiede scelta manuale cassa/banca).
-                // Includerla qui dava l'impressione di un bottone rotto:
-                // "Conferma Tutte" sembrava non fare nulla per la
-                // maggioranza delle fatture (spesso in sospesa).
-                const confermabili = provvisori.filter(
-                  p => p.suggerimento === 'cassa' || p.suggerimento === 'banca'
-                );
-                const confermaMassiva = await confirm({
-                  title: 'Conferma provvisori con metodo certo',
-                  message: `Verranno confermate ${confermabili.length} fatture con metodo già suggerito.\nLe altre ${provvisori.length - confermabili.length} resteranno in sospeso finché non le risolvi manualmente.\n\nVuoi procedere?`,
-                  confirmText: 'Conferma tutte',
-                  cancelText: 'Annulla',
-                  variant: 'warning',
-                });
-                if (!confermaMassiva) return;
-                const sospeseCount = provvisori.length - confermabili.length;
-                let ok = 0;
-                let errori = 0;
-                for (const p of confermabili) {
-                  try {
-                    await api.post('/api/prima-nota/provvisori/conferma', {
-                      fattura_id: p.fattura_id,
-                      metodo: p.suggerimento,
-                    });
-                    ok += 1;
-                  } catch {
-                    errori += 1;
-                  }
-                }
-                await loadAllData();
-                const msgErrori = errori > 0 ? `, ${errori} errori` : '';
-                const msgSospese =
-                  sospeseCount > 0
-                    ? `\n${sospeseCount} restano in sospeso: nessun metodo certo, vanno risolte una per una dal pulsante "Risolvi".`
-                    : '';
-                showFeedback('Conferma completata', `✅ ${ok} fatture confermate${msgErrori}.${msgSospese}`);
-              }}
-              style={{
-                padding: '8px 16px',
-                background: '#16a34a',
-                color: 'white',
-                border: 'none',
-                borderRadius: 6,
-                fontWeight: 700,
-                fontSize: 14,
-                cursor: 'pointer',
-              }}
-            >
-              ✅ Conferma Tutte
-            </button>
-          </div>
-
-          {provvisori.length > 30 && (
-            <div style={{ fontSize: 12, color: '#92400e', marginBottom: 8 }}>
-              Mostrate le prime 30 di {provvisori.length} — "Conferma Tutte" agisce comunque su
-              tutte, non solo su quelle visibili.
-            </div>
-          )}
-
-          {provvisori.slice(0, 30).map(p => {
-            const isCassa = p.suggerimento === 'cassa';
-            const isSospesa = p.suggerimento === 'sospesa';
-            const badgeBg = isCassa ? '#fef3c7' : isSospesa ? '#fee2e2' : '#0f2744';
-            const badgeColor = isCassa ? '#92400e' : isSospesa ? '#dc2626' : 'white';
-            const badgeBorder = isCassa
-              ? '2px solid #d97706'
-              : isSospesa
-                ? '2px solid #dc2626'
-                : '2px solid #0f2744';
-            const badgeText = isCassa ? '💵 CASSA' : isSospesa ? '⏳ SOSPESA' : '🏦 BANCA';
-            return (
-              <div
-                key={p.fattura_id}
-                style={{
-                  background: 'white',
-                  borderRadius: 10,
-                  padding: '14px 16px',
-                  marginBottom: 8,
-                  border: '1px solid #fde68a',
-                }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: 6,
-                    flexWrap: 'wrap',
-                    gap: 4,
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: 150 }}>
-                    <span style={{ fontWeight: 700, fontSize: 15, color: '#0f2744' }}>
-                      {(p.fornitore || '').substring(0, 30)}
-                    </span>
-                    <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 6 }}>
-                      #{p.fattura_numero}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontWeight: 800, fontSize: 18, color: '#16a34a', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
-                      € {(p.importo || 0).toFixed(2)}
-                    </span>
-                    <span
-                      style={{
-                        padding: '4px 12px',
-                        borderRadius: 99,
-                        fontSize: 13,
-                        fontWeight: 800,
-                        background: badgeBg,
-                        color: badgeColor,
-                        border: badgeBorder,
-                      }}
-                    >
-                      {badgeText}
-                    </span>
-                  </div>
-                </div>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: 6,
-                  }}
-                >
-                  <div>
-                    <span style={{ fontSize: 13, color: '#6b7280' }}>{formatDateIT(p.fattura_data)}</span>
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 600,
-                        marginLeft: 8,
-                        color:
-                          p.stato_match === 'confermato'
-                            ? '#16a34a'
-                            : p.stato_match === 'probabile'
-                              ? '#d97706'
-                              : '#6b7280',
-                      }}
-                    >
-                      {p.stato_match === 'confermato'
-                        ? '✅ Verificato'
-                        : p.stato_match === 'probabile'
-                          ? '~ Probabile'
-                          : '⏳ Attesa'}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {/* Vedi fattura — prima assente qui, presente solo nella
-                        tabella movimenti principale: impossibile controllare
-                        il documento prima di confermare cassa/banca/sospesa. */}
-                    {p.fattura_id && (
-                      <button
-                        onClick={() =>
-                          setFatturaView({
-                            id: p.fattura_id,
-                            numero: p.fattura_numero || p.numero_fattura || p.fornitore,
-                          })
-                        }
-                        style={{
-                          padding: '6px 10px',
-                          minHeight: 32,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          background: '#e0f2fe',
-                          color: '#0369a1',
-                          border: 'none',
-                          borderRadius: 6,
-                          fontSize: 12,
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Vedi fattura
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setResolveModal(p)}
-                      style={{
-                        padding: '6px 14px',
-                        background: '#0f2744',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: 6,
-                        fontWeight: 700,
-                        fontSize: 12,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Risolvi
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-
-          {provvisori.length > 30 && (
-            <div style={{ textAlign: 'center', padding: 8, fontSize: 13, color: '#92400e' }}>
-              ...e altre {provvisori.length - 30}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* SECTION BUTTONS - Sticky su mobile */}      {activeSection === 'provvisori' && provvisori.length === 0 && (
-        <div
-          style={{
-            background: 'white', border: '1px solid #e5e7eb', borderRadius: 12,
-            padding: 40, textAlign: 'center', color: '#6b7280', marginBottom: 16,
-          }}
-        >
-          <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>Nessuna fattura provvisoria</div>
-          <div style={{ fontSize: 13 }}>
-            Le fatture con metodo fornitore impostato vengono registrate in automatico
-            (job ogni 30 minuti). Qui restano solo sospese, misto e fornitori senza metodo.
-          </div>
-        </div>
-      )}
-
-      {/* ========== SEZIONE CASSA ========== */}
-      {activeSection === 'cassa' && (
-        <section>
-          {/* Summary Cards Cassa - Compatti */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-              gap: 10,
-              marginBottom: 16,
-            }}
-          >
-            <MiniCard
-              title={`Entrate (DARE) ${selectedYear}`}
-              value={formatEuro(cassaData.totale_entrate)}
-              color="#16a34a"
-            />
-            <MiniCard
-              title={`Uscite (AVERE) ${selectedYear}`}
-              value={formatEuro(cassaData.totale_uscite)}
-              color="#dc2626"
-            />
-            <MiniCard
-              title={`Saldo Cassa ${selectedYear}`}
-              value={formatEuro(
-                cassaData.saldo_anno || cassaData.totale_entrate - cassaData.totale_uscite
-              )}
-              color={
-                (cassaData.saldo_anno || cassaData.totale_entrate - cassaData.totale_uscite) >= 0
-                  ? '#16a34a'
-                  : '#dc2626'
-              }
-              highlight
-            />
-            <MiniCard
-              title={`Riporto iniziale${cassaData.saldo_iniziale_manuale ? ' (manuale)' : ''}`}
-              value={formatEuro(cassaData.saldo_precedente || 0)}
-              color="#6b7280"
-              onEdit={() => handleModificaRiporto('cassa', cassaData.saldo_precedente)}
-              editTestId="modifica-riporto-cassa"
-            />
-            <MiniCard
-              title="Saldo Cumulativo"
-              value={formatEuro(cassaData.saldo)}
-              color={(cassaData.saldo || 0) >= 0 ? '#0f2744' : '#dc2626'}
-              highlight
-            />
-          </div>
-
-          {/* Logica Corrispettivi - Toolbar Ricostruzione */}
-
-          {/* Dettaglio - Compatto */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-              gap: 8,
-              marginBottom: 16,
-            }}
-          >
-            <TinyStatCard
-              title="Corrispettivi"
-              value={formatEuro(totaleCorrispettivi)}
-              color="#d97706"
-            />
-            <TinyStatCard
-              title="Pagamento elettronico"
-              value={formatEuro(totaleElettronico)}
-              color="#2563eb"
-            />
-            <TinyStatCard title="POS" value={formatEuro(totalePOS)} color="#0f2744" />
-            <TinyStatCard title="Versamenti" value={formatEuro(totaleVersamenti)} color="#16a34a" />
-            <TinyStatCard title="Fatture" value={formatEuro(totaleFattureCassa)} color="#dc2626" />
-          </div>
-
-          {/* Chiusure Giornaliere - Menu Compatto a Tendina */}
-          <div
-            style={{
-              background: '#f8fafc',
-              borderRadius: 10,
-              padding: 12,
-              marginBottom: 16,
-              border: '1px solid #e2e8f0',
-            }}
-          >
-            <details style={{ cursor: 'pointer' }}>
-              <summary
-                style={{
-                  fontSize: 14,
-                  fontWeight: 'bold',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '4px 0',
-                  userSelect: 'none',
-                }}
-              >
-                <span>📝</span> Chiusure Giornaliere
-                <span
-                  style={{
-                    marginLeft: 'auto',
-                    fontSize: 11,
-                    background: '#dbeafe',
-                    color: '#0f2744',
-                    padding: '2px 8px',
-                    borderRadius: 4,
-                  }}
-                >
-                  Clicca per espandere
-                </span>
-              </summary>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
-                  gap: 10,
-                  marginTop: 12,
-                }}
-              >
-                {/* Corrispettivo - Ultra compatto */}
-                <div
-                  style={{
-                    background: 'white',
-                    borderRadius: 8,
-                    padding: 10,
-                    borderLeft: '3px solid #d97706',
-                  }}
-                >
-                  <div
-                    style={{ fontSize: 11, fontWeight: 'bold', color: '#92400e', marginBottom: 6 }}
-                  >
-                    🧾 Corrispettivo
-                  </div>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    <input
-                      type="date"
-                      value={corrispettivo.data}
-                      onChange={e => setCorrispettivo({ ...corrispettivo, data: e.target.value })}
-                      style={{ ...inputStyleCompact, flex: 1, padding: '4px 6px', fontSize: 11 }}
-                    />
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="€"
-                      value={corrispettivo.importo}
-                      onChange={e =>
-                        setCorrispettivo({ ...corrispettivo, importo: e.target.value })
-                      }
-                      style={{ ...inputStyleCompact, width: 70, padding: '4px 6px', fontSize: 11 }}
-                    />
-                    <button
-                      onClick={handleSaveCorrispettivo}
-                      disabled={savingCorrisp}
-                      style={{
-                        ...buttonStyleCompact('#0f2744', savingCorrisp),
-                        padding: '4px 8px',
-                        minWidth: 32,
-                      }}
-                    >
-                      {savingCorrisp ? '⏳' : '💾'}
-                    </button>
-                  </div>
-                </div>
-
-                {/* POS - Ultra compatto */}
-                <div
-                  style={{
-                    background: 'white',
-                    borderRadius: 8,
-                    padding: 10,
-                    borderLeft: '3px solid #0f2744',
-                  }}
-                >
-                  <div
-                    style={{ fontSize: 11, fontWeight: 'bold', color: '#0f2744', marginBottom: 6 }}
-                  >
-                    💳 POS
-                  </div>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    <input
-                      type="date"
-                      value={pos.data}
-                      onChange={e => setPos({ ...pos, data: e.target.value })}
-                      style={{ ...inputStyleCompact, flex: 1, padding: '4px 6px', fontSize: 11 }}
-                    />
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="€"
-                      value={pos.pos1}
-                      onChange={e => setPos({ ...pos, pos1: e.target.value, pos2: '', pos3: '' })}
-                      style={{ ...inputStyleCompact, width: 70, padding: '4px 6px', fontSize: 11 }}
-                    />
-                    <button
-                      onClick={handleSavePos}
-                      disabled={savingPos}
-                      style={{
-                        ...buttonStyleCompact('#0f2744', savingPos),
-                        padding: '4px 8px',
-                        minWidth: 32,
-                      }}
-                    >
-                      {savingPos ? '⏳' : '💾'}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Versamento - Ultra compatto */}
-                <div
-                  style={{
-                    background: 'white',
-                    borderRadius: 8,
-                    padding: 10,
-                    borderLeft: '3px solid #16a34a',
-                  }}
-                >
-                  <div
-                    style={{ fontSize: 11, fontWeight: 'bold', color: '#16a34a', marginBottom: 6 }}
-                  >
-                    💰 Versamento
-                  </div>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    <input
-                      type="date"
-                      value={versamento.data}
-                      onChange={e => setVersamento({ ...versamento, data: e.target.value })}
-                      style={{ ...inputStyleCompact, flex: 1, padding: '4px 6px', fontSize: 11 }}
-                    />
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="€"
-                      value={versamento.importo}
-                      onChange={e => setVersamento({ ...versamento, importo: e.target.value })}
-                      style={{ ...inputStyleCompact, width: 70, padding: '4px 6px', fontSize: 11 }}
-                    />
-                    <button
-                      onClick={handleSaveVersamento}
-                      disabled={savingVers}
-                      style={{
-                        ...buttonStyleCompact('#0f2744', savingVers),
-                        padding: '4px 8px',
-                        minWidth: 32,
-                      }}
-                    >
-                      {savingVers ? '⏳' : '💾'}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Movimento Altro - Ultra compatto */}
-                <div
-                  style={{
-                    background: 'white',
-                    borderRadius: 8,
-                    padding: 10,
-                    borderLeft: '3px solid #d97706',
-                  }}
-                >
-                  <div
-                    style={{ fontSize: 11, fontWeight: 'bold', color: '#d97706', marginBottom: 6 }}
-                  >
-                    📝 Altro
-                  </div>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    <input
-                      type="date"
-                      value={movimento.data}
-                      onChange={e => setMovimento({ ...movimento, data: e.target.value })}
-                      style={{ ...inputStyleCompact, width: 100, padding: '4px 6px', fontSize: 11 }}
-                    />
-                    <select
-                      value={movimento.tipo}
-                      onChange={e => setMovimento({ ...movimento, tipo: e.target.value })}
-                      style={{ ...inputStyleCompact, width: 60, padding: '4px 4px', fontSize: 10 }}
-                    >
-                      <option value="uscita">-</option>
-                      <option value="entrata">+</option>
-                    </select>
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="€"
-                      value={movimento.importo}
-                      onChange={e => setMovimento({ ...movimento, importo: e.target.value })}
-                      style={{ ...inputStyleCompact, width: 60, padding: '4px 6px', fontSize: 11 }}
-                    />
-                    <input
-                      type="text"
-                      placeholder="Desc."
-                      value={movimento.descrizione}
-                      onChange={e => setMovimento({ ...movimento, descrizione: e.target.value })}
-                      style={{
-                        ...inputStyleCompact,
-                        flex: 1,
-                        padding: '4px 6px',
-                        fontSize: 11,
-                        minWidth: 80,
-                      }}
-                    />
-                    <button
-                      onClick={handleSaveMovimento}
-                      disabled={savingMov}
-                      style={{
-                        ...buttonStyleCompact('#0f2744', savingMov),
-                        padding: '4px 8px',
-                        minWidth: 32,
-                      }}
-                    >
-                      {savingMov ? '⏳' : '💾'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </details>
-          </div>
-
-          {/* Filter - Bottoni Mesi */}
-          <div
-            style={{
-              display: 'flex',
-              gap: 6,
-              alignItems: 'center',
-              marginBottom: 12,
-              flexWrap: 'wrap',
-            }}
-          >
-            <span style={{ fontSize: 12, color: '#6b7280', marginRight: 4 }}>📅 Mese:</span>
-            <button
-              onClick={() => setSelectedMonth(null)}
-              style={{
-                padding: '6px 12px',
-                minHeight: 40,
-                background: selectedMonth === null ? '#0f2744' : '#f3f4f6',
-                color: selectedMonth === null ? 'white' : '#374151',
-                border: 'none',
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontSize: 11,
-                fontWeight: selectedMonth === null ? 'bold' : 'normal',
-              }}
-            >
-              Tutti
-            </button>
-            {mesiNomi.map((nome, i) => (
-              <button
-                key={i}
-                onClick={() => setSelectedMonth(i)}
-                style={{
-                  padding: '6px 10px',
-                  minHeight: 40,
-                  background: selectedMonth === i ? '#0f2744' : '#f3f4f6',
-                  color: selectedMonth === i ? 'white' : '#374151',
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontSize: 11,
-                  fontWeight: selectedMonth === i ? 'bold' : 'normal',
-                }}
-              >
-                {nome}
-              </button>
-            ))}
-            {giornoRecord && (
-              <span
-                style={{
-                  marginLeft: 'auto',
-                  fontSize: 11,
-                  color: '#92400e',
-                  background: '#fef3c7',
-                  padding: '4px 8px',
-                  borderRadius: 4,
-                }}
-              >
-                🏆  Record: {formatDate(giornoRecord.data)} - {formatEuro(giornoRecord.importo)}
-              </span>
-            )}
-          </div>
-
-          {/* Movements Table Cassa */}
-          <MovementsTable
-            movimenti={cassaData.movimenti || []}
-            tipo="cassa"
-            loading={loading}
-            formatEuro={formatEuro}
-            formatDate={formatDate}
-            onDelete={id => handleDeleteMovimento('cassa', id)}
-            onEdit={updated => handleEditMovimento('cassa', updated)}
-            onSposta={handleSpostaMovimento}
-            saldoPrecedente={cassaData.saldo_precedente || 0}
-            onModificaRiporto={() => handleModificaRiporto('cassa', cassaData.saldo_precedente)}
-          />
-        </section>
-      )}
-
-      {/* ========== SEZIONE BANCA ========== */}
-      {activeSection === 'banca' && (
-        <section>
-          {/* Summary Cards Banca — STESSE MiniCard compatte della Cassa
-              (richiesta utente 10/07: grafica uniforme tra i tre riquadri) */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-              gap: 10,
-              marginBottom: 16,
-            }}
-          >
-            <MiniCard
-              title={`Accrediti (DARE) ${selectedYear}`}
-              value={formatEuro(bancaData.totale_entrate)}
-              color="#16a34a"
-            />
-            <MiniCard
-              title={`Pagamenti (AVERE) ${selectedYear}`}
-              value={formatEuro(bancaData.totale_uscite)}
-              color="#dc2626"
-            />
-            <MiniCard
-              title={`Saldo Banca ${selectedYear}`}
-              value={formatEuro(
-                bancaData.saldo_anno || bancaData.totale_entrate - bancaData.totale_uscite
-              )}
-              color={
-                (bancaData.saldo_anno || bancaData.totale_entrate - bancaData.totale_uscite) >= 0
-                  ? '#16a34a'
-                  : '#dc2626'
-              }
-              highlight
-            />
-            <MiniCard
-              title="Saldo Cumulativo"
-              value={formatEuro(bancaData.saldo)}
-              color={(bancaData.saldo || 0) >= 0 ? '#0f2744' : '#dc2626'}
-              highlight
-            />
-            <MiniCard
-              title={`Riporto iniziale${bancaData.saldo_iniziale_manuale ? ' (manuale)' : ''}`}
-              value={formatEuro(bancaData.saldo_precedente || 0)}
-              color="#6b7280"
-              onEdit={() => handleModificaRiporto('banca', bancaData.saldo_precedente)}
-              editTestId="modifica-riporto-banca"
-            />
-          </div>
-
-          {/* Nota banca */}
-          <div
-            style={{
-              background: '#fefce8',
-              border: '1px solid #d97706',
-              borderRadius: 10,
-              padding: '10px 16px',
-              marginBottom: 14,
-              fontSize: 13,
-              color: '#854d0e',
-            }}
-          >
-            📝 <strong>Registro operazioni:</strong> qui ci sono SOLO le operazioni del
-            gestionale (Corrispettivi POS, Versamenti, Fatture, Utenze, F24, Stipendi,
-            Assegni, PayPal). L'estratto conto bancario NON viene sommato qui: lo trovi
-            nella pagina <strong>Riconciliazione</strong> come controllo di quadratura.
-          </div>
-
-          {/* Filter - Bottoni Mesi */}
-          <div
-            style={{
-              display: 'flex',
-              gap: 6,
-              alignItems: 'center',
-              marginBottom: 16,
-              flexWrap: 'wrap',
-            }}
-          >
-            <span style={{ fontSize: 14, color: '#6b7280', marginRight: 8 }}>📅 Mese:</span>
-            <button
-              onClick={() => setSelectedMonth(null)}
-              style={{
-                padding: '8px 14px',
-                minHeight: 40,
-                background: selectedMonth === null ? '#0f2744' : '#f3f4f6',
-                color: selectedMonth === null ? 'white' : '#374151',
-                border: 'none',
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontWeight: selectedMonth === null ? 'bold' : 'normal',
-              }}
-            >
-              Tutti
-            </button>
-            {mesiNomi.map((nome, i) => (
-              <button
-                key={i}
-                onClick={() => setSelectedMonth(i)}
-                style={{
-                  padding: '8px 12px',
-                  minHeight: 40,
-                  background: selectedMonth === i ? '#0f2744' : '#f3f4f6',
-                  color: selectedMonth === i ? 'white' : '#374151',
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontWeight: selectedMonth === i ? 'bold' : 'normal',
-                }}
-              >
-                {nome}
-              </button>
-            ))}
-          </div>
-
-          {/* Movements Table Banca — solo operazioni del gestionale */}
-          <MovementsTable
-            movimenti={bancaData.movimenti || []}
-            tipo="banca"
-            loading={loading}
-            formatEuro={formatEuro}
-            formatDate={formatDate}
-            onDelete={id => handleDeleteMovimento('banca', id)}
-            onEdit={updated => handleEditMovimento('banca', updated)}
-            onSposta={handleSpostaMovimento}
-            readOnly={false}
-            saldoPrecedente={bancaData.saldo_precedente || 0}
-            onModificaRiporto={() => handleModificaRiporto('banca', bancaData.saldo_precedente)}
-          />
-        </section>
-      )}
-
-      {/* Modale "Pagamento parziale" (Misto) — sostituisce il vecchio
-          prompt() del browser: mostra fornitore, totale, importo cassa da
-          scegliere e residuo banca calcolato, con riepilogo prima di
-          confermare invece di un singolo campo testo senza contesto. */}
-      {parzialeModal && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2000,
-          }}
-          onClick={() => !parzialeSaving && setParzialeModal(null)}
-        >
-          <div
-            style={{
-              background: 'white',
-              borderRadius: 12,
-              padding: 24,
-              width: '92%',
-              maxWidth: 420,
-              boxShadow: '0 20px 40px rgba(15,39,68,0.25)',
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <h3 style={{ margin: '0 0 4px', fontSize: 17, color: '#0f2744' }}>
-              Pagamento parziale (Misto)
-            </h3>
-            <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>
-              {(parzialeModal.fornitore || '').substring(0, 40)} — Fatt. #
-              {parzialeModal.fattura_numero}
-            </div>
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                padding: '10px 12px',
-                background: '#f8fafc',
-                borderRadius: 8,
-                marginBottom: 16,
-                fontSize: 14,
-              }}
-            >
-              <span>Totale fattura</span>
-              <strong>€ {(parzialeModal.importo || 0).toFixed(2)}</strong>
-            </div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>
-              Importo pagato in CASSA
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              max={parzialeModal.importo || 0}
-              autoFocus
-              value={parzialeImportoCassa}
-              onChange={e => setParzialeImportoCassa(e.target.value)}
-              placeholder="0.00"
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                border: '1px solid #d1d5db',
-                borderRadius: 8,
-                fontSize: 15,
-                boxSizing: 'border-box',
-              }}
-            />
-            {(() => {
-              const ci = parseFloat(parzialeImportoCassa);
-              const valido = !isNaN(ci) && ci > 0 && ci <= (parzialeModal.importo || 0);
-              const residuoBanca = valido
-                ? Math.round(((parzialeModal.importo || 0) - ci) * 100) / 100
-                : null;
-              return (
-                <>
-                  {valido && (
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        padding: '10px 12px',
-                        background: '#eff6ff',
-                        borderRadius: 8,
-                        marginTop: 10,
-                        fontSize: 14,
-                      }}
-                    >
-                      <span>Residuo in BANCA</span>
-                      <strong>€ {residuoBanca.toFixed(2)}</strong>
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-                    <button
-                      onClick={() => setParzialeModal(null)}
-                      disabled={parzialeSaving}
-                      style={{
-                        flex: 1,
-                        padding: '10px 16px',
-                        background: '#f1f5f9',
-                        color: '#374151',
-                        border: 'none',
-                        borderRadius: 8,
-                        fontSize: 14,
-                        fontWeight: 600,
-                        cursor: parzialeSaving ? 'wait' : 'pointer',
-                      }}
-                    >
-                      Annulla
-                    </button>
-                    <button
-                      onClick={async () => {
-                        setParzialeSaving(true);
-                        try {
-                          await api.post('/api/pagamenti/registra', {
-                            fattura_id: parzialeModal.fattura_id,
-                            importo: ci,
-                            metodo: 'contanti',
-                            data: parzialeModal.fattura_data,
-                            note: `€${ci} di €${parzialeModal.importo}`,
-                          });
-                          if (residuoBanca > 0) {
-                            await api.post('/api/pagamenti/registra', {
-                              fattura_id: parzialeModal.fattura_id,
-                              importo: residuoBanca,
-                              metodo: 'bonifico',
-                              data: parzialeModal.fattura_data,
-                              note: `Residuo banca €${residuoBanca}`,
-                            });
-                          }
-                          setProvvisori(v =>
-                            v.filter(x => x.fattura_id !== parzialeModal.fattura_id)
-                          );
-                          setParzialeModal(null);
-                        } catch (e) {
-                          showFeedback(
-                            'Errore pagamento parziale',
-                            e.response?.data?.detail || e.response?.data?.message || e.message,
-                            'danger'
-                          );
-                        } finally {
-                          setParzialeSaving(false);
-                        }
-                      }}
-                      disabled={!valido || parzialeSaving}
-                      style={{
-                        flex: 1,
-                        padding: '10px 16px',
-                        background: valido ? '#0f2744' : '#94a3b8',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: 8,
-                        fontSize: 14,
-                        fontWeight: 700,
-                        cursor: valido && !parzialeSaving ? 'pointer' : 'not-allowed',
-                      }}
-                    >
-                      {parzialeSaving ? 'Salvataggio...' : 'Conferma'}
-                    </button>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-      {resolveModal && (
-        <ResolveProvvisorioModal
-          provvisorio={resolveModal}
-          onClose={() => setResolveModal(null)}
-          onResolve={async metodo => {
-            const current = resolveModal;
-            setResolveModal(null);
-            await handleResolveProvvisorio(current, metodo);
-          }}
-        />
-      )}
-      {feedbackModal && (
-        <FeedbackModal
-          title={feedbackModal.title}
-          message={feedbackModal.message}
-          tone={feedbackModal.tone}
-          onClose={() => setFeedbackModal(null)}
-        />
-      )}
-      {fatturaView && (
-        <ModalFattura
-          fatturaId={fatturaView.id}
-          numero={fatturaView.numero}
-          onClose={() => setFatturaView(null)}
-        />
-      )}
     </div>
   );
 }
 
-// Sub-components
+/* --------------------------- modal movimento --------------------------- */
+function MovimentoModal({ tipo, movimento, onClose, onSaved }) {
+  const oggi = new Date().toISOString().slice(0, 10);
+  const [form, setForm] = useState({
+    data: movimento?.data?.slice(0, 10) || oggi,
+    tipo: movimento?.tipo || 'uscita',
+    importo: movimento ? String(movimento.importo ?? '') : '',
+    descrizione: movimento?.descrizione || '',
+    categoria: movimento?.categoria || (tipo === 'cassa' ? 'Spese' : 'Altro'),
+  });
+  const [errore, setErrore] = useState('');
+  const [saving, setSaving] = useState(false);
 
-function FeedbackModal({ title, message, tone = 'info', onClose }) {
-  const tones = {
-    info: { accent: '#0f2744', bg: '#eff6ff' },
-    warning: { accent: '#b45309', bg: '#fff7ed' },
-    danger: { accent: '#b91c1c', bg: '#fef2f2' },
+  const categorie = CATEGORIE[tipo].includes(form.categoria)
+    ? CATEGORIE[tipo]
+    : [form.categoria, ...CATEGORIE[tipo]];
+
+  const salva = async () => {
+    const importo = parseImportoIT(form.importo);
+    if (!form.data || !importo || !form.descrizione.trim()) {
+      setErrore('Servono data, importo e descrizione.');
+      return;
+    }
+    setSaving(true);
+    setErrore('');
+    try {
+      const body = { ...form, importo: Math.abs(importo) };
+      if (movimento?.id) {
+        await api.put(`/api/prima-nota/${tipo}/${movimento.id}`, body);
+      } else {
+        await api.post(`/api/prima-nota/${tipo}`, body);
+      }
+      onSaved();
+    } catch (e) {
+      setErrore(e.response?.data?.message || e.response?.data?.detail || e.message);
+      setSaving(false);
+    }
   };
-  const palette = tones[tone] || tones.info;
 
+  const campo = { width: '100%', padding: '9px 10px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' };
   return (
     <div
       onClick={onClose}
       style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(15, 23, 42, 0.45)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 2100,
-        padding: 16,
+        position: 'fixed', inset: 0, background: 'rgba(15,39,68,0.55)', zIndex: 1000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14,
       }}
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{
-          width: '100%',
-          maxWidth: 460,
-          background: 'white',
-          borderRadius: 10,
-          boxShadow: '0 24px 48px rgba(15,39,68,0.24)',
-          overflow: 'hidden',
-        }}
+        style={{ background: 'white', borderRadius: 14, padding: 18, width: '100%', maxWidth: 420 }}
       >
-        <div style={{ padding: '14px 16px', background: palette.bg, borderBottom: `1px solid ${palette.accent}22` }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: palette.accent }}>{title}</div>
-        </div>
-        <div style={{ padding: 16, fontSize: 14, color: '#334155', whiteSpace: 'pre-line', lineHeight: 1.5 }}>
-          {message}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: 16, borderTop: '1px solid #e2e8f0' }}>
-          <button onClick={onClose} style={{ ...button('primary'), minWidth: 110 }}>
-            Chiudi
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ResolveProvvisorioModal({ provvisorio, onClose, onResolve }) {
-  const suggerimento = provvisorio?.suggerimento || 'sospesa';
-  const opzioni = [
-    { key: 'cassa', label: 'Registra in Cassa', hint: 'Pagamento immediato in contanti.' },
-    { key: 'banca', label: 'Registra in Banca', hint: 'Pagamento tracciato da bonifico o addebito.' },
-    { key: 'sospesa', label: 'Lascia Sospesa', hint: 'La fattura resta nei provvisori in attesa di decisione.' },
-    { key: 'misto', label: 'Pagamento Parziale', hint: 'Divide il pagamento tra cassa e banca.' },
-  ];
-
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(15, 23, 42, 0.45)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 2050,
-        padding: 16,
-      }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          width: '100%',
-          maxWidth: 520,
-          background: 'white',
-          borderRadius: 10,
-          boxShadow: '0 24px 48px rgba(15,39,68,0.24)',
-          overflow: 'hidden',
-        }}
-      >
-        <div style={{ padding: 16, borderBottom: '1px solid #e2e8f0' }}>
-          <div style={{ fontSize: 17, fontWeight: 700, color: '#0f2744' }}>Risolvi provvisorio</div>
-          <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
-            {(provvisorio?.fornitore || '').substring(0, 50)} — Fatt. #{provvisorio?.fattura_numero} — €{' '}
-            {(provvisorio?.importo || 0).toFixed(2)}
+        <h3 style={{ margin: '0 0 12px', color: BLU, fontSize: 16 }}>
+          {movimento ? '📝 Modifica movimento' : '➕ Nuovo movimento'} — {tipo === 'cassa' ? 'Cassa' : 'Banca'}
+        </h3>
+        <div style={{ display: 'grid', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <input type="date" value={form.data} onChange={e => setForm({ ...form, data: e.target.value })} style={campo} />
+            <select value={form.tipo} onChange={e => setForm({ ...form, tipo: e.target.value })} style={campo}>
+              <option value="entrata">Entrata (Dare)</option>
+              <option value="uscita">Uscita (Avere)</option>
+            </select>
+          </div>
+          <input
+            placeholder="Importo (es. 1.234,56)" inputMode="decimal" value={form.importo}
+            onChange={e => setForm({ ...form, importo: e.target.value })} style={campo}
+          />
+          <input
+            placeholder="Descrizione" value={form.descrizione}
+            onChange={e => setForm({ ...form, descrizione: e.target.value })} style={campo}
+          />
+          <select value={form.categoria} onChange={e => setForm({ ...form, categoria: e.target.value })} style={campo}>
+            {categorie.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          {errore && <div style={{ color: ROSSO, fontSize: 13 }}>{errore}</div>}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button onClick={onClose} style={{ padding: '9px 16px', borderRadius: 8, border: '1px solid #d1d5db', background: 'white', cursor: 'pointer' }}>
+              Annulla
+            </button>
+            <button
+              onClick={salva} disabled={saving}
+              style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: BLU, color: 'white', fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}
+            >
+              {saving ? '⏳…' : '💾 Salva'}
+            </button>
           </div>
         </div>
-        <div style={{ padding: 16, display: 'grid', gap: 10 }}>
-          {opzioni.map(opzione => {
-            const isSuggested = suggerimento === opzione.key;
-            return (
-              <button
-                key={opzione.key}
-                onClick={() => onResolve(opzione.key)}
-                style={{
-                  textAlign: 'left',
-                  padding: 14,
-                  borderRadius: 8,
-                  border: isSuggested ? '2px solid #b8860b' : '1px solid #dbe2ea',
-                  background: isSuggested ? '#fffbeb' : 'white',
-                  cursor: 'pointer',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: '#0f2744' }}>{opzione.label}</span>
-                  {isSuggested && (
-                    <span style={{ fontSize: 11, fontWeight: 700, color: '#92400e' }}>Suggerito</span>
-                  )}
-                </div>
-                <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{opzione.hint}</div>
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: 16, borderTop: '1px solid #e2e8f0' }}>
-          <button onClick={onClose} style={{ ...button('secondary'), minWidth: 110 }}>
-            Chiudi
-          </button>
-        </div>
       </div>
     </div>
   );
 }
 
-function MiniCard({ title, value, color, highlight: _highlight, onEdit, editTestId }) {
-  return (
-    <div
-      style={{
-        background: 'white',
-        borderRadius: 8,
-        padding: 10,
-        border: '1px solid #e2e8f0',
-        borderLeft: '4px solid #0f2744',
-        position: 'relative',
-      }}
-    >
-      <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>{title}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, color, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{value}</div>
-      {onEdit && (
-        <button
-          onClick={onEdit}
-          data-testid={editTestId}
-          title="Modifica riporto iniziale"
-          style={{
-            position: 'absolute', top: 6, right: 6, border: 'none',
-            background: '#f1f5f9', borderRadius: 6, cursor: 'pointer',
-            fontSize: 12, padding: '2px 6px',
-          }}
-        >
-          ✏️
-        </button>
-      )}
-    </div>
-  );
-}
-
-function TinyStatCard({ title, value, color }) {
-  return (
-    <div
-      style={{
-        background: 'white',
-        borderRadius: 6,
-        padding: 8,
-        border: '1px solid #e2e8f0',
-        borderLeft: `3px solid ${color}`,
-      }}
-    >
-      <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>{title}</div>
-      <div style={{ fontSize: 13, fontWeight: 700, color, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{value}</div>
-    </div>
-  );
-}
-
-function CompactEntryCard({ title, color, children }) {
-  return (
-    <div
-      style={{
-        background: `${color}10`,
-        borderRadius: 8,
-        padding: 10,
-        border: `1px solid ${color}30`,
-      }}
-    >
-      <h4 style={{ margin: '0 0 8px 0', fontSize: 12, fontWeight: 'bold', color }}>{title}</h4>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{children}</div>
-    </div>
-  );
-}
-
-// SummaryCard rimossa (10/07): la Banca usa le stesse MiniCard della Cassa
-// per avere una grafica uniforme tra i tre riquadri.
-
-// eslint-disable-next-line no-unused-vars
-function MiniStatCard({ title, value, color }) {
-  return (
-    <div
-      style={{
-        background: 'white',
-        borderRadius: 8,
-        padding: 12,
-        border: '1px solid #e5e7eb',
-        borderLeft: `4px solid ${color}`,
-      }}
-    >
-      <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>{title}</div>
-      <div style={{ fontSize: 16, fontWeight: 'bold', color }}>{value}</div>
-    </div>
-  );
-}
-
-// eslint-disable-next-line no-unused-vars
-function QuickEntryCard({ title, color, children }) {
-  return (
-    <div
-      style={{
-        background: `${color}`,
-        borderRadius: 12,
-        padding: 16,
-        border: `2px solid ${color}30`,
-      }}
-    >
-      <h4 style={{ margin: '0 0 12px 0', fontSize: 14, fontWeight: 'bold' }}>{title}</h4>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{children}</div>
-    </div>
-  );
-}
-
-
-// Estrae il numero fattura dal movimento: campo dedicato se presente,
-// altrimenti dal prefisso della descrizione ("Fatt. 123 - Fornitore").
-function splitNumeroFattura(mov) {
-  const desc = mov.descrizione || mov.descrizione_originale || '';
-  const m = desc.match(
-    /^(?:Fatt\.|Pagamento fattura|Incasso fattura|Nota credito(?: fornitore)?)\s+(\S+)\s*-\s*(.+)$/i
-  );
-  if (mov.numero_fattura) return { numero: mov.numero_fattura, descr: m ? m[2] : desc };
-  if (m) return { numero: m[1], descr: m[2] };
-  return { numero: '', descr: desc };
-}
-
-function MovementsTable({
-  movimenti,
-  tipo,
-  loading,
-  formatEuro,
-  formatDate,
-  onDelete,
-  onEdit,
-  onSposta,
-  readOnly = false,
-  saldoPrecedente = 0,
-  onModificaRiporto,
-}) {
-  // Rifattorizzazione grafica (richiesta utente 16/07/2026): su telefono i
-  // movimenti diventano CARD — tutto di un giorno in un blocco leggibile
-  // senza scroll orizzontale; su tablet/monitor resta la tabella che si
-  // allarga con lo schermo. Stessa ricetta di ListaAdattiva/pagina Fatture.
+/* ------------------------------- registro ------------------------------- */
+function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
   const isMobile = useIsMobile();
-  const [currentPage, setCurrentPage] = useState(1);
-  const [editingMovimento, setEditingMovimento] = useState(null);
-  const [spostando, setSpostando] = useState(null);
-  // Modale "Vedi fattura" del bottone VEDI: lo stato deve vivere QUI —
-  // prima chiamava il setter del componente padre (fuori scope) e il click
-  // mandava in crash la pagina (ReferenceError a runtime, invisibile al build)
+  const confirm = useConfirm();
+  const [pagina, setPagina] = useState(1);
+  const [cerca, setCerca] = useState('');
+  const [fCategoria, setFCategoria] = useState('');
+  const [fTipo, setFTipo] = useState('');
+  const [editing, setEditing] = useState(null);
+  const [nuovo, setNuovo] = useState(false);
   const [fatturaView, setFatturaView] = useState(null);
-  const itemsPerPage = 50;
+  const [busy, setBusy] = useState(null);
 
-  // FILTRI AVANZATI
-  const [filtroDescrizione, setFiltroDescrizione] = useState('');
-  const [filtroCategoria, setFiltroCategoria] = useState('');
-  const [filtroTipo, setFiltroTipo] = useState('');
-  const [filtroDareAvere, setFiltroDareAvere] = useState(''); // dare = entrata, avere = uscita
-  const [filtroDataDa, setFiltroDataDa] = useState(''); // YYYY-MM-DD
-  const [filtroDataA, setFiltroDataA] = useState('');
-  const [filtroImportoMin, setFiltroImportoMin] = useState('');
-  const [filtroImportoMax, setFiltroImportoMax] = useState('');
-  const [filtroNumeroFattura, setFiltroNumeroFattura] = useState('');
-  const [filtroDataText, setFiltroDataText] = useState('');
+  const movimenti = dati.movimenti || [];
+  const riporto = dati.saldo_precedente || 0;
 
-  // Lista categorie uniche
-  const categorieUniche = [...new Set(movimenti.map(m => m.categoria).filter(Boolean))].sort();
+  useEffect(() => { setPagina(1); }, [mese, cerca, fCategoria, fTipo]);
 
-  if (loading) {
-    return (
-      <div style={{ textAlign: 'center', padding: 40, color: '#6b7280' }}>⏳ Caricamento...</div>
-    );
-  }
-
-  // Applica filtri
-  let movimentiFiltrati = movimenti;
-
-  if (filtroDescrizione) {
-    movimentiFiltrati = movimentiFiltrati.filter(m =>
-      (m.descrizione || '').toLowerCase().includes(filtroDescrizione.toLowerCase())
-    );
-  }
-
-  if (filtroCategoria) {
-    movimentiFiltrati = movimentiFiltrati.filter(m => m.categoria === filtroCategoria);
-  }
-
-  if (filtroNumeroFattura) {
-    const q = filtroNumeroFattura.toLowerCase();
-    movimentiFiltrati = movimentiFiltrati.filter(m =>
-      splitNumeroFattura(m).numero.toLowerCase().includes(q)
-    );
-  }
-
-  if (filtroDataText) {
-    const q = filtroDataText.trim();
-    movimentiFiltrati = movimentiFiltrati.filter(m => {
-      const iso = m.data || '';
-      const it = iso.length >= 10 ? `${iso.slice(8, 10)}-${iso.slice(5, 7)}-${iso.slice(0, 4)}` : '';
-      return iso.includes(q) || it.includes(q);
-    });
-  }
-
-  if (filtroTipo) {
-    movimentiFiltrati = movimentiFiltrati.filter(m => m.tipo === filtroTipo);
-  }
-
-  if (filtroDareAvere === 'dare') {
-    movimentiFiltrati = movimentiFiltrati.filter(m => m.tipo === 'entrata');
-  } else if (filtroDareAvere === 'avere') {
-    movimentiFiltrati = movimentiFiltrati.filter(m => m.tipo === 'uscita');
-  }
-
-  // Filtro data da
-  if (filtroDataDa) {
-    movimentiFiltrati = movimentiFiltrati.filter(m => (m.data || '') >= filtroDataDa);
-  }
-  // Filtro data a
-  if (filtroDataA) {
-    movimentiFiltrati = movimentiFiltrati.filter(m => (m.data || '') <= filtroDataA);
-  }
-  // Filtro importo min
-  if (filtroImportoMin !== '') {
-    const min = parseFloat(filtroImportoMin);
-    if (!isNaN(min))
-      movimentiFiltrati = movimentiFiltrati.filter(m => Math.abs(m.importo || 0) >= min);
-  }
-  // Filtro importo max
-  if (filtroImportoMax !== '') {
-    const max = parseFloat(filtroImportoMax);
-    if (!isNaN(max))
-      movimentiFiltrati = movimentiFiltrati.filter(m => Math.abs(m.importo || 0) <= max);
-  }
-
-  // ORDINE DEL REGISTRO (richiesta utente 17/07/2026: "ordina dal più
-  // recente al meno recente"): a VIDEO i giorni scendono da oggi verso il
-  // 1° gennaio, ma DENTRO la stessa giornata resta la lettura naturale
-  // prima l'ENTRATA del corrispettivo e poi l'uscita POS — mai al
-  // contrario. Il saldo progressivo invece si calcola SEMPRE in ordine
-  // cronologico (ordineRegistro), altrimenti il riporto sarebbe sbagliato.
-  const ordineRegistro = (a, b) =>
+  // SALDO PROGRESSIVO CONTINUO: sempre in ordine CRONOLOGICO su TUTTO
+  // l'anno (mai sulla selezione filtrata), partendo dal riporto.
+  const cronologico = (a, b) =>
     (a.data || '').localeCompare(b.data || '') ||
     (a.tipo === 'entrata' ? 0 : 1) - (b.tipo === 'entrata' ? 0 : 1) ||
     (a.created_at || '').localeCompare(b.created_at || '');
-  const ordineVisualizzazione = (a, b) =>
-    (b.data || '').localeCompare(a.data || '') ||
-    (a.tipo === 'entrata' ? 0 : 1) - (b.tipo === 'entrata' ? 0 : 1) ||
-    (a.created_at || '').localeCompare(b.created_at || '');
+  const saldoDi = useMemo(() => {
+    const mappa = {};
+    let saldo = riporto;
+    [...movimenti].sort(cronologico).forEach(m => {
+      saldo += (m.tipo === 'entrata' ? 1 : -1) * Math.abs(m.importo || 0);
+      mappa[m.id] = saldo;
+    });
+    return mappa;
+  }, [movimenti, riporto]);
 
-  movimentiFiltrati = [...movimentiFiltrati].sort(ordineVisualizzazione);
+  // Filtri di ricerca + ordine A VIDEO: dal più recente al meno recente,
+  // dentro la giornata prima l'entrata (corrispettivo) poi l'uscita (POS).
+  const visibili = useMemo(() => {
+    let lista = movimenti;
+    if (mese !== null) lista = lista.filter(m => parseInt((m.data || '').slice(5, 7), 10) === mese + 1);
+    if (fCategoria) lista = lista.filter(m => m.categoria === fCategoria);
+    if (fTipo) lista = lista.filter(m => m.tipo === fTipo);
+    if (cerca.trim()) {
+      const q = cerca.trim().toLowerCase();
+      lista = lista.filter(m =>
+        (m.descrizione || '').toLowerCase().includes(q) ||
+        (m.numero_fattura || '').toLowerCase().includes(q) ||
+        String(m.importo || '').includes(q));
+    }
+    return [...lista].sort((a, b) =>
+      (b.data || '').localeCompare(a.data || '') ||
+      (a.tipo === 'entrata' ? 0 : 1) - (b.tipo === 'entrata' ? 0 : 1) ||
+      (a.created_at || '').localeCompare(b.created_at || ''));
+  }, [movimenti, mese, fCategoria, fTipo, cerca]);
 
-  const totalPages = Math.ceil(movimentiFiltrati.length / itemsPerPage);
-  const start = (currentPage - 1) * itemsPerPage;
-  const _currentMovimenti = movimentiFiltrati.slice(start, start + itemsPerPage);
+  const totPagine = Math.max(1, Math.ceil(visibili.length / PER_PAGINA));
+  const paginaCorrente = Math.min(pagina, totPagine);
+  const righe = visibili.slice((paginaCorrente - 1) * PER_PAGINA, paginaCorrente * PER_PAGINA);
+  const ultimaPagina = paginaCorrente === totPagine;
 
-  const saldoIniziale = saldoPrecedente || 0;
-  // Il saldo progressivo va calcolato SEMPRE su tutti i movimenti del
-  // periodo (mai su "movimentiFiltrati"): filtrando per es. "F24" o una
-  // fattura, il saldo progressivo diventava il saldo della sola selezione
-  // filtrata, non il saldo reale del conto — fuorviante e potenzialmente
-  // letto come "quanto ho davvero in cassa/banca". Si calcola una volta
-  // sola sull'elenco completo e si applica ai movimenti filtrati per id.
-  const movimentiForward = [...movimenti].sort(ordineRegistro);
-  const balanceMap = {};
-  movimentiForward.reduce((prevBal, m) => {
-    const newBal = m.tipo === 'entrata' ? prevBal + (m.importo || 0) : prevBal - (m.importo || 0);
-    balanceMap[m.id || m.data + m.importo] = newBal;
-    return newBal;
-  }, saldoIniziale);
-  // Applica il saldo progressivo REALE (dal conto completo) ai movimenti
-  // filtrati mostrati in tabella.
-  // Bottone "vedi documento" unico per tabella (desktop) e card (mobile):
-  // Fattura, Bonifico, F24, Corrispettivo. compact = versione da card.
-  const documentoBadge = (mov, idx, compact = false) => {
-    const base = {
-      display: 'inline-block',
-      padding: compact ? '5px 10px' : '6px 12px',
-      border: 'none',
-      borderRadius: 6,
-      cursor: 'pointer',
-      fontSize: compact ? 11 : 12,
-      fontWeight: 'bold',
-      textDecoration: 'none',
-      whiteSpace: 'nowrap',
-    };
+  const categorieUsate = useMemo(
+    () => [...new Set(movimenti.map(m => m.categoria).filter(Boolean))].sort(),
+    [movimenti]);
+
+  const elimina = async mov => {
+    const ok = await confirm({
+      title: 'Eliminare il movimento?',
+      message: `${formatDateIT(mov.data)} — ${mov.descrizione} (${eur(mov.importo)})`,
+      confirmText: 'Elimina', danger: true,
+    });
+    if (!ok) return;
+    setBusy(mov.id);
+    try {
+      try {
+        await api.delete(`/api/prima-nota/${tipo}/${mov.id}`);
+      } catch (e) {
+        if (e.response?.status === 409) await api.delete(`/api/prima-nota/${tipo}/${mov.id}?force=true`);
+        else throw e;
+      }
+      onRicarica();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const sposta = async mov => {
+    const verso = tipo === 'cassa' ? 'banca' : 'cassa';
+    setBusy(mov.id);
+    try {
+      await api.post('/api/prima-nota/sposta-movimento', { movimento_id: mov.id, da: tipo, a: verso });
+      onRicarica();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const badgeDocumento = mov => {
     if (mov.fattura_id) {
       return (
         <button
-          onClick={() =>
-            setFatturaView({
-              id: mov.fattura_id,
-              numero: mov.numero_fattura || mov.numero || mov.descrizione,
-            })
-          }
-          style={{ ...base, background: '#3b82f6', color: 'white' }}
-          title="Visualizza Fattura"
-          data-testid={`view-fattura-${mov.id || idx}`}
+          onClick={() => setFatturaView({ id: mov.fattura_id, numero: mov.numero_fattura })}
+          style={{ background: '#3b82f6', color: 'white', border: 'none', borderRadius: 6, padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
         >
           Fattura
         </button>
       );
     }
-    if (mov.bonifico_pdf_id) {
+    if (mov.corrispettivo_id) {
       return (
         <a
-          href={`/api/archivio-bonifici/transfers/${mov.bonifico_pdf_id}/pdf`}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ ...base, background: '#0f2744', color: 'white' }}
-          title="Visualizza Bonifico PDF"
-          data-testid={`view-bonifico-${mov.id || idx}`}
-        >
-          Bonifico
-        </a>
-      );
-    }
-    if (mov.f24_id) {
-      return (
-        <button
-          onClick={() => handleViewF24(mov.f24_id)}
-          style={{ ...base, background: '#dc2626', color: 'white' }}
-          title="Visualizza F24"
-          data-testid={`view-f24-${mov.id || idx}`}
-        >
-          📄 F24
-        </button>
-      );
-    }
-    if (mov.corrispettivo_id || mov.xml_filename) {
-      return (
-        <a
-          href={
-            mov.corrispettivo_id
-              ? `/api/corrispettivi/${mov.corrispettivo_id}/view`
-              : `/api/corrispettivi/view-by-filename?filename=${encodeURIComponent(mov.xml_filename)}`
-          }
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ ...base, background: '#16a34a', color: 'white' }}
-          title="Visualizza Corrispettivo"
-          data-testid={`view-corrispettivo-${mov.id || idx}`}
+          href={`/api/corrispettivi/${mov.corrispettivo_id}/view`} target="_blank" rel="noopener noreferrer"
+          style={{ background: VERDE, color: 'white', borderRadius: 6, padding: '4px 9px', fontSize: 11, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}
         >
           🧾 Corrisp.
         </a>
       );
     }
-    if (mov.categoria === 'F24' || (mov.descrizione && mov.descrizione.includes('F24'))) {
-      return (
-        <span
-          style={{ ...base, background: '#fef3c7', color: '#92400e', border: '1px solid #d97706', cursor: 'default' }}
-          title="F24 - Documento da allegare"
-        >
-          📄 F24
-        </span>
-      );
-    }
     return null;
   };
 
-  const movimentiWithBalance = movimentiFiltrati.map(m => ({
-    ...m,
-    saldoProgressivo: balanceMap[m.id || m.data + m.importo] ?? saldoIniziale,
-  }));
-
-  // Totale della sola selezione filtrata (entrate - uscite), mostrato a
-  // parte dal saldo reale per non essere confuso con esso.
-  const totaleSelezioneFiltrata = movimentiFiltrati.reduce(
-    (sum, m) => sum + (m.tipo === 'entrata' ? (m.importo || 0) : -(m.importo || 0)),
-    0
+  const bottoniRiga = mov => (
+    <span style={{ display: 'inline-flex', gap: 5, whiteSpace: 'nowrap' }}>
+      <button
+        onClick={() => sposta(mov)} disabled={busy === mov.id}
+        title={tipo === 'cassa' ? 'Sposta in banca' : 'Sposta in cassa'}
+        style={{ background: BLU, color: 'white', border: 'none', borderRadius: 6, padding: '5px 8px', fontSize: 12, cursor: 'pointer', opacity: busy === mov.id ? 0.5 : 1 }}
+      >
+        {tipo === 'cassa' ? '🏦' : '💵'}
+      </button>
+      <button
+        onClick={() => setEditing(mov)}
+        title="Modifica"
+        style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, padding: '5px 8px', fontSize: 12, cursor: 'pointer' }}
+      >
+        📝
+      </button>
+      <button
+        onClick={() => elimina(mov)} disabled={busy === mov.id}
+        title="Elimina"
+        style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '5px 8px', fontSize: 12, cursor: 'pointer', opacity: busy === mov.id ? 0.5 : 1 }}
+      >
+        🗑️
+      </button>
+    </span>
   );
 
-  const currentWithBalance = movimentiWithBalance.slice(start, start + itemsPerPage);
-
-  // Reset pagina quando cambiano i filtri
-  const resetFilters = () => {
-    setFiltroDescrizione('');
-    setFiltroCategoria('');
-    setFiltroTipo('');
-    setFiltroDareAvere('');
-    setFiltroDataDa('');
-    setFiltroDataA('');
-    setFiltroImportoMin('');
-    setFiltroImportoMax('');
-    setFiltroNumeroFattura('');
-    setFiltroDataText('');
-    setCurrentPage(1);
-  };
-
-  const hasActiveFilters =
-    filtroDescrizione ||
-    filtroCategoria ||
-    filtroDareAvere ||
-    filtroDataDa ||
-    filtroDataA ||
-    filtroImportoMin !== '' ||
-    filtroImportoMax !== '' ||
-    filtroNumeroFattura ||
-    filtroDataText;
-
-  return (
+  const rigaRiporto = (
     <div
+      data-testid={`riga-saldo-iniziale-${tipo}`}
       style={{
-        background: 'white',
-        borderRadius: 12,
-        overflow: 'hidden',
-        border: '1px solid #e5e7eb',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+        padding: '10px 14px', background: '#fffbeb', border: '1px solid #d97706',
+        borderRadius: 10, marginTop: 8,
       }}
     >
-      {/* Modal Modifica Movimento - solo se non readOnly */}
-      {!readOnly && editingMovimento && (
-        <EditMovimentoModal
-          movimento={editingMovimento}
-          tipo={tipo}
-          onClose={() => setEditingMovimento(null)}
-          onSave={updated => {
-            onEdit(updated);
-            // Trova l'indice del movimento corrente e passa al successivo
-            const currentIndex = currentWithBalance.findIndex(m => m.id === editingMovimento.id);
-            const nextIndex = currentIndex + 1;
-            if (nextIndex < currentWithBalance.length) {
-              // C'è un movimento successivo nella pagina corrente
-              setEditingMovimento(currentWithBalance[nextIndex]);
-            } else if (currentPage < totalPages) {
-              // Vai alla pagina successiva e apri il primo movimento
-              setCurrentPage(currentPage + 1);
-              // Il movimento verrà aperto dopo il cambio pagina
-              setTimeout(() => {
-                const firstOfNextPage = movimentiWithBalance[start + itemsPerPage];
-                if (firstOfNextPage) {
-                  setEditingMovimento(firstOfNextPage);
-                } else {
-                  setEditingMovimento(null);
-                }
-              }, 100);
-            } else {
-              // Fine lista
-              setEditingMovimento(null);
-            }
-          }}
-        />
-      )}
-
-      {/* FILTRI AVANZATI */}
-      <div
-        style={{
-          padding: '12px 16px',
-          background: '#f8fafc',
-          borderBottom: '1px solid #e5e7eb',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            gap: 12,
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            marginBottom: 8,
-          }}
+      <span style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>
+        🏁 Saldo iniziale al 01/01 (riporto)
+      </span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace', color: riporto >= 0 ? BLU : ROSSO }}>
+          {eur(riporto)}
+        </span>
+        <button
+          onClick={onModificaRiporto}
+          data-testid={`modifica-saldo-iniziale-${tipo}`}
+          style={{ background: '#fef3c7', border: '1px solid #d97706', borderRadius: 7, padding: '4px 9px', fontSize: 12, cursor: 'pointer' }}
         >
-          <span style={{ fontWeight: 600, fontSize: 12, color: '#374151' }}>🔍 Filtri:</span>
+          ✏️
+        </button>
+      </span>
+    </div>
+  );
 
-          {/* Filtro Descrizione */}
-          <input
-            type="text"
-            placeholder="Cerca descrizione..."
-            value={filtroDescrizione}
-            onChange={e => {
-              setFiltroDescrizione(e.target.value);
-              setCurrentPage(1);
-            }}
-            style={{
-              padding: '6px 10px',
-              border: '1px solid #d1d5db',
-              borderRadius: 6,
-              fontSize: 12,
-              width: 180,
-            }}
-            data-testid="filtro-descrizione"
-          />
+  // Card giornaliere (mobile) raggruppate per data
+  const gruppiGiorno = useMemo(() => {
+    const gruppi = [];
+    righe.forEach(m => {
+      const ultimo = gruppi[gruppi.length - 1];
+      if (!ultimo || ultimo.data !== m.data) gruppi.push({ data: m.data, righe: [] });
+      gruppi[gruppi.length - 1].righe.push(m);
+    });
+    return gruppi;
+  }, [righe]);
 
-          {/* Filtro Categoria */}
-          <select
-            value={filtroCategoria}
-            onChange={e => {
-              setFiltroCategoria(e.target.value);
-              setCurrentPage(1);
-            }}
-            style={{
-              padding: '6px 10px',
-              border: '1px solid #d1d5db',
-              borderRadius: 6,
-              fontSize: 12,
-              background: 'white',
-            }}
-            data-testid="filtro-categoria"
-          >
-            <option value="">Tutte le categorie</option>
-            {categorieUniche.map(cat => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-          </select>
+  const stileInput = { padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13, minWidth: 0 };
 
-          {/* Filtro DARE/AVERE */}
-          <select
-            value={filtroDareAvere}
-            onChange={e => {
-              setFiltroDareAvere(e.target.value);
-              setCurrentPage(1);
-            }}
-            style={{
-              padding: '6px 10px',
-              border: '1px solid #d1d5db',
-              borderRadius: 6,
-              fontSize: 12,
-              background: 'white',
-            }}
-            data-testid="filtro-dare-avere"
-          >
-            <option value="">DARE + AVERE</option>
-            <option value="dare">Solo DARE (Entrate)</option>
-            <option value="avere">Solo AVERE (Uscite)</option>
-          </select>
-        </div>
-
-        {/* Seconda riga filtri: Data e Importo */}
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontWeight: 600, fontSize: 12, color: '#374151' }}>📅 Data:</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <label style={{ fontSize: 11, color: '#6b7280' }}>Da</label>
-            <input
-              type="date"
-              value={filtroDataDa}
-              onChange={e => {
-                setFiltroDataDa(e.target.value);
-                setCurrentPage(1);
-              }}
-              style={{
-                padding: '5px 8px',
-                border: '1px solid #d1d5db',
-                borderRadius: 6,
-                fontSize: 12,
-              }}
-              data-testid="filtro-data-da"
-            />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <label style={{ fontSize: 11, color: '#6b7280' }}>A</label>
-            <input
-              type="date"
-              value={filtroDataA}
-              onChange={e => {
-                setFiltroDataA(e.target.value);
-                setCurrentPage(1);
-              }}
-              style={{
-                padding: '5px 8px',
-                border: '1px solid #d1d5db',
-                borderRadius: 6,
-                fontSize: 12,
-              }}
-              data-testid="filtro-data-a"
-            />
-          </div>
-
-          <span style={{ fontWeight: 600, fontSize: 12, color: '#374151', marginLeft: 8 }}>
-            💰 Importo:
-          </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <label style={{ fontSize: 11, color: '#6b7280' }}>Min €</label>
-            <input
-              type="number"
-              placeholder="0"
-              value={filtroImportoMin}
-              onChange={e => {
-                setFiltroImportoMin(e.target.value);
-                setCurrentPage(1);
-              }}
-              style={{
-                padding: '5px 8px',
-                border: '1px solid #d1d5db',
-                borderRadius: 6,
-                fontSize: 12,
-                width: 90,
-              }}
-              data-testid="filtro-importo-min"
-            />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <label style={{ fontSize: 11, color: '#6b7280' }}>Max €</label>
-            <input
-              type="number"
-              placeholder="∞"
-              value={filtroImportoMax}
-              onChange={e => {
-                setFiltroImportoMax(e.target.value);
-                setCurrentPage(1);
-              }}
-              style={{
-                padding: '5px 8px',
-                border: '1px solid #d1d5db',
-                borderRadius: 6,
-                fontSize: 12,
-                width: 90,
-              }}
-              data-testid="filtro-importo-max"
-            />
-          </div>
-
-          {/* Contatore risultati */}
-          <span style={{ fontSize: 12, color: '#6b7280', marginLeft: 8 }}>
-            {movimentiFiltrati.length} / {movimenti.length} movimenti
-          </span>
-
-          {/* Totale della selezione filtrata — separato dal saldo reale del
-              conto (colonna Saldo in tabella) per non essere confuso con
-              esso: filtrando per es. "F24" questo NON è "quanto c'è in
-              cassa/banca", è solo entrate-uscite dei soli movimenti filtrati. */}
-          {hasActiveFilters && (
-            <span
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                color: totaleSelezioneFiltrata >= 0 ? '#16a34a' : '#dc2626',
-                marginLeft: 8,
-                padding: '2px 8px',
-                background: '#f1f5f9',
-                borderRadius: 4,
-              }}
-              title="Somma entrate-uscite dei soli movimenti filtrati (non è il saldo reale del conto)"
-            >
-              Totale selezione: {formatEuro(totaleSelezioneFiltrata)}
-            </span>
-          )}
-
-          {/* Reset Filtri */}
-          {hasActiveFilters && (
-            <button
-              onClick={resetFilters}
-              style={{
-                padding: '6px 12px',
-                background: '#dc2626',
-                color: 'white',
-                border: 'none',
-                borderRadius: 6,
-                fontSize: 12,
-                cursor: 'pointer',
-              }}
-              data-testid="btn-reset-filtri"
-            >
-              🔄 Reset filtri
-            </button>
-          )}
-        </div>
+  return (
+    <div>
+      {/* filtri + nuovo movimento */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '12px 0' }}>
+        <input
+          placeholder="🔍 Cerca…" value={cerca} onChange={e => setCerca(e.target.value)}
+          style={{ ...stileInput, flex: '1 1 140px' }}
+        />
+        <select value={fCategoria} onChange={e => setFCategoria(e.target.value)} style={stileInput}>
+          <option value="">Tutte le categorie</option>
+          {categorieUsate.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={fTipo} onChange={e => setFTipo(e.target.value)} style={stileInput}>
+          <option value="">Dare + Avere</option>
+          <option value="entrata">Solo Dare ↑</option>
+          <option value="uscita">Solo Avere ↓</option>
+        </select>
+        <button
+          onClick={() => setNuovo(true)}
+          style={{ background: BLU, color: 'white', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+        >
+          ➕ Nuovo
+        </button>
       </div>
 
-      {/* Pagination Header */}
-      {totalPages > 1 && (
+      {/* paginazione */}
+      {totPagine > 1 && (
         <div
           style={{
-            padding: '12px 16px',
-            background: '#0f2744',
-            color: 'white',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            background: BLU, color: 'white', borderRadius: 10, padding: '8px 12px', marginBottom: 10, fontSize: 13,
           }}
         >
-          <span>
-            📄 Pagina {currentPage} di {totalPages} ({movimenti.length} movimenti)
+          <span>📄 {paginaCorrente}/{totPagine} — {visibili.length} movimenti</span>
+          <span style={{ display: 'flex', gap: 4 }}>
+            {[['«', 1], ['‹', paginaCorrente - 1], ['›', paginaCorrente + 1], ['»', totPagine]].map(([s, p]) => (
+              <button
+                key={s} onClick={() => setPagina(Math.min(totPagine, Math.max(1, p)))}
+                style={{ border: 'none', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}
+              >
+                {s}
+              </button>
+            ))}
           </span>
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button
-              onClick={() => setCurrentPage(1)}
-              disabled={currentPage === 1}
-              style={{
-                padding: '4px 8px',
-                borderRadius: 4,
-                border: 'none',
-                cursor: 'pointer',
-                opacity: currentPage === 1 ? 0.5 : 1,
-              }}
-            >
-              «
-            </button>
-            <button
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              style={{
-                padding: '4px 8px',
-                borderRadius: 4,
-                border: 'none',
-                cursor: 'pointer',
-                opacity: currentPage === 1 ? 0.5 : 1,
-              }}
-            >
-              ‹
-            </button>
-            <button
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              style={{
-                padding: '4px 8px',
-                borderRadius: 4,
-                border: 'none',
-                cursor: 'pointer',
-                opacity: currentPage === totalPages ? 0.5 : 1,
-              }}
-            >
-              ›
-            </button>
-            <button
-              onClick={() => setCurrentPage(totalPages)}
-              disabled={currentPage === totalPages}
-              style={{
-                padding: '4px 8px',
-                borderRadius: 4,
-                border: 'none',
-                cursor: 'pointer',
-                opacity: currentPage === totalPages ? 0.5 : 1,
-              }}
-            >
-              »
-            </button>
-          </div>
         </div>
       )}
 
-      {/* Su telefono: una CARD per movimento (tutto il giorno in un blocco,
-          niente scroll orizzontale). Su tablet/monitor: tabella completa. */}
+      {righe.length === 0 && (
+        <div style={{ padding: 30, textAlign: 'center', color: '#6b7280', background: 'white', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+          Nessun movimento{mese !== null ? ` a ${MESI[mese]}` : ''}.
+        </div>
+      )}
+
       {isMobile ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '10px 12px' }}>
-          {(() => {
-            // Card raggruppate PER GIORNATA (audit 16/07/2026): intestazione
-            // con data, numero movimenti e netto del giorno, poi le card.
-            const gruppi = [];
-            currentWithBalance.forEach((mov, idx) => {
-              const ultimo = gruppi[gruppi.length - 1];
-              if (!ultimo || ultimo.data !== mov.data) {
-                gruppi.push({ data: mov.data, righe: [] });
-              }
-              gruppi[gruppi.length - 1].righe.push([mov, idx]);
-            });
-            return gruppi.map(g => {
-              const nettoGiorno = g.righe.reduce(
-                (s, [m]) => s + (m.tipo === 'entrata' ? 1 : -1) * Math.abs(m.importo || 0), 0);
-              return (
-                <div key={g.data || 'senza-data'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        /* ------------------- MOBILE: card per giornata ------------------- */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {gruppiGiorno.map(g => {
+            const netto = g.righe.reduce((s, m) => s + (m.tipo === 'entrata' ? 1 : -1) * Math.abs(m.importo || 0), 0);
+            return (
+              <div key={g.data} style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                <div
+                  style={{
+                    display: 'flex', justifyContent: 'space-between', gap: 8, padding: '6px 11px',
+                    background: BLU, color: 'white', borderRadius: 8, fontSize: 12.5, fontWeight: 700,
+                  }}
+                >
+                  <span>📅 {formatDateIT(g.data)}</span>
+                  <span style={{ fontFamily: 'ui-monospace, Menlo, monospace', color: netto >= 0 ? '#86efac' : '#fca5a5' }}>
+                    {netto >= 0 ? '+' : ''}{eur(netto)}
+                  </span>
+                </div>
+                {g.righe.map(m => (
                   <div
+                    key={m.id}
+                    data-testid={`movimento-card-${m.id}`}
                     style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      gap: 8, padding: '6px 10px', background: '#0f2744', color: 'white',
-                      borderRadius: 8, fontSize: 12, fontWeight: 700, minWidth: 0,
+                      background: 'white', borderRadius: 11, border: '1px solid #e2e8f0',
+                      borderLeft: `4px solid ${m.tipo === 'entrata' ? VERDE : ROSSO}`, padding: '9px 12px',
                     }}
                   >
-                    <span style={{ whiteSpace: 'nowrap' }}>📅 {formatDate(g.data)}</span>
-                    <span style={{ fontWeight: 500, fontSize: 11, opacity: 0.85 }}>
-                      {g.righe.length} mov.
-                    </span>
-                    <span
-                      style={{
-                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                        color: nettoGiorno >= 0 ? '#86efac' : '#fca5a5',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {nettoGiorno >= 0 ? '+' : ''}{formatEuroD(nettoGiorno)}
-                    </span>
-                  </div>
-                  {g.righe.map(([mov, idx]) => {
-            const entrata = mov.tipo === 'entrata';
-            const { numero, descr } = splitNumeroFattura(mov);
-            return (
-              <div
-                key={mov.id || idx}
-                data-testid={`movimento-card-${mov.id || idx}`}
-                style={{
-                  background: 'white',
-                  borderRadius: 12,
-                  border: '1px solid #e2e8f0',
-                  borderLeft: `4px solid ${entrata ? '#16a34a' : '#dc2626'}`,
-                  boxShadow: '0 1px 2px rgba(15,39,68,0.06)',
-                  padding: '10px 12px',
-                  minWidth: 0,
-                }}
-              >
-                {/* riga 1: data + categoria | importo colorato */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11.5, color: '#334155', fontWeight: 600 }}>
-                      {formatDate(mov.data)}
-                    </span>
-                    {mov.categoria && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: 11, background: '#f1f5f9', borderRadius: 5, padding: '2px 7px', fontWeight: 600 }}>
+                        {m.categoria || '—'}
+                      </span>
                       <span
                         style={{
-                          marginLeft: 8, background: '#f1f5f9', color: '#475569',
-                          padding: '2px 7px', borderRadius: 999, fontSize: 10.5, fontWeight: 600,
+                          fontWeight: 800, whiteSpace: 'nowrap', fontFamily: 'ui-monospace, Menlo, monospace',
+                          color: m.tipo === 'entrata' ? VERDE : ROSSO,
                         }}
                       >
-                        {mov.categoria}
+                        {m.tipo === 'entrata' ? '+' : '−'}{eur(Math.abs(m.importo))}
                       </span>
-                    )}
-                  </div>
-                  <div
-                    style={{
-                      fontWeight: 800, fontSize: 15.5, whiteSpace: 'nowrap', flexShrink: 0,
-                      color: entrata ? '#16a34a' : '#dc2626',
-                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                    }}
-                  >
-                    {entrata ? '↑' : '↓'} {formatEuroD(mov.importo)}
-                  </div>
-                </div>
-                {/* riga 2: descrizione (+ n. fattura) */}
-                {(descr || numero) && (
-                  <div style={{ marginTop: 4, fontSize: 12.5, color: '#1e293b', lineHeight: 1.35, overflowWrap: 'anywhere' }}>
-                    {descr || '-'}
-                    {numero && (
-                      <span style={{ marginLeft: 6, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11, color: '#64748b' }}>
-                        · {numero}
+                    </div>
+                    <div style={{ fontSize: 12.5, color: '#334155', margin: '5px 0', wordBreak: 'break-word' }}>
+                      {m.descrizione || '—'}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11.5, color: '#64748b' }}>
+                        Saldo:{' '}
+                        <b style={{ color: (saldoDi[m.id] ?? 0) >= 0 ? VERDE : ROSSO, fontFamily: 'ui-monospace, Menlo, monospace' }}>
+                          {eur(saldoDi[m.id])}
+                        </b>
                       </span>
-                    )}
+                      <span style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                        {badgeDocumento(m)}
+                        {bottoniRiga(m)}
+                      </span>
+                    </div>
                   </div>
-                )}
-                {/* riga 3: saldo progressivo | documento + azioni (va a capo
-                    su schermi molto stretti: le azioni non escono mai dalla card) */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 8, minWidth: 0, flexWrap: 'wrap' }}>
-                  <div style={{ fontSize: 11.5, color: '#64748b', whiteSpace: 'nowrap' }}>
-                    Saldo{' '}
-                    <span
-                      style={{
-                        fontWeight: 700,
-                        color: mov.saldoProgressivo >= 0 ? '#0f2744' : '#dc2626',
-                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                        fontSize: 12.5,
-                      }}
-                    >
-                      {formatEuroD(mov.saldoProgressivo)}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
-                    {documentoBadge(mov, idx, true)}
-                    {!readOnly && (
-                      <>
-                        <button
-                          onClick={async () => {
-                            setSpostando(mov.id);
-                            try {
-                              await onSposta(mov.id, tipo, tipo === 'cassa' ? 'banca' : 'cassa');
-                            } finally {
-                              setSpostando(null);
-                            }
-                          }}
-                          disabled={spostando === mov.id}
-                          style={{
-                            background: '#0f2744', color: 'white', border: 'none', borderRadius: 8,
-                            padding: '7px 9px', fontSize: 13, cursor: 'pointer',
-                            opacity: spostando === mov.id ? 0.6 : 1,
-                          }}
-                          title={tipo === 'cassa' ? 'Sposta in Banca' : 'Sposta in Cassa'}
-                          data-testid={`sposta-movimento-${mov.id}`}
-                        >
-                          {spostando === mov.id ? '⏳' : tipo === 'cassa' ? '🏦' : '💵'}
-                        </button>
-                        <button
-                          onClick={() => setEditingMovimento(mov)}
-                          style={{
-                            background: '#f1f5f9', color: '#0f2744', border: '1px solid #e2e8f0',
-                            borderRadius: 8, padding: '7px 9px', fontSize: 13, cursor: 'pointer',
-                          }}
-                          title="Modifica"
-                          data-testid={`edit-movimento-${mov.id}`}
-                        >
-                          📝
-                        </button>
-                        <button
-                          onClick={() => onDelete(mov.id)}
-                          style={{
-                            background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca',
-                            borderRadius: 8, padding: '7px 9px', fontSize: 13, cursor: 'pointer',
-                          }}
-                          title="Elimina"
-                          data-testid={`delete-movimento-${mov.id}`}
-                        >
-                          🗑️
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
+                ))}
               </div>
             );
-                  })}
-                </div>
-              );
-            });
-          })()}
-          {/* Con l'ordine dal più recente, il riporto (saldo iniziale 01/01)
-              sta in FONDO all'ultima pagina, sotto il movimento più vecchio. */}
-          {currentPage === Math.max(totalPages, 1) && (
-            <div
-              data-testid={`riga-saldo-iniziale-${tipo}`}
-              style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                gap: 8, padding: '10px 12px', background: '#fffbeb',
-                border: '1px solid #d97706', borderRadius: 10, minWidth: 0,
-              }}
-            >
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#92400e' }}>
-                🏁 Saldo iniziale 01/01
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span
-                  style={{
-                    fontWeight: 800, fontSize: 14.5,
-                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                    color: saldoIniziale >= 0 ? '#0f2744' : '#dc2626',
-                  }}
-                >
-                  {formatEuroD(saldoIniziale)}
-                </span>
-                {onModificaRiporto && (
-                  <button
-                    onClick={onModificaRiporto}
-                    title="Modifica saldo iniziale"
-                    data-testid={`modifica-saldo-iniziale-${tipo}`}
-                    style={{
-                      background: '#fef3c7', border: '1px solid #d97706', borderRadius: 8,
-                      padding: '6px 9px', fontSize: 13, cursor: 'pointer',
-                    }}
-                  >
-                    ✏️
-                  </button>
-                )}
-              </span>
-            </div>
-          )}
+          })}
+          {ultimaPagina && rigaRiporto}
         </div>
       ) : (
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead>
-            <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-              <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
-                Data
-              </th>
-              <th
-                style={{
-                  padding: '8px 8px',
-                  textAlign: 'center',
-                  fontWeight: 600,
-                  fontSize: 11,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  width: 40,
-                }}
-              >
-                T
-              </th>
-              <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
-                Cat.
-              </th>
-              <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
-                Descrizione
-              </th>
-              {/* Colonne numeriche STRETTE (richiesta utente 10/07): il
-                  respiro va alla descrizione e alla colonna Azioni */}
-              <th style={{ padding: '8px 6px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase', width: 100 }}>
-                N. Fattura
-              </th>
-              <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase', width: 85 }}>
-                DARE
-              </th>
-              <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase', width: 85 }}>
-                AVERE
-              </th>
-              <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase', width: 95 }}>
-                Saldo
-              </th>
-              <th
-                style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}
-              >
-                Documento
-              </th>
-              {!readOnly && (
-                <th
-                  style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}
-                >
-                  Azioni
-                </th>
-              )}
-            </tr>
-            <tr style={{ background: '#f3f4f6', borderBottom: '1px solid #e5e7eb' }}>
-              <th style={{ padding: '4px 6px' }}>
-                <input value={filtroDataText} onChange={e => { setFiltroDataText(e.target.value); setCurrentPage(1); }}
-                  placeholder="gg-mm&" style={{ width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 10, boxSizing: 'border-box' }} />
-              </th>
-              <th style={{ padding: '4px 6px' }}>
-                <select value={filtroDareAvere} onChange={e => { setFiltroDareAvere(e.target.value); setCurrentPage(1); }}
-                  style={{ width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 10, boxSizing: 'border-box' }}>
-                  <option value="">"</option>
-                  <option value="dare">↑</option>
-                  <option value="avere">↓</option>
-                </select>
-              </th>
-              <th style={{ padding: '4px 6px' }}>
-                <select value={filtroCategoria} onChange={e => { setFiltroCategoria(e.target.value); setCurrentPage(1); }}
-                  style={{ width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 10, boxSizing: 'border-box' }}>
-                  <option value="">Tutte</option>
-                  {categorieUniche.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </th>
-              <th style={{ padding: '4px 6px' }}>
-                <input value={filtroDescrizione} onChange={e => { setFiltroDescrizione(e.target.value); setCurrentPage(1); }}
-                  placeholder="Cerca&" style={{ width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 10, boxSizing: 'border-box' }} />
-              </th>
-              <th style={{ padding: '4px 6px' }}>
-                <input value={filtroNumeroFattura} onChange={e => { setFiltroNumeroFattura(e.target.value); setCurrentPage(1); }}
-                  placeholder="N.&" style={{ width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 10, boxSizing: 'border-box' }} />
-              </th>
-              <th style={{ padding: '4px 6px' }}>
-                <input value={filtroImportoMin} onChange={e => { setFiltroImportoMin(e.target.value); setCurrentPage(1); }}
-                  placeholder="Min €" style={{ width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 10, boxSizing: 'border-box' }} />
-              </th>
-              <th style={{ padding: '4px 6px' }}>
-                <input value={filtroImportoMax} onChange={e => { setFiltroImportoMax(e.target.value); setCurrentPage(1); }}
-                  placeholder="Max €" style={{ width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 10, boxSizing: 'border-box' }} />
-              </th>
-              <th />
-              <th />
-              {!readOnly && <th />}
-            </tr>
-          </thead>
-          <tbody>
-            {currentWithBalance.map((mov, idx) => (
-              <tr
-                key={mov.id || idx}
-                style={{
-                  borderBottom: '1px solid #f1f5f9',
-                  background: idx % 2 === 0 ? 'white' : '#f8fafc',
-                }}
-                data-testid={`movimento-row-${mov.id || idx}`}
-              >
-                <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: 11 }}>
-                  {formatDate(mov.data)}
-                </td>
-                <td style={{ padding: '6px 8px', textAlign: 'center' }}>
-                  <span
+        /* ------------------------ DESKTOP: tabella ----------------------- */
+        <div style={{ background: 'white', borderRadius: 12, border: '1px solid #e2e8f0', overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead>
+              <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                {['Data', 'Categoria', 'Descrizione', 'Dare', 'Avere', 'Saldo', 'Doc.', 'Azioni'].map((h, i) => (
+                  <th
+                    key={h}
                     style={{
-                      padding: '2px 6px',
-                      borderRadius: 4,
-                      fontSize: 9,
-                      fontWeight: 'bold',
-                      background: mov.tipo === 'entrata' ? '#dcfce7' : '#fee2e2',
-                      color: mov.tipo === 'entrata' ? '#166534' : '#991b1b',
+                      padding: '9px 10px', fontSize: 11, color: '#64748b', textTransform: 'uppercase',
+                      textAlign: i >= 3 && i <= 5 ? 'right' : i >= 6 ? 'center' : 'left',
                     }}
                   >
-                    {mov.tipo === 'entrata' ? '↑' : '↓'}
-                  </span>
-                </td>
-                <td style={{ padding: '6px 8px' }}>
-                  <span
-                    style={{
-                      background: '#f3f4f6',
-                      padding: '2px 4px',
-                      borderRadius: 3,
-                      fontSize: 10,
-                    }}
-                  >
-                    {mov.categoria || '-'}
-                  </span>
-                </td>
-                <td
-                  style={{
-                    padding: '6px 8px',
-                    maxWidth: 400,
-                    wordBreak: 'break-word',
-                    whiteSpace: 'pre-wrap',
-                    fontSize: 11,
-                    lineHeight: 1.3,
-                  }}
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {righe.map((m, i) => (
+                <tr
+                  key={m.id}
+                  data-testid={`movimento-row-${m.id}`}
+                  style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 ? '#f8fafc' : 'white' }}
                 >
-                  {splitNumeroFattura(mov).descr || '-'}
-                </td>
-                <td style={{ padding: '6px 6px', fontFamily: 'monospace', fontSize: 10.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 100 }}>
-                  {splitNumeroFattura(mov).numero || '-'}
-                </td>
-                <td
-                  style={{
-                    padding: '6px 6px',
-                    textAlign: 'right',
-                    color: '#16a34a',
-                    fontWeight: mov.tipo === 'entrata' ? 'bold' : 'normal',
-                    fontSize: 11.5,
-                    whiteSpace: 'nowrap',
-                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                  }}
-                >
-                  {mov.tipo === 'entrata' ? formatEuroD(mov.importo) : '-'}
-                </td>
-                <td
-                  style={{
-                    padding: '6px 6px',
-                    textAlign: 'right',
-                    color: '#dc2626',
-                    fontWeight: mov.tipo === 'uscita' ? 'bold' : 'normal',
-                    fontSize: 11.5,
-                    whiteSpace: 'nowrap',
-                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                  }}
-                >
-                  {mov.tipo === 'uscita' ? formatEuroD(mov.importo) : '-'}
-                </td>
-                <td
-                  style={{
-                    padding: '6px 6px',
-                    textAlign: 'right',
-                    fontWeight: 'bold',
-                    color: mov.saldoProgressivo >= 0 ? '#16a34a' : '#dc2626',
-                    fontSize: 11.5,
-                    whiteSpace: 'nowrap',
-                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                  }}
-                >
-                  {formatEuroD(mov.saldoProgressivo)}
-                </td>
-                <td style={{ padding: '6px 8px', textAlign: 'center' }}>
-                  {/* Pulsante VEDI documento - Supporta: Fattura, F24, Corrispettivi, Bonifici */}
-                  {documentoBadge(mov, idx) || <span style={{ color: '#9ca3af', fontSize: 11 }}>-</span>}
-                </td>
-                {!readOnly && (
-                  // Azioni LARGHE e leggibili (richiesta utente 10/07): bottoni
-                  // con etichetta al posto delle sole icone minuscole
-                  <td style={{ padding: '6px 8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                    <button
-                      onClick={async () => {
-                        setSpostando(mov.id);
-                        try {
-                          await onSposta(mov.id, tipo, tipo === 'cassa' ? 'banca' : 'cassa');
-                        } finally {
-                          setSpostando(null);
-                        }
-                      }}
-                      disabled={spostando === mov.id}
-                      style={{
-                        background: '#0f2744',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: 6,
-                        padding: '6px 10px',
-                        cursor: spostando === mov.id ? 'wait' : 'pointer',
-                        fontSize: 11,
-                        fontWeight: 700,
-                        marginRight: 4,
-                        opacity: spostando === mov.id ? 0.6 : 1,
-                      }}
-                      title={tipo === 'cassa' ? 'Sposta in Banca' : 'Sposta in Cassa'}
-                      data-testid={`sposta-movimento-${mov.id}`}
-                    >
-                      {spostando === mov.id
-                        ? '⏳ Sposto…'
-                        : tipo === 'cassa'
-                          ? '🏦 Sposta in banca'
-                          : '💵 Sposta in cassa'}
-                    </button>
-                    <button
-                      onClick={() => setEditingMovimento(mov)}
-                      style={{
-                        background: '#f1f5f9',
-                        color: '#0f2744',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: 6,
-                        padding: '6px 10px',
-                        cursor: 'pointer',
-                        fontSize: 11,
-                        fontWeight: 600,
-                        marginRight: 4,
-                      }}
-                      title="Modifica"
-                      data-testid={`edit-movimento-${mov.id}`}
-                    >
-                      📝 Modifica
-                    </button>
-                    <button
-                      onClick={() => onDelete(mov.id)}
-                      style={{
-                        background: '#fef2f2',
-                        color: '#dc2626',
-                        border: '1px solid #fecaca',
-                        borderRadius: 6,
-                        padding: '6px 10px',
-                        cursor: 'pointer',
-                        fontSize: 11,
-                        fontWeight: 600,
-                      }}
-                      title="Elimina"
-                    >
-                      🗑️ Elimina
-                    </button>
+                  <td style={{ padding: '7px 10px', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{formatDateIT(m.data)}</td>
+                  <td style={{ padding: '7px 10px' }}>
+                    <span style={{ background: '#f1f5f9', borderRadius: 5, padding: '2px 7px', fontSize: 11 }}>{m.categoria || '—'}</span>
                   </td>
-                )}
-              </tr>
-            ))}
-            {/* Con l'ordine dal più recente, il riporto (saldo iniziale
-                01/01) sta in FONDO all'ultima pagina, sotto il movimento
-                più vecchio dell'anno. */}
-            {currentPage === Math.max(totalPages, 1) && (
-              <tr
-                data-testid={`riga-saldo-iniziale-${tipo}`}
-                style={{ background: '#fffbeb', borderTop: '2px solid #d97706' }}
-              >
-                <td colSpan={5} style={{ padding: '8px', fontWeight: 700, fontSize: 12, color: '#92400e' }}>
-                  🏁 Saldo iniziale al 01/01 (riporto anno precedente)
-                </td>
-                <td />
-                <td />
-                <td
-                  style={{
-                    padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: 12,
-                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                    color: saldoIniziale >= 0 ? '#0f2744' : '#dc2626', whiteSpace: 'nowrap',
-                  }}
-                >
-                  {formatEuroD(saldoIniziale)}
-                </td>
-                <td style={{ padding: '8px', textAlign: 'center' }}>
-                  {onModificaRiporto && (
-                    <button
-                      onClick={onModificaRiporto}
-                      title="Modifica saldo iniziale"
-                      data-testid={`modifica-saldo-iniziale-${tipo}`}
-                      style={{
-                        background: '#fef3c7', border: '1px solid #d97706', borderRadius: 6,
-                        padding: '5px 10px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
-                        color: '#92400e', whiteSpace: 'nowrap',
-                      }}
-                    >
-                      ✏️ Modifica
-                    </button>
-                  )}
-                </td>
-                {!readOnly && <td />}
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      )}
-
-      {movimenti.length === 0 && (
-        <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
-          {readOnly ? (
-            "Nessun movimento nell'estratto conto. Importa un file CSV dalla pagina Import/Export."
-          ) : tipo === 'cassa' ? (
-            <div>
-              <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: '#374151' }}>
-                Nessun movimento in Cassa
-              </div>
-              <div style={{ fontSize: 13, color: '#6b7280', maxWidth: 400, margin: '0 auto' }}>
-                La cassa è vuota. Aggiungi movimenti tramite le{' '}
-                <strong>Chiusure Giornaliere</strong> (Corrispettivo, POS, Versamento). Le fatture
-                pagate in contanti vengono importate <strong>automaticamente</strong> ogni 30 minuti.
-              </div>
-            </div>
-          ) : (
-            'Nessun movimento trovato'
-          )}
+                  <td style={{ padding: '7px 10px', maxWidth: 420, wordBreak: 'break-word' }}>{m.descrizione || '—'}</td>
+                  <td style={{ padding: '7px 10px', textAlign: 'right', color: VERDE, fontWeight: m.tipo === 'entrata' ? 700 : 400, fontFamily: 'ui-monospace, Menlo, monospace', whiteSpace: 'nowrap' }}>
+                    {m.tipo === 'entrata' ? eur(m.importo) : '—'}
+                  </td>
+                  <td style={{ padding: '7px 10px', textAlign: 'right', color: ROSSO, fontWeight: m.tipo === 'uscita' ? 700 : 400, fontFamily: 'ui-monospace, Menlo, monospace', whiteSpace: 'nowrap' }}>
+                    {m.tipo === 'uscita' ? eur(m.importo) : '—'}
+                  </td>
+                  <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 800, color: (saldoDi[m.id] ?? 0) >= 0 ? VERDE : ROSSO, fontFamily: 'ui-monospace, Menlo, monospace', whiteSpace: 'nowrap' }}>
+                    {eur(saldoDi[m.id])}
+                  </td>
+                  <td style={{ padding: '7px 10px', textAlign: 'center' }}>{badgeDocumento(m) || '—'}</td>
+                  <td style={{ padding: '7px 10px', textAlign: 'center' }}>{bottoniRiga(m)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {ultimaPagina && <div style={{ padding: '0 10px 10px' }}>{rigaRiporto}</div>}
         </div>
       )}
 
-      {/* Footer con Paginazione ANCHE IN BASSO */}
-      {movimenti.length > 0 && (
-        <div
-          style={{
-            padding: 12,
-            background: '#f9fafb',
-            borderTop: '1px solid #e5e7eb',
-            fontSize: 12,
-            color: '#6b7280',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>
-              Mostrando {start + 1}-{Math.min(start + itemsPerPage, movimenti.length)} di{' '}
-              {movimenti.length} movimenti
-            </span>
-            {totalPages > 1 && (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span>
-                  📄 Pagina {currentPage} di {totalPages}
-                </span>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <button
-                    onClick={() => setCurrentPage(1)}
-                    disabled={currentPage === 1}
-                    style={{
-                      padding: '4px 8px',
-                      borderRadius: 4,
-                      border: 'none',
-                      cursor: 'pointer',
-                      opacity: currentPage === 1 ? 0.5 : 1,
-                      background: '#e5e7eb',
-                    }}
-                  >
-                    «
-                  </button>
-                  <button
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    style={{
-                      padding: '4px 8px',
-                      borderRadius: 4,
-                      border: 'none',
-                      cursor: 'pointer',
-                      opacity: currentPage === 1 ? 0.5 : 1,
-                      background: '#e5e7eb',
-                    }}
-                  >
-                    ‹
-                  </button>
-                  <button
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                    style={{
-                      padding: '4px 8px',
-                      borderRadius: 4,
-                      border: 'none',
-                      cursor: 'pointer',
-                      opacity: currentPage === totalPages ? 0.5 : 1,
-                      background: '#e5e7eb',
-                    }}
-                  >
-                    ›
-                  </button>
-                  <button
-                    onClick={() => setCurrentPage(totalPages)}
-                    disabled={currentPage === totalPages}
-                    style={{
-                      padding: '4px 8px',
-                      borderRadius: 4,
-                      border: 'none',
-                      cursor: 'pointer',
-                      opacity: currentPage === totalPages ? 0.5 : 1,
-                      background: '#e5e7eb',
-                    }}
-                  >
-                    »
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+      {(nuovo || editing) && (
+        <MovimentoModal
+          tipo={tipo}
+          movimento={editing}
+          onClose={() => { setNuovo(false); setEditing(null); }}
+          onSaved={() => { setNuovo(false); setEditing(null); onRicarica(); }}
+        />
       )}
       {fatturaView && (
-        <ModalFattura
-          fatturaId={fatturaView.id}
-          numero={fatturaView.numero}
-          onClose={() => setFatturaView(null)}
-        />
+        <ModalFattura fatturaId={fatturaView.id} numero={fatturaView.numero} onClose={() => setFatturaView(null)} />
       )}
     </div>
   );
 }
 
-// Componente Modal per Modifica Movimento
-function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
-  const isMobile = useIsMobile();
-  const [errorMsg, setErrorMsg] = useState('');
-  const [form, setForm] = useState({
-    data: movimento.data || '',
-    tipo: movimento.tipo || 'uscita',
-    importo: movimento.importo || '',
-    descrizione: movimento.descrizione || '',
-    categoria: movimento.categoria || '',
-    riferimento: movimento.riferimento || '',
-    note: movimento.note || '',
-  });
-  const [saving, setSaving] = useState(false);
+/* ------------------------------ provvisori ------------------------------ */
+function Provvisori({ provvisori, attese, onRicarica }) {
+  const [busy, setBusy] = useState(null);
+  const [parziale, setParziale] = useState(null);
+  const [importoCassa, setImportoCassa] = useState('');
+  const [errore, setErrore] = useState('');
 
-  // Elenco allineato alle categorie REALMENTE scritte dal backend (grep su
-  // app/routers/prima_nota_module/, app/routers/invoices/corrispettivi*.py —
-  // audit 14/07/2026): un valore assente qui fa apparire il <select>
-  // controllato vuoto ("-- Seleziona --") anche quando il movimento ha una
-  // categoria valida, perché React non trova l'<option> corrispondente.
-  const categorieBase =
-    tipo === 'cassa'
-      ? ['Corrispettivi', 'POS', 'POS Verso Banca', 'Versamento Banca', 'Prelevamento Banca',
-         'Fatture', 'Nota credito fornitore', 'Incasso', 'Spese', 'Altro']
-      : ['Fatture', 'Utenze', 'Versamento Banca', 'Prelevamento Banca',
-         'Corrispettivi POS', 'Pagamento PayPal', 'Rimborso', 'Nota credito fornitore',
-         'Stipendi', 'Commissioni bancarie', 'Assegni', 'F24', 'Altro'];
-  // Difensivo: qualunque sia la categoria reale del movimento (anche se non
-  // ancora censita sopra), resta sempre selezionabile invece di sparire.
-  const categorie = movimento.categoria && !categorieBase.includes(movimento.categoria)
-    ? [movimento.categoria, ...categorieBase]
-    : categorieBase;
+  const conferma = async (p, metodo) => {
+    setBusy(p.fattura_id);
+    setErrore('');
+    try {
+      await api.post('/api/prima-nota/provvisori/conferma', { fattura_id: p.fattura_id, metodo });
+      onRicarica();
+    } catch (e) {
+      setErrore(e.response?.data?.message || e.message);
+    } finally {
+      setBusy(null);
+    }
+  };
 
-  const handleSubmit = async e => {
-    e.preventDefault();
-    if (!form.importo || !form.descrizione) {
-      setErrorMsg('Compila importo e descrizione.');
+  const confermaParziale = async () => {
+    const cassa = parseImportoIT(importoCassa);
+    const totale = parziale?.importo || 0;
+    if (cassa === null || cassa <= 0 || cassa >= totale) {
+      setErrore(`L'importo cassa deve stare tra 0 e ${eur(totale)}.`);
       return;
     }
-
-    setErrorMsg('');
-    setSaving(true);
+    setBusy(parziale.fattura_id);
     try {
-      const endpoint =
-        tipo === 'cassa'
-          ? `/api/prima-nota/cassa/${movimento.id}`
-          : `/api/prima-nota/banca/${movimento.id}`;
-
-      await api.put(endpoint, {
-        data: form.data,
-        tipo: form.tipo,
-        importo: parseFloat(form.importo),
-        descrizione: form.descrizione,
-        categoria: form.categoria,
-        riferimento: form.riferimento,
-        note: form.note,
+      await api.post('/api/pagamenti/registra', {
+        fattura_id: parziale.fattura_id, metodo: 'misto', importo_cassa: cassa, importo_banca: totale - cassa,
       });
-
-      onSave({ ...movimento, ...form, importo: parseFloat(form.importo) });
-    } catch (error) {
-      console.error('Errore salvataggio:', error);
-      setErrorMsg(error.response?.data?.message || error.message || 'Errore nel salvataggio.');
+      setParziale(null);
+      onRicarica();
+    } catch (e) {
+      setErrore(e.response?.data?.message || e.message);
     } finally {
-      setSaving(false);
+      setBusy(null);
     }
-  };
-
-  const inputStyle = {
-    width: '100%',
-    padding: '10px 12px',
-    border: '1px solid #d1d5db',
-    borderRadius: 8,
-    fontSize: 14,
-    outline: 'none',
-  };
-
-  const labelStyle = {
-    display: 'block',
-    fontSize: 12,
-    fontWeight: 600,
-    color: '#374151',
-    marginBottom: 4,
   };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0,0,0,0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-        padding: 20,
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: 'white',
-          borderRadius: 10,
-          width: '100%',
-          maxWidth: 500,
-          maxHeight: '90vh',
-          overflow: 'auto',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-        }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div
-          style={{
-            padding: '16px 24px',
-            borderBottom: '1px solid #e5e7eb',
-            background: '#0f2744',
-            borderRadius: '10px 10px 0 0',
-            color: 'white',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>
-            📝 Modifica Movimento {tipo === 'cassa' ? 'Cassa' : 'Banca'}
-          </h3>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'rgba(255,255,255,0.2)',
-              border: 'none',
-              borderRadius: 8,
-              minWidth: 40,
-              minHeight: 40,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              color: 'white',
-            }}
-            aria-label="Chiudi"
-          >
-            ✕
-          </button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+      {errore && <div style={{ color: ROSSO, fontSize: 13 }}>{errore}</div>}
+      {provvisori.length === 0 && (
+        <div style={{ padding: 26, textAlign: 'center', color: '#6b7280', background: 'white', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+          Nessuna fattura in attesa di divisione cassa/banca.
         </div>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} style={{ padding: 24 }}>
-          <div style={{ display: 'grid', gap: 16 }}>
-            {errorMsg && (
-              <div
-                style={{
-                  background: '#fef2f2',
-                  border: '1px solid #fecaca',
-                  color: '#b91c1c',
-                  borderRadius: 8,
-                  padding: '10px 12px',
-                  fontSize: 13,
-                }}
+      )}
+      {provvisori.map(p => (
+        <div
+          key={p.fattura_id || p.id}
+          style={{ background: 'white', borderRadius: 11, border: '1px solid #e2e8f0', borderLeft: '4px solid #d97706', padding: '10px 13px' }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, color: BLU }}>{p.fornitore || p.supplier_name || '—'}</div>
+              <div style={{ fontSize: 12, color: '#64748b' }}>
+                Fatt. {p.numero_fattura || p.invoice_number || '—'} del {formatDateIT(p.data || p.invoice_date)}
+                {p.suggerimento === 'sospesa' && ' — ⏸ sospesa'}
+              </div>
+            </div>
+            <div style={{ fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace', color: BLU }}>{eur(p.importo)}</div>
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginTop: 9, flexWrap: 'wrap' }}>
+            {[['cassa', '💵 Cassa', VERDE], ['banca', '🏦 Banca', BLU]].map(([m, label, col]) => (
+              <button
+                key={m} onClick={() => conferma(p, m)} disabled={busy === p.fattura_id}
+                style={{ background: col, color: 'white', border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: busy === p.fattura_id ? 0.5 : 1 }}
               >
-                {errorMsg}
+                {label}
+              </button>
+            ))}
+            <button
+              onClick={() => { setParziale(p); setImportoCassa(''); setErrore(''); }}
+              style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+            >
+              ✂️ Parziale
+            </button>
+            {p.suggerimento !== 'sospesa' && (
+              <button
+                onClick={() => conferma(p, 'sospesa')}
+                style={{ background: '#fef3c7', border: '1px solid #d97706', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer' }}
+              >
+                ⏸ Sospendi
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+
+      {attese.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#64748b', margin: '4px 0 8px' }}>
+            📩 Fatture annunciate via email, XML in arrivo ({attese.length})
+          </div>
+          {attese.map(a => (
+            <div
+              key={a.id}
+              style={{ background: 'white', borderRadius: 10, border: '1px dashed #cbd5e1', padding: '8px 12px', marginBottom: 6, display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5 }}
+            >
+              <span style={{ minWidth: 0 }}>{a.fornitore || '—'} — {a.numero_fattura || 's.n.'}</span>
+              <b style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(a.importo)}</b>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {parziale && (
+        <div
+          onClick={() => setParziale(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,39,68,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }}
+        >
+          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, padding: 18, width: '100%', maxWidth: 400 }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: 15, color: BLU }}>✂️ Pagamento parziale</h3>
+            <div style={{ fontSize: 13, color: '#475569', marginBottom: 10 }}>
+              {parziale.fornitore || '—'} — totale <b>{eur(parziale.importo)}</b>
+            </div>
+            <input
+              placeholder="Quota pagata in CONTANTI (es. 100,00)" inputMode="decimal" value={importoCassa}
+              onChange={e => setImportoCassa(e.target.value)}
+              style={{ width: '100%', padding: '9px 10px', border: '1px solid #d1d5db', borderRadius: 8, boxSizing: 'border-box', marginBottom: 8 }}
+            />
+            {parseImportoIT(importoCassa) !== null && (
+              <div style={{ fontSize: 12.5, color: '#475569', marginBottom: 8 }}>
+                💵 Cassa {eur(parseImportoIT(importoCassa))} + 🏦 Banca {eur((parziale.importo || 0) - parseImportoIT(importoCassa))}
               </div>
             )}
-            {/* Data e Tipo */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-                gap: 12,
-              }}
-            >
-              <div>
-                <label style={labelStyle}>Data</label>
-                <input
-                  type="date"
-                  value={form.data}
-                  onChange={e => setForm({ ...form, data: e.target.value })}
-                  style={inputStyle}
-                  required
-                />
-              </div>
-              <div>
-                <label style={labelStyle}>Tipo</label>
-                <select
-                  value={form.tipo}
-                  onChange={e => setForm({ ...form, tipo: e.target.value })}
-                  style={inputStyle}
-                >
-                  <option value="entrata">↑ DARE (Entrata)</option>
-                  <option value="uscita">↓ AVERE (Uscita)</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Importo */}
-            <div>
-              <label style={labelStyle}>Importo (€)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={form.importo}
-                onChange={e => setForm({ ...form, importo: e.target.value })}
-                style={inputStyle}
-                placeholder="0.00"
-                required
-              />
-            </div>
-
-            {/* Categoria */}
-            <div>
-              <label style={labelStyle}>Categoria</label>
-              <select
-                value={form.categoria}
-                onChange={e => setForm({ ...form, categoria: e.target.value })}
-                style={inputStyle}
-              >
-                <option value="">-- Seleziona --</option>
-                {categorie.map(cat => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Descrizione */}
-            <div>
-              <label style={labelStyle}>Descrizione</label>
-              <input
-                type="text"
-                value={form.descrizione}
-                onChange={e => setForm({ ...form, descrizione: e.target.value })}
-                style={inputStyle}
-                placeholder="Descrizione movimento"
-                required
-              />
-            </div>
-
-            {/* Riferimento */}
-            <div>
-              <label style={labelStyle}>Riferimento (opzionale)</label>
-              <input
-                type="text"
-                value={form.riferimento}
-                onChange={e => setForm({ ...form, riferimento: e.target.value })}
-                style={inputStyle}
-                placeholder="N. fattura, documento, ecc."
-              />
-            </div>
-
-            {/* Note */}
-            <div>
-              <label style={labelStyle}>Note (opzionale)</label>
-              <textarea
-                value={form.note}
-                onChange={e => setForm({ ...form, note: e.target.value })}
-                style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }}
-                placeholder="Note aggiuntive..."
-              />
+            {errore && <div style={{ color: ROSSO, fontSize: 13, marginBottom: 8 }}>{errore}</div>}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setParziale(null)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #d1d5db', background: 'white', cursor: 'pointer' }}>
+                Annulla
+              </button>
+              <button onClick={confermaParziale} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: BLU, color: 'white', fontWeight: 700, cursor: 'pointer' }}>
+                Conferma
+              </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
-          {/* Footer */}
-          <div
-            style={{
-              marginTop: 24,
-              paddingTop: 16,
-              borderTop: '1px solid #e5e7eb',
-              display: 'flex',
-              justifyContent: 'flex-end',
-              gap: 12,
-            }}
-          >
-            <button
-              type="button"
-              onClick={onClose}
-              style={{
-                padding: '10px 20px',
-                borderRadius: 8,
-                border: '1px solid #d1d5db',
-                background: 'white',
-                cursor: 'pointer',
-                fontSize: 14,
-                fontWeight: 500,
-              }}
-            >
-              Annulla
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              style={{
-                padding: '10px 20px',
-                borderRadius: 6,
-                border: 'none',
-                background: '#0f2744',
-                color: 'white',
-                cursor: saving ? 'not-allowed' : 'pointer',
-                fontSize: 14,
-                fontWeight: 600,
-                opacity: saving ? 0.7 : 1,
-              }}
-            >
-              {saving ? 'Salvataggio...' : '💾 Salva Modifiche'}
-            </button>
-          </div>
-        </form>
+/* -------------------------------- pagina -------------------------------- */
+export default function PrimaNota() {
+  const { anno } = useAnnoGlobale();
+  const [hs, setHs] = useHashState({ sezione: 'cassa', mese: '' });
+  const sezione = hs.sezione || 'cassa';
+  const mese = hs.mese === '' ? null : parseInt(hs.mese, 10);
+
+  const [cassa, setCassa] = useState({ movimenti: [] });
+  const [banca, setBanca] = useState({ movimenti: [] });
+  const [provvisori, setProvvisori] = useState([]);
+  const [attese, setAttese] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const carica = async () => {
+    setLoading(true);
+    try {
+      const params = `anno=${anno}&limit=10000`;
+      const [c, b, p, a] = await Promise.all([
+        api.get(`/api/prima-nota/cassa?${params}`),
+        api.get(`/api/prima-nota/banca?${params}`),
+        api.get(`/api/prima-nota/provvisori?anno=${anno}`).catch(() => ({ data: {} })),
+        api.get(`/api/prima-nota/attese?anno=${anno}`).catch(() => ({ data: {} })),
+      ]);
+      setCassa(c.data || { movimenti: [] });
+      setBanca(b.data || { movimenti: [] });
+      setProvvisori(p.data?.provvisori || []);
+      setAttese(a.data?.attese || []);
+    } catch (e) {
+      console.error('Prima nota:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { carica(); }, [anno]);
+
+  const modificaRiporto = async tipo => {
+    const attuale = (tipo === 'cassa' ? cassa : banca).saldo_precedente || 0;
+    const input = window.prompt(
+      `Saldo iniziale ${tipo.toUpperCase()} al 01/01/${anno} (riporto anno precedente):`,
+      String(attuale).replace('.', ','));
+    if (input === null) return;
+    const importo = parseImportoIT(input);
+    if (importo === null) return;
+    await api.put('/api/prima-nota/saldo-iniziale', { tipo, anno, importo });
+    carica();
+  };
+
+  const datiAttivi = sezione === 'banca' ? banca : cassa;
+  const saldoFinale = (datiAttivi.saldo_precedente || 0) +
+    (datiAttivi.movimenti || []).reduce((s, m) => s + (m.tipo === 'entrata' ? 1 : -1) * Math.abs(m.importo || 0), 0);
+
+  const tab = (chiave, etichetta) => (
+    <button
+      key={chiave}
+      onClick={() => setHs('sezione', chiave)}
+      style={{
+        flex: 1, padding: '11px 8px', borderRadius: 10, fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+        background: sezione === chiave ? BLU : 'white',
+        color: sezione === chiave ? 'white' : '#64748b',
+        border: `1px solid ${sezione === chiave ? BLU : '#e2e8f0'}`,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {etichetta}
+    </button>
+  );
+
+  return (
+    <div style={{ padding: '14px clamp(10px, 3vw, 28px)', maxWidth: 1280, margin: '0 auto' }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        {tab('cassa', `💵 Cassa ${anno}`)}
+        {tab('banca', `🏦 Banca ${anno}`)}
+        {tab('provvisori', `⚠️ Provvisori (${provvisori.length})`)}
       </div>
+
+      {loading && (
+        <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>⏳ Caricamento…</div>
+      )}
+
+      {!loading && sezione === 'provvisori' && (
+        <Provvisori provvisori={provvisori} attese={attese} onRicarica={carica} />
+      )}
+
+      {!loading && sezione !== 'provvisori' && (
+        <>
+          {/* 4 numeri, nessuna card doppia */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+            <Card
+              titolo="Riporto 01/01" valore={datiAttivi.saldo_precedente} colore="#6b7280"
+              onEdit={() => modificaRiporto(sezione)} testId={`modifica-riporto-${sezione}`}
+            />
+            <Card titolo={`Entrate (Dare) ${anno}`} valore={datiAttivi.totale_entrate} colore={VERDE} />
+            <Card titolo={`Uscite (Avere) ${anno}`} valore={datiAttivi.totale_uscite} colore={ROSSO} />
+            <Card titolo="Saldo" valore={saldoFinale} colore={saldoFinale >= 0 ? BLU : ROSSO} />
+          </div>
+
+          {/* mese */}
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', margin: '12px 0 0' }}>
+            <button
+              onClick={() => setHs('mese', '')}
+              style={{
+                padding: '7px 12px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 12.5,
+                background: mese === null ? BLU : '#f1f5f9', color: mese === null ? 'white' : '#374151',
+                fontWeight: mese === null ? 700 : 400,
+              }}
+            >
+              Tutti
+            </button>
+            {MESI.map((m, i) => (
+              <button
+                key={m}
+                onClick={() => setHs('mese', String(i))}
+                style={{
+                  padding: '7px 10px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 12.5,
+                  background: mese === i ? BLU : '#f1f5f9', color: mese === i ? 'white' : '#374151',
+                  fontWeight: mese === i ? 700 : 400,
+                }}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+
+          <Registro
+            tipo={sezione}
+            dati={datiAttivi}
+            mese={mese}
+            onRicarica={carica}
+            onModificaRiporto={() => modificaRiporto(sezione)}
+          />
+        </>
+      )}
     </div>
   );
 }
