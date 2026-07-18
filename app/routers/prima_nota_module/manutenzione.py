@@ -568,6 +568,114 @@ async def collega_corrispettivi_prima_nota(
     }
 
 
+async def arricchisci_pagamenti_banca(
+    dry_run: bool = Query(True, description="Solo conteggio, non scrive"),
+    _admin: Dict = Depends(get_current_admin_user),
+) -> Dict:
+    """Richiesta utente 18/07/2026 (caso TOP SPINA 4853/01): per ogni riga
+    di Prima Nota Banca agganciata a un movimento reale dell'estratto conto,
+    specifica COME è stato pagato leggendo la causale bancaria — bonifico,
+    assegno (con numero), addebito diretto SDD, PayPal — e, se assegno,
+    riporta il dato anche in Gestione Assegni (stato incassato)."""
+    import re as _re
+    import uuid as _uuid
+
+    db = Database.get_db()
+    movs = await db[COLLECTION_PRIMA_NOTA_BANCA].find(
+        {"tipo": "uscita", "estratto_conto_id": {"$nin": [None, ""]},
+         "status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 0, "id": 1, "estratto_conto_id": 1, "descrizione": 1,
+         "importo": 1, "data": 1, "fattura_id": 1, "fornitore": 1, "pagato_con": 1},
+    ).to_list(20000)
+
+    aggiornati = 0
+    assegni_creati = 0
+    assegni_aggiornati = 0
+    per_metodo: Dict[str, int] = {}
+    now = datetime.now(timezone.utc).isoformat()
+
+    for m in movs:
+        ec = await db["estratto_conto_movimenti"].find_one(
+            {"id": m["estratto_conto_id"]},
+            {"_id": 0, "descrizione": 1, "descrizione_originale": 1})
+        if not ec:
+            continue
+        causale = (ec.get("descrizione_originale") or ec.get("descrizione") or "").upper()
+        metodo = None
+        numero = None
+        if "ASSEGNO" in causale:
+            metodo = "assegno"
+            mnum = (_re.search(r"NUM[.:]?\s*0*(\d{6,})", causale)
+                    or _re.search(r"ASSEGNO\D{0,20}0*(\d{7,})", causale))
+            if mnum:
+                numero = mnum.group(1)
+        elif any(k in causale for k in ("BONIF", "VS.DISP", "DISPOSIZIONE")):
+            metodo = "bonifico"
+        elif "PAYPAL" in causale:
+            metodo = "paypal"
+        elif "SDD" in causale or "ADDEBITO" in causale or "ADD." in causale:
+            metodo = "addebito diretto"
+        if not metodo:
+            continue
+
+        per_metodo[metodo] = per_metodo.get(metodo, 0) + 1
+        etichetta = f"assegno n. {numero}" if (metodo == "assegno" and numero) else metodo
+        gia = (m.get("pagato_con") == metodo)
+        if not gia:
+            aggiornati += 1
+        if dry_run:
+            continue
+
+        upd: Dict[str, Any] = {"pagato_con": metodo}
+        if numero:
+            upd["numero_assegno"] = numero
+        descr = m.get("descrizione") or ""
+        if etichetta not in descr:
+            upd["descrizione"] = f"{descr} · {etichetta}"
+        await db[COLLECTION_PRIMA_NOTA_BANCA].update_one({"id": m["id"]}, {"$set": upd})
+
+        if metodo == "assegno" and numero:
+            esistente = await db["assegni"].find_one(
+                {"$or": [{"numero": numero}, {"numero": {"$regex": f"{numero}$"}}]})
+            if esistente:
+                if esistente.get("stato") != "incassato":
+                    await db["assegni"].update_one(
+                        {"id": esistente["id"]},
+                        {"$set": {"stato": "incassato",
+                                  "importo": esistente.get("importo") or m.get("importo"),
+                                  "updated_at": now}})
+                    assegni_aggiornati += 1
+            else:
+                await db["assegni"].insert_one({
+                    "id": str(_uuid.uuid4()),
+                    "numero": numero,
+                    "stato": "incassato",
+                    "importo": m.get("importo"),
+                    "beneficiario": m.get("fornitore"),
+                    "causale": (ec.get("descrizione_originale") or "")[:150],
+                    "data_emissione": None,
+                    "data_scadenza": None,
+                    "data_fattura": None,
+                    "numero_fattura": None,
+                    "fattura_collegata": m.get("fattura_id"),
+                    "fatture_collegate": [m["fattura_id"]] if m.get("fattura_id") else [],
+                    "fornitore_piva": None,
+                    "note": f"Creato dall'estratto conto (addebito del {m.get('data')})",
+                    "created_at": now,
+                    "updated_at": now,
+                })
+                assegni_creati += 1
+
+    return {
+        "dry_run": dry_run,
+        "righe_con_estratto_conto": len(movs),
+        "aggiornate": aggiornati,
+        "per_metodo": per_metodo,
+        "assegni_creati": assegni_creati,
+        "assegni_aggiornati": assegni_aggiornati,
+    }
+
+
 async def unifica_categorie(
     dry_run: bool = Query(True, description="Solo conteggio, non rinomina"),
     _admin: Dict = Depends(get_current_admin_user),

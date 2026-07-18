@@ -29,19 +29,20 @@ export function ListaAdattiva({
   pageSize = 50,
   chiave = (item, i) => item.id || i,
   testId,
+  resetKey,
 }) {
   const isMobile = useIsMobile();
   const [pagina, setPagina] = useState(1);
 
-  // Torna a pagina 1 SOLO quando cambia il numero di righe (cambio
-  // filtro/anno). Un aggiornamento sul posto di una riga (toggle magazzino,
-  // cambio metodo, modifica) produce un nuovo array della STESSA lunghezza:
-  // la pagina corrente non deve resettarsi (richiesta utente 10/07: "dalla
-  // seconda pagina in poi quando cambio da in magazzino a escludi mi
-  // restituisce il ricaricamento della pagina").
+  // Torna a pagina 1 solo quando CAMBIANO I FILTRI (resetKey), mai quando
+  // la lista si accorcia di una riga: eliminare o correggere un fornitore
+  // dalla seconda pagina riportava in cima (richiesta utente 18/07: "vado
+  // alla seconda pagina, correggo o elimino, mi riporta alla prima").
+  // Se il chiamante non passa resetKey, resta il vecchio comportamento
+  // (reset al cambio di lunghezza) per compatibilità con le altre pagine.
   useEffect(() => {
     setPagina(1);
-  }, [dati.length, pageSize]);
+  }, [resetKey !== undefined ? resetKey : dati.length, pageSize]);
 
   const totPagine = Math.max(1, Math.ceil(dati.length / pageSize));
   const paginaCorrente = Math.min(pagina, totPagine);

@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 991 · tenere: 651 · verificare: 320 · admin-only (migrazione/manutenzione): 20
+**Totale endpoint:** 992 · tenere: 651 · verificare: 321 · admin-only (migrazione/manutenzione): 20
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -791,6 +791,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `PUT /api/prima-nota-salari/salari/{record_id}` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/prima-nota-salari/salari/{record_id}/riconcilia` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/anni-disponibili` | prima_nota_module.stats | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/prima-nota/arricchisci-pagamenti-banca` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota/attese` | prima_nota_module.attese | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota/attese/conferma` | prima_nota_module.attese | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/attese/scan` | prima_nota_module.attese | sì | — | — | — | sì | tenere | in uso: FE |

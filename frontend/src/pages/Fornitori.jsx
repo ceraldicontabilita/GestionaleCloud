@@ -2160,6 +2160,10 @@ export default function Fornitori() {
               testId="lista-fornitori"
               dati={filteredSuppliers}
               pageSize={50}
+              // la pagina si azzera SOLO cambiando i filtri: correggere o
+              // eliminare un fornitore dalla seconda pagina non riporta
+              // più alla prima (richiesta utente 18/07)
+              resetKey={`${hs.search}|${hs.metodo}|${filterIncomplete}|${filterSenzaMetodo}|${filterAnzianita}|${giorniNuovo}|${mostraCessati}`}
               chiave={(s, i) => s.id || i}
               colonne={[
                 {
