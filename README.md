@@ -32,6 +32,14 @@ Fonti di verita':
 
 Le API frontend restano compatibili su `/api/suppliers`, ma leggono/scrivono la collection `fornitori` tramite costanti backend.
 
+## Deploy (Render)
+
+`render.yaml` documenta build/start command dei due servizi Render (backend
+FastAPI + static site frontend). Non si applica da solo alle risorse Render
+già esistenti (vedi commento in testa al file) — è un riferimento versionato
+per non dipendere solo dalla configurazione nella dashboard. Le variabili
+d'ambiente reali restano impostate solo su Render, mai nel repo.
+
 ## Avvio rapido
 
 I servizi sono gestiti da Supervisor e si avviano da soli:

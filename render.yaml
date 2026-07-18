@@ -1,0 +1,44 @@
+# Render Blueprint — documentazione versionata della configurazione di deploy
+# (audit 19/07/2026: prima build/start command esistevano SOLO nella
+# dashboard Render, non nel repo — impossibile ricostruire il deploy dal
+# solo codice sorgente, nessun disaster recovery documentato).
+#
+# QUESTO FILE NON SI APPLICA DA SOLO: aggiungerlo al repo non modifica i
+# servizi Render già esistenti finché non li si collega esplicitamente a
+# questo Blueprint dal pannello Render ("New > Blueprint"), oppure lo si
+# usa come riferimento per verificare/correggere a mano le impostazioni
+# attuali di ciascun servizio. Le variabili d'ambiente reali restano
+# impostate solo nella dashboard Render (mai in questo file, mai nel repo).
+#
+# Servizi noti (da PR #61/#62 e verifica-produzione.yml):
+# - static site "ceraldi-gestione": Publish Directory = frontend/dist,
+#   Build Command VUOTO di proposito (il build compilato viene committato
+#   in frontend/dist, non ricompilato da Render — vedi .gitignore).
+# - web service backend: FastAPI (app/main.py) esposto da backend/server.py.
+
+services:
+  - type: web
+    name: ceraldi-gestionale-backend
+    runtime: python
+    plan: starter  # verificare/allineare al piano reale in uso su Render
+    buildCommand: "pip install -r backend/requirements.txt"
+    startCommand: "uvicorn backend.server:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /api/health
+    autoDeploy: true
+    # Variabili reali impostate SOLO nella dashboard Render (MONGO_URL,
+    # DB_NAME, SECRET_KEY, ANTHROPIC_API_KEY, credenziali email/PEC/PayPal/
+    # PagoPA/Google Drive, ecc. — oltre 55, vedi audit sicurezza 19/07/2026).
+    envVars:
+      - key: PYTHONUTF8
+        value: "1"
+
+  - type: web
+    name: ceraldi-gestione
+    runtime: static
+    buildCommand: ""  # deliberatamente vuoto: frontend/dist è già committato
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: REACT_APP_BACKEND_URL
+        sync: false
+      - key: VITE_BACKEND_URL
+        sync: false
