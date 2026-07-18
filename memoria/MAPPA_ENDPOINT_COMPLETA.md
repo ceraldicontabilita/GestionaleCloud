@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1013 endpoint** in **106 gruppi**.
+> Totale **1021 endpoint** in **108 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 641 · ext esterni = 76 · — da verificare = 296
+**Riepilogo uso:** ✓ frontend = 646 · ext esterni = 76 · — da verificare = 299
 
 ## AI Parser  (11)
 
@@ -223,6 +223,15 @@
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | POST | `/api/archivio-bonifici/jobs/import` | — | bank.bonifici_import_unificato |
+
+## Carta Nexi  (4)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/nexi/movimenti` | — | nexi_carta |
+| GET | `/api/nexi/stato` | ✓ | nexi_carta |
+| POST | `/api/nexi/upload-pdf` | ✓ | nexi_carta |
+| POST | `/api/nexi/verifica` | — | nexi_carta |
 
 ## Cash  (8)
 
@@ -822,6 +831,15 @@
 | PUT | `/api/fatture/{invoice_id}/classifica` | ✓ | invoices.fatture_upload |
 | GET | `/api/fatture/{invoice_id}/entita-correlate` | ✓ | invoices.fatture_upload |
 | PUT | `/api/fatture/{invoice_id}/paga` | ✓ | invoices.fatture_upload |
+
+## Finanziamento Soci  (4)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| POST | `/api/finanziamenti-soci/movimento` | ✓ | finanziamenti_soci |
+| DELETE | `/api/finanziamenti-soci/movimento/{movimento_id}` | ✓ | finanziamenti_soci |
+| POST | `/api/finanziamenti-soci/scan` | — | finanziamenti_soci |
+| GET | `/api/finanziamenti-soci/schede` | ✓ | finanziamenti_soci |
 
 ## Finanziaria  (4)
 

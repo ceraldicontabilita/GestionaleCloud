@@ -292,7 +292,19 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Differenza importo in match bancario",
         "condizione_chiusura": "Differenza spiegata"
     },
-    
+    "ESTRATTO_NEXI_MANCANTE": {
+        "modulo": "banca",
+        "severita": "warning",
+        "titolo": "Estratto conto Nexi mancante",
+        "condizione_chiusura": "Estratto Nexi del periodo caricato"
+    },
+    "NEXI_ADDEBITO_NON_QUADRA": {
+        "modulo": "banca",
+        "severita": "warning",
+        "titolo": "Addebito Nexi non quadra con l'estratto carta",
+        "condizione_chiusura": "Differenza spiegata o estratto corretto"
+    },
+
     # --- Cassa ---
     "CAS_DUPLICATO": {
         "modulo": "cassa",

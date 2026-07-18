@@ -11,7 +11,7 @@ import logging
 
 from app.database import Database
 from app.models.stati import STATI_PAGATI
-from app.routers.bank.assegni_auto_match import _f, _norm_piva, TOLL, MAX_RATE
+from app.routers.bank.assegni_auto_match import _f, _norm_piva, TOLL, MAX_RATE, fornitore_esclude_assegno
 from app.services.scritture_contabili import scrivi_movimento
 
 logger = logging.getLogger(__name__)
@@ -302,7 +302,12 @@ async def preview_combinazioni_assegni_v2(
             ]},
         ]
     }, {"_id": 0, "invoice_number": 1, "supplier_name": 1, "total_amount": 1}).to_list(10000)
-    
+
+    # Fornitori mai pagabili con assegno (dettato utente 18/07/2026): Amazon,
+    # ABC acquedotto, Fastweb, PayPal, Enel, Leasys, Arval — arrivano su carta
+    # di credito o addebito bancario, mai su assegno.
+    fatture = [f for f in fatture if not fornitore_esclude_assegno(f.get("supplier_name") or "")]
+
     importi_fatture = {round(float(f.get("total_amount", 0)), 2): f for f in fatture}
     
     # Cerca combinazioni
@@ -406,10 +411,11 @@ async def verifica_associazioni_assegni() -> Dict[str, Any]:
             problema["problemi"].append("Fattura associata non trovata nel database")
             statistiche["problemi_fattura_mancante"] += 1
             
-            # Suggerisci fatture con importo simile
+            # Suggerisci fatture con importo simile (mai fornitori non pagabili con assegno)
             fatture_simili = [
-                f for f in fatture_cursor 
+                f for f in fatture_cursor
                 if abs(float(f.get("total_amount", 0) or 0) - importo_assegno) < 5
+                and not fornitore_esclude_assegno(f.get("supplier_name") or "")
             ]
             if fatture_simili:
                 problema["suggerimenti"] = [
@@ -492,7 +498,9 @@ async def verifica_associazioni_assegni() -> Dict[str, Any]:
                 
                 if f_pagata or f.get("id") == fattura_id:
                     continue
-                
+                if fornitore_esclude_assegno(f_fornitore):
+                    continue
+
                 # Match per importo esatto o quasi
                 if abs(f_importo - importo_assegno) < 2:
                     similarity = fuzz.token_set_ratio(beneficiario.upper(), f_fornitore.upper()) if beneficiario else 0

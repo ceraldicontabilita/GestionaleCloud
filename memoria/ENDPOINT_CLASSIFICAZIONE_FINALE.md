@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1013 · tenere: 661 · verificare: 329 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1021 · tenere: 666 · verificare: 332 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -575,6 +575,10 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `PUT /api/fatture/{invoice_id}/classifica` | invoices.fatture_upload | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `GET /api/fatture/{invoice_id}/entita-correlate` | invoices.fatture_upload | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `PUT /api/fatture/{invoice_id}/paga` | invoices.fatture_upload | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
+| `POST /api/finanziamenti-soci/movimento` | finanziamenti_soci | sì | — | — | — | — | tenere | in uso: FE |
+| `DELETE /api/finanziamenti-soci/movimento/{movimento_id}` | finanziamenti_soci | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/finanziamenti-soci/scan` | finanziamenti_soci | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/finanziamenti-soci/schede` | finanziamenti_soci | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/finanziaria/cost-categories` | finanziaria | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/finanziaria/costi` | finanziaria | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/finanziaria/costo` | finanziaria | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -665,6 +669,10 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `PUT /api/mutui/{mutuo_id}` | mutui | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/mutui/{mutuo_id}/rate` | mutui | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/mutui/{mutuo_id}/rate/{numero_rata}/riconcilia` | mutui | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/nexi/movimenti` | nexi_carta | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/nexi/stato` | nexi_carta | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/nexi/upload-pdf` | nexi_carta | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/nexi/verifica` | nexi_carta | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/noleggio/associa-fornitore` | noleggio | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/noleggio/controllo-canoni` | noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/noleggio/drivers` | noleggio | sì | — | — | — | — | tenere | in uso: FE |

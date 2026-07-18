@@ -769,9 +769,17 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     except Exception as _ev:
         logger.debug(f"[EstrattoContoRouter] Event Bus: {_ev}")
 
+    nexi_verifica = None
+    try:
+        from app.services.nexi_carta import verifica_addebiti_nexi
+        nexi_verifica = await verifica_addebiti_nexi(db)
+    except Exception as _nexi_err:
+        logger.debug(f"[EstrattoContoRouter] Verifica Nexi: {_nexi_err}")
+
     return {
         "success": True,
         "message": "Importazione estratto conto completata",
+        "nexi_verifica": nexi_verifica,
         "movimenti_trovati": len(movimenti),
         "movimenti_importati": inserted,
         "inseriti": inserted,

@@ -5,6 +5,7 @@ import { formatEuroD, formatDateIT, useIsMobile } from '../lib/utils';
 import { useHashState } from '../hooks/useHashState';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import ModalFattura from '../components/ModalFattura';
+import FinanziamentoSoci from './FinanziamentoSoci';
 
 /**
  * PRIMA NOTA — ricostruita da zero (richiesta utente 17/07/2026).
@@ -80,6 +81,204 @@ function Card({ titolo, valore, colore, onEdit, testId }) {
         }}
       >
         {eur(valore)}
+      </div>
+    </div>
+  );
+}
+
+/* --------------------------- riparto entrate --------------------------- */
+// Distinzione delle ENTRATE per origine (richiesta utente 18/07/2026):
+// serve a vedere subito se la riconciliazione POS cassa→banca è coerente
+// e a separare versamenti, note di credito e finanziamenti dei soci.
+const SOCI_RE = /(vincenzo|antonietta|valerio)\s+ceraldi|ceraldi\s+(vincenzo|antonietta|valerio)|giuseppina\s+pane|pane\s+giuseppina|finanziament\w*\s+soc|apporto\s+soc/i;
+
+function tipoEntrataBanca(m) {
+  if (m.source === 'trasferimento_pos' || m.categoria === 'Corrispettivi POS') return 'pos';
+  const t = `${m.categoria || ''} ${m.descrizione || ''}`.toLowerCase();
+  if (/nota\s*d[i']\s*credito|storno|rimborso/.test(t)) return 'nc';
+  if (SOCI_RE.test(t)) return 'soci';
+  if (/versament/.test(t)) return 'versamenti';
+  return 'altro';
+}
+
+function tipoEntrataCassa(m) {
+  if (m.categoria === 'Corrispettivi') return 'corrispettivi';
+  const t = `${m.categoria || ''} ${m.descrizione || ''}`.toLowerCase();
+  if (SOCI_RE.test(t)) return 'soci';
+  if (/prelevament|prelievo/.test(t)) return 'prelievo';
+  return 'altro';
+}
+
+const RIGHE_RIPARTO = {
+  banca: [
+    ['pos', '🟦 POS dalla cassa (trasferimenti)'],
+    ['versamenti', '💰 Versamenti contanti'],
+    ['nc', '↩️ Note di credito / rimborsi'],
+    ['soci', '👥 Finanziamento soci'],
+    ['altro', '📄 Altre entrate'],
+  ],
+  cassa: [
+    ['corrispettivi', '🧾 Corrispettivi'],
+    ['prelievo', '🏧 Prelievi da banca'],
+    ['soci', '👥 Apporto soci'],
+    ['altro', '📄 Altre entrate'],
+  ],
+};
+
+function RipartoEntrate({ sezione, cassa, banca, mese }) {
+  const delMese = lista => (mese === null
+    ? lista
+    : lista.filter(m => parseInt((m.data || '').slice(5, 7), 10) === mese + 1));
+
+  const dati = sezione === 'banca' ? banca : cassa;
+  const classifica = sezione === 'banca' ? tipoEntrataBanca : tipoEntrataCassa;
+
+  const { totali, posBanca, posCassa } = useMemo(() => {
+    const tot = {};
+    delMese(dati.movimenti || []).forEach(m => {
+      if (m.tipo !== 'entrata') return;
+      const k = classifica(m);
+      tot[k] = (tot[k] || 0) + Math.abs(m.importo || 0);
+    });
+    const pb = delMese(banca.movimenti || [])
+      .filter(m => m.tipo === 'entrata' && tipoEntrataBanca(m) === 'pos')
+      .reduce((s, m) => s + Math.abs(m.importo || 0), 0);
+    const pc = delMese(cassa.movimenti || [])
+      .filter(m => m.tipo === 'uscita' &&
+        (m.categoria === 'POS Verso Banca' || /pos\s+verso\s+banca|battuto\s+pos/i.test(m.categoria || '')))
+      .reduce((s, m) => s + Math.abs(m.importo || 0), 0);
+    return { totali: tot, posBanca: pb, posCassa: pc };
+  }, [dati, banca, cassa, mese, sezione]);
+
+  const diffPos = posBanca - posCassa;
+  const posOk = Math.abs(diffPos) < 0.01;
+  const righe = RIGHE_RIPARTO[sezione].filter(([k]) => (totali[k] || 0) > 0.004);
+  if (righe.length === 0 && posCassa === 0 && posBanca === 0) return null;
+
+  return (
+    <div
+      data-testid={`riparto-entrate-${sezione}`}
+      style={{
+        background: 'white', borderRadius: 12, border: '1px solid #e2e8f0',
+        borderLeft: `4px solid ${VERDE}`, padding: '10px 14px', marginTop: 10,
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 }}>
+        Dettaglio entrate {mese !== null ? MESI[mese] : ''} per origine
+      </div>
+      <div style={{ display: 'grid', gap: 4 }}>
+        {righe.map(([k, label]) => (
+          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13 }}>
+            <span style={{ color: '#334155' }}>{label}</span>
+            <b style={{ fontFamily: 'ui-monospace, Menlo, monospace', color: VERDE, whiteSpace: 'nowrap' }}>
+              {eur(totali[k])}
+            </b>
+          </div>
+        ))}
+      </div>
+      {(posCassa > 0 || posBanca > 0) && (
+        <div
+          style={{
+            marginTop: 8, paddingTop: 8, borderTop: '1px dashed #e2e8f0',
+            fontSize: 12.5, display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap',
+          }}
+        >
+          <span style={{ color: '#334155' }}>
+            {posOk ? '✅' : '⚠️'} Coerenza POS: uscito dalla cassa <b>{eur(posCassa)}</b> → entrato in banca <b>{eur(posBanca)}</b>
+          </span>
+          {!posOk && (
+            <b style={{ color: ROSSO, fontFamily: 'ui-monospace, Menlo, monospace' }}>
+              Δ {eur(diffPos)}
+            </b>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------ carta Nexi ------------------------------ */
+// Le spese carta non arrivano mai in estratto conto bancario, solo
+// l'addebito mensile: quando lo vediamo, chiediamo lo statement Nexi se
+// manca e mostriamo la quadratura (richiesta utente 18/07/2026).
+function CartaNexi() {
+  const [stato, setStato] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [msg, setMsg] = useState('');
+  const fileRef = React.useRef(null);
+
+  const carica = async () => {
+    try {
+      const r = await api.get('/api/nexi/stato');
+      setStato(r.data);
+    } catch (e) {
+      console.error('Stato Nexi:', e);
+    }
+  };
+  useEffect(() => { carica(); }, []);
+
+  const v = stato?.verifica;
+  if (!v || v.addebiti_trovati === 0) return null;
+
+  const upload = async e => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setMsg('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const r = await api.post('/api/nexi/upload-pdf', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setMsg(r.data.success
+        ? `✅ Caricate ${r.data.operazioni} operazioni.`
+        : `⚠️ ${r.data.message || 'Import non riuscito'}`);
+      carica();
+    } catch (e2) {
+      setMsg(`❌ ${e2.response?.data?.detail || e2.message}`);
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const daCompletare = v.dettagli.filter(d => d.stato !== 'riconciliato');
+  if (daCompletare.length === 0) return null;
+
+  return (
+    <div
+      data-testid="carta-nexi-widget"
+      style={{
+        background: 'white', borderRadius: 12, border: '1px solid #e2e8f0',
+        borderLeft: `4px solid #d97706`, padding: '10px 14px', marginTop: 10,
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 }}>
+        💳 Carta Nexi — addebiti da verificare
+      </div>
+      <div style={{ display: 'grid', gap: 6 }}>
+        {daCompletare.map(d => (
+          <div key={d.periodo} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5, flexWrap: 'wrap' }}>
+            <span style={{ color: '#334155' }}>
+              {d.stato === 'estratto_mancante' ? '📎 Manca lo statement' : '⚠️ Non quadra'} — periodo {d.periodo}
+              {' '}(addebito {formatDateIT(d.data_addebito)})
+            </span>
+            <b style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>
+              {eur(d.importo)}{d.totale_carta != null ? ` (carta ${eur(d.totale_carta)})` : ''}
+            </b>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button
+          onClick={() => fileRef.current?.click()} disabled={uploading}
+          style={{ background: '#d97706', color: 'white', border: 'none', borderRadius: 7, padding: '6px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: uploading ? 0.6 : 1 }}
+        >
+          {uploading ? '⏳ Caricamento…' : '📎 Allega estratto Nexi (PDF)'}
+        </button>
+        <input ref={fileRef} type="file" accept="application/pdf" onChange={upload} style={{ display: 'none' }} />
+        {msg && <span style={{ fontSize: 12, color: '#475569' }}>{msg}</span>}
       </div>
     </div>
   );
@@ -829,13 +1028,14 @@ export default function PrimaNota() {
 
   return (
     <div style={{ padding: '14px clamp(10px, 3vw, 28px)', maxWidth: 1280, margin: '0 auto' }}>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         {tab('cassa', `💵 Cassa ${anno}`)}
         {tab('banca', `🏦 Banca ${anno}`)}
+        {tab('soci', '👥 Soci')}
         {tab('provvisori', `⚠️ Provvisori (${provvisori.length})`)}
       </div>
 
-      {loading && (
+      {loading && sezione !== 'soci' && (
         <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>⏳ Caricamento…</div>
       )}
 
@@ -843,7 +1043,9 @@ export default function PrimaNota() {
         <Provvisori provvisori={provvisori} attesaBanca={attesaBanca} attese={attese} onRicarica={carica} />
       )}
 
-      {!loading && sezione !== 'provvisori' && (
+      {sezione === 'soci' && <FinanziamentoSoci />}
+
+      {!loading && sezione !== 'provvisori' && sezione !== 'soci' && (
         <>
           {/* 4 numeri, nessuna card doppia */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
@@ -855,6 +1057,9 @@ export default function PrimaNota() {
             <Card titolo={`Uscite (Avere) ${anno}`} valore={datiAttivi.totale_uscite} colore={ROSSO} />
             <Card titolo="Saldo" valore={saldoFinale} colore={saldoFinale >= 0 ? BLU : ROSSO} />
           </div>
+
+          <RipartoEntrate sezione={sezione} cassa={cassa} banca={banca} mese={mese} />
+          {sezione === 'banca' && <CartaNexi />}
 
           {/* mese */}
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', margin: '12px 0 0' }}>

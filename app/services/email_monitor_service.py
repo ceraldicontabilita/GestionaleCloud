@@ -586,7 +586,16 @@ async def processa_nuovi_documenti(db) -> Dict[str, Any]:
     total = results["buste_paga"] + results["estratti_nexi"] + results["estratti_bnl"]
     if total > 0:
         logger.info(f"📄 Processati {total} documenti (BP:{results['buste_paga']}, Nexi:{results['estratti_nexi']}, BNL:{results['estratti_bnl']})")
-    
+
+    # Controllo addebiti Nexi vs statement carta (richiesta utente 18/07/2026):
+    # ogni volta che arriva posta si ricontrolla che ogni addebito mensile
+    # Nexi in banca abbia il relativo statement carta, alert se manca/non quadra.
+    try:
+        from app.services.nexi_carta import verifica_addebiti_nexi
+        results["nexi_verifica"] = await verifica_addebiti_nexi(db)
+    except Exception as e:
+        results["errori"].append(f"Verifica Nexi: {e}")
+
     return results
 
 

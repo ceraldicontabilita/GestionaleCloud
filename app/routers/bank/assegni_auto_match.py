@@ -45,6 +45,21 @@ logger = logging.getLogger(__name__)
 TOLL = 0.005  # mezzo centesimo
 MAX_RATE = 4
 
+# Fornitori che NON possono mai essere pagati con assegno (dettato
+# dall'utente 18/07/2026): arrivano su carta di credito o addebito
+# bancario, al limite bonifico — mai assegno. Match su sottostringa
+# normalizzata (case-insensitive) del nome fornitore/beneficiario.
+FORNITORI_MAI_ASSEGNO = (
+    "amazon", "abc acquedotto", "acquedotto", "fastweb", "paypal",
+    "enel", "leasys", "arval",
+)
+
+
+def fornitore_esclude_assegno(nome: str) -> bool:
+    """Vero se il fornitore/beneficiario non è mai pagabile con assegno."""
+    n = (nome or "").lower()
+    return any(k in n for k in FORNITORI_MAI_ASSEGNO)
+
 
 # ─────────────────────────────── helpers ───────────────────────────────
 
@@ -177,6 +192,9 @@ async def _load_open_invoices_by_piva(db) -> Dict[str, List[Dict[str, Any]]]:
         if not piva:
             continue
         if piva in metodo_non_assegno:
+            continue
+        nome_fornitore = inv.get("supplier_name") or inv.get("cedente_denominazione") or ""
+        if fornitore_esclude_assegno(nome_fornitore):
             continue
         total = _f(inv.get("total_amount") or inv.get("importo_totale"))
         paid = _f(inv.get("importo_pagato") or 0)

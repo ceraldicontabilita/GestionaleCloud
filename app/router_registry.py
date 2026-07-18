@@ -98,10 +98,11 @@ def _register_accounting(app: FastAPI):
         regole_categorizzazione, contabilita_gestionale
     )
     from app.routers.prima_nota_module import router as prima_nota_router
-    from app.routers import contabilita_italiana, fiscalita_italiana
+    from app.routers import contabilita_italiana, fiscalita_italiana, finanziamenti_soci
 
     app.include_router(prima_nota_router, prefix="/api/prima-nota", tags=["Prima Nota"])
     app.include_router(prima_nota_salari.router, prefix="/api/prima-nota-salari", tags=["Prima Nota Salari"])
+    app.include_router(finanziamenti_soci.router, prefix="/api/finanziamenti-soci", tags=["Finanziamento Soci"])
     app.include_router(piano_conti.router, prefix="/api/piano-conti", tags=["Piano dei Conti"])
     app.include_router(bilancio.router, prefix="/api/bilancio", tags=["Bilancio"])
     app.include_router(contabilita_gestionale.router, prefix="/api/contabilita-gestionale", tags=["Contabilità Gestionale"])
@@ -134,13 +135,14 @@ def _register_bank(app: FastAPI):
     )
     from app.routers.bonifici_module import router as archivio_bonifici_router
     from app.routers.bonifici_module import associazioni as bonifici_associazioni
-    from app.routers import paypal_statements
+    from app.routers import paypal_statements, nexi_carta
 
     app.include_router(bank_statement_import.router, prefix="/api/bank-statement", tags=["Bank Statement"])
     app.include_router(estratto_conto.router, prefix="/api/estratto-conto-movimenti", tags=["Estratto Conto"])
     app.include_router(archivio_bonifici_router, prefix="/api/archivio-bonifici", tags=["Archivio Bonifici"])
     app.include_router(assegni.router, prefix="/api/assegni", tags=["Assegni"])
     app.include_router(assegni_learning.router, prefix="/api/assegni/learning", tags=["Assegni Learning"])
+    app.include_router(nexi_carta.router, prefix="/api/nexi", tags=["Carta Nexi"])
     # pos_accredito (router HTTP): smontato (audit 14/07/2026, piano residuo
     # op.6) — sostituito funzionalmente da pos_corrispettivi_check, zero
     # chiamanti verificati. app/utils/pos_accredito.py (le funzioni di calcolo,

@@ -11,6 +11,13 @@ import { useConfirm } from '../components/ui/ConfirmDialog';
 import { toast } from 'sonner';
 import { Button, Badge, StatCard, Table, TableWrap, Th, Td, Input, RowActions, RowActionButton, ListaAdattiva } from '../components/ds';
 
+// Fornitori mai pagabili con assegno (dettato utente 18/07/2026): arrivano
+// su carta di credito o addebito bancario, al limite bonifico — mai assegno.
+const FORNITORI_MAI_ASSEGNO = [
+  'amazon', 'abc acquedotto', 'acquedotto', 'fastweb', 'paypal',
+  'enel', 'leasys', 'arval',
+];
+
 const STATI_ASSEGNO = {
   vuoto: { label: 'Valido', variant: 'success' },
   compilato: { label: 'Compilato', variant: 'info' },
@@ -169,6 +176,12 @@ export default function GestioneAssegni() {
           paymentMethod.includes('cash') ||
           paymentMethod === 'contanti'
         ) {
+          return false;
+        }
+        // Fornitori mai pagabili con assegno (dettato utente 18/07/2026):
+        // arrivano su carta di credito o addebito bancario, mai su assegno.
+        const fornitoreNome = (f.supplier_name || f.cedente_denominazione || '').toLowerCase();
+        if (FORNITORI_MAI_ASSEGNO.some(k => fornitoreNome.includes(k))) {
           return false;
         }
         return true;
@@ -1358,6 +1371,32 @@ export default function GestioneAssegni() {
                 </div>
                 {/* Candidate fatture */}
                 <div style={{ marginTop: 10, borderTop: `1px dashed ${COLORS.warningLight}`, paddingTop: 10 }}>
+                  {(() => {
+                    const selezionati = ambiguiSelections[a.assegno_id] || [];
+                    if (selezionati.length === 0) return null;
+                    const somma = (a.candidates || [])
+                      .filter(c => selezionati.includes(c.fattura_id))
+                      .reduce((sum, c) => sum + (c.importo_residuo ?? c.importo_totale ?? c.importo ?? 0), 0);
+                    const diff = a.importo - somma;
+                    return (
+                      <div
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', gap: 8,
+                          padding: '6px 8px', marginBottom: 8, borderRadius: BORDER_RADIUS.sm,
+                          background: Math.abs(diff) < 1 ? COLORS.successLight : COLORS.warningLight,
+                          fontSize: 12, fontWeight: 600,
+                        }}
+                      >
+                        <span>Totale selezionato ({selezionati.length}):</span>
+                        <span style={{ fontFamily: 'monospace' }}>
+                          € {somma.toFixed(2)} · assegno € {a.importo.toFixed(2)} · diff{' '}
+                          <span style={{ color: Math.abs(diff) < 1 ? COLORS.success : COLORS.warning }}>
+                            € {diff.toFixed(2)}
+                          </span>
+                        </span>
+                      </div>
+                    );
+                  })()}
                   {(a.candidates || []).map(c => {
                     const selected = (ambiguiSelections[a.assegno_id] || []).includes(c.fattura_id);
                     return (

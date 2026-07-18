@@ -48,7 +48,7 @@ unico), invarianti `trasferimento_pos_speculare` e
 | P1-1 | Token JWT stampato nei log browser (WebSocket) | ✅ FATTO — l'URL non viene più loggato |
 | P1-2 | Cookie senza flag Secure | ✅ FATTO — Secure in produzione (Render/https) su login, PIN e session_active |
 | P1-3 | ADMIN_PIN in chiaro ammesso | ✅ FATTO — supporto rimosso, resta solo PIN_HASH_ADMIN (config prod verificata). NOTA: l'hash resta SHA-256, debole per un PIN corto — mitigato dal blocco tentativi (5/5min); upgrade a KDF lento = lavoro futuro |
-| P1-4 | Verbali email: funzioni non implementate (return None) | ❌ DA FARE — `cerca_quietanza_per_verbale`/`cerca_pdf_per_verbale` sono stub; flusso verbale→targa→driver→trattenuta non certificabile |
+| P1-4 | Verbali email: funzioni non implementate (return None) | ✅ FATTO — le 4 funzioni riusano i motori esistenti (quietanze via `trova_pagamento_verbale`/PayPal-PagoPA-EC, PDF dagli allegati, nuovi verbali dallo scanner Gmail, nuove quietanze associate ai verbali); orchestratore agganciato al job orario e a un endpoint admin on-demand; verificato su prod (`POST /api/verbali-riconciliazione/scan-email`, deploy e7757bc) |
 
 ## Interfaccia
 
@@ -89,5 +89,5 @@ unico), invarianti `trasferimento_pos_speculare` e
 | Motore unico di scrittura | ✅ completato (vedi P0-2) |
 | Corrispettivi → Cassa → POS → Banca definitivo | ✅ regola canonica applicata e migrata |
 | Migrazione righe sintetiche POS | ✅ eseguita (104 convertite + 37 create, EC riconciliati) |
-| Verbali → driver → trattenuta cedolino | ❌ da fare |
+| Verbali → driver → trattenuta cedolino | ✅ ricerca pagamento/PDF/nuovi-verbali completata (P1-4); trattenuta in busta resta proposta+conferma manuale (§11 LOGICA_FUNZIONAMENTO.md, per scelta) |
 | Collaudo E2E con database di prova (bottoni distruttivi premuti davvero) | ❌ da fare — oggi: collaudo UI read-only (83 rotte) + 12 invarianti notturni |

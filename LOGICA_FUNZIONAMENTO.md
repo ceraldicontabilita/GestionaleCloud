@@ -570,6 +570,39 @@ in banca nascono dallo stesso corrispettivo, in sequenza).
 **Protezioni**: un doppio click su "Conferma" non può creare movimenti doppi
 (la seconda richiesta viene rifiutata); ogni azione registra chi/quando (audit log).
 
+**4-bis. Riparto entrate per origine** (richiesta utente 18/07/2026): sotto le
+card Entrate/Uscite/Saldo di Cassa e Banca compare il dettaglio delle entrate
+per tipo — POS trasferito dalla cassa, versamenti contanti, note di credito,
+finanziamento soci, altre entrate (cassa: corrispettivi, prelievi da banca,
+apporto soci, altre). Include il confronto diretto "uscito dalla cassa" vs
+"entrato in banca" per il trasferimento POS del periodo selezionato: se non
+torna (Δ ≠ 0) è segnalato in rosso — verifica visiva della REGOLA CANONICA POS
+sopra, senza aprire il collaudo.
+
+**4-ter. Finanziamento Soci** (richiesta utente 18/07/2026, tab "👥 Soci" di
+Prima Nota): scheda personale per ciascuno dei quattro soci — Vincenzo
+Ceraldi, Giuseppina Pane, Antonietta Ceraldi, Valerio Ceraldi. Estrazione
+automatica dall'estratto conto (idempotente, `app/services/finanziamenti_soci.py`):
+un bonifico in **entrata** con il nome del socio nella causale è un **apporto**
+nella sua scheda; un bonifico in **uscita** verso il socio diventa **rimborso**
+SOLO se la causale contiene esplicitamente rimborso/restituzione/finanziamento
+(altrimenti resta fuori — es. lo stipendio a un socio dipendente non è un
+rimborso del finanziamento). Ogni scheda mostra apporti, rimborsi e credito
+residuo; è possibile aggiungere/eliminare movimenti a mano per i casi che la
+lettura automatica non copre. Registro analitico separato: non scrive in
+prima_nota_cassa/banca.
+
+**4-quater. Carta di credito Nexi** (richiesta utente 18/07/2026): le singole
+spese con la carta Nexi **non arrivano mai** in estratto conto bancario — solo
+l'**addebito mensile** (riga con "NEXI" in causale, che salda il mese
+precedente). Ogni volta che l'estratto conto viene importato o arriva posta,
+`app/services/nexi_carta.py` cerca questi addebiti e: se manca lo statement
+carta Nexi del periodo, genera l'alert "Estratto conto Nexi mancante"
+(chiedendo di allegarlo — bottone dedicato nella tab Banca di Prima Nota,
+PDF, stessa pipeline di parsing usata per il download automatico via email);
+se lo statement c'è, confronta l'addebito con la somma delle operazioni
+carta del periodo (tolleranza 0,01€) e segnala se non quadra.
+
 ---
 
 ## 5. Corrispettivi e coerenza POS (calendario accrediti)
@@ -702,6 +735,17 @@ dalla cassa senza mai arrivare in banca — bug corretto). **Accrediti POS**
 (causale con "NUMIA" o simili): non creano una nuova entrata (la quota POS è già
 in Prima Nota Banca dal corrispettivo, vedi §5) — marcano solo riconciliato il
 movimento per non contare due volte lo stesso incasso.
+
+**Riconciliazione Assegni** (`app/routers/bank/assegni_auto_match.py`, 4
+livelli L1-L4, N:M): tra le fatture candidate a un assegno **non compaiono
+mai** i fornitori che arrivano solo su carta di credito o addebito bancario
+(al limite bonifico) — mai su assegno. Lista dettata dall'utente il
+18/07/2026: Amazon, ABC acquedotto, Fastweb, PayPal, Enel, Leasys (Plan/
+Italia), Arval. Vale per l'auto-match, le proposte di associazione manuale e
+i suggerimenti di correzione. Nel modale di collegamento manuale (e nella
+lista "assegni ambigui" da risolvere a mano) il **totale delle fatture
+selezionate** e la **differenza con l'importo dell'assegno** sono mostrati
+in tempo reale mentre spunti le fatture — niente calcolatrice.
 
 **Se non trova nulla di tutto questo**, il movimento banca resta "non riconciliato"
 ma **non sparisce mai**: subito dopo l'import, un passaggio generico crea comunque
