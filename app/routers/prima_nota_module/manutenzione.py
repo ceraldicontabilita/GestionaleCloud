@@ -1918,7 +1918,10 @@ async def migra_pos_accrediti_reali(
         trasferimento_id = str(uuid.uuid4())
 
         uscite = await db["prima_nota_cassa"].find(
-            {"data": giorno, "tipo": "uscita", "categoria": "POS Verso Banca",
+            {"data": giorno, "tipo": "uscita",
+             "$or": [{"categoria": "POS Verso Banca"},
+                     {"categoria": "POS"},
+                     {"descrizione": {"$regex": "POS.*Banca|Battuto POS", "$options": "i"}}],
              "status": {"$nin": ["deleted", "archived"]}},
             {"_id": 0, "id": 1, "importo": 1}).to_list(10)
         if not dry_run:
@@ -1927,13 +1930,25 @@ async def migra_pos_accrediti_reali(
                     aggiornate_cassa += 1
                 await db["prima_nota_cassa"].update_one(
                     {"id": uscite[0]["id"]},
-                    {"$set": {"importo": quota, "quota_pos_fonte": fonte,
+                    {"$set": {"importo": quota, "categoria": "POS Verso Banca",
+                              "quota_pos_fonte": fonte,
                               "trasferimento_id": trasferimento_id, "updated_at": now}})
                 for extra in uscite[1:]:
                     await db["prima_nota_cassa"].update_one(
                         {"id": extra["id"]},
                         {"$set": {"status": "deleted", "deleted": True,
                                   "deleted_reason": "uscita_pos_doppia", "deleted_at": now}})
+            else:
+                # giorno senza uscita cassa (vecchio flusso cor10): la crea,
+                # speculare al trasferimento banca — regola canonica
+                aggiornate_cassa += 1
+                await scrivi_movimento(db, "cassa", {
+                    "data": giorno, "tipo": "uscita", "importo": quota,
+                    "descrizione": f"POS {giorno} → Banca"
+                                   + (" (chiusura terminale)" if fonte == "chiusura_manuale" else " (da XML)"),
+                    "categoria": "POS Verso Banca", "source": "corrispettivo_import",
+                    "quota_pos_fonte": fonte, "trasferimento_id": trasferimento_id,
+                })
 
         entrate = await db["prima_nota_banca"].find(
             {"data": giorno, "tipo": "entrata",
