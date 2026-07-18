@@ -446,18 +446,24 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         {"data": {"$gte": data_min, "$lte": data_max}},
         {"data": 1, "importo": 1, "descrizione_originale": 1, "descrizione": 1, "_id": 0}
     )
+    # chiave whitespace-insensibile: gli export bancari variano gli spazi
+    # interni ("NUMIA-INTER  DEL" vs "NUMIA-INTER DEL") e senza normalizzare
+    # un re-import duplicherebbe centinaia di movimenti identici
+    def _norm_desc(desc: str) -> str:
+        return re.sub(r"\s+", " ", (desc or "").strip())[:80]
+
     existing_keys: set = set()
     async for rec in existing_cursor:
         dstr = rec.get("data", "")[:10]
         imp  = abs(float(rec.get("importo", 0)))
-        desc = (rec.get("descrizione_originale") or rec.get("descrizione") or "")[:80]
+        desc = _norm_desc(rec.get("descrizione_originale") or rec.get("descrizione") or "")
         existing_keys.add((dstr, round(imp, 2), desc))
     
     records_to_insert = []
     for mov in movimenti:
         data_str    = mov["data"].isoformat()[:10] if hasattr(mov["data"], "isoformat") else str(mov["data"])[:10]
         importo_abs = abs(mov["importo"])
-        desc_raw    = (mov.get("descrizione_originale") or mov.get("descrizione") or "")[:80]
+        desc_raw    = _norm_desc(mov.get("descrizione_originale") or mov.get("descrizione") or "")
         
         # Determina tipo da segno importo
         tipo_mov = "entrata" if mov["importo"] >= 0 else "uscita"
@@ -827,6 +833,11 @@ async def pulizia_movimenti_non_in_csv(
     if not text:
         raise HTTPException(status_code=400, detail="Impossibile decodificare il file CSV")
 
+    def _chiave_desc(descr: str) -> str:
+        # gli export della banca variano gli spazi interni ("NUMIA-INTER  DEL"
+        # vs "NUMIA-INTER DEL"): la chiave di confronto è whitespace-insensibile
+        return re.sub(r"\s+", " ", (descr or "").strip())[:80]
+
     attesi: Counter = Counter()
     date_csv = []
     has_entrate = has_uscite = False
@@ -845,7 +856,7 @@ async def pulizia_movimenti_non_in_csv(
         else:
             has_uscite = True
         date_csv.append(data_iso)
-        attesi[(data_iso, round(abs(importo), 2), descr[:80])] += 1
+        attesi[(data_iso, round(abs(importo), 2), _chiave_desc(descr))] += 1
 
     if not date_csv:
         raise HTTPException(status_code=400, detail="Nessun movimento leggibile nel CSV")
@@ -874,7 +885,7 @@ async def pulizia_movimenti_non_in_csv(
             continue  # segno non coperto dall'export: mai toccato
         chiave = ((m.get("data") or "")[:10],
                   round(abs(float(m.get("importo") or 0)), 2),
-                  (m.get("descrizione_originale") or m.get("descrizione") or "")[:80])
+                  _chiave_desc(m.get("descrizione_originale") or m.get("descrizione") or ""))
         if rimasti.get(chiave, 0) > 0:
             rimasti[chiave] -= 1  # presente nel CSV: resta (link intatti)
         else:
