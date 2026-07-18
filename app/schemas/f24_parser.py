@@ -5,7 +5,7 @@ Legge i codici tributo dall'XML/PDF F24
 Genera scritture contabili splittate per ogni codice tributo
 """
 
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET  # sicurezza: blocca XXE/entity expansion su XML esterni
 from typing import Dict, List, Optional
 from datetime import datetime, date
 import re
