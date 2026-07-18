@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1022 · tenere: 669 · verificare: 330 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1023 · tenere: 670 · verificare: 330 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -368,6 +368,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/documenti/categorie` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `DELETE /api/documenti/documento/{doc_id}` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti/documento/{doc_id}` | documenti | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/documenti/documento/{doc_id}/annulla-processamento` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/documenti/documento/{doc_id}/cambia-categoria` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti/documento/{doc_id}/download` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/documenti/documento/{doc_id}/processa` | documenti | sì | — | — | — | — | tenere | in uso: FE |

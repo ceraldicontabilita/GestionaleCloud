@@ -407,6 +407,18 @@ export default function Documenti() {
     }
   };
 
+  const handleAnnullaProcessamento = async docId => {
+    try {
+      await api.post(`/api/documenti/documento/${docId}/annulla-processamento`);
+      toast.success('Caricamento annullato', {
+        description: 'Il documento è tornato tra quelli da processare',
+      });
+      loadData();
+    } catch (error) {
+      toast.error('Errore', { description: error.response?.data?.detail || error.message });
+    }
+  };
+
   const handleDeleteDocument = async docId => {
     try {
       await api.delete(`/api/documenti/documento/${docId}`);
@@ -1209,6 +1221,15 @@ export default function Documenti() {
                             <option value="estratto_conto">Estratto Conto</option>
                             <option value="quietanze">Quietanze</option>
                           </Select>
+                        )}
+
+                        {doc.processed && (
+                          <RowActionButton
+                            onClick={() => handleAnnullaProcessamento(doc.id)}
+                            title={`Annulla: era stato caricato in "${doc.processed_to || '?'}" per errore`}
+                          >
+                            ↩️ Annulla
+                          </RowActionButton>
                         )}
 
                         <Select

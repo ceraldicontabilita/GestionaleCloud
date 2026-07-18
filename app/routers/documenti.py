@@ -539,6 +539,38 @@ async def cambia_categoria_documento(
     }
 
 
+@router.post("/documento/{doc_id}/annulla-processamento")
+@handle_errors
+async def annulla_processamento_documento(doc_id: str) -> Dict[str, Any]:
+    """
+    Annulla un "processa" con destinazione sbagliata (es. click su F24 per
+    un documento che era in realtà una Cartella Esattoriale — segnalato
+    dall'utente 18/07/2026: "ho cliccato f24 ed ho sbagliato come
+    riclassifico?"). processa_documento non scrive nulla nella collezione di
+    destinazione (si limita a segnare processed_to sul documento; serve poi
+    un endpoint di upload specifico per completare il caricamento), quindi
+    annullare è solo un reset dei metadati: il documento torna tra i "da
+    processare" con la sua categoria originale (già corretta) invariata.
+    """
+    db = Database.get_db()
+
+    doc = await db["documents_inbox"].find_one({"id": doc_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento non trovato")
+    if not doc.get("processed") and doc.get("status") != "processato":
+        raise HTTPException(status_code=400, detail="Documento non risulta processato")
+
+    await db["documents_inbox"].update_one(
+        {"id": doc_id},
+        {
+            "$set": {"status": "nuovo"},
+            "$unset": {"processed": "", "processed_to": "", "processed_at": ""},
+        },
+    )
+
+    return {"success": True, "id": doc_id, "category": doc.get("category")}
+
+
 @router.delete("/documento/{doc_id}")
 @handle_errors
 async def elimina_documento(doc_id: str) -> Dict[str, Any]:
