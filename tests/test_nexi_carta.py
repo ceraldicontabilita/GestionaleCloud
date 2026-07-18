@@ -5,6 +5,8 @@ segnala se manca o se la quadratura non torna."""
 import asyncio
 
 from app.services.nexi_carta import (
+    _data,
+    _norm_data,
     _periodo_addebito,
     is_addebito_nexi,
     verifica_addebiti_nexi,
@@ -72,6 +74,19 @@ class _DB:
 
     def __getitem__(self, name):
         return self._c.setdefault(name, _Coll())
+
+
+def test_norm_data_riconosce_formato_italiano_legacy():
+    """estratto_conto_movimenti ha righe più vecchie in GG/MM/AAAA (import
+    legacy) accanto a quelle più recenti già ISO: trovato su prod il
+    18/07/2026 (addebito Nexi del 16/03/2026 con periodo calcolato "")."""
+    assert _norm_data("16/03/2026") == "2026-03-16"
+    assert _norm_data("2026-03-16") == "2026-03-16"
+    assert _data({"data_contabile": "16/03/2026"}) == "2026-03-16"
+
+
+def test_periodo_addebito_da_data_italiana_non_e_vuoto():
+    assert _periodo_addebito(_data({"data_contabile": "16/03/2026"})) == "2026-02"
 
 
 def test_periodo_addebito_mese_precedente():

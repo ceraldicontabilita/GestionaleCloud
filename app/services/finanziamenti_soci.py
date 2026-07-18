@@ -53,8 +53,22 @@ def _descrizione_ec(doc: Dict[str, Any]) -> str:
     return doc.get("descrizione_originale") or doc.get("descrizione") or ""
 
 
+def _norm_data(raw: str) -> str:
+    """Normalizza a YYYY-MM-DD. In estratto_conto_movimenti convivono righe
+    più vecchie in formato italiano GG/MM/AAAA e quelle più recenti già ISO
+    (bug trovato in produzione il 18/07/2026 sul modulo Nexi gemello): senza
+    normalizzare, i filtri per anno su stringa escludono le righe italiane."""
+    s = str(raw or "").strip()[:10]
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
+        return s
+    m = re.match(r"^(\d{2})/(\d{2})/(\d{4})$", s)
+    if m:
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    return s
+
+
 def _data_ec(doc: Dict[str, Any]) -> str:
-    return str(doc.get("data_contabile") or doc.get("data") or "")[:10]
+    return _norm_data(doc.get("data_contabile") or doc.get("data") or "")
 
 
 def _verso_ec(doc: Dict[str, Any]) -> Optional[str]:
@@ -83,20 +97,20 @@ async def scan_finanziamenti_da_ec(db, anno: Optional[int] = None) -> Dict[str, 
         "per_socio": {s["id"]: 0 for s in SOCI},
     }
 
-    query: Dict[str, Any] = {}
-    if anno:
-        query["$or"] = [
-            {"data_contabile": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}},
-            {"data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}},
-        ]
-
+    # Nessun filtro anno lato query Mongo: estratto_conto_movimenti ha righe
+    # più vecchie con data in formato italiano GG/MM/AAAA accanto a quelle
+    # ISO — un range string $gte/$lte sul grezzo escluderebbe le prime
+    # silenziosamente. Si filtra dopo, sulla data normalizzata.
     gia_importati = set()
     async for m in db[COLLECTION].find({}, {"estratto_conto_id": 1, "_id": 0}):
         if m.get("estratto_conto_id"):
             gia_importati.add(m["estratto_conto_id"])
 
-    cursor = db["estratto_conto_movimenti"].find(query)
+    cursor = db["estratto_conto_movimenti"].find({})
     async for doc in cursor:
+        data_norm = _data_ec(doc)
+        if anno and not data_norm.startswith(f"{anno}-"):
+            continue
         stats["righe_esaminate"] += 1
         descr = _descrizione_ec(doc)
         socio = socio_in_testo(descr)
@@ -122,7 +136,7 @@ async def scan_finanziamenti_da_ec(db, anno: Optional[int] = None) -> Dict[str, 
             "socio_nome": socio["nome"],
             "tipo": tipo_mov,
             "importo": round(abs(float(doc.get("importo") or 0)), 2),
-            "data": _data_ec(doc),
+            "data": data_norm,
             "descrizione": descr,
             "estratto_conto_id": ec_id,
             "source": "estratto_conto_auto",

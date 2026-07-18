@@ -42,8 +42,22 @@ def _descr(doc: Dict[str, Any]) -> str:
     return doc.get("descrizione_originale") or doc.get("descrizione") or ""
 
 
+def _norm_data(raw: str) -> str:
+    """Normalizza a YYYY-MM-DD. In estratto_conto_movimenti convivono righe
+    più vecchie in formato italiano GG/MM/AAAA e quelle più recenti già ISO:
+    senza normalizzare, il calcolo del periodo (mese precedente) falliva in
+    silenzio sulle righe italiane (returned "")."""
+    s = str(raw or "").strip()[:10]
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
+        return s
+    m = re.match(r"^(\d{2})/(\d{2})/(\d{4})$", s)
+    if m:
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    return s
+
+
 def _data(doc: Dict[str, Any]) -> str:
-    return str(doc.get("data_contabile") or doc.get("data") or "")[:10]
+    return _norm_data(doc.get("data_contabile") or doc.get("data") or "")
 
 
 def _e_movimento_carta(doc: Dict[str, Any]) -> bool:
@@ -92,18 +106,18 @@ async def verifica_addebiti_nexi(db, anno: Optional[int] = None) -> Dict[str, An
         "dettagli": [],
     }
 
-    query: Dict[str, Any] = {}
-    if anno:
-        query["$or"] = [
-            {"data_contabile": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}},
-            {"data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}},
-        ]
-
-    async for doc in db[COLL_MOVIMENTI].find(query):
+    # Nessun filtro anno lato query Mongo: estratto_conto_movimenti ha righe
+    # più vecchie con data in formato italiano GG/MM/AAAA accanto a quelle
+    # ISO — un range string $gte/$lte sul grezzo escluderebbe le prime
+    # silenziosamente (bug trovato in produzione il 18/07/2026). Si filtra
+    # dopo, sulla data normalizzata.
+    async for doc in db[COLL_MOVIMENTI].find({}):
         if not is_addebito_nexi(doc):
             continue
-        stats["addebiti_trovati"] += 1
         data_add = _data(doc)
+        if anno and not data_add.startswith(f"{anno}-"):
+            continue
+        stats["addebiti_trovati"] += 1
         importo = round(abs(float(doc.get("importo") or 0)), 2)
         periodo = _periodo_addebito(data_add)
         chiave = f"nexi_{periodo}"
