@@ -364,6 +364,12 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Parser fallito su documento",
         "condizione_chiusura": "Parser corretto o rilanciato"
     },
+    "FATTURA_CASSA_PAGATA_BANCA": {
+        "modulo": "prima_nota",
+        "severita": "warning",
+        "titolo": "Fattura pagata per BANCA nonostante metodo cassa",
+        "condizione_chiusura": "Presa visione (registrazione già corretta in banca)"
+    },
     "DOC_DUPLICATO": {
         "modulo": "documenti",
         "severita": "info",

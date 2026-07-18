@@ -564,7 +564,7 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
 }
 
 /* ------------------------------ provvisori ------------------------------ */
-function Provvisori({ provvisori, attese, onRicarica }) {
+function Provvisori({ provvisori, attesaBanca = [], attese, onRicarica }) {
   const [busy, setBusy] = useState(null);
   const [parziale, setParziale] = useState(null);
   const [importoCassa, setImportoCassa] = useState('');
@@ -654,6 +654,38 @@ function Provvisori({ provvisori, attese, onRicarica }) {
         </div>
       ))}
 
+      {attesaBanca.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#64748b', margin: '4px 0 8px' }}>
+            🏦 Fornitori a metodo banca — in attesa dell'addebito in estratto conto ({attesaBanca.length}).
+            Si registrano da sole alla riconciliazione: nessuna azione richiesta.
+          </div>
+          {attesaBanca.map(p => (
+            <div
+              key={p.fattura_id}
+              style={{ background: 'white', borderRadius: 10, border: '1px dashed #93c5fd', borderLeft: '4px solid #2563eb', padding: '8px 12px', marginBottom: 6, display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5, flexWrap: 'wrap' }}
+            >
+              <span style={{ minWidth: 0 }}>
+                {p.fornitore || '—'} — Fatt. {p.fattura_numero || '—'} del {formatDateIT(p.fattura_data)}
+                {p.movimento_banca && (
+                  <span style={{ color: '#2563eb' }}> · possibile addebito {formatDateIT(p.movimento_banca.data)}</span>
+                )}
+              </span>
+              <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <b style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(p.importo)}</b>
+                <button
+                  onClick={() => conferma(p, 'banca')} disabled={busy === p.fattura_id}
+                  title="Registra subito in banca senza aspettare la riconciliazione"
+                  style={{ background: '#eff6ff', border: '1px solid #93c5fd', color: '#1d4ed8', borderRadius: 7, padding: '4px 10px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Forza banca
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {attese.length > 0 && (
         <div style={{ marginTop: 8 }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: '#64748b', margin: '4px 0 8px' }}>
@@ -717,6 +749,7 @@ export default function PrimaNota() {
   const [cassa, setCassa] = useState({ movimenti: [] });
   const [banca, setBanca] = useState({ movimenti: [] });
   const [provvisori, setProvvisori] = useState([]);
+  const [attesaBanca, setAttesaBanca] = useState([]);
   const [attese, setAttese] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -733,6 +766,7 @@ export default function PrimaNota() {
       setCassa(c.data || { movimenti: [] });
       setBanca(b.data || { movimenti: [] });
       setProvvisori(p.data?.provvisori || []);
+      setAttesaBanca(p.data?.in_attesa_banca || []);
       setAttese(a.data?.attese || []);
     } catch (e) {
       console.error('Prima nota:', e);
@@ -806,7 +840,7 @@ export default function PrimaNota() {
       )}
 
       {!loading && sezione === 'provvisori' && (
-        <Provvisori provvisori={provvisori} attese={attese} onRicarica={carica} />
+        <Provvisori provvisori={provvisori} attesaBanca={attesaBanca} attese={attese} onRicarica={carica} />
       )}
 
       {!loading && sezione !== 'provvisori' && (

@@ -704,14 +704,24 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
     # SUGGERIMENTO (cassa/banca/sospesa): ogni fattura resta in provvisorio
     # fino a conferma manuale dell'utente.
     auto_confermati = 0
-    provvisori_finali = provvisori
+
+    # RICHIESTA UTENTE 18/07/2026 ("tu sai quali fornitori si pagano per
+    # banca: perché li metti in provvisori?"): le fatture di fornitori a
+    # metodo BANCA non sono decisioni da prendere — aspettano solo
+    # l'addebito in estratto conto (la riconciliazione oraria le registra
+    # da sola). Vanno in una lista separata "in attesa banca", fuori dal
+    # conteggio dei provvisori da lavorare.
+    in_attesa_banca = [p for p in provvisori if p["suggerimento"] == "banca"]
+    provvisori_finali = [p for p in provvisori if p["suggerimento"] != "banca"]
 
     tot_cassa = sum(p["importo"] for p in provvisori_finali if p["suggerimento"] == "cassa")
-    tot_banca = sum(p["importo"] for p in provvisori_finali if p["suggerimento"] == "banca")
-    
+    tot_banca = sum(p["importo"] for p in in_attesa_banca)
+
     return {
         "provvisori": provvisori_finali,
+        "in_attesa_banca": in_attesa_banca,
         "totale": len(provvisori_finali),
+        "totale_in_attesa_banca": len(in_attesa_banca),
         "totale_cassa": round(tot_cassa, 2),
         "totale_banca": round(tot_banca, 2),
         "confermati": sum(1 for p in provvisori_finali if p["stato_match"] == "confermato"),
@@ -1477,4 +1487,133 @@ async def crea_entrata_cassa_da_corrispettivo(
         "include_uscita_pos": includi_uscita_pos and elettronico > 0,
         **risultati,
         "message": f"Movimenti creati in Prima Nota Cassa per il {data}. Sono annullabili normalmente dalla pagina Prima Nota.",
+    }
+
+
+async def sposta_fatture_cassa_pagate_in_banca(
+    dry_run: bool = Query(True, description="Solo conteggio"),
+    anno: int = Query(2026),
+) -> Dict[str, Any]:
+    """RICHIESTA UTENTE 18/07/2026: "se trovi un fornitore che è per cassa
+    ma la fattura viene pagata per banca, metti in evidenza e paga per
+    banca nonostante il metodo cassa".
+
+    Per ogni pagamento fattura registrato in Prima Nota CASSA, cerca
+    nell'estratto conto un addebito con lo stesso importo E il nome del
+    fornitore nella descrizione (match forte: mai solo per importo). Se lo
+    trova, l'estratto conto vince sull'anagrafica: la riga di cassa viene
+    soft-deletata, l'uscita registrata in Prima Nota Banca agganciata al
+    movimento reale, la fattura marcata pagata per bonifico, e viene
+    generato un ALERT di evidenza (FATTURA_CASSA_PAGATA_BANCA).
+    """
+    from app.services.alert_engine import genera_alert
+
+    db = Database.get_db()
+    now = datetime.now(timezone.utc).isoformat()
+
+    righe_cassa = await db["prima_nota_cassa"].find(
+        {"data": {"$regex": f"^{anno}"}, "tipo": "uscita",
+         "fattura_id": {"$exists": True, "$nin": [None, ""]},
+         "status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 0, "id": 1, "fattura_id": 1, "importo": 1, "data": 1, "descrizione": 1},
+    ).to_list(5000)
+
+    movimenti_ec = await db["estratto_conto_movimenti"].find(
+        {"data": {"$regex": f"^{anno}"}, "tipo": "uscita",
+         "riconciliato": {"$ne": True}},
+        {"_id": 0, "id": 1, "data": 1, "importo": 1,
+         "descrizione_originale": 1, "descrizione": 1},
+    ).to_list(20000)
+    per_importo: Dict[float, list] = {}
+    for m in movimenti_ec:
+        per_importo.setdefault(round(abs(float(m.get("importo") or 0)), 2), []).append(m)
+
+    spostate = 0
+    dettaglio = []
+    for riga in righe_cassa:
+        fatt = await db["invoices"].find_one(
+            {"id": riga["fattura_id"]}, {"_id": 0, "xml_raw": 0, "linee": 0})
+        if not fatt:
+            continue
+        nome = (fatt.get("supplier_name") or "").upper()
+        token = [p for p in nome.replace(".", " ").split() if len(p) > 3][:3]
+        if not token:
+            continue
+        candidati = per_importo.get(round(abs(float(riga.get("importo") or 0)), 2), [])
+        match = None
+        for m in candidati:
+            desc = (m.get("descrizione_originale") or m.get("descrizione") or "").upper()
+            if any(t in desc for t in token):
+                match = m
+                break
+        if not match:
+            continue
+
+        spostate += 1
+        if len(dettaglio) < 50:
+            dettaglio.append({
+                "fattura": fatt.get("invoice_number"), "fornitore": fatt.get("supplier_name"),
+                "importo": riga.get("importo"), "addebito_ec": match.get("data"),
+                "descrizione_ec": (match.get("descrizione_originale") or "")[:60],
+            })
+        if dry_run:
+            continue
+
+        await db["prima_nota_cassa"].update_one(
+            {"id": riga["id"]},
+            {"$set": {"status": "deleted", "deleted": True,
+                      "deleted_reason": "pagata_in_banca_da_estratto_conto",
+                      "deleted_at": now}})
+        pn_id = str(uuid.uuid4())
+        rif = f"FATT-{fatt['id']}"
+        esistente = await db["prima_nota_banca"].find_one(
+            {"$or": [{"riferimento": rif}, {"fattura_id": fatt["id"]}],
+             "status": {"$nin": ["deleted", "archived"]}})
+        if esistente:
+            pn_id = esistente["id"]
+        else:
+            await db["prima_nota_banca"].insert_one({
+                "id": pn_id,
+                "data": match.get("data") or riga.get("data"),
+                **costruisci_campi_movimento_fattura(fatt, float(riga.get("importo") or 0)),
+                "fattura_id": fatt["id"],
+                "riferimento": rif,
+                "fornitore_piva": fatt.get("supplier_vat", ""),
+                "estratto_conto_id": match.get("id"),
+                "pagato_con": "bonifico",
+                "source": "ec_override_metodo_cassa",
+                "created_at": now,
+            })
+        await db["invoices"].update_one({"id": fatt["id"]}, {"$set": {
+            "prima_nota_id": pn_id, "prima_nota_tipo": "banca",
+            "prima_nota_banca_id": pn_id,
+            "stato_pagamento": "pagata", "pagato": True, "paid": True,
+            "metodo_pagamento": "bonifico",
+            "data_pagamento": match.get("data"),
+            "riconciliato_con_ec": match.get("id"),
+            "pagata_banca_nonostante_metodo_cassa": True,
+        }})
+        await db["estratto_conto_movimenti"].update_one(
+            {"id": match["id"]},
+            {"$set": {"riconciliato": True,
+                      "tipo_riconciliazione": "fattura_metodo_cassa_override",
+                      "dettagli_riconciliazione": {"fattura_id": fatt["id"], "prima_nota_id": pn_id}}})
+        match["riconciliato"] = True
+        candidati.remove(match)
+        try:
+            await genera_alert(
+                "FATTURA_CASSA_PAGATA_BANCA", fatt["id"], "invoices",
+                f"Fatt. {fatt.get('invoice_number')} di {fatt.get('supplier_name')} "
+                f"(€ {riga.get('importo')}): fornitore a metodo CASSA ma addebito "
+                f"reale in banca il {match.get('data')} — registrata in Prima Nota Banca.",
+                db)
+        except Exception:
+            logger.exception("Alert FATTURA_CASSA_PAGATA_BANCA non generato")
+
+    return {
+        "dry_run": dry_run,
+        "anno": anno,
+        "righe_cassa_analizzate": len(righe_cassa),
+        "spostate_in_banca" if not dry_run else "da_spostare_in_banca": spostate,
+        "dettaglio": dettaglio,
     }

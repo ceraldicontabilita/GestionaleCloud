@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1001 endpoint** in **105 gruppi**.
+> Totale **1002 endpoint** in **105 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 640 · ext esterni = 76 · — da verificare = 285
+**Riepilogo uso:** ✓ frontend = 640 · ext esterni = 76 · — da verificare = 286
 
 ## AI Parser  (11)
 
@@ -1175,7 +1175,7 @@
 | GET | `/api/previsioni-acquisti/prodotti` | — | previsioni_acquisti |
 | GET | `/api/previsioni-acquisti/statistiche` | ✓ | previsioni_acquisti |
 
-## Prima Nota  (72)
+## Prima Nota  (73)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1245,6 +1245,7 @@
 | GET | `/api/prima-nota/saldo-iniziale` | ✓ | prima_nota_module.stats |
 | PUT | `/api/prima-nota/saldo-iniziale` | ✓ | prima_nota_module.stats |
 | DELETE | `/api/prima-nota/saldo-iniziale/{tipo}/{anno}` | ✓ | prima_nota_module.stats |
+| POST | `/api/prima-nota/sposta-cassa-pagate-in-banca` | — | prima_nota_module.sync |
 | POST | `/api/prima-nota/sposta-movimento` | ✓ | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/sposta-scrittura` | ✓ | prima_nota_module.sync |
 | GET | `/api/prima-nota/stats` | ✓ | prima_nota_module.stats |

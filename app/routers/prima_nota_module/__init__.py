@@ -139,6 +139,8 @@ router.add_api_route("/attese/{attesa_id}/annulla", annulla_fattura_attesa, meth
 # Provvisori - Fatture da confermare
 router.add_api_route("/provvisori", get_fatture_provvisorie, methods=["GET"])
 router.add_api_route("/provvisori/conferma", conferma_fattura_provvisoria, methods=["POST"])
+from .sync import sposta_fatture_cassa_pagate_in_banca
+router.add_api_route("/sposta-cassa-pagate-in-banca", sposta_fatture_cassa_pagate_in_banca, methods=["POST"])
 router.add_api_route("/provvisori/conferma-divisione", conferma_divisione_provvisoria, methods=["POST"])
 router.add_api_route("/provvisori/auto-conferma-per-metodo", auto_conferma_provvisori_per_metodo, methods=["POST"])
 router.add_api_route("/provvisori/annulla-auto-conferma", annulla_auto_conferma, methods=["POST"])

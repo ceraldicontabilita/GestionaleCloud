@@ -567,6 +567,13 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-STIPENDI-BONIFICI] errore: {e}")
         try:
+            from app.routers.prima_nota_module.sync import sposta_fatture_cassa_pagate_in_banca
+            r = await sposta_fatture_cassa_pagate_in_banca(dry_run=False, anno=anno_corrente)
+            if r.get("spostate_in_banca"):
+                logger.info(f"[SCHEDULER-CASSA-VS-EC] spostate_in_banca={r['spostate_in_banca']}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-CASSA-VS-EC] errore: {e}")
+        try:
             from app.routers.fatture_module.crud import pulisci_duplicati_invoices
             r = await pulisci_duplicati_invoices()
             if r.get("fatture_eliminate"):
