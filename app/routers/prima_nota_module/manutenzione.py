@@ -378,6 +378,108 @@ REGOLE_UNIFICA_CATEGORIE = [
 ]
 
 
+# Fonti AUTOMATICHE dei movimenti fattura: solo queste possono essere
+# rimesse in discussione dalla riparazione per metodo — le registrazioni
+# fatte A MANO dall'utente (conferma dal tab Provvisori, pagamento manuale)
+# e quelle agganciate a un addebito REALE dell'estratto conto
+# (riconciliazione_ec: il denaro è uscito davvero dal conto) non si toccano.
+SOURCES_FATTURE_AUTO = [
+    "auto_conferma", "sync_fatture", "backfill_auto_da_fornitore",
+    "auto_metodo", "fix_relazioni", "auto_registrazione_metodo_fornitore",
+]
+
+
+async def ripristina_provvisori_metodo_errato(
+    dry_run: bool = Query(True, description="Solo conteggio, non modifica"),
+    anno: int = Query(2026),
+    _admin: Dict = Depends(get_current_admin_user),
+) -> Dict:
+    """Richiesta utente 17/07/2026: "abbiamo fornitori che si pagano per
+    cassa e li ha messi in banca — tutti quelli devi mettere nei provvisori".
+
+    Per ogni movimento fattura creato AUTOMATICAMENTE, confronta il lato
+    (cassa/banca) con il metodo del fornitore in anagrafica
+    (classifica_metodo_fornitore, la stessa regola di tutto il resto):
+    - fornitore CASSA ma movimento in BANCA → lato sbagliato
+    - fornitore BANCA ma movimento in CASSA → lato sbagliato
+    - fornitore MISTO/senza metodo → non doveva essere registrato da solo
+    In tutti i casi il movimento viene marcato deleted (soft, recuperabile)
+    e la fattura torna NON pagata: ricompare nei Provvisori con il
+    suggerimento giusto, e decide l'utente."""
+    from .sync import classifica_metodo_fornitore
+
+    db = Database.get_db()
+
+    metodo_per_piva: Dict[str, str] = {}
+    async for s in db["fornitori"].find(
+        {"metodo_pagamento": {"$exists": True, "$ne": ""}},
+        {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1, "metodo_pagamento": 1},
+    ):
+        for k in (s.get("partita_iva"), s.get("piva"), s.get("vat_number")):
+            if k:
+                metodo_per_piva[str(k).strip()] = s.get("metodo_pagamento", "")
+
+    report = {"banca": [], "cassa": []}
+    corretti = 0
+
+    for collection, lato in ((COLLECTION_PRIMA_NOTA_BANCA, "banca"), (COLLECTION_PRIMA_NOTA_CASSA, "cassa")):
+        movimenti = await db[collection].find(
+            {
+                "tipo": "uscita",
+                "fattura_id": {"$nin": [None, ""]},
+                "source": {"$in": SOURCES_FATTURE_AUTO},
+                "status": {"$nin": ["deleted", "archived"]},
+                "data": {"$regex": f"^{anno}"},
+            },
+            {"_id": 0, "id": 1, "fattura_id": 1, "importo": 1, "data": 1, "descrizione": 1, "source": 1},
+        ).to_list(20000)
+
+        for mov in movimenti:
+            fattura = await db["invoices"].find_one(
+                {"id": mov["fattura_id"]},
+                {"_id": 0, "supplier_vat": 1, "cedente_piva": 1, "invoice_number": 1, "supplier_name": 1},
+            )
+            if not fattura:
+                continue
+            piva = str(fattura.get("supplier_vat") or fattura.get("cedente_piva") or "").strip()
+            destinazione = classifica_metodo_fornitore(metodo_per_piva.get(piva, ""))
+            if destinazione == lato:
+                continue  # lato giusto, non si tocca
+
+            report[lato].append({
+                "fattura": fattura.get("invoice_number"),
+                "fornitore": (fattura.get("supplier_name") or "")[:40],
+                "importo": mov.get("importo"),
+                "data": mov.get("data"),
+                "metodo_fornitore": metodo_per_piva.get(piva, "(nessuno)"),
+                "destinazione_giusta": destinazione,
+            })
+            corretti += 1
+            if dry_run:
+                continue
+
+            await db[collection].update_one(
+                {"id": mov["id"]},
+                {"$set": {"status": "deleted",
+                          "deleted_reason": "lato_errato_vs_metodo_fornitore"}},
+            )
+            await db["invoices"].update_one(
+                {"id": mov["fattura_id"]},
+                {"$set": {"pagato": False, "stato_pagamento": "da_pagare",
+                          "prima_nota_id": None, "prima_nota_tipo": None},
+                 "$unset": {"registrata_auto_da_metodo_fornitore": ""}},
+            )
+
+    return {
+        "dry_run": dry_run,
+        "anno": anno,
+        "da_correggere" if dry_run else "corretti": corretti,
+        "banca_verso_provvisori": len(report["banca"]),
+        "cassa_verso_provvisori": len(report["cassa"]),
+        "dettaglio": {k: v[:50] for k, v in report.items()},
+    }
+
+
 async def unifica_categorie(
     dry_run: bool = Query(True, description="Solo conteggio, non rinomina"),
     _admin: Dict = Depends(get_current_admin_user),

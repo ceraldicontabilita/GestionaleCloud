@@ -55,6 +55,10 @@ def _matches(doc, query):
             if doc.get(k) not in v["$in"]:
                 return False
             continue
+        if isinstance(v, dict) and "$nin" in v:
+            if doc.get(k) in v["$nin"]:
+                return False
+            continue
         if doc.get(k) != v:
             return False
     return True
@@ -250,3 +254,33 @@ def test_prelievo_non_confuso_con_versamento():
     assert mod.is_prelievo_contanti("VERS. CONTANTI - VVVVV") is False
     assert mod.is_prelievo_contanti("PRELIEVO ASSEGNO - DM 00000") is False
     assert mod.is_prelievo_contanti("") is False
+
+
+def test_riga_legacy_esclusa_non_blocca_la_gamba_banca(monkeypatch):
+    """Bug 17/07/2026: la copia legacy del versamento con source escluso
+    dai saldi (estratto_conto_sync) veniva contata come "gia presente" e
+    la vera entrata banca non veniva mai creata — l'utente vedeva l'uscita
+    in cassa senza l'entrata in banca (o viceversa)."""
+    db = _FakeDb()
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+
+    db["estratto_conto_movimenti"].docs = [{
+        "id": "EC-3", "data": "2026-01-14", "importo": 8350.0,
+        "tipo": "entrata", "descrizione_originale": "VERS. CONTANTI - VVVVV",
+    }]
+    db["prima_nota_cassa"].docs = [{
+        "id": "man-2", "data": "2026-01-14", "tipo": "uscita", "importo": 8350.0,
+        "categoria": "Versamento Banca", "source": "versamento_contanti",
+    }]
+    # copia legacy INVISIBILE nei saldi: non deve contare come presenza
+    db["prima_nota_banca"].docs = [{
+        "id": "legacy-1", "data": "2026-01-14", "tipo": "entrata", "importo": 8350.0,
+        "categoria": "Ricavi - Deposito contanti", "source": "estratto_conto_sync",
+    }]
+
+    res = _run(mod.ripara_versamenti_cassa(anno=2026))
+
+    assert res["gia_presenti_cassa"] == 1      # la manuale in cassa vale
+    assert res["creati_banca"] == 1            # la gamba banca ora nasce
+    attive = [b for b in db["prima_nota_banca"].docs if b.get("source") != "estratto_conto_sync"]
+    assert len(attive) == 1 and attive[0]["categoria"] == "Versamento Banca"

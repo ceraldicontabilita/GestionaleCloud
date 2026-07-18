@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **989 endpoint** in **104 gruppi**.
+> Totale **990 endpoint** in **104 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 639 · ext esterni = 76 · — da verificare = 274
+**Riepilogo uso:** ✓ frontend = 634 · ext esterni = 76 · — da verificare = 280
 
 ## AI Parser  (11)
 
@@ -640,11 +640,11 @@
 | GET | `/api/estratto-conto-movimenti/categorie` | — | bank.estratto_conto |
 | DELETE | `/api/estratto-conto-movimenti/clear` | — | bank.estratto_conto |
 | GET | `/api/estratto-conto-movimenti/export-excel` | — | bank.estratto_conto |
-| POST | `/api/estratto-conto-movimenti/force-reimport` | ✓ | bank.estratto_conto |
+| POST | `/api/estratto-conto-movimenti/force-reimport` | — | bank.estratto_conto |
 | GET | `/api/estratto-conto-movimenti/fornitori` | — | bank.estratto_conto |
-| POST | `/api/estratto-conto-movimenti/import` | ✓ | bank.estratto_conto |
-| GET | `/api/estratto-conto-movimenti/movimenti` | ✓ | bank.estratto_conto |
-| GET | `/api/estratto-conto-movimenti/movimenti-stipendi` | ✓ | bank.estratto_conto |
+| POST | `/api/estratto-conto-movimenti/import` | — | bank.estratto_conto |
+| GET | `/api/estratto-conto-movimenti/movimenti` | — | bank.estratto_conto |
+| GET | `/api/estratto-conto-movimenti/movimenti-stipendi` | — | bank.estratto_conto |
 | POST | `/api/estratto-conto-movimenti/reimport` | — | bank.estratto_conto |
 | POST | `/api/estratto-conto-movimenti/ricategorizza-batch` | ✓ | bank.estratto_conto |
 | POST | `/api/estratto-conto-movimenti/riconcilia-stipendi` | — | bank.estratto_conto |
@@ -1171,11 +1171,11 @@
 | GET | `/api/previsioni-acquisti/prodotti` | — | previsioni_acquisti |
 | GET | `/api/previsioni-acquisti/statistiche` | ✓ | previsioni_acquisti |
 
-## Prima Nota  (69)
+## Prima Nota  (70)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| GET | `/api/prima-nota/anni-disponibili` | ✓ | prima_nota_module.stats |
+| GET | `/api/prima-nota/anni-disponibili` | — | prima_nota_module.stats |
 | GET | `/api/prima-nota/attese` | ✓ | prima_nota_module.attese |
 | POST | `/api/prima-nota/attese/conferma` | ✓ | prima_nota_module.attese |
 | POST | `/api/prima-nota/attese/scan` | ✓ | prima_nota_module.attese |
@@ -1229,6 +1229,7 @@
 | POST | `/api/prima-nota/recalculate-balances` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/regenerate-from-invoices` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/registra-fattura` | — | prima_nota_module.sync |
+| POST | `/api/prima-nota/ripristina-provvisori-metodo-errato` | — | prima_nota_module.manutenzione |
 | GET | `/api/prima-nota/salari` | — | prima_nota_module.salari |
 | POST | `/api/prima-nota/salari` | — | prima_nota_module.salari |
 | POST | `/api/prima-nota/salari/auto-ricostruisci-dati` | — | prima_nota_module |

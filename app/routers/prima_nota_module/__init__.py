@@ -52,7 +52,7 @@ from .manutenzione import (
     regenerate_from_invoices, fix_versamenti_duplicati, fix_categories_and_duplicates,
     sposta_movimento, verifica_metodo_fattura, verifica_entrate_corrispettivi,
     fix_corrispettivi_importo, fix_date_formato_italiano, pulizia_dati_pre_anno, migrazione_pulisci_bancari_da_cassa,
-    unifica_categorie,
+    unifica_categorie, ripristina_provvisori_metodo_errato,
     dedup_fatture_prima_nota, diagnostica_corrispettivi_vs_cassa,
     lista_movimenti_ec_non_in_prima_nota, importa_movimento_ec_in_prima_nota,
     diagnostica_metodi_discordanti,
@@ -108,6 +108,7 @@ router.add_api_route("/fix-versamenti-duplicati", fix_versamenti_duplicati, meth
 router.add_api_route("/fix-date-formato-italiano", fix_date_formato_italiano, methods=["POST"])
 router.add_api_route("/pulizia-pre-anno", pulizia_dati_pre_anno, methods=["POST"])
 router.add_api_route("/unifica-categorie", unifica_categorie, methods=["POST"])
+router.add_api_route("/ripristina-provvisori-metodo-errato", ripristina_provvisori_metodo_errato, methods=["POST"])
 router.add_api_route("/fix-categories-and-duplicates", fix_categories_and_duplicates, methods=["POST"])
 router.add_api_route("/sposta-movimento", sposta_movimento, methods=["POST"])
 router.add_api_route("/migrazione-pulisci-bancari-cassa", migrazione_pulisci_bancari_da_cassa, methods=["POST"])

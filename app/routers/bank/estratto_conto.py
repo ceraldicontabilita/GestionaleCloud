@@ -1759,9 +1759,19 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
             dedup_cat_banca = CATEGORIE_PRELIEVO
             tipo_riconciliazione = "prelievo_contanti"
 
+        # Dedup SOLO contro righe che contano nei saldi: le copie legacy
+        # con source escluso (es. estratto_conto_sync) sono invisibili in
+        # Prima Nota — contarle come "già presente" lasciava il registro
+        # SENZA la gamba del versamento (bug segnalato dall'utente
+        # 17/07/2026: "in banca trovo i versamenti ma in cassa non trovo
+        # l'uscita" — e viceversa: 11 entrate banca mai create).
+        from app.routers.prima_nota_module.common import SOURCES_ESCLUSE
+
         # ── Gamba 1: CASSA ──
         esistente_cassa = await db["prima_nota_cassa"].find_one({
             "tipo": tipo_cassa,
+            "source": {"$nin": SOURCES_ESCLUSE},
+            "status": {"$nin": ["deleted", "archived"]},
             "$or": [
                 {"estratto_conto_id": mid},
                 {"data": data, "importo": importo,
@@ -1787,6 +1797,8 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
         # ── Gamba 2: BANCA ──
         esistente_banca = await db["prima_nota_banca"].find_one({
             "tipo": tipo_banca,
+            "source": {"$nin": SOURCES_ESCLUSE},
+            "status": {"$nin": ["deleted", "archived"]},
             "$or": [
                 {"estratto_conto_id": mid},
                 # gamba già creata dal sync generico all'import o a mano

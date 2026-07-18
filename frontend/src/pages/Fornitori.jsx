@@ -3003,7 +3003,19 @@ export default function Fornitori() {
                                             numero_fattura: f.numero || '',
                                             data_pagamento: new Date().toISOString().split('T')[0],
                                           });
-                                          reloadEstratto();
+                                          // Aggiorna SOLO la riga: il ricaricamento
+                                          // completo faceva perdere la posizione
+                                          // nella lista (bug utente 17/07/2026)
+                                          setEstrattoModal(prev => ({
+                                            ...prev,
+                                            data: {
+                                              ...prev.data,
+                                              estratto: (prev.data?.estratto || []).map(x =>
+                                                x.id === f.id
+                                                  ? { ...x, pagato: true, metodo_pagamento: 'cassa' }
+                                                  : x),
+                                            },
+                                          }));
                                         } catch (e) {
                                           toast.error(
                                             'Errore: ' + (e.response?.data?.detail || e.message)
@@ -3038,7 +3050,19 @@ export default function Fornitori() {
                                             numero_fattura: f.numero || '',
                                             data_pagamento: new Date().toISOString().split('T')[0],
                                           });
-                                          reloadEstratto();
+                                          // Aggiorna SOLO la riga: il ricaricamento
+                                          // completo faceva perdere la posizione
+                                          // nella lista (bug utente 17/07/2026)
+                                          setEstrattoModal(prev => ({
+                                            ...prev,
+                                            data: {
+                                              ...prev.data,
+                                              estratto: (prev.data?.estratto || []).map(x =>
+                                                x.id === f.id
+                                                  ? { ...x, pagato: true, metodo_pagamento: 'banca' }
+                                                  : x),
+                                            },
+                                          }));
                                         } catch (e) {
                                           toast.error(
                                             'Errore: ' + (e.response?.data?.detail || e.message)
