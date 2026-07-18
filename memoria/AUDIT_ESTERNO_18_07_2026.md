@@ -77,7 +77,7 @@ unico), invarianti `trasferimento_pos_speculare` e
 | Select mobile Mittenti Email | ✅ |
 | Descrizioni adattive Movimenti Banca | ✅ |
 | Sezioni strette Mappa gestionale | ✅ |
-| Pagina Admin "Esito ultimo collaudo" | ❌ DA FARE (API pronte: /api/collaudo/ultimo e /storico) |
+| Pagina Admin "Esito ultimo collaudo" | ✅ FATTO (tab "🧪 Collaudo" in Admin: ultimo report, dettaglio 12 invarianti, storico, bottone "Esegui ora") |
 | Audit layout esteso da 19 a 52 rotte | ❌ DA FARE (esiste scripts/collaudo_ui.mjs che copre 83 rotte on-demand) |
 | Test vieta nuovi writer diretti | ✅ (test_motore_unico_scritture) |
 | Test vieta corrispettivo_pos come accredito | ✅ (2 test-guardia) |

@@ -413,6 +413,7 @@ export default function Admin() {
     { key: 'fatture', label: 'Fatture', icon: '📄' },
     { key: 'system', label: 'Sistema', icon: '🗄️' },
     { key: 'rollback', label: 'Rollback Dati', icon: '🗑️' },
+    { key: 'collaudo', label: 'Collaudo', icon: '🧪' },
   ];
 
   return (
@@ -1156,6 +1157,8 @@ export default function Admin() {
 
       {activeTab === 'rollback' && <RollbackDatiTab />}
 
+      {activeTab === 'collaudo' && <CollaudoTab />}
+
       {/* TAB SINCRONIZZAZIONE */}
 
       {/* TAB MANUTENZIONE - Logiche Intelligenti */}
@@ -1667,6 +1670,179 @@ function RollbackDatiTab() {
             )}
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// Collaudo automatico (richiesta utente 18/07/2026, audit esterno P-residuo
+// "Pagina Admin Esito ultimo collaudo"): mostra l'ultimo report dei 12
+// invarianti (nightly 4:30 + esecuzione on-demand), lo storico e il
+// dettaglio delle violazioni per check.
+function CollaudoTab() {
+  const [ultimo, setUltimo] = useState(null);
+  const [storico, setStorico] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [eseguendo, setEseguendo] = useState(false);
+  const [espanso, setEspanso] = useState(null); // nome check aperto
+  const [errore, setErrore] = useState(null);
+
+  const carica = async () => {
+    setErrore(null);
+    try {
+      const [u, s] = await Promise.all([
+        api.get('/api/collaudo/ultimo'),
+        api.get('/api/collaudo/storico?limit=15'),
+      ]);
+      setUltimo(u.data?.checks ? u.data : null);
+      setStorico(s.data?.reports || []);
+    } catch (e) {
+      setErrore('Impossibile caricare i report: ' + (e.response?.data?.detail || e.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { carica(); }, []);
+
+  const eseguiOra = async () => {
+    setEseguendo(true);
+    setErrore(null);
+    try {
+      await api.post('/api/collaudo/esegui');
+      await carica();
+      toast.success('Collaudo eseguito');
+    } catch (e) {
+      setErrore('Errore durante il collaudo: ' + (e.response?.data?.detail || e.message));
+    } finally {
+      setEseguendo(false);
+    }
+  };
+
+  if (loading) {
+    return <div style={{ padding: 24, color: COLORS.textMuted }}>Caricamento ultimo collaudo...</div>;
+  }
+
+  const formatData = iso => {
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleString('it-IT');
+    } catch {
+      return iso;
+    }
+  };
+
+  return (
+    <div style={{ display: 'grid', gap: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ fontSize: 13, color: COLORS.textMuted }}>
+          12 invarianti contabili/POS/documentali (sola lettura), eseguiti ogni notte
+          alle 4:30 e on-demand qui. Ogni violazione genera un alert idempotente,
+          risolto automaticamente quando il check torna pulito.
+        </div>
+        <Button variant="primary" onClick={eseguiOra} disabled={eseguendo} iconLeft={eseguendo ? undefined : '🧪'}>
+          {eseguendo ? 'Eseguo...' : 'Esegui ora'}
+        </Button>
+      </div>
+
+      {errore && (
+        <div style={{ padding: '10px 14px', background: COLORS.dangerLight, color: COLORS.danger, borderRadius: BORDER_RADIUS.md, fontSize: 13 }}>
+          {errore}
+        </div>
+      )}
+
+      {!ultimo && !errore && (
+        <div style={{ padding: 24, textAlign: 'center', color: COLORS.textMuted, background: COLORS.card, borderRadius: BORDER_RADIUS.md, border: `1px solid ${COLORS.border}` }}>
+          Nessun collaudo ancora eseguito. Premi "Esegui ora" per il primo.
+        </div>
+      )}
+
+      {ultimo && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+            <StatCard icon="🕐" label="Ultimo collaudo" value={formatData(ultimo.eseguito_at)} accent="primary" />
+            <StatCard icon="✅" label="Check puliti" value={`${ultimo.checks_totali - ultimo.checks_violati - ultimo.checks_in_errore}/${ultimo.checks_totali}`} accent={ultimo.checks_violati === 0 ? 'success' : 'primary'} />
+            <StatCard icon="⚠️" label="Check con violazioni" value={ultimo.checks_violati} accent={ultimo.checks_violati > 0 ? 'warning' : 'success'} />
+            <StatCard icon="❌" label="Violazioni totali" value={ultimo.violazioni_totali} accent={ultimo.violazioni_totali > 0 ? 'danger' : 'success'} />
+          </div>
+
+          <Card title="Dettaglio invarianti">
+            <div style={{ display: 'grid', gap: 8 }}>
+              {(ultimo.checks || []).map(c => {
+                const inErrore = c.violazioni < 0;
+                const pulito = c.violazioni === 0;
+                const aperto = espanso === c.nome;
+                return (
+                  <div
+                    key={c.nome}
+                    style={{
+                      border: `1px solid ${pulito ? COLORS.border : inErrore ? COLORS.danger : COLORS.warning}`,
+                      borderRadius: BORDER_RADIUS.md,
+                      background: pulito ? COLORS.card : inErrore ? COLORS.dangerLight : COLORS.warningLight,
+                    }}
+                  >
+                    <button
+                      onClick={() => setEspanso(aperto ? null : c.nome)}
+                      style={{
+                        width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        gap: 10, padding: '10px 14px', background: 'transparent', border: 'none', cursor: 'pointer',
+                        textAlign: 'left', fontSize: 13,
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                        <span>{pulito ? '✅' : inErrore ? '❌' : '⚠️'}</span>
+                        <span style={{ fontWeight: 600, color: COLORS.text }}>{c.nome}</span>
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                        <Badge variant={pulito ? 'success' : inErrore ? 'danger' : 'warning'}>
+                          {inErrore ? 'errore' : `${c.violazioni} violazioni`}
+                        </Badge>
+                        <span style={{ color: COLORS.textMuted }}>{aperto ? '▲' : '▼'}</span>
+                      </span>
+                    </button>
+                    {aperto && (
+                      <div style={{ padding: '0 14px 12px', fontSize: 12.5, color: COLORS.textMuted }}>
+                        <div style={{ marginBottom: 6 }}>{c.descrizione}</div>
+                        {c.esempi?.length > 0 && (
+                          <pre style={{
+                            margin: 0, padding: 10, background: COLORS.bgAlt, borderRadius: BORDER_RADIUS.sm,
+                            overflowX: 'auto', fontSize: 11.5, maxHeight: 220,
+                          }}>
+                            {JSON.stringify(c.esempi, null, 2)}
+                          </pre>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        </>
+      )}
+
+      {storico.length > 1 && (
+        <Card title="Storico">
+          <div style={{ display: 'grid', gap: 6 }}>
+            {storico.map(r => (
+              <div
+                key={r.id}
+                style={{
+                  display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap',
+                  padding: '8px 12px', borderRadius: BORDER_RADIUS.sm, background: COLORS.bgAlt, fontSize: 12.5,
+                }}
+              >
+                <span>{formatData(r.eseguito_at)}</span>
+                <span style={{ display: 'flex', gap: 10 }}>
+                  <span style={{ color: r.checks_violati > 0 ? COLORS.warning : COLORS.success }}>
+                    {r.checks_violati}/{r.checks_totali} check con violazioni
+                  </span>
+                  <span style={{ color: COLORS.textMuted }}>{r.durata_ms} ms</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
     </div>
   );
