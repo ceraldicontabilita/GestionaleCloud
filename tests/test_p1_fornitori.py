@@ -21,7 +21,7 @@ def test_alias_risolvono_a_fornitori():
 def test_nessuna_scrittura_su_suppliers_letterale():
     offenders = []
     for p in APP.rglob("*.py"):
-        for i, line in enumerate(p.read_text().splitlines(), 1):
+        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
             for op in (".insert_one", ".insert_many", ".update_one",
                        ".update_many", ".replace_one", ".bulk_write", ".delete_one"):
                 if f'db["suppliers"]{op}' in line or f"db['suppliers']{op}" in line \

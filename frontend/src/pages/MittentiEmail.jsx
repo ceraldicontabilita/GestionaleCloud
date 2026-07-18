@@ -134,6 +134,7 @@ export default function MittentiEmail() {
           <div style={{ flex: '1 1 220px' }}>
             <label style={lbl}>Tipo documento</label>
             <Select
+              style={{ maxWidth: '100%', width: '100%' }}
               value={form.tipo_documento}
               onChange={e => setForm(f => ({ ...f, tipo_documento: e.target.value }))}
               data-testid="mittente-tipo-select"

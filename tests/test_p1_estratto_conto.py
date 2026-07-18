@@ -27,7 +27,7 @@ def test_costanti_canoniche():
 def _writers(coll: str) -> list:
     hits = []
     for p in APP.rglob("*.py"):
-        for i, line in enumerate(p.read_text().splitlines(), 1):
+        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
             for op in (".insert_one", ".insert_many", ".update_one",
                        ".update_many", ".replace_one", ".bulk_write"):
                 if f'db["{coll}"]{op}' in line or f"db['{coll}']{op}" in line:

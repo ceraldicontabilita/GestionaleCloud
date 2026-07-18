@@ -19,6 +19,11 @@ load_dotenv()
 
 router = APIRouter(prefix="/api", tags=["auth"])
 
+# Cookie Secure: in produzione (Render/https) i cookie di sessione viaggiano
+# solo su TLS; in locale (http) resta False altrimenti il browser li scarta.
+_COOKIE_SECURE = bool(os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID")
+                      or os.getenv("ENVIRONMENT", "").lower() == "production")
+
 ADMIN_EMAIL         = os.getenv("ADMIN_EMAIL", "ceraldigroupsrl@gmail.com")
 ADMIN_PASSWORD      = os.getenv("ADMIN_PASSWORD", "")        # password in chiaro (priorità)
 ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")   # bcrypt (fallback)
@@ -140,9 +145,9 @@ async def auth_login(body: LoginRequest, request: Request, response: Response):
     await _audit_login(ip, body.email, ok=True)
     token = _make_token(body.email)
     response.set_cookie(key="access_token", value=token, httponly=True,
-                        secure=False, samesite="lax", max_age=TOKEN_EXPIRE_MINUTES * 60, path="/")
+                        secure=_COOKIE_SECURE, samesite="lax", max_age=TOKEN_EXPIRE_MINUTES * 60, path="/")
     response.set_cookie(key="session_active", value="1", httponly=False,
-                        secure=False, samesite="lax", max_age=TOKEN_EXPIRE_MINUTES * 60, path="/")
+                        secure=_COOKIE_SECURE, samesite="lax", max_age=TOKEN_EXPIRE_MINUTES * 60, path="/")
     return {
         "ok":          True,
         "email":       body.email,

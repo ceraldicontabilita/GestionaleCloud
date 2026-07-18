@@ -821,7 +821,7 @@ const styles = {
   },
   cardGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(min(270px, 100%), 1fr))',
     gap: 12,
   },
   areaCard: {

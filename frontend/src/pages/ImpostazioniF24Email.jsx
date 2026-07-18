@@ -199,7 +199,7 @@ function GmailSettingsSection() {
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => setShowPass(s => !s)}
+                aria-label={showPass ? 'Nascondi password' : 'Mostra password'} onClick={() => setShowPass(s => !s)}
                 style={{ flexShrink: 0 }}
               >
                 {showPass ? 'Nascondi' : 'Mostra'}
@@ -782,6 +782,7 @@ export default function ImpostazioniF24Email() {
                             >
                               {kw}
                               <button
+                                aria-label={`Rimuovi parola chiave ${kw}`}
                                 onClick={() => removeKeyword(index, kw)}
                                 style={{
                                   background: 'none',

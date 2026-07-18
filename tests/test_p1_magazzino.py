@@ -22,7 +22,7 @@ WRITE_OPS = (".insert_one", ".insert_many", ".update_one", ".update_many",
 def test_nessuna_nuova_scrittura_giacenza():
     offenders = []
     for p in APP.rglob("*.py"):
-        for i, line in enumerate(p.read_text().splitlines(), 1):
+        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
             for coll in GIACENZA:
                 for op in WRITE_OPS:
                     if f'db["{coll}"]{op}' in line or f"db['{coll}']{op}" in line \

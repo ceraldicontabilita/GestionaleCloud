@@ -8,7 +8,7 @@ Flow:
   → ritorna {"access_token": "...", "token_type": "bearer", ...}
 
 Configurazione (variabili d'ambiente, basta UNA delle due):
-  ADMIN_PIN      = PIN in chiaro (es. ADMIN_PIN=123456) — logica semplice,
+  (ADMIN_PIN in chiaro NON è più supportato — audit sicurezza 18/07/2026)
                    stessa filosofia di ADMIN_PASSWORD nel login email.
   PIN_HASH_ADMIN = SHA-256 hex del PIN, per chi preferisce non tenere il PIN
                    in chiaro nell'ambiente:
@@ -53,17 +53,22 @@ PIN_ADMIN_EMAIL_DEFAULT = os.getenv("ADMIN_EMAIL", "ceraldigroupsrl@gmail.com")
 PIN_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 
+# Cookie Secure: in produzione (Render/https) i cookie di sessione viaggiano
+# solo su TLS; in locale (http) resta False altrimenti il browser li scarta.
+_COOKIE_SECURE = bool(os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID")
+                      or os.getenv("ENVIRONMENT", "").lower() == "production")
+
+
 def _verifica_pin(pin: str) -> Optional[bool]:
     """Confronta il PIN con la configurazione in ambiente.
 
     Ritorna True/False se il confronto e' possibile, None se il login PIN
     non e' configurato affatto (nessuna variabile impostata).
     """
-    admin_pin = os.getenv("ADMIN_PIN", "").strip()
+    # Audit sicurezza 18/07/2026: il supporto ad ADMIN_PIN in chiaro e'
+    # stato rimosso — resta solo PIN_HASH_ADMIN (quello configurato in prod).
     pin_hash_admin = os.getenv("PIN_HASH_ADMIN", "").strip().lower()
 
-    if admin_pin:
-        return hmac.compare_digest(pin, admin_pin)
     if pin_hash_admin:
         pin_hash = hashlib.sha256(pin.encode("utf-8")).hexdigest()
         return hmac.compare_digest(pin_hash, pin_hash_admin)
@@ -221,7 +226,7 @@ async def pin_login(
         key="access_token",
         value=token,
         httponly=True,
-        secure=False,
+        secure=_COOKIE_SECURE,
         samesite="lax",
         max_age=PIN_TOKEN_EXPIRE_MINUTES * 60,
         path="/",

@@ -60,7 +60,7 @@ export function useWebSocketNotifications() {
 
       ws.onopen = () => {
         retriesRef.current = 0;
-        console.info('[WS] Connesso a', url);
+        console.info('[WS] Connesso'); // mai loggare l'URL: contiene il token
         // Ping ogni 20 secondi (proxy Kubernetes timeout: 30s — dobbiamo pingare prima)
         pingTimerRef.current = setInterval(() => {
           if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {

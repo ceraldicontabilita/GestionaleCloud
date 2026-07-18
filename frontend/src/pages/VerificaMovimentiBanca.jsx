@@ -221,7 +221,7 @@ export default function VerificaMovimentiBanca() {
                         </span>
                       )}
                     </td>
-                    <td style={{ ...tdStyle, maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td style={{ ...tdStyle, maxWidth: 400, overflowWrap: 'anywhere', whiteSpace: 'normal' }}>
                       {m.descrizione || '—'}
                       {m.categoria && (
                         <span style={{ marginLeft: 8, fontSize: 11, color: '#64748b' }}>
