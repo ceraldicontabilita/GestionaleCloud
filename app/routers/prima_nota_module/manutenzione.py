@@ -1759,8 +1759,8 @@ async def ripristina_fatture_con_movimento_cancellato(
     fatture = await db["invoices"].find(
         {"pagato": True, "prima_nota_id": {"$exists": True, "$nin": [None, ""]},
          "status": {"$nin": ["deleted", "archived"]}},
-        {"_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1,
-         "prima_nota_id": 1, "total_amount": 1},
+        {"id": 1, "invoice_number": 1, "supplier_name": 1,
+         "prima_nota_id": 1, "total_amount": 1},  # _id incluso: le legacy non hanno id
     ).to_list(10000)
 
     ripristinate = 0
@@ -1782,8 +1782,10 @@ async def ripristina_fatture_con_movimento_cancellato(
             dettaglio.append({"fattura": f.get("invoice_number"),
                               "fornitore": f.get("supplier_name"),
                               "importo": f.get("total_amount")})
-        if not dry_run and f.get("id"):  # record legacy senza id: mai KeyError
-            await db["invoices"].update_one({"id": f["id"]}, {"$set": {
+        if not dry_run:
+            # le fatture legacy non hanno il campo id: si aggiornano per _id
+            filtro = {"id": f["id"]} if f.get("id") else {"_id": f["_id"]}
+            await db["invoices"].update_one(filtro, {"$set": {
                 "pagato": False, "paid": False, "stato_pagamento": "da_pagare",
                 "prima_nota_id": None, "prima_nota_tipo": None,
                 "prima_nota_banca_id": None, "riconciliato_con_ec": None,
