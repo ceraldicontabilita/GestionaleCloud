@@ -796,3 +796,40 @@ async def pulisci_duplicati_invoices() -> Dict[str, Any]:
         "fatture_eliminate": len(ids_da_eliminare),
         "movimenti_prima_nota_eliminati": eliminati_pn,
     }
+
+
+async def elimina_fatture_guscio_vuoto(
+    dry_run: bool = Query(True, description="Solo conteggio"),
+) -> Dict[str, Any]:
+    """Segnalazione utente 18/07/2026: nell'anno 2024 restano '8 fatture'
+    vuote (nessun numero, nessun fornitore, spesso senza campo id: per
+    questo né l'eliminazione di massa né la selezione le agganciava).
+    Sono gusci senza contenuto: si eliminano per _id."""
+    db = Database.get_db()
+    docs = await db["invoices"].find(
+        {"$and": [
+            {"$or": [{"invoice_number": {"$in": [None, ""]}},
+                     {"invoice_number": {"$exists": False}}]},
+            {"$or": [{"supplier_name": {"$in": [None, ""]}},
+                     {"supplier_name": {"$exists": False}}]},
+            {"$or": [{"xml_raw": {"$in": [None, ""]}},
+                     {"xml_raw": {"$exists": False}}]},
+            {"status": {"$nin": ["deleted", "archived"]}},
+        ]},
+        {"id": 1, "invoice_date": 1, "total_amount": 1},
+    ).to_list(2000)
+
+    esempi = [{"data": d.get("invoice_date"), "importo": d.get("total_amount"),
+               "ha_id": bool(d.get("id"))} for d in docs[:10]]
+    if not dry_run and docs:
+        from datetime import datetime as _dt, timezone as _tz
+        now = _dt.now(_tz.utc).isoformat()
+        for d in docs:
+            await db["invoices"].update_one(
+                {"_id": d["_id"]},
+                {"$set": {"status": "deleted", "deleted": True,
+                          "deleted_reason": "guscio_vuoto_senza_dati",
+                          "deleted_at": now}})
+    return {"dry_run": dry_run,
+            "eliminate" if not dry_run else "da_eliminare": len(docs),
+            "esempi": esempi}

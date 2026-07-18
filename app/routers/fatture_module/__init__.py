@@ -39,6 +39,8 @@ router.add_api_route("/export-selezione", export_fatture_selezionate, methods=["
 router.add_api_route("/fornitori", get_fornitori, methods=["GET"])
 router.add_api_route("/statistiche", get_statistiche, methods=["GET"])
 router.add_api_route("/pulisci-duplicati", pulisci_duplicati_invoices, methods=["POST"])
+from .crud import elimina_fatture_guscio_vuoto
+router.add_api_route("/elimina-gusci-vuoti", elimina_fatture_guscio_vuoto, methods=["POST"])
 
 # Pagamento e Riconciliazione
 router.add_api_route("/paga-manuale", paga_fattura_manuale, methods=["POST"])

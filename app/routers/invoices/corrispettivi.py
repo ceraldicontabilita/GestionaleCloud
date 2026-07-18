@@ -1702,3 +1702,68 @@ async def aggiorna_stati_corrispettivi_mancanti() -> Dict[str, Any]:
         "aggiornati": result.modified_count,
         "soglia_giorni": GIORNI_PRIMA_ALERT_XML_MANCANTE,
     }
+
+
+@router.post("/normalizza-pagamenti")
+@handle_errors
+async def normalizza_campi_pagamento(
+    dry_run: bool = Query(True, description="Solo conteggio"),
+    anno: int = Query(2026),
+) -> Dict[str, Any]:
+    """Segnalazione utente 18/07/2026: 'la somma delle carte non torna col
+    totale'. Due difetti reali:
+    1. i corrispettivi importati dal flusso vecchio (source xml_cor10)
+       hanno contanti/elettronico nei campi LEGACY `contanti`/`elettronico`
+       mentre pagine e statistiche leggono `pagato_contanti`/
+       `pagato_elettronico` → 37 giorni risultavano senza ripartizione;
+    2. `pagato_non_riscosso` era calcolato doppio-contando imponibile e
+       lordo dei riepiloghi (€244k di 'non riscosso' impossibili).
+    Qui: allineamento campi + ricalcolo non_riscosso = max(0, totale -
+    contanti - elettronico) per tutto l'anno."""
+    db = Database.get_db()
+    docs = await db["corrispettivi"].find(
+        {"data": {"$regex": f"^{anno}"}}, {"_id": 0}).to_list(1000)
+
+    aggiornati = campi_migrati = non_riscosso_corretti = 0
+    tot = {"totale": 0.0, "contanti": 0.0, "elettronico": 0.0, "non_riscosso": 0.0}
+    for c in docs:
+        totale = float(c.get("totale") or 0)
+        pc = float(c.get("pagato_contanti") or 0)
+        pe = float(c.get("pagato_elettronico") or 0)
+        migra = False
+        if pc == 0 and pe == 0 and (c.get("contanti") or c.get("elettronico")):
+            pc = float(c.get("contanti") or 0)
+            pe = float(c.get("elettronico") or 0)
+            migra = True
+        nr_nuovo = max(0.0, round(totale - pc - pe, 2))
+        nr_vecchio = round(float(c.get("pagato_non_riscosso") or 0), 2)
+
+        tot["totale"] += totale
+        tot["contanti"] += pc
+        tot["elettronico"] += pe
+        tot["non_riscosso"] += nr_nuovo
+
+        if not migra and abs(nr_nuovo - nr_vecchio) < 0.01:
+            continue
+        aggiornati += 1
+        if migra:
+            campi_migrati += 1
+        if abs(nr_nuovo - nr_vecchio) >= 0.01:
+            non_riscosso_corretti += 1
+        if not dry_run:
+            chiave = {"id": c["id"]} if c.get("id") else {"xml_hash": c.get("xml_hash")}
+            await db["corrispettivi"].update_one(chiave, {"$set": {
+                "pagato_contanti": round(pc, 2),
+                "pagato_elettronico": round(pe, 2),
+                "pagato_non_riscosso": nr_nuovo,
+                "pagamenti_normalizzati_at": datetime.now(timezone.utc).isoformat(),
+            }})
+
+    for k in tot:
+        tot[k] = round(tot[k], 2)
+    return {"dry_run": dry_run, "anno": anno, "giorni": len(docs),
+            "aggiornati" if not dry_run else "da_aggiornare": aggiornati,
+            "campi_legacy_migrati": campi_migrati,
+            "non_riscosso_ricalcolati": non_riscosso_corretti,
+            "totali_dopo": tot,
+            "quadratura": round(tot["totale"] - tot["contanti"] - tot["elettronico"] - tot["non_riscosso"], 2)}

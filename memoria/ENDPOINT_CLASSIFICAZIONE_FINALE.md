@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1008 · tenere: 659 · verificare: 327 · admin-only (migrazione/manutenzione): 22
+**Totale endpoint:** 1010 · tenere: 660 · verificare: 328 · admin-only (migrazione/manutenzione): 22
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -278,6 +278,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/corrispettivi/import-csv` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/corrispettivi/manuale` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/corrispettivi/manuali-senza-xml` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/corrispettivi/normalizza-pagamenti` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/corrispettivi/rebuild-prima-nota` | invoices.corrispettivi | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/corrispettivi/ricalcola-annulli-non-riscosso` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/corrispettivi/ricalcola-iva` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
@@ -542,6 +543,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/fatture-ricevute/auto-ricostruisci-dati` | fatture_module.pagamento | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/fatture-ricevute/backfill-autoroute` | fatture_module.pagamento | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/fatture-ricevute/cambia-metodo-pagamento` | fatture_module.pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/fatture-ricevute/elimina-gusci-vuoti` | fatture_module.crud | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/fatture-ricevute/export-selezione` | fatture_module.export_selezione | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/fatture-ricevute/fattura/{fattura_id}` | fatture_module.crud | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `PUT /api/fatture-ricevute/fattura/{fattura_id}` | fatture_module.crud | sì | sì | — | — | — | tenere | in uso: FE, scheduler |

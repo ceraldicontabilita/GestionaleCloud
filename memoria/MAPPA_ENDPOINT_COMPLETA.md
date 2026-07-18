@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1008 endpoint** in **106 gruppi**.
+> Totale **1010 endpoint** in **106 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 640 · ext esterni = 76 · — da verificare = 292
+**Riepilogo uso:** ✓ frontend = 641 · ext esterni = 76 · — da verificare = 293
 
 ## AI Parser  (11)
 
@@ -393,7 +393,7 @@
 | GET | `/api/controllo-gestione/kpi/{anno}` | — | controllo_gestione |
 | GET | `/api/controllo-gestione/trend-mensile` | — | controllo_gestione |
 
-## Corrispettivi  (23)
+## Corrispettivi  (24)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -408,6 +408,7 @@
 | POST | `/api/corrispettivi/import-csv` | ✓ | invoices.corrispettivi |
 | POST | `/api/corrispettivi/manuale` | ✓ | invoices.corrispettivi |
 | GET | `/api/corrispettivi/manuali-senza-xml` | ✓ | invoices.corrispettivi |
+| POST | `/api/corrispettivi/normalizza-pagamenti` | ✓ | invoices.corrispettivi |
 | POST | `/api/corrispettivi/rebuild-prima-nota` | ✓ | invoices.corrispettivi |
 | POST | `/api/corrispettivi/ricalcola-annulli-non-riscosso` | ✓ | invoices.corrispettivi |
 | POST | `/api/corrispettivi/ricalcola-iva` | ✓ | invoices.corrispettivi |
@@ -778,7 +779,7 @@
 | GET | `/api/fatture-estere/da-verificare` | ✓ | fatture_estera_verifica |
 | POST | `/api/fatture-estere/{fattura_id}/verifica` | ✓ | fatture_estera_verifica |
 
-## Fatture Ricevute  (20)
+## Fatture Ricevute  (21)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -787,6 +788,7 @@
 | POST | `/api/fatture-ricevute/auto-ricostruisci-dati` | ✓ | fatture_module.pagamento |
 | POST | `/api/fatture-ricevute/backfill-autoroute` | — | fatture_module.pagamento |
 | POST | `/api/fatture-ricevute/cambia-metodo-pagamento` | — | fatture_module.pagamento |
+| POST | `/api/fatture-ricevute/elimina-gusci-vuoti` | — | fatture_module.crud |
 | POST | `/api/fatture-ricevute/export-selezione` | ✓ | fatture_module.export_selezione |
 | GET | `/api/fatture-ricevute/fattura/{fattura_id}` | ✓ | fatture_module.crud |
 | PUT | `/api/fatture-ricevute/fattura/{fattura_id}` | ✓ | fatture_module.crud |

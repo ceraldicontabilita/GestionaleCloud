@@ -203,19 +203,14 @@ def parse_corrispettivo_xml(xml_content: str) -> Dict[str, Any]:
             totale_corrispettivi = totale_ammontare_lordo
         
         # ========== CALCOLO PAGATO NON RISCOSSO ==========
-        # Pagato Non Riscosso = (Ammontare + ImportoParziale) - (PagatoContanti + PagatoElettronico)
-        # In pratica: somma degli importi dai riepiloghi meno quanto effettivamente incassato
-        totale_ammontare_riepiloghi = sum(r.get('ammontare', 0) for r in riepilogo_iva)
-        totale_importo_parziale_riepiloghi = sum(r.get('importo_parziale', 0) for r in riepilogo_iva)
-        totale_lordo_riepiloghi = totale_ammontare_riepiloghi + totale_importo_parziale_riepiloghi
-        
-        # Se ImportoParziale include già Ammontare, usa solo ImportoParziale
-        if totale_importo_parziale_riepiloghi > 0 and totale_ammontare_riepiloghi > 0:
-            # Verifica se ImportoParziale è già il totale lordo
-            if abs(totale_importo_parziale_riepiloghi - totale_corrispettivi) < 1:
-                totale_lordo_riepiloghi = totale_importo_parziale_riepiloghi
-        
-        pagato_non_riscosso = max(0, totale_lordo_riepiloghi - totale_corrispettivi)
+        # FIX 18/07/2026 (segnalazione utente: 'non riscosso' da €244k
+        # impossibili): la vecchia formula sommava Ammontare (imponibile) +
+        # ImportoParziale (lordo) DOPPIO-contando lo stesso incasso. Il lordo
+        # di ogni riepilogo è già in importo_lordo (ImportoParziale se
+        # presente, altrimenti Ammontare+Imposta): il non riscosso è la
+        # parte di lordo non coperta da contanti+elettronico.
+        totale_lordo_riepiloghi = sum(r.get('importo_lordo', 0) for r in riepilogo_iva)
+        pagato_non_riscosso = max(0, round(totale_lordo_riepiloghi - totale_corrispettivi, 2))
         
         # ========== CALCOLO IVA SE NON PRESENTE ==========
         # Se l'IVA totale è 0 ma abbiamo un totale > 0, applichiamo scorporo al 10%
