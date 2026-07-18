@@ -165,11 +165,17 @@ app.add_middleware(
 try:
     from slowapi import Limiter, _rate_limit_exceeded_handler
     from slowapi.errors import RateLimitExceeded
+    from slowapi.middleware import SlowAPIMiddleware
     from slowapi.util import get_remote_address
 
     limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    # Audit sicurezza 19/07/2026: il Limiter era istanziato ma senza questo
+    # middleware default_limits non veniva mai applicato — nessun endpoint
+    # (tranne login/PIN, che hanno il loro lockout dedicato) aveva un limite
+    # di richieste reale.
+    app.add_middleware(SlowAPIMiddleware)
 except ImportError:
     pass
 

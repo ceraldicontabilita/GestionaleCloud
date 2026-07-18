@@ -25,8 +25,8 @@ _COOKIE_SECURE = bool(os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID")
                       or os.getenv("ENVIRONMENT", "").lower() == "production")
 
 ADMIN_EMAIL         = os.getenv("ADMIN_EMAIL", "ceraldigroupsrl@gmail.com")
-ADMIN_PASSWORD      = os.getenv("ADMIN_PASSWORD", "")        # password in chiaro (priorità)
-ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")   # bcrypt (fallback)
+ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")   # bcrypt (priorità)
+ADMIN_PASSWORD      = os.getenv("ADMIN_PASSWORD", "")        # chiaro (fallback solo se l'hash non è configurato)
 # IMPORTANTE: STESSA chiave del middleware di autenticazione (settings.SECRET_KEY,
 # che include il segreto condiviso in sistema_stato.auth_secret). Prima il login
 # firmava con os.getenv("SECRET_KEY") o una chiave CASUALE per processo: se
@@ -40,15 +40,18 @@ TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 
 def _check_password(plain: str) -> bool:
-    """Verifica password: prima in chiaro, poi bcrypt se hash configurato."""
-    if ADMIN_PASSWORD:
-        # Confronto a tempo costante: evita timing attack sul confronto '=='.
-        return hmac.compare_digest(plain, ADMIN_PASSWORD)
+    """Verifica password: bcrypt (se configurato) ha sempre la priorità sul
+    confronto in chiaro. ADMIN_PASSWORD resta solo un fallback per ambienti
+    senza ADMIN_PASSWORD_HASH configurato (audit sicurezza 19/07/2026: prima
+    il chiaro aveva priorità anche con l'hash presente)."""
     if ADMIN_PASSWORD_HASH:
         try:
             return bcrypt.checkpw(plain.encode(), ADMIN_PASSWORD_HASH.encode())
         except Exception:
             return False
+    if ADMIN_PASSWORD:
+        # Confronto a tempo costante: evita timing attack sul confronto '=='.
+        return hmac.compare_digest(plain, ADMIN_PASSWORD)
     return False
 
 

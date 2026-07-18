@@ -26,6 +26,7 @@ COLLECTIONS_PROTETTE = [
     "prima_nota_banca",
     "estratto_conto_movimenti",
     "suppliers",
+    "fornitori",
     "f24_models",
     "corrispettivi"
 ]
