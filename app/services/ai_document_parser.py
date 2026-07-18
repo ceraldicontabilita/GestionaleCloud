@@ -335,16 +335,16 @@ Rispondi con UNA SOLA PAROLA senza punteggiatura."""
         chat = LlmChat(
             api_key=api_key,
             session_id=f"doc_parser_{datetime.now().timestamp()}",
-            system_message="Sei un esperto parser di documenti contabili italiani. Estrai dati precisi e strutturati in formato JSON."
+            system_prompt="Sei un esperto parser di documenti contabili italiani. Estrai dati precisi e strutturati in formato JSON."
         ).with_model("anthropic", "claude-sonnet-4-20250514")  # Claude supporta vision
-        
-        # Crea ImageContent per ogni immagine
-        image_contents = [ImageContent(image_base64=img_b64) for img_b64 in images_b64]
-        
-        # Invia messaggio con immagini - usa file_contents come da playbook
+
+        # Crea ImageContent per ogni immagine (pdf_to_images produce PNG)
+        image_contents = [ImageContent(image_data=img_b64, mime_type="image/png") for img_b64 in images_b64]
+
+        # Invia messaggio con immagini
         user_message = UserMessage(
-            text=prompt,
-            file_contents=image_contents
+            content=prompt,
+            images=image_contents
         )
         
         response = await chat.send_message(user_message)

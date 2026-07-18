@@ -434,21 +434,45 @@ SAVE_FUNCTIONS = {
 
 
 async def save_extracted_data_to_gestionale(
-    db, 
+    db,
     extracted_data: Dict[str, Any],
-    source_info: Dict[str, Any] = None
+    source_info: Dict[str, Any] = None,
+    conferma_scrittura_gestionale: bool = False,
 ) -> Dict[str, Any]:
     """
     Salva i dati estratti nella collection appropriata del gestionale.
-    
+
     Args:
         db: Database MongoDB
         extracted_data: Dati estratti dal documento (output di extract_structured_data)
         source_info: Informazioni sulla fonte (filename, email_id, etc.)
-    
+        conferma_scrittura_gestionale: guardia di sicurezza (audit 19/07/2026).
+            Questa funzione fa insert_one diretti su f24_unificato/cedolini/
+            invoices/estratto_conto_movimenti/ecc., FUORI dal motore unico
+            scritture_contabili.py e senza soglia di confidenza o revisione
+            umana. Fino a stanotte era di fatto irraggiungibile perché il
+            parser AI a monte falliva sempre (mismatch d'interfaccia, ora
+            riparato in document_ai_extractor.py). Riparare quel bug avrebbe
+            riattivato in automatico anche QUESTO percorso di scrittura senza
+            che nessuno lo avesse deciso esplicitamente: di default resta
+            quindi disattivato finché non viene rivisto (vedi bypass motore
+            unico, stessa sessione di audit) e il chiamante passa
+            esplicitamente True.
+
     Returns:
         Risultato del salvataggio
     """
+    if not conferma_scrittura_gestionale:
+        return {
+            "status": "in_attesa_di_conferma",
+            "message": (
+                "Estrazione riuscita ma NON salvata nel gestionale: il salvataggio "
+                "automatico da AI è in pausa in attesa di revisione (bypass del "
+                "motore unico di scrittura, individuato nell'audit del 19/07/2026). "
+                "I dati estratti restano comunque consultabili in documenti_classificati."
+            ),
+        }
+
     if not extracted_data.get("success"):
         return {"status": "error", "message": "Dati non validi per il salvataggio"}
     

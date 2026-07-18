@@ -135,10 +135,10 @@ Rispondi SOLO con il JSON array, nessun altro testo."""
             chat = LlmChat(
                 api_key=api_key,
                 session_id=f"categorizzazione_{i}",
-                system_message=system_message
+                system_prompt=system_message
             ).with_model("anthropic", "claude-haiku-4-5")
-            
-            response = await chat.send_message(UserMessage(text=user_prompt))
+
+            response = await chat.send_message(UserMessage(content=user_prompt))
             
             # Parse risposta JSON
             response_text = response.strip()
@@ -159,7 +159,7 @@ Rispondi SOLO con il JSON array, nessun altro testo."""
                         "conto": cat.get("conto", "05.01.01"),
                         "confidenza": cat.get("confidenza", 0.7),
                         "ragione_ai": cat.get("ragione", ""),
-                        "categorizzato_da": "claude-sonnet-4.5"
+                        "categorizzato_da": "claude-haiku-4-5"
                     })
             
             logger.info(f"Batch {i//batch_size + 1}: {len(categorizzazioni)} articoli categorizzati")

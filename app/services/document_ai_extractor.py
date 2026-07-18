@@ -487,11 +487,11 @@ async def extract_structured_data(
         chat = LlmChat(
             api_key=ANTHROPIC_API_KEY,
             session_id=f"doc_extract_{datetime.now().strftime('%Y%m%d%H%M%S')}",
-            system_message="Sei un assistente specializzato nell'estrazione di dati da documenti italiani. Rispondi SEMPRE e SOLO con JSON valido."
+            system_prompt="Sei un assistente specializzato nell'estrazione di dati da documenti italiani. Rispondi SEMPRE e SOLO con JSON valido."
         ).with_model(provider, model)
-        
+
         # Invia messaggio
-        user_message = UserMessage(text=prompt)
+        user_message = UserMessage(content=prompt)
         response = await chat.send_message(user_message)
         
         # Pulisci la risposta (rimuovi markdown code blocks se presenti)

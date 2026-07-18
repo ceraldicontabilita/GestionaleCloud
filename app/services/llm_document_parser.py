@@ -10,7 +10,6 @@ import os
 import json
 import re
 import base64
-import tempfile
 import logging
 from typing import Dict, Any, Optional, List
 from dotenv import load_dotenv
@@ -23,44 +22,34 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 
 async def _ask_gemini_with_pdf(pdf_bytes: bytes, prompt: str, filename: str = "doc.pdf") -> Optional[str]:
-    """Invia un PDF a Gemini e ottieni risposta strutturata."""
+    """Invia un PDF a Claude (unico provider realmente cablato in
+    anthropic_llm_client.py — il nome della funzione è storico) e ottieni
+    risposta strutturata."""
     from app.services.anthropic_llm_client import LlmChat, UserMessage, FileContentWithMimeType
-    
+
     if not ANTHROPIC_API_KEY:
         logger.error("[LLM-PARSER] ANTHROPIC_API_KEY non configurata")
         return None
-    
-    # Salva PDF temporaneo
-    tmp_path = None
+
     try:
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-            tmp.write(pdf_bytes)
-            tmp_path = tmp.name
-        
         chat = LlmChat(
             api_key=ANTHROPIC_API_KEY,
             session_id=f"parser-{filename[:20]}",
-            system_message="Sei un parser di documenti italiani. Rispondi SOLO con JSON valido, senza markdown."
-        ).with_model("gemini", "gemini-2.5-flash")
-        
+            system_prompt="Sei un parser di documenti italiani. Rispondi SOLO con JSON valido, senza markdown."
+        ).with_model("anthropic", "claude-sonnet-4-20250514")
+
         pdf_file = FileContentWithMimeType(
-            file_path=tmp_path,
+            file_data=base64.b64encode(pdf_bytes).decode(),
             mime_type="application/pdf"
         )
-        
-        msg = UserMessage(text=prompt, file_contents=[pdf_file])
+
+        msg = UserMessage(content=prompt, files=[pdf_file])
         response = await chat.send_message(msg)
         return response
-        
+
     except Exception as e:
-        logger.error(f"[LLM-PARSER] Errore Gemini: {e}")
+        logger.error(f"[LLM-PARSER] Errore Claude: {e}")
         return None
-    finally:
-        if tmp_path:
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
 
 
 async def _extract_text_from_pdf(pdf_bytes: bytes) -> str:
