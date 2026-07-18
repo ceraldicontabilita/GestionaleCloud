@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **996 endpoint** in **105 gruppi**.
+> Totale **997 endpoint** in **105 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 638 · ext esterni = 76 · — da verificare = 282
+**Riepilogo uso:** ✓ frontend = 639 · ext esterni = 76 · — da verificare = 282
 
 ## AI Parser  (11)
 
@@ -1390,7 +1390,7 @@
 | GET | `/api/settings/user-preferences` | ✓ | settings |
 | PUT | `/api/settings/user-preferences` | ✓ | settings |
 
-## Suppliers  (31)
+## Suppliers  (32)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1408,6 +1408,7 @@
 | GET | `/api/suppliers/payment-terms` | ✓ | suppliers_module.validation |
 | POST | `/api/suppliers/ricerca-iban-singolo/{supplier_id}` | ✓ | suppliers_module.iban |
 | POST | `/api/suppliers/ricerca-iban-web` | ✓ | suppliers_module.iban |
+| POST | `/api/suppliers/ripara-sconosciuti` | ✓ | suppliers_module.bulk |
 | GET | `/api/suppliers/scadenze` | ✓ | suppliers_module.base |
 | GET | `/api/suppliers/search-piva/{partita_iva}` | ✓ | suppliers_module.base |
 | POST | `/api/suppliers/sincronizza-da-fatture` | ✓ | suppliers_module.bulk |

@@ -596,6 +596,31 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
         )
         alerts_risolti = alert_result.modified_count
     
+    # ── RIPROCESSO PRIMA NOTA al cambio metodo (richiesta utente 18/07/2026:
+    # "ogni volta che cambio il metodo deve riprocessare la prima nota per
+    # spostare eventualmente le operazioni") — in background: le fatture
+    # auto-registrate sul lato che non corrisponde più al metodo del
+    # fornitore tornano nei Provvisori.
+    if metodo_configurato:
+        import asyncio as _asyncio
+
+        async def _riprocessa_prima_nota():
+            try:
+                from app.routers.prima_nota_module.manutenzione import (
+                    ripristina_provvisori_metodo_errato,
+                )
+                anno_corrente = datetime.now(timezone.utc).year
+                esito = await ripristina_provvisori_metodo_errato(
+                    dry_run=False, anno=anno_corrente, banca_non_riconciliate=True)
+                if esito.get("corretti"):
+                    logger.info(
+                        "Riprocesso prima nota dopo cambio metodo fornitore %s: %s corretti",
+                        supplier_id, esito.get("corretti"))
+            except Exception as e:
+                logger.warning("Riprocesso prima nota dopo cambio metodo fallito: %s", e)
+
+        _asyncio.create_task(_riprocessa_prima_nota())
+
     prodotti_rimossi = 0
     if data.get("esclude_magazzino") == True:
         piva = supplier.get("partita_iva")

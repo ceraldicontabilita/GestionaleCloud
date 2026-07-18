@@ -26,7 +26,7 @@ from .import_export import (
 from .bulk import (
     aggiorna_fornitori_bulk, aggiorna_metodi_pagamento_bulk,
     correggi_nomi_fornitori_mancanti, sincronizza_fornitori_da_fatture,
-    elimina_fornitori_senza_fatture,
+    elimina_fornitori_senza_fatture, ripara_fornitori_sconosciuti,
 )
 from .base import (
     create_supplier,
@@ -57,6 +57,7 @@ router.add_api_route("/import-excel", import_suppliers_excel, methods=["POST"])
 # Bulk
 router.add_api_route("/aggiorna-tutti-bulk", aggiorna_fornitori_bulk, methods=["POST"])
 router.add_api_route("/elimina-senza-fatture", elimina_fornitori_senza_fatture, methods=["POST"])
+router.add_api_route("/ripara-sconosciuti", ripara_fornitori_sconosciuti, methods=["POST"])
 router.add_api_route("/aggiorna-metodi-bulk", aggiorna_metodi_pagamento_bulk, methods=["POST"])
 router.add_api_route("/correggi-nomi-mancanti", correggi_nomi_fornitori_mancanti, methods=["POST"])
 router.add_api_route("/sincronizza-da-fatture", sincronizza_fornitori_da_fatture, methods=["POST"])

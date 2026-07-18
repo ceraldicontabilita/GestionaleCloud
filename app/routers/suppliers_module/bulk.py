@@ -431,3 +431,101 @@ async def elimina_fornitori_senza_fatture(dry_run: bool = True) -> Dict[str, Any
         "senza_fatture_eliminati" if not dry_run else "senza_fatture_da_eliminare": len(eliminati),
         "elenco": sorted(eliminati)[:100],
     }
+
+
+def _estrai_cedente_da_xml(xml_raw) -> Dict[str, Any]:
+    """Nome, IBAN, email del CEDENTE letti direttamente dall'XML (regex,
+    regge anche i .p7m sporchi). Usato quando i campi normalizzati della
+    fattura dicono solo 'Fornitore Sconosciuto'."""
+    testo = xml_raw if isinstance(xml_raw, str) else str(xml_raw or "")
+    out: Dict[str, Any] = {}
+    blocco = re.search(r"<CedentePrestatore>(.*?)</CedentePrestatore>", testo, re.S)
+    b = blocco.group(1) if blocco else testo
+
+    m = re.search(r"<Denominazione>\s*([^<]+?)\s*</Denominazione>", b)
+    if m:
+        out["nome"] = m.group(1).strip()
+    else:
+        nome = re.search(r"<Nome>\s*([^<]+?)\s*</Nome>", b)
+        cogn = re.search(r"<Cognome>\s*([^<]+?)\s*</Cognome>", b)
+        if nome and cogn:
+            out["nome"] = f"{nome.group(1).strip()} {cogn.group(1).strip()}"
+    m = re.search(r"<Email>\s*([^<]+?)\s*</Email>", b)
+    if m:
+        out["email"] = m.group(1).strip()
+    # l'IBAN sta nei DatiPagamento, fuori dal blocco cedente
+    m = re.search(r"<IBAN>\s*([A-Z0-9 ]{15,34})\s*</IBAN>", testo)
+    if m:
+        out["iban"] = m.group(1).replace(" ", "")
+    return out
+
+
+async def ripara_fornitori_sconosciuti() -> Dict[str, Any]:
+    """Richiesta utente 18/07/2026: corregge i 'Fornitore Sconosciuto'
+    leggendo il vero cedente dall'XML delle loro fatture, e popola
+    l'anagrafica (nome, IBAN, email) per TUTTI i fornitori a cui manca —
+    'dalle fatture devi estrarre e popolare i dati del fornitore anche
+    con l'IBAN che trovi'."""
+    db = Database.get_db()
+
+    fornitori = await db[Collections.SUPPLIERS].find({}, {"_id": 0}).to_list(5000)
+    corretti_nome = iban_aggiunti = email_aggiunte = fatture_corrette = 0
+    dettaglio = []
+
+    for f in fornitori:
+        chiavi = [str(k).strip() for k in (f.get("partita_iva"), f.get("piva"), f.get("vat_number")) if k]
+        if not chiavi:
+            continue
+        nome_attuale = (f.get("ragione_sociale") or f.get("denominazione") or f.get("nome") or "").strip()
+        manca_nome = (not nome_attuale) or ("sconosciut" in nome_attuale.lower())
+        manca_iban = not (f.get("iban") or f.get("iban_lista"))
+        manca_email = not f.get("email")
+        if not (manca_nome or manca_iban or manca_email):
+            continue
+
+        fatture = await db[Collections.INVOICES].find(
+            {"$or": [{"supplier_vat": {"$in": chiavi}}, {"cedente_piva": {"$in": chiavi}}],
+             "status": {"$nin": ["deleted", "archived"]},
+             "xml_raw": {"$exists": True}},
+            {"_id": 0, "id": 1, "xml_raw": 1, "supplier_name": 1},
+        ).to_list(5)
+
+        dati: Dict[str, Any] = {}
+        for fatt in fatture:
+            estratti = _estrai_cedente_da_xml(fatt.get("xml_raw"))
+            for k, v in estratti.items():
+                dati.setdefault(k, v)
+            # corregge anche la FATTURA che diceva 'Fornitore Sconosciuto'
+            if estratti.get("nome") and "sconosciut" in (fatt.get("supplier_name") or "").lower():
+                await db[Collections.INVOICES].update_one(
+                    {"id": fatt["id"]},
+                    {"$set": {"supplier_name": estratti["nome"],
+                              "cedente_denominazione": estratti["nome"]}})
+                fatture_corrette += 1
+
+        upd: Dict[str, Any] = {}
+        if manca_nome and dati.get("nome"):
+            upd["ragione_sociale"] = upd["denominazione"] = upd["nome"] = dati["nome"]
+            corretti_nome += 1
+            dettaglio.append({"piva": chiavi[0], "nome": dati["nome"]})
+        if manca_iban and dati.get("iban"):
+            upd["iban"] = dati["iban"]
+            iban_aggiunti += 1
+        if manca_email and dati.get("email"):
+            upd["email"] = dati["email"]
+            email_aggiunte += 1
+        if upd:
+            upd["updated_at"] = datetime.now(timezone.utc).isoformat()
+            await db[Collections.SUPPLIERS].update_one({"id": f["id"]}, {"$set": upd})
+
+    try:
+        await cache.delete("suppliers_list_default")
+    except Exception:
+        pass
+    return {
+        "nomi_corretti": corretti_nome,
+        "iban_aggiunti": iban_aggiunti,
+        "email_aggiunte": email_aggiunte,
+        "fatture_corrette": fatture_corrette,
+        "dettaglio_nomi": dettaglio[:30],
+    }

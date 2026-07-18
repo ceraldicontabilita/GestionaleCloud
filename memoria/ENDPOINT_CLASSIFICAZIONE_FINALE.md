@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 996 · tenere: 655 · verificare: 321 · admin-only (migrazione/manutenzione): 20
+**Totale endpoint:** 997 · tenere: 656 · verificare: 321 · admin-only (migrazione/manutenzione): 20
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -928,6 +928,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/suppliers/payment-terms` | suppliers_module.validation | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/suppliers/ricerca-iban-singolo/{supplier_id}` | suppliers_module.iban | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/suppliers/ricerca-iban-web` | suppliers_module.iban | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/suppliers/ripara-sconosciuti` | suppliers_module.bulk | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/suppliers/scadenze` | suppliers_module.base | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/suppliers/search-piva/{partita_iva}` | suppliers_module.base | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/suppliers/sincronizza-da-fatture` | suppliers_module.bulk | sì | — | — | — | — | tenere | in uso: FE |
