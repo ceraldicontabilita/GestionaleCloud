@@ -408,10 +408,12 @@ async def elimina_fornitori_senza_fatture(dry_run: bool = True) -> Dict[str, Any
     for f in fornitori:
         chiavi = [str(k).strip() for k in (f.get("partita_iva"), f.get("piva"), f.get("vat_number")) if k]
         nome = f.get("ragione_sociale") or f.get("denominazione") or f.get("nome") or ""
+        # solo fatture VIVE: le soft-deleted non tengono in vita un fornitore
+        vive = {"status": {"$nin": ["deleted", "archived"]}}
         if chiavi:
-            query = {"$or": [{"supplier_vat": {"$in": chiavi}}, {"cedente_piva": {"$in": chiavi}}]}
+            query = {**vive, "$or": [{"supplier_vat": {"$in": chiavi}}, {"cedente_piva": {"$in": chiavi}}]}
         elif nome:
-            query = {"supplier_name": nome}
+            query = {**vive, "supplier_name": nome}
         else:
             query = None  # né P.IVA né nome: nessuna fattura può riferirlo
         count = await db[Collections.INVOICES].count_documents(query) if query else 0
