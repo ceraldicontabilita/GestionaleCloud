@@ -13,6 +13,7 @@ Funzionalità:
 - Report statistiche
 """
 
+import re
 from fastapi import APIRouter, HTTPException, Query, Depends
 from app.utils.dependencies import get_current_admin_user
 from typing import Dict, Any, List
@@ -318,8 +319,10 @@ async def submit_feedback(request: FeedbackRequest) -> Dict[str, Any]:
     # Trova documento
     doc = await db[COLLECTION_DOCS].find_one({"_key": request.document_id})
     if not doc:
-        # Prova con subject
-        doc = await db[COLLECTION_DOCS].find_one({"subject": {"$regex": request.document_id[:30]}})
+        # Prova con subject (input utente: escapato per evitare ReDoS/match indesiderati)
+        doc = await db[COLLECTION_DOCS].find_one(
+            {"subject": {"$regex": re.escape(request.document_id[:30])}}
+        )
     
     if not doc:
         raise HTTPException(404, "Documento non trovato")
