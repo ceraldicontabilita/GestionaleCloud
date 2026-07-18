@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1020 · tenere: 667 · verificare: 330 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1022 · tenere: 669 · verificare: 330 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -355,9 +355,11 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/documenti-inbox/import-dipendenti-from-cu` | documents_inbox_classify | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/documenti-inbox/import-f24-from-inbox` | documents_inbox_classify | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti-inbox/statistics` | documents_inbox_classify | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/documenti-non-associati/associa` | documenti_non_associati | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/documenti-non-associati/associa` | documenti_non_associati | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/documenti-non-associati/associati-di-recente` | documenti_non_associati | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti-non-associati/categorie-mittente` | documenti_non_associati | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti-non-associati/collezioni-disponibili` | documenti_non_associati | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/documenti-non-associati/de-associa` | documenti_non_associati | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/documenti-non-associati/lista` | documenti_non_associati | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti-non-associati/pdf/{documento_id}` | documenti_non_associati | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti-non-associati/statistiche` | documenti_non_associati | sì | — | — | — | — | tenere | in uso: FE |
@@ -390,7 +392,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/documenti/telegram/test` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/documenti/ultimo-sync` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/documenti/upload-auto` | documenti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/email-download/associa-documento` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/email-download/associa-documento` | email_download | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-download/associa-f24-filesystem` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-download/auto-associa` | email_download | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/email-download/auto-associa-v2` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

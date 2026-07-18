@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1020 endpoint** in **108 gruppi**.
+> Totale **1022 endpoint** in **108 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 647 · ext esterni = 76 · — da verificare = 297
+**Riepilogo uso:** ✓ frontend = 649 · ext esterni = 76 · — da verificare = 297
 
 ## AI Parser  (11)
 
@@ -558,13 +558,15 @@
 | GET | `/api/documenti/ultimo-sync` | — | documenti |
 | POST | `/api/documenti/upload-auto` | ✓ | documenti |
 
-## Documenti Non Associati  (7)
+## Documenti Non Associati  (9)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | POST | `/api/documenti-non-associati/associa` | ✓ | documenti_non_associati |
+| GET | `/api/documenti-non-associati/associati-di-recente` | ✓ | documenti_non_associati |
 | GET | `/api/documenti-non-associati/categorie-mittente` | ✓ | documenti_non_associati |
 | GET | `/api/documenti-non-associati/collezioni-disponibili` | ✓ | documenti_non_associati |
+| POST | `/api/documenti-non-associati/de-associa` | ✓ | documenti_non_associati |
 | GET | `/api/documenti-non-associati/lista` | ✓ | documenti_non_associati |
 | GET | `/api/documenti-non-associati/pdf/{documento_id}` | ✓ | documenti_non_associati |
 | GET | `/api/documenti-non-associati/statistiche` | ✓ | documenti_non_associati |

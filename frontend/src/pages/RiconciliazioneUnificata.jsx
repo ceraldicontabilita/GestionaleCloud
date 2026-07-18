@@ -2186,6 +2186,43 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
   const [loadingCollezioni, setLoadingCollezioni] = useState(false);
   const confirm = useConfirm();
 
+  // Documenti associati di recente (per poter annullare un'associazione
+  // sbagliata — richiesta utente 18/07/2026: "ho cliccato F24 ed ho
+  // sbagliato, come riclassifico?" prima non c'era modo di tornare
+  // indietro).
+  const [recenti, setRecenti] = useState([]);
+  const [mostraRecenti, setMostraRecenti] = useState(false);
+  const [annullando, setAnnullando] = useState(null);
+
+  const caricaRecenti = async () => {
+    try {
+      const res = await api.get('/api/documenti-non-associati/associati-di-recente?limit=20');
+      setRecenti(res.data?.documenti || []);
+    } catch (e) {
+      console.warn('Errore caricamento documenti associati di recente:', e);
+    }
+  };
+
+  const annullaAssociazione = async doc => {
+    const ok = await confirm({
+      title: 'Annullare questa associazione?',
+      message: `${doc.filename || 'Documento'} — collegato a "${doc.associato_a || '—'}". Verrà rimosso il record creato per errore e il documento tornerà tra quelli da associare.`,
+      confirmText: 'Annulla associazione', danger: true,
+    });
+    if (!ok) return;
+    setAnnullando(doc.id);
+    try {
+      await api.post('/api/documenti-non-associati/de-associa', { documento_id: doc.id });
+      setMessage({ type: 'success', text: 'Associazione annullata: il documento è tornato tra quelli da associare.' });
+      await caricaRecenti();
+      onRefresh?.();
+    } catch (e) {
+      setMessage({ type: 'error', text: 'Errore: ' + (e.response?.data?.detail || e.message) });
+    } finally {
+      setAnnullando(null);
+    }
+  };
+
   // Carica collezioni disponibili
   useEffect(() => {
     const loadCollezioni = async () => {
@@ -2581,6 +2618,49 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
                 🗑️
               </button>
             </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop: 16, padding: 16, background: '#fafafa', borderRadius: 8 }}>
+        <button
+          onClick={() => { setMostraRecenti(m => !m); if (!mostraRecenti && recenti.length === 0) caricaRecenti(); }}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+            fontSize: 13, fontWeight: 600, color: '#0f2744', display: 'flex', alignItems: 'center', gap: 6,
+          }}
+        >
+          {mostraRecenti ? '▼' : '▶'} Documenti associati di recente — sbagliato collezione? Annulla qui
+        </button>
+        {mostraRecenti && (
+          <div style={{ marginTop: 10, display: 'grid', gap: 6 }}>
+            {recenti.length === 0 && (
+              <div style={{ fontSize: 12.5, color: '#64748b' }}>Nessun documento associato di recente.</div>
+            )}
+            {recenti.map(doc => (
+              <div
+                key={doc.id}
+                style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
+                  padding: '8px 12px', background: 'white', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 12.5,
+                }}
+              >
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {doc.filename || 'Documento'} → <strong>{doc.associato_a || '—'}</strong>
+                </span>
+                <button
+                  onClick={() => annullaAssociazione(doc)}
+                  disabled={annullando === doc.id}
+                  style={{
+                    flexShrink: 0, padding: '5px 10px', background: '#fef2f2', color: '#dc2626',
+                    border: '1px solid #fecaca', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                    opacity: annullando === doc.id ? 0.5 : 1,
+                  }}
+                >
+                  {annullando === doc.id ? '⏳…' : '↩️ Annulla'}
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </div>

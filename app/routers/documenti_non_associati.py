@@ -420,6 +420,62 @@ async def associa_documento(
         raise HTTPException(status_code=400, detail="Specificare crea_nuovo=True o record_esistente_id")
 
 
+@router.post("/de-associa")
+async def de_associa_documento(documento_id: str = Body(..., embed=True)) -> Dict[str, Any]:
+    """Annulla un'associazione sbagliata (richiesta utente 18/07/2026:
+    "ho cliccato F24 ed ho sbagliato, come riclassifico?" — non c'era modo
+    di tornare indietro: il documento spariva dall'elenco "da associare" e
+    restava un record estraneo nella collezione sbagliata, es. un F24
+    fantasma per un documento che era in realtà una Cartella Esattoriale).
+
+    Elimina il record creato per errore (se `crea_nuovo`) nella collezione
+    target e rimette il documento tra i "da associare", pronto per essere
+    riclassificato con la collezione giusta."""
+    db = Database.get_db()
+    doc = await db["documenti_non_associati"].find_one({"id": documento_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento non trovato")
+    if not doc.get("associato"):
+        raise HTTPException(status_code=400, detail="Il documento non risulta associato")
+
+    collezione = doc.get("associato_a")
+    record_id = doc.get("associato_id")
+    record_rimosso = False
+    if collezione and record_id:
+        target = await db[collezione].find_one({"id": record_id}, {"_id": 0})
+        # Rimuove il record SOLO se creato da questa stessa associazione
+        # manuale (source="associazione_manuale" collegato a questo
+        # documento): mai toccare un record esistente arricchito col PDF
+        # (crea_nuovo=False, associa a record_esistente_id).
+        if target and target.get("source") == "associazione_manuale" \
+                and target.get("documento_originale_id") == documento_id:
+            await db[collezione].delete_one({"id": record_id})
+            record_rimosso = True
+
+    await db["documenti_non_associati"].update_one(
+        {"id": documento_id},
+        {"$unset": {"associato": "", "associato_a": "", "associato_id": "", "associato_at": ""}}
+    )
+
+    return {
+        "success": True,
+        "collezione_precedente": collezione,
+        "record_rimosso": record_rimosso,
+    }
+
+
+@router.get("/associati-di-recente")
+async def documenti_associati_di_recente(limit: int = Query(default=20, le=100)) -> Dict[str, Any]:
+    """Ultimi documenti associati manualmente, per poter annullare
+    un'associazione sbagliata (vedi /de-associa)."""
+    db = Database.get_db()
+    documenti = await db["documenti_non_associati"].find(
+        {"associato": True},
+        {"_id": 0, "pdf_data": 0}
+    ).sort("associato_at", -1).limit(limit).to_list(limit)
+    return {"documenti": documenti}
+
+
 @router.get("/statistiche")
 async def statistiche_non_associati() -> Dict[str, Any]:
     """
