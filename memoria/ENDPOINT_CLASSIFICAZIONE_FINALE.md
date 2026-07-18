@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1021 · tenere: 666 · verificare: 332 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1019 · tenere: 667 · verificare: 329 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -34,8 +34,6 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/admin/dashboard-summary` | admin | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/admin/export` | admin_export | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/admin/export/{filename}` | admin_export | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/admin/fatture-set-metodo-pagamento` | admin | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/admin/fatture-stats` | admin | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/admin/noleggio/backfill-dati-gestionali` | admin | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/admin/reset-collections` | admin | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/admin/rollback/drive-fatture/conta` | admin_rollback | sì | — | — | — | — | tenere | in uso: FE |
@@ -205,9 +203,9 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/chiusura-esercizio/stato/{anno}` | chiusura_esercizio | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/chiusura-esercizio/storico` | chiusura_esercizio | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/chiusura-esercizio/verifica-preliminare/{anno}` | chiusura_esercizio | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/collaudo/esegui` | collaudo | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/collaudo/storico` | collaudo | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/collaudo/ultimo` | collaudo | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/collaudo/esegui` | collaudo | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/collaudo/storico` | collaudo | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/collaudo/ultimo` | collaudo | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/commercialista/alert-status` | commercialista | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/commercialista/config` | commercialista | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/commercialista/config` | commercialista | sì | — | — | — | — | tenere | in uso: FE |
@@ -712,7 +710,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/openapi/xbrl/storico-richieste` | openapi_it | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/operazioni-da-confermare/smart/analizza` | operazioni_module.smart | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/operazioni-da-confermare/smart/associa-stipendi-auto` | operazioni_module | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/operazioni-da-confermare/smart/banca-veloce` | operazioni_module.smart | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/operazioni-da-confermare/smart/banca-veloce` | operazioni_module.smart | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/operazioni-da-confermare/smart/cerca-f24` | operazioni_module.smart | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/operazioni-da-confermare/smart/cerca-fatture` | operazioni_module.smart | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/operazioni-da-confermare/smart/cerca-stipendi` | operazioni_module.smart | sì | — | — | — | — | tenere | in uso: FE |

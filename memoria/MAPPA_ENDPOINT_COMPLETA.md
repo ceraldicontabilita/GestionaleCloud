@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1021 endpoint** in **108 gruppi**.
+> Totale **1019 endpoint** in **108 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 646 · ext esterni = 76 · — da verificare = 299
+**Riepilogo uso:** ✓ frontend = 647 · ext esterni = 76 · — da verificare = 296
 
 ## AI Parser  (11)
 
@@ -22,15 +22,13 @@
 | GET | `/api/ai-parser/statistiche` | ext | ai_parser |
 | GET | `/api/ai-parser/test` | ext | ai_parser |
 
-## Admin  (10)
+## Admin  (8)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | DELETE | `/api/admin/cleanup-trattenute-disciplinari` | — | admin |
 | GET | `/api/admin/collections` | — | admin |
 | GET | `/api/admin/dashboard-summary` | ✓ | admin |
-| POST | `/api/admin/fatture-set-metodo-pagamento` | ✓ | admin |
-| GET | `/api/admin/fatture-stats` | ✓ | admin |
 | POST | `/api/admin/noleggio/backfill-dati-gestionali` | — | admin |
 | POST | `/api/admin/reset-collections` | — | admin |
 | GET | `/api/admin/stats` | ✓ | admin |
@@ -309,9 +307,9 @@
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| POST | `/api/collaudo/esegui` | — | collaudo |
-| GET | `/api/collaudo/storico` | — | collaudo |
-| GET | `/api/collaudo/ultimo` | — | collaudo |
+| POST | `/api/collaudo/esegui` | ✓ | collaudo |
+| GET | `/api/collaudo/storico` | ✓ | collaudo |
+| GET | `/api/collaudo/ultimo` | ✓ | collaudo |
 
 ## Commercialista  (14)
 
