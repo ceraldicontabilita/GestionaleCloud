@@ -78,7 +78,7 @@ def _run(c):
         loop.close()
 
 
-def test_create_prima_nota_entry_crea_anche_la_riga_banca():
+def test_create_prima_nota_entry_niente_riga_banca_sintetica():
     db = _FakeDb()
     svc = CorrispettiviService(db=db)
     corr = {
@@ -97,7 +97,6 @@ def test_create_prima_nota_entry_crea_anche_la_riga_banca():
     uscita_cassa = next(d for d in cassa if d["tipo"] == "uscita")
     assert entrata_cassa["importo"] == 1000.0
     assert uscita_cassa["importo"] == 400.0
-    assert banca[0]["source"] == "corrispettivo_pos"  # letto da Coerenza POS
 
 
 def test_create_prima_nota_entry_legge_pagato_pos_come_fallback():
