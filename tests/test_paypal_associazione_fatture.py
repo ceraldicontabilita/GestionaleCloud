@@ -5,8 +5,12 @@ Causa: auto_associa_transazioni scriveva un collegamento "certo" anche con
 UN SOLO candidato trovato per pura coincidenza di importo, senza alcun
 riscontro sul nome del fornitore — frequente per le controparti PayPal-
 native/estere (Spotify, OpenAI...) che non hanno mai una fattura italiana
-nel gestionale. Ora questi match "a indovinare" non vengono più scritti, e
-un endpoint di pulizia rimuove lo storico già scritto in produzione."""
+nel gestionale. Ora questi match "a indovinare" non vengono più scritti.
+Inoltre lo storico già scritto in produzione da versioni precedenti della
+logica può risultare etichettato "nome_e_importo" pur non avendo mai avuto
+un vero riscontro sul nome (i tre pagamenti Spotify del caso segnalato erano
+proprio così): l'endpoint di pulizia quindi non si fida dell'etichetta
+salvata e rivalida ogni associazione automatica da zero."""
 import asyncio
 
 from app.routers.paypal_statements import auto_associa_transazioni, pulisci_match_solo_importo
@@ -18,6 +22,46 @@ def _run(coro):
         return loop.run_until_complete(coro)
     finally:
         loop.close()
+
+
+def _has(doc, dotted):
+    parts = dotted.split(".")
+    cur = doc
+    for p in parts[:-1]:
+        if not isinstance(cur, dict) or p not in cur:
+            return False
+        cur = cur[p]
+    return isinstance(cur, dict) and parts[-1] in cur
+
+
+def _get(doc, dotted):
+    cur = doc
+    for p in dotted.split("."):
+        if isinstance(cur, dict):
+            cur = cur.get(p)
+        else:
+            return None
+    return cur
+
+
+def _match(doc, cond):
+    for k, v in (cond or {}).items():
+        if isinstance(v, dict) and "$exists" in v:
+            if _has(doc, k) != v["$exists"]:
+                return False
+            continue
+        if isinstance(v, dict) and "$lt" in v:
+            val = _get(doc, k)
+            if not (val is not None and val < v["$lt"]):
+                return False
+            continue
+        if isinstance(v, dict) and "$in" in v:
+            if _get(doc, k) not in v["$in"]:
+                return False
+            continue
+        if _get(doc, k) != v:
+            return False
+    return True
 
 
 class _Cursor:
@@ -47,24 +91,13 @@ class _Coll:
         self.docs = docs or []
 
     def find(self, q=None, proj=None):
-        def _match(doc, cond):
-            for k, v in (cond or {}).items():
-                if k == "fattura_associata.match":
-                    if (doc.get("fattura_associata") or {}).get("match") != v:
-                        return False
-                elif k == "fattura_associata":
-                    exists = "fattura_associata" in doc
-                    if isinstance(v, dict) and "$exists" in v and exists != v["$exists"]:
-                        return False
-                elif isinstance(v, dict):
-                    val = doc.get(k)
-                    if "$lt" in v and not (val is not None and val < v["$lt"]):
-                        return False
-                else:
-                    if doc.get(k) != v:
-                        return False
-            return True
         return _Cursor([d for d in self.docs if _match(d, q)])
+
+    async def find_one(self, q, proj=None):
+        for d in self.docs:
+            if _match(d, q):
+                return dict(d)
+        return None
 
     def aggregate(self, pipeline):
         # Simula $addFields + $match su _importo_coalesced + $limit per invoices
@@ -90,7 +123,7 @@ class _Coll:
 
     async def update_many(self, q, update):
         n = 0
-        matched = self.find(q)._docs
+        matched = [d for d in self.docs if _match(d, q)]
         for d in matched:
             if "$unset" in update:
                 for k in update["$unset"]:
@@ -149,35 +182,67 @@ def test_auto_associa_scrive_solo_con_riscontro_nome(monkeypatch):
     assert fa["match"] == "nome_e_importo"
 
 
-def test_pulisci_match_solo_importo_dry_run_non_modifica(monkeypatch):
+def test_pulisci_rimuove_associazione_storica_senza_riscontro_anche_se_etichettata_bene(monkeypatch):
+    """Caso reale segnalato dall'utente: le 3 transazioni Spotify erano
+    etichettate "nome_e_importo" (non "solo_importo") pur puntando a un
+    fornitore "Ricambi Manzo sas" che non ha nulla a che vedere con
+    "Spotify AB" — l'etichetta storica mente, va rivalidato il nome vero."""
     db = _DB()
     db["paypal_transactions"].docs = [
-        {"transaction_id": "t1", "nome_controparte": "Spotify AB",
-         "fattura_associata": {"fattura_id": "f1", "fornitore": "Ricambi Manzo sas", "match": "solo_importo"}},
+        {"transaction_id": "5BX54306V8803724Y", "nome_controparte": "Spotify AB",
+         "fattura_associata": {"fattura_id": "f1", "fornitore": "Ricambi Manzo sas",
+                                "auto": True, "match": "nome_e_importo"}},
         {"transaction_id": "t2", "nome_controparte": "Fornitore Rossi Srl",
-         "fattura_associata": {"fattura_id": "f2", "fornitore": "Fornitore Rossi Srl", "match": "nome_e_importo"}},
+         "fattura_associata": {"fattura_id": "f2", "fornitore": "Fornitore Rossi Srl",
+                                "auto": True, "match": "nome_e_importo"}},
+    ]
+    db["invoices"].docs = [
+        {"id": "f1", "supplier_name": "Ricambi Manzo sas di Manzo dr. Raf"},
+        {"id": "f2", "supplier_name": "Fornitore Rossi Srl"},
     ]
     import app.routers.paypal_statements as mod
     monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
 
     res = _run(pulisci_match_solo_importo(dry_run=True))
     assert res["trovate"] == 1
-    assert res["esempi"][0]["controparte"] == "Spotify AB"
+    assert res["esempi"][0]["transaction_id"] == "5BX54306V8803724Y"
+    assert res["esempi"][0]["motivo"] == "nessun_riscontro_nome"
+    # dry_run: nessuna modifica
     assert "fattura_associata" in db["paypal_transactions"].docs[0]
 
 
-def test_pulisci_match_solo_importo_applica(monkeypatch):
+def test_pulisci_rimuove_riferimento_a_fattura_cancellata(monkeypatch):
     db = _DB()
     db["paypal_transactions"].docs = [
-        {"transaction_id": "t1", "nome_controparte": "Spotify AB",
-         "fattura_associata": {"fattura_id": "f1", "fornitore": "Ricambi Manzo sas", "match": "solo_importo"}},
-        {"transaction_id": "t2", "nome_controparte": "Fornitore Rossi Srl",
-         "fattura_associata": {"fattura_id": "f2", "fornitore": "Fornitore Rossi Srl", "match": "nome_e_importo"}},
+        {"transaction_id": "t1", "nome_controparte": "Qualcuno Srl",
+         "fattura_associata": {"fattura_id": "non-esiste-piu", "fornitore": "Qualcuno Srl",
+                                "auto": True, "match": "nome_e_importo"}},
     ]
+    db["invoices"].docs = []
     import app.routers.paypal_statements as mod
     monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
 
     res = _run(pulisci_match_solo_importo(dry_run=False))
     assert res["trovate"] == 1
+    assert res["esempi"][0]["motivo"] == "fattura_non_trovata"
     assert "fattura_associata" not in db["paypal_transactions"].docs[0]
-    assert db["paypal_transactions"].docs[1]["fattura_associata"]["match"] == "nome_e_importo"
+
+
+def test_pulisci_non_tocca_associazioni_manuali_ne_valide(monkeypatch):
+    db = _DB()
+    db["paypal_transactions"].docs = [
+        {"transaction_id": "t1", "nome_controparte": "Fornitore Rossi Srl",
+         "fattura_associata": {"fattura_id": "f1", "fornitore": "Fornitore Rossi Srl",
+                                "auto": True, "match": "nome_e_importo"}},
+        {"transaction_id": "t2", "nome_controparte": "Chiunque",
+         "fattura_associata": {"fattura_id": "f1", "fornitore": "Fornitore Rossi Srl",
+                                "auto": False}},
+    ]
+    db["invoices"].docs = [{"id": "f1", "supplier_name": "Fornitore Rossi Srl"}]
+    import app.routers.paypal_statements as mod
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+
+    res = _run(pulisci_match_solo_importo(dry_run=False))
+    assert res["trovate"] == 0
+    assert "fattura_associata" in db["paypal_transactions"].docs[0]
+    assert "fattura_associata" in db["paypal_transactions"].docs[1]

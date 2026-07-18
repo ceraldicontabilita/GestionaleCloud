@@ -976,33 +976,61 @@ async def auto_associa_transazioni() -> Dict[str, Any]:
 
 @router.post("/pulisci-match-solo-importo")
 async def pulisci_match_solo_importo(dry_run: bool = Query(True)) -> Dict[str, Any]:
-    """Rimuove le associazioni fattura scritte dal vecchio auto-match a
-    bassa confidenza (match="solo_importo", un solo candidato per importo
-    SENZA riscontro sul nome fornitore) — segnalato dall'utente 18/07/2026:
-    un pagamento Spotify risultava collegato alla fattura di "Ricambi Manzo
-    sas", un altro a una fattura ormai cancellata ("Fattura non trovata").
-    auto_associa_transazioni non scrive più questi match; qui si ripulisce
-    lo storico. Le transazioni tornano "non associate" (si ritrovano con
-    Cerca fattura via email o a mano)."""
+    """Rimuove le associazioni fattura PayPal non valide — segnalato
+    dall'utente 18/07/2026: un pagamento Spotify risultava collegato alla
+    fattura di "Ricambi Manzo sas" (fornitore completamente estraneo), un
+    altro a una fattura ormai cancellata ("Fattura non trovata"). L'etichetta
+    "match" salvata sulla transazione NON è affidabile per individuare questi
+    casi: alcune associazioni scritte da versioni precedenti della logica di
+    auto_associa_transazioni risultano etichettate "nome_e_importo" pur non
+    avendo mai avuto un vero riscontro sul nome fornitore (i tre pagamenti
+    Spotify del caso segnalato ne sono la prova). Qui si RIVALIDA quindi ogni
+    associazione automatica (fattura_associata.auto == true), a prescindere
+    dall'etichetta storica, rimuovendo quelle dove: la fattura collegata non
+    esiste più (riferimento pendente), oppure nessuna parola (>=4 lettere)
+    del nome controparte PayPal compare nel nome fornitore ATTUALE della
+    fattura (stessa regola di corroborazione usata da auto_associa_transazioni).
+    Le transazioni tornano "non associate" (si ritrovano con Cerca fattura
+    via email o a mano)."""
     db = Database.get_db()
-    query = {"fattura_associata.match": "solo_importo"}
-    interessate = await db[COLL_PAYPAL_TRANSACTIONS].find(
+    query = {"fattura_associata.auto": True}
+    txs = await db[COLL_PAYPAL_TRANSACTIONS].find(
         query, {"_id": 0, "transaction_id": 1, "nome_controparte": 1, "fattura_associata": 1}
     ).to_list(2000)
-    if not dry_run:
-        await db[COLL_PAYPAL_TRANSACTIONS].update_many(
-            query, {"$unset": {"fattura_associata": ""}}
+
+    da_rimuovere = []
+    for t in txs:
+        fa = t.get("fattura_associata") or {}
+        invoice = await db[COLL_INVOICES].find_one(
+            {"id": fa.get("fattura_id")},
+            {"_id": 0, "id": 1, "supplier_name": 1, "cedente_denominazione": 1},
         )
+        if not invoice:
+            da_rimuovere.append({**t, "_motivo": "fattura_non_trovata"})
+            continue
+        forn = (invoice.get("supplier_name") or invoice.get("cedente_denominazione") or "").lower()
+        nome = (t.get("nome_controparte") or "").lower()
+        parole = [w for w in nome.replace(",", " ").split() if len(w) >= 4]
+        if not parole or not any(w in forn for w in parole):
+            da_rimuovere.append({**t, "_motivo": "nessun_riscontro_nome"})
+
+    if not dry_run and da_rimuovere:
+        ids = [t["transaction_id"] for t in da_rimuovere]
+        await db[COLL_PAYPAL_TRANSACTIONS].update_many(
+            {"transaction_id": {"$in": ids}}, {"$unset": {"fattura_associata": ""}}
+        )
+
     return {
         "dry_run": dry_run,
-        "trovate": len(interessate),
+        "trovate": len(da_rimuovere),
         "esempi": [
             {
                 "transaction_id": t.get("transaction_id"),
                 "controparte": t.get("nome_controparte"),
-                "fattura_agganciata_erroneamente": t.get("fattura_associata", {}).get("fornitore"),
+                "fattura_agganciata_erroneamente": (t.get("fattura_associata") or {}).get("fornitore"),
+                "motivo": t.get("_motivo"),
             }
-            for t in interessate[:20]
+            for t in da_rimuovere[:20]
         ],
     }
 
