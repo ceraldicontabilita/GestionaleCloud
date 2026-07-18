@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1002 endpoint** in **105 gruppi**.
+> Totale **1005 endpoint** in **106 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 640 · ext esterni = 76 · — da verificare = 286
+**Riepilogo uso:** ✓ frontend = 640 · ext esterni = 76 · — da verificare = 289
 
 ## AI Parser  (11)
 
@@ -295,6 +295,14 @@
 | GET | `/api/chiusura-esercizio/stato/{anno}` | ✓ | chiusura_esercizio |
 | GET | `/api/chiusura-esercizio/storico` | ✓ | chiusura_esercizio |
 | GET | `/api/chiusura-esercizio/verifica-preliminare/{anno}` | ✓ | chiusura_esercizio |
+
+## Collaudo  (3)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| POST | `/api/collaudo/esegui` | — | collaudo |
+| GET | `/api/collaudo/storico` | — | collaudo |
+| GET | `/api/collaudo/ultimo` | — | collaudo |
 
 ## Commercialista  (14)
 

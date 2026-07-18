@@ -718,6 +718,27 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # COLLAUDO AUTOMATICO (richiesta utente 18/07/2026): ogni notte tutti gli
+    # invarianti contabili vengono verificati; le violazioni diventano alert
+    # COLLAUDO_INVARIANTE in dashboard, i check tornati puliti li risolvono.
+    async def _collaudo_notturno_job():
+        from app.database import Database
+        from app.services.collaudo_invarianti import esegui_collaudo
+        try:
+            r = await esegui_collaudo(Database.get_db())
+            logger.info(f"[SCHEDULER-COLLAUDO] checks={r['checks_totali']} "
+                        f"violati={r['checks_violati']} violazioni={r['violazioni_totali']}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-COLLAUDO] errore: {e}")
+
+    scheduler.add_job(
+        _collaudo_notturno_job,
+        CronTrigger(hour=4, minute=30),
+        id="collaudo_invarianti",
+        name="Collaudo automatico invarianti (ogni notte 4:30)",
+        replace_existing=True,
+    )
+
     # Stessa quadratura Elaborate anche per cedolini e corrispettivi
     # (richiesta utente 10/07): archivio Drive ↔ gestionale, buchi recuperati.
     async def _drive_quadratura_cedolini_job():

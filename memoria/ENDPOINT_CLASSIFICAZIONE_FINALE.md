@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1002 · tenere: 658 · verificare: 322 · admin-only (migrazione/manutenzione): 22
+**Totale endpoint:** 1005 · tenere: 659 · verificare: 324 · admin-only (migrazione/manutenzione): 22
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -72,7 +72,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/alerts/risolvi-fornitore/{fornitore_piva}` | alerts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/alerts/summary` | alerts | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/alerts/{alert_id}` | alerts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/alerts/{alert_id}/risolvi` | alerts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/alerts/{alert_id}/risolvi` | alerts | — | sì | — | — | sì | tenere | in uso: scheduler |
 | `POST /api/alerts/{alert_id}/segna-letto` | alerts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/anagrafica-fornitori/popola-fornitore/{fornitore_id}` | anagrafica_fornitori_xml | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/anagrafica-fornitori/popola-tutti` | anagrafica_fornitori_xml | sì | — | — | — | sì | tenere | in uso: FE |
@@ -205,6 +205,9 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/chiusura-esercizio/stato/{anno}` | chiusura_esercizio | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/chiusura-esercizio/storico` | chiusura_esercizio | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/chiusura-esercizio/verifica-preliminare/{anno}` | chiusura_esercizio | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/collaudo/esegui` | collaudo | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/collaudo/storico` | collaudo | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/collaudo/ultimo` | collaudo | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/commercialista/alert-status` | commercialista | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/commercialista/config` | commercialista | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/commercialista/config` | commercialista | sì | — | — | — | — | tenere | in uso: FE |

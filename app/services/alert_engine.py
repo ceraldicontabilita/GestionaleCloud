@@ -370,6 +370,12 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Fattura pagata per BANCA nonostante metodo cassa",
         "condizione_chiusura": "Presa visione (registrazione già corretta in banca)"
     },
+    "COLLAUDO_INVARIANTE": {
+        "modulo": "collaudo",
+        "severita": "warning",
+        "titolo": "Collaudo automatico: invariante violata",
+        "condizione_chiusura": "Il check torna a zero violazioni al giro successivo"
+    },
     "DOC_DUPLICATO": {
         "modulo": "documenti",
         "severita": "info",
