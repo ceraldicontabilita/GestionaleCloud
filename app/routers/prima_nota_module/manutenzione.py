@@ -1756,13 +1756,16 @@ async def ripristina_fatture_con_movimento_cancellato(
     tornano 'da pagare' e rientrano nel giro normale (provvisori /
     attesa banca / riconciliazione)."""
     db = Database.get_db()
+    fatture = await db["invoices"].find(
+        {"pagato": True, "prima_nota_id": {"$exists": True, "$nin": [None, ""]},
+         "status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1,
+         "prima_nota_id": 1, "total_amount": 1},
+    ).to_list(10000)
+
     ripristinate = 0
     dettaglio = []
-    async for f in db["invoices"].find(
-            {"pagato": True, "prima_nota_id": {"$exists": True, "$nin": [None, ""]},
-             "status": {"$nin": ["deleted", "archived"]}},
-            {"_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1,
-             "prima_nota_id": 1, "total_amount": 1}):
+    for f in fatture:
         pn_id = f["prima_nota_id"]
         viva = False
         for coll in ("prima_nota_banca", "prima_nota_cassa"):
