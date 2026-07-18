@@ -386,6 +386,9 @@ REGOLE_UNIFICA_CATEGORIE = [
 SOURCES_FATTURE_AUTO = [
     "auto_conferma", "sync_fatture", "backfill_auto_da_fornitore",
     "auto_metodo", "fix_relazioni", "auto_registrazione_metodo_fornitore",
+    # sfuggite al primo giro (18/07, caso TOP SPINA 4853/01): altre
+    # scritture automatiche di vecchie pipeline
+    "auto_import", "sync_fatture_banca", "auto_confirm_provvisoria",
 ]
 
 
