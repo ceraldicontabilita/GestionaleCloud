@@ -1048,6 +1048,41 @@ costi → pagamenti → driver assegnato → verbali → eventuali trattenute �
 
 ---
 
+## 12-bis. Collaudo automatico (dal 18/07/2026)
+
+Ogni notte alle 4:30 (e a richiesta con `POST /api/collaudo/esegui`) il
+sistema verifica in **sola lettura** le regole che devono essere sempre
+vere — il collaudo fotografa, non corregge mai nulla da solo:
+
+1. nessuna fattura "pagata banca" senza movimento di estratto conto
+   collegato (regola vincolante 18/07);
+2. nessun addebito di estratto conto registrato due volte in Prima Nota
+   Banca, né righe collegate a movimenti inesistenti;
+3. accrediti POS in banca ≈ elettronico dei corrispettivi XML, giorno di
+   vendita per giorno di vendita (scostamenti oltre il 2% segnalati);
+4. nessun documento in archivio da mittenti fuori dalla lista Mittenti
+   Email, né file tecnici PEC/SDI;
+5. nessun documento processato che mostri ancora badge NUOVO;
+6. nessuna ritenuta d'acconto oltre scadenza senza F24 (o pagata tardi
+   senza ravvedimento);
+7. nessuna fattura duplicata attiva (stessa P.IVA+numero+data);
+8. nessuna fattura "pagata" il cui movimento di Prima Nota è stato
+   eliminato;
+9. nessuna riga stipendio riconciliata senza bonifico collegato;
+10. nessun movimento di Prima Nota malformato (importo non positivo,
+    data vuota, tipo non valido).
+
+Ogni violazione diventa un **alert "Collaudo automatico"** in dashboard
+(cliccabile); quando il check torna pulito, l'alert si risolve da solo.
+Report completi in `GET /api/collaudo/ultimo` e `/storico`.
+
+Esiste anche il **collaudo UI** (`scripts/collaudo_ui.mjs`): un browser
+vero apre ogni pagina del gestionale e registra errori JavaScript,
+chiamate API fallite e pagine vuote — senza mai premere bottoni che
+modificano i dati.
+
+---
+
 ## 13. Cosa è acceso e cosa è spento oggi
 
 | Canale | Stato | Perché |
