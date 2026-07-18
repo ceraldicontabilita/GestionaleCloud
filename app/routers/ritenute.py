@@ -93,14 +93,20 @@ def _estrai_dati_ritenuta(xml_raw) -> Optional[Dict[str, Any]]:
 def _tributi_di(f24: Dict[str, Any]) -> List[Dict[str, Any]]:
     """f24_unificato ha più schemi coesistenti: normalizza la lista tributi."""
     out = []
-    for t in (f24.get("tributi") or f24.get("righe") or f24.get("dettaglio_tributi") or []):
+    righe = list(f24.get("tributi") or f24.get("righe") or f24.get("dettaglio_tributi") or [])
+    # schema del parser F24 commercialista (parse_f24_commercialista):
+    # sezioni separate con codice_tributo/importo_debito
+    for sezione in ("sezione_erario", "sezione_inps", "sezione_regioni", "sezione_tributi_locali"):
+        righe.extend(f24.get(sezione) or [])
+    for t in righe:
         if isinstance(t, dict):
             out.append({
                 "codice": str(t.get("codice") or t.get("codice_tributo") or "").strip(),
                 "importo": float(t.get("importo") or t.get("importo_debito") or t.get("debito") or 0),
             })
     for c in (f24.get("codici_tributo") or []):
-        out.append({"codice": str(c).strip(), "importo": None})
+        codice = c.get("codice") if isinstance(c, dict) else c
+        out.append({"codice": str(codice or "").strip(), "importo": None})
     return out
 
 
