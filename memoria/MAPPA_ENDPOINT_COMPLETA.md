@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **997 endpoint** in **105 gruppi**.
+> Totale **998 endpoint** in **105 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 639 · ext esterni = 76 · — da verificare = 282
+**Riepilogo uso:** ✓ frontend = 639 · ext esterni = 76 · — da verificare = 283
 
 ## AI Parser  (11)
 
@@ -578,7 +578,7 @@
 | POST | `/api/erp/ponte/fattura-ricevuta` | ext | erp_bridge |
 | GET | `/api/erp/ponte/status` | ext | erp_bridge |
 
-## Email Download  (40)
+## Email Download  (41)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -612,6 +612,7 @@
 | GET | `/api/email-download/processa-fatture-email/status` | — | email_download |
 | POST | `/api/email-download/processa-pipeline` | — | email_download |
 | DELETE | `/api/email-download/pulisci-duplicati` | — | email_download |
+| POST | `/api/email-download/pulizia-non-attendibili` | — | email_download |
 | POST | `/api/email-download/riconcilia-paypal` | — | email_download |
 | POST | `/api/email-download/riconcilia-verbali` | — | email_download |
 | POST | `/api/email-download/riconcilia-verbali-avanzato` | — | email_download |

@@ -1070,3 +1070,71 @@ async def trigger_email_sync(background_tasks: BackgroundTasks) -> Dict[str, Any
     
     background_tasks.add_task(run_sync)
     return {"success": True, "message": "Sync email avviato in background"}
+
+
+@router.post("/pulizia-non-attendibili")
+async def pulizia_documenti_mittenti_non_attendibili(
+    dry_run: bool = Query(True, description="Solo conteggio, non elimina"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """REGOLA UTENTE 18/07/2026: 'la lista è il vangelo per scaricare la
+    posta — elimina tutto quello che viene da mittenti non comunicati, ed
+    elimina gli alert associati' (es. saveris2.net, pec.kimbo.it,
+    legalmail via pec.fatturapa.it mai autorizzati)."""
+    from app.services.email_full_download import CATEGORY_COLLECTIONS
+    from app.services.mittenti import _addr
+
+    db = Database.get_db()
+
+    trusted = set()
+    async for m in db["mittenti_email"].find({"attivo": True}):
+        a = _addr(m)
+        if a:
+            trusted.add(a.lower())
+
+    def mittente_ok(indirizzo: str) -> bool:
+        low = (indirizzo or "").lower()
+        return bool(low) and any(s in low for s in trusted)
+
+    collezioni = sorted(set(CATEGORY_COLLECTIONS.values())) + ["documents_inbox"]
+    report: Dict[str, Any] = {}
+    ids_eliminati: list = []
+    esempi_mittenti: set = set()
+
+    for coll in collezioni:
+        docs = await db[coll].find(
+            {}, {"_id": 0, "id": 1, "email_from": 1, "from": 1, "mittente": 1, "sender": 1},
+        ).to_list(20000)
+        da_eliminare = []
+        for d in docs:
+            mittente = d.get("email_from") or d.get("from") or d.get("mittente") or d.get("sender") or ""
+            if not mittente:
+                continue  # senza mittente non si giudica: resta
+            if not mittente_ok(mittente):
+                if d.get("id"):
+                    da_eliminare.append(d["id"])
+                if len(esempi_mittenti) < 20:
+                    esempi_mittenti.add(mittente[:60])
+        if da_eliminare:
+            report[coll] = len(da_eliminare)
+            ids_eliminati.extend(da_eliminare)
+            if not dry_run:
+                await db[coll].delete_many({"id": {"$in": da_eliminare}})
+
+    alerts_eliminati = 0
+    if ids_eliminati:
+        filtro_alert = {"entita_id": {"$in": ids_eliminati}}
+        if dry_run:
+            alerts_eliminati = await db["alerts"].count_documents(filtro_alert)
+        else:
+            r = await db["alerts"].delete_many(filtro_alert)
+            alerts_eliminati = r.deleted_count
+
+    return {
+        "dry_run": dry_run,
+        "mittenti_in_lista": len(trusted),
+        "documenti_eliminati" if not dry_run else "documenti_da_eliminare": len(ids_eliminati),
+        "per_collezione": report,
+        "alerts_eliminati": alerts_eliminati,
+        "esempi_mittenti_esclusi": sorted(esempi_mittenti),
+    }

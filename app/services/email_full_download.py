@@ -260,35 +260,26 @@ class EmailFullDownloader:
 
     async def _load_trusted_senders_generico(self) -> set:
         """
-        Mittenti attendibili per la scansione email generica (tipo_documento
-        "generico" in Mittenti Email, canale gmail). Stessa collezione
-        canonica già usata da cedolini/verbali/F24 commercialista
-        (app.services.mittenti.senders_attendibili).
+        Whitelist mittenti per la scansione email generica.
 
-        Bug segnalato dall'utente 15/07/2026: il docstring di
-        download_all_emails dichiarava "Filtra per parole chiave
-        amministrative e mittenti attendibili", ma il filtro mittenti non
-        era mai stato implementato — la scansione scaricava da QUALSIASI
-        mittente il cui testo contenesse una delle ~50 parole chiave
-        amministrative molto generiche (es. "enel", "bolletta", "fattura"),
-        prendendo anche allegati da mittenti come "Raffaele Mangiacapra" o
-        domini come "saveris2.net" mai autorizzati dall'utente.
-
-        Lista vuota (nessun mittente configurato per tipo "generico" in
-        Mittenti Email) = nessuna restrizione, per non bloccare di colpo
-        tutto il canale finché l'utente non la popola: comportamento
-        esplicitamente scelto in accordo con la REGOLA PARAMETRI del
-        progetto (CLAUDE.md) — la lista dei mittenti fidati è una scelta
-        dell'utente, mai decisa in automatico dal codice.
+        REGOLA UTENTE 18/07/2026: "la lista è il vangelo per scaricare la
+        posta" — si scarica SOLO dai mittenti configurati in Mittenti Email
+        (collezione canonica mittenti_email, qualunque tipo documento,
+        attivi). Lista vuota = ZERO download, nessun fallback permissivo
+        (prima "lista vuota = nessuna restrizione", ed entravano
+        saveris2.net, pec.kimbo.it, legalmail mai autorizzati).
         """
         if self._cached_trusted_senders is not None:
             return self._cached_trusted_senders
+        senders: set = set()
         try:
-            from app.services.mittenti import senders_attendibili
-            senders = await senders_attendibili(self.db, tipo_documento="generico", canale="gmail")
+            from app.services.mittenti import _addr
+            async for m in self.db["mittenti_email"].find({"attivo": True}):
+                a = _addr(m)
+                if a:
+                    senders.add(a.lower())
         except Exception as e:
-            logger.warning(f"Errore caricamento mittenti attendibili 'generico': {e}")
-            senders = set()
+            logger.warning(f"Errore caricamento mittenti attendibili: {e}")
         self._cached_trusted_senders = senders
         return senders
 
@@ -522,15 +513,17 @@ class EmailFullDownloader:
             logger.debug(f"Email saltata (no keyword): {subject[:50]} [{source_folder}]")
             return 0
 
-        # FILTRO MITTENTI ATTENDIBILI (vedi _load_trusted_senders_generico):
-        # applicato solo se l'utente ha configurato almeno un mittente per il
-        # tipo "generico" in Mittenti Email — altrimenti nessuna restrizione.
+        # FILTRO MITTENTI ATTENDIBILI — REGOLA UTENTE 18/07/2026: "la lista
+        # è il vangelo per scaricare la posta: devi scaricare SOLO da quelli
+        # comunicati". La whitelist copre TUTTI i mittenti configurati in
+        # Mittenti Email (qualsiasi tipo); se la lista è vuota NON si
+        # scarica nulla (prima "lista vuota = nessuna restrizione", ed
+        # entravano saveris2.net, pec.kimbo.it, legalmail mai autorizzati).
         trusted_senders = await self._load_trusted_senders_generico()
-        if trusted_senders:
-            from_lower = from_addr.lower()
-            if not any(s in from_lower for s in trusted_senders):
-                logger.debug(f"Email saltata (mittente non attendibile): {from_addr} [{subject[:50]}]")
-                return 0
+        from_lower = from_addr.lower()
+        if not any(s in from_lower for s in trusted_senders):
+            logger.debug(f"Email saltata (mittente non in lista): {from_addr} [{subject[:50]}]")
+            return 0
 
         email_info = {
             "uid": email_uid.decode() if isinstance(email_uid, bytes) else str(email_uid),

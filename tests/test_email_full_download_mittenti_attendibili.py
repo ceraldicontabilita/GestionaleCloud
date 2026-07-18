@@ -1,11 +1,10 @@
-"""Bug segnalato dall'utente 15/07/2026: la scansione email generica
-("Scarica Documenti da Email") dichiarava nel docstring di filtrare per
-"parole chiave amministrative e mittenti attendibili", ma il filtro
-mittenti non era mai stato implementato — scaricava allegati da
-QUALSIASI mittente il cui testo contenesse una parola chiave molto
-generica (es. "enel", "bolletta"), incluse fonti mai autorizzate
-dall'utente. La collezione mittenti_email (già usata da cedolini/verbali)
-viene ora consultata anche qui per il tipo_documento "generico"."""
+"""REGOLA UTENTE 18/07/2026: "la lista è il vangelo per scaricare la
+posta" — la scansione email generica ("Scarica Documenti da Email")
+scarica SOLO dai mittenti configurati in Mittenti Email (collezione
+mittenti_email, qualunque tipo documento, attivi). Lista vuota = ZERO
+download: nessun fallback permissivo. (Prima: lista vuota = nessuna
+restrizione, ed entravano saveris2.net, pec.kimbo.it, legalmail mai
+autorizzati dall'utente.)"""
 import asyncio
 from email.message import EmailMessage
 
@@ -22,11 +21,10 @@ class _FakeMittentiColl:
         self.docs = docs
 
     def find(self, query, *a, **k):
+        # la whitelist carica find({"attivo": True}) su TUTTI i tipi
         return _FakeCursor([
             d for d in self.docs
-            if d.get("tipo_documento") == query.get("tipo_documento")
-            and d.get("canale") == query.get("canale")
-            and d.get("attivo", True)
+            if all(d.get(k2) == v for k2, v in query.items())
         ])
 
 
@@ -89,16 +87,16 @@ def _msg_con_pdf(mittente: str, oggetto: str = "Bolletta ENEL energia elettrica"
     return msg
 
 
-def test_senza_mittenti_configurati_nessuna_restrizione(monkeypatch):
-    """Lista vuota per tipo 'generico' = comportamento attuale (nessun blocco),
-    per non spegnere di colpo il canale finché l'utente non la popola."""
+def test_lista_vuota_zero_download(monkeypatch):
+    """La lista è il vangelo: senza mittenti configurati NON si scarica
+    nulla (niente fallback permissivo)."""
     downloader = EmailFullDownloader(db=_FakeDb(mittenti_docs=[]))
     monkeypatch.setattr(downloader, "save_pdf_to_db", _stub_save)
 
     salvati = _run(downloader.process_email(
-        b"1", _msg_con_pdf("Raffaele Mangiacapra <raffaele@saveris2.net>")))
+        b"1", _msg_con_pdf("Testo Saveris <no-reply-eu.saveris2@saveris2.net>")))
 
-    assert salvati == 1
+    assert salvati == 0
 
 
 def test_con_mittenti_configurati_blocca_non_attendibili(monkeypatch):
@@ -115,6 +113,26 @@ def test_con_mittenti_configurati_blocca_non_attendibili(monkeypatch):
     attendibile = _run(downloader.process_email(
         b"2", _msg_con_pdf("Studio Ceraldi <commercialista@studioceraldi.it>")))
     assert attendibile == 1
+
+
+def test_whitelist_copre_tutti_i_tipi_documento(monkeypatch):
+    """Un mittente configurato per i cedolini (tipo diverso da 'generico')
+    è comunque attendibile per la scansione generica: la lista è unica."""
+    downloader = EmailFullDownloader(db=_FakeDb(mittenti_docs=[
+        {"pattern": "paghe@consulente.it", "indirizzo_email": "paghe@consulente.it",
+         "canale": "gmail", "tipo_documento": "cedolino", "attivo": True},
+        {"pattern": "vecchio@dismesso.it", "indirizzo_email": "vecchio@dismesso.it",
+         "canale": "gmail", "tipo_documento": "generico", "attivo": False},
+    ]))
+    monkeypatch.setattr(downloader, "save_pdf_to_db", _stub_save)
+
+    da_cedolini = _run(downloader.process_email(
+        b"1", _msg_con_pdf("Paghe <paghe@consulente.it>")))
+    assert da_cedolini == 1
+
+    disattivato = _run(downloader.process_email(
+        b"2", _msg_con_pdf("Vecchio <vecchio@dismesso.it>")))
+    assert disattivato == 0
 
 
 async def _stub_save(**kwargs):

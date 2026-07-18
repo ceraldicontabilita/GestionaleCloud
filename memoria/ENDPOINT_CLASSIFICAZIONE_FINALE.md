@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 997 · tenere: 656 · verificare: 321 · admin-only (migrazione/manutenzione): 20
+**Totale endpoint:** 998 · tenere: 656 · verificare: 321 · admin-only (migrazione/manutenzione): 21
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -418,6 +418,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/email-download/processa-fatture-email/status` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-download/processa-pipeline` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `DELETE /api/email-download/pulisci-duplicati` | email_download | — | sì | — | — | — | tenere | in uso: scheduler |
+| `POST /api/email-download/pulizia-non-attendibili` | email_download | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/email-download/riconcilia-paypal` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-download/riconcilia-verbali` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-download/riconcilia-verbali-avanzato` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
