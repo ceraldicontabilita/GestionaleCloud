@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **992 endpoint** in **104 gruppi**.
+> Totale **993 endpoint** in **104 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 634 · ext esterni = 76 · — da verificare = 282
+**Riepilogo uso:** ✓ frontend = 635 · ext esterni = 76 · — da verificare = 282
 
 ## AI Parser  (11)
 
@@ -1382,7 +1382,7 @@
 | GET | `/api/settings/user-preferences` | ✓ | settings |
 | PUT | `/api/settings/user-preferences` | ✓ | settings |
 
-## Suppliers  (30)
+## Suppliers  (31)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1393,6 +1393,7 @@
 | POST | `/api/suppliers/aggiorna-tutti-bulk` | ✓ | suppliers_module.bulk |
 | POST | `/api/suppliers/correggi-nomi-mancanti` | ✓ | suppliers_module.bulk |
 | GET | `/api/suppliers/dizionario-metodi-pagamento` | ✓ | suppliers_module.validation |
+| POST | `/api/suppliers/elimina-senza-fatture` | ✓ | suppliers_module.bulk |
 | GET | `/api/suppliers/filtered` | ✓ | suppliers_module.base |
 | POST | `/api/suppliers/import-excel` | ✓ | suppliers_module.import_export |
 | GET | `/api/suppliers/payment-methods` | ✓ | suppliers_module.validation |

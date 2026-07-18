@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 992 · tenere: 651 · verificare: 321 · admin-only (migrazione/manutenzione): 20
+**Totale endpoint:** 993 · tenere: 652 · verificare: 321 · admin-only (migrazione/manutenzione): 20
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -918,6 +918,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/suppliers/aggiorna-tutti-bulk` | suppliers_module.bulk | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/suppliers/correggi-nomi-mancanti` | suppliers_module.bulk | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/suppliers/dizionario-metodi-pagamento` | suppliers_module.validation | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/suppliers/elimina-senza-fatture` | suppliers_module.bulk | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/suppliers/filtered` | suppliers_module.base | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/suppliers/import-excel` | suppliers_module.import_export | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/suppliers/payment-methods` | suppliers_module.validation | sì | — | — | — | — | tenere | in uso: FE |

@@ -387,3 +387,45 @@ async def sincronizza_fornitori_da_fatture() -> Dict[str, Any]:
         pass
     
     return risultato
+
+
+async def elimina_fornitori_senza_fatture(dry_run: bool = True) -> Dict[str, Any]:
+    """Richiesta utente 18/07/2026: "se non ci sono fatture associate al
+    fornitore, elimina tutti direttamente". Per ogni fornitore conta le
+    fatture in archivio (per P.IVA, in tutte le sue varianti di campo, o
+    per nome esatto se senza P.IVA): chi ha ZERO fatture viene eliminato —
+    copre anche le voci "Fornitore sconosciuto" senza documenti."""
+    from fastapi import Query  # firma uniforme con gli altri endpoint admin
+
+    db = Database.get_db()
+    fornitori = await db[Collections.SUPPLIERS].find(
+        {}, {"_id": 0, "id": 1, "partita_iva": 1, "piva": 1, "vat_number": 1,
+             "ragione_sociale": 1, "denominazione": 1, "nome": 1},
+    ).to_list(5000)
+
+    eliminati = []
+    conservati = 0
+    for f in fornitori:
+        chiavi = [str(k).strip() for k in (f.get("partita_iva"), f.get("piva"), f.get("vat_number")) if k]
+        nome = f.get("ragione_sociale") or f.get("denominazione") or f.get("nome") or ""
+        if chiavi:
+            query = {"$or": [{"supplier_vat": {"$in": chiavi}}, {"cedente_piva": {"$in": chiavi}}]}
+        elif nome:
+            query = {"supplier_name": nome}
+        else:
+            query = None  # né P.IVA né nome: nessuna fattura può riferirlo
+        count = await db[Collections.INVOICES].count_documents(query) if query else 0
+        if count:
+            conservati += 1
+            continue
+        eliminati.append(nome or f.get("id"))
+        if not dry_run and f.get("id"):
+            await db[Collections.SUPPLIERS].delete_one({"id": f["id"]})
+
+    return {
+        "dry_run": dry_run,
+        "fornitori_totali": len(fornitori),
+        "con_fatture": conservati,
+        "senza_fatture_eliminati" if not dry_run else "senza_fatture_da_eliminare": len(eliminati),
+        "elenco": sorted(eliminati)[:100],
+    }
