@@ -32,6 +32,19 @@ router = APIRouter(prefix="/pos-corrispettivi", tags=["POS Corrispettivi Check"]
 # Collection per chiusure POS manuali (da registratore di cassa)
 COLLECTION_CHIUSURE_POS = "chiusure_pos_manuali"
 
+# La descrizione degli accrediti NUMIA/BPM contiene il giorno di VENDITA:
+# "INC.POS CARTE CREDIT - NUMIA-INTER DEL 02/04/26 PDV ..." → 2026-04-02
+import re as _re
+_GIORNO_POS_RE = _re.compile(r"DEL\s+(\d{2})/(\d{2})/(\d{2})\b")
+
+
+def _giorno_operazione_pos(descrizione: str, data_accredito: str) -> str:
+    m = _GIORNO_POS_RE.search(descrizione or "")
+    if m:
+        g, mese, anno = m.groups()
+        return f"20{anno}-{mese}-{g}"
+    return (data_accredito or "")[:10]
+
 
 @router.get("/verifica-coerenza")
 @handle_errors
@@ -81,23 +94,30 @@ async def verifica_coerenza_pos_corrispettivi(
     # Ora uso SOLO le due categorie esatte degli accrediti provider (NUMIA, Nexi, ecc.).
     # NB: escludo anche la categoria "Corrispettivi POS" perché sono chiusure contabili giornaliere 
     # che duplicano il dato pagato_elettronico già nei corrispettivi XML.
+    # FIX 18/07/2026: gli accrediti POS reali vivono nell'ESTRATTO CONTO
+    # (ora completo, import export banca), non in prima_nota_banca — lì per
+    # modello c'è solo la quota "Corrispettivi POS" del registratore, che
+    # duplicherebbe l'XML. In più la descrizione NUMIA contiene il GIORNO DI
+    # VENDITA ("INC.POS ... NUMIA-INTER DEL 02/04/26"): l'accredito viene
+    # attribuito a quel giorno, eliminando lo sfasamento weekend/festivi.
     CATEGORIE_POS_ACCREDITATI = [
         "Ricavi - Incasso tramite POS-Carte di credito",
         "Ricavi - Incasso tramite POS",
         "Incasso POS",
         "Accredito POS",
-        "POS",
-        "pos",
     ]
-    accrediti_pos = await db["prima_nota_banca"].find(
+    data_a_estesa = (datetime.strptime(data_a, "%Y-%m-%d") + timedelta(days=6)).strftime("%Y-%m-%d")
+    accrediti_pos = await db["estratto_conto_movimenti"].find(
         {
-            "data": {"$gte": data_da, "$lte": data_a},
-            "importo": {"$gt": 0},  # Solo entrate
-            "source": {"$ne": "import_manuale_pos"},  # ESCLUDI import manuali pos.xlsx
-            "categoria": {"$in": CATEGORIE_POS_ACCREDITATI}
+            "data": {"$gte": data_da, "$lte": data_a_estesa},
+            "tipo": {"$ne": "uscita"},
+            "$or": [
+                {"categoria": {"$in": CATEGORIE_POS_ACCREDITATI}},
+                {"descrizione_originale": {"$regex": "NUMIA|INCAS\\. TRAMITE P\\.O\\.S|INC\\.POS", "$options": "i"}},
+            ],
         },
-        {"_id": 0, "data": 1, "importo": 1, "descrizione": 1, "categoria": 1, "source": 1}
-    ).sort("data", 1).to_list(10000)
+        {"_id": 0, "data": 1, "importo": 1, "descrizione": 1, "descrizione_originale": 1, "categoria": 1}
+    ).sort("data", 1).to_list(20000)
     
     # 3. Carica anche chiusure POS manuali per riferimento (opzionale)
     # Prima prova dalla collection dedicata, se vuota fallback a prima_nota_banca
@@ -145,11 +165,16 @@ async def verifica_coerenza_pos_corrispettivi(
     
     pos_by_date = {}
     for p in accrediti_pos:
-        data = p.get("data", "")
+        descr = p.get("descrizione_originale") or p.get("descrizione") or ""
+        # giorno di VENDITA dalla descrizione ("... DEL 02/04/26 ...");
+        # fallback: data di accredito
+        data = _giorno_operazione_pos(descr, p.get("data", ""))
+        if not (data_da <= data <= data_a):
+            continue  # vendita fuori periodo (es. accredito di fine anno precedente)
         if data not in pos_by_date:
             pos_by_date[data] = {"importo": 0, "movimenti": []}
         pos_by_date[data]["importo"] += abs(float(p.get("importo", 0) or 0))
-        pos_by_date[data]["movimenti"].append(p.get("descrizione", "")[:50])
+        pos_by_date[data]["movimenti"].append(descr[:50])
     
     # 4. Calcola coerenza con logica calendario POS
     anomalie = []
@@ -396,61 +421,58 @@ async def riconcilia_pos_giorno(
     if elettronico <= 0:
         return {"success": False, "message": "Nessun pagamento elettronico per questa data"}
     
-    # Calcola date possibili di accredito
+    # FIX 18/07/2026: gli accrediti reali stanno nell'ESTRATTO CONTO e la
+    # descrizione NUMIA riporta il giorno di VENDITA ("... DEL 02/04/26"):
+    # si sommano TUTTI gli accrediti di quel giorno di vendita (bancomat,
+    # carte, Amex arrivano separati) invece di cercarne uno solo ±5%.
     dt = datetime.strptime(data, "%Y-%m-%d")
-    giorno_settimana = dt.weekday()
-    
-    date_possibili = []
-    if giorno_settimana <= 3:  # Lun-Gio
-        date_possibili.append((dt + timedelta(days=1)).strftime("%Y-%m-%d"))
-        date_possibili.append((dt + timedelta(days=2)).strftime("%Y-%m-%d"))
-    else:  # Ven-Dom
-        giorni_al_lunedi = 7 - giorno_settimana + 1
-        date_possibili.append((dt + timedelta(days=giorni_al_lunedi)).strftime("%Y-%m-%d"))
-        date_possibili.append((dt + timedelta(days=giorni_al_lunedi + 1)).strftime("%Y-%m-%d"))
-    
-    # Cerca accredito POS BANCARIO REALE nelle date possibili (NO import manuali!)
-    accredito_trovato = None
-    for data_accredito in date_possibili:
-        pos = await db["prima_nota_banca"].find_one({
-            "data": data_accredito,
-            "source": {"$ne": "import_manuale_pos"},  # Escludi chiusure manuali
-            "$or": [
-                {"categoria": {"$in": ["POS", "pos", "Incasso POS"]}},
-                {"descrizione": {"$regex": "POS|NEXI|SUMUP", "$options": "i"}}
-            ],
-            "importo": {"$gte": elettronico * 0.95, "$lte": elettronico * 1.05}
-        }, {"_id": 0})
-        
-        if pos:
-            accredito_trovato = {
-                "data_accredito": data_accredito,
-                "importo": pos.get("importo"),
-                "descrizione": pos.get("descrizione")
-            }
-            break
-    
-    if accredito_trovato:
-        # Aggiorna corrispettivo con riferimento
+    finestra_fine = (dt + timedelta(days=7)).strftime("%Y-%m-%d")
+    candidati = await db["estratto_conto_movimenti"].find({
+        "data": {"$gte": data, "$lte": finestra_fine},
+        "tipo": {"$ne": "uscita"},
+        "$or": [
+            {"categoria": {"$regex": "Incasso tramite POS", "$options": "i"}},
+            {"descrizione_originale": {"$regex": "NUMIA|INCAS\\. TRAMITE P\\.O\\.S|INC\\.POS", "$options": "i"}},
+        ],
+    }, {"_id": 0, "data": 1, "importo": 1, "descrizione_originale": 1, "descrizione": 1}).to_list(200)
+
+    dettagli = []
+    totale_accreditato = 0.0
+    for p in candidati:
+        descr = p.get("descrizione_originale") or p.get("descrizione") or ""
+        if _giorno_operazione_pos(descr, p.get("data", "")) != data:
+            continue
+        totale_accreditato += abs(float(p.get("importo") or 0))
+        dettagli.append({"data_accredito": p.get("data"), "importo": p.get("importo"),
+                         "descrizione": descr[:70]})
+
+    tolleranza = max(elettronico * 0.02, 5)
+    if dettagli and abs(totale_accreditato - elettronico) <= tolleranza:
         await db["corrispettivi"].update_one(
             {"data": data},
             {"$set": {
                 "pos_riconciliato": True,
-                "pos_data_accredito": accredito_trovato["data_accredito"],
-                "pos_importo_accredito": accredito_trovato["importo"]
+                "pos_data_accredito": dettagli[0]["data_accredito"],
+                "pos_importo_accredito": round(totale_accreditato, 2)
             }}
         )
-        
         return {
             "success": True,
-            "message": f"POS riconciliato: €{elettronico:.2f} accreditato il {accredito_trovato['data_accredito']}",
-            "accredito": accredito_trovato
+            "message": f"POS riconciliato: €{elettronico:.2f} → accreditati €{totale_accreditato:.2f} in {len(dettagli)} movimenti",
+            "accrediti": dettagli
         }
-    
+
+    if dettagli:
+        return {
+            "success": False,
+            "message": (f"Accrediti del giorno di vendita {data}: €{totale_accreditato:.2f} "
+                        f"su €{elettronico:.2f} attesi (differenza €{abs(totale_accreditato - elettronico):.2f})"),
+            "accrediti": dettagli,
+            "importo_atteso": elettronico
+        }
     return {
         "success": False,
-        "message": f"Accredito POS non trovato. Cercato in: {', '.join(date_possibili)}",
-        "date_cercate": date_possibili,
+        "message": f"Nessun accredito in estratto conto per il giorno di vendita {data}",
         "importo_atteso": elettronico
     }
 

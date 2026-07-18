@@ -825,8 +825,10 @@ async def get_pdf_content(collection: str, pdf_id: str):
         raise HTTPException(status_code=404, detail="Contenuto PDF non disponibile")
     
     pdf_bytes = base64.b64decode(pdf_data)
-    filename = doc.get("filename", "documento.pdf")
-    
+    # CR/LF nel nome file rendono l'header invalido → 502 (fix 18/07/2026)
+    import re as _re
+    filename = _re.sub(r'[\r\n"]+', " ", doc.get("filename") or "documento.pdf").strip()
+
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

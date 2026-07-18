@@ -10,6 +10,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from pathlib import Path
 import os
+import re
 import base64
 import hashlib
 import uuid
@@ -438,10 +439,14 @@ async def download_documento(doc_id: str):
         for i in range(0, len(pdf_data), chunk_size):
             yield base64.b64decode(pdf_data[i:i + chunk_size])
 
+    # Filename sanificato: alcuni allegati email hanno un a-capo nel nome
+    # ("Libro unico -\r\n 2026-...") e un header con CR/LF rende la risposta
+    # HTTP invalida → 502 dal gateway (bug segnalato 18/07/2026).
+    nome_sicuro = re.sub(r'[\r\n"]+', " ", doc.get("filename") or "documento.pdf").strip()
     return StreamingResponse(
         _decode_chunks(),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{doc.get("filename", "documento.pdf")}"'}
+        headers={"Content-Disposition": f'attachment; filename="{nome_sicuro}"'}
     )
 
 

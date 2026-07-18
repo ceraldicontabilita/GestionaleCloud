@@ -619,6 +619,40 @@ async def process_documents_with_ai(
         "errori": []
     }
     
+    # ── Ponte documents_inbox → documenti_classificati (18/07/2026) ──────
+    # Il bottone "Processa Allegati Email con AI" rispondeva sempre
+    # "analizzati: 0": leggeva solo documenti_classificati (pipeline legacy,
+    # vuota), mentre i documenti veri vivono in documents_inbox. I documenti
+    # senza pipeline dedicata (no buste paga, no fatture: quelle hanno già i
+    # loro parser) vengono portati qui e processati con l'AI.
+    try:
+        inbox_da_bridgare = await db["documents_inbox"].find(
+            {"pdf_data": {"$exists": True, "$nin": [None, ""]},
+             "ai_bridged": {"$ne": True},
+             "category": {"$nin": ["busta_paga", "fattura"]}},
+            {"_id": 0, "id": 1, "filename": 1, "pdf_data": 1, "category": 1,
+             "tipo_documento": 1, "email_from": 1, "email_subject": 1, "email_date": 1},
+        ).to_list(500)
+        for d in inbox_da_bridgare:
+            gia = await db["documenti_classificati"].find_one({"inbox_id": d.get("id")})
+            if not gia:
+                await db["documenti_classificati"].insert_one({
+                    "id": d.get("id"),
+                    "inbox_id": d.get("id"),
+                    "filename": d.get("filename"),
+                    "tipo": d.get("category") or d.get("tipo_documento") or "generico",
+                    "pdf_base64": d.get("pdf_data"),
+                    "sender": d.get("email_from"),
+                    "subject": d.get("email_subject"),
+                    "data_email": d.get("email_date"),
+                    "fonte": "documents_inbox",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                })
+            await db["documents_inbox"].update_one(
+                {"id": d["id"]}, {"$set": {"ai_bridged": True}})
+    except Exception as e:
+        risultati["errori"].append(f"Ponte documents_inbox: {e}")
+
     # Query per documenti da processare
     query = {}
     if not process_all:
