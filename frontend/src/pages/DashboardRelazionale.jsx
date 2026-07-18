@@ -600,7 +600,7 @@ function _destinazioneAlert(a) {
   const coll = (a.entita_collection || '').toLowerCase();
   const id = a.entita_id;
   if (!id) return null;
-  if (coll === 'invoices') return `/archivio-fatture-ricevute?fattura=${id}`;
+  if (coll === 'invoices') return `/archivio-fatture-ricevute?invoice_id=${id}`;
   if (coll.startsWith('prima_nota')) return '/prima-nota';
   if (coll.includes('f24')) return '/riconciliazione/f24';
   if (coll.includes('fornitori') || coll === 'suppliers') return `/fornitori#search=${id}`;
