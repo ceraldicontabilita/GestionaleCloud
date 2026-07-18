@@ -19,6 +19,20 @@
   400100 di contabilita_italiana) convertilo SEMPRE ai codici ufficiali con
   app/services/mapping_piano_conti.py (OPERATIVO_A_UFFICIALE). NON chiedere
   piu' quale schema usare: e' il CEE ufficiale.
+- REGOLA CANONICA POS (utente 18/07/2026, definitiva — dettaglio in
+  memoria/AUDIT_ESTERNO_18_07_2026.md e LOGICA_FUNZIONAMENTO.md §4):
+  cassa DARE = corrispettivo totale XML; cassa AVERE "POS Verso Banca" =
+  POS REALE della chiusura manuale serale (fallback XML, fonte tracciata);
+  banca DARE = stessa cifra come puro TRASFERIMENTO (source
+  trasferimento_pos, stesso trasferimento_id) — una sola operazione su
+  due registri, mai duplicazioni; l'accredito dell'estratto conto NON
+  crea entrate ma riconcilia il trasferimento del giorno di vendita
+  (causale NUMIA); XML = dato fiscale: differenza col reale = "non
+  battuto" (saldo progressivo in Coerenza POS) e controllo di
+  trascrizione del corrispettivo manuale (manuale ≠ XML → anomalia).
+  Ogni scrittura di Prima Nota passa dal motore unico
+  app/services/scritture_contabili.py: MAI insert diretti nuovi
+  (test-guardia in tests/test_motore_unico_scritture.py).
 - SPECIFICA VINCOLANTE F24/cedolini/IRES/IRAP/Chat: il documento
   memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md e' fonte di verita'
   per tutto il motore paghe/fisco (riassunto operativo in memoria/INDEX.md,

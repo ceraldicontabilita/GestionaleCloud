@@ -1,0 +1,93 @@
+# Audit esterno 18/07/2026 — trascrizione e stato lavori
+
+Audit consegnato dall'utente il 18/07/2026 (verifica su commit ad239e8:
+71 pagine React, 52 rotte, 533 pulsanti, 659 azioni UI). Questo file è la
+trascrizione operativa: per il punto POS la logica PROPOSTA dall'audit è
+stata SOSTITUITA dalla REGOLA CANONICA fissata dall'utente (sotto), che
+prevale. Stato aggiornato onestamente: ✅ solo ciò che è stato fatto E
+verificato su produzione.
+
+## REGOLA CANONICA POS (utente, 18/07/2026 — sostituisce la proposta audit)
+
+1. **Cassa DARE** = corrispettivo totale del giorno (XML registratore).
+2. **Cassa AVERE "POS Verso Banca"** = il **POS REALE** trascritto la sera
+   nella card delle chiusure manuali ("quello che esce dal terminale");
+   fallback elettronico XML solo se la chiusura non è trascritta
+   (`quota_pos_fonte`).
+3. **Banca DARE** = la stessa cifra come puro **TRASFERIMENTO** cassa→banca
+   (source `trasferimento_pos`, stesso `trasferimento_id`): una sola
+   operazione su due registri, mai duplicazioni.
+4. **L'accredito dell'estratto conto NON crea entrate**: riconcilia il
+   trasferimento del giorno di vendita (causale NUMIA "DEL gg/mm/aa"),
+   accumulando i circuiti, tolleranza 2%/5€.
+5. **Coerenza POS**: XML elettronico = dato FISCALE; chiusura manuale =
+   dato OPERATIVO reale. La differenza (reale − XML) è il **NON BATTUTO**,
+   esposto con **saldo progressivo** per recuperarlo nei giorni successivi.
+6. **Controllo di TRASCRIZIONE**: lo stesso XML verifica anche il
+   corrispettivo battuto a mano la sera (totale/contanti): se manuale ≠ XML
+   la cassa è sbilanciata e non reale → anomalia evidenziata (invariante
+   `trascrizione_corrispettivo_manuale` nel collaudo).
+
+La regola è codificata in: `app/services/scritture_contabili.py` (motore
+unico), invarianti `trasferimento_pos_speculare` e
+`trascrizione_corrispettivo_manuale` del collaudo, Coerenza POS
+(non_battuto + progressivo), LOGICA_FUNZIONAMENTO.md e CLAUDE.md.
+
+## P0
+
+| # | Punto audit | Stato |
+|---|---|---|
+| P0-1 | Logica POS/Corrispettivi contraddittoria (3 flussi diversi) | ✅ FATTO — i tre flussi (import XML, sync scheduler, propagazione eventi) delegano tutti a `registra_corrispettivo` del motore unico secondo la regola canonica; migrazione del pregresso 2026 eseguita su prod (141 giorni, trasferimenti €294.286,70, 729 accrediti EC riconciliati) |
+| P0-2 | Manca un motore unico di scrittura contabile (>50 writer diretti) | 🟡 IN CORSO PER GRADI — motore creato (`scritture_contabili.py`, validazione obbligatoria), corrispettivi/POS migrati, test-guardia congela i 18 writer storici reali (la lista può solo restringersi). Restano da migrare: fatture, assegni, F24, PayPal, mutui, riconciliazioni |
+| P0-3 | Il collaudo POS usava XML contro banca | ✅ FATTO — gerarchia corretta: chiusura manuale = operativo, XML = fiscale (+ controllo trascrizione), EC = accredito reale che riconcilia il trasferimento, attribuzione al giorno di vendita dalla causale |
+
+## P1 Sicurezza
+
+| # | Punto | Stato |
+|---|---|---|
+| P1-1 | Token JWT stampato nei log browser (WebSocket) | ✅ FATTO — l'URL non viene più loggato |
+| P1-2 | Cookie senza flag Secure | ✅ FATTO — Secure in produzione (Render/https) su login, PIN e session_active |
+| P1-3 | ADMIN_PIN in chiaro ammesso | ✅ FATTO — supporto rimosso, resta solo PIN_HASH_ADMIN (config prod verificata). NOTA: l'hash resta SHA-256, debole per un PIN corto — mitigato dal blocco tentativi (5/5min); upgrade a KDF lento = lavoro futuro |
+| P1-4 | Verbali email: funzioni non implementate (return None) | ❌ DA FARE — `cerca_quietanza_per_verbale`/`cerca_pdf_per_verbale` sono stub; flusso verbale→targa→driver→trattenuta non certificabile |
+
+## Interfaccia
+
+| Punto | Stato |
+|---|---|
+| Movimenti Banca: celle descrizione ~800px | ✅ FATTO (a capo, overflowWrap) |
+| Mittenti Email: select oltre il contenitore | ✅ FATTO (maxWidth 100%) |
+| Mappa gestionale: sezioni compresse | ✅ FATTO (minmax(min(270px,100%))) |
+| Assegni: campi filtro senza etichetta | ✅ FATTO (aria-label dai placeholder — 8 campi; restanti da verificare a video) |
+| Impostazioni F24: bottoni senza nome | ✅ FATTO (aria-label sui bottoni icona) |
+| Bottoni < 36px su molte pagine | ❌ DA FARE (passata dedicata mobile) |
+| Viewer condiviso usato solo da 4 pagine | ❌ DA FARE (Scadenze, PayPal, Bilancio, Commercialista, Verbali) |
+
+## Buoni brevi
+
+| Punto | Stato |
+|---|---|
+| Rimuovere log URL WebSocket | ✅ |
+| encoding="utf-8" nei 4 test | ✅ |
+| PYTHONUTF8=1 nel workflow backend | ✅ |
+| Cookie Secure in produzione | ✅ |
+| Eliminare ADMIN_PIN in chiaro | ✅ |
+| Nome repository nel README | ✅ (già corretto: "Ceraldi ERP") |
+| Etichette bottoni F24 | ✅ |
+| Etichette filtri Assegni | ✅ |
+| Select mobile Mittenti Email | ✅ |
+| Descrizioni adattive Movimenti Banca | ✅ |
+| Sezioni strette Mappa gestionale | ✅ |
+| Pagina Admin "Esito ultimo collaudo" | ❌ DA FARE (API pronte: /api/collaudo/ultimo e /storico) |
+| Audit layout esteso da 19 a 52 rotte | ❌ DA FARE (esiste scripts/collaudo_ui.mjs che copre 83 rotte on-demand) |
+| Test vieta nuovi writer diretti | ✅ (test_motore_unico_scritture) |
+| Test vieta corrispettivo_pos come accredito | ✅ (2 test-guardia) |
+
+## Lavori non riducibili
+
+| Punto | Stato |
+|---|---|
+| Motore unico di scrittura | 🟡 in corso per gradi (vedi P0-2) |
+| Corrispettivi → Cassa → POS → Banca definitivo | ✅ regola canonica applicata e migrata |
+| Migrazione righe sintetiche POS | ✅ eseguita (104 convertite + 37 create, EC riconciliati) |
+| Verbali → driver → trattenuta cedolino | ❌ da fare |
+| Collaudo E2E con database di prova (bottoni distruttivi premuti davvero) | ❌ da fare — oggi: collaudo UI read-only (83 rotte) + 12 invarianti notturni |

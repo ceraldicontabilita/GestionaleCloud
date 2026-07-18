@@ -282,9 +282,35 @@ async def check_trasferimento_pos_speculare(db) -> Dict[str, Any]:
                            "operazione su due registri)", "esempi": esempi}
 
 
+async def check_trascrizione_corrispettivo_manuale(db) -> Dict[str, Any]:
+    """REGOLA CANONICA (integrazione utente 18/07/2026): l'XML è anche il
+    controllo di TRASCRIZIONE del corrispettivo battuto a mano la sera —
+    se il manuale differisce dall'XML la cassa risulta sbilanciata e non
+    reale. Ogni giorno con totale_manuale ≠ totale XML è un'anomalia."""
+    anno = datetime.now(timezone.utc).year
+    count, esempi = 0, []
+    async for c in db["corrispettivi"].find(
+            {"data": {"$regex": f"^{anno}"},
+             "totale_manuale": {"$exists": True, "$nin": [None, 0]}},
+            {"_id": 0, "data": 1, "totale": 1, "totale_manuale": 1}):
+        xml_tot = float(c.get("totale") or 0)
+        man = float(c.get("totale_manuale") or 0)
+        if xml_tot > 0 and abs(xml_tot - man) > 0.01:
+            count += 1
+            if len(esempi) < 5:
+                esempi.append({"giorno": c.get("data"),
+                               "manuale": round(man, 2), "xml": round(xml_tot, 2),
+                               "differenza": round(man - xml_tot, 2)})
+    return {"nome": "trascrizione_corrispettivo_manuale", "violazioni": count,
+            "descrizione": "Corrispettivi serali battuti a mano che NON coincidono "
+                           "con l'XML del registratore (anomalia di trascrizione: "
+                           "cassa sbilanciata non reale)", "esempi": esempi}
+
+
 CHECKS = [
     check_fatture_banca_senza_ec,
     check_trasferimento_pos_speculare,
+    check_trascrizione_corrispettivo_manuale,
     check_ec_dangling_e_duplicati,
     check_pos_giornaliero,
     check_documenti_fuori_whitelist,
