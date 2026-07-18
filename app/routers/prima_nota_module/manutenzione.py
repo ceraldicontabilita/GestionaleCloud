@@ -1782,7 +1782,7 @@ async def ripristina_fatture_con_movimento_cancellato(
             dettaglio.append({"fattura": f.get("invoice_number"),
                               "fornitore": f.get("supplier_name"),
                               "importo": f.get("total_amount")})
-        if not dry_run:
+        if not dry_run and f.get("id"):  # record legacy senza id: mai KeyError
             await db["invoices"].update_one({"id": f["id"]}, {"$set": {
                 "pagato": False, "paid": False, "stato_pagamento": "da_pagare",
                 "prima_nota_id": None, "prima_nota_tipo": None,
