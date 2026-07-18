@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1010 endpoint** in **106 gruppi**.
+> Totale **1011 endpoint** in **106 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 641 · ext esterni = 76 · — da verificare = 293
+**Riepilogo uso:** ✓ frontend = 641 · ext esterni = 76 · — da verificare = 294
 
 ## AI Parser  (11)
 
@@ -779,7 +779,7 @@
 | GET | `/api/fatture-estere/da-verificare` | ✓ | fatture_estera_verifica |
 | POST | `/api/fatture-estere/{fattura_id}/verifica` | ✓ | fatture_estera_verifica |
 
-## Fatture Ricevute  (21)
+## Fatture Ricevute  (22)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -788,6 +788,7 @@
 | POST | `/api/fatture-ricevute/auto-ricostruisci-dati` | ✓ | fatture_module.pagamento |
 | POST | `/api/fatture-ricevute/backfill-autoroute` | — | fatture_module.pagamento |
 | POST | `/api/fatture-ricevute/cambia-metodo-pagamento` | — | fatture_module.pagamento |
+| POST | `/api/fatture-ricevute/elimina-anni-vecchi` | — | fatture_module.crud |
 | POST | `/api/fatture-ricevute/elimina-gusci-vuoti` | — | fatture_module.crud |
 | POST | `/api/fatture-ricevute/export-selezione` | ✓ | fatture_module.export_selezione |
 | GET | `/api/fatture-ricevute/fattura/{fattura_id}` | ✓ | fatture_module.crud |
