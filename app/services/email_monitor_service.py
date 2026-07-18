@@ -383,7 +383,20 @@ async def processa_nuovi_documenti(db) -> Dict[str, Any]:
         "estratti_bnl": 0,
         "errori": []
     }
-    
+
+    # Auto-riparazione (bug segnalato 18/07/2026): la pipeline marcava
+    # `processed: True` ma non toccava mai `status`, che è il campo letto
+    # dal badge in "Tutti i Documenti" — i documenti da Drive restavano
+    # "NUOVO" per sempre pur essendo già stati esaminati.
+    try:
+        await db["documents_inbox"].update_many(
+            {"$or": [{"processed": True}, {"xml_processed": True}],
+             "status": {"$in": ["nuovo", "da_processare", None]}},
+            {"$set": {"status": "processato"}}
+        )
+    except Exception as e:
+        logger.debug(f"Allineamento status documenti processati: {e}")
+
     # 1. Processa buste paga con FLUSSO COMPLETO (MongoDB-only)
     try:
         from app.services.cedolini_manager import processa_tutti_cedolini_pdf
@@ -418,11 +431,12 @@ async def processa_nuovi_documenti(db) -> Dict[str, Any]:
                     results["prima_nota_create"] += res.get("prima_nota_create", 0)
                     results["riconciliati"] += res.get("riconciliati", 0)
                     
-                    # Marca come processato
+                    # Marca come processato (anche `status`: è il campo del badge)
                     await db["documents_inbox"].update_one(
                         {"id": doc["id"]},
                         {"$set": {
                             "processed": True,
+                            "status": "processato",
                             "processed_at": datetime.now(timezone.utc).isoformat(),
                             "cedolini_estratti": res.get("cedolini_processati", 0)
                         }}
