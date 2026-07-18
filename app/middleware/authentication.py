@@ -28,6 +28,8 @@ PUBLIC_PATHS = {
     
     # Authentication endpoints
     "/api/auth/login",
+    "/api/auth/logout",
+    "/api/auth/verify",  # verifica il token da sé (401 con messaggio specifico se assente/scaduto)
     "/api/auth/setup",  # Setup iniziale admin (solo se nessun admin esiste)
     # RIMOSSO: "/api/auth/register" — ora richiede autenticazione (admin crea utenti)
 
@@ -60,7 +62,11 @@ PUBLIC_PATHS = {
 
 # Path prefixes that don't require authentication
 PUBLIC_PREFIXES = [
-    "/api/auth/",        # All auth endpoints
+    # NOTA (audit sicurezza 19/07/2026): "/api/auth/" come prefisso è stato
+    # rimosso da qui — rendeva pubblico per costruzione QUALSIASI endpoint
+    # futuro montato sotto /api/auth/, non solo i 3 reali (login/logout/
+    # verify), che ora sono elencati esplicitamente in PUBLIC_PATHS con lo
+    # stesso identico comportamento di prima (nessun cambio per il frontend).
     "/api/public/",      # Explicit public API
     "/docs",             # Swagger UI assets
     "/redoc",            # ReDoc assets

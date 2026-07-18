@@ -48,9 +48,15 @@ class TestPublicPaths:
 class TestPublicPrefixes:
     """Verifica prefissi pubblici."""
 
-    def test_auth_prefix(self):
-        """Tutti gli endpoint auth sono pubblici."""
-        assert "/api/auth/" in PUBLIC_PREFIXES
+    def test_auth_paths_espliciti(self):
+        """I 3 endpoint auth reali (login/logout/verify) sono pubblici come
+        path espliciti, non più come prefisso (audit sicurezza 19/07/2026:
+        il prefisso "/api/auth/" rendeva pubblico anche qualunque endpoint
+        futuro montato lì sotto)."""
+        assert "/api/auth/login" in PUBLIC_PATHS
+        assert "/api/auth/logout" in PUBLIC_PATHS
+        assert "/api/auth/verify" in PUBLIC_PATHS
+        assert "/api/auth/" not in PUBLIC_PREFIXES
 
     def test_public_api_prefix(self):
         """API esplicitamente pubbliche."""
@@ -97,8 +103,8 @@ class TestAllowlistCongelata:
     ALLOWLIST_PATHS_ATTESA = {
         # Health check
         "/", "/health", "/api/health", "/api/ping",
-        # Autenticazione (login PIN + setup primo admin)
-        "/api/auth/login", "/api/auth/setup",
+        # Autenticazione (login/logout/verify + setup primo admin)
+        "/api/auth/login", "/api/auth/logout", "/api/auth/verify", "/api/auth/setup",
         # Integrazioni esterne con auth propria (verify_token Meta, ERP_BRIDGE_SECRET)
         "/api/whatsapp/webhook", "/api/erp/ponte/fattura-ricevuta",
         # Pagine legali (revisione app Meta)
@@ -109,7 +115,7 @@ class TestAllowlistCongelata:
         "/robots.txt", "/sitemap.xml", "/favicon.ico",
     }
 
-    ALLOWLIST_PREFISSI_ATTESA = ["/api/auth/", "/api/public/", "/docs", "/redoc"]
+    ALLOWLIST_PREFISSI_ATTESA = ["/api/public/", "/docs", "/redoc"]
 
     def test_public_paths_esattamente_quelli_attesi(self):
         assert PUBLIC_PATHS == self.ALLOWLIST_PATHS_ATTESA, (
