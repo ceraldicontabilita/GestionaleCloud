@@ -505,11 +505,48 @@ async def ripara_fornitori_sconosciuti() -> Dict[str, Any]:
                               "cedente_denominazione": estratti["nome"]}})
                 fatture_corrette += 1
 
+        # FALLBACK senza XML (fatture da Drive/estere senza xml_raw):
+        # 1) il nome scritto su un'ALTRA fattura viva della stessa P.IVA
+        if manca_nome and not dati.get("nome"):
+            gemella = await db[Collections.INVOICES].find_one(
+                {"$or": [{"supplier_vat": {"$in": chiavi}}, {"cedente_piva": {"$in": chiavi}}],
+                 "status": {"$nin": ["deleted", "archived"]},
+                 "supplier_name": {"$nin": [None, ""]}},
+                {"_id": 0, "supplier_name": 1})
+            nome_gemella = (gemella or {}).get("supplier_name") or ""
+            if nome_gemella and "sconosciut" not in nome_gemella.lower():
+                dati["nome"] = nome_gemella.strip()
+        # 2) VIES (registro IVA europeo) sulla P.IVA
+        if manca_nome and not dati.get("nome"):
+            piva_pulita = re.sub(r"[^0-9]", "", chiavi[0])
+            if len(piva_pulita) == 11:
+                try:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        r = await client.post(
+                            "https://ec.europa.eu/taxation_customs/vies/rest-api/check-vat-number",
+                            json={"countryCode": "IT", "vatNumber": piva_pulita})
+                    if r.status_code == 200:
+                        v = r.json()
+                        if v.get("valid") and v.get("name") and v["name"] != "---":
+                            dati["nome"] = v["name"].strip().title()
+                except Exception:
+                    pass
+
         upd: Dict[str, Any] = {}
         if manca_nome and dati.get("nome"):
             upd["ragione_sociale"] = upd["denominazione"] = upd["nome"] = dati["nome"]
             corretti_nome += 1
             dettaglio.append({"piva": chiavi[0], "nome": dati["nome"]})
+            # propaga il nome anche alle fatture della stessa P.IVA rimaste
+            # senza nome o "Fornitore Sconosciuto"
+            r = await db[Collections.INVOICES].update_many(
+                {"$or": [{"supplier_vat": {"$in": chiavi}}, {"cedente_piva": {"$in": chiavi}}],
+                 "status": {"$nin": ["deleted", "archived"]},
+                 "$and": [{"$or": [
+                     {"supplier_name": {"$in": [None, ""]}},
+                     {"supplier_name": {"$regex": "sconosciut", "$options": "i"}}]}]},
+                {"$set": {"supplier_name": dati["nome"]}})
+            fatture_corrette += getattr(r, "modified_count", 0) or 0
         if manca_iban and dati.get("iban"):
             upd["iban"] = dati["iban"]
             iban_aggiunti += 1
