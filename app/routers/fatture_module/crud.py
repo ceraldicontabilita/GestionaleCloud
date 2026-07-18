@@ -838,11 +838,14 @@ async def elimina_fatture_guscio_vuoto(
 async def elimina_fatture_anni_vecchi(
     dry_run: bool = Query(True, description="Solo conteggio"),
     anni: str = Query("2023,2024,2025", description="Anni da eliminare, separati da virgola"),
+    definitivo: bool = Query(False, description="Elimina FISICAMENTE dal database (con backup)"),
 ) -> Dict[str, Any]:
-    """Ordine utente (17-18/07/2026): le fatture 2023/24/25 vanno eliminate
-    TUTTE. Le eliminazioni per id saltavano i record legacy con schema
-    alieno (numero_fattura/fornitore_nome/data_fattura, senza campo id):
-    qui si copre ogni schema e si elimina per _id."""
+    """Ordine utente (17-18/07/2026, ribadito): le fatture 2023/24/25 vanno
+    eliminate TUTTE — 'dal database', non nascoste. Copre ogni schema
+    (invoice_date, data_fattura legacy, campo anno) e con definitivo=true
+    le rimuove fisicamente (incluse quelle già soft-delete, che le card
+    dell'archivio continuavano a contare), dopo backup in una collection
+    invoices_backup_*."""
     db = Database.get_db()
     lista_anni = [a.strip() for a in anni.split(",") if a.strip()]
     condizioni = []
@@ -850,24 +853,41 @@ async def elimina_fatture_anni_vecchi(
         condizioni += [{"invoice_date": {"$regex": f"^{a}"}},
                        {"data_fattura": {"$regex": f"^{a}"}},
                        {"anno": int(a)}]
+    query: Dict[str, Any] = {"$or": condizioni}
+    if not definitivo:
+        query["status"] = {"$nin": ["deleted", "archived"]}
+
     docs = await db["invoices"].find(
-        {"$or": condizioni, "status": {"$nin": ["deleted", "archived"]}},
+        query,
         {"invoice_number": 1, "numero_fattura": 1, "supplier_name": 1,
-         "fornitore_nome": 1, "invoice_date": 1, "data_fattura": 1},
+         "fornitore_nome": 1, "invoice_date": 1, "data_fattura": 1, "status": 1},
     ).to_list(20000)
 
     esempi = [{"numero": d.get("invoice_number") or d.get("numero_fattura"),
                "fornitore": (d.get("supplier_name") or d.get("fornitore_nome") or "")[:30],
-               "data": d.get("invoice_date") or d.get("data_fattura")} for d in docs[:10]]
+               "data": d.get("invoice_date") or d.get("data_fattura"),
+               "gia_nascosta": d.get("status") == "deleted"} for d in docs[:10]]
+    backup_collection = None
     if not dry_run and docs:
         from datetime import datetime as _dt, timezone as _tz
         now = _dt.now(_tz.utc).isoformat()
-        for d in docs:
-            await db["invoices"].update_one(
-                {"_id": d["_id"]},
-                {"$set": {"status": "deleted", "deleted": True,
-                          "deleted_reason": "anno_vecchio_ordine_utente",
-                          "deleted_at": now}})
-    return {"dry_run": dry_run, "anni": lista_anni,
+        if definitivo:
+            # backup completo, poi delete fisico
+            backup_collection = f"invoices_backup_anni_vecchi_{_dt.now(_tz.utc).strftime('%Y%m%d_%H%M%S')}"
+            completi = await db["invoices"].find(query).to_list(20000)
+            if completi:
+                for c in completi:
+                    c["_backup_at"] = now
+                await db[backup_collection].insert_many(completi)
+            await db["invoices"].delete_many(query)
+        else:
+            for d in docs:
+                await db["invoices"].update_one(
+                    {"_id": d["_id"]},
+                    {"$set": {"status": "deleted", "deleted": True,
+                              "deleted_reason": "anno_vecchio_ordine_utente",
+                              "deleted_at": now}})
+    return {"dry_run": dry_run, "anni": lista_anni, "definitivo": definitivo,
             "eliminate" if not dry_run else "da_eliminare": len(docs),
+            "backup_collection": backup_collection,
             "esempi": esempi}

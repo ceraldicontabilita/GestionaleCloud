@@ -339,8 +339,31 @@ async def cerca_stipendi_per_associazione(
         ]
     
     stipendi = await db.prima_nota_salari.find(query, {"_id": 0}).sort("data", -1).limit(limit).to_list(limit)
-    
-    return {"stipendi": stipendi, "totale": len(stipendi)}
+
+    # Leggibilità (segnalazione utente 18/07/2026: "€0,00, non capisco se
+    # sono bonifici o cedolini"): queste righe sono ATTESE DI PAGAMENTO
+    # generate dai cedolini. importo = netto busta; se il netto non è stato
+    # letto dal PDF lo si dice chiaramente; i bonifici già trovati in
+    # estratto conto sono riportati. Le righe senza dipendente né importo
+    # non potranno mai essere associate: escluse dalla lista.
+    visibili = []
+    for s in stipendi:
+        nome = (s.get("dipendente") or s.get("dipendente_nome") or "").strip()
+        busta = float(s.get("importo_busta") or s.get("importo") or 0)
+        bonifici = float(s.get("importo_bonifico") or 0)
+        if not nome and busta <= 0:
+            continue  # riga inservibile (né nome né importo)
+        s["importo"] = busta
+        dettagli = []
+        dettagli.append(f"busta € {busta:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                        if busta > 0 else "netto busta non letto dal PDF")
+        if bonifici > 0:
+            dettagli.append(f"bonifici trovati € {bonifici:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        s["descrizione"] = (f"Stipendio {nome} - {s.get('mese', 0):02d}/{s.get('anno', '')}"
+                            f" · {' · '.join(dettagli)}")
+        visibili.append(s)
+
+    return {"stipendi": visibili, "totale": len(visibili)}
 
 
 async def cerca_f24_per_associazione(

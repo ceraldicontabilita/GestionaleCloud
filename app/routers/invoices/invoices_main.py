@@ -119,7 +119,12 @@ async def list_invoices(
     limit: int = Query(100, description="Limit results", le=1000),
     skip: int = Query(0, description="Skip results"),
 ) -> List[Dict[str, Any]]:
+    # Le soft-delete non devono mai comparire nell'elenco (bug segnalato
+    # 18/07/2026: le fatture 2024 eliminate restavano visibili), a meno che
+    # non si chieda esplicitamente status=deleted.
     query: Dict[str, Any] = {}
+    if status != "deleted":
+        query["status"] = {"$nin": ["deleted", "archived"]}
 
     if anno is not None:
         start = f"{anno}-01-01"
