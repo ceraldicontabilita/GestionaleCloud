@@ -92,15 +92,17 @@ Altre garanzie trasversali:
 | Cedolini | **Email** da mittenti attendibili + **cartella Drive cedolini paga** (PDF) | ogni ora (attivo) |
 | F24 commercialista | Email da mittenti attendibili | ogni ora (**attivo** dal 13/07/2026, `ENABLE_EMAIL_F24_SYNC` — parser non ancora validato su F24 reali) |
 | Verbali/multe | Email da mittenti attendibili | ogni ora (**attivo** dal 13/07/2026, `ENABLE_EMAIL_VERBALI_SYNC`) |
-| Avvisi fattura in arrivo | **Email** da noreply@fatturazioneelettronica.aruba.it | ogni ora (attivo, solo dall'attivazione in avanti) |
 
-Regola non negoziabile: **le fatture arrivano SOLO da Drive, mai da Gmail**. Se una
-scansione email trova un file che sembra una fattura elettronica, non la importa:
+Regola non negoziabile: **le fatture arrivano SOLO da Drive, mai da Gmail né da PEC**.
+Se una scansione email trova un file che sembra una fattura elettronica, non la importa:
 genera un avviso di anomalia (qualcuno sta mandando fatture per il canale sbagliato).
 
-**Avvisi Aruba ≠ fatture**: dalla notifica Aruba il sistema legge solo fornitore,
-numero e importo e crea una "**fattura attesa**" (vedi §4): sa in anticipo cosa deve
-arrivare, ma il documento vero resta quello XML che arriva da Drive.
+**Rimosso (18/07/2026, scelta utente)**: lo scanner delle notifiche email Aruba
+(`noreply@fatturazioneelettronica.aruba.it`) che creava "fatture attese" e poteva
+registrare in automatico un anticipo in Prima Nota da una semplice notifica, prima
+che il documento vero arrivasse. Nessun dato/fattura viene più creato o scaricato
+dalla casella PEC/email per questo canale; il tab Provvisori mostra solo le fatture
+reali già importate da Drive in attesa di conferma cassa/banca.
 
 Ogni documento entra in "Documenti / Import" con uno stato di lavorazione:
 trovato → importato → classificato → elaborato dal parser → record gestionale creato.
@@ -415,31 +417,6 @@ Cassa/Banca con `fattura_id` marca sempre `pagato=true`, `stato_pagamento=
 comportamento del flusso "Paga in Cassa/Banca" da scheda fattura. Un'entrata
 (es. corrispettivo) collegata per errore a un `fattura_id` non tocca invece
 nulla: non rappresenta mai un pagamento fornitore.
-
-**Fatture attese (avvisi email Aruba)** — nel tab Provvisori
-- **Scansione**: automatica, ogni ora (job schedulato — prima di questa
-  correzione, 2026-07-14, esisteva solo come funzione manuale mai richiamata
-  da nessuna pagina: la casella non veniva mai controllata da sola).
-- Quando Aruba avvisa che una fattura è stata recapitata, il sistema crea una
-  "fattura attesa" con fornitore, numero e importo letti dalla mail, e il
-  suggerimento cassa/banca preso dal metodo del fornitore (stesso motore di tutto
-  il resto).
-- **Registrazione automatica (scelta del 10-07-2026)**: se il fornitore ha metodo
-  certo (Cassa o Banca), l'anticipo viene registrato **da solo** in prima nota,
-  marcato "annunciata da email, XML in arrivo" (nei Provvisori compare "✓ anticipo
-  (auto)"). Se il metodo è Misto o non definito, la scelta resta tua, a un tap
-  (💵/🏦) dal tab Provvisori.
-- Quando l'XML vero arriva (da Drive o quadratura Elaborate), il sistema **riscontra**
-  l'attesa per numero+importo: il movimento anticipato viene agganciato alla
-  fattura — **mai due movimenti per la stessa fattura**.
-- Solleciti a due stadi: dopo **3 giorni** senza XML il sistema ripassa da solo la
-  cartella Elaborate di Drive (recupero mirato: sa già cosa cercare) e, se manca
-  ancora, avviso "Fattura annunciata ma XML mai arrivato"; dopo **12 giorni** (il
-  termine normativo di emissione/trasmissione allo SDI della fattura immediata)
-  scatta l'allarme critico "oltre termine": va sollecitato il fornitore o
-  verificato il canale Drive.
-- Vale solo dall'attivazione in avanti: il pregresso resta coperto dalla quadratura
-  Drive settimanale.
 
 **Fatture ESTERE via email** (Integrazioni → Mittenti Email)
 - Le fatture **italiane** arrivano sempre via SDI/Aruba/Drive in XML (FatturaPA):

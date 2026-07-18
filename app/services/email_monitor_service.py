@@ -603,10 +603,9 @@ async def run_full_sync(db) -> Dict[str, Any]:
     """
     Esegue un ciclo completo di sincronizzazione:
     1. Scarica nuovi documenti dalla posta (ultimo 1 giorno)
-    2. Scarica notifiche fatture Aruba → operazioni da confermare
-    3. Scarica F24 automatici (se configurati)
-    4. Ricategorizza documenti
-    5. Processa nuovi documenti
+    2. Scarica F24 automatici (se configurati)
+    3. Ricategorizza documenti
+    4. Processa nuovi documenti
 
     IMPORTANTE: I duplicati vengono SEMPRE saltati (controllo hash file)
     """
@@ -615,7 +614,6 @@ async def run_full_sync(db) -> Dict[str, Any]:
     results = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "email_sync": None,
-        "aruba_sync": None,
         "f24_sync": None,
         "ricategorizzazione": None,
         "processamento": None,
@@ -625,18 +623,7 @@ async def run_full_sync(db) -> Dict[str, Any]:
         # 1. Scarica email documenti (ultimo 1 giorno - i duplicati vengono saltati)
         results["email_sync"] = await sync_email_documents(db, giorni=1)
 
-        # 2. Notifiche fatture Aruba → fatture attese (anticipo Prima Nota).
-        # Prima questo passo era solo dichiarato nel docstring: aruba_sync
-        # restava None e la riga di log sotto andava in errore (None.get).
-        try:
-            from app.services.aruba_notifiche import scan_notifiche_aruba, controlla_attese_scadute
-            results["aruba_sync"] = await scan_notifiche_aruba(db)
-            results["aruba_attese_scadute"] = await controlla_attese_scadute(db)
-        except Exception as e:
-            logger.warning(f"Scan notifiche Aruba non eseguito: {e}")
-            results["aruba_sync"] = {"success": False, "error": str(e), "stats": {}}
-
-        # 3. Scarica F24 automatici (se auto_scan_attivo)
+        # 2. Scarica F24 automatici (se auto_scan_attivo)
         try:
             settings = await db["f24_email_settings"].find_one({"tipo": "f24_settings"})
             if settings and settings.get("auto_scan_attivo", False):
@@ -734,9 +721,8 @@ async def run_full_sync(db) -> Dict[str, Any]:
             results["processamento"].get("estratti_bnl", 0)
         )
         
-        aruba_new = (results.get("aruba_sync") or {}).get("stats", {}).get("new_invoices", 0)
         f24_new = results.get("f24_sync", {}).get("processamento", {}).get("f24_inseriti", 0) if results.get("f24_sync") else 0
-        logger.info(f"✅ Sync completo - Doc: {results['email_sync'].get('new_documents', 0)}, Aruba: {aruba_new}, F24: {f24_new}, Processati: {_sync_stats['documents_processed']}")
+        logger.info(f"✅ Sync completo - Doc: {results['email_sync'].get('new_documents', 0)}, F24: {f24_new}, Processati: {_sync_stats['documents_processed']}")
         
         # Passo finale: esegui agenti AI
         try:
@@ -751,11 +737,10 @@ async def run_full_sync(db) -> Dict[str, Any]:
         try:
             from app.services.telegram_notifications import notifica_sync_completato
             nuovi_doc = results["email_sync"].get("new_documents", 0)
-            if nuovi_doc > 0 or aruba_new > 0 or f24_new > 0:
+            if nuovi_doc > 0 or f24_new > 0:
                 # Prepara stats per notifica
                 notifica_stats = {
                     "email_sync": results["email_sync"],
-                    "aruba_sync": results.get("aruba_sync", {}),
                     "f24_sync": results.get("f24_sync", {})
                 }
                 await notifica_sync_completato(notifica_stats)

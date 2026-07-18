@@ -766,23 +766,6 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
     except Exception:
         logger.exception("Errore propagazione evento fattura.created (upload manuale)")
 
-    # --- RISCONTRO FATTURE ATTESE (notifiche email Aruba) ---
-    # Se questa fattura era stata annunciata da una notifica Aruba, l'attesa
-    # viene marcata riscontrata; se l'utente aveva già confermato l'anticipo
-    # in prima nota, quel movimento viene agganciato alla fattura vera
-    # (lucchetto anti-doppione). Best-effort: non blocca l'import.
-    try:
-        from app.services.aruba_notifiche import riscontra_fattura_attesa
-        riscontro = await riscontra_fattura_attesa(db, invoice)
-        if riscontro and riscontro.get("anticipo_agganciato"):
-            invoice["prima_nota_id"] = (
-                await db[Collections.INVOICES].find_one(
-                    {"id": invoice["id"]}, {"_id": 0, "prima_nota_id": 1}
-                ) or {}
-            ).get("prima_nota_id")
-    except Exception:
-        logger.exception("Errore riscontro fattura attesa (email Aruba)")
-
     return invoice
 
 
