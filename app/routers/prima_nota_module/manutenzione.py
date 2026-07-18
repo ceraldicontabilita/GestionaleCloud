@@ -1000,7 +1000,11 @@ async def dedup_fatture_prima_nota(
             if fid:
                 chiave = f"fid:{fid}"
             elif rif and rif.startswith("FATT-"):
-                chiave = f"rif:{rif}"
+                # STESSA chiave del ramo fattura_id: "FATT-<id>" e
+                # fattura_id=<id> sono la stessa fattura (il vecchio
+                # sync_fatture scriveva solo il riferimento — caso GB FOOD
+                # 02/01/2026 doppia, segnalato dall'utente 18/07).
+                chiave = f"fid:{rif[5:]}"
             elif num:
                 # fallback: numero + importo + data (protegge da omonimie)
                 chiave = f"num:{num}|imp:{m.get('importo')}|d:{m.get('data')}"
