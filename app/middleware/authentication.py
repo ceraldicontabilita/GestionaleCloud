@@ -147,7 +147,17 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 content={"detail": "Authentication required"},
                 headers={"WWW-Authenticate": "Bearer"}
             )
-        
+
+        # Token revocato esplicitamente (logout) prima della scadenza naturale.
+        from app.database import Database
+        from app.utils.token_blacklist import is_revocato
+        if await is_revocato(Database.get_db(), token):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Sessione terminata (logout)"},
+                headers={"WWW-Authenticate": "Bearer"}
+            )
+
         try:
             payload = jwt.decode(
                 token,

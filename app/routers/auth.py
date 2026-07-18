@@ -89,7 +89,7 @@ def _make_token(email: str, role: str = "admin", name: str = "Admin") -> str:
     return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
 
 
-def _decode_token(request: Request) -> dict:
+async def _decode_token(request: Request) -> dict:
     """Decodifica il JWT da cookie o header Authorization. Ritorna il payload."""
     token = request.cookies.get("access_token")
     if not token:
@@ -98,6 +98,12 @@ def _decode_token(request: Request) -> dict:
             token = auth[7:]
     if not token:
         raise HTTPException(status_code=401, detail="Non autenticato")
+
+    from app.database import Database
+    from app.utils.token_blacklist import is_revocato
+    if await is_revocato(Database.get_db(), token):
+        raise HTTPException(status_code=401, detail="Sessione terminata (logout)")
+
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
     except jwt.ExpiredSignatureError:
@@ -106,9 +112,10 @@ def _decode_token(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="Token non valido")
 
 
-def verify_token(request: Request) -> str:
+async def verify_token(request: Request) -> str:
     """Verifica JWT da cookie o header Authorization. Ritorna email utente."""
-    return _decode_token(request)["sub"]
+    payload = await _decode_token(request)
+    return payload["sub"]
 
 
 # NB: gli alias legacy /api/login, /api/logout, /api/me sono stati rimossi
@@ -120,7 +127,7 @@ def verify_token(request: Request) -> str:
 async def verify(request: Request):
     """Compatibilità AuthContext frontend: verifica sessione attiva."""
     from app.utils.ruoli import normalizza_ruolo
-    payload = _decode_token(request)
+    payload = await _decode_token(request)
     email = payload["sub"]
     ruolo = normalizza_ruolo(payload.get("role"))
     return {
@@ -160,8 +167,24 @@ async def auth_login(body: LoginRequest, request: Request, response: Response):
 
 
 @router.post("/auth/logout")
-async def auth_logout(response: Response):
-    """Alias /api/auth/logout."""
+async def auth_logout(request: Request, response: Response):
+    """Alias /api/auth/logout. Revoca il token lato server (audit 19/07/2026:
+    prima il logout cancellava solo i cookie, un token rubato restava valido
+    fino a scadenza naturale)."""
+    token = request.cookies.get("access_token")
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+    if token:
+        from app.database import Database
+        from app.utils.token_blacklist import revoca_token
+        exp = None
+        try:
+            exp = jwt.decode(token, SECRET_KEY, algorithms=["HS256"], options={"verify_exp": False}).get("exp")
+        except Exception:
+            pass
+        await revoca_token(Database.get_db(), token, exp=exp)
     response.delete_cookie("access_token")
     response.delete_cookie("session_active")
     return {"ok": True}
