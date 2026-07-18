@@ -103,6 +103,10 @@ def _prepara_db(monkeypatch):
         # USCITA nell'intervallo: il CSV ha solo entrate → mai toccata
         {"id": "E3", "data": "2026-04-03", "importo": 400.0, "tipo": "uscita",
          "descrizione_originale": "VS.DISP. FAVORE Parisi Antonio"},
+        # estratto PAYPAL nella stessa collezione: mai toccato dall'export BPM
+        {"id": "E4", "data": "2026-04-03", "importo": 6.1, "tipo": "entrata",
+         "banca": "PayPal (Europe) S.à r.l et Cie, S.C.A.",
+         "descrizione_originale": "Bonifico bancario sul conto PayPal - ID: X"},
     ])
     import app.routers.bank.estratto_conto as mod
     db = _Db({"estratto_conto_movimenti": ec,
@@ -118,6 +122,7 @@ def test_dry_run_conta_senza_eliminare(monkeypatch):
     db = _prepara_db(monkeypatch)
     r = _run(pulizia_movimenti_non_in_csv(file=_upload(CSV_ENTRATE), dry_run=True, _admin={}))
     assert r["da_eliminare"] == 1
+    assert r["esclusi_altra_banca_o_paypal"] == 1
     assert r["segni_nel_csv"] == {"entrate": True, "uscite": False}
     assert r["mancanti_nel_db_da_importare"] == 1  # il versamento del 05/04
     assert not db.colls["estratto_conto_movimenti"].deleted

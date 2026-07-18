@@ -853,14 +853,22 @@ async def pulizia_movimenti_non_in_csv(
 
     movimenti_db = await db["estratto_conto_movimenti"].find(
         {"data": {"$gte": data_min, "$lte": data_max}},
-        {"_id": 0, "id": 1, "data": 1, "importo": 1, "tipo": 1,
+        {"_id": 0, "id": 1, "data": 1, "importo": 1, "tipo": 1, "banca": 1,
          "descrizione_originale": 1, "descrizione": 1, "riconciliato": 1},
     ).sort("created_at", 1).to_list(50000)
 
     rimasti = Counter(attesi)
     da_eliminare = []
     esempi = []
+    esclusi_altra_banca = 0
     for m in movimenti_db:
+        # nella stessa collezione vivono anche gli estratti PayPal e di altre
+        # banche (banca="PayPal (Europe)…"): l'export Banco BPM non può mai
+        # decidere la loro sorte
+        banca_mov = (m.get("banca") or "").upper()
+        if banca_mov and "BPM" not in banca_mov and "BANCO" not in banca_mov:
+            esclusi_altra_banca += 1
+            continue
         e_uscita = m.get("tipo") == "uscita" or float(m.get("importo") or 0) < 0
         if (e_uscita and not has_uscite) or ((not e_uscita) and not has_entrate):
             continue  # segno non coperto dall'export: mai toccato
@@ -917,6 +925,7 @@ async def pulizia_movimenti_non_in_csv(
         "movimenti_csv": len(date_csv),
         "movimenti_db_in_scope": len(movimenti_db),
         "eliminati" if not dry_run else "da_eliminare": len(da_eliminare),
+        "esclusi_altra_banca_o_paypal": esclusi_altra_banca,
         "prima_nota_scollegate": prima_nota_scollegate,
         "fatture_resettate": fatture_resettate,
         "mancanti_nel_db_da_importare": mancanti_nel_db,
