@@ -511,12 +511,74 @@ async def ripristina_provvisori_metodo_errato(
                  "$unset": {"registrata_auto_da_metodo_fornitore": ""}},
             )
 
+    # ── Un addebito reale = UNA riga (caso TOP SPINA 05/01, triplo conteggio) ──
+    # 1) Due o più righe banca agganciate alla STESSA riga di estratto conto:
+    #    lo stesso denaro uscito una volta sola contato più volte. Resta la
+    #    più vecchia; le altre tornano provvisorie (il loro pagamento reale
+    #    non è stato trovato).
+    doppioni_stesso_addebito = 0
+    righe_ec = await db[COLLECTION_PRIMA_NOTA_BANCA].find(
+        {"tipo": "uscita", "estratto_conto_id": {"$nin": [None, ""]},
+         "status": {"$nin": ["deleted", "archived"]}, "data": {"$regex": f"^{anno}"}},
+        {"_id": 0, "id": 1, "estratto_conto_id": 1, "fattura_id": 1, "created_at": 1},
+    ).to_list(20000)
+    per_ec: Dict[str, list] = {}
+    for r in righe_ec:
+        per_ec.setdefault(r["estratto_conto_id"], []).append(r)
+    for gruppo in per_ec.values():
+        if len(gruppo) <= 1:
+            continue
+        gruppo.sort(key=lambda x: x.get("created_at") or "9999")
+        for extra in gruppo[1:]:
+            doppioni_stesso_addebito += 1
+            if dry_run:
+                continue
+            await db[COLLECTION_PRIMA_NOTA_BANCA].update_one(
+                {"id": extra["id"]},
+                {"$set": {"status": "deleted",
+                          "deleted_reason": "stesso_addebito_estratto_conto_duplicato"}})
+            if extra.get("fattura_id"):
+                await db["invoices"].update_one(
+                    {"id": extra["fattura_id"]},
+                    {"$set": {"pagato": False, "stato_pagamento": "da_pagare",
+                              "prima_nota_id": None, "prima_nota_tipo": None}})
+
+    # 2) Riga "Assegno n. X" dell'auto-match quando ESISTE già una riga
+    #    fattura con lo stesso numero assegno: doppione, si elimina la riga
+    #    assegno (resta quella collegata alla fattura).
+    import re as _re2
+    righe_assegno_duplicate = 0
+    asg_rows = await db[COLLECTION_PRIMA_NOTA_BANCA].find(
+        {"tipo": "uscita", "source": "assegno_auto_match",
+         "status": {"$nin": ["deleted", "archived"]}, "data": {"$regex": f"^{anno}"}},
+        {"_id": 0, "id": 1, "descrizione": 1},
+    ).to_list(5000)
+    for r in asg_rows:
+        mnum = _re2.search(r"Assegno n\.\s*0*(\d{6,})", r.get("descrizione") or "")
+        if not mnum:
+            continue
+        num = mnum.group(1)
+        gemella = await db[COLLECTION_PRIMA_NOTA_BANCA].find_one({
+            "id": {"$ne": r["id"]},
+            "numero_assegno": {"$regex": f"0*{num}$"},
+            "status": {"$nin": ["deleted", "archived"]},
+        })
+        if gemella:
+            righe_assegno_duplicate += 1
+            if not dry_run:
+                await db[COLLECTION_PRIMA_NOTA_BANCA].update_one(
+                    {"id": r["id"]},
+                    {"$set": {"status": "deleted",
+                              "deleted_reason": "riga_assegno_duplicata_vs_fattura"}})
+
     return {
         "dry_run": dry_run,
         "anno": anno,
         "da_correggere" if dry_run else "corretti": corretti,
         "banca_verso_provvisori": len(report["banca"]),
         "cassa_verso_provvisori": len(report["cassa"]),
+        "doppioni_stesso_addebito": doppioni_stesso_addebito,
+        "righe_assegno_duplicate": righe_assegno_duplicate,
         "dettaglio": {k: v[:50] for k, v in report.items()},
     }
 
