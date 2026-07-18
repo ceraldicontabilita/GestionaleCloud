@@ -94,7 +94,7 @@ def test_writer_non_crea_mai_due_entrate_stessa_giornata():
     assert r2["prima_nota_cassa_id"] == r1["prima_nota_cassa_id"]
     # e non duplica neanche uscita POS / entrata banca
     assert len([m for m in db["prima_nota_cassa"].docs if m["tipo"] == "uscita"]) == 1
-    assert db["prima_nota_banca"].docs == []  # MODELLO POS 18/07: mai banca sintetica
+    assert len(db["prima_nota_banca"].docs) == 1  # REGOLA CANONICA: un solo trasferimento, mai duplicato
 
 
 def test_scheduler_assegna_id_ai_doc_legacy_e_non_ricrea(monkeypatch):

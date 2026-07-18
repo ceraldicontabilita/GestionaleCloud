@@ -1880,47 +1880,122 @@ async def migra_pos_accrediti_reali(
     dry_run: bool = Query(True, description="Solo conteggio"),
     anno: int = Query(2026),
 ) -> Dict[str, Any]:
-    """MODELLO POS (decisione utente 18/07/2026): l'entrata banca è
-    l'accredito REALE dell'estratto conto, non la riga sintetica alla data
-    del corrispettivo. Migrazione una-tantum:
-    1) le righe banca sintetiche (source corrispettivo_pos) vengono
-       soft-deletate;
-    2) ogni accredito POS dell'estratto conto genera la sua entrata banca
-       reale via motore unico (dedup per estratto_conto_id)."""
+    """REGOLA CANONICA POS (utente 18/07/2026): per ogni giorno con
+    corrispettivo, l'uscita cassa "POS Verso Banca" e l'entrata banca sono
+    lo STESSO trasferimento con il POS REALE della chiusura serale
+    (fallback XML). Migrazione del pregresso:
+    1) uscita cassa del giorno → importo = POS reale, trasferimento_id;
+    2) riga banca sintetica del giorno → convertita nel trasferimento
+       speculare (stesso importo, source trasferimento_pos); se manca
+       viene creata, se doppia le eccedenti vengono soft-deletate;
+    3) gli accrediti EC POS riconciliano i trasferimenti per giorno di
+       vendita (accumulo circuiti, tolleranza 2%/5€)."""
     from app.services.scritture_contabili import (
-        registra_accredito_pos_ec, query_accrediti_pos_ec)
+        chiusura_pos_del_giorno, riconcilia_accredito_pos_ec,
+        query_accrediti_pos_ec, scrivi_movimento)
 
     db = Database.get_db()
     now = datetime.now(timezone.utc).isoformat()
 
-    sintetiche = await db["prima_nota_banca"].find(
-        {"source": "corrispettivo_pos", "data": {"$regex": f"^{anno}"},
-         "status": {"$nin": ["deleted", "archived"]}},
-        {"_id": 0, "id": 1, "importo": 1},
-    ).to_list(10000)
-    tot_sintetiche = round(sum(float(s.get("importo") or 0) for s in sintetiche), 2)
+    corrispettivi = await db["corrispettivi"].find(
+        {"data": {"$regex": f"^{anno}"}},
+        {"_id": 0, "id": 1, "data": 1, "pagato_elettronico": 1, "pagato_pos": 1},
+    ).to_list(1000)
+    per_giorno: Dict[str, float] = {}
+    for c in corrispettivi:
+        per_giorno[c["data"]] = per_giorno.get(c["data"], 0) + float(
+            c.get("pagato_elettronico") or c.get("pagato_pos") or 0)
 
-    accrediti = await db["estratto_conto_movimenti"].find(
-        query_accrediti_pos_ec(anno), {"_id": 0},
-    ).to_list(20000)
-    tot_accrediti = round(sum(abs(float(m.get("importo") or 0)) for m in accrediti), 2)
+    aggiornate_cassa = convertite_banca = create_banca = rimosse_doppie = 0
+    tot_trasferimenti = 0.0
+    for giorno, elettronico in sorted(per_giorno.items()):
+        chiusura = await chiusura_pos_del_giorno(db, giorno)
+        quota = chiusura if chiusura is not None else round(elettronico, 2)
+        fonte = "chiusura_manuale" if chiusura is not None else "xml"
+        if quota <= 0:
+            continue
+        tot_trasferimenti += quota
+        trasferimento_id = str(uuid.uuid4())
 
-    creati = 0
+        uscite = await db["prima_nota_cassa"].find(
+            {"data": giorno, "tipo": "uscita", "categoria": "POS Verso Banca",
+             "status": {"$nin": ["deleted", "archived"]}},
+            {"_id": 0, "id": 1, "importo": 1}).to_list(10)
+        if not dry_run:
+            if uscite:
+                if abs(float(uscite[0].get("importo") or 0) - quota) >= 0.01:
+                    aggiornate_cassa += 1
+                await db["prima_nota_cassa"].update_one(
+                    {"id": uscite[0]["id"]},
+                    {"$set": {"importo": quota, "quota_pos_fonte": fonte,
+                              "trasferimento_id": trasferimento_id, "updated_at": now}})
+                for extra in uscite[1:]:
+                    await db["prima_nota_cassa"].update_one(
+                        {"id": extra["id"]},
+                        {"$set": {"status": "deleted", "deleted": True,
+                                  "deleted_reason": "uscita_pos_doppia", "deleted_at": now}})
+
+        entrate = await db["prima_nota_banca"].find(
+            {"data": giorno, "tipo": "entrata",
+             "source": {"$in": ["corrispettivo_pos", "trasferimento_pos", "ec_accredito_pos"]},
+             "status": {"$nin": ["deleted", "archived"]}},
+            {"_id": 0, "id": 1, "importo": 1, "source": 1}).to_list(10)
+        if dry_run:
+            if entrate and entrate[0].get("source") != "trasferimento_pos":
+                convertite_banca += 1
+            elif not entrate:
+                create_banca += 1
+            rimosse_doppie += max(0, len(entrate) - 1)
+            continue
+        if entrate:
+            if entrate[0].get("source") != "trasferimento_pos":
+                convertite_banca += 1
+            await db["prima_nota_banca"].update_one(
+                {"id": entrate[0]["id"]},
+                {"$set": {"importo": quota, "source": "trasferimento_pos",
+                          "categoria": "Corrispettivi POS",
+                          "quota_pos_fonte": fonte, "giorno_vendita": giorno,
+                          "trasferimento_id": trasferimento_id,
+                          "riconciliato": False, "accreditato_ec": 0,
+                          "estratto_conto_ids": [], "updated_at": now}})
+            for extra in entrate[1:]:
+                rimosse_doppie += 1
+                await db["prima_nota_banca"].update_one(
+                    {"id": extra["id"]},
+                    {"$set": {"status": "deleted", "deleted": True,
+                              "deleted_reason": "trasferimento_pos_doppio",
+                              "deleted_at": now}})
+        else:
+            create_banca += 1
+            await scrivi_movimento(db, "banca", {
+                "data": giorno, "tipo": "entrata", "importo": quota,
+                "descrizione": f"POS {giorno} da cassa"
+                               + (" (chiusura terminale)" if fonte == "chiusura_manuale" else " (da XML)"),
+                "categoria": "Corrispettivi POS", "source": "trasferimento_pos",
+                "quota_pos_fonte": fonte, "giorno_vendita": giorno,
+                "trasferimento_id": trasferimento_id, "riconciliato": False,
+            })
+
+    # 3) riconciliazione con gli accrediti EC (per giorno di vendita)
+    ec_riconciliati = 0
     if not dry_run:
-        if sintetiche:
-            await db["prima_nota_banca"].update_many(
-                {"id": {"$in": [s["id"] for s in sintetiche]}},
-                {"$set": {"status": "deleted", "deleted": True,
-                          "deleted_reason": "sintetica_pos_sostituita_da_accredito_reale",
-                          "deleted_at": now}})
-        for m in accrediti:
-            if await registra_accredito_pos_ec(db, m):
-                creati += 1
+        accrediti = await db["estratto_conto_movimenti"].find(
+            query_accrediti_pos_ec(anno), {"_id": 0},
+        ).to_list(20000)
+        # azzera i riconciliati "vecchio modello" per ripartire puliti
+        await db["estratto_conto_movimenti"].update_many(
+            {**query_accrediti_pos_ec(anno),
+             "tipo_riconciliazione": {"$in": ["auto_pos_accredito", "accredito_pos_prima_nota"]}},
+            {"$set": {"riconciliato": False, "tipo_riconciliazione": None}})
+        for m in sorted(accrediti, key=lambda x: x.get("data") or ""):
+            if await riconcilia_accredito_pos_ec(db, m):
+                ec_riconciliati += 1
 
     return {"dry_run": dry_run, "anno": anno,
-            "sintetiche_rimosse" if not dry_run else "sintetiche_da_rimuovere": len(sintetiche),
-            "totale_sintetiche": tot_sintetiche,
-            "accrediti_ec_totali": len(accrediti),
-            "totale_accrediti_reali": tot_accrediti,
-            "entrate_banca_create": creati,
-            "delta_entrate_banca": round(tot_accrediti - tot_sintetiche, 2)}
+            "giorni_con_pos": len([v for v in per_giorno.values() if v > 0]),
+            "totale_trasferimenti": round(tot_trasferimenti, 2),
+            "uscite_cassa_aggiornate": aggiornate_cassa,
+            "banca_convertite_in_trasferimento": convertite_banca,
+            "banca_create": create_banca,
+            "banca_doppie_rimosse": rimosse_doppie,
+            "accrediti_ec_riconciliati": ec_riconciliati}

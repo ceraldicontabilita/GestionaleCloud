@@ -250,8 +250,41 @@ async def check_movimenti_malformati(db) -> Dict[str, Any]:
                            "o tipo non valido", "esempi": esempi}
 
 
+async def check_trasferimento_pos_speculare(db) -> Dict[str, Any]:
+    """REGOLA CANONICA POS (18/07/2026): per ogni giorno, l'uscita cassa
+    'POS Verso Banca' e l'entrata banca 'trasferimento_pos' sono la STESSA
+    operazione: stessi importi, mai una senza l'altra."""
+    anno = datetime.now(timezone.utc).year
+    cassa: Dict[str, float] = {}
+    async for m in db["prima_nota_cassa"].find(
+            {**_ATTIVO, "tipo": "uscita", "categoria": "POS Verso Banca",
+             "data": {"$regex": f"^{anno}"}},
+            {"_id": 0, "data": 1, "importo": 1}):
+        cassa[m["data"]] = cassa.get(m["data"], 0) + float(m.get("importo") or 0)
+    banca: Dict[str, float] = {}
+    async for m in db["prima_nota_banca"].find(
+            {**_ATTIVO, "tipo": "entrata",
+             "source": {"$in": ["trasferimento_pos", "corrispettivo_pos"]},
+             "data": {"$regex": f"^{anno}"}},
+            {"_id": 0, "data": 1, "importo": 1}):
+        banca[m["data"]] = banca.get(m["data"], 0) + float(m.get("importo") or 0)
+    count, esempi = 0, []
+    for g in sorted(set(cassa) | set(banca)):
+        diff = abs(cassa.get(g, 0) - banca.get(g, 0))
+        if diff > 0.01:
+            count += 1
+            if len(esempi) < 5:
+                esempi.append({"giorno": g, "uscita_cassa": round(cassa.get(g, 0), 2),
+                               "entrata_banca": round(banca.get(g, 0), 2)})
+    return {"nome": "trasferimento_pos_speculare", "violazioni": count,
+            "descrizione": "Giorni in cui uscita cassa POS ed entrata banca del "
+                           "trasferimento non coincidono (regola canonica: stessa "
+                           "operazione su due registri)", "esempi": esempi}
+
+
 CHECKS = [
     check_fatture_banca_senza_ec,
+    check_trasferimento_pos_speculare,
     check_ec_dangling_e_duplicati,
     check_pos_giornaliero,
     check_documenti_fuori_whitelist,

@@ -78,7 +78,7 @@ def _run(c):
         loop.close()
 
 
-def test_create_prima_nota_entry_niente_riga_banca_sintetica():
+def test_create_prima_nota_entry_trasferimento_speculare():
     db = _FakeDb()
     svc = CorrispettiviService(db=db)
     corr = {
@@ -92,7 +92,9 @@ def test_create_prima_nota_entry_niente_riga_banca_sintetica():
     cassa = db["prima_nota_cassa"].docs
     banca = db["prima_nota_banca"].docs
     assert len(cassa) == 2  # entrata totale + uscita POS
-    assert banca == []  # MODELLO POS 18/07/2026: mai banca sintetica (entrata banca = accredito EC reale)
+    assert len(banca) == 1  # REGOLA CANONICA: trasferimento speculare
+    assert banca[0]["source"] == "trasferimento_pos"
+    assert banca[0]["importo"] == 400.0
     entrata_cassa = next(d for d in cassa if d["tipo"] == "entrata")
     uscita_cassa = next(d for d in cassa if d["tipo"] == "uscita")
     assert entrata_cassa["importo"] == 1000.0
@@ -110,9 +112,10 @@ def test_create_prima_nota_entry_legge_pagato_pos_come_fallback():
 
     _run(svc._create_prima_nota_entry(corr))
 
-    assert db["prima_nota_banca"].docs == []  # MODELLO POS 18/07/2026: mai banca sintetica (entrata banca = accredito EC reale)
     uscite = [m for m in db["prima_nota_cassa"].docs if m["tipo"] == "uscita"]
     assert len(uscite) == 1 and uscite[0]["importo"] == 200.0
+    banca = db["prima_nota_banca"].docs
+    assert len(banca) == 1 and banca[0]["importo"] == 200.0  # trasferimento
 
 
 def test_process_xml_filtro_anno_archivia_corrispettivo_storico():
@@ -150,4 +153,4 @@ def test_process_xml_filtro_anno_corrente_va_al_flusso_attivo():
 
     assert esito["status"] == "created"
     assert esito["prima_nota_id"] is not None
-    assert db["prima_nota_banca"].docs == []  # MODELLO POS 18/07/2026: mai banca sintetica (entrata banca = accredito EC reale)
+    assert len(db["prima_nota_banca"].docs) == 1  # trasferimento speculare

@@ -130,6 +130,7 @@ def test_rebuild_somma_contanti_ed_elettronico_senza_totale():
     assert entrata["importo"] == 563.0
     assert uscita["importo"] == 163.0
     assert uscita["categoria"] == "POS Verso Banca"
-    assert db["prima_nota_banca"].docs == []  # MODELLO POS 18/07/2026: mai banca sintetica (entrata banca = accredito EC reale)
     uscite = [m for m in db["prima_nota_cassa"].docs if m["tipo"] == "uscita"]
     assert len(uscite) == 1 and uscite[0]["importo"] == 163.0
+    banca = db["prima_nota_banca"].docs
+    assert len(banca) == 1 and banca[0]["importo"] == 163.0  # trasferimento

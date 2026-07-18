@@ -8,14 +8,19 @@ La migrazione è graduale: i writer storici vengono portati qui uno alla
 volta (primo: corrispettivi/POS) e un test-guardia vieta di aggiungerne
 di nuovi altrove.
 
-MODELLO POS (decisione utente 18/07/2026, conferma dell'audit):
-- CASSA entrata  = totale corrispettivo del giorno (contanti + POS);
-- CASSA uscita "POS Verso Banca" = la CHIUSURA MANUALE serale del
-  terminale ("quello che esce dal terminale è il vero incasso POS");
-  fallback: elettronico XML quando la chiusura non è stata trascritta;
-- BANCA entrata  = l'ACCREDITO REALE dell'estratto conto (data e importo
-  della banca, per circuito), MAI una riga sintetica alla data del
-  corrispettivo. L'XML resta il confronto fiscale (Coerenza POS).
+REGOLA CANONICA POS (utente, 18/07/2026 — confermata a voce e definitiva):
+- CASSA entrata  = totale corrispettivo del giorno (contanti + POS, da XML);
+- CASSA uscita "POS Verso Banca" = il POS REALE della CHIUSURA MANUALE
+  serale del terminale ("quello che esce dal terminale è il vero incasso
+  POS"); fallback: elettronico XML solo se la chiusura non è trascritta;
+- BANCA entrata  = la STESSA cifra, come puro TRASFERIMENTO cassa→banca
+  (contropartita speculare, stessa operazione su due registri, source
+  "trasferimento_pos"). MAI una seconda registrazione indipendente.
+- L'ACCREDITO dell'estratto conto NON crea mai un'entrata: RICONCILIA il
+  trasferimento del suo giorno di vendita (causale NUMIA "DEL gg/mm/aa").
+- L'elettronico XML resta il confronto FISCALE: la differenza col POS
+  reale è il "NON BATTUTO" (battuto in meno sul registratore), esposto
+  con saldo progressivo in Coerenza POS per recuperarlo nei giorni dopo.
 """
 import logging
 import uuid
@@ -96,8 +101,9 @@ async def chiusura_pos_del_giorno(db, data: str) -> Optional[float]:
 async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Optional[str]]:
     """Scritture del corrispettivo giornaliero secondo il MODELLO POS.
 
-    NON scrive mai la banca: l'entrata banca nasce solo dall'accredito
-    reale dell'estratto conto (registra_accredito_pos_ec)."""
+    REGOLA CANONICA: cassa (entrata totale + uscita POS reale) e banca
+    (trasferimento speculare della stessa cifra). L'accredito EC non crea
+    nulla: riconcilia il trasferimento (riconcilia_accredito_pos_ec)."""
     data = corr_doc.get("data") or corr_doc.get("data_operazione") or ""
     contanti = float(corr_doc.get("pagato_contanti") or 0)
     elettronico = float(corr_doc.get("pagato_elettronico") or corr_doc.get("pagato_pos") or 0)
@@ -114,7 +120,7 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
     esito: Dict[str, Optional[str]] = {
         "prima_nota_cassa_id": None,
         "prima_nota_cassa_uscita_pos_id": None,
-        "prima_nota_banca_id": None,  # sempre None: la banca nasce dall'EC
+        "prima_nota_banca_id": None,  # trasferimento speculare (se quota POS > 0)
     }
     if not data or totale <= 0:
         return esito
@@ -153,6 +159,7 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
     quota_pos = chiusura if chiusura is not None else elettronico
     fonte_quota = "chiusura_manuale" if chiusura is not None else "xml"
     if quota_pos > 0:
+        trasferimento_id = str(uuid.uuid4())
         esito["prima_nota_cassa_uscita_pos_id"] = await scrivi_movimento(db, "cassa", {
             "corrispettivo_id": corr_doc.get("id"),
             "data": data, "tipo": "uscita", "importo": quota_pos,
@@ -161,45 +168,71 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
                                else " (da XML)")),
             "categoria": "POS Verso Banca", "source": "corrispettivo_import",
             "quota_pos_fonte": fonte_quota,
+            "trasferimento_id": trasferimento_id,
+            "anno": anno, "mese": mese,
+        })
+        # REGOLA CANONICA: contropartita speculare in banca — stessa
+        # operazione, secondo registro. L'accredito EC la riconcilierà.
+        esito["prima_nota_banca_id"] = await scrivi_movimento(db, "banca", {
+            "corrispettivo_id": corr_doc.get("id"),
+            "data": data, "tipo": "entrata", "importo": quota_pos,
+            "descrizione": (f"POS {data} da cassa"
+                            + (" (chiusura terminale)" if fonte_quota == "chiusura_manuale"
+                               else " (da XML)")),
+            "categoria": "Corrispettivi POS", "source": "trasferimento_pos",
+            "quota_pos_fonte": fonte_quota,
+            "trasferimento_id": trasferimento_id,
+            "giorno_vendita": data,
+            "riconciliato": False,
             "anno": anno, "mese": mese,
         })
     return esito
 
 
-async def registra_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> Optional[str]:
-    """BANCA entrata = accredito POS REALE dell'estratto conto.
-    Idempotente per estratto_conto_id. Ritorna l'id creato o None."""
+async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:
+    """REGOLA CANONICA: l'accredito POS dell'estratto conto NON crea
+    un'entrata — riconcilia il TRASFERIMENTO del suo giorno di vendita
+    (accumulando i circuiti: bancomat, carte, Amex arrivano separati).
+    Ritorna True se ha agganciato un trasferimento."""
     from app.routers.pos_corrispettivi_check import _giorno_operazione_pos
 
     ec_id = mov_ec.get("id")
     if not ec_id:
-        return None
-    gia = await db["prima_nota_banca"].find_one(
-        {"estratto_conto_id": ec_id, "status": {"$nin": ["deleted", "archived"]}},
-        {"_id": 0, "id": 1})
-    if gia:
-        return None
+        return False
     data_acc = (mov_ec.get("data") or "")[:10]
     descr = mov_ec.get("descrizione_originale") or mov_ec.get("descrizione") or ""
     giorno_vendita = _giorno_operazione_pos(descr, data_acc)
-    pn_id = await scrivi_movimento(db, "banca", {
-        "data": data_acc, "tipo": "entrata",
-        "importo": abs(float(mov_ec.get("importo") or 0)),
-        "descrizione": f"Accredito POS {descr[:60]}",
-        "categoria": "Corrispettivi POS",
-        "source": "ec_accredito_pos",
-        "estratto_conto_id": ec_id,
-        "giorno_vendita": giorno_vendita,
-        "riconciliato": True,
-        "anno": int(data_acc[:4]) if data_acc[:4].isdigit() else None,
-        "mese": int(data_acc[5:7]) if len(data_acc) >= 7 and data_acc[5:7].isdigit() else None,
+    importo = abs(float(mov_ec.get("importo") or 0))
+
+    trasferimento = await db["prima_nota_banca"].find_one({
+        "source": "trasferimento_pos",
+        "$or": [{"giorno_vendita": giorno_vendita}, {"data": giorno_vendita}],
+        "status": {"$nin": ["deleted", "archived"]},
     })
+    if not trasferimento:
+        # nessun trasferimento per quel giorno (corrispettivo mancante?):
+        # l'EC resta non riconciliato e il collaudo lo evidenzierà
+        return False
+
+    accreditato = round(float(trasferimento.get("accreditato_ec") or 0) + importo, 2)
+    atteso = float(trasferimento.get("importo") or 0)
+    tolleranza = max(atteso * 0.02, 5.0)
+    riconciliato = abs(accreditato - atteso) <= tolleranza or accreditato >= atteso - tolleranza
+
+    await db["prima_nota_banca"].update_one(
+        {"id": trasferimento["id"]},
+        {"$set": {"accreditato_ec": accreditato,
+                  "riconciliato": bool(riconciliato),
+                  "tipo_riconciliazione": "accredito_pos_ec" if riconciliato else None,
+                  "data_ultimo_accredito": data_acc},
+         "$push": {"estratto_conto_ids": ec_id}})
     await db["estratto_conto_movimenti"].update_one(
         {"id": ec_id},
         {"$set": {"riconciliato": True,
-                  "tipo_riconciliazione": "accredito_pos_prima_nota",
-                  "dettagli_riconciliazione": {"prima_nota_id": pn_id}}})
-    return pn_id
+                  "tipo_riconciliazione": "accredito_pos_trasferimento",
+                  "dettagli_riconciliazione": {"prima_nota_id": trasferimento["id"],
+                                                "giorno_vendita": giorno_vendita}}})
+    return True
 
 
 def query_accrediti_pos_ec(anno: int) -> Dict[str, Any]:

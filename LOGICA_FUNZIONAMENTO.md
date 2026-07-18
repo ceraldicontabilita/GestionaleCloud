@@ -288,26 +288,40 @@ movimenti automatici. Restano comunque rifiutati i movimenti chiaramente bancari
 non ha questa marcatura**: un inserimento manuale diretto in banca non viene
 distinto da uno automatico né controllato per duplicati.
 
-**Cassa** (MODELLO POS aggiornato 18/07/2026, decisione utente + audit)
-- Conferma di un corrispettivo giornaliero → il sistema registra in Prima Nota
-  **Cassa** un'**entrata per il totale intero** (categoria "Corrispettivi") più
-  un'**uscita** (categoria "POS Verso Banca") pari alla **CHIUSURA MANUALE
-  serale del terminale POS** quando è stata trascritta nell'apposita sezione
-  ("quello che esce dal terminale è il vero incasso POS"); se la chiusura non
-  c'è, si usa come ripiego l'elettronico del corrispettivo XML (che resta il
-  dato di confronto FISCALE). La riga indica la fonte usata
-  (`quota_pos_fonte`: chiusura_manuale | xml).
+**REGOLA CANONICA POS** (utente, 18/07/2026 — confermata e definitiva)
+
+**Cassa** (giorno di vendita)
+- **DARE**: corrispettivo totale del giorno (dall'XML del registratore).
+- **AVERE** "POS Verso Banca": il **POS REALE** — quello che la sera si
+  trascrive nell'apposita card insieme ai corrispettivi manuali, cioè quello
+  che esce davvero dal terminale. NON l'elettronico dell'XML, che può essere
+  più basso (non sempre si batte il tasto "incasso elettronico"). Se la
+  chiusura serale non è trascritta, ripiego sull'XML; la riga indica la
+  fonte (`quota_pos_fonte`: chiusura_manuale | xml).
 - "Paga in Cassa" su una fattura → uscita collegata alla fattura.
 
-**Banca** (MODELLO POS aggiornato 18/07/2026)
-- L'entrata POS in Prima Nota **Banca** è **l'ACCREDITO REALE dell'estratto
-  conto** (data di accredito e importo esatto per circuito: bancomat, carte,
-  Amex — creato dal motore unico, agganciato al movimento EC e attribuito
-  anche al giorno di vendita letto dalla causale NUMIA). Le vecchie righe
-  "sintetiche" alla data del corrispettivo NON vengono più create; quelle
-  storiche sono state sostituite dagli accrediti reali con la migrazione
-  `POST /api/prima-nota/migra-pos-accrediti-reali`.
+**Banca**
+- **DARE**: la **stessa cifra del POS reale**, come puro **TRASFERIMENTO**
+  cassa→banca (source `trasferimento_pos`, stesso `trasferimento_id`
+  dell'uscita di cassa): **una sola operazione scritta su due registri**,
+  come i versamenti di contanti. Mai una seconda registrazione
+  indipendente, mai duplicazioni.
+- L'**accredito dell'estratto conto** NON crea mai un'entrata: **riconcilia**
+  il trasferimento del suo giorno di vendita (letto dalla causale NUMIA
+  "DEL gg/mm/aa"), accumulando i circuiti (bancomat, carte, Amex) fino a
+  concorrenza, con tolleranza 2%/5€.
 - "Paga in Banca" su una fattura → uscita collegata alla fattura.
+
+**Coerenza POS — il "non battuto"**
+- Confronto giornaliero: elettronico **XML** (fiscale) vs **POS reale**
+  serale (operativo). Se il reale è maggiore, la differenza è il **NON
+  BATTUTO** sul registratore, evidenziato giorno per giorno con **saldo
+  progressivo cumulato**: così si sa quanto battere in più nei giorni
+  successivi per recuperare.
+- L'estratto conto resta il terzo controllo: l'accredito della banca deve
+  combaciare col trasferimento (invariante del collaudo notturno
+  "trasferimento_pos_speculare": uscita cassa POS = entrata banca POS,
+  stesso giorno, stesso importo).
 - Tutte le scritture di Prima Nota stanno migrando al **motore unico**
   (`app/services/scritture_contabili.py`): un test-guardia vieta nuovi
   punti di scrittura diretta.

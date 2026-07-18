@@ -103,13 +103,12 @@ def test_create_prima_nota_movements_regola_contabile_completa():
     assert uscita_cassa["importo"] == 400.0
     assert uscita_cassa["categoria"] == "POS Verso Banca"
 
-    # MODELLO POS 18/07/2026: NESSUNA riga banca sintetica — l'entrata
-
-
-    # banca nasce solo dall'accredito reale dell'estratto conto.
-
-
-    assert banca == []
+    # REGOLA CANONICA 18/07/2026: trasferimento speculare in banca,
+    # stesso importo dell'uscita cassa, source trasferimento_pos.
+    assert len(banca) == 1
+    assert banca[0]["source"] == "trasferimento_pos"
+    assert banca[0]["importo"] == 400.0
+    assert banca[0]["riconciliato"] is False
 
 
 def test_create_prima_nota_movements_legge_pagato_pos_oltre_a_pagato_elettronico():
@@ -120,11 +119,12 @@ def test_create_prima_nota_movements_legge_pagato_pos_oltre_a_pagato_elettronico
 
     _run(helpers_mod._create_prima_nota_movements(db, corr))
 
-    # MODELLO POS 18/07/2026: pagato_pos alimenta l'uscita cassa (fallback
-    # XML), MAI una riga banca sintetica.
-    assert db.collections["prima_nota_banca"].docs == []
+    # REGOLA CANONICA: pagato_pos alimenta uscita cassa E trasferimento banca
     uscite = [m for m in db.collections["prima_nota_cassa"].docs if m["tipo"] == "uscita"]
     assert len(uscite) == 1 and uscite[0]["importo"] == 250.0
+    banca = db.collections["prima_nota_banca"].docs
+    assert len(banca) == 1 and banca[0]["importo"] == 250.0
+    assert banca[0]["source"] == "trasferimento_pos"
 
 
 def test_create_prima_nota_movements_nessun_elettronico_nessuna_riga_banca():
@@ -145,9 +145,9 @@ def _patch_db(monkeypatch, db):
     monkeypatch.setattr(sync_mod.Database, "get_db", staticmethod(lambda: db))
 
 
-def test_sync_corrispettivi_impl_niente_banca_sintetica(monkeypatch):
-    """MODELLO POS 18/07/2026: il sync crea cassa (entrata+uscita POS) ma MAI
-    la riga banca — l'entrata banca è l'accredito reale dell'estratto conto."""
+def test_sync_corrispettivi_impl_trasferimento_speculare(monkeypatch):
+    """REGOLA CANONICA 18/07/2026: il sync crea cassa (entrata+uscita POS)
+    e il trasferimento speculare in banca (stesso importo)."""
     db = _FakeDb()
     db["corrispettivi"].docs = [_corrispettivo()]
     _patch_db(monkeypatch, db)
@@ -155,9 +155,11 @@ def test_sync_corrispettivi_impl_niente_banca_sintetica(monkeypatch):
     res = _run(sync_mod._sync_corrispettivi_impl(anno=None))
 
     assert res["inseriti"] == 1
-    assert db.collections["prima_nota_banca"].docs == []
     uscite = [m for m in db.collections["prima_nota_cassa"].docs if m["tipo"] == "uscita"]
     assert len(uscite) == 1 and uscite[0]["importo"] == 400.0
+    banca = db.collections["prima_nota_banca"].docs
+    assert len(banca) == 1 and banca[0]["importo"] == 400.0
+    assert banca[0]["source"] == "trasferimento_pos"
 
 
 def test_sync_corrispettivi_impl_non_duplica_se_gia_caricato_dal_percorso_diretto(monkeypatch):
@@ -190,4 +192,4 @@ def test_sync_corrispettivi_impl_idempotente_su_doppia_esecuzione(monkeypatch):
 
     assert res2["inseriti"] == 0
     assert res2["duplicati"] == 1
-    assert db.collections["prima_nota_banca"].docs == []  # mai banca sintetica
+    assert len(db.collections["prima_nota_banca"].docs) == 1  # un solo trasferimento, mai duplicato

@@ -183,6 +183,7 @@ async def verifica_coerenza_pos_corrispettivi(
     totale_pos_accreditato = 0
     giorni_ok = 0
     giorni_anomalia = 0
+    non_battuto_progressivo = 0.0
     
     # Ordina le date
     tutte_le_date = sorted(set(list(corrispettivi_by_date.keys()) + list(pos_by_date.keys())))
@@ -195,8 +196,12 @@ async def verifica_coerenza_pos_corrispettivi(
         pos_accreditato = pos["importo"]
         pos_manuale = chiusure_by_date.get(data, 0)
         
-        # Usa POS manuale (chiusure giornaliere) se disponibile, altrimenti XML
+        # REGOLA CANONICA (18/07/2026): la chiusura manuale serale è il POS
+        # REALE; l'XML è il confronto fiscale. Il "non battuto" (reale - XML)
+        # è quanto NON è stato battuto sul tasto elettronico del registratore:
+        # va evidenziato e recuperato nei giorni successivi (saldo progressivo).
         riferimento_pos = pos_manuale if pos_manuale > 0 else elettronico_xml
+        non_battuto = round(pos_manuale - elettronico_xml, 2) if pos_manuale > 0 else 0.0
         
         totale_elettronico_xml += elettronico_xml
         totale_pos_accreditato += pos_accreditato
@@ -250,8 +255,11 @@ async def verifica_coerenza_pos_corrispettivi(
         else:
             giorni_ok += 1
         
+        non_battuto_progressivo = round(non_battuto_progressivo + non_battuto, 2)
         giorno_info = {
             "data": data,
+            "non_battuto": non_battuto,
+            "non_battuto_progressivo": non_battuto_progressivo,
             "giorno_settimana": ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"][dt.weekday()] if 'dt' in dir() else "",
             "totale_corrispettivo": round(corr["totale"], 2),
             "contanti_xml": round(corr["contanti"], 2),
@@ -283,6 +291,7 @@ async def verifica_coerenza_pos_corrispettivi(
             "totale_pos_accreditato": round(totale_pos_accreditato, 2),
             "totale_chiusure_manuali": round(totale_chiusure_manuali, 2),  # Chiusure da registratore (pos.xlsx)
             "differenza_totale": round(differenza_totale, 2),
+            "non_battuto_totale": non_battuto_progressivo,
             "giorni_analizzati": len(tutte_le_date),
             "giorni_ok": giorni_ok,
             "giorni_anomalia": giorni_anomalia,

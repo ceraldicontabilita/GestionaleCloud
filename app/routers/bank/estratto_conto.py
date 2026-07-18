@@ -677,17 +677,16 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                 desc_upper = (mov.get("descrizione_originale") or mov.get("descrizione") or "").upper()
                 now_iso = datetime.now(timezone.utc).isoformat()
 
-                # MODELLO POS (decisione utente 18/07/2026): l'accredito POS
-                # REALE della banca È l'entrata di Prima Nota Banca (via
-                # motore unico, dedup per estratto_conto_id). Le righe
-                # sintetiche "corrispettivo_pos" non vengono più create.
+                # REGOLA CANONICA POS (utente 18/07/2026): l'accredito POS
+                # dell'estratto conto NON crea un'entrata — RICONCILIA il
+                # trasferimento cassa→banca del suo giorno di vendita.
                 if mov.get("tipo") == "entrata" and any(k in desc_upper for k in KEYWORDS_ACCREDITO_POS):
                     try:
-                        from app.services.scritture_contabili import registra_accredito_pos_ec
-                        if await registra_accredito_pos_ec(db, mov):
+                        from app.services.scritture_contabili import riconcilia_accredito_pos_ec
+                        if await riconcilia_accredito_pos_ec(db, mov):
                             ec_pos_accrediti.append(mid)
                     except Exception as e:
-                        logger.warning(f"Accredito POS non registrato ({mid}): {e}")
+                        logger.warning(f"Accredito POS non riconciliato ({mid}): {e}")
                     continue
 
                 banca_batch.append({

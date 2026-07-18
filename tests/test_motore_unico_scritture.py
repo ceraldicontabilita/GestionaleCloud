@@ -143,8 +143,9 @@ class _Db(dict):
         return self.setdefault(k, _Coll())
 
 
-def test_registra_corrispettivo_niente_banca_sintetica():
-    """Il nuovo modello: entrata cassa totale + uscita POS; MAI banca."""
+def test_registra_corrispettivo_trasferimento_speculare():
+    """REGOLA CANONICA: uscita cassa POS = entrata banca POS = stessa
+    operazione (trasferimento), stesso importo, stesso trasferimento_id."""
     db = _Db()
     esito = _run(registra_corrispettivo(db, {
         "id": "C1", "data": "2026-07-01", "totale": 1000.0,
@@ -153,10 +154,15 @@ def test_registra_corrispettivo_niente_banca_sintetica():
     }))
     assert esito["prima_nota_cassa_id"]
     assert esito["prima_nota_cassa_uscita_pos_id"]
-    assert esito["prima_nota_banca_id"] is None
+    assert esito["prima_nota_banca_id"]
     assert len(db["prima_nota_cassa"].docs) == 2
-    assert len(db["prima_nota_banca"].docs) == 0
+    assert len(db["prima_nota_banca"].docs) == 1
     uscita = db["prima_nota_cassa"].docs[1]
+    banca = db["prima_nota_banca"].docs[0]
     assert uscita["categoria"] == "POS Verso Banca"
     assert uscita["importo"] == 600.0  # fallback XML: nessuna chiusura manuale
     assert uscita["quota_pos_fonte"] == "xml"
+    assert banca["source"] == "trasferimento_pos"
+    assert banca["importo"] == 600.0
+    assert banca["trasferimento_id"] == uscita["trasferimento_id"]
+    assert banca["riconciliato"] is False
