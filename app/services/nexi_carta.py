@@ -136,7 +136,13 @@ async def verifica_addebiti_nexi(db, anno: Optional[int] = None) -> Dict[str, An
                 {"data": {"$gte": f"{periodo}-01", "$lte": f"{periodo}-31"}},
             ]
         }):
-            totale_carta += abs(float(m.get("importo") or 0))
+            # NETTO, non valore assoluto: gli accrediti/storni (importo
+            # negativo, es. rimborsi Amazon) vanno SOTTRATTI dal totale
+            # addebitato, non sommati — altrimenti un rimborso gonfia la
+            # spesa invece di ridurla e la quadratura con l'addebito
+            # bancario (che è già il netto) non torna mai (bug 18/07/2026,
+            # visto sul primo estratto Nexi reale caricato dall'utente).
+            totale_carta += float(m.get("importo") or 0)
             n_operazioni += 1
         totale_carta = round(totale_carta, 2)
 
@@ -228,6 +234,6 @@ async def importa_estratto_nexi_pdf(db, filename: str, pdf_content: bytes) -> Di
         "success": True,
         "estratto_id": estratto_id,
         "operazioni": len(transazioni),
-        "totale_importo": round(sum(abs(t.get("importo") or 0) for t in transazioni), 2),
+        "totale_importo": round(sum(t.get("importo") or 0 for t in transazioni), 2),
         "verifica": verifica,
     }

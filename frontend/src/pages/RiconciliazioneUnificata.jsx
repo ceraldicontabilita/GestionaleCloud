@@ -944,7 +944,7 @@ export default function RiconciliazioneUnificata() {
         {activeTab === 'stipendi' && (
           <MovimentiTab
             movimenti={stipendiFiltrati}
-            onConferma={handleConferma}
+            onConferma={m => handleConferma(m, 'stipendio')}
             onIgnora={handleIgnora}
             onElimina={handleElimina}
             processing={processing}
@@ -2202,12 +2202,14 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
   }, []);
 
   const handleViewPdf = doc => {
-    // Path relativo al dominio corrente, evita problemi se VITE_BACKEND_URL
-    // al build time puntasse a un dominio sbagliato. Viewer canonico §8
-    // (niente nuova scheda).
+    // fetchUrl (non src): l'endpoint richiede il Bearer token, un <iframe
+    // src> diretto non lo allega e la richiesta viene rifiutata (401) senza
+    // nessun errore visibile — il PDF restava sempre vuoto (segnalato
+    // dall'utente 18/07/2026). Il viewer scarica il blob via axios (stesso
+    // pattern di Documenti.jsx/FattureEstereVerifica.jsx).
     setPdfViewer({
       title: `📄 ${doc.filename || doc.nome || 'Documento'}`,
-      src: `/api/documenti-non-associati/pdf/${doc.id}`,
+      fetchUrl: `/api/documenti-non-associati/pdf/${doc.id}`,
     });
   };
 
@@ -2587,6 +2589,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
         <DocumentViewerModal
           title={pdfViewer.title}
           src={pdfViewer.src}
+          fetchUrl={pdfViewer.fetchUrl}
           documentType="documento_fiscale"
           onClose={() => setPdfViewer(null)}
         />

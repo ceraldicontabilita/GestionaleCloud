@@ -776,18 +776,25 @@ async def download_documents_from_email(
     max_emails: int = 200,
     search_keywords: List[str] = None,
     allowed_senders: List[str] = None,
-    keyword_senders: List[Tuple[str, List[str]]] = None
+    keyword_senders: List[Tuple[str, List[str]]] = None,
+    ignore_dict: bool = False,
 ) -> Dict[str, Any]:
     """
     Funzione principale per scaricare documenti da email.
-    
+
     DIZIONARIO EMAIL: Usa una collezione MongoDB (email_message_index) per tracciare
     i Message-ID già scaricati, evitando di riscaricare email già elaborate.
-    
+
     Args:
         search_keywords: Lista di parole chiave da cercare nell'oggetto email.
         allowed_senders: Lista di mittenti autorizzati (filtra per FROM).
         keyword_senders: Lista di (email, keywords) per mittenti che cambiano indirizzo.
+        ignore_dict: ignora il dizionario Message-ID (usato dal recupero manuale
+            mirato su un singolo fornitore — vedi cerca_fattura_email_per_account
+            in paypal_api.py): la scansione periodica generica aveva già "visto"
+            (e scartato, mittente non attendibile) queste email, il dizionario le
+            segna come processate e il recupero manuale non trovava mai nulla
+            anche quando l'email con l'allegato esisteva davvero (bug 18/07/2026).
     """
     from datetime import timedelta
     
@@ -841,7 +848,7 @@ async def download_documents_from_email(
         
         for email_id in all_email_ids:
             msg_id = downloader.fetch_message_id(email_id)
-            if msg_id and msg_id in seen_message_ids:
+            if not ignore_dict and msg_id and msg_id in seen_message_ids:
                 skipped_by_dict += 1
                 logger.debug(f"Già nel dizionario: {msg_id}")
             else:

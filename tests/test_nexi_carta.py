@@ -8,6 +8,7 @@ from app.services.nexi_carta import (
     _data,
     _norm_data,
     _periodo_addebito,
+    importa_estratto_nexi_pdf,
     is_addebito_nexi,
     verifica_addebiti_nexi,
 )
@@ -60,6 +61,9 @@ class _Coll:
                         return False
             return True
         return _Cursor([d for d in self.docs if _match(d, q)])
+
+    async def insert_one(self, doc):
+        self.docs.append(dict(doc))
 
     async def update_one(self, q, update):
         for d in self.docs:
@@ -148,14 +152,44 @@ def test_verifica_riconcilia_quando_quadra(monkeypatch):
         "_id": "ec1", "id": "ec1", "data_contabile": "2026-04-05", "tipo": "uscita",
         "importo": 100.0, "descrizione_originale": "ADDEBITO SDD NEXI",
     })
+    # Un rimborso (importo negativo, es. reso Amazon) deve SOTTRARSI dal
+    # totale carta, non sommarsi in valore assoluto: 60 + 50 - 10 = 100,
+    # non 60 + 50 + 10 = 120 (bug 18/07/2026, visto sul primo estratto
+    # Nexi reale caricato dall'utente: rimborsi gonfiavano il totale carta
+    # e la quadratura con l'addebito bancario non tornava mai).
     db["estratto_conto_movimenti"].docs.extend([
         {"tipo": "carta_credito", "banca": "Nexi", "data": "2026-03-10", "importo": 60.0},
-        {"tipo": "carta_credito", "banca": "Nexi", "data": "2026-03-20", "importo": 40.0},
+        {"tipo": "carta_credito", "banca": "Nexi", "data": "2026-03-15", "importo": -10.0},
+        {"tipo": "carta_credito", "banca": "Nexi", "data": "2026-03-20", "importo": 50.0},
     ])
     stats = _run(verifica_addebiti_nexi(db))
     assert stats["riconciliati"] == 1
     assert stats["non_quadrano"] == 0
     assert ("genera", "NEXI_ADDEBITO_NON_QUADRA") not in alert_calls
+
+
+def test_importa_pdf_totale_importo_e_netto(monkeypatch):
+    """totale_importo deve essere il netto (addebiti - rimborsi), non la
+    somma dei valori assoluti — stesso bug del calcolo di verifica."""
+    import app.services.nexi_carta as mod
+
+    def fake_parse(pdf_content):
+        return {
+            "success": True,
+            "metadata": {},
+            "transazioni": [
+                {"data": "2026-01-05", "descrizione": "Fornitore", "importo": 100.0, "categoria": "Altro"},
+                {"data": "2026-01-10", "descrizione": "Reso Amazon", "importo": -20.0, "categoria": "E-commerce Amazon"},
+            ],
+        }
+
+    monkeypatch.setattr(
+        "app.parsers.estratto_conto_nexi_parser.parse_estratto_conto_nexi", fake_parse
+    )
+    db = _DB()
+    res = _run(importa_estratto_nexi_pdf(db, "estratto.pdf", b"%PDF-fake"))
+    assert res["success"] is True
+    assert res["totale_importo"] == 80.0
 
 
 def test_verifica_segnala_non_quadra(monkeypatch):

@@ -50,8 +50,8 @@ MAX_RATE = 4
 # bancario, al limite bonifico — mai assegno. Match su sottostringa
 # normalizzata (case-insensitive) del nome fornitore/beneficiario.
 FORNITORI_MAI_ASSEGNO = (
-    "amazon", "abc acquedotto", "acquedotto", "fastweb", "paypal",
-    "enel", "leasys", "arval",
+    "amazon", "abc acquedotto", "acquedotto", "acqua bene comune", "fastweb",
+    "paypal", "enel", "leasys", "arval",
 )
 
 

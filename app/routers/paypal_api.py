@@ -382,6 +382,12 @@ async def account_ids_non_mappati(anno: Optional[int] = None):
                 cp_score = match_fornitore(nome_controparte, nome)
                 if cp_score > score:
                     score = cp_score
+            # Senza una minima somiglianza testuale la sola coincidenza di
+            # importo non significa nulla (segnalato dall'utente 18/07/2026:
+            # un abbonamento OpenAI proponeva grossisti alimentari a caso
+            # solo perché la fattura aveva un importo simile) — scarta.
+            if score <= 0:
+                continue
             forn = await db["fornitori"].find_one(
                 {"$or": [{"piva": piva}, {"partita_iva": piva}, {"codice_fiscale": piva}]},
                 {"_id": 0, "id": 1, "nome": 1, "ragione_sociale": 1, "piva": 1}
@@ -481,6 +487,7 @@ async def cerca_fattura_email_per_account(paypal_account_id: str) -> Dict[str, A
         db, user, pwd,
         since_days=365,
         search_keywords=[parola_chiave] if parola_chiave else None,
+        ignore_dict=True,
     )
 
     from app.services.paypal_email_recovery import _aggancia_documenti_trovati

@@ -14,8 +14,8 @@ import { Button, Badge, StatCard, Table, TableWrap, Th, Td, Input, RowActions, R
 // Fornitori mai pagabili con assegno (dettato utente 18/07/2026): arrivano
 // su carta di credito o addebito bancario, al limite bonifico — mai assegno.
 const FORNITORI_MAI_ASSEGNO = [
-  'amazon', 'abc acquedotto', 'acquedotto', 'fastweb', 'paypal',
-  'enel', 'leasys', 'arval',
+  'amazon', 'abc acquedotto', 'acquedotto', 'acqua bene comune', 'fastweb',
+  'paypal', 'enel', 'leasys', 'arval',
 ];
 
 const STATI_ASSEGNO = {
