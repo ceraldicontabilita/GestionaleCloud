@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1011 · tenere: 660 · verificare: 329 · admin-only (migrazione/manutenzione): 22
+**Totale endpoint:** 1012 · tenere: 660 · verificare: 329 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -779,8 +779,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/pos-corrispettivi/chiusura-giornaliera/audit` | pos_corrispettivi_check | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/pos-corrispettivi/controllo-due-fasi` | pos_corrispettivi_check | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/pos-corrispettivi/riconcilia-pos-giorno` | pos_corrispettivi_check | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/pos-corrispettivi/riepilogo-mensile` | pos_corrispettivi_check | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/pos-corrispettivi/verifica-coerenza` | pos_corrispettivi_check | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/pos-corrispettivi/riepilogo-mensile` | pos_corrispettivi_check | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/pos-corrispettivi/verifica-coerenza` | pos_corrispettivi_check | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/previsioni-acquisti/confronto-ordine` | previsioni_acquisti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/previsioni-acquisti/popola-storico` | previsioni_acquisti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/previsioni-acquisti/previsioni` | previsioni_acquisti | sì | — | — | — | — | tenere | in uso: FE |
@@ -846,6 +846,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/prima-nota/fix-versamenti-duplicati` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/import-batch` | prima_nota_module.sync | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/importa-da-ec` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/prima-nota/migra-pos-accrediti-reali` | prima_nota_module.manutenzione | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/prima-nota/migrazione-pulisci-bancari-cassa` | prima_nota_module.manutenzione | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `GET /api/prima-nota/movimenti-ec-non-in-prima-nota` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/movimento` | prima_nota_module.sync | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

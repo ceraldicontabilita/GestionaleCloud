@@ -677,9 +677,17 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                 desc_upper = (mov.get("descrizione_originale") or mov.get("descrizione") or "").upper()
                 now_iso = datetime.now(timezone.utc).isoformat()
 
-                # Accredito POS: non duplicare la quota già in Corrispettivi POS.
+                # MODELLO POS (decisione utente 18/07/2026): l'accredito POS
+                # REALE della banca È l'entrata di Prima Nota Banca (via
+                # motore unico, dedup per estratto_conto_id). Le righe
+                # sintetiche "corrispettivo_pos" non vengono più create.
                 if mov.get("tipo") == "entrata" and any(k in desc_upper for k in KEYWORDS_ACCREDITO_POS):
-                    ec_pos_accrediti.append(mid)
+                    try:
+                        from app.services.scritture_contabili import registra_accredito_pos_ec
+                        if await registra_accredito_pos_ec(db, mov):
+                            ec_pos_accrediti.append(mid)
+                    except Exception as e:
+                        logger.warning(f"Accredito POS non registrato ({mid}): {e}")
                     continue
 
                 banca_batch.append({
@@ -731,28 +739,8 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                     {"id": {"$in": ec_da_marcare}},
                     {"$set": {"riconciliato": True, "tipo_riconciliazione": "auto_generico"}}
                 )
-            # Accrediti POS: marca l'EC riconciliato SENZA nuova entrata banca
-            # (la quota POS è già in prima_nota_banca via corrispettivo_pos) e
-            # chiude le entrate sintetiche "Corrispettivi POS" ancora aperte fino
-            # a concorrenza dell'accredito (best-effort, non blocca il flusso).
-            if ec_pos_accrediti:
-                await db["estratto_conto_movimenti"].update_many(
-                    {"id": {"$in": ec_pos_accrediti}},
-                    {"$set": {"riconciliato": True, "tipo_riconciliazione": "auto_pos_accredito"}}
-                )
-                try:
-                    sintetiche = await db["prima_nota_banca"].find(
-                        {"source": "corrispettivo_pos", "riconciliato": {"$ne": True}},
-                        {"_id": 0, "id": 1},
-                    ).sort("data", 1).to_list(1000)
-                    ids_sintetiche = [s["id"] for s in sintetiche]
-                    if ids_sintetiche:
-                        await db["prima_nota_banca"].update_many(
-                            {"id": {"$in": ids_sintetiche}},
-                            {"$set": {"riconciliato": True, "tipo_riconciliazione": "auto_pos_accredito"}},
-                        )
-                except Exception as e:
-                    logger.warning(f"Chiusura entrate sintetiche POS non riuscita: {e}")
+            # (le entrate banca degli accrediti POS sono già state create
+            # dal motore unico riga per riga, con marcatura EC inclusa)
             sync_generico = {
                 "inseriti_banca": len(banca_batch),
                 "inseriti_cassa": len(cassa_batch),

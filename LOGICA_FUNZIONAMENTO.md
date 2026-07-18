@@ -288,25 +288,29 @@ movimenti automatici. Restano comunque rifiutati i movimenti chiaramente bancari
 non ha questa marcatura**: un inserimento manuale diretto in banca non viene
 distinto da uno automatico né controllato per duplicati.
 
-**Cassa**
+**Cassa** (MODELLO POS aggiornato 18/07/2026, decisione utente + audit)
 - Conferma di un corrispettivo giornaliero → il sistema registra in Prima Nota
   **Cassa** un'**entrata per il totale intero** (categoria "Corrispettivi") più
-  un'**uscita per la sola quota elettronica** (categoria "POS Verso Banca", verso
-  la Banca). Il saldo netto di cassa che ne risulta è quindi il solo contante,
-  ma in due righe distinte, non in un'unica riga "solo contanti".
+  un'**uscita** (categoria "POS Verso Banca") pari alla **CHIUSURA MANUALE
+  serale del terminale POS** quando è stata trascritta nell'apposita sezione
+  ("quello che esce dal terminale è il vero incasso POS"); se la chiusura non
+  c'è, si usa come ripiego l'elettronico del corrispettivo XML (che resta il
+  dato di confronto FISCALE). La riga indica la fonte usata
+  (`quota_pos_fonte`: chiusura_manuale | xml).
 - "Paga in Cassa" su una fattura → uscita collegata alla fattura.
 
-**Banca**
-- La **quota elettronica/POS** dello stesso corrispettivo entra in Prima Nota **Banca**
-  come entrata "Corrispettivi POS", **in attesa di conciliazione** con l'accredito reale
-  che arriverà dal provider (il POS è in viaggio verso la banca). Non è mai un'uscita di
-  cassa: è un'entrata bancaria da riscontrare.
+**Banca** (MODELLO POS aggiornato 18/07/2026)
+- L'entrata POS in Prima Nota **Banca** è **l'ACCREDITO REALE dell'estratto
+  conto** (data di accredito e importo esatto per circuito: bancomat, carte,
+  Amex — creato dal motore unico, agganciato al movimento EC e attribuito
+  anche al giorno di vendita letto dalla causale NUMIA). Le vecchie righe
+  "sintetiche" alla data del corrispettivo NON vengono più create; quelle
+  storiche sono state sostituite dagli accrediti reali con la migrazione
+  `POST /api/prima-nota/migra-pos-accrediti-reali`.
 - "Paga in Banca" su una fattura → uscita collegata alla fattura.
-- Registrazione di un accredito POS in estratto conto → concilia la voce "Corrispettivi
-  POS" attesa (vedi §5), non crea un movimento nuovo (riconoscimento per parola chiave
-  sulla causale bancaria: NUMIA, ACCREDITO POS, INCASSO POS, ecc. — se l'accredito reale
-  non contiene nessuna di queste parole, non nasce un doppio movimento ma la voce
-  "Corrispettivi POS" resta scoperta/non riconciliata senza avviso esplicito).
+- Tutte le scritture di Prima Nota stanno migrando al **motore unico**
+  (`app/services/scritture_contabili.py`): un test-guardia vieta nuovi
+  punti di scrittura diretta.
 - **Bug grave corretto 16/07/2026 — la Banca mostrava solo uscite.** I saldi
   della Prima Nota escludevano l'intera categoria "Corrispettivi POS", ma
   quella categoria la scrivono due percorsi diversi: la chiusura POS serale

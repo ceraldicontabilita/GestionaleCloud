@@ -77,13 +77,23 @@ async def check_ec_dangling_e_duplicati(db) -> Dict[str, Any]:
 
 async def check_pos_giornaliero(db) -> Dict[str, Any]:
     """Accrediti POS in estratto conto (per giorno di VENDITA dalla
-    descrizione NUMIA) vs elettronico dei corrispettivi XML."""
+    descrizione NUMIA) vs il riferimento operativo del giorno: la CHIUSURA
+    MANUALE serale del terminale quando trascritta (regola utente
+    18/07/2026: 'quello è il vero incasso POS'), altrimenti l'elettronico
+    dei corrispettivi XML (confronto fiscale)."""
     from app.routers.pos_corrispettivi_check import _giorno_operazione_pos
     anno = datetime.now(timezone.utc).year
     xml: Dict[str, float] = {}
     async for c in db["corrispettivi"].find(
             {"data": {"$regex": f"^{anno}"}}, {"_id": 0, "data": 1, "pagato_elettronico": 1}):
         xml[c["data"]] = xml.get(c["data"], 0) + float(c.get("pagato_elettronico") or 0)
+    chiusure: Dict[str, float] = {}
+    async for c in db["chiusure_pos_manuali"].find(
+            {"data": {"$regex": f"^{anno}"}}, {"_id": 0, "data": 1, "importo": 1, "totale": 1}):
+        chiusure[c["data"]] = chiusure.get(c["data"], 0) + float(c.get("importo") or c.get("totale") or 0)
+    for g in chiusure:
+        if chiusure[g] > 0:
+            xml[g] = chiusure[g]  # la chiusura manuale è il riferimento operativo
     ec: Dict[str, float] = {}
     async for m in db["estratto_conto_movimenti"].find(
             {"data": {"$regex": f"^{anno}"}, "tipo": {"$ne": "uscita"},

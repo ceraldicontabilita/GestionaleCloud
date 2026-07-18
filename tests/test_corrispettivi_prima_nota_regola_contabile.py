@@ -103,17 +103,13 @@ def test_create_prima_nota_movements_regola_contabile_completa():
     assert uscita_cassa["importo"] == 400.0
     assert uscita_cassa["categoria"] == "POS Verso Banca"
 
-    entrata_banca = banca[0]
-    assert entrata_banca["importo"] == 400.0
-    assert entrata_banca["tipo"] == "entrata"
-    assert entrata_banca["source"] == "corrispettivo_pos"
+    # MODELLO POS 18/07/2026: NESSUNA riga banca sintetica — l'entrata
 
-    # saldo netto cassa = entrata - uscita = solo contante
-    saldo_cassa = sum(d["importo"] if d["tipo"] == "entrata" else -d["importo"] for d in cassa)
-    assert saldo_cassa == 600.0
 
-    assert res["prima_nota_cassa_id"] == entrata_cassa["id"]
-    assert res["prima_nota_banca_id"] == entrata_banca["id"]
+    # banca nasce solo dall'accredito reale dell'estratto conto.
+
+
+    assert banca == []
 
 
 def test_create_prima_nota_movements_legge_pagato_pos_oltre_a_pagato_elettronico():
@@ -124,9 +120,11 @@ def test_create_prima_nota_movements_legge_pagato_pos_oltre_a_pagato_elettronico
 
     _run(helpers_mod._create_prima_nota_movements(db, corr))
 
-    banca = db.collections["prima_nota_banca"].docs
-    assert len(banca) == 1
-    assert banca[0]["importo"] == 250.0
+    # MODELLO POS 18/07/2026: pagato_pos alimenta l'uscita cassa (fallback
+    # XML), MAI una riga banca sintetica.
+    assert db.collections["prima_nota_banca"].docs == []
+    uscite = [m for m in db.collections["prima_nota_cassa"].docs if m["tipo"] == "uscita"]
+    assert len(uscite) == 1 and uscite[0]["importo"] == 250.0
 
 
 def test_create_prima_nota_movements_nessun_elettronico_nessuna_riga_banca():
@@ -147,7 +145,9 @@ def _patch_db(monkeypatch, db):
     monkeypatch.setattr(sync_mod.Database, "get_db", staticmethod(lambda: db))
 
 
-def test_sync_corrispettivi_impl_crea_anche_la_riga_banca(monkeypatch):
+def test_sync_corrispettivi_impl_niente_banca_sintetica(monkeypatch):
+    """MODELLO POS 18/07/2026: il sync crea cassa (entrata+uscita POS) ma MAI
+    la riga banca — l'entrata banca è l'accredito reale dell'estratto conto."""
     db = _FakeDb()
     db["corrispettivi"].docs = [_corrispettivo()]
     _patch_db(monkeypatch, db)
@@ -155,10 +155,9 @@ def test_sync_corrispettivi_impl_crea_anche_la_riga_banca(monkeypatch):
     res = _run(sync_mod._sync_corrispettivi_impl(anno=None))
 
     assert res["inseriti"] == 1
-    banca = db.collections["prima_nota_banca"].docs
-    assert len(banca) == 1
-    assert banca[0]["importo"] == 400.0
-    assert banca[0]["source"] == "corrispettivo_pos"
+    assert db.collections["prima_nota_banca"].docs == []
+    uscite = [m for m in db.collections["prima_nota_cassa"].docs if m["tipo"] == "uscita"]
+    assert len(uscite) == 1 and uscite[0]["importo"] == 400.0
 
 
 def test_sync_corrispettivi_impl_non_duplica_se_gia_caricato_dal_percorso_diretto(monkeypatch):
@@ -191,4 +190,4 @@ def test_sync_corrispettivi_impl_idempotente_su_doppia_esecuzione(monkeypatch):
 
     assert res2["inseriti"] == 0
     assert res2["duplicati"] == 1
-    assert len(db.collections["prima_nota_banca"].docs) == 1
+    assert db.collections["prima_nota_banca"].docs == []  # mai banca sintetica

@@ -141,5 +141,5 @@ def test_purge_elimina_tutte_le_pipeline_e_ricrea_pulito():
 
     banca = db["prima_nota_banca"].docs
     entrate_pos = [m for m in banca if m.get("source") == "corrispettivo_pos"]
-    assert len(entrate_pos) == 1 and entrate_pos[0]["importo"] == 3617.0
+    assert entrate_pos == []  # MODELLO POS 18/07/2026: mai banca sintetica (entrata banca = accredito EC reale)
     assert any(m["id"] == "b2" for m in banca)

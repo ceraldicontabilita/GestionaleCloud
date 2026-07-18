@@ -99,11 +99,12 @@ def test_promozione_corrispettivo_archiviato_entra_in_prima_nota():
     corr = db["corrispettivi"].docs[0]
     assert corr["stato_import"] == "promosso_da_archivio"
     assert corr["prima_nota_cassa_id"]
-    # Movimenti canonici creati: entrata totale + uscita POS in cassa, entrata POS in banca
+    # Movimenti canonici creati: entrata totale + uscita POS in cassa;
+    # MODELLO POS 18/07/2026: MAI banca sintetica
     cassa = db["prima_nota_cassa"].docs
     assert any(m["tipo"] == "entrata" and m["importo"] == 1000.0 for m in cassa)
     assert any(m["tipo"] == "uscita" and m["importo"] == 600.0 for m in cassa)
-    assert any(m["tipo"] == "entrata" and m["importo"] == 600.0 for m in db["prima_nota_banca"].docs)
+    assert not any(m.get("source") == "corrispettivo_pos" for m in db["prima_nota_banca"].docs)
 
 
 def test_promozione_salta_giorno_gia_attivo():

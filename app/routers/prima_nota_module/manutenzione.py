@@ -1874,3 +1874,53 @@ async def dedup_righe_stesso_estratto_conto(
             "orfane_eliminate": orfane_rimosse,
             "orfane_scollegate": orfane_scollegate,
             "dettaglio": dettaglio}
+
+
+async def migra_pos_accrediti_reali(
+    dry_run: bool = Query(True, description="Solo conteggio"),
+    anno: int = Query(2026),
+) -> Dict[str, Any]:
+    """MODELLO POS (decisione utente 18/07/2026): l'entrata banca è
+    l'accredito REALE dell'estratto conto, non la riga sintetica alla data
+    del corrispettivo. Migrazione una-tantum:
+    1) le righe banca sintetiche (source corrispettivo_pos) vengono
+       soft-deletate;
+    2) ogni accredito POS dell'estratto conto genera la sua entrata banca
+       reale via motore unico (dedup per estratto_conto_id)."""
+    from app.services.scritture_contabili import (
+        registra_accredito_pos_ec, query_accrediti_pos_ec)
+
+    db = Database.get_db()
+    now = datetime.now(timezone.utc).isoformat()
+
+    sintetiche = await db["prima_nota_banca"].find(
+        {"source": "corrispettivo_pos", "data": {"$regex": f"^{anno}"},
+         "status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 0, "id": 1, "importo": 1},
+    ).to_list(10000)
+    tot_sintetiche = round(sum(float(s.get("importo") or 0) for s in sintetiche), 2)
+
+    accrediti = await db["estratto_conto_movimenti"].find(
+        query_accrediti_pos_ec(anno), {"_id": 0},
+    ).to_list(20000)
+    tot_accrediti = round(sum(abs(float(m.get("importo") or 0)) for m in accrediti), 2)
+
+    creati = 0
+    if not dry_run:
+        if sintetiche:
+            await db["prima_nota_banca"].update_many(
+                {"id": {"$in": [s["id"] for s in sintetiche]}},
+                {"$set": {"status": "deleted", "deleted": True,
+                          "deleted_reason": "sintetica_pos_sostituita_da_accredito_reale",
+                          "deleted_at": now}})
+        for m in accrediti:
+            if await registra_accredito_pos_ec(db, m):
+                creati += 1
+
+    return {"dry_run": dry_run, "anno": anno,
+            "sintetiche_rimosse" if not dry_run else "sintetiche_da_rimuovere": len(sintetiche),
+            "totale_sintetiche": tot_sintetiche,
+            "accrediti_ec_totali": len(accrediti),
+            "totale_accrediti_reali": tot_accrediti,
+            "entrate_banca_create": creati,
+            "delta_entrate_banca": round(tot_accrediti - tot_sintetiche, 2)}
