@@ -471,10 +471,12 @@ async def ripara_fornitori_sconosciuti() -> Dict[str, Any]:
     fornitori = await db[Collections.SUPPLIERS].find({}, {"_id": 0}).to_list(5000)
     corretti_nome = iban_aggiunti = email_aggiunte = fatture_corrette = 0
     dettaglio = []
+    errori = []
 
     for f in fornitori:
+      try:
         chiavi = [str(k).strip() for k in (f.get("partita_iva"), f.get("piva"), f.get("vat_number")) if k]
-        if not chiavi:
+        if not chiavi or not f.get("id"):
             continue
         nome_attuale = (f.get("ragione_sociale") or f.get("denominazione") or f.get("nome") or "").strip()
         manca_nome = (not nome_attuale) or ("sconosciut" in nome_attuale.lower())
@@ -517,6 +519,12 @@ async def ripara_fornitori_sconosciuti() -> Dict[str, Any]:
         if upd:
             upd["updated_at"] = datetime.now(timezone.utc).isoformat()
             await db[Collections.SUPPLIERS].update_one({"id": f["id"]}, {"$set": upd})
+      except Exception as e:
+        # un fornitore rotto non deve far saltare TUTTA la riparazione
+        logger.exception(f"ripara-sconosciuti: errore su fornitore {f.get('id')}")
+        errori.append({"fornitore_id": f.get("id"),
+                       "piva": f.get("partita_iva") or f.get("piva"),
+                       "errore": f"{type(e).__name__}: {e}"[:200]})
 
     try:
         await cache.delete("suppliers_list_default")
@@ -528,4 +536,5 @@ async def ripara_fornitori_sconosciuti() -> Dict[str, Any]:
         "email_aggiunte": email_aggiunte,
         "fatture_corrette": fatture_corrette,
         "dettaglio_nomi": dettaglio[:30],
+        "errori": errori[:20],
     }

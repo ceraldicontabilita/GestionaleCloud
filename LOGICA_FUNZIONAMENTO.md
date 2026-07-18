@@ -127,22 +127,24 @@ cartelle della casella, filtrando **solo per parole chiave amministrative**
 (circa 50 termini generici tipo "fattura", "f24", "bolletta", "enel", "verbale",
 "cedolino"...) — **mai le fatture italiane**, che arrivano solo da Drive/SDI (§3).
 
-**Mittenti attendibili — stato per canale** (bug corretto il 15/07/2026: il
-codice dichiarava di filtrare anche per mittente ma non lo faceva mai davvero):
+**Mittenti attendibili — LA LISTA È IL VANGELO** (regola vincolante utente
+18/07/2026): la posta si scarica **SOLO** dai mittenti configurati nella pagina
+**Mittenti Email**. Nessuna eccezione:
 
 | Canale | Filtro mittente | Dove si configura |
 |---|---|---|
 | Cedolini (email) | Sì, attivo | Mittenti Email → tipo "Cedolino" |
 | Verbali/multe (email) | Sì, attivo | Mittenti Email → tipo (dedicato ai verbali) |
 | Fatture estere (PDF) | Sì, attivo | Mittenti Email → tipo "Fattura estera (PDF)" |
-| **Scansione generica ("Documenti")** | **Sì da questa correzione**, ma **nessun mittente configurato = nessuna restrizione** (per non spegnere di colpo il canale) | Mittenti Email → tipo "Generico (solo archivio)" |
+| **Scansione generica ("Documenti")** | **Sì, whitelist assoluta**: accetta qualunque mittente presente in Mittenti Email (di qualsiasi tipo, attivo); **lista vuota = non scarica NULLA** | Mittenti Email (tutti i tipi) |
 
-Finché in "Mittenti Email" non aggiungi almeno un indirizzo/dominio col tipo
-"Generico", la scansione **continua a scaricare da chiunque** scriva un'email che
-contiene una delle parole chiave amministrative — è così che sono arrivati
-documenti da mittenti mai autorizzati (dominio esterno, persona non in lista,
-bollette non richieste). Per attivare davvero il filtro: vai in **Mittenti Email**,
-aggiungi i mittenti che consideri fidati con tipo "Generico (solo archivio)".
+Prima del 18/07/2026 valeva "lista vuota = nessuna restrizione", ed erano
+entrati documenti da mittenti mai autorizzati (es. saveris2.net, pec.kimbo.it,
+PEC legalmail via pec.fatturapa.it). Ora esiste anche la pulizia retroattiva:
+`POST /api/email-download/pulizia-non-attendibili` (admin, prima `dry_run=true`)
+elimina dai vari archivi email i documenti il cui mittente non è in lista,
+**insieme agli alert associati**. Dalla finestra alert, il click su un alert
+porta direttamente al documento in questione (fattura, prima nota, F24...).
 
 **Campi talvolta vuoti ("-") in "Tutti i Documenti"**: "Mittente"/"Da Email" sono
 vuoti per i documenti arrivati da **Google Drive** (es. Libro Unico/cedolini
@@ -174,19 +176,27 @@ fonte.
      nome **identico**, mai a prefisso, e mai se il fornitore trovato ha già una
      P.IVA diversa: in quel caso è un'azienda diversa e se ne crea una nuova.
 3. La fattura eredita il metodo di pagamento del fornitore. **REGOLA
-   aggiornata dall'utente il 17/07/2026** (supera la precedente "sempre
-   provvisoria"): all'ingresso della fattura XML,
+   aggiornata dall'utente il 18/07/2026** (supera la 17/07 "banca =
+   registrata subito"): all'ingresso della fattura XML,
    - fornitore con metodo **Cassa** (contanti) → l'uscita viene registrata
-     **subito** in Prima Nota Cassa e la fattura risulta pagata contanti;
-   - fornitore con metodo **Banca** (bonifico/SEPA/RID/SDD) → uscita
-     registrata **subito** in Prima Nota Banca, fattura pagata bonifico;
+     **subito** in Prima Nota Cassa e la fattura risulta pagata contanti
+     (il contante non lascia traccia da riconciliare);
+   - fornitore con metodo **Banca** → la fattura resta **Provvisoria**
+     finché la **riconciliazione** (estratto conto, PayPal o carta) non
+     trova l'addebito reale: è la riconciliazione a registrare l'uscita
+     in Prima Nota Banca e a marcare la fattura pagata;
    - fornitore **Misto**, senza metodo, o con metodo ambiguo (paypal,
-     carta, da_configurare) → la fattura resta in Prima Nota
-     **Provvisoria**: confermi tu la divisione tra cassa e banca, e solo
-     dopo nascono i movimenti veri.
-   La registrazione automatica usa il writer canonico dei pagamenti
-   (riferimento FATT-{id}, idempotente: mai due movimenti per la stessa
-   fattura, anche su reimport).
+     carta, da_configurare) → **Provvisoria**: confermi tu la divisione
+     tra cassa e banca, e solo dopo nascono i movimenti veri.
+   La registrazione usa il writer canonico dei pagamenti (riferimento
+   FATT-{id}, idempotente: mai due movimenti per la stessa fattura,
+   anche su reimport).
+3-bis. **Cambio del metodo di pagamento in anagrafica fornitore** (18/07/2026):
+   quando salvi un metodo diverso, il sistema **riprocessa da solo la Prima
+   Nota** dell'anno corrente: le registrazioni nate col metodo sbagliato
+   (es. fattura in Banca di un fornitore ora a Cassa, o riga banca mai
+   riconciliata con l'estratto conto) tornano in **Provvisoria** e la
+   fattura torna "da pagare", pronta per essere confermata dal lato giusto.
 4. **Data scadenza**: quella scritta in fattura è solo informativa. Diventa una
    scadenza operativa (pagina Scadenze, con avvisi) **solo se la fattura indica
    pagamento a mezzo agente** ("pagamento a mezzo agente", "rimessa diretta agente",
@@ -767,6 +777,26 @@ memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md).**
   addizionali/IVS dipendente), IRES con aliquota versionata per anno, IRAP
   autonoma dal valore della produzione con deduzioni per tipologia di
   personale (mai sottratto l'intero F24).
+
+### 7-bis. Ritenute d'acconto (pagina Ritenute, 18/07/2026)
+
+Le fatture XML con blocco **DatiRitenuta** (RT01 persone fisiche / RT02
+società) generano una riga nella sezione **Ritenute**: importo memorizzato,
+**scadenza il 16 del mese successivo** alla data fattura. Il motore poi:
+1. cerca l'**F24 con codice tributo 1040** e stesso importo e lo **associa**
+   alla ritenuta (l'F24 arriva dalla commercialista — mai ricostruito in
+   automatico, come da SPECIFICA F24);
+2. legge lo stato di pagamento dell'F24 (quietanza/estratto conto) e
+   classifica: **pagata puntuale** (entro il 16), **pagata con
+   ravvedimento** se nell'F24 ci sono anche i codici del ravvedimento —
+   **8906** (sanzione ridotta sostituti d'imposta) + **1989** (interessi) —
+   oppure **in ritardo SENZA ravvedimento** (da sistemare);
+3. senza F24 in archivio la riga resta "da pagare" e, superata la
+   scadenza, "SCADUTA da versare".
+I codici del ravvedimento sono memorizzati anche nella sezione codici
+tributo (`/api/ritenute/codici-ravvedimento`; in anagrafica F24 sono
+censiti pure 8904/1991 per l'IVA e 8901/1990 per l'IRPEF). Aggiornamento
+con il bottone "Aggiorna da fatture e F24" o via `POST /api/ritenute/scan`.
 
 ---
 
