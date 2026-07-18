@@ -238,6 +238,76 @@ async def processa_allegati_f24() -> Dict[str, Any]:
                 "errore": str(e)
             })
     
+    # ── Anche i F24 finiti in documents_inbox (routing del monitor Gmail) ──
+    # Bug segnalato 18/07/2026: i PDF F24 della commercialista arrivati via
+    # monitor ("F24 rit. scad 16.07.pdf" di rosaria.marotta) venivano
+    # archiviati in documents_inbox ma MAI parsati in f24_unificato: la
+    # sezione Ritenute non trovava l'F24 col 1040 da associare.
+    import base64 as _b64
+    inbox_docs = await db["documents_inbox"].find(
+        {"pdf_data": {"$exists": True, "$nin": [None, ""]},
+         "f24_processato": {"$ne": True},
+         "$or": [{"category": "f24"}, {"tipo_documento": "f24"},
+                 {"filename": {"$regex": r"f\s*24", "$options": "i"}}]},
+        {"_id": 0, "id": 1, "filename": 1, "pdf_data": 1, "email_from": 1, "email_date": 1},
+    ).to_list(100)
+    for doc in inbox_docs:
+        try:
+            gia = await db[COLL_F24_COMMERCIALISTA].find_one({"source_document_id": doc["id"]})
+            if gia:
+                await db["documents_inbox"].update_one(
+                    {"id": doc["id"]}, {"$set": {"f24_processato": True}})
+                continue
+            pdf_content = _b64.b64decode(doc["pdf_data"])
+            parsed_f24 = parse_f24_commercialista(pdf_content=pdf_content)
+            has_tributi = (
+                len(parsed_f24.get("sezione_erario", [])) > 0 or
+                len(parsed_f24.get("sezione_inps", [])) > 0 or
+                len(parsed_f24.get("sezione_regioni", [])) > 0
+            )
+            if has_tributi and "error" not in parsed_f24:
+                await db[COLL_F24_COMMERCIALISTA].insert_one({
+                    "id": str(__import__("uuid").uuid4()),
+                    "file_name": doc.get("filename"),
+                    "source_document_id": doc["id"],
+                    "pdf_data": doc["pdf_data"],
+                    "email_from": doc.get("email_from"),
+                    "email_date": doc.get("email_date"),
+                    "dati_generali": parsed_f24.get("dati_generali", {}),
+                    "sezione_erario": parsed_f24.get("sezione_erario", []),
+                    "sezione_inps": parsed_f24.get("sezione_inps", []),
+                    "sezione_regioni": parsed_f24.get("sezione_regioni", []),
+                    "sezione_tributi_locali": parsed_f24.get("sezione_tributi_locali", []),
+                    "totali": parsed_f24.get("totali", {}),
+                    "codici_univoci": parsed_f24.get("codici_univoci", []),
+                    "has_ravvedimento": parsed_f24.get("has_ravvedimento", False),
+                    "status": "da_pagare",
+                    "riconciliato": False,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                })
+                risultati["f24_commercialista"] += 1
+                risultati["processati"] += 1
+                risultati["dettagli"].append({
+                    "file": doc.get("filename"), "tipo": "F24 (documents_inbox)",
+                    "codici": len(parsed_f24.get("codici_univoci", [])),
+                    "importo": parsed_f24.get("totali", {}).get("saldo_netto", 0),
+                })
+                await db["documents_inbox"].update_one(
+                    {"id": doc["id"]}, {"$set": {"f24_processato": True}})
+            else:
+                # lasciato riprovabile ma tracciato
+                risultati["dettagli"].append({
+                    "file": doc.get("filename"), "tipo": "inbox non riconosciuto come F24",
+                })
+                await db["documents_inbox"].update_one(
+                    {"id": doc["id"]},
+                    {"$set": {"f24_processato": True,
+                              "f24_esito": "non_riconosciuto_da_parser"}})
+        except Exception as e:
+            logger.error(f"Errore processing F24 inbox {doc.get('filename')}: {e}")
+            risultati["errori"] += 1
+            risultati["dettagli"].append({"file": doc.get("filename"), "errore": str(e)})
+
     return {
         "success": True,
         "message": f"Processati {risultati['processati']} allegati",
