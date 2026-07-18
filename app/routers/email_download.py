@@ -986,8 +986,8 @@ async def add_mittente(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         "builtin":        False,
         "created_at":     datetime.now(timezone.utc).isoformat(),
     }
-    await db["mittenti_email"].insert_one(doc)
-    return {"success": True, "mittente": {k: v for k, v in doc.items()}}
+    await db["mittenti_email"].insert_one(dict(doc))  # copia: insert_one aggiunge _id (ObjectId) non serializzabile
+    return {"success": True, "mittente": doc}
 
 
 @router.delete("/mittenti/{mittente_id}")
