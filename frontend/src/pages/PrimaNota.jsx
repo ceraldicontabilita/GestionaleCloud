@@ -206,19 +206,29 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
     return 3; // fatture, utenze e altre uscite
   };
 
-  // SALDO PROGRESSIVO CONTINUO: sempre in ordine CRONOLOGICO su TUTTO
-  // l'anno (mai sulla selezione filtrata), partendo dal riporto.
-  const cronologico = (a, b) =>
-    (a.data || '').localeCompare(b.data || '') ||
+  // Ordine del registro A VIDEO: giorni dal più recente, dentro la
+  // giornata corrispettivo → POS → fatture → versamento.
+  const ordineVideo = (a, b) =>
+    (b.data || '').localeCompare(a.data || '') ||
     rango(a) - rango(b) ||
     (a.created_at || '').localeCompare(b.created_at || '');
+
+  // SALDO PROGRESSIVO CONTINUO nell'ORDINE DEL REGISTRO (regola utente
+  // 18/07/2026, esempio 20-21/01): si parte dal riporto in fondo e si
+  // sale riga per riga — OGNI riga vale la riga sotto ± il suo importo,
+  // anche a cavallo dei giorni. La somma è commutativa, quindi i totali
+  // di giornata e dell'anno non cambiano; cambia solo il punto in cui
+  // ogni singola riga "fotografa" il saldo, che ora segue la lettura.
+  // Sempre su TUTTO l'anno, mai sulla selezione filtrata.
   const saldoDi = useMemo(() => {
     const mappa = {};
     let saldo = riporto;
-    [...movimenti].sort(cronologico).forEach(m => {
+    const lista = [...movimenti].sort(ordineVideo);
+    for (let i = lista.length - 1; i >= 0; i--) {
+      const m = lista[i];
       saldo += (m.tipo === 'entrata' ? 1 : -1) * Math.abs(m.importo || 0);
       mappa[m.id] = saldo;
-    });
+    }
     return mappa;
   }, [movimenti, riporto]);
 
@@ -236,10 +246,7 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
         (m.numero_fattura || '').toLowerCase().includes(q) ||
         String(m.importo || '').includes(q));
     }
-    return [...lista].sort((a, b) =>
-      (b.data || '').localeCompare(a.data || '') ||
-      rango(a) - rango(b) ||
-      (a.created_at || '').localeCompare(b.created_at || ''));
+    return [...lista].sort(ordineVideo);
   }, [movimenti, mese, fCategoria, fTipo, cerca]);
 
   const totPagine = Math.max(1, Math.ceil(visibili.length / PER_PAGINA));
