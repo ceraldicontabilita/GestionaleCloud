@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1005 endpoint** in **106 gruppi**.
+> Totale **1008 endpoint** in **106 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 640 · ext esterni = 76 · — da verificare = 289
+**Riepilogo uso:** ✓ frontend = 640 · ext esterni = 76 · — da verificare = 292
 
 ## AI Parser  (11)
 
@@ -1183,7 +1183,7 @@
 | GET | `/api/previsioni-acquisti/prodotti` | — | previsioni_acquisti |
 | GET | `/api/previsioni-acquisti/statistiche` | ✓ | previsioni_acquisti |
 
-## Prima Nota  (73)
+## Prima Nota  (76)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1218,10 +1218,12 @@
 | DELETE | `/api/prima-nota/cassa/{movimento_id}` | ✓ | prima_nota_module.cassa |
 | GET | `/api/prima-nota/cassa/{movimento_id}/fattura` | ✓ | prima_nota_module.cassa |
 | POST | `/api/prima-nota/cleanup-orphan-movements` | — | prima_nota_module.manutenzione |
+| POST | `/api/prima-nota/collega-banca-estratto-conto` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/collega-corrispettivi` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/collega-fatture` | — | prima_nota_module.sync |
 | GET | `/api/prima-nota/corrispettivi-status` | — | prima_nota_module.sync |
 | POST | `/api/prima-nota/dedup-fatture` | ✓ | prima_nota_module.manutenzione |
+| POST | `/api/prima-nota/dedup-righe-estratto-conto` | — | prima_nota_module.manutenzione |
 | GET | `/api/prima-nota/diagnostica-corrispettivi` | ✓ | prima_nota_module.manutenzione |
 | GET | `/api/prima-nota/diagnostica-metodi` | ✓ | prima_nota_module.manutenzione |
 | GET | `/api/prima-nota/export/excel` | — | prima_nota_module.stats |
@@ -1243,6 +1245,7 @@
 | POST | `/api/prima-nota/recalculate-balances` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/regenerate-from-invoices` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/registra-fattura` | — | prima_nota_module.sync |
+| POST | `/api/prima-nota/ripristina-fatture-movimento-cancellato` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/ripristina-provvisori-metodo-errato` | — | prima_nota_module.manutenzione |
 | GET | `/api/prima-nota/salari` | — | prima_nota_module.salari |
 | POST | `/api/prima-nota/salari` | — | prima_nota_module.salari |

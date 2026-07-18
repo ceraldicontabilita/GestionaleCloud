@@ -110,6 +110,10 @@ router.add_api_route("/fix-date-formato-italiano", fix_date_formato_italiano, me
 router.add_api_route("/pulizia-pre-anno", pulizia_dati_pre_anno, methods=["POST"])
 router.add_api_route("/unifica-categorie", unifica_categorie, methods=["POST"])
 router.add_api_route("/ripristina-provvisori-metodo-errato", ripristina_provvisori_metodo_errato, methods=["POST"])
+from .manutenzione import collega_banca_a_estratto_conto, ripristina_fatture_con_movimento_cancellato, dedup_righe_stesso_estratto_conto
+router.add_api_route("/collega-banca-estratto-conto", collega_banca_a_estratto_conto, methods=["POST"])
+router.add_api_route("/ripristina-fatture-movimento-cancellato", ripristina_fatture_con_movimento_cancellato, methods=["POST"])
+router.add_api_route("/dedup-righe-estratto-conto", dedup_righe_stesso_estratto_conto, methods=["POST"])
 router.add_api_route("/collega-corrispettivi", collega_corrispettivi_prima_nota, methods=["POST"])
 router.add_api_route("/arricchisci-pagamenti-banca", arricchisci_pagamenti_banca, methods=["POST"])
 router.add_api_route("/fix-categories-and-duplicates", fix_categories_and_duplicates, methods=["POST"])

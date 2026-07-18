@@ -1648,3 +1648,224 @@ async def diagnostica_metodi_discordanti(anno: int = Query(...)) -> Dict:
         "discordanti": discordanti[:200],
         "azione": "POST /api/prima-nota/sposta-scrittura {movimento_id, destinazione} per ogni voce",
     }
+
+
+async def collega_banca_a_estratto_conto(
+    dry_run: bool = Query(True, description="Solo conteggio"),
+    anno: int = Query(2026),
+) -> Dict[str, Any]:
+    """COLLAUDO → Lavoro 1 (18/07/2026): le righe di Prima Nota Banca nate
+    da conferme manuali/pagamenti diretti non hanno il collegamento
+    all'estratto conto (violazione della regola 'mai pagata banca senza
+    riscontro'). Questo retro-collegamento cerca per ognuna l'addebito
+    reale (stesso importo ±0,01 E nome fornitore nella descrizione, entro
+    45 giorni) e aggancia riga+movimento. Chi non trova l'addebito resta
+    scollegato e continua a essere contato dal collaudo — corretto così:
+    o l'addebito arriverà col prossimo export banca, o il pagamento è da
+    rivedere."""
+    from datetime import timedelta
+
+    db = Database.get_db()
+    now = datetime.now(timezone.utc).isoformat()
+
+    righe = await db["prima_nota_banca"].find(
+        {"data": {"$regex": f"^{anno}"}, "tipo": "uscita",
+         "fattura_id": {"$exists": True, "$nin": [None, ""]},
+         "riconciliato": {"$ne": True},
+         "$or": [{"estratto_conto_id": None},
+                 {"estratto_conto_id": {"$exists": False}},
+                 {"estratto_conto_id": ""}],
+         "status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 0, "id": 1, "fattura_id": 1, "data": 1, "importo": 1,
+         "descrizione": 1, "fornitore": 1, "source": 1},
+    ).to_list(5000)
+
+    movimenti = await db["estratto_conto_movimenti"].find(
+        {"data": {"$regex": f"^{anno}"}, "tipo": "uscita",
+         "riconciliato": {"$ne": True}},
+        {"_id": 0, "id": 1, "data": 1, "importo": 1,
+         "descrizione_originale": 1, "descrizione": 1},
+    ).to_list(20000)
+    per_importo: Dict[float, list] = {}
+    for m in movimenti:
+        per_importo.setdefault(round(abs(float(m.get("importo") or 0)), 2), []).append(m)
+
+    collegate = 0
+    senza_match = 0
+    dettaglio = []
+    for r in righe:
+        fatt = await db["invoices"].find_one(
+            {"id": r["fattura_id"]}, {"_id": 0, "supplier_name": 1, "invoice_number": 1})
+        nome = ((fatt or {}).get("supplier_name") or r.get("fornitore") or "").upper()
+        token = [p for p in nome.replace(".", " ").replace(",", " ").split() if len(p) > 3][:3]
+        candidati = per_importo.get(round(abs(float(r.get("importo") or 0)), 2), [])
+        match = None
+        try:
+            data_riga = datetime.fromisoformat(str(r.get("data"))[:10])
+        except ValueError:
+            data_riga = None
+        for m in candidati:
+            desc = (m.get("descrizione_originale") or m.get("descrizione") or "").upper()
+            if token and not any(t in desc for t in token):
+                continue
+            if data_riga:
+                try:
+                    delta = abs((datetime.fromisoformat(str(m.get("data"))[:10]) - data_riga).days)
+                    if delta > 45:
+                        continue
+                except ValueError:
+                    pass
+            match = m
+            break
+        if not match:
+            senza_match += 1
+            continue
+
+        collegate += 1
+        if len(dettaglio) < 40:
+            dettaglio.append({"fattura": (fatt or {}).get("invoice_number"),
+                              "fornitore": nome[:35], "importo": r.get("importo"),
+                              "addebito_ec": match.get("data")})
+        if dry_run:
+            continue
+        await db["prima_nota_banca"].update_one(
+            {"id": r["id"]},
+            {"$set": {"estratto_conto_id": match["id"], "riconciliato": True,
+                      "tipo_riconciliazione": "retro_collegamento_ec",
+                      "updated_at": now}})
+        await db["estratto_conto_movimenti"].update_one(
+            {"id": match["id"]},
+            {"$set": {"riconciliato": True,
+                      "tipo_riconciliazione": "retro_collegamento_prima_nota",
+                      "dettagli_riconciliazione": {"prima_nota_id": r["id"],
+                                                   "fattura_id": r["fattura_id"]}}})
+        candidati.remove(match)
+
+    return {"dry_run": dry_run, "anno": anno,
+            "righe_scollegate_analizzate": len(righe),
+            "collegate" if not dry_run else "da_collegare": collegate,
+            "senza_addebito_in_ec": senza_match,
+            "dettaglio": dettaglio}
+
+
+async def ripristina_fatture_con_movimento_cancellato(
+    dry_run: bool = Query(True, description="Solo conteggio"),
+) -> Dict[str, Any]:
+    """COLLAUDO → Lavoro 2 (18/07/2026): fatture marcate pagate il cui
+    prima_nota_id punta a una riga soft-deletata (residuo delle pulizie):
+    tornano 'da pagare' e rientrano nel giro normale (provvisori /
+    attesa banca / riconciliazione)."""
+    db = Database.get_db()
+    ripristinate = 0
+    dettaglio = []
+    async for f in db["invoices"].find(
+            {"pagato": True, "prima_nota_id": {"$exists": True, "$nin": [None, ""]},
+             "status": {"$nin": ["deleted", "archived"]}},
+            {"_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1,
+             "prima_nota_id": 1, "total_amount": 1}):
+        pn_id = f["prima_nota_id"]
+        viva = False
+        for coll in ("prima_nota_banca", "prima_nota_cassa"):
+            r = await db[coll].find_one(
+                {"id": pn_id, "status": {"$nin": ["deleted", "archived"]}},
+                {"_id": 0, "id": 1})
+            if r:
+                viva = True
+                break
+        if viva:
+            continue
+        ripristinate += 1
+        if len(dettaglio) < 40:
+            dettaglio.append({"fattura": f.get("invoice_number"),
+                              "fornitore": f.get("supplier_name"),
+                              "importo": f.get("total_amount")})
+        if not dry_run:
+            await db["invoices"].update_one({"id": f["id"]}, {"$set": {
+                "pagato": False, "paid": False, "stato_pagamento": "da_pagare",
+                "prima_nota_id": None, "prima_nota_tipo": None,
+                "prima_nota_banca_id": None, "riconciliato_con_ec": None,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }})
+    return {"dry_run": dry_run,
+            "ripristinate" if not dry_run else "da_ripristinare": ripristinate,
+            "dettaglio": dettaglio}
+
+
+async def dedup_righe_stesso_estratto_conto(
+    dry_run: bool = Query(True, description="Solo conteggio"),
+) -> Dict[str, Any]:
+    """COLLAUDO → Lavoro 3 (18/07/2026): un addebito reale = una riga.
+    - Più righe banca ATTIVE con lo stesso estratto_conto_id (es. commissioni
+      CBILL registrate due volte): resta la più vecchia, le altre soft-delete.
+    - Righe collegate a un movimento EC che non esiste più: se la riga era
+      NATA dall'EC (source sync/riconciliazione) viene soft-deletata col
+      suo genitore; altrimenti viene solo scollegata e torna al giro di
+      riconciliazione."""
+    db = Database.get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    SOURCE_NATE_DA_EC = ("sync_generico", "estratto_conto", "riconciliazione_ec_auto",
+                         "retro_collegamento_ec", "ec_override_metodo_cassa")
+
+    ec_ids = {m["id"] async for m in db["estratto_conto_movimenti"].find({}, {"_id": 0, "id": 1})}
+    gruppi: Dict[str, list] = {}
+    async for r in db["prima_nota_banca"].find(
+            {"estratto_conto_id": {"$exists": True, "$nin": [None, ""]},
+             "status": {"$nin": ["deleted", "archived"]}},
+            {"_id": 0, "id": 1, "estratto_conto_id": 1, "created_at": 1,
+             "data": 1, "importo": 1, "descrizione": 1, "source": 1, "fattura_id": 1}):
+        gruppi.setdefault(r["estratto_conto_id"], []).append(r)
+
+    duplicate_rimosse = orfane_rimosse = orfane_scollegate = 0
+    dettaglio = []
+    for eid, righe in gruppi.items():
+        righe.sort(key=lambda x: str(x.get("created_at") or ""))
+        if eid not in ec_ids:
+            for r in righe:
+                nata_da_ec = any((r.get("source") or "").startswith(s) for s in SOURCE_NATE_DA_EC)
+                if len(dettaglio) < 40:
+                    dettaglio.append({"caso": "ec_inesistente", "data": r.get("data"),
+                                      "importo": r.get("importo"),
+                                      "descrizione": (r.get("descrizione") or "")[:50],
+                                      "azione": "elimina" if nata_da_ec else "scollega"})
+                if dry_run:
+                    continue
+                if nata_da_ec and not r.get("fattura_id"):
+                    await db["prima_nota_banca"].update_one(
+                        {"id": r["id"]},
+                        {"$set": {"status": "deleted", "deleted": True,
+                                  "deleted_reason": "movimento_ec_genitore_inesistente",
+                                  "deleted_at": now}})
+                    orfane_rimosse += 1
+                else:
+                    await db["prima_nota_banca"].update_one(
+                        {"id": r["id"]},
+                        {"$set": {"estratto_conto_id": None, "riconciliato": False,
+                                  "updated_at": now}})
+                    orfane_scollegate += 1
+            continue
+        for r in righe[1:]:  # duplicate: resta la più vecchia
+            if len(dettaglio) < 40:
+                dettaglio.append({"caso": "duplicata", "data": r.get("data"),
+                                  "importo": r.get("importo"),
+                                  "descrizione": (r.get("descrizione") or "")[:50],
+                                  "azione": "elimina"})
+            duplicate_rimosse += 1
+            if not dry_run:
+                await db["prima_nota_banca"].update_one(
+                    {"id": r["id"]},
+                    {"$set": {"status": "deleted", "deleted": True,
+                              "deleted_reason": "stesso_addebito_ec_duplicato",
+                              "deleted_at": now}})
+                if r.get("fattura_id"):
+                    await db["invoices"].update_one(
+                        {"id": r["fattura_id"], "prima_nota_id": r["id"]},
+                        {"$set": {"pagato": False, "paid": False,
+                                  "stato_pagamento": "da_pagare", "prima_nota_id": None}})
+
+    if dry_run:
+        duplicate_rimosse = sum(1 for d in dettaglio if d["caso"] == "duplicata")
+    return {"dry_run": dry_run,
+            "duplicate": duplicate_rimosse,
+            "orfane_eliminate": orfane_rimosse,
+            "orfane_scollegate": orfane_scollegate,
+            "dettaglio": dettaglio}

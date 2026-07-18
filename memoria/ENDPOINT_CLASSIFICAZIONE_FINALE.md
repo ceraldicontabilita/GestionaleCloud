@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1005 · tenere: 659 · verificare: 324 · admin-only (migrazione/manutenzione): 22
+**Totale endpoint:** 1008 · tenere: 659 · verificare: 327 · admin-only (migrazione/manutenzione): 22
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -828,10 +828,12 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `PUT /api/prima-nota/cassa/{movimento_id}` | prima_nota_module.cassa | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/cassa/{movimento_id}/fattura` | prima_nota_module.cassa | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/cleanup-orphan-movements` | prima_nota_module.manutenzione | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
+| `POST /api/prima-nota/collega-banca-estratto-conto` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/collega-corrispettivi` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/collega-fatture` | prima_nota_module.sync | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota/corrispettivi-status` | prima_nota_module.sync | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/dedup-fatture` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/prima-nota/dedup-righe-estratto-conto` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota/diagnostica-corrispettivi` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/diagnostica-metodi` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/export/excel` | prima_nota_module.stats | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -853,6 +855,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/prima-nota/recalculate-balances` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/regenerate-from-invoices` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/registra-fattura` | prima_nota_module.sync | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/prima-nota/ripristina-fatture-movimento-cancellato` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/ripristina-provvisori-metodo-errato` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota/salari` | prima_nota_module.salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/salari` | prima_nota_module.salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

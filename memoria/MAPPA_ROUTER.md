@@ -1,7 +1,7 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **1005 endpoint** in **105 prefissi**.
+> Totale **1008 endpoint** in **105 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
@@ -84,7 +84,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/portal` | 1 | ext | public_api |
 | `/api/pos-corrispettivi` | 8 | ✓ | pos_corrispettivi_check |
 | `/api/previsioni-acquisti` | 5 | ✓ | previsioni_acquisti |
-| `/api/prima-nota` | 73 | ✓ | prima_nota_module, prima_nota_module.attese, prima_nota_module.banca, prima_nota_module.cassa, prima_nota_module.manutenzione, prima_nota_module.salari, prima_nota_module.stats, prima_nota_module.sync |
+| `/api/prima-nota` | 76 | ✓ | prima_nota_module, prima_nota_module.attese, prima_nota_module.banca, prima_nota_module.cassa, prima_nota_module.manutenzione, prima_nota_module.salari, prima_nota_module.stats, prima_nota_module.sync |
 | `/api/prima-nota-salari` | 14 | ✓ | accounting.prima_nota_salari |
 | `/api/privacy` | 1 | — | legal_pages |
 | `/api/proposte` | 1 | — | dati_provvisori |
