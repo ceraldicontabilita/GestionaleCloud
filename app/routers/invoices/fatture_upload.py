@@ -471,16 +471,17 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
                                    session=None) -> Optional[Dict[str, Any]]:
     """Applica la REGOLA prima nota all'import.
 
-    REGOLA (utente, 17/07/2026 — supera la scelta precedente "sempre
-    provvisoria" di memoria/moduli/FATTURE_RICEVUTE.md): quando la fattura
-    XML entra nel gestionale,
+    REGOLA (utente, 18/07/2026 — aggiorna quella del 17/07): quando la
+    fattura XML entra nel gestionale,
       - fornitore con metodo pagamento UNIVOCO "cassa" (contanti) → uscita
-        registrata SUBITO in Prima Nota Cassa;
-      - fornitore con metodo UNIVOCO "banca" (bonifico/SEPA/RID/SDD) →
-        uscita registrata SUBITO in Prima Nota Banca;
-      - fornitore "misto", senza metodo, o con metodo ambiguo (paypal,
-        carta, da_configurare) → resta PROVVISORIA in attesa della
-        divisione manuale cassa/banca dell'utente.
+        registrata SUBITO in Prima Nota Cassa (il contante non lascia
+        traccia da riconciliare);
+      - fornitore con metodo "banca" → NON viene più marcata pagata in
+        automatico: "non devi portare pagata una fattura solo perché ha
+        metodo banca — devi sempre riconciliare con estratto conto,
+        PayPal o carta". Resta PROVVISORIA finché la riconciliazione
+        (estratto conto / PayPal) non trova l'addebito reale;
+      - fornitore "misto", senza metodo o ambiguo → PROVVISORIA.
 
     La scrittura usa il writer canonico registra_pagamento_fattura
     (idempotente per fattura: riferimento FATT-{id}, mai due movimenti per
@@ -501,16 +502,13 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
         return None
 
     is_cassa = "contant" in metodo or metodo == "cassa" or "cash" in metodo
-    is_banca = (
-        "bonific" in metodo or metodo == "banca" or "bank" in metodo
-        or "sepa" in metodo or "rid" in metodo or "sdd" in metodo
-        or "addebito" in metodo
-    )
-    if is_cassa == is_banca:
-        # misto, ambiguo o sconosciuto → provvisoria (divisione manuale)
+    if not is_cassa:
+        # BANCA, misto, ambiguo o sconosciuto → PROVVISORIA. Le fatture
+        # "banca" diventano pagate SOLO quando la riconciliazione
+        # (estratto conto / PayPal / carta) trova l'addebito reale.
         return None
 
-    destinazione = "cassa" if is_cassa else "banca"
+    destinazione = "cassa"
     # NB: registra_pagamento_fattura scrive fuori dalla transazione
     # dell'import (non accetta session); è idempotente per fattura, quindi
     # un eventuale abort dell'import lascia al più un movimento riferito a

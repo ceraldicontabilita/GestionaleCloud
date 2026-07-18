@@ -362,8 +362,18 @@ distinto da uno automatico né controllato per duplicati.
   (vedi sopra). Se in futuro rientrano dati di anni vecchi (reimport
   storici), la stessa pulizia è rieseguibile.
 
+**REGOLA PAGAMENTI BANCA (utente, 18/07/2026 — supera quella del 17/07)**:
+una fattura NON diventa mai "pagata" solo perché il fornitore ha metodo
+banca. La fattura con fornitore "banca" resta **provvisoria** finché la
+**riconciliazione** (estratto conto bancario, PayPal o carta) non trova
+l'addebito reale: è la riconciliazione a registrare l'uscita in Prima Nota
+Banca e a marcare la fattura pagata. Solo il fornitore a metodo **cassa**
+(contanti) viene registrato subito in Prima Nota Cassa, perché il contante
+non lascia traccia da riconciliare.
+
 **Provvisoria**
-- Solo fatture di fornitori "misto", in attesa della tua divisione cassa/banca.
+- Fatture di fornitori "misto" o senza metodo (divisione manuale) E fatture
+  di fornitori "banca" in attesa dell'addebito reale in estratto conto.
 
 **Corretto 15/07/2026 — pagamento fattura registrato a mano in Cassa/Banca ora
 marca sempre la fattura come pagata.** Prima di questa correzione, registrare a

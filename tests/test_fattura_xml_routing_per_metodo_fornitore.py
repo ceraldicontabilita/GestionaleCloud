@@ -1,8 +1,8 @@
-"""REGOLA (utente 17/07/2026): la fattura XML in ingresso va registrata
-SUBITO nella prima nota corrispondente al metodo del fornitore in
-anagrafica — cassa (contanti) o banca (bonifico) — mentre il fornitore
-"misto" (o senza metodo, o ambiguo) resta provvisorio in attesa della
-divisione manuale."""
+"""REGOLA (utente 18/07/2026): la fattura XML con fornitore a metodo
+CASSA (contanti) si registra subito in Prima Nota Cassa; con metodo
+BANCA resta PROVVISORIA finche' la riconciliazione (estratto conto /
+PayPal / carta) non trova l'addebito reale; misto/senza metodo resta
+provvisoria per la divisione manuale."""
 import asyncio
 
 from app.routers.invoices import fatture_upload as mod
@@ -94,14 +94,17 @@ def test_fornitore_cassa_registra_subito_in_cassa(monkeypatch):
     assert db["invoices"].docs[0]["stato_pagamento"] == "pagata"
 
 
-def test_fornitore_banca_registra_subito_in_banca(monkeypatch):
+def test_fornitore_banca_resta_provvisoria_fino_a_riconciliazione(monkeypatch):
+    """REGOLA utente 18/07/2026: la fattura 'banca' NON e' pagata solo
+    perche' il fornitore ha metodo banca — diventa pagata SOLO quando la
+    riconciliazione (estratto conto / PayPal / carta) trova l'addebito
+    reale. Fino ad allora resta provvisoria."""
     db = _setup(monkeypatch, "bonifico")
 
     update = _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
 
-    assert update is not None
-    assert update["prima_nota_tipo"] == "banca"
-    assert len(db["prima_nota_banca"].docs) == 1
+    assert update is None
+    assert db["prima_nota_banca"].docs == []
     assert db["prima_nota_cassa"].docs == []
 
 

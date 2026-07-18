@@ -392,6 +392,10 @@ SOURCES_FATTURE_AUTO = [
 async def ripristina_provvisori_metodo_errato(
     dry_run: bool = Query(True, description="Solo conteggio, non modifica"),
     anno: int = Query(2026),
+    banca_non_riconciliate: bool = Query(False, description=(
+        "REGOLA utente 18/07/2026: una fattura 'banca' e' pagata SOLO se "
+        "riconciliata con estratto conto/PayPal/carta. Con true, TUTTE le "
+        "uscite fattura banca auto MAI riconciliate tornano provvisorie.")),
     _admin: Dict = Depends(get_current_admin_user),
 ) -> Dict:
     """Richiesta utente 17/07/2026: "abbiamo fornitori che si pagano per
@@ -431,7 +435,8 @@ async def ripristina_provvisori_metodo_errato(
                 "status": {"$nin": ["deleted", "archived"]},
                 "data": {"$regex": f"^{anno}"},
             },
-            {"_id": 0, "id": 1, "fattura_id": 1, "importo": 1, "data": 1, "descrizione": 1, "source": 1},
+            {"_id": 0, "id": 1, "fattura_id": 1, "importo": 1, "data": 1, "descrizione": 1,
+             "source": 1, "riconciliato": 1, "estratto_conto_id": 1},
         ).to_list(20000)
 
         for mov in movimenti:
@@ -461,8 +466,14 @@ async def ripristina_provvisori_metodo_errato(
                 continue
             piva = str(fattura.get("supplier_vat") or fattura.get("cedente_piva") or "").strip()
             destinazione = classifica_metodo_fornitore(metodo_per_piva.get(piva, ""))
-            if destinazione == lato:
-                continue  # lato giusto, non si tocca
+            senza_riconciliazione = (
+                banca_non_riconciliate and lato == "banca"
+                and not mov.get("riconciliato") and not mov.get("estratto_conto_id")
+            )
+            if destinazione == lato and not senza_riconciliazione:
+                continue  # lato giusto (e riconciliata, se richiesto): non si tocca
+            if destinazione == lato and senza_riconciliazione:
+                destinazione = "provvisoria (in attesa di riconciliazione)"
 
             report[lato].append({
                 "fattura": fattura.get("invoice_number"),
