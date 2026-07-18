@@ -363,7 +363,7 @@ export default function RiconciliazionePaypal() {
   ];
 
   return (
-    <PageLayout title="PayPal" subtitle="Estratti conto, transazioni e riconciliazione">
+    <PageLayout>
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
         {loadError && (
           <div
