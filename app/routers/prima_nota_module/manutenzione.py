@@ -498,6 +498,56 @@ async def ripristina_provvisori_metodo_errato(
     }
 
 
+async def collega_corrispettivi_prima_nota(
+    dry_run: bool = Query(True, description="Solo conteggio, non collega"),
+    _admin: Dict = Depends(get_current_admin_user),
+) -> Dict:
+    """Ricollega al documento i movimenti corrispettivo con corrispettivo_id
+    vuoto (retaggio dei vecchi documenti senza id: il movimento nasceva con
+    il link a None e il bottone 'Corrisp.' non compariva — segnalato
+    dall'utente 18/07/2026, righe fino al 12/05). Collega SOLO quando per
+    quella data esiste UN corrispettivo univoco."""
+    db = Database.get_db()
+
+    corr_per_data: Dict[str, list] = {}
+    for c in await db["corrispettivi"].find({}, {"_id": 0, "id": 1, "data": 1}).to_list(10000):
+        if c.get("id") and c.get("data"):
+            corr_per_data.setdefault(str(c["data"])[:10], []).append(c["id"])
+
+    filtro_senza_link = {
+        "$or": [{"corrispettivo_id": None}, {"corrispettivo_id": ""},
+                {"corrispettivo_id": {"$exists": False}}],
+        "status": {"$nin": ["deleted", "archived"]},
+    }
+    target = [
+        ("prima_nota_cassa", {"categoria": {"$in": ["Corrispettivi", "POS Verso Banca"]}}),
+        ("prima_nota_banca", {"categoria": "Corrispettivi POS"}),
+    ]
+    collegati = ambigui = senza_documento = 0
+    for collection, filtro_cat in target:
+        movs = await db[collection].find(
+            {**filtro_senza_link, **filtro_cat},
+            {"_id": 0, "id": 1, "data": 1},
+        ).to_list(10000)
+        for m in movs:
+            ids = corr_per_data.get((m.get("data") or "")[:10], [])
+            if len(ids) == 1:
+                collegati += 1
+                if not dry_run:
+                    await db[collection].update_one(
+                        {"id": m["id"]}, {"$set": {"corrispettivo_id": ids[0]}})
+            elif len(ids) > 1:
+                ambigui += 1  # due matricole nello stesso giorno: non si indovina
+            else:
+                senza_documento += 1
+    return {
+        "dry_run": dry_run,
+        "collegati": collegati,
+        "ambigui": ambigui,
+        "senza_documento": senza_documento,
+    }
+
+
 async def unifica_categorie(
     dry_run: bool = Query(True, description="Solo conteggio, non rinomina"),
     _admin: Dict = Depends(get_current_admin_user),

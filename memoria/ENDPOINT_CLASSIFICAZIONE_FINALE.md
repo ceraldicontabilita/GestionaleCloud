@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 990 · tenere: 651 · verificare: 319 · admin-only (migrazione/manutenzione): 20
+**Totale endpoint:** 991 · tenere: 651 · verificare: 320 · admin-only (migrazione/manutenzione): 20
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -820,6 +820,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `PUT /api/prima-nota/cassa/{movimento_id}` | prima_nota_module.cassa | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/cassa/{movimento_id}/fattura` | prima_nota_module.cassa | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/cleanup-orphan-movements` | prima_nota_module.manutenzione | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
+| `POST /api/prima-nota/collega-corrispettivi` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/collega-fatture` | prima_nota_module.sync | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota/corrispettivi-status` | prima_nota_module.sync | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/dedup-fatture` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |

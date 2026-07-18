@@ -294,10 +294,13 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
         </button>
       );
     }
-    if (mov.corrispettivo_id) {
+    if (mov.corrispettivo_id || mov.xml_filename) {
+      const href = mov.corrispettivo_id
+        ? `/api/corrispettivi/${mov.corrispettivo_id}/view`
+        : `/api/corrispettivi/view-by-filename?filename=${encodeURIComponent(mov.xml_filename)}`;
       return (
         <a
-          href={`/api/corrispettivi/${mov.corrispettivo_id}/view`} target="_blank" rel="noopener noreferrer"
+          href={href} target="_blank" rel="noopener noreferrer"
           style={{ background: VERDE, color: 'white', borderRadius: 6, padding: '4px 9px', fontSize: 11, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}
         >
           🧾 Corrisp.
