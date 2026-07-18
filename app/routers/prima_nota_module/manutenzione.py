@@ -654,19 +654,6 @@ async def sposta_movimento(req: SpostaMovimentoRequest) -> Dict:
                 }},
             )
 
-            # --- EVENT BUS: propaga evento trasferimento (ramo EC→prima_nota) ---
-            try:
-                from app.services.event_bus import propagate_event, EventTypes
-                await propagate_event(EventTypes.TRASFERIMENTO_CREATO, {
-                    "movimento_id": movimento_id,
-                    "origine": da,
-                    "destinazione": a,
-                    "importo": mov.get("importo"),
-                    "data": mov.get("data"),
-                    "descrizione": mov.get("descrizione"),
-                }, db, source_module="prima_nota_sposta_movimento")
-            except Exception:
-                logger.exception("Errore propagazione evento trasferimento.creato (EC)")
 
             return {
                 "success": True,
@@ -699,19 +686,12 @@ async def sposta_movimento(req: SpostaMovimentoRequest) -> Dict:
         r = await db["invoices"].update_one({"id": mov["fattura_id"]}, {"$set": upd})
         fattura_aggiornata = r.modified_count > 0
 
-    # --- EVENT BUS: propaga evento trasferimento (ramo standard) ---
-    try:
-        from app.services.event_bus import propagate_event, EventTypes
-        await propagate_event(EventTypes.TRASFERIMENTO_CREATO, {
-            "movimento_id": movimento_id,
-            "origine": da,
-            "destinazione": a,
-            "importo": mov.get("importo"),
-            "data": mov.get("data"),
-            "descrizione": mov.get("descrizione"),
-        }, db, source_module="prima_nota_sposta_movimento")
-    except Exception:
-        logger.exception("Errore propagazione evento trasferimento.creato")
+    # NIENTE evento "trasferimento.creato" qui (rimosso 17/07/2026):
+    # spostare un movimento tra Cassa e Banca è una RICLASSIFICAZIONE,
+    # non un trasferimento di denaro. L'evento faceva scattare
+    # on_trasferimento_crea_lato_opposto che creava entrate FANTASMA
+    # ("Prelevamento da banca" in cassa / "Versamento contanti" in banca)
+    # a ogni spostamento di fattura, gonfiando i saldi di entrambi i lati.
 
     return {
         "success": True,

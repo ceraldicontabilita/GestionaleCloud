@@ -270,11 +270,10 @@ def register_all_handlers():
         logger.warning(f"Handler corrispettivi non registrati: {e}")
 
     # --- Fase 7: Trasferimenti (Chat 9c) ---
-    try:
-        from app.services.handlers.trasferimento_handlers import on_trasferimento_crea_lato_opposto
-        register_handler(EventTypes.TRASFERIMENTO_CREATO, on_trasferimento_crea_lato_opposto)
-    except Exception as e:
-        logger.warning(f"Handler trasferimenti non registrati: {e}")
+    # on_trasferimento_crea_lato_opposto NON è più registrato (17/07/2026):
+    # creava entrate fantasma a ogni spostamento cassa/banca di una
+    # fattura. La doppia scrittura vera di versamenti/prelievi la fa
+    # l'estratto conto (bank/estratto_conto.py, ripara-versamenti-cassa).
 
     # --- Dipendenti (Chat 9d) ---
     try:
