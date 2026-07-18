@@ -22,8 +22,10 @@ Stati del Verbale:
 # riconcilia-estratto-conto-paypal, scan-email (route; il servizio sottostante
 # resta vivo via scheduler), scan-email-storico, scan-pagopa, scan-verbale,
 # scheduler-status, {numero_verbale}/pdf — codice conservato nella cronologia git.
+# NOTA 18/07/2026: scan-email è stata REINTRODOTTA (admin) per collaudare
+# on-demand l'orchestratore completato di verbali_email_logic (audit P1-4).
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from bson import ObjectId
@@ -32,6 +34,7 @@ import re
 import logging
 
 from app.database import Database
+from app.utils.dependencies import get_current_admin_user
 from app.utils.error_handler import handle_errors
 
 logger = logging.getLogger(__name__)
@@ -95,6 +98,20 @@ def serialize_doc(doc: dict) -> dict:
 
 
 # ===== ENDPOINTS =====
+
+@router.post("/scan-email")
+@handle_errors
+async def scan_email_verbali(
+    days_back: int = Query(30, ge=1, le=730, description="Giorni indietro per la ricerca nuovi elementi"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Esegue on-demand lo scan email verbali con logica di priorità
+    (FASE 1: completa quietanze/PDF dei verbali sospesi; FASE 2: nuovi
+    verbali e quietanze). Stesso motore del job orario dello scheduler."""
+    from app.services.verbali_email_logic import scan_email_con_priorita
+    db = Database.get_db()
+    return await scan_email_con_priorita(db, days_back=days_back)
+
 
 @router.get("/dashboard")
 @handle_errors

@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1012 · tenere: 660 · verificare: 329 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1013 · tenere: 661 · verificare: 329 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -1007,6 +1007,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/verbali-riconciliazione/lista` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/verbali-riconciliazione/pulisci-duplicati` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/verbali-riconciliazione/riconcilia/{numero_verbale}` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `POST /api/verbali-riconciliazione/scan-email` | verbali_riconciliazione | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/verbali-riconciliazione/scan-fatture-verbali` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `GET /api/verifica-coerenza/completa/{anno}` | verifica_coerenza | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/verifica-coerenza/confronto-iva-completo/{anno}` | verifica_coerenza | sì | — | — | — | — | tenere | in uso: FE |

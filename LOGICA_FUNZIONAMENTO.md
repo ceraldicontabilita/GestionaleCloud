@@ -973,6 +973,17 @@ targa, importo, date → collegamento al veicolo (targa) e al conducente assegna
 perché le multe si pagano anche molto dopo la notifica; vale anche l'importo
 ridotto) → stessa scala certo/probabile/dubbio.
 
+**Scan email con priorità** (job orario, completato il 18/07/2026 — audit P1-4):
+"prima completa, poi aggiungi". FASE 1: per i verbali sospesi il sistema cerca
+prima la **quietanza** nelle fonti strutturate (transazioni PayPal per IUV/targa/
+importo, ricevute PagoPA su Gmail, addebiti SDD PayPal in estratto conto) e in
+subordine via ricerca testuale IMAP; poi cerca il **PDF** mancante tra gli
+allegati già scaricati o via IMAP. FASE 2: cerca nuovi verbali (scanner Gmail
+dai mittenti attendibili + cartelle email dedicate) e nuove quietanze da
+associare; le quietanze senza verbale restano "orfane" in attesa. Massimo 30
+completamenti per scan. On-demand: `POST /api/verbali-riconciliazione/scan-email`
+(admin). Interruttore canale: `ENABLE_EMAIL_VERBALI_SYNC`.
+
 **Regola non negoziabile sulla trattenuta**: se il verbale è di una targa aziendale,
 con un conducente assegnato, e il pagamento risulta fatto dalla società, il sistema
 **crea solo una PROPOSTA di recupero in busta paga**. La trattenuta:

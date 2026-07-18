@@ -27,18 +27,19 @@ async def scan_verbali_email_task():
         return
 
     from app.database import Database
-    from app.services.verbali_email_scanner import esegui_scan_verbali_email
+    from app.services.verbali_email_logic import scan_email_con_priorita
 
     logger.info("🚗 [SCHEDULER] Avvio scan email verbali...")
-    
+
     try:
         db = Database.get_db()
-        
-        # Esegui scan completo con priorità
-        result = await esegui_scan_verbali_email(db, days_back=30)
-        
-        fase1 = result.get("fase1", {})
-        fase2 = result.get("fase2", {})
+
+        # Esegui scan completo con priorità (orchestratore verbali_email_logic:
+        # FASE 1 quietanze via PayPal/PagoPA/EC + IMAP, PDF; FASE 2 nuovi)
+        result = await scan_email_con_priorita(db, days_back=30)
+
+        fase1 = result.get("fase_1_completamenti", {})
+        fase2 = result.get("fase_2_nuovi", {})
         
         logger.info(f"🚗 [SCHEDULER] Scan verbali completato:")
         logger.info(f"   - Quietanze trovate: {fase1.get('quietanze_trovate', 0)}/{fase1.get('quietanze_cercate', 0)}")
