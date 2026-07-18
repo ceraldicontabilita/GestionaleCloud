@@ -69,7 +69,7 @@ async def _get_verbali_completi_per_targa(
             continue
         verbali_per_numero[numero] = {
             "numero_verbale": numero,
-            "data_verbale": v.get("data_verbale") or (v.get("created_at") or "")[:10],
+            "data_verbale": str(v.get("data_verbale") or v.get("created_at") or "")[:10],
             "importo": float(v.get("importo") or 0),
             "stato": v.get("stato"),
             "pagato": v.get("stato") == "pagato",
@@ -93,7 +93,7 @@ async def _get_verbali_completi_per_targa(
         verbali_per_numero[numero] = {
             **esistente,
             "numero_verbale": numero,
-            "data_verbale": esistente.get("data_verbale") or v.get("data_verbale") or v.get("data"),
+            "data_verbale": str(esistente.get("data_verbale") or v.get("data_verbale") or v.get("data") or "")[:10],
             "importo": esistente.get("importo") or float(v.get("importo") or 0),
             "stato": esistente.get("stato") or stato_pagamento,
             "pagato": esistente.get("pagato", False) or stato_pagamento == "pagato",
@@ -622,7 +622,7 @@ async def get_riepilogo_controlli(
         verbali_per_numero[numero] = {
             "numero_verbale": numero,
             "targa": (v.get("targa") or "").upper(),
-            "data_verbale": v.get("data_verbale") or (v.get("created_at") or "")[:10],
+            "data_verbale": str(v.get("data_verbale") or v.get("created_at") or "")[:10],
             "importo": float(v.get("importo") or 0),
             "stato": stato,
             "chiuso": stato in STATI_VERBALE_CHIUSI,
@@ -643,7 +643,7 @@ async def get_riepilogo_controlli(
             **esistente,
             "numero_verbale": numero,
             "targa": esistente.get("targa") or (v.get("targa") or "").upper(),
-            "data_verbale": esistente.get("data_verbale") or v.get("data_verbale") or v.get("data"),
+            "data_verbale": str(esistente.get("data_verbale") or v.get("data_verbale") or v.get("data") or "")[:10],
             "importo": esistente.get("importo") or float(v.get("importo") or 0),
             "stato": esistente.get("stato") or stato_pagamento,
             # Chiuso se ALMENO UNA delle due fonti lo dà pagato/chiuso —

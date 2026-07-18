@@ -37,7 +37,7 @@ function rotte() {
 const IGNORA = [
   /favicon/i,
   /ResizeObserver loop/i,
-  /Failed to load resource.*40[134]/i, // già catturato come API fallita
+  /WebSocket/i, // il proxy locale non inoltra ws:// — non è un difetto del gestionale
 ];
 
 const main = async () => {
