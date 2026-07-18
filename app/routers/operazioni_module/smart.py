@@ -9,6 +9,16 @@ from app.database import Database
 from app.utils.parsing import safe_float
 from .common import RiconciliaManuale, ConfermaBatchRequest, logger, QUERY_FATTURA_NON_PAGATA, set_fattura_pagata
 
+# Le operazioni della carta Nexi (tipo="carta_credito") vivono nella STESSA
+# collezione estratto_conto_movimenti (stesso schema del download automatico
+# via email) ma non sono movimenti bancari da riconciliare uno per uno: la
+# banca vede solo l'addebito mensile, le singole spese carta si riconciliano
+# con lo statement Nexi (app/services/nexi_carta.py), non con una fattura.
+# Senza questa esclusione le operazioni carta inquinavano la coda "da
+# riconciliare" del tab Banca (bug 18/07/2026, segnalato dall'utente subito
+# dopo il primo import di uno statement Nexi reale).
+ESCLUDI_CARTA_CREDITO = {"tipo": {"$ne": "carta_credito"}}
+
 
 async def banca_veloce(
     limit: int = 50,
@@ -18,7 +28,7 @@ async def banca_veloce(
     """Endpoint veloce per tab Banca - movimenti + assegni + fatture da pagare."""
     db = Database.get_db()
 
-    query = {}
+    query = {**ESCLUDI_CARTA_CREDITO}
     if solo_non_riconciliati:
         query["riconciliato"] = {"$ne": True}
     if anno:
@@ -45,7 +55,7 @@ async def banca_veloce(
         {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1, "supplier_name": 1, "total_amount": 1}
     ).sort("invoice_date", -1).limit(50).to_list(50)
 
-    conta_movimenti_query = {"data": {"$regex": f"^{anno}"}} if anno else {}
+    conta_movimenti_query = {**ESCLUDI_CARTA_CREDITO, **({"data": {"$regex": f"^{anno}"}} if anno else {})}
     tot_non_ric = await db.estratto_conto_movimenti.count_documents({**conta_movimenti_query, "riconciliato": {"$ne": True}})
     tot_ric = await db.estratto_conto_movimenti.count_documents({**conta_movimenti_query, "riconciliato": True})
     
@@ -105,8 +115,8 @@ async def riconcilia_automatico(
 ) -> Dict[str, Any]:
     """Riconciliazione automatica dei movimenti."""
     db = Database.get_db()
-    
-    query = {"riconciliato": {"$ne": True}}
+
+    query = {**ESCLUDI_CARTA_CREDITO, "riconciliato": {"$ne": True}}
     if tipo:
         query["tipo_suggerito"] = tipo
     

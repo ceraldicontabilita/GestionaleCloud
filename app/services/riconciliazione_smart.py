@@ -739,10 +739,14 @@ async def analizza_estratto_conto_batch(limit: int = 100, solo_non_riconciliati:
     logger.info(f"CONTROLLO ATOMICO: Escludendo {len(ids_da_escludere)} movimenti già in Prima Nota, {len(numeri_assegni_elaborati)} assegni elaborati")
     
     # Costruisci query con esclusioni
-    query = {}
+    # Le operazioni carta Nexi (tipo="carta_credito") vivono nella stessa
+    # collezione ma si riconciliano con lo statement carta, non movimento
+    # per movimento — non sono "movimenti bancari" da proporre qui (bug
+    # 18/07/2026, segnalato dall'utente).
+    query = {"tipo": {"$ne": "carta_credito"}}
     if solo_non_riconciliati:
         query["riconciliato"] = {"$ne": True}
-    
+
     # Escludi movimenti già elaborati
     if ids_da_escludere:
         query["id"] = {"$nin": list(ids_da_escludere)}
