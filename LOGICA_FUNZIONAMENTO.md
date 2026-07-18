@@ -453,6 +453,17 @@ nulla: non rappresenta mai un pagamento fornitore.
   (cedolino, PagoPA, INPS, INAIL, PayPal, cartella esattoriale) se un giorno
   servisse un mittente attendibile per quei canali.
 
+**MODELLO SEMPLICE della Banca (regola utente 17/07/2026, "rifatta da
+zero")**: la Prima Nota Banca è un registro di SOLE operazioni del
+gestionale — Corrispettivi POS, Versamento Banca, Prelevamento Banca,
+Fatture, Utenze, F24, Stipendi, Assegni, Pagamento PayPal — identico alla
+Cassa: riporto iniziale modificabile + operazioni. **L'estratto conto NON
+viene più fuso nella vista Banca**: resta nella pagina Riconciliazione
+come controllo di quadratura. Prima la fusione contava DUE VOLTE le stesse
+uscite (il pagamento registrato dal gestionale e l'addebito bancario hanno
+spesso date diverse e la de-duplicazione per data+importo non li
+agganciava): la vista mostrava 601.859€ di uscite contro 344.437€ reali.
+
 **Categorie = OPERAZIONI (regola utente 17/07/2026)**: in Prima Nota la
 categoria dice l'operazione, sintetica al massimo — mai la classificazione
 della banca; il dettaglio (chi, cosa, riferimento) sta nella descrizione.

@@ -58,6 +58,7 @@ async def list_prima_nota_banca(
         "saldo": saldi["saldo"],
         "saldo_anno": saldi["saldo_anno"],
         "saldo_precedente": saldi["saldo_precedente"],
+        "saldo_iniziale_manuale": saldi.get("saldo_iniziale_manuale", False),
         "totale_entrate": saldi["totale_entrate"],
         "totale_uscite": saldi["totale_uscite"],
         "count": len(movimenti),

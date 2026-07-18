@@ -27,7 +27,6 @@ import ModalFattura from '../components/ModalFattura';
  *
  * BANCA:
  * - AVERE (Uscite): Fatture riconciliate (pagate bonifico/assegno)
- * - Dati da estratto conto
  */
 export default function PrimaNota() {
   const isMobile = useIsMobile();
@@ -175,17 +174,17 @@ function PrimaNotaDesktop() {
         params.append('data_a', `${selectedYear}-${monthStr}-${daysInMonth}`);
       }
 
-      // Parametri per estratto conto
-      const ecParams = new URLSearchParams();
-      ecParams.append('limit', '6000');
-      ecParams.append('anno', selectedYear.toString());
-      if (selectedMonth !== null) {
-        ecParams.append('mese', String(selectedMonth + 1));
-      }
-
-      const [cassaRes, estrattoContoRes, bancaManRes, provRes, atteseRes] = await Promise.all([
+      // MODELLO SEMPLICE (regola utente 17/07/2026: "in banca ogni operazione
+      // registrata NON in base all'estratto conto, ma per operazione"):
+      // la Prima Nota Banca è un registro di SOLE operazioni del gestionale
+      // (Corrispettivi POS, Versamenti, Fatture, Utenze, F24, Stipendi,
+      // Assegni, PayPal...) — identico alla Cassa. L'estratto conto NON
+      // viene più fuso qui: resta nella pagina Riconciliazione come
+      // controllo. Prima la fusione contava due volte le stesse uscite
+      // (pagamento registrato dal gestionale + addebito bancario con data
+      // diversa) e i saldi risultavano errati.
+      const [cassaRes, bancaRes, provRes, atteseRes] = await Promise.all([
         api.get(`/api/prima-nota/cassa?${params}`),
-        api.get(`/api/estratto-conto-movimenti/movimenti?${ecParams}`),
         api.get(`/api/prima-nota/banca?${params}`),
         api
           .get(`/api/prima-nota/provvisori?anno=${selectedYear}`)
@@ -198,100 +197,7 @@ function PrimaNotaDesktop() {
       setAttese(atteseRes.data?.attese || []);
 
       setCassaData(cassaRes.data);
-
-      // Trasforma i dati dell'estratto conto nel formato della Prima Nota Banca
-      const ecData = estrattoContoRes.data;
-      // P0-1 (stessa regola del backend, bank/estratto_conto.py): un accredito
-      // POS del provider (NUMIA, ecc.) è la STESSA moneta della quota POS
-      // giornaliera già registrata in prima_nota_banca all'import del
-      // corrispettivo XML (source corrispettivo_pos, ora inclusa nei totali).
-      // Mostrarlo anche qui come entrata la conterebbe due volte.
-      const POS_ACCREDITO_KEYWORDS = ['NUMIA', 'ACCREDITO POS', 'INCASSO POS',
-        'POS ACQUIRING', 'ACCR. POS', 'ACCRED POS'];
-      const isAccreditoPos = m => {
-        if ((m.tipo || (m.importo >= 0 ? 'entrata' : 'uscita')) !== 'entrata') return false;
-        const desc = (m.descrizione_originale || m.descrizione || '').toUpperCase();
-        const cat = m.categoria || '';
-        return POS_ACCREDITO_KEYWORDS.some(k => desc.includes(k)) ||
-          cat.startsWith('Ricavi - Incasso tramite POS');
-      };
-      const movimentiEC = (ecData.movimenti || [])
-        .filter(m => !m.escluso_da_vista_banca)
-        .filter(m => !isAccreditoPos(m)).map(m => ({
-        ...m,
-        tipo: m.tipo || (m.importo >= 0 ? 'entrata' : 'uscita'),
-        importo: Math.abs(m.importo || 0),
-        descrizione: m.descrizione || m.descrizione_originale || '',
-        // Categoria OPERATIVA calcolata dal backend (mappa_categoria_ec):
-        // la tassonomia bancaria originale resta sulla riga di estratto
-        // conto. Il residuo non riconosciuto finisce in 'Altro'.
-        categoria: m.categoria_canonica || m.categoria || 'Altro',
-        fattura_id: m.fattura_id || m.dettagli_riconciliazione?.fattura_id || null,
-        bonifico_pdf_id: m.bonifico_pdf_id || null,
-        _source: 'estratto_conto',
-      }));
-
-      // Aggiunge i movimenti manuali di prima_nota_banca (pagamenti fatture, etc.)
-      // che non sono già presenti nell'estratto conto (dedup per id)
-      const ecIds = new Set(movimentiEC.map(m => m.id));
-      const movimentiManualiRaw = (bancaManRes.data?.movimenti || [])
-        .filter(m => !ecIds.has(m.id))
-        .map(m => ({ ...m, _source: 'prima_nota_banca' }));
-
-      // Dedup INTERNO ai manuali: mantieni il record CON fattura_id quando c'è duplicato (stessa data+importo+tipo)
-      const seenManualiKeys = new Map();
-      for (const m of movimentiManualiRaw) {
-        const key = `${m.data}|${Math.round((m.importo || 0) * 100)}|${m.tipo}`;
-        const existing = seenManualiKeys.get(key);
-        if (!existing || (!existing.fattura_id && m.fattura_id)) {
-          seenManualiKeys.set(key, m);
-        }
-      }
-      const movimentiManuali = Array.from(seenManualiKeys.values());
-
-      // Dedup avanzato: rimuovi dall'estratto conto i record che corrispondono
-      // a un pagamento manuale (stessa data + stesso importo + stesso tipo)
-      // per evitare di mostrare la stessa transazione due volte
-      const manualiKeys = new Set(seenManualiKeys.keys());
-      const movimentiECDedup = movimentiEC.filter(m => {
-        const key = `${m.data}|${Math.round((m.importo || 0) * 100)}|${m.tipo}`;
-        return !manualiKeys.has(key);
-      });
-
-      // Unisci: prima i manuali (con fattura_id linkati), poi l'estratto conto deduppato
-      const movimentiUniti = [...movimentiManuali, ...movimentiECDedup];
-
-      // Riporto iniziale: se l'utente lo ha impostato a mano (PUT
-      // /api/prima-nota/saldo-iniziale) prevale su quello dell'estratto conto.
-      const riportoManuale = bancaManRes.data?.saldo_iniziale_manuale;
-      const saldoPrec = riportoManuale
-        ? bancaManRes.data.saldo_precedente || 0
-        : ecData.saldo_precedente || 0;
-      // saldo_anno sulle STESSE righe unite mostrate in tabella e nelle card
-      // (prima veniva dal solo estratto conto: card su insiemi diversi).
-      const saldoAnno = movimentiUniti.reduce(
-        (sum, m) => sum + (m.tipo === 'entrata' ? 1 : -1) * Math.abs(m.importo || 0), 0);
-      setBancaData({
-        movimenti: movimentiUniti,
-        // Totali coerenti con la TABELLA: estratto conto + movimenti manuali
-        // di prima nota banca (prima le card ignoravano questi ultimi)
-        totale_entrate: movimentiUniti
-          .filter(m => m.tipo === 'entrata')
-          .reduce((sum, m) => sum + Math.abs(m.importo || 0), 0),
-        totale_uscite: movimentiUniti
-          .filter(m => m.tipo === 'uscita')
-          .reduce((sum, m) => sum + Math.abs(m.importo || 0), 0),
-        saldo_anno: saldoAnno,
-        saldo_precedente: saldoPrec,
-        saldo_iniziale_manuale: !!riportoManuale,
-        saldo:
-          saldoPrec +
-          movimentiUniti.reduce(
-            (sum, m) => sum + (m.tipo === 'entrata' ? 1 : -1) * Math.abs(m.importo || 0),
-            0
-          ),
-        count: movimentiUniti.length,
-      });
+      setBancaData(bancaRes.data);
 
       // Aggiorna anni disponibili dopo caricamento
       loadAvailableYears();
@@ -1691,10 +1597,10 @@ function PrimaNotaDesktop() {
               color: '#854d0e',
             }}
           >
-            📝 <strong>Nota contabile:</strong> Gli "Accrediti" mostrano tutti i movimenti in
-            entrata sul conto bancario (POS, bonifici, depositi, finanziamenti).{' '}
-            <strong>I ricavi reali dell'azienda sono nei Corrispettivi</strong>, visibili nella
-            sezione Cassa. Alcuni accrediti (es. bonifici interni, finanziamenti) non sono ricavi.
+            📝 <strong>Registro operazioni:</strong> qui ci sono SOLO le operazioni del
+            gestionale (Corrispettivi POS, Versamenti, Fatture, Utenze, F24, Stipendi,
+            Assegni, PayPal). L'estratto conto bancario NON viene sommato qui: lo trovi
+            nella pagina <strong>Riconciliazione</strong> come controllo di quadratura.
           </div>
 
           {/* Filter - Bottoni Mesi */}
@@ -1743,7 +1649,7 @@ function PrimaNotaDesktop() {
             ))}
           </div>
 
-          {/* Movements Table Banca - Estratto Conto con possibilità di spostare */}
+          {/* Movements Table Banca — solo operazioni del gestionale */}
           <MovementsTable
             movimenti={bancaData.movimenti || []}
             tipo="banca"
