@@ -59,6 +59,36 @@ export default function PianoDeiConti() {
     setSelectedConto(null);
     setContoDetail(null);
   };
+
+  // Riclassificazione riga: sposta un articolo (dizionario_articoli) su un
+  // altro conto costi quando l'associazione automatica è sbagliata —
+  // richiesto dall'utente 18/07/2026. La modifica è sull'ARTICOLO (vale per
+  // tutte le fatture future con la stessa descrizione riga), non sulla
+  // singola fattura: coerente con come il saldo viene calcolato.
+  const [spostandoRiga, setSpostandoRiga] = useState(null);
+  const contiCosti = _conti
+    .filter(c => (c.categoria || '').toLowerCase() === 'costi')
+    .sort((a, b) => (a.codice || '').localeCompare(b.codice || ''));
+
+  const handleSpostaRigaConto = async (lineaDescrizione, nuovoConto) => {
+    if (!nuovoConto || !lineaDescrizione) return;
+    setSpostandoRiga(lineaDescrizione);
+    try {
+      await api.put(`/api/dizionario-articoli/articolo/${encodeURIComponent(lineaDescrizione)}`, {
+        conto: nuovoConto,
+      });
+      const nuovoContoInfo = contiCosti.find(c => c.codice === nuovoConto);
+      toast.success('Categoria aggiornata', {
+        description: `"${lineaDescrizione}" ora è in ${nuovoConto}${nuovoContoInfo ? ' — ' + nuovoContoInfo.nome : ''}`,
+      });
+      await loadData();
+      if (selectedConto) await openContoDetail(selectedConto);
+    } catch (error) {
+      toast.error('Errore', { description: error.response?.data?.detail || error.message });
+    } finally {
+      setSpostandoRiga(null);
+    }
+  };
   // URL Tab Support
   const navigate = useNavigate();
   const location = useLocation();
@@ -980,6 +1010,9 @@ export default function PianoDeiConti() {
                               <Th>Data</Th>
                               <Th>Descrizione</Th>
                               <Th align="right">Importo</Th>
+                              {contoDetail.movimenti.some(m => m.linea_descrizione) && (
+                                <Th>Sposta</Th>
+                              )}
                             </tr>
                           </thead>
                           <tbody>
@@ -1016,6 +1049,34 @@ export default function PianoDeiConti() {
                                   {mov.tipo === 'entrata' ? '+' : '-'}
                                   {formatEuro(mov.importo)}
                                 </Td>
+                                {contoDetail.movimenti.some(m => m.linea_descrizione) && (
+                                  <Td>
+                                    {mov.linea_descrizione && (
+                                      <Select
+                                        title="Sposta questo articolo su un altro conto costi (vale per tutte le fatture future con la stessa descrizione)"
+                                        disabled={spostandoRiga === mov.linea_descrizione}
+                                        onChange={e => {
+                                          const nuovo = e.target.value;
+                                          e.target.value = '';
+                                          if (nuovo) handleSpostaRigaConto(mov.linea_descrizione, nuovo);
+                                        }}
+                                        style={{ padding: '3px 6px', fontSize: 11 }}
+                                        defaultValue=""
+                                      >
+                                        <option value="">
+                                          {spostandoRiga === mov.linea_descrizione ? '…' : '↔️'}
+                                        </option>
+                                        {contiCosti
+                                          .filter(c => c.codice !== selectedConto?.codice)
+                                          .map(c => (
+                                            <option key={c.codice} value={c.codice}>
+                                              {c.codice} — {c.nome}
+                                            </option>
+                                          ))}
+                                      </Select>
+                                    )}
+                                  </Td>
+                                )}
                               </tr>
                             ))}
                           </tbody>
