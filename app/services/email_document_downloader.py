@@ -82,6 +82,22 @@ _CF_ANNO_PATTERN = re.compile(
     r"[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]\s*[-_]\s*\d{4}", re.I
 )
 
+# File "di trasporto" del circuito PEC/SDI: certificazioni della posta
+# certificata e metadati di trasmissione FatturaPA. Non sono documenti per
+# l'utente e non vanno mai archiviati (segnalati il 18/07/2026: daticert.xml
+# e *_MT_001.xml comparivano in 'Scarica Documenti da Email').
+FILE_TECNICI_PEC_RE = re.compile(
+    r"(^daticert\.xml$)|(^postacert\.eml$)|(^smime\.p7[sm]$)|(_MT_\d+\.xml(\.p7m)?$)",
+    re.IGNORECASE,
+)
+
+# Nome file di una fattura SDI (es. IT07135891211_JUF1T.xml.p7m): la fattura
+# viene importata in `invoices` dalla pipeline dedicata; il file grezzo non
+# deve restare nell'archivio documenti.
+FILE_FATTURA_SDI_RE = re.compile(
+    r"^IT[A-Z0-9]{11,16}_[A-Z0-9]{4,5}\.xml(\.p7m)?$", re.IGNORECASE
+)
+
 for cat_dir in CATEGORIES.values():
     (DOCUMENTS_DIR / cat_dir).mkdir(exist_ok=True)
 
@@ -624,7 +640,11 @@ class EmailDocumentDownloader:
                             continue
                         
                         filename = decode_mime_header(filename)
-                        
+
+                        # Mai i file tecnici del circuito PEC/SDI
+                        if FILE_TECNICI_PEC_RE.search(filename.strip()):
+                            continue
+
                         # Controlla estensione
                         ext = os.path.splitext(filename)[1].lower()
                         if ext not in allowed_extensions:

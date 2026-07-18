@@ -1082,6 +1082,7 @@ async def pulizia_documenti_mittenti_non_attendibili(
     elimina gli alert associati' (es. saveris2.net, pec.kimbo.it,
     legalmail via pec.fatturapa.it mai autorizzati)."""
     from app.services.email_full_download import CATEGORY_COLLECTIONS
+    from app.services.email_document_downloader import FILE_TECNICI_PEC_RE, FILE_FATTURA_SDI_RE
     from app.services.mittenti import _addr
 
     db = Database.get_db()
@@ -1096,17 +1097,31 @@ async def pulizia_documenti_mittenti_non_attendibili(
         low = (indirizzo or "").lower()
         return bool(low) and any(s in low for s in trusted)
 
+    def file_tecnico(nome: str) -> bool:
+        # trasporto PEC/SDI (daticert, metadati MT) e fatture SDI grezze:
+        # le fatture vivono in `invoices`, mai nell'archivio documenti
+        n = (nome or "").strip()
+        return bool(n) and bool(FILE_TECNICI_PEC_RE.search(n) or FILE_FATTURA_SDI_RE.match(n))
+
     collezioni = sorted(set(CATEGORY_COLLECTIONS.values())) + ["documents_inbox"]
     report: Dict[str, Any] = {}
     ids_eliminati: list = []
     esempi_mittenti: set = set()
+    file_tecnici_eliminati = 0
 
     for coll in collezioni:
         docs = await db[coll].find(
-            {}, {"_id": 0, "id": 1, "email_from": 1, "from": 1, "mittente": 1, "sender": 1},
+            {}, {"_id": 0, "id": 1, "email_from": 1, "from": 1, "mittente": 1, "sender": 1,
+                 "filename": 1, "file_name": 1, "nome_file": 1},
         ).to_list(20000)
         da_eliminare = []
         for d in docs:
+            nome_file = d.get("filename") or d.get("file_name") or d.get("nome_file") or ""
+            if file_tecnico(nome_file):
+                if d.get("id"):
+                    da_eliminare.append(d["id"])
+                    file_tecnici_eliminati += 1
+                continue
             mittente = d.get("email_from") or d.get("from") or d.get("mittente") or d.get("sender") or ""
             if not mittente:
                 continue  # senza mittente non si giudica: resta
@@ -1134,6 +1149,7 @@ async def pulizia_documenti_mittenti_non_attendibili(
         "dry_run": dry_run,
         "mittenti_in_lista": len(trusted),
         "documenti_eliminati" if not dry_run else "documenti_da_eliminare": len(ids_eliminati),
+        "di_cui_file_tecnici_sdi": file_tecnici_eliminati,
         "per_collezione": report,
         "alerts_eliminati": alerts_eliminati,
         "esempi_mittenti_esclusi": sorted(esempi_mittenti),

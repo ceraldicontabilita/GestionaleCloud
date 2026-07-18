@@ -206,6 +206,12 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
             try:
                 from app.services.xml_invoice_processor import is_fatturapa_filename, decode_content
                 from app.routers.invoices.fatture_upload import process_xml_bytes
+                from app.services.email_document_downloader import FILE_TECNICI_PEC_RE
+                if FILE_TECNICI_PEC_RE.search((fname or "").strip()):
+                    # daticert.xml / *_MT_*.xml: trasporto PEC/SDI, non è un
+                    # documento — via dall'archivio (regola 18/07/2026)
+                    await db["documents_inbox"].delete_one({"id": doc["id"]})
+                    continue
                 if not is_fatturapa_filename(fname):
                     await db["documents_inbox"].update_one(
                         {"id": doc["id"]},
@@ -227,10 +233,15 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
                     res = await process_xml_bytes(db, content, fname, source="email_gmail")
                     if res.get("status") == "imported":
                         xml_processed += 1
-                    await db["documents_inbox"].update_one(
-                        {"id": doc["id"]},
-                        {"$set": {"xml_processed": True, "xml_result": res, "tipo_documento": "fattura_xml"}}
-                    )
+                    if res.get("status") in ("imported", "duplicate", "archiviata"):
+                        # la fattura vive in `invoices`: il file SDI grezzo
+                        # non deve comparire tra i documenti scaricati
+                        await db["documents_inbox"].delete_one({"id": doc["id"]})
+                    else:
+                        await db["documents_inbox"].update_one(
+                            {"id": doc["id"]},
+                            {"$set": {"xml_processed": True, "xml_result": res, "tipo_documento": "fattura_xml"}}
+                        )
             except Exception as ex:
                 logger.debug(f"[Gmail] Errore XML {fname}: {ex}")
 
