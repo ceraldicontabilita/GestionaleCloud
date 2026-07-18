@@ -35,25 +35,58 @@ def _estrai_anno(domanda: str) -> int:
     return int(match.group(1)) if match else datetime.now().year
 
 
-async def _risposta_fatture(db, domanda: str) -> Dict[str, Any]:
+MESI_NOMI = {
+    "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4, "maggio": 5,
+    "giugno": 6, "luglio": 7, "agosto": 8, "settembre": 9, "ottobre": 10,
+    "novembre": 11, "dicembre": 12,
+}
+
+
+def _estrai_mese(domanda: str) -> "int | None":
+    """Mese dalla domanda ("corrispettivi di gennaio", "fatture 03/2026").
+
+    Bug segnalato dall'utente 18/07/2026 (screenshot): "ho chiesto gennaio"
+    e la chat rispondeva con il totale dell'INTERO anno — il mese veniva
+    semplicemente ignorato."""
+    d = domanda.lower()
+    for nome, numero in MESI_NOMI.items():
+        if nome in d:
+            return numero
+    match = re.search(r"\b(0?[1-9]|1[0-2])\s*/\s*20\d{2}\b", d)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def _periodo(domanda: str) -> "tuple[str, str]":
+    """(prefisso regex data ISO, etichetta leggibile) per anno+mese."""
     anno = _estrai_anno(domanda)
-    query = {"invoice_date": {"$regex": f"^{anno}"}}
+    mese = _estrai_mese(domanda)
+    if mese:
+        nome = [n for n, v in MESI_NOMI.items() if v == mese][0]
+        return f"{anno}-{mese:02d}", f"A {nome} {anno}"
+    return str(anno), f"Nel {anno}"
+
+
+async def _risposta_fatture(db, domanda: str) -> Dict[str, Any]:
+    prefisso, etichetta = _periodo(domanda)
+    query = {"invoice_date": {"$regex": f"^{prefisso}"}}
     fatture = await db[Collections.INVOICES].find(
         query, {"_id": 0, "total_amount": 1}
     ).to_list(200000)
     count = len(fatture)
     totale = sum(float(f.get("total_amount") or 0) for f in fatture)
     return {
-        "response": f"Nel {anno} hai ricevuto {count} fatture, per un totale di {_fmt_euro(totale)}.",
+        "response": f"{etichetta} hai ricevuto {count} fatture, per un totale di {_fmt_euro(totale)}.",
         "query_type": "fatture",
-        "summary": {"count": count, "totale": round(totale, 2), "anno": anno},
+        "summary": {"count": count, "totale": round(totale, 2), "periodo": prefisso},
         "data_count": count,
     }
 
 
 async def _risposta_corrispettivi(db, domanda: str) -> Dict[str, Any]:
-    anno = _estrai_anno(domanda)
-    query = {"data": {"$regex": f"^{anno}"}}
+    prefisso, etichetta = _periodo(domanda)
+    query = {"data": {"$regex": f"^{prefisso}"}}
     corrispettivi = await db["corrispettivi"].find(
         query, {"_id": 0, "totale": 1, "pagato_contanti": 1, "pagato_elettronico": 1}
     ).to_list(400)
@@ -63,13 +96,13 @@ async def _risposta_corrispettivi(db, domanda: str) -> Dict[str, Any]:
     elettronico = sum(float(c.get("pagato_elettronico") or 0) for c in corrispettivi)
     return {
         "response": (
-            f"Nel {anno} il totale corrispettivi è {_fmt_euro(totale)} su {count} giornate registrate "
+            f"{etichetta} il totale corrispettivi è {_fmt_euro(totale)} su {count} giornate registrate "
             f"({_fmt_euro(contanti)} contanti, {_fmt_euro(elettronico)} elettronico)."
         ),
         "query_type": "corrispettivi",
         "summary": {
             "count": count, "totale": round(totale, 2), "contanti": round(contanti, 2),
-            "elettronico": round(elettronico, 2), "anno": anno,
+            "elettronico": round(elettronico, 2), "periodo": prefisso,
         },
         "data_count": count,
     }
