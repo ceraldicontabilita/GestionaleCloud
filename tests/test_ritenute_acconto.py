@@ -43,6 +43,26 @@ def test_estrazione_dati_ritenuta_isola_il_body_giusto_in_file_raggruppato():
     assert d1 is None
 
 
+def test_estrazione_dati_ritenuta_isola_il_body_giusto_con_prefisso_namespace():
+    """Review Codex su PR #71 (6° giro): xml_raw è il testo ORIGINALE non
+    ripulito dai prefissi di namespace (a differenza della copia di lavoro
+    interna del parser) — un file con <p:FatturaElettronicaBody> deve
+    essere isolato correttamente quanto uno senza prefisso."""
+    xml_raggruppato = (
+        '<p:FatturaElettronica xmlns:p="ns">'
+        "<p:FatturaElettronicaBody><DatiGeneraliDocumento><Numero>20</Numero>"
+        "<DatiRitenuta><TipoRitenuta>RT01</TipoRitenuta><ImportoRitenuta>280.00</ImportoRitenuta>"
+        "<AliquotaRitenuta>20.00</AliquotaRitenuta><CausalePagamento>A</CausalePagamento></DatiRitenuta>"
+        "</DatiGeneraliDocumento></p:FatturaElettronicaBody>"
+        "<p:FatturaElettronicaBody><DatiGeneraliDocumento><Numero>21</Numero>"
+        "</DatiGeneraliDocumento></p:FatturaElettronicaBody>"
+        "</p:FatturaElettronica>"
+    )
+
+    assert mod._estrai_dati_ritenuta(xml_raggruppato, 0) is not None
+    assert mod._estrai_dati_ritenuta(xml_raggruppato, 1) is None
+
+
 def test_scadenza_16_mese_successivo():
     assert mod._scadenza_16_mese_successivo("2026-03-20") == "2026-04-16"
     assert mod._scadenza_16_mese_successivo("2026-12-05") == "2027-01-16"

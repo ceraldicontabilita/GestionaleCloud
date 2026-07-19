@@ -292,3 +292,17 @@ Quinto giro di review automatica Codex, entrambi i finding verificati e conferma
 `python -m pytest tests/ -q` → 706 passati, stessi 2 falliti preesistenti/ambientali (invariati).
 
 Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
+
+## Aggiornamento — 2026-07-19 (review Codex PR #71, sesto giro: 1 bug reale)
+
+- Branch: claude/test-coverage-analysis-co5wif
+
+Sesto giro di review automatica Codex sul fix precedente delle ritenute isolate al body giusto: il regex `_isola_body_xml` (`app/routers/ritenute.py`) riconosceva solo `<FatturaElettronicaBody>` senza prefisso — un file con tag namespaced (es. `<p:FatturaElettronicaBody>`, comune per molti software di fatturazione) non veniva isolato affatto, facendo ricomparire il bug originale (ritenuta del primo body ereditata da fatture successive) proprio nel caso che il resto del codebase (parser XML, vista XSLT) già tollera esplicitamente. Corretto rendendo il regex tollerante a un prefisso opzionale su apertura e chiusura del tag.
+
+### Test aggiunti
+`tests/test_ritenute_acconto.py`: +1 test con file raggruppato a tag prefissati (`<p:FatturaElettronicaBody>`).
+
+### Verifica
+`python -m pytest tests/ -q` → 707 passati, stessi 2 falliti preesistenti/ambientali (invariati).
+
+Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.

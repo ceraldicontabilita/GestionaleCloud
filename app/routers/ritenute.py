@@ -70,7 +70,16 @@ def _isola_body_xml(xml_raw: str, body_index: int) -> str:
     fattura nello stesso file (bug reale, review Codex PR #71). Stesso
     stile regex tollerante del resto del modulo (NON un parse XML vero:
     xml_raw può derivare da un .p7m "sporco")."""
-    blocchi = re.findall(r"<FatturaElettronicaBody\b.*?</FatturaElettronicaBody>", xml_raw, re.S)
+    # Prefisso di namespace opzionale (es. <p:FatturaElettronicaBody>,
+    # <ns2:FatturaElettronicaBody>): xml_raw è il testo ORIGINALE non
+    # ripulito (a differenza della copia di lavoro del parser, che invece
+    # normalizza via clean_xml_namespaces) — un file con tag prefissati
+    # senza questa tolleranza non veniva isolato affatto, facendo
+    # ricomparire il bug per l'esatto caso che gli altri percorsi
+    # (parser/vista XSLT) già gestiscono (bug reale, review Codex PR #71).
+    blocchi = re.findall(
+        r"<(?:\w+:)?FatturaElettronicaBody\b.*?</(?:\w+:)?FatturaElettronicaBody\s*>", xml_raw, re.S
+    )
     if not blocchi:
         return xml_raw  # formato inatteso/singolo body: comportamento invariato
     if 0 <= body_index < len(blocchi):
