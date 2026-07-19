@@ -188,6 +188,46 @@ export default function Documenti() {
   // PDF Viewer
   const [selectedPdfDoc, setSelectedPdfDoc] = useState(null);
 
+  // Carica documento fiscale a mano (dichiarazione IVA, cartella esattoriale,
+  // avviso bonario) — prima era una pagina separata (/documenti-fiscali) che
+  // interrogava la STESSA collezione (documents_inbox) di questa, solo
+  // filtrata su queste 3 categorie: fusa qui su richiesta dell'utente
+  // 18/07/2026 ("hanno quasi gli stessi dati").
+  const [showUploadFiscale, setShowUploadFiscale] = useState(false);
+  const [uploadFiscaleCategoria, setUploadFiscaleCategoria] = useState('dichiarazione_iva');
+  const [uploadFiscalePeriodo, setUploadFiscalePeriodo] = useState('');
+  const [uploadingFiscale, setUploadingFiscale] = useState(false);
+  const uploadFiscaleFileRef = useRef(null);
+  const CATEGORIE_FISCALI = [
+    { id: 'dichiarazione_iva', label: 'Dichiarazioni IVA' },
+    { id: 'cartella_esattoriale', label: 'Cartelle Esattoriali' },
+    { id: 'avviso_bonario', label: 'Avvisi Bonari' },
+  ];
+
+  const handleUploadFiscale = async e => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingFiscale(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('categoria', uploadFiscaleCategoria);
+      if (uploadFiscalePeriodo.trim()) fd.append('periodo', uploadFiscalePeriodo.trim());
+      const res = await api.post('/api/documenti-fiscali/upload', fd);
+      toast.success(
+        res.data?.duplicate ? 'Documento già presente (nessun doppione creato)' : 'Documento caricato'
+      );
+      setUploadFiscalePeriodo('');
+      setShowUploadFiscale(false);
+      loadData();
+    } catch (err) {
+      toast.error('Errore upload', { description: err.response?.data?.detail || err.message });
+    } finally {
+      setUploadingFiscale(false);
+      if (uploadFiscaleFileRef.current) uploadFiscaleFileRef.current.value = '';
+    }
+  };
+
   // Controlla lo stato del lock email
   const checkEmailLock = async () => {
     try {
@@ -505,20 +545,29 @@ export default function Documenti() {
       icon="📨"
       subtitle="Gestisci documenti email e documenti estratti con AI"
       actions={
-        <Button
-          variant="secondary"
-          onClick={
-            activeTab === 'categorie'
-              ? loadCategorieMittente
-              : activeTab === 'email'
-                ? loadData
-                : loadAiDocuments
-          }
-          disabled={loading || aiLoading}
-          iconLeft={loading || aiLoading ? '⏳' : '🔄'}
-        >
-          Aggiorna
-        </Button>
+        <>
+          <Button
+            variant="secondary"
+            onClick={() => setShowUploadFiscale(true)}
+            iconLeft="📤"
+          >
+            Carica documento fiscale
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={
+              activeTab === 'categorie'
+                ? loadCategorieMittente
+                : activeTab === 'email'
+                  ? loadData
+                  : loadAiDocuments
+            }
+            disabled={loading || aiLoading}
+            iconLeft={loading || aiLoading ? '⏳' : '🔄'}
+          >
+            Aggiorna
+          </Button>
+        </>
       }
     >
       {/* Tab Navigation */}
@@ -1663,6 +1712,77 @@ export default function Documenti() {
           onDownload={() => handleDownloadFile(selectedPdfDoc)}
           maxWidth={1000}
         />
+      )}
+
+      {/* Carica documento fiscale a mano */}
+      {showUploadFiscale && (
+        <div
+          onClick={() => !uploadingFiscale && setShowUploadFiscale(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.4)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: COLORS.card,
+              borderRadius: 12,
+              padding: 24,
+              width: 'min(420px, 92vw)',
+            }}
+          >
+            <h3 style={{ marginTop: 0 }}>📤 Carica documento fiscale</h3>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
+                Categoria
+              </label>
+              <Select
+                value={uploadFiscaleCategoria}
+                onChange={e => setUploadFiscaleCategoria(e.target.value)}
+                style={{ width: '100%' }}
+              >
+                {CATEGORIE_FISCALI.map(c => (
+                  <option key={c.id} value={c.id}>{c.label}</option>
+                ))}
+              </Select>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
+                Periodo (facoltativo, es. 2025 o 2026-03)
+              </label>
+              <Input
+                value={uploadFiscalePeriodo}
+                onChange={e => setUploadFiscalePeriodo(e.target.value)}
+                style={{ width: '100%' }}
+              />
+            </div>
+            <input
+              ref={uploadFiscaleFileRef}
+              type="file"
+              accept="application/pdf"
+              onChange={handleUploadFiscale}
+              style={{ display: 'none' }}
+            />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <Button variant="secondary" onClick={() => setShowUploadFiscale(false)} disabled={uploadingFiscale}>
+                Annulla
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => uploadFiscaleFileRef.current?.click()}
+                disabled={uploadingFiscale}
+              >
+                {uploadingFiscale ? 'Caricamento…' : 'Scegli PDF e carica'}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </PageLayout>
   );

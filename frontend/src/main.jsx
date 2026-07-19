@@ -53,7 +53,6 @@ const AgentiPage = lazy(() => import("./pages/Agenti.jsx"));
 const LearningMachine = lazy(() => import("./pages/LearningMachine.jsx"));
 const DashboardRelazionale = lazy(() => import("./pages/DashboardRelazionale.jsx"));
 const PaginaNonTrovata = lazy(() => import("./pages/PaginaNonTrovata.jsx"));
-const DocumentiFiscali = lazy(() => import("./pages/DocumentiFiscali.jsx"));
 const GestioneIVA = lazy(() => import("./pages/GestioneIVA.jsx"));
 const FattureEstereVerifica = lazy(() => import("./pages/FattureEstereVerifica.jsx"));
 
@@ -235,8 +234,10 @@ const router = createBrowserRouter([
       // === MAPPA GESTIONALE ===
       { path: "mappa-gestionale", element: <LazyPage><MappaGestionale /></LazyPage> },
 
-      // === DOCUMENTI FISCALI (dichiarazione IVA, esattoriali, avvisi bonari) ===
-      { path: "documenti-fiscali", element: <LazyPage><DocumentiFiscali /></LazyPage> },
+      // === DOCUMENTI FISCALI: fusa in /documenti (stessa collezione
+      // documents_inbox, era una vista duplicata) — segnalato dall'utente
+      // 18/07/2026. Redirect per link/preferiti esistenti.
+      { path: "documenti-fiscali", element: <Navigate to="/documenti" replace /> },
 
       // === GESTIONE IVA (attribuzione periodo per competenza, IVA non utilizzata) ===
       { path: "iva", element: <LazyPage><GestioneIVA /></LazyPage> },

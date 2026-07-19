@@ -867,27 +867,84 @@ async def get_movimenti_per_conto(
         fonte = "invoices"
 
     # ── COSTI / ACQUISTI ──────────────────────────────────────────────────────
+    # Stesso split per riga-fattura via dizionario_articoli usato dal saldo
+    # (_calcola_saldi_piano_conti): PRIMA questo ramo elencava TUTTE le
+    # fatture dell'anno per QUALSIASI sotto-conto costi, senza filtrare per
+    # il conto effettivamente cliccato — segnalato dall'utente 18/07/2026:
+    # cliccando "05.02.22 Noleggio automezzi" (saldo €0, Inattivo) usciva lo
+    # stesso elenco misto di 40 fatture di fornitori completamente estranei
+    # mostrato per "05.01.09 Acquisto caffè e affini". Ogni riga fattura è
+    # assegnata al conto del dizionario articoli (o 05.01.01 di default se
+    # l'articolo non è mappato) — qui si filtra a SOLO le righe del conto
+    # richiesto, esattamente come fa il calcolo del saldo.
     elif cat in ("costi",):
-        q_costi: dict = {}
+        q_periodo: dict = {}
         if anno:
-            q_costi["$or"] = [
-                {"anno": int(anno)},
+            q_periodo["$or"] = [
                 {"invoice_date": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}},
+                {"data_documento": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}},
             ]
-        docs = await db["invoices"].find(
-            q_costi,
-            {"_id": 0, "supplier_name": 1, "invoice_number": 1, "invoice_date": 1,
-             "total_amount": 1, "status": 1}
-        ).sort("invoice_date", -1).limit(limit).to_list(limit)
+        pipe_righe_conto = [
+            *([{"$match": q_periodo}] if q_periodo else []),
+            {"$unwind": {"path": "$linee", "preserveNullAndEmptyArrays": False}},
+            {"$lookup": {
+                "from": "dizionario_articoli",
+                "localField": "linee.descrizione",
+                "foreignField": "descrizione",
+                "as": "diz",
+            }},
+            {"$addFields": {
+                "conto_assegnato": {
+                    "$ifNull": [{"$arrayElemAt": ["$diz.conto", 0]}, "05.01.01"]
+                },
+                "imponibile_riga": {
+                    "$ifNull": [
+                        "$linee.prezzo_totale",
+                        {"$ifNull": ["$linee.imponibile", {"$ifNull": ["$linee.importo", 0]}]}
+                    ]
+                },
+            }},
+            {"$match": {"conto_assegnato": codice}},
+            {"$sort": {"invoice_date": -1}},
+            {"$limit": limit},
+            {"$project": {
+                "_id": 0, "invoice_date": 1, "invoice_number": 1, "supplier_name": 1,
+                "status": 1, "imponibile_riga": 1, "linea_descrizione": "$linee.descrizione",
+            }},
+        ]
+        docs = await db["invoices"].aggregate(pipe_righe_conto).to_list(limit)
         movimenti = [
             {"data": d.get("invoice_date"),
-             "descrizione": f"Fatt. {d.get('invoice_number', '')} — {d.get('supplier_name', '')}",
-             "importo": abs(safe_float(d.get("total_amount") or 0)),
+             "descrizione": f"Fatt. {d.get('invoice_number', '')} — {d.get('supplier_name', '')} — {d.get('linea_descrizione', '')}",
+             "importo": abs(safe_float(d.get("imponibile_riga") or 0)),
              "tipo": "uscita", "categoria": d.get("status", ""),
-             "fonte": "Fatture Ricevute"}
+             "fonte": "Fatture Ricevute (riga)",
+             "linea_descrizione": d.get("linea_descrizione", "")}
             for d in docs
         ]
-        fonte = "invoices"
+        fonte = "invoices_righe"
+
+        # Safety net: se il dizionario è del tutto vuoto (nessuna riga
+        # matchata in nessun conto), _calcola_saldi_piano_conti ricade su
+        # "tutto l'imponibile su 05.01.01" — replichiamo lo stesso fallback
+        # qui, altrimenti 05.01.01 risulterebbe vuoto pur avendo un saldo.
+        if codice == "05.01.01" and not movimenti:
+            diz_count = await db["dizionario_articoli"].count_documents({})
+            if diz_count == 0:
+                docs_fallback = await db["invoices"].find(
+                    q_periodo,
+                    {"_id": 0, "supplier_name": 1, "invoice_number": 1, "invoice_date": 1,
+                     "total_amount": 1, "status": 1}
+                ).sort("invoice_date", -1).limit(limit).to_list(limit)
+                movimenti = [
+                    {"data": d.get("invoice_date"),
+                     "descrizione": f"Fatt. {d.get('invoice_number', '')} — {d.get('supplier_name', '')}",
+                     "importo": abs(safe_float(d.get("total_amount") or 0)),
+                     "tipo": "uscita", "categoria": d.get("status", ""),
+                     "fonte": "Fatture Ricevute"}
+                    for d in docs_fallback
+                ]
+                fonte = "invoices"
 
     # ── RICAVI ────────────────────────────────────────────────────────────────
     # I corrispettivi sono importati come totale giornaliero unico, senza
