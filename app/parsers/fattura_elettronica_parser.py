@@ -216,15 +216,25 @@ def parse_fattura_xml_multi(xml_content: str) -> List[Dict[str, Any]]:
         }
 
         risultati = []
-        for body in bodies:
+        for indice, body in enumerate(bodies):
             try:
-                risultati.append(_parse_body(
+                fattura_body = _parse_body(
                     body, fornitore, cliente,
                     find_element, find_all_elements, get_text, get_nested_text,
-                ))
+                )
+                # body_index: posizione (0-based) di QUESTA fattura tra i
+                # <FatturaElettronicaBody> del file XML condiviso. Necessario
+                # per ri-parsare correttamente lo stesso xml_raw più avanti
+                # (es. backfill): senza questo indice, un secondo/terzo body
+                # salvato con lo stesso xml_raw del file è indistinguibile dal
+                # primo, e chi richiama parse_fattura_xml(xml_raw) per un
+                # ri-parse riceve sempre e solo il primo body (bug reale,
+                # review Codex PR #71).
+                fattura_body["body_index"] = indice
+                risultati.append(fattura_body)
             except Exception as e:
                 logger.error(f"Errore generico parsing fattura (body): {e}")
-                risultati.append({"error": f"Errore parsing: {str(e)}", "raw_xml_parsed": False})
+                risultati.append({"error": f"Errore parsing: {str(e)}", "raw_xml_parsed": False, "body_index": indice})
         return risultati
 
     except ET.ParseError as e:
@@ -233,6 +243,20 @@ def parse_fattura_xml_multi(xml_content: str) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Errore generico parsing fattura: {e}")
         return [{"error": f"Errore parsing: {str(e)}", "raw_xml_parsed": False}]
+
+
+def parse_fattura_xml_body(xml_content: str, body_index: int) -> Dict[str, Any]:
+    """Ri-parsa un xml_raw salvato selezionando lo specifico body_index
+    (vedi parse_fattura_xml_multi). Da usare SEMPRE al posto di
+    parse_fattura_xml() quando si ri-parsa lo xml_raw di una fattura che
+    potrebbe provenire da un file multi-body (campo "xml_body_index" sul
+    documento invoice) — parse_fattura_xml() da solo ritorna sempre e solo
+    il primo body, sbagliato per ogni fattura successiva alla prima dello
+    stesso file (bug reale corretto in review, PR #71)."""
+    risultati = parse_fattura_xml_multi(xml_content)
+    if 0 <= body_index < len(risultati):
+        return risultati[body_index]
+    return risultati[0]
 
 
 def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_text, get_nested_text) -> Dict[str, Any]:

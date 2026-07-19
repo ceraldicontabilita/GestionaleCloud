@@ -1966,15 +1966,34 @@ async def upload_documento_automatico(
                     
         elif tipo_rilevato == 'fattura':
             # Import fattura XML
+            from fastapi import HTTPException as _HTTPException
             from app.routers.invoices.fatture_upload import parse_fattura_xml, process_fattura_to_db
-            
+
             xml_content = content.decode('utf-8', errors='ignore')
             parsed = parse_fattura_xml(xml_content)
-            
+
             if parsed:
+                # Un file FatturaPA può raggruppare più fatture sotto lo
+                # stesso header (più <FatturaElettronicaBody>): "_altri_body"
+                # contiene le fatture aggiuntive, vanno importate anche loro
+                # invece di scartarle silenziosamente (bug reale, review
+                # Codex PR #71 — questo path duplica process_xml_bytes e non
+                # era coperto dal fix multi-body fatto lì).
+                altri_body = parsed.pop("_altri_body", None) or []
                 saved = await process_fattura_to_db(db, parsed, filename)
                 result["message"] = f"Fattura importata: {saved.get('invoice_number', 'N/A')}"
                 result["imported"] = 1
+                importate_extra = 0
+                for altro in altri_body:
+                    try:
+                        await process_fattura_to_db(db, altro, filename)
+                        importate_extra += 1
+                    except _HTTPException as exc:
+                        if exc.status_code != 409:
+                            raise
+                if importate_extra:
+                    result["imported"] += importate_extra
+                    result["message"] += f" (+{importate_extra} fatture aggiuntive nello stesso file)"
             else:
                 result["success"] = False
                 result["message"] = "Errore parsing XML fattura"

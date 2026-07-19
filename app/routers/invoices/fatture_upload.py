@@ -1286,18 +1286,23 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
         altri_risultati = [await _importa_una(p) for p in altri_body]
         tutti = [risultato] + altri_risultati
         # Tutti i chiamanti (upload manuale, bulk, Drive, email) leggono SOLO
-        # lo status di primo livello: se il primo body è un duplicato/errore
-        # ma un body successivo è stato importato davvero, promuovilo a
-        # risultato principale — altrimenti il chiamante segnala "duplicato"
-        # (upload manuale arriva a rispondere 409 all'utente) mentre una
-        # nuova fattura è stata comunque scritta in contabilità come effetto
-        # collaterale invisibile (bug reale, review Codex su PR #71).
-        if risultato.get("status") not in ("imported", "archiviata"):
-            promosso = next((r for r in tutti if r.get("status") in ("imported", "archiviata")), None)
-            if promosso is not None:
-                tutti.remove(promosso)
-                risultato = promosso
-                altri_risultati = tutti
+        # lo status di primo livello: se il primo body non è quello con
+        # l'esito "migliore", promuovi il migliore a risultato principale —
+        # altrimenti il chiamante segnala duplicato/errore (upload manuale
+        # arriva a rispondere 409 all'utente) o conta il file come solo
+        # archiviato mentre una fattura ATTIVA è stata comunque scritta in
+        # contabilità come effetto collaterale invisibile. "imported" (fattura
+        # nel flusso contabile attivo) vale più di "archiviata" (solo
+        # consultazione storica, richiesta utente 14/07/2026): con filtro
+        # anno attivo e un file che raggruppa una fattura di un anno passato
+        # con una dell'anno corrente, il file va sempre segnalato come
+        # "imported", mai come "archiviata" (bug reale, review Codex PR #71).
+        _PRIORITA = {"imported": 2, "archiviata": 1}
+        migliore = max(tutti, key=lambda r: _PRIORITA.get(r.get("status"), 0))
+        if _PRIORITA.get(migliore.get("status"), 0) > _PRIORITA.get(risultato.get("status"), 0):
+            tutti.remove(migliore)
+            risultato = migliore
+            altri_risultati = tutti
         risultato = dict(risultato)
         risultato["multi_body_xml"] = True
         risultato["altre_fatture_stesso_file"] = altri_risultati
@@ -1354,6 +1359,7 @@ async def archivia_fattura_storica(db, parsed: Dict[str, Any], filename: str, so
         "source": source,
         "filename": filename,
         "xml_raw": xml_raw,
+        "xml_body_index": parsed.get("body_index", 0),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "cedente_piva": parsed.get("supplier_vat", ""),
         "cedente_denominazione": parsed.get("supplier_name", ""),
@@ -1437,6 +1443,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "source": source,
         "filename": filename,
         "xml_raw": xml_raw,
+        "xml_body_index": parsed.get("body_index", 0),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "cedente_piva": parsed.get("supplier_vat", ""),
         "cedente_denominazione": parsed.get("supplier_name", ""),

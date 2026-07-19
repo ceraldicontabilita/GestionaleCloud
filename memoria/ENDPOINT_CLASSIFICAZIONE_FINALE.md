@@ -392,7 +392,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/documenti/telegram/status` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/documenti/telegram/test` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/documenti/ultimo-sync` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/documenti/upload-auto` | documenti | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/documenti/upload-auto` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/email-download/associa-documento` | email_download | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-download/associa-f24-filesystem` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-download/auto-associa` | email_download | sì | — | — | — | — | tenere | in uso: FE |
@@ -438,7 +438,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/email-scanner/cartelle` | email_scanner | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-scanner/scansiona` | email_scanner | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-scanner/scansiona-e-associa` | email_scanner | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/email-scanner/statistiche` | email_scanner | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `GET /api/email-scanner/statistiche` | email_scanner | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `POST /api/erp/ponte/fattura-ricevuta` | erp_bridge | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/erp/ponte/status` | erp_bridge | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/estratto-conto-movimenti/categorie` | bank.estratto_conto | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

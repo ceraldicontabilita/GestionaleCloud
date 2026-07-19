@@ -259,7 +259,7 @@ async def backfill_noleggio_dati_gestionali(
     senza toccare il resto del documento.
     """
     from app.services.noleggio import FORNITORI_NOLEGGIO
-    from app.parsers.fattura_elettronica_parser import parse_fattura_xml
+    from app.parsers.fattura_elettronica_parser import parse_fattura_xml_body
 
     db = Database.get_db()
 
@@ -273,7 +273,7 @@ async def backfill_noleggio_dati_gestionali(
     errori = 0
     esaminate = 0
 
-    cursor = db["invoices"].find(query, {"xml_raw": 1, "linee": 1, "dati_contratto": 1})
+    cursor = db["invoices"].find(query, {"xml_raw": 1, "linee": 1, "dati_contratto": 1, "xml_body_index": 1})
     async for inv in cursor:
         esaminate += 1
         ha_gia_dati = bool(inv.get("dati_contratto")) or any(
@@ -283,7 +283,12 @@ async def backfill_noleggio_dati_gestionali(
             saltate_gia_ok += 1
             continue
 
-        parsed = parse_fattura_xml(inv["xml_raw"])
+        # xml_raw può essere condiviso da più fatture (file FatturaPA con più
+        # <FatturaElettronicaBody> raggruppati): body_index seleziona quella
+        # giusta, altrimenti si ri-scriverebbero linee/dati_contratto della
+        # PRIMA fattura del file su una fattura diversa (bug reale, review
+        # Codex PR #71).
+        parsed = parse_fattura_xml_body(inv["xml_raw"], inv.get("xml_body_index", 0))
         if parsed.get("error") or not parsed.get("linee"):
             errori += 1
             continue

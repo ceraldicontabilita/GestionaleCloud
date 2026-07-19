@@ -10,7 +10,9 @@ per il caso singolo body (invariato) e multi body (nuovo comportamento),
 più il loro consumo in fatture_upload.process_xml_bytes."""
 import asyncio
 
-from app.parsers.fattura_elettronica_parser import parse_fattura_xml, parse_fattura_xml_multi
+from app.parsers.fattura_elettronica_parser import (
+    parse_fattura_xml, parse_fattura_xml_multi, parse_fattura_xml_body,
+)
 from app.routers.invoices import fatture_upload as fu_mod
 
 
@@ -133,6 +135,53 @@ def test_process_xml_bytes_importa_tutte_le_fatture_del_file_multi_body(monkeypa
     assert len(res["altre_fatture_stesso_file"]) == 1
     assert res["altre_fatture_stesso_file"][0]["invoice_number"] == "21"
     assert importate == ["20", "21"]
+
+
+def test_body_index_presente_e_corretto_su_ogni_fattura():
+    xml = _xml(_body("20", "1000.00"), _body("21", "2000.00"), _body("22", "3000.00"))
+    risultati = parse_fattura_xml_multi(xml)
+
+    assert [r["body_index"] for r in risultati] == [0, 1, 2]
+
+    primo = parse_fattura_xml(xml)
+    assert primo["body_index"] == 0
+    assert [r["body_index"] for r in primo["_altri_body"]] == [1, 2]
+
+
+def test_parse_fattura_xml_body_seleziona_il_body_giusto():
+    """Review Codex su PR #71: ri-parsare lo xml_raw condiviso con
+    parse_fattura_xml() da solo ritorna SEMPRE il primo body — serve
+    parse_fattura_xml_body(xml, indice) per riottenere correttamente una
+    fattura successiva alla prima dello stesso file."""
+    xml = _xml(_body("20", "1000.00"), _body("21", "2000.00"))
+
+    assert parse_fattura_xml_body(xml, 0)["invoice_number"] == "20"
+    assert parse_fattura_xml_body(xml, 1)["invoice_number"] == "21"
+    # Indice fuori range: fallback sicuro al primo body, mai un IndexError.
+    assert parse_fattura_xml_body(xml, 99)["invoice_number"] == "20"
+
+
+def test_process_xml_bytes_promuove_imported_su_archiviata(monkeypatch):
+    """Review Codex su PR #71: con filtro anno attivo, se il primo body del
+    file è di un anno passato (→ 'archiviata', sola consultazione) ma un
+    body successivo è dell'anno attivo (→ 'imported', fattura contabile
+    reale), lo status di primo livello deve essere 'imported' — altrimenti
+    il chiamante (es. Drive ingest) conta il file come solo archiviato e la
+    fattura attiva resta invisibile alle statistiche/notifiche."""
+    xml = _xml(_body("20", "1000.00"), _body("21", "2000.00")).encode("utf-8")
+
+    async def _fake_import(db, parsed, filename, source, xml_raw=None):
+        if parsed["invoice_number"] == "20":
+            return {"status": "archiviata", "invoice_number": "20"}
+        return {"status": "imported", "invoice_number": "21", "id": "id-21"}
+
+    monkeypatch.setattr(fu_mod, "import_parsed_invoice", _fake_import)
+
+    res = _run(fu_mod.process_xml_bytes(None, xml, "raggruppata.xml", source="xml_upload"))
+
+    assert res["status"] == "imported"
+    assert res["invoice_number"] == "21"
+    assert res["altre_fatture_stesso_file"] == [{"status": "archiviata", "invoice_number": "20"}]
 
 
 def test_process_xml_bytes_promuove_body_importato_se_il_primo_e_duplicato(monkeypatch):

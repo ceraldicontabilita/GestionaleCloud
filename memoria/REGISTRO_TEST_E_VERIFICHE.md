@@ -216,3 +216,26 @@ Anche quando l'XML originale era salvato (`xml_raw`/`xml_file_path`), non esiste
 - Eventuale logica di netting acconto, se la causa reale sulla fattura specifica risultasse diversa dal bug multi-body.
 
 Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
+
+## Aggiornamento — 2026-07-19 (review Codex PR #71, secondo giro: 5 bug reali sul fix multi-body)
+
+- Branch: claude/test-coverage-analysis-co5wif
+
+La review automatica Codex su PR #71 ha segnalato 5 problemi P2 sul fix del bug multi-body XML del round precedente. Verificati tutti nel codice reale (nessun falso positivo) e corretti:
+
+1. **Aggregazione status**: se il primo body era duplicato/errore ma un body successivo veniva importato davvero, il chiamante (upload manuale, bulk, Drive, email) leggeva solo lo status del primo e segnalava "duplicato" (409 all'utente) mentre una fattura era comunque scritta in contabilità come effetto collaterale invisibile. Corretto: il risultato con lo status "migliore" viene promosso a livello principale.
+2. **Priorità imported > archiviata**: la promozione del punto 1 escludeva "archiviata" (fattura di anno passato, sola consultazione) dal confronto quando un body successivo era "imported" (fattura attiva). Corretto con una priorità esplicita (`imported` > `archiviata` > duplicate/error) invece di trattarli come equivalenti.
+3. **Identità del body per il re-parsing**: ogni fattura di un file multi-body veniva salvata con lo STESSO `xml_raw` (l'intero file). `app/routers/admin.py::backfill_noleggio_dati_gestionali` ri-parsa `xml_raw` con `parse_fattura_xml` per aggiornare `linee`/`dati_contratto`: per la fattura creata dal secondo body, questo avrebbe sovrascritto i suoi dati con quelli del PRIMO body — corruzione dati reale. Corretto: ogni fattura estratta porta un `body_index` (`fattura_elettronica_parser.py`), salvato come `xml_body_index` sul documento invoice; nuova funzione `parse_fattura_xml_body(xml, indice)` per ri-parsare il body giusto; `backfill_noleggio_dati_gestionali` aggiornato per usarla.
+4. **Path di import duplicato in Documenti**: `app/routers/documenti.py::upload_documento_automatico` ha una pipeline di import fattura SEPARATA (`parse_fattura_xml` + `process_fattura_to_db`, non `process_xml_bytes`) non toccata dal fix del round precedente — un file multi-body caricato da lì perdeva ancora silenziosamente le fatture oltre la prima. Corretto con la stessa logica (importa anche `_altri_body`, tollera 409 sui duplicati extra senza bloccare il primo).
+5. **Bundle frontend non ricompilato**: il fix del modale "vedi fattura" (pulsante scarica XML originale) era solo nel sorgente `ModalFattura.jsx` — Render pubblica `frontend/dist` con build command vuoto (committato, non ricompilato in produzione): senza rigenerare e committare `frontend/dist`, il fix non sarebbe MAI arrivato in produzione. Corretto: `yarn build` rieseguito e `frontend/dist` committato stavolta (non ripristinato come nelle build di sola verifica).
+
+### Test aggiunti
+`tests/test_fattura_elettronica_parser_multi_body.py`: +4 test (body_index, parse_fattura_xml_body, priorità imported/archiviata, promozione su duplicato — quest'ultimo già presente, ora affiancato dal caso priorità). `tests/test_documenti_import_fattura_multi_body.py` (nuovo): 2 test sul path di import di Documenti.
+
+### Verifica
+`python -m pytest tests/ -q` → 695 passati, stessi 2 falliti preesistenti/ambientali (invariati). `yarn test` (frontend) → 27 passati, invariato. `yarn build` rieseguita e committata stavolta (non ripristinata), verificato con grep che il bundle `ModalFattura-*.js` contiene `xml-originale`.
+
+### Lezione operativa
+Per qualunque fix che tocca `frontend/src`, se il repository pubblica `frontend/dist` pre-compilato (verificare sempre `render.yaml`/`staticPublishPath` prima di assumere che Render ricompili), la build va rieseguita e **committata**, non ripristinata come nelle build di sola verifica sintattica.
+
+Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
