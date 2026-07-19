@@ -14,6 +14,39 @@ from .common import (
 )
 
 
+async def _arricchisci_riconciliazione(db, movimenti: list) -> None:
+    """Aggiunge a ogni movimento legato a una fattura (mov['fattura_id']) un
+    campo 'riconciliazione' con evidenza di un vero match con l'estratto
+    conto (riconciliato_con_ec/automatica/match_score sulla fattura, scritti
+    da app/services/riconciliazione_bancaria.py). Senza questo, in Prima
+    Nota Banca una fattura registrata (es. manualmente, o auto-confermata
+    da metodo fornitore) è indistinguibile da una davvero riconciliata con
+    l'estratto conto — segnalato dall'utente sul caso Leasys.
+
+    Una sola query batch su tutte le fatture coinvolte: niente N+1
+    (pattern già segnalato come problema altrove nell'audit statico).
+    """
+    fattura_ids = list({m["fattura_id"] for m in movimenti if m.get("fattura_id")})
+    if not fattura_ids:
+        return
+    fatture = await db[Collections.INVOICES].find(
+        {"id": {"$in": fattura_ids}},
+        {"_id": 0, "id": 1, "riconciliato_con_ec": 1, "riconciliato_automaticamente": 1, "match_score": 1},
+    ).to_list(len(fattura_ids))
+    per_id = {f["id"]: f for f in fatture}
+    for m in movimenti:
+        fid = m.get("fattura_id")
+        if not fid:
+            continue
+        fattura = per_id.get(fid)
+        verificata = bool(fattura and fattura.get("riconciliato_con_ec"))
+        m["riconciliazione"] = {
+            "verificata": verificata,
+            "automatica": bool(fattura and fattura.get("riconciliato_automaticamente")) if verificata else False,
+            "match_score": fattura.get("match_score") if verificata else None,
+        }
+
+
 async def list_prima_nota_banca(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=10000),
@@ -49,6 +82,7 @@ async def list_prima_nota_banca(
         query["categoria"] = categoria
     
     movimenti = await db[COLLECTION_PRIMA_NOTA_BANCA].find(query, {"_id": 0}).sort("data", -1).skip(skip).limit(limit).to_list(limit)
+    await _arricchisci_riconciliazione(db, movimenti)
 
     # §6.4: saldo tramite la funzione UNICA (segno/riporto/saldo finale uniformi)
     saldi = await aggrega_saldo_prima_nota(db, COLLECTION_PRIMA_NOTA_BANCA, query, anno)

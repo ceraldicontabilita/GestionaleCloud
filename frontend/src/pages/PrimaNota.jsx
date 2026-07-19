@@ -489,6 +489,34 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
     }
   };
 
+  // Evidenza di riconciliazione reale con l'estratto conto per le fatture
+  // in Banca (richiesto dall'utente sul caso Leasys: senza questo, una
+  // fattura registrata non si distingue da una davvero riconciliata).
+  // Il backend valorizza mov.riconciliazione SOLO per movimenti con
+  // fattura_id in banca (vedi _arricchisci_riconciliazione).
+  const badgeRiconciliazione = mov => {
+    if (tipo !== 'banca' || !mov.fattura_id || !mov.riconciliazione) return null;
+    const { verificata, automatica, match_score } = mov.riconciliazione;
+    if (verificata) {
+      return (
+        <span
+          title={automatica ? `Riconciliato automaticamente con l'estratto conto (punteggio ${match_score ?? '—'})` : "Riconciliato con l'estratto conto"}
+          style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
+        >
+          ✅ Riconciliato
+        </span>
+      );
+    }
+    return (
+      <span
+        title="Nessun addebito trovato in estratto conto per questa fattura: verificare in Riconciliazione"
+        style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fcd34d', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
+      >
+        ⚠️ Da verificare
+      </span>
+    );
+  };
+
   const badgeDocumento = mov => {
     if (mov.fattura_id) {
       return (
@@ -685,8 +713,9 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
                           {eur(saldoDi[m.id])}
                         </b>
                       </span>
-                      <span style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                      <span style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
                         {badgeDocumento(m)}
+                        {badgeRiconciliazione(m)}
                         {bottoniRiga(m)}
                       </span>
                     </div>
@@ -737,7 +766,12 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
                   <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 800, color: (saldoDi[m.id] ?? 0) >= 0 ? VERDE : ROSSO, fontFamily: 'ui-monospace, Menlo, monospace', whiteSpace: 'nowrap' }}>
                     {eur(saldoDi[m.id])}
                   </td>
-                  <td style={{ padding: '7px 10px', textAlign: 'center' }}>{badgeDocumento(m) || '—'}</td>
+                  <td style={{ padding: '7px 10px', textAlign: 'center' }}>
+                    <span style={{ display: 'inline-flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+                      {badgeDocumento(m) || '—'}
+                      {badgeRiconciliazione(m)}
+                    </span>
+                  </td>
                   <td style={{ padding: '7px 10px', textAlign: 'center' }}>{bottoniRiga(m)}</td>
                 </tr>
               ))}
