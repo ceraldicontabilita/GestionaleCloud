@@ -18,6 +18,31 @@ def test_estrazione_dati_ritenuta():
     assert mod._estrai_dati_ritenuta("<FatturaElettronica/>") is None
 
 
+def test_estrazione_dati_ritenuta_isola_il_body_giusto_in_file_raggruppato():
+    """Review Codex su PR #71 (5° giro): un file FatturaPA raggruppato
+    condivide lo stesso xml_raw fra più fatture (xml_body_index). Se solo
+    la PRIMA fattura ha una ritenuta, la SECONDA (senza ritenuta) non deve
+    ereditarla — bug reale: senza isolare il body giusto, il regex trovava
+    sempre e solo il primo <DatiRitenuta> del file, indipendentemente da
+    quale fattura si stesse processando."""
+    xml_raggruppato = (
+        "<FatturaElettronica>"
+        "<FatturaElettronicaBody><DatiGeneraliDocumento><Numero>20</Numero>"
+        "<DatiRitenuta><TipoRitenuta>RT01</TipoRitenuta><ImportoRitenuta>280.00</ImportoRitenuta>"
+        "<AliquotaRitenuta>20.00</AliquotaRitenuta><CausalePagamento>A</CausalePagamento></DatiRitenuta>"
+        "</DatiGeneraliDocumento></FatturaElettronicaBody>"
+        "<FatturaElettronicaBody><DatiGeneraliDocumento><Numero>21</Numero>"
+        "</DatiGeneraliDocumento></FatturaElettronicaBody>"
+        "</FatturaElettronica>"
+    )
+
+    d0 = mod._estrai_dati_ritenuta(xml_raggruppato, 0)
+    assert d0 == {"tipo": "RT01", "importo": 280.0, "aliquota": "20.00", "causale": "A"}
+
+    d1 = mod._estrai_dati_ritenuta(xml_raggruppato, 1)
+    assert d1 is None
+
+
 def test_scadenza_16_mese_successivo():
     assert mod._scadenza_16_mese_successivo("2026-03-20") == "2026-04-16"
     assert mod._scadenza_16_mese_successivo("2026-12-05") == "2027-01-16"

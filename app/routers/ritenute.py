@@ -62,11 +62,30 @@ def _scadenza_16_mese_successivo(data_iso: str) -> str:
     return f"{anno}-{mese:02d}-16"
 
 
-def _estrai_dati_ritenuta(xml_raw) -> Optional[Dict[str, Any]]:
-    """Estrae DatiRitenuta dall'XML (regex: regge anche i .p7m sporchi)."""
+def _isola_body_xml(xml_raw: str, body_index: int) -> str:
+    """Isola il testo del body_index-esimo <FatturaElettronicaBody> dentro
+    xml_raw. Un file FatturaPA raggruppato condivide lo stesso xml_raw fra
+    più fatture (vedi xml_body_index): senza isolare il body giusto, una
+    fattura SENZA ritenuta poteva ereditare la <DatiRitenuta> di un'altra
+    fattura nello stesso file (bug reale, review Codex PR #71). Stesso
+    stile regex tollerante del resto del modulo (NON un parse XML vero:
+    xml_raw può derivare da un .p7m "sporco")."""
+    blocchi = re.findall(r"<FatturaElettronicaBody\b.*?</FatturaElettronicaBody>", xml_raw, re.S)
+    if not blocchi:
+        return xml_raw  # formato inatteso/singolo body: comportamento invariato
+    if 0 <= body_index < len(blocchi):
+        return blocchi[body_index]
+    return blocchi[0]
+
+
+def _estrai_dati_ritenuta(xml_raw, body_index: int = 0) -> Optional[Dict[str, Any]]:
+    """Estrae DatiRitenuta dall'XML (regex: regge anche i .p7m sporchi).
+    body_index seleziona il body giusto quando xml_raw è condiviso da più
+    fatture di un file raggruppato."""
     if not xml_raw:
         return None
     testo = xml_raw if isinstance(xml_raw, str) else str(xml_raw)
+    testo = _isola_body_xml(testo, body_index)
     blocco = re.search(r"<DatiRitenuta>(.*?)</DatiRitenuta>", testo, re.S)
     if not blocco:
         return None
@@ -181,12 +200,13 @@ async def scan_ritenute(anno: int = Query(2026)) -> Dict[str, Any]:
          "status": {"$nin": ["deleted", "archived"]},
          "xml_raw": {"$regex": "DatiRitenuta"}},
         {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1,
-         "supplier_name": 1, "supplier_vat": 1, "cedente_piva": 1, "xml_raw": 1},
+         "supplier_name": 1, "supplier_vat": 1, "cedente_piva": 1, "xml_raw": 1,
+         "xml_body_index": 1},
     ).to_list(5000)
 
     nuove = aggiornate = 0
     for f in fatture:
-        dati = _estrai_dati_ritenuta(f.get("xml_raw"))
+        dati = _estrai_dati_ritenuta(f.get("xml_raw"), f.get("xml_body_index") or 0)
         if not dati:
             continue
         base = {

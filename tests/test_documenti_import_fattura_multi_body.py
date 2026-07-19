@@ -178,3 +178,39 @@ def test_upload_automatico_tutti_duplicati_segnala_errore(monkeypatch):
     res = _run(documenti_mod.upload_documento_automatico(file=upload))
 
     assert res["success"] is False
+
+
+def test_upload_automatico_decodifica_correttamente_xml_non_utf8(monkeypatch):
+    """Review Codex su PR #71 (5° giro): xml_content veniva decodificato
+    SOLO con content.decode('utf-8', errors='ignore') — su un file
+    realmente non-UTF-8 (es. ISO-8859-1) con testo accentato, questo
+    cancella silenziosamente i byte non validi invece di provare la
+    decodifica giusta, corrompendo il testo che ora viene anche persistito
+    come xml_raw e riservito da /xml-originale."""
+    xml_str = (
+        '<?xml version="1.0" encoding="ISO-8859-1"?>'
+        '<FatturaElettronica><FatturaElettronicaHeader><CedentePrestatore>'
+        '<DatiAnagrafici><Anagrafica><Denominazione>Società Àccentata</Denominazione>'
+        '</Anagrafica></DatiAnagrafici></CedentePrestatore></FatturaElettronicaHeader>'
+        '<FatturaElettronicaBody><DatiGenerali><DatiGeneraliDocumento>'
+        '<TipoDocumento>TD01</TipoDocumento><Numero>1</Numero>'
+        '<ImportoTotaleDocumento>100.00</ImportoTotaleDocumento>'
+        '</DatiGeneraliDocumento></DatiGenerali></FatturaElettronicaBody></FatturaElettronica>'
+    )
+    xml_bytes = xml_str.encode("iso-8859-1")
+    upload = UploadFile(filename="fattura.xml", file=io.BytesIO(xml_bytes))
+
+    monkeypatch.setattr(documenti_mod.Database, "get_db", staticmethod(lambda: _FakeDb()))
+
+    xml_raw_ricevuto = {}
+
+    async def _fake_process_fattura_to_db(db, parsed, filename, xml_raw=None):
+        xml_raw_ricevuto["value"] = xml_raw
+        return {"invoice_number": parsed["invoice_number"], "id": "id-1"}
+
+    import app.routers.invoices.fatture_upload as fu_mod
+    monkeypatch.setattr(fu_mod, "process_fattura_to_db", _fake_process_fattura_to_db)
+
+    _run(documenti_mod.upload_documento_automatico(file=upload))
+
+    assert "Società Àccentata" in xml_raw_ricevuto["value"]

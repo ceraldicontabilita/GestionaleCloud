@@ -275,3 +275,20 @@ Quarto giro di review automatica Codex, entrambi i finding verificati nel codice
 `python -m pytest tests/ -q` → 704 passati, stessi 2 falliti preesistenti/ambientali (invariati).
 
 Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
+
+## Aggiornamento — 2026-07-19 (review Codex PR #71, quinto giro: 2 bug reali)
+
+- Branch: claude/test-coverage-analysis-co5wif
+
+Quinto giro di review automatica Codex, entrambi i finding verificati e confermati:
+
+1. **Ritenute d'acconto ereditate dal body sbagliato** (`app/routers/ritenute.py`): `scan_ritenute` seleziona le fatture il cui `xml_raw` contiene "DatiRitenuta" via regex Mongo, poi `_estrai_dati_ritenuta` cerca il PRIMO blocco `<DatiRitenuta>` nel testo. Poiché tutte le fatture di un file raggruppato condividono lo stesso `xml_raw`, una fattura SENZA ritenuta propria avrebbe ereditato quella di un'altra fattura nello stesso file — bug reale con impatto fiscale diretto (creazione di una riga `ritenute_acconto` fittizia sulla fattura sbagliata). Corretto isolando il testo del body giusto (`xml_body_index`) con lo stesso stile regex tollerante già usato dal modulo, prima di cercare `<DatiRitenuta>`.
+2. **Decodifica XML lossy in Documenti** (`app/routers/documenti.py`): il path di import fattura decodificava sempre con `content.decode('utf-8', errors='ignore')` — su un file realmente non-UTF-8 (es. ISO-8859-1 con testo accentato in fornitore/righe) questo cancella silenziosamente i byte non validi, corrompendo il testo. Prima di questa PR la stringa corrotta veniva solo usata per il parsing (impatto limitato, i campi numerici sono ASCII); ora che viene anche persistita come `xml_raw` e riservita da `/xml-originale`, la corruzione diventa visibile e permanente. Corretto applicando lo stesso fallback multi-encoding già usato da `process_xml_bytes`.
+
+### Test aggiunti
+`tests/test_ritenute_acconto.py`: +1 test (isolamento del body giusto in un file raggruppato con ritenuta solo sulla prima fattura). `tests/test_documenti_import_fattura_multi_body.py`: +1 test (decodifica corretta di un file ISO-8859-1 con testo accentato, verificata sul valore di `xml_raw` effettivamente persistito).
+
+### Verifica
+`python -m pytest tests/ -q` → 706 passati, stessi 2 falliti preesistenti/ambientali (invariati).
+
+Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
