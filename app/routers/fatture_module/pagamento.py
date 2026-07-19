@@ -351,21 +351,26 @@ async def verifica_incoerenze_estratto_conto() -> Dict[str, Any]:
 
 
 async def aggiorna_metodi_pagamento_da_fornitori() -> Dict[str, Any]:
-    """Aggiorna metodi pagamento fatture dal fornitore.
-    Se il fornitore ha metodo_pagamento=banca/bonifico/sepa, 
-    marca automaticamente le fatture come riconciliate.
+    """Aggiorna SOLO il metodo di pagamento delle fatture dal fornitore
+    (ricopia metodo_pagamento quando la fattura non ce l'ha ancora).
+
+    FIX (utente, caso Leasys 19/07/2026 — review Codex su PR #66): prima
+    marcava anche riconciliato=True per il solo fatto che il fornitore
+    avesse metodo "banca" in anagrafica, SENZA nessun riscontro con un
+    vero movimento bancario — in contraddizione con la regola (18/07/2026,
+    vedi auto_registra_prima_nota in invoices/fatture_upload.py) per cui
+    una fattura "banca" resta provvisoria finché la riconciliazione con
+    l'estratto conto non trova l'addebito reale. Il metodo di pagamento è
+    solo un dato anagrafico: non è mai prova di un pagamento avvenuto.
     """
     db = Database.get_db()
-    
+
     fatture = await db[COL_FATTURE_RICEVUTE].find(
         {"metodo_pagamento": {"$in": [None, "", "da_configurare"]}},
         {"_id": 0, "id": 1, "fornitore_partita_iva": 1, "supplier_vat": 1, "fornitore_piva": 1}
     ).to_list(10000)
-    
-    from app.engines.prima_nota_engine import normalizza_metodo_pagamento
 
     aggiornate = 0
-    riconciliate = 0
 
     # OTTIMIZZAZIONE: carica TUTTI i fornitori in una sola query (no N+1)
     pive_necessarie = set()
@@ -407,18 +412,14 @@ async def aggiorna_metodi_pagamento_da_fornitori() -> Dict[str, Any]:
             "metodo_pagamento": metodo,
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
-        # Auto-riconciliazione per pagamenti banca (regola unica del motore)
-        if normalizza_metodo_pagamento(metodo) == "banca":
-            update["riconciliato"] = True
-            riconciliate += 1
 
         await db[COL_FATTURE_RICEVUTE].update_one({"id": f["id"]}, {"$set": update})
         aggiornate += 1
-    
+
     return {
         "success": True,
         "fatture_aggiornate": aggiornate,
-        "fatture_riconciliate_auto": riconciliate,
+        "fatture_riconciliate_auto": 0,  # rimosso: il metodo di pagamento non è mai prova di riconciliazione
         "totale_analizzate": len(fatture)
     }
 

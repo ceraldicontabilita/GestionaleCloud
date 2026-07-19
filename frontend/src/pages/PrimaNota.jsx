@@ -489,6 +489,56 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
     }
   };
 
+  // Evidenza di riconciliazione reale in Banca:
+  // - per le fatture (caso Leasys: senza questo, una fattura registrata
+  //   non si distingue da una davvero riconciliata con l'estratto conto);
+  // - per i trasferimenti POS cassa→banca (l'utente ha fatto notare che
+  //   il pareggio cassa=banca è solo coerenza di TRASCRIZIONE — stesso
+  //   importo copiato tra i due registri — e non prova che la banca
+  //   abbia davvero accreditato quella cifra);
+  // - per i pagamenti via PayPal (evidenza reale ma non è l'estratto
+  //   conto bancario: testo dedicato, non spacciato per riconciliazione
+  //   bancaria).
+  // Il backend valorizza mov.riconciliazione solo con un ID di
+  // collegamento reale a un movimento/transazione, mai col solo flag
+  // booleano "riconciliato" (troppo permissivo: alcuni flussi lo
+  // impostano senza nessun riscontro — vedi _arricchisci_riconciliazione
+  // in prima_nota_module/banca.py).
+  const badgeRiconciliazione = mov => {
+    if (tipo !== 'banca' || !mov.riconciliazione) return null;
+    const { verificata, automatica, match_score, tipo: tipoRic, accreditato_ec } = mov.riconciliazione;
+    const isPos = tipoRic === 'pos_trasferimento';
+    const isPaypal = tipoRic === 'paypal';
+    if (verificata) {
+      const importoInfo = isPos && accreditato_ec ? ` (${eur(accreditato_ec)} accreditati)` : '';
+      const title = isPaypal
+        ? 'Riconciliato con una transazione PayPal reale'
+        : isPos
+        ? `Trasferimento POS riconciliato con l'estratto conto${importoInfo}`
+        : (automatica ? `Riconciliato automaticamente con l'estratto conto (punteggio ${match_score ?? '—'})` : "Riconciliato con l'estratto conto");
+      return (
+        <span
+          title={title}
+          style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
+        >
+          ✅ Riconciliato{importoInfo}
+        </span>
+      );
+    }
+    return (
+      <span
+        title={isPaypal
+          ? "Nessuna transazione PayPal di riscontro trovata: verificare"
+          : isPos
+          ? "Nessun accredito trovato in estratto conto per questo trasferimento POS: verificare in Coerenza POS"
+          : "Nessun addebito trovato in estratto conto per questa fattura: verificare in Riconciliazione"}
+        style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fcd34d', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
+      >
+        ⚠️ Da verificare
+      </span>
+    );
+  };
+
   const badgeDocumento = mov => {
     if (mov.fattura_id) {
       return (
@@ -685,8 +735,9 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
                           {eur(saldoDi[m.id])}
                         </b>
                       </span>
-                      <span style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                      <span style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
                         {badgeDocumento(m)}
+                        {badgeRiconciliazione(m)}
                         {bottoniRiga(m)}
                       </span>
                     </div>
@@ -737,7 +788,12 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
                   <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 800, color: (saldoDi[m.id] ?? 0) >= 0 ? VERDE : ROSSO, fontFamily: 'ui-monospace, Menlo, monospace', whiteSpace: 'nowrap' }}>
                     {eur(saldoDi[m.id])}
                   </td>
-                  <td style={{ padding: '7px 10px', textAlign: 'center' }}>{badgeDocumento(m) || '—'}</td>
+                  <td style={{ padding: '7px 10px', textAlign: 'center' }}>
+                    <span style={{ display: 'inline-flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+                      {badgeDocumento(m) || '—'}
+                      {badgeRiconciliazione(m)}
+                    </span>
+                  </td>
                   <td style={{ padding: '7px 10px', textAlign: 'center' }}>{bottoniRiga(m)}</td>
                 </tr>
               ))}

@@ -539,7 +539,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/fatture-estere/affidabilita` | fatture_estera_verifica | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/fatture-estere/da-verificare` | fatture_estera_verifica | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/fatture-estere/{fattura_id}/verifica` | fatture_estera_verifica | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/fatture-ricevute/aggiorna-metodi-pagamento` | fatture_module.pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/fatture-ricevute/aggiorna-metodi-pagamento` | fatture_module.pagamento | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/fatture-ricevute/archivio` | fatture_module.crud | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/fatture-ricevute/auto-ricostruisci-dati` | fatture_module.pagamento | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/fatture-ricevute/backfill-autoroute` | fatture_module.pagamento | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
