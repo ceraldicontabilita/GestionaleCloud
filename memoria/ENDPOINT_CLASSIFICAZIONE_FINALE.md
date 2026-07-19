@@ -141,7 +141,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/assegni/{assegno_id}/incassa` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/assegni/{assegno_id}/risolvi-ambiguo` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/auth/login` | auth | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/auth/logout` | auth | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/auth/logout` | auth | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/auth/pin-login` | pin_login | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/auth/pin-login/health` | pin_login | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/auth/verify` | auth | sì | — | — | — | sì | tenere | in uso: FE |
