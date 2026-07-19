@@ -38,6 +38,14 @@ class _FakeCollection:
     async def insert_one(self, doc, *a, **k):
         self.docs.append(dict(doc))
 
+    async def find_one_and_update(self, query, update, upsert=False):
+        for d in self.docs:
+            if _matches(d, query):
+                return dict(d)
+        if upsert:
+            self.docs.append(dict(update.get("$setOnInsert", {})))
+        return None
+
     async def delete_many(self, query, *a, **k):
         rimasti = [d for d in self.docs if not _matches(d, query)]
         rimossi = len(self.docs) - len(rimasti)

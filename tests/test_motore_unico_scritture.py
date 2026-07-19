@@ -146,6 +146,13 @@ class _Coll:
     async def insert_one(self, doc):
         self.docs.append(doc)
 
+    async def find_one_and_update(self, query, update, upsert=False):
+        # find_one() qui sopra ritorna sempre None: coerente, anche
+        # find_one_and_update tratta ogni query come "non trovato".
+        if upsert:
+            self.docs.append(dict(update.get("$setOnInsert", {})))
+        return None
+
 
 class _Db(dict):
     def __getitem__(self, k):

@@ -75,6 +75,14 @@ class _Coll:
             deleted_count = before - len(self.docs)
         return _R()
 
+    async def find_one_and_update(self, query, update, upsert=False):
+        for d in self.docs:
+            if _match(d, query):
+                return dict(d)
+        if upsert:
+            self.docs.append(dict(update.get("$setOnInsert", {})))
+        return None
+
 
 class _Db:
     def __init__(self):

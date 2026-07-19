@@ -47,6 +47,14 @@ class _FakeCollection:
     async def delete_many(self, query, *a, **k):
         self.docs = [d for d in self.docs if not _matches(d, query)]
 
+    async def find_one_and_update(self, query, update, upsert=False):
+        for d in self.docs:
+            if _matches(d, query):
+                return dict(d)
+        if upsert:
+            self.docs.append(dict(update.get("$setOnInsert", {})))
+        return None
+
     def find(self, query=None, *a, **k):
         return _FakeCursor([d for d in self.docs if _matches(d, query or {})])
 
