@@ -31,6 +31,9 @@ PUBLIC_PATHS = {
     "/api/auth/logout",
     "/api/auth/verify",  # verifica il token da sé (401 con messaggio specifico se assente/scaduto)
     "/api/auth/setup",  # Setup iniziale admin (solo se nessun admin esiste)
+    "/api/auth/pin-login",  # login PIN reale (pin_login.router montato su /api/auth): senza
+                             # questo path esplicito NESSUNO può più fare login (review Codex, PR #65)
+    "/api/auth/pin-login/health",  # diagnostica pubblica del router PIN, nessun dato sensibile
     # RIMOSSO: "/api/auth/register" — ora richiede autenticazione (admin crea utenti)
 
     # Integrazioni esterne: chiamanti che non possono avere un nostro JWT.

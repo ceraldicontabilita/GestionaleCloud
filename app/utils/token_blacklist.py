@@ -28,16 +28,22 @@ def _hash(token: str) -> str:
 
 
 async def revoca_token(db, token: str, exp: Optional[float] = None) -> None:
-    """Invalida un token (da chiamare al logout, prima di cancellare i cookie)."""
+    """Invalida un token (da chiamare al logout, prima di cancellare i cookie).
+
+    `exp` (claim JWT, epoch seconds) viene salvato come datetime BSON perché
+    l'indice TTL su questo campo (Database._create_indexes) lo richiede per
+    la pulizia automatica (review Codex su PR #65: gli scarti non venivano
+    mai rimossi)."""
     if not token:
         return
     try:
+        exp_dt = datetime.fromtimestamp(exp, tz=timezone.utc) if exp else None
         await db[COLLECTION].update_one(
             {"token_hash": _hash(token)},
             {"$setOnInsert": {
                 "token_hash": _hash(token),
                 "revoked_at": datetime.now(timezone.utc).isoformat(),
-                "exp": exp,
+                "exp": exp_dt,
             }},
             upsert=True,
         )

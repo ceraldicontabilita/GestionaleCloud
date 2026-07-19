@@ -297,20 +297,22 @@ async def parse_document_with_ai(
         if not file_bytes:
             return {"error": "Nessun contenuto file fornito", "success": False}
         
-        # Prepara le immagini
+        # Prepara le immagini: (base64, mime_type reale) — un JPEG caricato
+        # come immagine NON deve essere etichettato image/png (review Codex
+        # su PR #65: Anthropic rifiuta/legge male un media_type sbagliato).
         images_b64 = []
-        
+
         if "pdf" in mime_type.lower():
-            # Converti PDF in immagini
+            # Converti PDF in immagini (pdf_to_images produce sempre PNG)
             images = pdf_to_images(file_bytes, max_pages=3, dpi=150)
             if not images:
                 return {"error": "Impossibile convertire PDF in immagini", "success": False}
-            
+
             for img in images:
-                images_b64.append(base64.b64encode(img).decode())
+                images_b64.append((base64.b64encode(img).decode(), "image/png"))
         else:
-            # È già un'immagine
-            images_b64.append(base64.b64encode(file_bytes).decode())
+            # È già un'immagine: preserva il mime_type reale del file caricato
+            images_b64.append((base64.b64encode(file_bytes).decode(), mime_type or "image/jpeg"))
         
         # Seleziona il prompt appropriato
         if document_type == "auto":
@@ -338,8 +340,8 @@ Rispondi con UNA SOLA PAROLA senza punteggiatura."""
             system_prompt="Sei un esperto parser di documenti contabili italiani. Estrai dati precisi e strutturati in formato JSON."
         ).with_model("anthropic", "claude-sonnet-4-20250514")  # Claude supporta vision
 
-        # Crea ImageContent per ogni immagine (pdf_to_images produce PNG)
-        image_contents = [ImageContent(image_data=img_b64, mime_type="image/png") for img_b64 in images_b64]
+        # Crea ImageContent per ogni immagine col suo mime_type reale
+        image_contents = [ImageContent(image_data=img_b64, mime_type=img_mime) for img_b64, img_mime in images_b64]
 
         # Invia messaggio con immagini
         user_message = UserMessage(
