@@ -824,6 +824,20 @@ function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
   const [parziale, setParziale] = useState(null);
   const [importoCassa, setImportoCassa] = useState('');
   const [errore, setErrore] = useState('');
+  // Richiesta utente 19/07/2026: da Provvisori non si poteva mai aprire la
+  // fattura per controllarla prima di confermare cassa/banca — a differenza
+  // del Registro (badgeDocumento), qui non c'era nessun modo di vederla.
+  const [fatturaView, setFatturaView] = useState(null);
+
+  const bottoneVedi = p => (
+    <button
+      onClick={() => setFatturaView({ id: p.fattura_id, numero: p.fattura_numero })}
+      title="Vedi fattura"
+      style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, padding: '7px 10px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+    >
+      👁 Fattura
+    </button>
+  );
 
   const conferma = async (p, metodo) => {
     setBusy(p.fattura_id);
@@ -883,6 +897,7 @@ function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
             <div style={{ fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace', color: BLU }}>{eur(p.importo)}</div>
           </div>
           <div style={{ display: 'flex', gap: 6, marginTop: 9, flexWrap: 'wrap' }}>
+            {bottoneVedi(p)}
             {[['cassa', '💵 Cassa', VERDE], ['banca', '🏦 Banca', BLU]].map(([m, label, col]) => (
               <button
                 key={m} onClick={() => conferma(p, m)} disabled={busy === p.fattura_id}
@@ -929,6 +944,13 @@ function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
               <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <b style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(p.importo)}</b>
                 <button
+                  onClick={() => setFatturaView({ id: p.fattura_id, numero: p.fattura_numero })}
+                  title="Vedi fattura"
+                  style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 7, padding: '4px 8px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  👁
+                </button>
+                <button
                   onClick={() => conferma(p, 'banca')} disabled={busy === p.fattura_id}
                   title="Registra subito in banca senza aspettare la riconciliazione"
                   style={{ background: '#eff6ff', border: '1px solid #93c5fd', color: '#1d4ed8', borderRadius: 7, padding: '4px 10px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}
@@ -972,6 +994,10 @@ function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
             </div>
           </div>
         </div>
+      )}
+
+      {fatturaView && (
+        <ModalFattura fatturaId={fatturaView.id} numero={fatturaView.numero} onClose={() => setFatturaView(null)} />
       )}
     </div>
   );

@@ -42,13 +42,46 @@ def classifica_metodo_fornitore(metodo: str) -> str:
     return "sospesa"
 
 
+# NB: app/config/azienda.py (che avrebbe questa costante centralizzata) è
+# irraggiungibile — app/config.py (modulo) oscura app/config/ (package)
+# nell'import system, bug preesistente e separato, non toccato qui. Stesso
+# valore hardcoded già usato altrove nel codice (accounting/bilancio.py::
+# PIVA_AZIENDA).
+PIVA_AZIENDA = "04523831214"
+
+
+def _normalizza_piva(piva: str) -> str:
+    """Confronto tollerante al prefisso 'IT' e agli spazi (stessa
+    convenzione di suppliers_module/base.py::_varianti_piva — le fatture
+    elettroniche portano la P.IVA con o senza prefisso paese a seconda del
+    canale di import). Review Codex su PR #72: un confronto esatto avrebbe
+    trattato IT04523831214 come fornitore terzo, capovolgendo per errore
+    le fatture attive genuine il cui cedente è salvato col prefisso."""
+    base = (piva or "").strip().upper().replace(" ", "")
+    return base[2:] if base.startswith("IT") else base
+
+
 def determina_tipo_movimento_fattura(fattura: Dict) -> tuple:
     """Determina tipo movimento (entrata/uscita) e categoria dalla fattura."""
     tipo_doc = fattura.get("tipo_documento", "TD01").upper()
     supplier_vat = fattura.get("supplier_vat") or fattura.get("cedente_piva") or ""
 
     is_nota_credito = tipo_doc in TIPI_NOTA_CREDITO
-    is_fattura_attiva = tipo_doc in TIPI_FATTURA_ATTIVA
+    # FIX (caso "fattura 20 - DI MASSA", 19/07/2026): TD24-27 indicano il TIPO
+    # di cessione (es. TD26 "beni ammortizzabili"), NON la direzione — un
+    # fornitore reale può emettere una fattura di acquisto (es. macchinario)
+    # con questi codici. Questa collection (fatture RICEVUTE) contiene per
+    # definizione documenti dove Ceraldi è il cessionario/committente
+    # (acquirente): può essere "fattura attiva" (emessa DA noi) SOLO se il
+    # cedente in anagrafica è Ceraldi stessa. Senza questo controllo, la
+    # fattura di DI MASSA (fornitore reale, P.IVA diversa dalla nostra,
+    # acquisto di un'impastatrice) veniva registrata come "Incasso cliente"
+    # (entrata) invece di "Pagamento fattura" (uscita) solo per il codice
+    # TD del documento. Se il cedente non è noto (dato mancante), si resta
+    # sul comportamento storico (solo codice TD) per non introdurre
+    # regressioni su fatture attive prive di questo campo.
+    cedente_e_terzo = bool(supplier_vat) and _normalizza_piva(supplier_vat) != _normalizza_piva(PIVA_AZIENDA)
+    is_fattura_attiva = tipo_doc in TIPI_FATTURA_ATTIVA and not cedente_e_terzo
 
     if is_nota_credito:
         return ("entrata", "Nota credito fornitore", "Nota credito")
