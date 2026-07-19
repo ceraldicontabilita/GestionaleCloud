@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1019 · tenere: 666 · verificare: 330 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1019 · tenere: 667 · verificare: 329 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -141,9 +141,9 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/assegni/{assegno_id}/incassa` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/assegni/{assegno_id}/risolvi-ambiguo` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/auth/login` | auth | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/auth/logout` | auth | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/auth/pin-login` | pin_login | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/auth/pin-login/health` | pin_login | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/auth/logout` | auth | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/auth/pin-login` | pin_login | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/auth/pin-login/health` | pin_login | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/auth/verify` | auth | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/auto-repair/collega-targa-driver` | auto_repair | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/bank-statement/cleanup-duplicati` | bank.bank_statement_import | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
