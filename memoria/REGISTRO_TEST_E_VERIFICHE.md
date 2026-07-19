@@ -157,7 +157,35 @@ Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `S
 `python -m pytest tests/ backend/tests/ -q --no-header` → 681 passati, stessi identici 8 falliti/7 errori della baseline nota — nessuna regressione.
 
 ### Gap di copertura ancora aperti
-- **Frontend**: 0 test automatici, nessun tool (Vitest/Jest) configurato — prossimo punto in lavorazione.
+- **Concorrenza**: i due controlli più deboli di `_find_existing_corrispettivo` (data+matricola, data+totale) restano non atomici.
+- **Indice univoco** su `prima_nota_cassa` e `corrispettivi.corrispettivo_key` lato Atlas — richiede accesso e autorizzazione separata.
+- **Autenticazione admin** non supporta il cookie di sessione (solo Bearer) — pattern condiviso da 30+ endpoint, follow-up architetturale segnalato, non affrontato.
+
+Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
+
+## Aggiornamento — 2026-07-19 (setup test frontend: Vitest)
+
+- Branch: claude/test-coverage-analysis-co5wif
+
+### Configurazione aggiunta
+Il frontend non aveva alcun tool di test configurato (0 test su 129 componenti). Aggiunto Vitest + Testing Library:
+- `frontend/package.json`: nuove devDependencies (`vitest`, `jsdom`, `@testing-library/react`, `@testing-library/jest-dom`), script `test` (`vitest run`) e `test:watch` (`vitest`).
+- `frontend/vite.config.js`: blocco `test` (environment `jsdom`, `globals: true`, setup file).
+- `frontend/src/test/setup.js`: import dei matcher `@testing-library/jest-dom`.
+- `.github/workflows/frontend-build.yml`: nuovo step `yarn test` tra install e build, così la suite gira davvero in CI ad ogni push/PR, non solo in locale.
+
+**Incidente evitato durante il setup**: `npm run build` (usato per verificare che il setup non rompesse nulla) ha sovrascritto `frontend/dist/`, che risulta **committato nel repository** (pubblicato da Render come static site) — non ignorato come mi aspettavo. Ripristinato subito con `git checkout` + `git clean` prima di qualunque commit; nessuna modifica a `dist/` è stata versionata. Da tenere a mente per futuri lavori sul frontend: non lanciare build di verifica senza controllare `git status` su `dist/` subito dopo.
+
+**Nota gestori pacchetti**: il progetto usa `yarn.lock` come lockfile canonico (committato), `package-lock.json` è in `.gitignore`. L'ambiente sandbox ha `NODE_ENV=production`, che fa sì che sia `npm install` sia `yarn install` saltino le devDependencies per default — necessario forzare l'inclusione (`npm install --include=dev` / `yarn install --production=false`) per installare gli strumenti di test.
+
+### Primo test reale: funzioni di formattazione (`frontend/src/lib/utils.js`)
+Scelte come primo bersaglio perché usate in pressoché ogni pagina dell'app per mostrare importi e date — un bug qui è visibile ovunque (il file contiene già un commento su un bug reale corretto il 14/07/2026: "1119 €" invece di "€ 1.119,00"). `frontend/src/lib/utils.test.js`: 27 test su `formatEuro`, `formatEuroD`, `formatEuroShort`, `formatEuroStr`, `formatDateIT`, `formatDateGGMM`, `parseDateIT`, `formatDateTimeIT`, `formatDateShort` — input normali, null/undefined, non numerici/malformati, negativi, importi grandi con più separatori di migliaia. Tutti verdi, nessun bug trovato in queste funzioni specifiche.
+
+### Risultato
+`yarn test` (frontend) → 27 passati. `python -m pytest tests/ backend/tests/ -q` (backend, invariato) → 681 passati, stessa baseline nota.
+
+### Gap di copertura ancora aperti
+- **Frontend**: solo le funzioni pure di `lib/utils.js` sono coperte; 0 test sui componenti React (rendering, interazione utente, chiamate API) — il grosso dei 129 componenti resta non testato. Harness ora pronto per estendere la copertura in un prossimo giro.
 - **Concorrenza**: i due controlli più deboli di `_find_existing_corrispettivo` (data+matricola, data+totale) restano non atomici.
 - **Indice univoco** su `prima_nota_cassa` e `corrispettivi.corrispettivo_key` lato Atlas — richiede accesso e autorizzazione separata.
 - **Autenticazione admin** non supporta il cookie di sessione (solo Bearer) — pattern condiviso da 30+ endpoint, follow-up architetturale segnalato, non affrontato.

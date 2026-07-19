@@ -159,6 +159,14 @@ def classifica(f, entrypoint_paths, direttamente_da_main, raggiungibili,
         return "DINAMICO_DA_VERIFICARE"
     if grep_basename_ovunque(f, tutti_i_testi):
         return "DINAMICO_DA_VERIFICARE"
+    # File di test (Vitest): mai raggiunti dal grafo di import dell'app per
+    # design (li esegue il test runner, non main.jsx/App.jsx) — non sono
+    # codice morto, categoria dedicata invece di finire tra gli orfani
+    # eliminabili, dove ogni futuro file di test comparirebbe per sempre.
+    basename = os.path.basename(f)
+    if (re.search(r"\.(test|spec)\.[jt]sx?$", basename)
+            or f.startswith(os.path.join(FRONTEND_SRC, "test") + os.sep)):
+        return "TEST_ONLY"
     return "ORFANO_ELIMINABILE"
 
 
