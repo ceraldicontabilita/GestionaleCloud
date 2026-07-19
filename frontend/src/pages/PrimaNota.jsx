@@ -489,23 +489,31 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
     }
   };
 
-  // Evidenza di riconciliazione reale con l'estratto conto in Banca:
+  // Evidenza di riconciliazione reale in Banca:
   // - per le fatture (caso Leasys: senza questo, una fattura registrata
-  //   non si distingue da una davvero riconciliata);
-  // - per i trasferimenti POS cassa→banca (source 'trasferimento_pos':
-  //   l'utente ha fatto notare che il pareggio cassa=banca è solo una
-  //   coerenza di TRASCRIZIONE — stesso importo copiato tra i due registri
-  //   — e non prova che la banca abbia davvero accreditato quella cifra;
-  //   qui mostriamo l'esito del vero match con l'estratto conto).
-  // Il backend valorizza mov.riconciliazione solo per questi due casi
-  // (vedi _arricchisci_riconciliazione in prima_nota_module/banca.py).
+  //   non si distingue da una davvero riconciliata con l'estratto conto);
+  // - per i trasferimenti POS cassa→banca (l'utente ha fatto notare che
+  //   il pareggio cassa=banca è solo coerenza di TRASCRIZIONE — stesso
+  //   importo copiato tra i due registri — e non prova che la banca
+  //   abbia davvero accreditato quella cifra);
+  // - per i pagamenti via PayPal (evidenza reale ma non è l'estratto
+  //   conto bancario: testo dedicato, non spacciato per riconciliazione
+  //   bancaria).
+  // Il backend valorizza mov.riconciliazione solo con un ID di
+  // collegamento reale a un movimento/transazione, mai col solo flag
+  // booleano "riconciliato" (troppo permissivo: alcuni flussi lo
+  // impostano senza nessun riscontro — vedi _arricchisci_riconciliazione
+  // in prima_nota_module/banca.py).
   const badgeRiconciliazione = mov => {
     if (tipo !== 'banca' || !mov.riconciliazione) return null;
     const { verificata, automatica, match_score, tipo: tipoRic, accreditato_ec } = mov.riconciliazione;
     const isPos = tipoRic === 'pos_trasferimento';
+    const isPaypal = tipoRic === 'paypal';
     if (verificata) {
       const importoInfo = isPos && accreditato_ec ? ` (${eur(accreditato_ec)} accreditati)` : '';
-      const title = isPos
+      const title = isPaypal
+        ? 'Riconciliato con una transazione PayPal reale'
+        : isPos
         ? `Trasferimento POS riconciliato con l'estratto conto${importoInfo}`
         : (automatica ? `Riconciliato automaticamente con l'estratto conto (punteggio ${match_score ?? '—'})` : "Riconciliato con l'estratto conto");
       return (
@@ -519,7 +527,9 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
     }
     return (
       <span
-        title={isPos
+        title={isPaypal
+          ? "Nessuna transazione PayPal di riscontro trovata: verificare"
+          : isPos
           ? "Nessun accredito trovato in estratto conto per questo trasferimento POS: verificare in Coerenza POS"
           : "Nessun addebito trovato in estratto conto per questa fattura: verificare in Riconciliazione"}
         style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fcd34d', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
