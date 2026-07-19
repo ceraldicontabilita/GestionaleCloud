@@ -51,3 +51,45 @@ Gli 8 fallimenti e i 7 errori risultano bloccati o condizionati dall'ambiente es
 - **Integrazioni reali isolate**: `backend/tests/` richiede MongoDB Atlas raggiungibile; nessuna alternativa isolata (es. `mongomock`) per l'esecuzione in CI/sandbox senza rete.
 
 Questa baseline non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
+
+## Aggiornamento — 2026-07-19 (stessa giornata, dopo ERP-001 e copertura test)
+
+- Branch: claude/test-coverage-analysis-co5wif
+- Commit: 60bdb07b310635471c785a5a66247e0e85cf4079
+- Comando eseguito: `python -m pytest tests/ backend/tests/ -q --no-header`
+
+### Risultato
+- Raccolti: 649
+- Passati: 642
+- Falliti: 8
+- Errori (in setup/collection): 7
+
+Stessi identici 8 falliti e 7 errori della baseline del 2026-07-19 (stesse cause: Drive/Gmail non configurati in sandbox, chiamate HTTP reali verso Render bloccate dal proxy, MongoDB Atlas non raggiungibile dal container) — nessuna nuova integrazione non verificata, nessuna regressione.
+
+### ERP-001 completato (non solo la protezione minima)
+- Soglia di confidenza minima assoluta (0.7) non aggirabile dal chiamante in `apply-suggestions`.
+- `suggestion_ids` ora limita realmente l'applicazione ai suggerimenti scelti (prima letto e mai usato).
+- Audit strutturato su ogni chiamata (best-effort, non bloccante).
+- Endpoint riservato agli amministratori, verificato anche a livello di routing reale (non solo unitario).
+
+### Bug reale trovato e corretto durante la scrittura dei test di concorrenza
+Un test di concorrenza reale (`asyncio.gather`, non solo chiamate sequenziali) su `registra_corrispettivo` (motore unico, regola canonica POS) ha rivelato che la guardia di idempotenza (find_one poi insert_one, due operazioni separate) poteva produrre un doppio movimento in Prima Nota Cassa per lo stesso corrispettivo sotto richieste concorrenti. Corretto sostituendo le due operazioni con un'unica `find_one_and_update` atomica lato MongoDB. Verificato su tutta la suite del motore contabile: nessuna regressione.
+
+**Follow-up segnalato, non affrontato in questo step**: `_find_existing_corrispettivo` (collection `corrispettivi`, in `app/routers/invoices/corrispettivi_helpers.py`) ha lo stesso pattern find_one-poi-insert, non ancora verificato né corretto a questo livello.
+
+**Raccomandazione non eseguita** (richiede accesso Atlas e autorizzazione separata per modifica di indici, §15 CLAUDE.md): aggiungere un indice univoco su `prima_nota_cassa` (data, matricola_rt, categoria, source) come seconda barriera lato database.
+
+### Gap di copertura chiusi in questo aggiornamento
+- **Sicurezza**: aggiunta copertura su revoca/blacklist JWT (`tests/test_token_blacklist.py`) e su rate limiting reale, non solo montato (`tests/test_rate_limiting.py`).
+- **Upload**: aggiunta copertura dedicata al controllo magic bytes (`tests/test_upload_magic_bytes.py`).
+- **Concorrenza**: aggiunto un secondo caso reale oltre a quello preesistente (`tests/test_concorrenza_registra_corrispettivo.py`).
+- **Integrazioni reali isolate**: aggiunta una suite isolata con `mongomock`/`mongomock-motor` (`backend/tests/test_corrispettivi_ingest_isolato.py`) che affianca, senza sostituire, il test end-to-end reale contro backend live + Atlas.
+
+### Gap di copertura ancora aperti (invariati rispetto alla baseline)
+- **Frontend**: 0 test automatici, nessun tool (Vitest/Jest) configurato.
+- **Sicurezza**: CSRF non testato; RBAC coperto solo per gli endpoint già censiti in `test_p2_admin_guards.py`.
+- **AI/LLM**: nessun test su fallimento/timeout/retry di Anthropic né su prompt injection nei documenti; `app/agents/` senza test dedicati.
+- **WebSocket**: 0 test, inclusa l'autenticazione WebSocket.
+- **Scheduler**: nessun test sistematico di "servizio esterno indisponibile" per Drive/Gmail/PayPal.
+
+Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
