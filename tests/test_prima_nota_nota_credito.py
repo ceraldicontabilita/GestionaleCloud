@@ -147,6 +147,36 @@ def test_determina_tipo_movimento_td24_cedente_noi_resta_incasso_cliente():
     assert prefisso == "Incasso fattura"
 
 
+def test_determina_tipo_movimento_td24_cedente_noi_con_prefisso_it_resta_incasso():
+    """Review Codex su PR #72: la P.IVA nostra può essere salvata con
+    prefisso 'IT' o spazi a seconda del canale di import (stessa
+    convenzione di suppliers_module/base.py::_varianti_piva). Un confronto
+    esatto avrebbe trattato 'IT04523831214' come fornitore terzo,
+    capovolgendo per errore una fattura attiva genuina."""
+    tipo, categoria, _ = sync_mod.determina_tipo_movimento_fattura(
+        _fattura(tipo_documento="TD24", supplier_vat="IT04523831214")
+    )
+    assert tipo == "entrata"
+    assert categoria == "Incasso cliente"
+
+    tipo, categoria, _ = sync_mod.determina_tipo_movimento_fattura(
+        _fattura(tipo_documento="TD24", supplier_vat=" IT 04523831214 ")
+    )
+    assert tipo == "entrata"
+    assert categoria == "Incasso cliente"
+
+
+def test_determina_tipo_movimento_td26_terzo_con_prefisso_it_resta_uscita():
+    """Stesso normalizzatore lato fornitore terzo: un cedente reale con
+    P.IVA salvata come 'IT07338881217' deve comunque essere riconosciuto
+    come terzo (non confuso con la nostra IT04523831214)."""
+    tipo, categoria, _ = sync_mod.determina_tipo_movimento_fattura(
+        _fattura(tipo_documento="TD26", supplier_vat="IT07338881217")
+    )
+    assert tipo == "uscita"
+    assert categoria == "Fatture"
+
+
 def test_determina_tipo_movimento_td26_senza_cedente_noto_comportamento_storico():
     """Se il cedente non è noto (dato mancante), nessuna regressione: si
     resta sul comportamento storico basato solo sul codice TD."""

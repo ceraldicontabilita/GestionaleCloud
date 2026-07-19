@@ -58,11 +58,19 @@ async def paga_fattura_manuale(payload: Dict[str, Any] = Body(...)) -> Dict[str,
             # tipo_documento TD04/TD08 O importo negativo -> ENTRATA "Nota
             # credito fornitore", mai un'uscita bloccata dalla validazione.
             from app.routers.prima_nota_module.sync import costruisci_campi_movimento_fattura
-            fattura_doc = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0, "tipo_documento": 1}) or {}
+            fattura_doc = await db["invoices"].find_one(
+                {"id": fattura_id},
+                {"_id": 0, "tipo_documento": 1, "supplier_vat": 1, "cedente_piva": 1},
+            ) or {}
             fattura_per_helper = {
                 "tipo_documento": fattura_doc.get("tipo_documento"),
                 "invoice_number": numero_fattura,
                 "supplier_name": fornitore,
+                # review Codex su PR #72: senza questo, una TD26 di terzi
+                # passata da questo percorso restava "Incasso cliente"
+                # (il fix del 19/07 si applica solo se il cedente è noto).
+                "supplier_vat": fattura_doc.get("supplier_vat"),
+                "cedente_piva": fattura_doc.get("cedente_piva"),
             }
             campi = costruisci_campi_movimento_fattura(fattura_per_helper, importo)
 

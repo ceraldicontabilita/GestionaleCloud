@@ -192,11 +192,19 @@ async def conferma_proposta(db, proposta_id: str) -> Dict[str, Any]:
     # indipendentemente dal tipo_documento). La proposta non porta con sé
     # tipo_documento: lo si legge dalla fattura.
     from app.routers.prima_nota_module.sync import costruisci_campi_movimento_fattura
-    fattura_doc = await db["invoices"].find_one({"id": fatt_id}, {"_id": 0, "tipo_documento": 1}) or {}
+    fattura_doc = await db["invoices"].find_one(
+        {"id": fatt_id},
+        {"_id": 0, "tipo_documento": 1, "supplier_vat": 1, "cedente_piva": 1},
+    ) or {}
     fattura_per_helper = {
         "tipo_documento": fattura_doc.get("tipo_documento"),
         "invoice_number": numero,
         "supplier_name": fornitore,
+        # review Codex su PR #72: senza questo, una TD26 di terzi confermata
+        # da Dati Provvisori restava "Incasso cliente" (il fix del 19/07 si
+        # applica solo se il cedente è noto).
+        "supplier_vat": fattura_doc.get("supplier_vat"),
+        "cedente_piva": fattura_doc.get("cedente_piva"),
     }
 
     # Registra in Prima Nota Banca
