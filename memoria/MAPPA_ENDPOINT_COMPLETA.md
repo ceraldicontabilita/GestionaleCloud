@@ -4,7 +4,7 @@
 > Totale **1019 endpoint** in **108 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 646 · ext esterni = 76 · — da verificare = 297
+**Riepilogo uso:** ✓ frontend = 645 · ext esterni = 76 · — da verificare = 298
 
 ## AI Parser  (11)
 
@@ -577,7 +577,7 @@
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| GET | `/api/documenti-fiscali/lista` | ✓ | documenti_fiscali |
+| GET | `/api/documenti-fiscali/lista` | — | documenti_fiscali |
 | POST | `/api/documenti-fiscali/upload` | ✓ | documenti_fiscali |
 
 ## Documents Inbox  (5)

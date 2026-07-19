@@ -3,12 +3,12 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 141
+**Totale file analizzati:** 140
 
 | Classificazione | File |
 |---|---:|
 | ENTRYPOINT | 3 |
-| ROUTE_ATTIVA | 30 |
+| ROUTE_ATTIVA | 29 |
 | COMPONENTE_USATO | 79 |
 | MODALE_USATO | 4 |
 | HOOK_USATO | 3 |
@@ -56,7 +56,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | File | Classificazione | Importato da (n. file) |
 |---|---|---:|
 | `frontend/src/App.jsx` | ENTRYPOINT | 1 |
-| `frontend/src/api.js` | COMPONENTE_USATO | 70 |
+| `frontend/src/api.js` | COMPONENTE_USATO | 69 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ChatIntelligente.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/CopyLinkButton.jsx` | COMPONENTE_USATO | 5 |
@@ -67,7 +67,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/InstallAppButton.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ModalFattura.jsx` | MODALE_USATO | 9 |
 | `frontend/src/components/NotificationBell.jsx` | DINAMICO_DA_VERIFICARE | 0 |
-| `frontend/src/components/PageLayout.jsx` | COMPONENTE_USATO | 43 |
+| `frontend/src/components/PageLayout.jsx` | COMPONENTE_USATO | 42 |
 | `frontend/src/components/PaypalTransactionDetailModal.jsx` | MODALE_USATO | 1 |
 | `frontend/src/components/Portal.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/UploadStatusBar.jsx` | COMPONENTE_USATO | 1 |
@@ -83,9 +83,9 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ds/StatCard.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ds/Table.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/ds/Tabs.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/components/ds/index.js` | COMPONENTE_USATO | 58 |
+| `frontend/src/components/ds/index.js` | COMPONENTE_USATO | 57 |
 | `frontend/src/components/layout/TopNav.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/components/ui/ConfirmDialog.jsx` | MODALE_USATO | 24 |
+| `frontend/src/components/ui/ConfirmDialog.jsx` | MODALE_USATO | 23 |
 | `frontend/src/components/ui/alert.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ui/avatar.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ui/badge.jsx` | COMPONENTE_USATO | 1 |
@@ -120,7 +120,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/hooks/usePrimaNota.js` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/hooks/useWebSocket.js` | HOOK_USATO | 1 |
 | `frontend/src/lib/queryClient.js` | COMPONENTE_USATO | 2 |
-| `frontend/src/lib/utils.js` | COMPONENTE_USATO | 98 |
+| `frontend/src/lib/utils.js` | COMPONENTE_USATO | 97 |
 | `frontend/src/main.jsx` | ENTRYPOINT | 0 |
 | `frontend/src/navigation.config.js` | ENTRYPOINT | 0 |
 | `frontend/src/pages/Admin.jsx` | COMPONENTE_USATO | 1 |
@@ -144,7 +144,6 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/DatiProvvisoriPage.jsx` | ROUTE_ATTIVA | 2 |
 | `frontend/src/pages/DettaglioVerbale.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/Documenti.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/pages/DocumentiFiscali.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/FattureEstereVerifica.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/FinanziamentoSoci.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/Finanziaria.jsx` | COMPONENTE_USATO | 1 |
