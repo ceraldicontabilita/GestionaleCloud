@@ -652,7 +652,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `DELETE /api/learning-machine/reset-learning` | learning_machine | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/learning-machine/scan` | learning_machine | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/learning-machine/statistiche-feedback` | learning_machine | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/learning-universal/apply-suggestions` | learning_universal | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/learning-universal/apply-suggestions` | learning_universal | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/learning-universal/results` | learning_universal | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/learning-universal/status` | learning_universal | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/learning-universal/suggestions/{module}` | learning_universal | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
