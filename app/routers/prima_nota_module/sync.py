@@ -48,7 +48,26 @@ def determina_tipo_movimento_fattura(fattura: Dict) -> tuple:
     supplier_vat = fattura.get("supplier_vat") or fattura.get("cedente_piva") or ""
 
     is_nota_credito = tipo_doc in TIPI_NOTA_CREDITO
-    is_fattura_attiva = tipo_doc in TIPI_FATTURA_ATTIVA
+    # FIX (caso "fattura 20 - DI MASSA", 19/07/2026): TD24-27 indicano il TIPO
+    # di cessione (es. TD26 "beni ammortizzabili"), NON la direzione — un
+    # fornitore reale può emettere una fattura di acquisto (es. macchinario)
+    # con questi codici. Questa collection (fatture RICEVUTE) contiene per
+    # definizione documenti dove Ceraldi è il cessionario/committente
+    # (acquirente): può essere "fattura attiva" (emessa DA noi) SOLO se il
+    # cedente in anagrafica è Ceraldi stessa. Senza questo controllo, la
+    # fattura di DI MASSA (fornitore reale, P.IVA diversa dalla nostra,
+    # acquisto di un'impastatrice) veniva registrata come "Incasso cliente"
+    # (entrata) invece di "Pagamento fattura" (uscita) solo per il codice
+    # TD del documento. Se il cedente non è noto (dato mancante), si resta
+    # sul comportamento storico (solo codice TD) per non introdurre
+    # regressioni su fatture attive prive di questo campo.
+    # NB: app/config/azienda.py (che avrebbe questa costante) è irraggiungibile
+    # — app/config.py (modulo) oscura app/config/ (package) nell'import system,
+    # bug preesistente e separato, non toccato qui. Stesso valore hardcoded
+    # già usato altrove nel codice (es. accounting/bilancio.py::PIVA_AZIENDA).
+    PIVA_AZIENDA = "04523831214"
+    cedente_e_terzo = bool(supplier_vat) and supplier_vat.strip() != PIVA_AZIENDA
+    is_fattura_attiva = tipo_doc in TIPI_FATTURA_ATTIVA and not cedente_e_terzo
 
     if is_nota_credito:
         return ("entrata", "Nota credito fornitore", "Nota credito")
