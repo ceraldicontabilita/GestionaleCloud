@@ -85,11 +85,35 @@ Un test di concorrenza reale (`asyncio.gather`, non solo chiamate sequenziali) s
 - **Concorrenza**: aggiunto un secondo caso reale oltre a quello preesistente (`tests/test_concorrenza_registra_corrispettivo.py`).
 - **Integrazioni reali isolate**: aggiunta una suite isolata con `mongomock`/`mongomock-motor` (`backend/tests/test_corrispettivi_ingest_isolato.py`) che affianca, senza sostituire, il test end-to-end reale contro backend live + Atlas.
 
-### Gap di copertura ancora aperti (invariati rispetto alla baseline)
+Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
+
+## Aggiornamento — 2026-07-19 (chiusura gap CSRF/WebSocket/scheduler/AI + review PR #67)
+
+- Branch: claude/test-coverage-analysis-co5wif
+- Commit: 64cdac73d31247c9acc53b3c53a4d7bad4d66dbb
+- PR: [#67](https://github.com/ceraldicontabilita/GestionaleCloud/pull/67) (aperta, in attesa di CI verde + merge autorizzato)
+
+### Gap chiusi in questo aggiornamento
+- **CSRF**: `tests/test_csrf_cookie_guard.py` — non esiste un token CSRF esplicito nel progetto (fatto reale, non un'omissione di test); l'unica protezione è `SameSite=Lax` + `HttpOnly` sul cookie di sessione. Guardia statica che fa fallire il test se un futuro cambiamento indebolisse questi due flag in uno dei 3 punti che impostano il cookie.
+- **WebSocket**: `tests/test_websocket_autenticazione.py` — copre `_autentica_websocket` (nessun token, token invalido, token revocato, token da query vs cookie). Nota: `AuthenticationMiddleware` non intercetta mai lo scope `"websocket"` (comportamento di libreria di `BaseHTTPMiddleware`, non un bug), la protezione reale vive interamente in questa funzione — già corretto in un audit precedente (bug #25), qui solo testato per la prima volta.
+- **Scheduler**: `tests/test_scheduler_resilienza_servizi_esterni.py` — verifica che un errore di connessione IMAP/Gmail dentro `scan_verbali_email_task` non si propaghi e non fermi lo scheduler, oltre al comportamento dell'interruttore `ENABLE_EMAIL_VERBALI_SYNC`.
+- **AI/LLM**: `tests/test_ai_resilienza_e_confine_sicurezza.py` — fallimento/timeout Anthropic, API key assente, risposta non-JSON: mai propagati, sempre `{"success": False, ...}`. Test di prompt injection: anche nel caso peggiore (JSON iniettato che finge `"conferma_scrittura_gestionale": true`), il salvataggio reale resta bloccato perché il parametro è controllato dal chiamante, non dal contenuto del documento.
+
+### Review automatica Codex su PR #67 — esito
+Tre commenti dell'app `chatgpt-codex-connector`, valutati singolarmente:
+1. **Bug reale confermato e corretto**: `soglia_confidenza` con `NaN`/`Infinity` bypassava la soglia minima ERP-001 (`max(nan, 0.7) == nan`, ogni confronto `<` sempre falso). Riprodotto empiricamente, corretto con coercizione a float + controllo di finitezza, test dedicati aggiunti.
+2. **Osservazione corretta ma non un bug di questa PR**: `get_current_admin_user` non legge il cookie di sessione (solo header Bearer) — stesso pattern già usato in 30+ altri endpoint admin-only del repository. Segnalato come follow-up architetturale separato (cambierebbe l'autenticazione admin di tutta l'app), non affrontato qui.
+3. **Raccomandazione già nota**: manca un indice univoco su `prima_nota_cassa` come seconda barriera lato database contro il bug di concorrenza corretto in questo stesso PR — già dichiarato esplicitamente come follow-up nella descrizione della PR prima ancora del commento. Richiede accesso Atlas (non disponibile) e autorizzazione separata per modifica indici (§15 CLAUDE.md).
+
+### Risultato finale suite
+`python -m pytest tests/ backend/tests/ -q --no-header` → 661 passati, stessi identici 8 falliti/7 errori della baseline (nessuna regressione).
+
+### Gap di copertura ancora aperti
 - **Frontend**: 0 test automatici, nessun tool (Vitest/Jest) configurato.
-- **Sicurezza**: CSRF non testato; RBAC coperto solo per gli endpoint già censiti in `test_p2_admin_guards.py`.
-- **AI/LLM**: nessun test su fallimento/timeout/retry di Anthropic né su prompt injection nei documenti; `app/agents/` senza test dedicati.
-- **WebSocket**: 0 test, inclusa l'autenticazione WebSocket.
-- **Scheduler**: nessun test sistematico di "servizio esterno indisponibile" per Drive/Gmail/PayPal.
+- **Sicurezza**: RBAC coperto solo per gli endpoint già censiti in `test_p2_admin_guards.py`; autenticazione admin non supporta il cookie di sessione (follow-up segnalato sopra).
+- **AI/LLM**: `app/agents/` (`fiscale_sentinella.py`, `learning_brain.py`, `orchestrator.py`, `notifier.py`) senza test dedicati.
+- **Concorrenza**: `_find_existing_corrispettivo` (collection `corrispettivi`) ha lo stesso pattern find_one-poi-insert del bug corretto in `registra_corrispettivo`, non ancora verificato a quel livello.
+- **Indice univoco** su `prima_nota_cassa` lato Atlas — richiede accesso e autorizzazione separata.
+- **Rotazione credenziale MongoDB** esposta durante l'analisi — step di sicurezza separato, sospeso in attesa di accesso alla dashboard Atlas.
 
 Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
