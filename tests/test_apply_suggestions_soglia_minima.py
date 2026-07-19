@@ -143,6 +143,53 @@ def test_suggestion_ids_limita_realmente_applicazione(monkeypatch):
     assert len(db.movimenti_banca.calls) == 1
 
 
+def test_soglia_nan_dal_chiamante_non_azzera_il_filtro(monkeypatch):
+    """Review Codex su PR #67: il body JSON può contenere il token NaN
+    (valido per json.loads di Python). Senza il fix, max(nan, 0.7) == nan
+    e OGNI confronto "< nan" è falso: la soglia minima verrebbe aggirata
+    silenziosamente, applicando tutte le regole a prescindere dalla
+    confidenza — esattamente come con soglia_confidenza=0."""
+    db = _FakeDb(_learning_doc())
+    monkeypatch.setattr(Database, "get_db", staticmethod(lambda: db))
+
+    result = asyncio.run(router_mod.apply_suggestions({
+        "module": "movimenti",
+        "soglia_confidenza": float("nan"),
+    }, admin_user=_ADMIN))
+
+    assert result["soglia_confidenza"] == router_mod.SOGLIA_CONFIDENZA_MINIMA_ASSOLUTA
+    assert result["saltate_bassa_confidenza"] == 1  # CatB (0.3) esclusa comunque
+    assert result["applied"] == 1  # solo CatA (0.9)
+
+
+def test_soglia_infinito_negativo_non_azzera_il_filtro(monkeypatch):
+    db = _FakeDb(_learning_doc())
+    monkeypatch.setattr(Database, "get_db", staticmethod(lambda: db))
+
+    result = asyncio.run(router_mod.apply_suggestions({
+        "module": "movimenti",
+        "soglia_confidenza": float("-inf"),
+    }, admin_user=_ADMIN))
+
+    assert result["soglia_confidenza"] == router_mod.SOGLIA_CONFIDENZA_MINIMA_ASSOLUTA
+    assert result["applied"] == 1
+
+
+def test_soglia_stringa_non_numerica_usa_il_minimo(monkeypatch):
+    """Un valore non convertibile a float (es. iniezione di una stringa
+    arbitraria) non deve far esplodere l'endpoint né bypassare la soglia."""
+    db = _FakeDb(_learning_doc())
+    monkeypatch.setattr(Database, "get_db", staticmethod(lambda: db))
+
+    result = asyncio.run(router_mod.apply_suggestions({
+        "module": "movimenti",
+        "soglia_confidenza": "non-un-numero",
+    }, admin_user=_ADMIN))
+
+    assert result["soglia_confidenza"] == router_mod.SOGLIA_CONFIDENZA_MINIMA_ASSOLUTA
+    assert result["applied"] == 1
+
+
 def test_suggestion_ids_vuoto_applica_tutte_le_regole_sopra_soglia(monkeypatch):
     """Comportamento invariato quando suggestion_ids non è specificato o è
     vuoto: nessuna regressione rispetto a prima di questa estensione."""

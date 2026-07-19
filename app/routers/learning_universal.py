@@ -14,6 +14,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 from collections import defaultdict
 import logging
+import math
 import re
 from app.database import Database
 from app.utils.dependencies import get_current_admin_user
@@ -587,10 +588,21 @@ async def apply_suggestions(
     db = Database.get_db()
     module = data.get("module")
     suggestion_ids = data.get("suggestion_ids", [])
-    soglia_confidenza = max(
-        data.get("soglia_confidenza", SOGLIA_CONFIDENZA_MINIMA_ASSOLUTA),
-        SOGLIA_CONFIDENZA_MINIMA_ASSOLUTA,
-    )
+
+    # Review Codex su PR #67: il body JSON può contenere il token NaN
+    # (accettato da json.loads di Python, non standard ma valido qui).
+    # max(nan, 0.7) restituisce nan, e qualunque confronto "< nan" è
+    # sempre falso: la soglia minima verrebbe aggirata silenziosamente,
+    # applicando tutte le regole indipendentemente dalla confidenza.
+    soglia_richiesta = data.get("soglia_confidenza", SOGLIA_CONFIDENZA_MINIMA_ASSOLUTA)
+    try:
+        soglia_richiesta = float(soglia_richiesta)
+    except (TypeError, ValueError):
+        soglia_richiesta = SOGLIA_CONFIDENZA_MINIMA_ASSOLUTA
+    if not math.isfinite(soglia_richiesta):
+        soglia_richiesta = SOGLIA_CONFIDENZA_MINIMA_ASSOLUTA
+
+    soglia_confidenza = max(soglia_richiesta, SOGLIA_CONFIDENZA_MINIMA_ASSOLUTA)
 
     applied = 0
     saltate_bassa_confidenza = 0
