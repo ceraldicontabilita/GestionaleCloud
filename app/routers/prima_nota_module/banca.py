@@ -30,6 +30,31 @@ POS_SOURCES = {"trasferimento_pos", "corrispettivo_pos", "corrispettivi_sync"}
 # riflette lo stato reale dei dati.
 
 
+# Alias noti (4 giri di review Codex su PR #66) con cui i vari flussi di
+# riconciliazione scrivono l'ID di un movimento reale di estratto conto sul
+# movimento di Prima Nota: ogni flusso ha inventato il proprio nome campo,
+# mai unificati. Presente uno qualunque di questi = prova reale (nessuno
+# di questi flussi lo scrive mai in modo speculativo, solo a match confermato):
+#   estratto_conto_id           — manutenzione.py (retro-collegamento)
+#   movimento_bancario_id       — pagamento.py (riconciliazione manuale),
+#                                  assegni.py sull'invoice
+#   movimento_estratto_conto_id — email_monitor_service.py (POS Nexi legacy),
+#                                  assegni.py sul movimento
+#   movimento_banca_id          — dati_provvisori_service.py (conferma proposta)
+CAMPI_EVIDENZA_MOVIMENTO = (
+    "estratto_conto_id", "movimento_bancario_id",
+    "movimento_estratto_conto_id", "movimento_banca_id",
+)
+
+
+def _evidenza_movimento(m: Dict[str, Any]):
+    for campo in CAMPI_EVIDENZA_MOVIMENTO:
+        val = m.get(campo)
+        if val:
+            return val
+    return None
+
+
 async def _arricchisci_riconciliazione(db, movimenti: list) -> None:
     """Aggiunge a ogni movimento fattura/POS/PayPal un campo
     'riconciliazione' con evidenza di un vero match con l'estratto conto
@@ -42,37 +67,37 @@ async def _arricchisci_riconciliazione(db, movimenti: list) -> None:
     segnalato dall'utente sul caso "coerenza di trascrizione vs coerenza
     con l'estratto conto".
 
-    REGOLA (2° giro di review Codex su PR #66, la prima versione era
-    troppo permissiva): il flag booleano 'riconciliato', da solo, NON è
-    prova di nulla — app/routers/fatture_module/pagamento.py::
+    REGOLA (2° giro di review Codex): il flag booleano 'riconciliato', da
+    solo, NON è prova di nulla — app/routers/fatture_module/pagamento.py::
     aggiorna_metodi_pagamento_da_fornitori marca fattura.riconciliato=True
     SOLO perché il fornitore ha metodo di pagamento 'banca' in anagrafica,
     senza nessun riscontro con un movimento reale (probabile causa esatta
     del caso Leasys). Serve sempre un ID di collegamento a un movimento
-    reale, non solo il flag:
-    - riconciliazione_bancaria.py::_applica_pagamento_banca (automatico):
-      fattura.riconciliato_con_ec = id del movimento EC;
-    - fatture_module/pagamento.py::riconcilia_fattura_con_estratto_conto
-      (manuale): fattura.movimento_bancario_id (+ stesso campo sul
-      movimento, se già esisteva in prima_nota_banca);
-    - prima_nota_module/manutenzione.py (retro-collegamento): SOLO sul
-      movimento, estratto_conto_id;
-    - scritture_contabili.py::riconcilia_accredito_pos_ec (accrediti POS
-      'trasferimento_pos'): accreditato_ec (importo accreditato > 0);
-    - email_monitor_service.py (POS Nexi legacy 'corrispettivo_pos'): SOLO
-      sul movimento, movimento_estratto_conto_id;
-    - servizio PayPal (source 'riconciliazione_paypal'): paypal_transaction_id
-      — evidenza reale ma NON è l'estratto conto bancario: badge/testo
-      dedicati, non spacciata per riconciliazione bancaria.
+    reale (vedi CAMPI_EVIDENZA_MOVIMENTO), non il flag da solo — ma la
+    presenza dell'ID stesso (senza richiedere ANCHE 'riconciliato' booleano
+    insieme) è già prova sufficiente: nessun flusso conosciuto scrive
+    questi ID in modo speculativo (4° giro di review: dati_provvisori_service.py
+    conferma la proposta con movimento_banca_id ma senza mai impostare
+    'riconciliato' sul movimento — richiederlo insieme causava falsi "Da
+    verificare" su collegamenti già reali).
 
-    fattura_id su un movimento può essere l'id reale o l'invoice_key
-    (fallback storico in registra_pagamento_fattura): la query cerca
-    entrambi.
+    fattura_id su un movimento può essere l'id reale, l'invoice_key
+    (fallback storico in registra_pagamento_fattura), oppure assente con
+    solo `riferimento: "FATT-<id>"` (righe legacy, stessa convenzione già
+    usata per la riparazione in manutenzione.py) — la query cerca tutte e
+    tre le forme.
 
     Una sola query batch su tutte le fatture coinvolte: niente N+1
     (pattern già segnalato come problema altrove nell'audit statico).
     """
-    fattura_ids = list({m["fattura_id"] for m in movimenti if m.get("fattura_id")})
+    for m in movimenti:
+        if not m.get("fattura_id") and str(m.get("riferimento") or "").startswith("FATT-"):
+            m["_fattura_id_derivato"] = m["riferimento"][len("FATT-"):]
+
+    fattura_ids = list({
+        m.get("fattura_id") or m.get("_fattura_id_derivato")
+        for m in movimenti if m.get("fattura_id") or m.get("_fattura_id_derivato")
+    })
     fatture_by_key: Dict[str, Any] = {}
     if fattura_ids:
         fatture = await db[Collections.INVOICES].find(
@@ -86,7 +111,7 @@ async def _arricchisci_riconciliazione(db, movimenti: list) -> None:
                     fatture_by_key[chiave] = f
 
     for m in movimenti:
-        fid = m.get("fattura_id")
+        fid = m.pop("_fattura_id_derivato", None) or m.get("fattura_id")
         source = m.get("source")
         is_pos = source in POS_SOURCES
         is_paypal = source == "riconciliazione_paypal"
@@ -102,10 +127,10 @@ async def _arricchisci_riconciliazione(db, movimenti: list) -> None:
             continue
 
         if is_pos:
-            evidenza = m.get("accreditato_ec") or m.get("movimento_estratto_conto_id") or m.get("estratto_conto_id")
+            evidenza = m.get("accreditato_ec") or _evidenza_movimento(m)
             m["riconciliazione"] = {
                 "tipo": "pos_trasferimento",
-                "verificata": bool(m.get("riconciliato") and evidenza),
+                "verificata": bool(evidenza),
                 "automatica": False, "match_score": None,
                 "accreditato_ec": round(float(m.get("accreditato_ec") or 0), 2) if m.get("accreditato_ec") else None,
             }
@@ -113,8 +138,7 @@ async def _arricchisci_riconciliazione(db, movimenti: list) -> None:
 
         fattura = fatture_by_key.get(fid)
         evidenza_fattura = bool(fattura and (fattura.get("riconciliato_con_ec") or fattura.get("movimento_bancario_id")))
-        evidenza_movimento = m.get("estratto_conto_id") or m.get("movimento_bancario_id")
-        verificata = evidenza_fattura or bool(m.get("riconciliato") and evidenza_movimento)
+        verificata = evidenza_fattura or bool(_evidenza_movimento(m))
         m["riconciliazione"] = {
             "tipo": "fattura",
             "verificata": verificata,
