@@ -14,7 +14,20 @@ from .common import (
 )
 
 
-POS_SOURCES = {"trasferimento_pos", "corrispettivo_pos"}
+POS_SOURCES = {"trasferimento_pos", "corrispettivo_pos", "corrispettivi_sync"}
+# 'corrispettivo_pos' e 'corrispettivi_sync' sono lo stesso tipo di riga
+# (quota POS del corrispettivo XML in banca) per due percorsi di scrittura
+# diversi — già trattati come equivalenti altrove nel codice (es.
+# app/routers/invoices/corrispettivi_helpers.py li raggruppa nello stesso
+# "$in"). 'corrispettivi_sync' è la fonte ATTUALMENTE attiva
+# (app/routers/invoices/corrispettivi.py) e non è esclusa dalla vista
+# Prima Nota Banca (common.py::SOURCES_ESCLUSE) — quindi va arricchita
+# come le altre, altrimenti resta senza nessun badge (review Codex,
+# 3° giro su PR #66). Oggi nessun flusso la marca riconciliata (nessun
+# accreditato_ec / movimento_estratto_conto_id viene mai scritto per
+# questa source): mostrerà sempre "Da verificare" finché non esiste una
+# vera riconciliazione per questo percorso — corretto, non un difetto:
+# riflette lo stato reale dei dati.
 
 
 async def _arricchisci_riconciliazione(db, movimenti: list) -> None:
