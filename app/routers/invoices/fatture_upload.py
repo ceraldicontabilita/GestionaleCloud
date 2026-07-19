@@ -1283,9 +1283,24 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
     risultato = await _importa_una(parsed)
 
     if altri_body:
+        altri_risultati = [await _importa_una(p) for p in altri_body]
+        tutti = [risultato] + altri_risultati
+        # Tutti i chiamanti (upload manuale, bulk, Drive, email) leggono SOLO
+        # lo status di primo livello: se il primo body è un duplicato/errore
+        # ma un body successivo è stato importato davvero, promuovilo a
+        # risultato principale — altrimenti il chiamante segnala "duplicato"
+        # (upload manuale arriva a rispondere 409 all'utente) mentre una
+        # nuova fattura è stata comunque scritta in contabilità come effetto
+        # collaterale invisibile (bug reale, review Codex su PR #71).
+        if risultato.get("status") not in ("imported", "archiviata"):
+            promosso = next((r for r in tutti if r.get("status") in ("imported", "archiviata")), None)
+            if promosso is not None:
+                tutti.remove(promosso)
+                risultato = promosso
+                altri_risultati = tutti
         risultato = dict(risultato)
         risultato["multi_body_xml"] = True
-        risultato["altre_fatture_stesso_file"] = [await _importa_una(p) for p in altri_body]
+        risultato["altre_fatture_stesso_file"] = altri_risultati
 
     return risultato
 

@@ -133,3 +133,47 @@ def test_process_xml_bytes_importa_tutte_le_fatture_del_file_multi_body(monkeypa
     assert len(res["altre_fatture_stesso_file"]) == 1
     assert res["altre_fatture_stesso_file"][0]["invoice_number"] == "21"
     assert importate == ["20", "21"]
+
+
+def test_process_xml_bytes_promuove_body_importato_se_il_primo_e_duplicato(monkeypatch):
+    """Review Codex su PR #71: se il primo body del file è già presente
+    (duplicate) ma un body successivo è NUOVO, lo status di primo livello
+    deve riflettere l'import reale — altrimenti l'upload manuale risponde
+    409 "già presente" all'utente mentre una fattura è stata comunque
+    scritta in contabilità come effetto collaterale invisibile."""
+    xml = _xml(_body("20", "1000.00"), _body("21", "2000.00")).encode("utf-8")
+
+    async def _fake_import(db, parsed, filename, source, xml_raw=None):
+        if parsed["invoice_number"] == "20":
+            return {"status": "duplicate", "filename": filename, "invoice_number": "20"}
+        return {"status": "imported", "invoice_number": parsed["invoice_number"], "id": "nuovo-id-21"}
+
+    monkeypatch.setattr(fu_mod, "import_parsed_invoice", _fake_import)
+
+    res = _run(fu_mod.process_xml_bytes(None, xml, "raggruppata.xml", source="xml_upload"))
+
+    # Il chiamante (es. upload manuale) legge SOLO questo status di primo
+    # livello: deve vedere l'import riuscito, non il duplicato del primo body.
+    assert res["status"] == "imported"
+    assert res["invoice_number"] == "21"
+    assert res["id"] == "nuovo-id-21"
+    assert res["altre_fatture_stesso_file"] == [
+        {"status": "duplicate", "filename": "raggruppata.xml", "invoice_number": "20"}
+    ]
+
+
+def test_process_xml_bytes_tutti_duplicati_resta_duplicato(monkeypatch):
+    """Caso simmetrico: se NESSUn body è nuovo, lo status resta 'duplicate'
+    come oggi (nessuna promozione possibile)."""
+    xml = _xml(_body("20", "1000.00"), _body("21", "2000.00")).encode("utf-8")
+
+    async def _fake_import(db, parsed, filename, source, xml_raw=None):
+        return {"status": "duplicate", "filename": filename, "invoice_number": parsed["invoice_number"]}
+
+    monkeypatch.setattr(fu_mod, "import_parsed_invoice", _fake_import)
+
+    res = _run(fu_mod.process_xml_bytes(None, xml, "raggruppata.xml", source="xml_upload"))
+
+    assert res["status"] == "duplicate"
+    assert res["invoice_number"] == "20"
+    assert res["altre_fatture_stesso_file"][0]["invoice_number"] == "21"

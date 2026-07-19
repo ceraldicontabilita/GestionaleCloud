@@ -467,6 +467,7 @@ async def _trova_fattura_e_xml_originale(fattura_id: str) -> tuple[Optional[dict
        nel documento Mongo.
     """
     import os
+    from app.services.xml_invoice_processor import extract_xml_from_p7m
 
     db = Database.get_db()
 
@@ -499,18 +500,12 @@ async def _trova_fattura_e_xml_originale(fattura_id: str) -> tuple[Optional[dict
 
         filename = xml_file_path.lower()
         if filename.endswith(".p7m"):
-            # Estrai XML dall'envelope P7M cercando il tag <?xml
-            xml_start = raw.find(b"<?xml")
-            if xml_start == -1:
-                xml_start = raw.find(b"<FatturaElettronica")
-            if xml_start != -1:
-                xml_bytes = raw[xml_start:]
-                # Taglia il trailing padding/footer DER
-                xml_end = xml_bytes.rfind(b">")
-                if xml_end != -1:
-                    xml_bytes = xml_bytes[: xml_end + 1]
-            else:
-                xml_bytes = raw
+            # Estrattore CMS/PKCS#7 condiviso con l'import (gestisce anche i P7M
+            # binari DER, non solo quelli con XML embedded trovabile a byte-search).
+            # Ritorna None se l'estrazione fallisce davvero — MAI la busta P7M
+            # grezza come se fosse XML (bug reale: prima veniva servita come
+            # download "fattura.xml" un blob binario illeggibile).
+            xml_bytes = extract_xml_from_p7m(raw)
         else:
             xml_bytes = raw
 

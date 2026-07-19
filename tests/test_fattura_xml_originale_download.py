@@ -9,6 +9,8 @@ Copre: app.routers.fatture_module.crud.download_xml_originale (nuovo
 endpoint) e il banner di avviso in generate_invoice_html quando si mostra
 il fallback ricostruito invece dell'originale."""
 import asyncio
+import tempfile
+import os
 
 import pytest
 from fastapi import HTTPException
@@ -79,6 +81,47 @@ def test_download_xml_originale_ritorna_i_bytes_xml_raw(monkeypatch):
     assert res.body.decode("utf-8") == xml_content
     assert res.media_type == "application/xml"
     assert "fattura_20.xml" in res.headers["content-disposition"]
+
+
+def test_download_xml_originale_p7m_binario_non_estraibile_da_404_non_binario(monkeypatch):
+    """Review Codex su PR #71: se il .p7m è una busta CMS/PKCS#7 binaria
+    senza XML embedded trovabile (né in chiaro né rilanciando il parser
+    CMS), il download NON deve servire i bytes binari grezzi come se
+    fossero application/xml (file .xml illeggibile) — deve fallire con un
+    404 chiaro."""
+    with tempfile.NamedTemporaryFile(suffix=".xml.p7m", delete=False) as f:
+        f.write(b"\x00\x01\x02BUSTA-BINARIA-NON-XML\xff\xfe\xfd")
+        path = f.name
+    try:
+        db = _FakeDb()
+        db["invoices"].docs = [{"id": "fatt-1", "invoice_number": "20", "xml_file_path": path}]
+        _patch_db(monkeypatch, db)
+
+        with pytest.raises(HTTPException) as exc:
+            _run(crud_mod.download_xml_originale("fatt-1"))
+        assert exc.value.status_code == 404
+        assert "non disponibile" in exc.value.detail.lower()
+    finally:
+        os.unlink(path)
+
+
+def test_download_xml_originale_p7m_con_xml_embedded_lo_estrae(monkeypatch):
+    xml_content = (
+        b'<?xml version="1.0"?><FatturaElettronica><FatturaElettronicaBody/></FatturaElettronica>'
+    )
+    with tempfile.NamedTemporaryFile(suffix=".xml.p7m", delete=False) as f:
+        f.write(b"\x00\x01busta-non-cms-ma-xml-in-chiaro" + xml_content + b"\x00trailer")
+        path = f.name
+    try:
+        db = _FakeDb()
+        db["invoices"].docs = [{"id": "fatt-1", "invoice_number": "20", "xml_file_path": path}]
+        _patch_db(monkeypatch, db)
+
+        res = _run(crud_mod.download_xml_originale("fatt-1"))
+
+        assert res.body == xml_content
+    finally:
+        os.unlink(path)
 
 
 def test_generate_invoice_html_fallback_avvisa_che_non_e_loriginale():
