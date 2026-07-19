@@ -239,3 +239,22 @@ La review automatica Codex su PR #71 ha segnalato 5 problemi P2 sul fix del bug 
 Per qualunque fix che tocca `frontend/src`, se il repository pubblica `frontend/dist` pre-compilato (verificare sempre `render.yaml`/`staticPublishPath` prima di assumere che Render ricompili), la build va rieseguita e **committata**, non ripristinata come nelle build di sola verifica sintattica.
 
 Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
+
+## Aggiornamento — 2026-07-19 (review Codex PR #71, terzo giro: 4 bug reali)
+
+- Branch: claude/test-coverage-analysis-co5wif
+
+Terzo giro di review automatica Codex, tutti e 4 i finding verificati nel codice reale e confermati (nessun falso positivo):
+
+1. **Fatture soft-eliminate scaricabili**: `_trova_fattura_e_xml_originale` non escludeva le fatture con `status`/`entity_status` "deleted" — `get_fattura_dettaglio` le tratta già come inesistenti (bug del 15/07/2026), il nuovo endpoint no. Corretto nel punto unico condiviso (fixa entrambi gli endpoint che lo usano).
+2. **Header Content-Disposition non sanitizzato**: il numero fattura (dato che arriva dall'XML) finiva grezzo nel filename dell'header di download — CR/LF o virgolette non neutralizzate rischiavano una risposta HTTP malformata. Aggiunta sanitizzazione a caratteri filename-safe.
+3. **409 sul primo body interrompeva il ciclo in Documenti**: nel path di import di `documenti.py` (separato da `process_xml_bytes`), se il PRIMO body di un file multi-body era già presente, l'eccezione 409 veniva sollevata prima di raggiungere il ciclo sugli altri body — una fattura nuova nello stesso file restava non importata. Riscritto per tentare tutti i body in un unico ciclo, promuovendo a successo qualunque importazione riuscita.
+4. **XML mai persistito nel path Documenti**: `process_fattura_to_db` (usata solo da `documenti.py`) non salvava mai `xml_raw`/`xml_body_index` sul documento — anche prima del fix multi-body, per QUALUNQUE fattura importata da quel percorso `/xml-originale` avrebbe sempre risposto 404. Aggiunto parametro `xml_raw` opzionale, propagato dal chiamante.
+
+### Test aggiunti
+`tests/test_fattura_xml_originale_download.py`: +3 test (soft-delete via `status`, via `entity_status`, sanitizzazione filename). `tests/test_documenti_import_fattura_multi_body.py`: +2 test (primo body duplicato/secondo nuovo, tutti duplicati) e verifica che `xml_raw` sia passato ad ogni body.
+
+### Verifica
+`python -m pytest tests/ -q` → 700 passati, stessi 2 falliti preesistenti/ambientali (invariati). Nessuna modifica al frontend in questo giro, `frontend/dist` non toccato.
+
+Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.

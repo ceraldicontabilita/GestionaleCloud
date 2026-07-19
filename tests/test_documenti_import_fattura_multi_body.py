@@ -91,9 +91,11 @@ def test_upload_automatico_importa_tutte_le_fatture_del_file_multi_body(monkeypa
     monkeypatch.setattr(documenti_mod.Database, "get_db", staticmethod(lambda: _FakeDb()))
 
     importate = []
+    xml_raw_ricevuti = []
 
-    async def _fake_process_fattura_to_db(db, parsed, filename):
+    async def _fake_process_fattura_to_db(db, parsed, filename, xml_raw=None):
         importate.append(parsed["invoice_number"])
+        xml_raw_ricevuti.append(xml_raw)
         return {"invoice_number": parsed["invoice_number"], "id": f"id-{parsed['invoice_number']}"}
 
     import app.routers.invoices.fatture_upload as fu_mod
@@ -104,6 +106,10 @@ def test_upload_automatico_importa_tutte_le_fatture_del_file_multi_body(monkeypa
     assert res["imported"] == 2
     assert importate == ["20", "21"]
     assert "fatture aggiuntive" in res["message"]
+    # Review Codex PR #71 (3° giro): xml_raw va passato per OGNI body, non
+    # solo per il primo, altrimenti /xml-originale risulterebbe 404 sulle
+    # fatture aggiuntive pur avendo l'xml_content ancora disponibile qui.
+    assert all(xr is not None for xr in xml_raw_ricevuti)
 
 
 def test_upload_automatico_body_extra_duplicato_non_blocca_il_primo(monkeypatch):
@@ -115,7 +121,7 @@ def test_upload_automatico_body_extra_duplicato_non_blocca_il_primo(monkeypatch)
 
     monkeypatch.setattr(documenti_mod.Database, "get_db", staticmethod(lambda: _FakeDb()))
 
-    async def _fake_process_fattura_to_db(db, parsed, filename):
+    async def _fake_process_fattura_to_db(db, parsed, filename, xml_raw=None):
         if parsed["invoice_number"] == "21":
             raise HTTPException(status_code=409, detail="Fattura duplicata")
         return {"invoice_number": parsed["invoice_number"], "id": "id-20"}
@@ -127,3 +133,48 @@ def test_upload_automatico_body_extra_duplicato_non_blocca_il_primo(monkeypatch)
 
     assert res["success"] is True
     assert res["imported"] == 1
+
+
+def test_upload_automatico_primo_body_duplicato_secondo_nuovo_importa_comunque(monkeypatch):
+    """Review Codex su PR #71 (3° giro): se è il PRIMO body ad essere già
+    presente (409) ma il SECONDO è nuovo, il 409 sul primo non deve
+    interrompere il ciclo prima di raggiungere gli altri body — la fattura
+    nuova va importata comunque e riportata come successo."""
+    xml = _xml(_body("20", "1000.00"), _body("21", "2000.00")).encode("utf-8")
+    upload = UploadFile(filename="raggruppata.xml", file=io.BytesIO(xml))
+
+    monkeypatch.setattr(documenti_mod.Database, "get_db", staticmethod(lambda: _FakeDb()))
+
+    async def _fake_process_fattura_to_db(db, parsed, filename, xml_raw=None):
+        if parsed["invoice_number"] == "20":
+            raise HTTPException(status_code=409, detail="Fattura duplicata")
+        return {"invoice_number": parsed["invoice_number"], "id": "id-21"}
+
+    import app.routers.invoices.fatture_upload as fu_mod
+    monkeypatch.setattr(fu_mod, "process_fattura_to_db", _fake_process_fattura_to_db)
+
+    res = _run(documenti_mod.upload_documento_automatico(file=upload))
+
+    assert res["success"] is True
+    assert res["imported"] == 1
+    assert res["message"].startswith("Fattura importata: 21")
+
+
+def test_upload_automatico_tutti_duplicati_segnala_errore(monkeypatch):
+    """Caso simmetrico: se OGNI body è già presente, il comportamento resta
+    quello di oggi per un singolo duplicato (success=False, 409 propagato
+    fino al gestore generico)."""
+    xml = _xml(_body("20", "1000.00"), _body("21", "2000.00")).encode("utf-8")
+    upload = UploadFile(filename="raggruppata.xml", file=io.BytesIO(xml))
+
+    monkeypatch.setattr(documenti_mod.Database, "get_db", staticmethod(lambda: _FakeDb()))
+
+    async def _fake_process_fattura_to_db(db, parsed, filename, xml_raw=None):
+        raise HTTPException(status_code=409, detail=f"Fattura duplicata: {parsed['invoice_number']}")
+
+    import app.routers.invoices.fatture_upload as fu_mod
+    monkeypatch.setattr(fu_mod, "process_fattura_to_db", _fake_process_fattura_to_db)
+
+    res = _run(documenti_mod.upload_documento_automatico(file=upload))
+
+    assert res["success"] is False

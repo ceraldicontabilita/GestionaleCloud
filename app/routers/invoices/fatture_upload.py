@@ -636,7 +636,8 @@ async def _riscontra_anticipo_pendente(db, invoice: Dict[str, Any]) -> None:
     )
 
 
-async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upload.xml") -> Dict[str, Any]:
+async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upload.xml",
+                                 xml_raw: Optional[str] = None) -> Dict[str, Any]:
     """
     Processa e salva una fattura parsata nel database.
     Usata da documenti.py per l'import automatico.
@@ -652,6 +653,10 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
         db: Database connection
         parsed: Dati fattura parsati da parse_fattura_xml
         filename: Nome file originale
+        xml_raw: XML originale (stringa), se disponibile — salvato sulla
+            fattura insieme a xml_body_index così `/xml-originale` può
+            servirlo (prima non veniva mai persistito da questo percorso,
+            bug reale, review Codex PR #71).
 
     Returns:
         Dict con dati fattura salvata
@@ -754,6 +759,8 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             "status": "imported",
             "source": "xml_upload",
             "filename": filename,
+            "xml_raw": xml_raw,
+            "xml_body_index": parsed.get("body_index", 0),
             "created_at": datetime.now(timezone.utc).isoformat(),
             "cedente_piva": parsed.get("supplier_vat", ""),
             "cedente_denominazione": parsed.get("supplier_name", ""),

@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 import base64
 import calendar
+import re
 
 from app.database import Database
 from .common import COL_FORNITORI, COL_FATTURE_RICEVUTE, COL_DETTAGLIO_RIGHE, COL_ALLEGATI, logger
@@ -486,6 +487,12 @@ async def _trova_fattura_e_xml_originale(fattura_id: str) -> tuple[Optional[dict
             pass
     if not fattura:
         return None, None
+    if fattura.get("entity_status") == "deleted" or fattura.get("status") == "deleted":
+        # Stesso bug del 15/07/2026 già corretto in get_fattura_dettaglio:
+        # una fattura archiviata da DELETE /api/fatture/{id} deve comportarsi
+        # come inesistente, anche per la vista renderizzata e per il
+        # download dell'XML originale (bug reale, review Codex PR #71).
+        return None, None
 
     xml_file_path = fattura.get("xml_file_path")
     # stringa XML se già estratta — nomi diversi a seconda della pipeline di import
@@ -533,7 +540,13 @@ async def download_xml_originale(fattura_id: str) -> Response:
         )
 
     numero = fattura.get("invoice_number") or fattura.get("numero_fattura") or fattura_id
-    nome_file = f"fattura_{str(numero).replace('/', '-')}.xml"
+    # Il numero fattura arriva dall'XML (attaccante-controllabile in linea di
+    # principio, es. un file malformato/malevolo): CR/LF o virgolette non
+    # neutralizzate finirebbero grezze nell'header Content-Disposition,
+    # rischiando una risposta HTTP malformata/split (bug reale, review Codex
+    # PR #71). Tiene solo caratteri filename-safe.
+    numero_sicuro = re.sub(r'[^A-Za-z0-9._-]+', '-', str(numero)).strip('-') or "sconosciuto"
+    nome_file = f"fattura_{numero_sicuro}.xml"
     return Response(
         content=xml_bytes,
         media_type="application/xml",

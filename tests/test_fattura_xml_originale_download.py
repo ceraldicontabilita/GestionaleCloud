@@ -83,6 +83,61 @@ def test_download_xml_originale_ritorna_i_bytes_xml_raw(monkeypatch):
     assert "fattura_20.xml" in res.headers["content-disposition"]
 
 
+def test_download_xml_originale_fattura_soft_deleted_da_404(monkeypatch):
+    """Review Codex su PR #71 (3° giro): get_fattura_dettaglio tratta una
+    fattura con status/entity_status 'deleted' come inesistente — il nuovo
+    endpoint XML deve avere la stessa regola, altrimenti una fattura
+    cancellata dall'utente resta scaricabile a chi conosce/indovina l'id."""
+    xml_content = "<FatturaElettronica><FatturaElettronicaBody/></FatturaElettronica>"
+    db = _FakeDb()
+    db["invoices"].docs = [{
+        "id": "fatt-1", "invoice_number": "20", "xml_raw": xml_content,
+        "status": "deleted",
+    }]
+    _patch_db(monkeypatch, db)
+
+    with pytest.raises(HTTPException) as exc:
+        _run(crud_mod.download_xml_originale("fatt-1"))
+    assert exc.value.status_code == 404
+
+
+def test_download_xml_originale_fattura_entity_status_deleted_da_404(monkeypatch):
+    xml_content = "<FatturaElettronica><FatturaElettronicaBody/></FatturaElettronica>"
+    db = _FakeDb()
+    db["invoices"].docs = [{
+        "id": "fatt-1", "invoice_number": "20", "xml_raw": xml_content,
+        "entity_status": "deleted",
+    }]
+    _patch_db(monkeypatch, db)
+
+    with pytest.raises(HTTPException) as exc:
+        _run(crud_mod.download_xml_originale("fatt-1"))
+    assert exc.value.status_code == 404
+
+
+def test_download_xml_originale_sanitizza_numero_fattura_nel_filename(monkeypatch):
+    """Review Codex su PR #71 (3° giro): un numero fattura con CR/LF o
+    virgolette (dato che arriva dall'XML, in linea di principio
+    attaccante-controllabile) non deve finire grezzo nell'header
+    Content-Disposition."""
+    xml_content = "<FatturaElettronica><FatturaElettronicaBody/></FatturaElettronica>"
+    db = _FakeDb()
+    db["invoices"].docs = [{
+        "id": "fatt-1",
+        "invoice_number": 'evil"\r\nX-Injected: yes',
+        "xml_raw": xml_content,
+    }]
+    _patch_db(monkeypatch, db)
+
+    res = _run(crud_mod.download_xml_originale("fatt-1"))
+
+    disposition = res.headers["content-disposition"]
+    assert "\r" not in disposition
+    assert "\n" not in disposition
+    assert disposition.count('"') == 2  # solo le due virgolette del filename="...", nessuna iniettata
+    assert "evil" in disposition
+
+
 def test_download_xml_originale_p7m_binario_non_estraibile_da_404_non_binario(monkeypatch):
     """Review Codex su PR #71: se il .p7m è una busta CMS/PKCS#7 binaria
     senza XML embedded trovabile (né in chiaro né rilanciando il parser

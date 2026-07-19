@@ -1975,25 +1975,32 @@ async def upload_documento_automatico(
             if parsed:
                 # Un file FatturaPA può raggruppare più fatture sotto lo
                 # stesso header (più <FatturaElettronicaBody>): "_altri_body"
-                # contiene le fatture aggiuntive, vanno importate anche loro
-                # invece di scartarle silenziosamente (bug reale, review
-                # Codex PR #71 — questo path duplica process_xml_bytes e non
-                # era coperto dal fix multi-body fatto lì).
+                # contiene le fatture aggiuntive, vanno TUTTE tentate — anche
+                # quando la PRIMA è già presente (409) ma una successiva è
+                # nuova (bug reale, review Codex PR #71, 2° giro: prima il
+                # 409 sulla prima interrompeva subito, senza mai raggiungere
+                # il ciclo sulle altre). xml_raw passato a ognuna così
+                # /xml-originale può servirlo (prima non veniva mai salvato
+                # da questo percorso).
                 altri_body = parsed.pop("_altri_body", None) or []
-                saved = await process_fattura_to_db(db, parsed, filename)
-                result["message"] = f"Fattura importata: {saved.get('invoice_number', 'N/A')}"
-                result["imported"] = 1
-                importate_extra = 0
-                for altro in altri_body:
+                importati = []
+                ultimo_errore_duplicato = None
+                for body in [parsed] + altri_body:
                     try:
-                        await process_fattura_to_db(db, altro, filename)
-                        importate_extra += 1
+                        saved = await process_fattura_to_db(db, body, filename, xml_raw=xml_content)
+                        importati.append(saved)
                     except _HTTPException as exc:
                         if exc.status_code != 409:
                             raise
-                if importate_extra:
-                    result["imported"] += importate_extra
-                    result["message"] += f" (+{importate_extra} fatture aggiuntive nello stesso file)"
+                        ultimo_errore_duplicato = exc
+
+                if importati:
+                    result["message"] = f"Fattura importata: {importati[0].get('invoice_number', 'N/A')}"
+                    result["imported"] = len(importati)
+                    if len(importati) > 1:
+                        result["message"] += f" (+{len(importati) - 1} fatture aggiuntive nello stesso file)"
+                else:
+                    raise ultimo_errore_duplicato
             else:
                 result["success"] = False
                 result["message"] = "Errore parsing XML fattura"
