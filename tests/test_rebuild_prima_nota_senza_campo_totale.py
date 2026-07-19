@@ -57,6 +57,14 @@ class _FakeCollection:
         self.docs = [d for d in self.docs if not _matches(d, query)]
         return type("R", (), {"deleted_count": before - len(self.docs)})()
 
+    async def find_one_and_update(self, query, update, upsert=False):
+        for d in self.docs:
+            if _matches(d, query):
+                return dict(d)
+        if upsert:
+            self.docs.append(dict(update.get("$setOnInsert", {})))
+        return None
+
     def find(self, query=None, projection=None, *a, **k):
         return _FakeCursor([d for d in self.docs if _matches(d, query or {})])
 

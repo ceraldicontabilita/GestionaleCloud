@@ -49,6 +49,10 @@ def test_endpoint_distruttivi_sono_admin_only():
         ("/pulizia-duplicati", "POST"),
         ("/backfill-autoroute", "POST"),
         ("/reset-riconciliazione", "POST"),
+        # ERP-001 (19/07/2026): scrittura di massa su movimenti_banca,
+        # prima richiamabile da qualunque utente autenticato non in sola
+        # lettura.
+        ("/apply-suggestions", "POST"),
     ]
     for frag, metodo in casi:
         res = _route_ha_admin(app, frag, metodo)

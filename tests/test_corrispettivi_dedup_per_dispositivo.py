@@ -42,6 +42,22 @@ class _FakeCollection:
                 d.update(update.get("$set", {}))
                 return
 
+    async def find_one_and_update(self, query, update, upsert=False):
+        # Stessa identica logica di match di find_one qui sopra (inclusa la
+        # gestione di {"$ne": ...}), solo consolidata in un'unica chiamata.
+        for d in self.docs:
+            if all(d.get(k) == v for k, v in query.items() if not isinstance(v, dict)):
+                ok = True
+                for k2, v2 in query.items():
+                    if isinstance(v2, dict) and "$ne" in v2:
+                        if d.get(k2) == v2["$ne"]:
+                            ok = False
+                if ok:
+                    return dict(d)
+        if upsert:
+            self.docs.append(dict(update.get("$setOnInsert", {})))
+        return None
+
     async def delete_many(self, query, *a, **k):
         def matches(d):
             for k2, v2 in query.items():

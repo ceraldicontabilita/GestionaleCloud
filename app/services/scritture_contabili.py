@@ -50,11 +50,11 @@ def _valida(mov: Dict[str, Any]) -> None:
         raise ScritturaNonValida("source mancante (tracciabilità obbligatoria)")
 
 
-async def scrivi_movimento(db, registro: str, mov: Dict[str, Any]) -> str:
-    """Unico punto di INSERT nei registri di Prima Nota: valida e scrive.
-    Ritorna l'id del movimento creato."""
-    if registro not in REGISTRI:
-        raise ScritturaNonValida(f"registro sconosciuto: {registro}")
+def _prepara_documento(mov: Dict[str, Any]) -> Dict[str, Any]:
+    """Valida un movimento e riempie i campi con default stabili (id,
+    alias amount/date/type/category/description, created_at). Estratta da
+    scrivi_movimento per essere riusabile anche da chi deve scrivere con
+    un upsert atomico invece di un insert diretto (vedi registra_corrispettivo)."""
     _valida(mov)
     doc = dict(mov)
     doc.setdefault("id", str(uuid.uuid4()))
@@ -65,8 +65,45 @@ async def scrivi_movimento(db, registro: str, mov: Dict[str, Any]) -> str:
     doc.setdefault("category", doc["categoria"])
     doc.setdefault("description", doc.get("descrizione", ""))
     doc.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+    return doc
+
+
+async def scrivi_movimento(db, registro: str, mov: Dict[str, Any]) -> str:
+    """Unico punto di INSERT nei registri di Prima Nota: valida e scrive.
+    Ritorna l'id del movimento creato."""
+    if registro not in REGISTRI:
+        raise ScritturaNonValida(f"registro sconosciuto: {registro}")
+    doc = _prepara_documento(mov)
     await db[REGISTRI[registro]].insert_one(dict(doc))
     return doc["id"]
+
+
+async def _scrivi_se_assente(db, registro: str, query_esistente: Dict[str, Any],
+                              mov: Dict[str, Any]) -> tuple:
+    """Come scrivi_movimento, ma con la guardia di idempotenza (query_esistente)
+    applicata in UNA SOLA operazione atomica verso MongoDB (find_one_and_update
+    con upsert=True), non in due chiamate separate (find_one poi insert_one).
+
+    Prima di questa funzione, registra_corrispettivo faceva le due chiamate
+    separatamente: due richieste concorrenti per lo stesso corrispettivo
+    potevano superare entrambe il controllo "esiste già?" prima che una delle
+    due avesse scritto, creando un movimento duplicato in Prima Nota Cassa
+    (vietato dalla regola canonica POS). L'upsert atomico chiede al database
+    stesso di fare "controlla e scrivi" come un'unica azione indivisibile.
+
+    Ritorna (id_movimento, era_gia_esistente).
+    """
+    if registro not in REGISTRI:
+        raise ScritturaNonValida(f"registro sconosciuto: {registro}")
+    doc = _prepara_documento(mov)
+    precedente = await db[REGISTRI[registro]].find_one_and_update(
+        query_esistente,
+        {"$setOnInsert": doc},
+        upsert=True,
+    )
+    if precedente:
+        return precedente.get("id"), True
+    return doc["id"], False
 
 
 async def _leggi_tutti(cursor, n: int = 100):
@@ -125,33 +162,39 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
     if not data or totale <= 0:
         return esito
 
-    # IDEMPOTENZA (stessa guardia storica, chiave data+matricola)
-    gia = await db["prima_nota_cassa"].find_one({
-        "data": data, "tipo": "entrata", "categoria": "Corrispettivi",
-        "matricola_rt": matricola,
-        "source": {"$in": ["corrispettivo_import", "corrispettivi_sync",
-                            "corrispettivo_xml", "xml_import", "manuale_da_xml",
-                            "corrispettivo_manuale"]},
-    })
-    if gia:
-        esito["prima_nota_cassa_id"] = gia.get("id")
+    # IDEMPOTENZA (stessa guardia storica, chiave data+matricola) — ERP-001
+    # (19/07/2026): in un'UNICA operazione atomica (find_one_and_update con
+    # upsert=True), non più in due chiamate separate find_one + insert_one.
+    # Due richieste concorrenti per lo stesso corrispettivo non possono più
+    # superare entrambe il controllo prima che una delle due abbia scritto.
+    cassa_id, gia_esistente = await _scrivi_se_assente(
+        db, "cassa",
+        {
+            "data": data, "tipo": "entrata", "categoria": "Corrispettivi",
+            "matricola_rt": matricola,
+            "source": {"$in": ["corrispettivo_import", "corrispettivi_sync",
+                                "corrispettivo_xml", "xml_import", "manuale_da_xml",
+                                "corrispettivo_manuale"]},
+        },
+        {
+            "corrispettivo_id": corr_doc.get("id"),
+            "data": data, "tipo": "entrata", "importo": totale,
+            "descrizione": f"Corrispettivi {data}",
+            "categoria": "Corrispettivi", "source": "corrispettivo_import",
+            "anno": anno, "mese": mese, "matricola_rt": matricola,
+            "imponibile": round(float(corr_doc.get("totale_imponibile") or 0), 2),
+            "iva": round(float(corr_doc.get("totale_iva") or 0), 2),
+            "contanti": round(contanti, 2), "elettronico": round(elettronico, 2),
+            "dettaglio": {"contanti": round(contanti, 2),
+                          "elettronico": round(elettronico, 2),
+                          "matricola_rt": corr_doc.get("matricola_rt", ""),
+                          "numero_documenti": corr_doc.get("numero_documenti", 0)},
+        },
+    )
+    esito["prima_nota_cassa_id"] = cassa_id
+    if gia_esistente:
         esito["gia_esistente"] = True
         return esito
-
-    esito["prima_nota_cassa_id"] = await scrivi_movimento(db, "cassa", {
-        "corrispettivo_id": corr_doc.get("id"),
-        "data": data, "tipo": "entrata", "importo": totale,
-        "descrizione": f"Corrispettivi {data}",
-        "categoria": "Corrispettivi", "source": "corrispettivo_import",
-        "anno": anno, "mese": mese, "matricola_rt": matricola,
-        "imponibile": round(float(corr_doc.get("totale_imponibile") or 0), 2),
-        "iva": round(float(corr_doc.get("totale_iva") or 0), 2),
-        "contanti": round(contanti, 2), "elettronico": round(elettronico, 2),
-        "dettaglio": {"contanti": round(contanti, 2),
-                      "elettronico": round(elettronico, 2),
-                      "matricola_rt": corr_doc.get("matricola_rt", ""),
-                      "numero_documenti": corr_doc.get("numero_documenti", 0)},
-    })
 
     # USCITA POS: la chiusura manuale serale è il dato operativo vero;
     # l'elettronico XML è solo il fallback quando non è stata trascritta.
