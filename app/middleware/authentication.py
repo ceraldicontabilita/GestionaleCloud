@@ -151,23 +151,13 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 headers={"WWW-Authenticate": "Bearer"}
             )
 
-        # Token revocato esplicitamente (logout) prima della scadenza naturale.
-        from app.database import Database
-        from app.utils.token_blacklist import is_revocato
-        if await is_revocato(Database.get_db(), token):
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Sessione terminata (logout)"},
-                headers={"WWW-Authenticate": "Bearer"}
-            )
-
         try:
             payload = jwt.decode(
                 token,
                 settings.SECRET_KEY,
                 algorithms=[settings.ALGORITHM]
             )
-            
+
             user_id = payload.get("sub")
             if not user_id:
                 return JSONResponse(
@@ -175,7 +165,20 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                     content={"detail": "Invalid token: missing user ID"},
                     headers={"WWW-Authenticate": "Bearer"}
                 )
-            
+
+            # Token revocato esplicitamente (logout) prima della scadenza
+            # naturale. Controllato SOLO dopo che firma/scadenza sono già
+            # validate (review Codex su PR #65): un token spazzatura non deve
+            # costare una query Mongo prima di essere respinto localmente.
+            from app.database import Database
+            from app.utils.token_blacklist import is_revocato
+            if await is_revocato(Database.get_db(), token):
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Sessione terminata (logout)"},
+                    headers={"WWW-Authenticate": "Bearer"}
+                )
+
             # Store user info in request state for downstream access
             request.state.user_id = user_id
             request.state.user_email = payload.get("email")

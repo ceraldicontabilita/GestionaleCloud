@@ -179,12 +179,18 @@ async def auth_logout(request: Request, response: Response):
     if token:
         from app.database import Database
         from app.utils.token_blacklist import revoca_token
-        exp = None
         try:
+            # verify_exp=False: un token scaduto ma firmato correttamente va
+            # comunque revocato (con la sua scadenza reale per il TTL).
+            # Un token con firma non valida/malformato NON va in blacklist:
+            # /api/auth/logout è pubblico, altrimenti chiunque potrebbe
+            # riempire token_blacklist con hash spazzatura senza scadenza
+            # (review Codex su PR #65).
             exp = jwt.decode(token, SECRET_KEY, algorithms=["HS256"], options={"verify_exp": False}).get("exp")
-        except Exception:
-            pass
-        await revoca_token(Database.get_db(), token, exp=exp)
+        except jwt.InvalidTokenError:
+            exp = None
+        else:
+            await revoca_token(Database.get_db(), token, exp=exp)
     response.delete_cookie("access_token")
     response.delete_cookie("session_active")
     return {"ok": True}

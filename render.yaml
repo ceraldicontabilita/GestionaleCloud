@@ -42,3 +42,13 @@ services:
         sync: false
       - key: VITE_BACKEND_URL
         sync: false
+    # frontend/src/api.js usa baseURL: '' (stesso host della pagina): senza
+    # questa regola /api/* verrebbe cercato sul static site invece che sul
+    # backend e login/dati non funzionerebbero (review Codex su PR #65).
+    # ATTENZIONE: sostituire l'URL con quello reale del servizio backend
+    # dal pannello Render prima di usare questo Blueprint per ricreare i
+    # servizi — non verificabile da qui, nessun accesso alla dashboard.
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://ceraldi-gestionale-backend.onrender.com/api/*

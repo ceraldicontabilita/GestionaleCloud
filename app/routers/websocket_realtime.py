@@ -36,6 +36,16 @@ async def _autentica_websocket(websocket: WebSocket) -> bool:
     except JWTError:
         await websocket.close(code=4401, reason="Invalid or expired token")
         return False
+
+    # Token revocato (logout) prima della scadenza naturale: la middleware
+    # HTTP non copre lo scope websocket (vedi sopra), quindi senza questo
+    # controllo un token già disconnesso resterebbe valido per il WS fino
+    # a scadenza (review Codex su PR #65).
+    from app.utils.token_blacklist import is_revocato
+    if await is_revocato(Database.get_db(), token):
+        await websocket.close(code=4401, reason="Sessione terminata (logout)")
+        return False
+
     return True
 
 
