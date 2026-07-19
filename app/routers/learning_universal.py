@@ -9,13 +9,17 @@ Apprende pattern da tutti i dati dell'applicazione:
 - Movimenti bancari (categorizzazione)
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 from collections import defaultdict
+import logging
 import re
 from app.database import Database
+from app.utils.dependencies import get_current_admin_user
+from app.services.audit_logger import log_evento
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # ============== HELPER FUNCTIONS ==============
@@ -497,6 +501,11 @@ async def get_suggestions(module: str):
             movement_data = result.get("modules", {}).get("movimenti", {})
             for rule in movement_data.get("rules", [])[:10]:
                 suggestions.append({
+                    # ERP-001: id stabile del suggerimento (= categoria, già
+                    # unica per costruzione in learn_movement_categories) da
+                    # passare in suggestion_ids ad /apply-suggestions per
+                    # applicare solo i suggerimenti scelti dall'utente.
+                    "id": rule["category"],
                     "type": "category_rule",
                     "category": rule["category"],
                     "keywords": rule["keywords"],
@@ -551,7 +560,10 @@ SOGLIA_CONFIDENZA_MINIMA_ASSOLUTA = 0.7
 
 
 @router.post("/apply-suggestions")
-async def apply_suggestions(data: Dict[str, Any]):
+async def apply_suggestions(
+    data: Dict[str, Any],
+    admin_user: Dict[str, Any] = Depends(get_current_admin_user),
+):
     """Applica i suggerimenti dell'apprendimento.
 
     Audit 19/07/2026: applicava TUTTE le regole in massa senza alcuna soglia
@@ -560,9 +572,17 @@ async def apply_suggestions(data: Dict[str, Any]):
     la quale la regola viene saltata e conteggiata separatamente, invece di
     essere applicata alla cieca.
 
-    ERP-001 (19/07/2026): la soglia inviata dal chiamante non può più
-    scendere sotto SOGLIA_CONFIDENZA_MINIMA_ASSOLUTA; può solo essere
-    alzata per essere più prudenti.
+    ERP-001 (19/07/2026):
+    - la soglia inviata dal chiamante non può più scendere sotto
+      SOGLIA_CONFIDENZA_MINIMA_ASSOLUTA; può solo essere alzata;
+    - suggestion_ids, se non vuoto, limita realmente l'applicazione ai soli
+      suggerimenti scelti (id = categoria per il modulo "movimenti", vedi
+      get_suggestions); prima veniva letto ma mai usato;
+    - endpoint riservato agli amministratori (scrittura di massa su dati
+      contabili, prima chiamabile da qualunque utente autenticato non in
+      sola lettura);
+    - ogni chiamata genera una voce nel registro di audit unificato
+      (chi, quando, soglia, suggestion_ids, quante regole applicate).
     """
     db = Database.get_db()
     module = data.get("module")
@@ -574,11 +594,18 @@ async def apply_suggestions(data: Dict[str, Any]):
 
     applied = 0
     saltate_bassa_confidenza = 0
+    saltate_non_selezionate = 0
+    categorie_applicate = []
     errors = []
 
     try:
         result = await db.learning_results.find_one({"_id": "latest"})
         if not result:
+            await _audit_apply_suggestions(
+                db, admin_user, module, soglia_confidenza, suggestion_ids,
+                applied=0, saltate_bassa_confidenza=0, categorie_applicate=[],
+                esito="nessun_apprendimento_disponibile",
+            )
             return {"applied": 0, "message": "Nessun apprendimento disponibile"}
 
         if module == "movimenti":
@@ -590,6 +617,14 @@ async def apply_suggestions(data: Dict[str, Any]):
                 category = rule.get("category")
                 keywords = rule.get("keywords", [])
                 confidence = rule.get("confidence", 0.5)
+
+                # id del suggerimento = categoria (vedi get_suggestions).
+                # Se il chiamante ha scelto suggestion_ids specifici, le
+                # regole non incluse vengono saltate a prescindere dalla
+                # confidenza.
+                if suggestion_ids and category not in suggestion_ids:
+                    saltate_non_selezionate += 1
+                    continue
 
                 if confidence < soglia_confidenza:
                     saltate_bassa_confidenza += 1
@@ -610,16 +645,59 @@ async def apply_suggestions(data: Dict[str, Any]):
                             {"$set": {"categoria": category, "auto_categorized": True}}
                         )
                         applied += update_result.modified_count
+                    categorie_applicate.append(category)
+
+        await _audit_apply_suggestions(
+            db, admin_user, module, soglia_confidenza, suggestion_ids,
+            applied=applied, saltate_bassa_confidenza=saltate_bassa_confidenza,
+            categorie_applicate=categorie_applicate, esito="completato",
+        )
 
         return {
             "applied": applied,
             "saltate_bassa_confidenza": saltate_bassa_confidenza,
+            "saltate_non_selezionate": saltate_non_selezionate,
             "soglia_confidenza": soglia_confidenza,
+            "categorie_applicate": categorie_applicate,
             "errors": errors,
             "message": f"Applicati {applied} suggerimenti"
             + (f", {saltate_bassa_confidenza} regole escluse per confidenza sotto {soglia_confidenza}"
-               if saltate_bassa_confidenza else ""),
+               if saltate_bassa_confidenza else "")
+            + (f", {saltate_non_selezionate} regole escluse perché non incluse in suggestion_ids"
+               if saltate_non_selezionate else ""),
         }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _audit_apply_suggestions(
+    db, admin_user: Dict[str, Any], module: Optional[str],
+    soglia_confidenza: float, suggestion_ids: List[str],
+    applied: int, saltate_bassa_confidenza: int,
+    categorie_applicate: List[str], esito: str,
+) -> None:
+    """Registra ogni chiamata di apply-suggestions nel registro di audit
+    unificato (ERP-001). Best-effort: un fallimento dell'audit non deve
+    bloccare la risposta già calcolata al chiamante."""
+    try:
+        await log_evento(
+            modulo="learning_universal",
+            azione="apply_suggestions",
+            entita_id=module or "sconosciuto",
+            entita_collection="movimenti_banca",
+            db=db,
+            nuovo_stato={
+                "applied": applied,
+                "saltate_bassa_confidenza": saltate_bassa_confidenza,
+                "soglia_confidenza": soglia_confidenza,
+                "suggestion_ids": suggestion_ids,
+                "categorie_applicate": categorie_applicate,
+                "esito": esito,
+            },
+            fonte="learning_universal.apply_suggestions",
+            utente=admin_user.get("email") or admin_user.get("user_id") or "sconosciuto",
+            dettaglio=f"apply-suggestions modulo={module} soglia={soglia_confidenza} esito={esito}",
+        )
+    except Exception:
+        logger.exception("Audit apply_suggestions non riuscito (non bloccante)")
