@@ -489,27 +489,39 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
     }
   };
 
-  // Evidenza di riconciliazione reale con l'estratto conto per le fatture
-  // in Banca (richiesto dall'utente sul caso Leasys: senza questo, una
-  // fattura registrata non si distingue da una davvero riconciliata).
-  // Il backend valorizza mov.riconciliazione SOLO per movimenti con
-  // fattura_id in banca (vedi _arricchisci_riconciliazione).
+  // Evidenza di riconciliazione reale con l'estratto conto in Banca:
+  // - per le fatture (caso Leasys: senza questo, una fattura registrata
+  //   non si distingue da una davvero riconciliata);
+  // - per i trasferimenti POS cassa→banca (source 'trasferimento_pos':
+  //   l'utente ha fatto notare che il pareggio cassa=banca è solo una
+  //   coerenza di TRASCRIZIONE — stesso importo copiato tra i due registri
+  //   — e non prova che la banca abbia davvero accreditato quella cifra;
+  //   qui mostriamo l'esito del vero match con l'estratto conto).
+  // Il backend valorizza mov.riconciliazione solo per questi due casi
+  // (vedi _arricchisci_riconciliazione in prima_nota_module/banca.py).
   const badgeRiconciliazione = mov => {
-    if (tipo !== 'banca' || !mov.fattura_id || !mov.riconciliazione) return null;
-    const { verificata, automatica, match_score } = mov.riconciliazione;
+    if (tipo !== 'banca' || !mov.riconciliazione) return null;
+    const { verificata, automatica, match_score, tipo: tipoRic, accreditato_ec } = mov.riconciliazione;
+    const isPos = tipoRic === 'pos_trasferimento';
     if (verificata) {
+      const importoInfo = isPos && accreditato_ec ? ` (${eur(accreditato_ec)} accreditati)` : '';
+      const title = isPos
+        ? `Trasferimento POS riconciliato con l'estratto conto${importoInfo}`
+        : (automatica ? `Riconciliato automaticamente con l'estratto conto (punteggio ${match_score ?? '—'})` : "Riconciliato con l'estratto conto");
       return (
         <span
-          title={automatica ? `Riconciliato automaticamente con l'estratto conto (punteggio ${match_score ?? '—'})` : "Riconciliato con l'estratto conto"}
+          title={title}
           style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
         >
-          ✅ Riconciliato
+          ✅ Riconciliato{importoInfo}
         </span>
       );
     }
     return (
       <span
-        title="Nessun addebito trovato in estratto conto per questa fattura: verificare in Riconciliazione"
+        title={isPos
+          ? "Nessun accredito trovato in estratto conto per questo trasferimento POS: verificare in Coerenza POS"
+          : "Nessun addebito trovato in estratto conto per questa fattura: verificare in Riconciliazione"}
         style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fcd34d', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
       >
         ⚠️ Da verificare

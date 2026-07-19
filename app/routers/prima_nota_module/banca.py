@@ -15,35 +15,65 @@ from .common import (
 
 
 async def _arricchisci_riconciliazione(db, movimenti: list) -> None:
-    """Aggiunge a ogni movimento legato a una fattura (mov['fattura_id']) un
-    campo 'riconciliazione' con evidenza di un vero match con l'estratto
-    conto (riconciliato_con_ec/automatica/match_score sulla fattura, scritti
-    da app/services/riconciliazione_bancaria.py). Senza questo, in Prima
-    Nota Banca una fattura registrata (es. manualmente, o auto-confermata
-    da metodo fornitore) è indistinguibile da una davvero riconciliata con
-    l'estratto conto — segnalato dall'utente sul caso Leasys.
+    """Aggiunge a ogni movimento fattura o trasferimento POS un campo
+    'riconciliazione' con evidenza di un vero match con l'estratto conto.
+    Senza questo, in Prima Nota Banca una fattura registrata (es.
+    manualmente, o auto-confermata da metodo fornitore) è indistinguibile
+    da una davvero riconciliata con l'estratto conto — segnalato
+    dall'utente sul caso Leasys — e un trasferimento POS cassa→banca
+    (source 'trasferimento_pos') è indistinguibile da un vero accredito
+    bancario verificato — segnalato dall'utente sul caso "coerenza di
+    trascrizione vs coerenza con l'estratto conto".
+
+    L'evidenza vive in punti diversi a seconda del flusso che l'ha
+    scritta (review Codex su PR #66):
+    - riconciliazione_bancaria.py::_applica_pagamento_banca (flusso
+      automatico) scrive SOLO sulla fattura: riconciliato_con_ec/
+      riconciliato_automaticamente/match_score;
+    - fatture_module/pagamento.py::riconcilia_fattura_con_estratto_conto
+      (riconciliazione manuale) scrive fattura.riconciliato (non
+      riconciliato_con_ec) e, se esiste, prima_nota_banca.riconciliato;
+    - prima_nota_module/manutenzione.py (retro-collegamento) scrive SOLO
+      sul movimento: prima_nota_banca.riconciliato + estratto_conto_id;
+    - scritture_contabili.py::riconcilia_accredito_pos_ec (accrediti POS)
+      scrive SOLO sul movimento 'trasferimento_pos': riconciliato +
+      accreditato_ec.
+    Quindi la verifica è un OR fra fattura e movimento, non solo fattura.
+
+    fattura_id su un movimento può essere l'id reale o l'invoice_key
+    (fallback storico in registra_pagamento_fattura): la query cerca
+    entrambi.
 
     Una sola query batch su tutte le fatture coinvolte: niente N+1
     (pattern già segnalato come problema altrove nell'audit statico).
     """
     fattura_ids = list({m["fattura_id"] for m in movimenti if m.get("fattura_id")})
-    if not fattura_ids:
-        return
-    fatture = await db[Collections.INVOICES].find(
-        {"id": {"$in": fattura_ids}},
-        {"_id": 0, "id": 1, "riconciliato_con_ec": 1, "riconciliato_automaticamente": 1, "match_score": 1},
-    ).to_list(len(fattura_ids))
-    per_id = {f["id"]: f for f in fatture}
+    fatture_by_key: Dict[str, Any] = {}
+    if fattura_ids:
+        fatture = await db[Collections.INVOICES].find(
+            {"$or": [{"id": {"$in": fattura_ids}}, {"invoice_key": {"$in": fattura_ids}}]},
+            {"_id": 0, "id": 1, "invoice_key": 1, "riconciliato": 1,
+             "riconciliato_con_ec": 1, "riconciliato_automaticamente": 1, "match_score": 1},
+        ).to_list(len(fattura_ids))
+        for f in fatture:
+            for chiave in (f.get("id"), f.get("invoice_key")):
+                if chiave:
+                    fatture_by_key[chiave] = f
+
     for m in movimenti:
         fid = m.get("fattura_id")
-        if not fid:
+        is_pos_trasferimento = m.get("source") == "trasferimento_pos"
+        if not fid and not is_pos_trasferimento:
             continue
-        fattura = per_id.get(fid)
-        verificata = bool(fattura and fattura.get("riconciliato_con_ec"))
+        fattura = fatture_by_key.get(fid) if fid else None
+        verificata_fattura = bool(fattura and (fattura.get("riconciliato_con_ec") or fattura.get("riconciliato")))
+        verificata = verificata_fattura or bool(m.get("riconciliato"))
         m["riconciliazione"] = {
+            "tipo": "pos_trasferimento" if is_pos_trasferimento else "fattura",
             "verificata": verificata,
-            "automatica": bool(fattura and fattura.get("riconciliato_automaticamente")) if verificata else False,
-            "match_score": fattura.get("match_score") if verificata else None,
+            "automatica": bool(fattura and fattura.get("riconciliato_automaticamente")) if verificata_fattura else False,
+            "match_score": fattura.get("match_score") if verificata_fattura else None,
+            "accreditato_ec": round(float(m.get("accreditato_ec") or 0), 2) if is_pos_trasferimento and m.get("accreditato_ec") else None,
         }
 
 
