@@ -38,7 +38,7 @@ Gli 8 fallimenti e i 7 errori risultano bloccati o condizionati dall'ambiente es
 ### Note ambiente
 - La variabile `MONGO_URL` risultava impostata nel container, ma la connessione verso Atlas ha restituito `ServerSelectionTimeoutError` per irraggiungibilità di rete dal sandbox — non per assenza di configurazione.
 - Installazione locale non versionata: `defusedxml==0.7.1` (già dichiarato in `backend/requirements.txt` ma assente nel venv del container) — installata solo per permettere la raccolta di 84 file di test altrimenti in errore di import; nessuna modifica a `requirements.txt` o ad altro file versionato.
-- Incidente di sicurezza separato: è richiesta la rotazione preventiva di una credenziale esterna potenzialmente esposta. Nessun valore sensibile è riportato in questo registro. La rotazione richiede uno step dedicato e l'autorizzazione esplicita dell'utente.
+- Incidente di sicurezza separato (SEC-001, censimento in SEC-001A completato): una credenziale MongoDB è comparsa nei log di questa sessione durante l'analisi. Nessun valore sensibile è riportato in questo registro. Decisione esplicita dell'utente (19/07/2026): **non ruotare la credenziale** — accesso alla chat e al dispositivo riservato esclusivamente all'utente, nessuna terza parte con visibilità sulla cronologia. SEC-001B (creazione nuovo utente Atlas) resta quindi **non eseguito, chiuso su decisione dell'utente**, non più in sospeso in attesa di autorizzazione.
 
 ### Gap di copertura individuati (conteggi reali sulla suite)
 - **Frontend**: 0 test automatici su 129 componenti `.jsx`/`.tsx`; nessun tool (Vitest/Jest) configurato in `frontend/package.json`.
