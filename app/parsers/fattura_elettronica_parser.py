@@ -69,18 +69,41 @@ def clean_xml_namespaces(xml_content: str) -> str:
 
 def parse_fattura_xml(xml_content: str) -> Dict[str, Any]:
     """
-    Parse una fattura elettronica XML italiana.
-    
+    Parse una fattura elettronica XML italiana. Ritorna la PRIMA fattura
+    trovata nel file.
+
+    Un file FatturaPA puo' contenere PIU' fatture raggruppate in un unico
+    file (piu' elementi <FatturaElettronicaBody> sotto lo stesso header/
+    CedentePrestatore — caso reale per fatture differite spedite insieme
+    dallo stesso fornitore). Se il file ne contiene piu' di una, il
+    risultato include "multi_body_count" (> 1) e "_altri_body" (le fatture
+    aggiuntive, stesso schema di questo dict) cosi' il chiamante puo'
+    importarle tutte invece di perderle silenziosamente (bug reale
+    19/07/2026: prima veniva letto solo il primo body).
+
     Args:
         xml_content: Contenuto XML della fattura
-        
+
     Returns:
         Dict con i dati della fattura estratti
+    """
+    risultati = parse_fattura_xml_multi(xml_content)
+    primo = dict(risultati[0])
+    if len(risultati) > 1:
+        primo["multi_body_count"] = len(risultati)
+        primo["_altri_body"] = risultati[1:]
+    return primo
+
+
+def parse_fattura_xml_multi(xml_content: str) -> List[Dict[str, Any]]:
+    """
+    Come parse_fattura_xml, ma ritorna SEMPRE la lista completa delle
+    fatture contenute nel file (quasi sempre lunga 1).
     """
     try:
         # Pulisci XML da namespace e prefissi
         xml_content = clean_xml_namespaces(xml_content)
-        
+
         # Parse XML - prova diverse codifiche
         root = None
         for encoding in ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']:
@@ -89,13 +112,13 @@ def parse_fattura_xml(xml_content: str) -> Dict[str, Any]:
                 break
             except (ET.ParseError, UnicodeEncodeError, UnicodeDecodeError):
                 continue
-        
+
         if root is None:
             try:
                 root = ET.fromstring(xml_content)
             except ET.ParseError as e:
-                return {"error": f"Errore parsing XML: {str(e)}", "raw_xml_parsed": False}
-        
+                return [{"error": f"Errore parsing XML: {str(e)}", "raw_xml_parsed": False}]
+
         # Funzione helper per trovare elementi indipendentemente dal namespace
         def find_element(parent, tag_name):
             """Trova elemento ignorando namespace."""
@@ -111,7 +134,7 @@ def parse_fattura_xml(xml_content: str) -> Dict[str, Any]:
                 if local_name == tag_name:
                     return child
             return None
-        
+
         def find_all_elements(parent, tag_name):
             """Trova tutti gli elementi con un certo nome locale."""
             results = []
@@ -122,12 +145,12 @@ def parse_fattura_xml(xml_content: str) -> Dict[str, Any]:
                 if local_name == tag_name:
                     results.append(child)
             return results
-        
+
         def get_text(parent, tag_name, default=""):
             """Ottieni il testo di un elemento."""
             el = find_element(parent, tag_name)
             return el.text if el is not None and el.text else default
-        
+
         def get_nested_text(parent, *path, default=""):
             """Ottieni testo da path annidato."""
             current = parent
@@ -136,11 +159,13 @@ def parse_fattura_xml(xml_content: str) -> Dict[str, Any]:
                 if current is None:
                     return default
             return current.text if current is not None and current.text else default
-        
-        # Trova header e body
+
+        # Trova header e TUTTI i body (un file puo' contenere piu' fatture)
         header = find_element(root, 'FatturaElettronicaHeader')
-        body = find_element(root, 'FatturaElettronicaBody')
-        
+        bodies = find_all_elements(root, 'FatturaElettronicaBody')
+        if not bodies:
+            return [{"error": "FatturaElettronicaBody non trovato nell'XML", "raw_xml_parsed": False}]
+
         def get_denominazione_o_persona_fisica(parent):
             """Denominazione, oppure Nome+Cognome per persona fisica/ditta individuale."""
             denominazione = (
@@ -159,7 +184,7 @@ def parse_fattura_xml(xml_content: str) -> Dict[str, Any]:
             )
             return " ".join(p for p in (nome, cognome) if p)
 
-        # Estrai dati fornitore (CedentePrestatore)
+        # Estrai dati fornitore (CedentePrestatore) — condiviso da tutti i body
         cedente = find_element(header, 'CedentePrestatore')
         fornitore = {
             "denominazione": get_denominazione_o_persona_fisica(cedente),
@@ -175,8 +200,8 @@ def parse_fattura_xml(xml_content: str) -> Dict[str, Any]:
             "telefono": get_nested_text(cedente, 'Contatti', 'Telefono'),
             "email": get_nested_text(cedente, 'Contatti', 'Email'),
         }
-        
-        # Estrai dati cliente (CessionarioCommittente)
+
+        # Estrai dati cliente (CessionarioCommittente) — condiviso da tutti i body
         cessionario = find_element(header, 'CessionarioCommittente')
         cliente = {
             "denominazione": get_denominazione_o_persona_fisica(cessionario),
@@ -189,210 +214,225 @@ def parse_fattura_xml(xml_content: str) -> Dict[str, Any]:
             "comune": get_nested_text(cessionario, 'Sede', 'Comune'),
             "provincia": get_nested_text(cessionario, 'Sede', 'Provincia'),
         }
-        
-        # Estrai dati generali documento
-        dati_generali = find_element(body, 'DatiGeneraliDocumento')
-        numero_fattura = get_text(dati_generali, 'Numero')
-        data_fattura = get_text(dati_generali, 'Data')
-        tipo_documento = get_text(dati_generali, 'TipoDocumento')
-        divisa = get_text(dati_generali, 'Divisa', 'EUR')
-        importo_totale = get_text(dati_generali, 'ImportoTotaleDocumento', '0')
-        
-        # Estrai causali
-        causali = []
-        for causale_el in find_all_elements(dati_generali, 'Causale'):
-            if causale_el.text:
-                causali.append(causale_el.text)
-        
-        # Estrai DatiFattureCollegate (riferimenti NC↔Fattura)
-        # In FatturaPA, DatiFattureCollegate è dentro DatiGenerali (non DatiGeneraliDocumento)
-        dati_generali_parent = find_element(body, 'DatiGenerali')
-        dati_fatture_collegate = []
-        collegate_elements = find_all_elements(dati_generali_parent or body, 'DatiFattureCollegate')
-        for dfc in collegate_elements:
-            riferimento = {
-                "id_documento": get_text(dfc, 'IdDocumento'),
-                "data": get_text(dfc, 'Data'),
-                "num_item": get_text(dfc, 'NumItem'),
-                "codice_commessa": get_text(dfc, 'CodiceCommessaConvenzione'),
-                "codice_cup": get_text(dfc, 'CodiceCUP'),
-                "codice_cig": get_text(dfc, 'CodiceCIG'),
-            }
-            # Pulisci: rimuovi campi vuoti
-            riferimento = {k: v for k, v in riferimento.items() if v}
-            if riferimento:
-                dati_fatture_collegate.append(riferimento)
-        
-        # Estrai anche DatiOrdineAcquisto per riferimenti aggiuntivi
-        dati_ordine = []
-        for dao in find_all_elements(dati_generali_parent or body, 'DatiOrdineAcquisto'):
-            ordine = {
-                "id_documento": get_text(dao, 'IdDocumento'),
-                "data": get_text(dao, 'Data'),
-                "num_item": get_text(dao, 'NumItem'),
-                "codice_commessa": get_text(dao, 'CodiceCommessaConvenzione'),
-            }
-            ordine = {k: v for k, v in ordine.items() if v}
-            if ordine:
-                dati_ordine.append(ordine)
 
-        # Estrai DatiContratto (es. numero contratto di noleggio/leasing)
-        dati_contratto = []
-        for dc in find_all_elements(dati_generali_parent or body, 'DatiContratto'):
-            contratto = {
-                "id_documento": get_text(dc, 'IdDocumento'),
-                "data": get_text(dc, 'Data'),
-                "num_item": get_text(dc, 'NumItem'),
-                "codice_commessa": get_text(dc, 'CodiceCommessaConvenzione'),
-                "codice_cup": get_text(dc, 'CodiceCUP'),
-                "codice_cig": get_text(dc, 'CodiceCIG'),
-            }
-            contratto = {k: v for k, v in contratto.items() if v}
-            if contratto:
-                dati_contratto.append(contratto)
-        
-        # Estrai linee dettaglio
-        linee = []
-        for linea in find_all_elements(body, 'DettaglioLinee'):
-            descrizione = get_text(linea, 'Descrizione')
-
-            # AltriDatiGestionali: campi liberi TipoDato/RiferimentoTesto usati da
-            # molti fornitori (es. Leasys, ALD) per veicolare dati strutturati
-            # (codice cliente, contratto, targa, telaio, causali reali) che non
-            # trovano posto nei campi standard e altrimenti andrebbero persi.
-            altri_dati_gestionali = []
-            for adg in find_all_elements(linea, 'AltriDatiGestionali'):
-                voce = {
-                    "tipo_dato": get_text(adg, 'TipoDato'),
-                    "riferimento_testo": get_text(adg, 'RiferimentoTesto'),
-                    "riferimento_numero": get_text(adg, 'RiferimentoNumero'),
-                    "riferimento_data": get_text(adg, 'RiferimentoData'),
-                }
-                voce = {k: v for k, v in voce.items() if v}
-                if voce:
-                    altri_dati_gestionali.append(voce)
-
-            linea_data = {
-                "numero_linea": get_text(linea, 'NumeroLinea'),
-                "descrizione": descrizione,
-                "quantita": get_text(linea, 'Quantita', '1'),
-                "unita_misura": get_text(linea, 'UnitaMisura'),
-                "prezzo_unitario": get_text(linea, 'PrezzoUnitario', '0'),
-                "prezzo_totale": get_text(linea, 'PrezzoTotale', '0'),
-                "aliquota_iva": get_text(linea, 'AliquotaIVA', '0'),
-                "natura": get_text(linea, 'Natura'),
-                "data_inizio_periodo": get_text(linea, 'DataInizioPeriodo'),
-                "data_fine_periodo": get_text(linea, 'DataFinePeriodo'),
-                "altri_dati_gestionali": altri_dati_gestionali,
-            }
-            linee.append(linea_data)
-        
-        # Estrai riepilogo IVA
-        riepilogo_iva = []
-        for riepilogo in find_all_elements(body, 'DatiRiepilogo'):
-            riepilogo_data = {
-                "aliquota_iva": get_text(riepilogo, 'AliquotaIVA', '0'),
-                "natura": get_text(riepilogo, 'Natura'),
-                "imponibile": get_text(riepilogo, 'ImponibileImporto', '0'),
-                "imposta": get_text(riepilogo, 'Imposta', '0'),
-                "riferimento_normativo": get_text(riepilogo, 'RiferimentoNormativo'),
-            }
-            riepilogo_iva.append(riepilogo_data)
-        
-        # Estrai dati pagamento
-        dati_pagamento = find_element(body, 'DatiPagamento')
-        dettaglio_pagamento = find_element(dati_pagamento, 'DettaglioPagamento') if dati_pagamento else None
-        pagamento = {
-            "condizioni": get_text(dati_pagamento, 'CondizioniPagamento') if dati_pagamento else "",
-            "modalita": get_text(dettaglio_pagamento, 'ModalitaPagamento') if dettaglio_pagamento else "",
-            "data_scadenza": get_text(dettaglio_pagamento, 'DataScadenzaPagamento') if dettaglio_pagamento else "",
-            "importo": get_text(dettaglio_pagamento, 'ImportoPagamento', '0') if dettaglio_pagamento else "0",
-            "istituto_finanziario": get_text(dettaglio_pagamento, 'IstitutoFinanziario') if dettaglio_pagamento else "",
-            "iban": get_text(dettaglio_pagamento, 'IBAN') if dettaglio_pagamento else "",
-        }
-        
-        # Calcola totali
-        try:
-            total_amount = float(importo_totale) if importo_totale else 0
-        except ValueError:
-            total_amount = 0
-        
-        # Calcola imponibile e IVA totali
-        imponibile_totale = 0
-        iva_totale = 0
-        for r in riepilogo_iva:
+        risultati = []
+        for body in bodies:
             try:
-                imponibile_totale += float(r.get("imponibile", 0))
-                iva_totale += float(r.get("imposta", 0))
-            except ValueError:
-                pass
-        
-        # Calcola somma righe per verifica coerenza
-        somma_righe = 0
-        for linea in linee:
-            try:
-                somma_righe += float(linea.get("prezzo_totale", 0))
-            except ValueError:
-                pass
-        
-        # Verifica coerenza totali
-        totale_calcolato = round(imponibile_totale + iva_totale, 2)
-        differenza_totali = abs(total_amount - totale_calcolato)
-        totali_coerenti = differenza_totali < 0.05  # Tolleranza 5 centesimi
-        
-        # Estrai allegati (PDF in base64)
-        allegati = []
-        for allegato in find_all_elements(body, 'Allegati'):
-            nome_attachment = get_text(allegato, 'NomeAttachment')
-            formato = get_text(allegato, 'FormatoAttachment')
-            attachment_data = get_text(allegato, 'Attachment')
-            descrizione_allegato = get_text(allegato, 'DescrizioneAttachment')
-            
-            if attachment_data:
-                allegati.append({
-                    "nome": nome_attachment,
-                    "formato": formato or "PDF",
-                    "descrizione": descrizione_allegato,
-                    "base64_data": attachment_data,
-                    "size_kb": round(len(attachment_data) * 3 / 4 / 1024, 2)  # Stima dimensione
-                })
-        
-        result = {
-            "invoice_number": numero_fattura,
-            "invoice_date": data_fattura,
-            "tipo_documento": tipo_documento,
-            "tipo_documento_desc": TIPO_DOC_MAP.get(tipo_documento, tipo_documento),
-            "divisa": divisa,
-            "total_amount": total_amount,
-            "imponibile": imponibile_totale,
-            "iva": iva_totale,
-            "causali": causali,
-            "dati_fatture_collegate": dati_fatture_collegate,
-            "dati_ordine_acquisto": dati_ordine,
-            "dati_contratto": dati_contratto,
-            "fornitore": fornitore,
-            "cliente": cliente,
-            "linee": linee,
-            "riepilogo_iva": riepilogo_iva,
-            "pagamento": pagamento,
-            "supplier_name": fornitore.get("denominazione", ""),
-            "supplier_vat": fornitore.get("partita_iva", ""),
-            "allegati": allegati,
-            "has_pdf": len([a for a in allegati if a.get("formato", "").upper() == "PDF"]) > 0,
-            "totali_coerenti": totali_coerenti,
-            "differenza_totali": differenza_totali,
-            "somma_righe": somma_righe,
-            "raw_xml_parsed": True
-        }
-        
-        return result
-        
+                risultati.append(_parse_body(
+                    body, fornitore, cliente,
+                    find_element, find_all_elements, get_text, get_nested_text,
+                ))
+            except Exception as e:
+                logger.error(f"Errore generico parsing fattura (body): {e}")
+                risultati.append({"error": f"Errore parsing: {str(e)}", "raw_xml_parsed": False})
+        return risultati
+
     except ET.ParseError as e:
         logger.error(f"Errore parsing XML: {e}")
-        return {"error": f"Errore parsing XML: {str(e)}", "raw_xml_parsed": False}
+        return [{"error": f"Errore parsing XML: {str(e)}", "raw_xml_parsed": False}]
     except Exception as e:
         logger.error(f"Errore generico parsing fattura: {e}")
-        return {"error": f"Errore parsing: {str(e)}", "raw_xml_parsed": False}
+        return [{"error": f"Errore parsing: {str(e)}", "raw_xml_parsed": False}]
+
+
+def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_text, get_nested_text) -> Dict[str, Any]:
+    """Estrae i dati di UNA fattura da un singolo <FatturaElettronicaBody>."""
+    # Estrai dati generali documento
+    dati_generali = find_element(body, 'DatiGeneraliDocumento')
+    numero_fattura = get_text(dati_generali, 'Numero')
+    data_fattura = get_text(dati_generali, 'Data')
+    tipo_documento = get_text(dati_generali, 'TipoDocumento')
+    divisa = get_text(dati_generali, 'Divisa', 'EUR')
+    importo_totale = get_text(dati_generali, 'ImportoTotaleDocumento', '0')
+
+    # Estrai causali
+    causali = []
+    for causale_el in find_all_elements(dati_generali, 'Causale'):
+        if causale_el.text:
+            causali.append(causale_el.text)
+
+    # Estrai DatiFattureCollegate (riferimenti NC↔Fattura)
+    # In FatturaPA, DatiFattureCollegate è dentro DatiGenerali (non DatiGeneraliDocumento)
+    dati_generali_parent = find_element(body, 'DatiGenerali')
+    dati_fatture_collegate = []
+    collegate_elements = find_all_elements(dati_generali_parent or body, 'DatiFattureCollegate')
+    for dfc in collegate_elements:
+        riferimento = {
+            "id_documento": get_text(dfc, 'IdDocumento'),
+            "data": get_text(dfc, 'Data'),
+            "num_item": get_text(dfc, 'NumItem'),
+            "codice_commessa": get_text(dfc, 'CodiceCommessaConvenzione'),
+            "codice_cup": get_text(dfc, 'CodiceCUP'),
+            "codice_cig": get_text(dfc, 'CodiceCIG'),
+        }
+        # Pulisci: rimuovi campi vuoti
+        riferimento = {k: v for k, v in riferimento.items() if v}
+        if riferimento:
+            dati_fatture_collegate.append(riferimento)
+
+    # Estrai anche DatiOrdineAcquisto per riferimenti aggiuntivi
+    dati_ordine = []
+    for dao in find_all_elements(dati_generali_parent or body, 'DatiOrdineAcquisto'):
+        ordine = {
+            "id_documento": get_text(dao, 'IdDocumento'),
+            "data": get_text(dao, 'Data'),
+            "num_item": get_text(dao, 'NumItem'),
+            "codice_commessa": get_text(dao, 'CodiceCommessaConvenzione'),
+        }
+        ordine = {k: v for k, v in ordine.items() if v}
+        if ordine:
+            dati_ordine.append(ordine)
+
+    # Estrai DatiContratto (es. numero contratto di noleggio/leasing)
+    dati_contratto = []
+    for dc in find_all_elements(dati_generali_parent or body, 'DatiContratto'):
+        contratto = {
+            "id_documento": get_text(dc, 'IdDocumento'),
+            "data": get_text(dc, 'Data'),
+            "num_item": get_text(dc, 'NumItem'),
+            "codice_commessa": get_text(dc, 'CodiceCommessaConvenzione'),
+            "codice_cup": get_text(dc, 'CodiceCUP'),
+            "codice_cig": get_text(dc, 'CodiceCIG'),
+        }
+        contratto = {k: v for k, v in contratto.items() if v}
+        if contratto:
+            dati_contratto.append(contratto)
+
+    # Estrai linee dettaglio
+    linee = []
+    for linea in find_all_elements(body, 'DettaglioLinee'):
+        descrizione = get_text(linea, 'Descrizione')
+
+        # AltriDatiGestionali: campi liberi TipoDato/RiferimentoTesto usati da
+        # molti fornitori (es. Leasys, ALD) per veicolare dati strutturati
+        # (codice cliente, contratto, targa, telaio, causali reali) che non
+        # trovano posto nei campi standard e altrimenti andrebbero persi.
+        altri_dati_gestionali = []
+        for adg in find_all_elements(linea, 'AltriDatiGestionali'):
+            voce = {
+                "tipo_dato": get_text(adg, 'TipoDato'),
+                "riferimento_testo": get_text(adg, 'RiferimentoTesto'),
+                "riferimento_numero": get_text(adg, 'RiferimentoNumero'),
+                "riferimento_data": get_text(adg, 'RiferimentoData'),
+            }
+            voce = {k: v for k, v in voce.items() if v}
+            if voce:
+                altri_dati_gestionali.append(voce)
+
+        linea_data = {
+            "numero_linea": get_text(linea, 'NumeroLinea'),
+            "descrizione": descrizione,
+            "quantita": get_text(linea, 'Quantita', '1'),
+            "unita_misura": get_text(linea, 'UnitaMisura'),
+            "prezzo_unitario": get_text(linea, 'PrezzoUnitario', '0'),
+            "prezzo_totale": get_text(linea, 'PrezzoTotale', '0'),
+            "aliquota_iva": get_text(linea, 'AliquotaIVA', '0'),
+            "natura": get_text(linea, 'Natura'),
+            "data_inizio_periodo": get_text(linea, 'DataInizioPeriodo'),
+            "data_fine_periodo": get_text(linea, 'DataFinePeriodo'),
+            "altri_dati_gestionali": altri_dati_gestionali,
+        }
+        linee.append(linea_data)
+
+    # Estrai riepilogo IVA
+    riepilogo_iva = []
+    for riepilogo in find_all_elements(body, 'DatiRiepilogo'):
+        riepilogo_data = {
+            "aliquota_iva": get_text(riepilogo, 'AliquotaIVA', '0'),
+            "natura": get_text(riepilogo, 'Natura'),
+            "imponibile": get_text(riepilogo, 'ImponibileImporto', '0'),
+            "imposta": get_text(riepilogo, 'Imposta', '0'),
+            "riferimento_normativo": get_text(riepilogo, 'RiferimentoNormativo'),
+        }
+        riepilogo_iva.append(riepilogo_data)
+
+    # Estrai dati pagamento
+    dati_pagamento = find_element(body, 'DatiPagamento')
+    dettaglio_pagamento = find_element(dati_pagamento, 'DettaglioPagamento') if dati_pagamento else None
+    pagamento = {
+        "condizioni": get_text(dati_pagamento, 'CondizioniPagamento') if dati_pagamento else "",
+        "modalita": get_text(dettaglio_pagamento, 'ModalitaPagamento') if dettaglio_pagamento else "",
+        "data_scadenza": get_text(dettaglio_pagamento, 'DataScadenzaPagamento') if dettaglio_pagamento else "",
+        "importo": get_text(dettaglio_pagamento, 'ImportoPagamento', '0') if dettaglio_pagamento else "0",
+        "istituto_finanziario": get_text(dettaglio_pagamento, 'IstitutoFinanziario') if dettaglio_pagamento else "",
+        "iban": get_text(dettaglio_pagamento, 'IBAN') if dettaglio_pagamento else "",
+    }
+
+    # Calcola totali
+    try:
+        total_amount = float(importo_totale) if importo_totale else 0
+    except ValueError:
+        total_amount = 0
+
+    # Calcola imponibile e IVA totali
+    imponibile_totale = 0
+    iva_totale = 0
+    for r in riepilogo_iva:
+        try:
+            imponibile_totale += float(r.get("imponibile", 0))
+            iva_totale += float(r.get("imposta", 0))
+        except ValueError:
+            pass
+
+    # Calcola somma righe per verifica coerenza
+    somma_righe = 0
+    for linea in linee:
+        try:
+            somma_righe += float(linea.get("prezzo_totale", 0))
+        except ValueError:
+            pass
+
+    # Verifica coerenza totali
+    totale_calcolato = round(imponibile_totale + iva_totale, 2)
+    differenza_totali = abs(total_amount - totale_calcolato)
+    totali_coerenti = differenza_totali < 0.05  # Tolleranza 5 centesimi
+
+    # Estrai allegati (PDF in base64)
+    allegati = []
+    for allegato in find_all_elements(body, 'Allegati'):
+        nome_attachment = get_text(allegato, 'NomeAttachment')
+        formato = get_text(allegato, 'FormatoAttachment')
+        attachment_data = get_text(allegato, 'Attachment')
+        descrizione_allegato = get_text(allegato, 'DescrizioneAttachment')
+
+        if attachment_data:
+            allegati.append({
+                "nome": nome_attachment,
+                "formato": formato or "PDF",
+                "descrizione": descrizione_allegato,
+                "base64_data": attachment_data,
+                "size_kb": round(len(attachment_data) * 3 / 4 / 1024, 2)  # Stima dimensione
+            })
+
+    result = {
+        "invoice_number": numero_fattura,
+        "invoice_date": data_fattura,
+        "tipo_documento": tipo_documento,
+        "tipo_documento_desc": TIPO_DOC_MAP.get(tipo_documento, tipo_documento),
+        "divisa": divisa,
+        "total_amount": total_amount,
+        "imponibile": imponibile_totale,
+        "iva": iva_totale,
+        "causali": causali,
+        "dati_fatture_collegate": dati_fatture_collegate,
+        "dati_ordine_acquisto": dati_ordine,
+        "dati_contratto": dati_contratto,
+        "fornitore": fornitore,
+        "cliente": cliente,
+        "linee": linee,
+        "riepilogo_iva": riepilogo_iva,
+        "pagamento": pagamento,
+        "supplier_name": fornitore.get("denominazione", ""),
+        "supplier_vat": fornitore.get("partita_iva", ""),
+        "allegati": allegati,
+        "has_pdf": len([a for a in allegati if a.get("formato", "").upper() == "PDF"]) > 0,
+        "totali_coerenti": totali_coerenti,
+        "differenza_totali": differenza_totali,
+        "somma_righe": somma_righe,
+        "raw_xml_parsed": True
+    }
+
+    return result
 
 
 def parse_multiple_fatture(xml_contents: List[str]) -> List[Dict[str, Any]]:

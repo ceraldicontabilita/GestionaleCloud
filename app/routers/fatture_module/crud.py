@@ -454,16 +454,19 @@ async def storia_fattura(fattura_id: str) -> Dict[str, Any]:
     }
 
 
-async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
-    """
-    Visualizza fattura nel formato ASSO Software (FoglioStileAssoSoftware.xsl).
-    1. Cerca la fattura in `invoices` (poi fallback `indice_documenti`)
+async def _trova_fattura_e_xml_originale(fattura_id: str) -> tuple[Optional[dict], Optional[bytes]]:
+    """Cerca la fattura e recupera l'XML FatturaPA originale (bytes, gia'
+    ripulito dall'eventuale busta .p7m), se disponibile. Punto UNICO usato
+    sia dalla vista renderizzata (view_fattura_assoinvoice) sia dal download
+    del file grezzo (download_xml_originale) — cosi' le due viste concordano
+    sempre su cosa sia "l'originale" di una fattura.
+
+    1. Cerca la fattura in `invoices` (poi fallback COL_FATTURE_RICEVUTE / _id)
     2. Legge il file XML dal disco (gestisce .p7m estraendo l'XML interno)
-    3. Applica la trasformazione XSLT con il foglio ASSO
-    4. Restituisce l'HTML trasformato
+       oppure, se il file non e' su disco, usa xml_raw/xml_content salvato
+       nel documento Mongo.
     """
     import os
-    from lxml import etree as LET
 
     db = Database.get_db()
 
@@ -481,7 +484,7 @@ async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
         except Exception:
             pass
     if not fattura:
-        raise HTTPException(status_code=404, detail="Fattura non trovata")
+        return None, None
 
     xml_file_path = fattura.get("xml_file_path")
     # stringa XML se già estratta — nomi diversi a seconda della pipeline di import
@@ -514,6 +517,50 @@ async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
     elif xml_raw_content:
         xml_bytes = xml_raw_content.encode("utf-8") if isinstance(xml_raw_content, str) else xml_raw_content
 
+    return fattura, xml_bytes
+
+
+async def download_xml_originale(fattura_id: str) -> Response:
+    """Scarica l'XML FatturaPA ORIGINALE della fattura, cosi' come arrivato
+    (nessuna ricostruzione/riepilogo): richiesta esplicita utente 19/07/2026
+    ("io ho bisogno di vedere sempre l'originale la fattura così come
+    arriva altrimenti non potrei mai vedere se c'è un errore") — prima non
+    esisteva nessun modo di scaricare/vedere il testo XML grezzo, nemmeno
+    quando era salvato nel database.
+    """
+    fattura, xml_bytes = await _trova_fattura_e_xml_originale(fattura_id)
+    if fattura is None:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    if not xml_bytes:
+        raise HTTPException(
+            status_code=404,
+            detail="XML originale non disponibile per questa fattura (non salvato in fase di import).",
+        )
+
+    numero = fattura.get("invoice_number") or fattura.get("numero_fattura") or fattura_id
+    nome_file = f"fattura_{str(numero).replace('/', '-')}.xml"
+    return Response(
+        content=xml_bytes,
+        media_type="application/xml",
+        headers={"Content-Disposition": f'attachment; filename="{nome_file}"'},
+    )
+
+
+async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
+    """
+    Visualizza fattura nel formato ASSO Software (FoglioStileAssoSoftware.xsl).
+    1. Cerca la fattura in `invoices` (poi fallback `indice_documenti`)
+    2. Legge il file XML dal disco (gestisce .p7m estraendo l'XML interno)
+    3. Applica la trasformazione XSLT con il foglio ASSO
+    4. Restituisce l'HTML trasformato
+    """
+    import os
+    from lxml import etree as LET
+
+    fattura, xml_bytes = await _trova_fattura_e_xml_originale(fattura_id)
+    if fattura is None:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+
     # ── Applica ASSO XSL se abbiamo l'XML ────────────────────────────────────
     if xml_bytes:
         try:
@@ -537,6 +584,11 @@ async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
             logger.warning(f"Errore XSLT per {fattura_id}: {xsl_err} — fallback HTML generico")
 
     # ── Fallback: HTML generico se XML non disponibile ────────────────────────
+    # ATTENZIONE (richiesta utente 19/07/2026): questo NON è il documento
+    # originale, è un riepilogo ricostruito con un sottoinsieme di campi —
+    # generate_invoice_html() lo segnala esplicitamente nell'HTML, cosi'
+    # l'utente sa sempre quando NON sta vedendo l'originale.
+    db = Database.get_db()
     righe = await db[COL_DETTAGLIO_RIGHE].find({"fattura_id": fattura_id}, {"_id": 0}).to_list(1000)
     if not righe and fattura.get("linee"):
         righe = fattura.get("linee", [])

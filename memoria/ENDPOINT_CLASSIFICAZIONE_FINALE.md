@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1019 · tenere: 667 · verificare: 329 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1020 · tenere: 668 · verificare: 329 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -552,6 +552,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/fatture-ricevute/fattura/{fattura_id}/pdf/{allegato_id}` | fatture_module.crud | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/fatture-ricevute/fattura/{fattura_id}/storia` | fatture_module.crud | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/fatture-ricevute/fattura/{fattura_id}/view-assoinvoice` | fatture_module.crud | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/fatture-ricevute/fattura/{fattura_id}/xml-originale` | fatture_module.crud | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/fatture-ricevute/fornitori` | fatture_module.crud | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/fatture-ricevute/import-paypal` | fatture_module.pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/fatture-ricevute/lista-paypal` | fatture_module.pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

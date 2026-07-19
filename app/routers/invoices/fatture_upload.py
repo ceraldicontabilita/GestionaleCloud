@@ -1255,20 +1255,39 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
     if parsed.get("error"):
         return {"status": "error", "filename": filename, "error": parsed["error"]}
 
-    if applica_filtro_anno:
-        from app.services.config_import import get_anno_importazione_attivo
-        invoice_date = parsed.get("invoice_date") or ""
-        anno_fattura = int(invoice_date[:4]) if invoice_date[:4].isdigit() else None
-        anno_attivo = await get_anno_importazione_attivo(db)
-        # Data mancante/illeggibile: NON archiviare silenziosamente una
-        # fattura che potrebbe essere dell'anno attivo solo per un XML
-        # malformato — resta nel flusso attivo, dove è comunque visibile e
-        # correggibile (a differenza dell'archivio storico, pensato per
-        # sola consultazione).
-        if anno_fattura and anno_fattura != anno_attivo:
-            return await archivia_fattura_storica(db, parsed, filename, source, xml_raw=xml_content)
+    # Un file FatturaPA può contenere PIÙ fatture raggruppate (più
+    # <FatturaElettronicaBody> sotto lo stesso header/CedentePrestatore —
+    # caso reale per fatture differite spedite insieme). Prima venivano
+    # lette solo dal parser e la fattura in più andava persa silenziosamente
+    # (importo/righe mai registrati). "altri_body" contiene le fatture
+    # aggiuntive trovate nello stesso file: vanno importate anche loro, una
+    # per una, con la stessa logica della prima (bug reale 19/07/2026).
+    altri_body = parsed.pop("_altri_body", None) or []
 
-    return await import_parsed_invoice(db, parsed, filename, source, xml_raw=xml_content)
+    async def _importa_una(p: Dict[str, Any]) -> Dict[str, Any]:
+        if applica_filtro_anno:
+            from app.services.config_import import get_anno_importazione_attivo
+            invoice_date = p.get("invoice_date") or ""
+            anno_fattura = int(invoice_date[:4]) if invoice_date[:4].isdigit() else None
+            anno_attivo = await get_anno_importazione_attivo(db)
+            # Data mancante/illeggibile: NON archiviare silenziosamente una
+            # fattura che potrebbe essere dell'anno attivo solo per un XML
+            # malformato — resta nel flusso attivo, dove è comunque visibile e
+            # correggibile (a differenza dell'archivio storico, pensato per
+            # sola consultazione).
+            if anno_fattura and anno_fattura != anno_attivo:
+                return await archivia_fattura_storica(db, p, filename, source, xml_raw=xml_content)
+
+        return await import_parsed_invoice(db, p, filename, source, xml_raw=xml_content)
+
+    risultato = await _importa_una(parsed)
+
+    if altri_body:
+        risultato = dict(risultato)
+        risultato["multi_body_xml"] = True
+        risultato["altre_fatture_stesso_file"] = [await _importa_una(p) for p in altri_body]
+
+    return risultato
 
 
 async def archivia_fattura_storica(db, parsed: Dict[str, Any], filename: str, source: str,

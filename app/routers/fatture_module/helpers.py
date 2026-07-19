@@ -168,6 +168,12 @@ def generate_invoice_html(fattura: Dict, righe_fattura: List[Dict] = None) -> st
                 <div>{stato_badge_html}</div>
             </div>
         </div>
+        <div style="background:#fef3c7;border-bottom:2px solid #f59e0b;padding:12px 32px;font-size:13px;color:#78350f;">
+            ⚠️ <strong>Questo NON è il documento XML originale</strong> — è un riepilogo con un
+            sottoinsieme di campi (l'XML originale di questa fattura non è disponibile o non è
+            stato possibile renderizzarlo). Non mostra eventuali acconti, dati di pagamento
+            completi, causali o righe aggiuntive presenti nell'originale.
+        </div>
         <div class="body">
             <div class="info-grid">
                 <div class="info-box">

@@ -120,6 +120,35 @@ def test_determina_tipo_movimento_fattura_normale():
     assert categoria == "Fatture"
 
 
+def test_determina_tipo_movimento_fattura_td24_resta_uscita():
+    """Bug reale 19/07/2026: fattura 20 di DI MASSA DARIO & c. sas (TD24,
+    fattura differita passiva da pagare) veniva registrata come "Incasso
+    cliente" (entrata) in Prima Nota Banca. TD24/25/26/27 sono codici che
+    descrivono la NATURA del documento assegnata da chi lo EMETTE (fornitore),
+    non la direzione per chi lo riceve: questo modulo gestisce solo fatture
+    PASSIVE, quindi devono sempre restare "uscita"/"Fatture", mai un
+    incasso."""
+    for tipo_doc in ("TD24", "TD25", "TD26", "TD27"):
+        tipo, categoria, prefisso = sync_mod.determina_tipo_movimento_fattura(
+            _fattura(tipo_documento=tipo_doc)
+        )
+        assert tipo == "uscita", tipo_doc
+        assert categoria == "Fatture", tipo_doc
+        assert prefisso == "Pagamento fattura", tipo_doc
+
+
+def test_conferma_fattura_provvisoria_td24_resta_uscita(monkeypatch):
+    db = _FakeDb()
+    db["invoices"].docs = [_fattura(tipo_documento="TD24")]
+    _patch_db(monkeypatch, db)
+
+    _run(sync_mod.conferma_fattura_provvisoria({"fattura_id": "fatt-1", "metodo": "banca"}))
+
+    banca = db["prima_nota_banca"].docs
+    assert banca[0]["tipo"] == "uscita"
+    assert banca[0]["categoria"] == "Fatture"
+
+
 def test_conferma_fattura_provvisoria_nota_credito_entrata_categoria_corretta(monkeypatch):
     db = _FakeDb()
     db["invoices"].docs = [_fattura(tipo_documento="TD04")]
