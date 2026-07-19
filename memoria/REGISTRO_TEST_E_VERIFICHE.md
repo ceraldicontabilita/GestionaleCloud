@@ -117,3 +117,22 @@ Tre commenti dell'app `chatgpt-codex-connector`, valutati singolarmente:
 - **Rotazione credenziale MongoDB** esposta durante l'analisi — step di sicurezza separato, sospeso in attesa di accesso alla dashboard Atlas.
 
 Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
+
+## Aggiornamento — 2026-07-19 (secondo bug di concorrenza, dopo il merge di PR #67)
+
+- Branch: claude/test-coverage-analysis-co5wif (nuovo lavoro dopo il merge)
+
+### Bug reale trovato e corretto (follow-up dal fix in PR #67)
+`_find_existing_corrispettivo` (`app/routers/invoices/corrispettivi_helpers.py`) ha lo stesso pattern find_one-poi-insert già corretto in `registra_corrispettivo`, ma su 3 livelli sequenziali (chiave XML, poi data+matricola, poi data+totale). Riprodotto con un test di interleaving reale (fake DB con `await asyncio.sleep(0)` su ogni operazione, non mongomock — che non cede mai il controllo e quindi NON avrebbe rivelato il problema): due upload quasi simultanei dello stesso corrispettivo creavano **due documenti "corrispettivi"** duplicati. Il movimento in Prima Nota Cassa non si duplicava (il fix di PR #67 teneva), ma il documento sorgente sì.
+
+**Correzione applicata (parziale, deliberatamente)**: solo l'inserimento finale per un corrispettivo nuovo è stato reso atomico (`find_one_and_update` con upsert), e solo quando è disponibile la chiave naturale del file XML (`corrispettivo_key`) — il caso riprodotto nel test e quello a rischio reale per import automatici concorrenti. I due controlli più deboli (data+matricola, data+totale, usati per corrispettivi manuali/provvisori senza chiave XML) restano non atomici: rischio residuo noto e accettato, non coperto da questo fix mirato per non ampliare il cambiamento oltre lo scenario verificato.
+
+### Nota sul metodo
+Confermato che i test isolati con `mongomock` (introdotti in PR #67) non sono sufficienti a rivelare race condition: `mongomock` esegue le operazioni senza mai cedere il controllo all'event loop, quindi `asyncio.gather` non produce interleaving reale. Per testare la concorrenza serve un fake DB che ceda esplicitamente il controllo (`await asyncio.sleep(0)`) ad ogni operazione — tecnica già usata per il primo bug, riapplicata qui.
+
+### Gap di copertura ancora aperti (aggiornato)
+- **Concorrenza**: i due controlli più deboli di `_find_existing_corrispettivo` (data+matricola, data+totale) restano non atomici — rischio residuo noto.
+- **Indice univoco** su `prima_nota_cassa` e su `corrispettivi.corrispettivo_key` lato Atlas — richiede accesso e autorizzazione separata.
+- **Rotazione credenziale MongoDB**: decisione esplicita dell'utente (19/07/2026) di NON ruotarla — chat e dispositivo ad accesso esclusivo dell'utente. Chiuso, non più un'azione in sospeso.
+
+Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
