@@ -7,7 +7,7 @@ funzione e' puramente contabile/anagrafica e resta nel gestionale.
 """
 import re
 import logging
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET  # sicurezza: blocca XXE/entity expansion su XML esterni
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Union

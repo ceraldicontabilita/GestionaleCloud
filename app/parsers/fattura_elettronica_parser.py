@@ -3,7 +3,7 @@ Parser per Fatture Elettroniche Italiane (FatturaPA)
 Supporta il formato XML FPR12 dell'Agenzia delle Entrate
 Gestisce tutti i formati: con namespace, con prefissi, senza namespace.
 """
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET  # sicurezza: blocca XXE/entity expansion su XML esterni
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import logging

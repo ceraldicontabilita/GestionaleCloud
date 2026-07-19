@@ -23,6 +23,8 @@ from typing import List, Dict, Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File
 import tempfile
 import os
+
+from app.utils.upload_validation import verifica_pdf_reale
 import logging
 
 from app.database import Database
@@ -383,9 +385,11 @@ async def import_f24(
         
         if not file.filename.lower().endswith('.pdf'):
             raise HTTPException(status_code=400, detail="Il file deve essere un PDF")
-        
+
+        content = await file.read()
+        verifica_pdf_reale(content, file.filename)
+
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
-            content = await file.read()
             tmp.write(content)
             tmp_path = tmp.name
         

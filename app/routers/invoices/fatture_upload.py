@@ -539,6 +539,103 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     return update
 
 
+def _normalizza_numero_fattura(numero: str) -> str:
+    """Normalizza il numero fattura per il confronto con le vecchie 'fatture
+    attese' (maiuscolo, senza spazi, zeri iniziali di ogni blocco rimossi:
+    "0000123/A" e "123/A" devono coincidere)."""
+    n = (numero or "").upper().strip()
+    n = re.sub(r"\s+", "", n)
+    n = re.sub(r"\b0+(\d)", r"\1", n)
+    return n
+
+
+async def _riscontra_anticipo_pendente(db, invoice: Dict[str, Any]) -> None:
+    """Compatibilità (audit 19/07/2026, review Codex su PR #65): lo scanner
+    notifiche Aruba è stato rimosso (nessuna nuova 'fattura attesa' viene più
+    creata), ma la collection fatture_attese può contenere record aperti
+    creati PRIMA di questa modifica, alcuni già confermati manualmente
+    dall'utente con un vero movimento in prima nota (stato
+    'confermata_anticipo' + prima_nota_id). Senza questo aggancio, quando
+    arriva la fattura XML vera per uno di quei record, l'anticipo resta
+    orfano E il fornitore (se a metodo cassa) riceverebbe un SECONDO
+    movimento da auto_registra_prima_nota — un doppio pagamento reale.
+    Va in idle silenzioso (nessuna query trova nulla) man mano che i
+    record aperti si esauriscono: non serve più aggiungerne di nuovi.
+    """
+    numero_norm = _normalizza_numero_fattura(
+        invoice.get("invoice_number") or invoice.get("numero_fattura") or ""
+    )
+    if not numero_norm:
+        return
+    importo = float(invoice.get("total_amount") or invoice.get("importo_totale") or 0)
+
+    try:
+        candidati = await db["fatture_attese"].find(
+            {"stato": {"$in": ["in_attesa_xml", "da_verificare", "confermata_anticipo"]},
+             "numero_norm": numero_norm},
+            {"_id": 0},
+        ).to_list(20)
+    except Exception:
+        logger.exception("Verifica anticipi pendenti (fatture_attese) non riuscita")
+        return
+
+    attesa = None
+    for c in candidati:
+        imp_attesa = c.get("importo")
+        if imp_attesa is None or abs(float(imp_attesa) - importo) <= 0.01:
+            attesa = c
+            break
+    if not attesa:
+        return
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db["fatture_attese"].update_one(
+        {"id": attesa["id"]},
+        {"$set": {"stato": "riscontrata", "invoice_id": invoice.get("id"),
+                  "riscontrata_at": now}},
+    )
+
+    if not (attesa.get("prima_nota_id") and attesa.get("prima_nota_collection")):
+        return
+
+    coll = attesa["prima_nota_collection"]
+    fattura_id = invoice.get("id")
+    await db[coll].update_one(
+        {"id": attesa["prima_nota_id"]},
+        {"$set": {
+            "fattura_id": fattura_id,
+            "riferimento": f"FATT-{fattura_id}",
+            "numero_fattura": invoice.get("invoice_number") or attesa.get("numero_fattura"),
+            "fornitore_piva": invoice.get("supplier_vat") or attesa.get("fornitore_piva"),
+            "descrizione": (
+                f"Pagamento fattura {invoice.get('invoice_number', '?')} - "
+                f"{(invoice.get('supplier_name') or attesa.get('fornitore_nome') or '')[:40]}"
+            ),
+            "anticipo_da_email": True,
+            "updated_at": now,
+        }},
+    )
+    metodo = "cassa" if coll == "prima_nota_cassa" else "banca"
+    await db["invoices"].update_one(
+        {"id": fattura_id},
+        {"$set": {
+            "prima_nota_id": attesa["prima_nota_id"],
+            "pagato": True,
+            "stato_pagamento": "pagata",
+            "metodo_pagamento_effettivo": metodo,
+            "data_pagamento": now[:10],
+            "registrata_da": "anticipo_email_aruba",
+        }},
+    )
+    invoice["prima_nota_id"] = attesa["prima_nota_id"]
+    invoice["pagato"] = True
+    invoice["stato_pagamento"] = "pagata"
+    logger.info(
+        f"Fattura {invoice.get('invoice_number')} agganciata al movimento "
+        f"anticipato pre-esistente {attesa['prima_nota_id']} ({metodo}) — nessun doppione"
+    )
+
+
 async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upload.xml") -> Dict[str, Any]:
     """
     Processa e salva una fattura parsata nel database.
@@ -766,22 +863,10 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
     except Exception:
         logger.exception("Errore propagazione evento fattura.created (upload manuale)")
 
-    # --- RISCONTRO FATTURE ATTESE (notifiche email Aruba) ---
-    # Se questa fattura era stata annunciata da una notifica Aruba, l'attesa
-    # viene marcata riscontrata; se l'utente aveva già confermato l'anticipo
-    # in prima nota, quel movimento viene agganciato alla fattura vera
-    # (lucchetto anti-doppione). Best-effort: non blocca l'import.
     try:
-        from app.services.aruba_notifiche import riscontra_fattura_attesa
-        riscontro = await riscontra_fattura_attesa(db, invoice)
-        if riscontro and riscontro.get("anticipo_agganciato"):
-            invoice["prima_nota_id"] = (
-                await db[Collections.INVOICES].find_one(
-                    {"id": invoice["id"]}, {"_id": 0, "prima_nota_id": 1}
-                ) or {}
-            ).get("prima_nota_id")
+        await _riscontra_anticipo_pendente(db, invoice)
     except Exception:
-        logger.exception("Errore riscontro fattura attesa (email Aruba)")
+        logger.exception(f"Riscontro anticipo pendente fallito per {invoice.get('invoice_number')}")
 
     return invoice
 

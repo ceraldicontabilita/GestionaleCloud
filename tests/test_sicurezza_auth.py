@@ -30,6 +30,13 @@ class TestPublicPaths:
         """Endpoint login deve essere pubblico."""
         assert "/api/auth/login" in PUBLIC_PATHS
 
+    def test_pin_login_pubblico(self):
+        """Endpoint PIN login (login reale usato dal frontend) deve essere
+        pubblico — regressione trovata da review Codex su PR #65: senza
+        questo path esplicito nessuno può più autenticarsi."""
+        assert "/api/auth/pin-login" in PUBLIC_PATHS
+        assert "/api/auth/pin-login/health" in PUBLIC_PATHS
+
     def test_setup_pubblico(self):
         """Endpoint setup iniziale deve essere pubblico."""
         assert "/api/auth/setup" in PUBLIC_PATHS
@@ -48,9 +55,15 @@ class TestPublicPaths:
 class TestPublicPrefixes:
     """Verifica prefissi pubblici."""
 
-    def test_auth_prefix(self):
-        """Tutti gli endpoint auth sono pubblici."""
-        assert "/api/auth/" in PUBLIC_PREFIXES
+    def test_auth_paths_espliciti(self):
+        """I 3 endpoint auth reali (login/logout/verify) sono pubblici come
+        path espliciti, non più come prefisso (audit sicurezza 19/07/2026:
+        il prefisso "/api/auth/" rendeva pubblico anche qualunque endpoint
+        futuro montato lì sotto)."""
+        assert "/api/auth/login" in PUBLIC_PATHS
+        assert "/api/auth/logout" in PUBLIC_PATHS
+        assert "/api/auth/verify" in PUBLIC_PATHS
+        assert "/api/auth/" not in PUBLIC_PREFIXES
 
     def test_public_api_prefix(self):
         """API esplicitamente pubbliche."""
@@ -97,8 +110,9 @@ class TestAllowlistCongelata:
     ALLOWLIST_PATHS_ATTESA = {
         # Health check
         "/", "/health", "/api/health", "/api/ping",
-        # Autenticazione (login PIN + setup primo admin)
-        "/api/auth/login", "/api/auth/setup",
+        # Autenticazione (login/logout/verify + setup primo admin + PIN login reale)
+        "/api/auth/login", "/api/auth/logout", "/api/auth/verify", "/api/auth/setup",
+        "/api/auth/pin-login", "/api/auth/pin-login/health",
         # Integrazioni esterne con auth propria (verify_token Meta, ERP_BRIDGE_SECRET)
         "/api/whatsapp/webhook", "/api/erp/ponte/fattura-ricevuta",
         # Pagine legali (revisione app Meta)
@@ -109,7 +123,7 @@ class TestAllowlistCongelata:
         "/robots.txt", "/sitemap.xml", "/favicon.ico",
     }
 
-    ALLOWLIST_PREFISSI_ATTESA = ["/api/auth/", "/api/public/", "/docs", "/redoc"]
+    ALLOWLIST_PREFISSI_ATTESA = ["/api/public/", "/docs", "/redoc"]
 
     def test_public_paths_esattamente_quelli_attesi(self):
         assert PUBLIC_PATHS == self.ALLOWLIST_PATHS_ATTESA, (

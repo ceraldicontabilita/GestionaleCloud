@@ -28,7 +28,12 @@ PUBLIC_PATHS = {
     
     # Authentication endpoints
     "/api/auth/login",
+    "/api/auth/logout",
+    "/api/auth/verify",  # verifica il token da sé (401 con messaggio specifico se assente/scaduto)
     "/api/auth/setup",  # Setup iniziale admin (solo se nessun admin esiste)
+    "/api/auth/pin-login",  # login PIN reale (pin_login.router montato su /api/auth): senza
+                             # questo path esplicito NESSUNO può più fare login (review Codex, PR #65)
+    "/api/auth/pin-login/health",  # diagnostica pubblica del router PIN, nessun dato sensibile
     # RIMOSSO: "/api/auth/register" — ora richiede autenticazione (admin crea utenti)
 
     # Integrazioni esterne: chiamanti che non possono avere un nostro JWT.
@@ -60,7 +65,11 @@ PUBLIC_PATHS = {
 
 # Path prefixes that don't require authentication
 PUBLIC_PREFIXES = [
-    "/api/auth/",        # All auth endpoints
+    # NOTA (audit sicurezza 19/07/2026): "/api/auth/" come prefisso è stato
+    # rimosso da qui — rendeva pubblico per costruzione QUALSIASI endpoint
+    # futuro montato sotto /api/auth/, non solo i 3 reali (login/logout/
+    # verify), che ora sono elencati esplicitamente in PUBLIC_PATHS con lo
+    # stesso identico comportamento di prima (nessun cambio per il frontend).
     "/api/public/",      # Explicit public API
     "/docs",             # Swagger UI assets
     "/redoc",            # ReDoc assets
@@ -141,14 +150,14 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 content={"detail": "Authentication required"},
                 headers={"WWW-Authenticate": "Bearer"}
             )
-        
+
         try:
             payload = jwt.decode(
                 token,
                 settings.SECRET_KEY,
                 algorithms=[settings.ALGORITHM]
             )
-            
+
             user_id = payload.get("sub")
             if not user_id:
                 return JSONResponse(
@@ -156,7 +165,20 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                     content={"detail": "Invalid token: missing user ID"},
                     headers={"WWW-Authenticate": "Bearer"}
                 )
-            
+
+            # Token revocato esplicitamente (logout) prima della scadenza
+            # naturale. Controllato SOLO dopo che firma/scadenza sono già
+            # validate (review Codex su PR #65): un token spazzatura non deve
+            # costare una query Mongo prima di essere respinto localmente.
+            from app.database import Database
+            from app.utils.token_blacklist import is_revocato
+            if await is_revocato(Database.get_db(), token):
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Sessione terminata (logout)"},
+                    headers={"WWW-Authenticate": "Bearer"}
+                )
+
             # Store user info in request state for downstream access
             request.state.user_id = user_id
             request.state.user_email = payload.get("email")

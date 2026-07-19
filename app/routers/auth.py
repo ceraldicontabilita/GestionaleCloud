@@ -25,8 +25,8 @@ _COOKIE_SECURE = bool(os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID")
                       or os.getenv("ENVIRONMENT", "").lower() == "production")
 
 ADMIN_EMAIL         = os.getenv("ADMIN_EMAIL", "ceraldigroupsrl@gmail.com")
-ADMIN_PASSWORD      = os.getenv("ADMIN_PASSWORD", "")        # password in chiaro (priorità)
-ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")   # bcrypt (fallback)
+ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")   # bcrypt (priorità)
+ADMIN_PASSWORD      = os.getenv("ADMIN_PASSWORD", "")        # chiaro (fallback solo se l'hash non è configurato)
 # IMPORTANTE: STESSA chiave del middleware di autenticazione (settings.SECRET_KEY,
 # che include il segreto condiviso in sistema_stato.auth_secret). Prima il login
 # firmava con os.getenv("SECRET_KEY") o una chiave CASUALE per processo: se
@@ -40,15 +40,18 @@ TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 
 def _check_password(plain: str) -> bool:
-    """Verifica password: prima in chiaro, poi bcrypt se hash configurato."""
-    if ADMIN_PASSWORD:
-        # Confronto a tempo costante: evita timing attack sul confronto '=='.
-        return hmac.compare_digest(plain, ADMIN_PASSWORD)
+    """Verifica password: bcrypt (se configurato) ha sempre la priorità sul
+    confronto in chiaro. ADMIN_PASSWORD resta solo un fallback per ambienti
+    senza ADMIN_PASSWORD_HASH configurato (audit sicurezza 19/07/2026: prima
+    il chiaro aveva priorità anche con l'hash presente)."""
     if ADMIN_PASSWORD_HASH:
         try:
             return bcrypt.checkpw(plain.encode(), ADMIN_PASSWORD_HASH.encode())
         except Exception:
             return False
+    if ADMIN_PASSWORD:
+        # Confronto a tempo costante: evita timing attack sul confronto '=='.
+        return hmac.compare_digest(plain, ADMIN_PASSWORD)
     return False
 
 
@@ -86,7 +89,7 @@ def _make_token(email: str, role: str = "admin", name: str = "Admin") -> str:
     return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
 
 
-def _decode_token(request: Request) -> dict:
+async def _decode_token(request: Request) -> dict:
     """Decodifica il JWT da cookie o header Authorization. Ritorna il payload."""
     token = request.cookies.get("access_token")
     if not token:
@@ -95,17 +98,30 @@ def _decode_token(request: Request) -> dict:
             token = auth[7:]
     if not token:
         raise HTTPException(status_code=401, detail="Non autenticato")
+
     try:
-        return jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Sessione scaduta")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Token non valido")
 
+    # Blacklist controllata SOLO dopo che firma/scadenza sono già valide
+    # (review Codex su PR #65, stesso fix già fatto nel middleware globale
+    # ma dimenticato qui: /api/auth/verify bypassa il middleware essendo
+    # pubblico, quindi ha una propria copia dello stesso controllo).
+    from app.database import Database
+    from app.utils.token_blacklist import is_revocato
+    if await is_revocato(Database.get_db(), token):
+        raise HTTPException(status_code=401, detail="Sessione terminata (logout)")
 
-def verify_token(request: Request) -> str:
+    return payload
+
+
+async def verify_token(request: Request) -> str:
     """Verifica JWT da cookie o header Authorization. Ritorna email utente."""
-    return _decode_token(request)["sub"]
+    payload = await _decode_token(request)
+    return payload["sub"]
 
 
 # NB: gli alias legacy /api/login, /api/logout, /api/me sono stati rimossi
@@ -117,7 +133,7 @@ def verify_token(request: Request) -> str:
 async def verify(request: Request):
     """Compatibilità AuthContext frontend: verifica sessione attiva."""
     from app.utils.ruoli import normalizza_ruolo
-    payload = _decode_token(request)
+    payload = await _decode_token(request)
     email = payload["sub"]
     ruolo = normalizza_ruolo(payload.get("role"))
     return {
@@ -157,8 +173,36 @@ async def auth_login(body: LoginRequest, request: Request, response: Response):
 
 
 @router.post("/auth/logout")
-async def auth_logout(response: Response):
-    """Alias /api/auth/logout."""
+async def auth_logout(request: Request, response: Response):
+    """Alias /api/auth/logout. Revoca il token lato server (audit 19/07/2026:
+    prima il logout cancellava solo i cookie, un token rubato restava valido
+    fino a scadenza naturale)."""
+    # Il frontend manda SEMPRE il bearer da localStorage (interceptor axios)
+    # E il browser manda il cookie in automatico: normalmente coincidono, ma
+    # la sessione scorrevole può rinnovarli in momenti diversi. Revoca
+    # ENTRAMBI se presenti e diversi — prima si sceglieva solo il cookie e
+    # un bearer copiato/divergente restava valido fino a scadenza (review
+    # Codex su PR #65).
+    token_cookie = request.cookies.get("access_token")
+    token_bearer = None
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token_bearer = auth_header[7:]
+
+    for token in {t for t in (token_cookie, token_bearer) if t}:
+        from app.database import Database
+        from app.utils.token_blacklist import revoca_token
+        try:
+            # verify_exp=False: un token scaduto ma firmato correttamente va
+            # comunque revocato (con la sua scadenza reale per il TTL).
+            # Un token con firma non valida/malformato NON va in blacklist:
+            # /api/auth/logout è pubblico, altrimenti chiunque potrebbe
+            # riempire token_blacklist con hash spazzatura senza scadenza
+            # (review Codex su PR #65).
+            exp = jwt.decode(token, SECRET_KEY, algorithms=["HS256"], options={"verify_exp": False}).get("exp")
+        except jwt.InvalidTokenError:
+            continue
+        await revoca_token(Database.get_db(), token, exp=exp)
     response.delete_cookie("access_token")
     response.delete_cookie("session_active")
     return {"ok": True}

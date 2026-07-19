@@ -546,28 +546,42 @@ async def get_suggestions(module: str):
 
 @router.post("/apply-suggestions")
 async def apply_suggestions(data: Dict[str, Any]):
-    """Applica i suggerimenti dell'apprendimento"""
+    """Applica i suggerimenti dell'apprendimento.
+
+    Audit 19/07/2026: applicava TUTTE le regole in massa senza alcuna soglia
+    di confidenza, su un update_many senza revisione per singolo record.
+    Aggiunta soglia minima (default 0.7, configurabile dal chiamante) sotto
+    la quale la regola viene saltata e conteggiata separatamente, invece di
+    essere applicata alla cieca.
+    """
     db = Database.get_db()
     module = data.get("module")
     suggestion_ids = data.get("suggestion_ids", [])
-    
+    soglia_confidenza = data.get("soglia_confidenza", 0.7)
+
     applied = 0
+    saltate_bassa_confidenza = 0
     errors = []
-    
+
     try:
         result = await db.learning_results.find_one({"_id": "latest"})
         if not result:
             return {"applied": 0, "message": "Nessun apprendimento disponibile"}
-        
+
         if module == "movimenti":
             # Applica regole di categorizzazione
             movement_data = result.get("modules", {}).get("movimenti", {})
             rules = movement_data.get("rules", [])
-            
+
             for rule in rules:
                 category = rule.get("category")
                 keywords = rule.get("keywords", [])
-                
+                confidence = rule.get("confidence", 0.5)
+
+                if confidence < soglia_confidenza:
+                    saltate_bassa_confidenza += 1
+                    continue
+
                 if keywords and category:
                     # Trova movimenti non categorizzati che matchano
                     for kw in keywords:
@@ -583,12 +597,16 @@ async def apply_suggestions(data: Dict[str, Any]):
                             {"$set": {"categoria": category, "auto_categorized": True}}
                         )
                         applied += update_result.modified_count
-        
+
         return {
             "applied": applied,
+            "saltate_bassa_confidenza": saltate_bassa_confidenza,
+            "soglia_confidenza": soglia_confidenza,
             "errors": errors,
             "message": f"Applicati {applied} suggerimenti"
+            + (f", {saltate_bassa_confidenza} regole escluse per confidenza sotto {soglia_confidenza}"
+               if saltate_bassa_confidenza else ""),
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

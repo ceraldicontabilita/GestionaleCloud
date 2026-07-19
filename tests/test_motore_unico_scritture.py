@@ -32,13 +32,24 @@ WRITER_STORICI_CONGELATI = {
 }
 
 _RE_WRITE = re.compile(r'\b(?:prima_nota_cassa|prima_nota_banca)"?\]\s*\.\s*insert_(?:one|many)')
+# Audit 19/07/2026: la regex sopra cattura solo db["prima_nota_cassa"].insert_
+# (accesso a stringa letterale). Non catturava l'accesso per ATTRIBUTO
+# (db.prima_nota_banca.insert_one), trovato in un file morto (nessun
+# chiamante, rimosso). Aggiunta qui per non perdere protezione in futuro,
+# anche se non copre ancora l'accesso tramite variabile calcolata
+# (es. coll = db[nome_variabile]; coll.insert_one(...)), il bypass più
+# diffuso oggi (rapido.py, prima_nota_module/sync.py e manutenzione.py,
+# data_propagation.py, cassa.py, banca.py — vedi memoria/BACKLOG.md):
+# richiede analisi AST, non ancora fatta.
+_RE_WRITE_ATTR = re.compile(r'\.\s*(?:prima_nota_cassa|prima_nota_banca)\s*\.\s*insert_(?:one|many)')
 
 
 def _writer_attuali():
     trovati = set()
     for f in APP.rglob("*.py"):
         rel = f.relative_to(APP).as_posix()
-        if _RE_WRITE.search(f.read_text(encoding="utf-8")):
+        testo = f.read_text(encoding="utf-8")
+        if _RE_WRITE.search(testo) or _RE_WRITE_ATTR.search(testo):
             trovati.add(rel)
     return trovati
 

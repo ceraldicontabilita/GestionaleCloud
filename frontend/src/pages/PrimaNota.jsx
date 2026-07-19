@@ -763,7 +763,7 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
 }
 
 /* ------------------------------ provvisori ------------------------------ */
-function Provvisori({ provvisori, attesaBanca = [], attese, onRicarica }) {
+function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
   const [busy, setBusy] = useState(null);
   const [parziale, setParziale] = useState(null);
   const [importoCassa, setImportoCassa] = useState('');
@@ -885,23 +885,6 @@ function Provvisori({ provvisori, attesaBanca = [], attese, onRicarica }) {
         </div>
       )}
 
-      {attese.length > 0 && (
-        <div style={{ marginTop: 8 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#64748b', margin: '4px 0 8px' }}>
-            📩 Fatture annunciate via email, XML in arrivo ({attese.length})
-          </div>
-          {attese.map(a => (
-            <div
-              key={a.id}
-              style={{ background: 'white', borderRadius: 10, border: '1px dashed #cbd5e1', padding: '8px 12px', marginBottom: 6, display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5 }}
-            >
-              <span style={{ minWidth: 0 }}>{a.fornitore || '—'} — {a.numero_fattura || 's.n.'}</span>
-              <b style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(a.importo)}</b>
-            </div>
-          ))}
-        </div>
-      )}
-
       {parziale && (
         <div
           onClick={() => setParziale(null)}
@@ -949,24 +932,21 @@ export default function PrimaNota() {
   const [banca, setBanca] = useState({ movimenti: [] });
   const [provvisori, setProvvisori] = useState([]);
   const [attesaBanca, setAttesaBanca] = useState([]);
-  const [attese, setAttese] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const carica = async () => {
     setLoading(true);
     try {
       const params = `anno=${anno}&limit=10000`;
-      const [c, b, p, a] = await Promise.all([
+      const [c, b, p] = await Promise.all([
         api.get(`/api/prima-nota/cassa?${params}`),
         api.get(`/api/prima-nota/banca?${params}`),
         api.get(`/api/prima-nota/provvisori?anno=${anno}`).catch(() => ({ data: {} })),
-        api.get(`/api/prima-nota/attese?anno=${anno}`).catch(() => ({ data: {} })),
       ]);
       setCassa(c.data || { movimenti: [] });
       setBanca(b.data || { movimenti: [] });
       setProvvisori(p.data?.provvisori || []);
       setAttesaBanca(p.data?.in_attesa_banca || []);
-      setAttese(a.data?.attese || []);
     } catch (e) {
       console.error('Prima nota:', e);
     } finally {
@@ -1040,7 +1020,7 @@ export default function PrimaNota() {
       )}
 
       {!loading && sezione === 'provvisori' && (
-        <Provvisori provvisori={provvisori} attesaBanca={attesaBanca} attese={attese} onRicarica={carica} />
+        <Provvisori provvisori={provvisori} attesaBanca={attesaBanca} onRicarica={carica} />
       )}
 
       {sezione === 'soci' && <FinanziamentoSoci />}

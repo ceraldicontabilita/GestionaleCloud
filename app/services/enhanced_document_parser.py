@@ -376,27 +376,23 @@ async def parse_f24_enhanced(
         chat = LlmChat(
             api_key=api_key,
             session_id=f"f24_parser_{datetime.now().timestamp()}",
-            system_message="Sei un esperto contabile italiano specializzato in modelli F24."
+            system_prompt="Sei un esperto contabile italiano specializzato in modelli F24."
         ).with_model("anthropic", "claude-sonnet-4-20250514")
         
         # Crea ImageContent per ogni immagine
         image_contents = [
-            ImageContent(
-                source_type="base64",
-                image_type="image/png",
-                data=img_b64
-            )
+            ImageContent(image_data=img_b64, mime_type="image/png")
             for img_b64 in images_b64
         ]
         
         # Crea messaggio con prompt + immagini
         user_message = UserMessage(
-            text=PROMPT_F24_ENHANCED,
+            content=PROMPT_F24_ENHANCED,
             images=image_contents
         )
-        
+
         # Invia e ottieni risposta
-        response = await chat.send_message_async(user_message)
+        response = await chat.send_message(user_message)
         
         # Parse JSON dalla risposta
         result = _extract_json_from_response(response)
@@ -451,27 +447,23 @@ async def parse_cedolino_enhanced(
         chat = LlmChat(
             api_key=api_key,
             session_id=f"cedolino_parser_{datetime.now().timestamp()}",
-            system_message="Sei un esperto di paghe e contributi italiano. Estrai dati precisi dalle buste paga."
+            system_prompt="Sei un esperto di paghe e contributi italiano. Estrai dati precisi dalle buste paga."
         ).with_model("anthropic", "claude-sonnet-4-20250514")
         
         # Crea ImageContent per ogni immagine
         image_contents = [
-            ImageContent(
-                source_type="base64",
-                image_type="image/png",
-                data=img_b64
-            )
+            ImageContent(image_data=img_b64, mime_type="image/png")
             for img_b64 in images_b64
         ]
         
         # Crea messaggio con prompt + immagini
         user_message = UserMessage(
-            text=PROMPT_CEDOLINO_ENHANCED,
+            content=PROMPT_CEDOLINO_ENHANCED,
             images=image_contents
         )
-        
+
         # Invia e ottieni risposta
-        response = await chat.send_message_async(user_message)
+        response = await chat.send_message(user_message)
         
         # Parse JSON dalla risposta
         result = _extract_json_from_response(response)

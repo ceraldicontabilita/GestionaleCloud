@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 import hashlib
 import logging
 import uuid
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET  # sicurezza: blocca XXE/entity expansion su XML esterni
 
 from app.database import Database
 from app.services.business_rules import (

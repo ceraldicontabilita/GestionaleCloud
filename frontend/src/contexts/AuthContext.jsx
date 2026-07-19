@@ -57,7 +57,16 @@ export function AuthProvider({ children }) {
     return res.data;
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    // Revoca il token lato server prima di scartarlo (audit sicurezza
+    // 19/07/2026, review Codex su PR #65: prima logout() cancellava solo
+    // lo stato locale, la blacklist server-side non veniva mai popolata).
+    // Best-effort: se la chiamata fallisce, l'utente esce comunque in locale.
+    try {
+      await api.post('/api/auth/logout');
+    } catch (_) {
+      // ignorato: il token scadrà comunque naturalmente
+    }
     clearAuthToken();
     setUser(null);
   }, []);

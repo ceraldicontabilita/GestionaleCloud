@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1023 · tenere: 670 · verificare: 330 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1019 · tenere: 667 · verificare: 329 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -87,7 +87,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/archivio-bonifici/jobs` | bonifici_module.jobs | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/archivio-bonifici/jobs` | bonifici_module.jobs | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/archivio-bonifici/jobs/import` | bank.bonifici_import_unificato | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/archivio-bonifici/jobs/{job_id}` | bonifici_module.jobs | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/archivio-bonifici/jobs/{job_id}` | bonifici_module.jobs | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/archivio-bonifici/jobs/{job_id}/upload` | bonifici_module.jobs | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/archivio-bonifici/operazioni-salari/{bonifico_id}` | bonifici_module.associazioni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/archivio-bonifici/reset-riconciliazione` | bonifici_module.riconciliazione | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
@@ -141,9 +141,9 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/assegni/{assegno_id}/incassa` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/assegni/{assegno_id}/risolvi-ambiguo` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/auth/login` | auth | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/auth/logout` | auth | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/auth/pin-login` | pin_login | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/auth/pin-login/health` | pin_login | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/auth/logout` | auth | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/auth/pin-login` | pin_login | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/auth/pin-login/health` | pin_login | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/auth/verify` | auth | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/auto-repair/collega-targa-driver` | auto_repair | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/bank-statement/cleanup-duplicati` | bank.bank_statement_import | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
@@ -327,7 +327,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `PUT /api/dipendenti/{dipendente_id}` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/dipendenti/{dipendente_id}/invita-portale` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/dipendenti/{dipendente_id}/report-ferie-permessi` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/dizionario-articoli/articolo/{descrizione_encoded}` | warehouse.dizionario_articoli | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `PUT /api/dizionario-articoli/articolo/{descrizione_encoded}` | warehouse.dizionario_articoli | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/dizionario-articoli/categorizza-ai` | warehouse.dizionario_articoli | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/dizionario-articoli/cerca` | warehouse.dizionario_articoli | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/dizionario-articoli/dizionario` | warehouse.dizionario_articoli | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -348,7 +348,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/document-ai/process-all-classified` | document_ai | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/document-ai/process-classified-email` | document_ai | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/document-ai/reprocess-and-save` | document_ai | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/documenti-fiscali/lista` | documenti_fiscali | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/documenti-fiscali/lista` | documenti_fiscali | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/documenti-fiscali/upload` | documenti_fiscali | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/documenti-inbox/auto-classify` | documents_inbox_classify | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti-inbox/cross-check-f24` | documents_inbox_classify | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -447,7 +447,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/estratto-conto-movimenti/force-reimport` | bank.estratto_conto | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `GET /api/estratto-conto-movimenti/fornitori` | bank.estratto_conto | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/estratto-conto-movimenti/import` | bank.estratto_conto | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/estratto-conto-movimenti/movimenti` | bank.estratto_conto | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/estratto-conto-movimenti/movimenti` | bank.estratto_conto | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/estratto-conto-movimenti/movimenti-stipendi` | bank.estratto_conto | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/estratto-conto-movimenti/pulizia-non-in-csv` | bank.estratto_conto | — | — | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/estratto-conto-movimenti/reimport` | bank.estratto_conto | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
@@ -612,7 +612,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `DELETE /api/fornitori-learning/{fornitore_id}` | fornitori_learning | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/genera-proposte` | dati_provvisori | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/gestione-riservata/login` | gestione_riservata | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/gestione-riservata/movimenti` | gestione_riservata | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/gestione-riservata/movimenti` | gestione_riservata | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/gestione-riservata/movimenti` | gestione_riservata | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/gestione-riservata/movimenti/{movimento_id}` | gestione_riservata | sì | — | — | — | sì | tenere | in uso: FE |
 | `PUT /api/gestione-riservata/movimenti/{movimento_id}` | gestione_riservata | sì | — | — | — | — | tenere | in uso: FE |
@@ -773,7 +773,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/piano-conti/` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/piano-conti/` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/piano-conti/bilancio` | accounting.piano_conti | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/piano-conti/conto/{codice}/movimenti` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/piano-conti/conto/{codice}/movimenti` | accounting.piano_conti | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/piano-conti/movimenti` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/piano-conti/registra-corrispettivi` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/piano-conti/registra-fattura` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
@@ -812,10 +812,6 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `PUT /api/prima-nota-salari/salari/{record_id}/riconcilia` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/anni-disponibili` | prima_nota_module.stats | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/arricchisci-pagamenti-banca` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/prima-nota/attese` | prima_nota_module.attese | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/prima-nota/attese/conferma` | prima_nota_module.attese | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/prima-nota/attese/scan` | prima_nota_module.attese | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/prima-nota/attese/{attesa_id}/annulla` | prima_nota_module.attese | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/banca` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/banca` | prima_nota_module.banca | sì | — | — | — | sì | tenere | in uso: FE |
 | `DELETE /api/prima-nota/banca/delete-all` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |

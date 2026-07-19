@@ -3,7 +3,7 @@ Parser per Corrispettivi Elettronici (Trasmissione Telematica)
 Formato COR10 dell'Agenzia delle Entrate.
 Estrae: dati trasmissione, riepilogo IVA, pagamento contanti e elettronico.
 """
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET  # sicurezza: blocca XXE/entity expansion su XML esterni
 from typing import Dict, Any
 from datetime import datetime, timezone
 import logging

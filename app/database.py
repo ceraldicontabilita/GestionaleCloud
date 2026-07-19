@@ -153,6 +153,14 @@ class Database:
         await _safe_index("attendance_assenze", [("dipendente_id", 1), ("data_inizio", -1)], name="idx_assenze_dip_data")
         await _safe_index("attendance_timbrature", [("dipendente_id", 1), ("timestamp", -1)], name="idx_timbrature_dip")
 
+        # --- Token blacklist (audit sicurezza 19/07/2026): interrogata a
+        # OGNI richiesta autenticata (middleware) — senza indice diventa una
+        # scansione completa che cresce a ogni logout (review Codex PR #65).
+        # TTL su exp: pulizia automatica dei record scaduti, expireAfterSeconds=0
+        # = rimosso quando si raggiunge la data salvata nel campo.
+        await _safe_index("token_blacklist", "token_hash", unique=True, name="idx_token_blacklist_hash")
+        await _safe_index("token_blacklist", "exp", expireAfterSeconds=0, name="idx_token_blacklist_ttl")
+
         # --- Acconti / TFR ---
         await _safe_index("acconti_dipendenti", "dipendente_id", name="idx_acconti_dip")
         # Compound index per query "tutti gli acconti di tizio per il mese X"
