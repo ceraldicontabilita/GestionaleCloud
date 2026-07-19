@@ -544,6 +544,12 @@ async def get_suggestions(module: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ERP-001 (19/07/2026): soglia minima assoluta, non aggirabile dal chiamante.
+# Prima di questa correzione il chiamante poteva inviare soglia_confidenza=0
+# e neutralizzare completamente il filtro introdotto nell'audit del 19/07/2026.
+SOGLIA_CONFIDENZA_MINIMA_ASSOLUTA = 0.7
+
+
 @router.post("/apply-suggestions")
 async def apply_suggestions(data: Dict[str, Any]):
     """Applica i suggerimenti dell'apprendimento.
@@ -553,11 +559,18 @@ async def apply_suggestions(data: Dict[str, Any]):
     Aggiunta soglia minima (default 0.7, configurabile dal chiamante) sotto
     la quale la regola viene saltata e conteggiata separatamente, invece di
     essere applicata alla cieca.
+
+    ERP-001 (19/07/2026): la soglia inviata dal chiamante non può più
+    scendere sotto SOGLIA_CONFIDENZA_MINIMA_ASSOLUTA; può solo essere
+    alzata per essere più prudenti.
     """
     db = Database.get_db()
     module = data.get("module")
     suggestion_ids = data.get("suggestion_ids", [])
-    soglia_confidenza = data.get("soglia_confidenza", 0.7)
+    soglia_confidenza = max(
+        data.get("soglia_confidenza", SOGLIA_CONFIDENZA_MINIMA_ASSOLUTA),
+        SOGLIA_CONFIDENZA_MINIMA_ASSOLUTA,
+    )
 
     applied = 0
     saltate_bassa_confidenza = 0
