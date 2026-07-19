@@ -286,8 +286,17 @@ async def ingest_corrispettivo_parsed(
     # residuo noto, non coperto in questo fix mirato.
     chiave_xml = (corr_doc.get("corrispettivo_key") or "").strip()
     if chiave_xml:
+        # Review Codex su PR #68: la query deve escludere i soft-delete
+        # esattamente come fa _find_existing_corrispettivo sopra (livello 1),
+        # altrimenti un corrispettivo eliminato (entity_status="deleted")
+        # con la stessa chiave XML verrebbe considerato "già esistente" e
+        # impedirebbe di ricrearlo ricaricando lo stesso file.
         precedente = await db["corrispettivi"].find_one_and_update(
-            {"corrispettivo_key": chiave_xml},
+            {
+                "corrispettivo_key": chiave_xml,
+                "entity_status": {"$ne": "deleted"},
+                "status": {"$nin": ["deleted", "archived"]},
+            },
             {"$setOnInsert": corr_doc.copy()},
             upsert=True,
         )

@@ -124,3 +124,34 @@ def test_due_upload_concorrenti_dello_stesso_corrispettivo_non_duplicano():
         f"attesi 1 record 'corrispettivi', trovati {len(record_corrispettivi)}: "
         f"_find_existing_corrispettivo non è atomico sotto interleaving reale. Esiti: {esiti}"
     )
+
+
+def test_riupload_dopo_soft_delete_ricrea_il_corrispettivo():
+    """Review Codex su PR #68: la guardia atomica sull'insert (find_one_
+    and_update su corrispettivo_key) deve escludere i soft-delete, esattamente
+    come fa _find_existing_corrispettivo — altrimenti un corrispettivo
+    eliminato (entity_status="deleted") con la stessa chiave XML verrebbe
+    considerato "già esistente" e impedirebbe di ricaricare lo stesso file."""
+    db = _db()
+    parsed = _parsed()
+
+    # Corrispettivo pre-esistente ma soft-deleted con la STESSA chiave XML
+    # che genererebbe _build_corrispettivo_doc per lo stesso parsed.
+    from app.routers.invoices.corrispettivi_helpers import _build_corrispettivo_doc
+    doc_eliminato = _build_corrispettivo_doc(parsed, filename="vecchio.xml", source="xml")
+    doc_eliminato["id"] = "corr-vecchio"
+    doc_eliminato["entity_status"] = "deleted"
+    doc_eliminato["status"] = "deleted"
+    asyncio.run(db["corrispettivi"].insert_one(doc_eliminato))
+
+    esito = asyncio.run(ingest_corrispettivo_parsed(
+        db, parsed, filename="nuovo.xml", source="xml", update_if_exists=True,
+    ))
+
+    assert esito["action"] == "created", (
+        f"atteso 'created' (deve poter ricreare dopo soft-delete), ottenuto: {esito}"
+    )
+    entrate = asyncio.run(
+        db["prima_nota_cassa"].find({"tipo": "entrata", "categoria": "Corrispettivi"}).to_list(10)
+    )
+    assert len(entrate) == 1

@@ -136,3 +136,30 @@ Confermato che i test isolati con `mongomock` (introdotti in PR #67) non sono su
 - **Rotazione credenziale MongoDB**: decisione esplicita dell'utente (19/07/2026) di NON ruotarla — chat e dispositivo ad accesso esclusivo dell'utente. Chiuso, non più un'azione in sospeso.
 
 Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
+
+## Aggiornamento — 2026-07-19 (review PR #68, app/agents/, chiusura backlog)
+
+- Branch: claude/test-coverage-analysis-co5wif
+
+### Review Codex su PR #68 — esito
+1. **Bug reale confermato e corretto**: la guardia atomica sull'insert (`find_one_and_update` su `corrispettivo_key`) non escludeva i soft-delete come fa `_find_existing_corrispettivo` — un corrispettivo eliminato con la stessa chiave XML impediva di ricrearlo ricaricando lo stesso file. Corretto aggiungendo lo stesso filtro `entity_status`/`status`, test dedicato aggiunto.
+2. **Raccomandazione confermata ma già nota**: manca un indice univoco su `corrispettivi.corrispettivo_key` (verificato in `app/database.py::_create_indexes` e `app/scripts/create_indexes.py`: solo indici su `data`) — stessa limitazione già dichiarata nella descrizione della PR, richiede accesso Atlas e autorizzazione separata.
+
+### Bug reali trovati scrivendo i test per app/agents/ (mai testato prima)
+- `fiscale_sentinella.py::_estrai_dati_avviso`: il regex dell'importo includeva "tributo" tra le parole-chiave, quindi "**Codice Tributo:** 9001" (il codice a 4 cifre) veniva scambiato per l'importo prima di arrivare al vero "Importo: €500,00" più avanti nel testo — un avviso fiscale reale avrebbe mostrato l'importo sbagliato in una segnalazione letta da una persona. Corretto rimuovendo "tributo" dalle parole-chiave dell'importo.
+- `notifier.py::crea_segnalazione`: importava `invia_messaggio` da `telegram_notifications.py`, funzione mai esistita (quella reale è `send_notification`) — le notifiche Telegram per gli avvisi urgenti degli agenti non hanno **mai** funzionato, l'errore veniva inghiottito silenziosamente dal `except` generico. Corretto.
+
+### Copertura test aggiunta
+- `tests/test_agente_fiscale_sentinella.py`: estrazione regex (input normale, vuoto, ostile/malformato — mai deve sollevare), le tre decisioni sull'avviso bonario (già ravveduto / già pagato / da pagare urgente o no), idempotenza della segnalazione F24 in scadenza.
+- `tests/test_agenti_orchestrator_notifier_learning.py`: isolamento tra agenti (uno che fallisce non blocca gli altri, stato di errore registrato), notifica Telegram best-effort (fallimento non blocca la segnalazione), calcolo confidenza e idempotenza in `learning_brain.py`.
+
+### Risultato finale suite
+`python -m pytest tests/ backend/tests/ -q --no-header` → 681 passati, stessi identici 8 falliti/7 errori della baseline nota — nessuna regressione.
+
+### Gap di copertura ancora aperti
+- **Frontend**: 0 test automatici, nessun tool (Vitest/Jest) configurato — prossimo punto in lavorazione.
+- **Concorrenza**: i due controlli più deboli di `_find_existing_corrispettivo` (data+matricola, data+totale) restano non atomici.
+- **Indice univoco** su `prima_nota_cassa` e `corrispettivi.corrispettivo_key` lato Atlas — richiede accesso e autorizzazione separata.
+- **Autenticazione admin** non supporta il cookie di sessione (solo Bearer) — pattern condiviso da 30+ endpoint, follow-up architetturale segnalato, non affrontato.
+
+Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
