@@ -171,12 +171,19 @@ async def auth_logout(request: Request, response: Response):
     """Alias /api/auth/logout. Revoca il token lato server (audit 19/07/2026:
     prima il logout cancellava solo i cookie, un token rubato restava valido
     fino a scadenza naturale)."""
-    token = request.cookies.get("access_token")
-    if not token:
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            token = auth_header[7:]
-    if token:
+    # Il frontend manda SEMPRE il bearer da localStorage (interceptor axios)
+    # E il browser manda il cookie in automatico: normalmente coincidono, ma
+    # la sessione scorrevole può rinnovarli in momenti diversi. Revoca
+    # ENTRAMBI se presenti e diversi — prima si sceglieva solo il cookie e
+    # un bearer copiato/divergente restava valido fino a scadenza (review
+    # Codex su PR #65).
+    token_cookie = request.cookies.get("access_token")
+    token_bearer = None
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token_bearer = auth_header[7:]
+
+    for token in {t for t in (token_cookie, token_bearer) if t}:
         from app.database import Database
         from app.utils.token_blacklist import revoca_token
         try:
@@ -188,9 +195,8 @@ async def auth_logout(request: Request, response: Response):
             # (review Codex su PR #65).
             exp = jwt.decode(token, SECRET_KEY, algorithms=["HS256"], options={"verify_exp": False}).get("exp")
         except jwt.InvalidTokenError:
-            exp = None
-        else:
-            await revoca_token(Database.get_db(), token, exp=exp)
+            continue
+        await revoca_token(Database.get_db(), token, exp=exp)
     response.delete_cookie("access_token")
     response.delete_cookie("session_active")
     return {"ok": True}
