@@ -38,7 +38,7 @@ Gli 8 fallimenti e i 7 errori risultano bloccati o condizionati dall'ambiente es
 ### Note ambiente
 - La variabile `MONGO_URL` risultava impostata nel container, ma la connessione verso Atlas ha restituito `ServerSelectionTimeoutError` per irraggiungibilità di rete dal sandbox — non per assenza di configurazione.
 - Installazione locale non versionata: `defusedxml==0.7.1` (già dichiarato in `backend/requirements.txt` ma assente nel venv del container) — installata solo per permettere la raccolta di 84 file di test altrimenti in errore di import; nessuna modifica a `requirements.txt` o ad altro file versionato.
-- Incidente di sicurezza separato: è richiesta la rotazione preventiva di una credenziale esterna potenzialmente esposta. Nessun valore sensibile è riportato in questo registro. La rotazione richiede uno step dedicato e l'autorizzazione esplicita dell'utente.
+- Incidente di sicurezza separato (SEC-001, censimento in SEC-001A completato): una credenziale MongoDB è comparsa nei log di questa sessione durante l'analisi. Nessun valore sensibile è riportato in questo registro. Decisione esplicita dell'utente (19/07/2026): **non ruotare la credenziale** — accesso alla chat e al dispositivo riservato esclusivamente all'utente, nessuna terza parte con visibilità sulla cronologia. SEC-001B (creazione nuovo utente Atlas) resta quindi **non eseguito, chiuso su decisione dell'utente**, non più in sospeso in attesa di autorizzazione.
 
 ### Gap di copertura individuati (conteggi reali sulla suite)
 - **Frontend**: 0 test automatici su 129 componenti `.jsx`/`.tsx`; nessun tool (Vitest/Jest) configurato in `frontend/package.json`.
@@ -115,5 +115,51 @@ Tre commenti dell'app `chatgpt-codex-connector`, valutati singolarmente:
 - **Concorrenza**: `_find_existing_corrispettivo` (collection `corrispettivi`) ha lo stesso pattern find_one-poi-insert del bug corretto in `registra_corrispettivo`, non ancora verificato a quel livello.
 - **Indice univoco** su `prima_nota_cassa` lato Atlas — richiede accesso e autorizzazione separata.
 - **Rotazione credenziale MongoDB** esposta durante l'analisi — step di sicurezza separato, sospeso in attesa di accesso alla dashboard Atlas.
+
+Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
+
+## Aggiornamento — 2026-07-19 (secondo bug di concorrenza, dopo il merge di PR #67)
+
+- Branch: claude/test-coverage-analysis-co5wif (nuovo lavoro dopo il merge)
+
+### Bug reale trovato e corretto (follow-up dal fix in PR #67)
+`_find_existing_corrispettivo` (`app/routers/invoices/corrispettivi_helpers.py`) ha lo stesso pattern find_one-poi-insert già corretto in `registra_corrispettivo`, ma su 3 livelli sequenziali (chiave XML, poi data+matricola, poi data+totale). Riprodotto con un test di interleaving reale (fake DB con `await asyncio.sleep(0)` su ogni operazione, non mongomock — che non cede mai il controllo e quindi NON avrebbe rivelato il problema): due upload quasi simultanei dello stesso corrispettivo creavano **due documenti "corrispettivi"** duplicati. Il movimento in Prima Nota Cassa non si duplicava (il fix di PR #67 teneva), ma il documento sorgente sì.
+
+**Correzione applicata (parziale, deliberatamente)**: solo l'inserimento finale per un corrispettivo nuovo è stato reso atomico (`find_one_and_update` con upsert), e solo quando è disponibile la chiave naturale del file XML (`corrispettivo_key`) — il caso riprodotto nel test e quello a rischio reale per import automatici concorrenti. I due controlli più deboli (data+matricola, data+totale, usati per corrispettivi manuali/provvisori senza chiave XML) restano non atomici: rischio residuo noto e accettato, non coperto da questo fix mirato per non ampliare il cambiamento oltre lo scenario verificato.
+
+### Nota sul metodo
+Confermato che i test isolati con `mongomock` (introdotti in PR #67) non sono sufficienti a rivelare race condition: `mongomock` esegue le operazioni senza mai cedere il controllo all'event loop, quindi `asyncio.gather` non produce interleaving reale. Per testare la concorrenza serve un fake DB che ceda esplicitamente il controllo (`await asyncio.sleep(0)`) ad ogni operazione — tecnica già usata per il primo bug, riapplicata qui.
+
+### Gap di copertura ancora aperti (aggiornato)
+- **Concorrenza**: i due controlli più deboli di `_find_existing_corrispettivo` (data+matricola, data+totale) restano non atomici — rischio residuo noto.
+- **Indice univoco** su `prima_nota_cassa` e su `corrispettivi.corrispettivo_key` lato Atlas — richiede accesso e autorizzazione separata.
+- **Rotazione credenziale MongoDB**: decisione esplicita dell'utente (19/07/2026) di NON ruotarla — chat e dispositivo ad accesso esclusivo dell'utente. Chiuso, non più un'azione in sospeso.
+
+Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
+
+## Aggiornamento — 2026-07-19 (review PR #68, app/agents/, chiusura backlog)
+
+- Branch: claude/test-coverage-analysis-co5wif
+
+### Review Codex su PR #68 — esito
+1. **Bug reale confermato e corretto**: la guardia atomica sull'insert (`find_one_and_update` su `corrispettivo_key`) non escludeva i soft-delete come fa `_find_existing_corrispettivo` — un corrispettivo eliminato con la stessa chiave XML impediva di ricrearlo ricaricando lo stesso file. Corretto aggiungendo lo stesso filtro `entity_status`/`status`, test dedicato aggiunto.
+2. **Raccomandazione confermata ma già nota**: manca un indice univoco su `corrispettivi.corrispettivo_key` (verificato in `app/database.py::_create_indexes` e `app/scripts/create_indexes.py`: solo indici su `data`) — stessa limitazione già dichiarata nella descrizione della PR, richiede accesso Atlas e autorizzazione separata.
+
+### Bug reali trovati scrivendo i test per app/agents/ (mai testato prima)
+- `fiscale_sentinella.py::_estrai_dati_avviso`: il regex dell'importo includeva "tributo" tra le parole-chiave, quindi "**Codice Tributo:** 9001" (il codice a 4 cifre) veniva scambiato per l'importo prima di arrivare al vero "Importo: €500,00" più avanti nel testo — un avviso fiscale reale avrebbe mostrato l'importo sbagliato in una segnalazione letta da una persona. Corretto rimuovendo "tributo" dalle parole-chiave dell'importo.
+- `notifier.py::crea_segnalazione`: importava `invia_messaggio` da `telegram_notifications.py`, funzione mai esistita (quella reale è `send_notification`) — le notifiche Telegram per gli avvisi urgenti degli agenti non hanno **mai** funzionato, l'errore veniva inghiottito silenziosamente dal `except` generico. Corretto.
+
+### Copertura test aggiunta
+- `tests/test_agente_fiscale_sentinella.py`: estrazione regex (input normale, vuoto, ostile/malformato — mai deve sollevare), le tre decisioni sull'avviso bonario (già ravveduto / già pagato / da pagare urgente o no), idempotenza della segnalazione F24 in scadenza.
+- `tests/test_agenti_orchestrator_notifier_learning.py`: isolamento tra agenti (uno che fallisce non blocca gli altri, stato di errore registrato), notifica Telegram best-effort (fallimento non blocca la segnalazione), calcolo confidenza e idempotenza in `learning_brain.py`.
+
+### Risultato finale suite
+`python -m pytest tests/ backend/tests/ -q --no-header` → 681 passati, stessi identici 8 falliti/7 errori della baseline nota — nessuna regressione.
+
+### Gap di copertura ancora aperti
+- **Frontend**: 0 test automatici, nessun tool (Vitest/Jest) configurato — prossimo punto in lavorazione.
+- **Concorrenza**: i due controlli più deboli di `_find_existing_corrispettivo` (data+matricola, data+totale) restano non atomici.
+- **Indice univoco** su `prima_nota_cassa` e `corrispettivi.corrispettivo_key` lato Atlas — richiede accesso e autorizzazione separata.
+- **Autenticazione admin** non supporta il cookie di sessione (solo Bearer) — pattern condiviso da 30+ endpoint, follow-up architetturale segnalato, non affrontato.
 
 Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.

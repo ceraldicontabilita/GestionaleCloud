@@ -270,7 +270,50 @@ async def ingest_corrispettivo_parsed(
     corrispettivo_id = str(uuid.uuid4())
     corr_doc["id"] = corrispettivo_id
     corr_doc["created_at"] = datetime.now(timezone.utc).isoformat()
-    await db["corrispettivi"].insert_one(corr_doc.copy())
+
+    # Follow-up dal fix di registra_corrispettivo (PR #67): _find_existing_
+    # corrispettivo sopra fa più find_one separati (chiave XML, poi data+
+    # matricola, poi data+totale) prima di questo insert — due upload dello
+    # stesso corrispettivo lanciati quasi in contemporanea potevano superare
+    # entrambi il controllo prima che uno dei due avesse scritto, creando
+    # due documenti "corrispettivi" duplicati (anche se, grazie al fix già
+    # in produzione, il movimento in Prima Nota Cassa non si duplicava).
+    # Quando è disponibile la chiave naturale del file XML (il caso comune
+    # e quello a rischio reale di doppio import automatico), l'insert
+    # diventa un'unica operazione atomica lato MongoDB. I due controlli più
+    # deboli (data+matricola, data+totale — usati per corrispettivi
+    # manuali/provvisori senza chiave XML) restano non atomici: rischio
+    # residuo noto, non coperto in questo fix mirato.
+    chiave_xml = (corr_doc.get("corrispettivo_key") or "").strip()
+    if chiave_xml:
+        # Review Codex su PR #68: la query deve escludere i soft-delete
+        # esattamente come fa _find_existing_corrispettivo sopra (livello 1),
+        # altrimenti un corrispettivo eliminato (entity_status="deleted")
+        # con la stessa chiave XML verrebbe considerato "già esistente" e
+        # impedirebbe di ricrearlo ricaricando lo stesso file.
+        precedente = await db["corrispettivi"].find_one_and_update(
+            {
+                "corrispettivo_key": chiave_xml,
+                "entity_status": {"$ne": "deleted"},
+                "status": {"$nin": ["deleted", "archived"]},
+            },
+            {"$setOnInsert": corr_doc.copy()},
+            upsert=True,
+        )
+        if precedente:
+            # Race persa: un'altra richiesta concorrente ha già creato il
+            # documento per questa chiave tra il controllo sopra e questo
+            # insert. Trattalo come duplicato, non toccare Prima Nota.
+            return {
+                "action": "duplicate",
+                "corrispettivo_id": precedente.get("id"),
+                "data": data_str,
+                "totale": totale,
+                "prima_nota_cassa_id": None,
+                "prima_nota_banca_id": None,
+            }
+    else:
+        await db["corrispettivi"].insert_one(corr_doc.copy())
 
     # Pulisci eventuali movimenti "manuali" per quella data prima di ricreare
     await _delete_prima_nota_for_corrispettivo(db, corrispettivo_id, data_str)

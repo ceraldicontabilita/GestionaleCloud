@@ -170,7 +170,11 @@ class FiscaleSentinella:
         m = re.search(r'periodo[:\s]+(\d{2}/\d{4})', testo, re.I)
         if m:
             dati["periodo_riferimento"] = m.group(1)
-        m = re.search(r'(?:imposta|tributo|importo)[:\s]+€?\s*([\d.,]+)', testo, re.I)
+        # "tributo" NON è tra le parole-chiave: "Codice Tributo: 9001" (il
+        # codice a 4 cifre, non l'importo) verrebbe altrimenti scambiato per
+        # l'importo, perché la ricerca prende il primo match nel testo e
+        # "codice tributo" precede quasi sempre "importo" in un avviso reale.
+        m = re.search(r'(?:imposta|importo)[:\s]+€?\s*([\d.,]+)', testo, re.I)
         if m:
             try:
                 dati["importo_tributo"] = float(m.group(1).replace('.', '').replace(',', '.'))

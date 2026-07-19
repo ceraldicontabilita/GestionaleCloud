@@ -30,11 +30,15 @@ async def crea_segnalazione(
     }
     await db["agenti_segnalazioni"].insert_one(segnalazione)
 
-    # Telegram se urgente
+    # Telegram se urgente. Prima di questa correzione importava
+    # invia_messaggio, funzione mai esistita in telegram_notifications.py
+    # (la funzione reale è send_notification): l'ImportError veniva
+    # inghiottito dal except sotto, quindi le notifiche Telegram per gli
+    # avvisi urgenti degli agenti non hanno mai funzionato, silenziosamente.
     if tipo in ["urgente", "anomalia"]:
         try:
-            from app.services.telegram_notifications import invia_messaggio
-            await invia_messaggio(f"🚨 {titolo}\n{descrizione[:200]}")
+            from app.services.telegram_notifications import send_notification
+            await send_notification(f"🚨 {titolo}\n{descrizione[:200]}")
         except Exception:
             pass
 
