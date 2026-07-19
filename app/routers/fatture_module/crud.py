@@ -517,7 +517,23 @@ async def _trova_fattura_e_xml_originale(fattura_id: str) -> tuple[Optional[dict
             xml_bytes = raw
 
     elif xml_raw_content:
-        xml_bytes = xml_raw_content.encode("utf-8") if isinstance(xml_raw_content, str) else xml_raw_content
+        if isinstance(xml_raw_content, str):
+            # xml_raw è salvato come stringa Python già decodificata in fase
+            # di import (può provenire da un file non-UTF-8, es. ISO-8859-1
+            # — vedi i tentativi di decodifica in process_xml_bytes). Qui
+            # viene sempre ri-codificato in UTF-8 per la risposta HTTP: se
+            # il testo contiene ancora la dichiarazione XML originale
+            # (<?xml ... encoding="ISO-8859-1"?>), bytes e dichiarazione
+            # non concorderebbero più — un lettore XML che si fida della
+            # dichiarazione userebbe il codec sbagliato sui bytes UTF-8
+            # (mojibake/rifiuto del file). Normalizza la dichiarazione a
+            # UTF-8 prima di servire (bug reale, review Codex PR #71).
+            xml_raw_content = re.sub(
+                r'encoding\s*=\s*(["\'])[^"\']*\1', 'encoding="UTF-8"', xml_raw_content, count=1
+            )
+            xml_bytes = xml_raw_content.encode("utf-8")
+        else:
+            xml_bytes = xml_raw_content
 
     return fattura, xml_bytes
 
@@ -581,6 +597,24 @@ async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
 
             # Parse XML (tolera namespace con p7m cleanup)
             xml_doc = LET.fromstring(xml_bytes)
+
+            # File multi-body: FoglioStileAssoSoftware.xsl itera TUTTI i
+            # <FatturaElettronicaBody> del file — se xml_raw è quello
+            # dell'intero file raggruppato (condiviso da più fatture, vedi
+            # xml_body_index), aprire questa fattura renderizzerebbe anche
+            # le altre fatture dello stesso file insieme a questa. Isola
+            # SOLO il body di questa fattura prima di trasformare (bug
+            # reale, review Codex PR #71).
+            corpi = [el for el in xml_doc.iter()
+                     if (el.tag.split('}')[-1] if '}' in el.tag else el.tag) == 'FatturaElettronicaBody']
+            if len(corpi) > 1:
+                indice = fattura.get("xml_body_index", 0)
+                if not (0 <= indice < len(corpi)):
+                    indice = 0
+                for i, corpo in enumerate(corpi):
+                    if i != indice:
+                        corpo.getparent().remove(corpo)
+
             html_result = transform(xml_doc)
             html_str = LET.tostring(html_result, pretty_print=True, encoding="unicode")
 

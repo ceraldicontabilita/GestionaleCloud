@@ -83,6 +83,34 @@ def test_download_xml_originale_ritorna_i_bytes_xml_raw(monkeypatch):
     assert "fattura_20.xml" in res.headers["content-disposition"]
 
 
+def test_download_xml_originale_normalizza_dichiarazione_encoding_a_utf8(monkeypatch):
+    """Review Codex su PR #71 (4° giro): xml_raw è salvato come stringa
+    Python già decodificata (può provenire da un file non-UTF-8) e qui
+    viene sempre ri-codificato in UTF-8 per la risposta HTTP. Se la
+    dichiarazione XML originale dicesse ancora "ISO-8859-1", i bytes
+    serviti (UTF-8) e la dichiarazione sarebbero incoerenti — un lettore
+    XML che si fida della dichiarazione produrrebbe mojibake su testo
+    accentato (fornitore/descrizioni). La dichiarazione va sempre allineata
+    ai bytes realmente serviti."""
+    xml_content = (
+        '<?xml version="1.0" encoding="ISO-8859-1"?>'
+        '<FatturaElettronica><FatturaElettronicaBody>'
+        '<Denominazione>Società Àccentata</Denominazione>'
+        '</FatturaElettronicaBody></FatturaElettronica>'
+    )
+    db = _FakeDb()
+    db["invoices"].docs = [{"id": "fatt-1", "invoice_number": "20", "xml_raw": xml_content}]
+    _patch_db(monkeypatch, db)
+
+    res = _run(crud_mod.download_xml_originale("fatt-1"))
+
+    assert b'encoding="ISO-8859-1"' not in res.body
+    assert b'encoding="UTF-8"' in res.body
+    # I bytes devono essere realmente decodificabili come UTF-8 (coerenti
+    # con quanto dichiarato) e col testo accentato intatto.
+    assert "Società Àccentata" in res.body.decode("utf-8")
+
+
 def test_download_xml_originale_fattura_soft_deleted_da_404(monkeypatch):
     """Review Codex su PR #71 (3° giro): get_fattura_dettaglio tratta una
     fattura con status/entity_status 'deleted' come inesistente — il nuovo
@@ -177,6 +205,103 @@ def test_download_xml_originale_p7m_con_xml_embedded_lo_estrae(monkeypatch):
         assert res.body == xml_content
     finally:
         os.unlink(path)
+
+
+def _xml_multi_body(numero_1, numero_2):
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+    <p:FatturaElettronica xmlns:p="ns">
+      <FatturaElettronicaHeader>
+        <CedentePrestatore><DatiAnagrafici>
+          <Anagrafica><Denominazione>FORNITORE TEST SRL</Denominazione></Anagrafica>
+        </DatiAnagrafici></CedentePrestatore>
+      </FatturaElettronicaHeader>
+      <FatturaElettronicaBody>
+        <DatiGenerali><DatiGeneraliDocumento><Numero>{numero_1}</Numero></DatiGeneraliDocumento></DatiGenerali>
+      </FatturaElettronicaBody>
+      <FatturaElettronicaBody>
+        <DatiGenerali><DatiGeneraliDocumento><Numero>{numero_2}</Numero></DatiGeneraliDocumento></DatiGenerali>
+      </FatturaElettronicaBody>
+    </p:FatturaElettronica>"""
+
+
+def test_view_fattura_assoinvoice_isola_solo_il_body_selezionato(monkeypatch):
+    """Review Codex su PR #71 (4° giro): FoglioStileAssoSoftware.xsl itera
+    TUTTI i <FatturaElettronicaBody> del file — se xml_raw è quello
+    dell'intero file raggruppato (condiviso da più fatture tramite
+    xml_body_index), aprire "vedi fattura" sulla SECONDA fattura di un file
+    multi-body renderizzava anche la prima insieme ad essa. Il codice sotto
+    test deve potare l'albero XML al solo body selezionato PRIMA di
+    trasformarlo con l'XSL: qui si intercetta lxml.etree.XSLT con uno stub
+    che ritorna l'albero (già potato) inalterato, per verificare la potatura
+    senza dipendere dai dettagli di rendering del vero foglio di stile."""
+    from lxml import etree as real_lxml_etree
+
+    def _fake_xslt_ctor(xsl_doc):
+        return lambda xml_doc: xml_doc  # nessuna trasformazione: ritorna l'albero (già potato)
+
+    monkeypatch.setattr(real_lxml_etree, "XSLT", _fake_xslt_ctor)
+
+    xml = _xml_multi_body("20", "21")
+    db = _FakeDb()
+    db["invoices"].docs = [{
+        "id": "fatt-1", "invoice_number": "21", "xml_raw": xml,
+        "xml_body_index": 1,
+    }]
+    _patch_db(monkeypatch, db)
+
+    res = _run(crud_mod.view_fattura_assoinvoice("fatt-1"))
+
+    html = res.body.decode("utf-8")
+    assert "<Numero>21</Numero>" in html
+    assert "<Numero>20</Numero>" not in html
+
+
+def test_view_fattura_assoinvoice_body_index_0_isola_il_primo(monkeypatch):
+    from lxml import etree as real_lxml_etree
+
+    def _fake_xslt_ctor(xsl_doc):
+        return lambda xml_doc: xml_doc
+
+    monkeypatch.setattr(real_lxml_etree, "XSLT", _fake_xslt_ctor)
+
+    xml = _xml_multi_body("20", "21")
+    db = _FakeDb()
+    db["invoices"].docs = [{
+        "id": "fatt-1", "invoice_number": "20", "xml_raw": xml,
+        "xml_body_index": 0,
+    }]
+    _patch_db(monkeypatch, db)
+
+    res = _run(crud_mod.view_fattura_assoinvoice("fatt-1"))
+
+    html = res.body.decode("utf-8")
+    assert "<Numero>20</Numero>" in html
+    assert "<Numero>21</Numero>" not in html
+
+
+def test_view_fattura_assoinvoice_singolo_body_invariato(monkeypatch):
+    """Con un solo body (caso normale, non raggruppato) non deve esserci
+    nessuna potatura: il body unico resta intatto."""
+    from lxml import etree as real_lxml_etree
+
+    def _fake_xslt_ctor(xsl_doc):
+        return lambda xml_doc: xml_doc
+
+    monkeypatch.setattr(real_lxml_etree, "XSLT", _fake_xslt_ctor)
+
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <FatturaElettronica>
+      <FatturaElettronicaBody>
+        <DatiGenerali><DatiGeneraliDocumento><Numero>42</Numero></DatiGeneraliDocumento></DatiGenerali>
+      </FatturaElettronicaBody>
+    </FatturaElettronica>"""
+    db = _FakeDb()
+    db["invoices"].docs = [{"id": "fatt-1", "invoice_number": "42", "xml_raw": xml}]
+    _patch_db(monkeypatch, db)
+
+    res = _run(crud_mod.view_fattura_assoinvoice("fatt-1"))
+
+    assert "<Numero>42</Numero>" in res.body.decode("utf-8")
 
 
 def test_generate_invoice_html_fallback_avvisa_che_non_e_loriginale():

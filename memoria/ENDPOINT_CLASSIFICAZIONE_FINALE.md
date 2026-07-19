@@ -551,7 +551,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `PUT /api/fatture-ricevute/fattura/{fattura_id}` | fatture_module.crud | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `GET /api/fatture-ricevute/fattura/{fattura_id}/pdf/{allegato_id}` | fatture_module.crud | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/fatture-ricevute/fattura/{fattura_id}/storia` | fatture_module.crud | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/fatture-ricevute/fattura/{fattura_id}/view-assoinvoice` | fatture_module.crud | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/fatture-ricevute/fattura/{fattura_id}/view-assoinvoice` | fatture_module.crud | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/fatture-ricevute/fattura/{fattura_id}/xml-originale` | fatture_module.crud | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/fatture-ricevute/fornitori` | fatture_module.crud | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/fatture-ricevute/import-paypal` | fatture_module.pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

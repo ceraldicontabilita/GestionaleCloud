@@ -258,3 +258,20 @@ Terzo giro di review automatica Codex, tutti e 4 i finding verificati nel codice
 `python -m pytest tests/ -q` → 700 passati, stessi 2 falliti preesistenti/ambientali (invariati). Nessuna modifica al frontend in questo giro, `frontend/dist` non toccato.
 
 Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
+
+## Aggiornamento — 2026-07-19 (review Codex PR #71, quarto giro: 2 bug reali)
+
+- Branch: claude/test-coverage-analysis-co5wif
+
+Quarto giro di review automatica Codex, entrambi i finding verificati nel codice reale e confermati:
+
+1. **Encoding incoerente nel download XML**: `xml_raw` è salvato come stringa Python già decodificata in fase di import (può provenire da un file non-UTF-8, es. ISO-8859-1). Il download lo ri-codificava sempre in UTF-8 senza toccare l'eventuale dichiarazione `<?xml ... encoding="ISO-8859-1"?>` ancora presente nel testo — bytes e dichiarazione finivano incoerenti, con rischio di mojibake per un lettore XML che si fida della dichiarazione. Corretto normalizzando sempre la dichiarazione a UTF-8 prima di servire (i bytes originali pre-decodifica non sono recuperabili da questo percorso di storage, quindi la fedeltà massima raggiungibile è "coerenza garantita", non byte-identità — limite architetturale preesistente della pipeline di import, non introdotto da questo fix).
+2. **File multi-body renderizzati insieme**: `FoglioStileAssoSoftware.xsl` itera TUTTI i `<FatturaElettronicaBody>` del file XML. Poiché ogni fattura di un file raggruppato condivide lo stesso `xml_raw` (l'intero file), aprire "vedi fattura" sulla seconda fattura di un file multi-body renderizzava anche la prima insieme ad essa. Corretto potando l'albero XML al solo body indicato da `xml_body_index` prima di applicare l'XSLT.
+
+### Test aggiunti
+`tests/test_fattura_xml_originale_download.py`: +4 test (normalizzazione encoding; isolamento body corretto con `xml_body_index=1` e `=0`; nessuna potatura su singolo body).
+
+### Verifica
+`python -m pytest tests/ -q` → 704 passati, stessi 2 falliti preesistenti/ambientali (invariati).
+
+Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
