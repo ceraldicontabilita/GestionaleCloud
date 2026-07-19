@@ -99,17 +99,23 @@ async def _decode_token(request: Request) -> dict:
     if not token:
         raise HTTPException(status_code=401, detail="Non autenticato")
 
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Sessione scaduta")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Token non valido")
+
+    # Blacklist controllata SOLO dopo che firma/scadenza sono già valide
+    # (review Codex su PR #65, stesso fix già fatto nel middleware globale
+    # ma dimenticato qui: /api/auth/verify bypassa il middleware essendo
+    # pubblico, quindi ha una propria copia dello stesso controllo).
     from app.database import Database
     from app.utils.token_blacklist import is_revocato
     if await is_revocato(Database.get_db(), token):
         raise HTTPException(status_code=401, detail="Sessione terminata (logout)")
 
-    try:
-        return jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Sessione scaduta")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Token non valido")
+    return payload
 
 
 async def verify_token(request: Request) -> str:

@@ -48,7 +48,16 @@ services:
     # ATTENZIONE: sostituire l'URL con quello reale del servizio backend
     # dal pannello Render prima di usare questo Blueprint per ricreare i
     # servizi — non verificabile da qui, nessun accesso alla dashboard.
+    # Ordine rilevante: /api/* deve precedere il fallback SPA, altrimenti
+    # verrebbe intercettata prima lei. Senza il fallback, ricaricare/aprire
+    # direttamente una rotta client-side (es. /prima-nota, /fornitori) non
+    # troverebbe nulla sul server statico — React Router gestisce le rotte
+    # solo lato client dopo che index.html è stato caricato (review Codex
+    # su PR #65).
     routes:
       - type: rewrite
         source: /api/*
         destination: https://ceraldi-gestionale-backend.onrender.com/api/*
+      - type: rewrite
+        source: /*
+        destination: /index.html
