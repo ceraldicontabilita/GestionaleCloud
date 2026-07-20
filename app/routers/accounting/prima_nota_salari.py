@@ -19,7 +19,7 @@ import logging
 import io
 
 from app.database import Database
-from app.utils.dependencies import get_current_admin_user
+from app.utils.dependencies import get_current_admin_user, get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -93,8 +93,82 @@ async def get_prima_nota_salari(
     salari = await db["prima_nota_salari"].find(
         query, {"_id": 0}
     ).sort([("anno", -1), ("mese", -1), ("dipendente", 1)]).to_list(5000)
+
+    # Espone soltanto un booleano leggero, mai il PDF base64 nella lista.
+    query_pdf: Dict[str, Any] = {
+        "pdf_data": {"$exists": True, "$nin": [None, ""]},
+    }
+    if anno:
+        query_pdf["anno"] = anno
+    if mese:
+        query_pdf["mese"] = mese
+    docs = await db["cedolini"].find(
+        query_pdf,
+        {"_id": 0, "id": 1, "codice_fiscale": 1, "mese": 1, "anno": 1},
+    ).to_list(5000)
+    disponibili = {d.get("id") for d in docs if d.get("id")}
+    disponibili_per_periodo = {
+        (d.get("codice_fiscale"), d.get("mese"), d.get("anno"))
+        for d in docs if d.get("codice_fiscale")
+    }
+    for salario in salari:
+        chiave = (salario.get("codice_fiscale"), salario.get("mese"), salario.get("anno"))
+        salario["cedolino_disponibile"] = (
+            salario.get("cedolino_id") in disponibili or chiave in disponibili_per_periodo
+        )
     
     return salari
+
+
+@router.get("/salari/{record_id}/cedolino-pdf")
+async def get_cedolino_pdf(
+    record_id: str,
+    _current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Visualizza il PDF originale collegato alla riga del dipendente."""
+    import base64
+
+    db = Database.get_db()
+    salario = await db["prima_nota_salari"].find_one(
+        {"id": record_id},
+        {"_id": 0, "cedolino_id": 1, "codice_fiscale": 1, "mese": 1, "anno": 1},
+    )
+    if not salario:
+        raise HTTPException(status_code=404, detail="Riga salario non trovata")
+
+    cedolino = None
+    if salario.get("cedolino_id"):
+        cedolino = await db["cedolini"].find_one(
+            {"id": salario["cedolino_id"]},
+            {"_id": 0, "pdf_data": 1},
+        )
+    if not cedolino or not cedolino.get("pdf_data"):
+        cedolino = await db["cedolini"].find_one(
+            {
+                "codice_fiscale": salario.get("codice_fiscale"),
+                "mese": salario.get("mese"),
+                "anno": salario.get("anno"),
+                "pdf_data": {"$exists": True, "$nin": [None, ""]},
+            },
+            {"_id": 0, "pdf_data": 1},
+        )
+    if not cedolino or not cedolino.get("pdf_data"):
+        raise HTTPException(status_code=404, detail="PDF del cedolino non disponibile")
+
+    try:
+        pdf_bytes = base64.b64decode(cedolino["pdf_data"], validate=True)
+    except Exception as exc:
+        logger.warning("PDF cedolino non decodificabile per record %s: %s", record_id, exc)
+        raise HTTPException(status_code=422, detail="PDF del cedolino non leggibile")
+
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": "inline; filename=cedolino.pdf",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.get("/salari/riepilogo")

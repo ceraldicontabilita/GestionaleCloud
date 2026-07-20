@@ -35,6 +35,21 @@ export const normalizzaBeneficiarioAssegno = value => {
     : beneficiario;
 };
 
+export const residuoFattura = fattura => {
+  const totale = Number(fattura?.total_amount || fattura?.importo_totale || 0);
+  if (fattura?.importo_residuo !== undefined && fattura?.importo_residuo !== null) {
+    return Math.max(0, Number(fattura.importo_residuo) || 0);
+  }
+  return Math.max(0, totale - (Number(fattura?.importo_pagato) || 0));
+};
+
+const distanzaFatturaDaAssegno = (fattura, importoAssegno) => {
+  const importo = Number(importoAssegno || 0);
+  const valori = [residuoFattura(fattura)];
+  (fattura?.pagamento_rate || []).forEach(rata => valori.push(Number(rata?.importo) || 0));
+  return Math.min(...valori.map(valore => Math.abs(valore - importo)));
+};
+
 export function filtraAssegni(assegni, filtri = {}) {
   const {
     fornitore = '', importoEsatto = '', importoMin = '', importoMax = '',
@@ -206,14 +221,11 @@ export default function GestioneAssegni() {
       params.append('anno', anno);
       params.append('limit', '1000');
       // IMPORTANTE: se c'è un beneficiario, filtra SOLO quelle del beneficiario
-      if (beneficiario) {
-        params.append('fornitore', beneficiario);
-      }
       const res = await api.get(`/api/invoices?${params}`);
       const items = res.data.items || res.data || [];
       // Escludi fatture già pagate E fornitori pagati per contanti
       let filtered = items.filter(f => {
-        if (f.status === 'paid') return false;
+        if (f.status === 'paid' || f.payment_status === 'paid' || f.pagato === true) return false;
         // Escludi se il metodo di pagamento è contanti
         const paymentMethod = (f.payment_method || f.metodo_pagamento || '').toLowerCase();
         if (
@@ -234,25 +246,24 @@ export default function GestioneAssegni() {
 
       // FILTRO AGGIUNTIVO: Se c'è un beneficiario, mostra SOLO fatture di quel fornitore
       // Questo perché non si può pagare con un assegno fatture di fornitori diversi
-      if (beneficiario) {
-        const benefLower = beneficiario.toLowerCase();
-        filtered = filtered.filter(f => {
-          const fornitore = (f.supplier_name || f.cedente_denominazione || '').toLowerCase();
-          // Match fuzzy: il beneficiario deve contenere parte del nome fornitore o viceversa
-          return (
-            fornitore.includes(benefLower.substring(0, 5)) ||
-            benefLower.includes(fornitore.substring(0, 5)) ||
-            fornitore.split(' ').some(word => benefLower.includes(word) && word.length > 3)
-          );
-        });
-      }
+      const benefLower = beneficiario.toLowerCase();
+      const stessoBeneficiario = fattura => {
+        if (!benefLower) return false;
+        const fornitore = (fattura.supplier_name || fattura.cedente_denominazione || '').toLowerCase();
+        return (
+          fornitore.includes(benefLower.substring(0, 5)) ||
+          benefLower.includes(fornitore.substring(0, 5)) ||
+          fornitore.split(' ').some(word => benefLower.includes(word) && word.length > 3)
+        );
+      };
 
       // Prima le fatture con importo piu vicino all'assegno: quando il
       // beneficiario non e ancora noto, la candidata utile resta subito
       // visibile anche con centinaia di fatture nell'anno.
       filtered.sort((a, b) => {
-        const importoA = Math.abs(Number(a.total_amount || a.importo_totale || 0) - Number(importoAssegno || 0));
-        const importoB = Math.abs(Number(b.total_amount || b.importo_totale || 0) - Number(importoAssegno || 0));
+        if (stessoBeneficiario(a) !== stessoBeneficiario(b)) return stessoBeneficiario(a) ? -1 : 1;
+        const importoA = distanzaFatturaDaAssegno(a, importoAssegno);
+        const importoB = distanzaFatturaDaAssegno(b, importoAssegno);
         if (importoA !== importoB) return importoA - importoB;
         const fornA = (a.supplier_name || a.cedente_denominazione || '').toLowerCase();
         const fornB = (b.supplier_name || b.cedente_denominazione || '').toLowerCase();
@@ -417,15 +428,24 @@ export default function GestioneAssegni() {
       const importoRaw = parseFloat(
         fattura.total_amount || fattura.importo_totale || fattura.importo || 0
       );
-      const importo = isNC ? -Math.abs(importoRaw) : importoRaw;
+      const giaSelezionato = selectedFatture.reduce(
+        (sum, f) => sum + Math.max(0, f.quota ?? f.importo ?? 0), 0
+      );
+      const disponibileAssegno = Math.max(
+        0, Number(editingAssegnoForFatture?.importo || 0) - giaSelezionato
+      );
+      const residuo = residuoFattura(fattura) || importoRaw;
+      const quota = isNC
+        ? -Math.abs(importoRaw)
+        : Math.min(residuo, disponibileAssegno || residuo);
 
       setSelectedFatture([
         ...selectedFatture,
         {
           id: fattura.id,
           numero: fattura.invoice_number || fattura.numero_fattura,
-          importo: importo,
-          quota: importo,
+          importo: quota,
+          quota,
           data: fattura.invoice_date || fattura.data_fattura,
           fornitore: fornitoreNuovo,
           tipo_documento: tipoDoc,
@@ -3098,6 +3118,7 @@ export default function GestioneAssegni() {
                       const importoRaw = parseFloat(f.total_amount || f.importo_totale || 0);
                       // Note credito: importo SEMPRE negativo
                       const importo = isNotaCredito ? -Math.abs(importoRaw) : importoRaw;
+                      const residuo = residuoFattura(f);
 
                       // Mostra header fornitore quando cambia
                       const prevFornitore =
@@ -3193,6 +3214,11 @@ export default function GestioneAssegni() {
                               >
                                 {isNotaCredito ? '- ' : ''}
                                 {formatEuro(Math.abs(importo))}
+                                {!isNotaCredito && Math.abs(residuo - importoRaw) > 0.005 && (
+                                  <div style={{ fontSize: 10, color: COLORS.textMuted, fontWeight: 500 }}>
+                                    residuo {formatEuro(residuo)}
+                                  </div>
+                                )}
                               </div>
                               <Button
                                 variant="success"

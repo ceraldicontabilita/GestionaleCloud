@@ -57,6 +57,7 @@ export const NAV_ALTRO = [
   { to: '/noleggio', label: 'Noleggi', Icon: Car },
   { to: '/scadenze', label: 'Scadenze', Icon: Clock },
   { to: '/ritenute', label: 'Ritenute', Icon: Receipt },
+  { to: '/salari', label: 'Cedolini paga', Icon: Users },
   { to: '/strumenti', label: 'Strumenti', Icon: Wrench },
   { to: '/mappa-gestionale', label: 'Mappa gestionale', Icon: Map },
   { to: null, href: APP_DIPENDENTI_URL, label: 'HR', Icon: Users, external: true },

@@ -295,7 +295,8 @@ async def _alert_pagamento_multiplo(db, mov_id: Optional[str], importo: float) -
 
 async def _applica_pagamento_banca(db, fattura: Dict[str, Any], metodo_label: str,
                                    data_ec: str, mov_id: Optional[str], score: int,
-                                   now: str, source: str) -> None:
+                                   now: str, source: str,
+                                   importo_pagamento: Optional[float] = None) -> None:
     """Applica il pagamento via banca in modo COERENTE con il resto dell'app:
     crea (idempotente) il movimento in prima_nota_banca, aggiorna TUTTI i flag
     usati dalle varie pagine (pagato/paid/stato_pagamento/prima_nota_*) e
@@ -304,14 +305,28 @@ async def _applica_pagamento_banca(db, fattura: Dict[str, Any], metodo_label: st
     Prima di questo helper la riconciliazione settava solo pagato/in_banca:
     la fattura risultava pagata ma NON compariva mai in Prima Nota Banca.
     """
-    from app.routers.prima_nota_module.sync import registra_pagamento_fattura
-
     fattura_id = str(fattura.get("id") or fattura.get("_id"))
-    importo_fattura = fattura.get("total_amount") or fattura.get("importo_totale") or 0
+    importo_fattura = float(fattura.get("total_amount") or fattura.get("importo_totale") or 0)
+    quota = round(float(importo_pagamento if importo_pagamento is not None else importo_fattura), 2)
+    evidenza_esistente = await db["prima_nota_banca"].find_one({
+        "$or": [{"movimento_estratto_conto_id": mov_id}, {"estratto_conto_id": mov_id}],
+        "status": {"$nin": ["deleted", "archived"]},
+    }, {"_id": 0}) if mov_id else None
+    evidenza_gia_applicata = bool(
+        evidenza_esistente
+        and str(evidenza_esistente.get("invoice_id") or evidenza_esistente.get("fattura_id") or "") == fattura_id
+    )
+    quota_da_applicare = 0.0 if evidenza_gia_applicata else quota
+    gia_pagato = round(float(fattura.get("importo_pagato") or 0), 2)
+    nuovo_pagato = round(min(importo_fattura, gia_pagato + quota_da_applicare), 2)
+    pagata_interamente = abs(nuovo_pagato - importo_fattura) <= 0.005
     update = {
-        "pagato": True,
-        "paid": True,
-        "stato_pagamento": "pagata",
+        "pagato": pagata_interamente,
+        "paid": pagata_interamente,
+        "stato_pagamento": "pagata" if pagata_interamente else "parziale",
+        "payment_status": "paid" if pagata_interamente else "partial",
+        "importo_pagato": nuovo_pagato,
+        "importo_residuo": round(max(0.0, importo_fattura - nuovo_pagato), 2),
         "metodo_pagamento": metodo_label,
         "in_banca": True,
         "data_pagamento": data_ec,
@@ -321,24 +336,47 @@ async def _applica_pagamento_banca(db, fattura: Dict[str, Any], metodo_label: st
         "updated_at": now,
     }
     try:
-        pn = await registra_pagamento_fattura(fattura, "banca")
-        if pn.get("banca"):
-            update["prima_nota_id"] = pn["banca"]
-            update["prima_nota_tipo"] = "banca"
-            update["prima_nota_banca_id"] = pn["banca"]
+        pn = evidenza_esistente
+        pn_fields = {
+            "invoice_id": fattura_id, "fattura_id": fattura_id,
+            "movimento_estratto_conto_id": mov_id, "estratto_conto_id": mov_id,
+            "riconciliato": True, "data_riconciliazione": data_ec, "updated_at": now,
+        }
+        if pn:
+            await db["prima_nota_banca"].update_one({"id": pn["id"]}, {"$set": pn_fields})
+            pn_id = pn["id"]
+        else:
+            from app.services.scritture_contabili import scrivi_movimento
+            pn_id = await scrivi_movimento(db, "banca", {
+                "data": str(data_ec)[:10], "tipo": "uscita", "importo": quota,
+                "descrizione": f"Pagamento {metodo_label} fattura "
+                               f"{fattura.get('invoice_number') or fattura.get('numero_fattura') or ''}".strip(),
+                "categoria": "Fatture", "source": source, **pn_fields,
+            })
+        update["prima_nota_id"] = pn_id
+        update["prima_nota_tipo"] = "banca"
+        update["prima_nota_banca_id"] = pn_id
     except Exception:
         logger.exception(f"Errore registrazione prima nota banca per fattura {fattura_id}")
 
     filtro = {"_id": fattura["_id"]} if fattura.get("_id") is not None else {"id": fattura.get("id")}
     await db[Collections.INVOICES].update_one(filtro, {"$set": update})
-    await _propaga_fattura_pagata(
-        db, fattura_id=fattura_id, metodo=metodo_label, data_pag=data_ec,
-        movimento_id=mov_id, importo=importo_fattura, source=source,
-    )
-    await _registra_match_partita_aperta(
-        db, tipo="fattura_fornitore", documento_id=fattura_id,
-        importo=float(importo_fattura or 0), movimento_id=mov_id, now=now,
-    )
+    if quota_da_applicare > 0:
+        from app.services.scadenze_rate_service import applica_quota_scadenze
+        await applica_quota_scadenze(
+            db, fattura_id=fattura_id, quota=quota,
+            evidenza_id=f"banca:{mov_id}:{fattura_id}", metodo=metodo_label,
+            data_pagamento=str(data_ec)[:10],
+        )
+    if pagata_interamente:
+        await _propaga_fattura_pagata(
+            db, fattura_id=fattura_id, metodo=metodo_label, data_pag=data_ec,
+            movimento_id=mov_id, importo=quota, source=source,
+        )
+        await _registra_match_partita_aperta(
+            db, tipo="fattura_fornitore", documento_id=fattura_id,
+            importo=float(importo_fattura or 0), movimento_id=mov_id, now=now,
+        )
 
 
 def _giorni_pagamento_plausibili(data_ec: str, data_fattura: str) -> Optional[int]:
@@ -349,6 +387,19 @@ def _giorni_pagamento_plausibili(data_ec: str, data_fattura: str) -> Optional[in
         return (dt_ec - dt_fatt).days
     except (ValueError, TypeError):
         return None
+
+
+def _importo_atteso_per_movimento(fattura: Dict[str, Any], importo_movimento: float) -> float:
+    """Totale da usare nel controllo differenze: per una fattura rateizzata
+    e' la rata XML compatibile, non il totale documento."""
+    for rata in fattura.get("pagamento_rate") or []:
+        if not isinstance(rata, dict):
+            continue
+        valore = float(rata.get("importo") or 0)
+        if abs(valore - importo_movimento) <= 0.005:
+            return valore
+    return float(fattura.get("importo_residuo") or fattura.get("importo_totale")
+                 or fattura.get("total_amount") or 0)
 
 
 def is_commissione(desc: str, imp: float) -> bool:
@@ -625,12 +676,13 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                             {"total_amount": {"$gte": importo - 0.05, "$lte": importo + 0.05}},
                             # Match parziale (il pagamento è circa 50-200% della fattura)
                             {"importo_totale": {"$gte": importo * 0.5, "$lte": importo * 2}},
-                            {"total_amount": {"$gte": importo * 0.5, "$lte": importo * 2}}
+                            {"total_amount": {"$gte": importo * 0.5, "$lte": importo * 2}},
+                            {"pagamento_rate": {"$exists": True, "$ne": []}}
                         ]}
                     ]
                     # NB: niente proiezione {"_id": 0} — l'_id serve per l'update
                     # (prima ogni match falliva con KeyError '_id' e finiva in errors)
-                }).to_list(50)
+                }).to_list(500)
 
                 # Calcola score per ogni fattura
                 fatture_scored = []
@@ -643,8 +695,20 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
 
                     # Score 1: Importo esatto (+10) vs importo parziale (+3)
                     imp_fatt = f.get("importo_totale") or f.get("total_amount") or 0
-                    if abs(imp_fatt - importo) <= 0.05:
+                    rate = [
+                        float(r.get("importo") or 0)
+                        for r in f.get("pagamento_rate") or [] if isinstance(r, dict)
+                    ]
+                    rata_esatta = any(abs(rata - importo) <= 0.005 for rata in rate)
+                    residuo = float(
+                        f.get("importo_residuo")
+                        if f.get("importo_residuo") is not None
+                        else max(0, float(imp_fatt) - float(f.get("importo_pagato") or 0))
+                    )
+                    if abs(residuo - importo) <= 0.05:
                         score += 10  # Match esatto
+                    elif rata_esatta and importo <= residuo + 0.005:
+                        score += 10  # Importo esatto di una rata del piano XML
                     elif abs(imp_fatt - importo) <= imp_fatt * 0.1:  # ±10%
                         score += 5  # Match quasi esatto
                     else:
@@ -724,6 +788,7 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                     await _applica_pagamento_banca(
                         db, fattura, metodo_pagamento, data_ec, mov_id,
                         fatture_scored[0][1], now, source="ric_auto_esatto_multi",
+                        importo_pagamento=importo,
                     )
 
                     match_details = {
@@ -735,7 +800,7 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                         "match_type": "importo+fornitore+numero"
                     }
                     results["riconciliati_fatture"] += 1
-                    imp_fatt_match = fattura.get("importo_totale") or fattura.get("total_amount") or 0
+                    imp_fatt_match = _importo_atteso_per_movimento(fattura, importo)
                     await _alert_differenza_importo(db, mov_id, importo, float(imp_fatt_match), match_details["fattura_id"])
 
                 # Se score >= 10 ma < 15 (solo importo + un altro criterio) → match con confidenza media
@@ -770,6 +835,7 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                         await _applica_pagamento_banca(
                             db, fattura, metodo_pagamento, data_ec, mov_id,
                             fatture_scored[0][1], now, source="ric_auto_parziale_singolo",
+                            importo_pagamento=importo,
                         )
 
                         match_details = {
@@ -780,7 +846,7 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                             "match_score": fatture_scored[0][1]
                         }
                         results["riconciliati_fatture"] += 1
-                        imp_fatt_match = fattura.get("importo_totale") or fattura.get("total_amount") or 0
+                        imp_fatt_match = _importo_atteso_per_movimento(fattura, importo)
                         await _alert_differenza_importo(db, mov_id, importo, float(imp_fatt_match), match_details["fattura_id"])
                     else:
                         # Più fatture con score simile → operazione da confermare
@@ -839,6 +905,7 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                         await _applica_pagamento_banca(
                             db, fattura, metodo_pagamento, data_ec, mov_id,
                             10, now, source="ric_auto_solo_importo",
+                            importo_pagamento=importo,
                         )
 
                         match_details = {

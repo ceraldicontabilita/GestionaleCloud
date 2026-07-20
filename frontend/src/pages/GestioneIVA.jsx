@@ -48,7 +48,6 @@ export default function GestioneIVA() {
 
   // Liquidazione mensile (Fase 3)
   const [mese, setMese] = useState(1);
-  const [ivaVendite, setIvaVendite] = useState('0');
   const [liquidazione, setLiquidazione] = useState(null);
   const [busyLiq, setBusyLiq] = useState(false);
   const periodo = `${anno}-${String(mese).padStart(2, '0')}`;
@@ -102,9 +101,7 @@ export default function GestioneIVA() {
     setBusyLiq(true);
     setMsg(null);
     try {
-      const res = await api.post(
-        `/api/iva/liquidazioni/calcola?periodo=${periodo}&iva_vendite=${Number(ivaVendite) || 0}`
-      );
+      const res = await api.post(`/api/iva/liquidazioni/calcola?periodo=${periodo}`);
       setLiquidazione(res.data?.liquidazione || null);
     } catch (e) {
       setMsg({ tipo: 'errore', testo: 'Errore calcolo: ' + (e.response?.data?.detail || e.message) });
@@ -366,14 +363,13 @@ export default function GestioneIVA() {
             </select>
           </label>
           <label style={STILI.campo}>
-            <span style={STILI.campoLabel}>IVA vendite (€)</span>
-            <input
-              type="number"
-              value={ivaVendite}
-              onChange={(e) => setIvaVendite(e.target.value)}
-              style={STILI.input}
-              data-testid="liq-iva-vendite"
-            />
+            <span style={STILI.campoLabel}>IVA vendite da corrispettivi XML</span>
+            <strong
+              style={{ ...STILI.input, display: 'flex', alignItems: 'center' }}
+              data-testid="liq-iva-vendite-auto"
+            >
+              {formatEuro(dashboard?.iva_vendite_corrispettivi || 0)}
+            </strong>
           </label>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <Button variant="primary" onClick={calcolaLiq} disabled={busyLiq} data-testid="liq-calcola">

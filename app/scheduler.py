@@ -563,6 +563,15 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-DRIVE-QUIETANZE] errore: {e}")
 
+    async def _drive_estratti_conto_job():
+        from app.database import Database
+        from app.services import drive_estratti_conto_ingest
+        try:
+            result = await drive_estratti_conto_ingest.sync(Database.get_db())
+            logger.info(f"[SCHEDULER-DRIVE-ESTRATTI-CONTO] {result}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-DRIVE-ESTRATTI-CONTO] errore: {e}")
+
     # ── Automazioni Prima Nota: le ex funzioni "manuali" girano da sole ────
     # 1. corrispettivi → prima nota cassa (idempotente)
     # 2. fatture provvisorie → cassa/banca secondo il metodo fornitore
@@ -687,21 +696,33 @@ def start_scheduler():
     scheduler.add_job(
         _drive_cedolini_job,
         'interval', hours=1,
-        id="drive_cedolini_ingest", name="Import Cedolini da Google Drive (ogni ora)",
+        next_run_time=datetime.now(),
+        id="drive_cedolini_ingest", name="Import Cedolini da Google Drive (ogni ora + al riavvio)",
         replace_existing=True,
     )
 
     scheduler.add_job(
         _drive_corrispettivi_job,
         'interval', hours=1,
-        id="drive_corrispettivi_ingest", name="Import Corrispettivi da Google Drive (ogni ora)",
+        next_run_time=datetime.now(),
+        id="drive_corrispettivi_ingest", name="Import Corrispettivi da Google Drive (ogni ora + al riavvio)",
         replace_existing=True,
     )
 
     scheduler.add_job(
         _drive_quietanze_job,
         'interval', hours=1,
-        id="drive_quietanze_ingest", name="Import Quietanze F24 da Google Drive (ogni ora)",
+        next_run_time=datetime.now(),
+        id="drive_quietanze_ingest", name="Import Quietanze F24 da Google Drive (ogni ora + al riavvio)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _drive_estratti_conto_job,
+        'interval', hours=1,
+        next_run_time=datetime.now(),
+        id="drive_estratti_conto_ingest",
+        name="Import Estratti Conto da Google Drive (ogni ora + al riavvio)",
         replace_existing=True,
     )
 

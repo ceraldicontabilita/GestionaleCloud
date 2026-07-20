@@ -1705,6 +1705,13 @@ async def sync_assegni_da_estratto_conto() -> Dict[str, Any]:
     - PAGAMENTO ASSEGNO
     - VS. ASSEGNO
     """
+    # La logica canonica vive nel service condiviso: la stessa funzione viene
+    # usata da upload manuale, Documenti/Import e ingest automatico Drive.
+    # Il vecchio codice qui sotto resta temporaneamente come riferimento di
+    # migrazione ma non viene piu eseguito.
+    from app.services.assegni_estratto_conto import sincronizza_assegni_da_estratto_conto
+    return await sincronizza_assegni_da_estratto_conto(Database.get_db())
+
     import re
     db = Database.get_db()
     

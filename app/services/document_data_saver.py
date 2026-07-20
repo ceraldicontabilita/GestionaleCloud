@@ -493,7 +493,7 @@ async def save_extracted_data_to_gestionale(
 
     # Estratto conto appena caricato: sincronizza subito gli assegni trovati
     # nei movimenti (prima era un bottone manuale "Sync da E/C").
-    if tipo_documento == "ESTRATTO_CONTO" and result.get("movimenti_salvati"):
+    if tipo_documento == "ESTRATTO_CONTO":
         try:
             from app.routers.bank.assegni import sync_assegni_da_estratto_conto
 

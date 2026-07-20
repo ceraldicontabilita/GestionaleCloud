@@ -37,6 +37,11 @@ def is_sync_running() -> bool:
     return _sync_lock.locked()
 
 
+def _folder_id() -> Optional[str]:
+    """ID cartella fatture: nome canonico o alias dell'ambiente Render."""
+    return settings.GOOGLE_DRIVE_FATTURE_FOLDER_ID or settings.DRIVE_FOLDER_FATTURE_ID
+
+
 def start_background_sync(db) -> bool:
     """Avvia un sync in background. Ritorna False se ce n'è già uno in corso."""
     global _bg_task
@@ -48,8 +53,10 @@ def start_background_sync(db) -> bool:
 
 def is_configured() -> bool:
     return bool(
-        settings.GOOGLE_DRIVE_FATTURE_FOLDER_ID
-        and (settings.GOOGLE_DRIVE_SA_FILE or settings.GOOGLE_DRIVE_SA_JSON)
+        settings.ENABLE_DRIVE_FATTURE_SYNC
+        and _folder_id()
+        and (settings.GOOGLE_SERVICE_ACCOUNT_JSON_FATTURE
+             or settings.GOOGLE_DRIVE_SA_FILE or settings.GOOGLE_DRIVE_SA_JSON)
     )
 
 
@@ -94,11 +101,23 @@ def _load_credentials():
         return None, f"credenziali service account non valide: {e}"
 
 
+def _load_credentials_fatture():
+    """Account dedicato fatture se presente, altrimenti account condiviso."""
+    if settings.GOOGLE_SERVICE_ACCOUNT_JSON_FATTURE:
+        try:
+            from google.oauth2 import service_account
+            info = _parse_sa_json(settings.GOOGLE_SERVICE_ACCOUNT_JSON_FATTURE)
+            return service_account.Credentials.from_service_account_info(info, scopes=_SCOPES), None
+        except Exception as exc:
+            return None, f"GOOGLE_SERVICE_ACCOUNT_JSON_FATTURE non valido: {exc}"
+    return _load_credentials()
+
+
 def _build_drive_service():
     """Costruisce il client Drive v3 da service account. None se non disponibile."""
     if not is_configured():
         return None
-    creds, err = _load_credentials()
+    creds, err = _load_credentials_fatture()
     if creds is None:
         logger.error(f"Drive ingest: {err}")
         return None
@@ -180,12 +199,12 @@ async def get_status(db) -> Dict[str, Any]:
     state = await db[_SYNC_STATE_COLLECTION].find_one({"_id": _SYNC_STATE_ID}) or {}
     credenziali_errore = None
     if is_configured():
-        _, credenziali_errore = _load_credentials()
+        _, credenziali_errore = _load_credentials_fatture()
     return {
         "configured": is_configured(),
         "credenziali_ok": is_configured() and credenziali_errore is None,
         "credenziali_errore": credenziali_errore,
-        "folder_id": settings.GOOGLE_DRIVE_FATTURE_FOLDER_ID,
+        "folder_id": _folder_id(),
         "sync_running": is_sync_running(),
         "last_sync": state.get("last_sync"),
         "last_result": state.get("last_result"),
@@ -209,7 +228,7 @@ async def _do_sync(db) -> Dict[str, Any]:
             "message": "Imposta GOOGLE_DRIVE_FATTURE_FOLDER_ID e il service account "
                        "(GOOGLE_DRIVE_SA_FILE o GOOGLE_DRIVE_SA_JSON).",
         }
-    creds, cred_err = _load_credentials()
+    creds, cred_err = _load_credentials_fatture()
     if creds is None:
         return {"status": "error", "message": f"Credenziali Google Drive non valide: {cred_err}"}
     service = _build_drive_service()
@@ -219,7 +238,7 @@ async def _do_sync(db) -> Dict[str, Any]:
     # Import locale per evitare import circolari con il router.
     from app.routers.invoices.fatture_upload import process_xml_bytes
 
-    parent_id = settings.GOOGLE_DRIVE_FATTURE_FOLDER_ID
+    parent_id = _folder_id()
     result = {
         "status": "ok", "total": 0, "imported": 0, "duplicates": 0,
         "archiviate": 0, "errors": 0, "moved": 0, "details": [],
@@ -312,7 +331,7 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
     if not is_configured():
         return {"status": "not_configured",
                 "message": "Configura prima il service account e la cartella Drive."}
-    creds, cred_err = _load_credentials()
+    creds, cred_err = _load_credentials_fatture()
     if creds is None:
         return {"status": "error", "message": f"Credenziali non valide: {cred_err}"}
     service = _build_drive_service()
@@ -321,7 +340,7 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
 
     from app.routers.invoices.fatture_upload import process_xml_bytes
 
-    parent_id = settings.GOOGLE_DRIVE_FATTURE_FOLDER_ID
+    parent_id = _folder_id()
     esito: Dict[str, Any] = {
         "status": "ok", "totale_file_elaborate": 0,
         "quadrati": 0, "recuperati": 0, "errori": 0,

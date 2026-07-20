@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useHashState } from '../hooks/useHashState';
 import { CopyLinkButton } from '../components/CopyLinkButton';
 import { Link } from 'react-router-dom';
@@ -39,7 +39,6 @@ import {
   Percent,
   RefreshCw,
   Upload,
-  Eye,
   Trash2,
   X,
 } from 'lucide-react';
@@ -56,10 +55,17 @@ export default function Corrispettivi() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const confirm = useConfirm();
+  const dettaglioRef = useRef(null);
 
   // Deep link: item selezionato sincronizzato con hash (#selected=2026-04-08)
   const [hs, setHs] = useHashState({ selected: '' });
   const selectedItem = corrispettivi.find(c => c.data === hs.selected) || null;
+
+  useEffect(() => {
+    if (selectedItem && dettaglioRef.current) {
+      dettaglioRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [selectedItem]);
 
   useEffect(() => {
     loadCorrispettivi();
@@ -188,6 +194,7 @@ export default function Corrispettivi() {
 
           {/* Dettaglio selezionato */}
           {selectedItem && (
+            <div ref={dettaglioRef} style={{ scrollMarginTop: 100 }}>
             <PageSection
               title={`Dettaglio Corrispettivo ${formatDateIT(selectedItem.data)}`}
               icon="📋"
@@ -302,6 +309,7 @@ export default function Corrispettivi() {
                 </div>
               )}
             </PageSection>
+            </div>
           )}
 
           {/* Lista Corrispettivi */}
@@ -407,8 +415,10 @@ export default function Corrispettivi() {
                             variant="info"
                             onClick={() => setHs('selected', c.data || '')}
                             title="Vedi dettaglio"
+                            aria-label={`Vedi corrispettivo ${c.data || ''}`}
+                            style={{ width: 'auto', minWidth: 60, padding: '0 10px', fontWeight: 700 }}
                           >
-                            <Eye size={14} />
+                            Vedi
                           </RowActionButton>
                           <RowActionButton
                             variant="danger"

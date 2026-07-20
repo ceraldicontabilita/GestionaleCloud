@@ -142,7 +142,7 @@ class Settings(BaseSettings):
     ENABLE_DRIVE_CORRISPETTIVI_SYNC: bool = True
     # Quietanze: ACCESO su scelta esplicita dell'utente (10/07/2026)
     ENABLE_DRIVE_QUIETANZE_SYNC: bool = True
-    ENABLE_DRIVE_ESTRATTI_CONTO_SYNC: bool = False
+    ENABLE_DRIVE_ESTRATTI_CONTO_SYNC: bool = True
     # Nuovi canali documentali (default SPENTI finché l'utente non crea le
     # cartelle su Drive e ne mette gli ID su Render).
     ENABLE_DRIVE_DICHIARAZIONI_IVA_SYNC: bool = False

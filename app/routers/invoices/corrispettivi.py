@@ -35,7 +35,12 @@ async def list_corrispettivi(
     """List corrispettivi con filtro opzionale per data o anno."""
     db = Database.get_db()
     
-    query = {}
+    # I record soft-deleted restano nel database per audit, ma non devono
+    # ricomparire nella pagina dopo una cancellazione.
+    query = {
+        "entity_status": {"$ne": "deleted"},
+        "status": {"$nin": ["deleted", "archived"]},
+    }
     
     # Se nessun filtro, usa anno corrente per performance
     if not anno and not data_da and not data_a:
@@ -460,10 +465,19 @@ async def delete_corrispettivo(
     if not corr:
         raise HTTPException(status_code=404, detail="Corrispettivo non trovato")
     
-    # Valida eliminazione
-    validation = BusinessRules.can_delete_corrispettivo(corr)
+    # Un XML RT con tutti gli importi a zero e' un artefatto senza effetto
+    # contabile. Puo' essere archiviato anche se una vecchia pipeline gli ha
+    # assegnato per errore un prima_nota_id. Per i record non-zero restano
+    # valide tutte le protezioni canoniche.
+    campi_importo = (
+        "totale", "totale_complessivo", "pagato_contanti",
+        "pagato_elettronico", "pagato_pos", "totale_iva",
+        "totale_imponibile", "imponibile",
+    )
+    record_zero = all(abs(float(corr.get(campo) or 0)) < 0.005 for campo in campi_importo)
+    validation = BusinessRules.can_delete_corrispettivo(corr) if not record_zero else None
     
-    if not validation.is_valid:
+    if validation is not None and not validation.is_valid:
         raise HTTPException(
             status_code=400,
             detail={
@@ -481,16 +495,31 @@ async def delete_corrispettivo(
         }}
     )
     
-    # Annulla movimento Prima Nota collegato se esiste
-    if corr.get("prima_nota_id"):
-        await db["prima_nota_cassa"].update_one(
-            {"id": corr["prima_nota_id"]},
-            {"$set": {"stato": "annullato"}}
+    # Annulla tutte le eventuali righe collegate. Per il record zero non si
+    # modifica alcun saldo reale, ma si eliminano i collegamenti fantasma.
+    ids_collegati = [
+        value for value in (
+            corr.get("prima_nota_id"), corr.get("prima_nota_cassa_id"),
+            corr.get("prima_nota_banca_id"),
+        ) if value
+    ]
+    for collection in ("prima_nota_cassa", "prima_nota_banca"):
+        await db[collection].update_many(
+            {"$or": [
+                {"corrispettivo_id": corrispettivo_id},
+                {"id": {"$in": ids_collegati}},
+            ]},
+            {"$set": {
+                "stato": "annullato",
+                "status": "cancelled",
+                "annullato_da_eliminazione_corrispettivo": True,
+            }},
         )
     
     return {
         "deleted": True,
-        "message": "Corrispettivo eliminato (archiviato)"
+        "message": "Corrispettivo eliminato (archiviato)",
+        "record_zero": record_zero,
     }
 
 

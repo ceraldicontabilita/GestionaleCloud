@@ -29,6 +29,53 @@ COLL_MOV = "movimenti_iva_fattura"
 from app.constants.tipi_documento import TIPI_NOTA_CREDITO
 
 
+def _float(value: Any) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _iva_corrispettivo(doc: Dict[str, Any]) -> float:
+    """IVA vendite dichiarata dal RT, con fallback per i record storici."""
+    iva = _float(doc.get("totale_iva"))
+    if abs(iva) >= 0.005:
+        return iva
+    riepilogo = doc.get("riepilogo_iva") or []
+    iva_righe = sum(_float(r.get("imposta")) for r in riepilogo if isinstance(r, dict))
+    if abs(iva_righe) >= 0.005:
+        return iva_righe
+    totale = _float(doc.get("totale") or doc.get("totale_complessivo"))
+    return totale - (totale / 1.10) if totale > 0 else 0.0
+
+
+async def _iva_vendite_corrispettivi(db, periodo: str) -> float:
+    """Somma l'IVA vendite mensile dai corrispettivi attivi, senza doppioni."""
+    docs = await db["corrispettivi"].find({
+        "data": {"$regex": f"^{periodo}"},
+        "entity_status": {"$ne": "deleted"},
+        "status": {"$nin": ["deleted", "archived"]},
+    }, {
+        "_id": 0, "corrispettivo_key": 1, "data": 1,
+        "matricola_rt": 1, "id_dispositivo": 1, "totale": 1,
+        "totale_complessivo": 1, "totale_iva": 1, "riepilogo_iva": 1,
+        "created_at": 1,
+    }).to_list(10000)
+    visti = set()
+    totale_iva = 0.0
+    for doc in sorted(docs, key=lambda d: d.get("created_at") or ""):
+        chiave = (
+            doc.get("corrispettivo_key")
+            or f"{doc.get('data') or ''}|{doc.get('matricola_rt') or doc.get('id_dispositivo') or ''}|"
+               f"{round(_float(doc.get('totale') or doc.get('totale_complessivo')), 2)}"
+        )
+        if chiave in visti:
+            continue
+        visti.add(chiave)
+        totale_iva += _iva_corrispettivo(doc)
+    return round(totale_iva, 2)
+
+
 def _periodo_precedente(periodo: str) -> str:
     """'YYYY-MM' → mese precedente 'YYYY-MM'."""
     anno, mese = int(periodo[:4]), int(periodo[5:7])
@@ -251,7 +298,10 @@ async def _componi_liquidazione(
 @router.post("/liquidazioni/calcola")
 async def calcola_liquidazione(
     periodo: str = Query(..., description="Periodo mensile 'YYYY-MM'"),
-    iva_vendite: float = Query(0.0, description="IVA a debito su vendite del periodo"),
+    iva_vendite: Optional[float] = Query(
+        None,
+        description="Override eccezionale; se assente viene calcolata dai corrispettivi XML",
+    ),
 ) -> Dict[str, Any]:
     """Calcola (o ricalcola) la liquidazione del periodo come BOZZA/CALCOLATA.
 
@@ -284,7 +334,13 @@ async def calcola_liquidazione(
         ultima = await db[COLL_LIQ].find_one({"periodo": periodo}, sort=[("versione", -1)])
         versione = int(ultima.get("versione") or 0) + 1 if ultima else 1
 
-    doc = await _componi_liquidazione(db, periodo, iva_vendite, versione, liq_id)
+    iva_vendite_calcolata = (
+        await _iva_vendite_corrispettivi(db, periodo)
+        if iva_vendite is None
+        else round(float(iva_vendite), 2)
+    )
+    doc = await _componi_liquidazione(db, periodo, iva_vendite_calcolata, versione, liq_id)
+    doc["iva_vendite_fonte"] = "corrispettivi_xml" if iva_vendite is None else "override_manuale"
     if esistente:
         doc["created_at"] = esistente.get("created_at") or doc["data_calcolo"]
     else:
@@ -558,6 +614,7 @@ async def dashboard_iva_mensile(anno: int, mese: int) -> Dict[str, Any]:
                       ("INSERITA_IN_LIQUIDAZIONE", "INDETRAIBILE")]
 
     liq_doc = await db[COLL_LIQ].find_one({"periodo": periodo}, {"_id": 0}, sort=[("versione", -1)])
+    iva_vendite_corr = await _iva_vendite_corrispettivi(db, periodo)
 
     return {
         "periodo": periodo,
@@ -568,7 +625,9 @@ async def dashboard_iva_mensile(anno: int, mese: int) -> Dict[str, Any]:
         "iva_rinviata": _somma_iva(rinviate),
         "iva_indetraibile": _somma_iva(indetraibili),
         "credito_precedente": (liq_doc or {}).get("credito_precedente", 0),
-        "iva_vendite": (liq_doc or {}).get("iva_vendite", 0),
+        "iva_vendite": (liq_doc or {}).get("iva_vendite", iva_vendite_corr),
+        "iva_vendite_corrispettivi": iva_vendite_corr,
+        "iva_vendite_fonte": (liq_doc or {}).get("iva_vendite_fonte", "corrispettivi_xml"),
         "saldo": (liq_doc or {}).get("saldo"),
         "stato_liquidazione": (liq_doc or {}).get("stato"),
     }

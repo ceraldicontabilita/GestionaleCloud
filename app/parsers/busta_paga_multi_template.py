@@ -407,6 +407,69 @@ def parse_template_teamsystem(text: str) -> Dict[str, Any]:
     return result
 
 
+def _parse_teamsystem_layout(page_words) -> Dict[str, float]:
+    """Legge i totali TeamSystem dalle celle, non dall'ordine del testo.
+
+    PyMuPDF estrae spesso prima tutte le etichette e poi i valori: una regex
+    lineare può quindi prendere la cifra della colonna precedente. I valori
+    ufficiali si trovano nella cella immediatamente sotto la rispettiva
+    etichetta.
+    """
+    importi: Dict[str, float] = {}
+    labels = {
+        "lordo": ({"TOTALE", "TOT."}, "LORDO"),
+        "trattenute": ({"TOTALE", "TOT."}, "TRATTENUTE"),
+        "netto": ({"NETTO"}, "BUSTA"),
+        "tfr_quota_mese": ({"TFR"}, "MESE"),
+    }
+
+    def _numero(token: str) -> Optional[float]:
+        if not re.fullmatch(r"[-+]?\d[\d.]*,\d{2}", token or ""):
+            return None
+        return parse_importo(token)
+
+    for words in page_words:
+        normalizzati = [tuple(w[:5]) for w in words]
+        for campo, (prime, seconda) in labels.items():
+            if campo in importi:
+                continue
+            coppia = None
+            for w1 in normalizzati:
+                if str(w1[4]).upper() not in prime:
+                    continue
+                vicini = [
+                    w2 for w2 in normalizzati
+                    if str(w2[4]).upper() == seconda
+                    and abs(float(w2[1]) - float(w1[1])) <= 2.5
+                    and float(w2[0]) >= float(w1[0]) - 2
+                    and float(w2[0]) <= float(w1[2]) + 35
+                ]
+                if vicini:
+                    coppia = (w1, min(vicini, key=lambda w: float(w[0])))
+                    break
+            if not coppia:
+                continue
+
+            w1, w2 = coppia
+            label_x0 = min(float(w1[0]), float(w2[0]))
+            label_x1 = max(float(w1[2]), float(w2[2]))
+            label_y1 = max(float(w1[3]), float(w2[3]))
+            candidati = []
+            for word in normalizzati:
+                valore = _numero(str(word[4]))
+                if valore is None:
+                    continue
+                centro_x = (float(word[0]) + float(word[2])) / 2
+                if (
+                    label_y1 <= float(word[1]) <= label_y1 + 28
+                    and label_x0 - 12 <= centro_x <= label_x1 + 28
+                ):
+                    candidati.append((float(word[1]) - label_y1, abs(centro_x - (label_x0 + label_x1) / 2), valore))
+            if candidati:
+                importi[campo] = min(candidati, key=lambda item: (item[0], item[1]))[2]
+    return importi
+
+
 def parse_template_zucchetti_classic(text: str) -> Dict[str, Any]:
     """
     Parser per Template 2: Zucchetti spa classico (2018-2022)
@@ -845,9 +908,11 @@ def parse_busta_paga_multi(pdf_path: str) -> Dict[str, Any]:
     # Estrai testo da tutte le pagine
     all_text = ""
     page_texts = []
+    page_words = []
     for page in doc:
         page_text = page.get_text()
         page_texts.append(page_text)
+        page_words.append(page.get_text("words"))
         all_text += page_text + "\n"
     
     num_pages = len(doc)
@@ -900,6 +965,16 @@ def parse_busta_paga_multi(pdf_path: str) -> Dict[str, Any]:
         result = parse_template_zucchetti_new(cedolino_text)
     elif template == "teamsystem":
         result = parse_template_teamsystem(cedolino_text)
+        layout = _parse_teamsystem_layout(page_words[cedolino_page_idx:])
+        if layout.get("lordo") is not None:
+            result.setdefault("totali", {})["lordo"] = layout["lordo"]
+            result["totali"]["competenze"] = layout["lordo"]
+        if layout.get("trattenute") is not None:
+            result.setdefault("totali", {})["trattenute"] = layout["trattenute"]
+        if layout.get("netto") is not None:
+            result.setdefault("totali", {})["netto"] = layout["netto"]
+        if layout.get("tfr_quota_mese") is not None:
+            result.setdefault("tfr", {})["quota_mese"] = layout["tfr_quota_mese"]
     else:
         result = parse_template_zucchetti_classic(cedolino_text)
 
@@ -1083,7 +1158,10 @@ def extract_summary(parsed_data: Dict[str, Any]) -> Dict[str, Any]:
         "giorni_lavorati": periodo.get("giorni_lavorati") or ore_ferie.get("giorni_lavorati_mese"),
         "inps_dipendente": totali.get("inps_dipendente"),
         "irpef": parsed_data.get("irpef", {}).get("ritenute"),
-        "tfr_quota": parsed_data.get("tfr", {}).get("quota_anno"),
+        "tfr_quota": (
+            parsed_data.get("tfr", {}).get("quota_mese")
+            or parsed_data.get("tfr", {}).get("quota_anno")
+        ),
         # Dati ferie/permessi
         "ferie_residuo": ferie.get("ferie_residuo") or ore_ferie.get("ferie_residuo"),
         "ferie_godute": ferie.get("ferie_godute") or ore_ferie.get("ferie_godute"),

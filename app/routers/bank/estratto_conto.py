@@ -642,12 +642,14 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     # Prima era un bottone manuale nella pagina Assegni ("Sync da E/C"):
     # ora scatta automaticamente subito dopo ogni import dell'estratto conto.
     assegni_sync = None
-    if inserted:
-        try:
-            from app.routers.bank.assegni import sync_assegni_da_estratto_conto
-            assegni_sync = await sync_assegni_da_estratto_conto()
-        except Exception as e:
-            logger.error(f"Errore sync assegni da estratto conto: {e}")
+    # Va eseguito anche quando il CSV e' interamente duplicato: in passato un
+    # movimento gia importato ma non trasformato in assegno restava bloccato
+    # per sempre, perche inserted=0 impediva la riparazione.
+    try:
+        from app.routers.bank.assegni import sync_assegni_da_estratto_conto
+        assegni_sync = await sync_assegni_da_estratto_conto()
+    except Exception as e:
+        logger.error(f"Errore sync assegni da estratto conto: {e}")
 
     # ===== SYNC GENERICO IN PRIMA NOTA BANCA (+ CASSA per prelievi/versamenti) =====
     # Le fasi sopra (fatture/F24/stipendi/assegni) registrano in Prima Nota
@@ -1163,12 +1165,11 @@ async def force_reimport_estratto_conto(file: UploadFile = File(...), _admin: Di
 
     # Sync assegni: prima era un bottone manuale, ora scatta ad ogni import.
     assegni_sync = None
-    if records:
-        try:
-            from app.routers.bank.assegni import sync_assegni_da_estratto_conto
-            assegni_sync = await sync_assegni_da_estratto_conto()
-        except Exception as e:
-            logger.error(f"Errore sync assegni da estratto conto: {e}")
+    try:
+        from app.routers.bank.assegni import sync_assegni_da_estratto_conto
+        assegni_sync = await sync_assegni_da_estratto_conto()
+    except Exception as e:
+        logger.error(f"Errore sync assegni da estratto conto: {e}")
 
     # Calcola statistiche per la risposta
     entrate = sum(r["importo"] for r in records if r["tipo"] == "entrata")

@@ -55,6 +55,7 @@ const DashboardRelazionale = lazy(() => import("./pages/DashboardRelazionale.jsx
 const PaginaNonTrovata = lazy(() => import("./pages/PaginaNonTrovata.jsx"));
 const GestioneIVA = lazy(() => import("./pages/GestioneIVA.jsx"));
 const FattureEstereVerifica = lazy(() => import("./pages/FattureEstereVerifica.jsx"));
+const CedoliniSalari = lazy(() => import("./pages/CedoliniSalari.jsx"));
 
 const LazyPage = ({ children }) => (
   <Suspense fallback={<PageLoader />}>{children}</Suspense>
@@ -102,6 +103,7 @@ const router = createBrowserRouter([
       { path: "prima-nota/pulizia", element: <LazyPage><PrimaNotaHub /></LazyPage> },
       { path: "prima-nota/:tipo", element: <LazyPage><PrimaNotaHub /></LazyPage> },
       { path: "prima-nota/:tipo/:anno/:mese", element: <LazyPage><PrimaNotaHub /></LazyPage> },
+      { path: "salari", element: <LazyPage><CedoliniSalari /></LazyPage> },
       { path: "dati-provvisori", element: <Navigate to="/prima-nota#sezione=provvisori" replace /> },
       
       // === VEICOLI/NOLEGGIO ===

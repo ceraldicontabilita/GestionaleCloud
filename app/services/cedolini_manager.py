@@ -399,7 +399,8 @@ async def processa_tutti_cedolini_pdf(db, pdf_data: str, filename: str) -> Dict[
     Gestisce PDF multi-pagina con più dipendenti.
     
     Architettura MongoDB-only: accetta pdf_data in Base64.
-    Usa Document AI come prima scelta (più accurato), con fallback al parser regex.
+    Usa come prima scelta il parser deterministico multi-template dei modelli
+    aziendali, poi Document AI e infine il parser regex storico.
     
     Args:
         db: Database MongoDB
@@ -415,7 +416,7 @@ async def processa_tutti_cedolini_pdf(db, pdf_data: str, filename: str) -> Dict[
         "prima_nota_create": 0,
         "riconciliati": 0,
         "errori": [],
-        "metodo": "document_ai"  # Traccia quale metodo è stato usato
+        "metodo": "multi_template"  # Traccia quale metodo è stato usato
     }
     
     # Decodifica PDF da Base64
@@ -450,36 +451,81 @@ async def processa_tutti_cedolini_pdf(db, pdf_data: str, filename: str) -> Dict[
     except Exception as e:
         logger.debug(f"Estrazione pdf_text fallita (non bloccante): {e}")
 
-    # PRIMA SCELTA: Document AI (più accurato)
+    # PRIMA SCELTA: parser deterministico multi-template.
+    # Supporta i modelli aziendali Zucchetti Aut.299/301, LUL e TeamSystem
+    # Aut.92267. Il parser storico per-pagina perdeva TeamSystem e poteva
+    # duplicare lo stesso cedolino quando il PDF aveva più pagine.
     try:
-        from app.services.document_ai_extractor import extract_document_data
-        
-        ai_result = await extract_document_data(
-            file_content=file_content,
-            filename=filename,
-            document_type="busta_paga"
+        from app.parsers.busta_paga_multi_template import (
+            extract_summary,
+            parse_busta_paga_from_bytes,
         )
-        
-        if ai_result.get("structured_data", {}).get("success"):
-            data = ai_result["structured_data"].get("data", {})
-            # Converti formato Document AI a formato legacy
-            cedolino = {
-                "nome_dipendente": data.get("dipendente", {}).get("nome_cognome", ""),
-                "codice_fiscale": data.get("dipendente", {}).get("codice_fiscale", ""),
-                "mese": data.get("periodo", {}).get("mese"),
-                "anno": data.get("periodo", {}).get("anno"),
-                "lordo": data.get("retribuzione", {}).get("lordo"),
-                "netto": data.get("retribuzione", {}).get("netto"),
-                "azienda": data.get("azienda", {}).get("denominazione", ""),
-                "raw_data": data
-            }
-            cedolini = [cedolino]
-            logger.info(f"Cedolino estratto con Document AI: {cedolino.get('nome_dipendente')}")
+
+        parsed = parse_busta_paga_from_bytes(file_content)
+        summary = extract_summary(parsed)
+        if (
+            parsed.get("parse_success")
+            and parsed.get("tipo_documento") != "foglio_presenze"
+            and summary.get("codice_fiscale")
+            and summary.get("mese")
+            and summary.get("anno")
+            and summary.get("netto")
+        ):
+            cedolini = [{
+                "nome_dipendente": summary.get("dipendente_nome") or "",
+                "codice_fiscale": summary.get("codice_fiscale") or "",
+                "mese": summary.get("mese"),
+                "anno": summary.get("anno"),
+                "lordo": summary.get("lordo") or 0,
+                "netto": summary.get("netto") or 0,
+                "netto_mese": summary.get("netto") or 0,
+                "totale_trattenute": summary.get("trattenute") or 0,
+                "tfr_quota": summary.get("tfr_quota") or 0,
+                "ore_lavorate": summary.get("ore_lavorate") or 0,
+                "formato_rilevato": summary.get("template") or "multi_template",
+                "ferie_permessi": {
+                    "ferie_residuo": summary.get("ferie_residuo") or 0,
+                    "ferie_godute": summary.get("ferie_godute") or 0,
+                    "permessi_residuo": summary.get("permessi_residuo") or 0,
+                    "permessi_goduti": summary.get("permessi_goduti") or 0,
+                },
+                "cessato": summary.get("cessato", False),
+                "cessazione_diciture": summary.get("cessazione_diciture", []),
+                "data_cessazione_rilevata": summary.get("data_cessazione_rilevata"),
+                "_raw_text": raw_text,
+            }]
     except Exception as e:
-        logger.warning(f"Document AI fallito per {filename}: {e}, uso fallback regex")
-        results["metodo"] = "regex_fallback"
+        logger.warning("Parser multi-template fallito per %s: %s", filename, e)
+
+    # SECONDA SCELTA: Document AI per eventuali formati futuri non noti.
+    if not cedolini:
+        try:
+            from app.services.document_ai_extractor import extract_document_data
+
+            ai_result = await extract_document_data(
+                file_content=file_content,
+                filename=filename,
+                document_type="busta_paga"
+            )
+
+            if ai_result.get("structured_data", {}).get("success"):
+                data = ai_result["structured_data"].get("data", {})
+                cedolino = {
+                    "nome_dipendente": data.get("dipendente", {}).get("nome_cognome", ""),
+                    "codice_fiscale": data.get("dipendente", {}).get("codice_fiscale", ""),
+                    "mese": data.get("periodo", {}).get("mese"),
+                    "anno": data.get("periodo", {}).get("anno"),
+                    "lordo": data.get("retribuzione", {}).get("lordo"),
+                    "netto": data.get("retribuzione", {}).get("netto"),
+                    "azienda": data.get("azienda", {}).get("denominazione", ""),
+                    "raw_data": data
+                }
+                cedolini = [cedolino]
+                results["metodo"] = "document_ai"
+        except Exception as e:
+            logger.warning("Document AI fallito per %s: %s", filename, e)
     
-    # FALLBACK: Parser regex legacy - usa pdf_content in memoria
+    # ULTIMO FALLBACK: parser regex legacy per formati storici non coperti.
     if not cedolini:
         try:
             from app.parsers.payslip_parser_v2 import parse_payslip_pdf

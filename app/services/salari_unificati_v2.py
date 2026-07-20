@@ -322,7 +322,11 @@ async def processa_cedolino_v2(
         result["dipendente_id"] = dipendente_id
         
         # --- 2. Salva cedolino COMPLETO ---
-        cedolino_id = str(uuid.uuid4())
+        cedolino_esistente = await db["cedolini"].find_one(
+            {"codice_fiscale": cf, "mese": int(mese), "anno": int(anno)},
+            {"_id": 0, "id": 1},
+        )
+        cedolino_id = (cedolino_esistente or {}).get("id") or str(uuid.uuid4())
         
         cedolino_record = {
             "id": cedolino_id,
@@ -372,6 +376,13 @@ async def processa_cedolino_v2(
             "source": "cedolino_v2",
             "created_at": datetime.now(timezone.utc).isoformat()
         }
+
+        # Conserva il PDF originale nel documento cedolino. Le liste non
+        # restituiscono questo campo pesante: viene letto solo dall'endpoint
+        # autenticato usato dal pulsante "Vedi cedolino".
+        if pdf_data:
+            cedolino_record["pdf_data"] = pdf_data
+            cedolino_record["pdf_disponibile"] = True
         
         # Upsert per evitare duplicati
         await db["cedolini"].update_one(
@@ -425,6 +436,11 @@ async def processa_cedolino_v2(
             
             await db["prima_nota_salari"].insert_one(dict(pn_record).copy())
             result["prima_nota_id"] = pn_id
+        elif existing_pn.get("cedolino_id") != cedolino_id:
+            await db["prima_nota_salari"].update_one(
+                {"id": existing_pn.get("id")},
+                {"$set": {"cedolino_id": cedolino_id}},
+            )
         
         # --- 4. Riconciliazione automatica ---
         from app.services.cedolini_manager import riconcilia_stipendio_automatico
