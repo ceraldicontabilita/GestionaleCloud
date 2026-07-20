@@ -79,6 +79,7 @@ async def lifespan(app: FastAPI):
         try:
             from app.routers.prima_nota_module.manutenzione import (
                 esegui_pulizia_pregressi_una_tantum,
+                neutralizza_versamenti_cassa_generati_da_ec,
                 ripristina_provvisori_metodo_errato,
             )
 
@@ -87,6 +88,14 @@ async def lifespan(app: FastAPI):
                 logger.info(
                     "Pulizia pre-2026 completata: %s documenti archiviati ed eliminati",
                     pulizia.get("totale_eliminati", 0),
+                )
+
+            versamenti = await neutralizza_versamenti_cassa_generati_da_ec()
+            if not versamenti.get("skipped"):
+                logger.info(
+                    "Versamenti creati dal solo estratto conto neutralizzati: cassa=%s banca=%s",
+                    versamenti.get("cassa_neutralizzati", 0),
+                    versamenti.get("banca_neutralizzati", 0),
                 )
 
             # Ripara una sola volta le registrazioni automatiche sul lato

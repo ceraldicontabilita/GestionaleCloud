@@ -1839,33 +1839,12 @@ async def ricategorizza_batch_movimenti() -> Dict[str, Any]:
 @router.post("/ripara-versamenti-cassa")
 @handle_errors
 async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opzionale). Se omesso ripara tutti gli anni")) -> Dict[str, Any]:
-    """
-    Bug segnalato dall'utente 15/07/2026: la causale reale usata dalla banca
-    per i versamenti di contanti è l'abbreviazione "VERS. CONTANTI" (es.
-    Banco BPM), mai la parola intera "VERSAMENTO" che il controllo
-    `is_versamento` di import_estratto_conto cercava — verificato su un
-    export reale di 4287 movimenti: 96 righe "VERS. CONTANTI" per
-    complessivi migliaia di euro, zero riconosciute. L'entrata in Prima
-    Nota Banca veniva comunque creata (fallback generico), ma la Prima
-    Nota Cassa non registrava MAI l'uscita di quel contante — la cassa
-    risultava "gonfiata" rispetto al reale.
+    """Riconcilia i versamenti solo quando la gamba Cassa esiste già.
 
-    Il controllo è stato corretto per i NUOVI import, ma le righe già
-    importate risultano già marcate riconciliato=True (l'entrata banca
-    generica le aveva già chiuse) e quindi non vengono più riprocessate
-    automaticamente: questo endpoint ripara lo storico.
-
-    Estensione (richiesta utente 17/07/2026: "estrai tutti i versamenti in
-    banca dall'estratto conto e inserisci l'uscita in prima nota cassa
-    perché è un versamento e poi lo carichi in prima nota banca perché è
-    un'entrata di denaro"): per OGNI versamento di contanti trovato
-    nell'estratto conto genera la DOPPIA scrittura di prima nota —
-    USCITA in prima_nota_cassa (il contante esce dal cassetto) ed
-    ENTRATA in prima_nota_banca (lo stesso denaro entra sul conto) —
-    in modo idempotente: nessuna delle due gambe viene mai duplicata se
-    esiste già (per estratto_conto_id o per pari data+importo, comprese
-    le registrazioni manuali "Versamento Banca" fatte a mano dall'utente
-    e le entrate create dal sync generico dell'import).
+    L'estratto conto prova l'accredito bancario, ma non autorizza a creare
+    un'uscita di cassa. Se l'utente non ha prima registrato "Versamento
+    Banca", il movimento resta da verificare e nessuna scrittura di prima
+    nota viene generata automaticamente.
     """
     import uuid as _uuid
     db = Database.get_db()
@@ -1889,6 +1868,7 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
     gia_presenti_banca = 0
     analizzati = 0
     prelievi_trovati = 0
+    versamenti_senza_registrazione_cassa = 0
     ec_da_marcare: List[str] = []
 
     for mov in movimenti:
@@ -1950,6 +1930,12 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
         })
         if esistente_cassa:
             gia_presenti_cassa += 1
+        elif versamento:
+            # L'estratto conto dimostra l'accredito in banca, non l'uscita
+            # fisica del contante dalla cassa. La gamba cassa deve essere
+            # registrata prima dall'utente e non può nascere da questo file.
+            versamenti_senza_registrazione_cassa += 1
+            continue
         else:
             await scrivi_movimento(db, "cassa", {
                 "id": str(_uuid.uuid4()),
@@ -2014,6 +2000,7 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
         "creati_banca": creati_banca,
         "gia_presenti_cassa": gia_presenti_cassa,
         "gia_presenti_banca": gia_presenti_banca,
+        "versamenti_senza_registrazione_cassa": versamenti_senza_registrazione_cassa,
         # compatibilità con la vecchia risposta
         "riparati": creati_cassa,
         "gia_presenti": gia_presenti_cassa,

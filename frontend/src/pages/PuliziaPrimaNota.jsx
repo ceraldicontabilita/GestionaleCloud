@@ -245,21 +245,18 @@ export default function PuliziaPrimaNota() {
     }
   };
 
-  // Riparazione versamenti storici: la causale reale della banca ("VERS.
-  // CONTANTI") non veniva riconosciuta dall'import (cercava "VERSAMENTO"
-  // per intero) — l'entrata in Prima Nota Banca c'era sempre, ma l'uscita
-  // corrispondente in Prima Nota Cassa non veniva mai creata. Il controllo
-  // è stato corretto per i nuovi import; questo pulsante ripara lo storico.
+  // Collega i versamenti dell'estratto conto alle uscite di cassa già
+  // registrate dall'utente. Non crea mai un'uscita di cassa dal solo EC.
   const [risultatoVersamenti, setRisultatoVersamenti] = useState(null);
 
   const lanciaRiparaVersamenti = async () => {
     const conferma = await confirm({
-      title: `Ripara versamenti mancanti in Cassa — anno ${anno}`,
+      title: `Riconcilia versamenti Cassa/Banca — anno ${anno}`,
       message:
-        'Cerca nell\'estratto conto le causali di versamento contanti (es. "VERS. CONTANTI") ' +
-        'e crea in Prima Nota Cassa l\'uscita mancante per quelle che non l\'hanno mai avuta. ' +
-        'Non tocca le entrate già presenti in Prima Nota Banca.',
-      confirmText: 'Ripara',
+        'Cerca nell\'estratto conto le causali di versamento contanti e le collega ' +
+        'soltanto alle uscite "Versamento Banca" già registrate in Prima Nota Cassa. ' +
+        'Se manca la registrazione manuale, non crea alcun movimento di cassa.',
+      confirmText: 'Riconcilia',
       variant: 'warning',
     });
     if (!conferma) return;
@@ -553,14 +550,14 @@ export default function PuliziaPrimaNota() {
           )}
         </StepCard>
 
-        {/* STEP 4c - RIPARA VERSAMENTI MANCANTI IN CASSA */}
+        {/* STEP 4c - RICONCILIA VERSAMENTI GIÀ REGISTRATI IN CASSA */}
         <StepCard
           numero="4c"
-          titolo="Ripara versamenti mancanti in Cassa"
+          titolo="Riconcilia versamenti Cassa/Banca"
           descrizione={
-            'Se un versamento di contanti in banca risulta in Prima Nota Banca ma non ha ' +
-            'la corrispondente uscita in Prima Nota Cassa (causale bancaria "VERS. CONTANTI" ' +
-            "non riconosciuta prima della correzione), usa questo pulsante per l'anno selezionato."
+            'Collega le causali bancarie "VERS. CONTANTI" soltanto ai versamenti già ' +
+            'registrati manualmente in Prima Nota Cassa. Se manca la registrazione di cassa, ' +
+            'il movimento resta da verificare e non viene creato automaticamente.'
           }
         >
           <button
@@ -569,21 +566,21 @@ export default function PuliziaPrimaNota() {
             style={btnStyle('primary', isBusy)}
           >
             {loading === 'ripara-versamenti' ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-            Ripara versamenti ({anno})
+            Riconcilia versamenti ({anno})
           </button>
 
           {risultatoVersamenti && (
             <div style={{ ...resultBoxStyle, background: '#f0fdf4', borderColor: '#22c55e' }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
                 <CheckCircle size={18} color="#059669" />
-                <strong style={{ color: '#065f46' }}>Riparazione completata</strong>
+                <strong style={{ color: '#065f46' }}>Riconciliazione completata</strong>
               </div>
               <div style={{ fontSize: 13, color: '#065f46', lineHeight: 1.6 }}>
                 Versamenti trovati nell'estratto conto: <strong>{risultatoVersamenti.movimenti_versamento_trovati}</strong>
                 <br />
-                Uscite create in Cassa: <strong>{risultatoVersamenti.riparati}</strong>
+                Registrazioni Cassa già presenti: <strong>{risultatoVersamenti.gia_presenti_cassa}</strong>
                 <br />
-                Già presenti (nessuna azione): {risultatoVersamenti.gia_presenti}
+                Senza registrazione Cassa, lasciati da verificare: {risultatoVersamenti.versamenti_senza_registrazione_cassa}
               </div>
             </div>
           )}

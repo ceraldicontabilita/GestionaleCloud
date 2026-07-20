@@ -4,6 +4,7 @@ from mongomock_motor import AsyncMongoMockClient
 
 from app.routers.bank import estratto_conto
 from app.routers.prima_nota_module import banca, cassa
+from app.routers.prima_nota_module import manutenzione
 from app.services import riconciliazione_bancaria
 
 
@@ -91,3 +92,46 @@ def test_storno_non_viene_scambiato_per_nuovo_versamento():
     assert estratto_conto.is_storno_versamento(descrizione) is True
     assert estratto_conto.is_versamento_contanti(descrizione) is False
     assert estratto_conto.mappa_categoria_ec(None, descrizione) == "Storno versamento"
+
+
+def test_neutralizza_solo_versamenti_generati_dal_vecchio_riparatore(monkeypatch):
+    async def scenario():
+        db = AsyncMongoMockClient()["test_neutralizza_versamenti_ec"]
+        monkeypatch.setattr(manutenzione.Database, "get_db", staticmethod(lambda: db))
+        source_auto = "estratto_conto_auto_versamento_riparazione"
+        await db["prima_nota_cassa"].insert_many([
+            {"id": "auto-cassa", "data": "2026-07-10", "tipo": "uscita",
+             "importo": 3100.0, "categoria": "Versamento Banca",
+             "source": source_auto, "estratto_conto_id": "EC-3100"},
+            {"id": "manuale", "data": "2026-07-11", "tipo": "uscita",
+             "importo": 900.0, "categoria": "Versamento Banca",
+             "source": "manuale", "inserimento_manuale": True},
+        ])
+        await db["prima_nota_banca"].insert_one(
+            {"id": "auto-banca", "data": "2026-07-10", "tipo": "entrata",
+             "importo": 3100.0, "categoria": "Versamento Banca",
+             "source": source_auto, "estratto_conto_id": "EC-3100"}
+        )
+        await db["estratto_conto_movimenti"].insert_one(
+            {"id": "EC-3100", "data": "2026-07-10", "importo": 3100.0,
+             "riconciliato": True, "tipo_riconciliazione": "versamento_contanti"}
+        )
+
+        result = await manutenzione.neutralizza_versamenti_cassa_generati_da_ec()
+
+        assert result["cassa_neutralizzati"] == 1
+        assert result["banca_neutralizzati"] == 1
+        assert (await db["prima_nota_cassa"].find_one({"id": "auto-cassa"}))["status"] == "deleted"
+        assert not (await db["prima_nota_cassa"].find_one({"id": "manuale"})).get("status")
+        assert (await db["prima_nota_banca"].find_one({"id": "auto-banca"}))["status"] == "deleted"
+        ec = await db["estratto_conto_movimenti"].find_one({"id": "EC-3100"})
+        assert ec["riconciliato"] is False
+        assert ec["stato_riconciliazione"] == "da_verificare"
+        assert "tipo_riconciliazione" not in ec
+        assert await db[result["backup_cassa"]].count_documents({}) == 1
+        assert await db[result["backup_banca"]].count_documents({}) == 1
+
+        second = await manutenzione.neutralizza_versamenti_cassa_generati_da_ec()
+        assert second["skipped"] is True
+
+    _run(scenario())

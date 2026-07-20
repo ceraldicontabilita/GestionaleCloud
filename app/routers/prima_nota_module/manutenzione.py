@@ -453,6 +453,86 @@ async def pulizia_dati_pre_anno(
 
 PULIZIA_PREGRESSI_MARKER = "cleanup_pre_2026_preserve_payroll_20260720_v1"
 
+NEUTRALIZZA_VERSAMENTI_EC_MARKER = "neutralize_ec_generated_cash_deposits_20260720_v1"
+
+
+async def neutralizza_versamenti_cassa_generati_da_ec() -> Dict[str, Any]:
+    """Neutralizza solo le doppie scritture create dal vecchio riparatore EC.
+
+    La fonte dedicata rende l'intervento circoscritto e recuperabile: le
+    registrazioni manuali non vengono mai incluse. Prima della modifica viene
+    creata una copia integrale dei documenti interessati.
+    """
+    db = Database.get_db()
+    markers = db["migration_runs"]
+    precedente = await markers.find_one({"id": NEUTRALIZZA_VERSAMENTI_EC_MARKER})
+    if precedente and precedente.get("status") == "completed":
+        return {"skipped": True, "reason": "already_completed"}
+
+    filtro_cassa = {
+        "source": "estratto_conto_auto_versamento_riparazione",
+        "tipo": "uscita",
+        "categoria": "Versamento Banca",
+        "status": {"$nin": ["deleted", "archived"]},
+    }
+    cassa_docs = await db[COLLECTION_PRIMA_NOTA_CASSA].find(filtro_cassa).to_list(10000)
+    ec_ids = sorted({d.get("estratto_conto_id") for d in cassa_docs if d.get("estratto_conto_id")})
+    filtro_banca = {
+        "source": "estratto_conto_auto_versamento_riparazione",
+        "tipo": "entrata",
+        "categoria": "Versamento Banca",
+        "estratto_conto_id": {"$in": ec_ids},
+        "status": {"$nin": ["deleted", "archived"]},
+    }
+    banca_docs = (
+        await db[COLLECTION_PRIMA_NOTA_BANCA].find(filtro_banca).to_list(10000)
+        if ec_ids else []
+    )
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup_cassa = f"backup_versamenti_ec_{timestamp}_prima_nota_cassa"
+    backup_banca = f"backup_versamenti_ec_{timestamp}_prima_nota_banca"
+    if cassa_docs:
+        await db[backup_cassa].insert_many(cassa_docs)
+    if banca_docs:
+        await db[backup_banca].insert_many(banca_docs)
+
+    nota = "neutralizzato: il solo estratto conto non autorizza un movimento di cassa"
+    esito_cassa = await db[COLLECTION_PRIMA_NOTA_CASSA].update_many(
+        filtro_cassa,
+        {"$set": {"status": "deleted", "entity_status": "deleted",
+                  "nota_migrazione": nota, "deleted_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    esito_banca = None
+    if ec_ids:
+        esito_banca = await db[COLLECTION_PRIMA_NOTA_BANCA].update_many(
+            filtro_banca,
+            {"$set": {"status": "deleted", "entity_status": "deleted",
+                      "nota_migrazione": nota, "deleted_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        await db[COLLECTION_ESTRATTO_CONTO].update_many(
+            {"id": {"$in": ec_ids}},
+            {"$set": {"riconciliato": False, "stato_riconciliazione": "da_verificare"},
+             "$unset": {"tipo_riconciliazione": "", "prima_nota_cassa_id": "",
+                        "prima_nota_banca_id": ""}},
+        )
+
+    risultato = {
+        "skipped": False,
+        "cassa_neutralizzati": esito_cassa.modified_count,
+        "banca_neutralizzati": esito_banca.modified_count if esito_banca else 0,
+        "estratti_da_verificare": len(ec_ids),
+        "backup_cassa": backup_cassa if cassa_docs else None,
+        "backup_banca": backup_banca if banca_docs else None,
+    }
+    await markers.update_one(
+        {"id": NEUTRALIZZA_VERSAMENTI_EC_MARKER},
+        {"$set": {"id": NEUTRALIZZA_VERSAMENTI_EC_MARKER, "status": "completed",
+                  "finished_at": datetime.now(timezone.utc).isoformat(), "result": risultato}},
+        upsert=True,
+    )
+    return risultato
+
 
 async def esegui_pulizia_pregressi_una_tantum() -> Dict[str, Any]:
     """Pulizia di produzione idempotente, con backup e verifica finale.
