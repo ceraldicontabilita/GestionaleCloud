@@ -77,8 +77,10 @@ livelli tecnici eventualmente usati da singoli algoritmi storici di matching.
   decisione; fatti sostanzialmente diversi producono una nuova versione.
 - [x] Versioni precedenti conservate e marcate `superseded`, mai eliminate.
 - [x] Registro corrente raggruppato per problema con storico ancora interrogabile.
+- [x] Fonti applicative, regole, ruolo approvatore e identita' di chi gestisce
+  la proposta visibili nella scheda decisione.
 - [ ] Pulsante Modifica proposta con nuova versione tracciata.
-- [ ] Vista completa delle fonti autorizzate e della cronologia.
+- [ ] Navigazione visuale della cronologia completa di ogni decisione.
 - [ ] Executor tipizzato L2, ancora vietato finché le metriche non sono accettate.
 
 ### Fase 4 — Agenti specializzati, uno alla volta

@@ -120,6 +120,9 @@ def test_approvazione_umana_non_esegue_e_registra_evento():
         db, decisione["decision_id"], True, "admin@example.test", "Verificata"
     ))
     assert aggiornata["execution_status"] == "approved_pending_execution"
+    assert aggiornata["approved_by"] == "admin@example.test"
+    assert aggiornata["approved_at"]
+    assert aggiornata["rejected_at"] is None
     assert "executed_at" not in aggiornata
     eventi = asyncio.run(db["ai_decision_events"].find(
         {"decision_id": decisione["decision_id"]}

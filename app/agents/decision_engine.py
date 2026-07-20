@@ -402,6 +402,8 @@ async def cambia_stato_decisione(
             "approval_required": False,
             "approved_by": utente if approva else None,
             "rejected_by": None if approva else utente,
+            "approved_at": ora if approva else None,
+            "rejected_at": None if approva else ora,
             "approval_note": nota,
             "updated_at": ora,
         }},

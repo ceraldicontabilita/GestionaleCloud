@@ -1413,6 +1413,9 @@ e una nuova **decisione**:
   `includi_storico=true` e non viene cancellato o migrato automaticamente;
 - il raggruppamento riconosce anche le chiavi delle decisioni storiche create
   prima di questa regola, senza modificare i record di produzione.
+- ogni scheda espone fonti applicative minimizzate, regole applicate e ruolo
+  approvatore; dopo approvazione o rifiuto conserva anche identita', data e
+  nota dell'amministratore, senza eseguire l'azione proposta.
 
 La regola non introduce un intervallo temporale arbitrario: il riuso dipende
 dall'identita' semantica e dalla fotografia sostanziale, non dai minuti

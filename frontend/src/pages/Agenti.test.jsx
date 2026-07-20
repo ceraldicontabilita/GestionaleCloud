@@ -27,6 +27,9 @@ const DECISIONE = {
   version: 3,
   occurrence_count: 4,
   versioni_storiche: 2,
+  input_sources: [{ type: 'typed_service', service: 'tesoreria_snapshot' }],
+  rule_ids: ['TREASURY-OVERDUE-001', 'HUMAN-APPROVAL-001'],
+  approver_role: 'admin',
 };
 
 const CASH_FLOW = {
@@ -65,6 +68,10 @@ describe('Agenti AI supervisionati', () => {
     expect(screen.getByText('Versione 3')).toBeInTheDocument();
     expect(screen.getByText('4 rilevazioni')).toBeInTheDocument();
     expect(screen.getByText('2 versioni precedenti')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Fonti, regole e approvazione'));
+    expect(screen.getByText(/Servizio verificato: tesoreria_snapshot/)).toBeInTheDocument();
+    expect(screen.getByText(/TREASURY-OVERDUE-001/)).toBeInTheDocument();
+    expect(screen.getByText(/Ruolo approvatore:/)).toBeInTheDocument();
     expect(screen.getByText("L'approvazione non esegue l'azione.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Approva proposta' }));

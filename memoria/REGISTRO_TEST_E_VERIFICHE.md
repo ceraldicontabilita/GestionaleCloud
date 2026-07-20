@@ -439,6 +439,8 @@ Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `S
   `superseded`, resta nell'audit e non puo' piu' essere approvata.
 - La vista predefinita raggruppa anche le decisioni legacy senza modificare o
   eliminare record esistenti; lo storico completo resta interrogabile.
+- La scheda mostra fonti minimizzate, regole e ruolo approvatore; approvazione
+  e rifiuto registrano identita' e timestamp senza eseguire la proposta.
 - Test mirati agenti/decision engine: 51 passati.
 - Test backend completi: 848 passati, 2 saltati.
 - Test frontend completi: 59 passati.

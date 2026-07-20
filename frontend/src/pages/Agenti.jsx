@@ -208,6 +208,13 @@ const STATO_DECISIONE = {
   superseded: 'Superata da una versione piu recente',
 };
 
+function etichettaFonte(fonte) {
+  if (!fonte || typeof fonte !== 'object') return 'Fonte applicativa';
+  if (fonte.type === 'typed_service') return `Servizio verificato: ${fonte.service || 'applicativo'}`;
+  if (fonte.type === 'agent_signal') return 'Segnalazione prodotta da un agente';
+  return fonte.service || fonte.type || 'Fonte applicativa';
+}
+
 function DecisioneCard({ decisione, isAdmin, onDecisione }) {
   const inAttesa = decisione.execution_status === 'pending_approval';
   const rischio = decisione.risk_level || 'low';
@@ -262,6 +269,37 @@ function DecisioneCard({ decisione, isAdmin, onDecisione }) {
           Policy: {decisione.policy_reasons.join(', ')}
         </div>
       )}
+      <details style={{ marginTop: 9, fontSize: 12, color: '#475569' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 700, color: COLORS.primary }}>
+          Fonti, regole e approvazione
+        </summary>
+        <div style={{ marginTop: 8, display: 'grid', gap: 5 }}>
+          <div>
+            <strong>Fonti autorizzate:</strong>{' '}
+            {decisione.input_sources?.length
+              ? decisione.input_sources.map(etichettaFonte).join('; ')
+              : 'non dichiarate'}
+          </div>
+          <div>
+            <strong>Regole applicate:</strong>{' '}
+            {decisione.rule_ids?.length ? decisione.rule_ids.join(', ') : 'nessuna regola dichiarata'}
+          </div>
+          <div><strong>Ruolo approvatore:</strong> {decisione.approver_role || 'admin'}</div>
+          {decisione.approved_by && (
+            <div>
+              <strong>Approvata da:</strong> {decisione.approved_by} · {formatTs(decisione.approved_at)}
+            </div>
+          )}
+          {decisione.rejected_by && (
+            <div>
+              <strong>Rifiutata da:</strong> {decisione.rejected_by} · {formatTs(decisione.rejected_at)}
+            </div>
+          )}
+          {decisione.approval_note && (
+            <div><strong>Nota:</strong> {decisione.approval_note}</div>
+          )}
+        </div>
+      </details>
       {inAttesa && isAdmin && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
           <button style={button('primary')} onClick={() => onDecisione(decisione, true)}>
