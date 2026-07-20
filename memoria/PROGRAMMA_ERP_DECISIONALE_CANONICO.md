@@ -102,7 +102,11 @@ Ordine di attivazione in shadow mode:
    - [x] Agente `CashFlow13WShadow`: sola proposta L1/L3, nessuna disposizione.
    - [ ] Estendere le entrate attese a POS e PayPal solo dopo aver materializzato
      date di accredito affidabili e anti-duplicazione.
-5. [ ] Acquisti — prezzi, fornitori e riordino suggerito.
+5. [x] Acquisti — primo nucleo su prezzi e concentrazione fornitori.
+   - [x] Aumenti almeno del 10% confrontati solo a parita' di unita' di misura.
+   - [x] Dipendenza da un solo fornitore segnalata solo con almeno tre acquisti.
+   - [x] Riordino non supportato: lo storico fatture non prova consumo o giacenza.
+   - [x] Solo raccomandazioni L1; nessun ordine o movimento di magazzino.
 6. [ ] Crediti — aging e bozze di sollecito, mai inviate senza approvazione.
 7. [ ] Compliance — permessi, tracciabilità e documenti mancanti.
 

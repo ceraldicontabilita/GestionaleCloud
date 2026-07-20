@@ -417,3 +417,16 @@ Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `S
   scrittura contabile o invio al commercialista.
 - Idempotenza: una fotografia invariata non genera decisioni duplicate.
 - Test fiscali/decisionali mirati: 58 passati; suite backend completa: 773 passati.
+
+## Agente Acquisti shadow — 2026-07-20
+
+- Fonte: storico `acquisti_prodotti` degli ultimi 180 giorni.
+- Indicatori minimizzati: numero prodotti con aumento prezzo di almeno il 10%,
+  incremento massimo e numero prodotti acquistati almeno tre volte da un solo
+  fornitore; nessun nome prodotto o fornitore esce dal servizio tipizzato.
+- Confronto prezzo effettuato soltanto tra le ultime due righe con la stessa
+  unita' di misura, per evitare falsi aumenti tra kg, pezzi o confezioni.
+- Confine esplicito: `reorder_supported=false`, perché lo storico fatture non
+  dimostra consumo o giacenza fisica. Nessun riordino viene stimato.
+- Sicurezza: solo L1; nessun ordine, richiesta esterna o movimento magazzino.
+- Test mirati: 25 passati; suite backend completa: 776 passati.
