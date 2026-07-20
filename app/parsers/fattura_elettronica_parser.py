@@ -6,6 +6,7 @@ Gestisce tutti i formati: con namespace, con prefissi, senza namespace.
 import defusedxml.ElementTree as ET  # sicurezza: blocca XXE/entity expansion su XML esterni
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 import logging
 import re
 
@@ -370,7 +371,34 @@ def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_t
         }
         riepilogo_iva.append(riepilogo_data)
 
-    # Estrai dati pagamento
+    # Estrai l'intero piano di pagamento. Un XML puo' contenere piu' blocchi
+    # DatiPagamento e ogni blocco puo' contenere piu' DettaglioPagamento.
+    pagamento_rate = []
+    pagamento_rate_totale = Decimal("0")
+    for blocco_indice, dati_pagamento in enumerate(find_all_elements(body, 'DatiPagamento')):
+        condizioni = get_text(dati_pagamento, 'CondizioniPagamento')
+        for rata_indice, dettaglio in enumerate(find_all_elements(dati_pagamento, 'DettaglioPagamento')):
+            importo_rata = get_text(dettaglio, 'ImportoPagamento', '0')
+            rata = {
+                "blocco_indice": blocco_indice,
+                "rata_indice": rata_indice,
+                "condizioni_pagamento": condizioni,
+                "modalita": get_text(dettaglio, 'ModalitaPagamento'),
+                "importo": importo_rata,
+                "data_scadenza": get_text(dettaglio, 'DataScadenzaPagamento'),
+                "data_riferimento_termini": get_text(dettaglio, 'DataRiferimentoTerminiPagamento'),
+                "giorni_termini": get_text(dettaglio, 'GiorniTerminiPagamento'),
+                "beneficiario": get_text(dettaglio, 'Beneficiario'),
+                "istituto_finanziario": get_text(dettaglio, 'IstitutoFinanziario'),
+                "iban": get_text(dettaglio, 'IBAN'),
+            }
+            pagamento_rate.append(rata)
+            try:
+                pagamento_rate_totale += Decimal(importo_rata)
+            except (InvalidOperation, TypeError):
+                pass
+
+    # Compatibilita': il campo storico rappresenta soltanto la prima rata.
     dati_pagamento = find_element(body, 'DatiPagamento')
     dettaglio_pagamento = find_element(dati_pagamento, 'DettaglioPagamento') if dati_pagamento else None
     pagamento = {
@@ -446,6 +474,12 @@ def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_t
         "linee": linee,
         "riepilogo_iva": riepilogo_iva,
         "pagamento": pagamento,
+        "pagamento_rate": pagamento_rate,
+        "pagamento_rate_totale": format(pagamento_rate_totale, "f"),
+        "pagamento_rate_coerente": (
+            abs(pagamento_rate_totale - Decimal(str(total_amount))) < Decimal("0.05")
+            if pagamento_rate else None
+        ),
         "supplier_name": fornitore.get("denominazione", ""),
         "supplier_vat": fornitore.get("partita_iva", ""),
         "allegati": allegati,

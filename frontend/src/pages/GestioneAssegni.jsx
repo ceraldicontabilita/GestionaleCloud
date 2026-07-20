@@ -485,20 +485,44 @@ export default function GestioneAssegni() {
     }
   };
 
-  const handleAutoMatch = async (dryRun = false) => {
+  const handleAutoMatch = async () => {
     setAutoAssociating(true);
     setAutoAssocResult(null);
     try {
-      const url = `/api/assegni/auto-match${dryRun ? '?dry_run=true' : ''}`;
+      const url = '/api/assegni/auto-match?dry_run=true';
       const res = await api.post(url);
       setAutoAssocResult({
         ...res.data,
         _modalita_auto_match: true,
-        _dry_run: dryRun,
+        _dry_run: true,
       });
-      if (!dryRun) loadData();
     } catch (error) {
       toast.error('Errore Auto-Match: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setAutoAssociating(false);
+    }
+  };
+
+  const handleConfirmMatch = async (proposta, livello) => {
+    const assegnoIds = proposta.assegno_id
+      ? [proposta.assegno_id]
+      : (proposta.assegni || []).map(a => (typeof a === 'string' ? a : a.assegno_id));
+    const fatturaIds = proposta.fattura_id
+      ? [proposta.fattura_id]
+      : (proposta.fatture || []).map(f => (typeof f === 'string' ? f : f.fattura_id));
+    if (!window.confirm(`Confermi il collegamento di ${assegnoIds.length} assegni a ${fatturaIds.length} fatture?`)) return;
+    setAutoAssociating(true);
+    try {
+      await api.post('/api/assegni/auto-match/conferma', {
+        assegno_ids: assegnoIds,
+        fattura_ids: fatturaIds,
+        livello,
+      });
+      toast.success('Proposta confermata');
+      await loadData();
+      await handleAutoMatch();
+    } catch (error) {
+      toast.error('Conferma non riuscita: ' + (error.response?.data?.detail || error.message));
     } finally {
       setAutoAssociating(false);
     }
@@ -1084,13 +1108,13 @@ export default function GestioneAssegni() {
         <Button
           variant="success"
           size="lg"
-          onClick={() => handleAutoMatch(false)}
+          onClick={() => handleAutoMatch()}
           disabled={autoAssociating}
           data-testid="auto-match-btn"
           title="Auto-match rigoroso: 4 livelli (L1 1→1, L2 N uguali→1, L3 N diversi→1, L4 1→N) con tolleranza ±0,005€"
           style={{ boxShadow: SHADOWS.sm }}
         >
-          {autoAssociating ? '🤖 …' : '🤖 Auto-collega'}
+          {autoAssociating ? '🤖 …' : '🤖 Trova proposte'}
         </Button>
 
         <Button
@@ -1153,7 +1177,7 @@ export default function GestioneAssegni() {
                 variant="ghost"
                 onClick={() => {
                   setShowAltroMenu(false);
-                  handleAutoMatch(true);
+                  handleAutoMatch();
                 }}
                 disabled={autoAssociating}
                 data-testid="auto-match-preview-btn"
@@ -1810,6 +1834,36 @@ export default function GestioneAssegni() {
                   ✗ Non trovati: <strong>{autoAssocResult.totali?.non_trovati ?? 0}</strong>
                 </span>
               </div>
+              {['L1', 'L2', 'L3', 'L4'].flatMap(livello =>
+                (autoAssocResult[`match_${livello.toLowerCase()}`] || []).map((proposta, indice) => (
+                  <div
+                    key={`${livello}-${indice}`}
+                    style={{
+                      marginTop: 10,
+                      padding: 10,
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.sm,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 12,
+                    }}
+                  >
+                    <span>
+                      Proposta <strong>{livello}</strong>: conferma necessaria prima di creare
+                      movimenti in Prima Nota.
+                    </span>
+                    <Button
+                      variant="success"
+                      size="sm"
+                      disabled={autoAssociating}
+                      onClick={() => handleConfirmMatch(proposta, livello)}
+                    >
+                      Conferma proposta
+                    </Button>
+                  </div>
+                ))
+              )}
               {/* Dettaglio L2/L3: quali fatture sono state sommate/raggruppate per
                   arrivare al match — prima si vedeva solo il conteggio totale,
                   senza modo di risalire a QUALI fatture componevano la somma. */}

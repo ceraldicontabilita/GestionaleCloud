@@ -30,6 +30,16 @@ from app.utils.ruoli import richiedi_admin
 
 logger = logging.getLogger(__name__)
 
+_CAMPI_RATA_EVENTO = (
+    "blocco_indice", "rata_indice", "condizioni_pagamento", "modalita",
+    "importo", "data_scadenza", "data_riferimento_termini", "giorni_termini",
+)
+
+
+def _pagamento_rate_per_evento(rate: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Propaga solo i dati necessari allo scadenzario, mai IBAN o beneficiario."""
+    return [{campo: rata.get(campo) for campo in _CAMPI_RATA_EVENTO} for rata in (rate or [])]
+
 
 def _piva_italiana_valida(piva: str) -> bool:
     """P.IVA italiana: esattamente 11 cifre numeriche. Usata solo per
@@ -488,6 +498,12 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     la stessa fattura). Ritorna il dict di update applicato alla fattura
     (già persistito), oppure None se resta provvisoria.
     """
+    # Un piano XML a piu' rate non e' una prova di pagamento: anche per un
+    # fornitore configurato "cassa" resta provvisorio finche' ogni quota non
+    # viene confermata con la relativa evidenza.
+    if len(invoice.get("pagamento_rate") or []) > 1:
+        return None
+
     piva = (invoice.get("supplier_vat") or invoice.get("cedente_piva") or "").strip()
     if not piva:
         return None
@@ -755,6 +771,9 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             "cliente": parsed.get("cliente", {}),
             "linee": parsed.get("linee", []),
             "riepilogo_iva": parsed.get("riepilogo_iva", []),
+            "pagamento_rate": parsed.get("pagamento_rate", []),
+            "pagamento_rate_totale": parsed.get("pagamento_rate_totale"),
+            "pagamento_rate_coerente": parsed.get("pagamento_rate_coerente"),
             "metodo_pagamento": metodo_pagamento,
             "status": "imported",
             "source": "xml_upload",
@@ -856,6 +875,7 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             "importo_totale": invoice.get("total_amount", 0),
             "fornitore_id": supplier_id,
             "fornitore_ragione_sociale": invoice.get("supplier_name", ""),
+            "fornitore_piva": invoice.get("supplier_vat", ""),
             "fornitore_nuovo": supplier_result.get("nuovo", False),
             "fornitore_iban": fornitore_data.get("iban") if isinstance(fornitore_data, dict) else None,
             "metodo_pagamento": metodo_pagamento,
@@ -866,6 +886,8 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             "righe_linee": invoice.get("linee", []),
             "imponibile": invoice.get("imponibile", 0),
             "iva": invoice.get("iva", 0),
+            "pagamento_rate": _pagamento_rate_per_evento(invoice.get("pagamento_rate", [])),
+            "pagamento_rate_coerente": invoice.get("pagamento_rate_coerente"),
         }, db, source_module="fatture_upload_manuale")
     except Exception:
         logger.exception("Errore propagazione evento fattura.created (upload manuale)")
@@ -1360,6 +1382,9 @@ async def archivia_fattura_storica(db, parsed: Dict[str, Any], filename: str, so
         "cliente": parsed.get("cliente", {}),
         "linee": parsed.get("linee", []),
         "riepilogo_iva": parsed.get("riepilogo_iva", []),
+        "pagamento_rate": parsed.get("pagamento_rate", []),
+        "pagamento_rate_totale": parsed.get("pagamento_rate_totale"),
+        "pagamento_rate_coerente": parsed.get("pagamento_rate_coerente"),
         "causali": parsed.get("causali", []),
         "status": "archiviata",
         "stato_import": "archivio_storico",
@@ -1442,6 +1467,9 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "cliente": parsed.get("cliente", {}),
         "linee": parsed.get("linee", []),
         "riepilogo_iva": parsed.get("riepilogo_iva", []),
+        "pagamento_rate": parsed.get("pagamento_rate", []),
+        "pagamento_rate_totale": parsed.get("pagamento_rate_totale"),
+        "pagamento_rate_coerente": parsed.get("pagamento_rate_coerente"),
         "causali": parsed.get("causali", []),
         "dati_fatture_collegate": parsed.get("dati_fatture_collegate", []),
         "dati_ordine_acquisto": parsed.get("dati_ordine_acquisto", []),
@@ -1495,6 +1523,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
             "importo_totale": invoice.get("total_amount", 0),
             "fornitore_id": supplier_result.get("supplier_id"),
             "fornitore_ragione_sociale": invoice.get("supplier_name", ""),
+            "fornitore_piva": invoice.get("supplier_vat", ""),
             "fornitore_nuovo": supplier_result.get("supplier_created", False),
             "fornitore_iban": fornitore_data.get("iban") if isinstance(fornitore_data, dict) else None,
             "metodo_pagamento": metodo_pagamento,
@@ -1505,6 +1534,8 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
             "righe_linee": invoice.get("linee", []),
             "imponibile": invoice.get("imponibile", 0),
             "iva": invoice.get("iva", 0),
+            "pagamento_rate": _pagamento_rate_per_evento(invoice.get("pagamento_rate", [])),
+            "pagamento_rate_coerente": invoice.get("pagamento_rate_coerente"),
         }, db, source_module=f"fatture_upload_{source}")
     except Exception:
         logger.exception(f"Errore propagazione evento fattura.created ({source})")
@@ -1989,6 +2020,16 @@ async def paga_fattura(invoice_id: str) -> Dict[str, Any]:
     if invoice.get("pagato") or invoice.get("status") == "paid":
         raise HTTPException(status_code=400, detail="Fattura già pagata")
     
+    rate_xml = invoice.get("pagamento_rate") or []
+    if len(rate_xml) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"La fattura contiene {len(rate_xml)} rate XML: collega e conferma "
+                "le singole evidenze di pagamento, non il totale documento."
+            ),
+        )
+
     metodo = invoice.get("metodo_pagamento")
     if not metodo:
         raise HTTPException(status_code=400, detail="Seleziona prima un metodo di pagamento")

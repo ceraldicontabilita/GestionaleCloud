@@ -461,7 +461,7 @@ async def get_scadenze_integrate(
     }
     
     for s in scadenze:
-        importo = float(s.get("importo_totale", 0))
+        importo = float(s.get("importo_totale", s.get("importo", 0)) or 0)
         totale_da_pagare += importo
         
         data_scad_str = s.get("data_scadenza", oggi)

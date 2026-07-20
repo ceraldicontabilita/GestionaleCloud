@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1020 · tenere: 668 · verificare: 329 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1021 · tenere: 669 · verificare: 329 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -110,6 +110,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/assegni/associa-pagamenti-multipli` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/assegni/auto-associa` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/assegni/auto-match` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/assegni/auto-match/conferma` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/assegni/cerca-combinazioni-assegni` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/assegni/clear-generated` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/assegni/conferma-proposta/{proposta_id}` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |

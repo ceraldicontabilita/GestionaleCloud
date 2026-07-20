@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1020 endpoint** in **108 gruppi**.
+> Totale **1021 endpoint** in **108 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 646 · ext esterni = 76 · — da verificare = 298
+**Riepilogo uso:** ✓ frontend = 647 · ext esterni = 76 · — da verificare = 298
 
 ## AI Parser  (11)
 
@@ -110,7 +110,7 @@
 | PUT | `/api/archivio-bonifici/transfers/{transfer_id}` | ✓ | bonifici_module.transfers |
 | GET | `/api/archivio-bonifici/transfers/{transfer_id}/pdf` | ✓ | bonifici_module.transfers |
 
-## Assegni  (30)
+## Assegni  (31)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -120,6 +120,7 @@
 | POST | `/api/assegni/associa-pagamenti-multipli` | ✓ | bank.assegni |
 | POST | `/api/assegni/auto-associa` | ✓ | bank.assegni |
 | POST | `/api/assegni/auto-match` | ✓ | bank.assegni |
+| POST | `/api/assegni/auto-match/conferma` | ✓ | bank.assegni |
 | POST | `/api/assegni/cerca-combinazioni-assegni` | ✓ | bank.assegni |
 | DELETE | `/api/assegni/clear-generated` | ✓ | bank.assegni |
 | POST | `/api/assegni/conferma-proposta/{proposta_id}` | ✓ | bank.assegni |

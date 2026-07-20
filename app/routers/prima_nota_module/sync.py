@@ -257,7 +257,7 @@ async def registra_fattura_prima_nota(
     
     if not fattura:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
-    
+
     if not metodo_pagamento:
         fornitore_piva = fattura.get("supplier_vat") or fattura.get("cedente_piva")
         if fornitore_piva:
@@ -272,6 +272,17 @@ async def registra_fattura_prima_nota(
                 metodo_pagamento = "banca"
         else:
             metodo_pagamento = "banca"
+
+    rate_xml = fattura.get("pagamento_rate") or []
+    if len(rate_xml) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"La fattura contiene {len(rate_xml)} rate XML. Il totale documento non puo' "
+                "essere registrato come pagamento unico senza evidenza: collega e conferma "
+                "i singoli assegni o movimenti bancari."
+            ),
+        )
     
     risultato = await registra_pagamento_fattura(
         fattura=fattura,
@@ -813,6 +824,17 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
         return {"success": True, "metodo": "sospesa", "importo": importo, "fornitore": fornitore,
                 "message": "Fattura sospesa — resta nei provvisori"}
     
+    rate_xml = fattura.get("pagamento_rate") or []
+    if len(rate_xml) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"La fattura contiene {len(rate_xml)} rate XML. Il totale documento non puo' "
+                "essere registrato come pagamento unico senza evidenza: collega e conferma "
+                "i singoli assegni o movimenti bancari."
+            ),
+        )
+
     pn_id = str(uuid.uuid4())
     collection = COLLECTION_PRIMA_NOTA_CASSA if metodo == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
 
