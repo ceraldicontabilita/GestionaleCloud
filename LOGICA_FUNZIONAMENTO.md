@@ -1420,3 +1420,22 @@ e una nuova **decisione**:
 La regola non introduce un intervallo temporale arbitrario: il riuso dipende
 dall'identita' semantica e dalla fotografia sostanziale, non dai minuti
 trascorsi. Nessuna azione operativa viene eseguita dal motore decisionale.
+
+---
+
+## 18. Cash flow 13 settimane: anomalie e qualita' dati
+
+La regola `CF13W-002` mantiene gli scenari base, prudente e stress e aggiunge
+evidenze strutturate, tutte calcolate senza scritture operative:
+
+- se lo scenario base scende sotto zero, segnala la prima settimana negativa;
+- se solo lo scenario stress scende sotto zero, lo evidenzia come attenzione;
+- record senza data, importo o classificazione restano esclusi e sono mostrati
+  separatamente, senza valori stimati;
+- le scadenze gia' decorse restano riportate nella prima settimana e sono
+  esposte come anomalia distinta;
+- la schermata mostra copertura, conteggi per motivo di esclusione e anomalie.
+
+Non e' stata introdotta alcuna nuova soglia configurabile: il saldo negativo
+e la presenza di dati incompleti sono condizioni esatte. L'agente CFO resta in
+shadow mode e non crea pagamenti, movimenti contabili o disposizioni bancarie.

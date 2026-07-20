@@ -64,6 +64,10 @@ def test_calcolo_settimanale_senza_duplicati_e_con_scenari(monkeypatch):
     assert result["qualita_dati"]["obblighi_inclusi"] == 1
     assert result["qualita_dati"]["crediti_inclusi"] == 1
     assert result["qualita_dati"]["senza_data_esclusi"] == 2
+    assert result["versione_regole"] == "CF13W-002"
+    assert {a["codice"] for a in result["anomalie"]} == {
+        "DATI_INCOMPLETI", "SCADENZE_ARRETRATE"
+    }
     assert result["sola_lettura"] is True
 
 
@@ -81,6 +85,23 @@ def test_servizio_non_scrive_collezioni_di_business(monkeypatch):
     dopo = {nome: asyncio.run(db[nome].count_documents({})) for nome in prima}
     assert dopo == prima
     assert asyncio.run(db["prima_nota_banca"].count_documents({})) == 0
+
+
+def test_anomalia_liquidita_indica_scenario_e_prima_settimana(monkeypatch):
+    db = _db()
+    asyncio.run(db["scadenziario_fornitori"].insert_one({
+        "id": "uscita-grande",
+        "data_scadenza": "2026-07-21",
+        "importo": 4000,
+        "stato": "aperta",
+        "pagato": False,
+    }))
+    monkeypatch.setattr(service_mod, "aggrega_saldo_prima_nota", _saldo_fisso)
+    result = asyncio.run(calcola_cash_flow_13_settimane(db, date(2026, 7, 20)))
+    anomalia = next(a for a in result["anomalie"] if a["codice"] == "LIQUIDITA_BASE_NEGATIVA")
+    assert anomalia["scenario"] == "base"
+    assert anomalia["settimana"] == 1
+    assert anomalia["saldo_minimo"] == -1000.0
 
 
 def test_tensione_di_cassa_crea_proposta_l3_idempotente(monkeypatch):

@@ -345,6 +345,15 @@ Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `S
 - Suite backend completa: 751 passati, 2 saltati.
 - Test frontend: 30 passati.
 - Build frontend di produzione: completata.
+
+## Cash flow CF13W-002: anomalie e qualita' — 2026-07-20
+
+- Evidenze strutturate per liquidita' negativa (con prima settimana), dati
+  incompleti e scadenze arretrate; nessuna soglia economica nuova.
+- Motivi di esclusione e copertura resi visibili nella pagina Agenti.
+- Test mirati decision engine/cash flow: 25 passati.
+- Test backend completi: 849 passati, 2 saltati.
+- Test frontend completi: 59 passati; build di produzione completata.
 - Database usato nei test: MongoDB esclusivamente in memoria; nessun accesso ad
   Atlas, Render, `.env` o dati aziendali reali.
 

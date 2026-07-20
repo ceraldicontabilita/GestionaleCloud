@@ -322,6 +322,7 @@ function CashFlowPanel({ previsione }) {
     return <PageEmpty message="Previsione non ancora disponibile." />;
   }
   const qualita = previsione.qualita_dati || {};
+  const anomalie = previsione.anomalie || [];
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -343,6 +344,36 @@ function CashFlowPanel({ previsione }) {
             {qualita.record_esclusi || 0}
           </div>
         </div>
+      </div>
+      {anomalie.length > 0 && (
+        <PageSection title={`Anomalie e limiti (${anomalie.length})`}>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {anomalie.map(anomalia => (
+              <div
+                key={anomalia.codice}
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  background: anomalia.severita === 'alta' ? '#fef2f2' : '#fffbeb',
+                  border: `1px solid ${anomalia.severita === 'alta' ? '#fecaca' : '#fde68a'}`,
+                }}
+              >
+                <div style={{ fontWeight: 800, color: '#0f172a', fontSize: 13 }}>
+                  {anomalia.titolo}
+                </div>
+                <div style={{ color: '#475569', fontSize: 12, marginTop: 3 }}>
+                  {anomalia.descrizione}
+                </div>
+              </div>
+            ))}
+          </div>
+        </PageSection>
+      )}
+      <div style={{ ...STYLES.card, marginBottom: 14, fontSize: 12, color: '#475569' }}>
+        <strong>Qualita dei dati:</strong>{' '}
+        {qualita.record_inclusi || 0} inclusi; {qualita.senza_data_esclusi || 0} senza data;{' '}
+        {qualita.senza_importo_esclusi || 0} senza importo;{' '}
+        {qualita.tipi_non_classificati_esclusi || 0} non classificati.
       </div>
       {previsione.scenari.map(scenario => (
         <PageSection key={scenario.nome} title={`Scenario ${scenario.nome}`}>

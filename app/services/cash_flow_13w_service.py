@@ -190,6 +190,56 @@ def _settimane(riferimento: date, movimenti: List[MovimentoPrevisto]) -> List[Di
     return settimane
 
 
+def _anomalie_cash_flow(
+    scenari: List[Dict[str, Any]], qualita: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """Evidenze deterministiche: nessuna soglia economica inventata."""
+    anomalie: List[Dict[str, Any]] = []
+    base = next(s for s in scenari if s["nome"] == "base")
+    stress = next(s for s in scenari if s["nome"] == "stress")
+
+    scenario_negativo = base if base["saldo_minimo"] < 0 else (
+        stress if stress["saldo_minimo"] < 0 else None
+    )
+    if scenario_negativo:
+        prima_settimana = next(
+            (r["settimana"] for r in scenario_negativo["settimane"] if r["saldo_finale"] < 0),
+            None,
+        )
+        anomalie.append({
+            "codice": "LIQUIDITA_BASE_NEGATIVA" if scenario_negativo["nome"] == "base"
+            else "LIQUIDITA_STRESS_NEGATIVA",
+            "severita": "alta" if scenario_negativo["nome"] == "base" else "attenzione",
+            "titolo": "Liquidita negativa nello scenario " + scenario_negativo["nome"],
+            "descrizione": "Il saldo previsto scende sotto zero; serve verifica umana prima di ogni azione.",
+            "scenario": scenario_negativo["nome"],
+            "settimana": prima_settimana,
+            "saldo_minimo": scenario_negativo["saldo_minimo"],
+        })
+
+    if qualita["record_esclusi"]:
+        anomalie.append({
+            "codice": "DATI_INCOMPLETI",
+            "severita": "attenzione",
+            "titolo": "Previsione con dati esclusi",
+            "descrizione": "Alcuni record non hanno data, importo o classificazione e non sono stati stimati.",
+            "record_coinvolti": qualita["record_esclusi"],
+        })
+
+    scaduti = sum(
+        riga.get("scaduti_riportati", 0) for riga in base["settimane"]
+    )
+    if scaduti:
+        anomalie.append({
+            "codice": "SCADENZE_ARRETRATE",
+            "severita": "attenzione",
+            "titolo": "Scadenze arretrate riportate",
+            "descrizione": "Le scadenze gia decorse sono incluse nella prima settimana.",
+            "record_coinvolti": scaduti,
+        })
+    return anomalie
+
+
 async def calcola_cash_flow_13_settimane(
     db, reference_date: Optional[date] = None
 ) -> Dict[str, Any]:
@@ -225,18 +275,20 @@ async def calcola_cash_flow_13_settimane(
         })
     inclusi = sum(qualita[k] for k in ("scadenze_fornitori_incluse", "obblighi_inclusi", "crediti_inclusi"))
     esclusi = qualita["senza_data_esclusi"] + qualita["senza_importo_esclusi"] + qualita["tipi_non_classificati_esclusi"]
+    qualita_completa = {
+        **qualita,
+        "record_inclusi": inclusi,
+        "record_esclusi": esclusi,
+        "copertura_percentuale": round(inclusi * 100 / max(inclusi + esclusi, 1), 1),
+    }
     return {
-        "versione_regole": "CF13W-001",
+        "versione_regole": "CF13W-002",
         "data_riferimento": riferimento.isoformat(),
         "orizzonte_settimane": 13,
         "liquidita_iniziale": _money(liquidita),
         "scenari": scenari,
-        "qualita_dati": {
-            **qualita,
-            "record_inclusi": inclusi,
-            "record_esclusi": esclusi,
-            "copertura_percentuale": round(inclusi * 100 / max(inclusi + esclusi, 1), 1),
-        },
+        "qualita_dati": qualita_completa,
+        "anomalie": _anomalie_cash_flow(scenari, qualita_completa),
         "assunzioni": [
             "Le scadenze arretrate sono riportate nella prima settimana.",
             "Base: 100% entrate e 100% uscite; prudente: 70% entrate; stress: 40% entrate e 110% uscite.",

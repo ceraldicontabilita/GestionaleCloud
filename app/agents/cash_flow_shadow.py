@@ -33,9 +33,11 @@ class CashFlow13WShadow:
                 "saldo_minimo_base": base["saldo_minimo"],
                 "saldo_minimo_stress": stress["saldo_minimo"],
                 "copertura_percentuale": previsione["qualita_dati"]["copertura_percentuale"],
+                "anomalie": len(previsione.get("anomalie") or []),
             }],
             assumptions=previsione["assunzioni"],
-            rule_ids=["CF13W-001", "HUMAN-APPROVAL-001"] if negativo else ["CF13W-001"],
+            rule_ids=[previsione["versione_regole"], "HUMAN-APPROVAL-001"]
+            if negativo else [previsione["versione_regole"]],
             alternatives=[
                 {"type": "accelerate_receivables", "label": "Valutare l'anticipo degli incassi"},
                 {"type": "reschedule_optional_outflows", "label": "Rivedere solo le uscite rinviabili"},

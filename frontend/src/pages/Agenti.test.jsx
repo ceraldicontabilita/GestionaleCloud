@@ -36,6 +36,10 @@ const CASH_FLOW = {
   versione_regole: 'CF13W-001',
   liquidita_iniziale: 3000,
   qualita_dati: { copertura_percentuale: 80, record_esclusi: 2 },
+  anomalie: [{
+    codice: 'DATI_INCOMPLETI', severita: 'attenzione',
+    titolo: 'Previsione con dati esclusi', descrizione: 'Due record non sono stati stimati.',
+  }],
   scenari: [{
     nome: 'base', fattore_entrate: 1, fattore_uscite: 1,
     saldo_minimo: 2500, saldo_finale: 2800,
@@ -98,6 +102,7 @@ describe('Agenti AI supervisionati', () => {
 
     expect(await screen.findByText('Scenario base')).toBeInTheDocument();
     expect(screen.getByText('80%')).toBeInTheDocument();
+    expect(screen.getByText('Previsione con dati esclusi')).toBeInTheDocument();
     expect(screen.getByText(/non prepara né esegue pagamenti/i)).toBeInTheDocument();
   });
 });

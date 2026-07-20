@@ -102,9 +102,11 @@ Ordine di attivazione in shadow mode:
    - [x] Nessun calcolo d'imposta, F24 preparato, pagamento o invio esterno.
    - [x] L'invio della Prima Nota non viene confuso con un pacchetto fiscale completo.
 4. [x] CFO — primo nucleo cash flow a 13 settimane e scenari.
-   - [x] Motore deterministico CF13W-001 con saldi canonici, rate fornitori,
+   - [x] Motore deterministico CF13W-002 con saldi canonici, rate fornitori,
      obblighi e crediti dotati di scadenza.
    - [x] Scenari base, prudente e stress, copertura dati ed esclusioni visibili.
+   - [x] Anomalie strutturate per liquidita' negativa, record incompleti e
+     scadenze arretrate, senza introdurre soglie economiche arbitrarie.
    - [x] Agente `CashFlow13WShadow`: sola proposta L1/L3, nessuna disposizione.
    - [ ] Estendere le entrate attese a POS e PayPal solo dopo aver materializzato
      date di accredito affidabili e anti-duplicazione.
