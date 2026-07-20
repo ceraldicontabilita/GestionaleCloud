@@ -118,8 +118,19 @@ async def chiusura_pos_del_giorno(db, data: str) -> Optional[float]:
     tot = 0.0
     trovata = False
     try:
-        for c in await _leggi_tutti(db["chiusure_pos_manuali"].find(
-                {"data": data}, {"_id": 0, "importo": 1, "totale": 1})):
+        righe = await _leggi_tutti(db["chiusure_pos_manuali"].find(
+            {"data": data},
+            {"_id": 0, "importo": 1, "totale": 1, "source": 1},
+        ))
+        # Un inserimento/correzione dalla UI e' un totale giornaliero e
+        # prevale sugli eventuali componenti storici importati da CSV.
+        override = next((c for c in reversed(righe)
+                         if c.get("source") == "inserimento_manuale_terminale"), None)
+        if override is not None:
+            valore = override.get("importo")
+            return round(float(valore if valore is not None
+                               else override.get("totale") or 0), 2)
+        for c in righe:
             trovata = True
             tot += float(c.get("importo") or c.get("totale") or 0)
         if not trovata:
@@ -132,7 +143,280 @@ async def chiusura_pos_del_giorno(db, data: str) -> Optional[float]:
                 tot += float(c.get("importo") or 0)
     except AttributeError:
         return None  # backend/fake senza le collezioni delle chiusure
-    return round(tot, 2) if trovata and tot > 0 else None
+    # Zero e' un valore manuale valido: significa che il terminale non ha
+    # registrato pagamenti elettronici. Non deve far scattare il fallback al
+    # valore XML, altrimenti Prima Nota tornerebbe a usare proprio il dato
+    # fiscale che l'operatore ha corretto.
+    return round(tot, 2) if trovata else None
+
+
+async def registra_chiusura_pos_reale(
+    db,
+    data: str,
+    importo: float,
+    *,
+    note: str = "",
+    actor: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Salva il POS reale letto dal terminale e riallinea Prima Nota.
+
+    Il dato manuale e' la fonte operativa canonica. L'elettronico XML resta
+    invariato sul corrispettivo e viene usato soltanto per il confronto
+    fiscale. In un'unica operazione logica vengono mantenuti coerenti:
+
+    - ``chiusure_pos_manuali``: verita' manuale del terminale;
+    - uscita ``POS Verso Banca`` in Prima Nota Cassa;
+    - trasferimento atteso speculare in Prima Nota Banca, che verra'
+      riconciliato dall'estratto conto reale.
+
+    L'importo zero e' esplicito: archivia gli eventuali trasferimenti
+    sintetici del giorno e impedisce il fallback al valore XML.
+    """
+    data = str(data or "")[:10]
+    try:
+        datetime.strptime(data, "%Y-%m-%d")
+    except (TypeError, ValueError):
+        raise ScritturaNonValida(f"data non valida: {data!r}")
+    try:
+        importo = round(float(importo), 2)
+    except (TypeError, ValueError):
+        raise ScritturaNonValida(f"importo non numerico: {importo!r}")
+    if importo < 0:
+        raise ScritturaNonValida("l'importo POS reale non puo' essere negativo")
+
+    actor = actor or {}
+    now = datetime.now(timezone.utc).isoformat()
+    user_id = actor.get("sub") or actor.get("user_id") or "unknown"
+    user_email = actor.get("email") or ""
+    user_name = actor.get("name") or user_email or user_id
+
+    precedente_doc = await db["chiusure_pos_manuali"].find_one(
+        {"data": data}, {"_id": 0, "importo": 1, "totale": 1, "id": 1}
+    )
+    importo_precedente = None
+    if precedente_doc is not None:
+        importo_precedente = round(float(
+            precedente_doc.get("importo")
+            if precedente_doc.get("importo") is not None
+            else precedente_doc.get("totale") or 0
+        ), 2)
+
+    chiusura_id = (precedente_doc or {}).get("id") or str(uuid.uuid4())
+    await db["chiusure_pos_manuali"].find_one_and_update(
+        {"data": data},
+        {
+            "$set": {
+                "importo": importo,
+                "totale": importo,
+                "source": "inserimento_manuale_terminale",
+                "note": note,
+                "updated_at": now,
+                "updated_by": user_id,
+            },
+            "$setOnInsert": {
+                "id": chiusura_id,
+                "data": data,
+                "created_at": now,
+            },
+        },
+        upsert=True,
+    )
+
+    corr = await db["corrispettivi"].find_one(
+        {"data": data}, {"_id": 0, "id": 1, "totale": 1,
+                         "pagato_elettronico": 1}
+    )
+    corr_id = (corr or {}).get("id")
+    # Non sovrascrivere mai pagato_elettronico: e' il valore fiscale XML.
+    await db["corrispettivi"].update_one(
+        {"data": data},
+        {"$set": {"pos_reale_serale": importo,
+                  "pos_reale_fonte": "terminale_manuale",
+                  "pos_reale_updated_at": now}},
+    )
+
+    filtro_attivo = {"status": {"$nin": ["deleted", "archived"]}}
+    cassa_query = {
+        "data": data,
+        "tipo": "uscita",
+        "$or": [
+            {"categoria": "POS Verso Banca"},
+            {"category": "POS Verso Banca"},
+            {"source": {"$in": ["corrispettivo_import",
+                                  "conferma_corrispettivo_manuale"]}},
+        ],
+        **filtro_attivo,
+    }
+    banca_query = {
+        "data": data,
+        "source": {"$in": ["trasferimento_pos", "chiusura_pos_mobile",
+                             "corrispettivo_pos"]},
+        **filtro_attivo,
+    }
+    cassa_mov = await db["prima_nota_cassa"].find_one(cassa_query)
+    banca_mov = await db["prima_nota_banca"].find_one(banca_query)
+    trasferimento_id = (
+        (cassa_mov or {}).get("trasferimento_id")
+        or (banca_mov or {}).get("trasferimento_id")
+        or str(uuid.uuid4())
+    )
+
+    cassa_id = (cassa_mov or {}).get("id")
+    banca_id = (banca_mov or {}).get("id")
+
+    if importo == 0:
+        motivo = "chiusura_terminale_pos_zero"
+        if cassa_mov:
+            await db["prima_nota_cassa"].update_one(
+                {"id": cassa_id},
+                {"$set": {"status": "deleted", "deleted": True,
+                          "deleted_reason": motivo, "deleted_at": now,
+                          "updated_at": now}},
+            )
+        if banca_mov:
+            await db["prima_nota_banca"].update_one(
+                {"id": banca_id},
+                {"$set": {"status": "deleted", "deleted": True,
+                          "deleted_reason": motivo, "deleted_at": now,
+                          "updated_at": now}},
+            )
+    else:
+        cassa_fields = {
+            "importo": importo,
+            "amount": importo,
+            "categoria": "POS Verso Banca",
+            "category": "POS Verso Banca",
+            "descrizione": f"POS {data} -> Banca (chiusura terminale)",
+            "description": f"POS {data} -> Banca (chiusura terminale)",
+            "quota_pos_fonte": "chiusura_manuale",
+            "trasferimento_id": trasferimento_id,
+            "updated_at": now,
+            "status": "active",
+            "deleted": False,
+        }
+        if corr_id:
+            cassa_fields["corrispettivo_id"] = corr_id
+        if cassa_mov:
+            await db["prima_nota_cassa"].update_one(
+                {"id": cassa_id}, {"$set": cassa_fields}
+            )
+        else:
+            nuovo_movimento_cassa = {
+                "data": data,
+                "tipo": "uscita",
+                "importo": importo,
+                "categoria": "POS Verso Banca",
+                "descrizione": cassa_fields["descrizione"],
+                "source": "corrispettivo_import",
+                "quota_pos_fonte": "chiusura_manuale",
+                "trasferimento_id": trasferimento_id,
+            }
+            if corr_id:
+                nuovo_movimento_cassa["corrispettivo_id"] = corr_id
+            cassa_id = await scrivi_movimento(
+                db, "cassa", nuovo_movimento_cassa
+            )
+
+        accreditato = round(float((banca_mov or {}).get("accreditato_ec") or 0), 2)
+        quadrato = accreditato > 0 and abs(accreditato - importo) <= 0.01
+        banca_fields = {
+            "importo": importo,
+            "amount": importo,
+            "categoria": "Corrispettivi POS",
+            "category": "Corrispettivi POS",
+            "descrizione": f"POS {data} da cassa (chiusura terminale)",
+            "description": f"POS {data} da cassa (chiusura terminale)",
+            "source": "trasferimento_pos",
+            "quota_pos_fonte": "chiusura_manuale",
+            "trasferimento_id": trasferimento_id,
+            "giorno_vendita": data,
+            "riconciliato": quadrato,
+            "stato_riconciliazione": "riconciliato" if quadrato else "da_verificare",
+            "updated_at": now,
+            "status": "active",
+            "deleted": False,
+        }
+        if corr_id:
+            banca_fields["corrispettivo_id"] = corr_id
+        if banca_mov:
+            await db["prima_nota_banca"].update_one(
+                {"id": banca_id}, {"$set": banca_fields}
+            )
+        else:
+            nuovo_movimento_banca = {
+                "data": data,
+                "tipo": "entrata",
+                "importo": importo,
+                "categoria": "Corrispettivi POS",
+                "descrizione": banca_fields["descrizione"],
+                "source": "trasferimento_pos",
+                "quota_pos_fonte": "chiusura_manuale",
+                "trasferimento_id": trasferimento_id,
+                "giorno_vendita": data,
+                "riconciliato": False,
+            }
+            if corr_id:
+                nuovo_movimento_banca["corrispettivo_id"] = corr_id
+            banca_id = await scrivi_movimento(
+                db, "banca", nuovo_movimento_banca
+            )
+
+    # Anche i metadati dell'entrata Cassa devono riflettere il terminale
+    # reale, pur lasciando intatto l'importo totale del corrispettivo.
+    entrata_cassa = await db["prima_nota_cassa"].find_one({
+        "data": data,
+        "tipo": "entrata",
+        "categoria": "Corrispettivi",
+        **filtro_attivo,
+    })
+    if entrata_cassa:
+        totale = round(float(entrata_cassa.get("importo") or 0), 2)
+        await db["prima_nota_cassa"].update_one(
+            {"id": entrata_cassa.get("id")},
+            {"$set": {
+                "pagato_elettronico": importo,
+                "pagato_contanti": round(totale - importo, 2),
+                "dettaglio.elettronico": importo,
+                "dettaglio.contanti": round(totale - importo, 2),
+                "quota_pos_fonte": "chiusura_manuale",
+                "updated_at": now,
+            }},
+        )
+
+    action = "created" if importo_precedente is None else (
+        "noop" if abs(importo_precedente - importo) < 0.01 else "updated"
+    )
+    if action != "noop":
+        try:
+            await db["pos_chiusure_audit"].insert_one({
+                "id": str(uuid.uuid4()),
+                "collection_target": "chiusure_pos_manuali",
+                "data_riferimento": data,
+                "action": action,
+                "importo_precedente": importo_precedente,
+                "importo_nuovo": importo,
+                "delta": round(importo - (importo_precedente or 0), 2),
+                "user_id": user_id,
+                "user_email": user_email,
+                "user_name": user_name,
+                "note": note,
+                "origine": "coerenza_pos_inline",
+                "timestamp": now,
+            })
+        except Exception:
+            logger.exception("Audit chiusura POS reale fallito")
+
+    return {
+        "success": True,
+        "action": action,
+        "data": data,
+        "importo": importo,
+        "importo_precedente": importo_precedente,
+        "chiusura_id": chiusura_id,
+        "prima_nota_cassa_id": cassa_id,
+        "prima_nota_banca_id": banca_id,
+        "trasferimento_id": trasferimento_id if importo > 0 else None,
+    }
 
 
 async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Optional[str]]:

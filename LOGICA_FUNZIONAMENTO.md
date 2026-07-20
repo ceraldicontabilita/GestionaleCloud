@@ -295,11 +295,13 @@ distinto da uno automatico né controllato per duplicati.
 **Cassa** (giorno di vendita)
 - **DARE**: corrispettivo totale del giorno (dall'XML del registratore).
 - **AVERE** "POS Verso Banca": il **POS REALE** — quello che la sera si
-  trascrive nell'apposita card insieme ai corrispettivi manuali, cioè quello
-  che esce davvero dal terminale. NON l'elettronico dell'XML, che può essere
-  più basso (non sempre si batte il tasto "incasso elettronico"). Se la
-  chiusura serale non è trascritta, ripiego sull'XML; la riga indica la
-  fonte (`quota_pos_fonte`: chiusura_manuale | xml).
+  trascrive nella pagina **Coerenza POS**, direttamente nella riga del giorno,
+  cioè quello che esce davvero dal terminale. NON l'elettronico dell'XML, che
+  è soltanto il dato fiscale di confronto. Se la chiusura serale non è ancora
+  trascritta, il vecchio movimento può mostrare temporaneamente il fallback
+  XML; appena si salva il valore del terminale, Cassa e Banca vengono entrambe
+  riallineate e la riga indica `quota_pos_fonte=chiusura_manuale`. Anche 0,00 è
+  un valore manuale esplicito e non riattiva il fallback XML.
 - "Paga in Cassa" su una fattura → uscita collegata alla fattura.
 
 **Banca**
@@ -311,7 +313,8 @@ distinto da uno automatico né controllato per duplicati.
 - L'**accredito dell'estratto conto** NON crea mai un'entrata: **riconcilia**
   il trasferimento del suo giorno di vendita (letto dalla causale NUMIA
   "DEL gg/mm/aa"), accumulando i circuiti (bancomat, carte, Amex) fino a
-  concorrenza, con tolleranza 2%/5€.
+  concorrenza; lo stato verde viene mostrato soltanto quando il totale
+  accreditato quadra con il POS reale secondo la tolleranza configurata.
 - "Paga in Banca" su una fattura → uscita collegata alla fattura.
 
 **Coerenza POS — il "non battuto"**
@@ -320,6 +323,10 @@ distinto da uno automatico né controllato per duplicati.
   BATTUTO** sul registratore, evidenziato giorno per giorno con **saldo
   progressivo cumulato**: così si sa quanto battere in più nei giorni
   successivi per recuperare.
+- Il campo **POS terminale (modifica)** salva il totale giornaliero in
+  `chiusure_pos_manuali`, aggiorna l'uscita POS della Prima Nota Cassa e il
+  trasferimento atteso della Prima Nota Banca con lo stesso
+  `trasferimento_id`. Non modifica mai `corrispettivi.pagato_elettronico`.
 - L'estratto conto resta il terzo controllo: l'accredito della banca deve
   combaciare col trasferimento (invariante del collaudo notturno
   "trasferimento_pos_speculare": uscita cassa POS = entrata banca POS,
@@ -329,13 +336,14 @@ distinto da uno automatico né controllato per duplicati.
   punti di scrittura diretta.
 - **Bug grave corretto 16/07/2026 — la Banca mostrava solo uscite.** I saldi
   della Prima Nota escludevano l'intera categoria "Corrispettivi POS", ma
-  quella categoria la scrivono due percorsi diversi: la chiusura POS serale
-  di verifica (giustamente da escludere: non è un secondo incasso) E la quota
-  POS del corrispettivo XML — che è **l'unico incasso POS reale in banca**
-  (l'estratto conto per progetto NON lo duplica, vedi il punto precedente).
+  quella categoria la scrivono due percorsi diversi: vecchie chiusure POS
+  isolate e il trasferimento canonico Cassa→Banca. Il trasferimento usa il POS
+  reale del terminale quando disponibile e il fallback XML solo finché manca
+  l'inserimento manuale; l'estratto conto lo riconcilia senza duplicarlo.
   Risultato: ~204.000€ di incassi POS 2026 sparivano dai saldi banca. Adesso
   l'esclusione distingue per **origine** del movimento, non per categoria:
-  - quota POS da corrispettivo XML → **conta** (entrata banca reale);
+  - trasferimento POS Cassa→Banca → **conta** (fonte manuale, oppure fallback
+    XML finché non viene compilata la chiusura);
   - chiusure POS di verifica (serale mobile, import pos.xlsx) → escluse;
   - la vecchia copia integrale dell'estratto conto dentro Prima Nota Banca
     (sync legacy, usato in passato per gen-apr 2026) → esclusa dai saldi:
@@ -588,7 +596,9 @@ Regola di fondo: **il confronto POS↔banca usa sempre il calendario di giorni
 lavorativi e festivi, mai il semplice mese contabile.** Uno slittamento spiegato dal
 calendario non è un'anomalia e non genera mai avvisi.
 
-1. Inserisci corrispettivo manuale reale e POS della chiusura serale, poi Conferma.
+1. Nella tabella giornaliera inserisci il totale mostrato dal terminale nel
+   campo **POS terminale (modifica)** e premi **Salva** (oppure Invio). Il dato
+   fiscale XML resta invariato e viene usato solo per la FASE 1.
 2. Il sistema calcola la **data prevista di accredito** del POS:
    - vendita lun–ven → primo giorno lavorativo dopo il giorno successivo
      (venerdì → lunedì, se non festivo);

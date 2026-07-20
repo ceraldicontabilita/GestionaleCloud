@@ -20,7 +20,6 @@ from fastapi import APIRouter, HTTPException, Query, Body, Depends
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta, timezone
 import logging
-import uuid
 
 from app.database import Database
 from app.utils.error_handler import handle_errors
@@ -35,7 +34,10 @@ COLLECTION_CHIUSURE_POS = "chiusure_pos_manuali"
 # La descrizione degli accrediti NUMIA/BPM contiene il giorno di VENDITA:
 # "INC.POS CARTE CREDIT - NUMIA-INTER DEL 02/04/26 PDV ..." → 2026-04-02
 import re as _re
-from app.services.scritture_contabili import scrivi_movimento
+from app.services.scritture_contabili import (
+    ScritturaNonValida,
+    registra_chiusura_pos_reale,
+)
 _GIORNO_POS_RE = _re.compile(r"DEL\s+(\d{2})/(\d{2})/(\d{2})\b")
 
 
@@ -524,164 +526,32 @@ async def upsert_chiusura_giornaliera(
     payload: Dict[str, Any] = Body(...),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, Any]:
+    """Crea o corregge il POS reale letto dal terminale per una giornata.
+
+    Il valore XML non viene modificato. Il motore unico salva la chiusura
+    manuale e aggiorna insieme l'uscita in Cassa e il trasferimento atteso in
+    Banca, che resta da riconciliare con l'estratto conto reale.
     """
-    Crea o aggiorna la chiusura POS giornaliera in prima_nota_banca.
-    
-    Body:
-      - data: "YYYY-MM-DD" (obbligatorio)
-      - importo: float >= 0 (obbligatorio)
-      - note: str (opzionale) — annotazione libera
-    
-    Comportamento:
-      - Cerca in prima_nota_banca un movimento con la stessa data + source='corrispettivo_pos' 
-        o categoria='Corrispettivi POS'
-      - Se ESISTE: aggiorna importo/amount, aggiunge audit fields (importo_originale, modificato_*)
-      - Se NON ESISTE: crea nuovo movimento con source='chiusura_pos_mobile'
-    
-    Scrive un audit log in 'pos_chiusure_audit' con chi/quando/cosa ha modificato.
-    """
-    # Validazione input
-    data_str = payload.get("data")
-    importo_raw = payload.get("importo")
-    note = payload.get("note", "") or ""
-    
-    if not data_str:
-        raise HTTPException(status_code=400, detail="Campo 'data' obbligatorio (formato YYYY-MM-DD)")
-    try:
-        data_dt = datetime.strptime(data_str, "%Y-%m-%d")
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail=f"Data non valida: {data_str!r}. Usa YYYY-MM-DD")
-    
-    if importo_raw is None:
+    if payload.get("data") is None:
+        raise HTTPException(status_code=400, detail="Campo 'data' obbligatorio (YYYY-MM-DD)")
+    if payload.get("importo") is None:
         raise HTTPException(status_code=400, detail="Campo 'importo' obbligatorio")
     try:
-        importo = round(float(importo_raw), 2)
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail=f"Importo non numerico: {importo_raw!r}")
-    if importo < 0:
-        raise HTTPException(status_code=400, detail="L'importo non può essere negativo")
-    
-    db = Database.get_db()
-    user_id = current_user.get("sub") or current_user.get("user_id") or "unknown"
-    user_email = current_user.get("email") or ""
-    user_name = current_user.get("name") or user_email or user_id
-    now_utc = datetime.now(timezone.utc)
-    now_iso = now_utc.isoformat()
-    
-    # Cerca movimento esistente per quel giorno
-    existing = await db["prima_nota_banca"].find_one({
-        "data": data_str,
-        "$or": [
-            {"source": "corrispettivo_pos"},
-            {"source": "chiusura_pos_mobile"},
-            {"categoria": "Corrispettivi POS"}
-        ]
-    })
-    
-    action = ""
-    movimento_id = None
-    importo_precedente = None
-    
-    if existing:
-        # AGGIORNA
-        movimento_id = existing.get("id")
-        importo_precedente = float(existing.get("importo") or existing.get("amount") or 0)
-        
-        # Se l'importo è identico non fare nulla (idempotenza)
-        if abs(importo_precedente - importo) < 0.01:
-            action = "noop"
-        else:
-            update_fields = {
-                "importo": importo,
-                "amount": importo,
-                "modificato_da_mobile": True,
-                "modificato_il": now_iso,
-                "modificato_da_user_id": user_id,
-                "modificato_da_email": user_email,
-                "modificato_da_name": user_name,
-                "updated_at": now_iso
-            }
-            # Traccia importo originale solo la prima volta che si modifica
-            if "importo_originale" not in existing:
-                update_fields["importo_originale"] = importo_precedente
-            if note:
-                update_fields["note_modifica"] = note
-            
-            await db["prima_nota_banca"].update_one(
-                {"id": movimento_id},
-                {"$set": update_fields}
-            )
-            action = "updated"
-    else:
-        # CREA nuovo movimento
-        movimento_id = str(uuid.uuid4())
-        nuovo_mov = {
-            "id": movimento_id,
-            "data": data_str,
-            "date": data_str,
-            "tipo": "entrata",
-            "type": "entrata",
-            "importo": importo,
-            "amount": importo,
-            "descrizione": f"POS corrispettivo {data_str} (chiusura da mobile)",
-            "description": f"POS corrispettivo {data_str} (chiusura da mobile)",
-            "categoria": "Corrispettivi POS",
-            "category": "Corrispettivi POS",
-            "source": "chiusura_pos_mobile",
-            "anno": data_dt.year,
-            "mese": data_dt.month,
-            "riconciliato": False,
-            "created_at": now_iso,
-            "updated_at": now_iso,
-            "creato_da_mobile": True,
-            "creato_da_user_id": user_id,
-            "creato_da_email": user_email,
-            "creato_da_name": user_name,
-        }
-        if note:
-            nuovo_mov["note_modifica"] = note
-        
-        await scrivi_movimento(db, "banca", nuovo_mov)
-        action = "created"
-        importo_precedente = 0.0
-    
-    # Audit log (solo se c'è stata una modifica reale)
-    if action != "noop":
-        audit_entry = {
-            "id": str(uuid.uuid4()),
-            "collection_target": "prima_nota_banca",
-            "movimento_id": movimento_id,
-            "data_riferimento": data_str,
-            "action": action,  # 'created' | 'updated'
-            "importo_precedente": round(importo_precedente or 0, 2),
-            "importo_nuovo": importo,
-            "delta": round(importo - (importo_precedente or 0), 2),
-            "user_id": user_id,
-            "user_email": user_email,
-            "user_name": user_name,
-            "note": note,
-            "origine": "mobile_app",
-            "timestamp": now_iso,
-            "timestamp_epoch": int(now_utc.timestamp())
-        }
-        try:
-            await db["pos_chiusure_audit"].insert_one(audit_entry)
-        except Exception as e:
-            logger.warning(f"Audit log pos_chiusure_audit fallito: {e}")
-    
-    return {
-        "success": True,
-        "action": action,
-        "data": data_str,
-        "importo": importo,
-        "importo_precedente": round(importo_precedente or 0, 2),
-        "movimento_id": movimento_id,
-        "message": {
-            "created": f"Chiusura POS creata per il {data_str}: €{importo:.2f}",
-            "updated": f"Chiusura POS del {data_str} aggiornata: €{importo_precedente:.2f} → €{importo:.2f}",
-            "noop": f"Chiusura POS del {data_str} già a €{importo:.2f}, nessuna modifica"
-        }.get(action, "OK")
-    }
+        result = await registra_chiusura_pos_reale(
+            Database.get_db(),
+            payload.get("data"),
+            payload.get("importo"),
+            note=(payload.get("note") or "").strip(),
+            actor=current_user,
+        )
+    except ScritturaNonValida as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    result["message"] = (
+        f"POS reale del {result['data']} salvato: EUR {result['importo']:.2f}. "
+        "Prima Nota Cassa e trasferimento atteso in Banca aggiornati."
+    )
+    return result
 
 
 @router.get("/chiusura-giornaliera/audit")
@@ -757,17 +627,30 @@ async def _carica_pos_manuale_per_data(db) -> Dict[str, float]:
     dall'utente). Ritorna un dizionario {data: importo}.
     """
     out: Dict[str, float] = {}
+    override_manuali: Dict[str, float] = {}
 
     # Fonte 1: chiusure_pos_manuali (import CSV)
-    async for c in db["chiusure_pos_manuali"].find({}, {"_id": 0, "data": 1, "importo": 1, "totale": 1}):
+    async for c in db["chiusure_pos_manuali"].find(
+        {}, {"_id": 0, "data": 1, "importo": 1, "totale": 1, "source": 1}
+    ):
         d = c.get("data")
         if not d:
             continue
         if isinstance(d, datetime):
             d = d.strftime("%Y-%m-%d")
         imp = float(c.get("importo") or c.get("totale") or 0)
-        if d and imp:
-            out[d[:10]] = imp
+        if d:
+            # Anche 0,00 e' una chiusura manuale esplicita: non va confusa
+            # con un dato mancante e non deve riattivare il fallback XML.
+            giorno = d[:10]
+            if c.get("source") == "inserimento_manuale_terminale":
+                override_manuali[giorno] = imp
+            else:
+                # Gli import storici possono avere piu' componenti/circuiti
+                # nello stesso giorno: prima dell'override vanno sommati.
+                out[giorno] = out.get(giorno, 0.0) + imp
+
+    out.update(override_manuali)
 
     # Fonte 2: prima_nota_banca con source chiusura_pos_mobile (sovrascrive)
     async for c in db["prima_nota_banca"].find(
@@ -780,8 +663,8 @@ async def _carica_pos_manuale_per_data(db) -> Dict[str, float]:
         if isinstance(d, datetime):
             d = d.strftime("%Y-%m-%d")
         imp = float(c.get("importo") or c.get("amount") or 0)
-        if d and imp:
-            out[d[:10]] = imp  # sovrascrive l'import CSV
+        if d and d[:10] not in override_manuali:
+            out[d[:10]] = imp  # fallback storico, mai sopra l'override UI
 
     return out
 
@@ -975,6 +858,7 @@ async def controllo_incassi_due_fasi(
         c_row = corr_by_date.get(d, {})
         xml_el = float(c_row.get("pagato_elettronico") or 0)
         pos_man = float(pos_manuali.get(d) or 0)
+        pos_man_presente = d in pos_manuali
 
         # FASE 0 v3: stato corrispettivo (provvisorio / definitivo_xml / manca_xml)
         stato_corr_raw = c_row.get("stato")
@@ -1007,12 +891,12 @@ async def controllo_incassi_due_fasi(
         # FASE 1: solo se abbiamo entrambi i dati, altrimenti non possiamo confrontare
         # Se il corrispettivo è provvisorio/manca_xml, non abbiamo xml_elettronico
         # → stato speciale "in_attesa_xml"
-        if stato_corr in ("provvisorio", "manca_xml") and pos_man > 0:
+        if stato_corr in ("provvisorio", "manca_xml") and pos_man_presente:
             # Abbiamo il POS serale ma non i dati fiscali → aspettiamo XML
             diff_serale = 0.0
             stato_serale = "in_attesa_xml"
             alert_serale = None
-        elif xml_el > 0 or pos_man > 0:
+        elif xml_el > 0 or pos_man_presente:
             diff_serale = round(pos_man - xml_el, 2)
             if abs(diff_serale) <= tolleranza_euro:
                 stato_serale = "ok"
@@ -1111,6 +995,7 @@ async def controllo_incassi_due_fasi(
             # Fase 1
             "xml_elettronico": round(xml_el, 2),
             "pos_manuale": round(pos_man, 2),
+            "pos_manuale_presente": pos_man_presente,
             "diff_serale": diff_serale,
             "stato_serale": stato_serale,
             "alert_compensazione": alert_serale,

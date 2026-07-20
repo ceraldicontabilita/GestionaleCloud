@@ -14,7 +14,10 @@ import io
 from app.database import Database
 from app.parsers.corrispettivi_parser import parse_corrispettivo_xml
 from app.utils.error_handler import handle_errors
-from app.services.scritture_contabili import scrivi_movimento
+from app.services.scritture_contabili import (
+    registra_chiusura_pos_reale,
+    scrivi_movimento,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -1575,46 +1578,18 @@ async def inserisci_corrispettivo_manuale(data: Dict[str, Any] = Body(...)) -> D
                 })
         movimenti_cassa = {"gia_confermato": True, "importi_aggiornati": True}
 
-    # Salva anche POS reale se fornito (scrivendo in prima_nota_banca con
-    # source=chiusura_pos_mobile, come fa l'endpoint esistente)
+    # Salva anche il POS reale nel registro manuale canonico e riallinea
+    # l'uscita Cassa + il trasferimento atteso Banca. Il valore XML resta
+    # separato e non viene mai usato come sostituto del terminale manuale.
     pos_result = None
     if pos_reale is not None and pos_reale >= 0:
-        existing_pos = await db["prima_nota_banca"].find_one({
-            "data": data_str,
-            "source": {"$in": ["chiusura_pos_mobile", "corrispettivo_pos"]},
-        })
-        if existing_pos:
-            await db["prima_nota_banca"].update_one(
-                {"id": existing_pos["id"]},
-                {"$set": {
-                    "importo": pos_reale,
-                    "amount": pos_reale,
-                    "updated_at": now_iso,
-                }}
-            )
-            pos_result = {"action": "aggiornato", "id": existing_pos["id"]}
-        else:
-            pos_id = str(uuid.uuid4())
-            await scrivi_movimento(db, "banca", {
-                "id": pos_id,
-                "data": data_str,
-                "date": data_str,
-                "tipo": "entrata",
-                "type": "entrata",
-                "importo": pos_reale,
-                "amount": pos_reale,
-                "descrizione": f"POS reale serale {data_str} (da inserimento corrispettivo manuale)",
-                "description": f"POS reale serale {data_str} (da inserimento corrispettivo manuale)",
-                "categoria": "Corrispettivi POS",
-                "category": "Corrispettivi POS",
-                "source": "chiusura_pos_mobile",
-                "anno": data_dt.year,
-                "mese": data_dt.month,
-                "riconciliato": False,
-                "created_at": now_iso,
-                "updated_at": now_iso,
-            })
-            pos_result = {"action": "creato", "id": pos_id}
+        pos_result = await registra_chiusura_pos_reale(
+            db,
+            data_str,
+            pos_reale,
+            note=note,
+            actor={"user_id": str(data.get("performed_by") or "operatore")},
+        )
 
     return {
         "success": True,

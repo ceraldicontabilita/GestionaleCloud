@@ -130,10 +130,19 @@ export default function CoerenzaPOSCorrispettivi() {
     );
   }
 
+  const statsPos = dueFasi?.statistiche || {};
+  const gruppiPosVerificati = (statsPos.fase2_ok || 0)
+    + (statsPos.fase2_mancante || 0)
+    + (statsPos.fase2_diff || 0)
+    + (statsPos.fase2_extra || 0);
+  const percentualeQuadrata = gruppiPosVerificati > 0
+    ? Math.round(((statsPos.fase2_ok || 0) / gruppiPosVerificati) * 1000) / 10
+    : 0;
+
   return (
     <div style={{ padding: 20 }} data-testid="coerenza-pos-page">
       {/* KPI Summary - Compatto */}
-      {dati?.riepilogo && (
+      {dueFasi?.statistiche && (
         <div
           style={{
             display: 'grid',
@@ -144,27 +153,27 @@ export default function CoerenzaPOSCorrispettivi() {
         >
           <StatCard
             icon={<CheckCircle size={18} />}
-            label="Coerenza"
-            value={`${dati.riepilogo.percentuale_coerenza}%`}
+            label="Quadrature POS-Banca"
+            value={`${percentualeQuadrata}%`}
             accent="success"
           />
           <StatCard
             icon={<CreditCard size={18} />}
-            label="POS da XML"
-            value={formatEuro(dati.riepilogo.totale_elettronico_xml)}
+            label="POS terminale inserito"
+            value={formatEuro(statsPos.fase2_pos_totale || 0)}
             accent="info"
           />
           <StatCard
             icon={<TrendingUp size={18} />}
-            label="POS Accreditato"
-            value={formatEuro(dati.riepilogo.totale_pos_accreditato)}
+            label="Accrediti bancari reali"
+            value={formatEuro(statsPos.fase2_accrediti_totale || 0)}
             accent="accent"
           />
           <StatCard
             icon={<AlertTriangle size={18} />}
-            label="Differenza"
-            value={formatEuro(dati.riepilogo.differenza_totale)}
-            accent={Math.abs(dati.riepilogo.differenza_totale) > 100 ? 'danger' : 'success'}
+            label="Saldo da verificare"
+            value={formatEuro(statsPos.fase2_saldo_finale || 0)}
+            accent={Math.abs(statsPos.fase2_saldo_finale || 0) > 0.01 ? 'danger' : 'success'}
           />
         </div>
       )}
@@ -504,7 +513,8 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
           + Inserisci chiusura serale
         </Button>
         <div style={{ fontSize: 12, color: COLORS.textMuted }}>
-          Corrispettivo manuale (provvisorio) + POS reale del giorno
+          Il POS del terminale si inserisce anche direttamente nella tabella. Salva in
+          Prima Nota Cassa e crea il trasferimento atteso in Banca; l'XML resta solo confronto fiscale.
         </div>
       </div>
 
@@ -683,10 +693,10 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
             <tr style={{ background: COLORS.gray[800] }}>
               <Th style={{ color: '#fff', background: 'transparent' }} />
               <Th align="center" style={{ color: '#fff', background: 'transparent', fontSize: 11, borderLeft: '2px solid #fff' }}>Corrisp.</Th>
-              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>XML elettr.</Th>
-              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS reale</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>XML elettr. (confronto)</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS terminale (modifica)</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11, borderRight: '2px solid #fff' }}>Diff. serale</Th>
-              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS reale</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS terminale</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Accredito banca</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Diff. accr.</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Saldo progr.</Th>
@@ -694,7 +704,7 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
           </thead>
           <tbody>
             {giorniFiltrati.map((g, i) => (
-              <RigaGiornaliera key={g.data} g={g} even={i % 2 === 0} />
+              <RigaGiornaliera key={g.data} g={g} even={i % 2 === 0} onReload={onReload} />
             ))}
           </tbody>
           {stats && (
@@ -793,7 +803,73 @@ function TabellaSettimanale({ settimane }) {
   );
 }
 
-function RigaGiornaliera({ g, even }) {
+export function EditorPosReale({ g, onSaved }) {
+  const valoreIniziale = g.pos_manuale_presente
+    ? Number(g.pos_manuale || 0).toFixed(2).replace('.', ',')
+    : '';
+  const [valore, setValore] = useState(valoreIniziale);
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    setValore(g.pos_manuale_presente
+      ? Number(g.pos_manuale || 0).toFixed(2).replace('.', ',')
+      : '');
+  }, [g.data, g.pos_manuale, g.pos_manuale_presente]);
+
+  const salva = async () => {
+    const normalizzato = String(valore).trim().replace(/\s/g, '').replace(',', '.');
+    const importo = Number(normalizzato);
+    if (normalizzato === '' || !Number.isFinite(importo) || importo < 0) {
+      toast.error('Inserisci un importo POS valido, anche 0,00');
+      return;
+    }
+    setSalvando(true);
+    try {
+      const res = await api.put('/api/pos-corrispettivi/chiusura-giornaliera', {
+        data: g.data,
+        importo,
+        note: 'Inserimento manuale da Coerenza POS',
+      });
+      toast.success(res.data?.message || `POS reale del ${formatDateIT(g.data)} salvato`);
+      if (onSaved) await onSaved();
+    } catch (e) {
+      toast.error('Errore salvataggio POS: ' + (e.response?.data?.detail || e.message));
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end', alignItems: 'center', minWidth: 168 }}>
+      <Input
+        aria-label={`POS reale terminale ${g.data}`}
+        type="text"
+        inputMode="decimal"
+        value={valore}
+        onChange={e => setValore(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') salva();
+        }}
+        placeholder="0,00"
+        disabled={salvando}
+        style={{ width: 92, textAlign: 'right', padding: '6px 8px', minHeight: 36 }}
+      />
+      <Button
+        type="button"
+        size="sm"
+        variant="primary"
+        onClick={salva}
+        disabled={salvando}
+        aria-label={`Salva POS reale ${g.data}`}
+        style={{ minHeight: 36, padding: '6px 9px' }}
+      >
+        {salvando ? '...' : 'Salva'}
+      </Button>
+    </div>
+  );
+}
+
+function RigaGiornaliera({ g, even, onReload }) {
   const [espansa, setEspansa] = useState(false);
   const diffSerColor = g.stato_serale === 'ok' ? COLORS.success :
                        g.stato_serale === 'no_dati' ? COLORS.textSubtle :
@@ -839,7 +915,7 @@ function RigaGiornaliera({ g, even }) {
         {g.xml_elettronico > 0 ? formatEuro(g.xml_elettronico) : (statoCorr !== 'definitivo_xml' ? <em style={{ color: COLORS.textSubtle, fontSize: 11 }}>attendo XML</em> : '—')}
       </Td>
       <Td align="right">
-        {g.pos_manuale > 0 ? formatEuro(g.pos_manuale) : '—'}
+        <EditorPosReale g={g} onSaved={onReload} />
       </Td>
       <Td
         align="right"
@@ -854,7 +930,7 @@ function RigaGiornaliera({ g, even }) {
           : formatEuro(g.diff_serale)}
       </Td>
       <Td align="right">
-        {g.pos_manuale > 0 ? formatEuro(g.pos_manuale) : '—'}
+        {g.pos_manuale_presente ? formatEuro(g.pos_manuale) : '—'}
         {g.capogruppo && g.giorni_gruppo > 1 && (
           <Button
             type="button"
