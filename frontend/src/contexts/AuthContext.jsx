@@ -8,6 +8,21 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const applyAuthentication = useCallback(data => {
+    setAuthToken(data.access_token);
+    const userData = {
+      id: data.user_id,
+      email: data.email,
+      name: data.name,
+      role: data.user?.role || data.role || 'admin',
+      auth_method: data.auth_method,
+      mfa_enabled: data.user?.mfa_enabled ?? true,
+      mfa_verified: !!data.mfa_verified,
+    };
+    setUser(userData);
+    return data;
+  }, []);
+
   // Verifica token all'avvio
   useEffect(() => {
     const token = getAuthToken();
@@ -28,33 +43,28 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (email, password) => {
     const res = await api.post('/api/auth/login', { email, password });
-    const { access_token, user_id, email: userEmail, name } = res.data;
-    setAuthToken(access_token);
-    const userData = {
-      id: user_id,
-      email: userEmail,
-      name: name,
-      // Il ruolo lo decide il server (res.data.user.role); l'admin via env
-      // resta 'admin'.
-      role: res.data.user?.role || 'admin'
-    };
-    setUser(userData);
-    return res.data;
-  }, []);
+    if (res.data.mfa_required) return res.data;
+    return applyAuthentication(res.data);
+  }, [applyAuthentication]);
 
   const loginWithPin = useCallback(async pin => {
     const res = await api.post('/api/auth/pin-login', { pin });
-    const { access_token, user_id, email: userEmail, name, role, auth_method } = res.data;
-    setAuthToken(access_token);
-    const userData = {
-      id: user_id,
-      email: userEmail,
-      name: name,
-      role: role || 'admin',
-      auth_method: auth_method || 'pin'
-    };
-    setUser(userData);
-    return res.data;
+    if (res.data.mfa_required) return res.data;
+    return applyAuthentication(res.data);
+  }, [applyAuthentication]);
+
+  const verifyMfaLogin = useCallback(async (challengeToken, code) => {
+    const res = await api.post('/api/auth/mfa/verify-login', {
+      challenge_token: challengeToken,
+      code,
+    });
+    return applyAuthentication(res.data);
+  }, [applyAuthentication]);
+
+  const applyMfaStepUp = useCallback(data => {
+    setAuthToken(data.access_token);
+    setUser(prev => prev ? { ...prev, mfa_enabled: true, mfa_verified: true } : prev);
+    return data;
   }, []);
 
   const logout = useCallback(async () => {
@@ -82,6 +92,7 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={{
       user, login, loginWithPin, logout, isAuthenticated, loading,
+      verifyMfaLogin, applyMfaStepUp,
       role, isAdmin, isReadOnly, canWrite,
     }}>
       {children}

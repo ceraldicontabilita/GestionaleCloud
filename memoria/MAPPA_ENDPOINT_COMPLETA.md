@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1034 endpoint** in **108 gruppi**.
+> Totale **1040 endpoint** in **109 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 651 · ext esterni = 84 · — da verificare = 299
+**Riepilogo uso:** ✓ frontend = 651 · ext esterni = 90 · — da verificare = 299
 
 ## AI Parser  (11)
 
@@ -996,6 +996,17 @@
 | GET | `/data-deletion` | ext | legal_pages |
 | GET | `/privacy` | ext | legal_pages |
 | GET | `/terms` | ext | legal_pages |
+
+## MFA  (6)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| POST | `/api/auth/mfa/disable` | ext | mfa |
+| POST | `/api/auth/mfa/setup/confirm` | ext | mfa |
+| POST | `/api/auth/mfa/setup/start` | ext | mfa |
+| GET | `/api/auth/mfa/status` | ext | mfa |
+| POST | `/api/auth/mfa/step-up` | ext | mfa |
+| POST | `/api/auth/mfa/verify-login` | ext | mfa |
 
 ## Multi-Pagamento  (6)
 

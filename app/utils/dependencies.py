@@ -68,7 +68,11 @@ async def get_current_user(
             "user_id": user_id,
             "email": payload.get("email"),
             "name": payload.get("name"),
-            "role": ruolo
+            "role": ruolo,
+            "auth_method": payload.get("auth_method"),
+            "mfa_verified": bool(payload.get("mfa_verified")),
+            "mfa_verified_at": payload.get("mfa_verified_at"),
+            "amr": payload.get("amr") or [],
         }
         
     except JWTError as e:
@@ -112,6 +116,31 @@ async def get_current_admin_user(
             detail="Admin access required"
         )
     
+    return current_user
+
+
+async def get_current_admin_mfa_user(
+    current_user: Dict[str, Any] = Depends(get_current_admin_user)
+) -> Dict[str, Any]:
+    """Richiede admin, iscrizione MFA attiva e sessione MFA verificata."""
+    from app.database import Database
+    from app.services.mfa_service import canonical_identity, is_enabled
+
+    identity = canonical_identity(
+        current_user.get("user_id", ""),
+        current_user.get("email", ""),
+        current_user.get("role", ""),
+    )
+    if not await is_enabled(Database.get_db(), identity):
+        raise HTTPException(
+            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+            detail="Configura MFA in Admin > Sicurezza prima di gestire decisioni AI",
+        )
+    if not current_user.get("mfa_verified"):
+        raise HTTPException(
+            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+            detail="Verifica MFA richiesta per gestire decisioni AI",
+        )
     return current_user
 
 

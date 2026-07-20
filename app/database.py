@@ -161,6 +161,9 @@ class Database:
         await _safe_index("token_blacklist", "token_hash", unique=True, name="idx_token_blacklist_hash")
         await _safe_index("token_blacklist", "exp", expireAfterSeconds=0, name="idx_token_blacklist_ttl")
 
+        # --- MFA amministratori ---
+        await _safe_index("mfa_settings", "identity_key", unique=True, name="idx_mfa_identity_unique")
+
         # --- Acconti / TFR ---
         await _safe_index("acconti_dipendenti", "dipendente_id", name="idx_acconti_dip")
         # Compound index per query "tutti gli acconti di tizio per il mese X"

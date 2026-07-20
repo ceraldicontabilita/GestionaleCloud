@@ -6,6 +6,7 @@ from .logger import setup_logging, get_logger, LoggerAdapter, log_function_call
 from .dependencies import (
     get_current_user,
     get_current_admin_user,
+    get_current_admin_mfa_user,
     get_optional_user,
     require_feature,
     get_user_db,
@@ -20,6 +21,7 @@ __all__ = [
     "log_function_call",
     "get_current_user",
     "get_current_admin_user",
+    "get_current_admin_mfa_user",
     "get_optional_user",
     "require_feature",
     "get_user_db",

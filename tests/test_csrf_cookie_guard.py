@@ -17,9 +17,10 @@ APP = pathlib.Path(__file__).resolve().parent.parent / "app"
 # File noti che impostano il cookie "access_token" (censiti in questo test:
 # se in futuro se ne aggiunge un altro, va aggiunto anche qui).
 FILE_ATTESI = {
-    "app/routers/auth.py",
-    "app/routers/pin_login.py",
     "app/middleware/authentication.py",
+    # Login password, PIN, MFA e step-up passano tutti dall'unico helper:
+    # i flag di sicurezza del cookie non possono divergere tra i flussi.
+    "app/utils/auth_tokens.py",
 }
 
 

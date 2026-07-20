@@ -60,7 +60,10 @@ livelli tecnici eventualmente usati da singoli algoritmi storici di matching.
 - [ ] Token CSRF esplicito da valutare soltanto per eventuali integrazioni
   future che richiedano cookie cross-site; oggi SameSite=Lax blocca le
   scritture cross-site basate sul cookie.
-- [ ] MFA per amministratori e approvatori.
+- [x] MFA per amministratori e approvatori: TOTP cifrato, codici di recupero monouso,
+  challenge dopo PIN/password e sessione MFA obbligatoria per approvare/rifiutare
+  decisioni AI. L'accesso resta graduale: l'admin può iscriversi senza essere
+  bloccato fuori prima della configurazione.
 
 ### Fase 3 — Fondazione decisionale supervisionata
 

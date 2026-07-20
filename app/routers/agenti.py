@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 from datetime import datetime, timezone
 
 from app.database import Database
-from app.utils.dependencies import get_current_admin_user, get_current_user
+from app.utils.dependencies import get_current_admin_mfa_user, get_current_admin_user, get_current_user
 
 router = APIRouter(tags=["Agenti AI"])
 
@@ -173,7 +173,7 @@ def _identita_admin(admin: Dict[str, Any]) -> str:
 async def approva_decisione(
     decision_id: str,
     body: Optional[Dict[str, Any]] = Body(None),
-    admin: Dict[str, Any] = Depends(get_current_admin_user),
+    admin: Dict[str, Any] = Depends(get_current_admin_mfa_user),
 ):
     """Approva umanamente la proposta, senza eseguirla."""
     from app.agents.decision_engine import cambia_stato_decisione
@@ -197,7 +197,7 @@ async def approva_decisione(
 async def rifiuta_decisione(
     decision_id: str,
     body: Optional[Dict[str, Any]] = Body(None),
-    admin: Dict[str, Any] = Depends(get_current_admin_user),
+    admin: Dict[str, Any] = Depends(get_current_admin_mfa_user),
 ):
     """Rifiuta umanamente una proposta e ne registra il motivo."""
     from app.agents.decision_engine import cambia_stato_decisione

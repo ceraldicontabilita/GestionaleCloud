@@ -7,14 +7,13 @@ import os
 import hmac
 import jwt
 import bcrypt
-from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Response, Request, HTTPException, status
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
 from app.config import settings
 from app.utils import login_lockout
-from app.utils.session_cookie import SESSION_COOKIE_SECURE
+from app.utils.auth_tokens import create_access_token, create_mfa_challenge, set_session_cookies
 
 load_dotenv()
 
@@ -74,15 +73,10 @@ async def _audit_login(ip: str, email: str, ok: bool) -> None:
 def _make_token(email: str, role: str = "admin", name: str = "Admin") -> str:
     # Il ruolo viaggia NEL token: il middleware e le dependency lo leggono da
     # qui. L'admin via env resta 'admin' (nessun cambiamento di comportamento).
-    payload = {
-        "sub": email,
-        "email": email,
-        "name": name,
-        "role": role,
-        "iat": datetime.now(timezone.utc),
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=TOKEN_EXPIRE_MINUTES),
-    }
-    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+    return create_access_token(
+        user_id=email, email=email, name=name, role=role,
+        auth_method="password", mfa_verified=False,
+    )
 
 
 async def _decode_token(request: Request) -> dict:
@@ -140,10 +134,22 @@ async def verify(request: Request):
     ruolo = normalizza_ruolo(payload.get("role"))
     if ruolo not in RUOLI_VALIDI:
         raise HTTPException(status_code=403, detail="Ruolo utente non valido")
+    from app.database import Database
+    from app.services.mfa_service import canonical_identity, get_status
+    mfa = await get_status(Database.get_db(), canonical_identity(email, email, ruolo))
+    mfa["verified_in_session"] = bool(payload.get("mfa_verified"))
     return {
         "ok":    True,
-        "user":  {"email": email, "name": payload.get("name", "Admin"), "role": ruolo},
+        "user":  {
+            "email": email,
+            "name": payload.get("name", "Admin"),
+            "role": ruolo,
+            "auth_method": payload.get("auth_method"),
+            "mfa_enabled": mfa["enabled"],
+            "mfa_verified": mfa["verified_in_session"],
+        },
         "email": email,
+        "mfa": mfa,
     }
 
 
@@ -161,13 +167,23 @@ async def auth_login(body: LoginRequest, request: Request, response: Response):
         login_lockout.register_failure(ip)
         await _audit_login(ip, body.email, ok=False)
         raise HTTPException(status_code=401, detail="Credenziali errate")
+    from app.database import Database
+    from app.services.mfa_service import canonical_identity, is_enabled
+    identity = canonical_identity(body.email, body.email, "admin")
+    if await is_enabled(Database.get_db(), identity):
+        login_lockout.clear_failures(ip)
+        return {
+            "ok": True,
+            "mfa_required": True,
+            "challenge_token": create_mfa_challenge(
+                {"id": body.email, "email": body.email, "name": "Admin", "role": "admin"},
+                "password",
+            ),
+        }
     login_lockout.clear_failures(ip)
     await _audit_login(ip, body.email, ok=True)
     token = _make_token(body.email)
-    response.set_cookie(key="access_token", value=token, httponly=True,
-                        secure=SESSION_COOKIE_SECURE, samesite="lax", max_age=TOKEN_EXPIRE_MINUTES * 60, path="/")
-    response.set_cookie(key="session_active", value="1", httponly=False,
-                        secure=SESSION_COOKIE_SECURE, samesite="lax", max_age=TOKEN_EXPIRE_MINUTES * 60, path="/")
+    set_session_cookies(response, token)
     return {
         "ok":          True,
         "email":       body.email,
@@ -213,6 +229,7 @@ async def auth_logout(request: Request, response: Response):
                 status_code=503,
                 detail="Logout sicuro temporaneamente non disponibile: riprovare",
             ) from exc
+    from app.utils.session_cookie import SESSION_COOKIE_SECURE
     response.delete_cookie("access_token", path="/", secure=SESSION_COOKIE_SECURE, samesite="lax")
     response.delete_cookie("session_active", path="/", secure=SESSION_COOKIE_SECURE, samesite="lax")
     return {"ok": True}

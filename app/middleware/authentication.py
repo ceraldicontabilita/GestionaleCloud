@@ -35,6 +35,7 @@ PUBLIC_PATHS = {
     "/api/auth/pin-login",  # login PIN reale (pin_login.router montato su /api/auth): senza
                              # questo path esplicito NESSUNO può più fare login (review Codex, PR #65)
     "/api/auth/pin-login/health",  # diagnostica pubblica del router PIN, nessun dato sensibile
+    "/api/auth/mfa/verify-login",  # challenge firmata + OTP, non ancora una sessione
     # RIMOSSO: "/api/auth/register" — ora richiede autenticazione (admin crea utenti)
 
     # Integrazioni esterne: chiamanti che non possono avere un nostro JWT.
@@ -251,7 +252,13 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                             "email": payload.get("email"),
                             "name": payload.get("name"),
                             "role": ruolo,
+                            "tipo": ruolo,
+                            "iat": datetime.now(timezone.utc),
                             "exp": datetime.now(timezone.utc) + vita,
+                            "auth_method": payload.get("auth_method"),
+                            "mfa_verified": bool(payload.get("mfa_verified")),
+                            "mfa_verified_at": payload.get("mfa_verified_at"),
+                            "amr": payload.get("amr") or [],
                         },
                         settings.SECRET_KEY,
                         algorithm=settings.ALGORITHM,

@@ -21,7 +21,6 @@ Le variabili vengono lette A OGNI RICHIESTA (non all'import del modulo):
 elimina i problemi di ordine di caricamento del file .env.
 """
 from fastapi import APIRouter, HTTPException, Body, Request, Response, status
-from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
 import os
 import hashlib
@@ -29,12 +28,10 @@ import hmac
 import logging
 import time
 
-from jose import jwt
-
 from app.config import settings
 from app.database import Database, Collections
 from app.repositories import UserRepository
-from app.utils.session_cookie import SESSION_COOKIE_SECURE
+from app.utils.auth_tokens import create_access_token, create_mfa_challenge, set_session_cookies
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -180,23 +177,27 @@ async def pin_login(
     # Estrai user_id
     user_id = str(user.get("id") or user.get("_id"))
 
+    # Il PIN verifica solo il primo fattore quando l'admin ha MFA attiva.
+    # Nessun cookie/token di sessione viene emesso prima del secondo fattore.
+    if user.get("role") == "admin":
+        from app.services.mfa_service import canonical_identity, is_enabled
+        identity = canonical_identity(user_id, user.get("email", ""), "admin")
+        if await is_enabled(db, identity):
+            _clear_failures(ip)
+            return {
+                "mfa_required": True,
+                "challenge_token": create_mfa_challenge(user, "pin"),
+                "auth_method": "pin",
+            }
+
     # Crea JWT con la stessa logica di auth_service._create_access_token
-    expires_delta = timedelta(minutes=PIN_TOKEN_EXPIRE_MINUTES)
-    expire = datetime.now(timezone.utc) + expires_delta
-    jwt_payload = {
-        "sub": user_id,
-        "email": user.get("email", ""),
-        "name": user.get("name"),
-        "role": user.get("role", "admin"),
-        "tipo": user.get("role", "admin"),
-        "exp": expire,
-        "iat": datetime.now(timezone.utc),
-        "auth_method": "pin",  # traccia che è un token da PIN
-    }
-    token = jwt.encode(
-        jwt_payload,
-        settings.SECRET_KEY,
-        algorithm=settings.ALGORITHM,
+    token = create_access_token(
+        user_id=user_id,
+        email=user.get("email", ""),
+        name=user.get("name"),
+        role=user.get("role", "admin"),
+        auth_method="pin",
+        mfa_verified=False,
     )
 
     # Aggiorna last_login se il repo lo supporta
@@ -220,15 +221,7 @@ async def pin_login(
 
     # Cookie di sessione: permette di aprire i link diretti alle API
     # (es. "Vedi fattura" in nuova scheda) senza header Authorization.
-    response.set_cookie(
-        key="access_token",
-        value=token,
-        httponly=True,
-        secure=SESSION_COOKIE_SECURE,
-        samesite="lax",
-        max_age=PIN_TOKEN_EXPIRE_MINUTES * 60,
-        path="/",
-    )
+    set_session_cookies(response, token)
 
     return {
         "access_token": token,

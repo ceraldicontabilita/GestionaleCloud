@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1034 · tenere: 682 · verificare: 329 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1040 · tenere: 688 · verificare: 329 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -13,7 +13,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/batch-reprocess/f24-only` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `GET /api/batch-reprocess/preview` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/batch-reprocess/start` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
-| `GET /api/batch-reprocess/status` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `GET /api/batch-reprocess/status` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `GET /api/cedolini/drive/quadratura-completa` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/cedolini/drive/sync` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/dati-provvisori/riconcilia-estratto-conto` | dati_provvisori | — | sì | — | — | — | tenere | in uso: scheduler |
@@ -25,7 +25,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/batch-reprocess/f24-only` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `GET /api/batch-reprocess/preview` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/batch-reprocess/start` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
-| `GET /api/batch-reprocess/status` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `GET /api/batch-reprocess/status` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `GET /api/cedolini/drive/quadratura-completa` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/cedolini/drive/sync` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/dati-provvisori/riconcilia-estratto-conto` | dati_provvisori | — | sì | — | — | — | tenere | in uso: scheduler |
@@ -151,6 +151,12 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/assegni/{assegno_id}/risolvi-ambiguo` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/auth/login` | auth | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/auth/logout` | auth | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/auth/mfa/disable` | mfa | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/auth/mfa/setup/confirm` | mfa | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/auth/mfa/setup/start` | mfa | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/auth/mfa/status` | mfa | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/auth/mfa/step-up` | mfa | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/auth/mfa/verify-login` | mfa | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/auth/pin-login` | pin_login | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/auth/pin-login/health` | pin_login | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/auth/verify` | auth | sì | — | — | — | sì | tenere | in uso: FE |

@@ -36,6 +36,7 @@ class TestPublicPaths:
         questo path esplicito nessuno può più autenticarsi."""
         assert "/api/auth/pin-login" in PUBLIC_PATHS
         assert "/api/auth/pin-login/health" in PUBLIC_PATHS
+        assert "/api/auth/mfa/verify-login" in PUBLIC_PATHS
 
     def test_setup_pubblico(self):
         """Endpoint setup iniziale deve essere pubblico."""
@@ -112,7 +113,7 @@ class TestAllowlistCongelata:
         "/", "/health", "/api/health", "/api/ping",
         # Autenticazione (login/logout/verify + setup primo admin + PIN login reale)
         "/api/auth/login", "/api/auth/logout", "/api/auth/verify", "/api/auth/setup",
-        "/api/auth/pin-login", "/api/auth/pin-login/health",
+        "/api/auth/pin-login", "/api/auth/pin-login/health", "/api/auth/mfa/verify-login",
         # Integrazioni esterne con auth propria (verify_token Meta, ERP_BRIDGE_SECRET)
         "/api/whatsapp/webhook", "/api/erp/ponte/fattura-ricevuta",
         # Pagine legali (revisione app Meta)
