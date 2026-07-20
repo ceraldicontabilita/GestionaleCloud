@@ -19,6 +19,7 @@ Normativa 2026:
 from fastapi import APIRouter, HTTPException, Query, Body, Depends
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta, timezone
+import asyncio
 import logging
 
 from app.database import Database
@@ -39,6 +40,11 @@ from app.services.scritture_contabili import (
     registra_chiusura_pos_reale,
 )
 _GIORNO_POS_RE = _re.compile(r"DEL\s+(\d{2})/(\d{2})/(\d{2})\b")
+_CAUSALE_ACCREDITO_POS_RE = _re.compile(
+    r"(?:INC\s*\.\s*POS\s+CARTE\s+CREDIT|INCAS\s*\.\s*TRAMITE\s+P\s*\.\s*O\s*\.\s*S)",
+    _re.IGNORECASE,
+)
+_CAUSALI_NUMIA_ESCLUSE = ("REMUNERAZIONE DCC", "COMMISSION", "FATTURA NUMIA")
 
 
 def _giorno_operazione_pos(descrizione: str, data_accredito: str) -> str:
@@ -47,6 +53,18 @@ def _giorno_operazione_pos(descrizione: str, data_accredito: str) -> str:
         g, mese, anno = m.groups()
         return f"20{anno}-{mese}-{g}"
     return (data_accredito or "")[:10]
+
+
+def _e_accredito_pos_numia_con_giorno(descrizione: str) -> bool:
+    """Riconosce solo un accredito POS reale con giorno operazione esplicito."""
+    testo = descrizione or ""
+    testo_upper = testo.upper()
+    return bool(
+        "NUMIA" in testo_upper
+        and _GIORNO_POS_RE.search(testo)
+        and _CAUSALE_ACCREDITO_POS_RE.search(testo)
+        and not any(voce in testo_upper for voce in _CAUSALI_NUMIA_ESCLUSE)
+    )
 
 
 @router.get("/verifica-coerenza")
@@ -169,8 +187,9 @@ async def verifica_coerenza_pos_corrispettivi(
     pos_by_date = {}
     for p in accrediti_pos:
         descr = p.get("descrizione_originale") or p.get("descrizione") or ""
-        # giorno di VENDITA dalla descrizione ("... DEL 02/04/26 ...");
-        # fallback: data di accredito
+        if not _e_accredito_pos_numia_con_giorno(descr):
+            continue
+        # Giorno operazione dalla descrizione ("... DEL 02/04/26 ...").
         data = _giorno_operazione_pos(descr, p.get("data", ""))
         if not (data_da <= data <= data_a):
             continue  # vendita fuori periodo (es. accredito di fine anno precedente)
@@ -456,6 +475,8 @@ async def riconcilia_pos_giorno(
     totale_accreditato = 0.0
     for p in candidati:
         descr = p.get("descrizione_originale") or p.get("descrizione") or ""
+        if not _e_accredito_pos_numia_con_giorno(descr):
+            continue
         if _giorno_operazione_pos(descr, p.get("data", "")) != data:
             continue
         totale_accreditato += abs(float(p.get("importo") or 0))
@@ -552,6 +573,97 @@ async def upsert_chiusura_giornaliera(
         "Prima Nota Cassa e trasferimento atteso in Banca aggiornati."
     )
     return result
+
+
+@router.post("/chiusure-giornaliere/batch")
+@handle_errors
+async def upsert_chiusure_giornaliere_batch(
+    payload: Dict[str, Any] = Body(...),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Importa piu' chiusure POS reali con una sola richiesta autenticata.
+
+    Tutte le righe vengono validate prima di iniziare. Le scritture restano
+    idempotenti per data e passano dallo stesso motore usato dall'editor
+    giornaliero. Una concorrenza limitata evita sia i timeout sia un carico
+    eccessivo sul database.
+    """
+    righe = payload.get("righe")
+    if not isinstance(righe, list) or not righe:
+        raise HTTPException(status_code=400, detail="Elenco 'righe' obbligatorio")
+    if len(righe) > 400:
+        raise HTTPException(status_code=400, detail="Massimo 400 giornate per importazione")
+
+    validate: List[Dict[str, Any]] = []
+    date_viste = set()
+    for indice, riga in enumerate(righe, start=1):
+        if not isinstance(riga, dict):
+            raise HTTPException(status_code=400, detail=f"Riga {indice} non valida")
+        data = str(riga.get("data") or "")[:10]
+        try:
+            datetime.strptime(data, "%Y-%m-%d")
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Data non valida alla riga {indice}: {data!r}",
+            )
+        if data in date_viste:
+            raise HTTPException(status_code=400, detail=f"Data duplicata: {data}")
+        date_viste.add(data)
+        try:
+            importo = round(float(riga.get("importo")), 2)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Importo non valido alla riga {indice}",
+            )
+        if importo < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Importo negativo alla riga {indice}",
+            )
+        validate.append({"data": data, "importo": importo})
+
+    db = Database.get_db()
+    note = str(payload.get("note") or "Importazione massiva POS").strip()
+    semaforo = asyncio.Semaphore(8)
+
+    async def salva(riga: Dict[str, Any]) -> Dict[str, Any]:
+        async with semaforo:
+            try:
+                risultato = await registra_chiusura_pos_reale(
+                    db,
+                    riga["data"],
+                    riga["importo"],
+                    note=note,
+                    actor=current_user,
+                )
+                return {
+                    "data": riga["data"],
+                    "importo": riga["importo"],
+                    "success": True,
+                    "action": risultato.get("action"),
+                }
+            except Exception as exc:
+                logger.exception("Importazione POS fallita per %s", riga["data"])
+                return {
+                    "data": riga["data"],
+                    "importo": riga["importo"],
+                    "success": False,
+                    "errore": str(exc),
+                }
+
+    risultati = await asyncio.gather(*(salva(riga) for riga in validate))
+    errori = [r for r in risultati if not r["success"]]
+    salvati = [r for r in risultati if r["success"]]
+    return {
+        "success": not errori,
+        "richiesti": len(validate),
+        "salvati": len(salvati),
+        "errori": len(errori),
+        "totale": round(sum(r["importo"] for r in salvati), 2),
+        "risultati": risultati,
+    }
 
 
 @router.get("/chiusura-giornaliera/audit")
@@ -672,57 +784,37 @@ async def _carica_pos_manuale_per_data(db) -> Dict[str, float]:
 async def _carica_accrediti_banca_pos(db, data_da: str, data_a: str) -> Dict[str, float]:
     """Carica gli accrediti POS in banca dall'estratto conto.
 
-    Sono i movimenti in ENTRATA di prima_nota_banca che sono accrediti del
-    provider POS (non chiusure manuali, non altri movimenti).
-
-    Fonte reale degli accrediti Ceraldi: NUMIA (unico provider POS attivo;
-    SumUp/Satispay NON sono usati — comparivano solo in una vecchia logica).
-    Prima questo caricatore cercava solo POS/MONETICA/NEXI/PAGOBANCOMAT e non
-    "NUMIA", e filtrava sul campo esatto tipo="entrata": così NON riconosceva
-    gli accrediti NUMIA dell'estratto conto e la FASE 2 li segnava tutti come
-    "mancanti" (falso disavanzo di ~126k su 41 giorni, 12/07/2026).
-
-    Correzioni:
-      1) aggiunta la keyword "NUMIA" (provider reale degli accrediti);
-      2) entrate identificate per importo>0 (come gli altri loader del file),
-         non per il campo "tipo" che alcune fonti non valorizzano.
-    Restano le keyword generiche storiche per retrocompatibilità con eventuali
-    diciture bancarie diverse; l'esclusione delle chiusure manuali evita di
-    ricontare i POS interni come accrediti (bug falsi positivi del 22/04/2026).
+    Fonte canonica: ``estratto_conto_movimenti``. La data contabile indica
+    quando la banca ha registrato il movimento, ma la descrizione NUMIA contiene
+    il giorno dell'operazione (``DEL gg/mm/aa``). La quadratura somma tutti i
+    circuiti per quel giorno e li confronta con il POS manuale dello stesso
+    giorno. Remunerazioni, commissioni, fatture e righe senza ``DEL`` restano
+    escluse.
     """
     out: Dict[str, float] = {}
-
-    keywords_pos = [
-        "NUMIA", "POS ", "MONETICA", "MULTIBANCA POS", "NEXI", "PAGOBANCOMAT",
-        "INCASSO POS", "ACCREDITO POS", "BANCOMAT"
-    ]
-
-    # Regex OR su tutte le keyword
-    regex_or = "|".join(keywords_pos)
-
+    data_a_estesa = (datetime.strptime(data_a, "%Y-%m-%d") + timedelta(days=7)).strftime("%Y-%m-%d")
     query = {
-        "data": {"$gte": data_da, "$lte": data_a},
-        # Entrate: importo positivo (robusto — non dipende dal campo "tipo",
-        # che non tutte le fonti di prima_nota_banca valorizzano)
+        "data": {"$gte": data_da, "$lte": data_a_estesa},
         "importo": {"$gt": 0},
-        # Escludi le chiusure manuali (non sono accrediti bancari reali)
-        "source": {"$nin": ["chiusura_pos_mobile", "corrispettivo_pos", "manuale_da_xml"]},
         "$or": [
-            {"descrizione": {"$regex": regex_or, "$options": "i"}},
-            {"categoria": {"$regex": "pos|monetica|numia", "$options": "i"}},
+            {"descrizione_originale": {"$regex": "NUMIA", "$options": "i"}},
+            {"descrizione": {"$regex": "NUMIA", "$options": "i"}},
         ],
     }
 
-    async for m in db["prima_nota_banca"].find(query, {"_id": 0, "data": 1, "importo": 1, "amount": 1}):
-        d = m.get("data")
-        if isinstance(d, datetime):
-            d = d.strftime("%Y-%m-%d")
-        if not d:
+    projection = {
+        "_id": 0, "data": 1, "importo": 1, "amount": 1,
+        "descrizione": 1, "descrizione_originale": 1,
+    }
+    async for m in db["estratto_conto_movimenti"].find(query, projection):
+        descrizione = m.get("descrizione_originale") or m.get("descrizione") or ""
+        if not _e_accredito_pos_numia_con_giorno(descrizione):
+            continue
+        giorno_operazione = _giorno_operazione_pos(descrizione, "")
+        if not (data_da <= giorno_operazione <= data_a):
             continue
         imp = float(m.get("importo") or m.get("amount") or 0)
-        d = d[:10]
-        # Accumula (se più di un accredito nella stessa giornata)
-        out[d] = out.get(d, 0.0) + imp
+        out[giorno_operazione] = out.get(giorno_operazione, 0.0) + imp
 
     return out
 
@@ -742,8 +834,8 @@ async def controllo_incassi_due_fasi(
       - Alert al giorno successivo con importo da compensare
 
     FASE 2: Verifica accrediti bancari
-      - Confronto: accredito banca − POS serale manuale
-      - Tiene conto del calendario bancario (ven-dom → lun)
+      - Confronto: accrediti con ``DEL gg/mm/aa`` − POS manuale dello stesso
+        giorno ``gg/mm/aa``; la data contabile non decide l'abbinamento
 
     Ritorna giorno per giorno lo stato delle due fasi con alert attivi.
     """
@@ -817,38 +909,31 @@ async def controllo_incassi_due_fasi(
     # Per semplicità d'implementazione, calcolo la diff sul giorno X e marco
     # alert_attivo_il = giorno successivo in formato stringa.
 
-    # ── FASE 2 (v4): raggruppamento per data di accredito ────────────────────
-    # Ven/Sab/Dom maturano tutti nello stesso accredito del lunedì: la vecchia
-    # logica confrontava il TOTALE del lunedì con OGNI singolo giorno,
-    # producendo "EXTRA" fittizi ripetuti (lo stesso accredito contato 3 volte)
-    # e falsi "MANCANTE". Ora: somma dei POS che maturano nella stessa data di
-    # accredito vs accredito banca di quella data, consumato UNA volta sola.
+    # FASE 2 (v5): il riferimento ``DEL gg/mm/aa`` nella descrizione bancaria
+    # identifica il giorno POS. I circuiti dello stesso giorno sono già sommati
+    # da _carica_accrediti_banca_pos e si confrontano col POS manuale del giorno.
     gruppi_accr: Dict[str, Dict[str, Any]] = {}
     for d in sorted(date_note):
         pos_v = float(pos_manuali.get(d) or 0)
         if pos_v <= 0:
             continue
-        ga = _data_accredito_attesa(d)
-        g = gruppi_accr.setdefault(ga, {"giorni": [], "pos_tot": 0.0, "dettaglio": []})
-        g["giorni"].append(d)
-        g["pos_tot"] += pos_v
-        # Dettaglio giorno-per-giorno: quando l'accredito raggruppa più giorni
-        # (es. venerdì+sabato+domenica → lunedì), qui teniamo traccia di quanto
-        # ha inciso ciascun giorno sul totale, per poterlo mostrare in chiaro
-        # invece di un unico importo cumulativo poco leggibile.
-        g["dettaglio"].append({"data": d, "pos_manuale": round(pos_v, 2)})
-
-    for ga, g in gruppi_accr.items():
-        g["pos_tot"] = round(g["pos_tot"], 2)
-        accr = float(accrediti.get(ga) or 0)
-        if ga > oggi:
+        data_attesa = _data_accredito_attesa(d)
+        accr = round(float(accrediti.get(d) or 0), 2)
+        g = {
+            "giorni": [d],
+            "pos_tot": round(pos_v, 2),
+            "dettaglio": [{"data": d, "pos_manuale": round(pos_v, 2)}],
+            "data_accredito_attesa": data_attesa,
+        }
+        if data_attesa > oggi:
             g.update(stato="in_attesa", accredito=0.0, diff=0.0)
         elif accr == 0:
-            g.update(stato="mancante", accredito=0.0, diff=round(-g["pos_tot"], 2))
+            g.update(stato="mancante", accredito=0.0, diff=round(-pos_v, 2))
         else:
-            diff = round(accr - g["pos_tot"], 2)
+            diff = round(accr - pos_v, 2)
             stato = "ok" if abs(diff) <= tolleranza_euro else ("differenza" if diff < 0 else "extra")
             g.update(stato=stato, accredito=round(accr, 2), diff=diff)
+        gruppi_accr[d] = g
 
     saldo_progressivo = 0.0
     stats["fase2_pos_totale"] = 0.0
@@ -937,13 +1022,11 @@ async def controllo_incassi_due_fasi(
         if stato_serale == "ok":
             stats["fase1_ok"] += 1
 
-        # FASE 2 (v4): confronto a livello di GRUPPO di accredito.
-        # Il primo giorno del gruppo ("capogruppo") porta accredito, differenza
-        # e saldo progressivo; gli altri giorni dello stesso gruppo sono marcati
-        # "raggruppato" (il loro POS è già dentro il totale del capogruppo).
+        # FASE 2 (v5): stesso giorno operazione letto dalla descrizione bancaria.
+        # La data attesa serve solo a distinguere un accredito non ancora dovuto.
         data_accr_attesa = _data_accredito_attesa(d)
-        gruppo = gruppi_accr.get(data_accr_attesa)
-        capogruppo = bool(gruppo and pos_man > 0 and gruppo["giorni"][0] == d)
+        gruppo = gruppi_accr.get(d)
+        capogruppo = bool(gruppo and pos_man > 0)
         pos_gruppo = 0.0
         giorni_gruppo = 0
 
@@ -952,21 +1035,13 @@ async def controllo_incassi_due_fasi(
             diff_accr = 0.0
             accredito = 0.0
             stato_accr = "no_pos_manuale"
-        elif not capogruppo:
-            diff_accr = 0.0
-            accredito = 0.0
-            stato_accr = "raggruppato"
         else:
             stato_accr = gruppo["stato"]
             diff_accr = gruppo["diff"]
             accredito = gruppo["accredito"]
             pos_gruppo = gruppo["pos_tot"]
             giorni_gruppo = len(gruppo["giorni"])
-            # Dettaglio per-giorno SOLO se il gruppo copre più di un giorno
-            # (es. weekend): per un giorno singolo sarebbe ridondante col totale.
-            if giorni_gruppo > 1:
-                dettaglio_gruppo = gruppo["dettaglio"]
-            # Statistiche e saldo: una volta per gruppo (solo sul capogruppo)
+            # Statistiche e saldo: una volta per giorno operazione.
             if stato_accr == "in_attesa":
                 stats["fase2_attesa"] += 1
             elif stato_accr == "mancante":

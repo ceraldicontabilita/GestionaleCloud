@@ -1,134 +1,91 @@
-"""
-Coerenza POS — FASE 2 (POS reale vs Banca), fix del 12/07/2026.
-
-Bug: la card "Accrediti banca mancanti" mostrava ~126.407 € su 41 giorni come
-falso disavanzo. Causa: _carica_accrediti_banca_pos NON riconosceva gli
-accrediti del provider reale (NUMIA) e filtrava sul campo esatto tipo="entrata".
-Così l'estratto conto (che copre 16 mesi) non veniva agganciato e ogni giorno
-con POS diventava "mancante".
-
-Questi test verificano il comportamento del caricatore accrediti con un fake db
-che riproduce la semantica della query Mongo usata (data range, importo>0,
-source $nin, $or su descrizione/categoria con $regex case-insensitive).
-"""
-import re
+"""Quadratura POS: il giorno viene dalla descrizione dell'estratto conto."""
 import asyncio
+
+from mongomock_motor import AsyncMongoMockClient
 
 from app.routers import pos_corrispettivi_check as pc
 
 
-class _FakeCursor:
-    def __init__(self, docs):
-        self._docs = docs
-
-    def __aiter__(self):
-        self._it = iter(self._docs)
-        return self
-
-    async def __anext__(self):
-        try:
-            return next(self._it)
-        except StopIteration:
-            raise StopAsyncIteration
-
-
-class _FakeBankColl:
-    """Riproduce la semantica della query usata da _carica_accrediti_banca_pos."""
-
-    def __init__(self, docs):
-        self.docs = docs
-
-    def _match(self, doc, query):
-        # data range
-        dr = query["data"]
-        d = doc.get("data", "")
-        if not (dr["$gte"] <= d <= dr["$lte"]):
-            return False
-        # importo > 0
-        if not (float(doc.get("importo") or 0) > query["importo"]["$gt"]):
-            return False
-        # source $nin
-        if doc.get("source") in query["source"]["$nin"]:
-            return False
-        # $or descrizione/categoria regex (case-insensitive)
-        ok = False
-        for cond in query["$or"]:
-            for campo, spec in cond.items():
-                val = doc.get(campo) or ""
-                if re.search(spec["$regex"], val, re.IGNORECASE):
-                    ok = True
-        return ok
-
-    def find(self, query, projection=None):
-        return _FakeCursor([d for d in self.docs if self._match(d, query)])
-
-
-class _FakeDb:
-    def __init__(self, docs):
-        self._coll = _FakeBankColl(docs)
-
-    def __getitem__(self, name):
-        assert name == "prima_nota_banca"
-        return self._coll
-
-
 def _run(coro):
-    # Loop isolato: get_event_loop() condiviso entra in conflitto con gli
-    # altri test async della suite (loop già chiuso/in uso).
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+    return asyncio.run(coro)
 
 
-def test_accredito_numia_viene_riconosciuto():
-    """Un accredito NUMIA (senza campo 'tipo') deve essere caricato: prima
-    veniva ignorato perché la keyword 'NUMIA' non era in elenco e mancava
-    tipo='entrata'."""
-    docs = [
-        {"data": "2026-03-10", "importo": 3618.0,
-         "descrizione": "ACCREDITO NUMIA S.P.A. INCASSI POS", "categoria": "Ricavi - Incasso tramite POS"},
-    ]
-    out = _run(pc._carica_accrediti_banca_pos(_FakeDb(docs), "2026-01-01", "2026-12-31"))
-    assert out.get("2026-03-10") == 3618.0
+def test_somma_circuiti_sul_giorno_del_riferimento_non_sulla_data_contabile():
+    async def scenario():
+        db = AsyncMongoMockClient()["test_accrediti_giorno_operazione"]
+        await db["estratto_conto_movimenti"].insert_many([
+            {
+                "data": "2026-07-07", "importo": 1000.20,
+                "descrizione_originale": (
+                    "INCAS. TRAMITE P.O.S - NUMIA-BNCMT DEL 06/07/26 PDV 3757283/00012"
+                ),
+            },
+            {
+                "data": "2026-07-08", "importo": 300.30,
+                "descrizione_originale": (
+                    "INC.POS CARTE CREDIT - NUMIA-INTER DEL 06/07/26 PDV 3757283/00011"
+                ),
+            },
+            {
+                "data": "2026-07-08", "importo": 53.20,
+                "descrizione_originale": (
+                    "INCAS. TRAMITE P.O.S - NUMIA-PGBNT DEL 06/07/26 PDV 3757283/00012"
+                ),
+            },
+        ])
+
+        out = await pc._carica_accrediti_banca_pos(db, "2026-07-01", "2026-07-31")
+
+        assert out == {"2026-07-06": 1353.70}
+
+    _run(scenario())
 
 
-def test_entrate_per_importo_non_per_campo_tipo():
-    """Le entrate si riconoscono per importo>0 anche se il doc non ha 'tipo'."""
-    docs = [
-        {"data": "2026-03-11", "importo": 3022.0, "descrizione": "NUMIA ACCREDITO"},  # niente 'tipo'
-    ]
-    out = _run(pc._carica_accrediti_banca_pos(_FakeDb(docs), "2026-01-01", "2026-12-31"))
-    assert out.get("2026-03-11") == 3022.0
+def test_esclude_righe_numia_che_non_sono_accrediti_pos_giornalieri():
+    async def scenario():
+        db = AsyncMongoMockClient()["test_esclusioni_numia"]
+        await db["estratto_conto_movimenti"].insert_many([
+            {"data": "2026-07-09", "importo": 0.02,
+             "descrizione_originale": "INC.POS CARTE CREDIT - REMUNERAZIONE DCC 06/26 NUMIA"},
+            {"data": "2026-07-09", "importo": 12.00,
+             "descrizione_originale": "SPESE - COMMISSIONI NUMIA"},
+            {"data": "2026-07-09", "importo": 20.00,
+             "descrizione_originale": "SPESE - FATTURA NUMIA"},
+            {"data": "2026-07-09", "importo": 99.00,
+             "descrizione_originale": "ACCREDITO NUMIA POS"},
+            {"data": "2026-07-09", "importo": -50.00,
+             "descrizione_originale": "INC.POS CARTE CREDIT - NUMIA-INTER DEL 08/07/26"},
+        ])
+
+        out = await pc._carica_accrediti_banca_pos(db, "2026-07-01", "2026-07-31")
+
+        assert out == {}
+
+    _run(scenario())
 
 
-def test_uscite_e_chiusure_manuali_escluse():
-    """Le uscite (importo<0) e le chiusure manuali NON sono accrediti."""
-    docs = [
-        {"data": "2026-03-12", "importo": -500.0, "descrizione": "COMMISSIONI NUMIA"},        # uscita
-        {"data": "2026-03-12", "importo": 2994.0, "descrizione": "Chiusura POS mobile",
-         "source": "chiusura_pos_mobile"},                                                    # chiusura manuale
-        {"data": "2026-03-12", "importo": 2994.0, "descrizione": "ACCREDITO NUMIA POS"},       # vero accredito
-    ]
-    out = _run(pc._carica_accrediti_banca_pos(_FakeDb(docs), "2026-01-01", "2026-12-31"))
-    # Resta solo il vero accredito NUMIA
-    assert out.get("2026-03-12") == 2994.0
+def test_riferimento_operazione_fuori_periodo_non_viene_contato():
+    async def scenario():
+        db = AsyncMongoMockClient()["test_periodo_giorno_operazione"]
+        await db["estratto_conto_movimenti"].insert_one({
+            "data": "2026-07-01", "importo": 700.00,
+            "descrizione_originale": (
+                "INC.POS CARTE CREDIT - NUMIA-INTER DEL 30/06/26 PDV 3757283/00011"
+            ),
+        })
+
+        out = await pc._carica_accrediti_banca_pos(db, "2026-07-01", "2026-07-31")
+
+        assert out == {}
+
+    _run(scenario())
 
 
-def test_movimenti_non_pos_ignorati():
-    """Un bonifico qualsiasi (senza keyword POS/NUMIA) non è un accredito POS."""
-    docs = [
-        {"data": "2026-03-13", "importo": 5000.0, "descrizione": "BONIFICO DA CLIENTE ROSSI"},
-    ]
-    out = _run(pc._carica_accrediti_banca_pos(_FakeDb(docs), "2026-01-01", "2026-12-31"))
-    assert out == {}
-
-
-def test_numia_in_categoria():
-    """Riconoscimento anche quando NUMIA è nella categoria e non nella descrizione."""
-    docs = [
-        {"data": "2026-03-14", "importo": 1500.0, "descrizione": "Accredito", "categoria": "Incasso NUMIA"},
-    ]
-    out = _run(pc._carica_accrediti_banca_pos(_FakeDb(docs), "2026-01-01", "2026-12-31"))
-    assert out.get("2026-03-14") == 1500.0
+def test_riconoscimento_causale_richiede_numia_incasso_e_giorno():
+    assert pc._e_accredito_pos_numia_con_giorno(
+        "INCAS. TRAMITE P.O.S - NUMIA-BNCMT DEL 16/07/26 PDV 3757283/00012"
+    )
+    assert not pc._e_accredito_pos_numia_con_giorno(
+        "INC.POS CARTE CREDIT - REMUNERAZIONE DCC 06/26 NUMIA"
+    )
+    assert not pc._e_accredito_pos_numia_con_giorno("ACCREDITO NUMIA POS")

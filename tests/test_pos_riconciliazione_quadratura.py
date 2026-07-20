@@ -42,7 +42,7 @@ def test_accrediti_separati_diventano_verdi_solo_alla_quadratura():
         for ec_id, importo in (("ec-60", 60.0), ("ec-40", 40.0)):
             await db["estratto_conto_movimenti"].insert_one({
                 "id": ec_id, "data": "2026-07-06", "importo": importo,
-                "descrizione_originale": "INC.POS NUMIA DEL 05/07/26",
+                "descrizione_originale": "INC.POS CARTE CREDIT - NUMIA-INTER DEL 05/07/26",
             })
 
         assert await riconcilia_accredito_pos_ec(
@@ -75,7 +75,7 @@ def test_differenza_di_un_euro_non_e_riconciliazione():
         })
         movimento = {
             "id": "ec-99", "data": "2026-07-06", "importo": 99.0,
-            "descrizione_originale": "INC.POS NUMIA DEL 05/07/26",
+            "descrizione_originale": "INC.POS CARTE CREDIT - NUMIA-INTER DEL 05/07/26",
         }
         await db["estratto_conto_movimenti"].insert_one(movimento)
 

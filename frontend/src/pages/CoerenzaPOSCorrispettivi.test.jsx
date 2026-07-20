@@ -3,15 +3,55 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../api';
-import { EditorPosReale } from './CoerenzaPOSCorrispettivi';
+import {
+  EditorPosReale,
+  ModalImportTotaliPos,
+  parseTotaliPosTesto,
+} from './CoerenzaPOSCorrispettivi';
 
 vi.mock('../api', () => ({
-  default: { put: vi.fn() },
+  default: { put: vi.fn(), post: vi.fn() },
 }));
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
+
+describe('Importazione massiva POS', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.post.mockResolvedValue({ data: { salvati: 2, errori: 0 } });
+  });
+
+  it('legge date e importi con virgola senza accettare duplicati', () => {
+    expect(parseTotaliPosTesto('2026-07-01;1685,80\n2026-07-02;1666.90')).toEqual([
+      { data: '2026-07-01', importo: 1685.80 },
+      { data: '2026-07-02', importo: 1666.90 },
+    ]);
+    expect(() => parseTotaliPosTesto('2026-07-01;1\n2026-07-01;2')).toThrow('Data duplicata');
+  });
+
+  it('invia tutte le giornate in una sola richiesta autenticata', async () => {
+    const onSaved = vi.fn();
+    render(<ModalImportTotaliPos onClose={vi.fn()} onSaved={onSaved} />);
+    fireEvent.change(screen.getByLabelText('Totali POS giornalieri'), {
+      target: { value: '2026-07-01;1685,80\n2026-07-02;1666,90' },
+    });
+    fireEvent.click(screen.getByLabelText('Conferma importazione POS'));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/pos-corrispettivi/chiusure-giornaliere/batch',
+      {
+        righe: [
+          { data: '2026-07-01', importo: 1685.80 },
+          { data: '2026-07-02', importo: 1666.90 },
+        ],
+        note: 'Import Numia: solo acquisti approvati',
+      },
+    ));
+    expect(onSaved).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('Editor POS reale del terminale', () => {
   beforeEach(() => {

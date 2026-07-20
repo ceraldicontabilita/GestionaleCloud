@@ -327,6 +327,9 @@ distinto da uno automatico né controllato per duplicati.
   `chiusure_pos_manuali`, aggiorna l'uscita POS della Prima Nota Cassa e il
   trasferimento atteso della Prima Nota Banca con lo stesso
   `trasferimento_id`. Non modifica mai `corrispettivi.pagato_elettronico`.
+- **Importa totali POS** accetta piu' righe `AAAA-MM-GG;importo`: tutte le
+  righe vengono validate prima della scrittura e poi passano dallo stesso
+  motore idempotente dell'editor giornaliero.
 - L'estratto conto resta il terzo controllo: l'accredito della banca deve
   combaciare col trasferimento (invariante del collaudo notturno
   "trasferimento_pos_speculare": uscita cassa POS = entrata banca POS,
@@ -616,9 +619,12 @@ calendario non è un'anomalia e non genera mai avvisi.
 
 **Provider degli accrediti POS: NUMIA.** Gli accrediti del POS in banca arrivano
 dal provider **NUMIA** (SumUp/Satispay non sono usati). La FASE 2 (POS reale vs
-Banca) riconosce come accredito i movimenti in entrata dell'estratto conto la cui
-descrizione/categoria contiene "NUMIA" (o le diciture bancarie POS generiche).
-Le entrate sono identificate per **importo positivo**, non per un campo interno.
+Banca) riconosce soltanto i movimenti positivi dell'estratto conto con causale di
+incasso POS NUMIA e riferimento **`DEL gg/mm/aa`**. Quel riferimento è il giorno
+dell'operazione: tutti i circuiti con lo stesso giorno sono sommati e confrontati
+con il POS terminale manuale di quel medesimo giorno. La data contabile della
+banca non decide l'abbinamento. Le righe NUMIA di remunerazione DCC, commissione
+o fattura sono sempre escluse.
 Nota (fix 12/07/2026): prima il caricatore non cercava la parola "NUMIA" e
 filtrava su un campo `tipo` non sempre valorizzato, quindi non agganciava gli
 accrediti NUMIA e la card "Accrediti banca mancanti" mostrava un falso disavanzo

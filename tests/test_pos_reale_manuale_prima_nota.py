@@ -1,10 +1,13 @@
 """POS reale manuale: fonte operativa separata dall'elettronico XML."""
 import asyncio
+import pytest
+from fastapi import HTTPException
 
 from app.services.scritture_contabili import (
     chiusura_pos_del_giorno,
     registra_chiusura_pos_reale,
 )
+from app.routers import pos_corrispettivi_check as pos_router
 
 
 def _valore(doc, chiave):
@@ -206,3 +209,51 @@ def test_zero_manualizzato_non_riprende_il_valore_xml():
     assert db["corrispettivi"].docs[0]["pagato_elettronico"] == 1152.70
     assert db["prima_nota_cassa"].docs[1]["status"] == "deleted"
     assert db["prima_nota_banca"].docs[0]["status"] == "deleted"
+
+
+def test_importazione_batch_salva_tutte_le_giornate(monkeypatch):
+    db = _Db()
+    db["corrispettivi"].docs = [
+        {"id": "corr-1", "data": "2026-07-01", "totale": 2000.0,
+         "pagato_elettronico": 1700.0},
+        {"id": "corr-2", "data": "2026-07-02", "totale": 2100.0,
+         "pagato_elettronico": 1800.0},
+    ]
+    monkeypatch.setattr(pos_router.Database, "get_db", staticmethod(lambda: db))
+
+    esito = _run(pos_router.upsert_chiusure_giornaliere_batch(
+        payload={
+            "righe": [
+                {"data": "2026-07-01", "importo": 1685.80},
+                {"data": "2026-07-02", "importo": 1666.90},
+            ],
+            "note": "solo acquisti approvati",
+        },
+        current_user={"sub": "tester"},
+    ))
+
+    assert esito["success"] is True
+    assert esito["salvati"] == 2
+    assert esito["errori"] == 0
+    assert esito["totale"] == 3352.70
+    assert len(db["chiusure_pos_manuali"].docs) == 2
+    assert len(db["prima_nota_cassa"].docs) == 2
+    assert len(db["prima_nota_banca"].docs) == 2
+
+
+def test_importazione_batch_rifiuta_date_duplicate_prima_di_scrivere(monkeypatch):
+    db = _Db()
+    monkeypatch.setattr(pos_router.Database, "get_db", staticmethod(lambda: db))
+
+    with pytest.raises(HTTPException) as exc:
+        _run(pos_router.upsert_chiusure_giornaliere_batch(
+            payload={"righe": [
+                {"data": "2026-07-01", "importo": 10},
+                {"data": "2026-07-01", "importo": 20},
+            ]},
+            current_user={"sub": "tester"},
+        ))
+
+    assert exc.value.status_code == 400
+    assert "Data duplicata" in exc.value.detail
+    assert db["chiusure_pos_manuali"].docs == []

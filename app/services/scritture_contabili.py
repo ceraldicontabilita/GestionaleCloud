@@ -521,13 +521,18 @@ async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:
     un'entrata — riconcilia il TRASFERIMENTO del suo giorno di vendita
     (accumulando i circuiti: bancomat, carte, Amex arrivano separati).
     Ritorna True se ha agganciato un trasferimento."""
-    from app.routers.pos_corrispettivi_check import _giorno_operazione_pos
+    from app.routers.pos_corrispettivi_check import (
+        _e_accredito_pos_numia_con_giorno,
+        _giorno_operazione_pos,
+    )
 
     ec_id = mov_ec.get("id")
     if not ec_id:
         return False
     data_acc = (mov_ec.get("data") or "")[:10]
     descr = mov_ec.get("descrizione_originale") or mov_ec.get("descrizione") or ""
+    if not _e_accredito_pos_numia_con_giorno(descr):
+        return False
     giorno_vendita = _giorno_operazione_pos(descr, data_acc)
     importo = abs(float(mov_ec.get("importo") or 0))
 
@@ -589,8 +594,13 @@ def query_accrediti_pos_ec(anno: int) -> Dict[str, Any]:
         "data": {"$regex": f"^{anno}"},
         "tipo": {"$ne": "uscita"},
         "$or": [
-            {"categoria": {"$regex": "Incasso tramite POS", "$options": "i"}},
-            {"descrizione_originale": {"$regex": "NUMIA|INC\\.POS|INCAS\\. TRAMITE P\\.O\\.S",
-                                        "$options": "i"}},
+            {"descrizione_originale": {
+                "$regex": "(?:INC\\.POS|INCAS\\. TRAMITE P\\.O\\.S).*NUMIA.*DEL [0-9]{2}/[0-9]{2}/[0-9]{2}",
+                "$options": "i",
+            }},
+            {"descrizione": {
+                "$regex": "(?:INC\\.POS|INCAS\\. TRAMITE P\\.O\\.S).*NUMIA.*DEL [0-9]{2}/[0-9]{2}/[0-9]{2}",
+                "$options": "i",
+            }},
         ],
     }

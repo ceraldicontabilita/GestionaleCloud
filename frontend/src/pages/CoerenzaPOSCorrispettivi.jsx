@@ -488,6 +488,7 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
 
   const [filtroStato, setFiltroStato] = useState('tutti'); // tutti | problemi | ok
   const [modalAperta, setModalAperta] = useState(false);
+  const [importAperto, setImportAperto] = useState(false);
   const [vista, setVista] = useState('giornaliero'); // giornaliero | settimanale
 
   const giorniFiltrati = giorni.filter(g => {
@@ -512,6 +513,13 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
         >
           + Inserisci chiusura serale
         </Button>
+        <Button
+          variant="secondary"
+          onClick={() => setImportAperto(true)}
+          aria-label="Importa totali POS"
+        >
+          Importa totali POS
+        </Button>
         <div style={{ fontSize: 12, color: COLORS.textMuted }}>
           Il POS del terminale si inserisce anche direttamente nella tabella. Salva in
           Prima Nota Cassa e crea il trasferimento atteso in Banca; l'XML resta solo confronto fiscale.
@@ -523,6 +531,16 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
           onClose={() => setModalAperta(false)}
           onSaved={() => {
             setModalAperta(false);
+            if (onReload) onReload();
+          }}
+        />
+      )}
+
+      {importAperto && (
+        <ModalImportTotaliPos
+          onClose={() => setImportAperto(false)}
+          onSaved={() => {
+            setImportAperto(false);
             if (onReload) onReload();
           }}
         />
@@ -1183,6 +1201,144 @@ function ModalChiusuraSerale({ onClose, onSaved }) {
             style={{ background: COLORS.accent, borderColor: COLORS.accent }}
           >
             {salvando ? 'Salvo...' : 'Salva chiusura'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+export function parseTotaliPosTesto(testo) {
+  const righe = [];
+  const dateViste = new Set();
+  const linee = String(testo || '').split(/\r?\n/);
+  for (let indice = 0; indice < linee.length; indice += 1) {
+    const linea = linee[indice].trim();
+    if (!linea || /^data\b/i.test(linea)) continue;
+    const match = linea.match(/^(\d{4}-\d{2}-\d{2})\s*[;\t]\s*([0-9]+(?:[.,][0-9]{1,2})?)$/);
+    if (!match) throw new Error(`Riga ${indice + 1} non valida: usa AAAA-MM-GG;importo`);
+    const data = match[1];
+    const parsedDate = new Date(`${data}T00:00:00Z`);
+    if (Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== data) {
+      throw new Error(`Data non valida alla riga ${indice + 1}`);
+    }
+    if (dateViste.has(data)) throw new Error(`Data duplicata: ${data}`);
+    dateViste.add(data);
+    const importo = Number(match[2].replace(',', '.'));
+    if (!Number.isFinite(importo) || importo < 0) {
+      throw new Error(`Importo non valido alla riga ${indice + 1}`);
+    }
+    righe.push({ data, importo: Math.round(importo * 100) / 100 });
+  }
+  if (!righe.length) throw new Error('Incolla almeno una giornata POS');
+  return righe;
+}
+
+
+export function ModalImportTotaliPos({ onClose, onSaved }) {
+  const [testo, setTesto] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [errore, setErrore] = useState('');
+  let anteprima = null;
+  try {
+    if (testo.trim()) {
+      const righe = parseTotaliPosTesto(testo);
+      anteprima = {
+        righe,
+        totale: righe.reduce((somma, riga) => somma + riga.importo, 0),
+      };
+    }
+  } catch (e) {
+    anteprima = { errore: e.message };
+  }
+
+  const importa = async () => {
+    setErrore('');
+    let righe;
+    try {
+      righe = parseTotaliPosTesto(testo);
+    } catch (e) {
+      setErrore(e.message);
+      return;
+    }
+    setSalvando(true);
+    try {
+      const res = await api.post('/api/pos-corrispettivi/chiusure-giornaliere/batch', {
+        righe,
+        note: 'Import Numia: solo acquisti approvati',
+      });
+      if (res.data?.errori) {
+        setErrore(`${res.data.errori} giornate non sono state salvate`);
+        return;
+      }
+      toast.success(`${res.data?.salvati || righe.length} totali POS importati`);
+      if (onSaved) onSaved(res.data);
+    } catch (e) {
+      setErrore(e?.response?.data?.detail || e?.message || 'Errore importazione');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 10000, padding: 16,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: COLORS.card, borderRadius: BORDER_RADIUS.xl, padding: 20,
+          width: '100%', maxWidth: 620, boxShadow: SHADOWS.modal,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <h3 style={{ margin: 0, fontSize: 17, color: COLORS.primary }}>Importa totali POS giornalieri</h3>
+          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Chiudi importazione POS">
+            <X size={18} color={COLORS.textMuted} />
+          </Button>
+        </div>
+        <p style={{ fontSize: 12, color: COLORS.textMuted, lineHeight: 1.5 }}>
+          Una riga per giorno nel formato <code>AAAA-MM-GG;importo</code>. Il valore diventa il
+          POS reale del terminale; il pagamento elettronico XML resta invariato.
+        </p>
+        <textarea
+          aria-label="Totali POS giornalieri"
+          value={testo}
+          onChange={e => setTesto(e.target.value)}
+          placeholder={'2026-07-01;1685,80\n2026-07-02;1666,90'}
+          rows={14}
+          disabled={salvando}
+          style={{
+            width: '100%', resize: 'vertical', border: `1px solid ${COLORS.border}`,
+            borderRadius: BORDER_RADIUS.md, padding: 10, fontFamily: 'monospace',
+            fontSize: 13, color: COLORS.text, background: COLORS.card,
+          }}
+        />
+        {anteprima?.righe && (
+          <div style={{ marginTop: 8, fontSize: 12, color: COLORS.success }}>
+            {anteprima.righe.length} giornate · totale {formatEuro(anteprima.totale)}
+          </div>
+        )}
+        {(errore || anteprima?.errore) && (
+          <div style={{ marginTop: 8, color: COLORS.danger, fontSize: 12 }}>
+            {errore || anteprima.errore}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+          <Button variant="secondary" onClick={onClose} disabled={salvando}>Annulla</Button>
+          <Button
+            variant="primary"
+            onClick={importa}
+            disabled={salvando || !anteprima?.righe}
+            aria-label="Conferma importazione POS"
+          >
+            {salvando ? 'Importo...' : 'Importa e aggiorna Prima Nota'}
           </Button>
         </div>
       </div>

@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1029 · tenere: 677 · verificare: 329 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1030 · tenere: 678 · verificare: 329 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -797,6 +797,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/pos-corrispettivi/anomalie-gravi` | pos_corrispettivi_check | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `PUT /api/pos-corrispettivi/chiusura-giornaliera` | pos_corrispettivi_check | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/pos-corrispettivi/chiusura-giornaliera/audit` | pos_corrispettivi_check | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/pos-corrispettivi/chiusure-giornaliere/batch` | pos_corrispettivi_check | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/pos-corrispettivi/controllo-due-fasi` | pos_corrispettivi_check | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/pos-corrispettivi/riconcilia-pos-giorno` | pos_corrispettivi_check | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/pos-corrispettivi/riepilogo-mensile` | pos_corrispettivi_check | sì | — | — | — | sì | tenere | in uso: FE |
