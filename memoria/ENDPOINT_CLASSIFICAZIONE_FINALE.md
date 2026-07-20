@@ -798,7 +798,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `PUT /api/pos-corrispettivi/chiusura-giornaliera` | pos_corrispettivi_check | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/pos-corrispettivi/chiusura-giornaliera/audit` | pos_corrispettivi_check | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/pos-corrispettivi/chiusure-giornaliere/batch` | pos_corrispettivi_check | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/pos-corrispettivi/controllo-due-fasi` | pos_corrispettivi_check | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/pos-corrispettivi/controllo-due-fasi` | pos_corrispettivi_check | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/pos-corrispettivi/riconcilia-pos-giorno` | pos_corrispettivi_check | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/pos-corrispettivi/riepilogo-mensile` | pos_corrispettivi_check | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/pos-corrispettivi/verifica-coerenza` | pos_corrispettivi_check | sì | — | — | — | sì | tenere | in uso: FE |
