@@ -38,6 +38,28 @@ async def paga_fattura_manuale(payload: Dict[str, Any] = Body(...)) -> Dict[str,
     if metodo not in ["cassa", "banca"]:
         raise HTTPException(status_code=400, detail="metodo deve essere 'cassa' o 'banca'")
 
+    fattura_doc = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0}) or {}
+    rate_xml = fattura_doc.get("pagamento_rate") or []
+    if len(rate_xml) > 1 and not scadenza_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Fattura rateizzata: seleziona una singola scadenza e registra la sua evidenza",
+        )
+    scadenza = None
+    if scadenza_id:
+        scadenza = await db[COL_SCADENZIARIO].find_one(
+            {"id": scadenza_id, "fattura_id": fattura_id}, {"_id": 0},
+        )
+        if not scadenza:
+            raise HTTPException(status_code=404, detail="Scadenza non trovata per questa fattura")
+        residuo_scadenza = float(
+            scadenza.get("importo_residuo")
+            if scadenza.get("importo_residuo") is not None
+            else scadenza.get("importo_rata") or scadenza.get("importo") or 0
+        )
+        if importo - residuo_scadenza > 0.005:
+            raise HTTPException(status_code=409, detail="L'importo supera il residuo della scadenza")
+
     # La riconciliazione è un processo separato (estratto conto bancario).
     # Il pagamento manuale via banca NON deve auto-riconciliare la fattura.
     auto_riconciliato = False
@@ -48,7 +70,8 @@ async def paga_fattura_manuale(payload: Dict[str, Any] = Body(...)) -> Dict[str,
         collection = "prima_nota_cassa" if metodo == "cassa" else "prima_nota_banca"
 
         # DEDUPLICAZIONE: evita doppio inserimento se già esiste un movimento per questa fattura
-        existing_mov = await db[collection].find_one({"fattura_id": fattura_id})
+        dedup_query = {"scadenza_id": scadenza_id} if scadenza_id else {"fattura_id": fattura_id}
+        existing_mov = await db[collection].find_one(dedup_query)
         if existing_mov:
             risultato["movimento_id"] = existing_mov.get("id")
             risultato["message"] = "Movimento già presente, aggiornato stato riconciliazione"
@@ -58,10 +81,6 @@ async def paga_fattura_manuale(payload: Dict[str, Any] = Body(...)) -> Dict[str,
             # tipo_documento TD04/TD08 O importo negativo -> ENTRATA "Nota
             # credito fornitore", mai un'uscita bloccata dalla validazione.
             from app.routers.prima_nota_module.sync import costruisci_campi_movimento_fattura
-            fattura_doc = await db["invoices"].find_one(
-                {"id": fattura_id},
-                {"_id": 0, "tipo_documento": 1, "supplier_vat": 1, "cedente_piva": 1},
-            ) or {}
             fattura_per_helper = {
                 "tipo_documento": fattura_doc.get("tipo_documento"),
                 "invoice_number": numero_fattura,
@@ -87,6 +106,7 @@ async def paga_fattura_manuale(payload: Dict[str, Any] = Body(...)) -> Dict[str,
                 "tipo_documento": campi["tipo_documento"],
                 "stato": "confermato",
                 "fattura_id": fattura_id,
+                "scadenza_id": scadenza_id,
                 "fattura_collegata": fattura_id,
                 "fattura_numero": numero_fattura,
                 "fornitore": fornitore,
@@ -101,13 +121,18 @@ async def paga_fattura_manuale(payload: Dict[str, Any] = Body(...)) -> Dict[str,
             risultato["collection"] = collection
         
         if scadenza_id:
+            importo_scadenza = float(scadenza.get("importo_rata") or scadenza.get("importo") or importo)
+            pagato_scadenza = round(float(scadenza.get("importo_pagato") or 0) + abs(importo), 2)
+            scadenza_chiusa = abs(pagato_scadenza - importo_scadenza) <= 0.005 or pagato_scadenza > importo_scadenza
             await db[COL_SCADENZIARIO].update_one(
                 {"id": scadenza_id},
                 {"$set": {
-                    "stato": "pagato",
+                    "stato": "pagata" if scadenza_chiusa else "parziale",
                     # Lo scadenzario filtra aperte/pagate sul booleano `pagato`:
                     # senza questo flag la scadenza restava tra le "aperte".
-                    "pagato": True,
+                    "pagato": scadenza_chiusa,
+                    "importo_pagato": min(pagato_scadenza, importo_scadenza),
+                    "importo_residuo": max(0, round(importo_scadenza - pagato_scadenza, 2)),
                     "data_pagamento": data_pagamento,
                     "metodo_effettivo": metodo,
                     "movimento_id": risultato["movimento_id"],
@@ -115,10 +140,16 @@ async def paga_fattura_manuale(payload: Dict[str, Any] = Body(...)) -> Dict[str,
                 }}
             )
         
+        totale_fattura = abs(float(fattura_doc.get("total_amount") or fattura_doc.get("importo_totale") or importo))
+        importo_pagato = round(float(fattura_doc.get("importo_pagato") or 0) + abs(importo), 2)
+        completamente_pagata = abs(importo_pagato - totale_fattura) <= 0.005 or importo_pagato > totale_fattura
         update_fields = {
-            "status": "paid",
-            "pagato": True,
-            "stato_pagamento": "pagata",
+            "status": "paid" if completamente_pagata else "partial",
+            "payment_status": "paid" if completamente_pagata else "partial",
+            "pagato": completamente_pagata,
+            "stato_pagamento": "pagata" if completamente_pagata else "parziale",
+            "importo_pagato": min(importo_pagato, totale_fattura),
+            "importo_residuo": max(0, round(totale_fattura - importo_pagato, 2)),
             "riconciliato": auto_riconciliato,
             "data_pagamento": data_pagamento,
             "metodo_pagamento_effettivo": metodo,
@@ -148,9 +179,9 @@ async def paga_fattura_manuale(payload: Dict[str, Any] = Body(...)) -> Dict[str,
             if key:
                 from app.services import storia_fatture as _storia
                 await _storia.registra(
-                    db, key, "pagata",
-                    f"Pagata in {metodo} il {data_pagamento} (€{importo})",
-                    patch={"stato_pagamento": "pagata", "metodo_pagamento": metodo,
+                    db, key, "pagata" if completamente_pagata else "pagamento_parziale",
+                    f"Pagamento {'completo' if completamente_pagata else 'parziale'} in {metodo} il {data_pagamento} (€{importo})",
+                    patch={"stato_pagamento": "pagata" if completamente_pagata else "parziale", "metodo_pagamento": metodo,
                            "data_pagamento": data_pagamento},
                 )
                 # Hook libro giornale DISATTIVATO (A7, scelta utente
@@ -162,12 +193,13 @@ async def paga_fattura_manuale(payload: Dict[str, Any] = Body(...)) -> Dict[str,
         # --- EVENT BUS: propaga evento fattura pagata ---
         try:
             from app.services.event_bus import propagate_event, EventTypes
-            await propagate_event(EventTypes.FATTURA_PAGATA, {
-                "fattura_id": fattura_id,
-                "metodo_pagamento": metodo,
-                "data_pagamento": data_pagamento,
-                "importo": importo,
-            }, db, source_module="pagamento_manuale")
+            if completamente_pagata:
+                await propagate_event(EventTypes.FATTURA_PAGATA, {
+                    "fattura_id": fattura_id,
+                    "metodo_pagamento": metodo,
+                    "data_pagamento": data_pagamento,
+                    "importo": importo,
+                }, db, source_module="pagamento_manuale")
         except Exception:
             logger.exception("Errore propagazione evento fattura.pagata (manuale)")
 

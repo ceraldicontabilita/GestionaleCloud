@@ -282,6 +282,8 @@ class Database:
                           name="idx_scad_forn_piva_scad")
         await _safe_index("scadenziario_fornitori", [("stato", 1), ("data_scadenza", 1)],
                           name="idx_scad_forn_stato_scad")
+        await _safe_index("scadenziario_fornitori", "scadenza_key", unique=True, sparse=True,
+                          name="idx_scad_forn_scadenza_key")
         # Cespiti: query per anno e per categoria.
         await _safe_index("cespiti", [("anno", 1)], name="idx_cespiti_anno")
         await _safe_index("cespiti", "categoria", sparse=True, name="idx_cespiti_categoria")

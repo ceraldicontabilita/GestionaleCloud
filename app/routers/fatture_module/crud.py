@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 import base64
 import calendar
+import re
 
 from app.database import Database
 from .common import COL_FORNITORI, COL_FATTURE_RICEVUTE, COL_DETTAGLIO_RIGHE, COL_ALLEGATI, logger
@@ -454,16 +455,20 @@ async def storia_fattura(fattura_id: str) -> Dict[str, Any]:
     }
 
 
-async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
-    """
-    Visualizza fattura nel formato ASSO Software (FoglioStileAssoSoftware.xsl).
-    1. Cerca la fattura in `invoices` (poi fallback `indice_documenti`)
+async def _trova_fattura_e_xml_originale(fattura_id: str) -> tuple[Optional[dict], Optional[bytes]]:
+    """Cerca la fattura e recupera l'XML FatturaPA originale (bytes, gia'
+    ripulito dall'eventuale busta .p7m), se disponibile. Punto UNICO usato
+    sia dalla vista renderizzata (view_fattura_assoinvoice) sia dal download
+    del file grezzo (download_xml_originale) — cosi' le due viste concordano
+    sempre su cosa sia "l'originale" di una fattura.
+
+    1. Cerca la fattura in `invoices` (poi fallback COL_FATTURE_RICEVUTE / _id)
     2. Legge il file XML dal disco (gestisce .p7m estraendo l'XML interno)
-    3. Applica la trasformazione XSLT con il foglio ASSO
-    4. Restituisce l'HTML trasformato
+       oppure, se il file non e' su disco, usa xml_raw/xml_content salvato
+       nel documento Mongo.
     """
     import os
-    from lxml import etree as LET
+    from app.services.xml_invoice_processor import extract_xml_from_p7m
 
     db = Database.get_db()
 
@@ -481,7 +486,13 @@ async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
         except Exception:
             pass
     if not fattura:
-        raise HTTPException(status_code=404, detail="Fattura non trovata")
+        return None, None
+    if fattura.get("entity_status") == "deleted" or fattura.get("status") == "deleted":
+        # Stesso bug del 15/07/2026 già corretto in get_fattura_dettaglio:
+        # una fattura archiviata da DELETE /api/fatture/{id} deve comportarsi
+        # come inesistente, anche per la vista renderizzata e per il
+        # download dell'XML originale (bug reale, review Codex PR #71).
+        return None, None
 
     xml_file_path = fattura.get("xml_file_path")
     # stringa XML se già estratta — nomi diversi a seconda della pipeline di import
@@ -496,23 +507,83 @@ async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
 
         filename = xml_file_path.lower()
         if filename.endswith(".p7m"):
-            # Estrai XML dall'envelope P7M cercando il tag <?xml
-            xml_start = raw.find(b"<?xml")
-            if xml_start == -1:
-                xml_start = raw.find(b"<FatturaElettronica")
-            if xml_start != -1:
-                xml_bytes = raw[xml_start:]
-                # Taglia il trailing padding/footer DER
-                xml_end = xml_bytes.rfind(b">")
-                if xml_end != -1:
-                    xml_bytes = xml_bytes[: xml_end + 1]
-            else:
-                xml_bytes = raw
+            # Estrattore CMS/PKCS#7 condiviso con l'import (gestisce anche i P7M
+            # binari DER, non solo quelli con XML embedded trovabile a byte-search).
+            # Ritorna None se l'estrazione fallisce davvero — MAI la busta P7M
+            # grezza come se fosse XML (bug reale: prima veniva servita come
+            # download "fattura.xml" un blob binario illeggibile).
+            xml_bytes = extract_xml_from_p7m(raw)
         else:
             xml_bytes = raw
 
     elif xml_raw_content:
-        xml_bytes = xml_raw_content.encode("utf-8") if isinstance(xml_raw_content, str) else xml_raw_content
+        if isinstance(xml_raw_content, str):
+            # xml_raw è salvato come stringa Python già decodificata in fase
+            # di import (può provenire da un file non-UTF-8, es. ISO-8859-1
+            # — vedi i tentativi di decodifica in process_xml_bytes). Qui
+            # viene sempre ri-codificato in UTF-8 per la risposta HTTP: se
+            # il testo contiene ancora la dichiarazione XML originale
+            # (<?xml ... encoding="ISO-8859-1"?>), bytes e dichiarazione
+            # non concorderebbero più — un lettore XML che si fida della
+            # dichiarazione userebbe il codec sbagliato sui bytes UTF-8
+            # (mojibake/rifiuto del file). Normalizza la dichiarazione a
+            # UTF-8 prima di servire (bug reale, review Codex PR #71).
+            xml_raw_content = re.sub(
+                r'encoding\s*=\s*(["\'])[^"\']*\1', 'encoding="UTF-8"', xml_raw_content, count=1
+            )
+            xml_bytes = xml_raw_content.encode("utf-8")
+        else:
+            xml_bytes = xml_raw_content
+
+    return fattura, xml_bytes
+
+
+async def download_xml_originale(fattura_id: str) -> Response:
+    """Scarica l'XML FatturaPA ORIGINALE della fattura, cosi' come arrivato
+    (nessuna ricostruzione/riepilogo): richiesta esplicita utente 19/07/2026
+    ("io ho bisogno di vedere sempre l'originale la fattura così come
+    arriva altrimenti non potrei mai vedere se c'è un errore") — prima non
+    esisteva nessun modo di scaricare/vedere il testo XML grezzo, nemmeno
+    quando era salvato nel database.
+    """
+    fattura, xml_bytes = await _trova_fattura_e_xml_originale(fattura_id)
+    if fattura is None:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    if not xml_bytes:
+        raise HTTPException(
+            status_code=404,
+            detail="XML originale non disponibile per questa fattura (non salvato in fase di import).",
+        )
+
+    numero = fattura.get("invoice_number") or fattura.get("numero_fattura") or fattura_id
+    # Il numero fattura arriva dall'XML (attaccante-controllabile in linea di
+    # principio, es. un file malformato/malevolo): CR/LF o virgolette non
+    # neutralizzate finirebbero grezze nell'header Content-Disposition,
+    # rischiando una risposta HTTP malformata/split (bug reale, review Codex
+    # PR #71). Tiene solo caratteri filename-safe.
+    numero_sicuro = re.sub(r'[^A-Za-z0-9._-]+', '-', str(numero)).strip('-') or "sconosciuto"
+    nome_file = f"fattura_{numero_sicuro}.xml"
+    return Response(
+        content=xml_bytes,
+        media_type="application/xml",
+        headers={"Content-Disposition": f'attachment; filename="{nome_file}"'},
+    )
+
+
+async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
+    """
+    Visualizza fattura nel formato ASSO Software (FoglioStileAssoSoftware.xsl).
+    1. Cerca la fattura in `invoices` (poi fallback `indice_documenti`)
+    2. Legge il file XML dal disco (gestisce .p7m estraendo l'XML interno)
+    3. Applica la trasformazione XSLT con il foglio ASSO
+    4. Restituisce l'HTML trasformato
+    """
+    import os
+    from lxml import etree as LET
+
+    fattura, xml_bytes = await _trova_fattura_e_xml_originale(fattura_id)
+    if fattura is None:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
 
     # ── Applica ASSO XSL se abbiamo l'XML ────────────────────────────────────
     if xml_bytes:
@@ -526,6 +597,24 @@ async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
 
             # Parse XML (tolera namespace con p7m cleanup)
             xml_doc = LET.fromstring(xml_bytes)
+
+            # File multi-body: FoglioStileAssoSoftware.xsl itera TUTTI i
+            # <FatturaElettronicaBody> del file — se xml_raw è quello
+            # dell'intero file raggruppato (condiviso da più fatture, vedi
+            # xml_body_index), aprire questa fattura renderizzerebbe anche
+            # le altre fatture dello stesso file insieme a questa. Isola
+            # SOLO il body di questa fattura prima di trasformare (bug
+            # reale, review Codex PR #71).
+            corpi = [el for el in xml_doc.iter()
+                     if (el.tag.split('}')[-1] if '}' in el.tag else el.tag) == 'FatturaElettronicaBody']
+            if len(corpi) > 1:
+                indice = fattura.get("xml_body_index", 0)
+                if not (0 <= indice < len(corpi)):
+                    indice = 0
+                for i, corpo in enumerate(corpi):
+                    if i != indice:
+                        corpo.getparent().remove(corpo)
+
             html_result = transform(xml_doc)
             html_str = LET.tostring(html_result, pretty_print=True, encoding="unicode")
 
@@ -537,6 +626,11 @@ async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
             logger.warning(f"Errore XSLT per {fattura_id}: {xsl_err} — fallback HTML generico")
 
     # ── Fallback: HTML generico se XML non disponibile ────────────────────────
+    # ATTENZIONE (richiesta utente 19/07/2026): questo NON è il documento
+    # originale, è un riepilogo ricostruito con un sottoinsieme di campi —
+    # generate_invoice_html() lo segnala esplicitamente nell'HTML, cosi'
+    # l'utente sa sempre quando NON sta vedendo l'originale.
+    db = Database.get_db()
     righe = await db[COL_DETTAGLIO_RIGHE].find({"fattura_id": fattura_id}, {"_id": 0}).to_list(1000)
     if not righe and fattura.get("linee"):
         righe = fattura.get("linee", [])

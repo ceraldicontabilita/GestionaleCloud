@@ -30,6 +30,16 @@ from app.utils.ruoli import richiedi_admin
 
 logger = logging.getLogger(__name__)
 
+_CAMPI_RATA_EVENTO = (
+    "blocco_indice", "rata_indice", "condizioni_pagamento", "modalita",
+    "importo", "data_scadenza", "data_riferimento_termini", "giorni_termini",
+)
+
+
+def _pagamento_rate_per_evento(rate: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Propaga solo i dati necessari allo scadenzario, mai IBAN o beneficiario."""
+    return [{campo: rata.get(campo) for campo in _CAMPI_RATA_EVENTO} for rata in (rate or [])]
+
 
 def _piva_italiana_valida(piva: str) -> bool:
     """P.IVA italiana: esattamente 11 cifre numeriche. Usata solo per
@@ -488,6 +498,12 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     la stessa fattura). Ritorna il dict di update applicato alla fattura
     (già persistito), oppure None se resta provvisoria.
     """
+    # Un piano XML a piu' rate non e' una prova di pagamento: anche per un
+    # fornitore configurato "cassa" resta provvisorio finche' ogni quota non
+    # viene confermata con la relativa evidenza.
+    if len(invoice.get("pagamento_rate") or []) > 1:
+        return None
+
     piva = (invoice.get("supplier_vat") or invoice.get("cedente_piva") or "").strip()
     if not piva:
         return None
@@ -636,7 +652,8 @@ async def _riscontra_anticipo_pendente(db, invoice: Dict[str, Any]) -> None:
     )
 
 
-async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upload.xml") -> Dict[str, Any]:
+async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upload.xml",
+                                 xml_raw: Optional[str] = None) -> Dict[str, Any]:
     """
     Processa e salva una fattura parsata nel database.
     Usata da documenti.py per l'import automatico.
@@ -652,6 +669,10 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
         db: Database connection
         parsed: Dati fattura parsati da parse_fattura_xml
         filename: Nome file originale
+        xml_raw: XML originale (stringa), se disponibile — salvato sulla
+            fattura insieme a xml_body_index così `/xml-originale` può
+            servirlo (prima non veniva mai persistito da questo percorso,
+            bug reale, review Codex PR #71).
 
     Returns:
         Dict con dati fattura salvata
@@ -750,10 +771,15 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             "cliente": parsed.get("cliente", {}),
             "linee": parsed.get("linee", []),
             "riepilogo_iva": parsed.get("riepilogo_iva", []),
+            "pagamento_rate": parsed.get("pagamento_rate", []),
+            "pagamento_rate_totale": parsed.get("pagamento_rate_totale"),
+            "pagamento_rate_coerente": parsed.get("pagamento_rate_coerente"),
             "metodo_pagamento": metodo_pagamento,
             "status": "imported",
             "source": "xml_upload",
             "filename": filename,
+            "xml_raw": xml_raw,
+            "xml_body_index": parsed.get("body_index", 0),
             "created_at": datetime.now(timezone.utc).isoformat(),
             "cedente_piva": parsed.get("supplier_vat", ""),
             "cedente_denominazione": parsed.get("supplier_name", ""),
@@ -849,6 +875,7 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             "importo_totale": invoice.get("total_amount", 0),
             "fornitore_id": supplier_id,
             "fornitore_ragione_sociale": invoice.get("supplier_name", ""),
+            "fornitore_piva": invoice.get("supplier_vat", ""),
             "fornitore_nuovo": supplier_result.get("nuovo", False),
             "fornitore_iban": fornitore_data.get("iban") if isinstance(fornitore_data, dict) else None,
             "metodo_pagamento": metodo_pagamento,
@@ -859,6 +886,8 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             "righe_linee": invoice.get("linee", []),
             "imponibile": invoice.get("imponibile", 0),
             "iva": invoice.get("iva", 0),
+            "pagamento_rate": _pagamento_rate_per_evento(invoice.get("pagamento_rate", [])),
+            "pagamento_rate_coerente": invoice.get("pagamento_rate_coerente"),
         }, db, source_module="fatture_upload_manuale")
     except Exception:
         logger.exception("Errore propagazione evento fattura.created (upload manuale)")
@@ -1255,20 +1284,59 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
     if parsed.get("error"):
         return {"status": "error", "filename": filename, "error": parsed["error"]}
 
-    if applica_filtro_anno:
-        from app.services.config_import import get_anno_importazione_attivo
-        invoice_date = parsed.get("invoice_date") or ""
-        anno_fattura = int(invoice_date[:4]) if invoice_date[:4].isdigit() else None
-        anno_attivo = await get_anno_importazione_attivo(db)
-        # Data mancante/illeggibile: NON archiviare silenziosamente una
-        # fattura che potrebbe essere dell'anno attivo solo per un XML
-        # malformato — resta nel flusso attivo, dove è comunque visibile e
-        # correggibile (a differenza dell'archivio storico, pensato per
-        # sola consultazione).
-        if anno_fattura and anno_fattura != anno_attivo:
-            return await archivia_fattura_storica(db, parsed, filename, source, xml_raw=xml_content)
+    # Un file FatturaPA può contenere PIÙ fatture raggruppate (più
+    # <FatturaElettronicaBody> sotto lo stesso header/CedentePrestatore —
+    # caso reale per fatture differite spedite insieme). Prima venivano
+    # lette solo dal parser e la fattura in più andava persa silenziosamente
+    # (importo/righe mai registrati). "altri_body" contiene le fatture
+    # aggiuntive trovate nello stesso file: vanno importate anche loro, una
+    # per una, con la stessa logica della prima (bug reale 19/07/2026).
+    altri_body = parsed.pop("_altri_body", None) or []
 
-    return await import_parsed_invoice(db, parsed, filename, source, xml_raw=xml_content)
+    async def _importa_una(p: Dict[str, Any]) -> Dict[str, Any]:
+        if applica_filtro_anno:
+            from app.services.config_import import get_anno_importazione_attivo
+            invoice_date = p.get("invoice_date") or ""
+            anno_fattura = int(invoice_date[:4]) if invoice_date[:4].isdigit() else None
+            anno_attivo = await get_anno_importazione_attivo(db)
+            # Data mancante/illeggibile: NON archiviare silenziosamente una
+            # fattura che potrebbe essere dell'anno attivo solo per un XML
+            # malformato — resta nel flusso attivo, dove è comunque visibile e
+            # correggibile (a differenza dell'archivio storico, pensato per
+            # sola consultazione).
+            if anno_fattura and anno_fattura != anno_attivo:
+                return await archivia_fattura_storica(db, p, filename, source, xml_raw=xml_content)
+
+        return await import_parsed_invoice(db, p, filename, source, xml_raw=xml_content)
+
+    risultato = await _importa_una(parsed)
+
+    if altri_body:
+        altri_risultati = [await _importa_una(p) for p in altri_body]
+        tutti = [risultato] + altri_risultati
+        # Tutti i chiamanti (upload manuale, bulk, Drive, email) leggono SOLO
+        # lo status di primo livello: se il primo body non è quello con
+        # l'esito "migliore", promuovi il migliore a risultato principale —
+        # altrimenti il chiamante segnala duplicato/errore (upload manuale
+        # arriva a rispondere 409 all'utente) o conta il file come solo
+        # archiviato mentre una fattura ATTIVA è stata comunque scritta in
+        # contabilità come effetto collaterale invisibile. "imported" (fattura
+        # nel flusso contabile attivo) vale più di "archiviata" (solo
+        # consultazione storica, richiesta utente 14/07/2026): con filtro
+        # anno attivo e un file che raggruppa una fattura di un anno passato
+        # con una dell'anno corrente, il file va sempre segnalato come
+        # "imported", mai come "archiviata" (bug reale, review Codex PR #71).
+        _PRIORITA = {"imported": 2, "archiviata": 1}
+        migliore = max(tutti, key=lambda r: _PRIORITA.get(r.get("status"), 0))
+        if _PRIORITA.get(migliore.get("status"), 0) > _PRIORITA.get(risultato.get("status"), 0):
+            tutti.remove(migliore)
+            risultato = migliore
+            altri_risultati = tutti
+        risultato = dict(risultato)
+        risultato["multi_body_xml"] = True
+        risultato["altre_fatture_stesso_file"] = altri_risultati
+
+    return risultato
 
 
 async def archivia_fattura_storica(db, parsed: Dict[str, Any], filename: str, source: str,
@@ -1314,12 +1382,16 @@ async def archivia_fattura_storica(db, parsed: Dict[str, Any], filename: str, so
         "cliente": parsed.get("cliente", {}),
         "linee": parsed.get("linee", []),
         "riepilogo_iva": parsed.get("riepilogo_iva", []),
+        "pagamento_rate": parsed.get("pagamento_rate", []),
+        "pagamento_rate_totale": parsed.get("pagamento_rate_totale"),
+        "pagamento_rate_coerente": parsed.get("pagamento_rate_coerente"),
         "causali": parsed.get("causali", []),
         "status": "archiviata",
         "stato_import": "archivio_storico",
         "source": source,
         "filename": filename,
         "xml_raw": xml_raw,
+        "xml_body_index": parsed.get("body_index", 0),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "cedente_piva": parsed.get("supplier_vat", ""),
         "cedente_denominazione": parsed.get("supplier_name", ""),
@@ -1395,6 +1467,9 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "cliente": parsed.get("cliente", {}),
         "linee": parsed.get("linee", []),
         "riepilogo_iva": parsed.get("riepilogo_iva", []),
+        "pagamento_rate": parsed.get("pagamento_rate", []),
+        "pagamento_rate_totale": parsed.get("pagamento_rate_totale"),
+        "pagamento_rate_coerente": parsed.get("pagamento_rate_coerente"),
         "causali": parsed.get("causali", []),
         "dati_fatture_collegate": parsed.get("dati_fatture_collegate", []),
         "dati_ordine_acquisto": parsed.get("dati_ordine_acquisto", []),
@@ -1403,6 +1478,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "source": source,
         "filename": filename,
         "xml_raw": xml_raw,
+        "xml_body_index": parsed.get("body_index", 0),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "cedente_piva": parsed.get("supplier_vat", ""),
         "cedente_denominazione": parsed.get("supplier_name", ""),
@@ -1447,6 +1523,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
             "importo_totale": invoice.get("total_amount", 0),
             "fornitore_id": supplier_result.get("supplier_id"),
             "fornitore_ragione_sociale": invoice.get("supplier_name", ""),
+            "fornitore_piva": invoice.get("supplier_vat", ""),
             "fornitore_nuovo": supplier_result.get("supplier_created", False),
             "fornitore_iban": fornitore_data.get("iban") if isinstance(fornitore_data, dict) else None,
             "metodo_pagamento": metodo_pagamento,
@@ -1457,6 +1534,8 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
             "righe_linee": invoice.get("linee", []),
             "imponibile": invoice.get("imponibile", 0),
             "iva": invoice.get("iva", 0),
+            "pagamento_rate": _pagamento_rate_per_evento(invoice.get("pagamento_rate", [])),
+            "pagamento_rate_coerente": invoice.get("pagamento_rate_coerente"),
         }, db, source_module=f"fatture_upload_{source}")
     except Exception:
         logger.exception(f"Errore propagazione evento fattura.created ({source})")
@@ -1941,6 +2020,16 @@ async def paga_fattura(invoice_id: str) -> Dict[str, Any]:
     if invoice.get("pagato") or invoice.get("status") == "paid":
         raise HTTPException(status_code=400, detail="Fattura già pagata")
     
+    rate_xml = invoice.get("pagamento_rate") or []
+    if len(rate_xml) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"La fattura contiene {len(rate_xml)} rate XML: collega e conferma "
+                "le singole evidenze di pagamento, non il totale documento."
+            ),
+        )
+
     metodo = invoice.get("metodo_pagamento")
     if not metodo:
         raise HTTPException(status_code=400, detail="Seleziona prima un metodo di pagamento")

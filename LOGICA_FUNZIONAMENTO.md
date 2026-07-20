@@ -724,6 +724,25 @@ lista "assegni ambigui" da risolvere a mano) il **totale delle fatture
 selezionate** e la **differenza con l'importo dell'assegno** sono mostrati
 in tempo reale mentre spunti le fatture — niente calcolatrice.
 
+**Rate FatturaPA e conferma umana (20/07/2026).** Il parser conserva tutti i
+blocchi `DatiPagamento` e tutti i relativi `DettaglioPagamento`, nell'ordine
+del documento. Il piano XML genera una scadenza separata per ciascuna rata;
+la chiave `fattura + blocco + rata` e un indice univoco rendono la creazione
+idempotente anche in caso di replay concorrenti. Una rata resta visibile come
+`aperta` anche quando richiede verifica: il sistema aggiunge i motivi della
+verifica, non la nasconde con uno stato escluso dalle query esistenti.
+
+Il piano XML descrive **quando e quanto si dovrebbe pagare**, ma non prova che
+il pagamento sia avvenuto. Per una fattura con piu' rate e' quindi vietato
+creare da Provvisori un unico movimento Banca/Cassa pari al totale documento.
+L'auto-match assegni e' sempre una **anteprima senza scritture**; ogni proposta
+L1-L4 deve essere confermata esplicitamente. Alla conferma il server ricalcola
+la proposta sullo stato corrente, riserva gli assegni contro doppi clic e crea
+un movimento per ogni evidenza reale. Le quote vengono applicate alle singole
+scadenze in ordine di data, con chiave evidenza idempotente: lo stesso assegno
+non puo' chiudere una seconda rata e un solo incasso non chiude mai tutte le
+scadenze della fattura.
+
 **Se non trova nulla di tutto questo**, il movimento banca resta "non riconciliato"
 ma **non sparisce mai**: subito dopo l'import, un passaggio generico crea comunque
 una riga in Prima Nota Banca con categoria "Da categorizzare" (o quella letta dal

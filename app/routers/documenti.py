@@ -1966,15 +1966,55 @@ async def upload_documento_automatico(
                     
         elif tipo_rilevato == 'fattura':
             # Import fattura XML
+            from fastapi import HTTPException as _HTTPException
             from app.routers.invoices.fatture_upload import parse_fattura_xml, process_fattura_to_db
-            
-            xml_content = content.decode('utf-8', errors='ignore')
+
+            # Stesso fallback multi-encoding di process_xml_bytes (mai
+            # 'utf-8' con errors='ignore': su un file non-UTF-8, es.
+            # ISO-8859-1 con testo accentato in fornitore/righe, quello
+            # cancella silenziosamente i byte non validi — corruzione dati
+            # che ora è visibile perché xml_raw viene anche persistito e
+            # riservito da /xml-originale, bug reale, review Codex PR #71).
+            xml_content = None
+            for _enc in ('utf-8', 'utf-8-sig', 'latin-1', 'iso-8859-1'):
+                try:
+                    xml_content = content.decode(_enc)
+                    break
+                except (UnicodeDecodeError, LookupError):
+                    continue
+            if not xml_content:
+                xml_content = content.decode('utf-8', errors='ignore')
             parsed = parse_fattura_xml(xml_content)
-            
+
             if parsed:
-                saved = await process_fattura_to_db(db, parsed, filename)
-                result["message"] = f"Fattura importata: {saved.get('invoice_number', 'N/A')}"
-                result["imported"] = 1
+                # Un file FatturaPA può raggruppare più fatture sotto lo
+                # stesso header (più <FatturaElettronicaBody>): "_altri_body"
+                # contiene le fatture aggiuntive, vanno TUTTE tentate — anche
+                # quando la PRIMA è già presente (409) ma una successiva è
+                # nuova (bug reale, review Codex PR #71, 2° giro: prima il
+                # 409 sulla prima interrompeva subito, senza mai raggiungere
+                # il ciclo sulle altre). xml_raw passato a ognuna così
+                # /xml-originale può servirlo (prima non veniva mai salvato
+                # da questo percorso).
+                altri_body = parsed.pop("_altri_body", None) or []
+                importati = []
+                ultimo_errore_duplicato = None
+                for body in [parsed] + altri_body:
+                    try:
+                        saved = await process_fattura_to_db(db, body, filename, xml_raw=xml_content)
+                        importati.append(saved)
+                    except _HTTPException as exc:
+                        if exc.status_code != 409:
+                            raise
+                        ultimo_errore_duplicato = exc
+
+                if importati:
+                    result["message"] = f"Fattura importata: {importati[0].get('invoice_number', 'N/A')}"
+                    result["imported"] = len(importati)
+                    if len(importati) > 1:
+                        result["message"] += f" (+{len(importati) - 1} fatture aggiuntive nello stesso file)"
+                else:
+                    raise ultimo_errore_duplicato
             else:
                 result["success"] = False
                 result["message"] = "Errore parsing XML fattura"

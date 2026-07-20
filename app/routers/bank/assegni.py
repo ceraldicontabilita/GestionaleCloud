@@ -630,12 +630,17 @@ async def correggi_associazione_assegno(
 
 @router.post("/auto-match")
 async def auto_match_assegni(
-    dry_run: bool = Query(False, description="Se True, non scrive su DB — restituisce solo la proposta"),
+    dry_run: bool = Query(True, description="Sola anteprima; applicazione con conferma esplicita"),
 ) -> Dict[str, Any]:
     """
     🤖 Auto-matcher Assegni ↔ Fatture (4 livelli, N:M, tolleranza ±0,005€).
     Vedi /app/memoria/LOGICA_OPERATIVA.md per i dettagli.
     """
+    if not dry_run:
+        raise HTTPException(
+            status_code=400,
+            detail="Auto-match diretto disabilitato: genera l'anteprima e conferma una proposta esplicita",
+        )
     from app.routers.bank.assegni_auto_match import run_auto_match
     db = Database.get_db()
     report = await run_auto_match(db, dry_run=dry_run)
@@ -651,6 +656,22 @@ async def auto_match_assegni(
             "non_trovati": len(report["non_trovati"]),
         },
     }
+
+
+@router.post("/auto-match/conferma")
+async def conferma_auto_match(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Applica una sola proposta dopo ricalcolo e conferma esplicita."""
+    from app.routers.bank.assegni_auto_match import conferma_proposta_match
+    try:
+        result = await conferma_proposta_match(
+            Database.get_db(),
+            assegno_ids=payload.get("assegno_ids") or [],
+            fattura_ids=payload.get("fattura_ids") or [],
+            livello=payload.get("livello") or "",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"success": True, **result}
 
 
 @router.get("/ambigui")
@@ -1119,18 +1140,11 @@ async def incassa_assegno(
         fid = assegno["fattura_collegata"]
         await db["invoices"].update_one(
             {"id": fid},
-            {"$set": {"pagato": True, "data_pagamento": data_incasso,
+            {"$set": {"data_ultimo_incasso_assegno": data_incasso,
                       "metodo_pagamento_effettivo": "assegno",
-                      "assegno_numero": assegno.get("numero"),
                       "updated_at": datetime.now(timezone.utc).isoformat()}}
         )
         # 4. Scadenzario → chiuso
-        await db["scadenziario_fornitori"].update_many(
-            {"fattura_id": fid, "pagato": {"$ne": True}},
-            {"$set": {"pagato": True, "data_pagamento": data_incasso,
-                      "metodo_pagamento": "assegno",
-                      "updated_at": datetime.now(timezone.utc).isoformat()}}
-        )
         # --- EVENT BUS: propaga FATTURA_PAGATA (assegno incassato) ---
         try:
             from app.services.event_bus import propagate_event, EventTypes
@@ -1786,10 +1800,8 @@ async def sync_assegni_da_estratto_conto() -> Dict[str, Any]:
             if assegno_carnet.get("fattura_collegata"):
                 fid = assegno_carnet["fattura_collegata"]
                 await db["invoices"].update_one({"id": fid},
-                    {"$set": {"pagato": True, "data_pagamento": data}})
-                await db["scadenziario_fornitori"].update_many(
-                    {"fattura_id": fid, "pagato": {"$ne": True}},
-                    {"$set": {"pagato": True, "data_pagamento": data}})
+                    {"$set": {"data_ultimo_incasso_assegno": data,
+                              "metodo_pagamento_effettivo": "assegno"}})
                 # --- EVENT BUS: propaga FATTURA_PAGATA (sync assegno da EC) ---
                 try:
                     from app.services.event_bus import propagate_event, EventTypes

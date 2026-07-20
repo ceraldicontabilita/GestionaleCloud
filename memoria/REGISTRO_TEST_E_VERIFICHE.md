@@ -191,3 +191,118 @@ Scelte come primo bersaglio perché usate in pressoché ogni pagina dell'app per
 - **Autenticazione admin** non supporta il cookie di sessione (solo Bearer) — pattern condiviso da 30+ endpoint, follow-up architetturale segnalato, non affrontato.
 
 Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
+
+## Aggiornamento — 2026-07-19 (bug reali segnalati dall'utente sulla Fattura 20 — DI MASSA DARIO & c. sas)
+
+- Branch: claude/test-coverage-analysis-co5wif
+
+### Contesto
+L'utente ha segnalato "Incasso fattura 20 - DI MASSA" registrato erroneamente in Prima Nota Banca DARE, e poi un problema più grave sull'importo ("il sistema dovrebbe riportare l'importo a 12.000 più IVA... il file XML porta un importo diverso"), più la richiesta di poter sempre vedere l'XML originale della fattura nel modale "vedi fattura". Autorizzato dall'utente a correggere ("i ti autorizzo a correggere").
+
+### Bug 1 — Classificazione TD24-27 come "Incasso" invece di pagamento fornitore
+`app/routers/prima_nota_module/sync.py::determina_tipo_movimento_fattura` aveva un ramo `TIPI_FATTURA_ATTIVA = ["TD24","TD25","TD26","TD27"]` → `("entrata", "Incasso cliente", ...)`. Questo modulo gestisce ESCLUSIVAMENTE fatture passive (verificato via grep esaustivo di tutti i call site nella sessione precedente): il TipoDocumento FatturaPA è assegnato da chi EMETTE il documento, non indica la direzione per chi lo riceve. **Fix**: rimosso il ramo, TD24-27 restano sempre "uscita"/"Fatture" come ogni altra fattura passiva (nota di credito TD04/TD08 resta invariata, unico caso legittimo di "entrata"). Test: `tests/test_prima_nota_nota_credito.py` (nuovi: `test_determina_tipo_movimento_fattura_td24_resta_uscita`, `test_conferma_fattura_provvisoria_td24_resta_uscita`).
+
+### Bug 2 — Il parser XML legge solo il PRIMO `<FatturaElettronicaBody>` del file
+`app/parsers/fattura_elettronica_parser.py` usava `find_element(root, 'FatturaElettronicaBody')` (ritorna un solo elemento) invece di iterare su tutti i body. Un file FatturaPA può contenere più fatture raggruppate sotto lo stesso header/CedentePrestatore (caso reale per fatture differite spedite insieme): ogni fattura oltre la prima veniva **persa silenziosamente** (importo, righe, tutto), mentre il foglio XSLT usato per il rendering "originale" nel modale itera correttamente su tutti i body — spiegando un possibile disallineamento tra ciò che si vede nel modale e ciò che finisce in contabilità. **Fix**: il parser ora estrae tutte le fatture del file (`parse_fattura_xml_multi`); `parse_fattura_xml` (compatibilità) ritorna la prima e segnala le altre (`multi_body_count`, `_altri_body`); `app/routers/invoices/fatture_upload.py::process_xml_bytes` importa TUTTE le fatture trovate nello stesso file invece di scartare silenziosamente le successive. Non è stato possibile verificare se questo bug è la causa esatta dell'importo errato sulla Fattura 20 specifica (nessun accesso al file XML originale in questa sessione) — verifica puntuale rimandata a quando l'utente fornirà l'XML. **Nota**: nessuna logica di sottrazione acconto è mai stata trovata nel codice (il campo `ImportoTotaleDocumento` viene sempre letto verbatim); se la causa sulla fattura specifica fosse un acconto da nettare e non un problema di multi-body, serve una correzione separata, puntuale, con l'XML alla mano. Test: `tests/test_fattura_elettronica_parser_multi_body.py` (4 test: singolo body invariato, multi-body con `parse_fattura_xml`/`parse_fattura_xml_multi`, import di tutte le fatture in `process_xml_bytes`).
+
+### Bug 3 — Modale "vedi fattura" non permetteva mai di vedere l'XML originale grezzo
+Anche quando l'XML originale era salvato (`xml_raw`/`xml_file_path`), non esisteva alcun endpoint per scaricarlo/vederlo come testo grezzo — solo un rendering HTML (via XSLT se disponibile, altrimenti un riepilogo ricostruito con pochi campi, **senza segnalarlo**). **Fix**: nuovo endpoint `GET /api/fatture-ricevute/fattura/{id}/xml-originale` (`app/routers/fatture_module/crud.py::download_xml_originale`, condivide la stessa logica di ricerca XML di `view_fattura_assoinvoice` tramite `_trova_fattura_e_xml_originale`) che scarica l'XML così com'è arrivato; pulsante "📥 Scarica" sempre presente in `ModalFattura.jsx` (usa il prop `onDownload` già supportato da `DocumentViewerModal`); banner di avviso giallo aggiunto in `generate_invoice_html` (il riepilogo di fallback) che dichiara esplicitamente "Questo NON è il documento XML originale" quando il rendering XSLT non è disponibile. Test: `tests/test_fattura_xml_originale_download.py` (4 test: 404 fattura assente, 404 XML non salvato, download bytes corretto, banner presente nel fallback).
+
+### Verifica
+`python -m pytest tests/ -q` → 686 passati, stessi 2 falliti preesistenti/ambientali (`test_drive_cedolini_ingest.py::test_is_configured`, `test_quietanze_import.py::test_drive_quietanze_helpers`, dipendono da env Drive assente in sandbox — confermato falliscono identicamente sul commit precedente, nessuna regressione). `yarn test` (frontend) → 27 passati, invariato. `yarn build` eseguita per verifica sintattica, `frontend/dist` ripristinato subito dopo (non modificato nel commit). Rigenerate le mappe endpoint (`genera_mappa.py`, `genera_classificazione_endpoint.py`) per il nuovo endpoint `/xml-originale`; rigenerato l'audit dead-code frontend.
+
+### Ancora da fare (non affrontato in questo aggiornamento)
+- Verifica puntuale della Fattura 20 specifica (numero esatto/importo/acconto) — richiede l'XML originale dall'utente.
+- Eventuale logica di netting acconto, se la causa reale sulla fattura specifica risultasse diversa dal bug multi-body.
+
+Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
+
+## Aggiornamento — 2026-07-19 (review Codex PR #71, secondo giro: 5 bug reali sul fix multi-body)
+
+- Branch: claude/test-coverage-analysis-co5wif
+
+La review automatica Codex su PR #71 ha segnalato 5 problemi P2 sul fix del bug multi-body XML del round precedente. Verificati tutti nel codice reale (nessun falso positivo) e corretti:
+
+1. **Aggregazione status**: se il primo body era duplicato/errore ma un body successivo veniva importato davvero, il chiamante (upload manuale, bulk, Drive, email) leggeva solo lo status del primo e segnalava "duplicato" (409 all'utente) mentre una fattura era comunque scritta in contabilità come effetto collaterale invisibile. Corretto: il risultato con lo status "migliore" viene promosso a livello principale.
+2. **Priorità imported > archiviata**: la promozione del punto 1 escludeva "archiviata" (fattura di anno passato, sola consultazione) dal confronto quando un body successivo era "imported" (fattura attiva). Corretto con una priorità esplicita (`imported` > `archiviata` > duplicate/error) invece di trattarli come equivalenti.
+3. **Identità del body per il re-parsing**: ogni fattura di un file multi-body veniva salvata con lo STESSO `xml_raw` (l'intero file). `app/routers/admin.py::backfill_noleggio_dati_gestionali` ri-parsa `xml_raw` con `parse_fattura_xml` per aggiornare `linee`/`dati_contratto`: per la fattura creata dal secondo body, questo avrebbe sovrascritto i suoi dati con quelli del PRIMO body — corruzione dati reale. Corretto: ogni fattura estratta porta un `body_index` (`fattura_elettronica_parser.py`), salvato come `xml_body_index` sul documento invoice; nuova funzione `parse_fattura_xml_body(xml, indice)` per ri-parsare il body giusto; `backfill_noleggio_dati_gestionali` aggiornato per usarla.
+4. **Path di import duplicato in Documenti**: `app/routers/documenti.py::upload_documento_automatico` ha una pipeline di import fattura SEPARATA (`parse_fattura_xml` + `process_fattura_to_db`, non `process_xml_bytes`) non toccata dal fix del round precedente — un file multi-body caricato da lì perdeva ancora silenziosamente le fatture oltre la prima. Corretto con la stessa logica (importa anche `_altri_body`, tollera 409 sui duplicati extra senza bloccare il primo).
+5. **Bundle frontend non ricompilato**: il fix del modale "vedi fattura" (pulsante scarica XML originale) era solo nel sorgente `ModalFattura.jsx` — Render pubblica `frontend/dist` con build command vuoto (committato, non ricompilato in produzione): senza rigenerare e committare `frontend/dist`, il fix non sarebbe MAI arrivato in produzione. Corretto: `yarn build` rieseguito e `frontend/dist` committato stavolta (non ripristinato come nelle build di sola verifica).
+
+### Test aggiunti
+`tests/test_fattura_elettronica_parser_multi_body.py`: +4 test (body_index, parse_fattura_xml_body, priorità imported/archiviata, promozione su duplicato — quest'ultimo già presente, ora affiancato dal caso priorità). `tests/test_documenti_import_fattura_multi_body.py` (nuovo): 2 test sul path di import di Documenti.
+
+### Verifica
+`python -m pytest tests/ -q` → 695 passati, stessi 2 falliti preesistenti/ambientali (invariati). `yarn test` (frontend) → 27 passati, invariato. `yarn build` rieseguita e committata stavolta (non ripristinata), verificato con grep che il bundle `ModalFattura-*.js` contiene `xml-originale`.
+
+### Lezione operativa
+Per qualunque fix che tocca `frontend/src`, se il repository pubblica `frontend/dist` pre-compilato (verificare sempre `render.yaml`/`staticPublishPath` prima di assumere che Render ricompili), la build va rieseguita e **committata**, non ripristinata come nelle build di sola verifica sintattica.
+
+Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
+
+## Aggiornamento — 2026-07-19 (review Codex PR #71, terzo giro: 4 bug reali)
+
+- Branch: claude/test-coverage-analysis-co5wif
+
+Terzo giro di review automatica Codex, tutti e 4 i finding verificati nel codice reale e confermati (nessun falso positivo):
+
+1. **Fatture soft-eliminate scaricabili**: `_trova_fattura_e_xml_originale` non escludeva le fatture con `status`/`entity_status` "deleted" — `get_fattura_dettaglio` le tratta già come inesistenti (bug del 15/07/2026), il nuovo endpoint no. Corretto nel punto unico condiviso (fixa entrambi gli endpoint che lo usano).
+2. **Header Content-Disposition non sanitizzato**: il numero fattura (dato che arriva dall'XML) finiva grezzo nel filename dell'header di download — CR/LF o virgolette non neutralizzate rischiavano una risposta HTTP malformata. Aggiunta sanitizzazione a caratteri filename-safe.
+3. **409 sul primo body interrompeva il ciclo in Documenti**: nel path di import di `documenti.py` (separato da `process_xml_bytes`), se il PRIMO body di un file multi-body era già presente, l'eccezione 409 veniva sollevata prima di raggiungere il ciclo sugli altri body — una fattura nuova nello stesso file restava non importata. Riscritto per tentare tutti i body in un unico ciclo, promuovendo a successo qualunque importazione riuscita.
+4. **XML mai persistito nel path Documenti**: `process_fattura_to_db` (usata solo da `documenti.py`) non salvava mai `xml_raw`/`xml_body_index` sul documento — anche prima del fix multi-body, per QUALUNQUE fattura importata da quel percorso `/xml-originale` avrebbe sempre risposto 404. Aggiunto parametro `xml_raw` opzionale, propagato dal chiamante.
+
+### Test aggiunti
+`tests/test_fattura_xml_originale_download.py`: +3 test (soft-delete via `status`, via `entity_status`, sanitizzazione filename). `tests/test_documenti_import_fattura_multi_body.py`: +2 test (primo body duplicato/secondo nuovo, tutti duplicati) e verifica che `xml_raw` sia passato ad ogni body.
+
+### Verifica
+`python -m pytest tests/ -q` → 700 passati, stessi 2 falliti preesistenti/ambientali (invariati). Nessuna modifica al frontend in questo giro, `frontend/dist` non toccato.
+
+Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
+
+## Aggiornamento — 2026-07-19 (review Codex PR #71, quarto giro: 2 bug reali)
+
+- Branch: claude/test-coverage-analysis-co5wif
+
+Quarto giro di review automatica Codex, entrambi i finding verificati nel codice reale e confermati:
+
+1. **Encoding incoerente nel download XML**: `xml_raw` è salvato come stringa Python già decodificata in fase di import (può provenire da un file non-UTF-8, es. ISO-8859-1). Il download lo ri-codificava sempre in UTF-8 senza toccare l'eventuale dichiarazione `<?xml ... encoding="ISO-8859-1"?>` ancora presente nel testo — bytes e dichiarazione finivano incoerenti, con rischio di mojibake per un lettore XML che si fida della dichiarazione. Corretto normalizzando sempre la dichiarazione a UTF-8 prima di servire (i bytes originali pre-decodifica non sono recuperabili da questo percorso di storage, quindi la fedeltà massima raggiungibile è "coerenza garantita", non byte-identità — limite architetturale preesistente della pipeline di import, non introdotto da questo fix).
+2. **File multi-body renderizzati insieme**: `FoglioStileAssoSoftware.xsl` itera TUTTI i `<FatturaElettronicaBody>` del file XML. Poiché ogni fattura di un file raggruppato condivide lo stesso `xml_raw` (l'intero file), aprire "vedi fattura" sulla seconda fattura di un file multi-body renderizzava anche la prima insieme ad essa. Corretto potando l'albero XML al solo body indicato da `xml_body_index` prima di applicare l'XSLT.
+
+### Test aggiunti
+`tests/test_fattura_xml_originale_download.py`: +4 test (normalizzazione encoding; isolamento body corretto con `xml_body_index=1` e `=0`; nessuna potatura su singolo body).
+
+### Verifica
+`python -m pytest tests/ -q` → 704 passati, stessi 2 falliti preesistenti/ambientali (invariati).
+
+Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
+
+## Aggiornamento — 2026-07-19 (review Codex PR #71, quinto giro: 2 bug reali)
+
+- Branch: claude/test-coverage-analysis-co5wif
+
+Quinto giro di review automatica Codex, entrambi i finding verificati e confermati:
+
+1. **Ritenute d'acconto ereditate dal body sbagliato** (`app/routers/ritenute.py`): `scan_ritenute` seleziona le fatture il cui `xml_raw` contiene "DatiRitenuta" via regex Mongo, poi `_estrai_dati_ritenuta` cerca il PRIMO blocco `<DatiRitenuta>` nel testo. Poiché tutte le fatture di un file raggruppato condividono lo stesso `xml_raw`, una fattura SENZA ritenuta propria avrebbe ereditato quella di un'altra fattura nello stesso file — bug reale con impatto fiscale diretto (creazione di una riga `ritenute_acconto` fittizia sulla fattura sbagliata). Corretto isolando il testo del body giusto (`xml_body_index`) con lo stesso stile regex tollerante già usato dal modulo, prima di cercare `<DatiRitenuta>`.
+2. **Decodifica XML lossy in Documenti** (`app/routers/documenti.py`): il path di import fattura decodificava sempre con `content.decode('utf-8', errors='ignore')` — su un file realmente non-UTF-8 (es. ISO-8859-1 con testo accentato in fornitore/righe) questo cancella silenziosamente i byte non validi, corrompendo il testo. Prima di questa PR la stringa corrotta veniva solo usata per il parsing (impatto limitato, i campi numerici sono ASCII); ora che viene anche persistita come `xml_raw` e riservita da `/xml-originale`, la corruzione diventa visibile e permanente. Corretto applicando lo stesso fallback multi-encoding già usato da `process_xml_bytes`.
+
+### Test aggiunti
+`tests/test_ritenute_acconto.py`: +1 test (isolamento del body giusto in un file raggruppato con ritenuta solo sulla prima fattura). `tests/test_documenti_import_fattura_multi_body.py`: +1 test (decodifica corretta di un file ISO-8859-1 con testo accentato, verificata sul valore di `xml_raw` effettivamente persistito).
+
+### Verifica
+`python -m pytest tests/ -q` → 706 passati, stessi 2 falliti preesistenti/ambientali (invariati).
+
+Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
+
+## Aggiornamento — 2026-07-19 (review Codex PR #71, sesto giro: 1 bug reale)
+
+- Branch: claude/test-coverage-analysis-co5wif
+
+Sesto giro di review automatica Codex sul fix precedente delle ritenute isolate al body giusto: il regex `_isola_body_xml` (`app/routers/ritenute.py`) riconosceva solo `<FatturaElettronicaBody>` senza prefisso — un file con tag namespaced (es. `<p:FatturaElettronicaBody>`, comune per molti software di fatturazione) non veniva isolato affatto, facendo ricomparire il bug originale (ritenuta del primo body ereditata da fatture successive) proprio nel caso che il resto del codebase (parser XML, vista XSLT) già tollera esplicitamente. Corretto rendendo il regex tollerante a un prefisso opzionale su apertura e chiusura del tag.
+
+### Test aggiunti
+`tests/test_ritenute_acconto.py`: +1 test con file raggruppato a tag prefissati (`<p:FatturaElettronicaBody>`).
+
+### Verifica
+`python -m pytest tests/ -q` → 707 passati, stessi 2 falliti preesistenti/ambientali (invariati).
+
+Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.

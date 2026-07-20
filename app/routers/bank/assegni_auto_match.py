@@ -108,7 +108,7 @@ def _normalize_ragione_sociale(s: str) -> str:
     return " ".join(s.split())
 
 
-async def _enrich_assegni_con_piva(db, assegni: List[Dict[str, Any]]) -> int:
+async def _enrich_assegni_con_piva(db, assegni: List[Dict[str, Any]], *, persist: bool = True) -> int:
     """
     Per gli assegni senza fornitore_piva ma con beneficiario, prova a risolvere
     la P.IVA cercando nel DB fornitori per ragione_sociale/denominazione.
@@ -147,10 +147,11 @@ async def _enrich_assegni_con_piva(db, assegni: List[Dict[str, Any]]) -> int:
         if piva:
             ass["fornitore_piva"] = piva
             ass["fornitore_ragione_sociale"] = benef
-            await db["assegni"].update_one(
-                {"id": ass["id"]},
-                {"$set": {"fornitore_piva": piva, "fornitore_ragione_sociale": benef}}
-            )
+            if persist:
+                await db["assegni"].update_one(
+                    {"id": ass["id"]},
+                    {"$set": {"fornitore_piva": piva, "fornitore_ragione_sociale": benef}}
+                )
             enriched += 1
     return enriched
 
@@ -402,7 +403,11 @@ async def _apply_match(
             quote_assegnate_totale = round(quote_assegnate_totale + quota, 2)
 
         if dry_run:
-            return {"dry_run": True, "assegno_id": assegno.get("id"), "fatture": fatture_collegate}
+            return {
+                "dry_run": True, "assegno_id": assegno.get("id"),
+                "assegno_numero": assegno.get("numero"), "fatture": fatture_collegate,
+                "livello": livello,
+            }
 
         await db["assegni"].update_one(
             {"id": assegno["id"]},
@@ -443,8 +448,18 @@ async def _apply_match(
         assegni_collegati_result = []
 
         if dry_run:
-            return {"dry_run": True, "fattura_id": fattura.get("id"),
-                    "assegni": [a.get("id") for a in assegni_match], "livello": livello}
+            return {
+                "dry_run": True,
+                "fattura_id": fattura.get("id"),
+                "fattura_numero": fattura.get("invoice_number"),
+                "fattura_importo": round(_f(fattura.get("total_amount") or fattura.get("importo_totale")), 2),
+                "fornitore": fattura.get("supplier_name") or fattura.get("cedente_denominazione"),
+                "assegni": [{
+                    "assegno_id": a.get("id"), "assegno_numero": a.get("numero"),
+                    "quota": round(_f(a.get("importo")), 2),
+                } for a in assegni_match],
+                "livello": livello,
+            }
 
         quota_totale = 0.0
         for ass in assegni_match:
@@ -529,6 +544,12 @@ async def _aggiorna_fattura(db, fattura_id: str, quota: float, assegno: Dict[str
             },
         },
     )
+    from app.services.scadenze_rate_service import applica_quota_scadenze
+    await applica_quota_scadenze(
+        db, fattura_id=fattura_id, quota=quota,
+        evidenza_id=f"assegno:{assegno.get('id')}:{fattura_id}",
+        metodo="assegno", data_pagamento=str(assegno.get("data_emissione") or "")[:10],
+    )
 
 
 async def _aggiorna_fattura_bulk(db, fattura_id: str, quota_tot: float, assegni: List[Dict[str, Any]]) -> None:
@@ -562,6 +583,13 @@ async def _aggiorna_fattura_bulk(db, fattura_id: str, quota_tot: float, assegni:
             "$push": {"assegni_collegati": {"$each": pushes}},
         },
     )
+    from app.services.scadenze_rate_service import applica_quota_scadenze
+    for assegno in assegni:
+        await applica_quota_scadenze(
+            db, fattura_id=fattura_id, quota=round(_f(assegno.get("importo")), 2),
+            evidenza_id=f"assegno:{assegno.get('id')}:{fattura_id}",
+            metodo="assegno", data_pagamento=str(assegno.get("data_emissione") or "")[:10],
+        )
 
 
 async def _crea_mov_banca(db, assegno: Dict[str, Any], quota: float, fattura_id: str) -> int:
@@ -602,11 +630,11 @@ async def _crea_mov_banca(db, assegno: Dict[str, Any], quota: float, fattura_id:
 
 # ─────────────────────────── ORCHESTRATORE ───────────────────────────
 
-async def run_auto_match(db, *, dry_run: bool = False) -> Dict[str, Any]:
+async def run_auto_match(db, *, dry_run: bool = True) -> Dict[str, Any]:
     """Esegue l'auto-match a 4 livelli. Ritorna report dettagliato."""
     assegni = await _load_assegni_to_match(db)
     # Arricchisci assegni senza P.IVA usando il DB fornitori
-    enriched = await _enrich_assegni_con_piva(db, assegni)
+    enriched = await _enrich_assegni_con_piva(db, assegni, persist=not dry_run)
     inv_by_piva = await _load_open_invoices_by_piva(db)
 
     report: Dict[str, Any] = {
@@ -772,3 +800,74 @@ def _used_invoice_ids(report: Dict[str, Any]) -> set:
                 if fc.get("fattura_id"):
                     used.add(fc["fattura_id"])
     return used
+
+
+def _ids_proposta(proposta: Dict[str, Any]) -> Tuple[set, set]:
+    assegni = set()
+    if proposta.get("assegno_id"):
+        assegni.add(proposta["assegno_id"])
+    for assegno in proposta.get("assegni") or []:
+        assegni.add(assegno.get("assegno_id") if isinstance(assegno, dict) else assegno)
+    fatture = set()
+    if proposta.get("fattura_id"):
+        fatture.add(proposta["fattura_id"])
+    for fattura in proposta.get("fatture") or []:
+        fatture.add(fattura.get("fattura_id") if isinstance(fattura, dict) else fattura)
+    return assegni - {None}, fatture - {None}
+
+
+async def conferma_proposta_match(
+    db, *, assegno_ids: List[str], fattura_ids: List[str], livello: str,
+) -> Dict[str, Any]:
+    """Conferma una proposta solo se il matcher la ripropone ancora identica.
+
+    La verifica viene rifatta sullo stato corrente, poi gli assegni vengono
+    riservati atomicamente per evitare una doppia conferma concorrente.
+    """
+    livello = str(livello or "").upper()
+    if livello not in {"L1", "L2", "L3", "L4"}:
+        raise ValueError("livello proposta non valido")
+    richiesti_ass, richieste_fatt = set(assegno_ids), set(fattura_ids)
+    if not richiesti_ass or not richieste_fatt:
+        raise ValueError("assegno_ids e fattura_ids sono obbligatori")
+
+    report = await run_auto_match(db, dry_run=True)
+    proposta = next((p for p in report.get(f"match_{livello.lower()}", [])
+                     if _ids_proposta(p) == (richiesti_ass, richieste_fatt)), None)
+    if not proposta:
+        raise ValueError("La proposta non e' piu' valida: aggiorna l'anteprima")
+
+    token = str(uuid.uuid4())
+    prenotati = []
+    try:
+        for assegno_id in assegno_ids:
+            assegno = await db["assegni"].find_one_and_update(
+                {
+                    "id": assegno_id,
+                    "$or": [
+                        {"fatture_collegate": {"$in": [None, []]}},
+                        {"fatture_collegate": {"$exists": False}},
+                    ],
+                    "match_conferma_token": {"$exists": False},
+                },
+                {"$set": {"match_conferma_token": token}},
+            )
+            if not assegno:
+                raise ValueError("Un assegno e' gia' stato collegato o confermato")
+            assegno.pop("_id", None)
+            prenotati.append(assegno)
+
+        fatture = []
+        for fattura_id in fattura_ids:
+            fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
+            if not fattura or _is_paid_status(fattura.get("payment_status")) or fattura.get("pagato") is True:
+                raise ValueError("Una fattura non e' piu' aperta")
+            totale = _f(fattura.get("total_amount") or fattura.get("importo_totale"))
+            fattura["_residuo"] = round(totale - _f(fattura.get("importo_pagato")), 2)
+            fatture.append(fattura)
+
+        return await _apply_match(db, prenotati, fatture, livello=livello, dry_run=False)
+    finally:
+        await db["assegni"].update_many(
+            {"match_conferma_token": token}, {"$unset": {"match_conferma_token": ""}},
+        )
