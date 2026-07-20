@@ -106,5 +106,113 @@ class TesoreriaShadow:
                 metadata={"shadow_mode": True, "snapshot": snapshot},
             ))
 
+        liquidita = snapshot["liquidity"]
+        if Decimal(liquidita["totale"]) < 0:
+            proposte.append(DecisioneInput(
+                decision_key=self._chiave("liquidita_negativa", snapshot),
+                semantic_key="tesoreria:liquidita_negativa",
+                agent=self.nome,
+                objective="Verificare la liquidità complessiva negativa",
+                input_sources=[{
+                    "type": "typed_service",
+                    "service": "tesoreria_snapshot",
+                    "collections": ["prima_nota_cassa", "prima_nota_banca"],
+                    "reference_date": snapshot["reference_date"],
+                }],
+                facts=[{"liquidity": liquidita}],
+                assumptions=["I saldi usano il motore unico della Prima Nota e i riporti configurati"],
+                rule_ids=["TREASURY-LIQUIDITY-001", "HUMAN-APPROVAL-001"],
+                alternatives=[
+                    {"type": "verify_opening_balances", "label": "Verificare i saldi iniziali"},
+                    {"type": "review_unreconciled_records", "label": "Verificare le evidenze non riconciliate"},
+                    {"type": "prepare_cash_plan", "label": "Preparare un piano di cassa da approvare"},
+                ],
+                recommended_action={
+                    "type": "human_review",
+                    "description": "Verificare saldi ed evidenze prima di qualsiasi intervento finanziario",
+                },
+                confidence=1.0,
+                financial_impact=abs(float(Decimal(liquidita["totale"]))),
+                risk_level=LivelloRischio.HIGH,
+                reversibility=Reversibilita.FULL,
+                autonomy_level=LivelloAutonomia.L3,
+                approver_role="admin",
+                explanation=(
+                    f"Cassa e banca producono una liquidità complessiva di € {liquidita['totale']}. "
+                    "L'agente non modifica saldi e non dispone pagamenti."
+                ),
+                metadata={"shadow_mode": True, "snapshot": snapshot},
+            ))
+
+        pendenti = snapshot["pending_checks"]
+        if any(voce["count"] for voce in pendenti.values()):
+            totale_pendente = sum((Decimal(voce["total"]) for voce in pendenti.values()), Decimal("0"))
+            proposte.append(DecisioneInput(
+                decision_key=self._chiave("riconciliazioni_pendenti", snapshot),
+                semantic_key="tesoreria:riconciliazioni_pendenti",
+                agent=self.nome,
+                objective="Verificare assegni, bonifici e PayPal non riconciliati",
+                input_sources=[{
+                    "type": "typed_service",
+                    "service": "tesoreria_snapshot",
+                    "collections": ["assegni", "bonifici_transfers", "paypal_transactions"],
+                    "reference_date": snapshot["reference_date"],
+                }],
+                facts=[{"pending_checks": pendenti}],
+                assumptions=["Non riconciliato significa privo di evidenza bancaria completa, non necessariamente errato"],
+                rule_ids=["TREASURY-RECONCILIATION-001"],
+                alternatives=[],
+                recommended_action={
+                    "type": "recommendation",
+                    "description": "Esaminare le code e confermare solo gli abbinamenti supportati da evidenze",
+                },
+                confidence=1.0,
+                financial_impact=float(totale_pendente),
+                risk_level=LivelloRischio.MEDIUM,
+                reversibility=Reversibilita.FULL,
+                autonomy_level=LivelloAutonomia.L1,
+                approver_role="admin",
+                explanation=(
+                    "La fotografia aggregata contiene elementi ancora da verificare. "
+                    "Nessuna riconciliazione viene applicata automaticamente."
+                ),
+                metadata={"shadow_mode": True, "snapshot": snapshot},
+            ))
+
+        pos = snapshot["pos"]
+        if pos["giorni_senza_evidenza_banca"] or pos["giorni_importo_non_coerente"]:
+            proposte.append(DecisioneInput(
+                decision_key=self._chiave("pos_evidenze", snapshot),
+                semantic_key="tesoreria:pos_evidenze",
+                agent=self.nome,
+                objective="Verificare le chiusure POS senza riscontro bancario coerente",
+                input_sources=[{
+                    "type": "typed_service",
+                    "service": "tesoreria_snapshot",
+                    "collections": ["chiusure_pos_manuali", "estratto_conto_movimenti"],
+                    "reference_date": snapshot["reference_date"],
+                }],
+                facts=[{"pos": pos}],
+                assumptions=["La causale NUMIA con giorno DEL identifica il giorno operativo del terminale"],
+                rule_ids=["TREASURY-POS-EVIDENCE-001"],
+                alternatives=[],
+                recommended_action={
+                    "type": "recommendation",
+                    "description": "Controllare il dettaglio POS e l'estratto conto senza creare accrediti sintetici",
+                },
+                confidence=1.0,
+                financial_impact=0.0,
+                risk_level=LivelloRischio.MEDIUM,
+                reversibility=Reversibilita.FULL,
+                autonomy_level=LivelloAutonomia.L1,
+                approver_role="admin",
+                explanation=(
+                    f"Risultano {pos['giorni_senza_evidenza_banca']} giorni senza evidenza bancaria e "
+                    f"{pos['giorni_importo_non_coerente']} giorni con importo diverso. "
+                    "Il controllo usa solo accrediti reali dell'estratto conto."
+                ),
+                metadata={"shadow_mode": True, "snapshot": snapshot},
+            ))
+
         for proposta in proposte:
             await crea_decisione(db, proposta)

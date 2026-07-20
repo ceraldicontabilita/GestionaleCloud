@@ -34,37 +34,14 @@ COLLECTION_CHIUSURE_POS = "chiusure_pos_manuali"
 
 # La descrizione degli accrediti NUMIA/BPM contiene il giorno di VENDITA:
 # "INC.POS CARTE CREDIT - NUMIA-INTER DEL 02/04/26 PDV ..." → 2026-04-02
-import re as _re
 from app.services.scritture_contabili import (
     ScritturaNonValida,
     registra_chiusura_pos_reale,
 )
-_GIORNO_POS_RE = _re.compile(r"DEL\s+(\d{2})/(\d{2})/(\d{2})\b")
-_CAUSALE_ACCREDITO_POS_RE = _re.compile(
-    r"(?:INC\s*\.\s*POS\s+CARTE\s+CREDIT|INCAS\s*\.\s*TRAMITE\s+P\s*\.\s*O\s*\.\s*S)",
-    _re.IGNORECASE,
+from app.services.pos_evidence import (
+    _e_accredito_pos_numia_con_giorno,
+    _giorno_operazione_pos,
 )
-_CAUSALI_NUMIA_ESCLUSE = ("REMUNERAZIONE DCC", "COMMISSION", "FATTURA NUMIA")
-
-
-def _giorno_operazione_pos(descrizione: str, data_accredito: str) -> str:
-    m = _GIORNO_POS_RE.search(descrizione or "")
-    if m:
-        g, mese, anno = m.groups()
-        return f"20{anno}-{mese}-{g}"
-    return (data_accredito or "")[:10]
-
-
-def _e_accredito_pos_numia_con_giorno(descrizione: str) -> bool:
-    """Riconosce solo un accredito POS reale con giorno operazione esplicito."""
-    testo = descrizione or ""
-    testo_upper = testo.upper()
-    return bool(
-        "NUMIA" in testo_upper
-        and _GIORNO_POS_RE.search(testo)
-        and _CAUSALE_ACCREDITO_POS_RE.search(testo)
-        and not any(voce in testo_upper for voce in _CAUSALI_NUMIA_ESCLUSE)
-    )
 
 
 def _coerenza_xml_pos(

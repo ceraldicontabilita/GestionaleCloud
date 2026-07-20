@@ -1439,3 +1439,29 @@ evidenze strutturate, tutte calcolate senza scritture operative:
 Non e' stata introdotta alcuna nuova soglia configurabile: il saldo negativo
 e la presenza di dati incompleti sono condizioni esatte. L'agente CFO resta in
 shadow mode e non crea pagamenti, movimenti contabili o disposizioni bancarie.
+
+---
+
+## 19. Tesoreria shadow: liquidita' e riconciliazioni operative
+
+La fotografia Tesoreria usa esclusivamente servizi di lettura e aggregati
+minimizzati:
+
+- i saldi cassa e banca provengono dal motore unico della Prima Nota, incluse
+  le esclusioni canoniche e gli eventuali riporti manuali configurati;
+- le chiusure POS manuali vengono confrontate soltanto con accrediti NUMIA
+  realmente presenti nell'estratto conto e dotati del giorno operativo `DEL`;
+- remunerazioni, commissioni e fatture NUMIA non sono prove di accredito POS;
+- per assegni, bonifici e PayPal vengono esposti solo conteggio e totale degli
+  elementi ancora senza riconciliazione completa;
+- nomi, beneficiari, IBAN, causali e identificativi di transazione non entrano
+  nello snapshot decisionale.
+
+Il controllo POS attende sette giorni, valore esplicito e parametrico coerente
+con la finestra gia' usata dal gestionale, prima di classificare una chiusura
+come priva di evidenza bancaria. Una differenza di importo viene valutata al
+centesimo, senza tolleranze percentuali o soglie economiche arbitrarie.
+
+Liquidita' negativa produce una proposta L3; code di riconciliazione ed
+evidenze POS mancanti o non coerenti producono raccomandazioni L1. L'agente non
+riconcilia, non modifica saldi e non crea pagamenti o accrediti sintetici.

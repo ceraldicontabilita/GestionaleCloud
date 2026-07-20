@@ -521,7 +521,7 @@ async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:
     un'entrata — riconcilia il TRASFERIMENTO del suo giorno di vendita
     (accumulando i circuiti: bancomat, carte, Amex arrivano separati).
     Ritorna True se ha agganciato un trasferimento."""
-    from app.routers.pos_corrispettivi_check import (
+    from app.services.pos_evidence import (
         _e_accredito_pos_numia_con_giorno,
         _giorno_operazione_pos,
     )

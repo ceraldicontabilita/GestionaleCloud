@@ -346,6 +346,25 @@ Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `S
 - Test frontend: 30 passati.
 - Build frontend di produzione: completata.
 
+## Estensione Tesoreria a saldi e canali di pagamento — 2026-07-20
+
+- Saldi cassa/banca letti tramite il motore unico della Prima Nota, senza una
+  seconda formula contabile.
+- Evidenze POS riconosciute dalla causale NUMIA con giorno operativo `DEL`;
+  remunerazioni, commissioni e fatture NUMIA escluse.
+- Chiusure senza evidenza bancaria e importi non coerenti esposti come
+  raccomandazioni, mai marcati automaticamente come riconciliati.
+- Assegni, bonifici e PayPal non riconciliati esposti soltanto come conteggi e
+  totali; nessun nome, IBAN, causale o identificativo trasmesso all'agente.
+- Liquidita' negativa: proposta L3; code ed evidenze POS: L1. Nessuna scrittura
+  su Prima Nota, estratto conto, pagamenti o operazioni da confermare.
+- Test mirati Tesoreria/POS/motore scritture: 21 passati.
+- Suite backend: 846 test applicativi + 5 test di integrazione isolata passati,
+  2 saltati; totale 851 passati.
+- Frontend: 59 test passati; build di produzione completata.
+- Database usato nei test: MongoDB esclusivamente in memoria; nessun accesso ad
+  Atlas, Render, `.env` o dati aziendali reali.
+
 ## Cash flow CF13W-002: anomalie e qualita' — 2026-07-20
 
 - Evidenze strutturate per liquidita' negativa (con prima settimana), dati
