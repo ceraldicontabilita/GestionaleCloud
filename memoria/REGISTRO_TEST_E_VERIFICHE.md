@@ -361,6 +361,22 @@ Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `S
 - Frontend: 59 test passati; build di produzione completata.
 - Nessun accesso ad Atlas, Render Environment, `.env` o dati aziendali reali.
 
+## Agente Compliance shadow — 2026-07-20
+
+- Permessi: conteggio degli account PIN attivi con ruolo non canonico o nome
+  mancante, senza leggere PIN, hash, salt o identita'.
+- Tracciabilita': copertura dei campi canonici del registro audit; lo storico
+  legacy resta append-only e non viene riscritto.
+- Documenti: conteggi di code pendenti, errori, payload assenti e record non
+  associati; nessun filename o contenuto entra nello snapshot.
+- Account anomali: proposta L3; audit e code documentali: raccomandazioni L1.
+- Nessuna modifica a utenti, ruoli, audit o associazioni documentali.
+- Test mirati Compliance/RBAC/decision engine: 37 passati.
+- Suite backend applicativa: 854 passati; integrazione isolata: 5 passati,
+  2 saltati.
+- Frontend invariato rispetto al collaudo precedente: 59 test passati e build
+  di produzione completata.
+
 ## Estensione Tesoreria a saldi e canali di pagamento — 2026-07-20
 
 - Saldi cassa/banca letti tramite il motore unico della Prima Nota, senza una

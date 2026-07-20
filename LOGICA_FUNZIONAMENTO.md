@@ -1489,3 +1489,25 @@ validi. Non stima date o importi mancanti.
 I record senza scadenza o importo sono esclusi dall'aging e generano una
 raccomandazione L1 di qualita' dati. L'agente gira una volta al giorno e al
 riavvio, subordinato all'interruttore globale delle automazioni AI.
+
+---
+
+## 21. Compliance shadow: permessi, audit e code documentali
+
+Il controllo Compliance e' interamente in sola lettura e fornisce agli agenti
+solo contatori e percentuali:
+
+- sugli account PIN considera esclusivamente utenti attivi e segnala ruoli non
+  canonici o nomi mancanti; non legge PIN, hash o salt e non modifica account;
+- sul registro audit misura la presenza dei campi canonici (identificativo,
+  data, modulo, azione, attore e riferimento entita'); i record legacy restano
+  integri e non vengono completati o eliminati automaticamente;
+- sulla coda documentale conta elementi pendenti, in errore, privi del payload
+  MongoDB o ancora non associati; non legge filename, contenuti o anagrafiche.
+
+Le anomalie di permesso producono una proposta L3, perche' qualunque cambio di
+ruolo o disattivazione richiede una scelta dell'amministratore. Audit incompleto
+e code documentali producono raccomandazioni L1. Un documento pendente o non
+associato non viene definito legalmente mancante: e' soltanto un elemento da
+verificare nel relativo flusso operativo. Nessun record viene creato, associato,
+corretto o eliminato dall'agente.

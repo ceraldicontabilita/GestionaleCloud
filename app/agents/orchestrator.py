@@ -12,6 +12,7 @@ SCHEDULE = {
     "FiscaleShadow": 21600,       # ogni 6 ore, obblighi e completezza aggregati
     "AcquistiShadow": 86400,      # giornaliero, prezzi e concentrazione fornitori
     "CreditiShadow": 86400,       # giornaliero, aging e bozze mai inviate
+    "ComplianceShadow": 86400,    # giornaliero, permessi/audit/documenti
 }
 
 
@@ -30,6 +31,7 @@ async def run_agenti(db, agente_specifico: str = None):
     from app.agents.fiscale_shadow import FiscaleShadow
     from app.agents.acquisti_shadow import AcquistiShadow
     from app.agents.crediti_shadow import CreditiShadow
+    from app.agents.compliance_shadow import ComplianceShadow
 
     if await automazioni_sospese(db):
         raise RuntimeError("Automazioni AI fermate dall'interruttore globale")
@@ -44,6 +46,7 @@ async def run_agenti(db, agente_specifico: str = None):
         "FiscaleShadow": FiscaleShadow,
         "AcquistiShadow": AcquistiShadow,
         "CreditiShadow": CreditiShadow,
+        "ComplianceShadow": ComplianceShadow,
     }
 
     if agente_specifico and agente_specifico not in mappa:

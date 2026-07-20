@@ -121,7 +121,11 @@ Ordine di attivazione in shadow mode:
    - [x] Note di credito e record incompleti esclusi senza stime.
    - [x] Bozza interna generica L3; invio esterno non supportato e mai automatico.
    - [x] Nessun nominativo o riferimento cliente nello snapshot decisionale.
-7. [ ] Compliance — permessi, tracciabilità e documenti mancanti.
+7. [x] Compliance — permessi, tracciabilità e documenti mancanti.
+   - [x] Account attivi con ruolo non valido segnalati senza modifica automatica.
+   - [x] Copertura audit misurata sui campi canonici, senza riscrivere lo storico.
+   - [x] Code documentali, errori, allegati assenti e non associati solo aggregati.
+   - [x] Nessuna identità o contenuto documentale nello snapshot decisionale.
 
 Ogni agente usa servizi applicativi tipizzati; non accede direttamente alle
 collection per compiere azioni operative. L'attivazione di un agente richiede
