@@ -5,8 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../api';
 import CedoliniSalari from './CedoliniSalari';
 
-vi.mock('../api', () => ({ default: { get: vi.fn() } }));
-vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
+vi.mock('../api', () => ({ default: { get: vi.fn(), post: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 describe('CedoliniSalari', () => {
   beforeEach(() => {
@@ -46,5 +46,22 @@ describe('CedoliniSalari', () => {
     render(<CedoliniSalari />);
     expect(await screen.findByText('Associazione precedente da rivedere')).toBeInTheDocument();
     expect(screen.queryByText('Riconciliato con estratto conto')).not.toBeInTheDocument();
+  });
+
+  it('importa il foglio bonifici e ricarica le righe', async () => {
+    api.post.mockResolvedValueOnce({ data: { created: 2, duplicates: 1 } });
+    render(<CedoliniSalari />);
+    await waitFor(() => expect(screen.getByText('Mario Rossi')).toBeInTheDocument());
+    const file = new File(['excel sintetico'], 'bonifici.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+
+    fireEvent.change(screen.getByLabelText('Importa bonifici Excel'), {
+      target: { files: [file] },
+    });
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    expect(api.post.mock.calls[0][0]).toBe('/api/prima-nota-salari/import-bonifici');
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
   });
 });

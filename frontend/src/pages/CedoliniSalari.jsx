@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, FileText, Loader2, Search, TriangleAlert } from 'lucide-react';
+import { CheckCircle2, FileSpreadsheet, FileText, Loader2, Search, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../api';
 import { formatEuroD } from '../lib/utils';
@@ -16,6 +16,12 @@ export default function CedoliniSalari() {
   const [ricerca, setRicerca] = useState('');
   const [annoFiltro, setAnnoFiltro] = useState('tutti');
   const [pdfInApertura, setPdfInApertura] = useState(null);
+  const [importazioneInCorso, setImportazioneInCorso] = useState(false);
+
+  const caricaRighe = async () => {
+    const risposta = await api.get('/api/prima-nota-salari/salari');
+    setRighe(Array.isArray(risposta.data) ? risposta.data : []);
+  };
 
   useEffect(() => {
     let attivo = true;
@@ -26,6 +32,30 @@ export default function CedoliniSalari() {
       .finally(() => { if (attivo) setLoading(false); });
     return () => { attivo = false; };
   }, []);
+
+  const importaBonifici = async evento => {
+    const file = evento.target.files?.[0];
+    if (!file) return;
+    setImportazioneInCorso(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const risposta = await api.post('/api/prima-nota-salari/import-bonifici', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const esito = risposta.data || {};
+      toast.success(
+        `Importati ${esito.created || 0} bonifici documentati; ` +
+        `${esito.duplicates || 0} duplicati ignorati`,
+      );
+      await caricaRighe();
+    } catch (errore) {
+      toast.error(errore.response?.data?.detail || 'Importazione bonifici non riuscita');
+    } finally {
+      setImportazioneInCorso(false);
+      evento.target.value = '';
+    }
+  };
 
   const apriCedolino = async riga => {
     setPdfInApertura(riga.id);
@@ -73,6 +103,20 @@ export default function CedoliniSalari() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'end', flexWrap: 'wrap' }}>
+          <label
+            style={{ minHeight: 40, borderRadius: 9, padding: '9px 13px', background: '#0f2744', color: '#fff', fontWeight: 700, cursor: importazioneInCorso ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7 }}
+          >
+            {importazioneInCorso ? <Loader2 size={17} className="spin" /> : <FileSpreadsheet size={17} />}
+            {importazioneInCorso ? 'Importazione...' : 'Importa bonifici Excel'}
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              aria-label="Importa bonifici Excel"
+              disabled={importazioneInCorso}
+              onChange={importaBonifici}
+              style={{ display: 'none' }}
+            />
+          </label>
           <label style={{ display: 'grid', gap: 5, color: '#475569', fontSize: 12, fontWeight: 700 }}>
             Anno cedolini
             <select
