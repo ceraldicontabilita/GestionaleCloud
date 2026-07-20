@@ -857,27 +857,6 @@ export default function Scadenze() {
                               >
                                 👁️
                               </RowActionButton>
-                              <a
-                                href={`/api/fatture-ricevute/fattura/${s.fattura_id || s.id}/view-assoinvoice`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  width: 28,
-                                  height: 28,
-                                  borderRadius: BORDER_RADIUS.sm,
-                                  background: COLORS.successLight,
-                                  color: COLORS.success,
-                                  fontSize: 12,
-                                  textDecoration: 'none',
-                                }}
-                                title="Visualizza PDF Fattura"
-                                data-testid={`pdf-invoice-${s.fattura_id || s.id}`}
-                              >
-                                📄
-                              </a>
                             </RowActions>
                           )}
 
@@ -1166,22 +1145,21 @@ export default function Scadenze() {
                 <span>{pagaModal.fornitore || pagaModal.descrizione}</span>
                 {(pagaModal.tipo === 'FATTURA' || pagaModal.source === 'fattura') &&
                   (pagaModal.fattura_id || pagaModal.id) && (
-                    <a
-                      href={`/api/fatture-ricevute/fattura/${pagaModal.fattura_id || pagaModal.id}/view-assoinvoice`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        padding: '2px 8px',
-                        background: COLORS.success,
-                        color: 'white',
-                        borderRadius: BORDER_RADIUS.sm,
-                        fontSize: 10,
-                        textDecoration: 'none',
+                    <Button
+                      variant="success"
+                      size="sm"
+                      style={{ fontSize: 10 }}
+                      onClick={() => {
+                        setViewingInvoice({
+                          id: pagaModal.fattura_id || pagaModal.id,
+                          numero: pagaModal.numero_fattura || pagaModal.numero || pagaModal.descrizione,
+                        });
+                        setPagaModal(null);
                       }}
                       title="Visualizza PDF Fattura"
                     >
                       📄 Vedi
-                    </a>
+                    </Button>
                   )}
               </div>
               <div

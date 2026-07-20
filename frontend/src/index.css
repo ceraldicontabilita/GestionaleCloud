@@ -102,6 +102,13 @@ a:hover { color: var(--c-primary-light); }
 
 button { font-family: inherit; font-size: inherit; color: inherit; max-width: 100%; }
 
+/* Su schermi touch ogni controllo azionabile deve restare raggiungibile anche
+   quando una tabella o una toolbar usa dimensioni compatte. min-* prevale
+   sulle vecchie width/height inline senza alterare il layout desktop. */
+@media (max-width: 768px) {
+  button, [role="button"] { min-width: 36px; min-height: 36px; }
+}
+
 img, video, svg, iframe, canvas { max-width: 100%; height: auto; }
 
 input, select, textarea {

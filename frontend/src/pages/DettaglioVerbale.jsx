@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { PageLayout, PageSection } from '../components/PageLayout';
-import { formatEuro, COLORS, BORDER_RADIUS, FONT } from '../lib/utils';
+import DocumentViewerModal from '../components/DocumentViewerModal';
+import { formatEuro, COLORS, BORDER_RADIUS } from '../lib/utils';
 import { Button, Badge } from '../components/ds';
+import { toast } from 'sonner';
 
 export default function DettaglioVerbale() {
   const { numeroVerbale, prefisso, numero } = useParams();
@@ -12,6 +14,8 @@ export default function DettaglioVerbale() {
   const [verbale, setVerbale] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [openingPdf, setOpeningPdf] = useState(null);
+  const [pdfViewer, setPdfViewer] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -34,6 +38,39 @@ export default function DettaglioVerbale() {
       alive = false;
     };
   }, [verbaleId]);
+
+  useEffect(() => () => {
+    if (pdfViewer?.src) URL.revokeObjectURL(pdfViewer.src);
+  }, [pdfViewer]);
+
+  const openPdf = async (pdf, idx) => {
+    const numeroPdf = verbale?.numero_verbale || verbaleId;
+    const indice = pdf.indice ?? idx;
+    setOpeningPdf(indice);
+    try {
+      const response = await api.get(
+        `/api/verbali-noleggio/pdf/${encodeURIComponent(numeroPdf)}?indice=${indice}`
+      );
+      const encoded = response.data?.content_base64;
+      if (!encoded) {
+        toast.error('PDF non disponibile');
+        return;
+      }
+      const raw = atob(encoded);
+      const bytes = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
+      const src = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      setPdfViewer({
+        src,
+        filename: pdf.filename || pdf.nome || `verbale_${numeroPdf}.pdf`,
+        title: pdf.nome || pdf.filename || `Documento verbale ${numeroPdf}`,
+      });
+    } catch (e) {
+      toast.error(`Errore apertura PDF: ${e.response?.data?.detail || e.message}`);
+    } finally {
+      setOpeningPdf(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -106,37 +143,34 @@ export default function DettaglioVerbale() {
                   <div style={{ fontWeight: 700 }}>{pdf.nome || pdf.filename || `PDF ${idx + 1}`}</div>
                   <div style={{ fontSize: 12, color: COLORS.textMuted }}>{pdf.descrizione || 'Documento associato al verbale'}</div>
                 </div>
-                {pdf.url ? (
-                  <a
-                    href={pdf.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 7,
-                      padding: '8px 16px',
-                      fontSize: 13,
-                      borderRadius: BORDER_RADIUS.sm,
-                      border: `1px solid ${COLORS.primary}`,
-                      background: 'transparent',
-                      color: COLORS.primary,
-                      fontWeight: 600,
-                      fontFamily: FONT.family,
-                      textDecoration: 'none',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    Apri
-                  </a>
-                ) : (
-                  <Badge variant="neutral">Disponibile</Badge>
-                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={openingPdf === (pdf.indice ?? idx)}
+                  onClick={() => openPdf(pdf, idx)}
+                  data-testid={`open-verbale-pdf-${pdf.indice ?? idx}`}
+                >
+                  {openingPdf === (pdf.indice ?? idx) ? 'Apertura…' : 'Apri'}
+                </Button>
               </div>
             ))}
           </div>
         </PageSection>
+      )}
+
+      {pdfViewer && (
+        <DocumentViewerModal
+          title={pdfViewer.title}
+          src={pdfViewer.src}
+          documentType="verbale"
+          onDownload={() => {
+            const link = document.createElement('a');
+            link.href = pdfViewer.src;
+            link.download = pdfViewer.filename;
+            link.click();
+          }}
+          onClose={() => setPdfViewer(null)}
+        />
       )}
     </PageLayout>
   );

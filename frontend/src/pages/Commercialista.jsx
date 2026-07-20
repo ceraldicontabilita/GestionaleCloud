@@ -1067,7 +1067,7 @@ export default function Commercialista() {
                   padding: 20,
                 }}
               >
-                <h3 style={{ margin: 0 }}>📒 Prima Nota Cassa</h3>
+                <h3 style={{ margin: 0, color: 'white' }}>📒 Prima Nota Cassa</h3>
                 <p style={{ margin: '5px 0 0 0', opacity: 0.9, fontSize: 14 }}>
                   {MESI[selectedMonth + 1]} {selectedYear}
                 </p>

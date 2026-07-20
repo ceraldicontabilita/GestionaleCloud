@@ -59,8 +59,8 @@ unico), invarianti `trasferimento_pos_speculare` e
 | Mappa gestionale: sezioni compresse | ✅ FATTO (minmax(min(270px,100%))) |
 | Assegni: campi filtro senza etichetta | ✅ FATTO (aria-label dai placeholder — 8 campi; restanti da verificare a video) |
 | Impostazioni F24: bottoni senza nome | ✅ FATTO (aria-label sui bottoni icona) |
-| Bottoni < 36px su molte pagine | ❌ DA FARE (passata dedicata mobile) |
-| Viewer condiviso usato solo da 4 pagine | ❌ DA FARE (Scadenze, PayPal, Bilancio, Commercialista, Verbali) |
+| Bottoni < 36px su molte pagine | ✅ FATTO (20/07: minimo touch 36×36 su mobile + guardia automatica su tutte le rotte statiche) |
+| Viewer condiviso usato solo da 4 pagine | ✅ FATTO (viewer canonico esteso; chiusi i residui Scadenze, Prima Nota/corrispettivi e Dettaglio Verbale) |
 
 ## Buoni brevi
 
@@ -78,7 +78,7 @@ unico), invarianti `trasferimento_pos_speculare` e
 | Descrizioni adattive Movimenti Banca | ✅ |
 | Sezioni strette Mappa gestionale | ✅ |
 | Pagina Admin "Esito ultimo collaudo" | ✅ FATTO (tab "🧪 Collaudo" in Admin: ultimo report, dettaglio 12 invarianti, storico, bottone "Esegui ora") |
-| Audit layout esteso da 19 a 52 rotte | ❌ DA FARE (esiste scripts/collaudo_ui.mjs che copre 83 rotte on-demand) |
+| Audit layout esteso da 19 a 52 rotte | ✅ FATTO (20/07: 84 rotte statiche lette automaticamente dalla route table; mobile+desktop verdi) |
 | Test vieta nuovi writer diretti | ✅ (test_motore_unico_scritture) |
 | Test vieta corrispettivo_pos come accredito | ✅ (2 test-guardia) |
 

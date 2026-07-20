@@ -34,7 +34,6 @@ jobs:
 
       - name: Installa Chromium per Playwright
         run: |
-          yarn add --dev playwright-core@1
           npx playwright-core install --with-deps chromium || npx playwright install --with-deps chromium
 
       - name: Avvia preview e lancia l'audit viewer

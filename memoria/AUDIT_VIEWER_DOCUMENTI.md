@@ -1,6 +1,6 @@
 # AUDIT VIEWER DOCUMENTI — censimento punti di visualizzazione (§8.6)
 
-Data: 2026-07-13
+Data: 2026-07-13 — aggiornamento verificato 2026-07-20
 Ambito: frontend React/Vite (`frontend/src`) — tutti i punti in cui si
 visualizzano documenti (PDF / XML / HTML fattura / immagini) e come vengono
 aperti. Metodo: grep su `window.open`, `<iframe`, `<object`, `<embed`,
@@ -162,6 +162,24 @@ orizzontale della pagina.
 ---
 
 ## 5. Residui / Rischi
+
+Aggiornamento 2026-07-20: i residui applicativi elencati sotto sono stati
+ricontrollati sul codice corrente e chiusi:
+
+- `Documenti.jsx` usa già `src={selectedPdfDoc.pdfUrl}` e revoca il blob;
+- `PrimaNota.jsx` apre il corrispettivo nel `DocumentViewerModal`;
+- `Scadenze.jsx` usa soltanto `ModalFattura`, anche dal dialog di pagamento;
+- `DettaglioVerbale.jsx` scarica il base64 autenticato per indice, crea un blob
+  locale, lo apre nel viewer canonico e lo revoca alla chiusura;
+- `InvoiceXMLViewer.jsx` non esiste più nel codice corrente;
+- test frontend dedicato: `DettaglioVerbale.test.jsx`.
+
+L'audit layout automatico legge ora tutte le rotte statiche da `main.jsx` e
+verifica anche che, su mobile, nessun `button`/`[role="button"]` visibile abbia
+un target inferiore a 36×36 px. Esito reale: 84 rotte verdi su mobile e desktop.
+
+La lista storica seguente resta conservata come tracciabilità della baseline
+del 13/07; non rappresenta più lo stato corrente.
 
 1. **`pages/Documenti.jsx` tab documenti AI (1571-1586 vs 1626)** — bug
    residuo: il blob creato da `file_base64` (`pdfUrl`) non viene mai passato

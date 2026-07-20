@@ -15,6 +15,9 @@
  * Le API sono finte (auth ok + risposte vuote): si testa il LAYOUT, non i
  * dati. Esce con codice 1 se trova regressioni → il push fallisce in CI.
  */
+const { readFileSync } = require('fs');
+const { join } = require('path');
+
 let chromium;
 try {
   ({ chromium } = require('playwright-core'));
@@ -26,21 +29,34 @@ try {
 const BASE = process.env.AUDIT_BASE_URL || 'http://localhost:4173';
 const EXE = process.env.PLAYWRIGHT_CHROMIUM || undefined;
 
-const PAGINE = [
-  '/', '/fornitori', '/prima-nota', '/riconciliazione',
-  '/riconciliazione/f24', '/riconciliazione/paypal',
-  '/riconciliazione/coerenza-pos', '/riconciliazione/assegni',
-  '/fatture', '/fatture/corrispettivi', '/documenti', '/documenti/import',
-  '/admin', '/noleggio', '/learning-machine', '/scadenze', '/mappa-gestionale',
-  '/documenti-fiscali', '/iva',
-];
+// Le rotte statiche sono lette dalla route table reale. In questo modo ogni
+// nuova pagina entra automaticamente nel collaudo e non si torna a una lista
+// manuale parziale. Le rotte dinamiche richiedono fixture specifiche e restano
+// fuori da questo controllo di layout generale.
+function leggiRotteStatiche() {
+  const source = readFileSync(join(__dirname, '../src/main.jsx'), 'utf8');
+  const pagine = new Set(['/']);
+  const alias = new Map();
 
-// Alias storici mantenuti intenzionalmente dal router. L'audit deve
-// verificare che arrivino alla destinazione canonica, non considerarli una
-// regressione solo perche' React Router esegue il redirect previsto.
-const ALIAS_AMMESSI = new Map([
-  ['/documenti-fiscali', '/documenti'],
-]);
+  for (const line of source.split(/\r?\n/)) {
+    const route = line.match(/path:\s*"([^"]+)"/);
+    if (!route) continue;
+    const rawPath = route[1];
+    if (rawPath.includes(':') || rawPath.includes('*')) continue;
+    const path = rawPath === '/' ? '/' : `/${rawPath.replace(/^\//, '')}`;
+    if (path === '/login' || path === '/gestione-riservata') continue;
+    pagine.add(path);
+
+    const redirect = line.match(/<Navigate\s+to="([^"]+)"/);
+    if (redirect) {
+      alias.set(path, new URL(redirect[1], 'https://audit.local').pathname);
+    }
+  }
+
+  return { pagine: [...pagine].sort(), alias };
+}
+
+const { pagine: PAGINE, alias: ALIAS_AMMESSI } = leggiRotteStatiche();
 
 const VIEWPORTS = [
   { nome: 'mobile', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
@@ -83,9 +99,24 @@ async function auditPagina(page, path) {
                    && bgDi(h).includes('15, 39, 68'))
       .map(h => h.textContent.trim().slice(0, 50));
 
+    const targetPiccoli = [...document.querySelectorAll('button,[role="button"]')]
+      .filter(el => !el.disabled && el.getAttribute('aria-hidden') !== 'true')
+      .filter(el => el.offsetParent !== null)
+      .map(el => {
+        const r = el.getBoundingClientRect();
+        return {
+          larghezza: Math.round(r.width),
+          altezza: Math.round(r.height),
+          nome: (el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent || el.tagName)
+            .trim().replace(/\s+/g, ' ').slice(0, 50),
+        };
+      })
+      .filter(t => t.larghezza < 36 || t.altezza < 36)
+      .slice(0, 10);
+
     return {
       overflow, colpevoli, invisibili, redirectata, pathname,
-      destinazioneAttesa, nonTrovata,
+      destinazioneAttesa, nonTrovata, targetPiccoli,
     };
   }, { pathRichiesto: path, destinazioneAttesa });
 }
@@ -114,8 +145,9 @@ async function auditPagina(page, path) {
 
     for (const p of PAGINE) {
       const r = await auditPagina(page, p);
+      const targetOk = vp.nome !== 'mobile' || r.targetPiccoli.length === 0;
       const ok =
-        r.overflow <= 1 && r.invisibili.length === 0 && !r.redirectata && !r.nonTrovata;
+        r.overflow <= 1 && r.invisibili.length === 0 && !r.redirectata && !r.nonTrovata && targetOk;
       const riga = `[${vp.nome}] ${p.padEnd(32)} overflowX:${String(r.overflow).padStart(3)}px  titoli invisibili:${r.invisibili.length}`;
       if (ok) {
         console.log('OK  ' + riga);
@@ -130,6 +162,7 @@ async function auditPagina(page, path) {
           );
         }
         if (r.nonTrovata) console.error('     la route mostra la pagina 404');
+        if (!targetOk) console.error('     target touch <36px:', JSON.stringify(r.targetPiccoli));
       }
     }
     await ctx.close();
@@ -140,5 +173,5 @@ async function auditPagina(page, path) {
     console.error(`\nAUDIT LAYOUT FALLITO: ${errori} pagina/e con regressioni.`);
     process.exit(1);
   }
-  console.log('\nAUDIT LAYOUT OK: nessun overflow, nessun titolo invisibile.');
+  console.log(`\nAUDIT LAYOUT OK: ${PAGINE.length} rotte, nessun overflow, nessun titolo invisibile, nessun target touch <36px.`);
 })();

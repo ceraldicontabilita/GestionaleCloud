@@ -306,3 +306,21 @@ Sesto giro di review automatica Codex sul fix precedente delle ritenute isolate 
 `python -m pytest tests/ -q` → 707 passati, stessi 2 falliti preesistenti/ambientali (invariati).
 
 Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `STATO_IMPLEMENTAZIONE_CANONICO.md`.
+
+## Aggiornamento — 2026-07-20 (audit UI completo e viewer documentale)
+
+- Branch: `main`
+- Audit layout: **84 rotte statiche** ricavate automaticamente da `main.jsx`,
+  eseguite su mobile 390×844 e desktop 1280×800.
+- Esito layout: nessun overflow orizzontale, nessun titolo invisibile, nessun
+  target touch `button`/`[role="button"]` inferiore a 36×36 px su mobile.
+- Difetti reali trovati e corretti dall'estensione dell'audit: intestazione
+  `Prima Nota Cassa` in Commercialista e intestazione `Gestione PagoPA`
+  invisibili su fondo navy.
+- Viewer: eliminati i residui in nuova scheda per corrispettivi in Prima Nota,
+  fatture in Scadenze e PDF nel Dettaglio Verbale.
+- Test frontend: **28 passed** (2 file), incluso il nuovo test che verifica
+  apertura del PDF verbale base64 nel viewer interno e revoca del blob.
+- Audit viewer E2E: verde su 390×844, 768×1024 e 1920×1080; controllati
+  overflow, chiusura, zoom, fit, fullscreen, download, ESC e ritorno focus.
+- Build Vite di produzione: verde; `frontend/dist` rigenerato.

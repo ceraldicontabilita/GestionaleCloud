@@ -5,6 +5,7 @@ import { formatEuroD, formatDateIT, useIsMobile } from '../lib/utils';
 import { useHashState } from '../hooks/useHashState';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import ModalFattura from '../components/ModalFattura';
+import DocumentViewerModal from '../components/DocumentViewerModal';
 import FinanziamentoSoci from './FinanziamentoSoci';
 
 /**
@@ -387,6 +388,7 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
   const [editing, setEditing] = useState(null);
   const [nuovo, setNuovo] = useState(false);
   const [fatturaView, setFatturaView] = useState(null);
+  const [documentView, setDocumentView] = useState(null);
   const [busy, setBusy] = useState(null);
 
   const movimenti = dati.movimenti || [];
@@ -555,12 +557,16 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
         ? `/api/corrispettivi/${mov.corrispettivo_id}/view`
         : `/api/corrispettivi/view-by-filename?filename=${encodeURIComponent(mov.xml_filename)}`;
       return (
-        <a
-          href={href} target="_blank" rel="noopener noreferrer"
-          style={{ background: VERDE, color: 'white', borderRadius: 6, padding: '4px 9px', fontSize: 11, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}
+        <button
+          type="button"
+          onClick={() => setDocumentView({
+            src: href,
+            title: `Corrispettivo ${mov.data || ''}`.trim(),
+          })}
+          style={{ background: VERDE, color: 'white', border: 'none', borderRadius: 6, padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
         >
           🧾 Corrisp.
-        </a>
+        </button>
       );
     }
     return null;
@@ -813,6 +819,14 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
       )}
       {fatturaView && (
         <ModalFattura fatturaId={fatturaView.id} numero={fatturaView.numero} onClose={() => setFatturaView(null)} />
+      )}
+      {documentView && (
+        <DocumentViewerModal
+          title={documentView.title}
+          src={documentView.src}
+          documentType="documento_fiscale"
+          onClose={() => setDocumentView(null)}
+        />
       )}
     </div>
   );
