@@ -185,7 +185,8 @@ function RipartoEntrate({ sezione, cassa, banca, mese }) {
           }}
         >
           <span style={{ color: '#334155' }}>
-            {posOk ? '✅' : '⚠️'} Coerenza POS: uscito dalla cassa <b>{eur(posCassa)}</b> → entrato in banca <b>{eur(posBanca)}</b>
+            {posOk ? '↔️' : '⚠️'} Trasferimenti POS registrati: cassa <b>{eur(posCassa)}</b> → banca <b>{eur(posBanca)}</b>
+            {posOk && " (controllo contabile, non prova dell'accredito in estratto conto)"}
           </span>
           {!posOk && (
             <b style={{ color: ROSSO, fontFamily: 'ui-monospace, Menlo, monospace' }}>
@@ -202,21 +203,27 @@ function RipartoEntrate({ sezione, cassa, banca, mese }) {
 // Le spese carta non arrivano mai in estratto conto bancario, solo
 // l'addebito mensile: quando lo vediamo, chiediamo lo statement Nexi se
 // manca e mostriamo la quadratura (richiesta utente 18/07/2026).
-function CartaNexi() {
+export function CartaNexi({ anno }) {
   const [stato, setStato] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState('');
   const fileRef = React.useRef(null);
+  const richiestaRef = React.useRef(0);
 
   const carica = async () => {
+    const richiesta = ++richiestaRef.current;
     try {
-      const r = await api.get('/api/nexi/stato');
-      setStato(r.data);
+      const r = await api.get(`/api/nexi/stato?anno=${encodeURIComponent(anno)}`);
+      if (richiesta === richiestaRef.current) setStato(r.data);
     } catch (e) {
       console.error('Stato Nexi:', e);
     }
   };
-  useEffect(() => { carica(); }, []);
+  useEffect(() => {
+    setStato(null);
+    carica();
+    return () => { richiestaRef.current += 1; };
+  }, [anno]);
 
   const v = stato?.verifica;
   if (!v || v.addebiti_trovati === 0) return null;
@@ -508,7 +515,10 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
   // in prima_nota_module/banca.py).
   const badgeRiconciliazione = mov => {
     if (tipo !== 'banca' || !mov.riconciliazione) return null;
-    const { verificata, automatica, match_score, tipo: tipoRic, accreditato_ec } = mov.riconciliazione;
+    const {
+      verificata, automatica, match_score, tipo: tipoRic, accreditato_ec,
+      importo_atteso, differenza_ec, accredito_trovato,
+    } = mov.riconciliazione;
     const isPos = tipoRic === 'pos_trasferimento';
     const isPaypal = tipoRic === 'paypal';
     const isVersamento = tipoRic === 'versamento_contanti';
@@ -530,9 +540,15 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
         </span>
       );
     }
+    const posNonQuadrato = isPos && accredito_trovato;
+    const testoPos = posNonQuadrato
+      ? `⚠️ Non quadra (${eur(accreditato_ec)} accreditati; differenza ${eur(differenza_ec)})`
+      : null;
     return (
       <span
-        title={isPaypal
+        title={posNonQuadrato
+          ? `Accredito POS trovato ma non quadrato: attesi ${eur(importo_atteso)}, accreditati ${eur(accreditato_ec)}, differenza ${eur(differenza_ec)}`
+          : isPaypal
           ? "Nessuna transazione PayPal di riscontro trovata: verificare"
           : isPos
           ? "Nessun accredito trovato in estratto conto per questo trasferimento POS: verificare in Coerenza POS"
@@ -541,7 +557,7 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
           : "Nessun addebito trovato in estratto conto per questa fattura: verificare in Riconciliazione"}
         style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fcd34d', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
       >
-        ⚠️ Da verificare
+        {testoPos || '⚠️ Da verificare'}
       </span>
     );
   };
@@ -1140,7 +1156,7 @@ export default function PrimaNota() {
           </div>
 
           <RipartoEntrate sezione={sezione} cassa={cassa} banca={banca} mese={mese} />
-          {sezione === 'banca' && <CartaNexi />}
+          {sezione === 'banca' && <CartaNexi anno={anno} />}
 
           {/* mese */}
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', margin: '12px 0 0' }}>

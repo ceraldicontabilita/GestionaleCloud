@@ -259,8 +259,13 @@ async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:
 
     accreditato = round(float(trasferimento.get("accreditato_ec") or 0) + importo, 2)
     atteso = float(trasferimento.get("importo") or 0)
-    tolleranza = max(atteso * 0.02, 5.0)
-    riconciliato = abs(accreditato - atteso) <= tolleranza or accreditato >= atteso - tolleranza
+    # In contabilita una differenza non e una riconciliazione. La vecchia
+    # tolleranza del 2% (minimo 5 euro) produceva falsi positivi anche per
+    # scarti importanti. Ammettiamo solo l'arrotondamento di un centesimo.
+    riconciliato = abs(accreditato - atteso) <= 0.01
+    estratto_conto_ids = list(dict.fromkeys([
+        *(trasferimento.get("estratto_conto_ids") or []), ec_id,
+    ]))
 
     await db["prima_nota_banca"].update_one(
         {"id": trasferimento["id"]},
@@ -268,13 +273,29 @@ async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:
                   "riconciliato": bool(riconciliato),
                   "tipo_riconciliazione": "accredito_pos_ec" if riconciliato else None,
                   "data_ultimo_accredito": data_acc},
-         "$push": {"estratto_conto_ids": ec_id}})
-    await db["estratto_conto_movimenti"].update_one(
-        {"id": ec_id},
-        {"$set": {"riconciliato": True,
-                  "tipo_riconciliazione": "accredito_pos_trasferimento",
-                  "dettagli_riconciliazione": {"prima_nota_id": trasferimento["id"],
-                                                "giorno_vendita": giorno_vendita}}})
+         "$addToSet": {"estratto_conto_ids": ec_id}})
+
+    dettagli = {"prima_nota_id": trasferimento["id"],
+                "giorno_vendita": giorno_vendita,
+                "importo_atteso": round(atteso, 2),
+                "importo_accreditato": accreditato,
+                "differenza": round(accreditato - atteso, 2)}
+    if riconciliato:
+        await db["estratto_conto_movimenti"].update_many(
+            {"id": {"$in": estratto_conto_ids}},
+            {"$set": {"riconciliato": True,
+                      "tipo_riconciliazione": "accredito_pos_trasferimento",
+                      "dettagli_riconciliazione": dettagli},
+             "$unset": {"stato_riconciliazione": ""}})
+    else:
+        # Le singole righe NUMIA sono state associate al giorno, ma il gruppo
+        # resta da verificare finche la loro somma non coincide col POS.
+        await db["estratto_conto_movimenti"].update_many(
+            {"id": {"$in": estratto_conto_ids}},
+            {"$set": {"riconciliato": False,
+                      "stato_riconciliazione": "da_verificare",
+                      "tipo_riconciliazione": "accredito_pos_non_quadrato",
+                      "dettagli_riconciliazione": dettagli}})
     return True
 
 

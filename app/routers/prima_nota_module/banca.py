@@ -140,12 +140,23 @@ async def _arricchisci_riconciliazione(db, movimenti: list) -> None:
             continue
 
         if is_pos:
-            evidenza = m.get("accreditato_ec") or _evidenza_movimento(m)
+            accreditato = round(float(m.get("accreditato_ec") or 0), 2)
+            atteso = round(float(m.get("importo") or 0), 2)
+            differenza = round(accreditato - atteso, 2)
+            evidenza = bool(accreditato or _evidenza_movimento(m))
+            # Un accredito trovato non basta a dichiarare il trasferimento
+            # riconciliato: deve quadrare con il POS del giorno al centesimo.
+            # Questo ricalcolo rende corretti anche i record storici che erano
+            # stati marcati verdi pur avendo importi diversi.
+            quadrato = evidenza and abs(differenza) <= 0.01
             m["riconciliazione"] = {
                 "tipo": "pos_trasferimento",
-                "verificata": bool(evidenza),
+                "verificata": quadrato,
                 "automatica": False, "match_score": None,
-                "accreditato_ec": round(float(m.get("accreditato_ec") or 0), 2) if m.get("accreditato_ec") else None,
+                "accreditato_ec": accreditato if evidenza else None,
+                "importo_atteso": atteso,
+                "differenza_ec": differenza if evidenza else None,
+                "accredito_trovato": evidenza,
             }
             continue
 

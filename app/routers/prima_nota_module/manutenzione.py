@@ -2142,7 +2142,7 @@ async def migra_pos_accrediti_reali(
        speculare (stesso importo, source trasferimento_pos); se manca
        viene creata, se doppia le eccedenti vengono soft-deletate;
     3) gli accrediti EC POS riconciliano i trasferimenti per giorno di
-       vendita (accumulo circuiti, tolleranza 2%/5€)."""
+       vendita (accumulo circuiti, quadratura al centesimo)."""
     from app.services.scritture_contabili import (
         chiusura_pos_del_giorno, riconcilia_accredito_pos_ec,
         query_accrediti_pos_ec, scrivi_movimento)
