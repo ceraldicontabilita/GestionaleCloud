@@ -3,12 +3,12 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 149
+**Totale file analizzati:** 150
 
 | Classificazione | File |
 |---|---:|
 | ENTRYPOINT | 3 |
-| ROUTE_ATTIVA | 29 |
+| ROUTE_ATTIVA | 30 |
 | COMPONENTE_USATO | 79 |
 | MODALE_USATO | 4 |
 | HOOK_USATO | 3 |
@@ -56,7 +56,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | File | Classificazione | Importato da (n. file) |
 |---|---|---:|
 | `frontend/src/App.jsx` | ENTRYPOINT | 1 |
-| `frontend/src/api.js` | COMPONENTE_USATO | 76 |
+| `frontend/src/api.js` | COMPONENTE_USATO | 77 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ChatIntelligente.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/CopyLinkButton.jsx` | COMPONENTE_USATO | 5 |
@@ -111,7 +111,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ui/toaster.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ui/toggle.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ui/tooltip.jsx` | DINAMICO_DA_VERIFICARE | 0 |
-| `frontend/src/contexts/AnnoContext.jsx` | COMPONENTE_USATO | 48 |
+| `frontend/src/contexts/AnnoContext.jsx` | COMPONENTE_USATO | 49 |
 | `frontend/src/contexts/AuthContext.jsx` | COMPONENTE_USATO | 6 |
 | `frontend/src/contexts/AuthContext.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/contexts/UploadContext.jsx` | COMPONENTE_USATO | 2 |
@@ -121,7 +121,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/hooks/usePrimaNota.js` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/hooks/useWebSocket.js` | HOOK_USATO | 1 |
 | `frontend/src/lib/queryClient.js` | COMPONENTE_USATO | 2 |
-| `frontend/src/lib/utils.js` | COMPONENTE_USATO | 98 |
+| `frontend/src/lib/utils.js` | COMPONENTE_USATO | 99 |
 | `frontend/src/lib/utils.test.js` | TEST_ONLY | 0 |
 | `frontend/src/main.jsx` | ENTRYPOINT | 0 |
 | `frontend/src/navigation.config.js` | ENTRYPOINT | 0 |
@@ -136,6 +136,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/BilancioVerifica.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/BudgetPrevisionale.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/CalendarioFiscale.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/pages/CedoliniSalari.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/ChiusuraEsercizio.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/CoerenzaPOSCorrispettivi.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/pages/CoerenzaPOSCorrispettivi.test.jsx` | TEST_ONLY | 0 |
