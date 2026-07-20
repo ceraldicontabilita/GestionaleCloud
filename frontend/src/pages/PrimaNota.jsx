@@ -7,6 +7,16 @@ import { useConfirm } from '../components/ui/ConfirmDialog';
 import ModalFattura from '../components/ModalFattura';
 import DocumentViewerModal from '../components/DocumentViewerModal';
 import FinanziamentoSoci from './FinanziamentoSoci';
+import {
+  Banknote,
+  CreditCard,
+  Eye,
+  FileText,
+  Landmark,
+  Pencil,
+  ReceiptText,
+  Trash2,
+} from 'lucide-react';
 
 /**
  * PRIMA NOTA — ricostruita da zero (richiesta utente 17/07/2026).
@@ -48,6 +58,23 @@ function parseImportoIT(input) {
   return isNaN(v) ? null : v;
 }
 
+function BadgeCategoria({ categoria }) {
+  const testo = categoria || '—';
+  const lower = testo.toLowerCase();
+  let Icona = FileText;
+  let colore = '#475569';
+  if (lower.includes('pos')) { Icona = CreditCard; colore = '#2563eb'; }
+  else if (lower.includes('corrispettiv')) { Icona = ReceiptText; colore = '#16a34a'; }
+  else if (lower.includes('fattur')) { Icona = FileText; colore = '#3b82f6'; }
+  else if (lower.includes('banca') || lower.includes('f24')) { Icona = Landmark; colore = '#0f2744'; }
+  else if (lower.includes('cassa') || lower.includes('contant')) { Icona = Banknote; colore = '#15803d'; }
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 30, background: '#f1f5f9', borderRadius: 7, padding: '4px 8px', fontSize: 11, fontWeight: 650, color: colore, whiteSpace: 'nowrap' }}>
+      <Icona size={15} aria-hidden="true" /> {testo}
+    </span>
+  );
+}
+
 /* ------------------------------ card numero ------------------------------ */
 function Card({ titolo, valore, colore, onEdit, testId }) {
   return (
@@ -68,10 +95,11 @@ function Card({ titolo, valore, colore, onEdit, testId }) {
             title="Modifica"
             style={{
               background: '#fef3c7', border: '1px solid #d97706', borderRadius: 6,
-              padding: '2px 7px', fontSize: 12, cursor: 'pointer',
+              width: 40, height: 40, display: 'inline-flex', alignItems: 'center',
+              justifyContent: 'center', padding: 0, cursor: 'pointer',
             }}
           >
-            ✏️
+            <Pencil size={18} />
           </button>
         )}
       </div>
@@ -583,9 +611,11 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
       return (
         <button
           onClick={() => setFatturaView({ id: mov.fattura_id, numero: mov.numero_fattura })}
-          style={{ background: '#3b82f6', color: 'white', border: 'none', borderRadius: 6, padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+          title="Vedi fattura"
+          aria-label={`Vedi fattura ${mov.numero_fattura || ''}`.trim()}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, background: '#3b82f6', color: 'white', border: 'none', borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
         >
-          Fattura
+          <FileText size={16} aria-hidden="true" /> Fattura
         </button>
       );
     }
@@ -600,9 +630,11 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
             src: href,
             title: `Corrispettivo ${mov.data || ''}`.trim(),
           })}
-          style={{ background: VERDE, color: 'white', border: 'none', borderRadius: 6, padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
+          title="Vedi corrispettivo"
+          aria-label={`Vedi corrispettivo ${mov.data || ''}`.trim()}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, background: VERDE, color: 'white', border: 'none', borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
         >
-          🧾 Corrisp.
+          <ReceiptText size={16} aria-hidden="true" /> Corrispettivo
         </button>
       );
     }
@@ -610,27 +642,30 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
   };
 
   const bottoniRiga = mov => (
-    <span style={{ display: 'inline-flex', gap: 5, whiteSpace: 'nowrap' }}>
+    <span style={{ display: 'inline-flex', gap: 7, whiteSpace: 'nowrap', alignItems: 'center' }}>
       <button
         onClick={() => sposta(mov)} disabled={busy === mov.id}
         title={tipo === 'cassa' ? 'Sposta in banca' : 'Sposta in cassa'}
-        style={{ background: BLU, color: 'white', border: 'none', borderRadius: 6, padding: '5px 8px', fontSize: 12, cursor: 'pointer', opacity: busy === mov.id ? 0.5 : 1 }}
+        aria-label={tipo === 'cassa' ? 'Sposta in banca' : 'Sposta in cassa'}
+        style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: BLU, color: 'white', border: 'none', borderRadius: 8, padding: 0, cursor: 'pointer', opacity: busy === mov.id ? 0.5 : 1 }}
       >
-        {tipo === 'cassa' ? '🏦' : '💵'}
+        {tipo === 'cassa' ? <Landmark size={19} /> : <Banknote size={19} />}
       </button>
       <button
         onClick={() => setEditing(mov)}
         title="Modifica"
-        style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, padding: '5px 8px', fontSize: 12, cursor: 'pointer' }}
+        aria-label="Modifica movimento"
+        style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: 8, padding: 0, cursor: 'pointer' }}
       >
-        📝
+        <Pencil size={18} />
       </button>
       <button
         onClick={() => elimina(mov)} disabled={busy === mov.id}
         title="Elimina"
-        style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '5px 8px', fontSize: 12, cursor: 'pointer', opacity: busy === mov.id ? 0.5 : 1 }}
+        aria-label="Elimina movimento"
+        style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#fef2f2', color: ROSSO, border: '1px solid #fecaca', borderRadius: 8, padding: 0, cursor: 'pointer', opacity: busy === mov.id ? 0.5 : 1 }}
       >
-        🗑️
+        <Trash2 size={18} />
       </button>
     </span>
   );
@@ -654,9 +689,11 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
         <button
           onClick={onModificaRiporto}
           data-testid={`modifica-saldo-iniziale-${tipo}`}
-          style={{ background: '#fef3c7', border: '1px solid #d97706', borderRadius: 7, padding: '4px 9px', fontSize: 12, cursor: 'pointer' }}
+          title="Modifica saldo iniziale"
+          aria-label="Modifica saldo iniziale"
+          style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#fef3c7', color: '#92400e', border: '1px solid #d97706', borderRadius: 8, padding: 0, cursor: 'pointer' }}
         >
-          ✏️
+          <Pencil size={18} />
         </button>
       </span>
     </div>
@@ -713,7 +750,8 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
             {[['«', 1], ['‹', paginaCorrente - 1], ['›', paginaCorrente + 1], ['»', totPagine]].map(([s, p]) => (
               <button
                 key={s} onClick={() => setPagina(Math.min(totPagine, Math.max(1, p)))}
-                style={{ border: 'none', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}
+                aria-label={s === '«' ? 'Prima pagina' : s === '‹' ? 'Pagina precedente' : s === '›' ? 'Pagina successiva' : 'Ultima pagina'}
+                style={{ width: 40, height: 40, border: 'none', borderRadius: 8, padding: 0, cursor: 'pointer', fontSize: 18 }}
               >
                 {s}
               </button>
@@ -756,9 +794,7 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-                      <span style={{ fontSize: 11, background: '#f1f5f9', borderRadius: 5, padding: '2px 7px', fontWeight: 600 }}>
-                        {m.categoria || '—'}
-                      </span>
+                      <BadgeCategoria categoria={m.categoria} />
                       <span
                         style={{
                           fontWeight: 800, whiteSpace: 'nowrap', fontFamily: 'ui-monospace, Menlo, monospace',
@@ -824,7 +860,7 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
                 >
                   <td style={{ padding: '7px 10px', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{formatDateIT(m.data)}</td>
                   <td style={{ padding: '7px 10px' }}>
-                    <span style={{ background: '#f1f5f9', borderRadius: 5, padding: '2px 7px', fontSize: 11 }}>{m.categoria || '—'}</span>
+                    <BadgeCategoria categoria={m.categoria} />
                   </td>
                   <td style={{ padding: '7px 10px', maxWidth: 420, wordBreak: 'break-word' }}>
                     {m.descrizione || '—'}
@@ -896,9 +932,10 @@ function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
     <button
       onClick={() => setFatturaView({ id: p.fattura_id, numero: p.fattura_numero })}
       title="Vedi fattura"
-      style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, padding: '7px 10px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+      aria-label={`Vedi fattura ${p.fattura_numero || ''}`.trim()}
+      style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', gap: 6, background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: 8, padding: '7px 10px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
     >
-      👁 Fattura
+      <Eye size={17} /> Vedi fattura
     </button>
   );
 
@@ -1009,9 +1046,10 @@ function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
                 <button
                   onClick={() => setFatturaView({ id: p.fattura_id, numero: p.fattura_numero })}
                   title="Vedi fattura"
-                  style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 7, padding: '4px 8px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}
+                  aria-label={`Vedi fattura ${p.fattura_numero || ''}`.trim()}
+                  style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: 8, padding: 0, cursor: 'pointer' }}
                 >
-                  👁
+                  <Eye size={18} />
                 </button>
                 <button
                   onClick={() => conferma(p, 'banca')} disabled={busy === p.fattura_id}

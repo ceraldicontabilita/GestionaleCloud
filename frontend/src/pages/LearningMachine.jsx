@@ -24,7 +24,7 @@ import {
 } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { useConfirm } from '../components/ui/ConfirmDialog';
-import { Button, Badge, StatCard, Tabs, Input, Select } from '../components/ds';
+import { Button, Badge, StatCard, Tabs, Input } from '../components/ds';
 import {
   Brain,
   RefreshCw,
@@ -115,7 +115,7 @@ export default function LearningMachine() {
 
   const getTabFromPath = () => {
     const match = location.pathname.match(/\/learning-machine\/(\w+)/);
-    const validTabs = ['dashboard', 'fornitori', 'assegni', 'documenti', 'regole'];
+    const validTabs = ['dashboard', 'fornitori', 'assegni', 'documenti', 'regole', 'universale'];
     if (match && validTabs.includes(match[1])) return match[1];
     return 'fornitori';
   };
@@ -130,7 +130,7 @@ export default function LearningMachine() {
   const [fornitoriLoading, setFornitoriLoading] = useState(false);
   const [selectedFornitore, setSelectedFornitore] = useState(null);
   const [keywords, setKeywords] = useState('');
-  const [centroCostoSuggerito, setCentroCostoSuggerito] = useState('');
+  const [centriCostoAmmessi, setCentriCostoAmmessi] = useState([]);
   const [keywordsSuggerite, setKeywordsSuggerite] = useState([]);
   const [saving, setSaving] = useState(false);
 
@@ -219,6 +219,11 @@ export default function LearningMachine() {
   }, [loadDashboardStats]);
 
   useEffect(() => {
+    setActiveTab(getTabFromPath());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
+  useEffect(() => {
     if (activeTab === 'fornitori') loadFornitoriData();
     if (activeTab === 'assegni') loadAssegniStats();
     if (activeTab === 'documenti') loadDocumentiStats();
@@ -231,7 +236,7 @@ export default function LearningMachine() {
   const selezionaFornitore = async fornitore => {
     setSelectedFornitore(fornitore);
     setKeywords('');
-    setCentroCostoSuggerito('');
+    setCentriCostoAmmessi([]);
 
     // Su telefono la lista e il form "Configura Keywords" sono impilati:
     // cliccando la scheda il form si apriva FUORI schermo più in basso e
@@ -254,11 +259,8 @@ export default function LearningMachine() {
   };
 
   const salvaFornitore = async () => {
-    // Basta UNA delle due cose: keywords O un centro di costo scelto
-    // (per il "fornitore misto" le keywords non servono: classifica
-    // ogni fattura dal suo contenuto)
-    if (!selectedFornitore || (!keywords.trim() && !centroCostoSuggerito)) {
-      setMessage({ type: 'error', text: 'Inserisci almeno una keyword oppure scegli un centro di costo' });
+    if (!selectedFornitore) {
+      setMessage({ type: 'error', text: 'Seleziona un fornitore' });
       return;
     }
 
@@ -270,13 +272,15 @@ export default function LearningMachine() {
           .split(',')
           .map(k => k.trim())
           .filter(k => k),
-        centro_costo_suggerito: centroCostoSuggerito || null,
+        centro_costo_suggerito: 'MISTO_PER_CONTENUTO',
+        centri_costo_ammessi: centriCostoAmmessi,
       });
 
       if (res.data.success) {
         setMessage({ type: 'success', text: 'Fornitore salvato!' });
         setSelectedFornitore(null);
         setKeywords('');
+        setCentriCostoAmmessi([]);
         loadFornitoriData();
         loadDashboardStats();
       }
@@ -826,7 +830,7 @@ export default function LearningMachine() {
                     gap: 8,
                   }}
                 >
-                  <Tag size={18} color={COLORS.primaryLight} /> Configura Keywords
+                  <Tag size={18} color={COLORS.primaryLight} /> Configura classificazione
                 </h3>
 
                 {selectedFornitore ? (
@@ -860,7 +864,7 @@ export default function LearningMachine() {
                             marginBottom: 8,
                           }}
                         >
-                          Keywords Suggerite (clicca per aggiungere)
+                          Prodotti e servizi rilevati nelle fatture (clicca per aggiungere)
                         </label>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                           {keywordsSuggerite.map((kw, idx) => (
@@ -889,42 +893,63 @@ export default function LearningMachine() {
                           marginBottom: 6,
                         }}
                       >
-                        Keywords (separate da virgola)
+                        Parole prodotto utili (separate da virgola)
                       </label>
                       <Input
                         type="text"
                         value={keywords}
                         onChange={e => setKeywords(e.target.value)}
-                        placeholder="es: bar, caffè, tabacchi"
+                        placeholder="es: detersivo lavastoviglie, bicchieri, vino"
                         style={{ fontSize: 14 }}
                       />
                     </div>
 
-                    {/* Select centro costo */}
+                    {/* Relazione fornitore -> più categorie, guidata dalle righe fattura */}
                     <div style={{ marginBottom: 16 }}>
-                      <label
+                      <div
+                        style={{ padding: 12, borderRadius: BORDER_RADIUS.md, background: COLORS.successLight, border: `1px solid ${COLORS.success}`, marginBottom: 10 }}
+                      >
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 700, color: COLORS.success }}>
+                          <CheckCircle size={18} /> Classifica ogni fattura dalle righe acquistate
+                        </div>
+                        <div style={{ fontSize: 12, color: COLORS.gray[700], marginTop: 5, lineHeight: 1.45 }}>
+                          Lo stesso fornitore può vendere detergenti, bicchieri, bibite e vino. Il sistema non assegna più una sola categoria a tutto il fornitore.
+                        </div>
+                      </div>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: COLORS.gray[700], display: 'block', marginBottom: 7 }}>
+                        Categorie possibili (facoltative; nessuna selezione = tutte)
+                      </label>
+                      <div
                         style={{
-                          fontSize: 12,
-                          fontWeight: 600,
-                          color: COLORS.gray[700],
-                          display: 'block',
-                          marginBottom: 6,
+                          display: 'grid',
+                          gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))',
+                          gap: 7,
+                          maxHeight: 250,
+                          overflowY: 'auto',
+                          padding: 8,
+                          border: `1px solid ${COLORS.border}`,
+                          borderRadius: BORDER_RADIUS.md,
                         }}
                       >
-                        Centro di Costo Suggerito
-                      </label>
-                      <Select
-                        value={centroCostoSuggerito}
-                        onChange={e => setCentroCostoSuggerito(e.target.value)}
-                        style={{ width: '100%', fontSize: 14 }}
-                      >
-                        <option value="">-- Seleziona --</option>
-                        {centriCosto.map(cdc => (
-                          <option key={cdc.id || cdc.codice} value={cdc.id || cdc.codice}>
-                            {cdc.nome || cdc.descrizione}
-                          </option>
-                        ))}
-                      </Select>
+                        {centriCosto.filter(cdc => (cdc.id || cdc.codice) !== 'MISTO_PER_CONTENUTO').map(cdc => {
+                          const id = cdc.id || cdc.codice;
+                          const checked = centriCostoAmmessi.includes(id);
+                          return (
+                            <label
+                              key={id}
+                              style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 40, padding: '7px 9px', borderRadius: 8, cursor: 'pointer', background: checked ? COLORS.infoLight : COLORS.card, border: `1px solid ${checked ? COLORS.info : COLORS.border}`, fontSize: 12, color: COLORS.gray[700] }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => setCentriCostoAmmessi(prev => checked ? prev.filter(x => x !== id) : [...prev, id])}
+                                style={{ width: 18, height: 18, flexShrink: 0 }}
+                              />
+                              {cdc.nome || cdc.descrizione}
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     {/* Bottoni */}
@@ -932,10 +957,10 @@ export default function LearningMachine() {
                       <Button
                         variant="primary"
                         onClick={salvaFornitore}
-                        disabled={saving || (!keywords.trim() && !centroCostoSuggerito)}
+                        disabled={saving}
                         style={{ flex: 1, justifyContent: 'center' }}
                       >
-                        {saving ? 'Salvataggio...' : 'Salva Keywords'}
+                        {saving ? 'Salvataggio...' : 'Salva classificazione'}
                       </Button>
                       <Button variant="secondary" onClick={() => setSelectedFornitore(null)}>
                         Annulla
@@ -1007,20 +1032,30 @@ export default function LearningMachine() {
                           {f.fornitore_nome}
                         </p>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                          <Badge variant="success" style={{ textTransform: 'none' }}>
+                            Per contenuto fattura
+                          </Badge>
                           {(f.keywords || []).map((kw, i) => (
                             <Badge key={i} variant="info" style={{ textTransform: 'none' }}>
                               {kw}
                             </Badge>
                           ))}
                         </div>
+                        {(f.centri_costo_ammessi || []).length > 0 && (
+                          <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 7 }}>
+                            {f.centri_costo_ammessi.length} categorie possibili
+                          </div>
+                        )}
                       </div>
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => eliminaFornitoreKeywords(f.id)}
-                        style={{ padding: 4, color: COLORS.danger }}
+                        aria-label={`Elimina configurazione ${f.fornitore_nome}`}
+                        title="Elimina configurazione"
+                        style={{ width: 40, height: 40, padding: 0, color: COLORS.danger, justifyContent: 'center' }}
                       >
-                        <Trash2 size={16} />
+                        <Trash2 size={20} />
                       </Button>
                     </div>
                   </div>

@@ -71,6 +71,8 @@ def _normalizza_da_invoices(doc: dict) -> dict:
     return {
         "id": doc.get("id", ""),
         "numero_documento": doc.get("invoice_number") or doc.get("numero_documento"),
+        "tipo_documento": doc.get("tipo_documento") or doc.get("document_type") or "TD01",
+        "tipo_documento_desc": doc.get("tipo_documento_desc") or "",
         "data_documento": data_doc,
         "importo_totale": importo_totale,
         "imponibile": imponibile,
@@ -123,6 +125,8 @@ def _normalizza_da_fatture_passive(doc: dict) -> dict:
     return {
         "id": doc.get("dedup_key", ""),
         "numero_documento": doc.get("numero"),
+        "tipo_documento": doc.get("tipo_documento") or "TD01",
+        "tipo_documento_desc": doc.get("tipo_documento_desc") or "",
         "data_documento": doc.get("data"),
         "importo_totale": importo_totale,
         "imponibile": imponibile,
@@ -267,7 +271,7 @@ async def get_archivio_fatture(
         ]
 
     # ── Legge SOLO la collezione canonica `invoices` (§5.4) ──────────────────
-    docs_inv_raw = await db["invoices"].find(q_inv, {"_id": 0}).sort("invoice_date", -1).to_list(3000)
+    docs_inv_raw = await db["invoices"].find(q_inv, {"_id": 0}).sort("invoice_date", -1).to_list(6000)
 
     # ── Normalizza ────────────────────────────────────────────────────────────
     normalized_inv = [_normalizza_da_invoices(d) for d in docs_inv_raw]

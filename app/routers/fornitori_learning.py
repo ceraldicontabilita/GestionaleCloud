@@ -5,7 +5,8 @@ Permette di memorizzare e apprendere le categorie dei fornitori
 from fastapi import APIRouter, HTTPException, Body
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timezone
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+import re
 
 from app.database import Database
 
@@ -20,6 +21,7 @@ class FornitoreKeywordsCreate(BaseModel):
     fornitore_nome: str
     keywords: List[str]
     centro_costo_suggerito: Optional[str] = None
+    centri_costo_ammessi: List[str] = Field(default_factory=list)
     note: Optional[str] = None
 
 
@@ -30,6 +32,7 @@ class FornitoreKeywordsResponse(BaseModel):
     fornitore_nome_normalizzato: str
     keywords: List[str]
     centro_costo_suggerito: Optional[str]
+    centri_costo_ammessi: List[str] = Field(default_factory=list)
     note: Optional[str]
     fatture_count: int
     totale_fatture: float
@@ -124,6 +127,8 @@ async def lista_fornitori_keywords() -> Dict[str, Any]:
             f["fornitore_nome_normalizzato"] = normalizza_nome_fornitore(f["fornitore_nome"])
         f.setdefault("keywords", [])
         f.setdefault("centro_costo_suggerito", None)
+        f.setdefault("centri_costo_ammessi", [])
+        f.setdefault("modalita_classificazione", "per_contenuto")
         f["configurato"] = bool(f.get("centro_costo_suggerito") or f.get("keywords"))
 
     return {
@@ -240,13 +245,29 @@ async def salva_fornitore_keywords(data: FornitoreKeywordsCreate) -> Dict[str, A
     if agg:
         totale = agg[0].get("tot", 0)
     
+    # Un fornitore non identifica una categoria: grossisti e marketplace
+    # vendono normalmente prodotti molto diversi. Le nuove configurazioni
+    # lavorano quindi per contenuto della singola fattura.
+    from app.services.learning_machine_cdc import FORNITORE_MISTO
+    centro_costo = data.centro_costo_suggerito or FORNITORE_MISTO
+    centri_ammessi = list(dict.fromkeys(
+        c.strip() for c in data.centri_costo_ammessi if c and c.strip()
+    ))
+
     # Documento da salvare
+    keywords_pulite = []
+    for keyword in data.keywords:
+        keywords_pulite.extend(_estrai_frasi_da_descrizione(keyword))
+    keywords_pulite = list(dict.fromkeys(k for k in keywords_pulite if len(k) > 3))
+
     doc = {
         "id": f"fk_{nome_norm.replace(' ', '_')}",
         "fornitore_nome": data.fornitore_nome,
         "fornitore_nome_normalizzato": nome_norm,
-        "keywords": [k.lower().strip() for k in data.keywords if k.strip()],
-        "centro_costo_suggerito": data.centro_costo_suggerito,
+        "keywords": keywords_pulite,
+        "centro_costo_suggerito": centro_costo,
+        "centri_costo_ammessi": centri_ammessi,
+        "modalita_classificazione": "per_contenuto",
         "note": data.note,
         "fatture_count": fatture_count,
         "totale_fatture": round(totale, 2),
@@ -317,6 +338,7 @@ async def riclassifica_con_keywords_personalizzate() -> Dict[str, Any]:
         fornitore_nome = _nome_da_config(config)
         keywords = config.get("keywords", [])
         centro_suggerito = config.get("centro_costo_suggerito")
+        centri_ammessi = config.get("centri_costo_ammessi") or []
 
         if not fornitore_nome or (not keywords and not centro_suggerito):
             saltati_non_configurati += 1
@@ -339,7 +361,10 @@ async def riclassifica_con_keywords_personalizzate() -> Dict[str, Any]:
             ]
         }).to_list(5000)
 
-        misto = centro_suggerito == lm.FORNITORE_MISTO
+        misto = (
+            config.get("modalita_classificazione", "per_contenuto") != "fornitore_fisso"
+            or centro_suggerito == lm.FORNITORE_MISTO
+        )
         ultimo_cdc_nome = None
         cambiate = 0
         for fatt in fatture:
@@ -349,9 +374,13 @@ async def riclassifica_con_keywords_personalizzate() -> Dict[str, Any]:
                 # dal SUO contenuto (righe), mai dal fornitore. Se il
                 # contenuto non decide, resta in "da classificare".
                 cdc_id, cdc_config, _ = lm.classifica_fattura_per_centro_costo(
-                    "", fatt.get("descrizione", ""), fatt.get("linee") or []
+                    "", fatt.get("descrizione", ""), fatt.get("linee") or [],
+                    centri_ammessi=centri_ammessi,
                 )
-                if cdc_id == "99_ALTRI_COSTI":
+                if cdc_id == "99_ALTRI_COSTI" or not lm.contenuto_decide_con_margine(
+                    "", fatt.get("descrizione", ""), fatt.get("linee") or [],
+                    centri_ammessi=centri_ammessi,
+                ):
                     continue
                 fonte = "contenuto_fattura"
             else:
@@ -442,7 +471,7 @@ async def classifica_da_contenuto(
         sicura = (fonte == "keywords_personalizzate"
                   or (cdc_id != "99_ALTRI_COSTI"
                       and lm.contenuto_decide_con_margine(
-                          f.get("supplier_name", ""), f.get("descrizione", ""),
+                          "", f.get("descrizione", ""),
                           f.get("linee") or [], soglia_confidenza=soglia)))
         if not sicura:
             esito["ambigue"] += 1
@@ -583,6 +612,13 @@ _KEYWORD_STOP_WORDS = {
     "confezione", "confezioni", "pacco", "pacchi", "cartone", "cartoni",
     "taglia", "taglie", "colore", "colori", "misura", "misure",
     "xs", "s", "m", "l", "xl", "xxl", "xxxl", "preventivo", "preventivi",
+    "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+    "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
+    "gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set",
+    "ott", "nov", "dic", "protocollo", "protocol", "lotto", "lotti",
+    "scadenza", "scadenze", "decorrenza", "emissione", "emesso", "emessa",
+    "ricevuta", "ricevute", "destinazione", "causale", "allegato", "allegati",
+    "merce", "merci", "vario", "varia", "vari", "varie",
 }
 
 
@@ -597,15 +633,18 @@ def _estrai_frasi_da_descrizione(desc: str) -> List[str]:
         return []
     frasi: List[str] = []
     corrente: List[str] = []
-    for token in desc.lower().split():
-        parola = token.strip(".,;:!?()[]{}\"'")
+    # Barre, underscore e trattini sono separatori tipici di date e codici DDT.
+    testo = re.sub(r"[/_|\\-]+", " ", desc.lower())
+    for token in testo.split():
+        parola = token.strip(".,;:!?()[]{}\"'<>#")
         if not parola:
             continue
         scarta = (
             parola in _KEYWORD_STOP_WORDS
-            or parola.isdigit()
-            # codici/quantità alfanumerici corti con cifre (es. "kg2", "n.5")
-            or (len(parola) <= 4 and any(c.isdigit() for c in parola))
+            # Date, numeri documento, codici articolo e quantità non sono
+            # categorie merceologiche e non devono diventare suggerimenti.
+            or any(c.isdigit() for c in parola)
+            or len(parola) < 2
         )
         if scarta:
             if corrente:
@@ -658,11 +697,21 @@ async def suggerisci_keywords(fornitore_nome: str) -> Dict[str, Any]:
                     continue
                 frasi_frequenza[frase] = frasi_frequenza.get(frase, 0) + 1
 
-    # Ordina per frequenza (a parità, le frasi più lunghe/specifiche prima)
-    # e prendi le top 15.
-    keywords_suggerite = sorted(
+    # Ordina per frequenza e specificità, poi elimina i doppioni semantici.
+    ordinate = sorted(
         frasi_frequenza.items(), key=lambda x: (x[1], len(x[0])), reverse=True
-    )[:15]
+    )
+    keywords_suggerite = []
+    for frase, frequenza in ordinate:
+        if any(
+            (f" {frase} " in f" {presente} " or f" {presente} " in f" {frase} ")
+            and frequenza <= freq_presente
+            for presente, freq_presente in keywords_suggerite
+        ):
+            continue
+        keywords_suggerite.append((frase, frequenza))
+        if len(keywords_suggerite) == 12:
+            break
 
     return {
         "fornitore": fornitore_nome,
@@ -717,13 +766,14 @@ CDC_TO_MAGAZZINO_CATEGORIA = {
 async def associa_fornitori_magazzino() -> Dict[str, Any]:
     """
     Associa i prodotti nel magazzino ai fornitori configurati.
-    Aggiorna la categoria dei prodotti basandosi sulle keywords del fornitore.
+    Aggiorna ogni categoria dal contenuto del singolo prodotto.
     Questo permette di:
     - Sapere da chi compri la Coca Cola
     - Categorizzare correttamente i prodotti
     - Calcolare le giacenze per fornitore
     """
     db = Database.get_db()
+    import app.services.learning_machine_cdc as lm
     
     # Carica fornitori configurati
     fornitori_config = await db[COLL_FORNITORI_KEYWORDS].find({}).to_list(5000)
@@ -735,12 +785,11 @@ async def associa_fornitori_magazzino() -> Dict[str, Any]:
     dettaglio = []
     
     for config in fornitori_config:
-        fornitore_nome = config["fornitore_nome"]
+        fornitore_nome = _nome_da_config(config)
+        if not fornitore_nome:
+            continue
         keywords = config.get("keywords", [])
-        centro_costo = config.get("centro_costo_suggerito")
-        
-        # Determina categoria magazzino dal centro di costo
-        categoria_magazzino = CDC_TO_MAGAZZINO_CATEGORIA.get(centro_costo, "altro")
+        centri_ammessi = config.get("centri_costo_ammessi") or []
         
         # Trova prodotti di questo fornitore nel magazzino
         prodotti = await db["warehouse_inventory"].find({
@@ -748,15 +797,26 @@ async def associa_fornitori_magazzino() -> Dict[str, Any]:
         }).to_list(5000)
         
         for prod in prodotti:
-            # Aggiorna categoria se non è già specificata
+            # Classifica ogni prodotto dal proprio contenuto: lo stesso
+            # grossista può fornire vino, bicchieri e detergenti.
             if prod.get("categoria") == "altro" or not prod.get("categoria"):
+                descrizione_prodotto = " ".join(str(prod.get(k) or "") for k in (
+                    "nome", "descrizione", "prodotto", "articolo"
+                ))
+                cdc_id, _, _ = lm.classifica_fattura_per_centro_costo(
+                    "", descrizione_prodotto, [], centri_ammessi=centri_ammessi
+                )
+                categoria_magazzino = CDC_TO_MAGAZZINO_CATEGORIA.get(cdc_id)
+                if not categoria_magazzino:
+                    continue
                 await db["warehouse_inventory"].update_one(
                     {"_id": prod["_id"]},
                     {"$set": {
                         "categoria": categoria_magazzino,
                         "fornitore_principale": fornitore_nome,
                         "keywords_fornitore": keywords,
-                        "centro_costo_fornitore": centro_costo
+                        "centro_costo_fornitore": cdc_id,
+                        "classificazione_fonte": "contenuto_prodotto",
                     }}
                 )
                 aggiornati += 1
@@ -765,7 +825,7 @@ async def associa_fornitori_magazzino() -> Dict[str, Any]:
             dettaglio.append({
                 "fornitore": fornitore_nome,
                 "prodotti_trovati": len(prodotti),
-                "categoria_assegnata": categoria_magazzino
+                "categorie_assegnate_per_prodotto": True
             })
     
     return {

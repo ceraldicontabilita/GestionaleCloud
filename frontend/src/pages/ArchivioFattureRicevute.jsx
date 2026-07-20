@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { toast } from 'sonner';
@@ -27,6 +27,23 @@ import {
   Th,
   Td,
 } from '../components/ds';
+import { ChevronLeft, ChevronRight, Eye, FileText } from 'lucide-react';
+
+const PER_PAGINA = 50;
+
+const NOMI_TIPO_DOCUMENTO = {
+  TD01: 'Fattura',
+  TD04: 'Nota di credito',
+  TD05: 'Nota di debito',
+  TD24: 'Fattura differita',
+  TD25: 'Fattura differita',
+  TD26: 'Cessione beni ammortizzabili',
+};
+
+const tipoDocumento = fattura => {
+  const codice = String(fattura.tipo_documento || fattura.document_type || 'TD01').toUpperCase();
+  return { codice, nome: fattura.tipo_documento_desc || NOMI_TIPO_DOCUMENTO[codice] || codice };
+};
 
 const MESI = [
   { value: '', label: 'Tutti i mesi' },
@@ -76,6 +93,7 @@ export default function ArchivioFatture() {
   const [fornitori, setFornitori] = useState([]);
   const [statistiche, setStatistiche] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [pagina, setPagina] = useState(1);
 
   // Selezione multipla per export (richiesta utente 16/07/2026: "permettimi
   // di selezionare le fatture e di poterle scaricare in pdf ed excel").
@@ -135,7 +153,8 @@ export default function ArchivioFatture() {
     if (!invoiceIdFromUrl || loading) return; // aspetto che il fetch sia finito
     if (fatture.length === 0) return;
 
-    const found = fatture.find(f => f.id === invoiceIdFromUrl);
+    const indiceFound = fatture.findIndex(f => f.id === invoiceIdFromUrl);
+    const found = indiceFound >= 0 ? fatture[indiceFound] : null;
 
     if (!found) {
       // La fattura non è nella lista — probabilmente è di un anno diverso
@@ -161,6 +180,7 @@ export default function ArchivioFatture() {
 
     // Caso normale: trovata, evidenzio
     setInvoiceNotFoundWarning(null);
+    setPagina(Math.floor(indiceFound / PER_PAGINA) + 1);
     setHighlightedId(invoiceIdFromUrl);
     setTimeout(() => {
       highlightedRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -188,7 +208,7 @@ export default function ArchivioFatture() {
       // "senza_metodo" è un filtro client-side: fa fetch senza stato e poi filtra
       if (stato && stato !== 'senza_metodo') params.append('stato', stato);
       if (debouncedSearch) params.append('search', debouncedSearch);
-      params.append('limit', '500');
+      params.append('limit', '6000');
 
       const res = await api.get(`/api/fatture-ricevute/archivio?${params.toString()}`);
       let items = res.data.fatture || res.data.items || [];
@@ -201,6 +221,7 @@ export default function ArchivioFatture() {
         });
       }
       setFatture(items);
+      setPagina(1);
       setSelezionate(new Set()); // nuova lista → selezione azzerata
     } catch (err) {
       console.error('Errore caricamento fatture:', err);
@@ -237,6 +258,12 @@ export default function ArchivioFatture() {
   useEffect(() => {
     fetchFornitori();
   }, []);
+
+  const totalePagine = Math.max(1, Math.ceil(fatture.length / PER_PAGINA));
+  const fattureVisibili = useMemo(
+    () => fatture.slice((pagina - 1) * PER_PAGINA, pagina * PER_PAGINA),
+    [fatture, pagina]
+  );
 
   // ==================== HELPERS ====================
 
@@ -567,8 +594,9 @@ export default function ArchivioFatture() {
               />
               Seleziona tutte ({fatture.length})
             </label>
-            {fatture.map((f, idx) => {
+            {fattureVisibili.map((f, idx) => {
               const isPaid = f.pagato || f.status === 'paid' || f.stato_pagamento === 'pagata';
+              const tipoDoc = tipoDocumento(f);
               // Determina metodo EFFETTIVO del pagamento guardando:
               // 1. prima_nota_cassa_id / prima_nota_banca_id (fonte primaria)
               // 2. metodo_pagamento / metodo_pagamento_effettivo (fallback per dati legacy)
@@ -635,8 +663,9 @@ export default function ArchivioFatture() {
                     variant="info"
                     size="sm"
                     onClick={() => setFatturaView({ id: f.id, numero: f.invoice_number || f.numero_documento || f.numero_fattura })}
+                    style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', gap: 7 }}
                   >
-                    Vedi
+                    <Eye size={17} aria-hidden="true" /> Vedi
                   </Button>
                   {!isPaid && (isFornitoreBanca || isFornitoreCassa) && (
                     <Badge
@@ -749,6 +778,9 @@ export default function ArchivioFatture() {
                     >
                       #{f.invoice_number || f.numero_documento || '—'}
                     </span>
+                    <span title={tipoDoc.nome} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', color: COLORS.info, fontWeight: 650 }}>
+                      <FileText size={14} aria-hidden="true" /> {tipoDoc.codice}
+                    </span>
                     <span style={{ whiteSpace: 'nowrap' }}>
                       Imp. {formatCurrency(f.imponibile)}
                     </span>
@@ -777,6 +809,7 @@ export default function ArchivioFatture() {
                   </Th>
                   <Th>Data</Th>
                   <Th>Numero</Th>
+                  <Th>Tipo</Th>
                   <Th>Fornitore</Th>
                   <Th align="right">Imponibile</Th>
                   <Th align="right">IVA</Th>
@@ -787,8 +820,9 @@ export default function ArchivioFatture() {
                 </tr>
               </thead>
               <tbody>
-                {fatture.map((f, idx) => {
+                {fattureVisibili.map((f, idx) => {
                   const isPaid = f.pagato || f.status === 'paid' || f.stato_pagamento === 'pagata';
+                  const tipoDoc = tipoDocumento(f);
                   const hasCassaId = !!f.prima_nota_cassa_id;
                   const hasBancaId = !!f.prima_nota_banca_id;
                   const metodoSalvato = (
@@ -862,6 +896,11 @@ export default function ArchivioFatture() {
                         {f.invoice_number || f.numero_documento}
                       </Td>
                       <Td>
+                        <span title={tipoDoc.nome} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 30, padding: '4px 8px', borderRadius: 7, background: COLORS.infoLight, color: COLORS.info, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          <FileText size={15} aria-hidden="true" /> {tipoDoc.codice}
+                        </span>
+                      </Td>
+                      <Td>
                         <div style={{ fontWeight: 500, fontSize: 13, color: COLORS.gray[700] }}>
                           {f.supplier_name || f.fornitore_ragione_sociale}
                         </div>
@@ -892,8 +931,9 @@ export default function ArchivioFatture() {
                             variant="info"
                             size="sm"
                             onClick={() => setFatturaView({ id: f.id, numero: f.invoice_number || f.numero_documento || f.numero_fattura })}
+                            style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', gap: 7 }}
                           >
-                            Vedi
+                            <Eye size={17} aria-hidden="true" /> Vedi
                           </Button>
                           {isPaid ? (
                             <Badge
@@ -930,6 +970,34 @@ export default function ArchivioFatture() {
           </TableWrap>
         )}
       </Card>
+      {fatture.length > PER_PAGINA && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 16, padding: 12, background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.md }}>
+          <Button
+            variant="secondary"
+            onClick={() => setPagina(p => Math.max(1, p - 1))}
+            disabled={pagina === 1}
+            aria-label="Pagina precedente"
+            style={{ width: 44, height: 44, padding: 0, justifyContent: 'center' }}
+          >
+            <ChevronLeft size={21} />
+          </Button>
+          <div style={{ minWidth: 150, textAlign: 'center', fontSize: 13, color: COLORS.gray[700] }}>
+            <strong>Pagina {pagina} di {totalePagine}</strong>
+            <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>
+              {fatture.length} fatture totali
+            </div>
+          </div>
+          <Button
+            variant="secondary"
+            onClick={() => setPagina(p => Math.min(totalePagine, p + 1))}
+            disabled={pagina === totalePagine}
+            aria-label="Pagina successiva"
+            style={{ width: 44, height: 44, padding: 0, justifyContent: 'center' }}
+          >
+            <ChevronRight size={21} />
+          </Button>
+        </div>
+      )}
       {fatturaView && (
         <ModalFattura
           fatturaId={fatturaView.id}

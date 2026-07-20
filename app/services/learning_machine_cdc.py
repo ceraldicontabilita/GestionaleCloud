@@ -474,8 +474,9 @@ CENTRI_COSTO = {
         "deducibilita_ires": 1.0,
         "deducibilita_irap": 1.0,
         "detraibilita_iva": 1.0,
-        "keywords": ["pulizia", "impresa pulizie", "sanificazione", "detergenti",
-                    "detersivi", "prodotti pulizia"]
+        "keywords": ["pulizia", "impresa pulizie", "sanificazione", "detergente",
+                    "detergenti", "detersivo", "detersivi", "lavastoviglie",
+                    "brillantante", "sgrassatore", "prodotti pulizia"]
     },
     
     # 13. IMBALLAGGI
@@ -487,7 +488,8 @@ CENTRI_COSTO = {
         "deducibilita_irap": 1.0,
         "detraibilita_iva": 1.0,
         "keywords": ["scatola", "vassoio", "sacchetto", "carta", "confezione regalo",
-                    "nastro", "tovagliolo", "piattino", "bicchiere carta"]
+                    "nastro", "tovagliolo", "piattino", "bicchiere carta", "bicchiere",
+                    "bicchieri", "piatto monouso", "posate monouso"]
     },
     
     # 14. OMAGGI E RAPPRESENTANZA
@@ -723,7 +725,8 @@ def classifica_f24_per_centro_costo(f24_data: Dict[str, Any]) -> Tuple[str, Dict
 def classifica_fattura_per_centro_costo(
     supplier_name: str,
     descrizione: str = "",
-    linee_fattura: List[Dict] = None
+    linee_fattura: List[Dict] = None,
+    centri_ammessi: Optional[List[str]] = None,
 ) -> Tuple[str, Dict[str, Any], float]:
     """
     Classifica una fattura nel centro di costo corretto leggendo:
@@ -735,13 +738,21 @@ def classifica_fattura_per_centro_costo(
         Tuple[centro_costo_id, config_centro, confidence_score]
     """
     supplier_lower = (supplier_name or "").lower()
+    ammessi = set(centri_ammessi or [])
     
-    # FASE 1: Match su fornitori noti (priorità alta)
+    # Il fornitore è soltanto un fallback: prima si legge cosa è stato
+    # realmente acquistato. Un grossista può vendere categorie diverse.
+    fornitore_noto = None
     for cdc_id, config in CENTRI_COSTO.items():
+        if ammessi and cdc_id not in ammessi:
+            continue
         fornitori_noti = config.get("fornitori", [])
         for fornitore in fornitori_noti:
             if fornitore.lower() in supplier_lower:
-                return cdc_id, config, 0.9  # Alta confidence per match fornitore
+                fornitore_noto = (cdc_id, config)
+                break
+        if fornitore_noto:
+            break
     
     # FASE 2: testo del CONTENUTO (descrizione + righe) separato dal nome
     # fornitore. Il contenuto pesa il doppio: descrive COSA è stato comprato,
@@ -761,13 +772,13 @@ def classifica_fattura_per_centro_costo(
     scores = {}
 
     for cdc_id, config in CENTRI_COSTO.items():
+        if ammessi and cdc_id not in ammessi:
+            continue
         score = 0
         for keyword in config.get("keywords", []):
             k = keyword.lower()
             if k in contenuto_lower:
                 score += len(keyword) * PESO_CONTENUTO
-            elif k in supplier_lower:
-                score += len(keyword)  # match solo sul nome fornitore: peso base
 
         if score > 0:
             scores[cdc_id] = score
@@ -796,6 +807,22 @@ def classifica_fattura_per_centro_costo(
                 }
                 confidence = min(confidence, 0.4)
         return best_cdc, config_out, confidence
+
+    # Solo se le righe non contengono alcun segnale merceologico usiamo il
+    # nome del fornitore come indizio. Non può più sovrascrivere il contenuto.
+    if fornitore_noto:
+        return fornitore_noto[0], fornitore_noto[1], 0.65
+
+    scores_nome = {}
+    for cdc_id, config in CENTRI_COSTO.items():
+        if ammessi and cdc_id not in ammessi:
+            continue
+        score = sum(len(k) for k in config.get("keywords", []) if k.lower() in supplier_lower)
+        if score:
+            scores_nome[cdc_id] = score
+    if scores_nome:
+        best_cdc = max(scores_nome, key=scores_nome.get)
+        return best_cdc, CENTRI_COSTO[best_cdc], min(scores_nome[best_cdc] / 60.0, 0.6)
 
     # Fallback: altri costi
     return "99_ALTRI_COSTI", CENTRI_COSTO["99_ALTRI_COSTI"], 0.1
@@ -858,7 +885,8 @@ def risolvi_centro_costo(valore: str) -> Tuple[str, Dict[str, Any]]:
 
 
 def punteggi_contenuto(
-    supplier_name: str, descrizione: str = "", linee_fattura: List[Dict] = None
+    supplier_name: str, descrizione: str = "", linee_fattura: List[Dict] = None,
+    centri_ammessi: Optional[List[str]] = None,
 ) -> Dict[str, int]:
     """Punteggio keyword di OGNI centro di costo sul testo della fattura
     (stessa costruzione del testo del classificatore). Serve alla decisione
@@ -872,7 +900,10 @@ def punteggi_contenuto(
     testo_lower = testo.lower()
 
     scores: Dict[str, int] = {}
+    ammessi = set(centri_ammessi or [])
     for cdc_id, config in CENTRI_COSTO.items():
+        if ammessi and cdc_id not in ammessi:
+            continue
         score = 0
         for keyword in config.get("keywords", []):
             if keyword.lower() in testo_lower:
@@ -885,12 +916,15 @@ def punteggi_contenuto(
 def contenuto_decide_con_margine(
     supplier_name: str, descrizione: str = "", linee_fattura: List[Dict] = None,
     soglia_confidenza: float = 0.3,
+    centri_ammessi: Optional[List[str]] = None,
 ) -> bool:
     """True se il contenuto della fattura decide in modo AFFIDABILE:
     il centro migliore è l'unico a matchare, oppure stacca il secondo di
     almeno il doppio, oppure la confidenza supera la soglia. Sotto questi
     criteri la fattura resta 'ambigua' (mai classificata a caso)."""
-    scores = punteggi_contenuto(supplier_name, descrizione, linee_fattura)
+    scores = punteggi_contenuto(
+        supplier_name, descrizione, linee_fattura, centri_ammessi=centri_ammessi
+    )
     if not scores:
         return False
     ordinati = sorted(scores.values(), reverse=True)
@@ -909,7 +943,8 @@ async def carica_configurazioni_learning(db) -> List[Dict[str, Any]]:
         return await db["fornitori_keywords"].find(
             {}, {"_id": 0, "fornitore_nome": 1, "ragione_sociale": 1,
                  "fornitore_nome_normalizzato": 1, "keywords": 1,
-                 "centro_costo_suggerito": 1}
+                 "centro_costo_suggerito": 1, "centri_costo_ammessi": 1,
+                 "modalita_classificazione": 1}
         ).to_list(5000)
     except Exception as e:
         logger.warning(f"Learning: lookup fornitori_keywords fallito: {e}")
@@ -955,9 +990,11 @@ async def classifica_fattura_con_learning(
         # 0) fornitore MISTO (es. Amazon): la classificazione per fornitore
         #    non ha senso — decide SOLO il contenuto della fattura (righe),
         #    senza il match sul nome fornitore della tabella statica.
-        if config.get("centro_costo_suggerito") == FORNITORE_MISTO:
+        modalita = config.get("modalita_classificazione") or "per_contenuto"
+        if modalita != "fornitore_fisso" or config.get("centro_costo_suggerito") == FORNITORE_MISTO:
             cdc_id, cdc_config, conf = classifica_fattura_per_centro_costo(
-                "", descrizione, linee_fattura
+                "", descrizione, linee_fattura,
+                centri_ammessi=config.get("centri_costo_ammessi") or [],
             )
             return cdc_id, cdc_config, conf, "contenuto_fattura"
 

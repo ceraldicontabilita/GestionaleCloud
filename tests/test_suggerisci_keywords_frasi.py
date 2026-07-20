@@ -57,7 +57,14 @@ def test_scarta_righe_documento_logistica():
     frasi = _estrai_frasi_da_descrizione("DDT SPEDIZIONE MERCE VARIA")
     assert "ddt" not in frasi
     assert "spedizione" not in frasi
-    assert "merce varia" in frasi
+    assert frasi == []
+
+
+def test_scarta_date_numeri_ddt_e_riferimenti_mantenendo_il_prodotto():
+    frasi = _estrai_frasi_da_descrizione(
+        "DDT-9087 del 12/07/2026 rif. AB12345 DETERGENTI LAVASTOVIGLIE"
+    )
+    assert frasi == ["detergenti lavastoviglie"]
 
 
 def test_suggerisci_keywords_propone_frasi_non_parole_isolate(monkeypatch):

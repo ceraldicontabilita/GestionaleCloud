@@ -52,8 +52,9 @@ def test_risolvi_centro_costo_per_chiave_e_codice():
     assert lm.risolvi_centro_costo(None) == (None, None)
 
 
-def test_learning_usa_centro_costo_scelto_dall_utente():
-    """Il centro di costo configurato dall'utente vince sulla tabella statica."""
+def test_learning_legacy_non_forza_un_centro_su_tutte_le_fatture():
+    """Una vecchia associazione fornitore->centro non può sovrascrivere le
+    righe reali: lo stesso fornitore vende prodotti di categorie diverse."""
     db = _FakeDb([{
         "fornitore_nome": "PINCO PALLO SRL",
         "fornitore_nome_normalizzato": "pinco pallo",
@@ -61,11 +62,12 @@ def test_learning_usa_centro_costo_scelto_dall_utente():
         "centro_costo_suggerito": "1.1_CAFFE_BEVANDE_CALDE",
     }])
     cdc_id, cfg, conf, fonte = asyncio.run(
-        lm.classifica_fattura_con_learning(db, "PINCO PALLO SRL", "merce varia", [])
+        lm.classifica_fattura_con_learning(
+            db, "PINCO PALLO SRL", "", [{"descrizione": "detersivi per lavastoviglie"}]
+        )
     )
-    assert cdc_id == "1.1_CAFFE_BEVANDE_CALDE"
-    assert fonte == "keywords_personalizzate"
-    assert conf >= 0.9
+    assert cdc_id == "12.1_PULIZIA_LOCALE"
+    assert fonte == "contenuto_fattura"
 
 
 def test_learning_match_anche_schema_auto():
@@ -79,9 +81,10 @@ def test_learning_match_anche_schema_auto():
     cdc_id, cfg, conf, fonte = asyncio.run(
         lm.classifica_fattura_con_learning(db, "EUROUOVA SRL", "", [])
     )
-    # le keywords 'uova' portano a una classificazione non-fallback
-    assert fonte in ("keywords_apprese", "tabella_statica")
-    assert cdc_id  # mai None
+    # Il documento viene trovato, ma le keyword globali del fornitore non
+    # vengono più iniettate in una fattura senza righe: resta ambigua.
+    assert fonte == "contenuto_fattura"
+    assert cdc_id == "99_ALTRI_COSTI"
 
 
 def test_learning_fallback_tabella_statica():
@@ -127,6 +130,48 @@ def test_fornitore_misto_classifica_dal_contenuto():
     ))
     assert fonte2 == "contenuto_fattura"
     assert cdc_id2 == "99_ALTRI_COSTI"
+
+
+def test_fornitore_multi_prodotto_usa_righe_e_categorie_ammesse():
+    db = _FakeDb([{
+        "fornitore_nome": "GROSSISTA MULTI SRL",
+        "fornitore_nome_normalizzato": "grossista multi",
+        "centro_costo_suggerito": lm.FORNITORE_MISTO,
+        "modalita_classificazione": "per_contenuto",
+        "centri_costo_ammessi": [
+            "1.2_BEVANDE_FREDDE_ALCOLICI", "12.1_PULIZIA_LOCALE"
+        ],
+    }])
+    vino = asyncio.run(lm.classifica_fattura_con_learning(
+        db, "GROSSISTA MULTI SRL", "", [{"descrizione": "vino rosso bottiglie"}]
+    ))
+    detersivo = asyncio.run(lm.classifica_fattura_con_learning(
+        db, "GROSSISTA MULTI SRL", "", [{"descrizione": "detersivi pulizia lavastoviglie"}]
+    ))
+    assert vino[0] == "1.2_BEVANDE_FREDDE_ALCOLICI"
+    assert detersivo[0] == "12.1_PULIZIA_LOCALE"
+    assert vino[3] == detersivo[3] == "contenuto_fattura"
+
+
+def test_nome_fornitore_non_sovrascrive_il_prodotto():
+    cdc_id, _, _ = lm.classifica_fattura_per_centro_costo(
+        "KIMBO SPA", "", [{"descrizione": "detersivi prodotti pulizia"}]
+    )
+    assert cdc_id == "12.1_PULIZIA_LOCALE"
+
+
+def test_esempi_reali_multi_categoria_del_fornitore():
+    casi = {
+        "detergente lavastoviglie": "12.1_PULIZIA_LOCALE",
+        "bicchieri monouso": "13.1_IMBALLAGGI",
+        "bibite coca cola": "1.2_BEVANDE_FREDDE_ALCOLICI",
+        "vino rosso": "1.2_BEVANDE_FREDDE_ALCOLICI",
+    }
+    for descrizione, atteso in casi.items():
+        cdc_id, _, _ = lm.classifica_fattura_per_centro_costo(
+            "GROSSISTA GENERICO", "", [{"descrizione": descrizione}]
+        )
+        assert cdc_id == atteso
 
 
 def test_nuovi_centri_cucina_e_beni_sotto_516():
