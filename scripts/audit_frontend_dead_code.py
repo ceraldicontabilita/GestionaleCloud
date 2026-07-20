@@ -32,8 +32,13 @@ DYNAMIC_IMPORT_RE = re.compile(r"""import\(\s*["']([^"']+)["']\s*\)""")
 DYNAMIC_TEMPLATE_RE = re.compile(r"""import\(\s*`([^`]*)`\s*\)""")
 REQUIRE_RE = re.compile(r"""require\(\s*["']([^"']+)["']\s*\)""")
 
-HOOK_DIR = os.path.join(FRONTEND_SRC, "hooks")
+HOOK_DIR = f"{FRONTEND_SRC}/hooks"
 MODAL_NAME_RE = re.compile(r"Modal|Dialog", re.IGNORECASE)
+
+
+def normalizza_path(path):
+    """Usa sempre '/' nel grafo e nell'output, anche quando gira su Windows."""
+    return os.path.normpath(path).replace("\\", "/")
 
 
 def tutti_i_file():
@@ -42,7 +47,7 @@ def tutti_i_file():
         dirs[:] = [d for d in dirs if d not in ("node_modules",)]
         for f in files:
             if os.path.splitext(f)[1] in EXTENSIONS:
-                out.append(os.path.normpath(os.path.join(root, f)))
+                out.append(normalizza_path(os.path.join(root, f)))
     return out
 
 
@@ -55,9 +60,9 @@ def risolvi(base_dir, spec):
     """Risolve uno specifier di import in un path file reale sotto frontend/src,
     oppure None se è un pacchetto esterno (npm) o un asset non-JS (css/svg/...)."""
     if spec.startswith("@/"):
-        candidato = os.path.normpath(os.path.join(FRONTEND_SRC, spec[2:]))
+        candidato = normalizza_path(os.path.join(FRONTEND_SRC, spec[2:]))
     elif spec.startswith("."):
-        candidato = os.path.normpath(os.path.join(base_dir, spec))
+        candidato = normalizza_path(os.path.join(base_dir, spec))
     else:
         return None  # pacchetto npm
 
@@ -74,7 +79,7 @@ def risolvi(base_dir, spec):
 
     if os.path.isdir(candidato):
         for e in EXTENSIONS:
-            p = os.path.join(candidato, "index" + e)
+            p = normalizza_path(os.path.join(candidato, "index" + e))
             if os.path.isfile(p):
                 return p
 
@@ -147,9 +152,9 @@ def classifica(f, entrypoint_paths, direttamente_da_main, raggiungibili,
     if f in entrypoint_paths:
         return "ENTRYPOINT"
     if f in raggiungibili:
-        if f in direttamente_da_main and f.startswith(os.path.join(FRONTEND_SRC, "pages") + os.sep):
+        if f in direttamente_da_main and f.startswith(f"{FRONTEND_SRC}/pages/"):
             return "ROUTE_ATTIVA"
-        if f.startswith(HOOK_DIR + os.sep):
+        if f.startswith(HOOK_DIR + "/"):
             return "HOOK_USATO"
         if MODAL_NAME_RE.search(os.path.basename(f)):
             return "MODALE_USATO"
@@ -165,7 +170,7 @@ def classifica(f, entrypoint_paths, direttamente_da_main, raggiungibili,
     # eliminabili, dove ogni futuro file di test comparirebbe per sempre.
     basename = os.path.basename(f)
     if (re.search(r"\.(test|spec)\.[jt]sx?$", basename)
-            or f.startswith(os.path.join(FRONTEND_SRC, "test") + os.sep)):
+            or f.startswith(f"{FRONTEND_SRC}/test/")):
         return "TEST_ONLY"
     return "ORFANO_ELIMINABILE"
 
@@ -175,10 +180,10 @@ def main():
     tutti = tutti_i_file()
     tutti_i_testi = {f: leggi(f) for f in tutti}
 
-    entrypoint_paths = [os.path.normpath(os.path.join(FRONTEND_SRC, e)) for e in ENTRYPOINTS]
+    entrypoint_paths = [normalizza_path(os.path.join(FRONTEND_SRC, e)) for e in ENTRYPOINTS]
     entrypoint_paths = [e for e in entrypoint_paths if os.path.isfile(e)]
 
-    main_path = os.path.normpath(os.path.join(FRONTEND_SRC, "main.jsx"))
+    main_path = normalizza_path(os.path.join(FRONTEND_SRC, "main.jsx"))
     direttamente_da_main = grafo.get(main_path, set())
 
     raggiungibili = bfs(grafo, entrypoint_paths) - set(entrypoint_paths)

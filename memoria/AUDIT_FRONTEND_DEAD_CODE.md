@@ -3,7 +3,7 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 142
+**Totale file analizzati:** 143
 
 | Classificazione | File |
 |---|---:|
@@ -12,7 +12,7 @@
 | COMPONENTE_USATO | 79 |
 | MODALE_USATO | 4 |
 | HOOK_USATO | 3 |
-| TEST_ONLY | 2 |
+| TEST_ONLY | 3 |
 | DINAMICO_DA_VERIFICARE | 22 |
 | ORFANO_ELIMINABILE | 0 |
 
@@ -56,11 +56,11 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | File | Classificazione | Importato da (n. file) |
 |---|---|---:|
 | `frontend/src/App.jsx` | ENTRYPOINT | 1 |
-| `frontend/src/api.js` | COMPONENTE_USATO | 70 |
+| `frontend/src/api.js` | COMPONENTE_USATO | 71 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ChatIntelligente.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/CopyLinkButton.jsx` | COMPONENTE_USATO | 5 |
-| `frontend/src/components/DocumentViewerModal.jsx` | MODALE_USATO | 6 |
+| `frontend/src/components/DocumentViewerModal.jsx` | MODALE_USATO | 8 |
 | `frontend/src/components/ErrorBoundary.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/ExportButton.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/F24EmailSync.jsx` | COMPONENTE_USATO | 1 |
@@ -143,7 +143,8 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/Dashboard.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/DashboardRelazionale.jsx` | ROUTE_ATTIVA | 2 |
 | `frontend/src/pages/DatiProvvisoriPage.jsx` | ROUTE_ATTIVA | 2 |
-| `frontend/src/pages/DettaglioVerbale.jsx` | ROUTE_ATTIVA | 1 |
+| `frontend/src/pages/DettaglioVerbale.jsx` | ROUTE_ATTIVA | 2 |
+| `frontend/src/pages/DettaglioVerbale.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/Documenti.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/FattureEstereVerifica.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/FinanziamentoSoci.jsx` | COMPONENTE_USATO | 1 |
