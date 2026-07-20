@@ -333,3 +333,17 @@ Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `S
 - Esito: annullamento del dialog preserva il record; conferma esegue `DELETE /api/scadenze/{id}` e il record scompare sia dalla UI sia dal database.
 - Sicurezza: `DELETE /api/learning-machine/reset-learning` con ruolo `operatore` restituisce 403; la regola protetta resta presente nel database.
 - Automazione: `.github/workflows/e2e-distruttivo.yml` riesegue il collaudo su ogni modifica applicativa rilevante.
+## Fondazione decisionale supervisionata — 2026-07-20
+
+- Policy deterministica L0-L4 con comportamento fail-closed per L2.
+- Registro `ai_decisions` e cronologia append-only `ai_decision_events`.
+- Pagamenti e operazioni economiche classificati L3 con approvazione umana.
+- Azioni L4 bloccate; nessun agente può approvare la propria proposta.
+- Interruttore globale verificato anche sull'orchestratore.
+- Modalità `shadow`: approvare una proposta non la esegue.
+- Test backend mirati: 21 passati.
+- Suite backend completa: 751 passati, 2 saltati.
+- Test frontend: 30 passati.
+- Build frontend di produzione: completata.
+- Database usato nei test: MongoDB esclusivamente in memoria; nessun accesso ad
+  Atlas, Render, `.env` o dati aziendali reali.

@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1021 · tenere: 669 · verificare: 329 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1028 · tenere: 676 · verificare: 329 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -46,6 +46,13 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/admin/stats` | admin | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/admin/year-opening-balances/{year}` | admin | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `PUT /api/admin/year-opening-balances/{year}` | admin | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/agenti/automazioni/ferma` | agenti | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/agenti/automazioni/riprendi` | agenti | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/agenti/automazioni/stato` | agenti | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/agenti/decisioni` | agenti | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/agenti/decisioni/{decision_id}/approva` | agenti | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/agenti/decisioni/{decision_id}/eventi` | agenti | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/agenti/decisioni/{decision_id}/rifiuta` | agenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/agenti/pattern-appresi` | agenti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/agenti/run` | agenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/agenti/segnalazioni` | agenti | sì | — | — | — | — | tenere | in uso: FE |

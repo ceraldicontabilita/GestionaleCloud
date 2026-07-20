@@ -15,8 +15,12 @@ async def run_agenti(db, agente_specifico: str = None):
     ignora l'intervallo di schedulazione (e' una richiesta manuale esplicita
     dell'utente, non il giro automatico)."""
     from dateutil.parser import parse as parse_date
+    from app.agents.decision_engine import automazioni_sospese
     from app.agents.fiscale_sentinella import FiscaleSentinella
     from app.agents.learning_brain import LearningCervello
+
+    if await automazioni_sospese(db):
+        raise RuntimeError("Automazioni AI fermate dall'interruttore globale")
 
     ora = datetime.now(timezone.utc)
     mappa = {

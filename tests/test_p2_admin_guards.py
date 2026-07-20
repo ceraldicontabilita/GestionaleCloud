@@ -53,6 +53,10 @@ def test_endpoint_distruttivi_sono_admin_only():
         # prima richiamabile da qualunque utente autenticato non in sola
         # lettura.
         ("/apply-suggestions", "POST"),
+        ("/decisioni/{decision_id}/approva", "POST"),
+        ("/decisioni/{decision_id}/rifiuta", "POST"),
+        ("/automazioni/ferma", "POST"),
+        ("/automazioni/riprendi", "POST"),
     ]
     for frag, metodo in casi:
         res = _route_ha_admin(app, frag, metodo)

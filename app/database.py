@@ -237,6 +237,12 @@ class Database:
         await _safe_index("agenti_segnalazioni", [("created_at", -1)], name="idx_agenti_segn_data")
         await _safe_index("agenti_segnalazioni", "stato", name="idx_agenti_segn_stato")
 
+        # --- Registro decisionale agenti AI (append-only per gli eventi) ---
+        await _safe_index("ai_decisions", "decision_id", unique=True, name="idx_ai_decision_id")
+        await _safe_index("ai_decisions", [("execution_status", 1), ("timestamp", -1)], name="idx_ai_decision_status")
+        await _safe_index("ai_decisions", [("agent", 1), ("timestamp", -1)], name="idx_ai_decision_agent")
+        await _safe_index("ai_decision_events", [("decision_id", 1), ("timestamp", 1)], name="idx_ai_event_decision")
+
         # --- Operazioni da confermare ---
         await _safe_index("operazioni_da_confermare", [("created_at", -1)], name="idx_op_conf_data")
         await _safe_index("operazioni_da_confermare", "stato", name="idx_op_conf_stato")

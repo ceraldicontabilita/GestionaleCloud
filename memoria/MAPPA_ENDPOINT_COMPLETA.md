@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1021 endpoint** in **108 gruppi**.
+> Totale **1028 endpoint** in **108 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 647 · ext esterni = 76 · — da verificare = 298
+**Riepilogo uso:** ✓ frontend = 647 · ext esterni = 83 · — da verificare = 298
 
 ## AI Parser  (11)
 
@@ -54,10 +54,17 @@
 | DELETE | `/api/admin/rollback/{sezione}` | ✓ | admin_rollback |
 | GET | `/api/admin/rollback/{sezione}/conta` | ✓ | admin_rollback |
 
-## Agenti AI  (8)
+## Agenti AI  (15)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
+| POST | `/api/agenti/automazioni/ferma` | ext | agenti |
+| POST | `/api/agenti/automazioni/riprendi` | ext | agenti |
+| GET | `/api/agenti/automazioni/stato` | ext | agenti |
+| GET | `/api/agenti/decisioni` | ext | agenti |
+| POST | `/api/agenti/decisioni/{decision_id}/approva` | ext | agenti |
+| GET | `/api/agenti/decisioni/{decision_id}/eventi` | ext | agenti |
+| POST | `/api/agenti/decisioni/{decision_id}/rifiuta` | ext | agenti |
 | GET | `/api/agenti/pattern-appresi` | ext | agenti |
 | POST | `/api/agenti/run` | ext | agenti |
 | GET | `/api/agenti/segnalazioni` | ext | agenti |

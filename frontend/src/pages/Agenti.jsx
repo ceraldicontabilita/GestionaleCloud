@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useHashState } from '../hooks/useHashState';
 import { CopyLinkButton } from '../components/CopyLinkButton';
+import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import api from '../api';
-import { COLORS, STYLES, button, badge } from '../lib/utils';
+import { COLORS, STYLES, button, badge, formatEuro } from '../lib/utils';
 import { PageLayout, PageSection, PageEmpty, PageLoading } from '../components/PageLayout';
 
 // ---- costanti ----
@@ -194,14 +196,91 @@ function PatternCard({ p }) {
   );
 }
 
+const STATO_DECISIONE = {
+  observed: 'Osservata',
+  proposed: 'Proposta',
+  pending_approval: 'Attende approvazione',
+  ready_l2: 'Pronta L2 (non eseguita)',
+  approved_pending_execution: 'Approvata, non ancora eseguita',
+  rejected: 'Rifiutata',
+  blocked: 'Bloccata',
+  suspended: 'Sospesa',
+};
+
+function DecisioneCard({ decisione, isAdmin, onDecisione }) {
+  const inAttesa = decisione.execution_status === 'pending_approval';
+  const rischio = decisione.risk_level || 'low';
+  const badgeRischio = rischio === 'critical' || rischio === 'high'
+    ? 'danger'
+    : rischio === 'medium' ? 'warning' : 'success';
+  const azione = decisione.recommended_action?.description
+    || decisione.recommended_action?.type
+    || 'Nessuna azione operativa';
+
+  return (
+    <div style={{ ...STYLES.card, marginBottom: 10, borderLeft: `4px solid ${inAttesa ? COLORS.warning : COLORS.info}` }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 260px' }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 7 }}>
+            <span style={badge('info')}>{decisione.autonomy_level || 'L1'}</span>
+            <span style={badge(badgeRischio)}>Rischio {rischio}</span>
+            <span style={badge(inAttesa ? 'warning' : 'info')}>
+              {STATO_DECISIONE[decisione.execution_status] || decisione.execution_status}
+            </span>
+          </div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>
+            {decisione.objective}
+          </div>
+          <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 3 }}>
+            {decisione.agent} · {formatTs(decisione.timestamp)} · Confidenza {Math.round((decisione.confidence || 0) * 100)}%
+          </div>
+        </div>
+        <div style={{ fontWeight: 700, color: Math.abs(decisione.financial_impact || 0) > 0 ? COLORS.warning : COLORS.gray }}>
+          Impatto {formatEuro(decisione.financial_impact || 0)}
+        </div>
+      </div>
+      {decisione.explanation && (
+        <p style={{ fontSize: 12, color: '#475569', lineHeight: 1.6, margin: '10px 0 6px' }}>
+          {decisione.explanation}
+        </p>
+      )}
+      <div style={{ fontSize: 12, background: '#f8fafc', padding: '8px 10px', borderRadius: 6 }}>
+        <strong>Azione proposta:</strong> {azione}
+      </div>
+      {decisione.policy_reasons?.length > 0 && (
+        <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 7 }}>
+          Policy: {decisione.policy_reasons.join(', ')}
+        </div>
+      )}
+      {inAttesa && isAdmin && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+          <button style={button('primary')} onClick={() => onDecisione(decisione, true)}>
+            Approva proposta
+          </button>
+          <button style={button('danger')} onClick={() => onDecisione(decisione, false)}>
+            Rifiuta
+          </button>
+          <span style={{ fontSize: 11, color: COLORS.gray, alignSelf: 'center' }}>
+            L'approvazione non esegue l'azione.
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- PAGINA PRINCIPALE ----
 export default function AgentiPage() {
+  const confirm = useConfirm();
+  const { isAdmin } = useAuth();
   const [hs, setHs] = useHashState({ tab: 'agenti' });
   const activeTab = hs.tab;
   const setActiveTab = t => setHs('tab', t);
   const [stati, setStati] = useState([]);
   const [segnalazioni, setSegnalazioni] = useState([]);
   const [pattern, setPattern] = useState([]);
+  const [decisioni, setDecisioni] = useState([]);
+  const [automazioni, setAutomazioni] = useState({ sospese: false, modalita: 'shadow' });
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
   const [msg, setMsg] = useState('');
@@ -209,12 +288,16 @@ export default function AgentiPage() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [statiRes, segnRes] = await Promise.all([
+      const [statiRes, segnRes, decisioniRes, automazioniRes] = await Promise.all([
         api.get('/api/agenti/stato'),
         api.get('/api/agenti/segnalazioni?limit=100'),
+        api.get('/api/agenti/decisioni?limit=100'),
+        api.get('/api/agenti/automazioni/stato'),
       ]);
       setStati(statiRes.data.agenti || []);
       setSegnalazioni(segnRes.data.segnalazioni || []);
+      setDecisioni(decisioniRes.data.decisioni || []);
+      setAutomazioni(automazioniRes.data || { sospese: false, modalita: 'shadow' });
     } catch {
       setMsg('Errore caricamento dati agenti');
     } finally {
@@ -262,11 +345,48 @@ export default function AgentiPage() {
     }
   };
 
+  const gestisciDecisione = async (decisione, approva) => {
+    const ok = await confirm({
+      title: approva ? 'Approva la proposta' : 'Rifiuta la proposta',
+      message: approva
+        ? 'La proposta sarà marcata come approvata, ma non verrà eseguita automaticamente.'
+        : 'La proposta verrà rifiutata e resterà nello storico decisionale.',
+      variant: approva ? 'warning' : 'danger',
+    });
+    if (!ok) return;
+    try {
+      await api.post(`/api/agenti/decisioni/${decisione.decision_id}/${approva ? 'approva' : 'rifiuta'}`, {});
+      setMsg(approva ? 'Proposta approvata, in attesa di esecuzione separata.' : 'Proposta rifiutata.');
+      await loadAll();
+    } catch (error) {
+      setMsg(error.response?.data?.detail || 'Errore durante la gestione della proposta');
+    }
+  };
+
+  const cambiaAutomazioni = async sospendi => {
+    const ok = await confirm({
+      title: sospendi ? 'Ferma tutte le automazioni AI' : 'Riprendi le automazioni AI',
+      message: sospendi
+        ? 'Gli agenti programmati verranno fermati. Il registro e la consultazione resteranno disponibili.'
+        : 'Gli agenti torneranno a osservare e creare proposte in modalità shadow.',
+      variant: sospendi ? 'danger' : 'warning',
+    });
+    if (!ok) return;
+    try {
+      await api.post(`/api/agenti/automazioni/${sospendi ? 'ferma' : 'riprendi'}`);
+      setMsg(sospendi ? 'Automazioni AI fermate.' : 'Automazioni AI riprese in modalità shadow.');
+      await loadAll();
+    } catch (error) {
+      setMsg(error.response?.data?.detail || 'Errore durante il cambio di stato delle automazioni');
+    }
+  };
+
   const segnPerTipo = tipo => segnalazioni.filter(s => s.tipo === tipo && !s.risolta);
   const urgenti = segnPerTipo('urgente').length + segnPerTipo('anomalia').length;
 
   const TABS = [
     { key: 'agenti', label: `Agenti (${stati.length})` },
+    { key: 'decisioni', label: `Decisioni (${decisioni.length})` },
     { key: 'urgente', label: `Urgenti (${urgenti})`, alert: urgenti > 0 },
     { key: 'avviso', label: `Avvisi (${segnPerTipo('avviso').length})` },
     { key: 'info', label: `Info (${segnPerTipo('info').length})` },
@@ -284,14 +404,28 @@ export default function AgentiPage() {
             Monitor, segnalazioni e pattern appresi dal sistema di intelligenza automatica
           </p>
         </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <span style={{ ...badge(automazioni.sospese ? 'danger' : 'success'), alignSelf: 'center' }}>
+            {automazioni.sospese ? 'Automazioni ferme' : 'Modalità shadow'}
+          </span>
+          {isAdmin && (
+            <button
+              data-testid="btn-stop-automazioni"
+              onClick={() => cambiaAutomazioni(!automazioni.sospese)}
+              style={button(automazioni.sospese ? 'secondary' : 'danger')}
+            >
+              {automazioni.sospese ? 'Riprendi automazioni' : 'Ferma automazioni'}
+            </button>
+          )}
         <button
           data-testid="btn-run-all-agenti"
           onClick={() => eseguiOra()}
-          disabled={running}
-          style={button('primary', running)}
+          disabled={running || automazioni.sospese}
+          style={button('primary', running || automazioni.sospese)}
         >
           {running ? '⏳ Esecuzione...' : '▶ Esegui tutti ora'}
         </button>
+        </div>
       </div>
 
       {msg && (
@@ -377,6 +511,29 @@ export default function AgentiPage() {
               ) : (
                 stati.map(a => <AgenteCard key={a.agente} agente={a} onRun={eseguiOra} />)
               )}
+            </div>
+          )}
+
+          {activeTab === 'decisioni' && (
+            <div>
+              <PageSection title="Registro decisionale supervisionato">
+                <div style={{ fontSize: 12, color: COLORS.gray, marginBottom: 12 }}>
+                  Gli agenti osservano e propongono. Pagamenti, registrazioni contabili, invii fiscali,
+                  cancellazioni e operazioni economiche non vengono mai eseguiti da questa schermata.
+                </div>
+                {decisioni.length === 0 ? (
+                  <PageEmpty message="Nessuna decisione registrata. Esegui gli agenti per generare osservazioni e proposte." />
+                ) : (
+                  decisioni.map(d => (
+                    <DecisioneCard
+                      key={d.decision_id}
+                      decisione={d}
+                      isAdmin={isAdmin}
+                      onDecisione={gestisciDecisione}
+                    />
+                  ))
+                )}
+              </PageSection>
             </div>
           )}
 
