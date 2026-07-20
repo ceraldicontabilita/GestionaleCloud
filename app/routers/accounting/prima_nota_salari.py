@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 import uuid
 import logging
 import io
+import hashlib
+from decimal import Decimal, InvalidOperation
 
 from app.database import Database
 from app.utils.dependencies import get_current_admin_user, get_current_user
@@ -64,6 +66,77 @@ def get_mese_numero(mese_str: str) -> int:
         pass
     # Altrimenti cerca nel mapping
     return MESI_MAP.get(str(mese_str).lower().strip(), 0)
+
+
+def _prima_colonna(
+    colonne: List[str],
+    nomi_esatti: List[str],
+    parole: Optional[List[str]] = None,
+    escluse: Optional[List[str]] = None,
+) -> Optional[str]:
+    """Trova una colonna senza dipendere dall'ordine del foglio Excel."""
+    normalizzate = {str(colonna).strip().lower(): colonna for colonna in colonne}
+    for nome in nomi_esatti:
+        if nome in normalizzate:
+            return normalizzate[nome]
+    for colonna in colonne:
+        testo = str(colonna).strip().lower()
+        if escluse and any(parola in testo for parola in escluse):
+            continue
+        if parole and any(parola in testo for parola in parole):
+            return colonna
+    return None
+
+
+def _importo_positivo(valore: Any) -> Optional[float]:
+    """Converte importi Excel italiani; vuoti e zeri non sono movimenti."""
+    if valore is None:
+        return None
+    try:
+        import pandas as pd
+        if pd.isna(valore):
+            return None
+    except (TypeError, ValueError):
+        pass
+    testo = str(valore).strip().replace("€", "").replace(" ", "")
+    if not testo:
+        return None
+    if "," in testo:
+        testo = testo.replace(".", "").replace(",", ".")
+    try:
+        importo = abs(Decimal(testo)).quantize(Decimal("0.01"))
+    except (InvalidOperation, ValueError):
+        return None
+    return float(importo) if importo > 0 else None
+
+
+def _data_excel_iso(valore: Any) -> Optional[str]:
+    if valore is None:
+        return None
+    try:
+        import pandas as pd
+        if pd.isna(valore):
+            return None
+        data = pd.to_datetime(valore, dayfirst=True, errors="coerce")
+        if pd.isna(data):
+            return None
+        return data.date().isoformat()
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _chiave_bonifico_excel(
+    dipendente: str,
+    anno: int,
+    mese: int,
+    data_bonifico: Optional[str],
+    importo: float,
+) -> str:
+    base = "|".join([
+        normalize_name(dipendente), str(anno), str(mese),
+        data_bonifico or "", f"{importo:.2f}",
+    ])
+    return "bonifico_excel:" + hashlib.sha256(base.encode("utf-8")).hexdigest()
 
 
 # ============== ENDPOINTS ==============
@@ -357,12 +430,14 @@ async def import_paghe(file: UploadFile = File(...)) -> Dict[str, Any]:
 @router.post("/import-bonifici")
 async def import_bonifici(file: UploadFile = File(...)) -> Dict[str, Any]:
     """
-    Importa file BONIFICI (importi erogati).
+    Importa file BONIFICI (importi erogati) come evidenze documentali.
     Formati supportati:
     - Dipendente | Mese | Anno | Importo Erogato
     - Dipendente | Mese (data completa) | Importo Erogato
     
-    REGOLA: MAI AGGREGARE - Crea un record per ogni riga del file.
+    REGOLA: MAI AGGREGARE. L'import non dichiara una riconciliazione bancaria:
+    crea una riga per ogni bonifico reale e la successiva associazione al
+    cedolino richiede nome, periodo e importo coerenti.
     """
     import pandas as pd
     
@@ -375,7 +450,7 @@ async def import_bonifici(file: UploadFile = File(...)) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail=f"Errore lettura Excel: {str(e)}")
     
     # Normalizza nomi colonne (rimuovi spazi extra)
-    df.columns = [c.strip().lower() for c in df.columns]
+    df.columns = [str(c).strip().lower() for c in df.columns]
     
     logger.info(f"IMPORT BONIFICI - Colonne trovate: {list(df.columns)}")
     
@@ -384,28 +459,54 @@ async def import_bonifici(file: UploadFile = File(...)) -> Dict[str, Any]:
     col_mese = None
     col_anno = None
     col_importo = None
-    
-    for c in df.columns:
-        if 'dipendente' in c or 'nome' in c or 'cognome' in c:
-            col_dipendente = c
-        elif 'mese' in c or 'data' in c:
-            col_mese = c
-        elif 'anno' in c:
-            col_anno = c
-        elif any(x in c for x in ['erogato', 'bonifico', 'pagato', 'versato', 'accredito', 'importo']):
-            col_importo = c
+    col_data_bonifico = None
+
+    colonne = list(df.columns)
+    col_dipendente = _prima_colonna(
+        colonne,
+        ["dipendente", "nome dipendente", "beneficiario"],
+        ["dipendente", "beneficiario", "nome", "cognome"],
+    )
+    col_mese = _prima_colonna(
+        colonne, ["mese", "mese competenza", "competenza"], ["mese", "competenza"]
+    )
+    col_anno = _prima_colonna(colonne, ["anno", "anno competenza"], ["anno"])
+    # Nel foglio storico IMPORTO ACCONTO e' il pagamento; IMPORTO BUSTA e'
+    # il netto del cedolino e non deve essere scambiato per un bonifico.
+    col_importo = _prima_colonna(
+        colonne,
+        [
+            "importo bonifico", "importo acconto", "importo erogato",
+            "importo pagato", "importo versato", "accredito",
+        ],
+        ["bonifico", "acconto", "erogato", "pagato", "versato", "accredito"],
+        ["busta", "stipendio netto", "netto cedolino"],
+    )
+    col_data_bonifico = _prima_colonna(
+        colonne,
+        ["data bonifico", "data acconto", "data pagamento", "data erogazione"],
+        ["data bonifico", "data acconto", "data pagamento", "data erogazione"],
+    )
     
     if not all([col_dipendente, col_mese, col_importo]):
         raise HTTPException(
             status_code=400, 
-            detail=f"Colonne richieste non trovate. Trovate: {list(df.columns)}. Serve: dipendente, mese/data, importo"
+            detail=(
+                f"Colonne richieste non trovate. Trovate: {list(df.columns)}. "
+                "Servono dipendente, mese/competenza e un importo di bonifico/acconto; "
+                "IMPORTO BUSTA non viene usato come pagamento."
+            )
         )
     
     logger.info(f"IMPORT BONIFICI - Righe nel file: {len(df)}")
     logger.info(f"IMPORT BONIFICI - Mapping: dip={col_dipendente}, mese={col_mese}, anno={col_anno}, importo={col_importo}")
     
     created = 0
+    duplicates = 0
+    skipped = 0
+    totale_documentato = 0.0
     errors = []
+    chiavi_nel_file = set()
     
     # CREA UN RECORD PER OGNI RIGA - MAI AGGREGARE
     for idx, row in df.iterrows():
@@ -414,7 +515,7 @@ async def import_bonifici(file: UploadFile = File(...)) -> Dict[str, Any]:
             if not dipendente or dipendente == "NAN":
                 continue
             
-            # Gestisci mese e anno
+            # Gestisci mese e anno di competenza (non la data del bonifico).
             mese_val = row[col_mese]
             
             # Se è una data completa, estrai mese e anno
@@ -430,7 +531,7 @@ async def import_bonifici(file: UploadFile = File(...)) -> Dict[str, Any]:
                     anno = dt.year
                 except Exception:
                     mese = get_mese_numero(str(mese_val))
-                    anno = int(row[col_anno]) if col_anno else 2024
+                    anno = int(row[col_anno]) if col_anno else None
             else:
                 mese_str = str(mese_val).strip()
                 mese = get_mese_numero(mese_str)
@@ -442,15 +543,34 @@ async def import_bonifici(file: UploadFile = File(...)) -> Dict[str, Any]:
                     else:
                         anno = int(anno_val)
                 else:
-                    anno = 2024  # Default
+                    anno = None
+
+            data_bonifico = _data_excel_iso(row[col_data_bonifico]) if col_data_bonifico else None
+            if not anno and data_bonifico:
+                anno = int(data_bonifico[:4])
             
-            if mese == 0 or mese > 14:
+            if mese == 0 or mese > 14 or not anno:
                 errors.append(f"Riga {idx + 2}: mese non valido ({mese_val})")
                 continue
+
+            importo = _importo_positivo(row[col_importo])
+            if importo is None:
+                skipped += 1
+                continue
+
+            import_key = _chiave_bonifico_excel(
+                dipendente, int(anno), mese, data_bonifico, importo
+            )
+            if import_key in chiavi_nel_file:
+                duplicates += 1
+                continue
+            chiavi_nel_file.add(import_key)
+
+            if await db["prima_nota_salari"].find_one({"import_key": import_key}):
+                duplicates += 1
+                continue
             
-            importo = float(row[col_importo]) if pd.notna(row[col_importo]) else 0
-            
-            # Crea nuovo record per OGNI riga
+            # Bonifico documentato, non ancora verificato contro l'estratto conto.
             new_record = {
                 "id": str(uuid.uuid4()),
                 "dipendente": dipendente,
@@ -458,30 +578,39 @@ async def import_bonifici(file: UploadFile = File(...)) -> Dict[str, Any]:
                 "mese": mese,
                 "mese_nome": MESI_NOMI[mese - 1] if 1 <= mese <= 12 else "",
                 "importo_busta": 0,
-                "importo_bonifico": round(importo, 2),
-                "saldo": round(importo, 2),
+                "importo_bonifico": 0,
+                "importo_bonifico_documentato": round(importo, 2),
+                "data_bonifico_documentata": data_bonifico,
+                "saldo": 0,
                 "progressivo": 0,
                 "riconciliato": False,
-                "tipo": "bonifico",
+                "tipo": "bonifico_documentato",
+                "source": "excel_bonifici_storici",
+                "source_filename": file.filename or "bonifici.xlsx",
+                "source_row": idx + 2,
+                "import_key": import_key,
+                "descrizione": "Bonifico storico da confrontare con il cedolino",
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }
             await db["prima_nota_salari"].insert_one(new_record.copy())
             created += 1
+            totale_documentato += importo
             
         except Exception as e:
             errors.append(f"Riga {idx + 2}: {str(e)}")
     
     logger.info(f"IMPORT BONIFICI - Record creati: {created}")
     
-    # Ricalcola progressivi
-    await ricalcola_progressivi_tutti(db)
-    
     return {
         "success": True,
-        "message": "Import BONIFICI completato",
+        "message": "Import BONIFICI documentati completato; confronto cedolini non ancora eseguito",
         "created": created,
         "updated": 0,
+        "duplicates": duplicates,
+        "skipped": skipped,
+        "totale_documentato": round(totale_documentato, 2),
+        "riconciliati": 0,
         "righe_file": len(df),
         "errors": errors[:10] if errors else []
     }

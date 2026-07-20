@@ -969,6 +969,14 @@ attribuita per competenza*, *in quale liquidazione è stata effettivamente usata
   movimento in `prima_nota_salari` e un accantonamento TFR mensile; la
   riconciliazione con l'accredito reale in banca/cassa è automatica per importo
   e nome dipendente.
+- **Import storico bonifici da Excel (20/07/2026)**: il foglio puo' contenere
+  insieme `IMPORTO BUSTA` e `IMPORTO ACCONTO`. Solo `DATA ACCONTO` e
+  `IMPORTO ACCONTO` rappresentano il pagamento da importare; il netto busta non
+  viene mai scambiato per un bonifico. Le righe sono salvate come bonifici
+  documentati, idempotenti e ancora **non riconciliati**. Nessun cedolino viene
+  collegato in questa fase: il confronto successivo richiede nome, periodo e
+  importo coerenti, mentre lo stato "riconciliato" richiede anche l'evidenza
+  univoca nell'estratto conto.
 - **Bug corretto 15/07/2026 (doppio conteggio reale)**: il canale che elabora
   davvero i PDF (parser + evento `cedolino.importato`) poteva generare **due**
   movimenti in `prima_nota_salari` per lo stesso stipendio, perché il controllo
