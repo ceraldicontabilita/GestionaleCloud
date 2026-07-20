@@ -53,7 +53,24 @@ def is_versamento_contanti(descrizione: str) -> bool:
     Riconosce entrambe le forme.
     """
     desc_upper = (descrizione or "").upper()
+    # Uno storno non e' un nuovo versamento: e' una rettifica bancaria che
+    # deve restare visibile e da verificare, senza creare movimenti di cassa.
+    if "STORNO" in desc_upper:
+        return False
     if "CONTANT" not in desc_upper:
+        return False
+    return "VERSAMENTO" in desc_upper or bool(re.search(r"VERS\.?\s*CONTANT", desc_upper))
+
+
+def is_storno_versamento(descrizione: str) -> bool:
+    """Riconosce la rettifica/storno di un versamento contanti.
+
+    Lo storno non prova che il contante sia rientrato in cassa e non deve
+    essere trattato come un secondo deposito. Resta nell'estratto conto in
+    attesa di verifica/associazione esplicita.
+    """
+    desc_upper = (descrizione or "").upper()
+    if "STORNO" not in desc_upper or "CONTANT" not in desc_upper:
         return False
     return "VERSAMENTO" in desc_upper or bool(re.search(r"VERS\.?\s*CONTANT", desc_upper))
 
@@ -99,6 +116,8 @@ def mappa_categoria_ec(categoria: Optional[str], descrizione: Optional[str] = No
     if desc:
         if "PAYPAL" in desc:
             return "Pagamento PayPal"
+        if is_storno_versamento(desc):
+            return "Storno versamento"
         if is_versamento_contanti(desc):
             return "Versamento Banca"
         if is_prelievo_contanti(desc):
@@ -677,6 +696,13 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
 
                 desc_upper = (mov.get("descrizione_originale") or mov.get("descrizione") or "").upper()
                 now_iso = datetime.now(timezone.utc).isoformat()
+
+                # Il versamento nasce dalla registrazione manuale in Cassa,
+                # non dalla sola lettura dell'estratto conto. Se la gamba
+                # manuale manca, la riga resta da verificare e non inventiamo
+                # due movimenti. Gli storni non sono mai nuovi versamenti.
+                if is_versamento_contanti(desc_upper) or is_storno_versamento(desc_upper):
+                    continue
 
                 # REGOLA CANONICA POS (utente 18/07/2026): l'accredito POS
                 # dell'estratto conto NON crea un'entrata — RICONCILIA il

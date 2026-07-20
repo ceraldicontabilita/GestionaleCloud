@@ -530,7 +530,9 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     # un eventuale abort dell'import lascia al più un movimento riferito a
     # una fattura che verrà reimportata subito dopo con lo stesso id.
     from app.routers.prima_nota_module.sync import registra_pagamento_fattura
-    esito = await registra_pagamento_fattura(invoice, destinazione)
+    esito = await registra_pagamento_fattura(
+        invoice, destinazione, source="auto_metodo_fornitore"
+    )
     mov_id = esito.get(destinazione)
     if not mov_id:
         return None

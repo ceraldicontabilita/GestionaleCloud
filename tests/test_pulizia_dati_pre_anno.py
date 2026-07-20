@@ -71,7 +71,7 @@ def _setup(monkeypatch):
 def test_dry_run_conta_senza_eliminare(monkeypatch):
     db = _setup(monkeypatch)
 
-    esito = _run(mod.pulizia_dati_pre_anno(anno_da_mantenere=2026, dry_run=True, _admin={}))
+    esito = _run(mod.pulizia_dati_pre_anno(anno_da_mantenere=2026, dry_run=True, crea_backup=False, _admin={}))
 
     assert esito["dry_run"] is True
     assert esito["collections"]["prima_nota_banca"]["trovati_pre_anno"] == 2
@@ -85,10 +85,40 @@ def test_dry_run_conta_senza_eliminare(monkeypatch):
 def test_esecuzione_elimina_solo_pre_anno(monkeypatch):
     db = _setup(monkeypatch)
 
-    esito = _run(mod.pulizia_dati_pre_anno(anno_da_mantenere=2026, dry_run=False, _admin={}))
+    esito = _run(mod.pulizia_dati_pre_anno(anno_da_mantenere=2026, dry_run=False, crea_backup=False, _admin={}))
 
     assert esito["totale_eliminati"] == 4  # b21 b22 f22 e21
     ids_banca = {d.get("id") for d in db["prima_nota_banca"].docs}
     assert ids_banca == {"b26", "bND"}  # il 2026 resta, il senza-data resta
     assert {d["id"] for d in db["invoices"].docs} == {"f26"}
     assert {d["id"] for d in db["estratto_conto_movimenti"].docs} == {"e26"}
+
+
+def test_preserva_cedolini_salario_e_bonifici_collegati(monkeypatch):
+    db = _Db()
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    db["cedolini"].docs = [{"id": "ced-2024", "anno": 2024}]
+    db["prima_nota_salari"].docs = [{
+        "id": "sal-2024", "anno": 2024, "data": "2024-05-01",
+        "cedolino_id": "ced-2024", "movimenti_bancari_ids": ["ec-stip-2024"],
+    }]
+    db["estratto_conto_movimenti"].docs = [
+        {"id": "ec-stip-2024", "data": "2024-05-27", "tipo": "uscita"},
+        {"id": "ec-altro-2024", "data": "2024-05-28", "tipo": "uscita"},
+    ]
+    db["prima_nota_banca"].docs = [
+        {"id": "pn-stip-2023", "data": "2023-06-27", "categoria": "Stipendi"},
+        {"id": "pn-altro-2023", "data": "2023-06-28", "categoria": "Fatture"},
+    ]
+
+    esito = _run(mod.pulizia_dati_pre_anno(
+        anno_da_mantenere=2026, dry_run=False, crea_backup=False, _admin={}
+    ))
+
+    assert {d["id"] for d in db["cedolini"].docs} == {"ced-2024"}
+    assert {d["id"] for d in db["prima_nota_salari"].docs} == {"sal-2024"}
+    assert {d["id"] for d in db["estratto_conto_movimenti"].docs} == {"ec-stip-2024"}
+    assert {d["id"] for d in db["prima_nota_banca"].docs} == {"pn-stip-2023"}
+    assert esito["cedolini_preservati"] is True
+    assert esito["prima_nota_salari_preservata"] is True
+    assert esito["collections"]["estratto_conto_movimenti"]["preservati_cedolini_bonifici"] == 1

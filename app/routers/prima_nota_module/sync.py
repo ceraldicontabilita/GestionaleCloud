@@ -156,7 +156,8 @@ async def registra_pagamento_fattura(
     fattura: Dict,
     metodo_pagamento: str,
     importo_cassa: float = 0,
-    importo_banca: float = 0
+    importo_banca: float = 0,
+    source: str = "fattura_pagata",
 ) -> Dict:
     """Registra automaticamente il pagamento di una fattura.
 
@@ -191,7 +192,7 @@ async def registra_pagamento_fattura(
         "fornitore_piva": fornitore_piva,
         "fattura_id": fattura_id,
         "tipo_documento": fattura.get("tipo_documento"),
-        "source": "fattura_pagata",
+        "source": source,
         "created_at": now
     }
 

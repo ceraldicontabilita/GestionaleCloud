@@ -511,12 +511,15 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
     const { verificata, automatica, match_score, tipo: tipoRic, accreditato_ec } = mov.riconciliazione;
     const isPos = tipoRic === 'pos_trasferimento';
     const isPaypal = tipoRic === 'paypal';
+    const isVersamento = tipoRic === 'versamento_contanti';
     if (verificata) {
       const importoInfo = isPos && accreditato_ec ? ` (${eur(accreditato_ec)} accreditati)` : '';
       const title = isPaypal
         ? 'Riconciliato con una transazione PayPal reale'
         : isPos
         ? `Trasferimento POS riconciliato con l'estratto conto${importoInfo}`
+        : isVersamento
+        ? 'Versamento cassa riconciliato con il movimento reale dell\'estratto conto'
         : (automatica ? `Riconciliato automaticamente con l'estratto conto (punteggio ${match_score ?? '—'})` : "Riconciliato con l'estratto conto");
       return (
         <span
@@ -533,6 +536,8 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
           ? "Nessuna transazione PayPal di riscontro trovata: verificare"
           : isPos
           ? "Nessun accredito trovato in estratto conto per questo trasferimento POS: verificare in Coerenza POS"
+          : isVersamento
+          ? "Versamento registrato in cassa: in attesa del movimento reale nell'estratto conto"
           : "Nessun addebito trovato in estratto conto per questa fattura: verificare in Riconciliazione"}
         style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fcd34d', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
       >

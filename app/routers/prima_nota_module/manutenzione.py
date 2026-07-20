@@ -292,7 +292,6 @@ async def fix_versamenti_duplicati(anno: Optional[int] = Query(None)) -> Dict:
 COLLEZIONI_PULIZIA_PRE_ANNO = {
     "prima_nota_cassa": ["data"],
     "prima_nota_banca": ["data"],
-    "prima_nota_salari": ["data"],
     "corrispettivi": ["data"],
     "invoices": ["invoice_date", "data_fattura", "data_ricezione"],
     "fatture_emesse": ["invoice_date", "data_emissione"],
@@ -317,6 +316,7 @@ def _estrai_anno(valore) -> Optional[int]:
 async def pulizia_dati_pre_anno(
     anno_da_mantenere: int = Query(2026, description="Primo anno da MANTENERE"),
     dry_run: bool = Query(True, description="Solo conteggio, non elimina"),
+    crea_backup: bool = Query(True, description="Archivia prima della cancellazione"),
     _admin: Dict = Depends(get_current_admin_user),
 ) -> Dict:
     """Elimina da tutte le collection operative i documenti con data
@@ -325,11 +325,54 @@ async def pulizia_dati_pre_anno(
     db = Database.get_db()
     report = {}
     totale_eliminati = 0
+    backup_batch = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+    # Eccezione esplicita richiesta dall'utente: cedolini e relativi
+    # bonifici stipendio restano per TUTTI gli anni. `cedolini` e
+    # `prima_nota_salari` non sono mai tra le collection eliminate; qui
+    # raccogliamo anche gli ID bancari collegati per proteggerli dentro
+    # prima_nota_banca ed estratto_conto_movimenti.
+    salari = await db["prima_nota_salari"].find({}, {
+        "_id": 0, "id": 1, "cedolino_id": 1, "movimento_id": 1,
+        "movimento_bancario_id": 1, "movimenti_bancari_ids": 1,
+    }).to_list(200000)
+    ids_bonifici_stipendi = set()
+    ids_cedolini = set()
+    for salario in salari:
+        if salario.get("cedolino_id"):
+            ids_cedolini.add(str(salario["cedolino_id"]))
+        for campo in ("movimento_id", "movimento_bancario_id"):
+            if salario.get(campo):
+                ids_bonifici_stipendi.add(str(salario[campo]))
+        for movimento_id in salario.get("movimenti_bancari_ids") or []:
+            if movimento_id:
+                ids_bonifici_stipendi.add(str(movimento_id))
+
+    def _e_bonifico_cedolino(collection: str, doc: Dict[str, Any]) -> bool:
+        if collection not in {"prima_nota_banca", "estratto_conto_movimenti"}:
+            return False
+        if str(doc.get("id") or "") in ids_bonifici_stipendi:
+            return True
+        if doc.get("stipendio_id") or doc.get("documento_stipendio_id"):
+            return True
+        if str(doc.get("cedolino_id") or "") in ids_cedolini:
+            return True
+        testo = " ".join(str(doc.get(c) or "") for c in (
+            "categoria", "source", "tipo_riconciliazione", "tipo_abbinamento"
+        )).lower()
+        return "stipend" in testo or "cedolin" in testo
 
     for collection, campi_data in COLLEZIONI_PULIZIA_PRE_ANNO.items():
-        proiezione = {"_id": 0, "id": 1, **{c: 1 for c in campi_data}}
+        proiezione = {
+            "_id": 1, "id": 1, **{c: 1 for c in campi_data},
+            "stipendio_id": 1, "documento_stipendio_id": 1,
+            "cedolino_id": 1, "categoria": 1, "source": 1,
+            "tipo_riconciliazione": 1, "tipo_abbinamento": 1,
+        }
         docs = await db[collection].find({}, proiezione).to_list(200000)
-        da_eliminare = []
+        ids_da_eliminare = []
+        mongo_ids_da_eliminare = []
+        preservati_cedolini_bonifici = 0
         per_anno: Dict[int, int] = {}
         for d in docs:
             anno_doc = None
@@ -337,19 +380,63 @@ async def pulizia_dati_pre_anno(
                 anno_doc = _estrai_anno(d.get(campo))
                 if anno_doc is not None:
                     break
-            if anno_doc is not None and anno_doc < anno_da_mantenere and d.get("id"):
-                da_eliminare.append(d["id"])
+            if anno_doc is not None and anno_doc < anno_da_mantenere and _e_bonifico_cedolino(collection, d):
+                preservati_cedolini_bonifici += 1
+                continue
+            if anno_doc is not None and anno_doc < anno_da_mantenere:
+                if d.get("id") is not None:
+                    ids_da_eliminare.append(d["id"])
+                elif d.get("_id") is not None:
+                    # Alcuni documenti legacy non hanno l'ID applicativo:
+                    # vanno comunque inclusi usando il loro ObjectId Mongo.
+                    mongo_ids_da_eliminare.append(d["_id"])
+                else:
+                    continue
                 per_anno[anno_doc] = per_anno.get(anno_doc, 0) + 1
 
         eliminati = 0
-        if da_eliminare and not dry_run:
-            for i in range(0, len(da_eliminare), 500):
-                r = await db[collection].delete_many({"id": {"$in": da_eliminare[i:i + 500]}})
+        backup_collection = None
+        selettori = []
+        if ids_da_eliminare:
+            selettori.append({"id": {"$in": ids_da_eliminare}})
+        if mongo_ids_da_eliminare:
+            selettori.append({"_id": {"$in": mongo_ids_da_eliminare}})
+        filtro_eliminazione = (
+            selettori[0] if len(selettori) == 1 else {"$or": selettori}
+        ) if selettori else None
+
+        if filtro_eliminazione and not dry_run:
+            if crea_backup:
+                backup_collection = (
+                    f"backup_cleanup_pre{anno_da_mantenere}_"
+                    f"{backup_batch}_{collection}"
+                )
+                completi = await db[collection].find(filtro_eliminazione).to_list(200000)
+                if completi:
+                    backup_at = datetime.now(timezone.utc).isoformat()
+                    for completo in completi:
+                        completo["_backup_at"] = backup_at
+                        completo["_backup_reason"] = f"cleanup_pre_{anno_da_mantenere}"
+                        completo["_original_collection"] = collection
+                    # Il backup deve riuscire integralmente PRIMA della delete.
+                    await db[backup_collection].insert_many(completi, ordered=True)
+
+            for i in range(0, len(ids_da_eliminare), 500):
+                r = await db[collection].delete_many(
+                    {"id": {"$in": ids_da_eliminare[i:i + 500]}}
+                )
+                eliminati += r.deleted_count
+            for i in range(0, len(mongo_ids_da_eliminare), 500):
+                r = await db[collection].delete_many(
+                    {"_id": {"$in": mongo_ids_da_eliminare[i:i + 500]}}
+                )
                 eliminati += r.deleted_count
         report[collection] = {
-            "trovati_pre_anno": len(da_eliminare),
+            "trovati_pre_anno": len(ids_da_eliminare) + len(mongo_ids_da_eliminare),
             "per_anno": {str(k): v for k, v in sorted(per_anno.items())},
             "eliminati": eliminati if not dry_run else 0,
+            "preservati_cedolini_bonifici": preservati_cedolini_bonifici,
+            "backup_collection": backup_collection,
         }
         totale_eliminati += eliminati
 
@@ -358,7 +445,81 @@ async def pulizia_dati_pre_anno(
         "anno_da_mantenere": anno_da_mantenere,
         "collections": report,
         "totale_eliminati": totale_eliminati,
+        "cedolini_preservati": True,
+        "prima_nota_salari_preservata": True,
+        "bonifici_stipendi_protetti": len(ids_bonifici_stipendi),
     }
+
+
+PULIZIA_PREGRESSI_MARKER = "cleanup_pre_2026_preserve_payroll_20260720_v1"
+
+
+async def esegui_pulizia_pregressi_una_tantum() -> Dict[str, Any]:
+    """Pulizia di produzione idempotente, con backup e verifica finale.
+
+    Viene invocata soltanto dal lifecycle Render. La collection marker rende
+    l'operazione una tantum; i backup per collection consentono il ripristino.
+    """
+    db = Database.get_db()
+    marker_collection = db["migration_runs"]
+    esistente = await marker_collection.find_one({"id": PULIZIA_PREGRESSI_MARKER})
+    if esistente and esistente.get("status") == "completed":
+        return {"skipped": True, "reason": "already_completed"}
+
+    cedolini_prima = await db["cedolini"].count_documents({})
+    salari_prima = await db["prima_nota_salari"].count_documents({})
+    anteprima = await pulizia_dati_pre_anno(
+        anno_da_mantenere=2026, dry_run=True, crea_backup=True, _admin={}
+    )
+    await marker_collection.update_one(
+        {"id": PULIZIA_PREGRESSI_MARKER},
+        {"$set": {
+            "id": PULIZIA_PREGRESSI_MARKER,
+            "status": "running",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "preview": anteprima,
+        }},
+        upsert=True,
+    )
+
+    esito = await pulizia_dati_pre_anno(
+        anno_da_mantenere=2026, dry_run=False, crea_backup=True, _admin={}
+    )
+    verifica = await pulizia_dati_pre_anno(
+        anno_da_mantenere=2026, dry_run=True, crea_backup=True, _admin={}
+    )
+    residui = sum(
+        voce["trovati_pre_anno"] for voce in verifica["collections"].values()
+    )
+    cedolini_dopo = await db["cedolini"].count_documents({})
+    salari_dopo = await db["prima_nota_salari"].count_documents({})
+    if residui or cedolini_dopo != cedolini_prima or salari_dopo != salari_prima:
+        await marker_collection.update_one(
+            {"id": PULIZIA_PREGRESSI_MARKER},
+            {"$set": {
+                "status": "verification_failed",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "remaining_old_documents": residui,
+                "cedolini_before": cedolini_prima,
+                "cedolini_after": cedolini_dopo,
+                "salari_before": salari_prima,
+                "salari_after": salari_dopo,
+            }},
+        )
+        raise RuntimeError("Verifica pulizia pre-2026 fallita; consultare i backup")
+
+    await marker_collection.update_one(
+        {"id": PULIZIA_PREGRESSI_MARKER},
+        {"$set": {
+            "status": "completed",
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "result": esito,
+            "remaining_old_documents": 0,
+            "cedolini_preserved": cedolini_dopo,
+            "salary_rows_preserved": salari_dopo,
+        }},
+    )
+    return {**esito, "skipped": False, "verification_ok": True}
 
 
 # Unificazione categorie (richiesta utente 17/07/2026, screenshot del filtro
@@ -441,7 +602,10 @@ async def ripristina_provvisori_metodo_errato(
                     {"fattura_id": {"$nin": [None, ""]}},
                     {"riferimento": {"$regex": "^FATT-"}},
                 ],
-                "source": {"$in": SOURCES_FATTURE_AUTO},
+                # `fattura_pagata` e' condivisa dai flussi manuali e dalla
+                # vecchia auto-registrazione: viene ammessa qui, ma sotto si
+                # corregge solo se la fattura porta il flag auto esplicito.
+                "source": {"$in": SOURCES_FATTURE_AUTO + ["fattura_pagata"]},
                 "status": {"$nin": ["deleted", "archived"]},
                 "data": {"$regex": f"^{anno}"},
             },
@@ -454,7 +618,9 @@ async def ripristina_provvisori_metodo_errato(
             mov["fattura_id"] = fid
             fattura = await db["invoices"].find_one(
                 {"id": fid},
-                {"_id": 0, "supplier_vat": 1, "cedente_piva": 1, "invoice_number": 1, "supplier_name": 1},
+                {"_id": 0, "supplier_vat": 1, "cedente_piva": 1,
+                 "invoice_number": 1, "supplier_name": 1,
+                 "registrata_auto_da_metodo_fornitore": 1},
             )
             if not fattura:
                 # Movimento ORFANO: la fattura collegata non esiste più in
@@ -475,6 +641,13 @@ async def ripristina_provvisori_metodo_errato(
                         {"$set": {"status": "deleted",
                                   "deleted_reason": "movimento_auto_orfano_senza_fattura"}},
                     )
+                continue
+            if (
+                mov.get("source") == "fattura_pagata"
+                and not fattura.get("registrata_auto_da_metodo_fornitore")
+            ):
+                # Pagamento realmente confermato a mano: mai annullarlo solo
+                # perche' oggi l'anagrafica del fornitore e' cambiata.
                 continue
             piva = str(fattura.get("supplier_vat") or fattura.get("cedente_piva") or "").strip()
             destinazione = classifica_metodo_fornitore(metodo_per_piva.get(piva, ""))

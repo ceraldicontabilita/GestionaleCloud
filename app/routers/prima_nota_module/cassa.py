@@ -9,6 +9,7 @@ import uuid
 import logging
 
 from app.database import Database, Collections
+from app.services.scritture_contabili import scrivi_movimento
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA,
     calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota
@@ -138,6 +139,35 @@ async def create_prima_nota_cassa(data: Dict[str, Any] = Body(...)) -> Dict[str,
     }
 
     await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento.copy())
+
+    # La registrazione manuale del versamento crea subito la gamba bancaria
+    # come ATTESA. Non e' ancora prova di accredito: solo l'estratto conto
+    # reale potra' renderla riconciliata.
+    if data["tipo"] == "uscita" and data.get("categoria") == "Versamento Banca":
+        attesa_id = str(uuid.uuid4())
+        await scrivi_movimento(db, "banca", {
+            "id": attesa_id,
+            "data": data["data"],
+            "tipo": "entrata",
+            "importo": importo,
+            "descrizione": f"Versamento contanti da cassa - {data['descrizione']}",
+            "categoria": "Versamento Banca",
+            "stato": "in_attesa_estratto_conto",
+            "provvisorio": True,
+            "riconciliato": False,
+            "prima_nota_cassa_id": movimento["id"],
+            "trasferimento_collegato_id": movimento["id"],
+            "source": "versamento_cassa_in_attesa",
+            "created_at": now,
+        })
+        await db[COLLECTION_PRIMA_NOTA_CASSA].update_one(
+            {"id": movimento["id"]},
+            {"$set": {
+                "trasferimento_collegato_id": attesa_id,
+                "riconciliato": False,
+                "in_attesa_estratto_conto": True,
+            }},
+        )
 
     # Bug corretto 15/07/2026: un'uscita cassa collegata a una fattura
     # (fattura_id) segnava il movimento ma non la fattura come pagata. Una

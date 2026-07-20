@@ -115,7 +115,20 @@ async def _arricchisci_riconciliazione(db, movimenti: list) -> None:
         source = m.get("source")
         is_pos = source in POS_SOURCES
         is_paypal = source == "riconciliazione_paypal"
-        if not fid and not is_pos and not is_paypal:
+        is_versamento = m.get("categoria") == "Versamento Banca" or source in {
+            "versamento_cassa_in_attesa", "riconciliazione_ec_versamento",
+        }
+        if not fid and not is_pos and not is_paypal and not is_versamento:
+            continue
+
+        if is_versamento:
+            m["riconciliazione"] = {
+                "tipo": "versamento_contanti",
+                "verificata": bool(_evidenza_movimento(m)),
+                "automatica": bool(m.get("estratto_conto_id")),
+                "match_score": None,
+                "accreditato_ec": None,
+            }
             continue
 
         if is_paypal:

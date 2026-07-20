@@ -51,6 +51,7 @@ logger = logging.getLogger(__name__)
 
 COLLECTION_ESTRATTO_CONTO = "estratto_conto_movimenti"
 COLLECTION_PRIMA_NOTA_CASSA = "prima_nota_cassa"
+COLLECTION_PRIMA_NOTA_BANCA = "prima_nota_banca"
 COLLECTION_OPERAZIONI_DA_CONFERMARE = "operazioni_da_confermare"
 # Canonica: "fornitori" — "suppliers" era un alias vuoto: i lookup metodo
 # pagamento fornitore non trovavano mai nulla.
@@ -1033,19 +1034,42 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                         # banca. Idempotente per costruzione: una volta
                         # riconciliato, l'EC esce dalla query di riga 534 e
                         # non viene mai riprocessato.
-                        banca_versamento_id = str(uuid.uuid4())
-                        await scrivi_movimento(db, "banca", {
-                            "id": banca_versamento_id,
-                            "data": data_ec,
-                            "tipo": "entrata",
-                            "importo": versamento.get("importo", importo),
-                            "descrizione": f"Versamento contanti in banca - {descrizione[:100]}",
-                            "categoria": "Versamento Banca",
-                            "estratto_conto_id": mov_id,
-                            "prima_nota_cassa_id": versamento["id"],
-                            "source": "riconciliazione_ec_versamento",
-                            "created_at": now,
+                        banca_attesa = await db[COLLECTION_PRIMA_NOTA_BANCA].find_one({
+                            "$or": [
+                                {"prima_nota_cassa_id": versamento["id"]},
+                                {"trasferimento_collegato_id": versamento["id"]},
+                            ],
+                            "status": {"$nin": ["deleted", "archived"]},
                         })
+                        if banca_attesa:
+                            banca_versamento_id = banca_attesa["id"]
+                            await db[COLLECTION_PRIMA_NOTA_BANCA].update_one(
+                                {"id": banca_versamento_id},
+                                {"$set": {
+                                    "data": data_ec,
+                                    "estratto_conto_id": mov_id,
+                                    "riconciliato": True,
+                                    "provvisorio": False,
+                                    "stato": "riconciliato",
+                                    "source": "riconciliazione_ec_versamento",
+                                    "updated_at": now,
+                                }},
+                            )
+                        else:
+                            banca_versamento_id = str(uuid.uuid4())
+                            await scrivi_movimento(db, "banca", {
+                                "id": banca_versamento_id,
+                                "data": data_ec,
+                                "tipo": "entrata",
+                                "importo": versamento.get("importo", importo),
+                                "descrizione": f"Versamento contanti in banca - {descrizione[:100]}",
+                                "categoria": "Versamento Banca",
+                                "estratto_conto_id": mov_id,
+                                "prima_nota_cassa_id": versamento["id"],
+                                "riconciliato": True,
+                                "source": "riconciliazione_ec_versamento",
+                                "created_at": now,
+                            })
 
                         match_details = {
                             "versamento_id": versamento.get("id"),

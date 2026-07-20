@@ -4,6 +4,7 @@ Ceraldi ERP - Main Application
 FastAPI + MongoDB Atlas | Refactored Modular Architecture
 """
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 import os
 
 from fastapi import FastAPI, Request
@@ -70,6 +71,50 @@ async def lifespan(app: FastAPI):
             await migrazione_pulisci_bancari_da_cassa()
     except Exception:
         pass
+
+    # Operazione una tantum autorizzata: elimina i dati operativi antecedenti
+    # al 2026 solo in produzione Render, dopo backup separato per collection.
+    # Cedolini, prima nota salari e bonifici collegati sono esclusi e verificati.
+    if os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID"):
+        try:
+            from app.routers.prima_nota_module.manutenzione import (
+                esegui_pulizia_pregressi_una_tantum,
+                ripristina_provvisori_metodo_errato,
+            )
+
+            pulizia = await esegui_pulizia_pregressi_una_tantum()
+            if not pulizia.get("skipped"):
+                logger.info(
+                    "Pulizia pre-2026 completata: %s documenti archiviati ed eliminati",
+                    pulizia.get("totale_eliminati", 0),
+                )
+
+            # Ripara una sola volta le registrazioni automatiche sul lato
+            # errato. Pagamenti manuali e riconciliati non vengono toccati.
+            repair_marker = "repair_supplier_payment_side_20260720_v1"
+            repair_run = await db["migration_runs"].find_one({"id": repair_marker})
+            if not repair_run or repair_run.get("status") != "completed":
+                riparazione = await ripristina_provvisori_metodo_errato(
+                    dry_run=False, anno=2026,
+                    banca_non_riconciliate=False, _admin={}
+                )
+                await db["migration_runs"].update_one(
+                    {"id": repair_marker},
+                    {"$set": {
+                        "id": repair_marker,
+                        "status": "completed",
+                        "finished_at": datetime.now(timezone.utc).isoformat(),
+                        "result": riparazione,
+                    }},
+                    upsert=True,
+                )
+                if riparazione.get("corretti"):
+                    logger.info(
+                        "Fatture automatiche con metodo errato ripristinate: %s",
+                        riparazione["corretti"],
+                    )
+        except Exception as e:
+            logger.error("Pulizia pregressi/riparazione metodo non completata: %s", e)
 
     # Backfill: fatture importate da Drive/bulk prima del fix campi — senza
     # `anno`/`data_documento` non comparivano nei filtri per anno.
