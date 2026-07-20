@@ -8,7 +8,11 @@ import re
 
 import pytest
 
-from app.services.stipendi_bonifici import associa_bonifici_stipendi, estrai_nome_favore
+from app.services.stipendi_bonifici import (
+    associa_bonifici_stipendi,
+    estrai_nome_favore,
+    riconciliazione_salario_verificata,
+)
 
 
 class _Cursor:
@@ -194,3 +198,35 @@ def test_stipendio_id_singolo_limita_la_ricerca():
     assert r["bonifici_associati"] == 1
     assert db.salari.docs[0]["riconciliato"] is True
     assert not db.salari.docs[1].get("importo_bonifico")
+
+
+def test_vecchia_etichetta_con_importo_diverso_non_e_verificata():
+    riga = {
+        "id": "S1", "dipendente": "ROSSI MARIO", "anno": 2026, "mese": 3,
+        "importo_busta": 1200.0, "importo_bonifico": 1000.0,
+        "riconciliato": True, "estratto_conto_id": "M1",
+    }
+    db = _Db(
+        salari=[riga],
+        movimenti=[{
+            "id": "M1", "data": "2026-04-03", "importo": -1000.0,
+            "descrizione": "BONIFICO STIPENDIO FAVORE ROSSI MARIO",
+        }],
+    )
+    assert _run(riconciliazione_salario_verificata(db, riga)) is False
+
+
+def test_etichetta_con_nome_importo_e_movimento_reale_e_verificata():
+    riga = {
+        "id": "S1", "dipendente": "ROSSI MARIO", "anno": 2026, "mese": 3,
+        "importo_busta": 1200.0, "importo_bonifico": 1200.0,
+        "riconciliato": True, "estratto_conto_id": "M1",
+    }
+    db = _Db(
+        salari=[riga],
+        movimenti=[{
+            "id": "M1", "data": "2026-04-03", "importo": -1200.0,
+            "descrizione": "BONIFICO STIPENDIO FAVORE ROSSI MARIO",
+        }],
+    )
+    assert _run(riconciliazione_salario_verificata(db, riga)) is True

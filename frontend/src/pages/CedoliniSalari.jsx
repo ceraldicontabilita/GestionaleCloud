@@ -144,7 +144,11 @@ export default function CedoliniSalari() {
                 <td style={{ padding: '11px 14px', textAlign: 'right' }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: r.riconciliato ? '#15803d' : '#b45309', fontWeight: 700 }}>
                     {r.riconciliato ? <CheckCircle2 size={17} /> : <TriangleAlert size={17} />}
-                    {r.riconciliato ? 'Riconciliato' : 'Da verificare'}
+                    {r.riconciliato
+                      ? 'Riconciliato con estratto conto'
+                      : r.riconciliazione_precedente_da_rivedere
+                        ? 'Associazione precedente da rivedere'
+                        : 'Da verificare'}
                   </span>
                 </td>
               </tr>

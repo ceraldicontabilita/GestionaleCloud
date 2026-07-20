@@ -130,13 +130,15 @@ def _candidati_univoci(
 
 
 async def associa_bonifici_stipendi(
-    db, stipendio_id: Optional[str] = None
+    db, stipendio_id: Optional[str] = None, anno: Optional[int] = None
 ) -> Dict[str, Any]:
     """Riconcilia solo match bancari certi e univoci."""
     nomi_arricchiti = await arricchisci_nomi_salari_da_cedolini(db)
     filtro: Dict[str, Any] = {"riconciliato": {"$ne": True}}
     if stipendio_id:
         filtro["id"] = stipendio_id
+    if anno:
+        filtro["anno"] = int(anno)
     righe = await db["prima_nota_salari"].find(
         filtro, {"_id": 0}
     ).to_list(5000)
@@ -230,3 +232,53 @@ async def associa_bonifici_stipendi(
         "match_ambigui_ignorati": ambigui,
         "dettaglio": dettaglio,
     }
+
+
+async def riconciliazione_salario_verificata(db, riga: Dict[str, Any]) -> bool:
+    """Convalida anche le vecchie etichette usando il movimento bancario."""
+    if riga.get("riconciliato") is not True:
+        return False
+    atteso = _importo_atteso(riga)
+    importo_registrato = round(abs(float(riga.get("importo_bonifico") or 0)), 2)
+    if atteso <= 0 or abs(atteso - importo_registrato) > 0.009:
+        return False
+
+    movimento_ids: List[str] = []
+    for value in riga.get("movimenti_bancari_ids") or []:
+        if value and value not in movimento_ids:
+            movimento_ids.append(value)
+    for key in (
+        "estratto_conto_id", "movimento_estratto_conto_id",
+        "movimento_bancario_id", "bank_movement_id",
+    ):
+        value = riga.get(key)
+        if value and value not in movimento_ids:
+            movimento_ids.append(value)
+    if not movimento_ids:
+        return False
+
+    riga_verifica = dict(riga)
+    riga_verifica["riconciliato"] = False
+    for movimento_id in movimento_ids:
+        movimento = await db["estratto_conto_movimenti"].find_one(
+            {"id": movimento_id}, {"_id": 0}
+        )
+        if not movimento:
+            continue
+        importo = abs(float(movimento.get("importo") or 0))
+        if abs(importo - atteso) > 0.009:
+            continue
+        descrizione = (
+            movimento.get("descrizione_originale")
+            or movimento.get("descrizione")
+            or ""
+        )
+        candidati = _candidati_univoci(
+            descrizione,
+            importo,
+            [riga_verifica],
+            data_movimento=movimento.get("data") or "",
+        )
+        if len(candidati) == 1:
+            return True
+    return False

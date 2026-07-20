@@ -11,16 +11,16 @@ from app.routers.bonifici_module.riconciliazione import (
 from app.services.bonifici_pdf_ingest import seleziona_salario_univoco
 
 
-def test_nome_e_periodo_dal_filename_nei_due_ordini():
+def test_nome_e_mese_pagamento_dal_filename_nei_due_ordini():
     primo = extract_filename_metadata("Verdi Paolo bonifico marzo.pdf")
     secondo = extract_filename_metadata("bonifico marzo Neri Lucia1.pdf")
     assert primo == {
         "beneficiario_nome": "Verdi Paolo",
-        "periodo_mese": 3,
-        "periodo_anno": None,
+        "mese_pagamento_file": 3,
+        "anno_pagamento_file": None,
     }
     assert secondo["beneficiario_nome"] == "Neri Lucia"
-    assert secondo["periodo_mese"] == 3
+    assert secondo["mese_pagamento_file"] == 3
 
 
 def test_parser_pdf_usa_campi_etichettati_e_filename():
@@ -37,7 +37,29 @@ def test_parser_pdf_usa_campi_etichettati_e_filename():
     assert parsed["beneficiario"]["nome"] == "Rossi Mario"
     assert parsed["periodo_mese"] == 3
     assert parsed["periodo_anno"] == 2026
+    assert parsed["mese_pagamento_file"] == 3
     assert isinstance(parsed["data"], datetime)
+
+
+def test_bonifico_marzo_senza_competenza_associa_busta_febbraio():
+    parsed = extract_transfers_from_text(
+        """
+        Data esecuzione: 04/03/2026
+        Importo bonifico: EUR 900,00
+        Beneficiario: Verdi Paolo
+        Causale: pagamento emolumenti
+        """,
+        filename="Verdi Paolo bonifico marzo.pdf",
+    )[0]
+    righe = [
+        {"id": "feb", "dipendente": "PAOLO VERDI", "importo_busta": 900.0,
+         "mese": 2, "anno": 2026, "riconciliato": False},
+        {"id": "mar", "dipendente": "PAOLO VERDI", "importo_busta": 900.0,
+         "mese": 3, "anno": 2026, "riconciliato": False},
+    ]
+    assert parsed["periodo_mese"] is None
+    assert parsed["mese_pagamento_file"] == 3
+    assert seleziona_salario_univoco(parsed, righe)["id"] == "feb"
 
 
 def test_salario_richiede_nome_importo_e_periodo_esatti():

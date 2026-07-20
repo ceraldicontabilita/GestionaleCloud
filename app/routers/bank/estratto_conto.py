@@ -1588,6 +1588,11 @@ async def riconcilia_stipendi_automatico(anno: Optional[int] = Query(None)) -> D
     Cerca i movimenti "VOSTRA DISPOSIZIONE" con nomi di dipendenti e li collega.
     """
     db = Database.get_db()
+    # Unico motore autorizzato: nome completo nella causale, importo esatto,
+    # periodo/data compatibili e candidato univoco. Il vecchio percorso per
+    # singola parola/cognome non deve mai essere raggiunto.
+    from app.services.stipendi_bonifici import associa_bonifici_stipendi
+    return await associa_bonifici_stipendi(db, anno=anno)
     
     # Carica nomi dipendenti dalla prima_nota_salari (fonte più affidabile)
     nomi_dipendenti = await db["prima_nota_salari"].distinct("dipendente")

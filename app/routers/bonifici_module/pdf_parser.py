@@ -68,10 +68,12 @@ _MESI = {
 
 
 def extract_filename_metadata(filename: str) -> Dict[str, Any]:
-    """Ricava solo identita' e periodo espliciti dal nome del PDF.
+    """Ricava identita' e mese del pagamento dal nome del PDF.
 
     Sono supportati entrambi gli ordini usati operativamente, ad esempio
     ``Cognome Nome bonifico marzo.pdf`` e ``bonifico marzo Cognome Nome.pdf``.
+    Il mese scritto nel nome (es. ``bonifico marzo``) indica il mese in cui
+    e' stato disposto il bonifico, non il mese di competenza del cedolino.
     Il nome file non viene mai usato come prova dell'importo.
     """
     stem = Path(filename or "").stem
@@ -93,7 +95,31 @@ def extract_filename_metadata(filename: str) -> Dict[str, Any]:
     nome = normalize_str(re.sub(r"[^A-Za-zÀ-ÿ' ]+", " ", pulito))
     if nome and len(nome.split()) < 2:
         nome = None
-    return {"beneficiario_nome": nome, "periodo_mese": mese, "periodo_anno": anno}
+    return {
+        "beneficiario_nome": nome,
+        "mese_pagamento_file": mese,
+        "anno_pagamento_file": anno,
+    }
+
+
+def _extract_payroll_period(causale: str) -> Dict[str, Optional[int]]:
+    """Estrae la competenza solo se dichiarata nella causale del bonifico."""
+    text = normalize_str(causale or "").casefold()
+    if not re.search(r"\b(stipend|salari|emolument|competenz|mensilit)", text):
+        return {"periodo_mese": None, "periodo_anno": None}
+    mese = None
+    for nome_mese, numero in _MESI.items():
+        if re.search(rf"\b{nome_mese}\b", text):
+            mese = numero
+            break
+    numerico = re.search(r"\b(0?[1-9]|1[0-2])[/\-](20\d{2})\b", text)
+    if numerico:
+        return {"periodo_mese": int(numerico.group(1)), "periodo_anno": int(numerico.group(2))}
+    anno_match = re.search(r"\b(20\d{2})\b", text)
+    return {
+        "periodo_mese": mese,
+        "periodo_anno": int(anno_match.group(1)) if anno_match else None,
+    }
 
 
 def _value_after_label(lines: List[str], labels: str) -> Optional[str]:
@@ -180,6 +206,7 @@ def extract_transfers_from_text(text: str, filename: str = "") -> List[Dict[str,
     ) or metadata_file.get("beneficiario_nome")
     ord_nome = _value_after_label(lines, r"ordinante|disponente|intestatario\s+conto")
     
+    periodo = _extract_payroll_period(caus or "")
     results.append({
         'data': dt,
         'importo': amt,
@@ -190,8 +217,10 @@ def extract_transfers_from_text(text: str, filename: str = "") -> List[Dict[str,
         'cro_trn': cro,
         'banca': None,
         'note': None,
-        'periodo_mese': metadata_file.get('periodo_mese'),
-        'periodo_anno': metadata_file.get('periodo_anno'),
+        'periodo_mese': periodo.get('periodo_mese'),
+        'periodo_anno': periodo.get('periodo_anno'),
+        'mese_pagamento_file': metadata_file.get('mese_pagamento_file'),
+        'anno_pagamento_file': metadata_file.get('anno_pagamento_file'),
     })
     
     return results

@@ -575,7 +575,10 @@ def start_scheduler():
     async def _bonifici_pdf_inbox_job():
         """Elabora anche i PDF bonifico gia' caricati in Import documenti."""
         from app.database import Database
-        from app.services.bonifici_pdf_ingest import processa_inbox_bonifici
+        from app.services.bonifici_pdf_ingest import (
+            processa_inbox_bonifici,
+            riprocessa_bonifici_pendenti,
+        )
         try:
             result = await processa_inbox_bonifici(Database.get_db())
             if result.get("letti"):
@@ -585,6 +588,14 @@ def start_scheduler():
                     result.get("letti"), result.get("salvati"),
                     result.get("duplicati"), result.get("associati"),
                     result.get("errori"),
+                )
+            pendenti = await riprocessa_bonifici_pendenti(Database.get_db())
+            if pendenti.get("letti"):
+                logger.info(
+                    "[SCHEDULER-BONIFICI-PDF-PENDENTI] letti=%s associati=%s "
+                    "non_associati=%s errori=%s",
+                    pendenti.get("letti"), pendenti.get("associati"),
+                    pendenti.get("non_associati"), pendenti.get("errori"),
                 )
         except Exception as e:
             logger.error(f"[SCHEDULER-BONIFICI-PDF] errore: {e}")

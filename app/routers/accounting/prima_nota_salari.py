@@ -123,6 +123,7 @@ async def get_prima_nota_salari(
         (d.get("codice_fiscale"), d.get("mese"), d.get("anno")): d
         for d in docs if d.get("codice_fiscale")
     }
+    from app.services.stipendi_bonifici import riconciliazione_salario_verificata
     for salario in salari:
         chiave = (salario.get("codice_fiscale"), salario.get("mese"), salario.get("anno"))
         cedolino = cedolini_per_id.get(salario.get("cedolino_id")) or cedolini_per_periodo.get(chiave)
@@ -132,6 +133,12 @@ async def get_prima_nota_salari(
             salario["dipendente_id"] = cedolino.get("dipendente_id")
         salario["cedolino_disponibile"] = (
             salario.get("cedolino_id") in disponibili or chiave in disponibili_per_periodo
+        )
+        stato_archiviato = salario.get("riconciliato") is True
+        stato_verificato = await riconciliazione_salario_verificata(db, salario)
+        salario["riconciliato"] = stato_verificato
+        salario["riconciliazione_precedente_da_rivedere"] = (
+            stato_archiviato and not stato_verificato
         )
     
     return salari
@@ -209,8 +216,10 @@ async def get_riepilogo_salari(
     # Conta dipendenti unici
     dipendenti_unici = len(set(s.get("dipendente", "") for s in salari))
     
-    # Conta riconciliati
-    riconciliati = sum(1 for s in salari if s.get("riconciliato"))
+    # Conta soltanto i riscontri sostenuti da un vero movimento bancario.
+    from app.services.stipendi_bonifici import riconciliazione_salario_verificata
+    stati = [await riconciliazione_salario_verificata(db, s) for s in salari]
+    riconciliati = sum(1 for stato in stati if stato)
     
     return {
         "anno": anno,
@@ -836,13 +845,27 @@ async def riconcilia_salario(
     record_id: str,
     riconciliato: bool = Query(True)
 ) -> Dict[str, str]:
-    """Marca un salario come riconciliato."""
+    """Riconcilia soltanto se il movimento bancario certo e' disponibile."""
     db = Database.get_db()
+    if riconciliato:
+        from app.services.stipendi_bonifici import associa_bonifici_stipendi
+        # Una vecchia etichetta non verificata non deve impedire il nuovo
+        # controllo deterministico.
+        await db["prima_nota_salari"].update_one(
+            {"id": record_id}, {"$set": {"riconciliato": False}}
+        )
+        esito = await associa_bonifici_stipendi(db, stipendio_id=record_id)
+        if not esito.get("bonifici_associati"):
+            raise HTTPException(
+                status_code=409,
+                detail="Nessun movimento bancario univoco con nome completo e importo esatto",
+            )
+        return {"message": "Riconciliazione bancaria verificata"}
     result = await db["prima_nota_salari"].update_one(
         {"id": record_id},
         {"$set": {
-            "riconciliato": riconciliato,
-            "data_riconciliazione": datetime.now(timezone.utc).isoformat() if riconciliato else None,
+            "riconciliato": False,
+            "data_riconciliazione": None,
             "updated_at": datetime.now(timezone.utc).isoformat()
         }}
     )
@@ -871,6 +894,9 @@ async def export_prima_nota_salari_excel(
     salari = await db["prima_nota_salari"].find(
         query, {"_id": 0}
     ).sort([("anno", -1), ("mese", -1), ("dipendente", 1)]).to_list(5000)
+    from app.services.stipendi_bonifici import riconciliazione_salario_verificata
+    for salario in salari:
+        salario["riconciliato"] = await riconciliazione_salario_verificata(db, salario)
     
     # Crea workbook
     wb = openpyxl.Workbook()

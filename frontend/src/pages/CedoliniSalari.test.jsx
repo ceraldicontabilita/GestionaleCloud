@@ -34,4 +34,17 @@ describe('CedoliniSalari', () => {
     expect(screen.queryByText('Mario Rossi')).not.toBeInTheDocument();
     expect(screen.getByText('Anna Bianchi')).toBeInTheDocument();
   });
+
+  it('non presenta come riconciliata una vecchia associazione da rivedere', async () => {
+    api.get.mockResolvedValueOnce({
+      data: [{
+        id: 'legacy', dipendente_nome: 'Mario Rossi', anno: 2026, mese: 3,
+        importo_busta: 1000, importo_bonifico: 900,
+        riconciliato: false, riconciliazione_precedente_da_rivedere: true,
+      }],
+    });
+    render(<CedoliniSalari />);
+    expect(await screen.findByText('Associazione precedente da rivedere')).toBeInTheDocument();
+    expect(screen.queryByText('Riconciliato con estratto conto')).not.toBeInTheDocument();
+  });
 });

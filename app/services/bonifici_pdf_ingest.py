@@ -66,6 +66,21 @@ def _nome_salario(riga: Dict[str, Any]) -> str:
     ).strip()
 
 
+def data_pagamento_compatibile(data_pagamento: Any, riga: Dict[str, Any]) -> bool:
+    """Verifica la normale finestra paga: dal 20 al 15 del mese seguente."""
+    try:
+        data = datetime.fromisoformat(str(data_pagamento)[:10])
+        mese = int(riga.get("mese") or 0)
+        anno = int(riga.get("anno") or 0)
+        if not 1 <= mese <= 12:
+            return False
+        inizio = datetime(anno, mese, 20)
+        fine = datetime(anno + 1, 1, 15) if mese == 12 else datetime(anno, mese + 1, 15)
+        return inizio <= data <= fine
+    except (TypeError, ValueError):
+        return False
+
+
 def seleziona_salario_univoco(
     bonifico: Dict[str, Any], righe: Iterable[Dict[str, Any]]
 ) -> Optional[Dict[str, Any]]:
@@ -77,8 +92,11 @@ def seleziona_salario_univoco(
     beneficiario = bonifico.get("beneficiario") or {}
     nome = (beneficiario.get("nome") or bonifico.get("dipendente_nome") or "").strip()
     iban = re.sub(r"\s+", "", beneficiario.get("iban") or "").upper()
+    # Il periodo e' considerato solo quando proviene dalla causale del PDF.
+    # "bonifico marzo" nel nome file descrive invece il mese di pagamento.
     periodo_mese = bonifico.get("periodo_mese")
     periodo_anno = bonifico.get("periodo_anno")
+    data_pagamento = bonifico.get("data")
 
     candidati: List[Dict[str, Any]] = []
     for riga in righe:
@@ -100,6 +118,9 @@ def seleziona_salario_univoco(
             continue
         if periodo_anno and int(riga.get("anno") or 0) != int(periodo_anno):
             continue
+        if not periodo_mese and not periodo_anno and data_pagamento:
+            if not data_pagamento_compatibile(data_pagamento, riga):
+                continue
         candidati.append(riga)
 
     return candidati[0] if len(candidati) == 1 else None
@@ -213,6 +234,32 @@ async def importa_pdf_bonifico(
         {"document_hash": digest}, {"_id": 0}
     )
     if esistente:
+        # I documenti caricati prima della correzione possono contenere il
+        # mese del nome file nel vecchio campo "periodo". Rileggiamo sempre il
+        # PDF originale e correggiamo i soli metadati estratti.
+        text = read_pdf_bytes(content)
+        reparsed = extract_transfers_from_text(text, filename=filename)[0]
+        beneficiario = reparsed.get("beneficiario") or {}
+        metadata_file = extract_filename_metadata(filename)
+        if not beneficiario.get("nome"):
+            beneficiario["nome"] = metadata_file.get("beneficiario_nome")
+        reparsed["beneficiario"] = beneficiario
+        aggiornamento = {
+            key: reparsed.get(key)
+            for key in (
+                "data", "importo", "beneficiario", "ordinante", "causale",
+                "cro_trn", "periodo_mese", "periodo_anno",
+                "mese_pagamento_file", "anno_pagamento_file",
+            )
+        }
+        if isinstance(aggiornamento.get("data"), datetime):
+            aggiornamento["data"] = aggiornamento["data"].isoformat()
+        aggiornamento["source_file"] = filename
+        aggiornamento["updated_at"] = datetime.now(timezone.utc).isoformat()
+        await db["bonifici_transfers"].update_one(
+            {"id": esistente.get("id")}, {"$set": aggiornamento}
+        )
+        esistente.update(aggiornamento)
         associazione = await associa_transfer_a_salario(db, esistente)
         return {"status": "duplicate", "transfer_id": esistente.get("id"), **associazione}
 
@@ -297,4 +344,34 @@ async def processa_inbox_bonifici(db, limit: int = 100) -> Dict[str, int]:
                 document_filter,
                 {"$set": {"status": "errore_processing", "processing_error": type(exc).__name__}},
             )
+    return stats
+
+
+async def riprocessa_bonifici_pendenti(db, limit: int = 200) -> Dict[str, int]:
+    """Rilegge i PDF non associati e ritenta esclusivamente il match certo."""
+    transfers = await db["bonifici_transfers"].find(
+        {
+            "salario_associato": {"$ne": True},
+            "pdf_data": {"$exists": True, "$nin": [None, ""]},
+        },
+        {"_id": 0},
+    ).sort("created_at", 1).to_list(limit)
+    stats = {"letti": 0, "associati": 0, "non_associati": 0, "errori": 0}
+    for transfer in transfers:
+        stats["letti"] += 1
+        try:
+            content = base64.b64decode(transfer.get("pdf_data") or "", validate=True)
+            result = await importa_pdf_bonifico(
+                db,
+                content,
+                transfer.get("source_file") or "bonifico.pdf",
+                source=transfer.get("source") or "riprocessamento_sicuro",
+            )
+            if result.get("associato"):
+                stats["associati"] += 1
+            else:
+                stats["non_associati"] += 1
+        except Exception as exc:
+            stats["errori"] += 1
+            logger.warning("Bonifico pendente non riprocessabile (%s): %s", transfer.get("id"), exc)
     return stats
