@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1019 endpoint** in **108 gruppi**.
+> Totale **1020 endpoint** in **108 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 645 · ext esterni = 76 · — da verificare = 298
+**Riepilogo uso:** ✓ frontend = 646 · ext esterni = 76 · — da verificare = 298
 
 ## AI Parser  (11)
 
@@ -789,7 +789,7 @@
 | GET | `/api/fatture-estere/da-verificare` | ✓ | fatture_estera_verifica |
 | POST | `/api/fatture-estere/{fattura_id}/verifica` | ✓ | fatture_estera_verifica |
 
-## Fatture Ricevute  (22)
+## Fatture Ricevute  (23)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -806,6 +806,7 @@
 | GET | `/api/fatture-ricevute/fattura/{fattura_id}/pdf/{allegato_id}` | ✓ | fatture_module.crud |
 | GET | `/api/fatture-ricevute/fattura/{fattura_id}/storia` | ✓ | fatture_module.crud |
 | GET | `/api/fatture-ricevute/fattura/{fattura_id}/view-assoinvoice` | ✓ | fatture_module.crud |
+| GET | `/api/fatture-ricevute/fattura/{fattura_id}/xml-originale` | ✓ | fatture_module.crud |
 | GET | `/api/fatture-ricevute/fornitori` | ✓ | fatture_module.crud |
 | POST | `/api/fatture-ricevute/import-paypal` | — | fatture_module.pagamento |
 | GET | `/api/fatture-ricevute/lista-paypal` | — | fatture_module.pagamento |

@@ -17,7 +17,8 @@ from .common import (
 logger = logging.getLogger(__name__)
 
 
-# Tipi documento fatture attive (vendite - ENTRATE)
+# Tipi documento che possono rappresentare fatture attive; la direzione
+# effettiva viene confermata confrontando il cedente con l'azienda.
 TIPI_FATTURA_ATTIVA = ["TD24", "TD25", "TD26", "TD27"]
 from app.constants.tipi_documento import TIPI_NOTA_CREDITO
 from app.services.scritture_contabili import scrivi_movimento
@@ -62,7 +63,20 @@ def _normalizza_piva(piva: str) -> str:
 
 
 def determina_tipo_movimento_fattura(fattura: Dict) -> tuple:
-    """Determina tipo movimento (entrata/uscita) e categoria dalla fattura."""
+    """Determina tipo movimento (entrata/uscita) e categoria dalla fattura.
+
+    Questo modulo gestisce ESCLUSIVAMENTE fatture PASSIVE (fatture ricevute
+    da fornitori, da pagare) — mai fatture emesse dall'azienda. Il
+    TipoDocumento FatturaPA (TD01, TD24, TD25...) è assegnato da chi EMETTE
+    il documento e descrive solo la natura del documento (fattura normale,
+    fattura differita...), non la direzione attiva/passiva per chi la
+    riceve: una fattura TD24 ricevuta da un fornitore resta un debito da
+    pagare, mai un incasso. Bug reale corretto 19/07/2026: la fattura 20 di
+    DI MASSA DARIO & c. sas (TD24) veniva registrata come "Incasso cliente"
+    in Prima Nota Banca invece che come pagamento fornitore, perché prima
+    qui esisteva un ramo TIPI_FATTURA_ATTIVA = TD24/25/26/27 → "entrata"
+    pensato per fatture attive, mai applicabile in questo modulo.
+    """
     tipo_doc = fattura.get("tipo_documento", "TD01").upper()
     supplier_vat = fattura.get("supplier_vat") or fattura.get("cedente_piva") or ""
 

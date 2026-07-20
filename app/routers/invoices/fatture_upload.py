@@ -636,7 +636,8 @@ async def _riscontra_anticipo_pendente(db, invoice: Dict[str, Any]) -> None:
     )
 
 
-async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upload.xml") -> Dict[str, Any]:
+async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upload.xml",
+                                 xml_raw: Optional[str] = None) -> Dict[str, Any]:
     """
     Processa e salva una fattura parsata nel database.
     Usata da documenti.py per l'import automatico.
@@ -652,6 +653,10 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
         db: Database connection
         parsed: Dati fattura parsati da parse_fattura_xml
         filename: Nome file originale
+        xml_raw: XML originale (stringa), se disponibile — salvato sulla
+            fattura insieme a xml_body_index così `/xml-originale` può
+            servirlo (prima non veniva mai persistito da questo percorso,
+            bug reale, review Codex PR #71).
 
     Returns:
         Dict con dati fattura salvata
@@ -754,6 +759,8 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             "status": "imported",
             "source": "xml_upload",
             "filename": filename,
+            "xml_raw": xml_raw,
+            "xml_body_index": parsed.get("body_index", 0),
             "created_at": datetime.now(timezone.utc).isoformat(),
             "cedente_piva": parsed.get("supplier_vat", ""),
             "cedente_denominazione": parsed.get("supplier_name", ""),
@@ -1255,20 +1262,59 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
     if parsed.get("error"):
         return {"status": "error", "filename": filename, "error": parsed["error"]}
 
-    if applica_filtro_anno:
-        from app.services.config_import import get_anno_importazione_attivo
-        invoice_date = parsed.get("invoice_date") or ""
-        anno_fattura = int(invoice_date[:4]) if invoice_date[:4].isdigit() else None
-        anno_attivo = await get_anno_importazione_attivo(db)
-        # Data mancante/illeggibile: NON archiviare silenziosamente una
-        # fattura che potrebbe essere dell'anno attivo solo per un XML
-        # malformato — resta nel flusso attivo, dove è comunque visibile e
-        # correggibile (a differenza dell'archivio storico, pensato per
-        # sola consultazione).
-        if anno_fattura and anno_fattura != anno_attivo:
-            return await archivia_fattura_storica(db, parsed, filename, source, xml_raw=xml_content)
+    # Un file FatturaPA può contenere PIÙ fatture raggruppate (più
+    # <FatturaElettronicaBody> sotto lo stesso header/CedentePrestatore —
+    # caso reale per fatture differite spedite insieme). Prima venivano
+    # lette solo dal parser e la fattura in più andava persa silenziosamente
+    # (importo/righe mai registrati). "altri_body" contiene le fatture
+    # aggiuntive trovate nello stesso file: vanno importate anche loro, una
+    # per una, con la stessa logica della prima (bug reale 19/07/2026).
+    altri_body = parsed.pop("_altri_body", None) or []
 
-    return await import_parsed_invoice(db, parsed, filename, source, xml_raw=xml_content)
+    async def _importa_una(p: Dict[str, Any]) -> Dict[str, Any]:
+        if applica_filtro_anno:
+            from app.services.config_import import get_anno_importazione_attivo
+            invoice_date = p.get("invoice_date") or ""
+            anno_fattura = int(invoice_date[:4]) if invoice_date[:4].isdigit() else None
+            anno_attivo = await get_anno_importazione_attivo(db)
+            # Data mancante/illeggibile: NON archiviare silenziosamente una
+            # fattura che potrebbe essere dell'anno attivo solo per un XML
+            # malformato — resta nel flusso attivo, dove è comunque visibile e
+            # correggibile (a differenza dell'archivio storico, pensato per
+            # sola consultazione).
+            if anno_fattura and anno_fattura != anno_attivo:
+                return await archivia_fattura_storica(db, p, filename, source, xml_raw=xml_content)
+
+        return await import_parsed_invoice(db, p, filename, source, xml_raw=xml_content)
+
+    risultato = await _importa_una(parsed)
+
+    if altri_body:
+        altri_risultati = [await _importa_una(p) for p in altri_body]
+        tutti = [risultato] + altri_risultati
+        # Tutti i chiamanti (upload manuale, bulk, Drive, email) leggono SOLO
+        # lo status di primo livello: se il primo body non è quello con
+        # l'esito "migliore", promuovi il migliore a risultato principale —
+        # altrimenti il chiamante segnala duplicato/errore (upload manuale
+        # arriva a rispondere 409 all'utente) o conta il file come solo
+        # archiviato mentre una fattura ATTIVA è stata comunque scritta in
+        # contabilità come effetto collaterale invisibile. "imported" (fattura
+        # nel flusso contabile attivo) vale più di "archiviata" (solo
+        # consultazione storica, richiesta utente 14/07/2026): con filtro
+        # anno attivo e un file che raggruppa una fattura di un anno passato
+        # con una dell'anno corrente, il file va sempre segnalato come
+        # "imported", mai come "archiviata" (bug reale, review Codex PR #71).
+        _PRIORITA = {"imported": 2, "archiviata": 1}
+        migliore = max(tutti, key=lambda r: _PRIORITA.get(r.get("status"), 0))
+        if _PRIORITA.get(migliore.get("status"), 0) > _PRIORITA.get(risultato.get("status"), 0):
+            tutti.remove(migliore)
+            risultato = migliore
+            altri_risultati = tutti
+        risultato = dict(risultato)
+        risultato["multi_body_xml"] = True
+        risultato["altre_fatture_stesso_file"] = altri_risultati
+
+    return risultato
 
 
 async def archivia_fattura_storica(db, parsed: Dict[str, Any], filename: str, source: str,
@@ -1320,6 +1366,7 @@ async def archivia_fattura_storica(db, parsed: Dict[str, Any], filename: str, so
         "source": source,
         "filename": filename,
         "xml_raw": xml_raw,
+        "xml_body_index": parsed.get("body_index", 0),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "cedente_piva": parsed.get("supplier_vat", ""),
         "cedente_denominazione": parsed.get("supplier_name", ""),
@@ -1403,6 +1450,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "source": source,
         "filename": filename,
         "xml_raw": xml_raw,
+        "xml_body_index": parsed.get("body_index", 0),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "cedente_piva": parsed.get("supplier_vat", ""),
         "cedente_denominazione": parsed.get("supplier_name", ""),
