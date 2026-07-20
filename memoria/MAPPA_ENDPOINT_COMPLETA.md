@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1030 endpoint** in **108 gruppi**.
+> Totale **1031 endpoint** in **108 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 647 · ext esterni = 84 · — da verificare = 299
+**Riepilogo uso:** ✓ frontend = 648 · ext esterni = 84 · — da verificare = 299
 
 ## AI Parser  (11)
 
@@ -1295,7 +1295,7 @@
 | POST | `/api/prima-nota/unifica-categorie` | — | prima_nota_module.manutenzione |
 | GET | `/api/prima-nota/verifica-metodo-fattura/{fattura_id}` | — | prima_nota_module.manutenzione |
 
-## Prima Nota Salari  (14)
+## Prima Nota Salari  (15)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1312,6 +1312,7 @@
 | GET | `/api/prima-nota-salari/salari/riepilogo` | ✓ | accounting.prima_nota_salari |
 | DELETE | `/api/prima-nota-salari/salari/{record_id}` | ✓ | accounting.prima_nota_salari |
 | PUT | `/api/prima-nota-salari/salari/{record_id}` | ✓ | accounting.prima_nota_salari |
+| GET | `/api/prima-nota-salari/salari/{record_id}/cedolino-pdf` | ✓ | accounting.prima_nota_salari |
 | PUT | `/api/prima-nota-salari/salari/{record_id}/riconcilia` | ✓ | accounting.prima_nota_salari |
 
 ## Public API  (26)
