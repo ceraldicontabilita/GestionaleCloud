@@ -190,6 +190,25 @@ def _extract_transfer_table_row(lines: List[str]) -> Dict[str, Any]:
     for idx, line in enumerate(lines):
         if normalize_str(line).casefold() != "beneficiario":
             continue
+        # Layout Banco BPM reale: il valore del beneficiario compare subito
+        # dopo la prima intestazione; seguono le altre tre intestazioni e poi
+        # i rispettivi valori. Esempio:
+        # Beneficiario, Mario Rossi, IBAN beneficiario,
+        # Descrizione causale, Importo, <iban>, stipendio marzo, 900,00 EUR.
+        blocco = lines[idx:idx + 8]
+        if len(blocco) == 8 and [
+            (normalize_str(value) or "").casefold()
+            for value in (blocco[0], blocco[2], blocco[3], blocco[4])
+        ] == [
+            "beneficiario", "iban beneficiario", "descrizione causale", "importo",
+        ]:
+            iban = re.sub(r"\s+", "", blocco[5]).upper()
+            return {
+                "beneficiario_nome": normalize_str(blocco[1]),
+                "beneficiario_iban": iban if IBAN_RE.fullmatch(iban) else None,
+                "causale": normalize_str(blocco[6]),
+                "importo": _parse_euro(blocco[7]),
+            }
         headers = [
             (normalize_str(value) or "").casefold()
             for value in lines[idx:idx + 4]

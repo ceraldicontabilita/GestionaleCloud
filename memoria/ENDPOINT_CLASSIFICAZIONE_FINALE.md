@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1031 · tenere: 679 · verificare: 329 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1034 · tenere: 682 · verificare: 329 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -820,7 +820,10 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/prima-nota-salari/salari/riepilogo` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/prima-nota-salari/salari/{record_id}` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/prima-nota-salari/salari/{record_id}` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/prima-nota-salari/salari/{record_id}/bonifico-pdf` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/prima-nota-salari/salari/{record_id}/bonifico-pdf` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota-salari/salari/{record_id}/cedolino-pdf` | accounting.prima_nota_salari | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/prima-nota-salari/salari/{record_id}/cedolino-pdf` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/prima-nota-salari/salari/{record_id}/riconcilia` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/anni-disponibili` | prima_nota_module.stats | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/arricchisci-pagamenti-banca` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

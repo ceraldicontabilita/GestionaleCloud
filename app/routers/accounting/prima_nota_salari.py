@@ -226,6 +226,12 @@ async def get_prima_nota_salari(
         salario["riconciliazione_precedente_da_rivedere"] = (
             stato_archiviato and not stato_verificato
         )
+        bonifico_ids = [
+            str(value) for value in (salario.get("bonifico_documenti_ids") or [])
+            if value
+        ]
+        salario["bonifico_documenti_count"] = len(set(bonifico_ids))
+        salario["bonifico_documento_disponibile"] = bool(bonifico_ids)
     
     return salari
 
@@ -276,6 +282,233 @@ async def get_cedolino_pdf(
         media_type="application/pdf",
         headers={
             "Content-Disposition": "inline; filename=cedolino.pdf",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+async def _leggi_pdf_allegato(file: UploadFile) -> bytes:
+    """Legge un PDF con limiti espliciti, senza fidarsi del solo MIME type."""
+    content = await file.read()
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="Il file selezionato non e' un PDF valido")
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Il PDF supera il limite di 20 MB")
+    return content
+
+
+def _nome_riga_salario(salario: Dict[str, Any]) -> str:
+    return normalize_name(
+        salario.get("dipendente_nome")
+        or salario.get("dipendente")
+        or salario.get("nome_dipendente")
+        or ""
+    )
+
+
+@router.post("/salari/{record_id}/cedolino-pdf")
+async def allega_cedolino_pdf(
+    record_id: str,
+    file: UploadFile = File(...),
+    _current_user: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Allega manualmente il cedolino alla riga scelta, senza alterare gli importi."""
+    import base64
+
+    db = Database.get_db()
+    salario = await db["prima_nota_salari"].find_one({"id": record_id}, {"_id": 0})
+    if not salario:
+        raise HTTPException(status_code=404, detail="Riga salario non trovata")
+    content = await _leggi_pdf_allegato(file)
+    nome = _nome_riga_salario(salario)
+    if not nome:
+        raise HTTPException(
+            status_code=422,
+            detail="Indicare prima il dipendente della riga, poi allegare il cedolino",
+        )
+
+    cedolino = None
+    if salario.get("cedolino_id"):
+        cedolino = await db["cedolini"].find_one(
+            {"id": salario["cedolino_id"]}, {"_id": 0, "id": 1}
+        )
+    if not cedolino and salario.get("codice_fiscale"):
+        cedolino = await db["cedolini"].find_one(
+            {
+                "codice_fiscale": salario.get("codice_fiscale"),
+                "mese": salario.get("mese"),
+                "anno": salario.get("anno"),
+            },
+            {"_id": 0, "id": 1},
+        )
+
+    cedolino_id = (cedolino or {}).get("id") or salario.get("cedolino_id") or str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    await db["cedolini"].update_one(
+        {"id": cedolino_id},
+        {"$set": {
+            "id": cedolino_id,
+            "dipendente_id": salario.get("dipendente_id"),
+            "nome_dipendente": nome,
+            "codice_fiscale": salario.get("codice_fiscale"),
+            "mese": salario.get("mese"),
+            "anno": salario.get("anno"),
+            "periodo": f"{int(salario.get('mese') or 0):02d}/{salario.get('anno')}",
+            "filename": file.filename or "cedolino.pdf",
+            "pdf_data": base64.b64encode(content).decode("ascii"),
+            "pdf_disponibile": True,
+            "source": "upload_manuale_pagina_salari",
+            "updated_at": now,
+        }},
+        upsert=True,
+    )
+    await db["prima_nota_salari"].update_one(
+        {"id": record_id},
+        {"$set": {"cedolino_id": cedolino_id, "updated_at": now}},
+    )
+    return {
+        "success": True,
+        "record_id": record_id,
+        "cedolino_id": cedolino_id,
+        "message": "Cedolino allegato; gli importi della riga non sono stati modificati",
+    }
+
+
+@router.post("/salari/{record_id}/bonifico-pdf")
+async def allega_bonifico_pdf(
+    record_id: str,
+    file: UploadFile = File(...),
+    _current_user: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Allega il PDF scelto alla mensilita', ma attende ancora la prova bancaria."""
+    db = Database.get_db()
+    salario = await db["prima_nota_salari"].find_one({"id": record_id}, {"_id": 0})
+    if not salario:
+        raise HTTPException(status_code=404, detail="Riga salario non trovata")
+    if not _nome_riga_salario(salario):
+        raise HTTPException(
+            status_code=422,
+            detail="Indicare prima il dipendente della riga, poi allegare il bonifico",
+        )
+
+    content = await _leggi_pdf_allegato(file)
+    from app.services.bonifici_pdf_ingest import importa_pdf_bonifico
+    esito = await importa_pdf_bonifico(
+        db,
+        content,
+        file.filename or "bonifico.pdf",
+        source="upload_manuale_pagina_salari",
+        auto_associa=False,
+    )
+    if esito.get("status") == "error" or not esito.get("transfer_id"):
+        raise HTTPException(
+            status_code=422,
+            detail=esito.get("message") or "Il PDF bonifico non e' leggibile",
+        )
+
+    transfer_id = esito["transfer_id"]
+    transfer = await db["bonifici_transfers"].find_one(
+        {"id": transfer_id}, {"_id": 0}
+    )
+    if not transfer:
+        raise HTTPException(status_code=422, detail="Bonifico archiviato ma non rileggibile")
+    collegato_altrove = (
+        transfer.get("salario_associato") is True
+        and transfer.get("operazione_salario_id")
+        and transfer.get("operazione_salario_id") != record_id
+    )
+    if collegato_altrove:
+        raise HTTPException(
+            status_code=409,
+            detail="Questo PDF risulta gia' collegato a un'altra mensilita'",
+        )
+
+    ids = [str(value) for value in (salario.get("bonifico_documenti_ids") or []) if value]
+    nuovo_collegamento = transfer_id not in ids
+    if nuovo_collegamento:
+        ids.append(transfer_id)
+
+    importi_pdf = []
+    for documento_id in dict.fromkeys(ids):
+        documento = await db["bonifici_transfers"].find_one(
+            {"id": documento_id}, {"_id": 0, "importo": 1}
+        )
+        if documento:
+            importi_pdf.append(abs(float(documento.get("importo") or 0)))
+    totale_pdf = round(sum(importi_pdf), 2)
+    totale_precedente = round(float(salario.get("importo_bonifico_documentato") or 0), 2)
+    # Il prospetto Excel e il PDF possono essere due prove dello stesso
+    # acconto: non sommarli due volte. Conserviamo il totale piu' completo.
+    totale_documentato = max(totale_precedente, totale_pdf)
+    now = datetime.now(timezone.utc).isoformat()
+    await db["bonifici_transfers"].update_one(
+        {"id": transfer_id},
+        {"$set": {
+            "salario_associato": True,
+            "operazione_salario_id": record_id,
+            "dipendente_id": salario.get("dipendente_id"),
+            "dipendente_nome": _nome_riga_salario(salario),
+            "associazione_evidenze": ["selezione_manuale_utente"],
+            "stato_riconciliazione": "documento_associato_attesa_banca",
+            "updated_at": now,
+        }},
+    )
+    await db["prima_nota_salari"].update_one(
+        {"id": record_id},
+        {"$set": {
+            "bonifico_documenti_ids": list(dict.fromkeys(ids)),
+            "bonifico_documento_associato": True,
+            "bonifico_documento_associato_manualmente": True,
+            "importo_bonifico_documentato": totale_documentato,
+            "stato_bonifico": "documentato_attesa_estratto_conto",
+            "updated_at": now,
+        }},
+    )
+    return {
+        "success": True,
+        "record_id": record_id,
+        "transfer_id": transfer_id,
+        "documento_duplicato": not nuovo_collegamento,
+        "importo_bonifico_documentato": totale_documentato,
+        "riconciliato": False,
+        "message": "Bonifico allegato; riconciliazione bancaria ancora da verificare",
+    }
+
+
+@router.get("/salari/{record_id}/bonifico-pdf")
+async def get_bonifico_pdf_salario(
+    record_id: str,
+    _current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Visualizza il primo PDF bonifico collegato alla riga selezionata."""
+    import base64
+
+    db = Database.get_db()
+    salario = await db["prima_nota_salari"].find_one(
+        {"id": record_id}, {"_id": 0, "bonifico_documenti_ids": 1}
+    )
+    if not salario:
+        raise HTTPException(status_code=404, detail="Riga salario non trovata")
+    documento = None
+    for transfer_id in salario.get("bonifico_documenti_ids") or []:
+        documento = await db["bonifici_transfers"].find_one(
+            {"id": transfer_id, "pdf_data": {"$exists": True, "$nin": [None, ""]}},
+            {"_id": 0, "pdf_data": 1, "source_file": 1},
+        )
+        if documento:
+            break
+    if not documento:
+        raise HTTPException(status_code=404, detail="PDF del bonifico non disponibile")
+    try:
+        pdf_bytes = base64.b64decode(documento["pdf_data"], validate=True)
+    except Exception as exc:
+        logger.warning("PDF bonifico non decodificabile per record %s: %s", record_id, exc)
+        raise HTTPException(status_code=422, detail="PDF del bonifico non leggibile")
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": "inline; filename=bonifico.pdf",
             "X-Content-Type-Options": "nosniff",
         },
     )

@@ -78,21 +78,27 @@ def _importo_atteso(riga: Dict[str, Any]) -> float:
     return round(float(riga.get("importo_busta") or riga.get("importo") or 0), 2)
 
 
+def _importo_residuo(riga: Dict[str, Any]) -> float:
+    atteso = _importo_atteso(riga)
+    pagato = round(abs(float(riga.get("importo_bonifico") or 0)), 2)
+    return round(max(0.0, atteso - pagato), 2)
+
+
 def _candidati_univoci(
     descrizione: str,
     importo: float,
     righe: List[Dict[str, Any]],
     data_movimento: str = "",
 ) -> List[Dict[str, Any]]:
-    """Nome completo + importo esatto + periodo esplicito, se presente."""
+    """Nome completo + importo entro il residuo + periodo, se presente."""
     nome_favore = estrai_nome_favore(descrizione)
     periodo = estrai_periodo_causale(descrizione)
     candidati: List[Dict[str, Any]] = []
     for riga in righe:
         if riga.get("riconciliato") is True:
             continue
-        atteso = _importo_atteso(riga)
-        if atteso <= 0 or abs(atteso - importo) > 0.009:
+        residuo = _importo_residuo(riga)
+        if residuo <= 0 or importo - residuo > 0.009:
             continue
         nome_riga = _nome_riga_stipendio(riga)
         nome_ok = (
@@ -181,11 +187,16 @@ async def associa_bonifici_stipendi(
 
         riga = candidati[0]
         importo = round(abs(importo_grezzo), 2)
+        atteso = _importo_atteso(riga)
+        pagato_prima = round(abs(float(riga.get("importo_bonifico") or 0)), 2)
+        pagato_totale = round(pagato_prima + importo, 2)
+        saldo = round(atteso - pagato_totale, 2)
+        completata = abs(saldo) <= 0.009
         await db["estratto_conto_movimenti"].update_one(
             {"id": movimento["id"]},
             {"$set": {
                 "riconciliato": True,
-                "tipo_riconciliazione": "stipendio_nome_importo_esatti",
+                "tipo_riconciliazione": "stipendio_nome_importo_entro_residuo",
                 "stipendio_id": riga["id"],
                 "dipendente": _nome_riga_stipendio(riga),
                 "categoria": "Stipendi",
@@ -196,14 +207,17 @@ async def associa_bonifici_stipendi(
             {"id": riga["id"]},
             {
                 "$set": {
-                    "importo_bonifico": importo,
-                    "saldo": round(_importo_atteso(riga) - importo, 2),
+                    "importo_bonifico": pagato_totale,
+                    "saldo": 0.0 if completata else saldo,
                     "data_pagamento": (movimento.get("data") or "")[:10],
                     "pagato_con": "bonifico",
-                    "riconciliato": True,
+                    "riconciliato": completata,
+                    "stato_bonifico": (
+                        "riconciliato" if completata else "parzialmente_riconciliato"
+                    ),
                     "riconciliazione_evidenze": [
                         "nome_completo_in_causale",
-                        "importo_esatto",
+                        "importo_entro_residuo",
                         "movimento_estratto_conto",
                     ],
                     "updated_at": now,
@@ -211,17 +225,18 @@ async def associa_bonifici_stipendi(
                 "$addToSet": {"movimenti_bancari_ids": movimento["id"]},
             },
         )
-        riga["importo_bonifico"] = importo
-        riga["riconciliato"] = True
+        riga["importo_bonifico"] = pagato_totale
+        riga["saldo"] = 0.0 if completata else saldo
+        riga["riconciliato"] = completata
         associati += 1
-        righe_completate += 1
+        righe_completate += int(completata)
         if len(dettaglio) < 40:
             dettaglio.append({
                 "dipendente": _nome_riga_stipendio(riga),
                 "data_bonifico": (movimento.get("data") or "")[:10],
                 "importo": importo,
                 "stipendio_id": riga["id"],
-                "riga_completata": True,
+                "riga_completata": completata,
             })
 
     return {
@@ -259,6 +274,8 @@ async def riconciliazione_salario_verificata(db, riga: Dict[str, Any]) -> bool:
 
     riga_verifica = dict(riga)
     riga_verifica["riconciliato"] = False
+    riga_verifica["importo_bonifico"] = 0.0
+    totale_verificato = 0.0
     for movimento_id in movimento_ids:
         movimento = await db["estratto_conto_movimenti"].find_one(
             {"id": movimento_id}, {"_id": 0}
@@ -266,7 +283,8 @@ async def riconciliazione_salario_verificata(db, riga: Dict[str, Any]) -> bool:
         if not movimento:
             continue
         importo = abs(float(movimento.get("importo") or 0))
-        if abs(importo - atteso) > 0.009:
+        residuo = round(atteso - totale_verificato, 2)
+        if importo <= 0 or importo - residuo > 0.009:
             continue
         descrizione = (
             movimento.get("descrizione_originale")
@@ -280,5 +298,6 @@ async def riconciliazione_salario_verificata(db, riga: Dict[str, Any]) -> bool:
             data_movimento=movimento.get("data") or "",
         )
         if len(candidati) == 1:
-            return True
-    return False
+            totale_verificato = round(totale_verificato + importo, 2)
+            riga_verifica["importo_bonifico"] = totale_verificato
+    return abs(atteso - totale_verificato) <= 0.009

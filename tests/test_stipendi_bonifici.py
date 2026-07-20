@@ -124,19 +124,40 @@ def test_associa_bonifico_per_nome_e_importo():
     assert not db.movimenti.docs[1].get("riconciliato")
 
 
-def test_importo_diverso_non_viene_associato():
+def test_acconto_viene_associato_ma_non_chiude_la_busta():
     db = _Db(
-        salari=[{"id": "S1", "dipendente": "CAROTENUTO ANTONELLA", "anno": 2026, "mese": 4,
+        salari=[{"id": "S1", "dipendente": "CAROTENUTO ANTONELLA", "anno": 2026, "mese": 3,
                  "importo_busta": 1047.0, "riconciliato": False}],
         movimenti=[{"id": "M1", "data": "2026-04-02", "importo": -1000.0,
                     "descrizione": "VOSTRA DISPOSIZIONE - VS.DISP. RIF. X FAVORE Carotenuto Antonella - ADD.TOT - Carotenuto Antonella"}])
     r = _run(associa_bonifici_stipendi(db))
-    assert r["bonifici_associati"] == 0
+    assert r["bonifici_associati"] == 1
     assert r["righe_stipendio_completate"] == 0
     riga = db.salari.docs[0]
     assert riga.get("riconciliato") is not True
-    assert not riga.get("importo_bonifico")
-    assert db.movimenti.docs[0].get("riconciliato") is not True
+    assert riga.get("importo_bonifico") == 1000.0
+    assert riga.get("saldo") == 47.0
+    assert db.movimenti.docs[0].get("riconciliato") is True
+
+
+def test_due_bonifici_acconto_e_saldo_chiudono_una_sola_busta():
+    db = _Db(
+        salari=[{"id": "S1", "dipendente": "VESPA VINCENZO", "anno": 2026,
+                 "mese": 3, "importo_busta": 1430.0, "riconciliato": False}],
+        movimenti=[
+            {"id": "M1", "data": "2026-04-02", "importo": -1000.0,
+             "descrizione": "BONIFICO STIPENDIO FAVORE VESPA VINCENZO"},
+            {"id": "M2", "data": "2026-04-09", "importo": -430.0,
+             "descrizione": "BONIFICO STIPENDIO FAVORE VESPA VINCENZO"},
+        ],
+    )
+    r = _run(associa_bonifici_stipendi(db))
+    assert r["bonifici_associati"] == 2
+    assert r["righe_stipendio_completate"] == 1
+    assert db.salari.docs[0]["importo_bonifico"] == 1430.0
+    assert db.salari.docs[0]["saldo"] == 0.0
+    assert db.salari.docs[0]["riconciliato"] is True
+    assert all(m.get("riconciliato") is True for m in db.movimenti.docs)
 
 
 def test_busta_zero_non_si_completa_solo_col_nome():
@@ -228,5 +249,23 @@ def test_etichetta_con_nome_importo_e_movimento_reale_e_verificata():
             "id": "M1", "data": "2026-04-03", "importo": -1200.0,
             "descrizione": "BONIFICO STIPENDIO FAVORE ROSSI MARIO",
         }],
+    )
+    assert _run(riconciliazione_salario_verificata(db, riga)) is True
+
+
+def test_etichetta_con_due_movimenti_reali_e_verificata():
+    riga = {
+        "id": "S1", "dipendente": "ROSSI MARIO", "anno": 2026, "mese": 3,
+        "importo_busta": 1200.0, "importo_bonifico": 1200.0,
+        "riconciliato": True, "movimenti_bancari_ids": ["M1", "M2"],
+    }
+    db = _Db(
+        salari=[riga],
+        movimenti=[
+            {"id": "M1", "data": "2026-04-03", "importo": -800.0,
+             "descrizione": "BONIFICO STIPENDIO FAVORE ROSSI MARIO"},
+            {"id": "M2", "data": "2026-04-08", "importo": -400.0,
+             "descrizione": "BONIFICO STIPENDIO FAVORE ROSSI MARIO"},
+        ],
     )
     assert _run(riconciliazione_salario_verificata(db, riga)) is True

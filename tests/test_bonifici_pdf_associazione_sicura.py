@@ -69,6 +69,27 @@ def test_parser_distinta_stipendi_bpm_non_scambia_colonne():
     assert isinstance(parsed["data"], datetime)
 
 
+def test_parser_distinta_bpm_con_beneficiario_intercalato_conserva_causale():
+    parsed = extract_transfers_from_text(
+        """
+        Data esecuzione: 02/04/2026
+        Tot. distinta: 600,00 EUR
+        Beneficiario
+        PARISI ANTONIO
+        IBAN beneficiario
+        Descrizione causale
+        Importo
+        IT60X0542811101000000123456
+        POCCI SALVATORE
+        600,00 EUR
+        """,
+        filename="bonifico marzo Parisi Antonio.pdf",
+    )[0]
+    assert parsed["beneficiario"]["nome"] == "PARISI ANTONIO"
+    assert parsed["causale"] == "POCCI SALVATORE"
+    assert parsed["importo"] == 600.0
+
+
 def test_parser_importo_dopo_etichetta_in_layout_a_colonne():
     parsed = extract_transfers_from_text(
         """
@@ -126,6 +147,37 @@ def test_salario_richiede_nome_importo_e_periodo_esatti():
          "mese": 3, "anno": 2026, "riconciliato": False},
     ]
     assert seleziona_salario_univoco(bonifico, righe)["id"] == "ok"
+
+
+def test_pdf_acconto_si_associa_entro_il_residuo():
+    bonifico = {
+        "importo": 1000.0,
+        "data": "2026-04-02",
+        "beneficiario": {"nome": "Carotenuto Antonella"},
+        "causale": "Carotenuto Antonella acconto stipendio",
+    }
+    righe = [{
+        "id": "marzo", "dipendente": "CAROTENUTO ANTONELLA",
+        "importo_busta": 1430.0, "mese": 3, "anno": 2026,
+        "riconciliato": False,
+    }]
+    assert seleziona_salario_univoco(bonifico, righe)["id"] == "marzo"
+
+
+def test_pdf_con_beneficiario_e_causale_di_due_dipendenti_resta_da_verificare():
+    bonifico = {
+        "importo": 600.0,
+        "data": "2026-04-02",
+        "beneficiario": {"nome": "Parisi Antonio"},
+        "causale": "Pocci Salvatore",
+    }
+    righe = [
+        {"id": "parisi", "dipendente": "PARISI ANTONIO", "importo_busta": 1485.0,
+         "mese": 3, "anno": 2026, "riconciliato": False},
+        {"id": "pocci", "dipendente": "POCCI SALVATORE", "importo_busta": 600.0,
+         "mese": 3, "anno": 2026, "riconciliato": False},
+    ]
+    assert seleziona_salario_univoco(bonifico, righe) is None
 
 
 def test_salario_ambiguo_non_viene_scelto_per_ordine_database():

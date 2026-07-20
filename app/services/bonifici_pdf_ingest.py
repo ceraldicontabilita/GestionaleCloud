@@ -51,10 +51,13 @@ def nome_presente_nel_testo(nome: str, testo: str) -> bool:
 
 def importo_residuo_salario(riga: Dict[str, Any]) -> float:
     busta = float(riga.get("importo_busta") or riga.get("importo") or 0)
-    # `importo_bonifico` e' valorizzato solo dopo il riscontro bancario.
-    # I PDF caricati documentano la disposizione, non l'addebito sul conto.
-    gia_riconciliato = float(riga.get("importo_bonifico") or 0)
-    return round(max(0.0, busta - gia_riconciliato), 2)
+    # Il PDF documenta la disposizione, mentre `importo_bonifico` deriva
+    # dall'estratto conto. Sono due prove dello stesso pagamento: non vanno
+    # sommate. Per accettare acconti successivi si sottrae la prova piu'
+    # completa gia' disponibile.
+    documentato = float(riga.get("importo_bonifico_documentato") or 0)
+    riconciliato = float(riga.get("importo_bonifico") or 0)
+    return round(max(0.0, busta - max(documentato, riconciliato)), 2)
 
 
 def _nome_salario(riga: Dict[str, Any]) -> str:
@@ -81,12 +84,46 @@ def data_pagamento_compatibile(data_pagamento: Any, riga: Dict[str, Any]) -> boo
         return False
 
 
+def causale_contraddice_beneficiario(
+    bonifico: Dict[str, Any], righe: Iterable[Dict[str, Any]]
+) -> bool:
+    """Blocca il match se la causale nomina chiaramente un altro dipendente.
+
+    Nei documenti reali puo' capitare che il beneficiario bancario sia una
+    persona ma la causale riporti il nome completo di un'altra. In quel caso
+    il documento resta da verificare: non si sceglie ne' il beneficiario ne'
+    la causale in modo arbitrario.
+    """
+    beneficiario = bonifico.get("beneficiario") or {}
+    identita_beneficiario = nome_tokens(
+        beneficiario.get("nome") or bonifico.get("dipendente_nome") or ""
+    )
+    causale = bonifico.get("causale") or ""
+    if len(identita_beneficiario) < 2 or not causale:
+        return False
+
+    identita_viste = set()
+    for riga in righe:
+        identita = nome_tokens(_nome_salario(riga))
+        if len(identita) < 2 or identita in identita_viste:
+            continue
+        identita_viste.add(identita)
+        if identita != identita_beneficiario and nome_presente_nel_testo(
+            _nome_salario(riga), causale
+        ):
+            return True
+    return False
+
+
 def seleziona_salario_univoco(
     bonifico: Dict[str, Any], righe: Iterable[Dict[str, Any]]
 ) -> Optional[Dict[str, Any]]:
-    """Seleziona solo un candidato sostenuto da nome/IBAN + importo esatto."""
+    """Seleziona un solo candidato per identita', periodo e importo nel residuo."""
+    righe = list(righe)
     importo = round(abs(float(bonifico.get("importo") or 0)), 2)
     if importo <= 0:
+        return None
+    if causale_contraddice_beneficiario(bonifico, righe):
         return None
 
     beneficiario = bonifico.get("beneficiario") or {}
@@ -103,7 +140,10 @@ def seleziona_salario_univoco(
         if riga.get("riconciliato") is True:
             continue
         residuo = importo_residuo_salario(riga)
-        if abs(residuo - importo) > 0.009:
+        # Un dipendente puo' ricevere piu' acconti e poi il saldo. L'importo
+        # deve essere positivo e non puo' superare il residuo documentabile;
+        # la riga sara' chiusa solo quando la somma raggiunge la busta.
+        if residuo <= 0 or importo - residuo > 0.009:
             continue
 
         nome_ok = identita_coincide(nome, _nome_salario(riga))
@@ -177,6 +217,15 @@ async def arricchisci_nomi_salari_da_cedolini(db) -> int:
 
 async def associa_transfer_a_salario(db, transfer: Dict[str, Any]) -> Dict[str, Any]:
     """Collega il PDF, ma non certifica ancora il riscontro bancario."""
+    if transfer.get("salario_associato") is True and transfer.get(
+        "operazione_salario_id"
+    ):
+        return {
+            "associato": True,
+            "salario_id": transfer.get("operazione_salario_id"),
+            "dipendente": transfer.get("dipendente_nome"),
+            "gia_associato": True,
+        }
     await arricchisci_nomi_salari_da_cedolini(db)
     righe = await db["prima_nota_salari"].find(
         {"riconciliato": {"$ne": True}}, {"_id": 0}
@@ -198,6 +247,12 @@ async def associa_transfer_a_salario(db, transfer: Dict[str, Any]) -> Dict[str, 
 
     nome = _nome_salario(candidato)
     now = datetime.now(timezone.utc).isoformat()
+    residuo_prima = importo_residuo_salario(candidato)
+    evidenze = ["identita_esatta", "importo_entro_residuo"]
+    if abs(residuo_prima - importo) <= 0.009:
+        evidenze.append("saldo_documentale_completo")
+    else:
+        evidenze.append("acconto_documentale")
     await db["bonifici_transfers"].update_one(
         {"id": transfer_id},
         {"$set": {
@@ -205,7 +260,7 @@ async def associa_transfer_a_salario(db, transfer: Dict[str, Any]) -> Dict[str, 
             "operazione_salario_id": candidato.get("id"),
             "dipendente_id": candidato.get("dipendente_id"),
             "dipendente_nome": nome,
-            "associazione_evidenze": ["identita_esatta", "importo_esatto"],
+            "associazione_evidenze": evidenze,
             "stato_riconciliazione": "documento_associato_attesa_banca",
             "updated_at": now,
         }},
@@ -224,9 +279,13 @@ async def associa_transfer_a_salario(db, transfer: Dict[str, Any]) -> Dict[str, 
 
 
 async def importa_pdf_bonifico(
-    db, content: bytes, filename: str, source: str = "upload_manuale"
+    db,
+    content: bytes,
+    filename: str,
+    source: str = "upload_manuale",
+    auto_associa: bool = True,
 ) -> Dict[str, Any]:
-    """Parsa, deduplica, archivia e tenta il solo match sicuro."""
+    """Parsa e archivia il PDF; il match automatico puo' essere disattivato."""
     if not content.startswith(b"%PDF"):
         return {"status": "error", "message": "Il file non e' un PDF valido"}
     digest = hashlib.sha256(content).hexdigest()
@@ -260,7 +319,11 @@ async def importa_pdf_bonifico(
             {"id": esistente.get("id")}, {"$set": aggiornamento}
         )
         esistente.update(aggiornamento)
-        associazione = await associa_transfer_a_salario(db, esistente)
+        associazione = (
+            await associa_transfer_a_salario(db, esistente)
+            if auto_associa
+            else {"associato": False, "motivo": "associazione_manuale_richiesta"}
+        )
         return {"status": "duplicate", "transfer_id": esistente.get("id"), **associazione}
 
     text = read_pdf_bytes(content)
@@ -291,7 +354,11 @@ async def importa_pdf_bonifico(
         and transfer.get("data")
     )
     await db["bonifici_transfers"].insert_one(dict(transfer))
-    associazione = await associa_transfer_a_salario(db, transfer)
+    associazione = (
+        await associa_transfer_a_salario(db, transfer)
+        if auto_associa
+        else {"associato": False, "motivo": "associazione_manuale_richiesta"}
+    )
     return {
         "status": "saved",
         "transfer_id": transfer["id"],

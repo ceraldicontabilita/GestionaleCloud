@@ -26,6 +26,12 @@ logger = logging.getLogger(__name__)
 
 # Definizione dei canali: come risolvere folder id, interruttore e categoria.
 CANALI: Dict[str, Dict[str, Any]] = {
+    "bonifico": {
+        "category": "bonifico",
+        "label": "Bonifici stipendi",
+        "folder": lambda s: s.GOOGLE_DRIVE_BONIFICI_FOLDER_ID or s.DRIVE_FOLDER_BONIFICI_ID,
+        "enable": lambda s: s.ENABLE_DRIVE_BONIFICI_SYNC,
+    },
     "dichiarazione_iva": {
         "category": "dichiarazione_iva",
         "label": "Dichiarazioni IVA",
