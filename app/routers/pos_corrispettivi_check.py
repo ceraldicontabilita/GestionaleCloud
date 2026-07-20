@@ -795,7 +795,9 @@ async def _carica_pos_manuale_per_data(db) -> Dict[str, float]:
     return out
 
 
-async def _carica_accrediti_banca_pos(db, data_da: str, data_a: str) -> Dict[str, float]:
+async def _carica_accrediti_banca_pos(
+    db, data_da: str, data_a: str
+) -> Dict[str, Dict[str, Any]]:
     """Carica gli accrediti POS in banca dall'estratto conto.
 
     Fonte canonica: ``estratto_conto_movimenti``. La data contabile indica
@@ -805,7 +807,7 @@ async def _carica_accrediti_banca_pos(db, data_da: str, data_a: str) -> Dict[str
     giorno. Remunerazioni, commissioni, fatture e righe senza ``DEL`` restano
     escluse.
     """
-    out: Dict[str, float] = {}
+    out: Dict[str, Dict[str, Any]] = {}
     data_a_estesa = (datetime.strptime(data_a, "%Y-%m-%d") + timedelta(days=7)).strftime("%Y-%m-%d")
     query = {
         "data": {"$gte": data_da, "$lte": data_a_estesa},
@@ -828,7 +830,21 @@ async def _carica_accrediti_banca_pos(db, data_da: str, data_a: str) -> Dict[str
         if not (data_da <= giorno_operazione <= data_a):
             continue
         imp = float(m.get("importo") or m.get("amount") or 0)
-        out[giorno_operazione] = out.get(giorno_operazione, 0.0) + imp
+        evidenza = out.setdefault(giorno_operazione, {
+            "totale": 0.0,
+            "numero_movimenti": 0,
+            "date_contabili": [],
+            "origine": "estratto_conto_movimenti",
+        })
+        evidenza["totale"] += imp
+        evidenza["numero_movimenti"] += 1
+        data_contabile = str(m.get("data") or "")[:10]
+        if data_contabile and data_contabile not in evidenza["date_contabili"]:
+            evidenza["date_contabili"].append(data_contabile)
+
+    for evidenza in out.values():
+        evidenza["totale"] = round(evidenza["totale"], 2)
+        evidenza["date_contabili"].sort()
 
     return out
 
@@ -933,7 +949,9 @@ async def controllo_incassi_due_fasi(
         if pos_v <= 0:
             continue
         data_attesa = _data_accredito_attesa(d)
-        accr = round(float(accrediti.get(d) or 0), 2)
+        evidenza_banca = accrediti.get(d) or {}
+        accr = round(float(evidenza_banca.get("totale") or 0), 2)
+        numero_movimenti_banca = int(evidenza_banca.get("numero_movimenti") or 0)
         g = {
             "giorni": [d],
             "pos_tot": round(pos_v, 2),
@@ -941,13 +959,40 @@ async def controllo_incassi_due_fasi(
             "data_accredito_attesa": data_attesa,
         }
         if data_attesa > oggi:
-            g.update(stato="in_attesa", accredito=0.0, diff=0.0)
+            g.update(
+                stato="in_attesa", accredito=0.0, diff=0.0,
+                numero_movimenti_banca=numero_movimenti_banca,
+                origine_accredito=evidenza_banca.get("origine"),
+                date_contabili_banca=evidenza_banca.get("date_contabili", []),
+                riconciliato_banca_reale=False,
+            )
         elif accr == 0:
-            g.update(stato="mancante", accredito=0.0, diff=round(-pos_v, 2))
+            g.update(
+                stato="mancante", accredito=0.0, diff=round(-pos_v, 2),
+                numero_movimenti_banca=0,
+                origine_accredito=None,
+                date_contabili_banca=[],
+                riconciliato_banca_reale=False,
+            )
         else:
             diff = round(accr - pos_v, 2)
             stato = "ok" if abs(diff) <= tolleranza_euro else ("differenza" if diff < 0 else "extra")
-            g.update(stato=stato, accredito=round(accr, 2), diff=diff)
+            # Il badge di riconciliazione e' ammesso solo se il dato arriva
+            # davvero dall'estratto conto canonico e l'importo quadra.
+            riconciliato_banca_reale = bool(
+                stato == "ok"
+                and numero_movimenti_banca > 0
+                and evidenza_banca.get("origine") == "estratto_conto_movimenti"
+            )
+            g.update(
+                stato=stato,
+                accredito=round(accr, 2),
+                diff=diff,
+                numero_movimenti_banca=numero_movimenti_banca,
+                origine_accredito=evidenza_banca.get("origine"),
+                date_contabili_banca=evidenza_banca.get("date_contabili", []),
+                riconciliato_banca_reale=riconciliato_banca_reale,
+            )
         gruppi_accr[d] = g
 
     saldo_progressivo = 0.0
@@ -1037,6 +1082,10 @@ async def controllo_incassi_due_fasi(
         giorni_gruppo = 0
 
         dettaglio_gruppo = None
+        numero_movimenti_banca = 0
+        origine_accredito = None
+        date_contabili_banca: List[str] = []
+        riconciliato_banca_reale = False
         if pos_man <= 0 or not gruppo:
             diff_accr = 0.0
             accredito = 0.0
@@ -1045,6 +1094,10 @@ async def controllo_incassi_due_fasi(
             stato_accr = gruppo["stato"]
             diff_accr = gruppo["diff"]
             accredito = gruppo["accredito"]
+            numero_movimenti_banca = gruppo.get("numero_movimenti_banca", 0)
+            origine_accredito = gruppo.get("origine_accredito")
+            date_contabili_banca = gruppo.get("date_contabili_banca", [])
+            riconciliato_banca_reale = bool(gruppo.get("riconciliato_banca_reale"))
             pos_gruppo = gruppo["pos_tot"]
             giorni_gruppo = len(gruppo["giorni"])
             # Statistiche e saldo: una volta per giorno operazione.
@@ -1085,6 +1138,10 @@ async def controllo_incassi_due_fasi(
             "accredito_banca": round(accredito, 2),
             "diff_accredito": diff_accr,
             "stato_accredito": stato_accr,
+            "riconciliato_banca_reale": riconciliato_banca_reale,
+            "numero_movimenti_banca": numero_movimenti_banca,
+            "origine_accredito": origine_accredito,
+            "date_contabili_banca": date_contabili_banca,
             "capogruppo": capogruppo,
             "pos_gruppo": round(pos_gruppo, 2),
             "giorni_gruppo": giorni_gruppo,

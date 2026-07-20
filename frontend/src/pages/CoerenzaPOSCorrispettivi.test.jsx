@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../api';
 import {
+  BadgeRiconciliatoBanca,
   EditorPosReale,
   ModalImportTotaliPos,
   formatEuroConSegno,
@@ -25,6 +26,16 @@ describe('Segno differenza XML meno POS reale', () => {
 
   it('mantiene il segno negativo quando XML non copre il POS reale', () => {
     expect(formatEuroConSegno(792.60 - 793.20)).toBe('€ -0,60');
+  });
+});
+
+describe('Evidenza di riconciliazione bancaria', () => {
+  it('mostra il badge soltanto quando il backend certifica il match reale', () => {
+    const { rerender } = render(<BadgeRiconciliatoBanca riconciliato={false} />);
+    expect(screen.queryByText('✓ Riconciliato banca')).not.toBeInTheDocument();
+
+    rerender(<BadgeRiconciliatoBanca riconciliato />);
+    expect(screen.getByText('✓ Riconciliato banca')).toBeInTheDocument();
   });
 });
 
@@ -76,6 +87,18 @@ describe('Editor POS reale del terminale', () => {
     }} />);
 
     expect(screen.getByLabelText('POS reale terminale 2026-07-05')).toHaveValue('');
+    expect(screen.queryByLabelText('Salva POS reale 2026-07-05')).not.toBeInTheDocument();
+  });
+
+  it('nasconde Salva se il valore e gia persistito e lo mostra solo dopo una modifica', () => {
+    render(<EditorPosReale g={{
+      data: '2026-07-05', pos_manuale: 1098.40, pos_manuale_presente: true,
+    }} />);
+
+    const input = screen.getByLabelText('POS reale terminale 2026-07-05');
+    expect(screen.queryByLabelText('Salva POS reale 2026-07-05')).not.toBeInTheDocument();
+    fireEvent.change(input, { target: { value: '1100,00' } });
+    expect(screen.getByLabelText('Salva POS reale 2026-07-05')).toBeInTheDocument();
   });
 
   it('salva il valore manuale senza modificare il dato XML', async () => {
@@ -101,6 +124,7 @@ describe('Editor POS reale del terminale', () => {
       },
     ));
     expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(screen.queryByLabelText('Salva POS reale 2026-07-05')).not.toBeInTheDocument();
   });
 
   it('accetta zero come valore manuale esplicito', async () => {

@@ -42,6 +42,12 @@ export function formatEuroConSegno(amount) {
   return `€ ${segno}${assoluto}`;
 }
 
+export function BadgeRiconciliatoBanca({ riconciliato }) {
+  return riconciliato
+    ? <Badge variant="success">✓ Riconciliato banca</Badge>
+    : null;
+}
+
 export default function CoerenzaPOSCorrispettivi() {
   const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
@@ -838,17 +844,28 @@ export function EditorPosReale({ g, onSaved }) {
     ? Number(g.pos_manuale || 0).toFixed(2).replace('.', ',')
     : '';
   const [valore, setValore] = useState(valoreIniziale);
+  const [importoSalvato, setImportoSalvato] = useState(
+    g.pos_manuale_presente ? Number(g.pos_manuale || 0) : null
+  );
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
     setValore(g.pos_manuale_presente
       ? Number(g.pos_manuale || 0).toFixed(2).replace('.', ',')
       : '');
+    setImportoSalvato(g.pos_manuale_presente ? Number(g.pos_manuale || 0) : null);
   }, [g.data, g.pos_manuale, g.pos_manuale_presente]);
 
+  const normalizzato = String(valore).trim().replace(/\s/g, '').replace(',', '.');
+  const importoCorrente = Number(normalizzato);
+  const valoreModificato = normalizzato !== '' && (
+    !Number.isFinite(importoCorrente)
+    || importoSalvato === null
+    || Math.round(importoCorrente * 100) !== Math.round(importoSalvato * 100)
+  );
+
   const salva = async () => {
-    const normalizzato = String(valore).trim().replace(/\s/g, '').replace(',', '.');
-    const importo = Number(normalizzato);
+    const importo = importoCorrente;
     if (normalizzato === '' || !Number.isFinite(importo) || importo < 0) {
       toast.error('Inserisci un importo POS valido, anche 0,00');
       return;
@@ -860,6 +877,7 @@ export function EditorPosReale({ g, onSaved }) {
         importo,
         note: 'Inserimento manuale da Coerenza POS',
       });
+      setImportoSalvato(importo);
       toast.success(res.data?.message || `POS reale del ${formatDateIT(g.data)} salvato`);
       if (onSaved) await onSaved();
     } catch (e) {
@@ -884,17 +902,19 @@ export function EditorPosReale({ g, onSaved }) {
         disabled={salvando}
         style={{ width: 92, textAlign: 'right', padding: '6px 8px', minHeight: 36 }}
       />
-      <Button
-        type="button"
-        size="sm"
-        variant="primary"
-        onClick={salva}
-        disabled={salvando}
-        aria-label={`Salva POS reale ${g.data}`}
-        style={{ minHeight: 36, padding: '6px 9px' }}
-      >
-        {salvando ? '...' : 'Salva'}
-      </Button>
+      {valoreModificato && (
+        <Button
+          type="button"
+          size="sm"
+          variant="primary"
+          onClick={salva}
+          disabled={salvando}
+          aria-label={`Salva POS reale ${g.data}`}
+          style={{ minHeight: 36, padding: '6px 9px' }}
+        >
+          {salvando ? '...' : 'Salva'}
+        </Button>
+      )}
     </div>
   );
 }
@@ -982,6 +1002,12 @@ function RigaGiornaliera({ g, even, onReload }) {
         {g.stato_accredito === 'raggruppato'
           ? <em style={{ color: COLORS.textSubtle, fontSize: 11 }}>↳ accr. {formatDateIT(g.data_accredito_attesa)}</em>
           : g.accredito_banca > 0 ? formatEuro(g.accredito_banca) : '—'}
+        {g.numero_movimenti_banca > 0 && (
+          <div style={{ fontSize: 10, color: COLORS.textMuted, marginTop: 2 }}>
+            Estratto conto · {g.numero_movimenti_banca}{' '}
+            {g.numero_movimenti_banca === 1 ? 'movimento' : 'movimenti'}
+          </div>
+        )}
       </Td>
       <Td
         align="right"
@@ -990,9 +1016,13 @@ function RigaGiornaliera({ g, even, onReload }) {
           fontWeight: 600,
         }}
       >
-        <div style={{ fontSize: 11, textTransform: 'uppercase', fontWeight: 700 }}>
-          {statoAccrLabel}
-        </div>
+        {g.riconciliato_banca_reale ? (
+          <BadgeRiconciliatoBanca riconciliato />
+        ) : (
+          <div style={{ fontSize: 11, textTransform: 'uppercase', fontWeight: 700 }}>
+            {statoAccrLabel}
+          </div>
+        )}
         {g.stato_accredito === 'ok' || g.stato_accredito === 'differenza' || g.stato_accredito === 'extra'
           ? formatEuro(g.diff_accredito)
           : g.stato_accredito === 'mancante'
