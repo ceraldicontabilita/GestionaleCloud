@@ -3,7 +3,6 @@ import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuroD, formatDateIT, useIsMobile } from '../lib/utils';
 import { useHashState } from '../hooks/useHashState';
-import { useConfirm } from '../components/ui/ConfirmDialog';
 import ModalFattura from '../components/ModalFattura';
 import DocumentViewerModal from '../components/DocumentViewerModal';
 import FinanziamentoSoci from './FinanziamentoSoci';
@@ -15,7 +14,6 @@ import {
   Landmark,
   Pencil,
   ReceiptText,
-  Trash2,
 } from 'lucide-react';
 
 /**
@@ -430,7 +428,6 @@ export function MovimentoModal({ tipo, movimento, onClose, onSaved }) {
 /* ------------------------------- registro ------------------------------- */
 function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
   const isMobile = useIsMobile();
-  const confirm = useConfirm();
   const [pagina, setPagina] = useState(1);
   const [cerca, setCerca] = useState('');
   const [fCategoria, setFCategoria] = useState('');
@@ -509,27 +506,6 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
   const categorieUsate = useMemo(
     () => [...new Set(movimenti.map(m => m.categoria).filter(Boolean))].sort(),
     [movimenti]);
-
-  const elimina = async mov => {
-    const ok = await confirm({
-      title: 'Eliminare il movimento?',
-      message: `${formatDateIT(mov.data)} — ${mov.descrizione} (${eur(mov.importo)})`,
-      confirmText: 'Elimina', danger: true,
-    });
-    if (!ok) return;
-    setBusy(mov.id);
-    try {
-      try {
-        await api.delete(`/api/prima-nota/${tipo}/${mov.id}`);
-      } catch (e) {
-        if (e.response?.status === 409) await api.delete(`/api/prima-nota/${tipo}/${mov.id}?force=true`);
-        else throw e;
-      }
-      onRicarica();
-    } finally {
-      setBusy(null);
-    }
-  };
 
   const sposta = async mov => {
     const verso = tipo === 'cassa' ? 'banca' : 'cassa';
@@ -658,14 +634,6 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
         style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: 8, padding: 0, cursor: 'pointer' }}
       >
         <Pencil size={18} />
-      </button>
-      <button
-        onClick={() => elimina(mov)} disabled={busy === mov.id}
-        title="Elimina"
-        aria-label="Elimina movimento"
-        style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#fef2f2', color: ROSSO, border: '1px solid #fecaca', borderRadius: 8, padding: 0, cursor: 'pointer', opacity: busy === mov.id ? 0.5 : 1 }}
-      >
-        <Trash2 size={18} />
       </button>
     </span>
   );
