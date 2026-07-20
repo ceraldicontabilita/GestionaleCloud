@@ -3,17 +3,17 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 151
+**Totale file analizzati:** 152
 
 | Classificazione | File |
 |---|---:|
 | ENTRYPOINT | 3 |
 | ROUTE_ATTIVA | 30 |
-| COMPONENTE_USATO | 79 |
+| COMPONENTE_USATO | 80 |
 | MODALE_USATO | 4 |
 | HOOK_USATO | 3 |
-| TEST_ONLY | 10 |
-| DINAMICO_DA_VERIFICARE | 22 |
+| TEST_ONLY | 9 |
+| DINAMICO_DA_VERIFICARE | 23 |
 | ORFANO_ELIMINABILE | 0 |
 
 ## ORFANO_ELIMINABILE — candidati eliminazione
@@ -50,13 +50,14 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/hooks/use-toast.js` |
 | `frontend/src/hooks/usePrimaNota.js` |
 | `frontend/src/stores/primaNotaStore.js` |
+| `frontend/src/test/setup.js` |
 
 ## Dettaglio completo
 
 | File | Classificazione | Importato da (n. file) |
 |---|---|---:|
 | `frontend/src/App.jsx` | ENTRYPOINT | 1 |
-| `frontend/src/api.js` | COMPONENTE_USATO | 78 |
+| `frontend/src/api.js` | COMPONENTE_USATO | 79 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ChatIntelligente.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/CopyLinkButton.jsx` | COMPONENTE_USATO | 5 |
@@ -112,7 +113,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ui/toggle.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ui/tooltip.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/contexts/AnnoContext.jsx` | COMPONENTE_USATO | 48 |
-| `frontend/src/contexts/AuthContext.jsx` | COMPONENTE_USATO | 6 |
+| `frontend/src/contexts/AuthContext.jsx` | COMPONENTE_USATO | 7 |
 | `frontend/src/contexts/AuthContext.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/contexts/UploadContext.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/hooks/use-toast.js` | DINAMICO_DA_VERIFICARE | 1 |
@@ -171,6 +172,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/LearningMachineUniversale.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/LibroGiornale.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/Login.jsx` | ROUTE_ATTIVA | 1 |
+| `frontend/src/pages/MFAAdmin.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/MappaGestionale.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/MittentiEmail.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/Mutui.jsx` | COMPONENTE_USATO | 1 |
@@ -205,5 +207,5 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/hub/StrumentiHub.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/hub/VeicoliHub.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/stores/primaNotaStore.js` | DINAMICO_DA_VERIFICARE | 1 |
-| `frontend/src/test/setup.js` | TEST_ONLY | 0 |
+| `frontend/src/test/setup.js` | DINAMICO_DA_VERIFICARE | 0 |
 
