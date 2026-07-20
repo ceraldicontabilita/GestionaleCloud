@@ -18,6 +18,48 @@ const FORNITORI_MAI_ASSEGNO = [
   'paypal', 'enel', 'leasys', 'arval',
 ];
 
+const parseImportoFiltro = value => {
+  const raw = String(value ?? '').trim().replace(/\s/g, '');
+  if (!raw) return null;
+  const normalizzato = raw.includes(',')
+    ? raw.replace(/\./g, '').replace(',', '.')
+    : raw;
+  const numero = Number(normalizzato);
+  return Number.isFinite(numero) ? numero : null;
+};
+
+export const normalizzaBeneficiarioAssegno = value => {
+  const beneficiario = String(value ?? '').trim();
+  return ['', '-', 'n/a', 'non disponibile'].includes(beneficiario.toLowerCase())
+    ? ''
+    : beneficiario;
+};
+
+export function filtraAssegni(assegni, filtri = {}) {
+  const {
+    fornitore = '', importoEsatto = '', importoMin = '', importoMax = '',
+    numeroAssegno = '', numeroFattura = '', soloDaAssociare = false,
+  } = filtri;
+  const esatto = parseImportoFiltro(importoEsatto);
+  const minimo = parseImportoFiltro(importoMin);
+  const massimo = parseImportoFiltro(importoMax);
+  const cifreNumero = String(numeroAssegno).replace(/\D/g, '');
+
+  return assegni.filter(a => {
+    const numero = String(a.numero || a.numero_assegno || '');
+    if (!numero || a.importo === null || a.importo === undefined) return false;
+    const importo = Number(a.importo) || 0;
+    if (fornitore && !String(a.beneficiario || '').toLowerCase().includes(fornitore.toLowerCase())) return false;
+    if (esatto !== null && Math.abs(importo - esatto) > 0.009) return false;
+    if (minimo !== null && importo < minimo) return false;
+    if (massimo !== null && importo > massimo) return false;
+    if (cifreNumero.length >= 3 && !numero.replace(/\D/g, '').includes(cifreNumero)) return false;
+    if (numeroFattura && !String(a.numero_fattura || '').toLowerCase().includes(numeroFattura.toLowerCase())) return false;
+    if (soloDaAssociare && normalizzaBeneficiarioAssegno(a.beneficiario)) return false;
+    return true;
+  });
+}
+
 const STATI_ASSEGNO = {
   vuoto: { label: 'Valido', variant: 'success' },
   compilato: { label: 'Compilato', variant: 'info' },
@@ -39,6 +81,7 @@ export default function GestioneAssegni() {
 
   // NUOVI FILTRI
   const [filterFornitore, setFilterFornitore] = useState('');
+  const [filterImportoEsatto, setFilterImportoEsatto] = useState('');
   const [filterImportoMin, setFilterImportoMin] = useState('');
   const [filterImportoMax, setFilterImportoMax] = useState('');
   const [filterNumeroAssegno, setFilterNumeroAssegno] = useState('');
@@ -86,6 +129,7 @@ export default function GestioneAssegni() {
   const [selectedFatture, setSelectedFatture] = useState([]);
   const [showFattureModal, setShowFattureModal] = useState(false);
   const [editingAssegnoForFatture, setEditingAssegnoForFatture] = useState(null);
+  const [filterFatturaModal, setFilterFatturaModal] = useState('');
 
   // Drag state per modal
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 });
@@ -155,16 +199,17 @@ export default function GestioneAssegni() {
   };
 
   // Carica fatture non pagate per collegamento - SOLO dello stesso fornitore
-  const loadFatture = async (beneficiario = '') => {
+  const loadFatture = async (beneficiario = '', importoAssegno = 0) => {
     setLoadingFatture(true);
     try {
       const params = new URLSearchParams();
-      params.append('status', 'imported');
+      params.append('anno', anno);
+      params.append('limit', '1000');
       // IMPORTANTE: se c'è un beneficiario, filtra SOLO quelle del beneficiario
       if (beneficiario) {
         params.append('fornitore', beneficiario);
       }
-      const res = await api.get(`/api/invoices?${params}&limit=200`);
+      const res = await api.get(`/api/invoices?${params}`);
       const items = res.data.items || res.data || [];
       // Escludi fatture già pagate E fornitori pagati per contanti
       let filtered = items.filter(f => {
@@ -202,8 +247,13 @@ export default function GestioneAssegni() {
         });
       }
 
-      // ORDINA PER FORNITORE (raggruppamento visivo) poi per data decrescente
+      // Prima le fatture con importo piu vicino all'assegno: quando il
+      // beneficiario non e ancora noto, la candidata utile resta subito
+      // visibile anche con centinaia di fatture nell'anno.
       filtered.sort((a, b) => {
+        const importoA = Math.abs(Number(a.total_amount || a.importo_totale || 0) - Number(importoAssegno || 0));
+        const importoB = Math.abs(Number(b.total_amount || b.importo_totale || 0) - Number(importoAssegno || 0));
+        if (importoA !== importoB) return importoA - importoB;
         const fornA = (a.supplier_name || a.cedente_denominazione || '').toLowerCase();
         const fornB = (b.supplier_name || b.cedente_denominazione || '').toLowerCase();
         // N/A e vuoti vanno in fondo
@@ -298,8 +348,9 @@ export default function GestioneAssegni() {
   const openFattureModal = async assegno => {
     setEditingAssegnoForFatture(assegno);
     setSelectedFatture([]);
+    setFilterFatturaModal('');
     setShowFattureModal(true);
-    loadFatture(assegno.beneficiario);
+    loadFatture(normalizzaBeneficiarioAssegno(assegno.beneficiario), assegno.importo);
 
     const collegate = assegno.fatture_collegate || [];
     if (collegate.length === 0) return;
@@ -667,49 +718,18 @@ export default function GestioneAssegni() {
   // useMemo (vincolo ListaAdattiva): la lista resetta la paginazione quando
   // cambia il riferimento di `dati`; senza memo ogni re-render (es. una
   // spunta di selezione) ricreerebbe l'array e riporterebbe la lista a 50 righe.
-  const filteredAssegni = useMemo(() => assegni.filter(a => {
-    // Escludi assegni sporchi (senza numero o importo null)
-    if (!a.numero || a.importo === null || a.importo === undefined) {
-      return false;
-    }
-    // Filtro fornitore/beneficiario
-    if (filterFornitore && !a.beneficiario?.toLowerCase().includes(filterFornitore.toLowerCase())) {
-      return false;
-    }
-    // Filtro importo min
-    if (filterImportoMin && (parseFloat(a.importo) || 0) < parseFloat(filterImportoMin)) {
-      return false;
-    }
-    // Filtro importo max
-    if (filterImportoMax && (parseFloat(a.importo) || 0) > parseFloat(filterImportoMax)) {
-      return false;
-    }
-    // Filtro numero assegno
-    if (
-      filterNumeroAssegno &&
-      !a.numero?.toLowerCase().includes(filterNumeroAssegno.toLowerCase())
-    ) {
-      return false;
-    }
-    // Filtro numero fattura
-    if (
-      filterNumeroFattura &&
-      !a.numero_fattura?.toLowerCase().includes(filterNumeroFattura.toLowerCase())
-    ) {
-      return false;
-    }
-    // Filtro "solo da associare": assegni senza un vero beneficiario
-    if (
-      filterSoloDaAssociare &&
-      a.beneficiario &&
-      !['', '-', 'N/A'].includes(a.beneficiario)
-    ) {
-      return false;
-    }
-    return true;
+  const filteredAssegni = useMemo(() => filtraAssegni(assegni, {
+    fornitore: filterFornitore,
+    importoEsatto: filterImportoEsatto,
+    importoMin: filterImportoMin,
+    importoMax: filterImportoMax,
+    numeroAssegno: filterNumeroAssegno,
+    numeroFattura: filterNumeroFattura,
+    soloDaAssociare: filterSoloDaAssociare,
   }), [
     assegni,
     filterFornitore,
+    filterImportoEsatto,
     filterImportoMin,
     filterImportoMax,
     filterNumeroAssegno,
@@ -720,12 +740,27 @@ export default function GestioneAssegni() {
   // Reset filtri
   const resetFilters = () => {
     setFilterFornitore('');
+    setFilterImportoEsatto('');
     setFilterImportoMin('');
     setFilterImportoMax('');
     setFilterNumeroAssegno('');
     setFilterNumeroFattura('');
     setFilterSoloDaAssociare(false);
   };
+
+  const fattureVisibili = useMemo(() => {
+    const q = filterFatturaModal.trim().toLowerCase();
+    if (!q) return fatture.slice(0, 200);
+    const qImporto = parseImportoFiltro(q);
+    return fatture.filter(f => {
+      const testo = [
+        f.invoice_number, f.numero_fattura, f.supplier_name,
+        f.cedente_denominazione, f.supplier_vat, f.cedente_piva,
+      ].filter(Boolean).join(' ').toLowerCase();
+      const importo = Number(f.total_amount || f.importo_totale || 0);
+      return testo.includes(q) || (qImporto !== null && Math.abs(importo - qImporto) <= 0.01);
+    }).slice(0, 200);
+  }, [fatture, filterFatturaModal]);
 
   // Raggruppa assegni per carnet (primi 10 cifre del numero) - usa filteredAssegni
   const groupByCarnet = () => {
@@ -1703,6 +1738,20 @@ export default function GestioneAssegni() {
 
             <div>
               <label style={{ fontSize: 12, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
+                Importo esatto (€)
+              </label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={filterImportoEsatto}
+                onChange={e => setFilterImportoEsatto(e.target.value)}
+                placeholder="es. 1.097,47"
+                data-testid="filter-importo-esatto"
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
                 Importo Min (€)
               </label>
               <Input
@@ -1738,6 +1787,9 @@ export default function GestioneAssegni() {
                 placeholder="Cerca assegno..."
                 data-testid="filter-numero-assegno"
               />
+              <div style={{ fontSize: 10, color: COLORS.textSubtle, marginTop: 3 }}>
+                Il filtro parte dopo 3 cifre
+              </div>
             </div>
 
             <div>
@@ -1762,6 +1814,7 @@ export default function GestioneAssegni() {
 
           {/* Riepilogo filtri attivi */}
           {(filterFornitore ||
+            filterImportoEsatto ||
             filterImportoMin ||
             filterImportoMax ||
             filterNumeroAssegno ||
@@ -2939,6 +2992,15 @@ export default function GestioneAssegni() {
                           {f.is_nota_credito ? '- ' : ''}
                           {formatEuro(Math.abs(f.importo))}
                         </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`Rimuovi fattura ${f.numero}`}
+                          onClick={() => setSelectedFatture(selectedFatture.filter(sf => sf.id !== f.id))}
+                        >
+                          ×
+                        </Button>
                       </div>
                     ))}
                     <div
@@ -2994,12 +3056,20 @@ export default function GestioneAssegni() {
                 >
                   Fatture Disponibili (esclusi pagamenti in contanti)
                 </label>
+                <Input
+                  type="text"
+                  value={filterFatturaModal}
+                  onChange={e => setFilterFatturaModal(e.target.value)}
+                  placeholder="Cerca numero, fornitore, P.IVA o importo..."
+                  aria-label="Cerca fattura da associare"
+                  style={{ marginBottom: 8 }}
+                />
 
                 {loadingFatture ? (
                   <div style={{ padding: 30, textAlign: 'center', color: COLORS.textMuted }}>
                     ⏳ Caricamento...
                   </div>
-                ) : fatture.length === 0 ? (
+                ) : fattureVisibili.length === 0 ? (
                   <div
                     style={{
                       padding: 30,
@@ -3020,7 +3090,7 @@ export default function GestioneAssegni() {
                       borderRadius: BORDER_RADIUS.md,
                     }}
                   >
-                    {fatture.map((f, idx) => {
+                    {fattureVisibili.map((f, idx) => {
                       const isSelected = selectedFatture.find(sf => sf.id === f.id);
                       const fornitore = f.supplier_name || f.cedente_denominazione || 'N/A';
                       const tipoDoc = f.tipo_documento || f.document_type || 'TD01';
@@ -3032,8 +3102,8 @@ export default function GestioneAssegni() {
                       // Mostra header fornitore quando cambia
                       const prevFornitore =
                         idx > 0
-                          ? fatture[idx - 1].supplier_name ||
-                            fatture[idx - 1].cedente_denominazione ||
+                          ? fattureVisibili[idx - 1].supplier_name ||
+                            fattureVisibili[idx - 1].cedente_denominazione ||
                             ''
                           : '';
                       const showFornitoreHeader =
@@ -3153,6 +3223,7 @@ export default function GestioneAssegni() {
                   onClick={() => {
                     setShowFattureModal(false);
                     setSelectedFatture([]);
+                    setFilterFatturaModal('');
                     setModalPosition({ x: 0, y: 0 });
                   }}
                 >
@@ -3161,10 +3232,10 @@ export default function GestioneAssegni() {
                 <Button
                   variant="success"
                   onClick={saveFattureCollegate}
-                  disabled={selectedFatture.length === 0}
+                  disabled={selectedFatture.length === 0 && !(editingAssegnoForFatture?.fatture_collegate || []).length}
                   data-testid="salva-fatture-btn"
                 >
-                  ✓ Collega {selectedFatture.length} Fattur
+                  ✓ Salva {selectedFatture.length} fattur
                   {selectedFatture.length === 1 ? 'a' : 'e'}
                 </Button>
               </div>

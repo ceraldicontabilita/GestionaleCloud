@@ -1,12 +1,12 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../api';
-import { CartaNexi } from './PrimaNota';
+import { CartaNexi, MovimentoModal } from './PrimaNota';
 
 vi.mock('../api', () => ({
-  default: { get: vi.fn(), post: vi.fn() },
+  default: { get: vi.fn(), post: vi.fn(), put: vi.fn() },
 }));
 
 const rispostaVuota = {
@@ -53,5 +53,36 @@ describe('Carta Nexi e anno globale', () => {
     } } });
     await waitFor(() => expect(screen.queryByText(/periodo 2025-01/)).not.toBeInTheDocument());
     expect(screen.getByText(/periodo 2026-01/)).toBeInTheDocument();
+  });
+});
+
+describe('Numero assegno in Prima Nota Banca', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.put.mockResolvedValue({ data: { message: 'salvato' } });
+  });
+
+  it('mostra, modifica e salva il numero assegno sulla riga banca', async () => {
+    const onSaved = vi.fn();
+    render(<MovimentoModal
+      tipo="banca"
+      movimento={{
+        id: 'mov-1', data: '2026-05-31', tipo: 'uscita', importo: 1098.28,
+        descrizione: 'Fattura fornitore', categoria: 'Fatture', assegno_numero: '208769300',
+      }}
+      onClose={vi.fn()}
+      onSaved={onSaved}
+    />);
+
+    const numero = screen.getByLabelText('Numero assegno');
+    expect(numero).toHaveValue('208769300');
+    fireEvent.change(numero, { target: { value: '208769333' } });
+    fireEvent.click(screen.getByRole('button', { name: '💾 Salva' }));
+
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      '/api/prima-nota/banca/mov-1',
+      expect.objectContaining({ numero_assegno: '208769333', importo: 1098.28 }),
+    ));
+    expect(onSaved).toHaveBeenCalledTimes(1);
   });
 });

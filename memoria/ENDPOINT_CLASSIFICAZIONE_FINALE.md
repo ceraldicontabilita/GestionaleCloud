@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1030 · tenere: 678 · verificare: 329 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1030 · tenere: 677 · verificare: 330 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -793,7 +793,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `DELETE /api/piano-conti/{conto_id}` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/piano-conti/{conto_id}` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/portal/upload` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/pos-corrispettivi/alert-oggi` | pos_corrispettivi_check | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/pos-corrispettivi/alert-oggi` | pos_corrispettivi_check | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/pos-corrispettivi/anomalie-gravi` | pos_corrispettivi_check | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `PUT /api/pos-corrispettivi/chiusura-giornaliera` | pos_corrispettivi_check | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/pos-corrispettivi/chiusura-giornaliera/audit` | pos_corrispettivi_check | sì | — | — | — | — | tenere | in uso: FE |
@@ -830,7 +830,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/prima-nota/banca/sync-estratto-conto` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/banca/template-csv` | prima_nota_module | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/prima-nota/banca/{movimento_id}` | prima_nota_module.banca | sì | — | — | — | sì | tenere | in uso: FE |
-| `PUT /api/prima-nota/banca/{movimento_id}` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
+| `PUT /api/prima-nota/banca/{movimento_id}` | prima_nota_module.banca | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/prima-nota/banca/{movimento_id}/fattura` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/cassa` | prima_nota_module.cassa | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/cassa` | prima_nota_module.cassa | sì | — | — | — | sì | tenere | in uso: FE |

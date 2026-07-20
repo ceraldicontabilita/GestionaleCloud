@@ -48,6 +48,18 @@ export function BadgeRiconciliatoBanca({ riconciliato }) {
     : null;
 }
 
+export function calcolaSaldoXmlPos(giorni = []) {
+  const confrontabili = giorni.filter(g =>
+    g.pos_manuale_presente &&
+    !['no_dati', 'in_attesa_xml'].includes(g.stato_serale)
+  );
+  const saldo = Math.round(
+    confrontabili.reduce((totale, g) => totale + Number(g.diff_serale || 0), 0) * 100
+  ) / 100;
+  const direzione = saldo > 0.01 ? 'piu' : saldo < -0.01 ? 'meno' : 'uguale';
+  return { saldo, direzione, giorni: confrontabili.length };
+}
+
 export default function CoerenzaPOSCorrispettivi() {
   const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
@@ -56,7 +68,6 @@ export default function CoerenzaPOSCorrispettivi() {
   const [riepilogoMensile, setRiepilogoMensile] = useState(null);
   // Nuova logica v2: controllo a 2 fasi (aprile 2026)
   const [dueFasi, setDueFasi] = useState(null);
-  const [alertOggi, setAlertOggi] = useState(null);
   const [tab, setTab] = useState('due_fasi');  // nuovo tab default
   const [err, setErr] = useState('');
 
@@ -68,16 +79,14 @@ export default function CoerenzaPOSCorrispettivi() {
     setLoading(true);
     setErr('');
     try {
-      const [coerenzaRes, mensileRes, dueFasiRes, alertRes] = await Promise.all([
+      const [coerenzaRes, mensileRes, dueFasiRes] = await Promise.all([
         api.get(`/api/pos-corrispettivi/verifica-coerenza?anno=${anno}`),
         api.get(`/api/pos-corrispettivi/riepilogo-mensile?anno=${anno}`),
         api.get(`/api/pos-corrispettivi/controllo-due-fasi?anno=${anno}`),
-        api.get(`/api/pos-corrispettivi/alert-oggi`),
       ]);
       setDati(coerenzaRes.data);
       setRiepilogoMensile(mensileRes.data);
       setDueFasi(dueFasiRes.data);
-      setAlertOggi(alertRes.data);
     } catch (e) {
       setErr('Errore caricamento: ' + (e.response?.data?.detail || e.message));
     } finally {
@@ -201,16 +210,7 @@ export default function CoerenzaPOSCorrispettivi() {
           items={[
             {
               key: 'due_fasi',
-              label: (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  ⚡ Controllo 2 Fasi
-                  {alertOggi && (alertOggi.num_alert_compensazione + alertOggi.num_alert_banca) > 0 && (
-                    <Badge variant="danger" style={{ padding: '1px 7px' }}>
-                      {alertOggi.num_alert_compensazione + alertOggi.num_alert_banca}
-                    </Badge>
-                  )}
-                </span>
-              ),
+              label: '⚡ Controllo 2 Fasi',
             },
             { key: 'giornaliero', label: 'Giornaliero', icon: <Calendar size={14} /> },
             { key: 'mensile', label: 'Mensile', icon: <TrendingUp size={14} /> },
@@ -238,7 +238,6 @@ export default function CoerenzaPOSCorrispettivi() {
       {tab === 'due_fasi' && dueFasi && (
         <ControlloDueFasi
           dati={dueFasi}
-          alertOggi={alertOggi}
           isMobile={isMobile}
           onReload={loadDati}
         />
@@ -498,10 +497,11 @@ export default function CoerenzaPOSCorrispettivi() {
 //
 // Basato sulla specifica utente (spiegazione_coerenza.xlsx).
 // ═══════════════════════════════════════════════════════════════════════════
-function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
+function ControlloDueFasi({ dati, isMobile, onReload }) {
   const stats = dati?.statistiche || {};
   const giorni = dati?.giorni || [];
   const riepilogoSettimanale = dati?.riepilogo_settimanale || [];
+  const saldoXmlPos = calcolaSaldoXmlPos(giorni);
 
   const [filtroStato, setFiltroStato] = useState('tutti'); // tutti | problemi | ok
   const [modalAperta, setModalAperta] = useState(false);
@@ -564,65 +564,25 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
         />
       )}
 
-      {/* Sezione Alert Oggi */}
-      {alertOggi && (alertOggi.num_alert_compensazione + alertOggi.num_alert_banca + (alertOggi.num_alert_xml_mancante || 0)) > 0 && (
-        <div style={{
-          background: COLORS.warningLight,
-          border: `2px solid ${COLORS.warning}`,
-          borderRadius: BORDER_RADIUS.lg,
-          padding: 16,
-          marginBottom: 20,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <AlertTriangle size={20} color={COLORS.warning} />
-            <strong style={{ fontSize: 15, color: COLORS.warning }}>
-              Cose da sistemare oggi
-            </strong>
-          </div>
-
-          {alertOggi.alert_compensazione?.map((a, i) => (
-            <div key={`comp-${i}`} style={{
-              background: COLORS.card,
-              padding: 10,
-              marginBottom: 6,
-              borderRadius: BORDER_RADIUS.sm,
-              borderLeft: `4px solid ${COLORS.warning}`,
-              fontSize: 13,
-              color: COLORS.warning,
-            }}>
-              <strong>Registratore fiscale:</strong> {a.messaggio}
-            </div>
-          ))}
-
-          {alertOggi.alert_banca?.map((a, i) => (
-            <div key={`banca-${i}`} style={{
-              background: COLORS.card,
-              padding: 10,
-              marginBottom: 6,
-              borderRadius: BORDER_RADIUS.sm,
-              borderLeft: `4px solid ${COLORS.danger}`,
-              fontSize: 13,
-              color: COLORS.warning,
-            }}>
-              <strong>Accredito banca:</strong> {a.messaggio}
-            </div>
-          ))}
-
-          {alertOggi.alert_xml_mancante?.map((a, i) => (
-            <div key={`xml-${i}`} style={{
-              background: COLORS.card,
-              padding: 10,
-              marginBottom: 6,
-              borderRadius: BORDER_RADIUS.sm,
-              borderLeft: `4px solid ${COLORS.purple}`,
-              fontSize: 13,
-              color: COLORS.warning,
-            }}>
-              <strong>XML mancante:</strong> {a.messaggio}
-            </div>
-          ))}
+      <div style={{
+        background: saldoXmlPos.direzione === 'meno' ? COLORS.warningLight : COLORS.successLight,
+        border: `2px solid ${saldoXmlPos.direzione === 'meno' ? COLORS.warning : COLORS.success}`,
+        borderRadius: BORDER_RADIUS.lg,
+        padding: 16,
+        marginBottom: 20,
+      }}>
+        <strong style={{ fontSize: 15, color: saldoXmlPos.direzione === 'meno' ? COLORS.warning : COLORS.success }}>
+          Saldo complessivo XML − POS reale: {formatEuroConSegno(saldoXmlPos.saldo)}
+        </strong>
+        <div style={{ marginTop: 6, fontSize: 13, color: COLORS.text }}>
+          {saldoXmlPos.direzione === 'piu'
+            ? `Nel registratore risulta elettronico marcato ${formatEuro(Math.abs(saldoXmlPos.saldo))} IN PIÙ rispetto al terminale POS.`
+            : saldoXmlPos.direzione === 'meno'
+            ? `Nel registratore risulta elettronico marcato ${formatEuro(Math.abs(saldoXmlPos.saldo))} IN MENO rispetto al terminale POS.`
+            : 'Nel totale del periodo, registratore e terminale POS coincidono.'}
+          {' '}È un riepilogo informativo di {saldoXmlPos.giorni} giorni confrontabili: non modifica XML né chiusure POS.
         </div>
-      )}
+      </div>
 
       {/* Statistiche riassuntive */}
       <div style={{
@@ -639,25 +599,25 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
           accent="accent"
         />
         <StatCard
-          icon={<AlertTriangle size={16} />}
-          label="Giorni con errore battitura"
-          value={stats.fase1_diff_piu + stats.fase1_diff_meno || 0}
-          subtext={`${stats.fase1_ok || 0} giorni OK`}
-          accent="warning"
+          icon={<Calendar size={16} />}
+          label="Giorni confrontati"
+          value={saldoXmlPos.giorni}
+          subtext="con XML e POS reale presenti"
+          accent="info"
         />
         <StatCard
           icon={<TrendingUp size={16} />}
-          label="Da compensare in PIÙ"
-          value={formatEuro(stats.importo_tot_da_compensare_piu)}
-          subtext="sul registratore"
-          accent="accent"
+          label="Saldo XML − POS reale"
+          value={formatEuroConSegno(saldoXmlPos.saldo)}
+          subtext="somma delle differenze giornaliere"
+          accent={saldoXmlPos.direzione === 'meno' ? 'warning' : 'success'}
         />
         <StatCard
           icon={<CheckCircle size={16} />}
-          label="Giorni coperti dall'XML"
-          value={stats.fase1_ok || 0}
-          subtext="XML ≥ POS reale (o entro tolleranza)"
-          accent="success"
+          label="Esito complessivo"
+          value={saldoXmlPos.direzione === 'piu' ? 'IN PIÙ' : saldoXmlPos.direzione === 'meno' ? 'IN MENO' : 'COINCIDE'}
+          subtext="elettronico marcato nel registratore"
+          accent={saldoXmlPos.direzione === 'meno' ? 'warning' : 'success'}
         />
         <StatCard
           icon={<XCircle size={16} />}

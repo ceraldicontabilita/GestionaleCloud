@@ -4,7 +4,7 @@
 > Totale **1030 endpoint** in **108 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 648 · ext esterni = 84 · — da verificare = 298
+**Riepilogo uso:** ✓ frontend = 647 · ext esterni = 84 · — da verificare = 299
 
 ## AI Parser  (11)
 
@@ -1116,7 +1116,7 @@
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| GET | `/api/pos-corrispettivi/alert-oggi` | ✓ | pos_corrispettivi_check |
+| GET | `/api/pos-corrispettivi/alert-oggi` | — | pos_corrispettivi_check |
 | GET | `/api/pos-corrispettivi/anomalie-gravi` | — | pos_corrispettivi_check |
 | PUT | `/api/pos-corrispettivi/chiusura-giornaliera` | ✓ | pos_corrispettivi_check |
 | GET | `/api/pos-corrispettivi/chiusura-giornaliera/audit` | ✓ | pos_corrispettivi_check |

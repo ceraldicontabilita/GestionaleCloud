@@ -252,6 +252,8 @@ async def create_prima_nota_banca(data: Dict[str, Any] = Body(...)) -> Dict[str,
         "note": data.get("note"),
         "source": data.get("source"),
         "pos_details": data.get("pos_details"),
+        "numero_assegno": data.get("numero_assegno") or data.get("assegno_numero"),
+        "assegno_numero": data.get("numero_assegno") or data.get("assegno_numero"),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
@@ -288,6 +290,11 @@ async def update_prima_nota_banca(
     for field in ["data", "tipo", "importo", "descrizione", "categoria", "riferimento", "note", "fornitore", "ragione_sociale"]:
         if field in data:
             update_data[field] = float(data[field]) if field == "importo" else data[field]
+
+    if "numero_assegno" in data or "assegno_numero" in data:
+        numero_assegno = (data.get("numero_assegno") or data.get("assegno_numero") or "").strip()
+        update_data["numero_assegno"] = numero_assegno or None
+        update_data["assegno_numero"] = numero_assegno or None
     
     result = await db[COLLECTION_PRIMA_NOTA_BANCA].update_one(
         {"id": movimento_id},

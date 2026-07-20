@@ -7,6 +7,7 @@ import {
   BadgeRiconciliatoBanca,
   EditorPosReale,
   ModalImportTotaliPos,
+  calcolaSaldoXmlPos,
   formatEuroConSegno,
   parseTotaliPosTesto,
 } from './CoerenzaPOSCorrispettivi';
@@ -26,6 +27,21 @@ describe('Segno differenza XML meno POS reale', () => {
 
   it('mantiene il segno negativo quando XML non copre il POS reale', () => {
     expect(formatEuroConSegno(792.60 - 793.20)).toBe('€ -0,60');
+  });
+
+  it('somma solo i giorni confrontabili e restituisce la direzione complessiva', () => {
+    expect(calcolaSaldoXmlPos([
+      { pos_manuale_presente: true, stato_serale: 'ok', diff_serale: 11.89 },
+      { pos_manuale_presente: true, stato_serale: 'ok', diff_serale: -3.00 },
+      { pos_manuale_presente: true, stato_serale: 'in_attesa_xml', diff_serale: -100 },
+      { pos_manuale_presente: false, stato_serale: 'no_dati', diff_serale: 50 },
+    ])).toEqual({ saldo: 8.89, direzione: 'piu', giorni: 2 });
+  });
+
+  it('segnala complessivamente in meno senza proporre modifiche ai dati storici', () => {
+    expect(calcolaSaldoXmlPos([
+      { pos_manuale_presente: true, stato_serale: 'differenza_in_piu_da_registrare', diff_serale: -0.60 },
+    ])).toEqual({ saldo: -0.60, direzione: 'meno', giorni: 1 });
   });
 });
 

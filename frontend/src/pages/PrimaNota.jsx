@@ -293,14 +293,20 @@ export function CartaNexi({ anno }) {
 }
 
 /* --------------------------- modal movimento --------------------------- */
-function MovimentoModal({ tipo, movimento, onClose, onSaved }) {
+export function MovimentoModal({ tipo, movimento, onClose, onSaved }) {
   const oggi = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState({
     data: movimento?.data?.slice(0, 10) || oggi,
     tipo: movimento?.tipo || 'uscita',
-    importo: movimento ? String(movimento.importo ?? '') : '',
+    // Il parser accetta il formato italiano: inizializziamo con la virgola.
+    // Con String(1098.28) il punto veniva interpretato come separatore delle
+    // migliaia al salvataggio, trasformando 1.098,28 in 109.828,00.
+    importo: movimento?.importo != null
+      ? Number(movimento.importo).toFixed(2).replace('.', ',')
+      : '',
     descrizione: movimento?.descrizione || '',
     categoria: movimento?.categoria || (tipo === 'cassa' ? 'Spese' : 'Altro'),
+    numero_assegno: movimento?.numero_assegno || movimento?.assegno_numero || '',
   });
   const [errore, setErrore] = useState('');
   const [saving, setSaving] = useState(false);
@@ -366,6 +372,15 @@ function MovimentoModal({ tipo, movimento, onClose, onSaved }) {
           <select value={form.categoria} onChange={e => setForm({ ...form, categoria: e.target.value })} style={campo}>
             {categorie.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
+          {tipo === 'banca' && (
+            <input
+              aria-label="Numero assegno"
+              placeholder="Numero assegno (facoltativo)"
+              value={form.numero_assegno}
+              onChange={e => setForm({ ...form, numero_assegno: e.target.value })}
+              style={campo}
+            />
+          )}
           {errore && <div style={{ color: ROSSO, fontSize: 13 }}>{errore}</div>}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button onClick={onClose} style={{ padding: '9px 16px', borderRadius: 8, border: '1px solid #d1d5db', background: 'white', cursor: 'pointer' }}>
@@ -452,6 +467,7 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
       lista = lista.filter(m =>
         (m.descrizione || '').toLowerCase().includes(q) ||
         (m.numero_fattura || '').toLowerCase().includes(q) ||
+        (m.numero_assegno || m.assegno_numero || '').toLowerCase().includes(q) ||
         String(m.importo || '').includes(q));
     }
     return [...lista].sort(ordineVideo);
@@ -754,6 +770,11 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
                     </div>
                     <div style={{ fontSize: 12.5, color: '#334155', margin: '5px 0', wordBreak: 'break-word' }}>
                       {m.descrizione || '—'}
+                      {tipo === 'banca' && (m.numero_assegno || m.assegno_numero) && (
+                        <div style={{ marginTop: 3, color: '#1d4ed8', fontWeight: 700 }}>
+                          Assegno n. {m.numero_assegno || m.assegno_numero}
+                        </div>
+                      )}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 11.5, color: '#64748b' }}>
@@ -805,7 +826,14 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
                   <td style={{ padding: '7px 10px' }}>
                     <span style={{ background: '#f1f5f9', borderRadius: 5, padding: '2px 7px', fontSize: 11 }}>{m.categoria || '—'}</span>
                   </td>
-                  <td style={{ padding: '7px 10px', maxWidth: 420, wordBreak: 'break-word' }}>{m.descrizione || '—'}</td>
+                  <td style={{ padding: '7px 10px', maxWidth: 420, wordBreak: 'break-word' }}>
+                    {m.descrizione || '—'}
+                    {tipo === 'banca' && (m.numero_assegno || m.assegno_numero) && (
+                      <div style={{ marginTop: 3, color: '#1d4ed8', fontWeight: 700, fontSize: 11 }}>
+                        Assegno n. {m.numero_assegno || m.assegno_numero}
+                      </div>
+                    )}
+                  </td>
                   <td style={{ padding: '7px 10px', textAlign: 'right', color: VERDE, fontWeight: m.tipo === 'entrata' ? 700 : 400, fontFamily: 'ui-monospace, Menlo, monospace', whiteSpace: 'nowrap' }}>
                     {m.tipo === 'entrata' ? eur(m.importo) : '—'}
                   </td>
