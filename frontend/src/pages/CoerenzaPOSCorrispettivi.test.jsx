@@ -6,6 +6,7 @@ import api from '../api';
 import {
   EditorPosReale,
   ModalImportTotaliPos,
+  formatEuroConSegno,
   parseTotaliPosTesto,
 } from './CoerenzaPOSCorrispettivi';
 
@@ -16,6 +17,16 @@ vi.mock('../api', () => ({
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
+
+describe('Segno differenza XML meno POS reale', () => {
+  it('mostra positivo quando XML e maggiore del POS reale', () => {
+    expect(formatEuroConSegno(793.20 - 792.60)).toBe('€ +0,60');
+  });
+
+  it('mantiene il segno negativo quando XML non copre il POS reale', () => {
+    expect(formatEuroConSegno(792.60 - 793.20)).toBe('€ -0,60');
+  });
+});
 
 describe('Importazione massiva POS', () => {
   beforeEach(() => {

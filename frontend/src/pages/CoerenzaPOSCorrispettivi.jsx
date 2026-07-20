@@ -31,6 +31,17 @@ import {
   X,
 } from 'lucide-react';
 
+export function formatEuroConSegno(amount) {
+  const valore = Number(amount || 0);
+  const segno = valore > 0 ? '+' : valore < 0 ? '-' : '';
+  const assoluto = new Intl.NumberFormat('it-IT', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    useGrouping: true,
+  }).format(Math.abs(valore));
+  return `€ ${segno}${assoluto}`;
+}
+
 export default function CoerenzaPOSCorrispettivi() {
   const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
@@ -523,6 +534,7 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
         <div style={{ fontSize: 12, color: COLORS.textMuted }}>
           Il POS del terminale si inserisce anche direttamente nella tabella. Salva in
           Prima Nota Cassa e crea il trasferimento atteso in Banca; l'XML resta solo confronto fiscale.
+          La differenza è XML − POS: positiva significa che gli scontrini coprono i pagamenti con carta.
         </div>
       </div>
 
@@ -635,11 +647,11 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
           accent="accent"
         />
         <StatCard
-          icon={<TrendingUp size={16} />}
-          label="Da compensare in MENO"
-          value={formatEuro(stats.importo_tot_da_compensare_meno)}
-          subtext="sul registratore"
-          accent="accent"
+          icon={<CheckCircle size={16} />}
+          label="Giorni coperti dall'XML"
+          value={stats.fase1_ok || 0}
+          subtext="XML ≥ POS reale (o entro tolleranza)"
+          accent="success"
         />
         <StatCard
           icon={<XCircle size={16} />}
@@ -713,7 +725,7 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
               <Th align="center" style={{ color: '#fff', background: 'transparent', fontSize: 11, borderLeft: '2px solid #fff' }}>Corrisp.</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>XML elettr. (confronto)</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS terminale (modifica)</Th>
-              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11, borderRight: '2px solid #fff' }}>Diff. serale</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11, borderRight: '2px solid #fff' }}>Diff. XML − POS</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS terminale</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Accredito banca</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Diff. accr.</Th>
@@ -945,7 +957,7 @@ function RigaGiornaliera({ g, even, onReload }) {
       >
         {g.stato_serale === 'no_dati' ? '—'
           : g.stato_serale === 'in_attesa_xml' ? <em style={{ color: COLORS.purple, fontSize: 11 }}>attendo XML</em>
-          : formatEuro(g.diff_serale)}
+          : formatEuroConSegno(g.diff_serale)}
       </Td>
       <Td align="right">
         {g.pos_manuale_presente ? formatEuro(g.pos_manuale) : '—'}

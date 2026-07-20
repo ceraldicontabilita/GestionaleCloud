@@ -257,3 +257,18 @@ def test_importazione_batch_rifiuta_date_duplicate_prima_di_scrivere(monkeypatch
     assert exc.value.status_code == 400
     assert "Data duplicata" in exc.value.detail
     assert db["chiusure_pos_manuali"].docs == []
+
+
+def test_controllo_due_fasi_usa_delta_xml_meno_pos():
+    """793,20 XML - 792,60 POS deve produrre +0,60 ed essere coerente."""
+    differenza, coerente = pos_router._coerenza_xml_pos(793.20, 792.60, 0.50)
+
+    assert differenza == 0.60
+    assert coerente is True
+
+
+def test_controllo_due_fasi_segnala_solo_xml_inferiore_oltre_tolleranza():
+    differenza, coerente = pos_router._coerenza_xml_pos(792.00, 793.20, 0.50)
+
+    assert differenza == -1.20
+    assert coerente is False

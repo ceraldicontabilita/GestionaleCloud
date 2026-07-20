@@ -67,6 +67,21 @@ def _e_accredito_pos_numia_con_giorno(descrizione: str) -> bool:
     )
 
 
+def _coerenza_xml_pos(
+    pagamento_elettronico_xml: float,
+    pos_reale: float,
+    tolleranza_euro: float,
+) -> tuple[float, bool]:
+    """Ritorna ``XML - POS`` e se l'XML copre il pagamento reale.
+
+    Il confronto e' volutamente asimmetrico: un XML superiore al POS e'
+    coerente, mentre un XML inferiore oltre tolleranza segnala pagamenti carta
+    non coperti dal pagamento elettronico dichiarato negli scontrini.
+    """
+    differenza = round(float(pagamento_elettronico_xml) - float(pos_reale), 2)
+    return differenza, differenza >= -abs(float(tolleranza_euro))
+
+
 @router.get("/verifica-coerenza")
 @handle_errors
 async def verifica_coerenza_pos_corrispettivi(
@@ -699,10 +714,9 @@ async def list_chiusure_audit(
 # Basato sulla specifica utente (spiegazione_coerenza.xlsx):
 #
 # FASE 1 - Controllo serale: RT XML vs POS manuale
-#   diff_serale = pos_manuale_serale - pagato_elettronico_xml
-#   Serve a rilevare ERRORI DI BATTITURA al registratore di cassa.
-#   Se diff > 0: ieri ho battuto MENO elettronico al RT del reale → compensa +
-#   Se diff < 0: ieri ho battuto PIÙ elettronico al RT del reale → compensa -
+#   diff_serale = pagato_elettronico_xml - pos_manuale_serale
+#   Un valore positivo indica che l'XML copre tutti i pagamenti reali POS.
+#   Solo un valore negativo oltre tolleranza segnala elettronico mancante nel RT.
 #
 # FASE 2 - Controllo accrediti: POS manuale vs banca
 #   diff_accredito = accredito_banca - pos_manuale_serale
@@ -829,9 +843,10 @@ async def controllo_incassi_due_fasi(
 ) -> Dict[str, Any]:
     """Controllo incassi giornaliero a 2 fasi (nuova logica v2 - aprile 2026).
 
-    FASE 1: Rileva errori di battitura al registratore fiscale
-      - Confronto: POS serale manuale − pagato_elettronico XML
-      - Alert al giorno successivo con importo da compensare
+    FASE 1: Verifica che il registratore fiscale copra i pagamenti POS reali
+      - Confronto: pagato_elettronico XML − POS serale manuale
+      - Un risultato positivo e' coerente; un risultato negativo oltre
+        tolleranza genera l'alert per l'importo elettronico mancante
 
     FASE 2: Verifica accrediti bancari
       - Confronto: accrediti con ``DEL gg/mm/aa`` − POS manuale dello stesso
@@ -982,38 +997,29 @@ async def controllo_incassi_due_fasi(
             stato_serale = "in_attesa_xml"
             alert_serale = None
         elif xml_el > 0 or pos_man_presente:
-            diff_serale = round(pos_man - xml_el, 2)
-            if abs(diff_serale) <= tolleranza_euro:
+            # Convenzione canonica: XML - POS reale. Se l'XML e' maggiore,
+            # tutti i pagamenti carta risultano coperti dagli scontrini emessi.
+            diff_serale, xml_copre_pos = _coerenza_xml_pos(
+                xml_el, pos_man, tolleranza_euro
+            )
+            if xml_copre_pos:
                 stato_serale = "ok"
                 alert_serale = None
-            elif diff_serale > 0:
+            else:
+                importo_mancante_xml = abs(diff_serale)
                 stato_serale = "differenza_in_piu_da_registrare"
                 alert_serale = {
                     "attivo": True,
                     "tipo": "registrare_di_piu",
-                    "importo": diff_serale,
+                    "importo": importo_mancante_xml,
                     "messaggio": (
-                        f"Il {d} hai battuto al registratore €{diff_serale:.2f} in MENO "
+                        f"Il {d} hai battuto al registratore €{importo_mancante_xml:.2f} in MENO "
                         f"di pagamento elettronico rispetto al POS reale. "
-                        f"Devi registrare €{diff_serale:.2f} in PIÙ come elettronico per compensare."
+                        f"Devi registrare €{importo_mancante_xml:.2f} in PIÙ come elettronico per compensare."
                     ),
                 }
                 stats["fase1_diff_piu"] += 1
-                stats["importo_tot_da_compensare_piu"] += diff_serale
-            else:
-                stato_serale = "differenza_in_meno_da_registrare"
-                alert_serale = {
-                    "attivo": True,
-                    "tipo": "registrare_di_meno",
-                    "importo": abs(diff_serale),
-                    "messaggio": (
-                        f"Il {d} hai battuto al registratore €{abs(diff_serale):.2f} in PIÙ "
-                        f"di pagamento elettronico rispetto al POS reale. "
-                        f"Devi registrare €{abs(diff_serale):.2f} in MENO come elettronico per compensare."
-                    ),
-                }
-                stats["fase1_diff_meno"] += 1
-                stats["importo_tot_da_compensare_meno"] += abs(diff_serale)
+                stats["importo_tot_da_compensare_piu"] += importo_mancante_xml
         else:
             diff_serale = 0.0
             stato_serale = "no_dati"
