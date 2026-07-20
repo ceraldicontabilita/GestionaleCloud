@@ -8,6 +8,7 @@ SCHEDULE = {
     "LearningCervello": 3600,     # ogni ora
     "TesoreriaShadow": 3600,      # ogni ora, solo osservazioni/proposte
     "CashFlow13WShadow": 21600,   # ogni 6 ore, previsione deterministica
+    "ContabileShadow": 21600,     # ogni 6 ore, ultimo collaudo minimizzato
 }
 
 
@@ -22,6 +23,7 @@ async def run_agenti(db, agente_specifico: str = None):
     from app.agents.learning_brain import LearningCervello
     from app.agents.tesoreria_shadow import TesoreriaShadow
     from app.agents.cash_flow_shadow import CashFlow13WShadow
+    from app.agents.contabile_shadow import ContabileShadow
 
     if await automazioni_sospese(db):
         raise RuntimeError("Automazioni AI fermate dall'interruttore globale")
@@ -32,6 +34,7 @@ async def run_agenti(db, agente_specifico: str = None):
         "LearningCervello": LearningCervello,
         "TesoreriaShadow": TesoreriaShadow,
         "CashFlow13WShadow": CashFlow13WShadow,
+        "ContabileShadow": ContabileShadow,
     }
 
     if agente_specifico and agente_specifico not in mappa:

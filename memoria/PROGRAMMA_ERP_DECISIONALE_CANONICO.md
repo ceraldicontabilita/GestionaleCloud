@@ -84,7 +84,12 @@ Ordine di attivazione in shadow mode:
 1. [x] Tesoreria — primo nucleo shadow su scadenze scadute e orizzonte 30 giorni,
    con soli aggregati minimizzati e senza strumenti di pagamento.
    - [ ] Estendere a saldi, banche, POS, PayPal, assegni e bonifici.
-2. [ ] Contabile — quadrature, prima nota e scritture suggerite.
+2. [x] Contabile — quadrature e Prima Nota osservate tramite l'ultimo
+   collaudo canonico, con soli aggregati minimizzati.
+   - [x] Proposte idempotenti L1/L3, senza esempi, anagrafiche o documenti.
+   - [x] Nessuna scrittura suggerita senza evidenza; ogni eventuale rettifica
+     resta separata e soggetta ad approvazione umana.
+   - [x] Report assente, obsoleto o in errore trattato in modo conservativo.
 3. [ ] Fiscale — IVA, F24, ritenute e pacchetto commercialista.
 4. [ ] CFO — cash flow a 13 settimane e scenari.
    - [x] Motore deterministico CF13W-001 con saldi canonici, rate fornitori,
@@ -125,13 +130,17 @@ L'esecuzione L2 resta disabilitata fino a quando, per il singolo caso d'uso:
 
 ## Prossimo ordine operativo
 
-1. Completare e pubblicare la fondazione decisionale della Fase 3.
+1. [x] Completare e pubblicare la fondazione decisionale della Fase 3.
 2. Preparare una procedura separata e controllata per correggere gli eventuali
    dati storici rateizzati; nessun dato reale viene corretto automaticamente.
 3. Estendere l'Agente Tesoreria shadow alle fonti bancarie e ai canali di incasso.
 4. [x] Implementare il primo cash flow a 13 settimane dopo la qualità delle scadenze.
-5. Estendere la copertura di incassi e obblighi senza stimare dati mancanti.
-6. Completare MFA e la verifica delle future esigenze CSRF prima di abilitare qualsiasi L2.
+5. [x] Attivare l'Agente Contabile shadow sulle quadrature gia' prodotte dal
+   collaudo canonico, senza scritture automatiche.
+6. Estendere la copertura di incassi e obblighi senza stimare dati mancanti.
+7. Attivare l'Agente Fiscale shadow su IVA, F24, ritenute e pacchetto
+   commercialista, mantenendo invii e versamenti sempre L3.
+8. Completare MFA e la verifica delle future esigenze CSRF prima di abilitare qualsiasi L2.
 
 ## Regola di avanzamento
 

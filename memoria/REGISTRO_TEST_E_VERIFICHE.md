@@ -389,3 +389,17 @@ Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `S
   registrata; l'utente può riprovare senza una falsa garanzia di sicurezza.
 - Test sicurezza mirati: 63 passati; suite backend completa: 762 passati;
   test frontend completi: 34 passati; build di produzione completata.
+
+## Agente Contabile shadow — 2026-07-20
+
+- Fonte: ultimo `collaudo_report` prodotto dagli invarianti contabili canonici.
+- Minimizzazione: l'agente riceve soltanto identificativo e data del report,
+  nomi canonici dei controlli e conteggi; esempi, descrizioni libere,
+  anagrafiche e documenti sono esclusi strutturalmente.
+- Comportamento: report assente/obsoleto genera una raccomandazione L1;
+  quadrature violate o controlli in errore generano una proposta L3.
+- Sicurezza: nessuna scrittura su Prima Nota, fatture o scritture contabili;
+  nessuna rettifica viene formulata senza evidenza documentale separata.
+- Esecuzione: ogni 6 ore e al riavvio, subordinata all'interruttore globale.
+- Idempotenza: la stessa fotografia produce una sola decisione.
+- Test mirati agenti: 38 passati; suite backend completa: 768 passati.
