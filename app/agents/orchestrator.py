@@ -11,6 +11,7 @@ SCHEDULE = {
     "ContabileShadow": 21600,     # ogni 6 ore, ultimo collaudo minimizzato
     "FiscaleShadow": 21600,       # ogni 6 ore, obblighi e completezza aggregati
     "AcquistiShadow": 86400,      # giornaliero, prezzi e concentrazione fornitori
+    "CreditiShadow": 86400,       # giornaliero, aging e bozze mai inviate
 }
 
 
@@ -28,6 +29,7 @@ async def run_agenti(db, agente_specifico: str = None):
     from app.agents.contabile_shadow import ContabileShadow
     from app.agents.fiscale_shadow import FiscaleShadow
     from app.agents.acquisti_shadow import AcquistiShadow
+    from app.agents.crediti_shadow import CreditiShadow
 
     if await automazioni_sospese(db):
         raise RuntimeError("Automazioni AI fermate dall'interruttore globale")
@@ -41,6 +43,7 @@ async def run_agenti(db, agente_specifico: str = None):
         "ContabileShadow": ContabileShadow,
         "FiscaleShadow": FiscaleShadow,
         "AcquistiShadow": AcquistiShadow,
+        "CreditiShadow": CreditiShadow,
     }
 
     if agente_specifico and agente_specifico not in mappa:

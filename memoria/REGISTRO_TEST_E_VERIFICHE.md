@@ -346,6 +346,21 @@ Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `S
 - Test frontend: 30 passati.
 - Build frontend di produzione: completata.
 
+## Agente Crediti shadow — 2026-07-20
+
+- Fonte tipizzata: `fatture_emesse` aperte, aggregate senza dati cliente.
+- Aging esatto tra scaduto e non scaduto, con residuo e mesi di scadenza.
+- Note di credito, fatture chiuse e residui nulli esclusi; dati mancanti non
+  stimati e segnalati separatamente.
+- Bozza di sollecito generica registrata come proposta L3: invio esterno
+  strutturalmente disabilitato, nessuna email o PEC generata.
+- Esecuzione giornaliera e al riavvio, soggetta all'interruttore globale.
+- Test mirati agenti/decision engine: 58 passati.
+- Suite backend applicativa: 850 passati; integrazione isolata: 5 passati,
+  2 saltati.
+- Frontend: 59 test passati; build di produzione completata.
+- Nessun accesso ad Atlas, Render Environment, `.env` o dati aziendali reali.
+
 ## Estensione Tesoreria a saldi e canali di pagamento — 2026-07-20
 
 - Saldi cassa/banca letti tramite il motore unico della Prima Nota, senza una

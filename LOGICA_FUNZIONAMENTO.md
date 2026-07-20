@@ -1465,3 +1465,27 @@ centesimo, senza tolleranze percentuali o soglie economiche arbitrarie.
 Liquidita' negativa produce una proposta L3; code di riconciliazione ed
 evidenze POS mancanti o non coerenti producono raccomandazioni L1. L'agente non
 riconcilia, non modifica saldi e non crea pagamenti o accrediti sintetici.
+
+---
+
+## 20. Crediti shadow: aging e bozze interne
+
+L'agente Crediti legge le fatture emesse aperte e usa soltanto le scadenze e
+gli importi residui esplicitamente registrati. Se il residuo non e' presente,
+usa il totale meno l'importo pagato solo quando entrambi sono dati numerici
+validi. Non stima date o importi mancanti.
+
+- distingue esattamente crediti scaduti e non ancora scaduti rispetto alla
+  data di esecuzione;
+- aggrega gli scaduti per mese di scadenza, senza fasce arbitrarie;
+- esclude note di credito, fatture chiuse e residui nulli;
+- espone solo conteggi, totali e date aggregate, senza nomi o identificativi
+  cliente;
+- prepara nel registro decisionale una bozza generica L3, da verificare con
+  le evidenze bancarie e con la posizione del cliente;
+- non dispone di alcun canale di invio: email, PEC, notifiche e comunicazioni
+  esterne restano disabilitate anche dopo l'approvazione della proposta.
+
+I record senza scadenza o importo sono esclusi dall'aging e generano una
+raccomandazione L1 di qualita' dati. L'agente gira una volta al giorno e al
+riavvio, subordinato all'interruttore globale delle automazioni AI.

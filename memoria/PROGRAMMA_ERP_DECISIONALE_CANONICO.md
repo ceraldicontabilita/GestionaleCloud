@@ -116,7 +116,11 @@ Ordine di attivazione in shadow mode:
    - [x] Dipendenza da un solo fornitore segnalata solo con almeno tre acquisti.
    - [x] Riordino non supportato: lo storico fatture non prova consumo o giacenza.
    - [x] Solo raccomandazioni L1; nessun ordine o movimento di magazzino.
-6. [ ] Crediti — aging e bozze di sollecito, mai inviate senza approvazione.
+6. [x] Crediti — aging e bozze di sollecito, mai inviate senza approvazione.
+   - [x] Residui separati tra scaduti e non scaduti, con aggregazione mensile.
+   - [x] Note di credito e record incompleti esclusi senza stime.
+   - [x] Bozza interna generica L3; invio esterno non supportato e mai automatico.
+   - [x] Nessun nominativo o riferimento cliente nello snapshot decisionale.
 7. [ ] Compliance — permessi, tracciabilità e documenti mancanti.
 
 Ogni agente usa servizi applicativi tipizzati; non accede direttamente alle
