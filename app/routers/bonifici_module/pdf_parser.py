@@ -104,7 +104,7 @@ def extract_filename_metadata(filename: str) -> Dict[str, Any]:
 
 def _extract_payroll_period(causale: str) -> Dict[str, Optional[int]]:
     """Estrae la competenza solo se dichiarata nella causale del bonifico."""
-    text = normalize_str(causale or "").casefold()
+    text = (normalize_str(causale or "") or "").casefold()
     if not re.search(r"\b(stipend|salari|emolument|competenz|mensilit)", text):
         return {"periodo_mese": None, "periodo_anno": None}
     mese = None
@@ -132,7 +132,7 @@ def _value_after_label(lines: List[str], labels: str) -> Optional[str]:
         if value and len(value) > 1:
             return value
         for next_line in lines[idx + 1:idx + 4]:
-            if re.search(r"^(?:importo|data|iban|causale|ordinante|beneficiario|cro|trn)\b", next_line, re.I):
+            if re.search(r"^(?:importo|data|iban|causale|descrizione\s+causale|ordinante|beneficiario|cro|trn)\b", next_line, re.I):
                 continue
             value = normalize_str(next_line)
             if value:
@@ -157,9 +157,80 @@ def _parse_euro(value: str) -> Optional[float]:
         return None
 
 
+def _parse_amount_from_document(text: str) -> Optional[float]:
+    """Legge anche i PDF BPM con valore prima di ``EUR`` e layout a colonne."""
+    pattern = re.compile(
+        r"(?:(?:EUR|EURO|â‚¬)\s*)?"
+        r"(\d{1,3}(?:[. ]\d{3})*,\d{2}|\d+[.,]\d{2})"
+        r"(?:\s*(?:EUR|EURO|â‚¬))?",
+        re.I,
+    )
+    candidati: List[float] = []
+    for match in pattern.finditer(text or ""):
+        # Accetta soltanto valori accompagnati dalla valuta oppure vicini alla
+        # parola Importo/Totale; evita numeri casuali del CRO e delle date.
+        start, end = match.span()
+        contesto = (text[max(0, start - 90): min(len(text), end + 40)]).casefold()
+        token = match.group(0)
+        if not re.search(r"EUR|EURO|â‚¬", token, re.I) and not re.search(r"importo|totale", contesto):
+            continue
+        valore = _parse_euro(match.group(1))
+        if valore is not None and valore > 0:
+            candidati.append(valore)
+    return max(candidati) if candidati else None
+
+
+def _extract_transfer_table_row(lines: List[str]) -> Dict[str, Any]:
+    """Legge la riga della distinta stipendi esportata da Banco BPM.
+
+    Nel PDF le quattro intestazioni sono estratte prima dei quattro valori;
+    cercare semplicemente la riga successiva a ``Beneficiario`` o ``Causale``
+    finirebbe quindi per scambiare i campi tra loro.
+    """
+    for idx, line in enumerate(lines):
+        if normalize_str(line).casefold() != "beneficiario":
+            continue
+        headers = [
+            (normalize_str(value) or "").casefold()
+            for value in lines[idx:idx + 4]
+        ]
+        if len(headers) < 4 or headers != [
+            "beneficiario", "iban beneficiario", "descrizione causale", "importo",
+        ]:
+            continue
+        values = lines[idx + 4:idx + 8]
+        if len(values) < 4:
+            continue
+        iban = re.sub(r"\s+", "", values[1]).upper()
+        return {
+            "beneficiario_nome": normalize_str(values[0]),
+            "beneficiario_iban": iban if IBAN_RE.fullmatch(iban) else None,
+            "causale": normalize_str(values[2]),
+            "importo": _parse_euro(values[3]),
+        }
+    return {}
+
+
+def _is_invalid_person_value(value: Optional[str]) -> bool:
+    """Valida un nome senza intervalli Unicode dipendenti dalla codifica."""
+    if not value:
+        return True
+    normalized = normalize_str(value).casefold()
+    if normalized in {
+        "descrizione causale", "causale", "beneficiario", "dati beneficiario",
+        "importo", "importo bonifico", "iban",
+    }:
+        return True
+    if re.search(r"\d|\b(?:EUR|EURO)\b", value, re.I) or "\u20ac" in value:
+        return True
+    parole = re.findall(r"[^\W\d_']+(?:'[^\W\d_']+)?", value, re.UNICODE)
+    return len(parole) < 2
+
+
 def extract_transfers_from_text(text: str, filename: str = "") -> List[Dict[str, Any]]:
     """Estrae bonifici dal testo PDF."""
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    table_row = _extract_transfer_table_row(lines)
     
     results: List[Dict[str, Any]] = []
     
@@ -176,7 +247,7 @@ def extract_transfers_from_text(text: str, filename: str = "") -> List[Dict[str,
     amount_value = _value_after_label(
         lines, r"importo(?:\s+(?:bonifico|operazione|disposto))?|totale\s+bonifico"
     )
-    amt = _parse_euro(amount_value or "")
+    amt = table_row.get("importo") or _parse_euro(amount_value or "")
     if amt is None:
         m_amt = re.search(
             r"\b(?:EUR|EURO|€)\s*([+-]?\d{1,3}(?:[. ]\d{3})*(?:,\d{2})|[+-]?\d+[.,]\d{2})\b",
@@ -184,26 +255,33 @@ def extract_transfers_from_text(text: str, filename: str = "") -> List[Dict[str,
         )
         if m_amt:
             amt = _parse_euro(m_amt.group(1))
+    if amt is None:
+        amt = _parse_amount_from_document(text)
     
     # Cerca CRO/TRN
     mcro = re.search(r"\b(?:CRO|TRN|NS\s*RIF\.?|RIF\.?\s*(?:OPERAZIONE)?)[:\s]*([A-Z0-9]*[0-9][A-Z0-9]{3,39})\b", text, re.IGNORECASE)
     cro = mcro.group(1).strip() if mcro else None
     
     # Cerca causale
-    caus = None
-    caus = _value_after_label(lines, r"causale(?:\s+del\s+bonifico)?|motivazione")
+    caus = table_row.get("causale") or _value_after_label(
+        lines, r"causale(?:\s+del\s+bonifico)?|motivazione"
+    )
+    if caus and (IBAN_RE.search(caus.replace(" ", "")) or _parse_euro(caus) is not None):
+        caus = None
     
     # Cerca IBAN
     ibans = IBAN_RE.findall(text.replace(' ', ''))
-    ben_iban = ibans[0] if ibans else None
+    ben_iban = table_row.get("beneficiario_iban") or (ibans[0] if ibans else None)
     ord_iban = ibans[1] if len(ibans) > 1 else None
     
     # Cerca nomi
     ord_nome = None
     ben_nome = None
-    ben_nome = _value_after_label(
+    ben_nome = table_row.get("beneficiario_nome") or _value_after_label(
         lines, r"beneficiario|a\s+favore\s+di|destinatario|intestatario\s+beneficiario"
-    ) or metadata_file.get("beneficiario_nome")
+    )
+    if _is_invalid_person_value(ben_nome):
+        ben_nome = metadata_file.get("beneficiario_nome")
     ord_nome = _value_after_label(lines, r"ordinante|disponente|intestatario\s+conto")
     
     periodo = _extract_payroll_period(caus or "")

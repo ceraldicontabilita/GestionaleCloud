@@ -41,6 +41,54 @@ def test_parser_pdf_usa_campi_etichettati_e_filename():
     assert isinstance(parsed["data"], datetime)
 
 
+def test_parser_distinta_stipendi_bpm_non_scambia_colonne():
+    testo = """
+    Distinta Stipendi - Sintetico
+    Tot. distinta:
+    1.234,56 EUR
+    Data esecuzione:
+    04/04/2026
+    Beneficiario
+    IBAN beneficiario
+    Descrizione causale
+    Importo
+    TEST DIPENDENTE
+    IT60X0542811101000000123456
+    TEST DIPENDENTE ACC STIPENDIO
+    1.234,56 EUR
+    """
+    parsed = extract_transfers_from_text(
+        testo, filename="Test Dipendente bonifico aprile.pdf"
+    )[0]
+
+    assert parsed["importo"] == 1234.56
+    assert parsed["beneficiario"]["nome"] == "TEST DIPENDENTE"
+    assert parsed["beneficiario"]["iban"] == "IT60X0542811101000000123456"
+    assert parsed["causale"] == "TEST DIPENDENTE ACC STIPENDIO"
+    assert parsed["causale"] != parsed["beneficiario"]["nome"]
+    assert isinstance(parsed["data"], datetime)
+
+
+def test_parser_importo_dopo_etichetta_in_layout_a_colonne():
+    parsed = extract_transfers_from_text(
+        """
+        Data operazione
+        Beneficiario
+        Descrizione causale
+        IBAN
+        Importo
+        02/04/2026
+        TEST DIPENDENTE
+        ACCONTO STIPENDIO
+        IT60X0542811101000000123456
+        850,00 EUR
+        """,
+        filename="Test Dipendente bonifico aprile.pdf",
+    )[0]
+    assert parsed["importo"] == 850.0
+    assert parsed["beneficiario"]["nome"] == "Test Dipendente"
+
+
 def test_bonifico_marzo_senza_competenza_associa_busta_febbraio():
     parsed = extract_transfers_from_text(
         """
