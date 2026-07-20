@@ -346,9 +346,13 @@ async def get_archivio_fatture(
         map_metodo = {}
         map_nome = {}
         for fdoc in fornitori_docs:
+            # `metodo_pagamento` è il valore canonico e modificabile dalla
+            # scheda Fornitori. Il campo `metodo_pagamento_predefinito` è
+            # legacy e deve essere usato soltanto come fallback: altrimenti
+            # un vecchio valore "cassa" continua a prevalere su "misto".
             metodo = (
-                normalizza_metodo_pagamento(fdoc.get("metodo_pagamento_predefinito"))
-                or normalizza_metodo_pagamento(fdoc.get("metodo_pagamento"))
+                normalizza_metodo_pagamento(fdoc.get("metodo_pagamento"))
+                or normalizza_metodo_pagamento(fdoc.get("metodo_pagamento_predefinito"))
                 or ""
             )
             for key in (fdoc.get("partita_iva"), fdoc.get("piva"), fdoc.get("vat_number")):

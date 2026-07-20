@@ -89,6 +89,27 @@ def test_archivio_fatture_esclude_eliminate(monkeypatch):
     assert "f2" not in ids
 
 
+def test_archivio_usa_metodo_canonico_prima_del_legacy(monkeypatch):
+    db = _FakeDb()
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    db["invoices"].docs = [
+        {"id": "f1", "invoice_number": "1", "invoice_date": "2026-07-16",
+         "supplier_name": "FORNITORE TEST SRL", "supplier_vat": "00000000000",
+         "total_amount": 100.0},
+    ]
+    db["fornitori"].docs = [
+        {"partita_iva": "00000000000", "ragione_sociale": "FORNITORE TEST SRL",
+         "metodo_pagamento": "misto", "metodo_pagamento_predefinito": "cassa"},
+    ]
+
+    esito = _run(mod.get_archivio_fatture(
+        anno=2026, mese=None, fornitore_piva=None, fornitore_nome=None,
+        stato=None, search=None, limit=200, skip=0,
+    ))
+
+    assert esito["fatture"][0]["fornitore_metodo_pagamento"] == "misto"
+
+
 def test_dettaglio_fattura_eliminata_ritorna_404(monkeypatch):
     db = _FakeDb()
     monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
