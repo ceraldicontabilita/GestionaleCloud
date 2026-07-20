@@ -45,8 +45,8 @@ export default function CedoliniSalari() {
       });
       const esito = risposta.data || {};
       toast.success(
-        `Importati ${esito.created || 0} bonifici documentati; ` +
-        `${esito.duplicates || 0} duplicati ignorati`,
+        `Importate ${esito.created || 0} righe buste/bonifici; ` +
+        `${esito.updated || 0} aggiornate; ${esito.duplicates || 0} duplicati ignorati`,
       );
       await caricaRighe();
     } catch (errore) {
@@ -107,11 +107,11 @@ export default function CedoliniSalari() {
             style={{ minHeight: 40, borderRadius: 9, padding: '9px 13px', background: '#0f2744', color: '#fff', fontWeight: 700, cursor: importazioneInCorso ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7 }}
           >
             {importazioneInCorso ? <Loader2 size={17} className="spin" /> : <FileSpreadsheet size={17} />}
-            {importazioneInCorso ? 'Importazione...' : 'Importa bonifici Excel'}
+            {importazioneInCorso ? 'Importazione...' : 'Importa buste e bonifici Excel'}
             <input
               type="file"
               accept=".xlsx,.xls"
-              aria-label="Importa bonifici Excel"
+              aria-label="Importa buste e bonifici Excel"
               disabled={importazioneInCorso}
               onChange={importaBonifici}
               style={{ display: 'none' }}
@@ -165,6 +165,11 @@ export default function CedoliniSalari() {
                 <td style={{ padding: '8px 14px', textAlign: 'right' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: 9, flexWrap: 'wrap' }}>
                     <strong>{formatEuroD(r.importo_busta || 0)}</strong>
+                    {Number(r.importo_busta_documentato || 0) > 0 && !r.cedolino_disponibile && (
+                      <small style={{ color: '#2563eb', fontWeight: 700 }}>
+                        Da prospetto storico
+                      </small>
+                    )}
                     {r.cedolino_disponibile ? (
                       <button
                         onClick={() => apriCedolino(r)}

@@ -56,7 +56,7 @@ describe('CedoliniSalari', () => {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
 
-    fireEvent.change(screen.getByLabelText('Importa bonifici Excel'), {
+    fireEvent.change(screen.getByLabelText('Importa buste e bonifici Excel'), {
       target: { files: [file] },
     });
 

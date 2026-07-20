@@ -86,10 +86,12 @@ class BatchReprocessingService:
                         # Decodifica PDF
                         pdf_bytes = base64.b64decode(pdf_data)
                         
+                        # Conta ogni tentativo, anche se il parser solleva prima
+                        # di produrre un risultato (evita "42 errori / 0 processati").
+                        self.stats["f24_processed"] += 1
+
                         # Riprocessa con nuovo parser
                         result = await parse_f24_enhanced(pdf_bytes, "application/pdf")
-                        
-                        self.stats["f24_processed"] += 1
                         
                         if result.get("success"):
                             self.stats["f24_success"] += 1
@@ -198,10 +200,11 @@ class BatchReprocessingService:
                         # Decodifica PDF
                         pdf_bytes = base64.b64decode(pdf_data)
                         
+                        # Conta il tentativo prima della chiamata al modello.
+                        self.stats["cedolini_processed"] += 1
+
                         # Riprocessa con nuovo parser
                         result = await parse_cedolino_enhanced(pdf_bytes, "application/pdf")
-                        
-                        self.stats["cedolini_processed"] += 1
                         
                         if result.get("success"):
                             self.stats["cedolini_success"] += 1

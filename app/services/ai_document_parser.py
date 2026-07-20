@@ -278,7 +278,9 @@ async def parse_document_with_ai(
     Returns:
         Dict con i dati estratti strutturati
     """
-    from app.services.anthropic_llm_client import LlmChat, UserMessage, ImageContent
+    from app.services.anthropic_llm_client import (
+        LlmChat, UserMessage, ImageContent, document_model_name,
+    )
     
     # Usa ANTHROPIC_API_KEY
     api_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -338,7 +340,7 @@ Rispondi con UNA SOLA PAROLA senza punteggiatura."""
             api_key=api_key,
             session_id=f"doc_parser_{datetime.now().timestamp()}",
             system_prompt="Sei un esperto parser di documenti contabili italiani. Estrai dati precisi e strutturati in formato JSON."
-        ).with_model("anthropic", "claude-sonnet-4-20250514")  # Claude supporta vision
+        ).with_model("anthropic", document_model_name())  # Claude supporta vision
 
         # Crea ImageContent per ogni immagine col suo mime_type reale
         image_contents = [ImageContent(image_data=img_b64, mime_type=img_mime) for img_b64, img_mime in images_b64]

@@ -8,7 +8,16 @@ import anthropic
 from dataclasses import dataclass, field
 from typing import Optional
 
-DEFAULT_MODEL = "claude-opus-4-5"
+DEFAULT_DOCUMENT_MODEL = "claude-sonnet-4-6"
+
+
+def document_model_name() -> str:
+    """Modello documentale configurabile, senza snapshot ritirati hardcoded."""
+    return (
+        os.getenv("ANTHROPIC_DOCUMENT_MODEL", "").strip()
+        or os.getenv("ANTHROPIC_MODEL", "").strip()
+        or DEFAULT_DOCUMENT_MODEL
+    )
 
 @dataclass
 class ImageContent:
@@ -27,7 +36,7 @@ class UserMessage:
     files: list = field(default_factory=list)
 
 class LlmChat:
-    def __init__(self, api_key: str, session_id: str = "", system_prompt: str = "", model: str = DEFAULT_MODEL):
+    def __init__(self, api_key: str, session_id: str = "", system_prompt: str = "", model: str = DEFAULT_DOCUMENT_MODEL):
         self.api_key = api_key
         self.system_prompt = system_prompt
         self.model = model

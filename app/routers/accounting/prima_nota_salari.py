@@ -139,6 +139,19 @@ def _chiave_bonifico_excel(
     return "bonifico_excel:" + hashlib.sha256(base.encode("utf-8")).hexdigest()
 
 
+def _chiave_busta_excel(
+    dipendente: str,
+    anno: int,
+    mese: int,
+    importo_busta: float,
+) -> str:
+    """Chiave stabile per una riga che documenta solo il netto in busta."""
+    base = "|".join([
+        normalize_name(dipendente), str(anno), str(mese), f"{importo_busta:.2f}",
+    ])
+    return "busta_excel:" + hashlib.sha256(base.encode("utf-8")).hexdigest()
+
+
 # ============== ENDPOINTS ==============
 
 @router.get("/salari")
@@ -430,14 +443,15 @@ async def import_paghe(file: UploadFile = File(...)) -> Dict[str, Any]:
 @router.post("/import-bonifici")
 async def import_bonifici(file: UploadFile = File(...)) -> Dict[str, Any]:
     """
-    Importa file BONIFICI (importi erogati) come evidenze documentali.
+    Importa il prospetto storico BUSTE + BONIFICI come evidenza documentale.
     Formati supportati:
     - Dipendente | Mese | Anno | Importo Erogato
     - Dipendente | Mese (data completa) | Importo Erogato
     
-    REGOLA: MAI AGGREGARE. L'import non dichiara una riconciliazione bancaria:
-    crea una riga per ogni bonifico reale e la successiva associazione al
-    cedolino richiede nome, periodo e importo coerenti.
+    REGOLA: MAI AGGREGARE. IMPORTO BUSTA e IMPORTO ACCONTO hanno significati
+    distinti e vengono conservati entrambi. L'import non dichiara una
+    riconciliazione bancaria: l'acconto resta documentato ma non verificato
+    finche' non viene trovato nell'estratto conto.
     """
     import pandas as pd
     
@@ -459,6 +473,7 @@ async def import_bonifici(file: UploadFile = File(...)) -> Dict[str, Any]:
     col_mese = None
     col_anno = None
     col_importo = None
+    col_importo_busta = None
     col_data_bonifico = None
 
     colonne = list(df.columns)
@@ -472,7 +487,7 @@ async def import_bonifici(file: UploadFile = File(...)) -> Dict[str, Any]:
     )
     col_anno = _prima_colonna(colonne, ["anno", "anno competenza"], ["anno"])
     # Nel foglio storico IMPORTO ACCONTO e' il pagamento; IMPORTO BUSTA e'
-    # il netto del cedolino e non deve essere scambiato per un bonifico.
+    # il netto del cedolino. Sono entrambi importanti, ma non intercambiabili.
     col_importo = _prima_colonna(
         colonne,
         [
@@ -482,29 +497,41 @@ async def import_bonifici(file: UploadFile = File(...)) -> Dict[str, Any]:
         ["bonifico", "acconto", "erogato", "pagato", "versato", "accredito"],
         ["busta", "stipendio netto", "netto cedolino"],
     )
+    col_importo_busta = _prima_colonna(
+        colonne,
+        ["importo busta", "stipendio netto", "netto cedolino", "netto in busta"],
+        ["importo busta", "stipendio netto", "netto cedolino", "netto in busta"],
+        ["bonifico", "acconto", "erogato", "pagato", "versato", "accredito"],
+    )
     col_data_bonifico = _prima_colonna(
         colonne,
         ["data bonifico", "data acconto", "data pagamento", "data erogazione"],
         ["data bonifico", "data acconto", "data pagamento", "data erogazione"],
     )
     
-    if not all([col_dipendente, col_mese, col_importo]):
+    if not col_dipendente or not col_mese or not (col_importo or col_importo_busta):
         raise HTTPException(
             status_code=400, 
             detail=(
                 f"Colonne richieste non trovate. Trovate: {list(df.columns)}. "
-                "Servono dipendente, mese/competenza e un importo di bonifico/acconto; "
-                "IMPORTO BUSTA non viene usato come pagamento."
+                "Servono dipendente, mese/competenza e almeno una colonna tra "
+                "IMPORTO BUSTA e IMPORTO ACCONTO/BONIFICO."
             )
         )
     
     logger.info(f"IMPORT BONIFICI - Righe nel file: {len(df)}")
-    logger.info(f"IMPORT BONIFICI - Mapping: dip={col_dipendente}, mese={col_mese}, anno={col_anno}, importo={col_importo}")
+    logger.info(
+        "IMPORT BONIFICI - Mapping: dip=%s, mese=%s, anno=%s, busta=%s, bonifico=%s",
+        col_dipendente, col_mese, col_anno, col_importo_busta, col_importo,
+    )
     
     created = 0
+    updated = 0
     duplicates = 0
     skipped = 0
     totale_documentato = 0.0
+    totale_buste_documentato = 0.0
+    righe_con_busta = 0
     errors = []
     chiavi_nel_file = set()
     
@@ -553,21 +580,51 @@ async def import_bonifici(file: UploadFile = File(...)) -> Dict[str, Any]:
                 errors.append(f"Riga {idx + 2}: mese non valido ({mese_val})")
                 continue
 
-            importo = _importo_positivo(row[col_importo])
-            if importo is None:
+            importo = _importo_positivo(row[col_importo]) if col_importo else None
+            importo_busta = (
+                _importo_positivo(row[col_importo_busta]) if col_importo_busta else None
+            )
+            if importo is None and importo_busta is None:
                 skipped += 1
                 continue
 
-            import_key = _chiave_bonifico_excel(
-                dipendente, int(anno), mese, data_bonifico, importo
-            )
+            if importo is not None:
+                # Mantiene la chiave della prima versione dell'importatore: una
+                # seconda importazione aggiorna la busta sulle righe gia' create.
+                import_key = _chiave_bonifico_excel(
+                    dipendente, int(anno), mese, data_bonifico, importo
+                )
+            else:
+                import_key = _chiave_busta_excel(
+                    dipendente, int(anno), mese, importo_busta
+                )
             if import_key in chiavi_nel_file:
                 duplicates += 1
                 continue
             chiavi_nel_file.add(import_key)
 
-            if await db["prima_nota_salari"].find_one({"import_key": import_key}):
-                duplicates += 1
+            # Totali del contenuto unico del file, indipendenti dal fatto che
+            # la riga venga creata, aggiornata o risulti gia' presente.
+            totale_documentato += importo or 0
+            totale_buste_documentato += importo_busta or 0
+            if importo_busta is not None:
+                righe_con_busta += 1
+
+            esistente = await db["prima_nota_salari"].find_one({"import_key": import_key})
+            if esistente:
+                busta_esistente = _importo_positivo(esistente.get("importo_busta"))
+                if importo_busta is not None and busta_esistente != importo_busta:
+                    await db["prima_nota_salari"].update_one(
+                        {"import_key": import_key},
+                        {"$set": {
+                            "importo_busta": round(importo_busta, 2),
+                            "importo_busta_documentato": round(importo_busta, 2),
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                        }},
+                    )
+                    updated += 1
+                else:
+                    duplicates += 1
                 continue
             
             # Bonifico documentato, non ancora verificato contro l'estratto conto.
@@ -577,25 +634,25 @@ async def import_bonifici(file: UploadFile = File(...)) -> Dict[str, Any]:
                 "anno": anno,
                 "mese": mese,
                 "mese_nome": MESI_NOMI[mese - 1] if 1 <= mese <= 12 else "",
-                "importo_busta": 0,
+                "importo_busta": round(importo_busta or 0, 2),
+                "importo_busta_documentato": round(importo_busta or 0, 2),
                 "importo_bonifico": 0,
-                "importo_bonifico_documentato": round(importo, 2),
+                "importo_bonifico_documentato": round(importo or 0, 2),
                 "data_bonifico_documentata": data_bonifico,
                 "saldo": 0,
                 "progressivo": 0,
                 "riconciliato": False,
-                "tipo": "bonifico_documentato",
+                "tipo": "prospetto_salario_documentato",
                 "source": "excel_bonifici_storici",
                 "source_filename": file.filename or "bonifici.xlsx",
                 "source_row": idx + 2,
                 "import_key": import_key,
-                "descrizione": "Bonifico storico da confrontare con il cedolino",
+                "descrizione": "Busta e bonifico storici da confrontare con cedolino ed estratto conto",
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }
             await db["prima_nota_salari"].insert_one(new_record.copy())
             created += 1
-            totale_documentato += importo
             
         except Exception as e:
             errors.append(f"Riga {idx + 2}: {str(e)}")
@@ -604,12 +661,14 @@ async def import_bonifici(file: UploadFile = File(...)) -> Dict[str, Any]:
     
     return {
         "success": True,
-        "message": "Import BONIFICI documentati completato; confronto cedolini non ancora eseguito",
+        "message": "Import BUSTE e BONIFICI documentati completato; confronti non ancora eseguiti",
         "created": created,
-        "updated": 0,
+        "updated": updated,
         "duplicates": duplicates,
         "skipped": skipped,
         "totale_documentato": round(totale_documentato, 2),
+        "totale_buste_documentato": round(totale_buste_documentato, 2),
+        "righe_con_busta": righe_con_busta,
         "riconciliati": 0,
         "righe_file": len(df),
         "errors": errors[:10] if errors else []

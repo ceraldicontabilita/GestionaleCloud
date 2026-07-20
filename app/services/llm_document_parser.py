@@ -25,7 +25,9 @@ async def _ask_gemini_with_pdf(pdf_bytes: bytes, prompt: str, filename: str = "d
     """Invia un PDF a Claude (unico provider realmente cablato in
     anthropic_llm_client.py — il nome della funzione è storico) e ottieni
     risposta strutturata."""
-    from app.services.anthropic_llm_client import LlmChat, UserMessage, FileContentWithMimeType
+    from app.services.anthropic_llm_client import (
+        LlmChat, UserMessage, FileContentWithMimeType, document_model_name,
+    )
 
     if not ANTHROPIC_API_KEY:
         logger.error("[LLM-PARSER] ANTHROPIC_API_KEY non configurata")
@@ -36,7 +38,7 @@ async def _ask_gemini_with_pdf(pdf_bytes: bytes, prompt: str, filename: str = "d
             api_key=ANTHROPIC_API_KEY,
             session_id=f"parser-{filename[:20]}",
             system_prompt="Sei un parser di documenti italiani. Rispondi SOLO con JSON valido, senza markdown."
-        ).with_model("anthropic", "claude-sonnet-4-20250514")
+        ).with_model("anthropic", document_model_name())
 
         pdf_file = FileContentWithMimeType(
             file_data=base64.b64encode(pdf_bytes).decode(),

@@ -354,7 +354,9 @@ async def parse_f24_enhanced(
     Estrae TUTTI i codici tributo da tutte le sezioni.
     """
     try:
-        from app.services.anthropic_llm_client import LlmChat, UserMessage, ImageContent
+        from app.services.anthropic_llm_client import (
+            LlmChat, UserMessage, ImageContent, document_model_name,
+        )
         
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
@@ -373,11 +375,12 @@ async def parse_f24_enhanced(
             images_b64.append(base64.b64encode(file_bytes).decode())
         
         # Inizializza chat con Claude
+        model_name = document_model_name()
         chat = LlmChat(
             api_key=api_key,
             session_id=f"f24_parser_{datetime.now().timestamp()}",
             system_prompt="Sei un esperto contabile italiano specializzato in modelli F24."
-        ).with_model("anthropic", "claude-sonnet-4-20250514")
+        ).with_model("anthropic", model_name)
         
         # Crea ImageContent per ogni immagine
         image_contents = [
@@ -401,7 +404,7 @@ async def parse_f24_enhanced(
             result["_parsing_info"] = {
                 "parser": "enhanced_f24_v2",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "model": "claude-sonnet-4",
+                "model": model_name,
                 "pages_processed": len(images_b64)
             }
             result = _validate_f24_totals(result)
@@ -425,7 +428,9 @@ async def parse_cedolino_enhanced(
     Supporta tutti i formati principali (Zucchetti, Paghe Web, TeamSystem, ADP, CSC).
     """
     try:
-        from app.services.anthropic_llm_client import LlmChat, UserMessage, ImageContent
+        from app.services.anthropic_llm_client import (
+            LlmChat, UserMessage, ImageContent, document_model_name,
+        )
         
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
@@ -435,7 +440,7 @@ async def parse_cedolino_enhanced(
         images_b64 = []
         
         if "pdf" in mime_type.lower():
-            images = pdf_to_images(file_bytes, max_pages=2, dpi=200)  # Cedolini di solito 1-2 pagine
+            images = pdf_to_images(file_bytes, max_pages=4, dpi=200)
             if not images:
                 return {"error": "Impossibile convertire PDF in immagini", "success": False}
             for img in images:
@@ -444,11 +449,12 @@ async def parse_cedolino_enhanced(
             images_b64.append(base64.b64encode(file_bytes).decode())
         
         # Inizializza chat con Claude
+        model_name = document_model_name()
         chat = LlmChat(
             api_key=api_key,
             session_id=f"cedolino_parser_{datetime.now().timestamp()}",
             system_prompt="Sei un esperto di paghe e contributi italiano. Estrai dati precisi dalle buste paga."
-        ).with_model("anthropic", "claude-sonnet-4-20250514")
+        ).with_model("anthropic", model_name)
         
         # Crea ImageContent per ogni immagine
         image_contents = [
@@ -472,7 +478,7 @@ async def parse_cedolino_enhanced(
             result["_parsing_info"] = {
                 "parser": "enhanced_cedolino_v2",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "model": "claude-sonnet-4",
+                "model": model_name,
                 "pages_processed": len(images_b64)
             }
             result = _validate_cedolino_netto(result)
