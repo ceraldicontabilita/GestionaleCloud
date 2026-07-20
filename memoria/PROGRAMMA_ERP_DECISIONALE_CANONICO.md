@@ -90,8 +90,12 @@ Ordine di attivazione in shadow mode:
    - [x] Nessuna scrittura suggerita senza evidenza; ogni eventuale rettifica
      resta separata e soggetta ad approvazione umana.
    - [x] Report assente, obsoleto o in errore trattato in modo conservativo.
-3. [ ] Fiscale — IVA, F24, ritenute e pacchetto commercialista.
-4. [ ] CFO — cash flow a 13 settimane e scenari.
+3. [x] Fiscale — IVA, F24, ritenute e invio Prima Nota al commercialista.
+   - [x] Obblighi scaduti come proposta L3; imminenti come raccomandazione L1.
+   - [x] Date e importi mancanti esclusi senza stime e dichiarati nei contatori.
+   - [x] Nessun calcolo d'imposta, F24 preparato, pagamento o invio esterno.
+   - [x] L'invio della Prima Nota non viene confuso con un pacchetto fiscale completo.
+4. [x] CFO — primo nucleo cash flow a 13 settimane e scenari.
    - [x] Motore deterministico CF13W-001 con saldi canonici, rate fornitori,
      obblighi e crediti dotati di scadenza.
    - [x] Scenari base, prudente e stress, copertura dati ed esclusioni visibili.
@@ -138,8 +142,8 @@ L'esecuzione L2 resta disabilitata fino a quando, per il singolo caso d'uso:
 5. [x] Attivare l'Agente Contabile shadow sulle quadrature gia' prodotte dal
    collaudo canonico, senza scritture automatiche.
 6. Estendere la copertura di incassi e obblighi senza stimare dati mancanti.
-7. Attivare l'Agente Fiscale shadow su IVA, F24, ritenute e pacchetto
-   commercialista, mantenendo invii e versamenti sempre L3.
+7. [x] Attivare l'Agente Fiscale shadow su IVA, F24, ritenute e prova di invio
+   della Prima Nota, mantenendo invii e versamenti fuori dall'automazione.
 8. Completare MFA e la verifica delle future esigenze CSRF prima di abilitare qualsiasi L2.
 
 ## Regola di avanzamento

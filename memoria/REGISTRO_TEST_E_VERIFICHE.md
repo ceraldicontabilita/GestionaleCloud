@@ -403,3 +403,17 @@ Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `S
 - Esecuzione: ogni 6 ore e al riavvio, subordinata all'interruttore globale.
 - Idempotenza: la stessa fotografia produce una sola decisione.
 - Test mirati agenti: 38 passati; suite backend completa: 768 passati.
+
+## Agente Fiscale shadow — 2026-07-20
+
+- Fonti aggregate: `f24_unificato`, `ritenute_acconto`, ultima liquidazione
+  IVA del mese precedente e prova di invio della Prima Nota Cassa.
+- Compatibilita': riconosciuti gli schemi misti italiano/inglese di stato e i
+  diversi campi importo gia' presenti nella collection F24 canonica.
+- Prudenza: record senza data o importo sono esclusi, conteggiati e mai stimati.
+- Decisioni: obblighi scaduti L3; scadenze entro 15 giorni L1; completezza IVA
+  e Prima Nota L1. L'invio della Prima Nota non certifica un pacchetto completo.
+- Sicurezza: nessun calcolo d'imposta, parsing/OCR, F24 preparato, pagamento,
+  scrittura contabile o invio al commercialista.
+- Idempotenza: una fotografia invariata non genera decisioni duplicate.
+- Test fiscali/decisionali mirati: 58 passati; suite backend completa: 773 passati.
