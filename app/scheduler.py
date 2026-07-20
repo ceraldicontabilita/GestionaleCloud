@@ -446,6 +446,19 @@ def start_scheduler():
     logger.info("🚀 [SCHEDULER] Configurazione scheduler...")
 
     # ── Gmail Verbali CdS: scan ogni 30 min ────────────────────────────────
+    # Tesoreria AI: solo lettura + decisioni shadow. Nessun pagamento,
+    # movimento contabile o altra azione di business viene eseguita qui.
+    async def _tesoreria_shadow_job():
+        from app.agents.orchestrator import run_agenti
+        from app.database import Database
+        try:
+            await run_agenti(Database.get_db(), agente_specifico="TesoreriaShadow")
+            logger.info("[SCHEDULER-AI-TESORERIA] fotografia shadow completata")
+        except RuntimeError as exc:
+            logger.info("[SCHEDULER-AI-TESORERIA] sospeso: %s", exc)
+        except Exception as exc:
+            logger.error("[SCHEDULER-AI-TESORERIA] errore: %s", exc)
+
     async def _scan_gmail_verbali_job():
         from app.database import Database
         from app.services.verbali_gmail_scanner import scan_gmail_verbali
@@ -568,6 +581,14 @@ def start_scheduler():
         _scan_gmail_verbali_job,
         'interval', minutes=30,
         id="scan_gmail_verbali", name="Scan Gmail Verbali CdS (ogni 30 min)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _tesoreria_shadow_job,
+        'interval', hours=1,
+        next_run_time=datetime.now(),
+        id="ai_tesoreria_shadow",
+        name="Agente Tesoreria in shadow mode (ogni ora + al riavvio)",
         replace_existing=True,
     )
     scheduler.add_job(

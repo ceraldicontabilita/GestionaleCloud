@@ -6,6 +6,7 @@ logger = logging.getLogger(__name__)
 SCHEDULE = {
     "FiscaleSentinella": 600,    # ogni 10 minuti
     "LearningCervello": 3600,     # ogni ora
+    "TesoreriaShadow": 3600,      # ogni ora, solo osservazioni/proposte
 }
 
 
@@ -18,6 +19,7 @@ async def run_agenti(db, agente_specifico: str = None):
     from app.agents.decision_engine import automazioni_sospese
     from app.agents.fiscale_sentinella import FiscaleSentinella
     from app.agents.learning_brain import LearningCervello
+    from app.agents.tesoreria_shadow import TesoreriaShadow
 
     if await automazioni_sospese(db):
         raise RuntimeError("Automazioni AI fermate dall'interruttore globale")
@@ -26,6 +28,7 @@ async def run_agenti(db, agente_specifico: str = None):
     mappa = {
         "FiscaleSentinella": FiscaleSentinella,
         "LearningCervello": LearningCervello,
+        "TesoreriaShadow": TesoreriaShadow,
     }
 
     if agente_specifico and agente_specifico not in mappa:
@@ -61,3 +64,5 @@ async def run_agenti(db, agente_specifico: str = None):
                 {"$set": {"stato": "errore", "ultimo_errore": str(e)}},
                 upsert=True
             )
+            if agente_specifico:
+                raise

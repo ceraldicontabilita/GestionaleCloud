@@ -160,6 +160,25 @@ def test_run_agenti_un_agente_che_fallisce_non_blocca_gli_altri(monkeypatch):
 
 # ─── notifier ────────────────────────────────────────────────────────────
 
+def test_run_agente_specifico_propaga_errore_dopo_averlo_registrato(monkeypatch):
+    """Scheduler e pulsante specifico non devono dichiarare successo se il
+    singolo agente richiesto ha fallito."""
+    db = _Db()
+
+    class _TesoreriaCheFallisce:
+        async def run(self, db):
+            raise RuntimeError("errore tesoreria simulato")
+
+    import app.agents.tesoreria_shadow as tesoreria_mod
+    monkeypatch.setattr(tesoreria_mod, "TesoreriaShadow", _TesoreriaCheFallisce)
+
+    with __import__("pytest").raises(RuntimeError, match="errore tesoreria simulato"):
+        asyncio.run(orch_mod.run_agenti(db, agente_specifico="TesoreriaShadow"))
+
+    stato = next(d for d in db["agenti_stato"].docs if d["agente"] == "TesoreriaShadow")
+    assert stato["stato"] == "errore"
+
+
 def test_crea_segnalazione_urgente_con_telegram_giu_non_fallisce(monkeypatch):
     db = _Db()
 

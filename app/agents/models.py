@@ -47,6 +47,7 @@ class StatoEsecuzione(str, Enum):
 
 
 class DecisioneInput(BaseModel):
+    decision_key: Optional[str] = Field(default=None, min_length=1, max_length=180)
     agent: str = Field(min_length=1, max_length=80)
     objective: str = Field(min_length=1, max_length=500)
     input_sources: List[Any] = Field(default_factory=list)

@@ -347,3 +347,16 @@ Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `S
 - Build frontend di produzione: completata.
 - Database usato nei test: MongoDB esclusivamente in memoria; nessun accesso ad
   Atlas, Render, `.env` o dati aziendali reali.
+
+## Agente Tesoreria shadow — 2026-07-20
+
+- Servizio tipizzato di sola lettura su `scadenziario_fornitori`.
+- Dati forniti all'agente: esclusivamente conteggi, totali e intervalli di date;
+  nessun nome fornitore, documento o coordinata bancaria.
+- Scadenze decorse: proposta L3 di verifica umana, nessun pagamento preparato.
+- Prossimi 30 giorni: raccomandazione L1 di pianificazione.
+- Esecuzione oraria e al riavvio, subordinata all'interruttore globale.
+- Idempotenza tramite `decision_key`: la stessa fotografia non genera doppioni.
+- Test mirati agenti/decision engine: 26 passati.
+- Suite backend completa dopo l'aggiunta: 757 passati, 2 saltati.
+- Nessuna scrittura su Prima Nota, pagamenti o operazioni da confermare.

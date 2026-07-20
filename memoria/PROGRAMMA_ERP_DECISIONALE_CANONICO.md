@@ -75,7 +75,9 @@ livelli tecnici eventualmente usati da singoli algoritmi storici di matching.
 
 Ordine di attivazione in shadow mode:
 
-1. [ ] Tesoreria — scadenze, banche, POS, PayPal, assegni e bonifici.
+1. [x] Tesoreria — primo nucleo shadow su scadenze scadute e orizzonte 30 giorni,
+   con soli aggregati minimizzati e senza strumenti di pagamento.
+   - [ ] Estendere a saldi, banche, POS, PayPal, assegni e bonifici.
 2. [ ] Contabile — quadrature, prima nota e scritture suggerite.
 3. [ ] Fiscale — IVA, F24, ritenute e pacchetto commercialista.
 4. [ ] CFO — cash flow a 13 settimane e scenari.
@@ -114,7 +116,7 @@ L'esecuzione L2 resta disabilitata fino a quando, per il singolo caso d'uso:
 1. Completare e pubblicare la fondazione decisionale della Fase 3.
 2. Preparare una procedura separata e controllata per correggere gli eventuali
    dati storici rateizzati; nessun dato reale viene corretto automaticamente.
-3. Attivare l'Agente Tesoreria in shadow mode sul flusso rateizzato già corretto.
+3. Estendere l'Agente Tesoreria shadow alle fonti bancarie e ai canali di incasso.
 4. Implementare il cash flow a 13 settimane solo dopo la qualità delle scadenze.
 5. Affrontare i blocchi sicurezza rimanenti prima di abilitare qualsiasi L2.
 

@@ -12,6 +12,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
+from pymongo.errors import DuplicateKeyError
+
 from app.agents.models import (
     DecisioneInput,
     LivelloAutonomia,
@@ -54,7 +56,11 @@ AZIONI_SEMPRE_L3 = {
 
 
 def _dump(model: DecisioneInput) -> Dict[str, Any]:
-    return model.model_dump(mode="json") if hasattr(model, "model_dump") else model.dict()
+    return (
+        model.model_dump(mode="json", exclude_none=True)
+        if hasattr(model, "model_dump")
+        else model.dict(exclude_none=True)
+    )
 
 
 async def automazioni_sospese(db) -> bool:
@@ -148,6 +154,13 @@ async def valuta_policy(db, proposta: DecisioneInput) -> Dict[str, Any]:
 
 
 async def crea_decisione(db, proposta: DecisioneInput) -> Dict[str, Any]:
+    if proposta.decision_key:
+        esistente = await db[COLL_DECISIONI].find_one(
+            {"decision_key": proposta.decision_key}, {"_id": 0}
+        )
+        if esistente:
+            return esistente
+
     policy = await valuta_policy(db, proposta)
     ora = datetime.now(timezone.utc).isoformat()
     record = {
@@ -162,7 +175,17 @@ async def crea_decisione(db, proposta: DecisioneInput) -> Dict[str, Any]:
         "created_at": ora,
         "updated_at": ora,
     }
-    await db[COLL_DECISIONI].insert_one(dict(record))
+    try:
+        await db[COLL_DECISIONI].insert_one(dict(record))
+    except DuplicateKeyError:
+        # Protezione concorrente: due esecuzioni con la stessa fotografia
+        # restituiscono la decisione già registrata, senza duplicare eventi.
+        esistente = await db[COLL_DECISIONI].find_one(
+            {"decision_key": proposta.decision_key}, {"_id": 0}
+        )
+        if esistente:
+            return esistente
+        raise
     await _registra_evento(
         db,
         decision_id=record["decision_id"],
