@@ -41,8 +41,13 @@ async def _autentica_websocket(websocket: WebSocket) -> bool:
     # HTTP non copre lo scope websocket (vedi sopra), quindi senza questo
     # controllo un token già disconnesso resterebbe valido per il WS fino
     # a scadenza (review Codex su PR #65).
-    from app.utils.token_blacklist import is_revocato
-    if await is_revocato(Database.get_db(), token):
+    from app.utils.token_blacklist import TokenBlacklistUnavailable, is_revocato
+    try:
+        revocato = await is_revocato(Database.get_db(), token)
+    except TokenBlacklistUnavailable:
+        await websocket.close(code=1013, reason="Verifica sessione temporaneamente non disponibile")
+        return False
+    if revocato:
         await websocket.close(code=4401, reason="Sessione terminata (logout)")
         return False
 

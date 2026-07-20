@@ -8,10 +8,9 @@ stanotte senza supervisione: il logout esplicito. Non copre (ancora) la
 disattivazione utente o il cambio ruolo — richiede toccare utenti_pin.py,
 lasciato per una revisione dedicata.
 
-Fail-open per design: se il controllo sulla blacklist fallisce (es. hiccup
-DB), la richiesta prosegue normalmente — questa è una difesa aggiuntiva,
-non il meccanismo di autenticazione primario (la firma/scadenza del JWT
-restano il controllo principale).
+Fail-closed: se il registro non è interrogabile non è possibile distinguere
+un token valido da uno revocato. La richiesta viene quindi sospesa con errore
+temporaneo, senza concedere accesso.
 """
 import hashlib
 import logging
@@ -21,6 +20,10 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 COLLECTION = "token_blacklist"
+
+
+class TokenBlacklistUnavailable(RuntimeError):
+    """Il registro di revoca non può essere letto o scritto in sicurezza."""
 
 
 def _hash(token: str) -> str:
@@ -48,7 +51,8 @@ async def revoca_token(db, token: str, exp: Optional[float] = None) -> None:
             upsert=True,
         )
     except Exception as e:
-        logger.warning(f"Revoca token non riuscita (best-effort): {e}")
+        logger.error("Revoca token non riuscita")
+        raise TokenBlacklistUnavailable("Registro revoche non disponibile") from e
 
 
 async def is_revocato(db, token: str) -> bool:
@@ -59,5 +63,5 @@ async def is_revocato(db, token: str) -> bool:
         doc = await db[COLLECTION].find_one({"token_hash": _hash(token)}, {"_id": 0})
         return doc is not None
     except Exception as e:
-        logger.warning(f"Verifica blacklist token non riuscita, si prosegue (fail-open): {e}")
-        return False
+        logger.error("Verifica blacklist token non riuscita")
+        raise TokenBlacklistUnavailable("Registro revoche non disponibile") from e

@@ -14,15 +14,11 @@ from dotenv import load_dotenv
 
 from app.config import settings
 from app.utils import login_lockout
+from app.utils.session_cookie import SESSION_COOKIE_SECURE
 
 load_dotenv()
 
 router = APIRouter(prefix="/api", tags=["auth"])
-
-# Cookie Secure: in produzione (Render/https) i cookie di sessione viaggiano
-# solo su TLS; in locale (http) resta False altrimenti il browser li scarta.
-_COOKIE_SECURE = bool(os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID")
-                      or os.getenv("ENVIRONMENT", "").lower() == "production")
 
 ADMIN_EMAIL         = os.getenv("ADMIN_EMAIL", "ceraldigroupsrl@gmail.com")
 ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")   # bcrypt (priorità)
@@ -111,8 +107,14 @@ async def _decode_token(request: Request) -> dict:
     # ma dimenticato qui: /api/auth/verify bypassa il middleware essendo
     # pubblico, quindi ha una propria copia dello stesso controllo).
     from app.database import Database
-    from app.utils.token_blacklist import is_revocato
-    if await is_revocato(Database.get_db(), token):
+    from app.utils.token_blacklist import TokenBlacklistUnavailable, is_revocato
+    try:
+        revocato = await is_revocato(Database.get_db(), token)
+    except TokenBlacklistUnavailable as exc:
+        raise HTTPException(
+            status_code=503, detail="Verifica sessione temporaneamente non disponibile"
+        ) from exc
+    if revocato:
         raise HTTPException(status_code=401, detail="Sessione terminata (logout)")
 
     return payload
@@ -163,9 +165,9 @@ async def auth_login(body: LoginRequest, request: Request, response: Response):
     await _audit_login(ip, body.email, ok=True)
     token = _make_token(body.email)
     response.set_cookie(key="access_token", value=token, httponly=True,
-                        secure=_COOKIE_SECURE, samesite="lax", max_age=TOKEN_EXPIRE_MINUTES * 60, path="/")
+                        secure=SESSION_COOKIE_SECURE, samesite="lax", max_age=TOKEN_EXPIRE_MINUTES * 60, path="/")
     response.set_cookie(key="session_active", value="1", httponly=False,
-                        secure=_COOKIE_SECURE, samesite="lax", max_age=TOKEN_EXPIRE_MINUTES * 60, path="/")
+                        secure=SESSION_COOKIE_SECURE, samesite="lax", max_age=TOKEN_EXPIRE_MINUTES * 60, path="/")
     return {
         "ok":          True,
         "email":       body.email,
@@ -204,7 +206,13 @@ async def auth_logout(request: Request, response: Response):
             exp = jwt.decode(token, SECRET_KEY, algorithms=["HS256"], options={"verify_exp": False}).get("exp")
         except jwt.InvalidTokenError:
             continue
-        await revoca_token(Database.get_db(), token, exp=exp)
-    response.delete_cookie("access_token")
-    response.delete_cookie("session_active")
+        try:
+            await revoca_token(Database.get_db(), token, exp=exp)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Logout sicuro temporaneamente non disponibile: riprovare",
+            ) from exc
+    response.delete_cookie("access_token", path="/", secure=SESSION_COOKIE_SECURE, samesite="lax")
+    response.delete_cookie("session_active", path="/", secure=SESSION_COOKIE_SECURE, samesite="lax")
     return {"ok": True}

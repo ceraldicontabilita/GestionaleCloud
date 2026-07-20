@@ -34,6 +34,7 @@ from jose import jwt
 from app.config import settings
 from app.database import Database, Collections
 from app.repositories import UserRepository
+from app.utils.session_cookie import SESSION_COOKIE_SECURE
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -51,12 +52,6 @@ PIN_ADMIN_EMAIL_DEFAULT = os.getenv("ADMIN_EMAIL", "ceraldigroupsrl@gmail.com")
 
 # Durata del token emesso via PIN (in minuti). Default: stesso del login normale.
 PIN_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
-
-
-# Cookie Secure: in produzione (Render/https) i cookie di sessione viaggiano
-# solo su TLS; in locale (http) resta False altrimenti il browser li scarta.
-_COOKIE_SECURE = bool(os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID")
-                      or os.getenv("ENVIRONMENT", "").lower() == "production")
 
 
 def _verifica_pin(pin: str) -> Optional[bool]:
@@ -229,7 +224,7 @@ async def pin_login(
         key="access_token",
         value=token,
         httponly=True,
-        secure=_COOKIE_SECURE,
+        secure=SESSION_COOKIE_SECURE,
         samesite="lax",
         max_age=PIN_TOKEN_EXPIRE_MINUTES * 60,
         path="/",

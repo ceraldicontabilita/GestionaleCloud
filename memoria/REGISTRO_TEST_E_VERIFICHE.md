@@ -377,3 +377,15 @@ Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `S
   pagamento, movimento contabile o scrittura su collection operative.
 - Test backend completi: 758 passati; test mirati agenti/cash flow: 24 passati;
   test frontend completi: 31 passati; build di produzione completata.
+
+## Rafforzamento sessione e revoca JWT — 2026-07-20
+
+- Flag del cookie centralizzati in `app/utils/session_cookie.py`.
+- Il cookie di accesso mantiene `HttpOnly`, `SameSite=Lax` e, su Render o
+  produzione HTTPS, `Secure` anche durante il rinnovo scorrevole.
+- Il registro `token_blacklist` è ora fail-closed: se non è verificabile,
+  HTTP risponde 503 e il WebSocket viene chiuso senza concedere accesso.
+- Un logout non dichiara più successo se la revoca server-side non è stata
+  registrata; l'utente può riprovare senza una falsa garanzia di sicurezza.
+- Test sicurezza mirati: 63 passati; suite backend completa: 762 passati;
+  test frontend completi: 34 passati; build di produzione completata.

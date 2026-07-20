@@ -53,7 +53,13 @@ livelli tecnici eventualmente usati da singoli algoritmi storici di matching.
 - [x] Collaudo E2E isolato per conferme e permessi.
 - [ ] Rotazione della credenziale MongoDB precedentemente esposta, da completare
   manualmente sulle dashboard Atlas e Render senza mostrare il valore.
-- [ ] Rate limiting, protezione CSRF contestuale e revoca sessioni da completare.
+- [x] Rate limiting globale e lockout dedicato sui login.
+- [x] Cookie HttpOnly/SameSite=Lax/Secure in produzione, incluso il rinnovo.
+- [x] Revoca JWT al logout con registro TTL e verifica fail-closed su HTTP,
+  verifica sessione e WebSocket.
+- [ ] Token CSRF esplicito da valutare soltanto per eventuali integrazioni
+  future che richiedano cookie cross-site; oggi SameSite=Lax blocca le
+  scritture cross-site basate sul cookie.
 - [ ] MFA per amministratori e approvatori.
 
 ### Fase 3 — Fondazione decisionale supervisionata
@@ -125,7 +131,7 @@ L'esecuzione L2 resta disabilitata fino a quando, per il singolo caso d'uso:
 3. Estendere l'Agente Tesoreria shadow alle fonti bancarie e ai canali di incasso.
 4. [x] Implementare il primo cash flow a 13 settimane dopo la qualità delle scadenze.
 5. Estendere la copertura di incassi e obblighi senza stimare dati mancanti.
-6. Affrontare i blocchi sicurezza rimanenti prima di abilitare qualsiasi L2.
+6. Completare MFA e la verifica delle future esigenze CSRF prima di abilitare qualsiasi L2.
 
 ## Regola di avanzamento
 

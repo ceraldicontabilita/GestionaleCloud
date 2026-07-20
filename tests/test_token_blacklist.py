@@ -3,6 +3,7 @@ sicurezza 19/07/2026). Prima di questo test la funzione non aveva
 copertura, nonostante sia il meccanismo che impedisce a un token rubato
 di restare valido dopo il logout esplicito."""
 import asyncio
+import pytest
 
 from app.utils import token_blacklist as tb
 
@@ -64,16 +65,15 @@ def test_token_vuoto_non_esplode():
     assert asyncio.run(tb.is_revocato(db, "")) is False
 
 
-def test_fail_open_se_verifica_blacklist_fallisce():
-    """Design esplicito (docstring del modulo): un errore nella verifica
-    della blacklist NON deve bloccare la richiesta — fail-open, perché la
-    firma/scadenza del JWT restano il controllo di sicurezza primario."""
+def test_fail_closed_se_verifica_blacklist_fallisce():
+    """Un registro non raggiungibile non può convalidare un token revocato."""
     db = _DbCheGuastaSempre()
-    assert asyncio.run(tb.is_revocato(db, "qualunque-token")) is False
+    with pytest.raises(tb.TokenBlacklistUnavailable):
+        asyncio.run(tb.is_revocato(db, "qualunque-token"))
 
 
-def test_revoca_con_errore_db_non_solleva():
-    """revoca_token è best-effort (vedi docstring): un errore di scrittura
-    non deve propagarsi al chiamante (il logout non deve fallire per questo)."""
+def test_revoca_con_errore_db_fallisce_in_modo_sicuro():
+    """Il logout non deve fingere la revoca quando la scrittura non riesce."""
     db = _DbCheGuastaSempre()
-    asyncio.run(tb.revoca_token(db, "token-x"))  # non deve sollevare
+    with pytest.raises(tb.TokenBlacklistUnavailable):
+        asyncio.run(tb.revoca_token(db, "token-x"))

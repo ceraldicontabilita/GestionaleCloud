@@ -43,6 +43,11 @@ class _FakeDb:
         return self._coll
 
 
+class _FakeDbNonDisponibile:
+    def __getitem__(self, name):
+        raise ConnectionError("registro revoche non disponibile")
+
+
 def _token_valido():
     return jwt.encode({"sub": "user-1"}, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
@@ -92,6 +97,14 @@ def test_token_revocato_rifiutato(monkeypatch):
     ok = asyncio.run(_autentica_websocket(ws))
     assert ok is False
     assert ws.chiusa_con == (4401, "Sessione terminata (logout)")
+
+
+def test_registro_revoche_non_disponibile_chiude_websocket(monkeypatch):
+    monkeypatch.setattr(Database, "get_db", staticmethod(lambda: _FakeDbNonDisponibile()))
+    ws = _FakeWebSocket(token=_token_valido())
+    ok = asyncio.run(_autentica_websocket(ws))
+    assert ok is False
+    assert ws.chiusa_con == (1013, "Verifica sessione temporaneamente non disponibile")
 
 
 def test_query_param_ha_precedenza_sul_cookie_se_entrambi_presenti(monkeypatch):

@@ -65,3 +65,22 @@ def test_ogni_set_cookie_access_token_ha_httponly():
             f"{rel}: il cookie access_token non ha httponly=True — "
             f"un token leggibile da JS è un rischio ulteriore (XSS→furto sessione)"
         )
+
+
+def test_ogni_set_cookie_access_token_usa_flag_secure_canonico():
+    trovati = _trova_set_cookie_access_token()
+    for rel, blocco in trovati:
+        assert re.search(r"secure\s*=\s*SESSION_COOKIE_SECURE", blocco), (
+            f"{rel}: il cookie access_token non usa il flag Secure canonico"
+        )
+
+
+def test_flag_secure_attivo_su_render_e_produzione(monkeypatch):
+    from app.utils.session_cookie import session_cookie_secure
+
+    monkeypatch.delenv("RENDER", raising=False)
+    monkeypatch.delenv("RENDER_SERVICE_ID", raising=False)
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    assert session_cookie_secure() is False
+    monkeypatch.setenv("RENDER", "true")
+    assert session_cookie_secure() is True

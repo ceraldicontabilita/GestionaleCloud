@@ -15,6 +15,7 @@ from jose import jwt, JWTError
 import logging
 
 from app.config import settings
+from app.utils.session_cookie import SESSION_COOKIE_SECURE
 
 logger = logging.getLogger(__name__)
 
@@ -176,8 +177,15 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             # validate (review Codex su PR #65): un token spazzatura non deve
             # costare una query Mongo prima di essere respinto localmente.
             from app.database import Database
-            from app.utils.token_blacklist import is_revocato
-            if await is_revocato(Database.get_db(), token):
+            from app.utils.token_blacklist import TokenBlacklistUnavailable, is_revocato
+            try:
+                revocato = await is_revocato(Database.get_db(), token)
+            except TokenBlacklistUnavailable:
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": "Verifica sessione temporaneamente non disponibile"},
+                )
+            if revocato:
                 return JSONResponse(
                     status_code=401,
                     content={"detail": "Sessione terminata (logout)"},
@@ -259,7 +267,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                         key="access_token",
                         value=nuovo,
                         httponly=True,
-                        secure=False,
+                        secure=SESSION_COOKIE_SECURE,
                         samesite="lax",
                         max_age=int(vita.total_seconds()),
                         path="/",

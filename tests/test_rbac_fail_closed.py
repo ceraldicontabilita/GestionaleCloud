@@ -116,6 +116,26 @@ def test_admin_resta_esplicito(monkeypatch):
     assert response.json()["role"] == ADMIN
 
 
+def test_middleware_blocca_se_registro_revoche_non_disponibile(monkeypatch):
+    async def _registro_non_disponibile(_db, _token):
+        raise token_blacklist.TokenBlacklistUnavailable("simulato")
+
+    monkeypatch.setattr(token_blacklist, "is_revocato", _registro_non_disponibile)
+    monkeypatch.setattr(Database, "get_db", classmethod(lambda cls: object()))
+    app = FastAPI()
+    app.add_middleware(AuthenticationMiddleware)
+
+    @app.get("/api/protected")
+    async def protected():
+        return {"ok": True}
+
+    response = TestClient(app).get(
+        "/api/protected", headers={"Authorization": f"Bearer {_token(ADMIN)}"}
+    )
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Verifica sessione temporaneamente non disponibile"}
+
+
 class _UserRepo:
     def __init__(self, role):
         self.user = {

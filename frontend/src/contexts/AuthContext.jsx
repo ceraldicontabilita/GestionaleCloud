@@ -61,25 +61,23 @@ export function AuthProvider({ children }) {
     // Revoca il token lato server prima di scartarlo (audit sicurezza
     // 19/07/2026, review Codex su PR #65: prima logout() cancellava solo
     // lo stato locale, la blacklist server-side non veniva mai popolata).
-    // Best-effort: se la chiamata fallisce, l'utente esce comunque in locale.
-    try {
-      await api.post('/api/auth/logout');
-    } catch (_) {
-      // ignorato: il token scadrà comunque naturalmente
-    }
+    // Fail-closed: se la revoca non viene registrata, conserviamo la sessione
+    // locale per permettere all'utente di riprovare senza dichiarare un logout
+    // sicuro che in realtà non è avvenuto.
+    await api.post('/api/auth/logout');
     clearAuthToken();
     setUser(null);
   }, []);
 
   const isAuthenticated = !!user;
-  // Ruolo assente/sconosciuto → admin (mono-utente storico), coerente col
-  // backend (app/utils/ruoli.py normalizza_ruolo).
+  // Ruolo assente/sconosciuto: nessun privilegio implicito, coerente con il
+  // backend fail-closed (app/utils/ruoli.py normalizza_ruolo).
   const role = user?.role && ['admin', 'operatore', 'sola_lettura'].includes(user.role)
     ? user.role
-    : 'admin';
+    : 'non_autorizzato';
   const isAdmin = role === 'admin';
   const isReadOnly = role === 'sola_lettura';
-  const canWrite = role !== 'sola_lettura';
+  const canWrite = role === 'admin' || role === 'operatore';
 
   return (
     <AuthContext.Provider value={{
