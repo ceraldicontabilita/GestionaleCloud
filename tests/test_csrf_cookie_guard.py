@@ -32,7 +32,7 @@ def _trova_set_cookie_access_token():
         for m in re.finditer(r"set_cookie\s*\((.*?)\)", testo, re.DOTALL):
             blocco = m.group(1)
             if 'key="access_token"' in blocco or "key='access_token'" in blocco:
-                rel = str(p.relative_to(APP.parent))
+                rel = p.relative_to(APP.parent).as_posix()
                 trovati.append((rel, blocco))
     return trovati
 

@@ -132,10 +132,12 @@ async def verify_token(request: Request) -> str:
 @router.get("/auth/verify")
 async def verify(request: Request):
     """Compatibilità AuthContext frontend: verifica sessione attiva."""
-    from app.utils.ruoli import normalizza_ruolo
+    from app.utils.ruoli import normalizza_ruolo, RUOLI_VALIDI
     payload = await _decode_token(request)
     email = payload["sub"]
     ruolo = normalizza_ruolo(payload.get("role"))
+    if ruolo not in RUOLI_VALIDI:
+        raise HTTPException(status_code=403, detail="Ruolo utente non valido")
     return {
         "ok":    True,
         "user":  {"email": email, "name": payload.get("name", "Admin"), "role": ruolo},

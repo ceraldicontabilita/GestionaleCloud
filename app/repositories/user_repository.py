@@ -72,7 +72,7 @@ class UserRepository(BaseRepository):
         
         # Set defaults
         if "role" not in user_data:
-            user_data["role"] = "user"
+            user_data["role"] = "operatore"
         if "is_active" not in user_data:
             user_data["is_active"] = True
         
@@ -161,7 +161,7 @@ class UserRepository(BaseRepository):
         Find users by role.
         
         Args:
-            role: User role (admin, user, etc.)
+            role: User role (admin, operatore, sola_lettura)
             skip: Number of users to skip
             limit: Maximum number of users to return
             

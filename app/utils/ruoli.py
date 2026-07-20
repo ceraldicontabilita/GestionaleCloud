@@ -9,10 +9,10 @@ Gerarchia:
                  massivi, configurazioni di sistema).
 - SOLA_LETTURA → può solo leggere (GET/HEAD): ogni scrittura è bloccata.
 
-Retrocompatibilità: un token senza ruolo o con ruolo sconosciuto viene
-trattato come ADMIN. Motivo: il sistema nasce mono-utente admin (login via
-env) e non dobbiamo mai bloccare fuori l'amministratore esistente. I ruoli
-ridotti valgono per gli account che li dichiarano esplicitamente.
+Retrocompatibilità: il vecchio ruolo ``user`` viene trattato come OPERATORE.
+Un ruolo assente o sconosciuto non riceve privilegi e viene rifiutato dai
+punti di autenticazione. Il login amministratore storico emette sempre il
+ruolo ADMIN in modo esplicito.
 """
 from fastapi import Depends, HTTPException, status
 from typing import Dict, Any
@@ -22,6 +22,7 @@ from app.utils.dependencies import get_current_user
 ADMIN = "admin"
 OPERATORE = "operatore"
 SOLA_LETTURA = "sola_lettura"
+NON_AUTORIZZATO = "non_autorizzato"
 
 RUOLI_VALIDI = {ADMIN, OPERATORE, SOLA_LETTURA}
 
@@ -41,14 +42,23 @@ PREFISSI_SOLO_ADMIN = (
 
 
 def normalizza_ruolo(ruolo) -> str:
-    """Riporta il ruolo a uno dei valori validi; sconosciuto/assente → ADMIN."""
-    if isinstance(ruolo, str) and ruolo.strip().lower() in RUOLI_VALIDI:
-        return ruolo.strip().lower()
-    return ADMIN
+    """Normalizza i ruoli validi; ``user`` legacy diventa OPERATORE.
+
+    Valori assenti o sconosciuti falliscono chiusi: NON_AUTORIZZATO non fa
+    parte di RUOLI_VALIDI e non concede né scrittura né amministrazione.
+    """
+    if not isinstance(ruolo, str):
+        return NON_AUTORIZZATO
+    normalizzato = ruolo.strip().lower()
+    if normalizzato == "user":
+        return OPERATORE
+    if normalizzato in RUOLI_VALIDI:
+        return normalizzato
+    return NON_AUTORIZZATO
 
 
 def puo_scrivere(ruolo: str) -> bool:
-    return normalizza_ruolo(ruolo) != SOLA_LETTURA
+    return normalizza_ruolo(ruolo) in {ADMIN, OPERATORE}
 
 
 def puo_amministrare(ruolo: str) -> bool:

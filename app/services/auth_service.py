@@ -17,6 +17,7 @@ from app.exceptions import (
     NotFoundError
 )
 from app.models import UserRegister, UserLogin, TokenResponse
+from app.utils.ruoli import OPERATORE, RUOLI_VALIDI, normalizza_ruolo
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +135,7 @@ class AuthService:
             "email": user_data.email.lower(),
             "password_hash": password_hash,
             "name": user_data.name,
-            "role": "user",  # Default role
+            "role": OPERATORE,  # Default role
             "is_active": True,
             "created_at": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc)
@@ -148,7 +149,7 @@ class AuthService:
             user_id=user_id,
             email=user_data.email,
             name=user_data.name,
-            role="user"
+            role=OPERATORE
         )
         
         logger.info(f"✅ User registered successfully: {user_data.email}")
@@ -199,15 +200,21 @@ class AuthService:
             logger.warning(f"Login failed: invalid password - {identifier}")
             raise AuthenticationError("Invalid credentials")
         
-        # Update last login timestamp
+        ruolo = normalizza_ruolo(user.get("role"))
+        if ruolo not in RUOLI_VALIDI:
+            logger.warning(f"Login failed: invalid role - {identifier}")
+            raise AuthenticationError("Account role is invalid")
+
+        # Update last login timestamp only after every authorization attribute
+        # has been validated.
         await self.user_repo.update_last_login(user["id"])
-        
+
         # Create JWT token
         token = self._create_access_token(
             user_id=user["id"],
             email=user["email"],
             name=user.get("name"),
-            role=user.get("role", "user")
+            role=ruolo
         )
         
         logger.info(f"✅ Login successful: {identifier}")
@@ -298,11 +305,15 @@ class AuthService:
             if exp and datetime.fromtimestamp(exp, tz=timezone.utc) < datetime.now(timezone.utc):
                 raise AuthenticationError("Token has expired")
             
+            ruolo = normalizza_ruolo(payload.get("role"))
+            if ruolo not in RUOLI_VALIDI:
+                raise AuthenticationError("Invalid token: unknown user role")
+
             return {
                 "user_id": user_id,
                 "email": payload.get("email"),
                 "name": payload.get("name"),
-                "role": payload.get("role", "user")
+                "role": ruolo
             }
             
         except jwt.JWTError as e:
@@ -332,7 +343,7 @@ class AuthService:
             "id": user["id"],
             "email": user["email"],
             "name": user.get("name"),
-            "role": user.get("role", "user"),
+            "role": normalizza_ruolo(user.get("role")),
             "is_active": user.get("is_active", True),
             "created_at": user.get("created_at"),
             "last_login": user.get("last_login")

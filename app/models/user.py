@@ -63,7 +63,7 @@ class UserInDB(BaseModel):
     email: str
     password_hash: str
     name: Optional[str] = None
-    role: str = "user"
+    role: str = "operatore"
     is_active: bool = True
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

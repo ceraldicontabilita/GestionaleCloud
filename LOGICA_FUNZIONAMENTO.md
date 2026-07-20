@@ -1192,6 +1192,12 @@ salvati in chiaro; il login è protetto da blocco anti-tentativi (5 errori →
 
 Durata sessione: vedi §0 (1 ora di inattività, rinnovo automatico durante l'uso).
 
+Regola di sicurezza sui ruoli (20/07/2026): il valore storico `user` viene
+normalizzato a **Operatore** per non bloccare gli account esistenti. Un JWT con
+ruolo mancante o sconosciuto viene invece rifiutato e non può mai ottenere
+privilegi amministrativi per fallback. I login amministrativi emettono
+esplicitamente `admin`.
+
 Sicurezza correlata (audit 13/07/2026):
 - Accesso da browser esterni (CORS) chiuso al solo dominio del gestionale
   impostando `CORS_ALLOWED_ORIGINS`; finché non è impostata resta aperto (con

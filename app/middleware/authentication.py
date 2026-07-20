@@ -126,10 +126,15 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             try:
                 payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
                 user_id = payload.get("sub")
-                if user_id:
-                    request.state.user_id = user_id
-                    request.state.user_email = payload.get("email")
-                    request.state.user_role = payload.get("role", "user")
+                from app.utils.ruoli import normalizza_ruolo, RUOLI_VALIDI
+                ruolo = normalizza_ruolo(payload.get("role"))
+                if not user_id:
+                    return JSONResponse(status_code=401, content={"detail": "Invalid WebSocket token"})
+                if ruolo not in RUOLI_VALIDI:
+                    return JSONResponse(status_code=403, content={"detail": "Ruolo utente non valido"})
+                request.state.user_id = user_id
+                request.state.user_email = payload.get("email")
+                request.state.user_role = ruolo
             except JWTError:
                 return JSONResponse(status_code=401, content={"detail": "Invalid WebSocket token"})
             return await call_next(request)
@@ -179,20 +184,25 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                     headers={"WWW-Authenticate": "Bearer"}
                 )
 
-            # Store user info in request state for downstream access
-            request.state.user_id = user_id
-            request.state.user_email = payload.get("email")
-            request.state.user_role = payload.get("role", "user")
-
             # --- CONTROLLO RUOLO (rete di sicurezza globale) ---
             # Sola lettura: nessuna scrittura. Operatore: fuori dagli endpoint
-            # admin. Ruolo assente/sconosciuto → admin (mono-utente storico),
-            # quindi l'amministratore esistente non viene mai bloccato.
+            # admin. Il ruolo storico "user" diventa operatore; un ruolo
+            # assente/sconosciuto viene rifiutato senza privilegi impliciti.
             from app.utils.ruoli import (
                 normalizza_ruolo, METODI_SCRITTURA, PREFISSI_SOLO_ADMIN,
-                SOLA_LETTURA, ADMIN,
+                RUOLI_VALIDI, SOLA_LETTURA, ADMIN,
             )
             ruolo = normalizza_ruolo(payload.get("role"))
+            if ruolo not in RUOLI_VALIDI:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Ruolo utente non valido"},
+                )
+
+            # Store only normalized user info in request state.
+            request.state.user_id = user_id
+            request.state.user_email = payload.get("email")
+            request.state.user_role = ruolo
             # /logout resta sempre permesso (serve anche in sola lettura).
             if not path.startswith("/api/auth/"):
                 if ruolo == SOLA_LETTURA and method in METODI_SCRITTURA:
@@ -232,7 +242,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                             "sub": user_id,
                             "email": payload.get("email"),
                             "name": payload.get("name"),
-                            "role": payload.get("role", "user"),
+                            "role": ruolo,
                             "exp": datetime.now(timezone.utc) + vita,
                         },
                         settings.SECRET_KEY,

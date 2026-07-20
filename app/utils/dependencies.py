@@ -58,12 +58,17 @@ async def get_current_user(
         if exp and datetime.fromtimestamp(exp, tz=timezone.utc) < datetime.now(timezone.utc):
             raise AuthenticationError("Token has expired")
         
+        from app.utils.ruoli import normalizza_ruolo, RUOLI_VALIDI
+        ruolo = normalizza_ruolo(payload.get("role"))
+        if ruolo not in RUOLI_VALIDI:
+            raise AuthenticationError("Invalid token: unknown user role")
+
         # Return user data
         return {
             "user_id": user_id,
             "email": payload.get("email"),
             "name": payload.get("name"),
-            "role": payload.get("role", "user")
+            "role": ruolo
         }
         
     except JWTError as e:
@@ -144,11 +149,16 @@ async def get_optional_user(
         if not user_id:
             return None
         
+        from app.utils.ruoli import normalizza_ruolo, RUOLI_VALIDI
+        ruolo = normalizza_ruolo(payload.get("role"))
+        if ruolo not in RUOLI_VALIDI:
+            return None
+
         return {
             "user_id": user_id,
             "email": payload.get("email"),
             "name": payload.get("name"),
-            "role": payload.get("role", "user")
+            "role": ruolo
         }
     except JWTError:
         return None

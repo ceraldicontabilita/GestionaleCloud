@@ -132,8 +132,6 @@ async def pin_login(
                 user = None
             if not user:
                 user = await db[Collections.USERS].find_one({"role": "admin"})
-            if not user:
-                user = await db[Collections.USERS].find_one({"is_active": True})
         except Exception:
             logger.exception("PIN-login: lookup utente admin fallito, uso identita' sintetica")
             user_repo = None
@@ -144,6 +142,11 @@ async def pin_login(
                 "name": "Amministratore",
                 "role": "admin",
             }
+        else:
+            # Il PIN amministratore, se verificato, concede esplicitamente il
+            # ruolo admin. Non eredita mai un ruolo mancante o legacy dal DB.
+            user = dict(user)
+            user["role"] = "admin"
     else:
         # 2) PIN di un utente creato dall'admin (Operatore / Sola lettura).
         from app.services import utenti_pin as _utenti_pin

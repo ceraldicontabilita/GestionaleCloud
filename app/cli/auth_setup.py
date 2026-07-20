@@ -96,7 +96,7 @@ async def _gestione_utenti_esistenti(db) -> None:
     print(f"\n=== UTENTI ESISTENTI ({len(utenti)}) ===\n")
     for idx, u in enumerate(utenti, 1):
         attivo = "✓" if u.get("is_active", True) else "✗"
-        ruolo = u.get("role", "user")
+        ruolo = u.get("role", "operatore")
         nome = u.get("name") or "(senza nome)"
         last_login = u.get("last_login")
         last_str = last_login.isoformat() if hasattr(last_login, "isoformat") else str(last_login or "mai")
@@ -149,10 +149,12 @@ async def _crea_utente_aggiuntivo(db) -> None:
         print(f"❌ Email {email} già registrata.")
         return
     nome = input("Nome (opzionale): ").strip() or None
-    ruolo = input("Ruolo (admin/user) [default: user]: ").strip().lower() or "user"
-    if ruolo not in ("admin", "user"):
-        print(f"⚠️  Ruolo '{ruolo}' non standard, imposto 'user'.")
-        ruolo = "user"
+    ruolo = input("Ruolo (admin/operatore/sola_lettura) [default: operatore]: ").strip().lower() or "operatore"
+    if ruolo == "user":
+        ruolo = "operatore"
+    if ruolo not in ("admin", "operatore", "sola_lettura"):
+        print(f"⚠️  Ruolo '{ruolo}' non standard, imposto 'operatore'.")
+        ruolo = "operatore"
     password = _chiedi_password("Password")
     doc = {
         "email": email,
