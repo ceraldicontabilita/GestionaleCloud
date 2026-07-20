@@ -2138,10 +2138,14 @@ async def upload_documento_automatico(
                 result["message"] = f"Errore import estratto conto: {str(ec_err)}"
             
         elif tipo_rilevato == 'bonifici':
-            # Salva per archivio bonifici in MongoDB
+            # Salva e processa nello stesso flusso canonico dell'Archivio
+            # Bonifici. Prima di questa correzione il file restava soltanto
+            # in ``documents_inbox`` con il messaggio "vai all'archivio": i
+            # dati non venivano letti ne' associati al dipendente.
             import base64 as b64
+            from app.services.bonifici_pdf_ingest import importa_pdf_bonifico
             
-            doc_id = f"bonifici_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+            doc_id = f"bonifici_{uuid.uuid4()}"
             bonifici_doc = {
                 "id": doc_id,
                 "filename": filename,
@@ -2153,10 +2157,29 @@ async def upload_documento_automatico(
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             await db["documents_inbox"].insert_one(dict(bonifici_doc).copy())
-            
-            result["message"] = "File bonifici salvato in MongoDB. Usa Archivio Bonifici per processarlo."
+
+            ingest = await importa_pdf_bonifico(
+                db, content, filename, source="upload_manuale_import_documenti"
+            )
+            await db["documents_inbox"].update_one(
+                {"id": doc_id},
+                {"$set": {
+                    "processed": ingest.get("status") in {"saved", "duplicate"},
+                    "status": "elaborato" if ingest.get("status") in {"saved", "duplicate"} else "da_verificare",
+                    "bonifico_transfer_id": ingest.get("transfer_id"),
+                    "processed_at": datetime.now(timezone.utc).isoformat(),
+                }},
+            )
+
+            if ingest.get("associato"):
+                result["message"] = "Bonifico letto e associato al dipendente per nome e importo esatti."
+            elif ingest.get("status") == "duplicate":
+                result["message"] = "Bonifico gia' presente: duplicato saltato senza creare associazioni casuali."
+            else:
+                result["message"] = "Bonifico letto e archiviato; associazione lasciata da verificare perche' nome e importo non sono univoci."
             result["doc_id"] = doc_id
-            result["azione_richiesta"] = "Vai a Banca > Archivio Bonifici"
+            result["bonifico_transfer_id"] = ingest.get("transfer_id")
+            result["associato_dipendente"] = bool(ingest.get("associato"))
             
     except Exception as e:
         logger.error(f"Errore processing {tipo_rilevato}: {e}")

@@ -81,6 +81,10 @@ async def get_prima_nota_salari(
     - riconciliato
     """
     db = Database.get_db()
+    # Ripara in modo deterministico le righe storiche prive di nome usando
+    # esclusivamente cedolino_id oppure CF+periodo.
+    from app.services.bonifici_pdf_ingest import arricchisci_nomi_salari_da_cedolini
+    await arricchisci_nomi_salari_da_cedolini(db)
     
     query = {}
     if anno:
@@ -104,15 +108,28 @@ async def get_prima_nota_salari(
         query_pdf["mese"] = mese
     docs = await db["cedolini"].find(
         query_pdf,
-        {"_id": 0, "id": 1, "codice_fiscale": 1, "mese": 1, "anno": 1},
+        {
+            "_id": 0, "id": 1, "codice_fiscale": 1, "mese": 1,
+            "anno": 1, "nome_dipendente": 1, "dipendente_id": 1,
+        },
     ).to_list(5000)
     disponibili = {d.get("id") for d in docs if d.get("id")}
     disponibili_per_periodo = {
         (d.get("codice_fiscale"), d.get("mese"), d.get("anno"))
         for d in docs if d.get("codice_fiscale")
     }
+    cedolini_per_id = {d.get("id"): d for d in docs if d.get("id")}
+    cedolini_per_periodo = {
+        (d.get("codice_fiscale"), d.get("mese"), d.get("anno")): d
+        for d in docs if d.get("codice_fiscale")
+    }
     for salario in salari:
         chiave = (salario.get("codice_fiscale"), salario.get("mese"), salario.get("anno"))
+        cedolino = cedolini_per_id.get(salario.get("cedolino_id")) or cedolini_per_periodo.get(chiave)
+        if cedolino and not (salario.get("dipendente_nome") or salario.get("dipendente")):
+            salario["dipendente_nome"] = cedolino.get("nome_dipendente")
+            salario["dipendente"] = cedolino.get("nome_dipendente")
+            salario["dipendente_id"] = cedolino.get("dipendente_id")
         salario["cedolino_disponibile"] = (
             salario.get("cedolino_id") in disponibili or chiave in disponibili_per_periodo
         )

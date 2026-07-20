@@ -436,10 +436,20 @@ async def processa_cedolino_v2(
             
             await db["prima_nota_salari"].insert_one(dict(pn_record).copy())
             result["prima_nota_id"] = pn_id
-        elif existing_pn.get("cedolino_id") != cedolino_id:
+        else:
+            # Completa anche le vecchie righe create prima che il nome e il
+            # collegamento al PDF fossero sempre persistiti. L'identita'
+            # arriva dal cedolino/CF, mai da una somiglianza di importo.
             await db["prima_nota_salari"].update_one(
                 {"id": existing_pn.get("id")},
-                {"$set": {"cedolino_id": cedolino_id}},
+                {"$set": {
+                    "cedolino_id": cedolino_id,
+                    "dipendente_id": dipendente_id,
+                    "dipendente": nome.upper(),
+                    "dipendente_nome": nome,
+                    "codice_fiscale": cf,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }},
             )
         
         # --- 4. Riconciliazione automatica ---

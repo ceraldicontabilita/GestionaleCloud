@@ -316,78 +316,17 @@ async def riconcilia_stipendio_automatico(
     movimento_id: str,
     iban: str = None
 ) -> bool:
-    """
-    Cerca di riconciliare automaticamente uno stipendio con l'estratto conto.
-    
-    Criteri di matching:
-    1. Importo esatto o con tolleranza ±2€
-    2. Periodo corretto (stesso mese o mese successivo)
-    3. Descrizione contiene nome dipendente o IBAN
+    """Usa il motore canonico: nome completo, centesimo e periodo.
+
+    I parametri sono mantenuti per compatibilita' con i parser esistenti; la
+    riga ``movimento_id`` appena creata e' la fonte canonica dei dati.
     """
     try:
-        # Range date per ricerca (dal 20 del mese al 10 del mese successivo)
-        if mese == 12:
-            mese_succ = 1
-            anno_succ = anno + 1
-        else:
-            mese_succ = mese + 1
-            anno_succ = anno
-        
-        data_da = f"{anno}-{mese:02d}-20"
-        data_a = f"{anno_succ}-{mese_succ:02d}-10"
-        
-        # Cerca movimenti estratto conto non riconciliati
-        query = {
-            "riconciliato": {"$ne": True},
-            "data": {"$gte": data_da, "$lte": data_a},
-            "importo": {"$gte": -(importo + 2), "$lte": -(importo - 2)}  # Uscite sono negative
-        }
-        
-        movimenti = await db["estratto_conto_movimenti"].find(
-            query,
-            {"_id": 0}
-        ).limit(20).to_list(20)
-        
-        # Cerca match per nome o IBAN
-        for mov in movimenti:
-            desc = mov.get("descrizione", "").upper()
-            
-            # Match per nome
-            nome_parts = dipendente_nome.upper().split()
-            nome_match = any(part in desc for part in nome_parts if len(part) > 2)
-            
-            # Match per IBAN
-            iban_match = iban and iban in desc.replace(" ", "") if iban else False
-            
-            # Match per importo esatto
-            importo_match = abs(abs(mov.get("importo", 0)) - importo) < 2
-            
-            if importo_match and (nome_match or iban_match):
-                # RICONCILIA!
-                await db["estratto_conto_movimenti"].update_one(
-                    {"id": mov.get("id")},
-                    {"$set": {
-                        "riconciliato": True,
-                        "riconciliato_con": "prima_nota_salari",
-                        "movimento_pn_id": movimento_id,
-                        "riconciliato_at": datetime.now(timezone.utc).isoformat()
-                    }}
-                )
-                
-                await db["prima_nota_salari"].update_one(
-                    {"id": movimento_id},
-                    {"$set": {
-                        "riconciliato": True,
-                        "estratto_conto_id": mov.get("id"),
-                        "riconciliato_at": datetime.now(timezone.utc).isoformat()
-                    }}
-                )
-                
-                logger.info(f"✅ Riconciliato stipendio {dipendente_nome} €{importo}")
-                return True
-        
-        return False
-        
+        if not movimento_id:
+            return False
+        from app.services.stipendi_bonifici import associa_bonifici_stipendi
+        result = await associa_bonifici_stipendi(db, stipendio_id=movimento_id)
+        return bool(result.get("bonifici_associati"))
     except Exception as e:
         logger.error(f"Errore riconciliazione automatica: {e}")
         return False

@@ -17,6 +17,114 @@ logger = logging.getLogger(__name__)
 _riconciliazione_task: Dict[str, Dict[str, Any]] = {}
 
 
+def _nome_beneficiario(bonifico: Dict[str, Any]) -> str:
+    return (
+        bonifico.get("dipendente_nome")
+        or (bonifico.get("beneficiario") or {}).get("nome")
+        or ""
+    ).strip()
+
+
+def _parse_data(value: Any):
+    testo = str(value or "")
+    try:
+        if "T" in testo:
+            return datetime.fromisoformat(
+                testo.replace("+00:00", "").replace("Z", "")
+            )
+        return datetime.strptime(testo[:10], "%Y-%m-%d")
+    except (TypeError, ValueError):
+        return None
+
+
+def trova_movimento_bancario_univoco(
+    bonifico: Dict[str, Any], movimenti: list, movimenti_usati: set
+):
+    """Nome completo in causale + importo esatto + data vicina, un solo match."""
+    from app.services.bonifici_pdf_ingest import nome_presente_nel_testo
+    nome = _nome_beneficiario(bonifico)
+    data_bonifico = _parse_data(bonifico.get("data"))
+    try:
+        importo_bonifico = round(abs(float(bonifico.get("importo") or 0)), 2)
+    except (TypeError, ValueError):
+        return None
+    if not nome or not data_bonifico or importo_bonifico <= 0:
+        return None
+
+    candidati = []
+    for indice, movimento in enumerate(movimenti):
+        if indice in movimenti_usati or movimento.get("riconciliato") is True:
+            continue
+        try:
+            importo_raw = float(movimento.get("importo") or 0)
+        except (TypeError, ValueError):
+            continue
+        if round(abs(importo_raw), 2) != importo_bonifico:
+            continue
+        if not (movimento.get("tipo") == "uscita" or importo_raw < 0):
+            continue
+        data_movimento = _parse_data(movimento.get("data"))
+        if not data_movimento or abs((data_bonifico - data_movimento).days) > 3:
+            continue
+        descrizione = (
+            movimento.get("descrizione_originale")
+            or movimento.get("descrizione")
+            or ""
+        )
+        if not nome_presente_nel_testo(nome, descrizione):
+            continue
+        candidati.append((indice, movimento))
+    return candidati[0] if len(candidati) == 1 else None
+
+
+async def _registra_match_bancario(db, bonifico: Dict[str, Any], movimento: Dict[str, Any]):
+    """Certifica il PDF e, se collegato, la relativa riga stipendio."""
+    now = datetime.now(timezone.utc).isoformat()
+    salario_id = bonifico.get("operazione_salario_id")
+    descrizione = (
+        movimento.get("descrizione_originale")
+        or movimento.get("descrizione")
+        or ""
+    )
+    await db.bonifici_transfers.update_one(
+        {"id": bonifico.get("id")},
+        {"$set": {
+            "riconciliato": True,
+            "stato_riconciliazione": "riconciliato_estratto_conto",
+            "data_riconciliazione": now,
+            "movimento_estratto_conto_id": movimento.get("id"),
+            "movimento_data": movimento.get("data"),
+            "movimento_descrizione": descrizione[:100],
+            "riconciliazione_evidenze": [
+                "nome_completo_in_causale", "importo_esatto", "data_compatibile"
+            ],
+        }},
+    )
+    await db.estratto_conto_movimenti.update_one(
+        {"id": movimento.get("id")},
+        {"$set": {
+            "riconciliato": True,
+            "tipo_riconciliazione": "bonifico_pdf_nome_importo",
+            "bonifico_transfer_id": bonifico.get("id"),
+            "stipendio_id": salario_id,
+            "data_riconciliazione": now,
+        }},
+    )
+    if salario_id:
+        importo = round(abs(float(movimento.get("importo") or 0)), 2)
+        await db.prima_nota_salari.update_one(
+            {"id": salario_id},
+            {"$set": {
+                "importo_bonifico": importo,
+                "saldo": 0.0,
+                "riconciliato": True,
+                "data_pagamento": str(movimento.get("data") or "")[:10],
+                "movimento_bancario_id": movimento.get("id"),
+                "updated_at": now,
+            }},
+        )
+
+
 async def riconcilia_bonifici_con_estratto(background: bool = False) -> Dict[str, Any]:
     """
     Riconcilia i bonifici con i movimenti dell'estratto conto.
@@ -64,60 +172,15 @@ async def riconcilia_bonifici_con_estratto(background: bool = False) -> Dict[str
     movimenti_usati = set()
     
     for bonifico in bonifici:
-        raw_importo = bonifico.get("importo")
-        if raw_importo is None:
+        match = trova_movimento_bancario_univoco(
+            bonifico, movimenti, movimenti_usati
+        )
+        if not match:
             continue
-        bonifico_importo = abs(float(raw_importo))
-        bonifico_data_str = bonifico.get("data", "")
-        
-        try:
-            if "T" in bonifico_data_str:
-                bonifico_data = datetime.fromisoformat(bonifico_data_str.replace("+00:00", "").replace("Z", ""))
-            else:
-                bonifico_data = datetime.strptime(bonifico_data_str[:10], "%Y-%m-%d")
-        except Exception:
-            continue
-        
-        match_found = None
-        
-        for idx, mov in enumerate(movimenti):
-            if idx in movimenti_usati:
-                continue
-            
-            raw_mov_importo = mov.get("importo")
-            if raw_mov_importo is None:
-                continue
-            mov_importo = abs(float(raw_mov_importo))
-            mov_data_str = mov.get("data", "")
-            
-            try:
-                mov_data = datetime.strptime(mov_data_str[:10], "%Y-%m-%d")
-            except Exception:
-                continue
-            
-            if abs(bonifico_importo - mov_importo) > 0.01:
-                continue
-            
-            diff_giorni = abs((bonifico_data - mov_data).days)
-            if diff_giorni > 1:
-                continue
-            
-            match_found = mov
-            movimenti_usati.add(idx)
-            break
-        
-        if match_found:
-            await db.bonifici_transfers.update_one(
-                {"id": bonifico.get("id")},
-                {"$set": {
-                    "riconciliato": True,
-                    "data_riconciliazione": datetime.now(timezone.utc),
-                    "movimento_estratto_conto_id": match_found.get("id"),
-                    "movimento_data": match_found.get("data"),
-                    "movimento_descrizione": match_found.get("descrizione_originale", "")[:100]
-                }}
-            )
-            riconciliati += 1
+        indice, movimento = match
+        await _registra_match_bancario(db, bonifico, movimento)
+        movimenti_usati.add(indice)
+        riconciliati += 1
     
     return {
         "success": True,
@@ -154,53 +217,14 @@ async def _execute_riconciliazione_batch(task_id: str):
         movimenti_usati = set()
         
         for i, bonifico in enumerate(bonifici):
-            raw_importo = bonifico.get("importo")
-            if raw_importo is None:
-                continue
-            bonifico_importo = abs(float(raw_importo))
-            bonifico_data_str = bonifico.get("data", "")
-            
-            try:
-                if "T" in bonifico_data_str:
-                    bonifico_data = datetime.fromisoformat(bonifico_data_str.replace("+00:00", "").replace("Z", ""))
-                else:
-                    bonifico_data = datetime.strptime(bonifico_data_str[:10], "%Y-%m-%d")
-            except Exception:
-                continue
-            
-            for idx, mov in enumerate(movimenti):
-                if idx in movimenti_usati:
-                    continue
-                
-                raw_mov_importo = mov.get("importo")
-                if raw_mov_importo is None:
-                    continue
-                mov_importo = abs(float(raw_mov_importo))
-                mov_data_str = mov.get("data", "")
-                
-                try:
-                    mov_data = datetime.strptime(mov_data_str[:10], "%Y-%m-%d")
-                except Exception:
-                    continue
-                
-                if abs(bonifico_importo - mov_importo) > 0.01:
-                    continue
-                
-                diff_giorni = abs((bonifico_data - mov_data).days)
-                if diff_giorni > 1:
-                    continue
-                
-                await db.bonifici_transfers.update_one(
-                    {"id": bonifico.get("id")},
-                    {"$set": {
-                        "riconciliato": True,
-                        "data_riconciliazione": datetime.now(timezone.utc),
-                        "movimento_estratto_conto_id": mov.get("id")
-                    }}
-                )
-                movimenti_usati.add(idx)
+            match = trova_movimento_bancario_univoco(
+                bonifico, movimenti, movimenti_usati
+            )
+            if match:
+                indice, movimento = match
+                await _registra_match_bancario(db, bonifico, movimento)
+                movimenti_usati.add(indice)
                 riconciliati += 1
-                break
             
             if i % 50 == 0:
                 _riconciliazione_task[task_id]["processed"] = i + 1
@@ -309,6 +333,7 @@ async def reset_riconciliazione(_admin: Dict[str, Any] = Depends(get_current_adm
 
 async def associa_bonifici_dipendenti(dry_run: bool = True) -> Dict[str, Any]:
     """Associa bonifici ai dipendenti tramite nome beneficiario."""
+    from app.services.bonifici_pdf_ingest import identita_coincide
     db = Database.get_db()
     
     bonifici = await db.bonifici_transfers.find(
@@ -320,32 +345,34 @@ async def associa_bonifici_dipendenti(dry_run: bool = True) -> Dict[str, Any]:
     
     associazioni = []
     for bonifico in bonifici:
-        beneficiario = ((bonifico.get("beneficiario") or {}).get("nome") or "").lower()
+        beneficiario = ((bonifico.get("beneficiario") or {}).get("nome") or "").strip()
         beneficiario_iban = ((bonifico.get("beneficiario") or {}).get("iban") or "").upper()
         
         if not beneficiario and not beneficiario_iban:
             continue
         
+        candidati = []
         for dip in dipendenti:
-            nome_completo = f"{dip.get('nome', '')} {dip.get('cognome', '')}".lower().strip()
+            nome_completo = f"{dip.get('nome', '')} {dip.get('cognome', '')}".strip()
             dip_iban = (dip.get("iban") or "").upper()
             
             match = False
             if beneficiario_iban and dip_iban and beneficiario_iban == dip_iban:
                 match = True
             elif beneficiario and nome_completo:
-                if nome_completo in beneficiario or beneficiario in nome_completo:
-                    match = True
+                match = identita_coincide(beneficiario, nome_completo)
             
             if match:
-                associazioni.append({
-                    "bonifico_id": bonifico.get("id"),
-                    "dipendente_id": dip.get("id"),
-                    "dipendente_nome": nome_completo,
-                    "importo": bonifico.get("importo"),
-                    "data": bonifico.get("data")
-                })
-                break
+                candidati.append((dip, nome_completo))
+        if len(candidati) == 1:
+            dip, nome_completo = candidati[0]
+            associazioni.append({
+                "bonifico_id": bonifico.get("id"),
+                "dipendente_id": dip.get("id"),
+                "dipendente_nome": nome_completo,
+                "importo": bonifico.get("importo"),
+                "data": bonifico.get("data")
+            })
     
     if not dry_run:
         for ass in associazioni:

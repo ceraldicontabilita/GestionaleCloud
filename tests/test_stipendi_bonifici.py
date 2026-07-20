@@ -4,6 +4,7 @@ automatico alla riga stipendio pendente del dipendente. Le commissioni
 COMM.SU BONIFICI e i beneficiari non-dipendenti (fornitori, distinte
 cumulative) non devono mai essere associati."""
 import asyncio
+import re
 
 import pytest
 
@@ -38,7 +39,9 @@ class _Coll:
                     return False
                 if "$lt" in cond and not (v is not None and v < cond["$lt"]):
                     return False
-                if "$regex" in cond and cond["$regex"].lower() not in str(v or "").lower():
+                if "$regex" in cond and not re.search(
+                    cond["$regex"], str(v or ""), re.I if cond.get("$options") == "i" else 0
+                ):
                     return False
             elif v != cond:
                 return False
@@ -46,6 +49,9 @@ class _Coll:
 
     def find(self, query=None, *a, **k):
         return _Cursor([dict(d) for d in self.docs if self._match(d, query or {})])
+
+    async def find_one(self, query=None, *a, **k):
+        return next((dict(d) for d in self.docs if self._match(d, query or {})), None)
 
     async def update_one(self, filtro, update):
         self.updates.append((filtro, update))
@@ -59,10 +65,12 @@ class _Db:
     def __init__(self, salari, movimenti):
         self.salari = _Coll(salari)
         self.movimenti = _Coll(movimenti)
+        self.cedolini = _Coll([])
 
     def __getitem__(self, name):
         return {"prima_nota_salari": self.salari,
-                "estratto_conto_movimenti": self.movimenti}[name]
+                "estratto_conto_movimenti": self.movimenti,
+                "cedolini": self.cedolini}[name]
 
 
 def _run(c):
@@ -85,9 +93,9 @@ def test_estrai_nome_favore():
 
 def test_associa_bonifico_per_nome_e_importo():
     db = _Db(
-        salari=[{"id": "S1", "dipendente": "POCCI SALVATORE", "anno": 2026, "mese": 4,
+        salari=[{"id": "S1", "dipendente": "POCCI SALVATORE", "anno": 2026, "mese": 3,
                  "importo_busta": 530.0, "riconciliato": False},
-                {"id": "S2", "dipendente": "VESPA VINCENZO", "anno": 2026, "mese": 4,
+                {"id": "S2", "dipendente": "VESPA VINCENZO", "anno": 2026, "mese": 3,
                  "importo_busta": 1461.0, "riconciliato": False}],
         movimenti=[
             # formato reale post-import: importo ASSOLUTO + tipo "uscita",
@@ -112,40 +120,69 @@ def test_associa_bonifico_per_nome_e_importo():
     assert not db.movimenti.docs[1].get("riconciliato")
 
 
-def test_acconto_parziale_non_completa_la_riga():
+def test_importo_diverso_non_viene_associato():
     db = _Db(
         salari=[{"id": "S1", "dipendente": "CAROTENUTO ANTONELLA", "anno": 2026, "mese": 4,
                  "importo_busta": 1047.0, "riconciliato": False}],
         movimenti=[{"id": "M1", "data": "2026-04-02", "importo": -1000.0,
                     "descrizione": "VOSTRA DISPOSIZIONE - VS.DISP. RIF. X FAVORE Carotenuto Antonella - ADD.TOT - Carotenuto Antonella"}])
     r = _run(associa_bonifici_stipendi(db))
-    assert r["bonifici_associati"] == 1
+    assert r["bonifici_associati"] == 0
     assert r["righe_stipendio_completate"] == 0
     riga = db.salari.docs[0]
     assert riga.get("riconciliato") is not True
-    assert riga["importo_bonifico"] == 1000.0
-    assert db.movimenti.docs[0]["riconciliato"] is True  # il bonifico è comunque associato
+    assert not riga.get("importo_bonifico")
+    assert db.movimenti.docs[0].get("riconciliato") is not True
 
 
-def test_busta_zero_si_completa_col_bonifico():
-    """Riga placeholder senza netto (cedolino non letto): il bonifico col
-    nome del dipendente la chiude comunque."""
+def test_busta_zero_non_si_completa_solo_col_nome():
+    """Senza importo busta manca una delle due prove richieste."""
     db = _Db(
         salari=[{"id": "S1", "dipendente": "LESINA ANGELA", "anno": 2026, "mese": 4,
                  "importo_busta": 0, "riconciliato": False}],
         movimenti=[{"id": "M1", "data": "2026-04-02", "importo": -1000.0,
                     "descrizione": "VOSTRA DISPOSIZIONE - VS.DISP. RIF. X FAVORE Lesina Angela - ADD.TOT - lesina Angela"}])
     r = _run(associa_bonifici_stipendi(db))
+    assert r["bonifici_associati"] == 0
+    assert db.salari.docs[0].get("riconciliato") is not True
+    assert not db.salari.docs[0].get("importo_bonifico")
+
+
+def test_stesso_importo_ma_nome_diverso_non_associa():
+    db = _Db(
+        salari=[{"id": "S1", "dipendente": "ROSSI MARIO", "anno": 2026, "mese": 3,
+                 "importo_busta": 1200.0, "riconciliato": False}],
+        movimenti=[{"id": "M1", "data": "2026-04-02", "importo": -1200.0,
+                    "descrizione": "BONIFICO STIPENDIO FAVORE BIANCHI LUCA - MARZO 2026"}],
+    )
+    r = _run(associa_bonifici_stipendi(db))
+    assert r["bonifici_associati"] == 0
+    assert db.movimenti.docs[0].get("riconciliato") is not True
+
+
+def test_stesso_nome_e_importo_su_due_mesi_usa_finestra_data():
+    db = _Db(
+        salari=[
+            {"id": "MAR", "dipendente": "ROSSI MARIO", "anno": 2026, "mese": 3,
+             "importo_busta": 1200.0, "riconciliato": False},
+            {"id": "APR", "dipendente": "ROSSI MARIO", "anno": 2026, "mese": 4,
+             "importo_busta": 1200.0, "riconciliato": False},
+        ],
+        movimenti=[{"id": "M1", "data": "2026-04-02", "importo": -1200.0,
+                    "descrizione": "BONIFICO STIPENDIO FAVORE ROSSI MARIO"}],
+    )
+    r = _run(associa_bonifici_stipendi(db))
     assert r["bonifici_associati"] == 1
+    assert db.movimenti.docs[0]["stipendio_id"] == "MAR"
     assert db.salari.docs[0]["riconciliato"] is True
-    assert db.salari.docs[0]["importo_bonifico"] == 1000.0
+    assert db.salari.docs[1].get("riconciliato") is not True
 
 
 def test_stipendio_id_singolo_limita_la_ricerca():
     db = _Db(
-        salari=[{"id": "S1", "dipendente": "MUROLO MARIO", "anno": 2026, "mese": 4,
+        salari=[{"id": "S1", "dipendente": "MUROLO MARIO", "anno": 2026, "mese": 3,
                  "importo_busta": 604.0, "riconciliato": False},
-                {"id": "S2", "dipendente": "RUSSO CARMINE", "anno": 2026, "mese": 4,
+                {"id": "S2", "dipendente": "RUSSO CARMINE", "anno": 2026, "mese": 3,
                  "importo_busta": 900.0, "riconciliato": False}],
         movimenti=[
             {"id": "M1", "data": "2026-04-03", "importo": -604.0,

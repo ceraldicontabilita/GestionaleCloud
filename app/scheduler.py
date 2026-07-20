@@ -572,6 +572,23 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-DRIVE-ESTRATTI-CONTO] errore: {e}")
 
+    async def _bonifici_pdf_inbox_job():
+        """Elabora anche i PDF bonifico gia' caricati in Import documenti."""
+        from app.database import Database
+        from app.services.bonifici_pdf_ingest import processa_inbox_bonifici
+        try:
+            result = await processa_inbox_bonifici(Database.get_db())
+            if result.get("letti"):
+                logger.info(
+                    "[SCHEDULER-BONIFICI-PDF] letti=%s salvati=%s "
+                    "duplicati=%s associati=%s errori=%s",
+                    result.get("letti"), result.get("salvati"),
+                    result.get("duplicati"), result.get("associati"),
+                    result.get("errori"),
+                )
+        except Exception as e:
+            logger.error(f"[SCHEDULER-BONIFICI-PDF] errore: {e}")
+
     # ── Automazioni Prima Nota: le ex funzioni "manuali" girano da sole ────
     # 1. corrispettivi → prima nota cassa (idempotente)
     # 2. fatture provvisorie → cassa/banca secondo il metodo fornitore
@@ -723,6 +740,15 @@ def start_scheduler():
         next_run_time=datetime.now(),
         id="drive_estratti_conto_ingest",
         name="Import Estratti Conto da Google Drive (ogni ora + al riavvio)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _bonifici_pdf_inbox_job,
+        'interval', minutes=10,
+        next_run_time=datetime.now(),
+        id="bonifici_pdf_inbox",
+        name="Elabora PDF bonifico da Import documenti (ogni 10 min + al riavvio)",
         replace_existing=True,
     )
 
