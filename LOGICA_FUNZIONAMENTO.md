@@ -1209,6 +1209,13 @@ Sicurezza correlata (audit 13/07/2026):
   riceveva fatture dall'app esterna ora rifiuta sempre finché non lo si
   riattiva impostando `ERP_BRIDGE_SECRET`.
 
+Disaster recovery (20/07/2026): il ripristino Atlas si collauda sempre su una
+destinazione temporanea distinta e in sola lettura. Lo script
+`scripts/verifica_ripristino_mongodb.py` confronta inventario, conteggi, indici
+e hash di campione senza stampare URI o documenti. La procedura completa è in
+`memoria/DISASTER_RECOVERY_MONGODB.md`; backup attivo, retention, RPO e RTO
+devono essere confermati nella dashboard Atlas e non sono dedotti dal codice.
+
 ---
 
 ## 14. Cosa NON fa più questo gestionale (dominio HACCP)
