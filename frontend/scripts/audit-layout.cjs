@@ -35,6 +35,13 @@ const PAGINE = [
   '/documenti-fiscali', '/iva',
 ];
 
+// Alias storici mantenuti intenzionalmente dal router. L'audit deve
+// verificare che arrivino alla destinazione canonica, non considerarli una
+// regressione solo perche' React Router esegue il redirect previsto.
+const ALIAS_AMMESSI = new Map([
+  ['/documenti-fiscali', '/documenti'],
+]);
+
 const VIEWPORTS = [
   { nome: 'mobile', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
   { nome: 'desktop', viewport: { width: 1280, height: 800 } },
@@ -47,11 +54,12 @@ async function auditPagina(page, path) {
     // networkidle può non arrivare con polling: si procede comunque
   }
   await page.waitForTimeout(1500);
-  return page.evaluate(pathRichiesto => {
+  const destinazioneAttesa = ALIAS_AMMESSI.get(path) || path;
+  return page.evaluate(({ pathRichiesto, destinazioneAttesa }) => {
     const doc = document.documentElement;
     const overflow = doc.scrollWidth - doc.clientWidth;
     const pathname = window.location.pathname;
-    const redirectata = pathname !== pathRichiesto;
+    const redirectata = pathname !== destinazioneAttesa;
     const nonTrovata = !!document.querySelector('[data-testid="pagina-non-trovata"]');
     const colpevoli = overflow > 1
       ? [...document.querySelectorAll('*')]
@@ -75,8 +83,11 @@ async function auditPagina(page, path) {
                    && bgDi(h).includes('15, 39, 68'))
       .map(h => h.textContent.trim().slice(0, 50));
 
-    return { overflow, colpevoli, invisibili, redirectata, pathname, nonTrovata };
-  }, path);
+    return {
+      overflow, colpevoli, invisibili, redirectata, pathname,
+      destinazioneAttesa, nonTrovata,
+    };
+  }, { pathRichiesto: path, destinazioneAttesa });
 }
 
 (async () => {
@@ -113,7 +124,11 @@ async function auditPagina(page, path) {
         console.error('FAIL ' + riga);
         if (r.colpevoli.length) console.error('     sborda:', JSON.stringify(r.colpevoli));
         if (r.invisibili.length) console.error('     invisibili:', JSON.stringify(r.invisibili));
-        if (r.redirectata) console.error(`     route redirectata a: ${r.pathname}`);
+        if (r.redirectata) {
+          console.error(
+            `     route risolta a: ${r.pathname} (attesa: ${r.destinazioneAttesa})`
+          );
+        }
         if (r.nonTrovata) console.error('     la route mostra la pagina 404');
       }
     }
