@@ -90,4 +90,4 @@ unico), invarianti `trasferimento_pos_speculare` e
 | Corrispettivi → Cassa → POS → Banca definitivo | ✅ regola canonica applicata e migrata |
 | Migrazione righe sintetiche POS | ✅ eseguita (104 convertite + 37 create, EC riconciliati) |
 | Verbali → driver → trattenuta cedolino | ✅ ricerca pagamento/PDF/nuovi-verbali completata (P1-4); trattenuta in busta resta proposta+conferma manuale (§11 LOGICA_FUNZIONAMENTO.md, per scelta) |
-| Collaudo E2E con database di prova (bottoni distruttivi premuti davvero) | ❌ da fare — oggi: collaudo UI read-only (83 rotte) + 12 invarianti notturni |
+| Collaudo E2E con database di prova (bottoni distruttivi premuti davvero) | ✅ FATTO (20/07) — browser reale + router applicativi reali + MongoDB usa-e-getta in memoria: annullamento preserva il record, conferma lo elimina davvero, tentativo di reset amministrativo da ruolo operatore riceve 403 e lascia i dati invariati. Workflow automatico `E2E distruttivo isolato`; nessun accesso ad Atlas/produzione. |

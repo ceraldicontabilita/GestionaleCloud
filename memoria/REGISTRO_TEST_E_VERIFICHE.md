@@ -324,3 +324,12 @@ Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `S
 - Audit viewer E2E: verde su 390×844, 768×1024 e 1920×1080; controllati
   overflow, chiusura, zoom, fit, fullscreen, download, ESC e ritorno focus.
 - Build Vite di produzione: verde; `frontend/dist` rigenerato.
+
+## Collaudo E2E distruttivo isolato — 2026-07-20
+
+- Ambiente: frontend reale compilato, router FastAPI reali, autenticazione JWT reale e MongoDB usa-e-getta in memoria (`mongomock-motor`).
+- Isolamento: nessun file `.env` letto, nessuna URI Atlas disponibile al processo, database eliminato integralmente alla chiusura.
+- Browser: Chromium/Chrome tramite Playwright, pagina reale `/scadenze`.
+- Esito: annullamento del dialog preserva il record; conferma esegue `DELETE /api/scadenze/{id}` e il record scompare sia dalla UI sia dal database.
+- Sicurezza: `DELETE /api/learning-machine/reset-learning` con ruolo `operatore` restituisce 403; la regola protetta resta presente nel database.
+- Automazione: `.github/workflows/e2e-distruttivo.yml` riesegue il collaudo su ogni modifica applicativa rilevante.

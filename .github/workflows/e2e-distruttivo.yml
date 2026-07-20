@@ -1,0 +1,59 @@
+name: E2E distruttivo isolato
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "frontend/src/**"
+      - "frontend/dist/**"
+      - "frontend/scripts/audit-destructive-e2e.cjs"
+      - "scripts/e2e_distruttivo_server.py"
+      - ".github/workflows/e2e-distruttivo.yml"
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+
+      - name: Installa backend e database isolato
+        run: pip install -r backend/requirements.txt
+
+      - name: Installa frontend e Chromium
+        working-directory: frontend
+        run: |
+          yarn install --frozen-lockfile
+          npx playwright-core install --with-deps chromium
+
+      - name: Avvia ERP isolato
+        run: |
+          python -m uvicorn scripts.e2e_distruttivo_server:app \
+            --host 127.0.0.1 --port 8788 --no-access-log \
+            > /tmp/e2e-distruttivo-server.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8788/api/health && break
+            if [ "$i" = "30" ]; then
+              sed -E 's/(token=)[^ &]+/\1[REDACTED]/g' /tmp/e2e-distruttivo-server.log
+              exit 1
+            fi
+            sleep 1
+          done
+
+      - name: Premi e verifica le operazioni distruttive
+        run: node frontend/scripts/audit-destructive-e2e.cjs
+
