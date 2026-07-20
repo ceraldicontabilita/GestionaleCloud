@@ -12,6 +12,7 @@ from mongomock_motor import AsyncMongoMockClient
 from app.agents.decision_engine import (
     cambia_stato_decisione,
     crea_decisione,
+    decisioni_correnti,
     imposta_automazioni,
 )
 from app.agents.models import (
@@ -150,6 +151,113 @@ def test_una_decisione_non_puo_essere_approvata_due_volte():
     with pytest.raises(ValueError, match="attesa di approvazione"):
         asyncio.run(cambia_stato_decisione(
             db, decisione["decision_id"], True, "admin-two@example.test"
+        ))
+
+
+def test_stessa_proposta_senza_chiave_incrementa_rilevazioni_senza_duplicare():
+    db = _db()
+    prima = asyncio.run(crea_decisione(db, _proposta()))
+    seconda = asyncio.run(crea_decisione(db, _proposta(
+        input_sources=[{"type": "fixture", "signal_id": "nuova-lettura"}]
+    )))
+    assert seconda["decision_id"] == prima["decision_id"]
+    assert seconda["occurrence_count"] == 2
+    assert asyncio.run(db["ai_decisions"].count_documents({})) == 1
+
+
+def test_fatti_cambiati_creano_versione_e_preservano_la_precedente():
+    db = _db()
+    prima = asyncio.run(crea_decisione(db, _proposta(
+        semantic_key="test:anomalia",
+        facts=[{"description": "Valore uno"}],
+    )))
+    seconda = asyncio.run(crea_decisione(db, _proposta(
+        semantic_key="test:anomalia",
+        facts=[{"description": "Valore due"}],
+    )))
+
+    assert seconda["decision_id"] != prima["decision_id"]
+    assert seconda["version"] == 2
+    assert seconda["supersedes_decision_id"] == prima["decision_id"]
+    precedente = asyncio.run(db["ai_decisions"].find_one(
+        {"decision_id": prima["decision_id"]}
+    ))
+    assert precedente["execution_status"] == "superseded"
+    assert precedente["status_before_supersede"] == "proposed"
+    assert asyncio.run(db["ai_decisions"].count_documents({})) == 2
+    eventi = asyncio.run(db["ai_decision_events"].find(
+        {"decision_id": prima["decision_id"]}
+    ).to_list(10))
+    assert [evento["event"] for evento in eventi] == [
+        "decisione_creata", "decisione_superata"
+    ]
+
+
+def test_registro_corrente_raggruppa_anche_duplicati_legacy():
+    records = [
+        {
+            "decision_id": "new",
+            "decision_key": "tesoreria:overdue:abcdef1234567890",
+            "timestamp": "2026-07-20T12:00:00+00:00",
+            "execution_status": "proposed",
+            "agent": "TesoreriaAgent",
+            "objective": "Verificare 5 scadenze",
+            "recommended_action": {"type": "recommendation"},
+        },
+        {
+            "decision_id": "old",
+            "decision_key": "tesoreria:overdue:0123456789abcdef",
+            "timestamp": "2026-07-20T11:00:00+00:00",
+            "execution_status": "proposed",
+            "agent": "TesoreriaAgent",
+            "objective": "Verificare 4 scadenze",
+            "recommended_action": {"type": "recommendation"},
+        },
+    ]
+    correnti = decisioni_correnti(records)
+    assert [record["decision_id"] for record in correnti] == ["new"]
+    assert correnti[0]["versioni_storiche"] == 1
+
+
+def test_decisione_legacy_viene_riusata_e_completata_senza_duplicarla():
+    db = _db()
+    proposta = _proposta(decision_key="tesoreria:overdue:abcdef1234567890")
+    legacy = {
+        "decision_id": "legacy-1",
+        "timestamp": "2026-07-20T10:00:00+00:00",
+        **(
+            proposta.model_dump(mode="json", exclude_none=True)
+            if hasattr(proposta, "model_dump")
+            else proposta.dict(exclude_none=True)
+        ),
+        "execution_status": "proposed",
+    }
+    asyncio.run(db["ai_decisions"].insert_one(legacy))
+    aggiornata = asyncio.run(crea_decisione(db, proposta))
+    assert aggiornata["decision_id"] == "legacy-1"
+    assert aggiornata["semantic_key"] == "tesoreria:overdue"
+    assert aggiornata["version"] == 1
+    assert aggiornata["occurrence_count"] == 2
+    assert asyncio.run(db["ai_decisions"].count_documents({})) == 1
+
+
+def test_decisione_superata_non_puo_essere_approvata():
+    db = _db()
+    prima = asyncio.run(crea_decisione(db, _proposta(
+        semantic_key="test:approvazione",
+        autonomy_level=LivelloAutonomia.L3,
+        recommended_action={"type": "payment"},
+        facts=[{"description": "Prima"}],
+    )))
+    asyncio.run(crea_decisione(db, _proposta(
+        semantic_key="test:approvazione",
+        autonomy_level=LivelloAutonomia.L3,
+        recommended_action={"type": "payment"},
+        facts=[{"description": "Seconda"}],
+    )))
+    with pytest.raises(ValueError, match="superata|attesa di approvazione"):
+        asyncio.run(cambia_stato_decisione(
+            db, prima["decision_id"], True, "admin@example.test"
         ))
 
 

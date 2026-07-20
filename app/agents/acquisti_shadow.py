@@ -20,6 +20,7 @@ class AcquistiShadow:
         ).hexdigest()[:20]
         await crea_decisione(db, DecisioneInput(
             decision_key=f"acquisti:indicatori:{digest}",
+            semantic_key="acquisti:indicatori",
             agent=self.nome,
             objective="Verificare prezzi di acquisto e dipendenza dai fornitori",
             input_sources=[{"type": "typed_service", "service": "acquisti_snapshot"}],

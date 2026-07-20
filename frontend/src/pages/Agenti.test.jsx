@@ -24,6 +24,9 @@ const DECISIONE = {
   autonomy_level: 'L3',
   execution_status: 'pending_approval',
   policy_reasons: ['azione_con_approvazione_umana_obbligatoria'],
+  version: 3,
+  occurrence_count: 4,
+  versioni_storiche: 2,
 };
 
 const CASH_FLOW = {
@@ -59,6 +62,9 @@ describe('Agenti AI supervisionati', () => {
     fireEvent.click(await screen.findByTestId('tab-agenti-decisioni'));
 
     expect(await screen.findByText('Verificare una proposta sintetica')).toBeInTheDocument();
+    expect(screen.getByText('Versione 3')).toBeInTheDocument();
+    expect(screen.getByText('4 rilevazioni')).toBeInTheDocument();
+    expect(screen.getByText('2 versioni precedenti')).toBeInTheDocument();
     expect(screen.getByText("L'approvazione non esegue l'azione.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Approva proposta' }));

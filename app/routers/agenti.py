@@ -135,17 +135,23 @@ async def get_decisioni(
     stato: Optional[str] = Query(None),
     agente: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=500),
+    includi_storico: bool = Query(False),
 ):
-    """Registro strutturato delle decisioni, dalla piu' recente."""
+    """Registro decisioni: una riga corrente per problema, storico opzionale."""
+    from app.agents.decision_engine import decisioni_correnti
+
     db = Database.get_db()
     query: Dict[str, Any] = {}
     if stato:
         query["execution_status"] = stato
     if agente:
         query["agent"] = agente
+    limite_lettura = limit if includi_storico else 500
     decisioni = await db["ai_decisions"].find(
         query, {"_id": 0}
-    ).sort("timestamp", -1).limit(limit).to_list(limit)
+    ).sort("timestamp", -1).limit(limite_lettura).to_list(limite_lettura)
+    if not includi_storico:
+        decisioni = decisioni_correnti(decisioni)[:limit]
     return {"decisioni": decisioni, "totale": len(decisioni)}
 
 

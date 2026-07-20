@@ -205,6 +205,7 @@ const STATO_DECISIONE = {
   rejected: 'Rifiutata',
   blocked: 'Bloccata',
   suspended: 'Sospesa',
+  superseded: 'Superata da una versione piu recente',
 };
 
 function DecisioneCard({ decisione, isAdmin, onDecisione }) {
@@ -227,6 +228,15 @@ function DecisioneCard({ decisione, isAdmin, onDecisione }) {
             <span style={badge(inAttesa ? 'warning' : 'info')}>
               {STATO_DECISIONE[decisione.execution_status] || decisione.execution_status}
             </span>
+            <span style={badge('info')}>Versione {decisione.version || 1}</span>
+            {(decisione.occurrence_count || 1) > 1 && (
+              <span style={badge('success')}>{decisione.occurrence_count} rilevazioni</span>
+            )}
+            {(decisione.versioni_storiche || 0) > 0 && (
+              <span style={badge('warning')}>
+                {decisione.versioni_storiche} versioni precedenti
+              </span>
+            )}
           </div>
           <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>
             {decisione.objective}

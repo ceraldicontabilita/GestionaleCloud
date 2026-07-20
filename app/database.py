@@ -240,6 +240,18 @@ class Database:
         # --- Registro decisionale agenti AI (append-only per gli eventi) ---
         await _safe_index("ai_decisions", "decision_id", unique=True, name="idx_ai_decision_id")
         await _safe_index("ai_decisions", "decision_key", unique=True, sparse=True, name="idx_ai_decision_key")
+        await _safe_index(
+            "ai_decisions",
+            [("semantic_key", 1), ("semantic_fingerprint", 1)],
+            unique=True,
+            sparse=True,
+            name="idx_ai_decision_semantic_fingerprint",
+        )
+        await _safe_index(
+            "ai_decisions",
+            [("semantic_key", 1), ("version", -1)],
+            name="idx_ai_decision_semantic_version",
+        )
         await _safe_index("ai_decisions", [("execution_status", 1), ("timestamp", -1)], name="idx_ai_decision_status")
         await _safe_index("ai_decisions", [("agent", 1), ("timestamp", -1)], name="idx_ai_decision_agent")
         await _safe_index("ai_decision_events", [("decision_id", 1), ("timestamp", 1)], name="idx_ai_event_decision")

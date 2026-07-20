@@ -73,6 +73,10 @@ livelli tecnici eventualmente usati da singoli algoritmi storici di matching.
 - [x] Interruttore globale delle automazioni.
 - [x] Modalità shadow: nessun executor di azioni di business.
 - [x] Pagina Decisioni con spiegazione, rischio, confidenza e impatto.
+- [x] Anti-rumore semantico: rilevazioni identiche aggiornano una sola
+  decisione; fatti sostanzialmente diversi producono una nuova versione.
+- [x] Versioni precedenti conservate e marcate `superseded`, mai eliminate.
+- [x] Registro corrente raggruppato per problema con storico ancora interrogabile.
 - [ ] Pulsante Modifica proposta con nuova versione tracciata.
 - [ ] Vista completa delle fonti autorizzate e della cronologia.
 - [ ] Executor tipizzato L2, ancora vietato finché le metriche non sono accettate.

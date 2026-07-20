@@ -29,6 +29,7 @@ class FiscaleShadow:
         if overdue_count:
             await crea_decisione(db, DecisioneInput(
                 decision_key=self._key("scaduti", snapshot),
+                semantic_key="fiscale:scaduti",
                 agent=self.nome,
                 objective=f"Verificare {overdue_count} obblighi fiscali scaduti",
                 input_sources=[{"type": "typed_service", "service": "fiscale_snapshot"}],
@@ -62,6 +63,7 @@ class FiscaleShadow:
         if upcoming_count:
             await crea_decisione(db, DecisioneInput(
                 decision_key=self._key("imminenti", snapshot),
+                semantic_key="fiscale:imminenti",
                 agent=self.nome,
                 objective=f"Pianificare la verifica di {upcoming_count} obblighi fiscali imminenti",
                 input_sources=[{"type": "typed_service", "service": "fiscale_snapshot"}],
@@ -86,6 +88,7 @@ class FiscaleShadow:
         if not iva_ok or not snapshot["accountant_prima_nota_sent"]:
             await crea_decisione(db, DecisioneInput(
                 decision_key=self._key("completezza", snapshot),
+                semantic_key="fiscale:completezza",
                 agent=self.nome,
                 objective=f"Verificare la completezza fiscale del periodo {snapshot['previous_vat_period']}",
                 input_sources=[{"type": "typed_service", "service": "fiscale_snapshot"}],

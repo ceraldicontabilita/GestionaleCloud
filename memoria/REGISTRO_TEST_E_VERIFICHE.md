@@ -430,3 +430,16 @@ Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `S
   dimostra consumo o giacenza fisica. Nessun riordino viene stimato.
 - Sicurezza: solo L1; nessun ordine, richiesta esterna o movimento magazzino.
 - Test mirati: 25 passati; suite backend completa: 776 passati.
+
+## Decisioni AI: anti-rumore semantico e versioni — 2026-07-20
+
+- La stessa proposta sostanziale non genera piu' schede duplicate: aggiorna
+  conteggio delle rilevazioni, ultima osservazione e fonti dell'ultima lettura.
+- Una variazione sostanziale crea una nuova versione; la precedente e' marcata
+  `superseded`, resta nell'audit e non puo' piu' essere approvata.
+- La vista predefinita raggruppa anche le decisioni legacy senza modificare o
+  eliminare record esistenti; lo storico completo resta interrogabile.
+- Test mirati agenti/decision engine: 51 passati.
+- Test backend completi: 848 passati, 2 saltati.
+- Test frontend completi: 59 passati.
+- Build frontend di produzione: completata.

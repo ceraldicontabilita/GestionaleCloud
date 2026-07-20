@@ -1393,3 +1393,27 @@ sovrastimato.
   descrizioni salvate troncate a 200 — per righe con descrizione tra 100 e
   200 caratteri il confronto non coincideva mai, rischiando un duplicato ad
   ogni riscan.
+
+---
+
+## 17. Decisioni AI: anti-rumore semantico e versioni
+
+Dal 20/07/2026 il registro degli agenti distingue tra una nuova **rilevazione**
+e una nuova **decisione**:
+
+- se problema, fatti, regole e azione proposta non cambiano, il sistema non
+  crea un'altra scheda: incrementa `occurrence_count` e aggiorna `last_seen_at`;
+- identificativi tecnici della sorgente, timestamp e metadati di scansione non
+  bastano da soli a creare una nuova decisione;
+- se cambiano i fatti sostanziali o l'azione, viene creata una nuova `version`;
+  la versione precedente resta integra nell'audit ed e' marcata `superseded`;
+- una versione superata non puo' essere approvata o eseguita;
+- l'API e la pagina mostrano per impostazione predefinita una sola decisione
+  corrente per problema. Lo storico resta disponibile con il parametro
+  `includi_storico=true` e non viene cancellato o migrato automaticamente;
+- il raggruppamento riconosce anche le chiavi delle decisioni storiche create
+  prima di questa regola, senza modificare i record di produzione.
+
+La regola non introduce un intervallo temporale arbitrario: il riuso dipende
+dall'identita' semantica e dalla fotografia sostanziale, non dai minuti
+trascorsi. Nessuna azione operativa viene eseguita dal motore decisionale.

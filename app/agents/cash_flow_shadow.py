@@ -21,6 +21,7 @@ class CashFlow13WShadow:
         ).hexdigest()[:20]
         proposta = DecisioneInput(
             decision_key=f"cashflow13w:{previsione['data_riferimento']}:{impronta}",
+            semantic_key="cashflow13w:previsione",
             agent=self.nome,
             objective="Gestire una possibile tensione di liquidita a 13 settimane" if negativo
             else "Verificare la previsione di liquidita a 13 settimane",

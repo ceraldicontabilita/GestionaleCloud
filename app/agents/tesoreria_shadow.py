@@ -31,6 +31,7 @@ class TesoreriaShadow:
         if overdue["count"]:
             proposte.append(DecisioneInput(
                 decision_key=self._chiave("overdue", snapshot),
+                semantic_key="tesoreria:overdue",
                 agent=self.nome,
                 objective=f"Verificare {overdue['count']} scadenze fornitore scadute",
                 input_sources=[{
@@ -71,6 +72,7 @@ class TesoreriaShadow:
         if upcoming["count"]:
             proposte.append(DecisioneInput(
                 decision_key=self._chiave("upcoming", snapshot),
+                semantic_key="tesoreria:upcoming",
                 agent=self.nome,
                 objective=f"Pianificare {upcoming['count']} scadenze dei prossimi {snapshot['horizon_days']} giorni",
                 input_sources=[{

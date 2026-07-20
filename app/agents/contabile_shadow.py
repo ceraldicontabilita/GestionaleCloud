@@ -24,6 +24,7 @@ class ContabileShadow:
         if not snapshot["disponibile"]:
             proposta = DecisioneInput(
                 decision_key=self._chiave("report-assente", snapshot),
+                semantic_key="contabile:report-assente",
                 agent=self.nome,
                 objective="Rendere disponibile un collaudo contabile aggiornato",
                 input_sources=[{"type": "typed_service", "service": "contabile_snapshot"}],
@@ -66,6 +67,7 @@ class ContabileShadow:
         }
         proposta = DecisioneInput(
             decision_key=self._chiave(tipo, snapshot),
+            semantic_key=f"contabile:{tipo}",
             agent=self.nome,
             objective=(
                 f"Verificare {snapshot['violazioni_totali']} anomalie di quadratura e Prima Nota"
