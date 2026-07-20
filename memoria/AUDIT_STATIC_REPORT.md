@@ -254,13 +254,13 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/agenti.py:212`
+- File: `app/routers/agenti.py:222`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/agenti.py:219`
+- File: `app/routers/agenti.py:229`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1934,7 +1934,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/Agenti.jsx:292`
+- File: `frontend/src/pages/Agenti.jsx:361`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 

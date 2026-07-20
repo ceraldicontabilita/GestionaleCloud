@@ -81,6 +81,12 @@ Ordine di attivazione in shadow mode:
 2. [ ] Contabile — quadrature, prima nota e scritture suggerite.
 3. [ ] Fiscale — IVA, F24, ritenute e pacchetto commercialista.
 4. [ ] CFO — cash flow a 13 settimane e scenari.
+   - [x] Motore deterministico CF13W-001 con saldi canonici, rate fornitori,
+     obblighi e crediti dotati di scadenza.
+   - [x] Scenari base, prudente e stress, copertura dati ed esclusioni visibili.
+   - [x] Agente `CashFlow13WShadow`: sola proposta L1/L3, nessuna disposizione.
+   - [ ] Estendere le entrate attese a POS e PayPal solo dopo aver materializzato
+     date di accredito affidabili e anti-duplicazione.
 5. [ ] Acquisti — prezzi, fornitori e riordino suggerito.
 6. [ ] Crediti — aging e bozze di sollecito, mai inviate senza approvazione.
 7. [ ] Compliance — permessi, tracciabilità e documenti mancanti.
@@ -117,8 +123,9 @@ L'esecuzione L2 resta disabilitata fino a quando, per il singolo caso d'uso:
 2. Preparare una procedura separata e controllata per correggere gli eventuali
    dati storici rateizzati; nessun dato reale viene corretto automaticamente.
 3. Estendere l'Agente Tesoreria shadow alle fonti bancarie e ai canali di incasso.
-4. Implementare il cash flow a 13 settimane solo dopo la qualità delle scadenze.
-5. Affrontare i blocchi sicurezza rimanenti prima di abilitare qualsiasi L2.
+4. [x] Implementare il primo cash flow a 13 settimane dopo la qualità delle scadenze.
+5. Estendere la copertura di incassi e obblighi senza stimare dati mancanti.
+6. Affrontare i blocchi sicurezza rimanenti prima di abilitare qualsiasi L2.
 
 ## Regola di avanzamento
 

@@ -139,3 +139,9 @@ def test_scheduler_registra_tesoreria_shadow_ogni_ora(monkeypatch):
     assert job[2]["hours"] == 1
     assert job[2]["next_run_time"] is not None
     assert schedulatore.running is True
+    cash_flow_job = next(
+        item for item in schedulatore.jobs if item[2].get("id") == "ai_cash_flow_13w_shadow"
+    )
+    assert cash_flow_job[1] == ("interval",)
+    assert cash_flow_job[2]["hours"] == 6
+    assert cash_flow_job[2]["next_run_time"] is not None

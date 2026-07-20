@@ -269,6 +269,74 @@ function DecisioneCard({ decisione, isAdmin, onDecisione }) {
   );
 }
 
+function CashFlowPanel({ previsione }) {
+  if (!previsione?.scenari?.length) {
+    return <PageEmpty message="Previsione non ancora disponibile." />;
+  }
+  const qualita = previsione.qualita_dati || {};
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+        <div style={{ ...STYLES.card, flex: '1 1 180px' }}>
+          <div style={{ fontSize: 12, color: COLORS.gray }}>Liquidità iniziale</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.primary }}>
+            {formatEuro(previsione.liquidita_iniziale || 0)}
+          </div>
+        </div>
+        <div style={{ ...STYLES.card, flex: '1 1 180px' }}>
+          <div style={{ fontSize: 12, color: COLORS.gray }}>Copertura dati</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.info }}>
+            {qualita.copertura_percentuale ?? 0}%
+          </div>
+        </div>
+        <div style={{ ...STYLES.card, flex: '1 1 180px' }}>
+          <div style={{ fontSize: 12, color: COLORS.gray }}>Record esclusi</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: qualita.record_esclusi ? COLORS.warning : COLORS.success }}>
+            {qualita.record_esclusi || 0}
+          </div>
+        </div>
+      </div>
+      {previsione.scenari.map(scenario => (
+        <PageSection key={scenario.nome} title={`Scenario ${scenario.nome}`}>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, marginBottom: 10 }}>
+            <span><strong>Saldo minimo:</strong> {formatEuro(scenario.saldo_minimo)}</span>
+            <span><strong>Saldo finale:</strong> {formatEuro(scenario.saldo_finale)}</span>
+            <span>Entrate {Math.round(scenario.fattore_entrate * 100)}% · Uscite {Math.round(scenario.fattore_uscite * 100)}%</span>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', textAlign: 'left' }}>
+                  {['Settimana', 'Periodo', 'Entrate', 'Uscite', 'Saldo finale'].map(label => (
+                    <th key={label} style={{ padding: 8, borderBottom: '1px solid #e2e8f0' }}>{label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {scenario.settimane.map(riga => (
+                  <tr key={riga.settimana}>
+                    <td style={{ padding: 8, borderBottom: '1px solid #f1f5f9' }}>{riga.settimana}</td>
+                    <td style={{ padding: 8, borderBottom: '1px solid #f1f5f9' }}>{riga.dal} – {riga.al}</td>
+                    <td style={{ padding: 8, borderBottom: '1px solid #f1f5f9', color: COLORS.success }}>{formatEuro(riga.entrate)}</td>
+                    <td style={{ padding: 8, borderBottom: '1px solid #f1f5f9', color: COLORS.danger }}>{formatEuro(riga.uscite)}</td>
+                    <td style={{ padding: 8, borderBottom: '1px solid #f1f5f9', fontWeight: 700, color: riga.saldo_finale < 0 ? COLORS.danger : '#0f172a' }}>
+                      {formatEuro(riga.saldo_finale)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </PageSection>
+      ))}
+      <div style={{ ...STYLES.card, fontSize: 12, color: COLORS.gray }}>
+        <strong>Regola {previsione.versione_regole}</strong>. Previsione informativa e di sola lettura:
+        non prepara né esegue pagamenti. I record senza data o importo non vengono stimati.
+      </div>
+    </div>
+  );
+}
+
 // ---- PAGINA PRINCIPALE ----
 export default function AgentiPage() {
   const confirm = useConfirm();
@@ -280,6 +348,7 @@ export default function AgentiPage() {
   const [segnalazioni, setSegnalazioni] = useState([]);
   const [pattern, setPattern] = useState([]);
   const [decisioni, setDecisioni] = useState([]);
+  const [cashFlow, setCashFlow] = useState(null);
   const [automazioni, setAutomazioni] = useState({ sospese: false, modalita: 'shadow' });
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
@@ -288,16 +357,18 @@ export default function AgentiPage() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [statiRes, segnRes, decisioniRes, automazioniRes] = await Promise.all([
+      const [statiRes, segnRes, decisioniRes, automazioniRes, cashFlowRes] = await Promise.all([
         api.get('/api/agenti/stato'),
         api.get('/api/agenti/segnalazioni?limit=100'),
         api.get('/api/agenti/decisioni?limit=100'),
         api.get('/api/agenti/automazioni/stato'),
+        api.get('/api/agenti/cash-flow-13-settimane'),
       ]);
       setStati(statiRes.data.agenti || []);
       setSegnalazioni(segnRes.data.segnalazioni || []);
       setDecisioni(decisioniRes.data.decisioni || []);
       setAutomazioni(automazioniRes.data || { sospese: false, modalita: 'shadow' });
+      setCashFlow(cashFlowRes.data || null);
     } catch {
       setMsg('Errore caricamento dati agenti');
     } finally {
@@ -387,6 +458,7 @@ export default function AgentiPage() {
   const TABS = [
     { key: 'agenti', label: `Agenti (${stati.length})` },
     { key: 'decisioni', label: `Decisioni (${decisioni.length})` },
+    { key: 'cash-flow', label: 'Cash flow 13 settimane' },
     { key: 'urgente', label: `Urgenti (${urgenti})`, alert: urgenti > 0 },
     { key: 'avviso', label: `Avvisi (${segnPerTipo('avviso').length})` },
     { key: 'info', label: `Info (${segnPerTipo('info').length})` },
@@ -536,6 +608,8 @@ export default function AgentiPage() {
               </PageSection>
             </div>
           )}
+
+          {activeTab === 'cash-flow' && <CashFlowPanel previsione={cashFlow} />}
 
           {activeTab === 'urgente' && (
             <div>

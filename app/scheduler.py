@@ -459,6 +459,17 @@ def start_scheduler():
         except Exception as exc:
             logger.error("[SCHEDULER-AI-TESORERIA] errore: %s", exc)
 
+    async def _cash_flow_shadow_job():
+        from app.agents.orchestrator import run_agenti
+        from app.database import Database
+        try:
+            await run_agenti(Database.get_db(), agente_specifico="CashFlow13WShadow")
+            logger.info("[SCHEDULER-AI-CASHFLOW] previsione shadow completata")
+        except RuntimeError as exc:
+            logger.info("[SCHEDULER-AI-CASHFLOW] sospeso: %s", exc)
+        except Exception as exc:
+            logger.error("[SCHEDULER-AI-CASHFLOW] errore: %s", exc)
+
     async def _scan_gmail_verbali_job():
         from app.database import Database
         from app.services.verbali_gmail_scanner import scan_gmail_verbali
@@ -589,6 +600,14 @@ def start_scheduler():
         next_run_time=datetime.now(),
         id="ai_tesoreria_shadow",
         name="Agente Tesoreria in shadow mode (ogni ora + al riavvio)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _cash_flow_shadow_job,
+        'interval', hours=6,
+        next_run_time=datetime.now(),
+        id="ai_cash_flow_13w_shadow",
+        name="Cash flow 13 settimane in shadow mode (ogni 6 ore + al riavvio)",
         replace_existing=True,
     )
     scheduler.add_job(

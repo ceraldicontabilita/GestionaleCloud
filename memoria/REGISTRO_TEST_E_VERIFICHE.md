@@ -360,3 +360,20 @@ Questo aggiornamento non modifica `PROGRAMMA_IMPLEMENTAZIONE_CANONICO.md` né `S
 - Test mirati agenti/decision engine: 26 passati.
 - Suite backend completa dopo l'aggiunta: 757 passati, 2 saltati.
 - Nessuna scrittura su Prima Nota, pagamenti o operazioni da confermare.
+
+## Cash flow 13 settimane in shadow mode — 2026-07-20
+
+- Regola deterministica: `CF13W-001`.
+- Fonti incluse: saldi canonici Prima Nota cassa/banca, rate aperte dello
+  scadenzario fornitori, obblighi F24/stipendi e fatture emesse aperte solo
+  quando data e importo sono presenti.
+- Anti-duplicazione: le partite `fattura_fornitore` non vengono sommate una
+  seconda volta rispetto allo scadenzario rateale.
+- Dati incompleti: esclusi senza inferenze, con contatori e percentuale di
+  copertura esposti nella pagina Agenti.
+- Scenari: base (100%/100%), prudente (70% entrate/100% uscite), stress
+  (40% entrate/110% uscite).
+- Sicurezza: endpoint autenticato; agente in shadow mode L1/L3; nessun
+  pagamento, movimento contabile o scrittura su collection operative.
+- Test backend completi: 758 passati; test mirati agenti/cash flow: 24 passati;
+  test frontend completi: 31 passati; build di produzione completata.

@@ -26,7 +26,19 @@ const DECISIONE = {
   policy_reasons: ['azione_con_approvazione_umana_obbligatoria'],
 };
 
+const CASH_FLOW = {
+  versione_regole: 'CF13W-001',
+  liquidita_iniziale: 3000,
+  qualita_dati: { copertura_percentuale: 80, record_esclusi: 2 },
+  scenari: [{
+    nome: 'base', fattore_entrate: 1, fattore_uscite: 1,
+    saldo_minimo: 2500, saldo_finale: 2800,
+    settimane: [{ settimana: 1, dal: '2026-07-20', al: '2026-07-26', entrate: 500, uscite: 200, saldo_finale: 3300 }],
+  }],
+};
+
 function rispostaGet(url) {
+  if (url.includes('/cash-flow-13-settimane')) return Promise.resolve({ data: CASH_FLOW });
   if (url.includes('/automazioni/stato')) return Promise.resolve({ data: { sospese: false, modalita: 'shadow' } });
   if (url.includes('/stato')) return Promise.resolve({ data: { agenti: [] } });
   if (url.includes('/segnalazioni')) return Promise.resolve({ data: { segnalazioni: [] } });
@@ -65,5 +77,14 @@ describe('Agenti AI supervisionati', () => {
       title: 'Ferma tutte le automazioni AI',
       variant: 'danger',
     }));
+  });
+
+  it('mostra il cash flow con copertura e senza azioni di pagamento', async () => {
+    render(<AgentiPage />);
+    fireEvent.click(await screen.findByTestId('tab-agenti-cash-flow'));
+
+    expect(await screen.findByText('Scenario base')).toBeInTheDocument();
+    expect(screen.getByText('80%')).toBeInTheDocument();
+    expect(screen.getByText(/non prepara né esegue pagamenti/i)).toBeInTheDocument();
   });
 });

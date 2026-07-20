@@ -4,9 +4,19 @@ from typing import Any, Dict, Optional
 from datetime import datetime, timezone
 
 from app.database import Database
-from app.utils.dependencies import get_current_admin_user
+from app.utils.dependencies import get_current_admin_user, get_current_user
 
 router = APIRouter(tags=["Agenti AI"])
+
+
+@router.get("/cash-flow-13-settimane")
+async def get_cash_flow_13_settimane(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Previsione aggregata e di sola lettura; richiede una sessione valida."""
+    from app.services.cash_flow_13w_service import calcola_cash_flow_13_settimane
+
+    return await calcola_cash_flow_13_settimane(Database.get_db())
 
 
 @router.get("/segnalazioni")
