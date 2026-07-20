@@ -14,6 +14,19 @@ import {
   Sparkles,
 } from 'lucide-react';
 
+export function classificaEsitoUpload(data = {}) {
+  const message = data?.message || '';
+  const duplicate =
+    data?.action === 'duplicate' ||
+    data?.duplicate === true ||
+    (data?.imported === 0 && /duplicat/i.test(message));
+
+  return {
+    status: duplicate ? 'duplicate' : 'success',
+    message: duplicate ? message || 'Documento duplicato ignorato' : message || 'Importato',
+  };
+}
+
 /**
  * ImportDocumenti - Pagina SEMPLIFICATA
  *
@@ -150,17 +163,21 @@ export default function ImportDocumenti() {
         });
 
         const tipo = res.data?.tipo_rilevato || res.data?.detected_type || 'auto';
-        const msg = res.data?.message || 'Importato';
+        const esito = classificaEsitoUpload(res.data);
 
         uploadResults.push({
           file: fileInfo.name,
           tipo,
-          status: 'success',
-          message: msg,
+          status: esito.status,
+          message: esito.message,
           workflow: res.data?.workflow,
           details: res.data,
         });
-        setFiles(prev => prev.map((f, idx) => (idx === i ? { ...f, status: 'success', tipo } : f)));
+        setFiles(prev =>
+          prev.map((f, idx) =>
+            idx === i ? { ...f, status: esito.status, tipo } : f
+          )
+        );
       } catch (e) {
         const errMsg = e.response?.data?.detail || e.response?.data?.message || e.message;
         const isDuplicate =
@@ -613,8 +630,12 @@ export default function ImportDocumenti() {
               }}
             >
               <div style={{ fontWeight: 700, fontSize: 15, color: COLORS.gray[700] }}>
-                {errorCount === 0
-                  ? 'Import completato!'
+                {duplicateCount === results.length
+                  ? 'Nessun nuovo documento: duplicati ignorati'
+                  : errorCount === 0 && duplicateCount === 0
+                    ? 'Import completato!'
+                    : errorCount === 0
+                      ? 'Import completato con duplicati ignorati'
                   : successCount === 0
                     ? 'Errore import'
                     : 'Import parziale'}

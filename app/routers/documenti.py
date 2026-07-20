@@ -1955,6 +1955,8 @@ async def upload_documento_automatico(
                     data_str = ingest.get("data", "N/A")
                     tot_str = f"{ingest.get('totale', 0):.2f}"
                     if ingest["action"] == "duplicate":
+                        result["success"] = False
+                        result["duplicate"] = True
                         result["message"] = f"Corrispettivo duplicato ignorato: {data_str} — totale {tot_str}€"
                         result["imported"] = 0
                     elif ingest["action"] == "updated":

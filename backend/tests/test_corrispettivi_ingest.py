@@ -208,14 +208,22 @@ class TestDocumentiUploadAuto:
         assert cassa is not None
         assert cassa["source"] == "corrispettivo_import"
         assert cassa["categoria"] == "Corrispettivi"
-        assert abs(cassa["importo"] - 80.00) < 0.01
+        assert abs(cassa["importo"] - 100.00) < 0.01
+
+        uscita_pos = mongo_db["prima_nota_cassa"].find_one(
+            {"corrispettivo_id": corr_id, "categoria": "POS Verso Banca"}, {"_id": 0}
+        )
+        assert uscita_pos is not None
+        assert uscita_pos["source"] == "corrispettivo_import"
+        assert abs(uscita_pos["importo"] - 20.00) < 0.01
 
         banca = mongo_db["prima_nota_banca"].find_one(
             {"corrispettivo_id": corr_id}, {"_id": 0}
         )
         assert banca is not None
-        assert banca["source"] == "corrispettivo_pos"
+        assert banca["source"] == "trasferimento_pos"
         assert abs(banca["importo"] - 20.00) < 0.01
+        assert banca["riconciliato"] is False
 
         # 2° upload dello stesso XML -> duplicate (non deve duplicare prima nota)
         r2 = _post_xml(session, url, xml, "cor_test_001.xml")
@@ -223,7 +231,7 @@ class TestDocumentiUploadAuto:
         j2 = r2.json()
         assert j2.get("action") == "duplicate", j2
         cassa_n, banca_n = _count_prima_nota(mongo_db, corr_id)
-        assert cassa_n == 1, f"Prima Nota Cassa duplicata: {cassa_n} record"
+        assert cassa_n == 2, f"Prima Nota Cassa duplicata: {cassa_n} record"
         assert banca_n == 1, f"Prima Nota Banca duplicata: {banca_n} record"
 
 
@@ -249,7 +257,7 @@ class TestUploadXmlSingolo:
 
         # Verifica DB
         cassa_n, banca_n = _count_prima_nota(mongo_db, corr_id)
-        assert cassa_n == 1
+        assert cassa_n == 2
         assert banca_n == 1
 
         # 2° upload con force_update=True -> action=updated, no duplicati
@@ -263,7 +271,7 @@ class TestUploadXmlSingolo:
         j2 = r2.json()
         assert j2["action"] in ("updated", "duplicate"), j2
         cassa_n, banca_n = _count_prima_nota(mongo_db, corr_id)
-        assert cassa_n == 1, f"Prima Nota Cassa duplicata: {cassa_n}"
+        assert cassa_n == 2, f"Prima Nota Cassa duplicata: {cassa_n}"
         assert banca_n == 1, f"Prima Nota Banca duplicata: {banca_n}"
 
         # 3° upload con force_update=False -> duplicate
@@ -277,7 +285,7 @@ class TestUploadXmlSingolo:
         j3 = r3.json()
         assert j3["action"] == "duplicate", j3
         cassa_n, banca_n = _count_prima_nota(mongo_db, corr_id)
-        assert cassa_n == 1
+        assert cassa_n == 2
         assert banca_n == 1
 
 
@@ -456,10 +464,10 @@ class TestCleanupDuplicatiForte:
 
 
 # =========================================================================
-# TEST 7 - Coerenza importi: cassa + banca == somma totale corrispettivi 2099
+# TEST 7 - Coerenza importi secondo il modello trasferimento Cassa -> Banca
 # =========================================================================
 class TestCoerenzaImporti:
-    def test_totale_cassa_plus_banca_equals_totale_corrispettivi(self, session, mongo_db):
+    def test_totale_cassa_e_trasferimento_pos_quadrano(self, session, mongo_db):
         # Prima rebuild, per partire da stato pulito.
         session.post(
             f"{BASE_URL}/api/corrispettivi/rebuild-prima-nota",
@@ -485,21 +493,32 @@ class TestCoerenzaImporti:
         pipe_banca = [
             {"$match": {
                 "data": {"$regex": f"^{TEST_YEAR}"},
-                "source": "corrispettivo_pos",
+                "source": "trasferimento_pos",
+            }},
+            {"$group": {"_id": None, "tot": {"$sum": "$importo"}}},
+        ]
+        pipe_uscita_pos = [
+            {"$match": {
+                "data": {"$regex": f"^{TEST_YEAR}"},
+                "categoria": "POS Verso Banca",
+                "source": "corrispettivo_import",
             }},
             {"$group": {"_id": None, "tot": {"$sum": "$importo"}}},
         ]
         cassa_agg = list(mongo_db["prima_nota_cassa"].aggregate(pipe_cassa))
+        uscita_pos_agg = list(mongo_db["prima_nota_cassa"].aggregate(pipe_uscita_pos))
         banca_agg = list(mongo_db["prima_nota_banca"].aggregate(pipe_banca))
         tot_cassa = round(cassa_agg[0]["tot"], 2) if cassa_agg else 0.0
+        tot_uscita_pos = round(uscita_pos_agg[0]["tot"], 2) if uscita_pos_agg else 0.0
         tot_banca = round(banca_agg[0]["tot"], 2) if banca_agg else 0.0
 
-        assert abs(tot_cassa - tot_contanti_expected) < 0.05, (
-            f"Cassa atteso {tot_contanti_expected}, trovato {tot_cassa}"
+        assert abs(tot_cassa - tot_corr) < 0.05, (
+            f"Entrata Cassa attesa {tot_corr}, trovata {tot_cassa}"
         )
+        assert abs(tot_uscita_pos - tot_elettronico_expected) < 0.05
         assert abs(tot_banca - tot_elettronico_expected) < 0.05, (
             f"Banca atteso {tot_elettronico_expected}, trovato {tot_banca}"
         )
-        assert abs((tot_cassa + tot_banca) - tot_corr) < 0.05, (
-            f"Somma cassa+banca ({tot_cassa + tot_banca}) != totale corrispettivi ({tot_corr})"
+        assert abs((tot_cassa - tot_uscita_pos) - tot_contanti_expected) < 0.05, (
+            f"Cassa netta ({tot_cassa - tot_uscita_pos}) != contanti ({tot_contanti_expected})"
         )

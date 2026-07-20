@@ -61,6 +61,18 @@ def test_upload_crea_corrispettivo_e_prima_nota():
     assert len(entrate) == 1
     assert entrate[0]["importo"] == 100.0
 
+    uscite_pos = asyncio.run(
+        db["prima_nota_cassa"].find({"tipo": "uscita", "categoria": "POS Verso Banca"}).to_list(10)
+    )
+    trasferimenti = asyncio.run(
+        db["prima_nota_banca"].find({"source": "trasferimento_pos"}).to_list(10)
+    )
+    assert len(uscite_pos) == 1
+    assert uscite_pos[0]["importo"] == 20.0
+    assert len(trasferimenti) == 1
+    assert trasferimenti[0]["importo"] == 20.0
+    assert trasferimenti[0]["riconciliato"] is False
+
 
 def test_upload_duplicato_senza_force_non_crea_doppia_scrittura():
     db = _db()
@@ -78,6 +90,10 @@ def test_upload_duplicato_senza_force_non_crea_doppia_scrittura():
         db["prima_nota_cassa"].find({"tipo": "entrata", "categoria": "Corrispettivi"}).to_list(10)
     )
     assert len(entrate) == 1  # non raddoppiata dal secondo upload
+    movimenti_cassa = asyncio.run(db["prima_nota_cassa"].find({}).to_list(10))
+    movimenti_banca = asyncio.run(db["prima_nota_banca"].find({}).to_list(10))
+    assert len(movimenti_cassa) == 2  # entrata totale + uscita POS, una sola volta
+    assert len(movimenti_banca) == 1  # trasferimento POS, una sola volta
 
 
 def test_upload_force_update_ricrea_senza_duplicare_prima_nota():
