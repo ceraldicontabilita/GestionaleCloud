@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 const card = { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 22, maxWidth: 760, margin: '0 auto' };
 const button = { border: 0, borderRadius: 8, background: '#0f2a4a', color: '#fff', padding: '11px 16px', fontWeight: 800, cursor: 'pointer' };
 const input = { width: '100%', boxSizing: 'border-box', border: '1px solid #cbd5e1', borderRadius: 8, padding: '12px 14px', fontSize: 17, letterSpacing: 1, margin: '12px 0' };
+const setupActionRow = { display: 'flex', alignItems: 'stretch', flexWrap: 'wrap', gap: 10, marginTop: 12 };
 
 export default function MFAAdmin() {
   const { applyMfaStepUp } = useAuth();
@@ -41,6 +42,7 @@ export default function MFAAdmin() {
   };
 
   const confirm = async () => {
+    if (busy || code.trim().length !== 6) return;
     setBusy(true); setMessage('');
     try {
       const response = await api.post('/api/auth/mfa/setup/confirm', { code });
@@ -50,10 +52,12 @@ export default function MFAAdmin() {
       await load();
     } catch (error) {
       const detail = error.response?.data?.detail;
-      if (detail === 'Codice di verifica non valido' && setup?.setup_id) {
+      if (!error.response) {
+        setMessage('Il server non ha risposto. La configurazione non è stata modificata: controlla la connessione e riprova con un nuovo codice temporaneo.');
+      } else if (error.response.status === 400 && setup?.setup_id) {
         setMessage(`Il codice non corrisponde alla configurazione ${setup.setup_id}. Nell'app Authenticator seleziona la voce con questo identificativo oppure genera una nuova configurazione e scansiona il nuovo QR.`);
       } else {
-        setMessage(detail || 'Codice non valido.');
+        setMessage(detail || 'Impossibile confermare il codice. Riprova con il nuovo codice temporaneo mostrato dall’app Authenticator.');
       }
     }
     finally { setBusy(false); }
@@ -113,20 +117,30 @@ export default function MFAAdmin() {
             <p style={{ color: '#475569', lineHeight: 1.5 }}>
               Apri l'app Authenticator e inserisci qui esclusivamente il codice numerico temporaneo di 6 cifre. Non incollare la chiave lunga in questo campo.
             </p>
-            <input
-              style={input}
-              value={code}
-              onChange={event => updateSetupCode(event.target.value)}
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={6}
-              autoComplete="one-time-code"
-              aria-label="Codice numerico di 6 cifre generato da Authenticator"
-              placeholder="000000"
-            />
-            <button style={button} disabled={busy || code.trim().length !== 6} onClick={confirm}>Attiva MFA</button>
+            <div style={setupActionRow}>
+              <input
+                style={{ ...input, flex: '1 1 260px', width: 'auto', minWidth: 0, margin: 0 }}
+                value={code}
+                onChange={event => updateSetupCode(event.target.value)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') confirm();
+                }}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                autoComplete="one-time-code"
+                aria-label="Codice numerico di 6 cifre generato da Authenticator"
+                placeholder="000000"
+              />
+              <button style={{ ...button, flex: '0 0 auto' }} disabled={busy || code.trim().length !== 6} onClick={confirm}>
+                Attiva MFA
+              </button>
+            </div>
+            <p style={{ color: '#475569', fontSize: 13, margin: '8px 0 0' }}>
+              Dopo le 6 cifre premi <strong>Attiva MFA</strong> oppure il tasto Invio.
+            </p>
             <button
-              style={{ ...button, marginLeft: 10, background: '#475569' }}
+              style={{ ...button, marginTop: 14, background: '#475569' }}
               disabled={busy}
               onClick={() => start(true)}
             >
