@@ -23,9 +23,9 @@ export default function MFAAdmin() {
 
   useEffect(() => { load().catch(() => setMessage('Impossibile leggere lo stato MFA.')); }, [load]);
 
-  const start = async () => {
+  const start = async (regenerate = false) => {
     setBusy(true); setMessage(''); setCode('');
-    try { setSetup((await api.post('/api/auth/mfa/setup/start')).data); }
+    try { setSetup((await api.post(`/api/auth/mfa/setup/start?regenerate=${regenerate}`)).data); }
     catch (error) { setMessage(error.response?.data?.detail || 'Avvio configurazione non riuscito.'); }
     finally { setBusy(false); }
   };
@@ -48,7 +48,14 @@ export default function MFAAdmin() {
       setSetup(null); setCode('');
       setMessage('MFA attivata. Salva i codici di recupero prima di lasciare la pagina.');
       await load();
-    } catch (error) { setMessage(error.response?.data?.detail || 'Codice non valido.'); }
+    } catch (error) {
+      const detail = error.response?.data?.detail;
+      if (detail === 'Codice di verifica non valido' && setup?.setup_id) {
+        setMessage(`Il codice non corrisponde alla configurazione ${setup.setup_id}. Nell'app Authenticator seleziona la voce con questo identificativo oppure genera una nuova configurazione e scansiona il nuovo QR.`);
+      } else {
+        setMessage(detail || 'Codice non valido.');
+      }
+    }
     finally { setBusy(false); }
   };
 
@@ -89,11 +96,16 @@ export default function MFAAdmin() {
         </div>
         {message && <div style={{ marginTop: 14, padding: 10, background: '#f1f5f9', borderRadius: 8 }}>{message}</div>}
 
-        {!status.enabled && !setup && <button style={{ ...button, marginTop: 18 }} disabled={busy} onClick={start}>Configura MFA</button>}
+        {!status.enabled && !setup && <button style={{ ...button, marginTop: 18 }} disabled={busy} onClick={() => start(false)}>Configura MFA</button>}
 
         {setup && (
           <div style={{ marginTop: 20 }}>
             <h3>1. Scansiona il codice</h3>
+            {setup.setup_id && (
+              <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, background: '#eff6ff', color: '#1e3a8a', fontWeight: 800 }}>
+                Configurazione: {setup.setup_id}. Nell'app usa esclusivamente la voce "Amministratore [{setup.setup_id}]".
+              </div>
+            )}
             <div style={{ background: '#fff', padding: 14, width: 'fit-content', border: '1px solid #e2e8f0' }}><QRCodeSVG value={setup.otpauth_uri} size={190} /></div>
             <p style={{ color: '#64748b', fontSize: 13 }}>Se non puoi scansionarlo, inserisci manualmente questa chiave. Non condividerla.</p>
             <code style={{ display: 'block', wordBreak: 'break-all', background: '#f8fafc', padding: 10 }}>{setup.secret}</code>
@@ -116,7 +128,7 @@ export default function MFAAdmin() {
             <button
               style={{ ...button, marginLeft: 10, background: '#475569' }}
               disabled={busy}
-              onClick={start}
+              onClick={() => start(true)}
             >
               Genera una nuova configurazione
             </button>

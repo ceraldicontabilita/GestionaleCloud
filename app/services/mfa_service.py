@@ -118,18 +118,49 @@ async def is_enabled(db, identity: str) -> bool:
     return (await get_status(db, identity))["enabled"]
 
 
-async def start_enrollment(db, identity: str, issuer: str = "Impresa Semplice") -> Dict[str, str]:
-    status = await get_status(db, identity)
-    if status["enabled"]:
+def _enrollment_payload(secret: str, revision: str, issuer: str) -> Dict[str, str]:
+    setup_id = revision[:6].upper()
+    label = quote(f"{issuer}:Amministratore [{setup_id}]")
+    uri = (
+        f"otpauth://totp/{label}?secret={secret}&issuer={quote(issuer)}"
+        f"&period={TOTP_PERIOD_SECONDS}&digits={TOTP_DIGITS}"
+    )
+    return {"secret": secret, "otpauth_uri": uri, "setup_id": setup_id}
+
+
+async def start_enrollment(
+    db,
+    identity: str,
+    issuer: str = "Impresa Semplice",
+    regenerate: bool = False,
+) -> Dict[str, str]:
+    key = _identity_key(identity)
+    existing = await db[COLLECTION].find_one({"identity_key": key})
+    if existing and existing.get("enabled"):
         raise ValueError("MFA gia attiva")
+
+    # Riaprire la procedura non deve invalidare una chiave gia acquisita
+    # dall'Authenticator. Solo la rigenerazione esplicita sostituisce il segreto.
+    if (
+        not regenerate
+        and existing
+        and existing.get("pending_secret_encrypted")
+        and existing.get("pending_revision")
+    ):
+        return _enrollment_payload(
+            _decrypt(existing["pending_secret_encrypted"]),
+            existing["pending_revision"],
+            issuer,
+        )
+
     secret = generate_totp_secret()
     revision = secrets.token_hex(16)
     now = datetime.now(timezone.utc)
     await db[COLLECTION].update_one(
-        {"identity_key": _identity_key(identity)},
+        {"identity_key": key},
         {
             "$set": {
-                "identity_key": _identity_key(identity),
+                "identity_key": key,
                 "pending_secret_encrypted": _encrypt(secret),
                 "pending_revision": revision,
                 "pending_created_at": now,
@@ -139,12 +170,7 @@ async def start_enrollment(db, identity: str, issuer: str = "Impresa Semplice") 
         },
         upsert=True,
     )
-    label = quote(f"{issuer}:Amministratore")
-    uri = (
-        f"otpauth://totp/{label}?secret={secret}&issuer={quote(issuer)}"
-        f"&period={TOTP_PERIOD_SECONDS}&digits={TOTP_DIGITS}"
-    )
-    return {"secret": secret, "otpauth_uri": uri}
+    return _enrollment_payload(secret, revision, issuer)
 
 
 async def confirm_enrollment(db, identity: str, code: str) -> list[str]:

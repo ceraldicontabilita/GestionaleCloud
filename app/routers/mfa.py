@@ -59,9 +59,14 @@ async def mfa_status(admin: Dict[str, Any] = Depends(get_current_admin_user)):
 
 
 @router.post("/mfa/setup/start")
-async def mfa_setup_start(admin: Dict[str, Any] = Depends(get_current_admin_user)):
+async def mfa_setup_start(
+    regenerate: bool = False,
+    admin: Dict[str, Any] = Depends(get_current_admin_user),
+):
     try:
-        return await mfa_service.start_enrollment(Database.get_db(), _identity(admin))
+        return await mfa_service.start_enrollment(
+            Database.get_db(), _identity(admin), regenerate=regenerate
+        )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

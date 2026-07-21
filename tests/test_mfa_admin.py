@@ -51,6 +51,38 @@ def test_iscrizione_cifra_segreto_e_non_salva_plaintext(db, monkeypatch):
     assert len(recovery) == mfa_service.RECOVERY_CODES_COUNT
 
 
+def test_riapertura_setup_riusa_la_stessa_configurazione(db, monkeypatch):
+    monkeypatch.setattr(mfa_service.time, "time", lambda: 1_800_000_000.0)
+    first = asyncio.run(mfa_service.start_enrollment(db, "admin"))
+    reopened = asyncio.run(mfa_service.start_enrollment(db, "admin"))
+
+    assert reopened["secret"] == first["secret"]
+    assert reopened["setup_id"] == first["setup_id"]
+    asyncio.run(mfa_service.confirm_enrollment(
+        db, "admin", mfa_service.current_totp(first["secret"])
+    ))
+
+
+def test_rigenerazione_esplicita_invalida_solo_la_configurazione_precedente(
+    db, monkeypatch
+):
+    monkeypatch.setattr(mfa_service.time, "time", lambda: 1_800_000_000.0)
+    first = asyncio.run(mfa_service.start_enrollment(db, "admin"))
+    regenerated = asyncio.run(
+        mfa_service.start_enrollment(db, "admin", regenerate=True)
+    )
+
+    assert regenerated["secret"] != first["secret"]
+    assert regenerated["setup_id"] != first["setup_id"]
+    with pytest.raises(ValueError, match="Codice di verifica non valido"):
+        asyncio.run(mfa_service.confirm_enrollment(
+            db, "admin", mfa_service.current_totp(first["secret"])
+        ))
+    asyncio.run(mfa_service.confirm_enrollment(
+        db, "admin", mfa_service.current_totp(regenerated["secret"])
+    ))
+
+
 def test_totp_non_riutilizzabile_e_finestra_temporale(db, monkeypatch):
     clock = {"value": 1_800_000_000.0}
     monkeypatch.setattr(mfa_service.time, "time", lambda: clock["value"])
