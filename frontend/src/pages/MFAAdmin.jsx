@@ -24,10 +24,20 @@ export default function MFAAdmin() {
   useEffect(() => { load().catch(() => setMessage('Impossibile leggere lo stato MFA.')); }, [load]);
 
   const start = async () => {
-    setBusy(true); setMessage('');
+    setBusy(true); setMessage(''); setCode('');
     try { setSetup((await api.post('/api/auth/mfa/setup/start')).data); }
     catch (error) { setMessage(error.response?.data?.detail || 'Avvio configurazione non riuscito.'); }
     finally { setBusy(false); }
+  };
+
+  const updateSetupCode = (value) => {
+    if (value && !/^\d{0,6}$/.test(value)) {
+      setCode('');
+      setMessage("Non inserire qui la chiave lunga: aggiungila all'app Authenticator e digita il codice numerico di 6 cifre generato dall'app.");
+      return;
+    }
+    setCode(value.slice(0, 6));
+    setMessage('');
   };
 
   const confirm = async () => {
@@ -88,8 +98,31 @@ export default function MFAAdmin() {
             <p style={{ color: '#64748b', fontSize: 13 }}>Se non puoi scansionarlo, inserisci manualmente questa chiave. Non condividerla.</p>
             <code style={{ display: 'block', wordBreak: 'break-all', background: '#f8fafc', padding: 10 }}>{setup.secret}</code>
             <h3>2. Conferma il primo codice</h3>
-            <input style={input} value={code} onChange={event => setCode(event.target.value)} inputMode="numeric" autoComplete="one-time-code" placeholder="000000" />
+            <p style={{ color: '#475569', lineHeight: 1.5 }}>
+              Apri l'app Authenticator e inserisci qui esclusivamente il codice numerico temporaneo di 6 cifre. Non incollare la chiave lunga in questo campo.
+            </p>
+            <input
+              style={input}
+              value={code}
+              onChange={event => updateSetupCode(event.target.value)}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              autoComplete="one-time-code"
+              aria-label="Codice numerico di 6 cifre generato da Authenticator"
+              placeholder="000000"
+            />
             <button style={button} disabled={busy || code.trim().length !== 6} onClick={confirm}>Attiva MFA</button>
+            <button
+              style={{ ...button, marginLeft: 10, background: '#475569' }}
+              disabled={busy}
+              onClick={start}
+            >
+              Genera una nuova configurazione
+            </button>
+            <p style={{ color: '#9a3412', fontSize: 13 }}>
+              Se hai incollato la chiave lunga nel campo sbagliato, genera una nuova configurazione prima di continuare.
+            </p>
           </div>
         )}
 
