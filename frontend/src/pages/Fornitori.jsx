@@ -1128,7 +1128,14 @@ function AzioniFornitore({
           disabled={loadingFatturato}
           title={`Visualizza fatturato ${selectedYear}`}
           data-testid={`btn-fatturato-${supplier.id}`}
-          style={{ width: 'auto', height: 30, padding: '0 8px', gap: 4, fontSize: 12, fontWeight: 700 }}
+          style={{
+            width: 'auto',
+            height: 30,
+            padding: '0 8px',
+            gap: 4,
+            fontSize: 12,
+            fontWeight: 700,
+          }}
         >
           <TrendingUp size={15} /> {loadingFatturato ? '...' : selectedYear}
         </RowActionButton>
@@ -1161,10 +1168,16 @@ function AzioniFornitore({
             />
             <div
               style={{
-                position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999,
-                background: 'white', border: `1px solid ${COLORS.border}`,
-                borderRadius: 8, boxShadow: '0 8px 24px rgba(15,39,68,0.18)',
-                minWidth: 190, padding: 4,
+                position: 'fixed',
+                top: menuPos.top,
+                right: menuPos.right,
+                zIndex: 9999,
+                background: 'white',
+                border: `1px solid ${COLORS.border}`,
+                borderRadius: 8,
+                boxShadow: '0 8px 24px rgba(15,39,68,0.18)',
+                minWidth: 190,
+                padding: 4,
               }}
             >
               {vociMenu.map(voce => (
@@ -1176,9 +1189,15 @@ function AzioniFornitore({
                     voce.onClick();
                   }}
                   style={{
-                    display: 'block', width: '100%', textAlign: 'left',
-                    padding: '8px 10px', border: 'none', background: 'transparent',
-                    borderRadius: 6, fontSize: 12.5, cursor: 'pointer',
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '8px 10px',
+                    border: 'none',
+                    background: 'transparent',
+                    borderRadius: 6,
+                    fontSize: 12.5,
+                    cursor: 'pointer',
                     color: voce.pericolosa ? '#dc2626' : COLORS.text,
                     fontWeight: voce.pericolosa ? 700 : 500,
                   }}
@@ -1197,7 +1216,9 @@ function AzioniFornitore({
 }
 
 export default function Fornitori() {
-  const isMobile = useIsMobile();
+  // Sotto 1180px la tabella completa non e' leggibile: su tablet e
+  // smartphone usiamo direttamente le card responsive.
+  const isMobile = useIsMobile(1180);
   const confirm = useConfirm();
   const { anno: selectedYear } = useAnnoGlobale();
   const navigate = useNavigate();
@@ -1257,17 +1278,20 @@ export default function Fornitori() {
         // PR #5e850c8: filtri avanzati
         if (filterAnzianita !== 'tutti') params.append('stato_anagrafica', filterAnzianita);
         if (giorniNuovo && giorniNuovo !== 90) params.append('giorni_nuovo', String(giorniNuovo));
-        if (debouncedProdotto && debouncedProdotto.trim()) params.append('prodotto', debouncedProdotto.trim());
+        if (debouncedProdotto && debouncedProdotto.trim())
+          params.append('prodotto', debouncedProdotto.trim());
 
         const res = await api.get(`/api/suppliers/filtered?${params}`, {
           signal: controller.signal,
         });
         // Endpoint /filtered restituisce {items, count, totali, ...}
         setSuppliers(res.data.items || []);
-        setTotaliFiltrati(res.data.totali || {
-          totale_fornitori: 0,
-          attivi: 0,
-        });
+        setTotaliFiltrati(
+          res.data.totali || {
+            totale_fornitori: 0,
+            attivi: 0,
+          }
+        );
       } catch (error) {
         if (error.name !== 'CanceledError' && error.code !== 'ERR_CANCELED') {
           console.error('Error loading suppliers:', error);
@@ -1295,14 +1319,17 @@ export default function Fornitori() {
       params.append('limit', '1000');
       if (filterAnzianita !== 'tutti') params.append('stato_anagrafica', filterAnzianita);
       if (giorniNuovo && giorniNuovo !== 90) params.append('giorni_nuovo', String(giorniNuovo));
-      if (debouncedProdotto && debouncedProdotto.trim()) params.append('prodotto', debouncedProdotto.trim());
+      if (debouncedProdotto && debouncedProdotto.trim())
+        params.append('prodotto', debouncedProdotto.trim());
 
       const res = await api.get(`/api/suppliers/filtered?${params}`);
       setSuppliers(res.data.items || []);
-      setTotaliFiltrati(res.data.totali || {
-        totale_fornitori: 0,
-        attivi: 0,
-      });
+      setTotaliFiltrati(
+        res.data.totali || {
+          totale_fornitori: 0,
+          attivi: 0,
+        }
+      );
     } catch (error) {
       console.error('Error reloading suppliers:', error);
     } finally {
@@ -1385,7 +1412,9 @@ export default function Fornitori() {
         prev.map(s => (idFornitore(s) === supplierId ? { ...s, ...payload } : s))
       );
     } catch (error) {
-      toast.error('Errore aggiornamento metodo: ' + (error.response?.data?.detail || error.message));
+      toast.error(
+        'Errore aggiornamento metodo: ' + (error.response?.data?.detail || error.message)
+      );
     }
   };
 
@@ -1399,7 +1428,9 @@ export default function Fornitori() {
         )
       );
     } catch (error) {
-      toast.error('Errore aggiornamento magazzino: ' + (error.response?.data?.detail || error.message));
+      toast.error(
+        'Errore aggiornamento magazzino: ' + (error.response?.data?.detail || error.message)
+      );
     }
   };
 
@@ -1599,7 +1630,9 @@ export default function Fornitori() {
       const res = await api.get(`/api/suppliers/${idFornitore(supplier)}/fatturato?anno=${anno}`);
       setFatturatoModal({ open: true, fornitore: supplier, data: res.data, loading: false });
     } catch (error) {
-      toast.error('Errore caricamento fatturato: ' + (error.response?.data?.detail || error.message));
+      toast.error(
+        'Errore caricamento fatturato: ' + (error.response?.data?.detail || error.message)
+      );
       setFatturatoModal({ open: false, fornitore: null, data: null, loading: false });
     }
   };
@@ -1806,7 +1839,9 @@ export default function Fornitori() {
             data-testid="badge-totale"
           >
             <span style={{ opacity: 0.85 }}>Totale</span>
-            <span style={{ color: COLORS.accent, fontSize: 16 }}>{totaliFiltrati.totale_fornitori}</span>
+            <span style={{ color: COLORS.accent, fontSize: 16 }}>
+              {totaliFiltrati.totale_fornitori}
+            </span>
           </Badge>
           <Badge
             variant="neutral"
@@ -1909,12 +1944,11 @@ export default function Fornitori() {
               }}
             >
               <option value="tutti">Tutti i metodi</option>
-              {Object.entries(METODI_PAGAMENTO)
-                .map(([key, val]) => (
-                  <option key={key} value={key}>
-                    {val.label}
-                  </option>
-                ))}
+              {Object.entries(METODI_PAGAMENTO).map(([key, val]) => (
+                <option key={key} value={key}>
+                  {val.label}
+                </option>
+              ))}
             </select>
 
             {/* Filter Incomplete */}
@@ -1948,7 +1982,9 @@ export default function Fornitori() {
                 alignItems: 'center',
                 gap: '8px',
                 padding: '10px 14px',
-                border: filterSenzaMetodo ? `1px solid ${COLORS.warning}` : `1px solid ${COLORS.border}`,
+                border: filterSenzaMetodo
+                  ? `1px solid ${COLORS.warning}`
+                  : `1px solid ${COLORS.border}`,
                 borderRadius: BORDER_RADIUS.md,
                 cursor: 'pointer',
                 fontSize: '14px',
@@ -1996,7 +2032,9 @@ export default function Fornitori() {
           >
             {/* Segmented: Anzianità */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: 13, color: COLORS.primary, fontWeight: 600 }}>Anzianità:</span>
+              <span style={{ fontSize: 13, color: COLORS.primary, fontWeight: 600 }}>
+                Anzianità:
+              </span>
               {[
                 { k: 'tutti', l: 'Tutti' },
                 { k: 'nuovo', l: '🆕 Nuovi' },
@@ -2048,7 +2086,9 @@ export default function Fornitori() {
 
             {/* Ricerca prodotto venduto */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: '1 1 220px' }}>
-              <span style={{ fontSize: 13, color: COLORS.primary, fontWeight: 600 }}>Prodotto:</span>
+              <span style={{ fontSize: 13, color: COLORS.primary, fontWeight: 600 }}>
+                Prodotto:
+              </span>
               <input
                 type="text"
                 value={filtroProdotto}
@@ -2080,9 +2120,7 @@ export default function Fornitori() {
             </div>
 
             {/* Reset filtri avanzati */}
-            {(filterAnzianita !== 'tutti' ||
-              giorniNuovo !== 90 ||
-              filtroProdotto) && (
+            {(filterAnzianita !== 'tutti' || giorniNuovo !== 90 || filtroProdotto) && (
               <Button
                 type="button"
                 variant="outline"
@@ -2160,6 +2198,7 @@ export default function Fornitori() {
               testId="lista-fornitori"
               dati={filteredSuppliers}
               pageSize={50}
+              cardBreakpoint={1180}
               // la pagina si azzera SOLO cambiando i filtri: correggere o
               // eliminare un fornitore dalla seconda pagina non riporta
               // più alla prima (richiesta utente 18/07)
@@ -2176,7 +2215,17 @@ export default function Fornitori() {
                     const incompleto =
                       !(s.partita_iva || s.piva) || !s.comune || !s.email || !s.telefono;
                     return (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <span
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: 6,
+                          minWidth: 0,
+                          lineHeight: 1.25,
+                          overflowWrap: 'anywhere',
+                        }}
+                      >
                         {nome}
                         {s.cessato && (
                           <Badge variant="danger" style={{ fontSize: 10, padding: '2px 6px' }}>
@@ -2191,7 +2240,14 @@ export default function Fornitori() {
                       </span>
                     );
                   },
-                  tdStyle: { fontWeight: 600, color: COLORS.gray[800], fontSize: 14 },
+                  tdStyle: {
+                    fontWeight: 600,
+                    color: COLORS.gray[800],
+                    fontSize: 14,
+                    minWidth: 180,
+                    maxWidth: 260,
+                    whiteSpace: 'normal',
+                  },
                 },
                 {
                   // Vincolo mobile: P.IVA mai nelle card
@@ -2208,6 +2264,7 @@ export default function Fornitori() {
                   label: 'IBAN',
                   mono: true,
                   ruoloCard: 'omesso',
+                  hideDesktop: true,
                   render: s => s.iban || '-',
                   tdStyle: { fontSize: 12, color: COLORS.textMuted },
                 },
@@ -2215,6 +2272,7 @@ export default function Fornitori() {
                   key: 'email',
                   label: 'Email',
                   ruoloCard: 'omesso',
+                  hideDesktop: true,
                   render: s => s.email || '-',
                   tdStyle: { fontSize: 13, color: COLORS.textMuted },
                 },
@@ -2263,7 +2321,12 @@ export default function Fornitori() {
                   ruoloCard: 'dettaglio',
                   iconaCard: 'Residuo',
                   render: s => (
-                    <span style={{ color: (s.fatture_non_pagate || 0) > 0 ? COLORS.danger : COLORS.textMuted, fontWeight: 700 }}>
+                    <span
+                      style={{
+                        color: (s.fatture_non_pagate || 0) > 0 ? COLORS.danger : COLORS.textMuted,
+                        fontWeight: 700,
+                      }}
+                    >
                       {formatEuro(s.fatture_non_pagate || 0)}
                     </span>
                   ),
@@ -2307,6 +2370,7 @@ export default function Fornitori() {
                   label: 'Giorni',
                   align: 'center',
                   ruoloCard: 'dettaglio',
+                  hideDesktop: true,
                   render: s => s.giorni_pagamento || 30,
                 },
                 {
@@ -2480,7 +2544,9 @@ export default function Fornitori() {
                         margin: '0 auto',
                       }}
                     />
-                    <p style={{ marginTop: '16px', color: COLORS.textMuted }}>Caricamento fatturato...</p>
+                    <p style={{ marginTop: '16px', color: COLORS.textMuted }}>
+                      Caricamento fatturato...
+                    </p>
                   </div>
                 ) : fatturatoModal.data ? (
                   <div>
@@ -2495,13 +2561,20 @@ export default function Fornitori() {
                       }}
                     >
                       <div style={{ fontSize: '14px', color: COLORS.primary, marginBottom: '4px' }}>
-                        TOTALE FATTURATO {(fatturatoModal.data?.anno ?? '')}
+                        TOTALE FATTURATO {fatturatoModal.data?.anno ?? ''}
                       </div>
-                      <div style={{ fontSize: '32px', fontWeight: 700, color: COLORS.primary, fontFamily: FONT.mono }}>
+                      <div
+                        style={{
+                          fontSize: '32px',
+                          fontWeight: 700,
+                          color: COLORS.primary,
+                          fontFamily: FONT.mono,
+                        }}
+                      >
                         {formatEuro(fatturatoModal.data.totale_fatturato || 0)}
                       </div>
                       <div style={{ fontSize: '14px', color: COLORS.primary, marginTop: '8px' }}>
-                        {(fatturatoModal.data?.numero_fatture ?? 0)} fatture
+                        {fatturatoModal.data?.numero_fatture ?? 0} fatture
                       </div>
                     </div>
 
@@ -2558,7 +2631,11 @@ export default function Fornitori() {
                                 <span style={{ fontWeight: 600, color: COLORS.gray[800] }}>
                                   {formatEuro(m.totale || 0)}
                                   <span
-                                    style={{ fontWeight: 400, color: COLORS.textSubtle, marginLeft: '8px' }}
+                                    style={{
+                                      fontWeight: 400,
+                                      color: COLORS.textSubtle,
+                                      marginLeft: '8px',
+                                    }}
                                   >
                                     ({m.numero_fatture} fatt.)
                                   </span>
@@ -2570,7 +2647,9 @@ export default function Fornitori() {
                       )}
 
                     {(fatturatoModal.data?.numero_fatture ?? 0) === 0 && (
-                      <div style={{ textAlign: 'center', color: COLORS.textMuted, padding: '20px' }}>
+                      <div
+                        style={{ textAlign: 'center', color: COLORS.textMuted, padding: '20px' }}
+                      >
                         Nessuna fattura registrata per questo anno
                       </div>
                     )}
@@ -2721,7 +2800,12 @@ export default function Fornitori() {
               >
                 <div>
                   <label
-                    style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}
+                    style={{
+                      fontSize: 11,
+                      color: COLORS.textMuted,
+                      display: 'block',
+                      marginBottom: 4,
+                    }}
                   >
                     Anno
                   </label>
@@ -2756,7 +2840,12 @@ export default function Fornitori() {
                 </div>
                 <div>
                   <label
-                    style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}
+                    style={{
+                      fontSize: 11,
+                      color: COLORS.textMuted,
+                      display: 'block',
+                      marginBottom: 4,
+                    }}
                   >
                     Data Da
                   </label>
@@ -2779,7 +2868,12 @@ export default function Fornitori() {
                 </div>
                 <div>
                   <label
-                    style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}
+                    style={{
+                      fontSize: 11,
+                      color: COLORS.textMuted,
+                      display: 'block',
+                      marginBottom: 4,
+                    }}
                   >
                     Data A
                   </label>
@@ -2802,7 +2896,12 @@ export default function Fornitori() {
                 </div>
                 <div>
                   <label
-                    style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}
+                    style={{
+                      fontSize: 11,
+                      color: COLORS.textMuted,
+                      display: 'block',
+                      marginBottom: 4,
+                    }}
                   >
                     Importo Min
                   </label>
@@ -2827,7 +2926,12 @@ export default function Fornitori() {
                 </div>
                 <div>
                   <label
-                    style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}
+                    style={{
+                      fontSize: 11,
+                      color: COLORS.textMuted,
+                      display: 'block',
+                      marginBottom: 4,
+                    }}
                   >
                     Importo Max
                   </label>
@@ -2852,7 +2956,12 @@ export default function Fornitori() {
                 </div>
                 <div>
                   <label
-                    style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}
+                    style={{
+                      fontSize: 11,
+                      color: COLORS.textMuted,
+                      display: 'block',
+                      marginBottom: 4,
+                    }}
                   >
                     Tipo
                   </label>
@@ -2876,7 +2985,12 @@ export default function Fornitori() {
                     <option value="nota_credito">Solo Note Credito</option>
                   </select>
                 </div>
-                <Button variant="primary" size="sm" onClick={reloadEstratto} disabled={estrattoModal.loading}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={reloadEstratto}
+                  disabled={estrattoModal.loading}
+                >
                   🔍 Filtra
                 </Button>
               </div>
@@ -2974,7 +3088,8 @@ export default function Fornitori() {
                               <Td align="center">
                                 <Badge
                                   variant={
-                                    f.metodo_pagamento === 'cassa' || f.metodo_pagamento === 'contanti'
+                                    f.metodo_pagamento === 'cassa' ||
+                                    f.metodo_pagamento === 'contanti'
                                       ? 'success'
                                       : 'info'
                                   }
@@ -2984,15 +3099,24 @@ export default function Fornitori() {
                               </Td>
                               <Td align="center">
                                 {f.riconciliato ? (
-                                  <Badge variant="success" style={{ background: COLORS.success, color: 'white' }}>
+                                  <Badge
+                                    variant="success"
+                                    style={{ background: COLORS.success, color: 'white' }}
+                                  >
                                     ✓ RICONCILIATA
                                   </Badge>
                                 ) : f.pagato ? (
-                                  <Badge variant="success" style={{ background: COLORS.success, color: 'white' }}>
+                                  <Badge
+                                    variant="success"
+                                    style={{ background: COLORS.success, color: 'white' }}
+                                  >
                                     Pagata
                                   </Badge>
                                 ) : (
-                                  <Badge variant="warning" style={{ background: COLORS.warning, color: 'white' }}>
+                                  <Badge
+                                    variant="warning"
+                                    style={{ background: COLORS.warning, color: 'white' }}
+                                  >
                                     Da pagare
                                   </Badge>
                                 )}
@@ -3005,9 +3129,7 @@ export default function Fornitori() {
                                     <Button
                                       variant="primary"
                                       size="sm"
-                                      onClick={() =>
-                                        setFatturaView({ id: f.id, numero: f.numero })
-                                      }
+                                      onClick={() => setFatturaView({ id: f.id, numero: f.numero })}
                                       data-testid={`btn-vedi-fattura-${f.id}`}
                                       style={{ padding: '3px 8px', fontSize: 10 }}
                                       title="Visualizza la fattura"
@@ -3015,121 +3137,135 @@ export default function Fornitori() {
                                       👁 Vedi
                                     </Button>
                                   )}
-                                {!f.pagato && !f.is_nota_credito && (
-                                  <>
-                                    <Button
-                                      variant="success"
-                                      size="sm"
-                                      onClick={async () => {
-                                        if (
-                                          !(await confirm({
-                                            title: 'Pagamento in cassa',
-                                            message: `Confermi pagamento CASSA di ${formatEuro(f.importo_totale)} per fattura ${f.numero}?`,
-                                          }))
-                                        )
-                                          return;
-                                        try {
-                                          await api.post('/api/fatture-ricevute/paga-manuale', {
-                                            fattura_id: f.id,
-                                            metodo: 'cassa',
-                                            importo: f.importo_totale,
-                                            fornitore:
-                                              estrattoModal.fornitore?.ragione_sociale ||
-                                              estrattoModal.fornitore?.denominazione ||
-                                              '',
-                                            numero_fattura: f.numero || '',
-                                            data_pagamento: new Date().toISOString().split('T')[0],
-                                          });
-                                          // Aggiorna SOLO la riga: il ricaricamento
-                                          // completo faceva perdere la posizione
-                                          // nella lista (bug utente 17/07/2026)
-                                          setEstrattoModal(prev => ({
-                                            ...prev,
-                                            data: {
-                                              ...prev.data,
-                                              estratto: (prev.data?.estratto || []).map(x =>
-                                                x.id === f.id
-                                                  ? { ...x, pagato: true, metodo_pagamento: 'cassa' }
-                                                  : x),
-                                            },
-                                          }));
-                                        } catch (e) {
-                                          toast.error(
-                                            'Errore: ' + (e.response?.data?.detail || e.message)
-                                          );
-                                        }
-                                      }}
-                                      style={{ padding: '3px 8px', fontSize: 10 }}
-                                      title="Segna come pagata in contanti"
-                                    >
-                                      💵 Cassa
-                                    </Button>
-                                    <Button
-                                      variant="info"
-                                      size="sm"
-                                      onClick={async () => {
-                                        if (
-                                          !(await confirm({
-                                            title: 'Pagamento in banca',
-                                            message: `Confermi pagamento BANCA di ${formatEuro(f.importo_totale)} per fattura ${f.numero}?`,
-                                          }))
-                                        )
-                                          return;
-                                        try {
-                                          await api.post('/api/fatture-ricevute/paga-manuale', {
-                                            fattura_id: f.id,
-                                            metodo: 'banca',
-                                            importo: f.importo_totale,
-                                            fornitore:
-                                              estrattoModal.fornitore?.ragione_sociale ||
-                                              estrattoModal.fornitore?.denominazione ||
-                                              '',
-                                            numero_fattura: f.numero || '',
-                                            data_pagamento: new Date().toISOString().split('T')[0],
-                                          });
-                                          // Aggiorna SOLO la riga: il ricaricamento
-                                          // completo faceva perdere la posizione
-                                          // nella lista (bug utente 17/07/2026)
-                                          setEstrattoModal(prev => ({
-                                            ...prev,
-                                            data: {
-                                              ...prev.data,
-                                              estratto: (prev.data?.estratto || []).map(x =>
-                                                x.id === f.id
-                                                  ? { ...x, pagato: true, metodo_pagamento: 'banca' }
-                                                  : x),
-                                            },
-                                          }));
-                                        } catch (e) {
-                                          toast.error(
-                                            'Errore: ' + (e.response?.data?.detail || e.message)
-                                          );
-                                        }
-                                      }}
-                                      style={{ padding: '3px 8px', fontSize: 10 }}
-                                      title="Segna come pagata con bonifico"
-                                    >
-                                      🏦 Banca
-                                    </Button>
-                                  </>
-                                )}
-                                {/* Elimina fattura direttamente dall'estratto
+                                  {!f.pagato && !f.is_nota_credito && (
+                                    <>
+                                      <Button
+                                        variant="success"
+                                        size="sm"
+                                        onClick={async () => {
+                                          if (
+                                            !(await confirm({
+                                              title: 'Pagamento in cassa',
+                                              message: `Confermi pagamento CASSA di ${formatEuro(f.importo_totale)} per fattura ${f.numero}?`,
+                                            }))
+                                          )
+                                            return;
+                                          try {
+                                            await api.post('/api/fatture-ricevute/paga-manuale', {
+                                              fattura_id: f.id,
+                                              metodo: 'cassa',
+                                              importo: f.importo_totale,
+                                              fornitore:
+                                                estrattoModal.fornitore?.ragione_sociale ||
+                                                estrattoModal.fornitore?.denominazione ||
+                                                '',
+                                              numero_fattura: f.numero || '',
+                                              data_pagamento: new Date()
+                                                .toISOString()
+                                                .split('T')[0],
+                                            });
+                                            // Aggiorna SOLO la riga: il ricaricamento
+                                            // completo faceva perdere la posizione
+                                            // nella lista (bug utente 17/07/2026)
+                                            setEstrattoModal(prev => ({
+                                              ...prev,
+                                              data: {
+                                                ...prev.data,
+                                                estratto: (prev.data?.estratto || []).map(x =>
+                                                  x.id === f.id
+                                                    ? {
+                                                        ...x,
+                                                        pagato: true,
+                                                        metodo_pagamento: 'cassa',
+                                                      }
+                                                    : x
+                                                ),
+                                              },
+                                            }));
+                                          } catch (e) {
+                                            toast.error(
+                                              'Errore: ' + (e.response?.data?.detail || e.message)
+                                            );
+                                          }
+                                        }}
+                                        style={{ padding: '3px 8px', fontSize: 10 }}
+                                        title="Segna come pagata in contanti"
+                                      >
+                                        💵 Cassa
+                                      </Button>
+                                      <Button
+                                        variant="info"
+                                        size="sm"
+                                        onClick={async () => {
+                                          if (
+                                            !(await confirm({
+                                              title: 'Pagamento in banca',
+                                              message: `Confermi pagamento BANCA di ${formatEuro(f.importo_totale)} per fattura ${f.numero}?`,
+                                            }))
+                                          )
+                                            return;
+                                          try {
+                                            await api.post('/api/fatture-ricevute/paga-manuale', {
+                                              fattura_id: f.id,
+                                              metodo: 'banca',
+                                              importo: f.importo_totale,
+                                              fornitore:
+                                                estrattoModal.fornitore?.ragione_sociale ||
+                                                estrattoModal.fornitore?.denominazione ||
+                                                '',
+                                              numero_fattura: f.numero || '',
+                                              data_pagamento: new Date()
+                                                .toISOString()
+                                                .split('T')[0],
+                                            });
+                                            // Aggiorna SOLO la riga: il ricaricamento
+                                            // completo faceva perdere la posizione
+                                            // nella lista (bug utente 17/07/2026)
+                                            setEstrattoModal(prev => ({
+                                              ...prev,
+                                              data: {
+                                                ...prev.data,
+                                                estratto: (prev.data?.estratto || []).map(x =>
+                                                  x.id === f.id
+                                                    ? {
+                                                        ...x,
+                                                        pagato: true,
+                                                        metodo_pagamento: 'banca',
+                                                      }
+                                                    : x
+                                                ),
+                                              },
+                                            }));
+                                          } catch (e) {
+                                            toast.error(
+                                              'Errore: ' + (e.response?.data?.detail || e.message)
+                                            );
+                                          }
+                                        }}
+                                        style={{ padding: '3px 8px', fontSize: 10 }}
+                                        title="Segna come pagata con bonifico"
+                                      >
+                                        🏦 Banca
+                                      </Button>
+                                    </>
+                                  )}
+                                  {/* Elimina fattura direttamente dall'estratto
                                     (richiesta utente 14/07/2026): stessa
                                     validazione business-rule del backend —
                                     fatture pagate/con Prima Nota richiedono
                                     conferma esplicita "forza comunque". */}
-                                {f.id && (
-                                  <Button
-                                    variant="danger"
-                                    size="sm"
-                                    onClick={() => eliminaFatturaEstratto(f)}
-                                    data-testid={`btn-elimina-fattura-${f.id}`}
-                                    style={{ padding: '3px 8px', fontSize: 10 }}
-                                    title="Elimina fattura"
-                                  >
-                                    🗑️
-                                  </Button>
-                                )}
+                                  {f.id && (
+                                    <Button
+                                      variant="danger"
+                                      size="sm"
+                                      onClick={() => eliminaFatturaEstratto(f)}
+                                      data-testid={`btn-elimina-fattura-${f.id}`}
+                                      style={{ padding: '3px 8px', fontSize: 10 }}
+                                      title="Elimina fattura"
+                                    >
+                                      🗑️
+                                    </Button>
+                                  )}
                                 </div>
                               </Td>
                             </tr>
