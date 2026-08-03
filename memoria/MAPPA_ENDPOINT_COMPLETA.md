@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1041 endpoint** in **109 gruppi**.
+> Totale **1042 endpoint** in **109 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 652 · ext esterni = 90 · — da verificare = 299
+**Riepilogo uso:** ✓ frontend = 652 · ext esterni = 90 · — da verificare = 300
 
 ## AI Parser  (11)
 
@@ -253,11 +253,12 @@
 | DELETE | `/api/cash/movements/{movement_id}` | ✓ | cash |
 | GET | `/api/cash/stats` | ✓ | cash |
 
-## Cedolini Drive  (2)
+## Cedolini Drive  (3)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/cedolini/drive/quadratura-completa` | — | drive_cedolini |
+| GET | `/api/cedolini/drive/status` | — | drive_cedolini |
 | POST | `/api/cedolini/drive/sync` | — | drive_cedolini |
 
 ## Centri di Costo  (10)

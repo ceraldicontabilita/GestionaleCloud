@@ -196,6 +196,43 @@ def estrai_ferie_rol_from_text(text: str) -> Dict[str, Any]:
 # 2. PROCESSAMENTO CEDOLINO COMPLETO V2
 # ============================================================
 
+def _cedolino_identity_filter(
+    codice_fiscale: str,
+    mese: int,
+    anno: int,
+    tipo_cedolino: str,
+) -> Dict[str, Any]:
+    """Identita' logica senza confondere mensile, 13a, 14a o acconto."""
+    filtro: Dict[str, Any] = {
+        "codice_fiscale": codice_fiscale,
+        "mese": int(mese),
+        "anno": int(anno),
+    }
+    if tipo_cedolino == "mensile":
+        filtro["$or"] = [
+            {"tipo_cedolino": "mensile"},
+            {"tipo_cedolino": None},
+            {"tipo_cedolino": {"$exists": False}},
+        ]
+    else:
+        filtro["tipo_cedolino"] = tipo_cedolino
+    return filtro
+
+
+def _preserva_stato_pagamenti(
+    cedolino_esistente: Dict[str, Any],
+    cedolino_record: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Il reimport aggiorna il documento, non cancella pagamenti reali."""
+    for field in (
+        "pagato", "importo_pagato", "saldo_residuo", "pagamenti",
+        "metodo_pagamento", "data_pagamento", "riconciliato_auto",
+        "riconciliato", "movimento_banca_id", "bank_transaction_id",
+    ):
+        if field in cedolino_esistente:
+            cedolino_record[field] = cedolino_esistente[field]
+    return cedolino_record
+
 async def processa_cedolino_v2(
     db,
     cedolino_data: Dict[str, Any],
@@ -227,6 +264,7 @@ async def processa_cedolino_v2(
         nome = cedolino_data.get("nome_dipendente") or ""
         mese = cedolino_data.get("mese")
         anno = cedolino_data.get("anno")
+        tipo_cedolino = (cedolino_data.get("tipo_cedolino") or "mensile").strip().lower()
         netto = float(cedolino_data.get("netto_mese") or cedolino_data.get("netto") or 0)
         lordo = float(cedolino_data.get("lordo") or 0)
         
@@ -322,9 +360,11 @@ async def processa_cedolino_v2(
         result["dipendente_id"] = dipendente_id
         
         # --- 2. Salva cedolino COMPLETO ---
+        cedolino_filter = _cedolino_identity_filter(cf, mese, anno, tipo_cedolino)
+
         cedolino_esistente = await db["cedolini"].find_one(
-            {"codice_fiscale": cf, "mese": int(mese), "anno": int(anno)},
-            {"_id": 0, "id": 1},
+            cedolino_filter,
+            {"_id": 0},
         )
         cedolino_id = (cedolino_esistente or {}).get("id") or str(uuid.uuid4())
         
@@ -336,6 +376,7 @@ async def processa_cedolino_v2(
             "mese": int(mese),
             "anno": int(anno),
             "periodo": f"{int(mese):02d}/{int(anno)}",
+            "tipo_cedolino": tipo_cedolino,
             # Importi principali
             "netto": netto,
             "netto_mese": netto,
@@ -372,10 +413,20 @@ async def processa_cedolino_v2(
             "pagamenti": [],  # Lista acconti/pagamenti
             # Meta
             "filename": filename,
+            "source_path": cedolino_data.get("source_path") or filename,
+            "source_container": cedolino_data.get("source_container"),
+            "source_page_start": cedolino_data.get("source_page_start", 1),
+            "source_page_end": cedolino_data.get("source_page_end", 1),
+            "source_document_pages": cedolino_data.get("source_document_pages", 1),
             "formato": cedolino_data.get("formato_rilevato"),
             "source": "cedolino_v2",
-            "created_at": datetime.now(timezone.utc).isoformat()
+            "created_at": (cedolino_esistente or {}).get("created_at") or datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
+
+        # Un reimport serve ad arricchire dati e PDF, mai a cancellare una
+        # riconciliazione, un acconto o un pagamento gia' registrato.
+        _preserva_stato_pagamenti(cedolino_esistente or {}, cedolino_record)
 
         # Conserva il PDF originale nel documento cedolino. Le liste non
         # restituiscono questo campo pesante: viene letto solo dall'endpoint
@@ -386,7 +437,7 @@ async def processa_cedolino_v2(
         
         # Upsert per evitare duplicati
         await db["cedolini"].update_one(
-            {"codice_fiscale": cf, "mese": int(mese), "anno": int(anno)},
+            cedolino_filter,
             {"$set": cedolino_record},
             upsert=True
         )
@@ -402,10 +453,26 @@ async def processa_cedolino_v2(
         # seconda di quale canale processa il cedolino per primo. Ora basta
         # un movimento esistente per lo stesso dipendente+mese+anno, da
         # qualunque canale sia nato.
+        pn_tipo_filter = (
+            {"$in": [None, "mensile"]}
+            if tipo_cedolino == "mensile"
+            else tipo_cedolino
+        )
         existing_pn = await db["prima_nota_salari"].find_one({
             "$or": [
-                {"codice_fiscale": cf, "mese": int(mese), "anno": int(anno), "tipo": "stipendio"},
-                {"dipendente_id": dipendente_id, "mese": int(mese), "anno": int(anno)},
+                {
+                    "codice_fiscale": cf,
+                    "mese": int(mese),
+                    "anno": int(anno),
+                    "tipo": "stipendio",
+                    "tipo_cedolino": pn_tipo_filter,
+                },
+                {
+                    "dipendente_id": dipendente_id,
+                    "mese": int(mese),
+                    "anno": int(anno),
+                    "tipo_cedolino": pn_tipo_filter,
+                },
             ]
         })
         
@@ -427,6 +494,7 @@ async def processa_cedolino_v2(
                 "saldo": -netto,  # Debito verso dipendente
                 "progressivo": 0,
                 "tipo": "stipendio",
+                "tipo_cedolino": tipo_cedolino,
                 "riconciliato": False,
                 "descrizione": f"Stipendio {nome} - {int(mese):02d}/{anno}",
                 "cedolino_id": cedolino_id,
@@ -465,7 +533,7 @@ async def processa_cedolino_v2(
             result["riconciliato"] = True
             # Aggiorna cedolino come pagato
             await db["cedolini"].update_one(
-                {"codice_fiscale": cf, "mese": int(mese), "anno": int(anno)},
+                {"id": cedolino_id},
                 {"$set": {
                     "pagato": True,
                     "importo_pagato": netto,

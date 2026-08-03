@@ -405,6 +405,7 @@ async def processa_nuovi_documenti(db) -> Dict[str, Any]:
             {
                 "category": "busta_paga", 
                 "processed": {"$ne": True},
+                "status": {"$nin": ["errore_parser"]},
                 "pdf_data": {"$exists": True, "$nin": [None, ""]}
             },
             {"_id": 0}
@@ -422,10 +423,12 @@ async def processa_nuovi_documenti(db) -> Dict[str, Any]:
                 res = await processa_tutti_cedolini_pdf(
                     db=db,
                     pdf_data=pdf_data,
-                    filename=filename
+                    filename=filename,
+                    source_path=doc.get("source_path") or filename,
+                    source_container=doc.get("source_container") or "",
                 )
                 
-                if res.get("success"):
+                if res.get("success") and res.get("cedolini_processati", 0) > 0:
                     results["buste_paga"] += res.get("cedolini_processati", 0)
                     results["anagrafiche_create"] += res.get("anagrafiche_create", 0)
                     results["prima_nota_create"] += res.get("prima_nota_create", 0)
@@ -438,15 +441,35 @@ async def processa_nuovi_documenti(db) -> Dict[str, Any]:
                             "processed": True,
                             "status": "processato",
                             "processed_at": datetime.now(timezone.utc).isoformat(),
-                            "cedolini_estratti": res.get("cedolini_processati", 0)
+                            "cedolini_estratti": res.get("cedolini_processati", 0),
+                            "parser_errors": res.get("errori", []),
                         }}
                     )
                 else:
-                    for err in res.get("errori", []):
+                    parser_errors = res.get("errori", []) or ["Nessun cedolino riconosciuto"]
+                    for err in parser_errors:
                         results["errori"].append(f"{filename}: {err}")
+                    await db["documents_inbox"].update_one(
+                        {"id": doc["id"]},
+                        {"$set": {
+                            "processed": False,
+                            "status": "errore_parser",
+                            "parser_errors": parser_errors,
+                            "parser_checked_at": datetime.now(timezone.utc).isoformat(),
+                        }},
+                    )
                         
             except Exception as e:
                 results["errori"].append(f"Busta paga {filename}: {e}")
+                await db["documents_inbox"].update_one(
+                    {"id": doc["id"]},
+                    {"$set": {
+                        "processed": False,
+                        "status": "errore_parser",
+                        "parser_errors": [str(e)],
+                        "parser_checked_at": datetime.now(timezone.utc).isoformat(),
+                    }},
+                )
                 
     except Exception as e:
         results["errori"].append(f"Errore buste paga: {e}")

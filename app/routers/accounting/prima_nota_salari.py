@@ -196,22 +196,32 @@ async def get_prima_nota_salari(
         query_pdf,
         {
             "_id": 0, "id": 1, "codice_fiscale": 1, "mese": 1,
-            "anno": 1, "nome_dipendente": 1, "dipendente_id": 1,
+            "anno": 1, "tipo_cedolino": 1, "nome_dipendente": 1,
+            "dipendente_id": 1,
         },
     ).to_list(5000)
     disponibili = {d.get("id") for d in docs if d.get("id")}
     disponibili_per_periodo = {
-        (d.get("codice_fiscale"), d.get("mese"), d.get("anno"))
+        (
+            d.get("codice_fiscale"), d.get("mese"), d.get("anno"),
+            d.get("tipo_cedolino") or "mensile",
+        )
         for d in docs if d.get("codice_fiscale")
     }
     cedolini_per_id = {d.get("id"): d for d in docs if d.get("id")}
     cedolini_per_periodo = {
-        (d.get("codice_fiscale"), d.get("mese"), d.get("anno")): d
+        (
+            d.get("codice_fiscale"), d.get("mese"), d.get("anno"),
+            d.get("tipo_cedolino") or "mensile",
+        ): d
         for d in docs if d.get("codice_fiscale")
     }
     from app.services.stipendi_bonifici import riconciliazione_salario_verificata
     for salario in salari:
-        chiave = (salario.get("codice_fiscale"), salario.get("mese"), salario.get("anno"))
+        chiave = (
+            salario.get("codice_fiscale"), salario.get("mese"), salario.get("anno"),
+            salario.get("tipo_cedolino") or "mensile",
+        )
         cedolino = cedolini_per_id.get(salario.get("cedolino_id")) or cedolini_per_periodo.get(chiave)
         if cedolino and not (salario.get("dipendente_nome") or salario.get("dipendente")):
             salario["dipendente_nome"] = cedolino.get("nome_dipendente")
@@ -247,7 +257,10 @@ async def get_cedolino_pdf(
     db = Database.get_db()
     salario = await db["prima_nota_salari"].find_one(
         {"id": record_id},
-        {"_id": 0, "cedolino_id": 1, "codice_fiscale": 1, "mese": 1, "anno": 1},
+        {
+            "_id": 0, "cedolino_id": 1, "codice_fiscale": 1,
+            "mese": 1, "anno": 1, "tipo_cedolino": 1,
+        },
     )
     if not salario:
         raise HTTPException(status_code=404, detail="Riga salario non trovata")
@@ -259,13 +272,16 @@ async def get_cedolino_pdf(
             {"_id": 0, "pdf_data": 1},
         )
     if not cedolino or not cedolino.get("pdf_data"):
+        from app.services.salari_unificati_v2 import _cedolino_identity_filter
+        fallback_query = _cedolino_identity_filter(
+            salario.get("codice_fiscale"),
+            salario.get("mese"),
+            salario.get("anno"),
+            salario.get("tipo_cedolino") or "mensile",
+        )
+        fallback_query["pdf_data"] = {"$exists": True, "$nin": [None, ""]}
         cedolino = await db["cedolini"].find_one(
-            {
-                "codice_fiscale": salario.get("codice_fiscale"),
-                "mese": salario.get("mese"),
-                "anno": salario.get("anno"),
-                "pdf_data": {"$exists": True, "$nin": [None, ""]},
-            },
+            fallback_query,
             {"_id": 0, "pdf_data": 1},
         )
     if not cedolino or not cedolino.get("pdf_data"):

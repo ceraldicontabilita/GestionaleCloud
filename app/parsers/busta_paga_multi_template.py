@@ -1145,6 +1145,7 @@ def extract_summary(parsed_data: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "template": parsed_data.get("template", "unknown"),
+        "tipo_cedolino": parsed_data.get("tipo_cedolino", "mensile"),
         "num_pages": parsed_data.get("num_pages", 1),
         "dipendente_nome": dipendente.get("nome_completo"),
         "codice_fiscale": dipendente.get("codice_fiscale"),

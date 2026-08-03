@@ -11,6 +11,10 @@ Verifica:
 """
 import base64
 import hashlib
+import io
+import zipfile
+
+import pytest
 
 from app.services import drive_cedolini_ingest as ing
 
@@ -57,6 +61,51 @@ def test_build_inbox_doc_hash_diverso_per_contenuti_diversi():
     d2 = ing.build_inbox_doc(b"cedolino B", "b.pdf")
     assert d1["file_hash"] != d2["file_hash"]
     assert d1["id"] != d2["id"]
+
+
+def test_zip_annidato_preserva_percorso_e_tutti_i_pdf():
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("anno/a/cedolino.pdf", b"%PDF-primo")
+        archive.writestr("anno/b/cedolino.pdf", b"%PDF-secondo")
+        archive.writestr("note.txt", b"ignorato")
+
+    estratti = list(ing.iter_pdf_members(buffer.getvalue()))
+
+    assert [path for path, _ in estratti] == [
+        "anno/a/cedolino.pdf",
+        "anno/b/cedolino.pdf",
+    ]
+    assert [content for _, content in estratti] == [b"%PDF-primo", b"%PDF-secondo"]
+
+
+def test_zip_rifiuta_path_insicuro():
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("../cedolino.pdf", b"%PDF-dati")
+
+    assert list(ing.iter_pdf_members(buffer.getvalue())) == []
+
+
+def test_zip_rifiuta_falso_pdf_senza_importarlo():
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("cedolino.pdf", b"non e un pdf")
+
+    with pytest.raises(ValueError, match="contenuto non valido"):
+        list(ing.iter_pdf_members(buffer.getvalue()))
+
+
+def test_build_inbox_doc_conserva_provenienza_zip():
+    doc = ing.build_inbox_doc(
+        b"%PDF-dati",
+        "cedolino.pdf",
+        source_path="storico/2025/cedolino.pdf",
+        source_container="Cedolini_riorganizzati.zip",
+    )
+
+    assert doc["source_path"] == "storico/2025/cedolino.pdf"
+    assert doc["source_container"] == "Cedolini_riorganizzati.zip"
 
 
 # ── Configurazione ───────────────────────────────────────────────────────────
