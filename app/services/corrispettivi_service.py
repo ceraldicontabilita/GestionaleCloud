@@ -83,6 +83,51 @@ class CorrispettiviService:
         content_hash = hashlib.sha256(xml_content).hexdigest()
         existing = await self.corrispettivi.find_one({"content_hash": content_hash})
         if existing:
+            # Recupero conservativo dei PeriodoInattivo gia' importati dal
+            # vecchio parser con data odierna: non sono vendite e non devono
+            # alterare Prima Nota. L'hash deve essere identico e la data vera
+            # deve appartenere a un anno storico rispetto a quello attivo.
+            if applica_filtro_anno and parsed.get("_periodo_inattivo"):
+                from app.services.config_import import get_anno_importazione_attivo
+                anno_attivo = await get_anno_importazione_attivo(self.db)
+                data_reale = parsed.get("data") or ""
+                anno_reale = int(data_reale[:4]) if data_reale[:4].isdigit() else None
+                if anno_reale and anno_reale != anno_attivo:
+                    from app.routers.invoices.corrispettivi_helpers import (
+                        _delete_prima_nota_for_corrispettivo,
+                    )
+                    corr_id = existing.get("id")
+                    await _delete_prima_nota_for_corrispettivo(
+                        self.db, corr_id, existing.get("data", "")
+                    )
+                    await self.corrispettivi.update_one(
+                        {"id": corr_id},
+                        {"$set": {
+                            "data": data_reale,
+                            "progressivo": parsed.get("progressivo", ""),
+                            "id_dispositivo": parsed.get("id_dispositivo", ""),
+                            "totale": parsed.get("totale", 0),
+                            "totale_complessivo": parsed.get("totale", 0),
+                            "pagato_contanti": parsed.get("pagato_contanti", 0),
+                            "pagato_pos": parsed.get("pagato_pos", 0),
+                            "non_riscosso": parsed.get("non_riscosso", 0),
+                            "totale_iva": parsed.get("totale_iva", 0),
+                            "imponibile": parsed.get("imponibile", 0),
+                            "riepilogo_iva": parsed.get("riepilogo_iva", []),
+                            "status": "archiviata",
+                            "stato_import": "archivio_storico",
+                            "prima_nota_id": None,
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                        }},
+                    )
+                    return {
+                        "status": "archiviata",
+                        "corrispettivo_id": str(corr_id),
+                        "data": data_reale,
+                        "totale": parsed.get("totale", 0),
+                        "prima_nota_id": None,
+                        "message": "Periodo inattivo storico riallineato dal documento originale",
+                    }
             return {
                 "status": "duplicate",
                 "corrispettivo_id": str(existing.get("id")),
@@ -409,6 +454,7 @@ class CorrispettiviService:
             "riepilogo_iva": parsed.get("riepilogo_iva", []),
             "progressivo": parsed.get("numero_documento", ""),
             "id_dispositivo": parsed.get("matricola_rt", ""),
+            "_periodo_inattivo": bool(parsed.get("periodo_inattivo")),
         }
     
     async def _create_prima_nota_entry(self, corr: Dict[str, Any]) -> Optional[str]:

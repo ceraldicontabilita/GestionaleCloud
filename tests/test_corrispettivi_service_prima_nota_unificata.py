@@ -6,6 +6,7 @@ Leggeva pagato_pos invece di pagato_elettronico e non creava MAI la riga
 in prima_nota_banca (mai vista da Coerenza POS). Ora delega alla stessa
 implementazione condivisa: questo test verifica che il fix sia effettivo."""
 import asyncio
+import hashlib
 
 from mongomock_motor import AsyncMongoMockClient
 
@@ -129,6 +130,43 @@ def test_parser_periodo_inattivo_ade_legge_data_e_matricola_reali():
     assert parsed["id_dispositivo"] == "99MEY026532"
     assert parsed["progressivo"] == "1354"
     assert parsed["totale"] == 0
+
+
+def test_reimport_periodo_inattivo_ripara_solo_il_duplicato_storico():
+    xml = b'''<?xml version="1.0" encoding="UTF-8"?>
+    <n1:DatiCorrispettivi xmlns:n1="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/corrispettivi/dati/v1.0" versione="COR10">
+      <Trasmissione>
+        <Progressivo>1354</Progressivo>
+        <Dispositivo><Tipo>RT</Tipo><IdDispositivo>99MEY026532</IdDispositivo></Dispositivo>
+      </Trasmissione>
+      <PeriodoInattivo><Dal>2023-01-01T00:00:00+01:00</Dal><Al>2023-01-01T23:59:59+01:00</Al></PeriodoInattivo>
+      <DataOraRilevazione>2023-01-02T06:26:37+01:00</DataOraRilevazione>
+      <DatiRT><Totali><NumeroDocCommerciali>0</NumeroDocCommerciali></Totali></DatiRT>
+    </n1:DatiCorrispettivi>'''
+    db = _FakeDb()
+    db["sistema_stato"].docs = [
+        {"chiave": "config_import_anno_attivo", "anno": 2026}
+    ]
+    db["corrispettivi"].docs = [{
+        "id": "corr-errato",
+        "content_hash": hashlib.sha256(xml).hexdigest(),
+        "data": "2026-08-03",
+        "totale": 0,
+        "entity_status": "active",
+        "prima_nota_id": None,
+    }]
+    svc = CorrispettiviService(db=db)
+
+    esito = _run(svc.process_xml(
+        xml, "periodo_inattivo.xml", applica_filtro_anno=True
+    ))
+
+    assert esito["status"] == "archiviata"
+    corretto = db["corrispettivi"].docs[0]
+    assert corretto["data"] == "2023-01-02"
+    assert corretto["id_dispositivo"] == "99MEY026532"
+    assert corretto["status"] == "archiviata"
+    assert corretto["stato_import"] == "archivio_storico"
 
 
 def _run(c):
