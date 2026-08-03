@@ -271,28 +271,6 @@ async def processa_cedolino_v2(
         if not cf or not mese or not anno or netto == 0:
             result["errore"] = "Dati mancanti (CF, mese, anno, o netto=0)"
             return result
-
-        # Il database condiviso usa il modello cedolini canonico con PDF in
-        # GridFS. In quel caso non deve nascere una seconda copia legacy nelle
-        # collezioni cedolini/prima_nota_salari: la UI la legge tramite adapter.
-        from app.services.cedolini_canonical_compat import (
-            store_canonical_payroll,
-            uses_canonical_payroll_schema,
-        )
-        if await uses_canonical_payroll_schema(db):
-            if not pdf_data:
-                result["errore"] = "PDF sorgente obbligatorio per l'archivio cedolini canonico"
-                return result
-            canonical = await store_canonical_payroll(
-                db,
-                cedolino_data,
-                filename=filename,
-                pdf_data=pdf_data,
-            )
-            result.update(canonical)
-            result["dipendente_id"] = cf
-            result["errore"] = None
-            return result
         
         # --- Estrai dati aggiuntivi dal testo PDF ---
         dati_extra = {}
