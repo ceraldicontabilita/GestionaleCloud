@@ -31,6 +31,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.get("/drive/catalog")
+async def catalogo_cartelle_drive() -> Dict[str, Any]:
+    """Mappa pubblica delle cartelle Drive, senza ID o credenziali."""
+    from app.services.drive_folder_registry import get_public_catalog
+
+    return get_public_catalog()
+
+
 # ============================================================
 # ENDPOINT MONITOR EMAIL
 # ============================================================

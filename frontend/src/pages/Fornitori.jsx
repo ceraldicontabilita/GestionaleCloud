@@ -2236,6 +2236,39 @@ export default function Fornitori() {
                   render: s => s.fatture_count || 0,
                 },
                 {
+                  key: 'fatture_totale',
+                  label: 'Acquistato',
+                  align: 'right',
+                  ruoloCard: 'dettaglio',
+                  iconaCard: 'Totale',
+                  render: s => formatEuro(s.fatture_totale || 0),
+                  tdStyle: { fontWeight: 600 },
+                },
+                {
+                  key: 'fatture_pagate',
+                  label: 'Pagato',
+                  align: 'right',
+                  ruoloCard: 'dettaglio',
+                  iconaCard: 'Pagato',
+                  render: s => (
+                    <span style={{ color: COLORS.success, fontWeight: 600 }}>
+                      {formatEuro(s.fatture_pagate || 0)}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'fatture_non_pagate',
+                  label: 'Residuo',
+                  align: 'right',
+                  ruoloCard: 'dettaglio',
+                  iconaCard: 'Residuo',
+                  render: s => (
+                    <span style={{ color: (s.fatture_non_pagate || 0) > 0 ? COLORS.danger : COLORS.textMuted, fontWeight: 700 }}>
+                      {formatEuro(s.fatture_non_pagate || 0)}
+                    </span>
+                  ),
+                },
+                {
                   // Anno dell'ULTIMA fattura: a colpo d'occhio si vede se il
                   // fornitore è attuale (verde = fattura nell'anno globale)
                   // o solo storico/ricorrente (richiesta utente 10/07).

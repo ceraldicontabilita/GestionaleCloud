@@ -1,83 +1,118 @@
-import React, { lazy, Suspense, useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
+import { Archive, Upload } from 'lucide-react';
+import api from '../../api';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { useHashState } from '../../hooks/useHashState';
 import { PageLoader } from '../../components/ds';
+import './DocumentiHub.css';
 
 const ArchivioContent = lazy(() => import('../Documenti.jsx'));
 const ImportContent = lazy(() => import('../ImportDocumenti.jsx'));
 
 const TABS = [
-  { id: 'archivio', label: '📁 Archivio', color: '#3b82f6' },
-  { id: 'import', label: '📥 Import Documenti', color: '#8b5cf6' },
+  {
+    id: 'import',
+    label: 'Carica documenti',
+    description: 'File singoli, multipli o ZIP con riconoscimento automatico',
+    to: '/documenti/import',
+    Icon: Upload,
+  },
+  {
+    id: 'archivio',
+    label: 'Archivio documenti',
+    description: 'Consulta documenti importati, esiti e anomalie',
+    to: '/documenti/archivio',
+    Icon: Archive,
+  },
 ];
 
-
 const getTabFromPath = pathname => {
-  if (pathname.includes('/import-documenti') || pathname.includes('/documenti/import'))
+  if (pathname.includes('/documenti/archivio')) return 'archivio';
+  if (pathname.includes('/documenti/import') || pathname.includes('/import-documenti')) {
     return 'import';
-  if (pathname.includes('/documenti/')) {
-    const m = pathname.match(/\/documenti\/([\w-]+)/);
-    if (m && TABS.find(t => t.id === m[1])) return m[1];
   }
-  return 'archivio';
+  return 'import';
 };
 
 export default function DocumentiHub() {
   const { anno } = useAnnoGlobale();
   const location = useLocation();
-  const [error] = useState(null);
-
-  // Deep link: hash riflette il tab attivo — la route PATH è il meccanismo primario
   const initTab = getTabFromPath(location.pathname);
-  const [hs, setHs] = useHashState({ tab: initTab });
-  const activeTab = getTabFromPath(location.pathname); // path ha la precedenza
-
-  // Traccia tab visitati: mount-once pattern
+  const [, setHs] = useHashState({ tab: initTab });
+  const activeTab = getTabFromPath(location.pathname);
   const [visitedTabs, setVisitedTabs] = useState(() => new Set([initTab]));
+  const [driveCatalog, setDriveCatalog] = useState(null);
 
   useEffect(() => {
-    const t = getTabFromPath(location.pathname);
-    setHs('tab', t);
-    setVisitedTabs(prev => {
-      const n = new Set(prev);
-      n.add(t);
-      return n;
-    });
+    const tab = getTabFromPath(location.pathname);
+    setHs('tab', tab);
+    setVisitedTabs(previous => new Set([...previous, tab]));
   }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const CONTENTS = {
+  useEffect(() => {
+    let active = true;
+    api.get('/api/documenti/drive/catalog')
+      .then(response => active && setDriveCatalog(response.data))
+      .catch(() => active && setDriveCatalog(null));
+    return () => { active = false; };
+  }, []);
+
+  const contents = {
     archivio: ArchivioContent,
     import: ImportContent,
   };
 
   return (
-    <div style={{ width: '100%' }}>
-      {/* Niente barra tab (richiesta utente 10/07): la pagina Documenti mostra
-          SOLO l'archivio; l'Import Documenti si raggiunge dal menù Altro →
-          Import Documenti (/documenti/import). Le route restano entrambe. */}
-
-      {/* Tab Content */}
-      <div style={{ padding: '16px 0 0 0' }}>
-        {error && (
-          <div
-            style={{
-              padding: 16,
-              background: '#fef2f2',
-              borderRadius: 8,
-              color: '#dc2626',
-              marginBottom: 16,
-            }}
+    <div className="documenti-hub">
+      <nav className="documenti-hub__actions" aria-label="Azioni documenti">
+        {TABS.map(({ id, label, description, to, Icon }) => (
+          <NavLink
+            key={id}
+            to={to}
+            className={`documenti-hub__action ${activeTab === id ? 'is-active' : ''}`}
           >
-            Errore: {error}
+            <span className="documenti-hub__icon" aria-hidden="true">
+              <Icon size={22} />
+            </span>
+            <span>
+              <strong>{label}</strong>
+              <small>{description}</small>
+            </span>
+          </NavLink>
+        ))}
+      </nav>
+
+      {driveCatalog?.total > 0 && (
+        <section className="documenti-hub__drive" aria-label="Cartelle Google Drive collegate">
+          <div className="documenti-hub__drive-heading">
+            <div>
+              <strong>Google Drive collegato</strong>
+              <span>{driveCatalog.configured} cartelle censite, {driveCatalog.automatic} con parser disponibile</span>
+            </div>
+            <span className="documenti-hub__drive-total">{driveCatalog.total}</span>
           </div>
-        )}
+          <div className="documenti-hub__drive-grid">
+            {driveCatalog.folders.map(folder => (
+              <article className="documenti-hub__drive-card" key={folder.area}>
+                <span className={`documenti-hub__drive-dot is-${folder.status}`} aria-hidden="true" />
+                <div>
+                  <strong>{folder.label}</strong>
+                  <small>{folder.mode === 'automatico' ? 'Parser disponibile' : 'Archivio catalogato'}</small>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <div className="documenti-hub__content">
         {TABS.map(tab => {
-          const C = CONTENTS[tab.id];
+          const Content = contents[tab.id];
           return (
             <div key={tab.id} style={{ display: activeTab === tab.id ? 'block' : 'none' }}>
               <Suspense fallback={<PageLoader />}>
-                {visitedTabs.has(tab.id) && <C key={`${tab.id}-${anno}`} />}
+                {visitedTabs.has(tab.id) && <Content key={`${tab.id}-${anno}`} />}
               </Suspense>
             </div>
           );

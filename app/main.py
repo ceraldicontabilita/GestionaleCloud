@@ -55,13 +55,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Seed alert_definitions non eseguito: {e}")
 
-    try:
-        from app.scheduler import start_scheduler
+    if settings.ENVIRONMENT.lower() not in {"test", "testing"}:
+        try:
+            from app.scheduler import start_scheduler
 
-        start_scheduler()
-        logger.info("Scheduler avviato")
-    except Exception as e:
-        logger.warning(f"Scheduler non avviato: {e}")
+            start_scheduler()
+            logger.info("Scheduler avviato")
+        except Exception as e:
+            logger.warning(f"Scheduler non avviato: {e}")
+    else:
+        logger.info("Scheduler disabilitato nell'ambiente di test locale")
 
     try:
         db = Database.get_db()

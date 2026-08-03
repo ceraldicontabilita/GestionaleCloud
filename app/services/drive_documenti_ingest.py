@@ -41,7 +41,9 @@ CANALI: Dict[str, Dict[str, Any]] = {
     "cartella_esattoriale": {
         "category": "cartella_esattoriale",
         "label": "Cartelle Esattoriali",
-        "folder": lambda s: s.GOOGLE_DRIVE_CARTELLE_ESATTORIALI_FOLDER_ID or s.DRIVE_FOLDER_CARTELLE_ESATTORIALI_ID,
+        "folder": lambda s: (s.GOOGLE_DRIVE_CARTELLE_ESATTORIALI_FOLDER_ID
+                             or s.DRIVE_FOLDER_CARTELLE_ESATTORIALI_ID
+                             or s.DRIVE_AVVISI_ESATTORIALI_FOLDER_ID),
         "enable": lambda s: s.ENABLE_DRIVE_CARTELLE_ESATTORIALI_SYNC,
     },
     "avviso_bonario": {
@@ -117,8 +119,11 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
     result = {"status": "ok", "canale": canale, "total": 0, "imported": 0,
               "duplicates": 0, "errors": 0, "moved": 0, "details": []}
     try:
+        inbox_id = _base._get_or_create_inbox_folder(service, parent_id)
         elaborate_id = _base._get_or_create_elaborate_folder(service, parent_id)
-        pdf_files = _base._list_pdf_files(service, parent_id)
+        error_id = _base._get_or_create_error_folder(service, parent_id)
+        source_id = inbox_id or parent_id
+        pdf_files = _base._list_pdf_files(service, source_id)
         result["total"] = len(pdf_files)
         for f in pdf_files:
             fid, fname = f["id"], f["name"]
@@ -127,6 +132,8 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
                 if not content:
                     result["errors"] += 1
                     result["details"].append({"file": fname, "error": "file vuoto"})
+                    if error_id:
+                        _base._move_to_folder(service, fid, source_id, error_id)
                     continue
                 content_hash = hashlib.md5(content).hexdigest()
                 existing = await db["documents_inbox"].find_one(
@@ -140,12 +147,17 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
                     result["imported"] += 1
                     logger.info(f"Drive {canale}: importato {fname}")
                 if elaborate_id:
-                    _base._move_to_elaborate(service, fid, parent_id, elaborate_id)
+                    _base._move_to_elaborate(service, fid, source_id, elaborate_id)
                     result["moved"] += 1
             except Exception as e:
                 logger.error(f"Drive {canale}: errore su {fname}: {e}")
                 result["errors"] += 1
                 result["details"].append({"file": fname, "error": str(e)})
+                if error_id:
+                    try:
+                        _base._move_to_folder(service, fid, source_id, error_id)
+                    except Exception:
+                        logger.exception("Drive %s: impossibile spostare %s in Errori", canale, fname)
     except Exception as e:
         logger.error(f"Drive {canale}: errore ciclo: {e}")
         return {"status": "error", "canale": canale, "message": str(e)}

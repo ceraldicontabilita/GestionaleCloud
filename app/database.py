@@ -23,9 +23,19 @@ class Database:
         Called on application startup.
         """
         try:
+            mongo_uri = settings.MONGODB_ATLAS_URI or settings.MONGO_URL
+            if mongo_uri and mongo_uri.startswith("mongomock://"):
+                from mongomock_motor import AsyncMongoMockClient
+
+                cls.client = AsyncMongoMockClient()
+                cls.db = cls.client[settings.DB_NAME]
+                await cls._create_indexes()
+                logger.info("Connected to isolated in-memory MongoDB for local testing")
+                return
+
             logger.info("Connecting to MongoDB Atlas...")
             cls.client = AsyncIOMotorClient(
-                settings.MONGODB_ATLAS_URI,
+                mongo_uri,
                 maxPoolSize=settings.MONGODB_MAX_POOL_SIZE,
                 minPoolSize=settings.MONGODB_MIN_POOL_SIZE,
                 serverSelectionTimeoutMS=settings.MONGODB_TIMEOUT_MS

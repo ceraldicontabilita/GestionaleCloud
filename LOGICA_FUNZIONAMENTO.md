@@ -104,9 +104,22 @@ che il documento vero arrivasse. Nessun dato/fattura viene più creato o scarica
 dalla casella PEC/email per questo canale; il tab Provvisori mostra solo le fatture
 reali già importate da Drive in attesa di conferma cassa/banca.
 
-Ogni documento entra in "Documenti / Import" con uno stato di lavorazione:
+`Documenti` è l'unico ingresso visibile: apre il caricamento automatico e
+consente di passare all'archivio dalla card interna, senza una seconda voce di
+menu. Ogni documento entra con uno stato di lavorazione:
 trovato → importato → classificato → elaborato dal parser → record gestionale creato.
 Se il parser fallisce: stato di errore + avviso, il documento resta consultabile.
+
+Le cartelle aziendali sono censite su Render tramite
+`DRIVE_FOLDER_REGISTRY_JSON`. La pagina Documenti mostra il catalogo a card
+senza esporre gli ID Drive. Le aree con parser verificato sono indicate come
+con parser disponibile; le altre restano catalogate e non generano scritture contabili
+finche il relativo parser non viene validato su documenti autorizzati.
+
+Per ogni radice Drive operativa il sistema crea e usa tre sottocartelle:
+`Da elaborare`, `Elaborate` ed `Errori`. Lo scheduler legge `Da elaborare`;
+importati e duplicati vanno in `Elaborate`, mentre file vuoti, non leggibili o
+non riconosciuti vanno in `Errori`. Nessun file sorgente viene cancellato.
 
 ---
 
@@ -940,8 +953,8 @@ attribuita per competenza*, *in quale liquidazione è stata effettivamente usata
   paga**: ogni ora il sistema li scarica, li deduplica per hash MD5 (stesso campo
   `file_hash` usato per la dedup dei cedolini email) e li immette nella stessa
   pipeline di elaborazione; i file lavorati vengono spostati nella sottocartella
-  Drive `Elaborate`. **Non esiste un canale di upload manuale generico per i
-  cedolini**: solo email e questa cartella Drive.
+  Drive `Elaborate`. Se serve un caricamento manuale, passa sempre dalla pagina
+  unica `Documenti`, anche con più PDF o uno ZIP.
 - **Quadratura settimanale (domenica alle 5:15)**: ripassa TUTTI i PDF nella
   sottocartella Elaborate e verifica che ciascuno abbia il suo documento nel
   gestionale; un buco (file spostato in Elaborate ma mai arrivato al gestionale)

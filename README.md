@@ -40,6 +40,9 @@ già esistenti (vedi commento in testa al file) — è un riferimento versionato
 per non dipendere solo dalla configurazione nella dashboard. Le variabili
 d'ambiente reali restano impostate solo su Render, mai nel repo.
 
+Il sito statico viene compilato da Render direttamente da `frontend/`; non è
+necessario pubblicare bundle `dist` creati su una macchina locale.
+
 ## Avvio rapido
 
 I servizi sono gestiti da Supervisor e si avviano da soli:
@@ -53,6 +56,9 @@ sudo supervisorctl restart frontend
 Frontend: http://localhost:3000 (esterno: valore di `REACT_APP_BACKEND_URL` in `frontend/.env`)
 Backend API: http://localhost:8001/api
 Health: `curl -s http://localhost:8001/api/health`
+
+Per una demo locale isolata, senza collegarsi ai dati reali né avviare gli
+scheduler, usare `ENVIRONMENT=testing` e `MONGO_URL=mongomock://localhost`.
 
 ## Struttura
 

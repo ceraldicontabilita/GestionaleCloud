@@ -35,8 +35,11 @@ from app.config import settings
 # quindi utilizzabili così come sono senza toccare quel modulo.
 from app.services.drive_invoice_ingest import (
     _load_credentials,
+    _get_or_create_inbox_folder,
     _get_or_create_elaborate_folder,
+    _get_or_create_error_folder,
     _download_bytes,
+    _move_to_folder,
     _move_to_elaborate,
 )
 
@@ -65,7 +68,9 @@ def start_background_sync(db) -> bool:
 
 def _folder_id() -> Optional[str]:
     """ID cartella: nome canonico o alias reale dell'ambiente Render."""
-    return settings.GOOGLE_DRIVE_CEDOLINI_FOLDER_ID or settings.DRIVE_FOLDER_CEDOLINI_ID
+    return (settings.GOOGLE_DRIVE_CEDOLINI_FOLDER_ID
+            or settings.DRIVE_FOLDER_CEDOLINI_ID
+            or settings.DRIVE_CEDOLINI_FOLDER_ID)
 
 
 def _load_credentials_cedolini():
@@ -87,7 +92,8 @@ def is_configured() -> bool:
         settings.ENABLE_DRIVE_CEDOLINI_SYNC
         and _folder_id()
         and (settings.GOOGLE_SERVICE_ACCOUNT_JSON_CEDOLINI
-             or settings.GOOGLE_DRIVE_SA_FILE or settings.GOOGLE_DRIVE_SA_JSON)
+             or settings.GOOGLE_DRIVE_SA_FILE or settings.GOOGLE_DRIVE_SA_JSON
+             or settings.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON)
     )
 
 
@@ -219,8 +225,11 @@ async def _do_sync(db) -> Dict[str, Any]:
         "errors": 0, "moved": 0, "details": [],
     }
     try:
+        inbox_id = _get_or_create_inbox_folder(service, parent_id)
         elaborate_id = _get_or_create_elaborate_folder(service, parent_id)
-        pdf_files = _list_pdf_files(service, parent_id)
+        error_id = _get_or_create_error_folder(service, parent_id)
+        source_id = inbox_id or parent_id
+        pdf_files = _list_pdf_files(service, source_id)
         result["total"] = len(pdf_files)
         for f in pdf_files:
             fid, fname = f["id"], f["name"]
@@ -229,7 +238,9 @@ async def _do_sync(db) -> Dict[str, Any]:
                 if not content:
                     result["errors"] += 1
                     result["details"].append({"file": fname, "error": "file vuoto"})
-                    continue  # non spostare: resta per il retry
+                    if error_id:
+                        _move_to_folder(service, fid, source_id, error_id)
+                    continue
                 content_hash = hashlib.md5(content).hexdigest()
                 existing = await db["documents_inbox"].find_one(
                     {"file_hash": content_hash}, {"_id": 0, "id": 1}
@@ -256,12 +267,17 @@ async def _do_sync(db) -> Dict[str, Any]:
                         logger.exception("Drive cedolini: errore propagazione evento documento.acquisito")
                 # Sposta in `Elaborate` i file processati (importati o duplicati noti).
                 if elaborate_id:
-                    _move_to_elaborate(service, fid, parent_id, elaborate_id)
+                    _move_to_elaborate(service, fid, source_id, elaborate_id)
                     result["moved"] += 1
             except Exception as e:
                 logger.error(f"Drive cedolini: errore su {fname}: {e}")
                 result["errors"] += 1
                 result["details"].append({"file": fname, "error": str(e)})
+                if error_id:
+                    try:
+                        _move_to_folder(service, fid, source_id, error_id)
+                    except Exception:
+                        logger.exception("Drive cedolini: impossibile spostare %s in Errori", fname)
     except Exception as e:
         logger.error(f"Drive cedolini: errore sync: {e}")
         # Persisti l'errore globale: il sync gira in background e lo stato

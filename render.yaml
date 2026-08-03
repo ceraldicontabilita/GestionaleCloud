@@ -35,7 +35,7 @@ services:
   - type: web
     name: ceraldi-gestione
     runtime: static
-    buildCommand: ""  # deliberatamente vuoto: frontend/dist è già committato
+    buildCommand: "cd frontend && npm install --legacy-peer-deps && npm run build"
     staticPublishPath: frontend/dist
     envVars:
       - key: REACT_APP_BACKEND_URL

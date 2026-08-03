@@ -212,6 +212,11 @@ async def list_suppliers(
         # italiano risultavano "0 fatture / mai fatturato".
         _piva_expr = {"$ifNull": ["$supplier_vat",
                      {"$ifNull": ["$cedente_piva", "$fornitore_partita_iva"]}]}
+        _amount_expr = {"$toDouble": {"$ifNull": ["$importo_totale", {"$ifNull": ["$total_amount", 0]}]}}
+        _paid_expr = {"$or": [
+            {"$eq": ["$pagato", True]},
+            {"$in": [{"$toLower": {"$ifNull": ["$stato_pagamento", ""]}}, ["pagata", "paid"]]},
+        ]}
         stats_pipeline = [
             {"$match": {"$or": [
                 {"supplier_vat": {"$exists": True, "$nin": [None, ""]}},
@@ -221,8 +226,9 @@ async def list_suppliers(
             {"$group": {
                 "_id": _piva_expr,
                 "fatture_count": {"$sum": 1},
-                "fatture_totale": {"$sum": {"$toDouble": {"$ifNull": ["$importo_totale", {"$ifNull": ["$total_amount", 0]}]}}},
-                "fatture_non_pagate": {"$sum": {"$cond": [{"$ne": ["$pagato", True]}, {"$toDouble": {"$ifNull": ["$importo_totale", {"$ifNull": ["$total_amount", 0]}]}}, 0]}},
+                "fatture_totale": {"$sum": _amount_expr},
+                "fatture_pagate": {"$sum": {"$cond": [_paid_expr, _amount_expr, 0]}},
+                "fatture_non_pagate": {"$sum": {"$cond": [_paid_expr, 0, _amount_expr]}},
                 "prima_fattura_data": {"$min": {"$ifNull": ["$data_documento", "$invoice_date"]}},
                 "ultima_fattura_data": {"$max": {"$ifNull": ["$data_documento", "$invoice_date"]}}
             }}
@@ -238,6 +244,7 @@ async def list_suppliers(
                     rec["fatture_count"] = rec.get("fatture_count", 0) + stat.get("fatture_count", 0) \
                         if rec.get("source") == "merged" else stat.get("fatture_count", 0)
                     rec["fatture_totale"] = rec.get("fatture_totale", 0) + stat.get("fatture_totale", 0)
+                    rec["fatture_pagate"] = rec.get("fatture_pagate", 0) + stat.get("fatture_pagate", 0)
                     rec["fatture_non_pagate"] = rec.get("fatture_non_pagate", 0) + stat.get("fatture_non_pagate", 0)
                     prima = stat.get("prima_fattura_data")
                     if prima and (not rec.get("prima_fattura_data") or prima < rec["prima_fattura_data"]):

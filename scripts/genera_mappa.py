@@ -114,7 +114,7 @@ def main():
         flags = set(r["fe"] for r in rs)
         flag = "✓" if "✓" in flags else ("ext" if "ext" in flags else "—")
         lines.append(f"| `{pref}` | {len(rs)} | {flag} | {', '.join(mods)} |")
-    open("memoria/MAPPA_ROUTER.md", "w").write("\n".join(lines) + "\n")
+    open("memoria/MAPPA_ROUTER.md", "w", encoding="utf-8").write("\n".join(lines) + "\n")
 
     # ---- MAPPA_ENDPOINT_COMPLETA.md ----
     by_tag = defaultdict(list)
@@ -139,7 +139,7 @@ def main():
         for r in sorted(rs, key=lambda x: x["path"]):
             out.append(f"| {r['methods']} | `{r['path']}` | {r['fe']} | {r['module']} |")
         out.append("")
-    open("memoria/MAPPA_ENDPOINT_COMPLETA.md", "w").write("\n".join(out) + "\n")
+    open("memoria/MAPPA_ENDPOINT_COMPLETA.md", "w", encoding="utf-8").write("\n".join(out) + "\n")
 
     print(f"OK — {len(routes)} endpoint, {len(by_prefix)} prefissi, {len(by_tag)} tag")
     print(f"FE ✓={n_fe}  ext={n_ext}  —={n_no}")
