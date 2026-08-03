@@ -75,7 +75,7 @@ def _list_files(service, parent_id: str) -> List[Dict[str, Any]]:
         ).execute()
         for item in result.get("files", []):
             name = (item.get("name") or "").lower()
-            if item.get("mimeType") != "application/vnd.google-apps.folder" and name.endswith((".csv", ".xlsx", ".xls")):
+            if item.get("mimeType") != "application/vnd.google-apps.folder" and name.endswith((".csv", ".xlsx", ".xls", ".pdf")):
                 out.append(item)
         page_token = result.get("nextPageToken")
         if not page_token:

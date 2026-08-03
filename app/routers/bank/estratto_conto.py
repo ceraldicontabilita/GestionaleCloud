@@ -209,7 +209,36 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     
     movimenti = []
     
-    if filename.endswith('.csv'):
+    if filename.endswith('.pdf'):
+        from app.parsers.estratto_conto_bpm_parser import parse_estratto_conto_bpm
+
+        parsed = parse_estratto_conto_bpm(contents)
+        if not parsed.get("success"):
+            raise HTTPException(status_code=400, detail=parsed.get("error") or "PDF non riconosciuto")
+        for transazione in parsed.get("transazioni") or []:
+            data_contabile = date.fromisoformat(transazione["data"])
+            data_valuta = (
+                date.fromisoformat(transazione["data_valuta"])
+                if transazione.get("data_valuta") else None
+            )
+            descrizione = transazione.get("descrizione") or "Movimento Banco BPM"
+            movimenti.append({
+                "data": data_contabile,
+                "ragione_sociale": None,
+                "fornitore": estrai_fornitore_pulito(descrizione),
+                "importo": float(transazione.get("importo") or 0),
+                "numero_fattura": estrai_numero_fattura(descrizione),
+                "data_pagamento": data_valuta,
+                "categoria": "",
+                "descrizione_originale": descrizione,
+                "banca": "Banco BPM",
+                "rapporto": None,
+                "divisa": transazione.get("divisa") or "EUR",
+                "hashtag": None,
+                "tipo": transazione.get("tipo"),
+            })
+
+    elif filename.endswith('.csv'):
         # Prova diversi encoding
         text = None
         for encoding in ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']:
@@ -436,7 +465,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Errore parsing Excel: {str(e)}")
     else:
-        raise HTTPException(status_code=400, detail="Formato non supportato. Usa CSV o Excel.")
+        raise HTTPException(status_code=400, detail="Formato non supportato. Usa PDF, CSV o Excel.")
     
     # Salva nel database, evitando duplicati con un singolo query bulk
     import hashlib as _hashlib
@@ -576,7 +605,8 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         for f in provvisori:
             importo = float(f.get("total_amount", 0))
             match = await find_ec_match_for_invoice(
-                db, importo, f.get("supplier_name", ""), f.get("invoice_date", "")
+                db, importo, f.get("supplier_name", ""), f.get("invoice_date", ""),
+                f.get("invoice_number", ""),
             )
             if match:
                 # Dedup: se esiste già un movimento prima nota per questa fattura, non duplicare
