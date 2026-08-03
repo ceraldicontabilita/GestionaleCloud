@@ -755,6 +755,8 @@ def start_scheduler():
         _drive_ingest_job,
         'interval', hours=1,
         next_run_time=datetime.now(),
+        misfire_grace_time=300,
+        coalesce=True,
         id="drive_fatture_ingest", name="Import Fatture da Google Drive (ogni ora + al riavvio)",
         replace_existing=True,
     )
@@ -773,6 +775,8 @@ def start_scheduler():
         _drive_corrispettivi_job,
         'interval', hours=1,
         next_run_time=datetime.now(),
+        misfire_grace_time=300,
+        coalesce=True,
         id="drive_corrispettivi_ingest", name="Import Corrispettivi da Google Drive (ogni ora + al riavvio)",
         replace_existing=True,
     )
@@ -781,6 +785,8 @@ def start_scheduler():
         _drive_quietanze_job,
         'interval', hours=1,
         next_run_time=datetime.now(),
+        misfire_grace_time=300,
+        coalesce=True,
         id="drive_quietanze_ingest", name="Import Quietanze F24 da Google Drive (ogni ora + al riavvio)",
         replace_existing=True,
     )
@@ -789,6 +795,8 @@ def start_scheduler():
         _drive_estratti_conto_job,
         'interval', hours=1,
         next_run_time=datetime.now(),
+        misfire_grace_time=300,
+        coalesce=True,
         id="drive_estratti_conto_ingest",
         name="Import Estratti Conto da Google Drive (ogni ora + al riavvio)",
         replace_existing=True,

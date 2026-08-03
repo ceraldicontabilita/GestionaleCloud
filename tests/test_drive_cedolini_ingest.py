@@ -144,7 +144,21 @@ def test_scheduler_non_perde_import_cedolini_al_riavvio(monkeypatch):
     monkeypatch.setattr(scheduler_mod, "scheduler", scheduler)
     scheduler_mod.start_scheduler()
 
-    job = next(item for item in scheduler.jobs if item[2].get("id") == "drive_cedolini_ingest")
-    assert job[2]["next_run_time"] is not None
-    assert job[2]["misfire_grace_time"] == 300
-    assert job[2]["coalesce"] is True
+    drive_job_ids = {
+        "drive_fatture_ingest",
+        "drive_cedolini_ingest",
+        "drive_corrispettivi_ingest",
+        "drive_quietanze_ingest",
+        "drive_estratti_conto_ingest",
+    }
+    jobs = {
+        item[2].get("id"): item[2]
+        for item in scheduler.jobs
+        if item[2].get("id") in drive_job_ids
+    }
+
+    assert set(jobs) == drive_job_ids
+    for job in jobs.values():
+        assert job["next_run_time"] is not None
+        assert job["misfire_grace_time"] == 300
+        assert job["coalesce"] is True
