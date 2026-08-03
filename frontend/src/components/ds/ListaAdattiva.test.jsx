@@ -70,4 +70,20 @@ describe('ListaAdattiva responsive', () => {
     expect(nuovoWrap).not.toBe(primoWrap);
     expect(nuovoWrap.scrollLeft).toBe(0);
   });
+
+  it('permette una card personalizzata anche su desktop', () => {
+    setViewport(1600);
+    const { container } = render(
+      <ListaAdattiva
+        colonne={colonne}
+        dati={dati}
+        cardBreakpoint={1180}
+        renderCard={item => <div>Dati completi: {item.email}</div>}
+        testId="lista"
+      />
+    );
+
+    expect(container.querySelector('table')).toBeNull();
+    expect(screen.getByText('Dati completi: test@example.it')).toBeInTheDocument();
+  });
 });

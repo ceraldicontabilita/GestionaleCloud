@@ -60,14 +60,18 @@ class _Db:
 FATTURA = {
     "id": "fatt-1", "invoice_number": "77/A", "invoice_date": "2026-06-01",
     "supplier_vat": "01234567890", "supplier_name": "Dolciaria Acquaviva S.p.A.",
-    "total_amount": 122.0,
+    "total_amount": 122.0, "imponibile": 100.0, "iva": 22.0,
 }
 
 
-def _setup(monkeypatch, metodo):
+def _setup(monkeypatch, metodo, **supplier_extra):
     db = _Db()
     if metodo is not None:
-        db["fornitori"].docs = [{"partita_iva": "01234567890", "metodo_pagamento": metodo}]
+        db["fornitori"].docs = [{
+            "partita_iva": "01234567890",
+            "metodo_pagamento": metodo,
+            **supplier_extra,
+        }]
     db["invoices"].docs = [dict(FATTURA)]
     monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
     # registra_pagamento_fattura usa Database.get_db() suo: monkeypatcho il modulo sync
@@ -140,3 +144,29 @@ def test_idempotente_banca_su_reimport(monkeypatch):
     _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
 
     assert len(db["prima_nota_banca"].docs) == 1
+
+
+def test_fornitore_escluso_non_entra_in_cassa_banca_ma_mantiene_iva(monkeypatch):
+    db = _setup(monkeypatch, "banca", esclude_cassa_banca=True)
+    fattura = dict(FATTURA)
+
+    update = _run(mod.auto_registra_prima_nota(db, fattura, None))
+
+    assert update is None
+    assert db["prima_nota_cassa"].docs == []
+    assert db["prima_nota_banca"].docs == []
+    assert fattura["esclusa_da_cassa_banca"] is True
+    assert fattura["registrazione_fiscale_mantenuta"] is True
+    assert db["invoices"].docs[0]["imponibile"] == 100.0
+    assert db["invoices"].docs[0]["iva"] == 22.0
+
+
+def test_fornitore_cessato_e_automaticamente_escluso_solo_finanziariamente(monkeypatch):
+    db = _setup(monkeypatch, "contanti", cessato=True)
+
+    update = _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
+
+    assert update is None
+    assert db["prima_nota_cassa"].docs == []
+    assert db["prima_nota_banca"].docs == []
+    assert db["invoices"].docs[0]["iva"] == 22.0

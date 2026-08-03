@@ -504,9 +504,26 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
 
     forn = await db["fornitori"].find_one(
         {"$or": [{"partita_iva": piva}, {"piva": piva}, {"vat_number": piva}]},
-        {"_id": 0, "metodo_pagamento": 1},
+        {"_id": 0, "metodo_pagamento": 1, "esclude_cassa_banca": 1, "cessato": 1},
         session=session,
     )
+    if (forn or {}).get("esclude_cassa_banca") or (forn or {}).get("cessato"):
+        # L'esclusione riguarda solo i registri finanziari. La fattura e'
+        # gia' stata salvata con imponibile, IVA, righe e XML: li lasciamo
+        # intatti e annotiamo esplicitamente che resta fiscalmente valida.
+        fiscal_update = {
+            "esclusa_da_cassa_banca": True,
+            "registrazione_fiscale_mantenuta": True,
+            "stato_finanziario": "esclusa_cassa_banca",
+        }
+        invoice.update(fiscal_update)
+        fattura_id = invoice.get("id") or invoice.get("invoice_key")
+        if fattura_id:
+            await db[Collections.INVOICES].update_one(
+                {"id": fattura_id}, {"$set": fiscal_update}, session=session
+            )
+        return None
+
     metodo = ((forn or {}).get("metodo_pagamento") or "").strip().lower()
     if not metodo:
         return None

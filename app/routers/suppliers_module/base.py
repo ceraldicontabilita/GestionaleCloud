@@ -55,7 +55,105 @@ def _legacy_supplier_view(supplier: Dict[str, Any]) -> Dict[str, Any]:
         "esclude_magazzino": supplier.get(
             "esclude_magazzino", not supplier.get("inventory_enabled", False)
         ),
+        "esclude_cassa_banca": supplier.get(
+            "esclude_cassa_banca", bool(supplier.get("cessato", False))
+        ),
         "attivo": supplier.get("attivo", True),
+    }
+
+
+async def _sincronizza_esclusione_cassa_banca(
+    db, supplier: Dict[str, Any], escluso: bool
+) -> Dict[str, int]:
+    """Propaga la scelta finanziaria senza toccare i dati fiscali.
+
+    Le fatture restano nella collection ``invoices`` con imponibile, IVA,
+    righe e XML originali. Quando si attiva l'esclusione rimuoviamo soltanto
+    i movimenti derivati automaticamente dal metodo del fornitore; movimenti
+    bancari reali, riconciliati o inseriti manualmente non vengono cancellati.
+    """
+    valori_piva = {
+        str(v).strip()
+        for v in (
+            supplier.get("partita_iva"),
+            supplier.get("piva"),
+            supplier.get("vat_number"),
+        )
+        if v
+    }
+    if not valori_piva:
+        return {"fatture_aggiornate": 0, "movimenti_auto_rimossi": 0}
+
+    invoice_filter = {"$or": [
+        {"supplier_vat": {"$in": list(valori_piva)}},
+        {"cedente_piva": {"$in": list(valori_piva)}},
+        {"fornitore_partita_iva": {"$in": list(valori_piva)}},
+    ]}
+    fiscal_update = {
+        "esclusa_da_cassa_banca": bool(escluso),
+        "registrazione_fiscale_mantenuta": True,
+        "stato_finanziario": "esclusa_cassa_banca" if escluso else "da_registrare",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    fatture_result = await db[Collections.INVOICES].update_many(
+        invoice_filter, {"$set": fiscal_update}
+    )
+
+    rimossi = 0
+    if escluso:
+        fonti_automatiche = ["auto_metodo_fornitore", "auto_confirm_provvisoria"]
+        ids_movimenti = []
+        ids_fatture = []
+        for collection in ("prima_nota_cassa", "prima_nota_banca"):
+            movimenti = await db[collection].find(
+                {
+                    "fornitore_piva": {"$in": list(valori_piva)},
+                    "source": {"$in": fonti_automatiche},
+                    "riconciliato": {"$ne": True},
+                },
+                {"_id": 0, "id": 1, "fattura_id": 1},
+            ).to_list(5000)
+            ids_movimenti.extend(m.get("id") for m in movimenti if m.get("id"))
+            ids_fatture.extend(m.get("fattura_id") for m in movimenti if m.get("fattura_id"))
+            eliminati = await db[collection].delete_many({
+                "fornitore_piva": {"$in": list(valori_piva)},
+                "source": {"$in": fonti_automatiche},
+                "riconciliato": {"$ne": True},
+            })
+            rimossi += eliminati.deleted_count
+
+        await db[Collections.INVOICES].update_many(
+            {"$and": [
+                invoice_filter,
+                {"$or": [
+                    {"id": {"$in": ids_fatture}},
+                    {"prima_nota_id": {"$in": ids_movimenti}},
+                    {"registrata_auto_da_metodo_fornitore": True},
+                ]},
+            ]},
+            {
+                "$set": {
+                    "esclusa_da_cassa_banca": True,
+                    "registrazione_fiscale_mantenuta": True,
+                    "stato_finanziario": "esclusa_cassa_banca",
+                    "pagato": False,
+                    "paid": False,
+                },
+                "$unset": {
+                    "prima_nota_id": "",
+                    "prima_nota_tipo": "",
+                    "prima_nota_cassa_id": "",
+                    "prima_nota_banca_id": "",
+                    "registrata_auto_da_metodo_fornitore": "",
+                    "stato_pagamento": "",
+                    "data_pagamento": "",
+                },
+            },
+        )
+
+    return {
+        "fatture_aggiornate": getattr(fatture_result, "modified_count", 0),
+        "movimenti_auto_rimossi": rimossi,
     }
 
 
@@ -277,6 +375,7 @@ async def list_suppliers(
             {"$eq": ["$pagato", True]},
             {"$in": [{"$toLower": {"$ifNull": ["$stato_pagamento", ""]}}, ["pagata", "paid"]]},
         ]}
+        _excluded_financial_expr = {"$eq": ["$esclusa_da_cassa_banca", True]}
         stats_pipeline = [
             {"$match": {"$or": [
                 {"supplier_vat": {"$exists": True, "$nin": [None, ""]}},
@@ -288,7 +387,12 @@ async def list_suppliers(
                 "fatture_count": {"$sum": 1},
                 "fatture_totale": {"$sum": _amount_expr},
                 "fatture_pagate": {"$sum": {"$cond": [_paid_expr, _amount_expr, 0]}},
-                "fatture_non_pagate": {"$sum": {"$cond": [_paid_expr, 0, _amount_expr]}},
+                "fatture_non_pagate": {"$sum": {"$cond": [
+                    {"$or": [_paid_expr, _excluded_financial_expr]}, 0, _amount_expr
+                ]}},
+                "fatture_escluse_cassa_banca": {"$sum": {"$cond": [
+                    _excluded_financial_expr, _amount_expr, 0
+                ]}},
                 "prima_fattura_data": {"$min": {"$ifNull": ["$data_documento", "$invoice_date"]}},
                 "ultima_fattura_data": {"$max": {"$ifNull": ["$data_documento", "$invoice_date"]}}
             }}
@@ -306,6 +410,10 @@ async def list_suppliers(
                     rec["fatture_totale"] = rec.get("fatture_totale", 0) + stat.get("fatture_totale", 0)
                     rec["fatture_pagate"] = rec.get("fatture_pagate", 0) + stat.get("fatture_pagate", 0)
                     rec["fatture_non_pagate"] = rec.get("fatture_non_pagate", 0) + stat.get("fatture_non_pagate", 0)
+                    rec["fatture_escluse_cassa_banca"] = (
+                        rec.get("fatture_escluse_cassa_banca", 0)
+                        + stat.get("fatture_escluse_cassa_banca", 0)
+                    )
                     prima = stat.get("prima_fattura_data")
                     if prima and (not rec.get("prima_fattura_data") or prima < rec["prima_fattura_data"]):
                         rec["prima_fattura_data"] = prima
@@ -412,6 +520,7 @@ async def get_payment_deadlines(days_ahead: int = Query(30, ge=1, le=365)) -> Di
         {
             "$match": {
                 "pagato": {"$ne": True},
+                "esclusa_da_cassa_banca": {"$ne": True},
                 "data_scadenza": {"$gte": today.isoformat(), "$lte": deadline.isoformat()}
             }
         },
@@ -616,6 +725,10 @@ async def create_supplier(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         "note": data.get("note") or "",
         "attivo": True,
         "esclude_magazzino": bool(data.get("esclude_magazzino", False)),
+        "cessato": bool(data.get("cessato", False)),
+        "esclude_cassa_banca": bool(
+            data.get("esclude_cassa_banca", False) or data.get("cessato", False)
+        ),
         "source": "manuale",
         "created_at": now,
         "updated_at": now,
@@ -633,6 +746,13 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
     data.pop("id", None)
     data.pop("partita_iva", None)
     data.pop("created_at", None)
+
+    if "esclude_cassa_banca" in data:
+        data["esclude_cassa_banca"] = bool(data["esclude_cassa_banca"])
+    if data.get("cessato") is True:
+        # Un fornitore cessato resta fiscalmente valido, ma non deve generare
+        # nuovi movimenti automatici in Cassa o Banca.
+        data["esclude_cassa_banca"] = True
     
     metodo_configurato = False
     if "metodo_pagamento" in data:
@@ -653,7 +773,8 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
     
     supplier = await db[Collections.SUPPLIERS].find_one(
         _filtro_fornitore(supplier_id),
-        {"partita_iva": 1}
+        {"partita_iva": 1, "piva": 1, "vat_number": 1,
+         "esclude_cassa_banca": 1, "cessato": 1}
     )
     
     if not supplier:
@@ -681,6 +802,12 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
     
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Fornitore non trovato")
+
+    esclusione_sync = {"fatture_aggiornate": 0, "movimenti_auto_rimossi": 0}
+    if "esclude_cassa_banca" in data:
+        esclusione_sync = await _sincronizza_esclusione_cassa_banca(
+            db, supplier, bool(data["esclude_cassa_banca"])
+        )
     
     alerts_risolti = 0
     if metodo_configurato and supplier.get("partita_iva"):
@@ -770,7 +897,8 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
     return {
         "message": "Fornitore aggiornato con successo",
         "alerts_risolti": alerts_risolti,
-        "prodotti_rimossi_magazzino": prodotti_rimossi
+        "prodotti_rimossi_magazzino": prodotti_rimossi,
+        **esclusione_sync,
     }
 
 

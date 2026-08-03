@@ -259,6 +259,29 @@ async def registra_fattura_prima_nota(
     if not fattura:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
 
+    fornitore_piva = fattura.get("supplier_vat") or fattura.get("cedente_piva")
+    if fattura.get("esclusa_da_cassa_banca"):
+        raise HTTPException(
+            status_code=409,
+            detail="Fattura esclusa da Cassa e Banca; resta registrata ai fini contabili e IVA",
+        )
+    if fornitore_piva:
+        fornitore_escluso = await db[Collections.SUPPLIERS].find_one(
+            {"$and": [
+                {"$or": [
+                    {"partita_iva": fornitore_piva}, {"piva": fornitore_piva},
+                    {"vat_number": fornitore_piva},
+                ]},
+                {"$or": [{"esclude_cassa_banca": True}, {"cessato": True}]},
+            ]},
+            {"_id": 0, "id": 1},
+        )
+        if fornitore_escluso:
+            raise HTTPException(
+                status_code=409,
+                detail="Fornitore escluso da Cassa e Banca; la fattura resta valida ai fini IVA",
+            )
+
     if not metodo_pagamento:
         fornitore_piva = fattura.get("supplier_vat") or fattura.get("cedente_piva")
         if fornitore_piva:
@@ -673,14 +696,21 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
     # solo in "partita_iva" — vanno letti tutti, altrimenti il metodo
     # impostato in scheda fornitore NON viene rispettato.
     metodo_per_piva = {}
+    esclusi_cassa_banca = set()
     async for s in db["fornitori"].find(
-        {"metodo_pagamento": {"$exists": True, "$ne": ""}},
-        {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1, "metodo_pagamento": 1}
+        {},
+        {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1,
+         "metodo_pagamento": 1, "esclude_cassa_banca": 1, "cessato": 1}
     ):
         metodo = s.get("metodo_pagamento", "")
         for k in (s.get("partita_iva"), s.get("piva"), s.get("vat_number")):
-            if k and metodo:
-                metodo_per_piva[str(k).strip()] = metodo
+            if not k:
+                continue
+            chiave = str(k).strip()
+            if metodo:
+                metodo_per_piva[chiave] = metodo
+            if s.get("esclude_cassa_banca") or s.get("cessato"):
+                esclusi_cassa_banca.add(chiave)
 
     provvisori = []
     for f in fatture:
@@ -688,6 +718,10 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
         metodo_xml = f.get("payment_method", "")
         metodo_code = f.get("payment_method_code", "")
         piva = (f.get("supplier_vat") or f.get("cedente_piva") or "").strip()
+
+        # Fuori dal flusso finanziario, non fuori da contabilita'/IVA.
+        if f.get("esclusa_da_cassa_banca") or piva in esclusi_cassa_banca:
+            continue
         
         # PRIORITÀ 0: Se la fattura è stata marcata come sospesa dall'utente
         stato_pag = f.get("stato_pagamento", "")
@@ -804,6 +838,28 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
     fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
     if not fattura:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
+
+    piva_fornitore = fattura.get("supplier_vat") or fattura.get("cedente_piva")
+    esclusa = bool(fattura.get("esclusa_da_cassa_banca"))
+    if piva_fornitore and not esclusa:
+        esclusa = bool(await db[Collections.SUPPLIERS].find_one(
+            {"$and": [
+                {"$or": [
+                    {"partita_iva": piva_fornitore}, {"piva": piva_fornitore},
+                    {"vat_number": piva_fornitore},
+                ]},
+                {"$or": [{"esclude_cassa_banca": True}, {"cessato": True}]},
+            ]},
+            {"_id": 0, "id": 1},
+        ))
+    if esclusa:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Fattura esclusa da Cassa e Banca. Resta conservata e "
+                "conteggiata ai fini contabili e IVA."
+            ),
+        )
     
     importo = float(fattura.get("total_amount", 0))
     fornitore = fattura.get("supplier_name", "")
@@ -1233,14 +1289,21 @@ async def auto_conferma_provvisori_per_metodo(
     # Carica il dizionario metodo-per-piva dall'anagrafica fornitori
     # (P.IVA in partita_iva, piva o vat_number: record storici inclusi)
     metodo_per_piva: Dict[str, str] = {}
+    esclusi_cassa_banca = set()
     async for s in db["fornitori"].find(
-        {"metodo_pagamento": {"$exists": True, "$ne": ""}},
-        {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1, "metodo_pagamento": 1}
+        {},
+        {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1,
+         "metodo_pagamento": 1, "esclude_cassa_banca": 1, "cessato": 1}
     ):
         metodo = (s.get("metodo_pagamento") or "").strip().lower()
         for k in (s.get("partita_iva"), s.get("piva"), s.get("vat_number")):
-            if k and metodo:
-                metodo_per_piva[str(k).strip()] = metodo
+            if not k:
+                continue
+            chiave = str(k).strip()
+            if metodo:
+                metodo_per_piva[chiave] = metodo
+            if s.get("esclude_cassa_banca") or s.get("cessato"):
+                esclusi_cassa_banca.add(chiave)
 
     # Fatture provvisorie dell'anno
     fatture = await db["invoices"].find(
@@ -1266,6 +1329,7 @@ async def auto_conferma_provvisori_per_metodo(
         "restate_in_provvisoria_paypal_o_carta": 0,
         "restate_in_provvisoria_fornitore_senza_metodo": 0,
         "restate_in_provvisoria_richiede_conferma_manuale": 0,
+        "restate_escluse_cassa_banca": 0,
         "skipped_gia_in_prima_nota": 0,
         "skipped_errori": [],
         "dettaglio_mosse": [],  # prime 100 per log
@@ -1280,6 +1344,10 @@ async def auto_conferma_provvisori_per_metodo(
             piva = (f.get("supplier_vat") or f.get("cedente_piva") or "").strip()
             stato_pagamento = (f.get("stato_pagamento") or "").lower()
             pagata = stato_pagamento in ("pagata", "paid")
+
+            if f.get("esclusa_da_cassa_banca") or piva in esclusi_cassa_banca:
+                report["restate_escluse_cassa_banca"] += 1
+                continue
 
             # Dedup sicuro: se esiste già un movimento in cassa o banca per
             # questa fattura, non tocco nulla (può esserci stato movimento

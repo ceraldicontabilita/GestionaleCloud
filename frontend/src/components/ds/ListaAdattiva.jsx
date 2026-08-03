@@ -31,6 +31,7 @@ export function ListaAdattiva({
   testId,
   resetKey,
   cardBreakpoint = 768,
+  renderCard,
 }) {
   const isMobile = useIsMobile(cardBreakpoint);
   const [pagina, setPagina] = useState(1);
@@ -148,7 +149,7 @@ export function ListaAdattiva({
     ) : null;
 
   // ── VISTA MOBILE: card per riga ──────────────────────────────────────────
-  if (isMobile) {
+  if (isMobile || renderCard) {
     const colTitolo = colonne.find(c => c.ruoloCard === 'titolo');
     const colSottotitolo = colonne.find(c => c.ruoloCard === 'sottotitolo');
     const colImporto = colonne.find(c => c.ruoloCard === 'importo');
@@ -170,81 +171,87 @@ export function ListaAdattiva({
               minWidth: 0,
             }}
           >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-start',
-                gap: 8,
-              }}
-            >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                {colTitolo && (
-                  <div
-                    style={{
-                      fontWeight: 700,
-                      color: COLORS.primary,
-                      fontSize: 14,
-                      overflowWrap: 'anywhere',
-                    }}
-                  >
-                    {valore(colTitolo, item)}
-                  </div>
-                )}
-                {colSottotitolo && (
-                  <div style={{ fontSize: 11, color: COLORS.textSubtle, marginTop: 2 }}>
-                    {valore(colSottotitolo, item)}
-                  </div>
-                )}
-              </div>
-              {colImporto && (
-                <div
-                  style={{
-                    fontWeight: 700,
-                    fontSize: 15,
-                    color: COLORS.primary,
-                    whiteSpace: 'nowrap',
-                    flexShrink: 0,
-                  }}
-                >
-                  {valore(colImporto, item)}
-                </div>
-              )}
-            </div>
-            {(colDettagli.length > 0 || colAzioni) && (
-              // Dettagli e azioni sulla STESSA riga: card più bassa,
-              // entrano più righe per schermata
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 8,
-                  marginTop: 6,
-                  minWidth: 0,
-                }}
-              >
+            {renderCard ? (
+              renderCard(item, i)
+            ) : (
+              <>
                 <div
                   style={{
                     display: 'flex',
-                    gap: 10,
-                    rowGap: 4,
-                    fontSize: 12,
-                    color: COLORS.textMuted,
-                    flexWrap: 'wrap',
-                    minWidth: 0,
-                    flex: 1,
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    gap: 8,
                   }}
                 >
-                  {colDettagli.map(c => (
-                    <span key={c.key} style={{ whiteSpace: 'nowrap' }}>
-                      {c.iconaCard ? `${c.iconaCard} ` : `${c.label}: `}
-                      {valore(c, item)}
-                    </span>
-                  ))}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {colTitolo && (
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          color: COLORS.primary,
+                          fontSize: 14,
+                          overflowWrap: 'anywhere',
+                        }}
+                      >
+                        {valore(colTitolo, item)}
+                      </div>
+                    )}
+                    {colSottotitolo && (
+                      <div style={{ fontSize: 11, color: COLORS.textSubtle, marginTop: 2 }}>
+                        {valore(colSottotitolo, item)}
+                      </div>
+                    )}
+                  </div>
+                  {colImporto && (
+                    <div
+                      style={{
+                        fontWeight: 700,
+                        fontSize: 15,
+                        color: COLORS.primary,
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {valore(colImporto, item)}
+                    </div>
+                  )}
                 </div>
-                {colAzioni && <div style={{ flexShrink: 0 }}>{valore(colAzioni, item)}</div>}
-              </div>
+                {(colDettagli.length > 0 || colAzioni) && (
+                  // Dettagli e azioni sulla STESSA riga: card più bassa,
+                  // entrano più righe per schermata
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 8,
+                      marginTop: 6,
+                      minWidth: 0,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 10,
+                        rowGap: 4,
+                        fontSize: 12,
+                        color: COLORS.textMuted,
+                        flexWrap: 'wrap',
+                        minWidth: 0,
+                        flex: 1,
+                      }}
+                    >
+                      {colDettagli.map(c => (
+                        <span key={c.key} style={{ whiteSpace: 'nowrap' }}>
+                          {c.iconaCard ? `${c.iconaCard} ` : `${c.label}: `}
+                          {valore(c, item)}
+                        </span>
+                      ))}
+                    </div>
+                    {colAzioni && <div style={{ flexShrink: 0 }}>{valore(colAzioni, item)}</div>}
+                  </div>
+                )}
+              </>
             )}
           </div>
         ))}

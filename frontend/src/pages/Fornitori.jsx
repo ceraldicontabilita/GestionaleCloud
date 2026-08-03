@@ -156,6 +156,7 @@ const emptySupplier = {
   metodo_pagamento: 'banca',
   giorni_pagamento: 30,
   esclude_magazzino: false,
+  esclude_cassa_banca: false,
   cessato: false,
   note: '',
 };
@@ -177,6 +178,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
         ...supplier,
         ragione_sociale: supplier.ragione_sociale || supplier.nome || supplier.denominazione || '',
         partita_iva: supplier.partita_iva || supplier.piva || '',
+        esclude_cassa_banca: supplier.esclude_cassa_banca ?? Boolean(supplier.cessato),
       });
     } else if (isOpen) {
       setForm(emptySupplier);
@@ -837,8 +839,55 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                 direttamente sulla card del fornitore (accanto al metodo di pagamento).
                 Basta cliccare su "📦 In magazzino" / "🚫 Escluso magazzino" per cambiare. */}
 
-              {/* Fornitore cessato: escluso dalla lista (visibile solo col
-                  chip "Cessati"), MAI eliminato — le fatture storiche restano. */}
+              <div
+                style={{
+                  display: 'grid',
+                  gap: 10,
+                  padding: '14px 16px',
+                  border: `1px solid ${COLORS.warning}`,
+                  borderRadius: BORDER_RADIUS.lg,
+                  background: COLORS.warningLight,
+                }}
+              >
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 10,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: COLORS.gray[800],
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!form.esclude_cassa_banca}
+                    onChange={e => handleChange('esclude_cassa_banca', e.target.checked)}
+                    data-testid="check-esclude-cassa-banca"
+                    style={{ marginTop: 2 }}
+                  />
+                  <span>
+                    Escludi da Prima Nota Cassa e Banca
+                    <span
+                      style={{
+                        display: 'block',
+                        marginTop: 4,
+                        fontSize: 12,
+                        lineHeight: 1.45,
+                        fontWeight: 500,
+                        color: COLORS.textMuted,
+                      }}
+                    >
+                      La fattura resta sempre registrata in Contabilità e conteggiata ai fini IVA.
+                      Non viene creata né proposta come movimento di Cassa o Banca.
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              {/* Fornitore cessato: escluso dalla lista e automaticamente
+                  escluso dai registri finanziari. Dati fiscali e fatture restano. */}
               <label
                 style={{
                   display: 'flex',
@@ -853,10 +902,17 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                 <input
                   type="checkbox"
                   checked={!!form.cessato}
-                  onChange={e => handleChange('cessato', e.target.checked)}
+                  onChange={e => {
+                    const cessato = e.target.checked;
+                    setForm(prev => ({
+                      ...prev,
+                      cessato,
+                      esclude_cassa_banca: cessato ? true : prev.esclude_cassa_banca,
+                    }));
+                  }}
                   data-testid="check-fornitore-cessato"
                 />
-                🚪 Fornitore cessato (nascosto dalla lista, fatture storiche conservate)
+                🚪 Fornitore cessato (nascosto dalla lista; fatture e dati IVA conservati)
               </label>
             </div>
           </div>
@@ -1215,6 +1271,210 @@ function AzioniFornitore({
   );
 }
 
+function SupplierCard({
+  supplier,
+  selectedYear,
+  isMobile,
+  onEdit,
+  onDelete,
+  onViewInvoices,
+  onSearchPiva,
+  onShowFatturato,
+  onToggleCessato,
+  onChangeMetodo,
+  onToggleMagazzino,
+}) {
+  const nome = supplier.ragione_sociale || supplier.denominazione || supplier.nome || 'Fornitore';
+  const piva = supplier.partita_iva || supplier.piva || supplier.vat_number || 'Non disponibile';
+  const esclusoFinanziario = supplier.esclude_cassa_banca || supplier.cessato;
+  const incompleto = !supplier.partita_iva || !supplier.comune;
+  const anno = annoUltimaFattura(supplier);
+
+  const labelStyle = {
+    display: 'block',
+    marginBottom: 3,
+    color: COLORS.textSubtle,
+    fontSize: 10.5,
+    fontWeight: 700,
+    letterSpacing: '0.04em',
+    textTransform: 'uppercase',
+  };
+  const valueStyle = {
+    color: COLORS.gray[800],
+    fontSize: 13,
+    lineHeight: 1.35,
+    overflowWrap: 'anywhere',
+  };
+  const sectionStyle = {
+    minWidth: 0,
+    padding: '10px 12px',
+    borderRadius: BORDER_RADIUS.md,
+    background: COLORS.bgAlt,
+    border: `1px solid ${COLORS.border}`,
+  };
+
+  return (
+    <div data-testid={`supplier-card-${idFornitore(supplier)}`}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: 16,
+          flexWrap: 'wrap',
+          paddingBottom: 10,
+          borderBottom: `1px solid ${COLORS.border}`,
+        }}
+      >
+        <div style={{ minWidth: 0, flex: '1 1 320px' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 7,
+              flexWrap: 'wrap',
+              color: COLORS.primary,
+              fontSize: isMobile ? 15 : 16,
+              fontWeight: 800,
+              lineHeight: 1.3,
+            }}
+          >
+            <span style={{ overflowWrap: 'anywhere' }}>{nome}</span>
+            {supplier.cessato && <Badge variant="danger">CESSATO</Badge>}
+            {esclusoFinanziario && (
+              <Badge variant="warning" data-testid="badge-escluso-cassa-banca">
+                Fuori Cassa/Banca · IVA inclusa
+              </Badge>
+            )}
+            {incompleto && <AlertCircle size={15} color={COLORS.warning} title="Dati incompleti" />}
+          </div>
+          <div style={{ marginTop: 4, color: COLORS.textMuted, fontSize: 12 }}>
+            P.IVA <span style={{ fontFamily: 'monospace' }}>{piva}</span>
+            {supplier.comune && (
+              <span>
+                {' '}
+                · {supplier.comune}
+                {supplier.provincia ? ` (${supplier.provincia})` : ''}
+              </span>
+            )}
+          </div>
+        </div>
+        <div style={{ textAlign: isMobile ? 'left' : 'right', flexShrink: 0 }}>
+          <span style={labelStyle}>Acquistato</span>
+          <div
+            style={{
+              color: COLORS.primary,
+              fontSize: 18,
+              fontWeight: 800,
+              fontVariantNumeric: 'tabular-nums',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {formatEuro(supplier.fatture_totale || 0)}
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+          gap: 8,
+          marginTop: 10,
+        }}
+      >
+        <div style={sectionStyle}>
+          <span style={labelStyle}>Contatti e coordinate</span>
+          <div style={valueStyle}>{supplier.email || 'Email non registrata'}</div>
+          <div style={{ ...valueStyle, marginTop: 5, fontFamily: 'monospace', fontSize: 12 }}>
+            {supplier.iban || 'IBAN non registrato'}
+          </div>
+        </div>
+
+        <div style={sectionStyle}>
+          <span style={labelStyle}>Fatture</span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            <div>
+              <div style={{ ...valueStyle, fontWeight: 800 }}>{supplier.fatture_count || 0}</div>
+              <span style={{ ...labelStyle, marginTop: 3, marginBottom: 0 }}>Numero</span>
+            </div>
+            <div>
+              <div
+                style={{
+                  ...valueStyle,
+                  color: COLORS.success,
+                  fontWeight: 800,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {formatEuro(supplier.fatture_pagate || 0)}
+              </div>
+              <span style={{ ...labelStyle, marginTop: 3, marginBottom: 0 }}>Pagato</span>
+            </div>
+            <div>
+              <div
+                style={{
+                  ...valueStyle,
+                  color: (supplier.fatture_non_pagate || 0) > 0 ? COLORS.danger : COLORS.textMuted,
+                  fontWeight: 800,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {formatEuro(supplier.fatture_non_pagate || 0)}
+              </div>
+              <span style={{ ...labelStyle, marginTop: 3, marginBottom: 0 }}>Residuo</span>
+            </div>
+          </div>
+        </div>
+
+        <div style={sectionStyle}>
+          <span style={labelStyle}>Impostazioni operative</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <MetodoBadge supplier={supplier} onChangeMetodo={onChangeMetodo} />
+            <span style={{ ...valueStyle, fontSize: 12 }}>
+              {supplier.giorni_pagamento || 30} giorni
+            </span>
+            {anno && (
+              <Badge variant={anno >= selectedYear ? 'success' : 'neutral'}>Ultima {anno}</Badge>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 10,
+          flexWrap: 'wrap',
+          marginTop: 10,
+        }}
+      >
+        <Button
+          variant={supplier.esclude_magazzino ? 'warning' : 'success'}
+          size="sm"
+          onClick={() => onToggleMagazzino(idFornitore(supplier), !supplier.esclude_magazzino)}
+          style={{ padding: '5px 10px', fontSize: 11 }}
+        >
+          {supplier.esclude_magazzino ? '🚫 Escluso magazzino' : '📦 In magazzino'}
+        </Button>
+        <AzioniFornitore
+          supplier={supplier}
+          selectedYear={selectedYear}
+          isMobile={isMobile}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onViewInvoices={onViewInvoices}
+          onSearchPiva={onSearchPiva}
+          onShowFatturato={onShowFatturato}
+          onToggleCessato={onToggleCessato}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function Fornitori() {
   // Sotto 1180px la tabella completa non e' leggibile: su tablet e
   // smartphone usiamo direttamente le card responsive.
@@ -1444,17 +1704,19 @@ export default function Fornitori() {
       nuovoValore &&
       !(await confirm({
         title: 'Segna fornitore come cessato',
-        message: `Segnare "${nome}" come CESSATO? Il fornitore sparisce dalla lista (chip "Cessati" per rivederlo); fatture e storico restano.`,
+        message: `Segnare "${nome}" come CESSATO? Il fornitore sparisce dalla lista e viene escluso da Cassa/Banca; fatture, registrazione contabile e IVA restano conservate.`,
         variant: 'warning',
       }))
     ) {
       return;
     }
     try {
-      await api.put(`/api/suppliers/${chiave}`, { cessato: nuovoValore });
-      setSuppliers(prev =>
-        prev.map(s => (idFornitore(s) === chiave ? { ...s, cessato: nuovoValore } : s))
-      );
+      const payload = {
+        cessato: nuovoValore,
+        ...(nuovoValore ? { esclude_cassa_banca: true } : {}),
+      };
+      await api.put(`/api/suppliers/${chiave}`, payload);
+      setSuppliers(prev => prev.map(s => (idFornitore(s) === chiave ? { ...s, ...payload } : s)));
     } catch (error) {
       toast.error('Errore aggiornamento stato: ' + (error.response?.data?.detail || error.message));
     }
@@ -2184,14 +2446,14 @@ export default function Fornitori() {
             </p>
           </div>
         ) : (
-          /* Lista unica desktop/mobile (ListaAdattiva, ex griglia di card):
-             tabella su monitor, card compatte su telefono */
+          /* Card informative su ogni formato: la tabella larga comprimeva
+             nome, IBAN, importi e azioni rendendo difficile la lettura. */
           <div
             style={{
               backgroundColor: COLORS.card,
               borderRadius: BORDER_RADIUS.lg,
               boxShadow: SHADOWS.sm,
-              padding: isMobile ? '10px' : '4px 0',
+              padding: '10px',
             }}
           >
             <ListaAdattiva
@@ -2203,7 +2465,25 @@ export default function Fornitori() {
               // eliminare un fornitore dalla seconda pagina non riporta
               // più alla prima (richiesta utente 18/07)
               resetKey={`${hs.search}|${hs.metodo}|${filterIncomplete}|${filterSenzaMetodo}|${filterAnzianita}|${giorniNuovo}|${mostraCessati}`}
-              chiave={(s, i) => s.id || i}
+              chiave={(s, i) => idFornitore(s) || i}
+              renderCard={s => (
+                <SupplierCard
+                  supplier={s}
+                  selectedYear={selectedYear}
+                  isMobile={isMobile}
+                  onEdit={sup => {
+                    setCurrentSupplier(sup);
+                    setModalOpen(true);
+                  }}
+                  onDelete={handleDelete}
+                  onViewInvoices={handleViewInvoices}
+                  onSearchPiva={handleSearchPiva}
+                  onShowFatturato={handleShowFatturato}
+                  onToggleCessato={handleToggleCessato}
+                  onChangeMetodo={handleChangeMetodo}
+                  onToggleMagazzino={handleToggleEsclude}
+                />
+              )}
               colonne={[
                 {
                   key: 'ragione_sociale',
