@@ -97,6 +97,49 @@ def parse_importo(value_str: str) -> float:
     return parse_importo_ita(value_str, keep_sign=False)
 
 
+def _detect_tipo_cedolino(text: str) -> str:
+    """Rileva mensilita speciali solo da intestazioni esplicite.
+
+    Nei cedolini ordinari compaiono quasi sempre le voci ``rateo
+    tredicesima`` e ``rateo quattordicesima``. Cercare le sole parole nel
+    testo completo classificherebbe quindi ogni mensilita come speciale.
+    Limitiamo il controllo alle prime righe e richiediamo un'indicazione di
+    testata/periodo, escludendo le comuni voci di maturazione e riepilogo.
+    """
+    righe = [re.sub(r'\s+', ' ', riga).strip().upper()
+             for riga in text.splitlines() if riga.strip()][:80]
+    rumore = (
+        "RATEO", "RATEI", "MATURAT", "RESIDU", "ACCANTON",
+        "PROGRESSIV", "IMPONIBILE", "FERIE", "PERMESS",
+    )
+    intestazione = re.compile(
+        r'\b(?:CEDOLINO|BUSTA\s+PAGA|MENSILIT[ÀA]|'
+        r'PERIODO(?:\s+DI)?\s+(?:PAGA|RETRIBUZIONE))\b'
+    )
+    tipi = (
+        ("quattordicesima", re.compile(r'\b(?:QUATTORDICESIMA|14(?:MA|A|\^))\b')),
+        ("tredicesima", re.compile(r'\b(?:TREDICESIMA|13(?:MA|A|\^))\b')),
+    )
+
+    for riga in righe:
+        if any(parola in riga for parola in rumore):
+            continue
+        for tipo, pattern in tipi:
+            match = pattern.search(riga)
+            if not match:
+                continue
+            # Una riga breve composta dalla mensilita (ed eventualmente
+            # dall'anno) e' gia una testata forte; negli altri casi serve
+            # un marcatore esplicito di cedolino/periodo.
+            resto = pattern.sub("", riga)
+            resto = re.sub(r'\b(?:19|20)\d{2}\b', '', resto)
+            resto = re.sub(r'[\s:;,_\-/]+', '', resto)
+            if not resto or intestazione.search(riga):
+                return tipo
+
+    return "mensile"
+
+
 def parse_template_csc_napoli(text: str) -> Dict[str, Any]:
     """
     Parser per Template 1: Software CSC - Napoli (fino 2018)
@@ -114,15 +157,12 @@ def parse_template_csc_napoli(text: str) -> Dict[str, Any]:
     
     # Rileva tipo cedolino
     is_acconto = 'ACCONTO' in text.upper()
-    is_tredicesima = 'TREDICESIMA' in text.upper() or '13MA' in text.upper()
-    is_quattordicesima = 'QUATTORDICESIMA' in text.upper() or '14MA' in text.upper()
+    tipo_speciale = _detect_tipo_cedolino(text)
     
     if is_acconto:
         result["tipo_cedolino"] = "acconto"
-    elif is_tredicesima:
-        result["tipo_cedolino"] = "tredicesima"
-    elif is_quattordicesima:
-        result["tipo_cedolino"] = "quattordicesima"
+    elif tipo_speciale != "mensile":
+        result["tipo_cedolino"] = tipo_speciale
     else:
         result["tipo_cedolino"] = "mensile"
     
@@ -575,13 +615,7 @@ def parse_template_zucchetti_new(text: str) -> Dict[str, Any]:
     }
     
     # Rileva tipo cedolino
-    text_upper = text.upper()
-    if 'TREDICESIMA' in text_upper or '13MA' in text_upper:
-        result["tipo_cedolino"] = "tredicesima"
-    elif 'QUATTORDICESIMA' in text_upper or '14MA' in text_upper:
-        result["tipo_cedolino"] = "quattordicesima"
-    else:
-        result["tipo_cedolino"] = "mensile"
+    result["tipo_cedolino"] = _detect_tipo_cedolino(text)
     
     # Estrai periodo (es: "Ottobre 2023")
     mesi = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',

@@ -4,6 +4,21 @@ import asyncio
 import fitz
 
 
+def test_tipo_cedolino_ignora_ratei_delle_mensilita_ordinarie():
+    from app.parsers.busta_paga_multi_template import _detect_tipo_cedolino
+
+    testo = """CEDOLINO PAGA\nPERIODO DI RETRIBUZIONE MARZO 2026\nDipendente Test\nRATEO TREDICESIMA 120,00\nRATEO QUATTORDICESIMA 95,00"""
+
+    assert _detect_tipo_cedolino(testo) == "mensile"
+
+
+def test_tipo_cedolino_rileva_intestazioni_speciali_senza_confondere_i_ratei():
+    from app.parsers.busta_paga_multi_template import _detect_tipo_cedolino
+
+    assert _detect_tipo_cedolino("CEDOLINO TREDICESIMA 2026\nRATEO QUATTORDICESIMA") == "tredicesima"
+    assert _detect_tipo_cedolino("MENSILITA QUATTORDICESIMA 2026\nRATEO TREDICESIMA") == "quattordicesima"
+
+
 def test_teamsystem_legge_totali_dalle_celle_e_non_dalla_riga_precedente():
     from app.parsers.busta_paga_multi_template import _parse_teamsystem_layout
 

@@ -2,28 +2,54 @@ import React from 'react';
 import { COLORS, BORDER_RADIUS, FONT } from '../lib/utils';
 import { Button } from './ds/Button';
 
+const STALE_CHUNK_PATTERNS = [
+  /failed to fetch dynamically imported module/i,
+  /importing a module script failed/i,
+  /chunkloaderror/i,
+  /loading chunk [\w-]+ failed/i,
+  /css_chunk_load_failed/i,
+];
+
+export function isStaleChunkError(error) {
+  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error || '');
+  return STALE_CHUNK_PATTERNS.some((pattern) => pattern.test(message));
+}
+
 /**
- * ErrorBoundary - Cattura errori nei componenti figli e mostra fallback UI.
- * Previene che un crash in una pagina renda tutta l'app bianca.
+ * ErrorBoundary - Cattura errori nei componenti figli e mostra una UI di
+ * ripiego. Se il browser ha ancora un vecchio chunk dopo un deploy, esegue
+ * una sola ricarica automatica per percorso, evitando cicli infiniti.
  */
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null, errorInfo: null };
+    this.state = { hasError: false, error: null, errorInfo: null, staleChunk: false };
   }
 
   static getDerivedStateFromError(error) {
-    return { hasError: true, error };
+    return { hasError: true, error, staleChunk: isStaleChunkError(error) };
   }
 
   componentDidCatch(error, errorInfo) {
     this.setState({ errorInfo });
-    // Log per debug
     console.error('ErrorBoundary caught:', error, errorInfo);
+
+    if (!isStaleChunkError(error) || typeof window === 'undefined') return;
+
+    const key = `gestionale:chunk-reload:${window.location.pathname}`;
+    try {
+      const ultimoTentativo = Number(window.sessionStorage.getItem(key) || 0);
+      if (Date.now() - ultimoTentativo > 60_000) {
+        window.sessionStorage.setItem(key, String(Date.now()));
+        window.location.reload();
+      }
+    } catch {
+      // Storage non disponibile: la UI di ripiego resta utilizzabile.
+    }
   }
 
   handleReset = () => {
-    this.setState({ hasError: false, error: null, errorInfo: null });
+    this.setState({ hasError: false, error: null, errorInfo: null, staleChunk: false });
   };
 
   handleReload = () => {
@@ -32,10 +58,7 @@ class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError) {
-      // Fallback UI personalizzata
-      if (this.props.fallback) {
-        return this.props.fallback;
-      }
+      if (this.props.fallback) return this.props.fallback;
 
       return (
         <div
@@ -60,11 +83,12 @@ class ErrorBoundary extends React.Component {
             Si è verificato un errore
           </h2>
           <p style={{ color: COLORS.text, maxWidth: 500, margin: 0 }}>
-            {this.props.message ||
-              'Qualcosa è andato storto in questa sezione. Puoi provare a ricaricare.'}
+            {this.state.staleChunk
+              ? 'È disponibile una versione aggiornata. Ricarica la pagina per continuare.'
+              : this.props.message ||
+                'Qualcosa è andato storto in questa sezione. Puoi provare a ricaricare.'}
           </p>
 
-          {/* Mostra dettagli errore solo in development */}
           {import.meta.env.DEV && this.state.error && (
             <details
               style={{
