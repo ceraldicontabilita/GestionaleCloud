@@ -37,7 +37,10 @@ class CorrispettiviService:
     """
     
     def __init__(self, db=None):
-        self.db = db or Database.get_db()
+        # AsyncIOMotorDatabase vieta intenzionalmente bool(db): usare
+        # sempre il confronto esplicito, altrimenti il job Drive fallisce
+        # prima ancora di leggere il primo XML.
+        self.db = db if db is not None else Database.get_db()
         self.corrispettivi = self.db["corrispettivi"]
         self.cash_movements = self.db["prima_nota_cassa"]  # Usa collection corretta
 

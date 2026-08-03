@@ -94,6 +94,22 @@ class _FakeDb:
         self.collections[name] = value
 
 
+class _MotorLikeDb(_FakeDb):
+    def __bool__(self):
+        raise NotImplementedError(
+            "Database objects do not implement truth value testing or bool()"
+        )
+
+
+def test_costruttore_non_valuta_database_motor_come_booleano():
+    db = _MotorLikeDb()
+
+    svc = CorrispettiviService(db=db)
+
+    assert svc.db is db
+    assert svc.corrispettivi is db["corrispettivi"]
+
+
 def _run(c):
     loop = asyncio.new_event_loop()
     try:
