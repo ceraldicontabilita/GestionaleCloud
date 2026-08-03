@@ -171,7 +171,7 @@ async def _do_sync(db) -> Dict[str, Any]:
         return {"status": "error", "message": "Service Drive non disponibile."}
 
     from app.services.corrispettivi_service import get_corrispettivi_service
-    corr_service = get_corrispettivi_service()
+    corr_service = get_corrispettivi_service(db)
 
     parent_id = _folder_id()
     result = {
@@ -274,7 +274,7 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
         return {"status": "error", "message": "Service Drive non disponibile"}
 
     from app.services.corrispettivi_service import get_corrispettivi_service
-    corr_service = get_corrispettivi_service()
+    corr_service = get_corrispettivi_service(db)
 
     parent_id = _folder_id()
     esito = {"status": "ok", "controllati": 0, "quadrati": 0,
