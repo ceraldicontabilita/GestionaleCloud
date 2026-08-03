@@ -7,6 +7,7 @@ registra_pagamento_fattura/determina_tipo_movimento_fattura."""
 import asyncio
 
 from app.routers.prima_nota_module import sync as sync_mod
+from app.routers.prima_nota_module import common as common_mod
 
 
 def _matches(doc, query):
@@ -28,6 +29,8 @@ def _matches(doc, query):
             out = out and str(v["$regex"]).strip("^") in str(doc.get(k, ""))
         elif isinstance(v, dict) and "$exists" in v:
             out = out and (k in doc) == v["$exists"]
+        elif isinstance(v, dict) and "$in" in v:
+            out = out and doc.get(k) in v["$in"]
         else:
             out = out and doc.get(k) == v
     return out
@@ -118,6 +121,27 @@ def test_determina_tipo_movimento_fattura_normale():
     )
     assert tipo == "uscita"
     assert categoria == "Fatture"
+
+
+def test_campi_movimento_espongono_numero_e_fornitore_per_filtri():
+    campi = sync_mod.costruisci_campi_movimento_fattura(_fattura(), 58.0)
+    assert campi["numero_fattura"] == "4"
+    assert campi["fornitore"] == "RONDINELLA MARKET S.R.L."
+
+
+def test_arricchisce_movimento_storico_dalla_fattura_collegata():
+    db = _FakeDb()
+    db["invoices"].docs = [_fattura()]
+    movimenti = [{
+        "id": "mov-1", "fattura_id": "fatt-1", "data": "2026-06-05",
+        "descrizione": "Pagamento fattura 4 - RONDINELLA MARKET",
+    }]
+
+    _run(common_mod.arricchisci_movimenti_fattura(db, movimenti))
+
+    assert movimenti[0]["numero_fattura"] == "4"
+    assert movimenti[0]["fornitore"] == "RONDINELLA MARKET S.R.L."
+    assert movimenti[0]["data_fattura"] == "2026-06-05"
 
 
 def test_determina_tipo_movimento_td26_fornitore_terzo_resta_uscita():

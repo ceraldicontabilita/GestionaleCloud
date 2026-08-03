@@ -56,6 +56,124 @@ function parseImportoIT(input) {
   return isNaN(v) ? null : v;
 }
 
+const testoRicerca = valore => String(valore ?? '').trim().toLocaleLowerCase('it-IT');
+
+export function numeroFatturaMovimento(movimento = {}) {
+  return movimento.numero_fattura || movimento.fattura_numero || movimento.invoice_number || '';
+}
+
+export function nomeFornitoreMovimento(movimento = {}) {
+  const esplicito = movimento.fornitore || movimento.ragione_sociale ||
+    movimento.supplier_name || movimento.cedente_denominazione;
+  if (esplicito) return esplicito;
+
+  const numero = numeroFatturaMovimento(movimento);
+  const sembraFattura = movimento.fattura_id || numero ||
+    /fattur|nota credito/i.test(`${movimento.categoria || ''} ${movimento.descrizione || ''}`);
+  if (!sembraFattura) return '';
+
+  // Compatibilita' con le righe storiche, che salvavano il fornitore solo
+  // nella descrizione: "Pagamento fattura N. - Ragione sociale".
+  const descrizione = String(movimento.descrizione || '');
+  const separatore = descrizione.indexOf(' - ');
+  return separatore >= 0 ? descrizione.slice(separatore + 3).trim() : '';
+}
+
+export function dataDocumentoMovimento(movimento = {}) {
+  return movimento.data_fattura || movimento.fattura_data || movimento.invoice_date || movimento.data || '';
+}
+
+export function filtraMovimentiPrimaNota(movimenti = [], filtri = {}) {
+  const numero = testoRicerca(filtri.numeroFattura);
+  const fornitore = testoRicerca(filtri.fornitore);
+  const data = String(filtri.data || '').trim();
+  const generico = testoRicerca(filtri.testo);
+
+  return movimenti.filter(movimento => {
+    if (numero && !testoRicerca(numeroFatturaMovimento(movimento)).includes(numero)) return false;
+    if (fornitore && !testoRicerca(nomeFornitoreMovimento(movimento)).includes(fornitore)) return false;
+    if (data && dataDocumentoMovimento(movimento) !== data) return false;
+    if (generico) {
+      const campi = [
+        movimento.descrizione,
+        movimento.numero_assegno || movimento.assegno_numero,
+        movimento.importo,
+      ];
+      if (!campi.some(campo => testoRicerca(campo).includes(generico))) return false;
+    }
+    return true;
+  });
+}
+
+export function filtraFattureProvvisorie(fatture = [], filtri = {}) {
+  const numero = testoRicerca(filtri.numeroFattura);
+  const fornitore = testoRicerca(filtri.fornitore);
+  const data = String(filtri.data || '').trim();
+  return fatture.filter(fattura => {
+    const numeroFattura = fattura.fattura_numero || fattura.numero_fattura || fattura.invoice_number || '';
+    const nomeFornitore = fattura.fornitore || fattura.supplier_name || '';
+    const dataFattura = fattura.fattura_data || fattura.data || fattura.invoice_date || '';
+    return (!numero || testoRicerca(numeroFattura).includes(numero)) &&
+      (!fornitore || testoRicerca(nomeFornitore).includes(fornitore)) &&
+      (!data || dataFattura === data);
+  });
+}
+
+function FiltriFattura({ numeroFattura, data, fornitore, onNumeroFattura, onData, onFornitore }) {
+  const stileCampo = {
+    display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0,
+  };
+  const stileLabel = {
+    color: '#475569', fontSize: 11, fontWeight: 800, textTransform: 'uppercase',
+  };
+  const stileInput = {
+    width: '100%', minWidth: 0, boxSizing: 'border-box', minHeight: 42,
+    padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: 8,
+    background: 'white', color: '#0f172a', fontSize: 13,
+  };
+  return (
+    <div
+      data-testid="filtri-fattura-prima-nota"
+      style={{
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+        gap: 10, padding: 12, margin: '12px 0 8px', background: '#f8fafc',
+        border: '1px solid #dbe4ee', borderRadius: 12,
+      }}
+    >
+      <label style={stileCampo}>
+        <span style={stileLabel}>Numero fattura</span>
+        <input
+          aria-label="Filtra per numero fattura"
+          placeholder="Es. V1-8016"
+          value={numeroFattura}
+          onChange={e => onNumeroFattura(e.target.value)}
+          style={stileInput}
+        />
+      </label>
+      <label style={stileCampo}>
+        <span style={stileLabel}>Data fattura</span>
+        <input
+          type="date"
+          aria-label="Filtra per data fattura"
+          value={data}
+          onChange={e => onData(e.target.value)}
+          style={stileInput}
+        />
+      </label>
+      <label style={stileCampo}>
+        <span style={stileLabel}>Nome fornitore</span>
+        <input
+          aria-label="Filtra per nome fornitore"
+          placeholder="Es. San Carlo"
+          value={fornitore}
+          onChange={e => onFornitore(e.target.value)}
+          style={stileInput}
+        />
+      </label>
+    </div>
+  );
+}
+
 function BadgeCategoria({ categoria }) {
   const testo = categoria || '—';
   const lower = testo.toLowerCase();
@@ -430,6 +548,9 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
   const isMobile = useIsMobile();
   const [pagina, setPagina] = useState(1);
   const [cerca, setCerca] = useState('');
+  const [fNumeroFattura, setFNumeroFattura] = useState('');
+  const [fDataFattura, setFDataFattura] = useState('');
+  const [fFornitore, setFFornitore] = useState('');
   const [fCategoria, setFCategoria] = useState('');
   const [fTipo, setFTipo] = useState('');
   const [editing, setEditing] = useState(null);
@@ -441,7 +562,9 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
   const movimenti = dati.movimenti || [];
   const riporto = dati.saldo_precedente || 0;
 
-  useEffect(() => { setPagina(1); }, [mese, cerca, fCategoria, fTipo]);
+  useEffect(() => { setPagina(1); }, [
+    mese, cerca, fNumeroFattura, fDataFattura, fFornitore, fCategoria, fTipo,
+  ]);
 
   // ORDINE DENTRO LA GIORNATA (regola utente 17/07/2026): prima il
   // CORRISPETTIVO, poi l'uscita del POS, poi i pagamenti delle fatture,
@@ -487,16 +610,17 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
     if (mese !== null) lista = lista.filter(m => parseInt((m.data || '').slice(5, 7), 10) === mese + 1);
     if (fCategoria) lista = lista.filter(m => m.categoria === fCategoria);
     if (fTipo) lista = lista.filter(m => m.tipo === fTipo);
-    if (cerca.trim()) {
-      const q = cerca.trim().toLowerCase();
-      lista = lista.filter(m =>
-        (m.descrizione || '').toLowerCase().includes(q) ||
-        (m.numero_fattura || '').toLowerCase().includes(q) ||
-        (m.numero_assegno || m.assegno_numero || '').toLowerCase().includes(q) ||
-        String(m.importo || '').includes(q));
-    }
+    lista = filtraMovimentiPrimaNota(lista, {
+      numeroFattura: fNumeroFattura,
+      data: fDataFattura,
+      fornitore: fFornitore,
+      testo: cerca,
+    });
     return [...lista].sort(ordineVideo);
-  }, [movimenti, mese, fCategoria, fTipo, cerca]);
+  }, [
+    movimenti, mese, fCategoria, fTipo, cerca,
+    fNumeroFattura, fDataFattura, fFornitore,
+  ]);
 
   const totPagine = Math.max(1, Math.ceil(visibili.length / PER_PAGINA));
   const paginaCorrente = Math.min(pagina, totPagine);
@@ -682,10 +806,19 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
 
   return (
     <div>
+      <FiltriFattura
+        numeroFattura={fNumeroFattura}
+        data={fDataFattura}
+        fornitore={fFornitore}
+        onNumeroFattura={setFNumeroFattura}
+        onData={setFDataFattura}
+        onFornitore={setFFornitore}
+      />
       {/* filtri + nuovo movimento */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '12px 0' }}>
         <input
-          placeholder="🔍 Cerca…" value={cerca} onChange={e => setCerca(e.target.value)}
+          aria-label="Cerca in descrizione, importo o assegno"
+          placeholder="🔍 Descrizione, importo o assegno…" value={cerca} onChange={e => setCerca(e.target.value)}
           style={{ ...stileInput, flex: '1 1 140px' }}
         />
         <select value={fCategoria} onChange={e => setFCategoria(e.target.value)} style={stileInput}>
@@ -780,6 +913,22 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
                         </div>
                       )}
                     </div>
+                    {(numeroFatturaMovimento(m) || nomeFornitoreMovimento(m)) && (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 8, margin: '5px 0 8px', fontSize: 11.5 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <span style={{ color: '#64748b' }}>Fornitore</span>
+                          <div style={{ fontWeight: 700, color: BLU, wordBreak: 'break-word' }}>
+                            {nomeFornitoreMovimento(m) || '—'}
+                          </div>
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <span style={{ color: '#64748b' }}>N. fattura</span>
+                          <div style={{ fontWeight: 700, color: BLU, wordBreak: 'break-all' }}>
+                            {numeroFatturaMovimento(m) || '—'}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 11.5, color: '#64748b' }}>
                         Saldo:{' '}
@@ -806,12 +955,16 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
               <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                {['Data', 'Categoria', 'Descrizione', 'Dare', 'Avere', 'Saldo', 'Doc.', 'Azioni'].map((h, i) => (
+                {[
+                  ['Data', 'left'], ['Fornitore', 'left'], ['N. fattura', 'left'],
+                  ['Categoria', 'left'], ['Descrizione', 'left'], ['Dare', 'right'],
+                  ['Avere', 'right'], ['Saldo', 'right'], ['Doc.', 'center'], ['Azioni', 'center'],
+                ].map(([h, allineamento]) => (
                   <th
                     key={h}
                     style={{
                       padding: '9px 10px', fontSize: 11, color: '#64748b', textTransform: 'uppercase',
-                      textAlign: i >= 3 && i <= 5 ? 'right' : i >= 6 ? 'center' : 'left',
+                      textAlign: allineamento,
                     }}
                   >
                     {h}
@@ -827,10 +980,16 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
                   style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 ? '#f8fafc' : 'white' }}
                 >
                   <td style={{ padding: '7px 10px', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{formatDateIT(m.data)}</td>
+                  <td style={{ padding: '7px 10px', minWidth: 155, maxWidth: 230, fontWeight: 700, color: BLU, wordBreak: 'break-word' }}>
+                    {nomeFornitoreMovimento(m) || '—'}
+                  </td>
+                  <td style={{ padding: '7px 10px', minWidth: 110, maxWidth: 180, fontFamily: 'ui-monospace, Menlo, monospace', wordBreak: 'break-all' }}>
+                    {numeroFatturaMovimento(m) || '—'}
+                  </td>
                   <td style={{ padding: '7px 10px' }}>
                     <BadgeCategoria categoria={m.categoria} />
                   </td>
-                  <td style={{ padding: '7px 10px', maxWidth: 420, wordBreak: 'break-word' }}>
+                  <td style={{ padding: '7px 10px', minWidth: 210, maxWidth: 360, wordBreak: 'break-word' }}>
                     {m.descrizione || '—'}
                     {tipo === 'banca' && (m.numero_assegno || m.assegno_numero) && (
                       <div style={{ marginTop: 3, color: '#1d4ed8', fontWeight: 700, fontSize: 11 }}>
@@ -891,10 +1050,26 @@ function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
   const [parziale, setParziale] = useState(null);
   const [importoCassa, setImportoCassa] = useState('');
   const [errore, setErrore] = useState('');
+  const [fNumeroFattura, setFNumeroFattura] = useState('');
+  const [fDataFattura, setFDataFattura] = useState('');
+  const [fFornitore, setFFornitore] = useState('');
   // Richiesta utente 19/07/2026: da Provvisori non si poteva mai aprire la
   // fattura per controllarla prima di confermare cassa/banca — a differenza
   // del Registro (badgeDocumento), qui non c'era nessun modo di vederla.
   const [fatturaView, setFatturaView] = useState(null);
+  const filtriFattura = {
+    numeroFattura: fNumeroFattura,
+    data: fDataFattura,
+    fornitore: fFornitore,
+  };
+  const provvisoriVisibili = useMemo(
+    () => filtraFattureProvvisorie(provvisori, filtriFattura),
+    [provvisori, fNumeroFattura, fDataFattura, fFornitore],
+  );
+  const attesaBancaVisibili = useMemo(
+    () => filtraFattureProvvisorie(attesaBanca, filtriFattura),
+    [attesaBanca, fNumeroFattura, fDataFattura, fFornitore],
+  );
 
   const bottoneVedi = p => (
     <button
@@ -943,13 +1118,23 @@ function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+      <FiltriFattura
+        numeroFattura={fNumeroFattura}
+        data={fDataFattura}
+        fornitore={fFornitore}
+        onNumeroFattura={setFNumeroFattura}
+        onData={setFDataFattura}
+        onFornitore={setFFornitore}
+      />
       {errore && <div style={{ color: ROSSO, fontSize: 13 }}>{errore}</div>}
-      {provvisori.length === 0 && (
+      {provvisoriVisibili.length === 0 && (
         <div style={{ padding: 26, textAlign: 'center', color: '#6b7280', background: 'white', borderRadius: 12, border: '1px solid #e2e8f0' }}>
-          Nessuna fattura in attesa di divisione cassa/banca.
+          {provvisori.length === 0
+            ? 'Nessuna fattura in attesa di divisione cassa/banca.'
+            : 'Nessuna fattura provvisoria corrisponde ai filtri.'}
         </div>
       )}
-      {provvisori.map(p => (
+      {provvisoriVisibili.map(p => (
         <div
           key={p.fattura_id || p.id}
           style={{ background: 'white', borderRadius: 11, border: '1px solid #e2e8f0', borderLeft: '4px solid #d97706', padding: '10px 13px' }}
@@ -992,13 +1177,13 @@ function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
         </div>
       ))}
 
-      {attesaBanca.length > 0 && (
+      {attesaBancaVisibili.length > 0 && (
         <div style={{ marginTop: 8 }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: '#64748b', margin: '4px 0 8px' }}>
             🏦 Fornitori a metodo banca — in attesa dell'addebito in estratto conto ({attesaBanca.length}).
             Si registrano da sole alla riconciliazione: nessuna azione richiesta.
           </div>
-          {attesaBanca.map(p => (
+          {attesaBancaVisibili.map(p => (
             <div
               key={p.fattura_id}
               style={{ background: 'white', borderRadius: 10, border: '1px dashed #93c5fd', borderLeft: '4px solid #2563eb', padding: '8px 12px', marginBottom: 6, display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5, flexWrap: 'wrap' }}

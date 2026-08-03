@@ -3,7 +3,13 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../api';
-import { CartaNexi, MovimentoModal } from './PrimaNota';
+import {
+  CartaNexi,
+  MovimentoModal,
+  filtraFattureProvvisorie,
+  filtraMovimentiPrimaNota,
+  nomeFornitoreMovimento,
+} from './PrimaNota';
 
 vi.mock('../api', () => ({
   default: { get: vi.fn(), post: vi.fn(), put: vi.fn() },
@@ -84,5 +90,47 @@ describe('Numero assegno in Prima Nota Banca', () => {
       expect.objectContaining({ numero_assegno: '208769333', importo: 1098.28 }),
     ));
     expect(onSaved).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Filtri distinti della Prima Nota', () => {
+  const movimenti = [
+    {
+      id: 'm1', data: '2026-03-31', categoria: 'Fatture',
+      numero_fattura: 'V1-8016',
+      descrizione: 'Pagamento fattura V1-8016 - G.I.A.L. Generale Ingrosso Alimentare S.R.L.',
+      importo: 1053.88,
+    },
+    {
+      id: 'm2', data: '2026-03-27', categoria: 'Fatture',
+      numero_fattura: '217AX8F01404', fornitore: 'San Carlo Gruppo Alimentare S.P.A',
+      descrizione: 'Pagamento fattura 217AX8F01404 - San Carlo Gruppo Alimentare S.P.A',
+      importo: 33.79,
+    },
+  ];
+
+  it('ricava il fornitore anche dalle descrizioni storiche', () => {
+    expect(nomeFornitoreMovimento(movimenti[0])).toBe('G.I.A.L. Generale Ingrosso Alimentare S.R.L.');
+  });
+
+  it('combina numero fattura, data e fornitore senza confonderli', () => {
+    expect(filtraMovimentiPrimaNota(movimenti, {
+      numeroFattura: '01404', data: '2026-03-27', fornitore: 'san carlo',
+    })).toEqual([movimenti[1]]);
+    expect(filtraMovimentiPrimaNota(movimenti, {
+      numeroFattura: '01404', data: '2026-03-31', fornitore: 'san carlo',
+    })).toEqual([]);
+  });
+
+  it('applica gli stessi filtri alle fatture provvisorie', () => {
+    const provvisori = movimenti.map(m => ({
+      fattura_id: m.id,
+      fattura_numero: m.numero_fattura,
+      fattura_data: m.data,
+      fornitore: nomeFornitoreMovimento(m),
+    }));
+    expect(filtraFattureProvvisorie(provvisori, {
+      numeroFattura: 'V1', data: '2026-03-31', fornitore: 'g.i.a.l',
+    })).toEqual([provvisori[0]]);
   });
 });

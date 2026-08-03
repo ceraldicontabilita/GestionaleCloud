@@ -12,7 +12,7 @@ from app.database import Database, Collections
 from app.services.scritture_contabili import scrivi_movimento
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA,
-    calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota
+    calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota, arricchisci_movimenti_fattura
 )
 
 logger = logging.getLogger(__name__)
@@ -55,6 +55,7 @@ async def list_prima_nota_cassa(
         query["categoria"] = categoria
     
     movimenti = await db[COLLECTION_PRIMA_NOTA_CASSA].find(query, {"_id": 0}).sort("data", -1).skip(skip).limit(limit).to_list(limit)
+    await arricchisci_movimenti_fattura(db, movimenti)
 
     # §6.4: saldo tramite la funzione UNICA (segno/riporto/saldo finale uniformi)
     saldi = await aggrega_saldo_prima_nota(db, COLLECTION_PRIMA_NOTA_CASSA, query, anno)

@@ -89,6 +89,55 @@ def clean_mongo_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
     return doc
 
 
+async def arricchisci_movimenti_fattura(db, movimenti: list) -> None:
+    """Espone numero, data e fornitore come campi distinti nelle righe di
+    Prima Nota, senza migrare o riscrivere i movimenti storici.
+
+    I record recenti li salvano gia' direttamente; per quelli precedenti si
+    legge in batch la fattura collegata. Il collegamento esplicito evita di
+    associare per errore fatture diverse che condividono lo stesso numero.
+    """
+    riferimenti = set()
+    for movimento in movimenti:
+        fattura_id = movimento.get("fattura_id")
+        riferimento = str(movimento.get("riferimento") or "")
+        if not fattura_id and riferimento.startswith("FATT-"):
+            fattura_id = riferimento[5:]
+        if fattura_id:
+            riferimenti.add(fattura_id)
+            movimento["_fattura_id_arricchimento"] = fattura_id
+
+    if not riferimenti:
+        return
+
+    fatture = await db["invoices"].find(
+        {"$or": [
+            {"id": {"$in": list(riferimenti)}},
+            {"invoice_key": {"$in": list(riferimenti)}},
+        ]},
+        {"_id": 0, "id": 1, "invoice_key": 1, "invoice_number": 1,
+         "numero_fattura": 1, "invoice_date": 1, "data_fattura": 1,
+         "supplier_name": 1, "cedente_denominazione": 1},
+    ).to_list(max(1, len(riferimenti) * 2))
+
+    per_riferimento = {}
+    for fattura in fatture:
+        for chiave in (fattura.get("id"), fattura.get("invoice_key")):
+            if chiave:
+                per_riferimento[chiave] = fattura
+
+    for movimento in movimenti:
+        fattura = per_riferimento.get(movimento.pop("_fattura_id_arricchimento", None))
+        if not fattura:
+            continue
+        if not movimento.get("numero_fattura"):
+            movimento["numero_fattura"] = fattura.get("invoice_number") or fattura.get("numero_fattura") or ""
+        if not movimento.get("fornitore"):
+            movimento["fornitore"] = fattura.get("supplier_name") or fattura.get("cedente_denominazione") or ""
+        if not movimento.get("data_fattura"):
+            movimento["data_fattura"] = fattura.get("invoice_date") or fattura.get("data_fattura") or movimento.get("data")
+
+
 # Importo robusto: in estratto_conto_movimenti alcuni documenti storici hanno
 # `importo` come stringa; $convert li somma comunque (onError/onNull → 0).
 # Per cassa/banca (importi già numerici) il risultato è identico a "$importo".
