@@ -308,3 +308,16 @@ def test_generate_invoice_html_fallback_avvisa_che_non_e_loriginale():
     html = generate_invoice_html({"invoice_number": "20", "total_amount": 100.0}, [])
 
     assert "NON è il documento XML originale" in html
+
+
+def test_html_assosoftware_viene_centrato_nel_visualizzatore():
+    html = (
+        "<html><head><title>Fattura</title></head><body>"
+        "<div id='fattura-elettronica' style='min-width:800px'>documento</div>"
+        "</body></html>"
+    )
+
+    responsive = crud_mod._rendi_fattura_responsive(html)
+
+    assert "justify-content:center!important" in responsive
+    assert "#fattura-container,#fattura-elettronica{width:800px!important" in responsive

@@ -1,8 +1,5 @@
-"""REGOLA (utente 18/07/2026): la fattura XML con fornitore a metodo
-CASSA (contanti) si registra subito in Prima Nota Cassa; con metodo
-BANCA resta PROVVISORIA finche' la riconciliazione (estratto conto /
-PayPal / carta) non trova l'addebito reale; misto/senza metodo resta
-provvisoria per la divisione manuale."""
+"""Regola utente 03/08/2026: cassa e banca instradano subito la fattura
+nelle rispettive Prime Note; misto o senza metodo resta provvisoria."""
 import asyncio
 
 from app.routers.invoices import fatture_upload as mod
@@ -94,18 +91,18 @@ def test_fornitore_cassa_registra_subito_in_cassa(monkeypatch):
     assert db["invoices"].docs[0]["stato_pagamento"] == "pagata"
 
 
-def test_fornitore_banca_resta_provvisoria_fino_a_riconciliazione(monkeypatch):
-    """REGOLA utente 18/07/2026: la fattura 'banca' NON e' pagata solo
-    perche' il fornitore ha metodo banca — diventa pagata SOLO quando la
-    riconciliazione (estratto conto / PayPal / carta) trova l'addebito
-    reale. Fino ad allora resta provvisoria."""
+def test_fornitore_banca_registra_subito_in_banca(monkeypatch):
     db = _setup(monkeypatch, "bonifico")
 
     update = _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
 
-    assert update is None
-    assert db["prima_nota_banca"].docs == []
+    assert update is not None
+    assert update["prima_nota_tipo"] == "banca"
+    assert update["pagato"] is True
+    assert len(db["prima_nota_banca"].docs) == 1
+    assert db["prima_nota_banca"].docs[0]["fattura_id"] == "fatt-1"
     assert db["prima_nota_cassa"].docs == []
+    assert db["invoices"].docs[0]["stato_pagamento"] == "pagata"
 
 
 def test_fornitore_misto_resta_provvisoria(monkeypatch):
@@ -134,3 +131,12 @@ def test_idempotente_su_reimport(monkeypatch):
     _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
 
     assert len(db["prima_nota_cassa"].docs) == 1  # mai due movimenti per la stessa fattura
+
+
+def test_idempotente_banca_su_reimport(monkeypatch):
+    db = _setup(monkeypatch, "banca")
+
+    _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
+    _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
+
+    assert len(db["prima_nota_banca"].docs) == 1
