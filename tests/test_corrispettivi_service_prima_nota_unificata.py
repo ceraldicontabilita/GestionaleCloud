@@ -110,6 +110,27 @@ def test_costruttore_non_valuta_database_motor_come_booleano():
     assert svc.corrispettivi is db["corrispettivi"]
 
 
+def test_parser_periodo_inattivo_ade_legge_data_e_matricola_reali():
+    xml = b'''<?xml version="1.0" encoding="UTF-8"?>
+    <n1:DatiCorrispettivi xmlns:n1="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/corrispettivi/dati/v1.0" versione="COR10">
+      <Trasmissione>
+        <Progressivo>1354</Progressivo>
+        <Dispositivo><Tipo>RT</Tipo><IdDispositivo>99MEY026532</IdDispositivo></Dispositivo>
+        <DataOraTrasmissione>2023-01-02T06:27:14+01:00</DataOraTrasmissione>
+      </Trasmissione>
+      <PeriodoInattivo><Dal>2023-01-01T00:00:00+01:00</Dal><Al>2023-01-01T23:59:59+01:00</Al></PeriodoInattivo>
+      <DataOraRilevazione>2023-01-02T06:26:37+01:00</DataOraRilevazione>
+      <DatiRT><Totali><NumeroDocCommerciali>0</NumeroDocCommerciali></Totali></DatiRT>
+    </n1:DatiCorrispettivi>'''
+
+    parsed = CorrispettiviService(db=_FakeDb())._parse_corrispettivo_xml(xml)
+
+    assert parsed["data"] == "2023-01-02"
+    assert parsed["id_dispositivo"] == "99MEY026532"
+    assert parsed["progressivo"] == "1354"
+    assert parsed["totale"] == 0
+
+
 def _run(c):
     loop = asyncio.new_event_loop()
     try:
