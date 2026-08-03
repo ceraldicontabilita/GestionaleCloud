@@ -23,6 +23,7 @@ import re
 from pymongo.errors import DuplicateKeyError
 
 from app.database import Database, Collections
+from app.engines.prima_nota_engine import decide_destinazione_fattura
 from app.parsers.fattura_elettronica_parser import parse_fattura_xml, TIPO_DOC_MAP
 from app.services.xml_invoice_processor import extract_xml_from_p7m, is_p7m_content
 from app.utils.error_handler import handle_errors
@@ -479,19 +480,12 @@ async def find_ec_match_for_invoice(db, importo: float, supplier_name: str = "",
 
 async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento: str,
                                    session=None) -> Optional[Dict[str, Any]]:
-    """Applica la REGOLA prima nota all'import.
+    """Applica la regola corrente di instradamento Prima Nota all'import.
 
-    REGOLA (utente, 18/07/2026 — aggiorna quella del 17/07): quando la
-    fattura XML entra nel gestionale,
-      - fornitore con metodo pagamento UNIVOCO "cassa" (contanti) → uscita
-        registrata SUBITO in Prima Nota Cassa (il contante non lascia
-        traccia da riconciliare);
-      - fornitore con metodo "banca" → NON viene più marcata pagata in
-        automatico: "non devi portare pagata una fattura solo perché ha
-        metodo banca — devi sempre riconciliare con estratto conto,
-        PayPal o carta". Resta PROVVISORIA finché la riconciliazione
-        (estratto conto / PayPal) non trova l'addebito reale;
-      - fornitore "misto", senza metodo o ambiguo → PROVVISORIA.
+    REGOLA (utente, 03/08/2026): quando la fattura XML entra nel gestionale,
+      - metodo univoco cassa/contanti -> Prima Nota Cassa;
+      - metodo univoco banca/bonifico e relativi alias -> Prima Nota Banca;
+      - metodo misto, assente o ambiguo -> provvisoria.
 
     La scrittura usa il writer canonico registra_pagamento_fattura
     (idempotente per fattura: riferimento FATT-{id}, mai due movimenti per
@@ -517,14 +511,10 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     if not metodo:
         return None
 
-    is_cassa = "contant" in metodo or metodo == "cassa" or "cash" in metodo
-    if not is_cassa:
-        # BANCA, misto, ambiguo o sconosciuto → PROVVISORIA. Le fatture
-        # "banca" diventano pagate SOLO quando la riconciliazione
-        # (estratto conto / PayPal / carta) trova l'addebito reale.
+    destinazione = decide_destinazione_fattura(metodo)
+    if destinazione not in ("cassa", "banca"):
         return None
 
-    destinazione = "cassa"
     # NB: registra_pagamento_fattura scrive fuori dalla transazione
     # dell'import (non accetta session); è idempotente per fattura, quindi
     # un eventuale abort dell'import lascia al più un movimento riferito a
@@ -541,13 +531,15 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
         "pagato": True,
         "paid": True,
         "stato_pagamento": "pagata",
-        "metodo_pagamento": "contanti" if is_cassa else "bonifico",
+        "metodo_pagamento": "contanti" if destinazione == "cassa" else "bonifico",
         "data_pagamento": invoice.get("invoice_date") or invoice.get("data_fattura"),
         "prima_nota_id": mov_id,
         "prima_nota_tipo": destinazione,
         "registrata_auto_da_metodo_fornitore": True,
     }
-    update["prima_nota_cassa_id" if is_cassa else "prima_nota_banca_id"] = mov_id
+    update[
+        "prima_nota_cassa_id" if destinazione == "cassa" else "prima_nota_banca_id"
+    ] = mov_id
 
     fattura_id = invoice.get("id") or invoice.get("invoice_key")
     if fattura_id:

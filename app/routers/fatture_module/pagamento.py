@@ -13,8 +13,10 @@ from .common import COL_FORNITORI, COL_FATTURE_RICEVUTE, logger
 
 
 async def paga_fattura_manuale(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Registra pagamento manuale di una fattura (Cassa o Banca).
-    Se metodo=banca, marca automaticamente come riconciliata.
+    """Registra il pagamento manuale in Cassa o Banca.
+
+    La registrazione bancaria resta non riconciliata finche' non viene
+    collegata a un movimento reale dell'estratto conto.
     """
     db = Database.get_db()
     
@@ -394,14 +396,11 @@ async def aggiorna_metodi_pagamento_da_fornitori() -> Dict[str, Any]:
     """Aggiorna SOLO il metodo di pagamento delle fatture dal fornitore
     (ricopia metodo_pagamento quando la fattura non ce l'ha ancora).
 
-    FIX (utente, caso Leasys 19/07/2026 — review Codex su PR #66): prima
-    marcava anche riconciliato=True per il solo fatto che il fornitore
-    avesse metodo "banca" in anagrafica, SENZA nessun riscontro con un
-    vero movimento bancario — in contraddizione con la regola (18/07/2026,
-    vedi auto_registra_prima_nota in invoices/fatture_upload.py) per cui
-    una fattura "banca" resta provvisoria finché la riconciliazione con
-    l'estratto conto non trova l'addebito reale. Il metodo di pagamento è
-    solo un dato anagrafico: non è mai prova di un pagamento avvenuto.
+    Il metodo del fornitore decide il lato Cassa/Banca, ma non costituisce
+    una riconciliazione bancaria: il flag ``riconciliato`` viene impostato
+    soltanto dopo il riscontro con un movimento reale dell'estratto conto.
+    L'eventuale scrittura automatica in Prima Nota e' gestita dal writer
+    canonico di importazione, non da questa sincronizzazione anagrafica.
     """
     db = Database.get_db()
 

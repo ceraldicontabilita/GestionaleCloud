@@ -393,7 +393,10 @@ async def get_archivio_fatture(
 # mantenendo intatto l'impaginato. Su desktop il viewport è ininfluente.
 _META_SCALE_TO_FIT = (
     "<meta name='viewport' content='width=820'>"
-    "<style>html,body{margin:0!important;padding:0!important;}"
+    "<style>html,body{margin:0!important;padding:0!important;min-width:820px!important;}"
+    "body{display:flex!important;justify-content:center!important;align-items:flex-start!important;}"
+    "#fattura-container,#fattura-elettronica{width:800px!important;max-width:800px!important;"
+    "margin-left:auto!important;margin-right:auto!important;flex:0 0 800px!important;}"
     "img{max-width:100%;height:auto;}</style>"
 )
 
