@@ -21,7 +21,7 @@ import { TableWrap, Table, Th, Td } from './Table';
  * Spec colonna:
  *  { key, label, render?(item), align?, mono?, tdStyle?|fn(item),
  *    ruoloCard: 'titolo'|'sottotitolo'|'importo'|'dettaglio'|'azioni'|'omesso',
- *    iconaCard?, hideMobile? }
+ *    iconaCard?, hideMobile?, hideDesktop? }
  */
 export function ListaAdattiva({
   colonne = [],
@@ -30,8 +30,10 @@ export function ListaAdattiva({
   chiave = (item, i) => item.id || i,
   testId,
   resetKey,
+  cardBreakpoint = 768,
+  renderCard,
 }) {
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(cardBreakpoint);
   const [pagina, setPagina] = useState(1);
 
   // Torna a pagina 1 solo quando CAMBIANO I FILTRI (resetKey), mai quando
@@ -48,6 +50,9 @@ export function ListaAdattiva({
   const paginaCorrente = Math.min(pagina, totPagine);
   const inizio = (paginaCorrente - 1) * pageSize;
   const mostrate = dati.slice(inizio, inizio + pageSize);
+  const colonneDesktop = colonne.filter(
+    c => !c.hideDesktop && (c.ruoloCard !== 'omesso' || c.label)
+  );
 
   const valore = (col, item) => (col.render ? col.render(item) : item[col.key]);
 
@@ -56,9 +61,15 @@ export function ListaAdattiva({
   const numeriPagina = () => {
     if (totPagine <= 7) return Array.from({ length: totPagine }, (_, i) => i + 1);
     const set = new Set(
-      [1, 2, paginaCorrente - 1, paginaCorrente, paginaCorrente + 1, totPagine - 1, totPagine].filter(
-        n => n >= 1 && n <= totPagine
-      )
+      [
+        1,
+        2,
+        paginaCorrente - 1,
+        paginaCorrente,
+        paginaCorrente + 1,
+        totPagine - 1,
+        totPagine,
+      ].filter(n => n >= 1 && n <= totPagine)
     );
     const nums = [...set].sort((a, b) => a - b);
     const out = [];
@@ -106,7 +117,10 @@ export function ListaAdattiva({
         </button>
         {numeriPagina().map((n, i) =>
           n === '…' ? (
-            <span key={`dots-${i}`} style={{ fontSize: 12.5, color: COLORS.textSubtle, padding: '0 2px' }}>
+            <span
+              key={`dots-${i}`}
+              style={{ fontSize: 12.5, color: COLORS.textSubtle, padding: '0 2px' }}
+            >
               …
             </span>
           ) : (
@@ -135,14 +149,12 @@ export function ListaAdattiva({
     ) : null;
 
   // ── VISTA MOBILE: card per riga ──────────────────────────────────────────
-  if (isMobile) {
+  if (isMobile || renderCard) {
     const colTitolo = colonne.find(c => c.ruoloCard === 'titolo');
     const colSottotitolo = colonne.find(c => c.ruoloCard === 'sottotitolo');
     const colImporto = colonne.find(c => c.ruoloCard === 'importo');
     const colAzioni = colonne.find(c => c.ruoloCard === 'azioni');
-    const colDettagli = colonne.filter(
-      c => c.ruoloCard === 'dettaglio' && !c.hideMobile
-    );
+    const colDettagli = colonne.filter(c => c.ruoloCard === 'dettaglio' && !c.hideMobile);
 
     return (
       <div data-testid={testId} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -159,81 +171,87 @@ export function ListaAdattiva({
               minWidth: 0,
             }}
           >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-start',
-                gap: 8,
-              }}
-            >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                {colTitolo && (
-                  <div
-                    style={{
-                      fontWeight: 700,
-                      color: COLORS.primary,
-                      fontSize: 14,
-                      overflowWrap: 'anywhere',
-                    }}
-                  >
-                    {valore(colTitolo, item)}
-                  </div>
-                )}
-                {colSottotitolo && (
-                  <div style={{ fontSize: 11, color: COLORS.textSubtle, marginTop: 2 }}>
-                    {valore(colSottotitolo, item)}
-                  </div>
-                )}
-              </div>
-              {colImporto && (
-                <div
-                  style={{
-                    fontWeight: 700,
-                    fontSize: 15,
-                    color: COLORS.primary,
-                    whiteSpace: 'nowrap',
-                    flexShrink: 0,
-                  }}
-                >
-                  {valore(colImporto, item)}
-                </div>
-              )}
-            </div>
-            {(colDettagli.length > 0 || colAzioni) && (
-              // Dettagli e azioni sulla STESSA riga: card più bassa,
-              // entrano più righe per schermata
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 8,
-                  marginTop: 6,
-                  minWidth: 0,
-                }}
-              >
+            {renderCard ? (
+              renderCard(item, i)
+            ) : (
+              <>
                 <div
                   style={{
                     display: 'flex',
-                    gap: 10,
-                    rowGap: 4,
-                    fontSize: 12,
-                    color: COLORS.textMuted,
-                    flexWrap: 'wrap',
-                    minWidth: 0,
-                    flex: 1,
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    gap: 8,
                   }}
                 >
-                  {colDettagli.map(c => (
-                    <span key={c.key} style={{ whiteSpace: 'nowrap' }}>
-                      {c.iconaCard ? `${c.iconaCard} ` : `${c.label}: `}
-                      {valore(c, item)}
-                    </span>
-                  ))}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {colTitolo && (
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          color: COLORS.primary,
+                          fontSize: 14,
+                          overflowWrap: 'anywhere',
+                        }}
+                      >
+                        {valore(colTitolo, item)}
+                      </div>
+                    )}
+                    {colSottotitolo && (
+                      <div style={{ fontSize: 11, color: COLORS.textSubtle, marginTop: 2 }}>
+                        {valore(colSottotitolo, item)}
+                      </div>
+                    )}
+                  </div>
+                  {colImporto && (
+                    <div
+                      style={{
+                        fontWeight: 700,
+                        fontSize: 15,
+                        color: COLORS.primary,
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {valore(colImporto, item)}
+                    </div>
+                  )}
                 </div>
-                {colAzioni && <div style={{ flexShrink: 0 }}>{valore(colAzioni, item)}</div>}
-              </div>
+                {(colDettagli.length > 0 || colAzioni) && (
+                  // Dettagli e azioni sulla STESSA riga: card più bassa,
+                  // entrano più righe per schermata
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 8,
+                      marginTop: 6,
+                      minWidth: 0,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 10,
+                        rowGap: 4,
+                        fontSize: 12,
+                        color: COLORS.textMuted,
+                        flexWrap: 'wrap',
+                        minWidth: 0,
+                        flex: 1,
+                      }}
+                    >
+                      {colDettagli.map(c => (
+                        <span key={c.key} style={{ whiteSpace: 'nowrap' }}>
+                          {c.iconaCard ? `${c.iconaCard} ` : `${c.label}: `}
+                          {valore(c, item)}
+                        </span>
+                      ))}
+                    </div>
+                    {colAzioni && <div style={{ flexShrink: 0 }}>{valore(colAzioni, item)}</div>}
+                  </div>
+                )}
+              </>
             )}
           </div>
         ))}
@@ -246,17 +264,18 @@ export function ListaAdattiva({
   return (
     <div data-testid={testId}>
       <BarraPagine posizione="sopra" />
-      <TableWrap style={{ border: 'none', borderRadius: 0 }}>
+      <TableWrap
+        key={`table-${paginaCorrente}-${String(resetKey ?? '')}`}
+        style={{ border: 'none', borderRadius: 0 }}
+      >
         <Table style={{ background: 'transparent' }}>
           <thead>
             <tr>
-              {colonne
-                .filter(c => c.ruoloCard !== 'omesso' || c.label)
-                .map(c => (
-                  <Th key={c.key} align={c.align || 'left'}>
-                    {c.label}
-                  </Th>
-                ))}
+              {colonneDesktop.map(c => (
+                <Th key={c.key} align={c.align || 'left'}>
+                  {c.label}
+                </Th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -267,18 +286,16 @@ export function ListaAdattiva({
                 onMouseEnter={e => (e.currentTarget.style.background = COLORS.bgAlt)}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
-                {colonne
-                  .filter(c => c.ruoloCard !== 'omesso' || c.label)
-                  .map(c => (
-                    <Td
-                      key={c.key}
-                      align={c.align || 'left'}
-                      mono={c.mono}
-                      style={typeof c.tdStyle === 'function' ? c.tdStyle(item) : c.tdStyle}
-                    >
-                      {valore(c, item)}
-                    </Td>
-                  ))}
+                {colonneDesktop.map(c => (
+                  <Td
+                    key={c.key}
+                    align={c.align || 'left'}
+                    mono={c.mono}
+                    style={typeof c.tdStyle === 'function' ? c.tdStyle(item) : c.tdStyle}
+                  >
+                    {valore(c, item)}
+                  </Td>
+                ))}
               </tr>
             ))}
           </tbody>
