@@ -165,6 +165,7 @@ def test_reimport_periodo_inattivo_ripara_solo_il_duplicato_storico():
     corretto = db["corrispettivi"].docs[0]
     assert corretto["data"] == "2023-01-02"
     assert corretto["id_dispositivo"] == "99MEY026532"
+    assert corretto["matricola_rt"] == "99MEY026532"
     assert corretto["status"] == "archiviata"
     assert corretto["stato_import"] == "archivio_storico"
 

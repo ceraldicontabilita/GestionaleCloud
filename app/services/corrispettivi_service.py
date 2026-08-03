@@ -106,6 +106,10 @@ class CorrispettiviService:
                             "data": data_reale,
                             "progressivo": parsed.get("progressivo", ""),
                             "id_dispositivo": parsed.get("id_dispositivo", ""),
+                            # Alias pubblico usato dalla pagina Corrispettivi.
+                            # Manteniamo anche id_dispositivo per dedup e
+                            # compatibilita' con i record storici.
+                            "matricola_rt": parsed.get("id_dispositivo", ""),
                             "totale": parsed.get("totale", 0),
                             "totale_complessivo": parsed.get("totale", 0),
                             "pagato_contanti": parsed.get("pagato_contanti", 0),
@@ -178,6 +182,7 @@ class CorrispettiviService:
             "data": parsed["data"],
             "progressivo": parsed.get("progressivo", ""),
             "id_dispositivo": parsed.get("id_dispositivo", ""),
+            "matricola_rt": parsed.get("id_dispositivo", ""),
             
             # Importi
             "totale": parsed["totale"],
