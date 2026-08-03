@@ -197,7 +197,10 @@ async def _calcola_saldi_piano_conti(db, anno: str = None) -> Dict[str, float]:
             "_id": None,
             "totale":     {"$sum": {"$ifNull": ["$total_amount", {"$ifNull": ["$importo_totale", 0]}]}},
             "imponibile": {"$sum": {"$ifNull": ["$importo_imponibile", {"$ifNull": ["$imponibile", 0]}]}},
-            "iva":        {"$sum": {"$ifNull": ["$importo_iva", {"$ifNull": ["$iva", 0]}]}},
+            "iva":        {"$sum": {"$ifNull": [
+                "$iva_detraibile",
+                {"$ifNull": ["$importo_iva", {"$ifNull": ["$iva", 0]}]},
+            ]}},
         }}
     ]
     res = await db["invoices"].aggregate(pipe_inv).to_list(1)
@@ -384,11 +387,13 @@ async def _calcola_saldi_piano_conti(db, anno: str = None) -> Dict[str, float]:
     uscite_ec  = sum(float(r.get("tot") or 0) for r in res_ec if r.get("_id") == "uscita")
     saldo_ec = entrate_ec - uscite_ec
 
-    # Se Prima Nota Banca ha movimenti, è la fonte primaria. Altrimenti fallback su EC.
-    if abs(saldo_pnb) > 0.01:
-        saldi["01.01.02"] = round(saldo_pnb, 2)
-    else:
+    # L'estratto conto e' la fonte finanziaria reale: se contiene righe
+    # prevale. Prima Nota Banca e' il registro collegato, non la fonte del
+    # saldo quando il documento bancario e' disponibile.
+    if res_ec:
         saldi["01.01.02"] = round(saldo_ec, 2)
+    else:
+        saldi["01.01.02"] = round(saldo_pnb, 2)
 
     # ── CEDOLINI (costi personale + TFR + contributi) ─────────────────────────
     match_ced = _anno_field() or {}

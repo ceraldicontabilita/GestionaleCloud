@@ -1,5 +1,4 @@
-"""Regola utente 03/08/2026: cassa e banca instradano subito la fattura
-nelle rispettive Prime Note; misto o senza metodo resta provvisoria."""
+"""Regola utente 03/08/2026: banca richiede un estratto conto reale."""
 import asyncio
 
 from app.routers.invoices import fatture_upload as mod
@@ -15,13 +14,22 @@ def _run(c):
 
 def _match(doc, query):
     for k, v in query.items():
-        if k == "$or":
+        if k == "$and":
+            if not all(_match(doc, sub) for sub in v):
+                return False
+        elif k == "$or":
             if not any(_match(doc, sub) for sub in v):
                 return False
         elif isinstance(v, dict):
             if "$exists" in v and (k in doc) != v["$exists"]:
                 return False
             if "$ne" in v and doc.get(k) == v["$ne"]:
+                return False
+            if "$nin" in v and doc.get(k) in v["$nin"]:
+                return False
+            if "$gte" in v and doc.get(k) < v["$gte"]:
+                return False
+            if "$lte" in v and doc.get(k) > v["$lte"]:
                 return False
         else:
             if doc.get(k) != v:
@@ -47,6 +55,21 @@ class _Coll:
             if _match(d, query):
                 d.update(update.get("$set", {}))
                 return
+
+    def find(self, query, *a, **k):
+        return _Cursor([dict(d) for d in self.docs if _match(d, query)])
+
+
+class _Cursor:
+    def __init__(self, docs):
+        self.docs = docs
+
+    def limit(self, n):
+        self.docs = self.docs[:n]
+        return self
+
+    async def to_list(self, n):
+        return self.docs[:n]
 
 
 class _Db:
@@ -95,18 +118,14 @@ def test_fornitore_cassa_registra_subito_in_cassa(monkeypatch):
     assert db["invoices"].docs[0]["stato_pagamento"] == "pagata"
 
 
-def test_fornitore_banca_registra_subito_in_banca(monkeypatch):
+def test_fornitore_banca_senza_estratto_resta_provvisoria(monkeypatch):
     db = _setup(monkeypatch, "bonifico")
 
     update = _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
 
-    assert update is not None
-    assert update["prima_nota_tipo"] == "banca"
-    assert update["pagato"] is True
-    assert len(db["prima_nota_banca"].docs) == 1
-    assert db["prima_nota_banca"].docs[0]["fattura_id"] == "fatt-1"
+    assert update is None
+    assert db["prima_nota_banca"].docs == []
     assert db["prima_nota_cassa"].docs == []
-    assert db["invoices"].docs[0]["stato_pagamento"] == "pagata"
 
 
 def test_fornitore_misto_resta_provvisoria(monkeypatch):
@@ -139,11 +158,45 @@ def test_idempotente_su_reimport(monkeypatch):
 
 def test_idempotente_banca_su_reimport(monkeypatch):
     db = _setup(monkeypatch, "banca")
+    db["estratto_conto_movimenti"].docs = [{
+        "id": "ec-1", "tipo": "uscita", "importo": 122.0,
+        "data": "2026-06-10",
+        "descrizione": "BONIFICO DOLCIARIA ACQUAVIVA FATTURA 77/A",
+    }]
 
     _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
     _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
 
     assert len(db["prima_nota_banca"].docs) == 1
+    assert db["prima_nota_banca"].docs[0]["estratto_conto_id"] == "ec-1"
+    assert db["estratto_conto_movimenti"].docs[0]["riconciliato"] is True
+
+
+def test_estratto_prima_della_fattura_abbina_solo_uscita_con_identita(monkeypatch):
+    db = _setup(monkeypatch, "banca")
+    db["estratto_conto_movimenti"].docs = [{
+        "id": "ec-1", "tipo": "uscita", "importo": -122.0,
+        "data": "2026-06-10", "descrizione": "SDD DOLCIARIA ACQUAVIVA 77/A",
+    }]
+
+    update = _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
+
+    assert update["prima_nota_tipo"] == "banca"
+    assert update["movimento_bancario_id"] == "ec-1"
+    assert update["riconciliato_con_ec"] is True
+
+
+def test_stesso_importo_accredito_pos_non_paga_fattura(monkeypatch):
+    db = _setup(monkeypatch, "banca")
+    db["estratto_conto_movimenti"].docs = [{
+        "id": "pos-1", "tipo": "entrata", "importo": 122.0,
+        "data": "2026-06-02", "descrizione": "NUMIA POS",
+    }]
+
+    update = _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
+
+    assert update is None
+    assert db["prima_nota_banca"].docs == []
 
 
 def test_fornitore_escluso_non_entra_in_cassa_banca_ma_mantiene_iva(monkeypatch):

@@ -124,6 +124,10 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
     # importi robusti a schemi diversi
     importo_totale = float(fattura.get("total_amount") or fattura.get("importo_totale") or 0)
     iva = float(fattura.get("total_tax") or fattura.get("iva") or fattura.get("totale_iva") or 0)
+    iva_detraibile_raw = fattura.get("iva_detraibile")
+    iva_detraibile = iva if iva_detraibile_raw is None else float(iva_detraibile_raw or 0)
+    iva_detraibile = round(max(0.0, min(iva, iva_detraibile)), 2)
+    iva_indetraibile = round(max(0.0, iva - iva_detraibile), 2)
     imponibile = float(fattura.get("imponibile") or (importo_totale - iva) or 0)
     if importo_totale <= 0:
         importo_totale = imponibile + iva
@@ -137,11 +141,16 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
     numero = fattura.get("invoice_number") or fattura.get("numero_fattura")
     anno = _anno_da_data(fattura.get("data_competenza") or data_doc)
 
+    costo_contabile = round(imponibile + iva_indetraibile, 2)
     righe = [
         {"conto_codice": conti["costo"]["codice"], "conto_nome": conti["costo"]["nome"],
-         "dare": imponibile, "avere": 0, "centro_costo": centro_costo, "descrizione": "Costo acquisto"},
+         "dare": costo_contabile, "avere": 0, "centro_costo": centro_costo,
+         "descrizione": (
+             "Costo acquisto" if iva_indetraibile == 0
+             else f"Costo acquisto (incl. IVA indetraibile {iva_indetraibile:.2f})"
+         )},
         {"conto_codice": conti["iva_credito"]["codice"], "conto_nome": conti["iva_credito"]["nome"],
-         "dare": iva, "avere": 0, "centro_costo": None, "descrizione": "IVA a credito"},
+         "dare": iva_detraibile, "avere": 0, "centro_costo": None, "descrizione": "IVA a credito detraibile"},
         {"conto_codice": conti["debito_fornitore"]["codice"], "conto_nome": conti["debito_fornitore"]["nome"],
          "dare": 0, "avere": importo_totale, "centro_costo": None, "descrizione": "Debito v/fornitore"},
     ]
@@ -158,15 +167,17 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
         "data_registrazione": now,
         "anno": anno,
         "importo_totale": importo_totale, "imponibile": imponibile, "iva": iva,
+        "iva_detraibile": iva_detraibile, "iva_indetraibile": iva_indetraibile,
         "righe": righe,
-        "totale_dare": round(imponibile + iva, 2), "totale_avere": round(importo_totale, 2),
+        "totale_dare": round(costo_contabile + iva_detraibile, 2),
+        "totale_avere": round(importo_totale, 2),
         "stato": "registrato", "created_at": now,
     }
     if extra_movimento:
         movimento.update(extra_movimento)
     saldi = [
-        (conti["costo"]["codice"], imponibile, "dare"),
-        (conti["iva_credito"]["codice"], iva, "dare"),
+        (conti["costo"]["codice"], costo_contabile, "dare"),
+        (conti["iva_credito"]["codice"], iva_detraibile, "dare"),
         (conti["debito_fornitore"]["codice"], importo_totale, "avere"),
     ]
     mov = await _scrivi_movimento(db, movimento, saldi)

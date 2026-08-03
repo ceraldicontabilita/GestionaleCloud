@@ -84,6 +84,7 @@ async def lifespan(app: FastAPI):
                 esegui_pulizia_pregressi_una_tantum,
                 neutralizza_versamenti_cassa_generati_da_ec,
                 ripristina_provvisori_metodo_errato,
+                ripristina_abbinamenti_banca_senza_identita,
             )
 
             pulizia = await esegui_pulizia_pregressi_una_tantum()
@@ -103,12 +104,16 @@ async def lifespan(app: FastAPI):
 
             # Ripara una sola volta le registrazioni automatiche sul lato
             # errato. Pagamenti manuali e riconciliati non vengono toccati.
-            repair_marker = "repair_supplier_payment_side_20260720_v1"
+            # Nuova regola 03/08/2026: anche una riga sul lato "banca"
+            # torna provvisoria se fu creata automaticamente dal solo metodo
+            # fornitore e non porta l'ID di un movimento reale. Soft-delete
+            # reversibile: nessuna registrazione manuale/riconciliata toccata.
+            repair_marker = "repair_bank_without_statement_20260803_v2"
             repair_run = await db["migration_runs"].find_one({"id": repair_marker})
             if not repair_run or repair_run.get("status") != "completed":
                 riparazione = await ripristina_provvisori_metodo_errato(
                     dry_run=False, anno=2026,
-                    banca_non_riconciliate=False, _admin={}
+                    banca_non_riconciliate=True, _admin={}
                 )
                 await db["migration_runs"].update_one(
                     {"id": repair_marker},
@@ -125,6 +130,51 @@ async def lifespan(app: FastAPI):
                         "Fatture automatiche con metodo errato ripristinate: %s",
                         riparazione["corretti"],
                     )
+
+            strict_marker = "revalidate_invoice_bank_identity_20260803_v1"
+            strict_run = await db["migration_runs"].find_one({"id": strict_marker})
+            if not strict_run or strict_run.get("status") != "completed":
+                strict_result = await ripristina_abbinamenti_banca_senza_identita(
+                    anno=2026, dry_run=False
+                )
+                await db["migration_runs"].update_one(
+                    {"id": strict_marker},
+                    {"$set": {"id": strict_marker, "status": "completed",
+                              "finished_at": datetime.now(timezone.utc).isoformat(),
+                              "result": strict_result}},
+                    upsert=True,
+                )
+                logger.info(
+                    "Auto-match banca rivalidati: validi=%s provvisori=%s",
+                    strict_result.get("validi", 0),
+                    strict_result.get("ripristinati_provvisori", 0),
+                )
+
+            # Le versioni precedenti confondevano "copiata in Prima Nota"
+            # con "riconciliata": riapriamo soltanto le righe generiche che
+            # non hanno alcun documento collegato. In questo modo una fattura
+            # XML importata dopo l'estratto puo' ancora trovare la sua uscita.
+            reopen_marker = "reopen_generic_statement_rows_20260803_v1"
+            reopen_run = await db["migration_runs"].find_one({"id": reopen_marker})
+            if not reopen_run or reopen_run.get("status") != "completed":
+                reopened = await db["estratto_conto_movimenti"].update_many(
+                    {"tipo_riconciliazione": "auto_generico",
+                     "$and": [
+                         {"$or": [{"fattura_id": {"$exists": False}}, {"fattura_id": None}]},
+                         {"$or": [{"documento_id": {"$exists": False}}, {"documento_id": None}]},
+                     ]},
+                    {"$set": {"riconciliato": False,
+                              "importato_prima_nota": True,
+                              "stato_riconciliazione": "da_verificare"},
+                     "$unset": {"tipo_riconciliazione": ""}},
+                )
+                await db["migration_runs"].update_one(
+                    {"id": reopen_marker},
+                    {"$set": {"id": reopen_marker, "status": "completed",
+                              "finished_at": datetime.now(timezone.utc).isoformat(),
+                              "modified_count": reopened.modified_count}},
+                    upsert=True,
+                )
         except Exception as e:
             logger.error("Pulizia pregressi/riparazione metodo non completata: %s", e)
 

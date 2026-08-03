@@ -765,7 +765,11 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             if ec_da_marcare:
                 await db["estratto_conto_movimenti"].update_many(
                     {"id": {"$in": ec_da_marcare}},
-                    {"$set": {"riconciliato": True, "tipo_riconciliazione": "auto_generico"}}
+                    {"$set": {
+                        "importato_prima_nota": True,
+                        "riconciliato": False,
+                        "stato_riconciliazione": "da_verificare",
+                    }, "$unset": {"tipo_riconciliazione": ""}}
                 )
             # (le entrate banca degli accrediti POS sono già state create
             # dal motore unico riga per riga, con marcatura EC inclusa)

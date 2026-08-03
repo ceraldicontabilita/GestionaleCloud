@@ -37,9 +37,9 @@ def classifica_metodo_fornitore(metodo: str) -> str:
     di conferma su come dividere il pagamento) sia il fornitore senza metodo
     definito: in entrambi i casi la fattura resta nei Provvisori.
     """
-    destinazione = decide_destinazione_fattura(metodo)
-    if destinazione in ("cassa", "banca"):
-        return destinazione
+    canonico = normalizza_metodo_pagamento(metodo)
+    if canonico in ("cassa", "banca"):
+        return canonico
     return "sospesa"
 
 
@@ -159,8 +159,14 @@ async def registra_pagamento_fattura(
     importo_cassa: float = 0,
     importo_banca: float = 0,
     source: str = "fattura_pagata",
+    movimento_bancario: Optional[Dict[str, Any]] = None,
+    session=None,
 ) -> Dict:
     """Registra automaticamente il pagamento di una fattura.
+
+    Per il lato banca ``movimento_bancario`` e' obbligatorio: il metodo
+    abituale del fornitore e il piano XML indicano come si prevede di pagare,
+    ma non dimostrano che il denaro sia uscito.
 
     IDEMPOTENTE: se esiste già un movimento con stesso fattura_id sulla
     collection di destinazione, NON crea duplicati. Ritorna l'id esistente.
@@ -177,7 +183,13 @@ async def registra_pagamento_fattura(
 
     tipo_movimento, categoria, desc_prefisso = determina_tipo_movimento_fattura(fattura)
 
-    risultato = {"cassa": None, "banca": None, "tipo_movimento": tipo_movimento, "duplicato": False}
+    risultato = {
+        "cassa": None,
+        "banca": None,
+        "provvisoria": False,
+        "tipo_movimento": tipo_movimento,
+        "duplicato": False,
+    }
     descrizione_base = f"{desc_prefisso} {numero_fattura} - {fornitore[:40]}"
 
     # Riferimento UNIFORME in tutto il modulo: "FATT-{id}"
@@ -208,12 +220,20 @@ async def registra_pagamento_fattura(
                     {"riferimento": riferimento},
                 ],
                 "status": {"$nin": ["deleted", "archived"]},
-            })
+            }, session=session)
             if existing:
                 return (existing.get("id") or str(existing.get("_id")), True)
 
         mov = {**movimento_base, "id": str(uuid.uuid4()), "importo": float(importo), "descrizione": desc}
-        await db[collection].insert_one(mov.copy())
+        if collection == COLLECTION_PRIMA_NOTA_BANCA and movimento_bancario:
+            evidenza_id = movimento_bancario.get("id") or movimento_bancario.get("movimento_id")
+            mov.update({
+                "estratto_conto_id": evidenza_id,
+                "movimento_bancario_id": evidenza_id,
+                "riconciliato": True,
+                "confidenza": movimento_bancario.get("match_score", 1.0),
+            })
+        await db[collection].insert_one(mov.copy(), session=session)
         return (mov["id"], False)
 
     canonico = normalizza_metodo_pagamento(metodo_pagamento)
@@ -224,9 +244,33 @@ async def registra_pagamento_fattura(
         risultato["duplicato"] = dup
 
     elif canonico == "banca":
+        if not movimento_bancario or not (
+            movimento_bancario.get("id") or movimento_bancario.get("movimento_id")
+        ):
+            risultato["provvisoria"] = True
+            return risultato
         mid, dup = await _insert_idempotente(COLLECTION_PRIMA_NOTA_BANCA, importo_totale, descrizione_base)
         risultato["banca"] = mid
         risultato["duplicato"] = dup
+
+        evidenza_id = movimento_bancario.get("id") or movimento_bancario.get("movimento_id")
+        await db["estratto_conto_movimenti"].update_one(
+            {"id": evidenza_id, "$or": [
+                {"fattura_id": {"$exists": False}},
+                {"fattura_id": None},
+                {"fattura_id": fattura_id},
+            ]},
+            {"$set": {
+                "riconciliato": True,
+                "abbinato": True,
+                "tipo_abbinamento": "fattura",
+                "documento_id": fattura_id,
+                "fattura_id": fattura_id,
+                "confidenza": movimento_bancario.get("match_score", 1.0),
+                "riconciliato_at": now,
+            }},
+            session=session,
+        )
 
     elif canonico == "misto":
         if importo_cassa > 0:
@@ -235,12 +279,14 @@ async def registra_pagamento_fattura(
             )
             risultato["cassa"] = mid
             risultato["duplicato"] = risultato["duplicato"] or dup_c
-        if importo_banca > 0:
+        if importo_banca > 0 and movimento_bancario:
             mid, dup_b = await _insert_idempotente(
                 COLLECTION_PRIMA_NOTA_BANCA, importo_banca, f"{descrizione_base} (bonifico)"
             )
             risultato["banca"] = mid
             risultato["duplicato"] = risultato["duplicato"] or dup_b
+        elif importo_banca > 0:
+            risultato["provvisoria"] = True
 
     return risultato
 
@@ -317,11 +363,16 @@ async def registra_fattura_prima_nota(
         importo_banca=importo_banca
     )
     
+    registrato = bool(risultato.get("cassa") or risultato.get("banca"))
     await db[Collections.INVOICES].update_one(
         {"_id": fattura["_id"]},
         {"$set": {
-            "pagato": True,
-            "data_pagamento": datetime.now(timezone.utc).isoformat()[:10],
+            "pagato": registrato,
+            "stato_pagamento": "pagata" if registrato else "da_pagare",
+            "stato_finanziario": (
+                "pagato" if registrato else "in_attesa_estratto_conto"
+            ),
+            "data_pagamento": datetime.now(timezone.utc).isoformat()[:10] if registrato else None,
             "metodo_pagamento": metodo_pagamento,
             "prima_nota_cassa_id": risultato.get("cassa"),
             "prima_nota_banca_id": risultato.get("banca")
@@ -329,7 +380,10 @@ async def registra_fattura_prima_nota(
     )
     
     return {
-        "message": "Pagamento registrato",
+        "message": (
+            "Pagamento registrato" if registrato
+            else "Fattura lasciata in Provvisoria: manca un movimento reale dell'estratto conto"
+        ),
         "prima_nota_cassa": risultato.get("cassa"),
         "prima_nota_banca": risultato.get("banca")
     }
@@ -485,6 +539,7 @@ async def sync_fatture_pagate(anno: int = Query(...)) -> Dict:
     
     importati_cassa = 0
     importati_banca = 0
+    banca_senza_evidenza = 0
     totale_cassa = 0
     totale_banca = 0
     
@@ -502,24 +557,44 @@ async def sync_fatture_pagate(anno: int = Query(...)) -> Dict:
         
         metodo = fatt.get("metodo_pagamento", "bonifico").lower()
 
-        movimento = {
-            "id": str(uuid.uuid4()),
-            "data": fatt.get("invoice_date") or fatt.get("data_pagamento"),
-            **costruisci_campi_movimento_fattura(fatt, totale),
-            "riferimento": ref,
-            "fattura_id": fattura_id,
-            "source": "sync_fatture",
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        
         if metodo in ["contanti", "cassa"]:
-            await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento.copy())
-            importati_cassa += 1
-            totale_cassa += totale
+            risultato = await registra_pagamento_fattura(
+                fatt, "cassa", source="sync_fatture"
+            )
+            if risultato.get("cassa"):
+                importati_cassa += 1
+                totale_cassa += totale
         else:
-            await db[COLLECTION_PRIMA_NOTA_BANCA].insert_one(movimento.copy())
-            importati_banca += 1
-            totale_banca += totale
+            from app.routers.invoices.fatture_upload import find_ec_match_for_invoice
+            ec_id = (fatt.get("movimento_bancario_id") or
+                     fatt.get("estratto_conto_id"))
+            evidenza = (
+                await db["estratto_conto_movimenti"].find_one({"id": ec_id})
+                if ec_id else None
+            )
+            if not evidenza:
+                evidenza = await find_ec_match_for_invoice(
+                    db, totale,
+                    fatt.get("supplier_name") or fatt.get("cedente_denominazione") or "",
+                    fatt.get("invoice_date") or fatt.get("data_fattura") or "",
+                    fatt.get("invoice_number") or fatt.get("numero_fattura") or "",
+                )
+            if not evidenza:
+                banca_senza_evidenza += 1
+                await db["invoices"].update_one(
+                    {"id": fattura_id},
+                    {"$set": {"pagato": False, "paid": False,
+                              "stato_pagamento": "da_pagare",
+                              "stato_finanziario": "in_attesa_estratto_conto"}},
+                )
+                continue
+            risultato = await registra_pagamento_fattura(
+                fatt, "banca", source="estratto_conto_auto",
+                movimento_bancario=evidenza,
+            )
+            if risultato.get("banca"):
+                importati_banca += 1
+                totale_banca += totale
     
     return {
         "message": "Sincronizzazione completata",
@@ -527,6 +602,7 @@ async def sync_fatture_pagate(anno: int = Query(...)) -> Dict:
         "importati_banca": importati_banca,
         "totale_cassa": round(totale_cassa, 2),
         "totale_banca": round(totale_banca, 2),
+        "banca_senza_evidenza_lasciate_provvisorie": banca_senza_evidenza,
         "fatture_pagate_anno": len(fatture)
     }
 
@@ -1015,18 +1091,24 @@ async def conferma_divisione_provvisoria(data: Dict = Body(...)) -> Dict:
         importo_banca=importo_banca,
     )
 
+    pagamento_completo = bool(
+        (risultato.get("cassa") and not importo_banca)
+        or (risultato.get("banca") and not importo_cassa)
+        or (risultato.get("cassa") and risultato.get("banca"))
+    )
     now_iso = datetime.now(timezone.utc).isoformat()
     await db["invoices"].update_one(
         {"id": fattura_id},
         {"$set": {
-            "stato_pagamento": "pagata",
-            "pagato": True,
+            "stato_pagamento": "pagata" if pagamento_completo else "parzialmente_pagata",
+            "stato_finanziario": "pagato" if pagamento_completo else "in_attesa_estratto_conto",
+            "pagato": pagamento_completo,
             "prima_nota_id": risultato.get("cassa") or risultato.get("banca") or "",
             "prima_nota_cassa_id": risultato.get("cassa"),
             "prima_nota_banca_id": risultato.get("banca"),
             "prima_nota_tipo": "misto",
             "divisione_misto": {"cassa": importo_cassa, "banca": importo_banca},
-            "data_pagamento": now_iso[:10],
+            "data_pagamento": now_iso[:10] if pagamento_completo else None,
             "updated_at": now_iso,
         }}
     )

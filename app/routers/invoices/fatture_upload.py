@@ -23,7 +23,10 @@ import re
 from pymongo.errors import DuplicateKeyError
 
 from app.database import Database, Collections
-from app.engines.prima_nota_engine import decide_destinazione_fattura
+from app.engines.prima_nota_engine import (
+    decide_destinazione_fattura,
+    normalizza_metodo_pagamento,
+)
 from app.parsers.fattura_elettronica_parser import parse_fattura_xml, TIPO_DOC_MAP
 from app.services.xml_invoice_processor import extract_xml_from_p7m, is_p7m_content
 from app.utils.error_handler import handle_errors
@@ -441,8 +444,28 @@ def _finestra_pagamento(invoice_date: str) -> Optional[tuple]:
     )
 
 
-async def find_ec_match_for_invoice(db, importo: float, supplier_name: str = "",
-                                    invoice_date: str = "", session=None) -> Optional[Dict[str, Any]]:
+def _token_identita_fornitore(nome: str) -> List[str]:
+    """Token stabili per confrontare fornitore e causale bancaria."""
+    stop = {
+        "SRL", "SPA", "SNC", "SAS", "SOCIETA", "UNIPERSONALE",
+        "ITALIA", "ITALIANA", "SEDE", "SECONDARIA", "EUROPE",
+    }
+    pulito = re.sub(r"[^A-Z0-9]+", " ", (nome or "").upper())
+    return [p for p in pulito.split() if len(p) >= 4 and p not in stop][:6]
+
+
+def _normalizza_identificativo_bancario(valore: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", (valore or "").upper()).lstrip("0")
+
+
+async def find_ec_match_for_invoice(
+    db,
+    importo: float,
+    supplier_name: str = "",
+    invoice_date: str = "",
+    invoice_number: str = "",
+    session=None,
+) -> Optional[Dict[str, Any]]:
     """Cerca nell'estratto conto un'uscita compatibile con la fattura.
 
     Regole:
@@ -457,25 +480,43 @@ async def find_ec_match_for_invoice(db, importo: float, supplier_name: str = "",
         return None
     conds: Dict[str, Any] = {
         "tipo": "uscita",
-        "riconciliato": {"$ne": True},
-        "$or": [
-            {"importo": {"$gte": importo - 1, "$lte": importo + 1}},
-            {"importo": {"$gte": -importo - 1, "$lte": -importo + 1}},
+        "abbinato": {"$ne": True},
+        "$and": [
+            {"$or": [
+                {"riconciliato": {"$ne": True}},
+                {"tipo_riconciliazione": "auto_generico"},
+            ]},
+            {"$or": [
+                {"importo": {"$gte": importo - 0.01, "$lte": importo + 0.01}},
+                {"importo": {"$gte": -importo - 0.01, "$lte": -importo + 0.01}},
+            ]},
         ],
     }
     finestra = _finestra_pagamento(invoice_date)
     if finestra:
         conds["data"] = {"$gte": finestra[0], "$lte": finestra[1]}
-    nome = (supplier_name or "").upper().strip()
-    if nome and len(nome) > 3:
-        con_nome = {**conds, "descrizione": {"$regex": re.escape(nome[:8]), "$options": "i"}}
-        match = await db["estratto_conto_movimenti"].find_one(con_nome, session=session)
-        if match:
-            return match
-    # Solo importo: accettato solo se la finestra date limita i falsi positivi
-    if finestra:
-        return await db["estratto_conto_movimenti"].find_one(conds, session=session)
-    return None
+    candidati = await db["estratto_conto_movimenti"].find(
+        conds, {"_id": 0}, session=session
+    ).limit(50).to_list(50)
+    tokens = _token_identita_fornitore(supplier_name)
+    numero = _normalizza_identificativo_bancario(invoice_number)
+    forti = []
+    for mov in candidati:
+        testo = " ".join(str(mov.get(k) or "") for k in (
+            "descrizione", "descrizione_originale", "causale", "beneficiario"
+        )).upper()
+        testo_norm = _normalizza_identificativo_bancario(testo)
+        match_numero = bool(numero and len(numero) >= 4 and numero in testo_norm)
+        match_nome = any(token in testo for token in tokens)
+        if match_numero or match_nome:
+            mov = dict(mov)
+            mov["match_score"] = 1.0 if match_numero and match_nome else 0.95
+            mov["match_tipo"] = (
+                "numero_fattura+fornitore" if match_numero and match_nome
+                else "numero_fattura" if match_numero else "fornitore"
+            )
+            forti.append(mov)
+    return forti[0] if len(forti) == 1 else None
 
 
 async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento: str,
@@ -484,8 +525,9 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
 
     REGOLA (utente, 03/08/2026): quando la fattura XML entra nel gestionale,
       - metodo univoco cassa/contanti -> Prima Nota Cassa;
-      - metodo univoco banca/bonifico e relativi alias -> Prima Nota Banca;
-      - metodo misto, assente o ambiguo -> provvisoria.
+      - metodo banca -> Prima Nota Banca solo con una riga reale, univoca e
+        forte dell'estratto conto; in assenza resta Provvisoria;
+      - metodo misto, assente o ambiguo -> Provvisoria.
 
     La scrittura usa il writer canonico registra_pagamento_fattura
     (idempotente per fattura: riferimento FATT-{id}, mai due movimenti per
@@ -528,9 +570,26 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     if not metodo:
         return None
 
-    destinazione = decide_destinazione_fattura(metodo)
-    if destinazione not in ("cassa", "banca"):
+    metodo_canonico = normalizza_metodo_pagamento(metodo)
+    if metodo_canonico not in ("cassa", "banca"):
         return None
+
+    movimento_bancario = None
+    if metodo_canonico == "banca":
+        movimento_bancario = await find_ec_match_for_invoice(
+            db,
+            float(invoice.get("total_amount") or invoice.get("importo_totale") or 0),
+            invoice.get("supplier_name") or invoice.get("cedente_denominazione") or "",
+            invoice.get("invoice_date") or invoice.get("data_fattura") or "",
+            invoice.get("invoice_number") or invoice.get("numero_fattura") or "",
+            session=session,
+        )
+        if not movimento_bancario:
+            return None
+
+    destinazione = decide_destinazione_fattura(
+        metodo, evidenza_bancaria=bool(movimento_bancario)
+    )
 
     # NB: registra_pagamento_fattura scrive fuori dalla transazione
     # dell'import (non accetta session); è idempotente per fattura, quindi
@@ -538,7 +597,11 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     # una fattura che verrà reimportata subito dopo con lo stesso id.
     from app.routers.prima_nota_module.sync import registra_pagamento_fattura
     esito = await registra_pagamento_fattura(
-        invoice, destinazione, source="auto_metodo_fornitore"
+        invoice,
+        destinazione,
+        source=("estratto_conto_auto" if movimento_bancario else "auto_metodo_fornitore"),
+        movimento_bancario=movimento_bancario,
+        session=session,
     )
     mov_id = esito.get(destinazione)
     if not mov_id:
@@ -549,11 +612,23 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
         "paid": True,
         "stato_pagamento": "pagata",
         "metodo_pagamento": "contanti" if destinazione == "cassa" else "bonifico",
-        "data_pagamento": invoice.get("invoice_date") or invoice.get("data_fattura"),
+        "data_pagamento": (
+            (movimento_bancario or {}).get("data")
+            or invoice.get("invoice_date") or invoice.get("data_fattura")
+        ),
         "prima_nota_id": mov_id,
         "prima_nota_tipo": destinazione,
         "registrata_auto_da_metodo_fornitore": True,
     }
+    if movimento_bancario:
+        update.update({
+            "riconciliato": True,
+            "riconciliato_con_ec": True,
+            "riconciliato_automaticamente": True,
+            "movimento_bancario_id": movimento_bancario.get("id"),
+            "match_score": movimento_bancario.get("match_score"),
+            "match_tipo": movimento_bancario.get("match_tipo"),
+        })
     update[
         "prima_nota_cassa_id" if destinazione == "cassa" else "prima_nota_banca_id"
     ] = mov_id

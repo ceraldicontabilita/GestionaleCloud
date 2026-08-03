@@ -10,10 +10,11 @@ Le liste non erano sincronizzate tra loro: un fornitore con metodo
 "assegno" o "carta" poteva risultare "Banca" in un punto e "sospeso"
 nell'altro (vedi commento storico in app/routers/prima_nota_module/sync.py).
 
-Regola canonica unica (decisa il 2026-07, sostituisce ogni logica locale):
+Regola canonica unica (decisione utente 03/08/2026):
 
     fornitore "Cassa"           -> Prima Nota Cassa
-    fornitore "Banca"           -> Prima Nota Banca
+    fornitore "Banca"           -> Prima Nota Provvisoria finche' non esiste
+                                   un movimento reale dell'estratto conto
     fornitore "Misto"           -> Prima Nota Provvisoria (attesa conferma utente)
     fornitore senza metodo      -> None (il chiamante DEVE generare un alert e
                                    chiedere all'utente di impostare il metodo,
@@ -95,10 +96,18 @@ def normalizza_metodo_pagamento(metodo_raw: Optional[str]) -> Optional[str]:
     return None
 
 
-def decide_destinazione_fattura(metodo_pagamento_fornitore: Optional[str]) -> Optional[str]:
+def decide_destinazione_fattura(
+    metodo_pagamento_fornitore: Optional[str],
+    evidenza_bancaria: bool = False,
+) -> Optional[str]:
     """Decide dove instradare una fattura in base al metodo del fornitore.
 
     Ritorna 'cassa' | 'banca' | 'provvisoria' | None.
+
+    Il metodo anagrafico "banca" descrive *come* il fornitore viene pagato,
+    non prova che il denaro sia gia' uscito. Per questo la destinazione e'
+    Banca solo quando il chiamante fornisce ``evidenza_bancaria=True`` dopo
+    aver collegato una riga reale e non gia' usata dell'estratto conto.
     None significa fornitore senza metodo definito: il chiamante deve
     generare un alert e chiedere conferma, non decidere da solo.
     Questa e' l'UNICA funzione che deve decidere questa destinazione in
@@ -108,7 +117,7 @@ def decide_destinazione_fattura(metodo_pagamento_fornitore: Optional[str]) -> Op
     if canonico == CASSA:
         return CASSA
     if canonico == BANCA:
-        return BANCA
+        return BANCA if evidenza_bancaria else PROVVISORIA
     if canonico == MISTO:
         return PROVVISORIA
     return None

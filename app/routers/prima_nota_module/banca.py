@@ -238,6 +238,18 @@ async def create_prima_nota_banca(data: Dict[str, Any] = Body(...)) -> Dict[str,
     if data["tipo"] not in TIPO_MOVIMENTO:
         raise HTTPException(status_code=400, detail="Tipo deve essere 'entrata' o 'uscita'")
     
+    evidenza_id = next((data.get(c) for c in CAMPI_EVIDENZA_MOVIMENTO if data.get(c)), None)
+    if data.get("fattura_id") and not evidenza_id:
+        raise HTTPException(
+            status_code=409,
+            detail=("Una fattura puo' entrare in Banca solo se collegata a "
+                    "un movimento reale dell'estratto conto"),
+        )
+    if evidenza_id:
+        evidenza = await db["estratto_conto_movimenti"].find_one({"id": evidenza_id})
+        if not evidenza:
+            raise HTTPException(status_code=404, detail="Movimento estratto conto non trovato")
+
     movimento = {
         "id": str(uuid.uuid4()),
         "data": data["data"],
@@ -255,6 +267,9 @@ async def create_prima_nota_banca(data: Dict[str, Any] = Body(...)) -> Dict[str,
         "pos_details": data.get("pos_details"),
         "numero_assegno": data.get("numero_assegno") or data.get("assegno_numero"),
         "assegno_numero": data.get("numero_assegno") or data.get("assegno_numero"),
+        "estratto_conto_id": evidenza_id,
+        "movimento_bancario_id": evidenza_id,
+        "riconciliato": bool(evidenza_id),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     

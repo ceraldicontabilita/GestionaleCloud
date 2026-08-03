@@ -13,6 +13,7 @@ import asyncio
 from app.routers.prima_nota_module import cassa as cassa_mod
 from app.routers.prima_nota_module import banca as banca_mod
 from app.database import Collections
+from fastapi import HTTPException
 
 
 def _run(c):
@@ -35,6 +36,12 @@ class _FakeCollection:
             if all(d.get(k2) == v2 for k2, v2 in query.items()):
                 d.update(update.get("$set", {}))
                 return
+
+    async def find_one(self, query, *a, **k):
+        for d in self.docs:
+            if all(d.get(k2) == v2 for k2, v2 in query.items()):
+                return d
+        return None
 
 
 class _FakeDb:
@@ -82,16 +89,34 @@ def test_uscita_banca_con_fattura_id_marca_fattura_pagata(monkeypatch):
     db = _FakeDb()
     monkeypatch.setattr(banca_mod.Database, "get_db", staticmethod(lambda: db))
     db[Collections.INVOICES].docs = [{"id": "fatt-2", "pagato": False}]
+    db["estratto_conto_movimenti"].docs = [{"id": "ec-2", "tipo": "uscita"}]
 
     _run(banca_mod.create_prima_nota_banca({
         "data": "2026-07-15", "tipo": "uscita", "importo": 250.0,
         "descrizione": "Bonifico fornitore", "fattura_id": "fatt-2",
+        "estratto_conto_id": "ec-2",
     }))
 
     fattura = db[Collections.INVOICES].docs[0]
     assert fattura["pagato"] is True
     assert fattura["stato_pagamento"] == "pagata"
     assert fattura["metodo_pagamento"] == "banca"
+
+
+def test_uscita_banca_fattura_senza_estratto_resta_fuori(monkeypatch):
+    db = _FakeDb()
+    monkeypatch.setattr(banca_mod.Database, "get_db", staticmethod(lambda: db))
+    db[Collections.INVOICES].docs = [{"id": "fatt-3", "pagato": False}]
+
+    try:
+        _run(banca_mod.create_prima_nota_banca({
+            "data": "2026-07-15", "tipo": "uscita", "importo": 250.0,
+            "descrizione": "Bonifico non riscontrato", "fattura_id": "fatt-3",
+        }))
+        assert False, "doveva richiedere l'evidenza dell'estratto conto"
+    except HTTPException as exc:
+        assert exc.status_code == 409
+    assert db[Collections.INVOICES].docs[0]["pagato"] is False
 
 
 def test_uscita_cassa_senza_fattura_id_non_tocca_invoices(monkeypatch):

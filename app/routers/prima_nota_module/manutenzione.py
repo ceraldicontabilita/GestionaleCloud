@@ -165,7 +165,12 @@ async def cleanup_orphan_movements(anno: Optional[int] = Query(None), _admin: Di
 
 
 async def regenerate_from_invoices(anno: int = Query(...)) -> Dict:
-    """Rigenera i movimenti Prima Nota dall'archivio fatture per un anno."""
+    """Rigenera solo la Cassa dall'archivio fatture per un anno.
+
+    La Banca non puo' essere ricostruita dalle fatture: richiede sempre la
+    riga reale dell'estratto conto. Le fatture a metodo banca restano quindi
+    provvisorie fino alla riconciliazione.
+    """
     db = Database.get_db()
     
     query_delete = {
@@ -183,6 +188,7 @@ async def regenerate_from_invoices(anno: int = Query(...)) -> Dict:
     
     created_cassa = 0
     created_banca = 0
+    lasciate_provvisorie = 0
     errors = []
     
     for fattura in fatture:
@@ -218,8 +224,7 @@ async def regenerate_from_invoices(anno: int = Query(...)) -> Dict:
                 await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento.copy())
                 created_cassa += 1
             else:
-                await db[COLLECTION_PRIMA_NOTA_BANCA].insert_one(movimento.copy())
-                created_banca += 1
+                lasciate_provvisorie += 1
                 
         except Exception as e:
             errors.append(f"Fattura {fattura.get('invoice_number', 'N/A')}: {str(e)}")
@@ -230,6 +235,7 @@ async def regenerate_from_invoices(anno: int = Query(...)) -> Dict:
         "fatture_elaborate": len(fatture),
         "movimenti_cassa_creati": created_cassa,
         "movimenti_banca_creati": created_banca,
+        "fatture_banca_lasciate_provvisorie": lasciate_provvisorie,
         "movimenti_cassa_eliminati": deleted_cassa.deleted_count,
         "movimenti_banca_eliminati": deleted_banca.deleted_count,
         "errors": errors[:20]
@@ -624,6 +630,105 @@ REGOLE_UNIFICA_CATEGORIE = [
 # fatte A MANO dall'utente (conferma dal tab Provvisori, pagamento manuale)
 # e quelle agganciate a un addebito REALE dell'estratto conto
 # (riconciliazione_ec: il denaro è uscito davvero dal conto) non si toccano.
+async def ripristina_abbinamenti_banca_senza_identita(
+    anno: int = 2026,
+    dry_run: bool = True,
+) -> Dict[str, Any]:
+    """Rivalida i vecchi auto-match fattura/estratto conto con la regola forte.
+
+    Interviene solo sulle righe fattura generate automaticamente dal matcher
+    di estratto conto. Le righe bancarie generiche, le conferme manuali e gli
+    altri tipi contabili non sono incluse. Prima della modifica salva una
+    copia dei documenti interessati, poi esegue esclusivamente soft-delete.
+    """
+    from app.handlers.estratto_conto import _score_match, SOGLIA_AUTO
+
+    db = Database.get_db()
+    filtro = {
+        "source": "estratto_conto_auto",
+        "fattura_id": {"$nin": [None, ""]},
+        "tipo": "uscita",
+        "status": {"$nin": ["deleted", "archived"]},
+        "data": {"$regex": f"^{anno}"},
+    }
+    righe = await db[COLLECTION_PRIMA_NOTA_BANCA].find(filtro).to_list(20000)
+    non_valide = []
+    valide = 0
+
+    for riga in righe:
+        ec_id = riga.get("estratto_conto_id") or riga.get("movimento_bancario_id")
+        fattura_id = riga.get("fattura_id")
+        ec = await db[COLLECTION_ESTRATTO_CONTO].find_one({"id": ec_id}) if ec_id else None
+        fattura = await db["invoices"].find_one({"id": fattura_id})
+        if ec and fattura and _score_match(ec, fattura) >= SOGLIA_AUTO:
+            valide += 1
+            if not dry_run:
+                await db[COLLECTION_PRIMA_NOTA_BANCA].update_one(
+                    {"id": riga.get("id")},
+                    {"$set": {"riconciliato": True, "estratto_conto_id": ec_id,
+                              "movimento_bancario_id": ec_id,
+                              "validato_regola_identita": True}},
+                )
+            continue
+        non_valide.append((riga, ec_id, fattura_id))
+
+    backup_collection = None
+    if non_valide and not dry_run:
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        backup_collection = f"backup_auto_match_senza_identita_{timestamp}"
+        copie = []
+        for riga, _, _ in non_valide:
+            copia = dict(riga)
+            copia["_backup_at"] = datetime.now(timezone.utc).isoformat()
+            copia["_backup_reason"] = "auto_match_fattura_non_supportato_da_identita"
+            copie.append(copia)
+        await db[backup_collection].insert_many(copie, ordered=True)
+
+        for riga, ec_id, fattura_id in non_valide:
+            pn_id = riga.get("id")
+            await db[COLLECTION_PRIMA_NOTA_BANCA].update_one(
+                {"id": pn_id},
+                {"$set": {
+                    "status": "deleted",
+                    "entity_status": "deleted",
+                    "deleted_at": datetime.now(timezone.utc).isoformat(),
+                    "deleted_reason": "auto_match_fattura_senza_identita_bancaria",
+                }},
+            )
+            if ec_id:
+                await db[COLLECTION_ESTRATTO_CONTO].update_one(
+                    {"id": ec_id, "$or": [
+                        {"fattura_id": fattura_id}, {"documento_id": fattura_id}
+                    ]},
+                    {"$set": {"riconciliato": False, "abbinato": False,
+                              "stato_riconciliazione": "da_verificare"},
+                     "$unset": {"fattura_id": "", "documento_id": "",
+                                "tipo_abbinamento": "", "confidenza": ""}},
+                )
+            await db["invoices"].update_one(
+                {"id": fattura_id, "$or": [
+                    {"prima_nota_banca_id": pn_id},
+                    {"prima_nota_id": pn_id},
+                    {"movimento_bancario_id": ec_id},
+                ]},
+                {"$set": {"pagato": False, "paid": False,
+                          "stato_pagamento": "da_pagare",
+                          "stato_finanziario": "in_attesa_estratto_conto"},
+                 "$unset": {"prima_nota_banca_id": "", "prima_nota_id": "",
+                            "prima_nota_tipo": "", "movimento_bancario_id": "",
+                            "riconciliato": "", "riconciliato_con_ec": "",
+                            "data_pagamento": ""}},
+            )
+
+    return {
+        "analizzati": len(righe),
+        "validi": valide,
+        "ripristinati_provvisori": len(non_valide),
+        "dry_run": dry_run,
+        "backup_collection": backup_collection,
+    }
+
+
 SOURCES_FATTURE_AUTO = [
     "auto_conferma", "sync_fatture", "backfill_auto_da_fornitore",
     "auto_metodo", "fix_relazioni", "auto_registrazione_metodo_fornitore",

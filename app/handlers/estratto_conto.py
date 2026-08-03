@@ -8,6 +8,7 @@ Soglie di confidenza:
   < 60%  → movimento resta "da abbinare"
 """
 import logging
+import re
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
@@ -29,6 +30,9 @@ def _score_match(movimento: Dict, fattura: Dict) -> float:
     Calcola score 0-1 tra un movimento bancario e una fattura.
     Considera importo, fornitore e data.
     """
+    if (movimento.get("tipo") or "").lower() != "uscita":
+        return 0.0
+
     score = 0.0
 
     imp_mov = abs(float(movimento.get("importo", 0)))
@@ -45,19 +49,27 @@ def _score_match(movimento: Dict, fattura: Dict) -> float:
     else:
         return 0.0  # importo diverso, scarta subito
 
-    # Match fornitore nella descrizione (peso 30%)
-    desc = (movimento.get("descrizione") or movimento.get("description") or "").upper()
+    # Identita' obbligatoria: importo+data da soli generano falsi positivi
+    # (es. accredito NUMIA da 24,40 scambiato per fattura Leasys).
+    desc = " ".join(str(movimento.get(k) or "") for k in (
+        "descrizione", "description", "descrizione_originale", "causale", "beneficiario"
+    )).upper()
     forn = (fattura.get("fornitore_ragione_sociale") or
             fattura.get("supplier_name") or "").upper()
-    if forn and len(forn) >= 4:
-        # Prendi le prime 8 lettere significative
-        parole = [p for p in forn.split() if len(p) >= 4]
-        for parola in parole[:3]:
-            if parola[:6] in desc:
-                score += 0.30
-                break
-        else:
-            score += 0.05  # bonus piccolo se non trova
+    stop = {"SRL", "SPA", "SNC", "SAS", "SOCIETA", "UNIPERSONALE", "ITALIA"}
+    parole = [
+        p for p in re.sub(r"[^A-Z0-9]+", " ", forn).split()
+        if len(p) >= 4 and p not in stop
+    ]
+    match_fornitore = any(parola in desc for parola in parole[:6])
+
+    numero = (fattura.get("numero_documento") or fattura.get("invoice_number") or "")
+    numero_norm = re.sub(r"[^A-Z0-9]", "", str(numero).upper()).lstrip("0")
+    desc_norm = re.sub(r"[^A-Z0-9]", "", desc)
+    match_numero = bool(numero_norm and len(numero_norm) >= 4 and numero_norm in desc_norm)
+    if not match_fornitore and not match_numero:
+        return 0.0
+    score += 0.30
 
     # Match data (peso 10%)
     try:
@@ -203,13 +215,16 @@ async def handler_matching_estratto_conto(payload: Dict[str, Any], db) -> Dict[s
             # Match con fatture
             best_score = 0.0
             best_fattura = None
+            candidati_auto = 0
             for fatt in fatture_aperte:
                 s = _score_match(mov, fatt)
+                if s >= SOGLIA_AUTO:
+                    candidati_auto += 1
                 if s > best_score:
                     best_score = s
                     best_fattura = fatt
 
-            if best_fattura and best_score >= SOGLIA_AUTO:
+            if best_fattura and best_score >= SOGLIA_AUTO and candidati_auto == 1:
                 # Abbinamento automatico
                 await db["invoices"].update_one(
                     {"id": best_fattura["id"]},
@@ -227,17 +242,34 @@ async def handler_matching_estratto_conto(payload: Dict[str, Any], db) -> Dict[s
                     "id": str(uuid.uuid4()),
                     "fattura_id":  best_fattura["id"],
                     "movimento_id": mov_id,
+                    "estratto_conto_id": mov_id,
+                    "movimento_bancario_id": mov_id,
                     "data":   (mov.get("data") or "")[:10],
                     "tipo":   "uscita",
                     "importo": importo,
                     "descrizione": (f"Pagamento fattura "
-                                    f"{best_fattura.get('numero_documento', '')} "
-                                    f"- {best_fattura.get('fornitore_ragione_sociale', '')}"),
+                                    f"{best_fattura.get('numero_documento') or best_fattura.get('invoice_number', '')} "
+                                    f"- {best_fattura.get('fornitore_ragione_sociale') or best_fattura.get('supplier_name', '')}"),
                     "categoria": "Fatture",
                     "source": "estratto_conto_auto",
                     "confidenza": best_score,
                     "created_at": datetime.now(timezone.utc).isoformat(),
                 })
+                await db["estratto_conto_movimenti"].update_one(
+                    {"id": mov_id, "$or": [
+                        {"fattura_id": {"$exists": False}},
+                        {"fattura_id": None},
+                        {"fattura_id": best_fattura["id"]},
+                    ]},
+                    {"$set": {
+                        "riconciliato": True,
+                        "abbinato": True,
+                        "tipo_abbinamento": "fattura",
+                        "documento_id": best_fattura["id"],
+                        "fattura_id": best_fattura["id"],
+                        "confidenza": best_score,
+                    }},
+                )
                 # Chiudi scadenza
                 await db["scadenziario_fornitori"].update_one(
                     {"fattura_id": best_fattura["id"], "pagato": {"$ne": True}},
@@ -246,7 +278,7 @@ async def handler_matching_estratto_conto(payload: Dict[str, Any], db) -> Dict[s
                 auto_abbinati += 1
                 prima_nota_scritti += 1
 
-            elif best_fattura and best_score >= SOGLIA_PROPOSTA:
+            elif best_fattura and best_score >= SOGLIA_PROPOSTA and candidati_auto <= 1:
                 # Propone abbinamento
                 await db["operazioni_da_confermare"].insert_one({
                     "id": str(uuid.uuid4()),

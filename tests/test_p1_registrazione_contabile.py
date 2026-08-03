@@ -123,6 +123,23 @@ def test_numero_registrazione_progressivo(monkeypatch):
     assert r2["movimento"]["numero_registrazione"] == 2
 
 
+def test_iva_indetraibile_aumenta_il_costo_non_il_credito_iva(monkeypatch):
+    db = _Db()
+    _prepara(db, monkeypatch)
+    fattura = {
+        "id": "AUTO1", "total_amount": 122.0, "total_tax": 22.0,
+        "iva_detraibile": 8.80, "invoice_date": "2026-03-10",
+    }
+
+    mov = _run(motore.registra_fattura(db, fattura))["movimento"]
+    righe = {r["conto_codice"]: r for r in mov["righe"]}
+
+    assert righe["01.04.01"]["dare"] == 8.80
+    assert righe["05.01.01"]["dare"] == 113.20
+    assert mov["iva_indetraibile"] == 13.20
+    assert mov["totale_dare"] == mov["totale_avere"] == 122.0
+
+
 def test_registra_corrispettivo_scorporo(monkeypatch):
     db = _Db()
     _prepara(db, monkeypatch)

@@ -132,14 +132,19 @@ async def riconcilia_automatico(
 
             match_found = False
 
-            # Match fatture per importo esatto
-            fattura = await db.invoices.find_one({
+            # Un importo/data non prova l'identita' del pagamento. Cerchiamo
+            # soltanto fatture con totale esatto al centesimo e poi applichiamo
+            # lo scorer canonico (uscita + fornitore o numero documento).
+            from app.handlers.estratto_conto import _score_match, SOGLIA_AUTO
+            candidate = await db.invoices.find({
                 **QUERY_FATTURA_NON_PAGATA,
                 "$or": [
-                    {"total_amount": {"$gte": importo * 0.99, "$lte": importo * 1.01}},
-                    {"importo_totale": {"$gte": importo * 0.99, "$lte": importo * 1.01}}
+                    {"total_amount": {"$gte": importo - 0.01, "$lte": importo + 0.01}},
+                    {"importo_totale": {"$gte": importo - 0.01, "$lte": importo + 0.01}}
                 ]
-            }, {"_id": 0, "id": 1, "supplier_name": 1})
+            }, {"_id": 0}).limit(50).to_list(50)
+            forti = [f for f in candidate if _score_match(mov, f) >= SOGLIA_AUTO]
+            fattura = forti[0] if len(forti) == 1 else None
 
             if fattura:
                 await db.estratto_conto_movimenti.update_one(
@@ -147,7 +152,7 @@ async def riconcilia_automatico(
                     {"$set": {
                         "riconciliato": True,
                         "fattura_id": fattura["id"],
-                        "tipo_riconciliazione": "auto_importo",
+                        "tipo_riconciliazione": "auto_identita_importo",
                         "data_riconciliazione": datetime.now(timezone.utc).isoformat()
                     }}
                 )
@@ -161,7 +166,10 @@ async def riconcilia_automatico(
                 # riconciliazione_bancaria.py, vedi memoria/moduli/RICONCILIAZIONE.md).
                 try:
                     from app.routers.prima_nota_module.sync import registra_pagamento_fattura
-                    pn = await registra_pagamento_fattura(fattura, "banca")
+                    pn = await registra_pagamento_fattura(
+                        fattura, "banca", movimento_bancario=mov,
+                        source="estratto_conto_auto",
+                    )
                     if pn.get("banca"):
                         pagato_fields["prima_nota_id"] = pn["banca"]
                         pagato_fields["prima_nota_tipo"] = "banca"
@@ -257,7 +265,10 @@ async def riconcilia_manuale(request: RiconciliaManuale) -> Dict[str, Any]:
         # in riconciliazione_bancaria.py.
         try:
             from app.routers.prima_nota_module.sync import registra_pagamento_fattura
-            pn = await registra_pagamento_fattura(fattura, "banca")
+            pn = await registra_pagamento_fattura(
+                fattura, "banca", movimento_bancario=movimento,
+                source="riconciliazione_manuale",
+            )
             if pn.get("banca"):
                 pagato_fields["prima_nota_id"] = pn["banca"]
                 pagato_fields["prima_nota_tipo"] = "banca"
