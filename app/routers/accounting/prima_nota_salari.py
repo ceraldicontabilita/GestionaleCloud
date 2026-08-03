@@ -167,6 +167,18 @@ async def get_prima_nota_salari(
     - riconciliato
     """
     db = Database.get_db()
+    from app.services.cedolini_canonical_compat import (
+        canonical_salary_rows,
+        uses_canonical_payroll_schema,
+    )
+    if await uses_canonical_payroll_schema(db):
+        return await canonical_salary_rows(
+            db,
+            anno=anno,
+            mese=mese,
+            dipendente=dipendente,
+        )
+
     # Ripara in modo deterministico le righe storiche prive di nome usando
     # esclusivamente cedolino_id oppure CF+periodo.
     from app.services.bonifici_pdf_ingest import arricchisci_nomi_salari_da_cedolini
@@ -255,6 +267,22 @@ async def get_cedolino_pdf(
     import base64
 
     db = Database.get_db()
+    if record_id.startswith("canonical:"):
+        from app.services.cedolini_canonical_compat import canonical_pdf_bytes
+        pdf_bytes = await canonical_pdf_bytes(db, record_id.split(":", 1)[1])
+        if not pdf_bytes:
+            raise HTTPException(status_code=404, detail="PDF del cedolino non disponibile")
+        if not pdf_bytes.startswith(b"%PDF"):
+            raise HTTPException(status_code=422, detail="PDF del cedolino non leggibile")
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": "inline; filename=cedolino.pdf",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
     salario = await db["prima_nota_salari"].find_one(
         {"id": record_id},
         {

@@ -332,6 +332,13 @@ async def _do_sync(db) -> Dict[str, Any]:
                 for member_path, pdf_content in pdf_items:
                     result["total"] += 1
                     content_hash = hashlib.md5(pdf_content).hexdigest()
+                    canonical_hash = hashlib.sha256(pdf_content).hexdigest()
+                    canonical_existing = await db["cedolini"].find_one(
+                        {"source_hash": canonical_hash}, {"_id": 1}
+                    )
+                    if canonical_existing:
+                        result["duplicates"] += 1
+                        continue
                     existing = await db["documents_inbox"].find_one(
                         {"file_hash": content_hash}, {"_id": 0, "id": 1}
                     )
