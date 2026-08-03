@@ -763,6 +763,8 @@ def start_scheduler():
         _drive_cedolini_job,
         'interval', hours=1,
         next_run_time=datetime.now(),
+        misfire_grace_time=300,
+        coalesce=True,
         id="drive_cedolini_ingest", name="Import Cedolini da Google Drive (ogni ora + al riavvio)",
         replace_existing=True,
     )
