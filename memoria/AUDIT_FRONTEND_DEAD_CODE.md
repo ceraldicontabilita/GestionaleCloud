@@ -3,7 +3,7 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 154
+**Totale file analizzati:** 155
 
 | Classificazione | File |
 |---|---:|
@@ -12,7 +12,7 @@
 | COMPONENTE_USATO | 80 |
 | MODALE_USATO | 4 |
 | HOOK_USATO | 3 |
-| TEST_ONLY | 11 |
+| TEST_ONLY | 12 |
 | DINAMICO_DA_VERIFICARE | 23 |
 | ORFANO_ELIMINABILE | 0 |
 
@@ -62,7 +62,8 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ChatIntelligente.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/CopyLinkButton.jsx` | COMPONENTE_USATO | 5 |
 | `frontend/src/components/DocumentViewerModal.jsx` | MODALE_USATO | 8 |
-| `frontend/src/components/ErrorBoundary.jsx` | COMPONENTE_USATO | 2 |
+| `frontend/src/components/ErrorBoundary.jsx` | COMPONENTE_USATO | 3 |
+| `frontend/src/components/ErrorBoundary.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/components/ExportButton.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/F24EmailSync.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/InstallAppButton.jsx` | COMPONENTE_USATO | 1 |
