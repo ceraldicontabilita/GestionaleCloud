@@ -1,4 +1,5 @@
 from app.handlers.estratto_conto import _score_match
+from app.services.riconciliazione_bancaria import _evidenza_forte_fattura_banca
 
 
 FATTURA_LEASYS = {
@@ -44,3 +45,36 @@ def test_uscita_con_importo_e_fornitore_e_match_forte():
         "descrizione": "ADDEBITO LEASYS ITALIA FATTURA 0000202610458640",
     }
     assert _score_match(movimento, FATTURA_LEASYS) >= 0.90
+
+
+def test_secondo_motore_non_auto_abbina_il_solo_importo():
+    evidenza = _evidenza_forte_fattura_banca(
+        FATTURA_LEASYS,
+        "ADDEBITO CARTA NUMIA OPERAZIONE DEL 24 MARZO",
+        24.40,
+    )
+    assert evidenza["importo_esatto"] is True
+    assert evidenza["auto_ammesso"] is False
+
+
+def test_secondo_motore_accetta_importo_e_numero_fattura():
+    evidenza = _evidenza_forte_fattura_banca(
+        FATTURA_LEASYS,
+        "PAGAMENTO FATTURA 0000202610458640",
+        24.40,
+    )
+    assert evidenza["numero_presente"] is True
+    assert evidenza["auto_ammesso"] is True
+
+
+def test_rata_xml_esatta_richiede_comunque_identita():
+    fattura = {
+        **FATTURA_LEASYS,
+        "total_amount": 120.00,
+        "importo_residuo": 80.00,
+        "pagamento_rate": [{"importo": 40.00}],
+    }
+    senza_identita = _evidenza_forte_fattura_banca(fattura, "ADDEBITO GENERICO", 40.00)
+    con_identita = _evidenza_forte_fattura_banca(fattura, "BONIFICO LEASYS", 40.00)
+    assert senza_identita["auto_ammesso"] is False
+    assert con_identita["auto_ammesso"] is True

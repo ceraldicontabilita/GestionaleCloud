@@ -131,7 +131,7 @@ async def lifespan(app: FastAPI):
                         riparazione["corretti"],
                     )
 
-            strict_marker = "revalidate_invoice_bank_identity_20260803_v1"
+            strict_marker = "revalidate_invoice_bank_identity_20260803_v2"
             strict_run = await db["migration_runs"].find_one({"id": strict_marker})
             if not strict_run or strict_run.get("status") != "completed":
                 strict_result = await ripristina_abbinamenti_banca_senza_identita(

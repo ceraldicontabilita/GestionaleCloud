@@ -340,7 +340,9 @@ async def _applica_pagamento_banca(db, fattura: Dict[str, Any], metodo_label: st
         pn_fields = {
             "invoice_id": fattura_id, "fattura_id": fattura_id,
             "movimento_estratto_conto_id": mov_id, "estratto_conto_id": mov_id,
-            "riconciliato": True, "data_riconciliazione": data_ec, "updated_at": now,
+            "riconciliato": True, "riconciliazione_automatica": True,
+            "match_score": score,
+            "data_riconciliazione": data_ec, "updated_at": now,
         }
         if pn:
             await db["prima_nota_banca"].update_one({"id": pn["id"]}, {"$set": pn_fields})
@@ -512,6 +514,53 @@ def match_numero_fattura_descrizione(numero_fattura: str, descrizione: str) -> b
     return False
 
 
+def _evidenza_forte_fattura_banca(
+    fattura: Dict[str, Any], descrizione: str, importo_movimento: float
+) -> Dict[str, bool]:
+    """Regola canonica per l'auto-match fattura/banca.
+
+    Il solo importo, anche unico e con data plausibile, non prova il pagamento.
+    Servono importo al centesimo e almeno un'identita' leggibile nella causale:
+    fornitore oppure numero fattura. Per le fatture rateizzate e' ammesso
+    l'importo esatto della rata XML o del residuo ancora aperto.
+    """
+    totale = float(fattura.get("importo_totale") or fattura.get("total_amount") or 0)
+    residuo = float(
+        fattura.get("importo_residuo")
+        if fattura.get("importo_residuo") is not None
+        else max(0.0, totale - float(fattura.get("importo_pagato") or 0))
+    )
+    rate = [
+        float(rata.get("importo") or 0)
+        for rata in fattura.get("pagamento_rate") or []
+        if isinstance(rata, dict)
+    ]
+    importo_esatto = any(
+        valore > 0 and abs(valore - importo_movimento) <= 0.01
+        for valore in [totale, residuo, *rate]
+    )
+    fornitore = (
+        fattura.get("cedente_denominazione")
+        or fattura.get("fornitore_ragione_sociale")
+        or fattura.get("supplier_name")
+        or ""
+    )
+    numero = (
+        fattura.get("numero_fattura")
+        or fattura.get("numero_documento")
+        or fattura.get("invoice_number")
+        or ""
+    )
+    fornitore_presente = match_fornitore_descrizione(fornitore, descrizione) > 0
+    numero_presente = match_numero_fattura_descrizione(numero, descrizione)
+    return {
+        "importo_esatto": importo_esatto,
+        "fornitore_presente": fornitore_presente,
+        "numero_presente": numero_presente,
+        "auto_ammesso": importo_esatto and (fornitore_presente or numero_presente),
+    }
+
+
 def extract_invoice_number(descrizione: str) -> Optional[str]:
     """Estrae numero fattura dalla descrizione estratto conto."""
     if not descrizione:
@@ -672,8 +721,8 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                         {"stato_pagamento": {"$nin": ["pagata", "paid", "sospesa"]}},
                         {"$or": [
                             # Match esatto
-                            {"importo_totale": {"$gte": importo - 0.05, "$lte": importo + 0.05}},
-                            {"total_amount": {"$gte": importo - 0.05, "$lte": importo + 0.05}},
+                            {"importo_totale": {"$gte": importo - 0.01, "$lte": importo + 0.01}},
+                            {"total_amount": {"$gte": importo - 0.01, "$lte": importo + 0.01}},
                             # Match parziale (il pagamento è circa 50-200% della fattura)
                             {"importo_totale": {"$gte": importo * 0.5, "$lte": importo * 2}},
                             {"total_amount": {"$gte": importo * 0.5, "$lte": importo * 2}},
@@ -705,7 +754,7 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                         if f.get("importo_residuo") is not None
                         else max(0, float(imp_fatt) - float(f.get("importo_pagato") or 0))
                     )
-                    if abs(residuo - importo) <= 0.05:
+                    if abs(residuo - importo) <= 0.01:
                         score += 10  # Match esatto
                     elif rata_esatta and importo <= residuo + 0.005:
                         score += 10  # Importo esatto di una rata del piano XML
@@ -761,8 +810,19 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                 # Ordina per score decrescente
                 fatture_scored.sort(key=lambda x: x[1], reverse=True)
 
-                # Se c'è una fattura con score >= 15 (importo + fornitore + numero) → match sicuro
-                if fatture_scored and fatture_scored[0][1] >= 15:
+                # Filtro duro: il solo importo/data non prova un pagamento.
+                # L'auto-match richiede importo esatto al centesimo e almeno
+                # un'identita' leggibile nella causale (fornitore o numero).
+                fatture_scored = [
+                    (fattura, score)
+                    for fattura, score in fatture_scored
+                    if _evidenza_forte_fattura_banca(
+                        fattura, descrizione, importo
+                    )["auto_ammesso"]
+                ]
+
+                # Una sola candidata con importo+identita' e' un match sicuro.
+                if len(fatture_scored) == 1 and fatture_scored[0][1] >= 10:
                     fattura = fatture_scored[0][0]
                     match_found = True
                     match_type = "fattura_match_completo"
@@ -787,7 +847,7 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
 
                     await _applica_pagamento_banca(
                         db, fattura, metodo_pagamento, data_ec, mov_id,
-                        fatture_scored[0][1], now, source="ric_auto_esatto_multi",
+                        fatture_scored[0][1], now, source="ric_auto_identita_unica",
                         importo_pagamento=importo,
                     )
 
@@ -803,9 +863,9 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                     imp_fatt_match = _importo_atteso_per_movimento(fattura, importo)
                     await _alert_differenza_importo(db, mov_id, importo, float(imp_fatt_match), match_details["fattura_id"])
 
-                # Se score >= 10 ma < 15 (solo importo + un altro criterio) → match con confidenza media
-                elif fatture_scored and fatture_scored[0][1] >= 10 and fatture_scored[0][1] < 15:
-                    # Se c'è una sola fattura con questo score → riconcilia
+                # Piu' fatture con identita' compatibile: la scelta resta
+                # sempre da confermare da un operatore.
+                elif len(fatture_scored) > 1:
                     fatture_buone = [f for f, s in fatture_scored if s >= 10]
 
                     # P1-1 (LOGICA §6): la conferma automatica a confidenza media
@@ -879,75 +939,6 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                                     for f in fatture_ordinate[:10]
                                 ],
                                 "motivo_dubbio": f"Trovate {len(fatture_ordinate)} fatture con match parziale"
-                            },
-                            "stato": "da_confermare",
-                            "created_at": now
-                        }
-
-                        creata = await _crea_operazione_da_confermare_idempotente(db, operazione)
-                        results["dubbi"] += 1
-                        if creata:
-                            await _alert_match_ambiguo(db, mov_id, operazione["dettagli"]["motivo_dubbio"])
-
-                # Se solo importo esatto (score = 10) e UNA sola fattura → riconcilia
-                elif fatture_scored and fatture_scored[0][1] == 10:
-                    fatture_esatte = [f for f, s in fatture_scored if s == 10]
-
-                    if len(fatture_esatte) == 1:
-                        fattura = fatture_esatte[0]
-                        match_found = True
-                        match_type = "fattura_solo_importo"
-
-                        metodo_pagamento = "Bonifico"
-                        if num_assegno:
-                            metodo_pagamento = f"Assegno N.{num_assegno}"
-
-                        await _applica_pagamento_banca(
-                            db, fattura, metodo_pagamento, data_ec, mov_id,
-                            10, now, source="ric_auto_solo_importo",
-                            importo_pagamento=importo,
-                        )
-
-                        match_details = {
-                            "fattura_id": str(fattura.get("_id")),
-                            "numero_fattura": fattura.get("numero_fattura") or fattura.get("invoice_number"),
-                            "fornitore": fattura.get("cedente_denominazione") or fattura.get("supplier_name"),
-                            "metodo_pagamento": metodo_pagamento,
-                            "match_score": 10,
-                            "match_type": "solo_importo"
-                        }
-                        results["riconciliati_fatture"] += 1
-
-                    elif len(fatture_esatte) > 1:
-                        # Più fatture solo con importo → operazione da confermare (bassa confidenza)
-                        fatture_ordinate = sorted(
-                            fatture_esatte,
-                            key=lambda f: f.get("data", f.get("invoice_date", "1900-01-01")),
-                            reverse=True
-                        )
-
-                        operazione = {
-                            "id": str(uuid.uuid4()),
-                            "tipo": "riconciliazione_dubbio",
-                            "movimento_ec_id": mov_id,
-                            "data": data_ec,
-                            "importo": importo,
-                            "descrizione": descrizione,
-                            "tipo_movimento": tipo,
-                            "match_type": "fatture_multiple",
-                            "confidence": "basso",
-                            "dettagli": {
-                                "fatture_candidate": [
-                                    {
-                                        "id": str(f.get("_id", f.get("id"))),
-                                        "numero": f.get("numero_fattura") or f.get("invoice_number"),
-                                        "fornitore": f.get("cedente_denominazione") or f.get("supplier_name"),
-                                        "importo": f.get("importo_totale") or f.get("total_amount"),
-                                        "data": f.get("data") or f.get("invoice_date")
-                                    }
-                                    for f in fatture_ordinate[:10]
-                                ],
-                                "motivo_dubbio": f"Trovate {len(fatture_esatte)} fatture con stesso importo (match solo importo)"
                             },
                             "stato": "da_confermare",
                             "created_at": now

@@ -644,8 +644,12 @@ async def ripristina_abbinamenti_banca_senza_identita(
     from app.handlers.estratto_conto import _score_match, SOGLIA_AUTO
 
     db = Database.get_db()
+    fonti_auto = {
+        "estratto_conto_auto", "ric_auto_esatto_multi",
+        "ric_auto_parziale_singolo", "ric_auto_solo_importo",
+        "ric_auto_identita_unica",
+    }
     filtro = {
-        "source": "estratto_conto_auto",
         "fattura_id": {"$nin": [None, ""]},
         "tipo": "uscita",
         "status": {"$nin": ["deleted", "archived"]},
@@ -660,6 +664,17 @@ async def ripristina_abbinamenti_banca_senza_identita(
         fattura_id = riga.get("fattura_id")
         ec = await db[COLLECTION_ESTRATTO_CONTO].find_one({"id": ec_id}) if ec_id else None
         fattura = await db["invoices"].find_one({"id": fattura_id})
+        # Le righe generiche create durante l'import dell'estratto conservano
+        # la source originale; il flag sulla fattura permette di riconoscere
+        # anche quei successivi auto-abbinamenti. Le conferme manuali non
+        # vengono mai rivalidate o rimosse da questa migrazione.
+        auto_generato = (
+            riga.get("source") in fonti_auto
+            or riga.get("riconciliazione_automatica") is True
+            or bool(fattura and fattura.get("riconciliato_automaticamente") is True)
+        )
+        if not auto_generato:
+            continue
         if ec and fattura and _score_match(ec, fattura) >= SOGLIA_AUTO:
             valide += 1
             if not dry_run:

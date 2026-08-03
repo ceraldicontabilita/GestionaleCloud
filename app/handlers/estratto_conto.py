@@ -43,8 +43,18 @@ def _score_match(movimento: Dict, fattura: Dict) -> float:
 
     # Match importo (peso 60%) — FILTRO DURO: solo importo esatto ±0,01 €
     # (scelta utente 10/07/2026), qualunque cosa dica la descrizione.
-    diff = abs(imp_mov - imp_fatt)
-    if diff <= TOLLERANZA_IMPORTO:
+    importi_ammessi = [imp_fatt]
+    if fattura.get("importo_residuo") is not None:
+        importi_ammessi.append(float(fattura.get("importo_residuo") or 0))
+    importi_ammessi.extend(
+        float(rata.get("importo") or 0)
+        for rata in fattura.get("pagamento_rate") or []
+        if isinstance(rata, dict)
+    )
+    if any(
+        valore > 0 and abs(imp_mov - valore) <= TOLLERANZA_IMPORTO
+        for valore in importi_ammessi
+    ):
         score += 0.60
     else:
         return 0.0  # importo diverso, scarta subito
@@ -54,7 +64,8 @@ def _score_match(movimento: Dict, fattura: Dict) -> float:
     desc = " ".join(str(movimento.get(k) or "") for k in (
         "descrizione", "description", "descrizione_originale", "causale", "beneficiario"
     )).upper()
-    forn = (fattura.get("fornitore_ragione_sociale") or
+    forn = (fattura.get("cedente_denominazione") or
+            fattura.get("fornitore_ragione_sociale") or
             fattura.get("supplier_name") or "").upper()
     stop = {"SRL", "SPA", "SNC", "SAS", "SOCIETA", "UNIPERSONALE", "ITALIA"}
     parole = [
@@ -63,7 +74,8 @@ def _score_match(movimento: Dict, fattura: Dict) -> float:
     ]
     match_fornitore = any(parola in desc for parola in parole[:6])
 
-    numero = (fattura.get("numero_documento") or fattura.get("invoice_number") or "")
+    numero = (fattura.get("numero_fattura") or fattura.get("numero_documento")
+              or fattura.get("invoice_number") or "")
     numero_norm = re.sub(r"[^A-Z0-9]", "", str(numero).upper()).lstrip("0")
     desc_norm = re.sub(r"[^A-Z0-9]", "", desc)
     match_numero = bool(numero_norm and len(numero_norm) >= 4 and numero_norm in desc_norm)
