@@ -46,7 +46,8 @@ async def get_assegno_stati() -> Dict[str, Any]:
 @router.post("/genera")
 async def genera_assegni(
     numero_primo: str = Body(..., description="Numero del primo assegno (es. 0208769182-11)"),
-    quantita: int = Body(10, ge=1, le=100, description="Numero di assegni da generare")
+    quantita: int = Body(10, ge=1, le=100, description="Numero di assegni da generare"),
+    anno: Optional[int] = Body(None, ge=2000, le=2100, description="Anno globale del carnet"),
 ) -> Dict[str, Any]:
     """
     Genera N assegni progressivi a partire dal numero fornito.
@@ -85,12 +86,17 @@ async def genera_assegni(
     # Genera assegni
     assegni_creati = []
     now = datetime.now(timezone.utc).isoformat()
+    anno_carnet = anno or datetime.now(timezone.utc).year
+    carnet_id = prefix
     
     for i in range(quantita):
         numero = f"{prefix}-{start_num + i}"
         assegno = {
             "id": str(uuid.uuid4()),
             "numero": numero,
+            "carnet_id": carnet_id,
+            "anno_creazione": anno_carnet,
+            "anno": anno_carnet,
             "stato": "vuoto",
             "importo": None,
             "beneficiario": None,
@@ -112,6 +118,9 @@ async def genera_assegni(
     return {
         "success": True,
         "message": f"Generati {quantita} assegni",
+        "generati": quantita,
+        "carnet_id": carnet_id,
+        "anno": anno_carnet,
         "primo": assegni_creati[0],
         "ultimo": assegni_creati[-1],
         "numeri": assegni_creati
@@ -134,11 +143,21 @@ async def list_assegni(
     query = {"entity_status": {"$ne": "deleted"}}
     if anno:
         # data_emissione/data sono stringhe YYYY-MM-DD; gli assegni senza
-        # data (carnet vuoti) restano sempre visibili
+        # data appartengono all'anno in cui il carnet e' stato creato. Per i
+        # record legacy usiamo created_at, evitando che lo stesso carnet
+        # vuoto compaia contemporaneamente in tutti gli anni globali.
         query["$and"] = [{"$or": [
             {"data_emissione": {"$regex": f"^{anno}"}},
             {"data": {"$regex": f"^{anno}"}},
-            {"$and": [{"data_emissione": {"$in": [None, ""]}}, {"data": {"$in": [None, ""]}}]},
+            {"anno_creazione": anno},
+            {"anno": anno},
+            {"$and": [
+                {"data_emissione": {"$in": [None, ""]}},
+                {"data": {"$in": [None, ""]}},
+                {"anno_creazione": {"$exists": False}},
+                {"anno": {"$exists": False}},
+                {"created_at": {"$regex": f"^{anno}"}},
+            ]},
         ]}]
     if stato:
         query["stato"] = stato
@@ -200,7 +219,15 @@ async def get_assegni_stats(anno: Optional[int] = Query(None)) -> Dict[str, Any]
         match_filter["$and"] = [{"$or": [
             {"data_emissione": {"$regex": f"^{anno}"}},
             {"data": {"$regex": f"^{anno}"}},
-            {"$and": [{"data_emissione": {"$in": [None, ""]}}, {"data": {"$in": [None, ""]}}]},
+            {"anno_creazione": anno},
+            {"anno": anno},
+            {"$and": [
+                {"data_emissione": {"$in": [None, ""]}},
+                {"data": {"$in": [None, ""]}},
+                {"anno_creazione": {"$exists": False}},
+                {"anno": {"$exists": False}},
+                {"created_at": {"$regex": f"^{anno}"}},
+            ]},
         ]}]
     
     pipeline = [
@@ -631,6 +658,7 @@ async def correggi_associazione_assegno(
 @router.post("/auto-match")
 async def auto_match_assegni(
     dry_run: bool = Query(True, description="Sola anteprima; applicazione con conferma esplicita"),
+    anno: Optional[int] = Query(None, ge=2000, le=2100),
 ) -> Dict[str, Any]:
     """
     🤖 Auto-matcher Assegni ↔ Fatture (4 livelli, N:M, tolleranza ±0,005€).
@@ -643,7 +671,7 @@ async def auto_match_assegni(
         )
     from app.routers.bank.assegni_auto_match import run_auto_match
     db = Database.get_db()
-    report = await run_auto_match(db, dry_run=dry_run)
+    report = await run_auto_match(db, dry_run=dry_run, anno=anno)
     return {
         "success": True,
         **report,

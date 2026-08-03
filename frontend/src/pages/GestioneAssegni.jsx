@@ -62,9 +62,11 @@ export function filtraAssegni(assegni, filtri = {}) {
 
   return assegni.filter(a => {
     const numero = String(a.numero || a.numero_assegno || '');
-    if (!numero || a.importo === null || a.importo === undefined) return false;
-    const importo = Number(a.importo) || 0;
+    if (!numero) return false;
+    const importoVuoto = a.importo === null || a.importo === undefined || a.importo === '';
+    const importo = importoVuoto ? null : Number(a.importo) || 0;
     if (fornitore && !String(a.beneficiario || '').toLowerCase().includes(fornitore.toLowerCase())) return false;
+    if ((esatto !== null || minimo !== null || massimo !== null) && importoVuoto) return false;
     if (esatto !== null && Math.abs(importo - esatto) > 0.009) return false;
     if (minimo !== null && importo < minimo) return false;
     if (massimo !== null && importo > massimo) return false;
@@ -133,6 +135,7 @@ export default function GestioneAssegni() {
   const [showGenerate, setShowGenerate] = useState(false);
   const [generateForm, setGenerateForm] = useState({ numero_primo: '', quantita: 10 });
   const [generating, setGenerating] = useState(false);
+  const [newlyGeneratedNumbers, setNewlyGeneratedNumbers] = useState(new Set());
 
   // Edit inline
   const [editingId, setEditingId] = useState(null);
@@ -296,10 +299,15 @@ export default function GestioneAssegni() {
 
     setGenerating(true);
     try {
-      await api.post(`/api/assegni/genera`, generateForm);
+      const res = await api.post(`/api/assegni/genera`, { ...generateForm, anno });
+      const numeri = res.data?.numeri || [];
+      setNewlyGeneratedNumbers(new Set(numeri));
       setShowGenerate(false);
       setGenerateForm({ numero_primo: '', quantita: 10 });
-      loadData();
+      await loadData();
+      toast.success(
+        `Carnet creato: ${res.data?.generati ?? numeri.length} assegni da ${res.data?.primo} a ${res.data?.ultimo}`
+      );
     } catch (error) {
       toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     } finally {
@@ -560,7 +568,7 @@ export default function GestioneAssegni() {
     setAutoAssociating(true);
     setAutoAssocResult(null);
     try {
-      const url = '/api/assegni/auto-match?dry_run=true';
+      const url = `/api/assegni/auto-match?dry_run=true&anno=${anno}`;
       const res = await api.post(url);
       setAutoAssocResult({
         ...res.data,
@@ -801,8 +809,13 @@ export default function GestioneAssegni() {
   const listaAssegni = useMemo(() => Object.values(carnets).flat(), [carnets]);
 
   // Evidenzia su desktop le righe selezionate, come la vecchia tabella
-  const tdSelezione = assegno =>
-    selectedAssegni.has(assegno.id) ? { background: COLORS.successLight } : undefined;
+  const tdSelezione = assegno => {
+    if (selectedAssegni.has(assegno.id)) return { background: COLORS.successLight };
+    if (newlyGeneratedNumbers.has(assegno.numero)) {
+      return { background: COLORS.infoLight, borderTop: `1px solid ${COLORS.info}` };
+    }
+    return undefined;
+  };
 
   // Apre la fattura collegata nel modale in-page (niente nuove schede)
   const apriFattura = assegno =>
@@ -1881,10 +1894,32 @@ export default function GestioneAssegni() {
                   <strong>{autoAssocResult.fatture_disponibili ?? 0}</strong>
                 </span>
                 <span>
-                  🏦 Movimenti banca creati:{' '}
-                  <strong>{autoAssocResult.movimenti_banca_creati ?? 0}</strong>
+                  🏦 Prima Nota Banca:{' '}
+                  <strong>
+                    {autoAssocResult.movimenti_banca_creati > 0
+                      ? autoAssocResult.movimenti_banca_creati
+                      : 'nessuna — attende estratto conto'}
+                  </strong>
                 </span>
               </div>
+              {autoAssocResult.assegni_processati === 0 &&
+                autoAssocResult.assegni_vuoti_ignorati > 0 && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: 10,
+                      borderRadius: BORDER_RADIUS.sm,
+                      background: COLORS.warningLight,
+                      color: COLORS.warning,
+                      fontSize: 13,
+                      fontWeight: 600,
+                    }}
+                  >
+                    I {autoAssocResult.assegni_vuoti_ignorati} assegni del carnet sono stati
+                    creati correttamente, ma sono ancora vuoti. Inserisci importo e beneficiario:
+                    soltanto dopo potranno generare proposte L1–L4.
+                  </div>
+                )}
               <div
                 style={{ marginTop: 8, fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 12 }}
               >
@@ -2426,9 +2461,14 @@ export default function GestioneAssegni() {
               marginBottom: isMobile ? 12 : 0,
             }}
           >
-            <h3 style={{ margin: 0, fontSize: isMobile ? 16 : undefined }}>
-              Lista Assegni ({filteredAssegni.length})
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0, fontSize: isMobile ? 16 : undefined }}>
+                Lista Assegni ({filteredAssegni.length})
+              </h3>
+              {newlyGeneratedNumbers.size > 0 && (
+                <Badge variant="info">Nuovo carnet: {newlyGeneratedNumbers.size} fogli</Badge>
+              )}
+            </div>
           </div>
           <ListaAdattiva
             testId="assegni-table"
@@ -2494,9 +2534,12 @@ export default function GestioneAssegni() {
                 ruoloCard: 'dettaglio',
                 tdStyle: tdSelezione,
                 render: assegno => (
-                  <Badge variant={STATI_ASSEGNO[assegno.stato]?.variant || 'neutral'}>
-                    {STATI_ASSEGNO[assegno.stato]?.label || assegno.stato}
-                  </Badge>
+                  <span style={{ display: 'inline-flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Badge variant={STATI_ASSEGNO[assegno.stato]?.variant || 'neutral'}>
+                      {STATI_ASSEGNO[assegno.stato]?.label || assegno.stato}
+                    </Badge>
+                    {newlyGeneratedNumbers.has(assegno.numero) && <Badge variant="info">Nuovo</Badge>}
+                  </span>
                 ),
               },
               {

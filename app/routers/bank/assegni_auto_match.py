@@ -38,7 +38,6 @@ from itertools import combinations
 from typing import Any, Dict, List, Optional, Tuple
 import logging
 import uuid
-from app.services.scritture_contabili import scrivi_movimento
 
 logger = logging.getLogger(__name__)
 
@@ -81,19 +80,41 @@ def _is_paid_status(s: Any) -> bool:
     return s in {"paid", "pagata", "pagato"}
 
 
-async def _load_assegni_to_match(db) -> List[Dict[str, Any]]:
+def _anno_filter_assegni(anno: Optional[int]) -> Dict[str, Any]:
+    if not anno:
+        return {}
+    return {"$or": [
+        {"data_emissione": {"$regex": f"^{anno}"}},
+        {"data": {"$regex": f"^{anno}"}},
+        {"anno_creazione": anno},
+        {"anno": anno},
+        {"$and": [
+            {"data_emissione": {"$in": [None, ""]}},
+            {"data": {"$in": [None, ""]}},
+            {"anno_creazione": {"$exists": False}},
+            {"anno": {"$exists": False}},
+            {"created_at": {"$regex": f"^{anno}"}},
+        ]},
+    ]}
+
+
+async def _load_assegni_to_match(db, anno: Optional[int] = None) -> List[Dict[str, Any]]:
     """Assegni da processare: hanno importo > 0, non sono annullati,
     e NON hanno fatture collegate (fatture_collegate vuoto).
     Lo stato 'incassato' è OK: indica solo che la banca ha addebitato,
     non che l'assegno sia stato collegato a una fattura."""
-    cursor = db["assegni"].find({
+    query = {
         "importo": {"$gt": 0},
         "stato": {"$nin": ["annullato"]},
+        "entity_status": {"$ne": "deleted"},
         "$or": [
             {"fatture_collegate": {"$in": [None, []]}},
             {"fatture_collegate": {"$exists": False}},
         ],
-    }, {"_id": 0})
+    }
+    if anno:
+        query = {"$and": [query, _anno_filter_assegni(anno)]}
+    cursor = db["assegni"].find(query, {"_id": 0})
     return await cursor.to_list(10000)
 
 
@@ -156,7 +177,9 @@ async def _enrich_assegni_con_piva(db, assegni: List[Dict[str, Any]], *, persist
     return enriched
 
 
-async def _load_open_invoices_by_piva(db) -> Dict[str, List[Dict[str, Any]]]:
+async def _load_open_invoices_by_piva(
+    db, anno: Optional[int] = None
+) -> Dict[str, List[Dict[str, Any]]]:
     """Fatture aperte/parziali raggruppate per P.IVA fornitore.
     Esclude pagate, annullate, eliminate. Applica eventuali note credito.
     Esclude anche i fornitori il cui metodo di pagamento è ESPLICITAMENTE
@@ -165,16 +188,24 @@ async def _load_open_invoices_by_piva(db) -> Dict[str, List[Dict[str, Any]]]:
     un'esclusione, non un requisito: un fornitore senza metodo configurato
     resta comunque candidato, per non nascondere match reali di fornitori
     mai censiti a sistema."""
-    invoices = await db["invoices"].find({
-        "$and": [
+    invoice_filters = [
             {"$or": [
                 {"total_amount": {"$gt": 0}},
                 {"importo_totale": {"$gt": 0}},
             ]},
             {"payment_status": {"$nin": ["paid", "cancelled"]}},
             {"entity_status": {"$ne": "deleted"}},
-        ]
-    }, {"_id": 0}).to_list(20000)
+    ]
+    if anno:
+        invoice_filters.append({"$or": [
+            {"anno": anno},
+            {"invoice_date": {"$regex": f"^{anno}"}},
+            {"data_fattura": {"$regex": f"^{anno}"}},
+            {"data_documento": {"$regex": f"^{anno}"}},
+        ]})
+    invoices = await db["invoices"].find(
+        {"$and": invoice_filters}, {"_id": 0}
+    ).to_list(20000)
 
     metodo_non_assegno = set()
     async for f in db["fornitori"].find(
@@ -428,10 +459,10 @@ async def _apply_match(
             }}
         )
 
-        # Aggiorna fatture
+        # Collega le fatture come impegno provvisorio. Il pagamento e la
+        # Prima Nota Banca nasceranno solo dal riscontro reale dell'estratto.
         for fc in fatture_collegate:
             await _aggiorna_fattura(db, fc["fattura_id"], fc["quota"], assegno)
-            movimenti_banca += await _crea_mov_banca(db, assegno, fc["quota"], fc["fattura_id"])
 
         return {
             "assegno_id": assegno.get("id"),
@@ -496,7 +527,6 @@ async def _apply_match(
                 "assegno_numero": ass.get("numero"),
                 "quota": quota,
             })
-            movimenti_banca += await _crea_mov_banca(db, ass, quota, fattura.get("id"))
 
         # Aggiorna fattura cumulando tutte le quote
         await _aggiorna_fattura_bulk(db, fattura.get("id"), quota_totale, assegni_match)
@@ -515,52 +545,42 @@ async def _apply_match(
 
 
 async def _aggiorna_fattura(db, fattura_id: str, quota: float, assegno: Dict[str, Any]) -> None:
-    """Aggiunge la quota al pagato della fattura + assegni_collegati[]."""
+    """Collega l'assegno senza dichiarare pagata la fattura.
+
+    La quota e' un impegno in attesa banca: importo_pagato, scadenze e stato
+    paid cambiano soltanto quando arriva il movimento reale dell'estratto.
+    """
     inv = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
     if not inv:
         return
-    total = _f(inv.get("total_amount") or inv.get("importo_totale"))
-    nuovo_pagato = round(_f(inv.get("importo_pagato", 0)) + quota, 2)
-    nuovo_stato = "paid" if abs(nuovo_pagato - total) <= TOLL else ("partial" if nuovo_pagato > TOLL else "aperta")
 
     await db["invoices"].update_one(
         {"id": fattura_id},
         {
             "$set": {
-                "importo_pagato": nuovo_pagato,
-                "importo_residuo": round(max(0, total - nuovo_pagato), 2),
-                "payment_status": nuovo_stato,
-                "pagato": nuovo_stato == "paid",
+                "stato_finanziario": "in_attesa_estratto_conto",
+                "metodo_pagamento_previsto": "assegno",
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             },
-            "$push": {
+            "$addToSet": {
                 "assegni_collegati": {
                     "assegno_id": assegno.get("id"),
                     "numero": assegno.get("numero"),
                     "quota": quota,
                     "data_collegamento": datetime.now(timezone.utc).isoformat(),
                     "match_auto": True,
+                    "banca_confermata": False,
                 }
             },
         },
     )
-    from app.services.scadenze_rate_service import applica_quota_scadenze
-    await applica_quota_scadenze(
-        db, fattura_id=fattura_id, quota=quota,
-        evidenza_id=f"assegno:{assegno.get('id')}:{fattura_id}",
-        metodo="assegno", data_pagamento=str(assegno.get("data_emissione") or "")[:10],
-    )
 
 
 async def _aggiorna_fattura_bulk(db, fattura_id: str, quota_tot: float, assegni: List[Dict[str, Any]]) -> None:
-    """Come _aggiorna_fattura ma per N assegni che vanno sulla stessa fattura (L2/L3)."""
+    """Collega N assegni alla fattura come impegni in attesa banca."""
     inv = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
     if not inv:
         return
-    total = _f(inv.get("total_amount") or inv.get("importo_totale"))
-    nuovo_pagato = round(_f(inv.get("importo_pagato", 0)) + quota_tot, 2)
-    nuovo_stato = "paid" if abs(nuovo_pagato - total) <= TOLL else ("partial" if nuovo_pagato > TOLL else "aperta")
-
     now = datetime.now(timezone.utc).isoformat()
     pushes = [{
         "assegno_id": a.get("id"),
@@ -568,77 +588,48 @@ async def _aggiorna_fattura_bulk(db, fattura_id: str, quota_tot: float, assegni:
         "quota": round(_f(a.get("importo")), 2),
         "data_collegamento": now,
         "match_auto": True,
+        "banca_confermata": False,
     } for a in assegni]
 
     await db["invoices"].update_one(
         {"id": fattura_id},
         {
             "$set": {
-                "importo_pagato": nuovo_pagato,
-                "importo_residuo": round(max(0, total - nuovo_pagato), 2),
-                "payment_status": nuovo_stato,
-                "pagato": nuovo_stato == "paid",
+                "stato_finanziario": "in_attesa_estratto_conto",
+                "metodo_pagamento_previsto": "assegno",
                 "updated_at": now,
             },
-            "$push": {"assegni_collegati": {"$each": pushes}},
+            "$addToSet": {"assegni_collegati": {"$each": pushes}},
         },
     )
-    from app.services.scadenze_rate_service import applica_quota_scadenze
-    for assegno in assegni:
-        await applica_quota_scadenze(
-            db, fattura_id=fattura_id, quota=round(_f(assegno.get("importo")), 2),
-            evidenza_id=f"assegno:{assegno.get('id')}:{fattura_id}",
-            metodo="assegno", data_pagamento=str(assegno.get("data_emissione") or "")[:10],
-        )
-
-
-async def _crea_mov_banca(db, assegno: Dict[str, Any], quota: float, fattura_id: str) -> int:
-    """Crea un movimento in prima_nota_banca tipo 'uscita_assegno'. Idempotente.
-    Ritorna 1 se creato, 0 se già presente."""
-    # idempotenza: stesso assegno_id + fattura_id + source auto-match
-    existing = await db["prima_nota_banca"].find_one({
-        "assegno_id": assegno.get("id"),
-        "invoice_id": fattura_id,
-        "source": "assegno_auto_match",
-    })
-    if existing:
-        return 0
-
-    data_em = assegno.get("data_emissione") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    mov = {
-        "id": str(uuid.uuid4()),
-        "data": str(data_em)[:10],
-        "date": str(data_em)[:10],
-        "tipo": "uscita",
-        "type": "uscita",
-        "importo": round(quota, 2),
-        "amount": round(quota, 2),
-        "descrizione": f"Assegno n. {assegno.get('numero', '')} - {assegno.get('fornitore_ragione_sociale', '')}".strip(" -"),
-        "description": f"Assegno n. {assegno.get('numero', '')}",
-        "categoria": "Assegni",
-        "category": "Assegni",
-        "assegno_id": assegno.get("id"),
-        "assegno_numero": assegno.get("numero"),
-        "invoice_id": fattura_id,
-        "source": "assegno_auto_match",
-        "riconciliato": False,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    await scrivi_movimento(db, "banca", mov)
-    return 1
 
 
 # ─────────────────────────── ORCHESTRATORE ───────────────────────────
 
-async def run_auto_match(db, *, dry_run: bool = True) -> Dict[str, Any]:
+async def run_auto_match(
+    db, *, dry_run: bool = True, anno: Optional[int] = None
+) -> Dict[str, Any]:
     """Esegue l'auto-match a 4 livelli. Ritorna report dettagliato."""
-    assegni = await _load_assegni_to_match(db)
+    assegni = await _load_assegni_to_match(db, anno=anno)
     # Arricchisci assegni senza P.IVA usando il DB fornitori
     enriched = await _enrich_assegni_con_piva(db, assegni, persist=not dry_run)
-    inv_by_piva = await _load_open_invoices_by_piva(db)
+    inv_by_piva = await _load_open_invoices_by_piva(db, anno=anno)
+    vuoti_query: Dict[str, Any] = {
+        "$or": [
+            {"importo": None}, {"importo": {"$exists": False}},
+            {"importo": {"$lte": 0}},
+        ],
+        "stato": {"$nin": ["annullato"]},
+        "entity_status": {"$ne": "deleted"},
+    }
+    if anno:
+        vuoti_query = {"$and": [vuoti_query, _anno_filter_assegni(anno)]}
+    assegni_vuoti = await db["assegni"].count_documents(vuoti_query)
 
     report: Dict[str, Any] = {
         "assegni_processati": len(assegni),
+        "assegni_vuoti_ignorati": assegni_vuoti,
+        "anno": anno,
         "assegni_arricchiti_piva": enriched,
         "fatture_disponibili": sum(len(v) for v in inv_by_piva.values()),
         "match_l1": [], "match_l2": [], "match_l3": [], "match_l4": [],

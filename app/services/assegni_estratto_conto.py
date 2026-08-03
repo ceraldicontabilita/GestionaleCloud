@@ -163,6 +163,7 @@ async def _collega_fattura_univoca(
         isinstance(link, dict) and str(link.get("assegno_id")) == str(assegno["id"])
         for link in fattura.get("assegni_collegati") or []
     )
+    pagamento_gia_confermato = bool(assegno.get("incassato_confermato_banca"))
     if not gia_collegato and importo - residuo > TOLL and not fattura.get("pagato"):
         return False
 
@@ -176,7 +177,7 @@ async def _collega_fattura_univoca(
         "data_ultimo_incasso_assegno": data_movimento,
         "updated_at": now,
     }
-    if not gia_collegato:
+    if not pagamento_gia_confermato:
         nuovo_pagato = round(min(totale, pagato + importo), 2)
         update_fattura.update({
             "importo_pagato": nuovo_pagato,
@@ -184,9 +185,10 @@ async def _collega_fattura_univoca(
             "payment_status": "paid" if abs(nuovo_pagato - totale) <= TOLL else "partial",
             "pagato": abs(nuovo_pagato - totale) <= TOLL,
         })
-        await db["invoices"].update_one(
-            {"id": fid}, {"$set": update_fattura, "$addToSet": {"assegni_collegati": link}},
-        )
+        update_doc: Dict[str, Any] = {"$set": update_fattura}
+        if not gia_collegato:
+            update_doc["$addToSet"] = {"assegni_collegati": link}
+        await db["invoices"].update_one({"id": fid}, update_doc)
         from app.services.scadenze_rate_service import applica_quota_scadenze
         await applica_quota_scadenze(
             db, fattura_id=fid, quota=importo,
@@ -212,7 +214,7 @@ async def _collega_fattura_univoca(
             "match_livello": "EC_UNIVOCO", "updated_at": now,
         }},
     )
-    return not gia_collegato
+    return not pagamento_gia_confermato
 
 
 async def _garantisci_prima_nota(
