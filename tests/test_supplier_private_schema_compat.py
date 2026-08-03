@@ -6,6 +6,7 @@ from scripts.migrate_suppliers_to_private_db import (
     canonical_source,
     merged_values,
     normalize_payment_method,
+    normalized_key,
 )
 
 
@@ -55,3 +56,7 @@ def test_migration_preserves_curated_target_method():
     assert result["payment_area"] == "banca"
     assert result["iban"] == "IT00TEST"
     assert result["source_invoice_count"] == 10
+
+
+def test_policy_keys_treat_italian_prefix_as_same_supplier():
+    assert normalized_key("IT01234567890") == normalized_key("01234567890")

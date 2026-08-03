@@ -162,6 +162,12 @@ def main() -> None:
                 consolidated[key] = candidate
 
     target_collection = target_db[TARGET_COLLECTION]
+    policy_collection = target_db["regole_pagamento_fornitori"]
+    known_policy_keys = {
+        normalized_key(document.get("supplier_vat"))
+        for document in policy_collection.find({}, {"supplier_vat": 1})
+        if normalized_key(document.get("supplier_vat"))
+    }
     created = updated = unchanged = policies_created = 0
     now = datetime.now(timezone.utc)
     for key, source in consolidated.items():
@@ -183,10 +189,10 @@ def main() -> None:
         if not method:
             continue
         policy_vat = desired["vat"]
-        policy_collection = target_db["regole_pagamento_fornitori"]
-        if policy_collection.find_one({"supplier_vat": policy_vat}) is not None:
+        if key in known_policy_keys:
             continue
         policies_created += 1
+        known_policy_keys.add(key)
         if args.apply:
             policy_collection.insert_one({
                 "_id": ObjectId(), "supplier_vat": policy_vat,
