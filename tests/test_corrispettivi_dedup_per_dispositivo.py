@@ -122,6 +122,7 @@ def test_matricole_diverse_stessa_data_non_sono_duplicati():
     corrispettivi = db["corrispettivi"].docs
     assert len(corrispettivi) == 2
     assert {c["id_dispositivo"] for c in corrispettivi} == {"00011", "00012"}
+    assert {c["matricola_rt"] for c in corrispettivi} == {"00011", "00012"}
 
     # Entrambi devono aver propagato a Prima Nota (nessuno scartato).
     assert esito1["prima_nota_id"] is not None
