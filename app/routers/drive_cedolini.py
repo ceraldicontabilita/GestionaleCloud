@@ -21,6 +21,30 @@ from app.services import drive_cedolini_ingest
 router = APIRouter()
 
 
+@router.get("/drive/status")
+async def drive_status() -> Dict[str, Any]:
+    """Stato leggero del batch, senza ID Drive, credenziali o nomi file."""
+    stato = await drive_cedolini_ingest.get_status(Database.get_db())
+    ultimo = stato.get("last_result") or {}
+    return {
+        "configured": stato.get("configured", False),
+        "credenziali_ok": stato.get("credenziali_ok", False),
+        "sync_running": stato.get("sync_running", False),
+        "last_sync": stato.get("last_sync"),
+        "total_imported": stato.get("total_imported", 0),
+        "last_result": {
+            "source_files": ultimo.get("source_files", 0),
+            "total": ultimo.get("total", 0),
+            "imported": ultimo.get("imported", 0),
+            "duplicates": ultimo.get("duplicates", 0),
+            "errors": ultimo.get("errors", 0),
+            "moved": ultimo.get("moved", 0),
+            "cedolini_processati": ultimo.get("cedolini_processati", 0),
+            "parser_errors": ultimo.get("parser_errors", 0),
+        },
+    }
+
+
 @router.post("/drive/sync")
 async def drive_sync() -> Dict[str, Any]:
     """Avvia l'import dalla cartella Drive in background e risponde subito.
