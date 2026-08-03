@@ -7,7 +7,23 @@ in prima_nota_banca (mai vista da Coerenza POS). Ora delega alla stessa
 implementazione condivisa: questo test verifica che il fix sia effettivo."""
 import asyncio
 
-from app.services.corrispettivi_service import CorrispettiviService
+from mongomock_motor import AsyncMongoMockClient
+
+from app.services.corrispettivi_service import (
+    CorrispettiviService,
+    get_corrispettivi_service,
+)
+
+
+def test_factory_supporta_database_motor_e_riusa_quello_del_job_drive():
+    """Regressione produzione: AsyncIOMotorDatabase non consente __setitem__."""
+    db = AsyncMongoMockClient()["corrispettivi_drive_test"]
+
+    svc = get_corrispettivi_service(db)
+
+    assert svc.db is db
+    assert svc.corrispettivi.name == "corrispettivi"
+    assert svc.cash_movements.name == "prima_nota_cassa"
 
 
 def _matches(doc, query):

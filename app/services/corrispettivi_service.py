@@ -40,7 +40,6 @@ class CorrispettiviService:
         self.db = db or Database.get_db()
         self.corrispettivi = self.db["corrispettivi"]
         self.cash_movements = self.db["prima_nota_cassa"]  # Usa collection corretta
-        self.db["prima_nota_cassa"] = self.db["prima_nota_cassa"]
 
     def _generate_id(self) -> str:
         """Bug scoperto il 14/07/2026: mancava del tutto — process_xml e
@@ -473,6 +472,6 @@ class CorrispettiviService:
             return None
 
 
-def get_corrispettivi_service() -> CorrispettiviService:
+def get_corrispettivi_service(db=None) -> CorrispettiviService:
     """Factory function per CorrispettiviService."""
-    return CorrispettiviService()
+    return CorrispettiviService(db=db)
