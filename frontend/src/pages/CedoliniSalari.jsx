@@ -41,11 +41,20 @@ function aggregaRighe(righe) {
   const mensilita = new Map();
   for (const riga of righe) {
     const dipendente = nomeRiga(riga) || 'Dipendente da identificare';
+    const identita = String(
+      riga.dipendente_id || riga.codice_fiscale || dipendente.toUpperCase(),
+    );
     const anno = Number(riga.anno) || 0;
-    const mese = Number(riga.mese) || 0;
-    const chiave = `${dipendente.toUpperCase()}|${anno}|${mese}`;
+    const tipoCedolino = String(riga.tipo_cedolino || 'mensile').toLowerCase();
+    const meseOriginale = Number(riga.mese) || 0;
+    const mese = tipoCedolino === 'tredicesima'
+      ? 13
+      : tipoCedolino === 'quattordicesima' ? 14 : meseOriginale;
+    const chiave = `${identita}|${anno}|${meseOriginale}|${tipoCedolino}`;
     if (!mensilita.has(chiave)) {
-      mensilita.set(chiave, { dipendente, anno, mese, righe: [] });
+      mensilita.set(chiave, {
+        identita, dipendente, anno, mese, meseOriginale, tipoCedolino, righe: [],
+      });
     }
     mensilita.get(chiave).righe.push(riga);
   }
@@ -70,9 +79,13 @@ function aggregaRighe(righe) {
       && righeConPagamento.every(r => r.riconciliato === true);
     gruppo.daRivedere = gruppo.righe.some(r => r.riconciliazione_precedente_da_rivedere);
 
-    const chiaveDipendente = gruppo.dipendente.toUpperCase();
+    const chiaveDipendente = gruppo.identita;
     if (!dipendenti.has(chiaveDipendente)) {
-      dipendenti.set(chiaveDipendente, { nome: gruppo.dipendente, anni: new Map() });
+      dipendenti.set(chiaveDipendente, {
+        id: gruppo.identita,
+        nome: gruppo.dipendente,
+        anni: new Map(),
+      });
     }
     const dipendente = dipendenti.get(chiaveDipendente);
     if (!dipendente.anni.has(gruppo.anno)) dipendente.anni.set(gruppo.anno, []);
@@ -307,7 +320,7 @@ export default function CedoliniSalari() {
 
       <section style={{ display: 'grid', gap: 14 }}>
         {!loading && dipendentiVisibili.map(dipendente => (
-          <details key={dipendente.nome} open={Boolean(termine)} style={{ background: '#fff', border: '1px solid #dbe4ee', borderRadius: 13, overflow: 'hidden', boxShadow: '0 2px 7px rgba(15,39,68,.05)' }}>
+          <details key={dipendente.id} open={Boolean(termine)} style={{ background: '#fff', border: '1px solid #dbe4ee', borderRadius: 13, overflow: 'hidden', boxShadow: '0 2px 7px rgba(15,39,68,.05)' }}>
             <summary style={{ listStyle: 'none', cursor: 'pointer', padding: '15px 18px', display: 'grid', gridTemplateColumns: 'minmax(220px, 1.4fr) repeat(3, minmax(135px, .7fr)) 28px', gap: 12, alignItems: 'center', background: '#f8fafc' }}>
               <strong style={{ color: '#0f2744', fontSize: 17 }}>{dipendente.nome}</strong>
               <span><small style={{ display: 'block', color: '#64748b' }}>BUSTE</small><b>{formatEuroD(dipendente.anni.reduce((t, a) => t + a.busta, 0))}</b></span>
@@ -338,7 +351,7 @@ export default function CedoliniSalari() {
                         {anno.mesi.map(mese => {
                           const stileSaldo = saldoStyle(mese.saldo);
                           return (
-                            <tr key={`${anno.anno}-${mese.mese}`} style={{ borderTop: '1px solid #e2e8f0' }}>
+                            <tr key={`${anno.anno}-${mese.meseOriginale}-${mese.tipoCedolino}`} style={{ borderTop: '1px solid #e2e8f0' }}>
                               <td style={{ padding: '11px 12px', fontWeight: 800, color: '#0f2744' }}>{MESI[mese.mese] || `Mese ${mese.mese}`}</td>
                               <td style={{ padding: '11px 12px', textAlign: 'right', fontWeight: 800 }}>{formatEuroD(mese.importoBusta)}</td>
                               <td style={{ padding: '11px 12px', textAlign: 'right', fontWeight: 800 }}>{formatEuroD(mese.importoAcconti)}</td>

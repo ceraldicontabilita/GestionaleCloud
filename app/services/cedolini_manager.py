@@ -16,9 +16,14 @@ Questo processo avviene automaticamente:
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+# Per scelta operativa del 03/08/2026 lo storico autorizzato parte dal 2018.
+# La guardia evita che un file piu' vecchio, caricato per errore, entri nei
+# registri o generi prima nota/partite aperte.
+PAYROLL_MIN_YEAR = 2018
 
 
 async def processa_cedolino_completo(
@@ -332,7 +337,165 @@ async def riconcilia_stipendio_automatico(
         return False
 
 
-async def processa_tutti_cedolini_pdf(db, pdf_data: str, filename: str) -> Dict[str, Any]:
+def _summary_cedolino(
+    summary: Dict[str, Any],
+    raw_text: str,
+    *,
+    pdf_bytes: bytes,
+    page_start: int,
+    page_end: int,
+    document_pages: int,
+) -> Dict[str, Any]:
+    """Converte un riepilogo deterministico conservando provenienza e PDF."""
+    import base64
+
+    return {
+        "nome_dipendente": summary.get("dipendente_nome") or "",
+        "codice_fiscale": summary.get("codice_fiscale") or "",
+        "tipo_cedolino": summary.get("tipo_cedolino") or "mensile",
+        "mese": summary.get("mese"),
+        "anno": summary.get("anno"),
+        "lordo": summary.get("lordo") or 0,
+        "netto": summary.get("netto") or 0,
+        "netto_mese": summary.get("netto") or 0,
+        "totale_trattenute": summary.get("trattenute") or 0,
+        "tfr_quota": summary.get("tfr_quota") or 0,
+        "ore_lavorate": summary.get("ore_lavorate") or 0,
+        "formato_rilevato": summary.get("template") or "multi_template",
+        "ferie_permessi": {
+            "ferie_residuo": summary.get("ferie_residuo") or 0,
+            "ferie_godute": summary.get("ferie_godute") or 0,
+            "permessi_residuo": summary.get("permessi_residuo") or 0,
+            "permessi_goduti": summary.get("permessi_goduti") or 0,
+        },
+        "cessato": summary.get("cessato", False),
+        "cessazione_diciture": summary.get("cessazione_diciture", []),
+        "data_cessazione_rilevata": summary.get("data_cessazione_rilevata"),
+        "source_page_start": page_start,
+        "source_page_end": page_end,
+        "source_document_pages": document_pages,
+        "_raw_text": raw_text,
+        "_pdf_data": base64.b64encode(pdf_bytes).decode("ascii"),
+    }
+
+
+def _summary_complete(parsed: Dict[str, Any], summary: Dict[str, Any]) -> bool:
+    return bool(
+        parsed.get("parse_success")
+        and parsed.get("tipo_documento") != "foglio_presenze"
+        and summary.get("codice_fiscale")
+        and summary.get("mese")
+        and summary.get("anno")
+        and summary.get("netto")
+    )
+
+
+def _parse_multi_template_units(file_content: bytes) -> List[Dict[str, Any]]:
+    """Separa un fascicolo multipagina per dipendente e periodo.
+
+    Le pagine di continuazione restano aggregate al cedolino precedente. Se il
+    fascicolo contiene un solo dipendente, viene conservato integralmente.
+    """
+    import fitz
+    from app.parsers.busta_paga_multi_template import (
+        extract_summary,
+        parse_busta_paga_from_bytes,
+    )
+
+    document = fitz.open(stream=file_content, filetype="pdf")
+    try:
+        page_count = len(document)
+        raw_pages = [page.get_text() for page in document]
+
+        def page_bytes(start: int, end: int) -> bytes:
+            output = fitz.open()
+            try:
+                output.insert_pdf(document, from_page=start, to_page=end)
+                return output.tobytes(garbage=3, deflate=True)
+            finally:
+                output.close()
+
+        if page_count <= 1:
+            parsed = parse_busta_paga_from_bytes(file_content)
+            summary = extract_summary(parsed)
+            if not _summary_complete(parsed, summary):
+                return []
+            return [_summary_cedolino(
+                summary, "\n".join(raw_pages), pdf_bytes=file_content,
+                page_start=1, page_end=page_count, document_pages=page_count,
+            )]
+
+        candidates: List[Optional[Tuple[Tuple[str, int, int, str], Dict[str, Any]]]] = []
+        for index in range(page_count):
+            single = page_bytes(index, index)
+            parsed = parse_busta_paga_from_bytes(single)
+            summary = extract_summary(parsed)
+            if _summary_complete(parsed, summary):
+                key = (
+                    str(summary.get("codice_fiscale") or "").upper(),
+                    int(summary["mese"]),
+                    int(summary["anno"]),
+                    str(summary.get("tipo_cedolino") or "mensile").lower(),
+                )
+                candidates.append((key, summary))
+            else:
+                candidates.append(None)
+
+        distinct_keys = {candidate[0] for candidate in candidates if candidate}
+        if len(distinct_keys) <= 1:
+            parsed = parse_busta_paga_from_bytes(file_content)
+            summary = extract_summary(parsed)
+            if not _summary_complete(parsed, summary):
+                return []
+            return [_summary_cedolino(
+                summary, "\n".join(raw_pages), pdf_bytes=file_content,
+                page_start=1, page_end=page_count, document_pages=page_count,
+            )]
+
+        starts: List[Tuple[int, Tuple[str, int, int, str], Dict[str, Any]]] = []
+        current_key: Optional[Tuple[str, int, int, str]] = None
+        for index, candidate in enumerate(candidates):
+            if not candidate:
+                continue
+            key, summary = candidate
+            if key != current_key:
+                starts.append((index, key, summary))
+                current_key = key
+
+        units: List[Dict[str, Any]] = []
+        seen_keys = set()
+        for position, (start, expected_key, page_summary) in enumerate(starts):
+            if expected_key in seen_keys:
+                continue
+            seen_keys.add(expected_key)
+            end = starts[position + 1][0] - 1 if position + 1 < len(starts) else page_count - 1
+            if position == 0:
+                start = 0
+            chunk = page_bytes(start, end)
+            parsed = parse_busta_paga_from_bytes(chunk)
+            summary = extract_summary(parsed)
+            if not _summary_complete(parsed, summary):
+                summary = page_summary
+            units.append(_summary_cedolino(
+                summary,
+                "\n".join(raw_pages[start:end + 1]),
+                pdf_bytes=chunk,
+                page_start=start + 1,
+                page_end=end + 1,
+                document_pages=page_count,
+            ))
+        return units
+    finally:
+        document.close()
+
+
+async def processa_tutti_cedolini_pdf(
+    db,
+    pdf_data: str,
+    filename: str,
+    source_path: str = "",
+    source_container: str = "",
+) -> Dict[str, Any]:
     """
     Processa un file PDF di cedolini con flusso completo.
     Gestisce PDF multi-pagina con più dipendenti.
@@ -395,44 +558,7 @@ async def processa_tutti_cedolini_pdf(db, pdf_data: str, filename: str) -> Dict[
     # Aut.92267. Il parser storico per-pagina perdeva TeamSystem e poteva
     # duplicare lo stesso cedolino quando il PDF aveva più pagine.
     try:
-        from app.parsers.busta_paga_multi_template import (
-            extract_summary,
-            parse_busta_paga_from_bytes,
-        )
-
-        parsed = parse_busta_paga_from_bytes(file_content)
-        summary = extract_summary(parsed)
-        if (
-            parsed.get("parse_success")
-            and parsed.get("tipo_documento") != "foglio_presenze"
-            and summary.get("codice_fiscale")
-            and summary.get("mese")
-            and summary.get("anno")
-            and summary.get("netto")
-        ):
-            cedolini = [{
-                "nome_dipendente": summary.get("dipendente_nome") or "",
-                "codice_fiscale": summary.get("codice_fiscale") or "",
-                "mese": summary.get("mese"),
-                "anno": summary.get("anno"),
-                "lordo": summary.get("lordo") or 0,
-                "netto": summary.get("netto") or 0,
-                "netto_mese": summary.get("netto") or 0,
-                "totale_trattenute": summary.get("trattenute") or 0,
-                "tfr_quota": summary.get("tfr_quota") or 0,
-                "ore_lavorate": summary.get("ore_lavorate") or 0,
-                "formato_rilevato": summary.get("template") or "multi_template",
-                "ferie_permessi": {
-                    "ferie_residuo": summary.get("ferie_residuo") or 0,
-                    "ferie_godute": summary.get("ferie_godute") or 0,
-                    "permessi_residuo": summary.get("permessi_residuo") or 0,
-                    "permessi_goduti": summary.get("permessi_goduti") or 0,
-                },
-                "cessato": summary.get("cessato", False),
-                "cessazione_diciture": summary.get("cessazione_diciture", []),
-                "data_cessazione_rilevata": summary.get("data_cessazione_rilevata"),
-                "_raw_text": raw_text,
-            }]
+        cedolini = _parse_multi_template_units(file_content)
     except Exception as e:
         logger.warning("Parser multi-template fallito per %s: %s", filename, e)
 
@@ -478,6 +604,18 @@ async def processa_tutti_cedolini_pdf(db, pdf_data: str, filename: str) -> Dict[
     
     # Processa i cedolini trovati
     for ced in cedolini:
+        try:
+            cedolino_anno = int(ced.get("anno") or 0)
+        except (TypeError, ValueError):
+            cedolino_anno = 0
+        if cedolino_anno and cedolino_anno < PAYROLL_MIN_YEAR:
+            results["errori"].append(
+                f"{filename}: annualita {cedolino_anno} esclusa (storico autorizzato dal {PAYROLL_MIN_YEAR})"
+            )
+            continue
+        ced["source_path"] = source_path or filename
+        ced["source_container"] = source_container or None
+        cedolino_pdf_data = ced.pop("_pdf_data", pdf_data)
         # pdf_text preferenziale: _raw_text del singolo cedolino (parser_v2 regex),
         # altrimenti il raw_text globale estratto all'inizio (Document AI path)
         ced_pdf_text = ced.get("_raw_text", "") or raw_text
@@ -504,7 +642,7 @@ async def processa_tutti_cedolini_pdf(db, pdf_data: str, filename: str) -> Dict[
                 cedolino_data=ced,
                 pdf_text=ced_pdf_text,
                 filename=filename,
-                pdf_data=pdf_data
+                pdf_data=cedolino_pdf_data
             )
         except Exception as e:
             logger.warning(f"V2 fallito, uso V1: {e}")
@@ -512,7 +650,7 @@ async def processa_tutti_cedolini_pdf(db, pdf_data: str, filename: str) -> Dict[
                 db=db,
                 cedolino_data=ced,
                 filename=filename,
-                pdf_data=pdf_data
+                pdf_data=cedolino_pdf_data
             )
         
         if res.get("success"):

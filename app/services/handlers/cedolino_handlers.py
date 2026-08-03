@@ -48,12 +48,23 @@ async def on_cedolino_importato(event: Dict[str, Any], db) -> Optional[Dict]:
     # blocca l'import: segnala soltanto, l'utente decide se è un vero doppione.
     if codice_fiscale and mese and anno:
         try:
-            duplicato = await db["cedolini"].find_one({
+            duplicato_query = {
                 "codice_fiscale": codice_fiscale,
                 "mese": mese,
                 "anno": anno,
                 "id": {"$ne": cedolino_id},
-            }, {"_id": 0, "id": 1})
+            }
+            if tipo_cedolino == "mensile":
+                duplicato_query["$or"] = [
+                    {"tipo_cedolino": "mensile"},
+                    {"tipo_cedolino": None},
+                    {"tipo_cedolino": {"$exists": False}},
+                ]
+            else:
+                duplicato_query["tipo_cedolino"] = tipo_cedolino
+            duplicato = await db["cedolini"].find_one(
+                duplicato_query, {"_id": 0, "id": 1}
+            )
             if duplicato:
                 await genera_alert(
                     "CED_DUPLICATO", cedolino_id, "cedolini",

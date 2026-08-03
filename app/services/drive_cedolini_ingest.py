@@ -24,10 +24,14 @@ duplicazione.
 import asyncio
 import base64
 import hashlib
+import io
 import logging
+import posixpath
 import uuid
+import zipfile
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
+from pathlib import PurePosixPath
+from typing import Dict, Any, Iterator, Optional, List, Tuple
 
 from app.config import settings
 # Riuso degli helper del modulo fatture Drive (stesso service account,
@@ -102,7 +106,51 @@ def is_cedolino_filename(name: str) -> bool:
     return bool(name) and name.lower().endswith(".pdf")
 
 
-def build_inbox_doc(content: bytes, filename: str) -> Dict[str, Any]:
+def is_cedolini_archive(name: str) -> bool:
+    """Gli archivi ZIP possono contenere cartelle annidate di cedolini PDF."""
+    return bool(name) and name.lower().endswith(".zip")
+
+
+def _safe_archive_path(name: str) -> Optional[str]:
+    """Normalizza un membro ZIP e rifiuta path assoluti o con traversal."""
+    normalized = (name or "").replace("\\", "/")
+    path = PurePosixPath(normalized)
+    if not normalized or path.is_absolute() or ".." in path.parts:
+        return None
+    cleaned = posixpath.normpath(normalized).lstrip("./")
+    return cleaned if cleaned and cleaned != "." else None
+
+
+def iter_pdf_members(content: bytes) -> Iterator[Tuple[str, bytes]]:
+    """Estrae ricorsivamente tutti i PDF da uno ZIP, preservando il path.
+
+    L'iteratore mantiene in memoria solo il membro corrente. I limiti sono gli
+    stessi anti zip-bomb usati dagli upload del gestionale.
+    """
+    from app.utils.upload_guard import controlla_zip
+
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        infos = [info for info in archive.infolist() if not info.is_dir()]
+        controlla_zip(len(infos), sum(max(0, info.file_size) for info in infos))
+        for info in infos:
+            safe_path = _safe_archive_path(info.filename)
+            if not safe_path or not is_cedolino_filename(safe_path):
+                continue
+            if info.flag_bits & 0x1:
+                raise ValueError("ZIP cifrato: impossibile leggere i cedolini")
+            member = archive.read(info)
+            if not member.startswith(b"%PDF"):
+                raise ValueError("Membro con estensione PDF ma contenuto non valido")
+            yield safe_path, member
+
+
+def build_inbox_doc(
+    content: bytes,
+    filename: str,
+    *,
+    source_path: Optional[str] = None,
+    source_container: Optional[str] = None,
+) -> Dict[str, Any]:
     """Costruisce il documento `documents_inbox` nel formato dei cedolini email.
 
     Campi chiave per la pipeline esistente (vedi email_monitor_service):
@@ -115,6 +163,8 @@ def build_inbox_doc(content: bytes, filename: str) -> Dict[str, Any]:
     return {
         "id": str(uuid.uuid4()),
         "filename": filename,
+        "source_path": source_path or filename,
+        "source_container": source_container,
         "pdf_data": base64.b64encode(content).decode(),
         "file_hash": hashlib.md5(content).hexdigest(),
         "size_bytes": len(content),
@@ -155,11 +205,8 @@ def _build_drive_service():
         return None
 
 
-def _list_pdf_files(service, parent_id: str) -> List[Dict[str, Any]]:
-    q = (
-        f"'{parent_id}' in parents and trashed = false "
-        "and (name contains '.pdf' or name contains '.PDF')"
-    )
+def _list_children(service, parent_id: str) -> List[Dict[str, Any]]:
+    q = f"'{parent_id}' in parents and trashed = false"
     out: List[Dict[str, Any]] = []
     page_token = None
     while True:
@@ -168,15 +215,47 @@ def _list_pdf_files(service, parent_id: str) -> List[Dict[str, Any]]:
             pageSize=100, pageToken=page_token,
             supportsAllDrives=True, includeItemsFromAllDrives=True,
         ).execute()
-        for f in res.get("files", []):
-            if f.get("mimeType") == "application/vnd.google-apps.folder":
-                continue
-            if is_cedolino_filename(f["name"]):
-                out.append(f)
+        out.extend(res.get("files", []))
         page_token = res.get("nextPageToken")
         if not page_token:
             break
     return out
+
+
+def _list_source_files_recursive(
+    service,
+    parent_id: str,
+    *,
+    include_archives: bool = True,
+) -> List[Dict[str, Any]]:
+    """Visita tutte le sottocartelle Drive e conserva il percorso relativo."""
+    folder_mime = "application/vnd.google-apps.folder"
+    pending: List[Tuple[str, str]] = [(parent_id, "")]
+    found: List[Dict[str, Any]] = []
+    visited = set()
+    while pending:
+        folder_id, prefix = pending.pop(0)
+        if folder_id in visited:
+            continue
+        visited.add(folder_id)
+        for item in _list_children(service, folder_id):
+            name = item.get("name") or ""
+            relative_path = posixpath.join(prefix, name) if prefix else name
+            if item.get("mimeType") == folder_mime:
+                pending.append((item["id"], relative_path))
+                continue
+            if is_cedolino_filename(name) or (include_archives and is_cedolini_archive(name)):
+                found.append({
+                    **item,
+                    "parent_id": folder_id,
+                    "relative_path": relative_path,
+                })
+    return found
+
+
+def _list_pdf_files(service, parent_id: str) -> List[Dict[str, Any]]:
+    """Compatibilita' per la quadratura: ora include anche le sottocartelle."""
+    return _list_source_files_recursive(service, parent_id, include_archives=False)
 
 
 async def get_status(db) -> Dict[str, Any]:
@@ -229,35 +308,53 @@ async def _do_sync(db) -> Dict[str, Any]:
         elaborate_id = _get_or_create_elaborate_folder(service, parent_id)
         error_id = _get_or_create_error_folder(service, parent_id)
         source_id = inbox_id or parent_id
-        pdf_files = _list_pdf_files(service, source_id)
-        result["total"] = len(pdf_files)
-        for f in pdf_files:
+        source_files = _list_source_files_recursive(service, source_id)
+        result["source_files"] = len(source_files)
+        for f in source_files:
             fid, fname = f["id"], f["name"]
+            source_parent_id = f.get("parent_id") or source_id
+            relative_path = f.get("relative_path") or fname
             try:
                 content = _download_bytes(service, fid)
                 if not content:
                     result["errors"] += 1
                     result["details"].append({"file": fname, "error": "file vuoto"})
                     if error_id:
-                        _move_to_folder(service, fid, source_id, error_id)
+                        _move_to_folder(service, fid, source_parent_id, error_id)
                     continue
-                content_hash = hashlib.md5(content).hexdigest()
-                existing = await db["documents_inbox"].find_one(
-                    {"file_hash": content_hash}, {"_id": 0, "id": 1}
-                )
-                if existing:
-                    result["duplicates"] += 1
+                if is_cedolini_archive(fname):
+                    pdf_items = iter_pdf_members(content)
                 else:
-                    doc = build_inbox_doc(content, fname)
+                    if not content.startswith(b"%PDF"):
+                        raise ValueError("File con estensione PDF ma contenuto non valido")
+                    pdf_items = iter([(relative_path, content)])
+
+                for member_path, pdf_content in pdf_items:
+                    result["total"] += 1
+                    content_hash = hashlib.md5(pdf_content).hexdigest()
+                    existing = await db["documents_inbox"].find_one(
+                        {"file_hash": content_hash}, {"_id": 0, "id": 1}
+                    )
+                    if existing:
+                        result["duplicates"] += 1
+                        continue
+
+                    display_name = PurePosixPath(member_path).name
+                    doc = build_inbox_doc(
+                        pdf_content,
+                        display_name,
+                        source_path=member_path,
+                        source_container=relative_path if is_cedolini_archive(fname) else None,
+                    )
                     await db["documents_inbox"].insert_one(doc)
                     result["imported"] += 1
-                    logger.info(f"Drive cedolini: importato {fname}")
+                    logger.info("Drive cedolini: importato documento hash=%s", content_hash[:12])
                     # Evento documento acquisito (stesso pattern del monitor email)
                     try:
                         from app.services.event_bus import propagate_event, EventTypes
                         await propagate_event(EventTypes.DOCUMENTO_ACQUISITO, {
                             "documento_id": doc["id"],
-                            "filename": fname,
+                            "filename": display_name,
                             "origine": "drive_cedolini",
                             "mime_type": "application/pdf",
                             "hash_file": doc["file_hash"],
@@ -267,17 +364,17 @@ async def _do_sync(db) -> Dict[str, Any]:
                         logger.exception("Drive cedolini: errore propagazione evento documento.acquisito")
                 # Sposta in `Elaborate` i file processati (importati o duplicati noti).
                 if elaborate_id:
-                    _move_to_elaborate(service, fid, source_id, elaborate_id)
+                    _move_to_elaborate(service, fid, source_parent_id, elaborate_id)
                     result["moved"] += 1
             except Exception as e:
-                logger.error(f"Drive cedolini: errore su {fname}: {e}")
+                logger.error("Drive cedolini: errore su sorgente hash=%s: %s", fid, e)
                 result["errors"] += 1
-                result["details"].append({"file": fname, "error": str(e)})
+                result["details"].append({"source_path": relative_path, "error": str(e)})
                 if error_id:
                     try:
-                        _move_to_folder(service, fid, source_id, error_id)
+                        _move_to_folder(service, fid, source_parent_id, error_id)
                     except Exception:
-                        logger.exception("Drive cedolini: impossibile spostare %s in Errori", fname)
+                        logger.exception("Drive cedolini: impossibile spostare sorgente in Errori")
     except Exception as e:
         logger.error(f"Drive cedolini: errore sync: {e}")
         # Persisti l'errore globale: il sync gira in background e lo stato
@@ -297,14 +394,27 @@ async def _do_sync(db) -> Dict[str, Any]:
     if result["imported"] > 0:
         try:
             from app.services.email_monitor_service import processa_nuovi_documenti
-            proc = await processa_nuovi_documenti(db)
-            result["cedolini_processati"] = proc.get("buste_paga", 0)
+            result["cedolini_processati"] = 0
+            result["parser_errors"] = []
+            # La pipeline legge lotti da 100: svuotali tutti. Gli errori parser
+            # vengono marcati e saltati ai giri successivi, senza bloccare la coda.
+            max_batches = max(1, (result["imported"] + 99) // 100 + 1)
+            for _ in range(max_batches):
+                proc = await processa_nuovi_documenti(db)
+                processed = proc.get("buste_paga", 0)
+                result["cedolini_processati"] += processed
+                result["parser_errors"].extend(proc.get("errori", []))
+                if processed == 0:
+                    break
         except Exception as e:
             logger.error(f"Drive cedolini: errore pipeline processamento: {e}")
             result["details"].append({"pipeline": str(e)})
 
     prev = await db["sistema_stato"].find_one({"chiave": _STATO_KEY}, {"_id": 0}) or {}
     last_result = {k: result[k] for k in ("total", "imported", "duplicates", "errors", "moved")}
+    last_result["source_files"] = result.get("source_files", 0)
+    last_result["cedolini_processati"] = result.get("cedolini_processati", 0)
+    last_result["parser_errors"] = len(result.get("parser_errors", []))
     # Persisti i primi errori per-file: senza, si vede solo il conteggio
     # e la diagnosi è impossibile.
     last_result["details"] = result["details"][:5]
@@ -345,29 +455,40 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
         if not elaborate_id:
             return {"status": "ok", "message": "Nessuna cartella Elaborate", **esito}
         recuperati_da_processare = 0
-        for f in _list_pdf_files(service, elaborate_id):
-            esito["controllati"] += 1
+        for f in _list_source_files_recursive(service, elaborate_id):
             try:
                 content = _download_bytes(service, f["id"])
                 if not content:
                     esito["errori"] += 1
                     continue
-                content_hash = hashlib.md5(content).hexdigest()
-                existing = await db["documents_inbox"].find_one(
-                    {"file_hash": content_hash}, {"_id": 0, "id": 1}
-                )
-                if existing:
-                    esito["quadrati"] += 1
+                relative_path = f.get("relative_path") or f["name"]
+                if is_cedolini_archive(f["name"]):
+                    pdf_items = iter_pdf_members(content)
                 else:
-                    doc = build_inbox_doc(content, f["name"])
+                    pdf_items = iter([(relative_path, content)])
+                for member_path, pdf_content in pdf_items:
+                    esito["controllati"] += 1
+                    content_hash = hashlib.md5(pdf_content).hexdigest()
+                    existing = await db["documents_inbox"].find_one(
+                        {"file_hash": content_hash}, {"_id": 0, "id": 1}
+                    )
+                    if existing:
+                        esito["quadrati"] += 1
+                        continue
+                    doc = build_inbox_doc(
+                        pdf_content,
+                        PurePosixPath(member_path).name,
+                        source_path=member_path,
+                        source_container=relative_path if is_cedolini_archive(f["name"]) else None,
+                    )
                     await db["documents_inbox"].insert_one(doc)
                     esito["recuperati"] += 1
                     recuperati_da_processare += 1
-                    esito["details"].append({"file": f["name"], "recuperato": True})
-                    logger.warning(f"Quadratura cedolini: recuperato buco {f['name']}")
+                    esito["details"].append({"source_path": member_path, "recuperato": True})
+                    logger.warning("Quadratura cedolini: recuperato hash=%s", content_hash[:12])
             except Exception as e:
                 esito["errori"] += 1
-                esito["details"].append({"file": f["name"], "error": str(e)})
+                esito["details"].append({"source_path": f.get("relative_path"), "error": str(e)})
         if recuperati_da_processare:
             try:
                 from app.services.email_monitor_service import processa_nuovi_documenti
