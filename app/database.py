@@ -95,6 +95,26 @@ class Database:
         
         # --- Fornitori ---
         await _safe_index(Collections.SUPPLIERS, "partita_iva", unique=True, sparse=True, name="idx_fornitori_piva_unique")
+        # La collezione fornitori ospita sia lo schema storico (partita_iva,
+        # ragione_sociale) sia lo schema compatibile con il nuovo gestionale
+        # (match_key, vat, name). Il vecchio indice `match_key_1`, creato
+        # durante la migrazione, indicizzava anche i documenti senza chiave e
+        # bloccava i nuovi fornitori con E11000 su `match_key: null`.
+        # Manteniamo l'unicita solo quando la chiave forte e una stringa.
+        try:
+            supplier_indexes = await db[Collections.SUPPLIERS].index_information()
+            legacy_match_index = supplier_indexes.get("match_key_1")
+            if legacy_match_index and not legacy_match_index.get("partialFilterExpression"):
+                await db[Collections.SUPPLIERS].drop_index("match_key_1")
+        except Exception:
+            logger.exception("Impossibile normalizzare l'indice legacy match_key fornitori")
+        await _safe_index(
+            Collections.SUPPLIERS,
+            "match_key",
+            unique=True,
+            partialFilterExpression={"match_key": {"$type": "string"}},
+            name="idx_fornitori_match_key_unique",
+        )
         
         # --- Anno indexes ---
         await _safe_index(Collections.INVOICES, "anno", name="idx_invoices_anno")

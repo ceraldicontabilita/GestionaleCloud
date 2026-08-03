@@ -115,3 +115,6 @@ def test_fornitore_normale_viene_creato():
     inseriti = db.fornitori_inseriti()
     assert len(inseriti) == 1
     assert inseriti[0]["partita_iva"] == "06714021000"
+    assert inseriti[0]["match_key"] == "06714021000"
+    assert inseriti[0]["vat"] == "IT06714021000"
+    assert inseriti[0]["name"] == "LEASYS S.p.A."
