@@ -3,6 +3,34 @@ from app.services.noleggio.controlli import (
     contiene_segnali_cessazione,
     driver_alla_data,
 )
+from app.services.noleggio.parsers import (
+    estrai_breakdown_linea,
+    estrai_modello_marca,
+    estrai_veicolo_strutturato,
+)
+
+
+def test_descrizione_contabile_non_diventa_modello_auto():
+    assert estrai_modello_marca("GW980EP Canone di Locazione", "GW980EP") == ("", "")
+
+
+def test_targa_strutturata_arval_identifica_mazda_cx60_e_anno():
+    linea = {
+        "descrizione": "GW980EP Canone di Locazione",
+        "altri_dati_gestionali": [{
+            "tipo_dato": "TARGA",
+            "riferimento_testo": "GW980EP MAZDA CX-60 / 2022 / 5P / SUV",
+        }],
+    }
+
+    atteso = {
+        "targa": "GW980EP",
+        "marca": "Mazda",
+        "modello": "CX-60",
+        "anno_immatricolazione": 2022,
+    }
+    assert estrai_veicolo_strutturato(linea) == atteso
+    assert estrai_breakdown_linea(linea).items() >= atteso.items()
 
 
 class TestSegnaliCessazione:

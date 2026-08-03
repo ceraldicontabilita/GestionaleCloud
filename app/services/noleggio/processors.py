@@ -17,6 +17,7 @@ from .parsers import (
     estrai_causale_note,
     estrai_breakdown_linea,
     estrai_modello_marca,
+    estrai_veicolo_strutturato,
     categorizza_spesa,
     is_nota_credito as check_nota_credito,
     is_fattura_bollo
@@ -98,6 +99,10 @@ async def processa_fattura_noleggio(fattura: dict) -> dict:
         match = re.search(TARGA_PATTERN, desc)
         if match:
             targhe_trovate.add(match.group(1))
+        else:
+            veicolo_strutturato = estrai_veicolo_strutturato(linea)
+            if veicolo_strutturato.get("targa"):
+                targhe_trovate.add(veicolo_strutturato["targa"])
     
     risultato = {
         "processed": True,
@@ -120,8 +125,15 @@ async def processa_fattura_noleggio(fattura: dict) -> dict:
             # Estrai informazioni per il nuovo veicolo
             marca = ""
             modello = ""
+            anno_immatricolazione = None
             for linea in linee:
                 desc = linea.get("descrizione", "")
+                veicolo_strutturato = estrai_veicolo_strutturato(linea, targa)
+                if veicolo_strutturato.get("marca") or veicolo_strutturato.get("modello"):
+                    marca = veicolo_strutturato.get("marca", "")
+                    modello = veicolo_strutturato.get("modello", "")
+                    anno_immatricolazione = veicolo_strutturato.get("anno_immatricolazione")
+                    break
                 if targa in desc:
                     marca, modello = estrai_modello_marca(desc, targa)
                     if marca or modello:
@@ -134,6 +146,7 @@ async def processa_fattura_noleggio(fattura: dict) -> dict:
                 "targa": targa,
                 "marca": marca,
                 "modello": modello,
+                "anno_immatricolazione": anno_immatricolazione,
                 "fornitore_noleggio": fornitore_nome,
                 "fornitore_piva": supplier_vat,
                 "contratto": codice_cliente,
@@ -247,6 +260,8 @@ async def _processa_linee_fattura(
         match = re.search(TARGA_PATTERN, desc)
         if match:
             targa = match.group(1)
+        elif breakdown.get("targa"):
+            targa = breakdown["targa"]
         elif targhe_da_db:
             targa = list(targhe_da_db)[0]
         else:
@@ -254,7 +269,10 @@ async def _processa_linee_fattura(
 
         # Inizializza veicolo nel risultato finale se non esiste
         if targa not in veicoli:
-            marca, modello = estrai_modello_marca(desc, targa)
+            marca = breakdown.get("marca", "")
+            modello = breakdown.get("modello", "")
+            if not marca and not modello:
+                marca, modello = estrai_modello_marca(desc, targa)
             veicoli[targa] = _crea_struttura_veicolo(
                 targa, supplier, supplier_vat, codice_cliente, numero_contratto, marca, modello
             )
@@ -383,7 +401,10 @@ def _aggiorna_info_veicolo(
 def _aggiorna_dati_tecnici_veicolo(veicolo: dict, breakdown: Dict[str, Any]):
     """Riempie i dati tecnici del veicolo (telaio, immatricolazione, cilindrata,
     potenza) da AltriDatiGestionali, solo se non già valorizzati."""
-    for campo in ("telaio", "data_immatricolazione", "cilindrata", "potenza_cv"):
+    for campo in (
+        "marca", "modello", "anno_immatricolazione", "telaio",
+        "data_immatricolazione", "cilindrata", "potenza_cv",
+    ):
         if breakdown.get(campo) and not veicolo.get(campo):
             veicolo[campo] = breakdown[campo]
 

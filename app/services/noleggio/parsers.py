@@ -91,6 +91,8 @@ def estrai_breakdown_linea(linea: dict) -> Dict[str, Any]:
     if dati.get("cv"):
         breakdown["potenza_cv"] = dati["cv"]
 
+    breakdown.update(estrai_veicolo_strutturato(linea))
+
     return breakdown
 
 
@@ -306,8 +308,51 @@ def estrai_modello_marca(descrizione: str, targa: str) -> Tuple[str, str]:
         if modello_match:
             modello = modello_match.group(1).strip()
             modello = re.sub(r'\s+', ' ', modello)
-    
-    return (marca, modello.title() if modello else "")
+            # Le descrizioni contabili ("Canone di locazione", "Servizi")
+            # non sono modelli di veicolo.
+            if re.match(
+                r'^(?:canone|locazione|servizi?|imposta\s+di\s+bollo|rifatturazione)\b',
+                modello,
+                re.IGNORECASE,
+            ):
+                modello = ""
+
+    if not modello:
+        return (marca, "")
+    modello = modello.rstrip(" /-")
+    modello_formattato = modello.upper() if marca == "Mazda" else modello.title()
+    return (marca, modello_formattato)
+
+
+def estrai_veicolo_strutturato(linea: dict, targa: str = "") -> Dict[str, Any]:
+    """Estrae targa, marca, modello e anno da AltriDatiGestionali.
+
+    ARVAL, ad esempio, fornisce ``TARGA: GW980EP MAZDA CX-60 / 2022 /
+    5P / SUV`` mentre la descrizione contabile contiene solo ``Canone di
+    Locazione``. Il campo strutturato e' quindi la fonte autorevole.
+    """
+    testo = _altri_dati_gestionali_map(linea).get("targa", "").strip()
+    targa_rilevata = targa or estrai_targa(testo) or ""
+    if not testo or not targa_rilevata:
+        return {}
+
+    dettagli = re.sub(
+        rf'^\s*{re.escape(targa_rilevata)}\s*', '', testo, flags=re.IGNORECASE
+    ).strip()
+    descrizione_veicolo = dettagli.split('/', 1)[0].strip()
+    marca, modello = estrai_modello_marca(
+        f"{targa_rilevata} {descrizione_veicolo}", targa_rilevata
+    )
+    anno_match = re.search(r'\b((?:19|20)\d{2})\b', dettagli)
+
+    risultato: Dict[str, Any] = {"targa": targa_rilevata}
+    if marca:
+        risultato["marca"] = marca
+    if modello:
+        risultato["modello"] = modello
+    if anno_match:
+        risultato["anno_immatricolazione"] = int(anno_match.group(1))
+    return risultato
 
 
 def estrai_targa(descrizione: str) -> Optional[str]:
