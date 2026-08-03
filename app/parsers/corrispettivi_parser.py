@@ -309,7 +309,8 @@ def parse_corrispettivo_xml(xml_content: str) -> Dict[str, Any]:
             
             # Metadata
             "raw_xml_parsed": True,
-            "versione": get_text(root, 'versione') or "COR10"
+            "versione": get_text(root, 'versione') or "COR10",
+            "periodo_inattivo": find_element(root, 'PeriodoInattivo') is not None,
         }
         
         return result
