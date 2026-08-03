@@ -1902,8 +1902,7 @@ export default function GestioneAssegni() {
                   </strong>
                 </span>
               </div>
-              {autoAssocResult.assegni_processati === 0 &&
-                autoAssocResult.assegni_vuoti_ignorati > 0 && (
+              {autoAssocResult.assegni_vuoti_ignorati > 0 && (
                   <div
                     style={{
                       marginTop: 10,
@@ -1915,9 +1914,10 @@ export default function GestioneAssegni() {
                       fontWeight: 600,
                     }}
                   >
-                    I {autoAssocResult.assegni_vuoti_ignorati} assegni del carnet sono stati
-                    creati correttamente, ma sono ancora vuoti. Inserisci importo e beneficiario:
-                    soltanto dopo potranno generare proposte L1–L4.
+                    {autoAssocResult.assegni_vuoti_ignorati} assegni del carnet sono stati creati
+                    correttamente ma, essendo ancora vuoti, non sono inclusi negli assegni
+                    processati. Inserisci importo e beneficiario: soltanto dopo potranno generare
+                    proposte L1–L4.
                   </div>
                 )}
               <div
