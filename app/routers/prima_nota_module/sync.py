@@ -148,6 +148,7 @@ def costruisci_campi_movimento_fattura(
         "descrizione": descrizione,
         "importo": abs(importo),
         "numero_fattura": numero_fattura,
+        "fornitore": fornitore,
         "tipo_documento": fattura.get("tipo_documento"),
     }
 
@@ -189,6 +190,7 @@ async def registra_pagamento_fattura(
         "categoria": categoria,
         "riferimento": riferimento,
         "numero_fattura": numero_fattura,  # mantenuto per retrocompatibilità UI
+        "fornitore": fornitore,
         "fornitore_piva": fornitore_piva,
         "fattura_id": fattura_id,
         "tipo_documento": fattura.get("tipo_documento"),
