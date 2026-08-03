@@ -19,6 +19,46 @@ from .common import (
 router = APIRouter()
 
 
+def _normalized_supplier_key(value: Any) -> str:
+    """Chiave fiscale comparabile tra schema storico e schema privato."""
+    normalized = re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
+    if normalized.startswith("IT") and normalized[2:].isdigit():
+        return normalized[2:]
+    return normalized
+
+
+def _legacy_supplier_view(supplier: Dict[str, Any]) -> Dict[str, Any]:
+    """Espone anche i fornitori del nuovo DB alla UI storica senza riscriverli."""
+    if not supplier.get("vat") and not supplier.get("match_key"):
+        return supplier
+    piva = _normalized_supplier_key(
+        supplier.get("vat") or supplier.get("match_key")
+    )
+    name = supplier.get("name") or supplier.get("ragione_sociale") or ""
+    return {
+        **supplier,
+        "id": supplier.get("id") or supplier.get("match_key") or piva,
+        "partita_iva": supplier.get("partita_iva") or piva,
+        "piva": supplier.get("piva") or piva,
+        "ragione_sociale": supplier.get("ragione_sociale") or name,
+        "denominazione": supplier.get("denominazione") or name,
+        "nome": name,
+        "metodo_pagamento": (
+            supplier.get("metodo_pagamento")
+            or supplier.get("default_payment_method")
+            or ""
+        ),
+        "giorni_pagamento": supplier.get(
+            "giorni_pagamento", supplier.get("payment_days", 30)
+        ),
+        "comune": supplier.get("comune") or supplier.get("locality") or "",
+        "esclude_magazzino": supplier.get(
+            "esclude_magazzino", not supplier.get("inventory_enabled", False)
+        ),
+        "attivo": supplier.get("attivo", True),
+    }
+
+
 @router.get("/search-piva/{partita_iva}")
 async def search_by_piva(partita_iva: str) -> Dict[str, Any]:
     """
@@ -146,20 +186,35 @@ async def list_suppliers(
     suppliers_map = {}
     
     suppliers_query = {}
+    compatible_filters = []
     if attivo is not None:
-        suppliers_query["attivo"] = attivo
+        if attivo:
+            compatible_filters.append({"$or": [{"attivo": True}, {"attivo": {"$exists": False}}]})
+        else:
+            compatible_filters.append({"attivo": False})
     if esclude_magazzino is not None:
-        suppliers_query["esclude_magazzino"] = esclude_magazzino
+        compatible_filters.append({"$or": [
+            {"esclude_magazzino": esclude_magazzino},
+            {"inventory_enabled": not esclude_magazzino},
+        ]})
     if search and search.strip():
         import re as _re
         search_lower = _re.escape(search.strip())
-        suppliers_query["$or"] = [
+        compatible_filters.append({"$or": [
             {"denominazione": {"$regex": search_lower, "$options": "i"}},
             {"ragione_sociale": {"$regex": search_lower, "$options": "i"}},
-            {"partita_iva": {"$regex": search_lower, "$options": "i"}}
-        ]
+            {"partita_iva": {"$regex": search_lower, "$options": "i"}},
+            {"name": {"$regex": search_lower, "$options": "i"}},
+            {"vat": {"$regex": search_lower, "$options": "i"}},
+            {"match_key": {"$regex": search_lower, "$options": "i"}},
+        ]})
     if metodo_pagamento:
-        suppliers_query["metodo_pagamento"] = metodo_pagamento
+        compatible_filters.append({"$or": [
+            {"metodo_pagamento": metodo_pagamento},
+            {"default_payment_method": metodo_pagamento},
+        ]})
+    if compatible_filters:
+        suppliers_query["$and"] = compatible_filters
     
     # Pre-filtro per 'prodotto': trova le P.IVA dei fornitori che hanno il prodotto in magazzino
     piva_con_prodotto: Optional[set] = None
@@ -176,15 +231,20 @@ async def list_suppliers(
         piva_con_prodotto = {p["fornitore_piva"] for p in prodotti_match if p.get("fornitore_piva")}
         if not piva_con_prodotto:
             return []  # Nessun fornitore matcha
-        suppliers_query["partita_iva"] = {"$in": list(piva_con_prodotto)}
+        suppliers_query.setdefault("$and", []).append({"$or": [
+            {"partita_iva": {"$in": list(piva_con_prodotto)}},
+            {"vat": {"$in": list(piva_con_prodotto)}},
+            {"match_key": {"$in": list(piva_con_prodotto)}},
+        ]})
     
     saved_suppliers = await db[Collections.SUPPLIERS].find(suppliers_query, {"_id": 0}).to_list(1000)
     
-    for supplier in saved_suppliers:
+    for raw_supplier in saved_suppliers:
+        supplier = _legacy_supplier_view(raw_supplier)
         # P.IVA anche nei campi legacy: i fornitori storici usano 'piva'/'vat_number'
         piva = supplier.get("partita_iva") or supplier.get("piva") or supplier.get("vat_number")
         if piva:
-            suppliers_map[piva] = {
+            suppliers_map[_normalized_supplier_key(piva)] = {
                 **supplier,
                 "fatture_count": supplier.get("fatture_count", 0),
                 "fatture_totale": 0,
@@ -200,7 +260,7 @@ async def list_suppliers(
         for k in ("partita_iva", "piva", "vat_number"):
             v = (rec.get(k) or "").strip() if isinstance(rec.get(k), str) else rec.get(k)
             if v:
-                alias_index[v] = rec
+                alias_index[_normalized_supplier_key(v)] = rec
 
     # Statistiche fatture SEMPRE: prima con una ricerca attiva i contatori
     # 'Con Fatture'/'Fatture' sulle card crollavano a 0 (dati stantii)
@@ -239,7 +299,7 @@ async def list_suppliers(
 
             for stat in invoice_stats:
                 piva = stat.get("_id")
-                rec = alias_index.get(piva) if piva else None
+                rec = alias_index.get(_normalized_supplier_key(piva)) if piva else None
                 if rec is not None:
                     rec["fatture_count"] = rec.get("fatture_count", 0) + stat.get("fatture_count", 0) \
                         if rec.get("source") == "merged" else stat.get("fatture_count", 0)
@@ -255,6 +315,41 @@ async def list_suppliers(
                     rec["source"] = "merged"
         except Exception as e:
             logger.warning(f"Error loading invoice stats: {e}")
+
+        # Il nuovo database usa fatture_passive con campi canonici diversi.
+        # Sommiamo i saldi senza duplicare o modificare le fatture sorgente.
+        private_pipeline = [
+            {"$match": {"supplier_vat": {"$exists": True, "$nin": [None, ""]}}},
+            {"$group": {
+                "_id": "$supplier_vat",
+                "fatture_count": {"$sum": 1},
+                "fatture_totale": {"$sum": {"$toDouble": {"$ifNull": ["$total", 0]}}},
+                "fatture_pagate": {"$sum": {"$toDouble": {"$ifNull": ["$paid_total", 0]}}},
+                "fatture_non_pagate": {"$sum": {"$toDouble": {"$ifNull": ["$residual", 0]}}},
+                "prima_fattura_data": {"$min": "$document_date"},
+                "ultima_fattura_data": {"$max": "$document_date"},
+            }},
+        ]
+        try:
+            private_stats = await db["fatture_passive"].aggregate(
+                private_pipeline, allowDiskUse=True
+            ).to_list(5000)
+            for stat in private_stats:
+                rec = alias_index.get(_normalized_supplier_key(stat.get("_id")))
+                if rec is None:
+                    continue
+                rec["fatture_count"] = rec.get("fatture_count", 0) + stat.get("fatture_count", 0)
+                rec["fatture_totale"] = rec.get("fatture_totale", 0) + stat.get("fatture_totale", 0)
+                rec["fatture_pagate"] = rec.get("fatture_pagate", 0) + stat.get("fatture_pagate", 0)
+                rec["fatture_non_pagate"] = rec.get("fatture_non_pagate", 0) + stat.get("fatture_non_pagate", 0)
+                for field, chooser in (("prima_fattura_data", min), ("ultima_fattura_data", max)):
+                    value = stat.get(field)
+                    current = rec.get(field)
+                    if value and (not current or chooser(current, value) == value):
+                        rec[field] = value
+                rec["source"] = "merged"
+        except Exception as e:
+            logger.warning(f"Error loading private invoice stats: {e}")
     
     suppliers = list(suppliers_map.values())
     
