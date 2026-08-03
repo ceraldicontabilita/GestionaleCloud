@@ -26,8 +26,11 @@ from typing import Dict, Any, Optional, List
 from app.config import settings
 from app.services.drive_invoice_ingest import (
     _load_credentials,
+    _get_or_create_inbox_folder,
     _get_or_create_elaborate_folder,
+    _get_or_create_error_folder,
     _download_bytes,
+    _move_to_folder,
     _move_to_elaborate,
 )
 
@@ -55,7 +58,8 @@ def start_background_sync(db) -> bool:
 def _folder_id() -> Optional[str]:
     """ID cartella: nome canonico o alias reale dell'ambiente Render."""
     return (settings.GOOGLE_DRIVE_CORRISPETTIVI_FOLDER_ID
-            or settings.DRIVE_FOLDER_CORRISPETTIVI_ID)
+            or settings.DRIVE_FOLDER_CORRISPETTIVI_ID
+            or settings.DRIVE_CORRISPETTIVI_FOLDER_ID)
 
 
 def _load_credentials_corrispettivi():
@@ -77,7 +81,8 @@ def is_configured() -> bool:
         settings.ENABLE_DRIVE_CORRISPETTIVI_SYNC
         and _folder_id()
         and (settings.GOOGLE_SERVICE_ACCOUNT_JSON_CORRISPETTIVI
-             or settings.GOOGLE_DRIVE_SA_FILE or settings.GOOGLE_DRIVE_SA_JSON)
+             or settings.GOOGLE_DRIVE_SA_FILE or settings.GOOGLE_DRIVE_SA_JSON
+             or settings.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON)
     )
 
 
@@ -174,8 +179,11 @@ async def _do_sync(db) -> Dict[str, Any]:
         "archiviate": 0, "errors": 0, "moved": 0, "details": [],
     }
     try:
+        inbox_id = _get_or_create_inbox_folder(service, parent_id)
         elaborate_id = _get_or_create_elaborate_folder(service, parent_id)
-        xml_files = _list_xml_files(service, parent_id)
+        error_id = _get_or_create_error_folder(service, parent_id)
+        source_id = inbox_id or parent_id
+        xml_files = _list_xml_files(service, source_id)
         result["total"] = len(xml_files)
         for f in xml_files:
             fid, fname = f["id"], f["name"]
@@ -184,7 +192,9 @@ async def _do_sync(db) -> Dict[str, Any]:
                 if not content:
                     result["errors"] += 1
                     result["details"].append({"file": fname, "error": "file vuoto"})
-                    continue  # non spostare: resta per il retry
+                    if error_id:
+                        _move_to_folder(service, fid, source_id, error_id)
+                    continue
                 # Pipeline UNICA corrispettivi: dedup per hash e per data
                 # sono già dentro process_xml — nessun doppione possibile.
                 # applica_filtro_anno (richiesta utente 14/07/2026, stesso
@@ -198,7 +208,9 @@ async def _do_sync(db) -> Dict[str, Any]:
                 elif stato == "error":
                     result["errors"] += 1
                     result["details"].append({"file": fname, "error": esito.get("message")})
-                    continue  # file in errore: resta per il retry, non si sposta
+                    if error_id:
+                        _move_to_folder(service, fid, source_id, error_id)
+                    continue
                 elif stato == "archiviata":
                     result["archiviate"] += 1
                     logger.info(f"Drive corrispettivi: archiviato (anno storico) {fname}")
@@ -207,12 +219,17 @@ async def _do_sync(db) -> Dict[str, Any]:
                     logger.info(f"Drive corrispettivi: importato {fname}")
                 # Sposta in `Elaborate` i file processati (importati/duplicati)
                 if elaborate_id:
-                    _move_to_elaborate(service, fid, parent_id, elaborate_id)
+                    _move_to_elaborate(service, fid, source_id, elaborate_id)
                     result["moved"] += 1
             except Exception as e:
                 logger.error(f"Drive corrispettivi: errore su {fname}: {e}")
                 result["errors"] += 1
                 result["details"].append({"file": fname, "error": str(e)})
+                if error_id:
+                    try:
+                        _move_to_folder(service, fid, source_id, error_id)
+                    except Exception:
+                        logger.exception("Drive corrispettivi: impossibile spostare %s in Errori", fname)
     except Exception as e:
         logger.error(f"Drive corrispettivi: errore sync: {e}")
         now = datetime.now(timezone.utc).isoformat()

@@ -11,8 +11,11 @@ from typing import Any, Dict, List, Optional
 from app.config import settings
 from app.services.drive_invoice_ingest import (
     _download_bytes,
+    _get_or_create_inbox_folder,
     _get_or_create_elaborate_folder,
+    _get_or_create_error_folder,
     _load_credentials,
+    _move_to_folder,
     _move_to_elaborate,
 )
 
@@ -22,7 +25,9 @@ _sync_lock = asyncio.Lock()
 
 
 def _folder_id() -> Optional[str]:
-    return settings.GOOGLE_DRIVE_ESTRATTI_FOLDER_ID or settings.DRIVE_FOLDER_ESTRATTI_CONTO_ID
+    return (settings.GOOGLE_DRIVE_ESTRATTI_FOLDER_ID
+            or settings.DRIVE_FOLDER_ESTRATTI_CONTO_ID
+            or settings.DRIVE_ESTRATTI_CONTO_FOLDER_ID)
 
 
 def _load_credentials_estratti():
@@ -42,7 +47,8 @@ def is_configured() -> bool:
         settings.ENABLE_DRIVE_ESTRATTI_CONTO_SYNC
         and _folder_id()
         and (settings.GOOGLE_SERVICE_ACCOUNT_JSON_ESTRATTI_CONTO
-             or settings.GOOGLE_DRIVE_SA_FILE or settings.GOOGLE_DRIVE_SA_JSON)
+             or settings.GOOGLE_DRIVE_SA_FILE or settings.GOOGLE_DRIVE_SA_JSON
+             or settings.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON)
     )
 
 
@@ -102,8 +108,11 @@ async def sync(db) -> Dict[str, Any]:
             "status": "ok", "total": 0, "processed": 0, "moved": 0,
             "new_movements": 0, "duplicates": 0, "cheques": 0, "errors": [],
         }
+        inbox_id = _get_or_create_inbox_folder(service, parent_id)
         elaborate_id = _get_or_create_elaborate_folder(service, parent_id)
-        files = _list_files(service, parent_id)
+        error_id = _get_or_create_error_folder(service, parent_id)
+        source_id = inbox_id or parent_id
+        files = _list_files(service, source_id)
         result["total"] = len(files)
         for item in files:
             try:
@@ -120,11 +129,16 @@ async def sync(db) -> Dict[str, Any]:
                 result["cheques"] += int(sync_assegni.get("assegni_creati") or 0)
                 result["processed"] += 1
                 if elaborate_id:
-                    _move_to_elaborate(service, item["id"], parent_id, elaborate_id)
+                    _move_to_elaborate(service, item["id"], source_id, elaborate_id)
                     result["moved"] += 1
             except Exception as exc:
                 logger.exception("Drive estratti conto: errore su %s", item.get("name"))
                 result["errors"].append({"file": item.get("name"), "error": str(exc)})
+                if error_id:
+                    try:
+                        _move_to_folder(service, item["id"], source_id, error_id)
+                    except Exception:
+                        logger.exception("Drive estratti conto: impossibile spostare %s in Errori", item.get("name"))
 
         now = datetime.now(timezone.utc).isoformat()
         await db["sistema_stato"].update_one(

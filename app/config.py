@@ -127,6 +127,22 @@ class Settings(BaseSettings):
     DRIVE_FOLDER_CARTELLE_ESATTORIALI_ID: Optional[str] = None
     DRIVE_FOLDER_AVVISI_BONARI_ID: Optional[str] = None
 
+    # Alias usati dal gestionale privato corrente. Consentono di trasferire
+    # la configurazione Render senza duplicare o rinominare valori sensibili.
+    DRIVE_FATTURE_FOLDER_ID: Optional[str] = None
+    DRIVE_CEDOLINI_FOLDER_ID: Optional[str] = None
+    DRIVE_CORRISPETTIVI_FOLDER_ID: Optional[str] = None
+    DRIVE_QUIETANZE_FOLDER_ID: Optional[str] = None
+    DRIVE_ESTRATTI_CONTO_FOLDER_ID: Optional[str] = None
+    DRIVE_PRESENZE_FOLDER_ID: Optional[str] = None
+    DRIVE_F24_FOLDER_ID: Optional[str] = None
+    DRIVE_CARTE_FOLDER_ID: Optional[str] = None
+    DRIVE_PAYPAL_FOLDER_ID: Optional[str] = None
+    DRIVE_NOLEGGIO_FOLDER_ID: Optional[str] = None
+    DRIVE_AVVISI_ESATTORIALI_FOLDER_ID: Optional[str] = None
+    DRIVE_FOLDER_REGISTRY_JSON: Optional[str] = None
+    GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: Optional[str] = None
+
     # Service account DEDICATI per cartella (scelta utente: un account per
     # canale). Se valorizzato, il canale usa il suo; altrimenti ricade su
     # GOOGLE_DRIVE_SA_JSON/SA_FILE condiviso. Ogni cartella Drive deve essere

@@ -81,7 +81,7 @@ const router = createBrowserRouter([
 
       // === FATTURE & VENDITE ===
       { path: "fatture", element: <LazyPage><FattureHub /></LazyPage> },
-      { path: "fatture/import", element: <Navigate to="/documenti/import" replace /> },
+      { path: "fatture/import", element: <Navigate to="/documenti" replace /> },
       { path: "fatture/:tab", element: <LazyPage><FattureHub /></LazyPage> },
       { path: "fatture-ricevute", element: <Navigate to="/fatture" replace /> },
       { path: "fatture-ricevute/:fornitore", element: <Navigate to="/fatture" replace /> },
@@ -186,14 +186,14 @@ const router = createBrowserRouter([
       { path: "paypal", element: <Navigate to="/riconciliazione/paypal" replace /> },
 
       // === IMPORT DOCUMENTI → tab in /documenti/import ===
-      { path: "import-documenti", element: <Navigate to="/documenti/import" replace /> },
-      { path: "import-unificato", element: <Navigate to="/documenti/import" replace /> },
+      { path: "import-documenti", element: <Navigate to="/documenti" replace /> },
+      { path: "import-unificato", element: <Navigate to="/documenti" replace /> },
       { path: "import-unificato/:tipo", element: <LazyPage><DocumentiHub /></LazyPage> },
-      { path: "import-export", element: <Navigate to="/documenti/import" replace /> },
-      { path: "import-ai", element: <Navigate to="/documenti/import" replace /> },
-      { path: "ai-parser", element: <Navigate to="/documenti/import" replace /> },
+      { path: "import-export", element: <Navigate to="/documenti" replace /> },
+      { path: "import-ai", element: <Navigate to="/documenti" replace /> },
+      { path: "ai-parser", element: <Navigate to="/documenti" replace /> },
       { path: "ai-parser/:tipo", element: <LazyPage><DocumentiHub /></LazyPage> },
-      { path: "lettura-documenti", element: <Navigate to="/documenti/import" replace /> },
+      { path: "lettura-documenti", element: <Navigate to="/documenti" replace /> },
 
       // === DOCUMENTI ===
       { path: "documenti", element: <LazyPage><DocumentiHub /></LazyPage> },

@@ -24,7 +24,9 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 _SCOPES = ["https://www.googleapis.com/auth/drive"]
+_INBOX_FOLDER_NAME = "Da elaborare"
 _ELABORATE_FOLDER_NAME = "Elaborate"
+_ERROR_FOLDER_NAME = "Errori"
 _SYNC_STATE_COLLECTION = "drive_sync_state"
 _SYNC_STATE_ID = "fatture_drive"
 
@@ -39,7 +41,9 @@ def is_sync_running() -> bool:
 
 def _folder_id() -> Optional[str]:
     """ID cartella fatture: nome canonico o alias dell'ambiente Render."""
-    return settings.GOOGLE_DRIVE_FATTURE_FOLDER_ID or settings.DRIVE_FOLDER_FATTURE_ID
+    return (settings.GOOGLE_DRIVE_FATTURE_FOLDER_ID
+            or settings.DRIVE_FOLDER_FATTURE_ID
+            or settings.DRIVE_FATTURE_FOLDER_ID)
 
 
 def start_background_sync(db) -> bool:
@@ -56,7 +60,8 @@ def is_configured() -> bool:
         settings.ENABLE_DRIVE_FATTURE_SYNC
         and _folder_id()
         and (settings.GOOGLE_SERVICE_ACCOUNT_JSON_FATTURE
-             or settings.GOOGLE_DRIVE_SA_FILE or settings.GOOGLE_DRIVE_SA_JSON)
+             or settings.GOOGLE_DRIVE_SA_FILE or settings.GOOGLE_DRIVE_SA_JSON
+             or settings.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON)
     )
 
 
@@ -89,8 +94,9 @@ def _load_credentials():
     except ImportError as e:
         return None, f"dipendenze google mancanti: {e}"
     try:
-        if settings.GOOGLE_DRIVE_SA_JSON:
-            info = _parse_sa_json(settings.GOOGLE_DRIVE_SA_JSON)
+        shared_json = settings.GOOGLE_DRIVE_SA_JSON or settings.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON
+        if shared_json:
+            info = _parse_sa_json(shared_json)
             return service_account.Credentials.from_service_account_info(info, scopes=_SCOPES), None
         return service_account.Credentials.from_service_account_file(
             settings.GOOGLE_DRIVE_SA_FILE, scopes=_SCOPES
@@ -129,9 +135,9 @@ def _build_drive_service():
         return None
 
 
-def _get_or_create_elaborate_folder(service, parent_id: str) -> Optional[str]:
+def _get_or_create_folder(service, parent_id: str, folder_name: str) -> Optional[str]:
     q = (
-        f"name = '{_ELABORATE_FOLDER_NAME}' and '{parent_id}' in parents "
+        f"name = '{folder_name}' and '{parent_id}' in parents "
         "and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
     )
     res = service.files().list(
@@ -142,12 +148,24 @@ def _get_or_create_elaborate_folder(service, parent_id: str) -> Optional[str]:
     if files:
         return files[0]["id"]
     meta = {
-        "name": _ELABORATE_FOLDER_NAME,
+        "name": folder_name,
         "mimeType": "application/vnd.google-apps.folder",
         "parents": [parent_id],
     }
     folder = service.files().create(body=meta, fields="id", supportsAllDrives=True).execute()
     return folder.get("id")
+
+
+def _get_or_create_inbox_folder(service, parent_id: str) -> Optional[str]:
+    return _get_or_create_folder(service, parent_id, _INBOX_FOLDER_NAME)
+
+
+def _get_or_create_elaborate_folder(service, parent_id: str) -> Optional[str]:
+    return _get_or_create_folder(service, parent_id, _ELABORATE_FOLDER_NAME)
+
+
+def _get_or_create_error_folder(service, parent_id: str) -> Optional[str]:
+    return _get_or_create_folder(service, parent_id, _ERROR_FOLDER_NAME)
 
 
 def _list_xml_files(service, parent_id: str) -> List[Dict[str, Any]]:
@@ -188,11 +206,15 @@ def _download_bytes(service, file_id: str) -> bytes:
     return buf.getvalue()
 
 
-def _move_to_elaborate(service, file_id: str, parent_id: str, elaborate_id: str):
+def _move_to_folder(service, file_id: str, parent_id: str, target_id: str):
     service.files().update(
-        fileId=file_id, addParents=elaborate_id, removeParents=parent_id,
+        fileId=file_id, addParents=target_id, removeParents=parent_id,
         fields="id, parents", supportsAllDrives=True,
     ).execute()
+
+
+def _move_to_elaborate(service, file_id: str, parent_id: str, elaborate_id: str):
+    _move_to_folder(service, file_id, parent_id, elaborate_id)
 
 
 async def get_status(db) -> Dict[str, Any]:
@@ -244,8 +266,11 @@ async def _do_sync(db) -> Dict[str, Any]:
         "archiviate": 0, "errors": 0, "moved": 0, "details": [],
     }
     try:
+        inbox_id = _get_or_create_inbox_folder(service, parent_id)
         elaborate_id = _get_or_create_elaborate_folder(service, parent_id)
-        xml_files = _list_xml_files(service, parent_id)
+        error_id = _get_or_create_error_folder(service, parent_id)
+        source_id = inbox_id or parent_id
+        xml_files = _list_xml_files(service, source_id)
         result["total"] = len(xml_files)
         for f in xml_files:
             fid, fname = f["id"], f["name"]
@@ -269,16 +294,23 @@ async def _do_sync(db) -> Dict[str, Any]:
                 else:
                     result["errors"] += 1
                     result["details"].append({"file": fname, "error": res.get("error")})
-                    continue  # non spostare i file in errore: restano per il retry
+                    if error_id:
+                        _move_to_folder(service, fid, source_id, error_id)
+                    continue
                 # Sposta in `Elaborate` i file processati (importati, archiviati
                 # o duplicati noti).
                 if elaborate_id:
-                    _move_to_elaborate(service, fid, parent_id, elaborate_id)
+                    _move_to_elaborate(service, fid, source_id, elaborate_id)
                     result["moved"] += 1
             except Exception as e:
                 logger.error(f"Drive ingest: errore su {fname}: {e}")
                 result["errors"] += 1
                 result["details"].append({"file": fname, "error": str(e)})
+                if error_id:
+                    try:
+                        _move_to_folder(service, fid, source_id, error_id)
+                    except Exception:
+                        logger.exception("Drive ingest: impossibile spostare %s in Errori", fname)
     except Exception as e:
         logger.error(f"Drive ingest: errore sync: {e}")
         # Persisti l'errore globale: il sync gira in background e la card
