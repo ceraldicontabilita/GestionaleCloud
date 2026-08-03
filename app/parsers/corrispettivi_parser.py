@@ -128,6 +128,8 @@ def parse_corrispettivo_xml(xml_content: str) -> Dict[str, Any]:
         dispositivo = find_element(trasmissione, 'Dispositivo')
         tipo_dispositivo = get_text(dispositivo, 'Tipo')  # RT
         id_dispositivo = get_text(dispositivo, 'IdDispositivo')  # Matricola RT
+        if not id_dispositivo:
+            id_dispositivo = get_text(root, 'IdDispositivo')
         
         # Dati esercente
         codice_fiscale_esercente = get_text(trasmissione, 'CodiceFiscaleEsercente')
@@ -191,6 +193,22 @@ def parse_corrispettivo_xml(xml_content: str) -> Dict[str, Any]:
         numero_doc_commerciali = int(get_text(totali, 'NumeroDocCommerciali', '0') or '0')
         pagato_contanti = get_float(totali, 'PagatoContanti')
         pagato_elettronico = get_float(totali, 'PagatoElettronico')
+
+        # Compatibilita con ricevute RT semplificate/legacy che espongono
+        # ImportoTotale e una lista Pagamento invece del blocco Totali COR10.
+        # Non applicare il fallback "tutto contanti" ai PeriodoInattivo:
+        # in quel caso lo zero e' il valore fiscale reale del documento.
+        totale_generico = get_float(root, 'ImportoTotale') or get_float(root, 'Totale')
+        if pagato_contanti == 0 and pagato_elettronico == 0:
+            for pagamento in find_all_elements(root, 'Pagamento'):
+                tipo = get_text(pagamento, 'Tipo').upper()
+                importo = get_float(pagamento, 'Importo')
+                if any(token in tipo for token in ('POS', 'CARTA', 'ELETTRONICO')):
+                    pagato_elettronico += importo
+                else:
+                    pagato_contanti += importo
+            if pagato_contanti == 0 and pagato_elettronico == 0 and totale_generico > 0:
+                pagato_contanti = totale_generico
         
         # Estrai TotaleAmmontareAnnulli
         totale_ammontare_annulli = get_float(totali, 'TotaleAmmontareAnnulli')
@@ -200,7 +218,7 @@ def parse_corrispettivo_xml(xml_content: str) -> Dict[str, Any]:
         
         # Se totale è 0, prova a calcolarlo dai riepiloghi
         if totale_corrispettivi == 0:
-            totale_corrispettivi = totale_ammontare_lordo
+            totale_corrispettivi = totale_ammontare_lordo or totale_generico
         
         # ========== CALCOLO PAGATO NON RISCOSSO ==========
         # FIX 18/07/2026 (segnalazione utente: 'non riscosso' da €244k

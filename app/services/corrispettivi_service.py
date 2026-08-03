@@ -13,7 +13,6 @@ from datetime import datetime, timezone
 import hashlib
 import logging
 import uuid
-import defusedxml.ElementTree as ET  # sicurezza: blocca XXE/entity expansion su XML esterni
 
 from app.database import Database
 from app.services.business_rules import (
@@ -375,69 +374,41 @@ class CorrispettiviService:
     # ==================== HELPERS ====================
     
     def _parse_corrispettivo_xml(self, xml_content: bytes) -> Dict[str, Any]:
-        """Parse XML corrispettivo formato RT."""
-        root = ET.fromstring(xml_content)
-        
-        # Namespace handling
-        ns = {'': root.tag.split('}')[0].strip('{') if '}' in root.tag else ''}
-        
-        def find_text(element, path, default=""):
-            el = element.find(path, ns) if ns[''] else element.find(path)
-            return el.text if el is not None and el.text else default
-        
-        # Estrai dati principali
-        data = find_text(root, ".//DataOraRilevazione", "")[:10]
-        if not data:
-            data = find_text(root, ".//Data", datetime.now().strftime("%Y-%m-%d"))
-        
-        totale = float(find_text(root, ".//ImportoTotale", "0").replace(",", "."))
-        if totale == 0:
-            totale = float(find_text(root, ".//Totale", "0").replace(",", "."))
-        
-        # Estrai pagamenti
-        pagato_contanti = 0
-        pagato_pos = 0
-        
-        for pagamento in root.findall(".//Pagamento", ns) or root.findall(".//Pagamento"):
-            tipo = find_text(pagamento, "Tipo", "").upper()
-            importo = float(find_text(pagamento, "Importo", "0").replace(",", "."))
-            
-            if "CONTANTI" in tipo or "CASH" in tipo or tipo == "":
-                pagato_contanti += importo
-            elif "POS" in tipo or "CARTA" in tipo or "ELETTRONICO" in tipo:
-                pagato_pos += importo
-        
-        # Se non ci sono pagamenti dettagliati, tutto contanti
-        if pagato_contanti == 0 and pagato_pos == 0:
-            pagato_contanti = totale
-        
-        # Estrai IVA
-        riepilogo_iva = []
-        totale_iva = 0
-        
-        for aliquota in root.findall(".//Aliquota", ns) or root.findall(".//AliquotaIVA", ns):
-            perc = float(find_text(aliquota, "Percentuale", "22").replace(",", "."))
-            impon = float(find_text(aliquota, "Imponibile", "0").replace(",", "."))
-            imposta = float(find_text(aliquota, "Imposta", "0").replace(",", "."))
-            
-            riepilogo_iva.append({
-                "aliquota": perc,
-                "imponibile": impon,
-                "imposta": imposta
-            })
-            totale_iva += imposta
-        
+        """Adatta il parser COR10 canonico allo schema del servizio.
+
+        Il vecchio parser locale applicava il namespace del solo elemento
+        radice anche ai figli non qualificati dei file AdE, perdendo data,
+        matricola e importi. Tutti i canali usano ora la stessa lettura.
+        """
+        from app.parsers.corrispettivi_parser import parse_corrispettivo_xml
+
+        testo = None
+        for encoding in ("utf-8-sig", "utf-8", "iso-8859-1", "cp1252"):
+            try:
+                testo = xml_content.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        if testo is None:
+            raise ValueError("Codifica XML non riconosciuta")
+
+        parsed = parse_corrispettivo_xml(testo)
+        if parsed.get("error"):
+            raise ValueError(parsed["error"])
+
+        totale = float(parsed.get("totale_corrispettivi", parsed.get("totale", 0)) or 0)
+        totale_iva = float(parsed.get("totale_iva", 0) or 0)
         return {
-            "data": data,
+            "data": parsed.get("data"),
             "totale": totale,
-            "pagato_contanti": pagato_contanti,
-            "pagato_pos": pagato_pos,
-            "non_riscosso": max(0, totale - pagato_contanti - pagato_pos),
+            "pagato_contanti": float(parsed.get("pagato_contanti", 0) or 0),
+            "pagato_pos": float(parsed.get("pagato_elettronico", 0) or 0),
+            "non_riscosso": float(parsed.get("pagato_non_riscosso", 0) or 0),
             "totale_iva": totale_iva,
-            "imponibile": totale - totale_iva,
-            "riepilogo_iva": riepilogo_iva,
-            "progressivo": find_text(root, ".//Progressivo", ""),
-            "id_dispositivo": find_text(root, ".//IdDispositivo", "")
+            "imponibile": float(parsed.get("totale_imponibile", totale - totale_iva) or 0),
+            "riepilogo_iva": parsed.get("riepilogo_iva", []),
+            "progressivo": parsed.get("numero_documento", ""),
+            "id_dispositivo": parsed.get("matricola_rt", ""),
         }
     
     async def _create_prima_nota_entry(self, corr: Dict[str, Any]) -> Optional[str]:
