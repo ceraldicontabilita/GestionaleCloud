@@ -125,3 +125,26 @@ def test_is_configured(monkeypatch):
     # Cartella + credenziali: configurato
     monkeypatch.setattr(settings, "GOOGLE_DRIVE_SA_JSON", '{"type": "service_account"}')
     assert ing.is_configured() is True
+
+
+def test_scheduler_non_perde_import_cedolini_al_riavvio(monkeypatch):
+    import app.scheduler as scheduler_mod
+
+    class SchedulerFinto:
+        def __init__(self):
+            self.jobs = []
+
+        def add_job(self, funzione, *args, **kwargs):
+            self.jobs.append((funzione, args, kwargs))
+
+        def start(self):
+            pass
+
+    scheduler = SchedulerFinto()
+    monkeypatch.setattr(scheduler_mod, "scheduler", scheduler)
+    scheduler_mod.start_scheduler()
+
+    job = next(item for item in scheduler.jobs if item[2].get("id") == "drive_cedolini_ingest")
+    assert job[2]["next_run_time"] is not None
+    assert job[2]["misfire_grace_time"] == 300
+    assert job[2]["coalesce"] is True
