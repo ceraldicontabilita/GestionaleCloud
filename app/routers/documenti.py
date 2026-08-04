@@ -3,7 +3,7 @@ Router Gestione Documenti
 API per scaricare, visualizzare e processare documenti dalle email.
 """
 
-from fastapi import APIRouter, Query, HTTPException, Depends
+from fastapi import APIRouter, BackgroundTasks, Query, HTTPException, Depends
 from app.utils.dependencies import get_current_admin_user
 from app.utils.ruoli import richiedi_admin
 from fastapi.responses import StreamingResponse
@@ -42,24 +42,16 @@ async def catalogo_cartelle_drive() -> Dict[str, Any]:
 
 @router.post("/drive/sync")
 async def sincronizza_cartelle_drive(
+    background_tasks: BackgroundTasks,
     _admin: Dict[str, Any] = Depends(richiedi_admin),
 ) -> Dict[str, Any]:
     """Avvia in background tutti gli import Drive configurati e autorizzati."""
-    from app.services.drive_sync_orchestrator import start_all
+    from app.services.drive_sync_orchestrator import start_all_after_response
 
-    channels = start_all(Database.get_db())
-    started = sum(status == "started" for status in channels.values())
-    running = sum(status == "running" for status in channels.values())
+    background_tasks.add_task(start_all_after_response, Database.get_db())
     return {
-        "status": "started" if started else "running" if running else "not_configured",
-        "message": (
-            "Sincronizzazione Drive avviata. I file restano tracciati nelle cartelle di lavorazione."
-            if started
-            else "Le sincronizzazioni Drive configurate sono gia in corso."
-            if running
-            else "Nessun import Drive automatico configurato."
-        ),
-        "channels": channels,
+        "status": "scheduled",
+        "message": "Sincronizzazione Drive accodata. I file restano tracciati nelle cartelle di lavorazione.",
     }
 
 

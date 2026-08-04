@@ -119,7 +119,8 @@ finche il relativo parser non viene validato su documenti autorizzati.
 Il comando unico `Sincronizza Drive` nella pagina Documenti avvia in background
 tutti gli import automatici configurati. Ogni importatore mantiene il proprio lock
 anti-sovrapposizione e la propria deduplica; il comando non forza parser sulle aree
-solo catalogate e non cancella i file sorgente.
+solo catalogate e non cancella i file sorgente. La risposta dell'interfaccia viene
+restituita prima dell'avvio delle chiamate Google, cosi la scansione non blocca la pagina.
 
 Per ogni radice Drive operativa il sistema crea e usa tre sottocartelle:
 `Da elaborare`, `Elaborate` ed `Errori`. Lo scheduler legge `Da elaborare`;
