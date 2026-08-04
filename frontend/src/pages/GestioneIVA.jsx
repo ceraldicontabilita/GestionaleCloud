@@ -5,6 +5,7 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuro, formatDateIT, COLORS, MESI_FULL } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import { Button, Badge } from '../components/ds';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 
 /**
  * Gestione IVA — Fase 1: "IVA disponibile non ancora utilizzata"
@@ -41,6 +42,7 @@ const STATO_LIQ = {
 
 export default function GestioneIVA() {
   const { anno } = useAnnoGlobale();
+  const confirm = useConfirm();
   const [dati, setDati] = useState(null);
   const [loading, setLoading] = useState(true);
   const [ricalcolo, setRicalcolo] = useState(false);
@@ -66,8 +68,9 @@ export default function GestioneIVA() {
     try {
       const res = await api.get('/api/iva/ricalcola-attribuzione/ultimo');
       setUltimoRic(res.data?.ultimo || null);
-    } catch {
+    } catch (e) {
       setUltimoRic(null);
+      setMsg({ tipo: 'errore', testo: 'Impossibile caricare l\'ultimo ricalcolo IVA: ' + (e.response?.data?.detail || e.message) });
     }
   };
 
@@ -79,21 +82,26 @@ export default function GestioneIVA() {
       ]);
       setRiepilogo(r.data);
       setAnomalie(a.data);
-    } catch {
+    } catch (e) {
       setRiepilogo(null);
       setAnomalie(null);
+      setMsg({ tipo: 'errore', testo: 'Impossibile caricare riepilogo e anomalie IVA: ' + (e.response?.data?.detail || e.message) });
     }
   };
 
   const caricaLiquidazione = async (p = periodo) => {
     api.get(`/api/iva/dashboard/${anno}/${mese}`)
       .then((d) => setDashboard(d.data))
-      .catch(() => setDashboard(null));
+      .catch((e) => {
+        setDashboard(null);
+        setMsg({ tipo: 'errore', testo: 'Impossibile caricare il cruscotto IVA mensile: ' + (e.response?.data?.detail || e.message) });
+      });
     try {
       const res = await api.get(`/api/iva/liquidazioni/${p}`);
       setLiquidazione(res.data?.corrente || null);
-    } catch {
+    } catch (e) {
       setLiquidazione(null);
+      setMsg({ tipo: 'errore', testo: 'Impossibile caricare la liquidazione IVA: ' + (e.response?.data?.detail || e.message) });
     }
   };
 
@@ -112,6 +120,12 @@ export default function GestioneIVA() {
 
   const confermaLiq = async () => {
     if (!liquidazione?.id) return;
+    const ok = await confirm({
+      title: `Conferma liquidazione ${periodo}`,
+      message: `Confermare IVA vendite ${formatEuro(liquidazione.iva_vendite)}, IVA acquisti ${formatEuro(liquidazione.iva_acquisti)} e ${liquidazione.fatture_incluse?.length || 0} fatture? Dopo la conferma l'IVA viene marcata come utilizzata.`,
+      variant: 'warning',
+    });
+    if (!ok) return;
     setBusyLiq(true);
     setMsg(null);
     try {
@@ -128,10 +142,16 @@ export default function GestioneIVA() {
 
   const riapriLiq = async () => {
     if (!liquidazione?.id) return;
+    const ok = await confirm({
+      title: `Riapri liquidazione ${periodo}`,
+      message: `Riaprire la liquidazione confermata? L'IVA delle ${liquidazione.fatture_incluse?.length || 0} fatture tornera disponibile e l'operazione sara registrata nell'audit.`,
+      variant: 'danger',
+    });
+    if (!ok) return;
     setBusyLiq(true);
     setMsg(null);
     try {
-      await api.post(`/api/iva/liquidazioni/${liquidazione.id}/riapri?motivo=Riapertura+manuale`);
+      await api.post(`/api/iva/liquidazioni/${liquidazione.id}/riapri?motivo=Riapertura+manuale+confermata`);
       setMsg({ tipo: 'ok', testo: `Liquidazione ${periodo} riaperta: IVA di nuovo disponibile.` });
       await caricaLiquidazione();
       await carica();
@@ -170,6 +190,13 @@ export default function GestioneIVA() {
   // Calcola pregresso: rilegge DAVVERO le fatture (tutte, o solo l'anno) e
   // ricalcola l'IVA. tuttoIlPregresso=true → nessun filtro anno.
   const ricalcolaAttribuzione = async (tuttoIlPregresso = true) => {
+    const ambito = tuttoIlPregresso ? 'tutto il pregresso' : `il solo anno ${anno}`;
+    const ok = await confirm({
+      title: 'Ricalcola attribuzione IVA',
+      message: `Ricalcolare ${ambito}? Le liquidazioni confermate non saranno modificate, ma i campi IVA delle fatture disponibili verranno aggiornati.`,
+      variant: 'warning',
+    });
+    if (!ok) return;
     setRicalcolo(true);
     setMsg(null);
     try {

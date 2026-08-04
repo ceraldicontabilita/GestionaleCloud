@@ -298,7 +298,33 @@ class Database:
 
         # --- Liquidazioni IVA (SPECIFICA_IVA.md §22, Fase 3) ---
         await _safe_index("liquidazioni_iva", "id", unique=True, name="idx_liq_iva_id")
-        await _safe_index("liquidazioni_iva", [("periodo", 1), ("versione", -1)], name="idx_liq_iva_periodo_ver")
+        # La coppia periodo/versione deve essere univoca. Aggiorniamo il vecchio
+        # indice non-univoco soltanto se i dati correnti sono gia puliti: in
+        # presenza di duplicati il collaudo li segnala e l'avvio non modifica
+        # automaticamente record contabili.
+        try:
+            duplicati_liq = await db["liquidazioni_iva"].aggregate([
+                {"$group": {"_id": {"periodo": "$periodo", "versione": "$versione"}, "n": {"$sum": 1}}},
+                {"$match": {"n": {"$gt": 1}}},
+                {"$limit": 1},
+            ]).to_list(1)
+            if not duplicati_liq:
+                info = await db["liquidazioni_iva"].index_information()
+                vecchio = info.get("idx_liq_iva_periodo_ver")
+                if vecchio and not vecchio.get("unique"):
+                    await db["liquidazioni_iva"].drop_index("idx_liq_iva_periodo_ver")
+                await _safe_index(
+                    "liquidazioni_iva",
+                    [("periodo", 1), ("versione", -1)],
+                    unique=True,
+                    name="idx_liq_iva_periodo_ver_unique",
+                )
+            else:
+                skipped += 1
+                logger.error("Indice IVA univoco non creato: esistono periodo/versione duplicati")
+        except Exception:
+            skipped += 1
+            logger.exception("Impossibile verificare/creare l'indice IVA periodo/versione")
         await _safe_index("liquidazioni_iva", [("periodo", 1), ("stato", 1)], name="idx_liq_iva_periodo_stato")
         await _safe_index("movimenti_iva_fattura", "id", unique=True, name="idx_mov_iva_id")
         await _safe_index("movimenti_iva_fattura", [("fattura_id", 1), ("created_at", -1)], name="idx_mov_iva_fattura")

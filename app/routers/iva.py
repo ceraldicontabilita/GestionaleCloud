@@ -12,12 +12,13 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import logging
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.database import Database
 from app.engines import iva_fatture
 from app.engines import liquidazione_iva_engine as liq
 from app.engines import riepilogo_iva_engine as riep
+from app.utils.dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -34,6 +35,18 @@ def _float(value: Any) -> float:
         return float(value or 0)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _utente_autenticato(current_user: Any, legacy_utente: Optional[str] = None) -> str:
+    """Usa l'identita JWT; il parametro legacy non puo sovrascriverla."""
+    if isinstance(current_user, dict):
+        return str(
+            current_user.get("user_id")
+            or current_user.get("email")
+            or current_user.get("name")
+            or "utente_autenticato"
+        )
+    return str(legacy_utente or "sistema")
 
 
 def _iva_corrispettivo(doc: Dict[str, Any]) -> float:
@@ -101,7 +114,8 @@ _PROJ_RICALCOLO = {
 @router.post("/ricalcola-attribuzione")
 async def ricalcola_attribuzione(
     anno: Optional[int] = Query(None, description="Limita al singolo anno (opzionale). Vuoto = TUTTE le fatture"),
-    utente: str = Query("admin"),
+    utente: Optional[str] = Query(None, deprecated=True),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Calcola il PREGRESSO: rilegge DAVVERO tutte le fatture di acquisto (o di
     un anno) e ricalcola i campi IVA (periodo attribuito per competenza, regola,
@@ -150,7 +164,7 @@ async def ricalcola_attribuzione(
     report = {
         "id": str(uuid.uuid4()),
         "eseguito_il": datetime.utcnow().isoformat(),
-        "eseguito_da": utente,
+        "eseguito_da": _utente_autenticato(current_user, utente),
         "filtro_anno": anno,
         "lette": lette,
         "modificate": modificate,
@@ -302,6 +316,8 @@ async def calcola_liquidazione(
         None,
         description="Override eccezionale; se assente viene calcolata dai corrispettivi XML",
     ),
+    motivo_override: Optional[str] = Query(None),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Calcola (o ricalcola) la liquidazione del periodo come BOZZA/CALCOLATA.
 
@@ -309,6 +325,13 @@ async def calcola_liquidazione(
     il periodo esiste già una liquidazione CONFERMATA o TRASMESSA, il ricalcolo
     è bloccato: va prima riaperta (§12, una confermata non si sovrascrive)."""
     db = Database.get_db()
+
+    try:
+        datetime.strptime(periodo, "%Y-%m")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Periodo non valido: usare YYYY-MM") from exc
+    if iva_vendite is not None and isinstance(current_user, dict) and not str(motivo_override or "").strip():
+        raise HTTPException(status_code=422, detail="Motivazione obbligatoria per l'override IVA vendite")
 
     confermata = await db[COLL_LIQ].find_one(
         {"periodo": periodo, "stato": {"$in": [liq.CONFERMATA, liq.TRASMESSA]}}
@@ -341,6 +364,8 @@ async def calcola_liquidazione(
     )
     doc = await _componi_liquidazione(db, periodo, iva_vendite_calcolata, versione, liq_id)
     doc["iva_vendite_fonte"] = "corrispettivi_xml" if iva_vendite is None else "override_manuale"
+    doc["calcolata_da"] = _utente_autenticato(current_user)
+    doc["motivo_override_iva_vendite"] = str(motivo_override or "").strip() or None
     if esistente:
         doc["created_at"] = esistente.get("created_at") or doc["data_calcolo"]
     else:
@@ -353,7 +378,8 @@ async def calcola_liquidazione(
 @router.post("/liquidazioni/{liq_id}/conferma")
 async def conferma_liquidazione(
     liq_id: str,
-    utente: str = Query("admin"),
+    utente: Optional[str] = Query(None, deprecated=True),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Conferma la liquidazione: marca l'IVA delle fatture incluse come
     utilizzata (§10) impedendo la doppia detrazione (§11). Idempotente per
@@ -366,9 +392,52 @@ async def conferma_liquidazione(
         raise HTTPException(status_code=409, detail="Liquidazione già confermata")
 
     periodo = doc["periodo"]
+    actor = _utente_autenticato(current_user, utente)
     ora = datetime.utcnow().isoformat()
+    fatture_incluse = [f for f in doc.get("fatture_incluse", []) if f.get("id")]
+    ids = [f["id"] for f in fatture_incluse]
+
+    correnti = await db[COLL].find(
+        {"id": {"$in": ids}},
+        {"_id": 0, "id": 1, "iva_utilizzata": 1, "liquidazione_id": 1},
+    ).to_list(max(len(ids), 1))
+    per_id = {f.get("id"): f for f in correnti}
+    mancanti = [fid for fid in ids if fid not in per_id]
+    conflitti = [
+        fid for fid in ids
+        if per_id.get(fid, {}).get("iva_utilizzata") is True
+        and per_id.get(fid, {}).get("liquidazione_id") != liq_id
+    ]
+    if mancanti or conflitti:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Liquidazione non confermata: il contenuto e cambiato dopo il calcolo",
+                "fatture_mancanti": mancanti,
+                "fatture_gia_utilizzate": conflitti,
+            },
+        )
+
     marcate = 0
-    saltate: List[str] = []
+    marcate_ids: List[str] = []
+    operazione_id = str(uuid.uuid4())
+
+    async def _annulla_conferma_parziale() -> None:
+        """Compensa le scritture gia eseguite se la conferma non si completa."""
+        if marcate_ids:
+            await db[COLL].update_many(
+                {"id": {"$in": marcate_ids}, "liquidazione_id": liq_id},
+                {"$set": {
+                    "iva_utilizzata": False,
+                    "periodo_iva_utilizzato": None,
+                    "liquidazione_id": None,
+                    "importo_iva_utilizzato": 0,
+                    "data_utilizzo_iva": None,
+                    "stato_detrazione_iva": "DA_INSERIRE",
+                    "disponibile_per_nuovo_calcolo": True,
+                }},
+            )
+        await db[COLL_MOV].delete_many({"operazione_id": operazione_id})
 
     for f in doc.get("fatture_incluse", []):
         fid = f.get("id")
@@ -389,17 +458,27 @@ async def conferma_liquidazione(
         )
         if res.modified_count:
             marcate += 1
-            await db[COLL_MOV].insert_one({
-                "id": str(uuid.uuid4()),
-                "fattura_id": fid,
-                "tipo_movimento": liq.MOV_UTILIZZO,
-                "periodo": periodo,
-                "importo_iva": f.get("iva"),
-                "liquidazione_id": liq_id,
-                "motivazione": f"Conferma liquidazione {periodo}",
-                "created_at": ora,
-                "created_by": utente,
-            })
+            marcate_ids.append(fid)
+            try:
+                await db[COLL_MOV].insert_one({
+                    "id": str(uuid.uuid4()),
+                    "fattura_id": fid,
+                    "tipo_movimento": liq.MOV_UTILIZZO,
+                    "periodo": periodo,
+                    "importo_iva": f.get("iva"),
+                    "liquidazione_id": liq_id,
+                    "motivazione": f"Conferma liquidazione {periodo}",
+                    "created_at": ora,
+                    "created_by": actor,
+                    "operazione_id": operazione_id,
+                })
+            except Exception as exc:
+                await _annulla_conferma_parziale()
+                logger.exception("Conferma IVA annullata: movimento audit non salvato")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Liquidazione non confermata: scrittura audit non riuscita",
+                ) from exc
             # STORIA: registra in quale dichiarazione/liquidazione IVA è entrata.
             try:
                 _fk = await db[COLL].find_one({"id": fid}, {"_id": 0, "invoice_key": 1})
@@ -416,29 +495,50 @@ async def conferma_liquidazione(
             except Exception:
                 logger.exception(f"Storia: hook IVA liquidazione fallito per {fid}")
         else:
-            saltate.append(fid)
+            await _annulla_conferma_parziale()
+            raise HTTPException(
+                status_code=409,
+                detail="Liquidazione non confermata: modifica concorrente rilevata",
+            )
 
-    await db[COLL_LIQ].update_one(
-        {"id": liq_id},
-        {"$set": {
-            "stato": liq.CONFERMATA,
-            "data_conferma": ora,
-            "confermata_da": utente,
-            "updated_at": ora,
-        }},
-    )
+    try:
+        conferma_res = await db[COLL_LIQ].update_one(
+            {"id": liq_id, "stato": {"$nin": [liq.CONFERMATA, liq.TRASMESSA]}},
+            {"$set": {
+                "stato": liq.CONFERMATA,
+                "data_conferma": ora,
+                "confermata_da": actor,
+                "updated_at": ora,
+            }},
+        )
+        if conferma_res.modified_count != 1:
+            await _annulla_conferma_parziale()
+            raise HTTPException(
+                status_code=409,
+                detail="Liquidazione non confermata: stato modificato durante l'operazione",
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        await _annulla_conferma_parziale()
+        logger.exception("Conferma IVA annullata: liquidazione non aggiornata")
+        raise HTTPException(
+            status_code=500,
+            detail="Liquidazione non confermata: salvataggio finale non riuscito",
+        ) from exc
     doc.update({"stato": liq.CONFERMATA, "data_conferma": ora})
     return {
         "success": True, "liquidazione": doc,
-        "fatture_marcate": marcate, "fatture_gia_utilizzate": saltate,
+        "fatture_marcate": marcate, "fatture_gia_utilizzate": [],
     }
 
 
 @router.post("/liquidazioni/{liq_id}/riapri")
 async def riapri_liquidazione(
     liq_id: str,
-    utente: str = Query("admin"),
+    utente: Optional[str] = Query(None, deprecated=True),
     motivo: str = Query("Riapertura", description="Motivazione obbligatoria (§19)"),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Riapre una liquidazione confermata liberando l'IVA delle sue fatture
     (torna disponibile per un nuovo calcolo)."""
@@ -449,12 +549,15 @@ async def riapri_liquidazione(
     if doc.get("stato") not in (liq.CONFERMATA, liq.TRASMESSA):
         raise HTTPException(status_code=409, detail="Solo una liquidazione confermata può essere riaperta")
 
-    liberate = await _libera_fatture(db, liq_id, doc["periodo"], utente, motivo)
+    actor = _utente_autenticato(current_user, utente)
+    if not motivo or not motivo.strip():
+        raise HTTPException(status_code=422, detail="La motivazione della riapertura e obbligatoria")
+    liberate = await _libera_fatture(db, liq_id, doc["periodo"], actor, motivo.strip())
     ora = datetime.utcnow().isoformat()
     await db[COLL_LIQ].update_one(
         {"id": liq_id},
-        {"$set": {"stato": liq.RIAPERTA, "motivo_rettifica": motivo,
-                  "riaperta_da": utente, "updated_at": ora}},
+        {"$set": {"stato": liq.RIAPERTA, "motivo_rettifica": motivo.strip(),
+                  "riaperta_da": actor, "updated_at": ora}},
     )
     doc.update({"stato": liq.RIAPERTA})
     return {"success": True, "liquidazione": doc, "fatture_liberate": liberate}
@@ -496,9 +599,10 @@ async def _libera_fatture(db, liq_id: str, periodo: str, utente: str, motivo: st
 @router.post("/liquidazioni/{liq_id}/rettifica")
 async def rettifica_liquidazione(
     liq_id: str,
-    utente: str = Query("admin"),
+    utente: Optional[str] = Query(None, deprecated=True),
     motivo: str = Query(..., description="Motivazione obbligatoria della rettifica (§19)"),
-    iva_vendite: float = Query(0.0),
+    iva_vendite: Optional[float] = Query(None),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Rettifica una liquidazione confermata: la marca RETTIFICATA, libera le
     sue fatture e produce una NUOVA versione ricalcolata (§13)."""
@@ -510,21 +614,30 @@ async def rettifica_liquidazione(
         raise HTTPException(status_code=409, detail="Solo una liquidazione confermata può essere rettificata")
 
     periodo = doc["periodo"]
-    await _libera_fatture(db, liq_id, periodo, utente, motivo)
+    actor = _utente_autenticato(current_user, utente)
+    if not motivo or not motivo.strip():
+        raise HTTPException(status_code=422, detail="La motivazione della rettifica e obbligatoria")
+    await _libera_fatture(db, liq_id, periodo, actor, motivo.strip())
     ora = datetime.utcnow().isoformat()
     await db[COLL_LIQ].update_one(
         {"id": liq_id},
-        {"$set": {"stato": liq.RETTIFICATA, "motivo_rettifica": motivo,
-                  "rettificata_da": utente, "updated_at": ora}},
+        {"$set": {"stato": liq.RETTIFICATA, "motivo_rettifica": motivo.strip(),
+                   "rettificata_da": actor, "updated_at": ora}},
     )
 
     # Nuova versione ricalcolata (bozza di lavoro)
     nuovo_id = str(uuid.uuid4())
     ultima = await db[COLL_LIQ].find_one({"periodo": periodo}, sort=[("versione", -1)])
     versione = int(ultima.get("versione") or 0) + 1 if ultima else 1
-    nuovo = await _componi_liquidazione(db, periodo, iva_vendite, versione, nuovo_id)
+    iva_vendite_calcolata = (
+        await _iva_vendite_corrispettivi(db, periodo)
+        if iva_vendite is None
+        else round(float(iva_vendite), 2)
+    )
+    nuovo = await _componi_liquidazione(db, periodo, iva_vendite_calcolata, versione, nuovo_id)
     nuovo["created_at"] = ora
-    nuovo["motivo_rettifica"] = motivo
+    nuovo["motivo_rettifica"] = motivo.strip()
+    nuovo["iva_vendite_fonte"] = "corrispettivi_xml" if iva_vendite is None else "override_manuale"
     await db[COLL_LIQ].insert_one(nuovo)
     nuovo.pop("_id", None)
     return {"success": True, "rettificata": liq_id, "nuova_liquidazione": nuovo}
@@ -675,6 +788,9 @@ async def _azione_stato_fattura(
     fid: str, nuovo_stato: str, tipo_movimento: str, motivo: str, utente: str,
     extra_set: Optional[Dict[str, Any]] = None, consenti_se_utilizzata: bool = False,
 ) -> Dict[str, Any]:
+    if not motivo or not motivo.strip():
+        raise HTTPException(status_code=422, detail="La motivazione e obbligatoria")
+    motivo = motivo.strip()
     db = Database.get_db()
     inv = await db[COLL].find_one({"id": fid}, {"_id": 0})
     if not inv:
@@ -707,56 +823,76 @@ async def _azione_stato_fattura(
 
 
 @router.post("/fatture/{fid}/escludi")
-async def escludi_fattura(fid: str, motivo: str = Query(...), utente: str = Query("admin")):
+async def escludi_fattura(
+    fid: str, motivo: str = Query(...), utente: Optional[str] = Query(None, deprecated=True),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+):
     """Esclude manualmente l'IVA della fattura dal calcolo (§19)."""
     return await _azione_stato_fattura(
-        fid, "ESCLUSA", liq.MOV_ESCLUSIONE, motivo, utente,
+        fid, "ESCLUSA", liq.MOV_ESCLUSIONE, motivo, _utente_autenticato(current_user, utente),
         extra_set={"disponibile_per_nuovo_calcolo": False, "motivo_esclusione": motivo},
     )
 
 
 @router.post("/fatture/{fid}/includi")
-async def includi_fattura(fid: str, motivo: str = Query("Reinclusa manualmente"), utente: str = Query("admin")):
+async def includi_fattura(
+    fid: str, motivo: str = Query("Reinclusa manualmente"), utente: Optional[str] = Query(None, deprecated=True),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+):
     """Reinserisce nel calcolo una fattura esclusa/rinviata (§19)."""
     return await _azione_stato_fattura(
-        fid, "DA_INSERIRE", liq.MOV_ATTRIBUZIONE, motivo, utente,
+        fid, "DA_INSERIRE", liq.MOV_ATTRIBUZIONE, motivo, _utente_autenticato(current_user, utente),
         extra_set={"disponibile_per_nuovo_calcolo": True, "motivo_esclusione": None},
     )
 
 
 @router.post("/fatture/{fid}/rinvia")
-async def rinvia_fattura(fid: str, motivo: str = Query(...), utente: str = Query("admin")):
+async def rinvia_fattura(
+    fid: str, motivo: str = Query(...), utente: Optional[str] = Query(None, deprecated=True),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+):
     """Rinvia l'IVA a un periodo successivo (§19)."""
     return await _azione_stato_fattura(
-        fid, "RINVIATA", liq.MOV_ESCLUSIONE, motivo, utente,
+        fid, "RINVIATA", liq.MOV_ESCLUSIONE, motivo, _utente_autenticato(current_user, utente),
         extra_set={"disponibile_per_nuovo_calcolo": True},
     )
 
 
 @router.post("/fatture/{fid}/indetraibile")
-async def indetraibile_fattura(fid: str, motivo: str = Query(...), utente: str = Query("admin")):
+async def indetraibile_fattura(
+    fid: str, motivo: str = Query(...), utente: Optional[str] = Query(None, deprecated=True),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+):
     """Segna l'IVA come indetraibile per natura/limitazione (§19)."""
     return await _azione_stato_fattura(
-        fid, "INDETRAIBILE", liq.MOV_RETTIFICA, motivo, utente,
+        fid, "INDETRAIBILE", liq.MOV_RETTIFICA, motivo, _utente_autenticato(current_user, utente),
         extra_set={"disponibile_per_nuovo_calcolo": False},
     )
 
 
 @router.post("/fatture/{fid}/recupero-annuale")
-async def recupero_annuale_fattura(fid: str, motivo: str = Query(...), utente: str = Query("admin")):
+async def recupero_annuale_fattura(
+    fid: str, motivo: str = Query(...), utente: Optional[str] = Query(None, deprecated=True),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+):
     """Segna l'IVA come recuperata nella dichiarazione annuale (§19)."""
     return await _azione_stato_fattura(
-        fid, "RECUPERATA_IN_DICHIARAZIONE_ANNUALE", liq.MOV_RECUPERO_ANNUALE, motivo, utente,
+        fid, "RECUPERATA_IN_DICHIARAZIONE_ANNUALE", liq.MOV_RECUPERO_ANNUALE, motivo, _utente_autenticato(current_user, utente),
     )
 
 
 @router.post("/fatture/{fid}/correggi-periodo")
 async def correggi_periodo_fattura(
     fid: str, periodo: str = Query(..., description="Nuovo periodo 'YYYY-MM'"),
-    motivo: str = Query(...), utente: str = Query("admin"),
+    motivo: str = Query(...), utente: Optional[str] = Query(None, deprecated=True),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
 ):
     """Corregge manualmente il periodo IVA attribuito (§19)."""
+    try:
+        datetime.strptime(periodo, "%Y-%m")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Periodo non valido: usare YYYY-MM") from exc
     return await _azione_stato_fattura(
-        fid, "DA_INSERIRE", liq.MOV_RETTIFICA, motivo, utente,
+        fid, "DA_INSERIRE", liq.MOV_RETTIFICA, motivo, _utente_autenticato(current_user, utente),
         extra_set={"periodo_iva_attribuito": periodo, "regola_iva_applicata": "CORREZIONE_MANUALE"},
     )
