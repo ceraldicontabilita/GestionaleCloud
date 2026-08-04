@@ -1,6 +1,7 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Archive, Upload } from 'lucide-react';
+import { Archive, RefreshCw, Upload } from 'lucide-react';
+import { toast } from 'sonner';
 import api from '../../api';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { useHashState } from '../../hooks/useHashState';
@@ -43,6 +44,7 @@ export default function DocumentiHub() {
   const activeTab = getTabFromPath(location.pathname);
   const [visitedTabs, setVisitedTabs] = useState(() => new Set([initTab]));
   const [driveCatalog, setDriveCatalog] = useState(null);
+  const [driveSyncing, setDriveSyncing] = useState(false);
 
   useEffect(() => {
     const tab = getTabFromPath(location.pathname);
@@ -61,6 +63,22 @@ export default function DocumentiHub() {
   const contents = {
     archivio: ArchivioContent,
     import: ImportContent,
+  };
+
+  const syncDriveNow = async () => {
+    setDriveSyncing(true);
+    try {
+      const response = await api.post('/api/documenti/drive/sync');
+      toast.success('Sincronizzazione Drive avviata', {
+        description: response.data?.message,
+      });
+    } catch (error) {
+      toast.error('Sincronizzazione Drive non avviata', {
+        description: error.response?.data?.detail || error.message,
+      });
+    } finally {
+      setDriveSyncing(false);
+    }
   };
 
   return (
@@ -90,7 +108,22 @@ export default function DocumentiHub() {
               <strong>Google Drive collegato</strong>
               <span>{driveCatalog.configured} cartelle censite, {driveCatalog.automatic} con parser disponibile</span>
             </div>
-            <span className="documenti-hub__drive-total">{driveCatalog.total}</span>
+            <div className="documenti-hub__drive-controls">
+              {driveCatalog.automatic > 0 && (
+                <button
+                  className="documenti-hub__drive-sync"
+                  type="button"
+                  onClick={syncDriveNow}
+                  disabled={driveSyncing}
+                >
+                  <RefreshCw size={16} className={driveSyncing ? 'is-spinning' : ''} aria-hidden="true" />
+                  {driveSyncing ? 'Avvio in corso...' : 'Sincronizza Drive'}
+                </button>
+              )}
+              <span className="documenti-hub__drive-total" title="Cartelle collegate">
+                {driveCatalog.total}
+              </span>
+            </div>
           </div>
           <div className="documenti-hub__drive-grid">
             {driveCatalog.folders.map(folder => (

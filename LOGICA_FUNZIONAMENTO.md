@@ -116,6 +116,11 @@ senza esporre gli ID Drive. Le aree con parser verificato sono indicate come
 con parser disponibile; le altre restano catalogate e non generano scritture contabili
 finche il relativo parser non viene validato su documenti autorizzati.
 
+Il comando unico `Sincronizza Drive` nella pagina Documenti avvia in background
+tutti gli import automatici configurati. Ogni importatore mantiene il proprio lock
+anti-sovrapposizione e la propria deduplica; il comando non forza parser sulle aree
+solo catalogate e non cancella i file sorgente.
+
 Per ogni radice Drive operativa il sistema crea e usa tre sottocartelle:
 `Da elaborare`, `Elaborate` ed `Errori`. Lo scheduler legge `Da elaborare`;
 importati e duplicati vanno in `Elaborate`, mentre file vuoti, non leggibili o
