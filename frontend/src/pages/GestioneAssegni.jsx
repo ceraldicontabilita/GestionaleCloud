@@ -43,6 +43,20 @@ export const residuoFattura = fattura => {
   return Math.max(0, totale - (Number(fattura?.importo_pagato) || 0));
 };
 
+const TOLLERANZA_ASSEGNO = 0.005;
+
+export const totaleQuoteFatture = fatture =>
+  (fatture || []).reduce(
+    (somma, fattura) => somma + Number(fattura?.quota ?? fattura?.importo ?? 0),
+    0
+  );
+
+export const assegnoInteramenteAssociato = (importoAssegno, fatture) => {
+  const importo = Number(importoAssegno || 0);
+  if (importo <= 0 || !fatture?.length) return false;
+  return Math.abs(importo - totaleQuoteFatture(fatture)) <= TOLLERANZA_ASSEGNO;
+};
+
 const distanzaFatturaDaAssegno = (fattura, importoAssegno) => {
   const importo = Number(importoAssegno || 0);
   const valori = [residuoFattura(fattura)];
@@ -407,6 +421,12 @@ export default function GestioneAssegni() {
     if (exists) {
       setSelectedFatture(selectedFatture.filter(f => f.id !== fattura.id));
     } else if (selectedFatture.length < 4) {
+      if (assegnoInteramenteAssociato(editingAssegnoForFatture?.importo, selectedFatture)) {
+        toast.info('Assegno già interamente associato', {
+          description: 'Rimuovi prima la fattura collegata se devi modificare l’associazione.',
+        });
+        return;
+      }
       // REGOLA CONTABILE: Un assegno può pagare solo fatture dello STESSO fornitore
       const fornitoreNuovo =
         fattura.supplier_name || fattura.cedente_denominazione || fattura.fornitore;
@@ -429,16 +449,19 @@ export default function GestioneAssegni() {
       const importoRaw = parseFloat(
         fattura.total_amount || fattura.importo_totale || fattura.importo || 0
       );
-      const giaSelezionato = selectedFatture.reduce(
-        (sum, f) => sum + Math.max(0, f.quota ?? f.importo ?? 0), 0
-      );
+      const giaSelezionato = totaleQuoteFatture(selectedFatture);
       const disponibileAssegno = Math.max(
         0, Number(editingAssegnoForFatture?.importo || 0) - giaSelezionato
       );
       const residuo = residuoFattura(fattura) || importoRaw;
       const quota = isNC
         ? -Math.abs(importoRaw)
-        : Math.min(residuo, disponibileAssegno || residuo);
+        : Math.min(residuo, disponibileAssegno);
+
+      if (!isNC && quota <= TOLLERANZA_ASSEGNO) {
+        toast.info('L’importo dell’assegno è già completamente coperto');
+        return;
+      }
 
       setSelectedFatture([
         ...selectedFatture,
@@ -769,7 +792,19 @@ export default function GestioneAssegni() {
     setFilterSoloDaAssociare(false);
   };
 
+  const totaleFattureSelezionate = useMemo(
+    () => totaleQuoteFatture(selectedFatture),
+    [selectedFatture]
+  );
+  const differenzaAssegno =
+    Number(editingAssegnoForFatture?.importo || 0) - totaleFattureSelezionate;
+  const assegnoCoperto = assegnoInteramenteAssociato(
+    editingAssegnoForFatture?.importo,
+    selectedFatture
+  );
+
   const fattureVisibili = useMemo(() => {
+    if (assegnoCoperto) return [];
     const q = filterFatturaModal.trim().toLowerCase();
     if (!q) return fatture.slice(0, 200);
     const qImporto = parseImportoFiltro(q);
@@ -781,7 +816,7 @@ export default function GestioneAssegni() {
       const importo = Number(f.total_amount || f.importo_totale || 0);
       return testo.includes(q) || (qImporto !== null && Math.abs(importo - qImporto) <= 0.01);
     }).slice(0, 200);
-  }, [fatture, filterFatturaModal]);
+  }, [fatture, filterFatturaModal, assegnoCoperto]);
 
   // Raggruppa assegni per carnet (primi 10 cifre del numero) - usa filteredAssegni
   const groupByCarnet = () => {
@@ -2998,7 +3033,11 @@ export default function GestioneAssegni() {
                     gap: 6,
                   }}
                 >
-                  ℹ️ Puoi collegare fino a <strong>4 fatture</strong> a un singolo assegno
+                  {assegnoCoperto ? (
+                    <>✓ Importo completamente coperto dalla fattura collegata</>
+                  ) : (
+                    <>ℹ️ Collega più fatture solo quando la loro somma coincide con l’assegno</>
+                  )}
                 </p>
               </div>
 
@@ -3014,7 +3053,7 @@ export default function GestioneAssegni() {
                   }}
                 >
                   <strong style={{ color: COLORS.success }}>
-                    ✓ Fatture Selezionate ({selectedFatture.length}/4):
+                    ✓ Fatture collegate: {selectedFatture.length}
                   </strong>
                   <div style={{ marginTop: 10 }}>
                     {selectedFatture.map(f => (
@@ -3072,7 +3111,7 @@ export default function GestioneAssegni() {
                     >
                       <span>TOTALE FATTURE:</span>
                       <span style={{ color: COLORS.success }}>
-                        {formatEuro(selectedFatture.reduce((sum, f) => sum + (f.quota ?? f.importo ?? 0), 0))}
+                        {formatEuro(totaleFattureSelezionate)}
                       </span>
                     </div>
                     {/* Differenza con importo assegno */}
@@ -3084,10 +3123,7 @@ export default function GestioneAssegni() {
                           justifyContent: 'space-between',
                           fontSize: 13,
                           color:
-                            Math.abs(
-                              (editingAssegnoForFatture?.importo || 0) -
-                                selectedFatture.reduce((sum, f) => sum + (f.quota ?? f.importo ?? 0), 0)
-                            ) < 1
+                            Math.abs(differenzaAssegno) <= TOLLERANZA_ASSEGNO
                               ? COLORS.success
                               : COLORS.warning,
                         }}
@@ -3095,8 +3131,7 @@ export default function GestioneAssegni() {
                         <span>Differenza:</span>
                         <span style={{ fontWeight: 600 }}>
                           {formatEuro(
-                            (editingAssegnoForFatture?.importo || 0) -
-                              selectedFatture.reduce((sum, f) => sum + (f.quota ?? f.importo ?? 0), 0)
+                            differenzaAssegno
                           )}
                         </span>
                       </div>
@@ -3106,7 +3141,23 @@ export default function GestioneAssegni() {
               )}
 
               {/* Lista Fatture Disponibili */}
-              <div style={{ marginBottom: 15 }}>
+              {assegnoCoperto && (
+                <div
+                  data-testid="assegno-coperto-message"
+                  style={{
+                    marginBottom: 15,
+                    padding: 14,
+                    color: COLORS.success,
+                    background: COLORS.successLight,
+                    border: `1px solid ${COLORS.success}`,
+                    borderRadius: BORDER_RADIUS.md,
+                    fontWeight: 600,
+                  }}
+                >
+                  ✓ Associazione completa. Non occorre aggiungere altre fatture.
+                </div>
+              )}
+              <div style={{ marginBottom: 15, display: assegnoCoperto ? 'none' : 'block' }}>
                 <label
                   style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: COLORS.gray[700] }}
                 >

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { filtraAssegni, normalizzaBeneficiarioAssegno } from './GestioneAssegni';
+import {
+  assegnoInteramenteAssociato,
+  filtraAssegni,
+  normalizzaBeneficiarioAssegno,
+  totaleQuoteFatture,
+} from './GestioneAssegni';
 
 const ASSEGNI = [
   { id: 'a1', numero: '208769333', importo: 1097.47, beneficiario: '-' },
@@ -27,5 +32,21 @@ describe('Filtri pagina assegni', () => {
   it('inizia a filtrare il numero solo dopo tre cifre', () => {
     expect(filtraAssegni(ASSEGNI, { numeroAssegno: '20' })).toHaveLength(3);
     expect(filtraAssegni(ASSEGNI, { numeroAssegno: '933' }).map(a => a.id)).toEqual(['a1']);
+  });
+});
+
+describe('Copertura assegno con fatture collegate', () => {
+  it('considera completo l’assegno da 652,74 associato alla fattura da 652,74', () => {
+    const collegate = [{ id: 'fattura-1', quota: 652.74 }];
+
+    expect(totaleQuoteFatture(collegate)).toBeCloseTo(652.74, 2);
+    expect(assegnoInteramenteAssociato(652.74, collegate)).toBe(true);
+  });
+
+  it('consente altre fatture soltanto finché resta un importo da coprire', () => {
+    expect(assegnoInteramenteAssociato(652.74, [{ quota: 331.04 }])).toBe(false);
+    expect(
+      assegnoInteramenteAssociato(652.74, [{ quota: 331.04 }, { quota: 321.70 }])
+    ).toBe(true);
   });
 });
