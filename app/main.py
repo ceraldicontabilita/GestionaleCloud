@@ -23,6 +23,7 @@ logger = get_logger(__name__)
 _PROJECT_ROOT = os.path.realpath(os.path.join(os.path.dirname(__file__), ".."))
 _FRONTEND_DIST = os.path.realpath(os.path.join(_PROJECT_ROOT, "frontend", "dist"))
 _FRONTEND_PUBLIC = os.path.realpath(os.path.join(_PROJECT_ROOT, "frontend", "public"))
+SALARI_SYNC_MARKER = "sync_prima_nota_salari_da_cedolini_2018_20260804_v1"
 
 
 @asynccontextmanager
@@ -277,7 +278,7 @@ async def lifespan(app: FastAPI):
         # ordinaria da 13a/14a; pagamenti e riconciliazioni esistenti restano
         # nei record originali e non vengono mai eliminati.
         try:
-            salari_marker = "sync_prima_nota_salari_da_cedolini_2018_20260804_v1"
+            salari_marker = SALARI_SYNC_MARKER
             salari_run = await db["migration_runs"].find_one({"id": salari_marker})
             if not salari_run or salari_run.get("status") != "completed":
                 from app.services.salari_sync import sincronizza_prima_nota_da_cedolini
@@ -474,6 +475,16 @@ async def root(request: Request):
 async def health_check():
     from datetime import datetime, timezone
 
+    salari_sync = "not_started"
+    try:
+        if Database.db is not None:
+            run = await Database.db["migration_runs"].find_one(
+                {"id": SALARI_SYNC_MARKER}, {"_id": 0, "status": 1}
+            )
+            salari_sync = (run or {}).get("status") or "not_started"
+    except Exception:
+        salari_sync = "unavailable"
+
     return {
         "status": "healthy",
         "database": "connected" if Database.db is not None else "disconnected",
@@ -481,6 +492,7 @@ async def health_check():
         # Prefisso pubblico e non sensibile: permette di verificare che
         # Render stia realmente servendo il commit atteso.
         "deploy_commit": (os.getenv("RENDER_GIT_COMMIT") or "")[:8] or None,
+        "salari_sync": salari_sync,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
