@@ -478,6 +478,9 @@ async def health_check():
         "status": "healthy",
         "database": "connected" if Database.db is not None else "disconnected",
         "version": settings.APP_VERSION,
+        # Prefisso pubblico e non sensibile: permette di verificare che
+        # Render stia realmente servendo il commit atteso.
+        "deploy_commit": (os.getenv("RENDER_GIT_COMMIT") or "")[:8] or None,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
