@@ -125,7 +125,12 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
     importo_totale = float(fattura.get("total_amount") or fattura.get("importo_totale") or 0)
     iva = float(fattura.get("total_tax") or fattura.get("iva") or fattura.get("totale_iva") or 0)
     iva_detraibile_raw = fattura.get("iva_detraibile")
-    iva_detraibile = iva if iva_detraibile_raw is None else float(iva_detraibile_raw or 0)
+    if iva > 0 and iva_detraibile_raw is None:
+        return {
+            "stato": "da_verificare",
+            "motivo": "IVA detraibile non classificata",
+        }
+    iva_detraibile = float(iva_detraibile_raw or 0)
     iva_detraibile = round(max(0.0, min(iva, iva_detraibile)), 2)
     iva_indetraibile = round(max(0.0, iva - iva_detraibile), 2)
     imponibile = float(fattura.get("imponibile") or (importo_totale - iva) or 0)

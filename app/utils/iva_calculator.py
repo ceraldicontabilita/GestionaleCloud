@@ -84,26 +84,10 @@ async def calculate_daily_iva(db, date_str: str) -> Dict[str, Any]:
         }, {"_id": 0}).to_list(1000)
         
         for fatt in fatture:
-            # Calcola IVA dalla fattura
-            iva_fattura = 0.0
+            # Il credito IVA nasce soltanto dalla classificazione esplicita.
+            # Aliquote, righe e totale documento non provano la detraibilita.
+            iva_fattura = float(fatt.get("iva_detraibile") or 0)
             totale_fattura = float(fatt.get("total_amount", 0) or 0)
-            
-            # Se abbiamo le linee prodotto, calcola IVA per ogni riga
-            linee = fatt.get("linee", [])
-            if linee:
-                for linea in linee:
-                    prezzo_totale = float(linea.get("prezzo_totale", 0) or 0)
-                    aliquota = float(linea.get("aliquota_iva", 22) or 22)
-                    
-                    if prezzo_totale > 0 and aliquota > 0:
-                        # Scorporo IVA: IVA = prezzo_totale - (prezzo_totale / (1 + aliquota/100))
-                        imponibile = prezzo_totale / (1 + aliquota / 100)
-                        iva_linea = prezzo_totale - imponibile
-                        iva_fattura += iva_linea
-            else:
-                # Fallback: usa aliquota fattura o 22% ordinaria
-                aliq = float(fatt.get('aliquota_iva', 0) or fatt.get('vat_rate', 0) or 22)
-                iva_fattura = totale_fattura - (totale_fattura / (1 + aliq / 100))
             
             result["iva_credito"] += iva_fattura
             result["fatture"]["totale_fatturato"] += totale_fattura
@@ -221,15 +205,15 @@ async def calculate_annual_iva_report(db, year: int) -> Dict[str, Any]:
             corr_result = await db["corrispettivi"].aggregate(corr_pipeline).to_list(1)
             iva_debito = corr_result[0]["totale_iva"] if corr_result else 0
             
-            # IVA Credito da fatture (stima 22%)
+            # IVA Credito da fatture gia classificata
             fatt_pipeline = [
                 {"$match": {"invoice_date": {"$gte": month_start, "$lte": month_end}}},
-                {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
+                {"$group": {"_id": None, "totale_iva": {
+                    "$sum": {"$ifNull": ["$iva_detraibile", 0]}
+                }}}
             ]
             fatt_result = await db["invoices"].aggregate(fatt_pipeline).to_list(1)
-            totale_fatture = fatt_result[0]["totale"] if fatt_result else 0
-            # Stima IVA credito con aliquota media acquisti (22% ordinaria)
-            iva_credito = totale_fatture - (totale_fatture / 1.22) if totale_fatture > 0 else 0
+            iva_credito = fatt_result[0]["totale_iva"] if fatt_result else 0
             
             saldo = iva_debito - iva_credito
             

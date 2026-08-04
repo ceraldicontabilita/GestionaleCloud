@@ -197,10 +197,10 @@ async def _calcola_saldi_piano_conti(db, anno: str = None) -> Dict[str, float]:
             "_id": None,
             "totale":     {"$sum": {"$ifNull": ["$total_amount", {"$ifNull": ["$importo_totale", 0]}]}},
             "imponibile": {"$sum": {"$ifNull": ["$importo_imponibile", {"$ifNull": ["$imponibile", 0]}]}},
-            "iva":        {"$sum": {"$ifNull": [
-                "$iva_detraibile",
-                {"$ifNull": ["$importo_iva", {"$ifNull": ["$iva", 0]}]},
-            ]}},
+            # Il saldo IVA a credito include soltanto importi classificati.
+            # `importo_iva` e `iva` descrivono l'imposta del documento, non
+            # provano la detraibilita fiscale.
+            "iva":        {"$sum": {"$ifNull": ["$iva_detraibile", 0]}},
         }}
     ]
     res = await db["invoices"].aggregate(pipe_inv).to_list(1)

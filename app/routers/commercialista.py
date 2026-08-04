@@ -917,6 +917,7 @@ async def export_excel_commercialista(anno: int, mese: int):
     
     tot_imponibile = 0
     tot_iva = 0
+    tot_iva_detraibile = 0
     tot_fatture = 0
     
     for row, f in enumerate(fatture, 2):
@@ -926,6 +927,7 @@ async def export_excel_commercialista(anno: int, mese: int):
         
         tot_imponibile += imponibile
         tot_iva += iva
+        tot_iva_detraibile += float(f.get('iva_detraibile', 0) or 0)
         tot_fatture += totale
         
         values = [
@@ -1083,9 +1085,9 @@ async def export_excel_commercialista(anno: int, mese: int):
     
     iva_data = [
         ('IVA a debito (vendite)', iva_vendite),
-        ('IVA a credito (acquisti)', tot_iva),
+        ('IVA a credito (acquisti)', tot_iva_detraibile),
         ('', ''),
-        ('SALDO IVA', iva_vendite - tot_iva)
+        ('SALDO IVA', iva_vendite - tot_iva_detraibile)
     ]
     
     for row, (voce, importo) in enumerate(iva_data, 2):
@@ -1130,8 +1132,8 @@ async def export_excel_commercialista(anno: int, mese: int):
         ('', ''),
         ('IVA', ''),
         ('  IVA a debito', iva_vendite),
-        ('  IVA a credito', tot_iva),
-        ('  Saldo IVA', iva_vendite - tot_iva)
+        ('  IVA a credito', tot_iva_detraibile),
+        ('  Saldo IVA', iva_vendite - tot_iva_detraibile)
     ]
     
     for row, (voce, valore) in enumerate(riepilogo, 3):

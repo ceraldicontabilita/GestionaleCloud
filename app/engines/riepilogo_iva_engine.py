@@ -15,8 +15,6 @@ from app.constants.tipi_documento import TIPI_NOTA_CREDITO
 
 def _iva(f: Dict[str, Any]) -> float:
     val = f.get("iva_detraibile")
-    if val is None:
-        val = f.get("iva")
     try:
         return round(float(val or 0), 2)
     except (TypeError, ValueError):

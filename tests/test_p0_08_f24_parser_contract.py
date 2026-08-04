@@ -24,3 +24,10 @@ def test_processa_f24_imposta_file_name_per_dedup():
     find_one({'file_name': None}) salterebbe sempre l'import (review P0.8)."""
     src = Path("app/routers/documenti.py").read_text(encoding="utf-8")
     assert 'f24_data["file_name"] = doc.get("filename")' in src
+
+
+def test_processa_f24_usa_hash_e_collezione_canonica():
+    src = Path("app/routers/documenti.py").read_text(encoding="utf-8")
+    assert 'f24_data["pdf_hash"] = hashlib.md5(pdf_content).hexdigest()' in src
+    assert 'await salva_f24(db, f24_data, source="documents_inbox")' in src
+    assert '"processed_to": "f24_unificato"' in src

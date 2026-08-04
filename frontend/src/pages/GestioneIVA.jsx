@@ -6,6 +6,7 @@ import { formatEuro, formatDateIT, COLORS, MESI_FULL } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import { Button, Badge } from '../components/ds';
 import { useConfirm } from '../components/ui/ConfirmDialog';
+import './GestioneIVA.css';
 
 /**
  * Gestione IVA — Fase 1: "IVA disponibile non ancora utilizzata"
@@ -314,7 +315,11 @@ export default function GestioneIVA() {
       </div>
 
       {msg && (
-        <div style={{ ...STILI.msg, ...(msg.tipo === 'ok' ? STILI.msgOk : STILI.msgErr) }}>
+        <div
+          role={msg.tipo === 'ok' ? 'status' : 'alert'}
+          aria-live="polite"
+          style={{ ...STILI.msg, ...(msg.tipo === 'ok' ? STILI.msgOk : STILI.msgErr) }}
+        >
           {msg.testo}
         </div>
       )}
@@ -328,7 +333,7 @@ export default function GestioneIVA() {
         </div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
-          <table style={STILI.tabella} data-testid="iva-tabella">
+          <table className="iva-responsive-table" style={STILI.tabella} data-testid="iva-tabella">
             <thead>
               <tr>
                 <th style={STILI.th}>Fornitore</th>
@@ -346,20 +351,20 @@ export default function GestioneIVA() {
                 const st = STATO_LABEL[f.stato_detrazione_iva] || STATO_LABEL.DA_INSERIRE;
                 return (
                   <tr key={f.id || i} style={{ borderTop: `1px solid ${COLORS.border}` }}>
-                    <td style={STILI.td}>{f.supplier_name || '—'}</td>
-                    <td style={STILI.td}>{f.invoice_number || '—'}</td>
-                    <td style={STILI.td}>{formatDateIT(f.data_documento)}</td>
-                    <td style={STILI.td}>{formatDateIT(f.data_ricezione)}</td>
-                    <td style={STILI.td}>
+                    <td data-label="Fornitore" style={STILI.td}>{f.supplier_name || '—'}</td>
+                    <td data-label="N. fattura" style={STILI.td}>{f.invoice_number || '—'}</td>
+                    <td data-label="Data documento" style={STILI.td}>{formatDateIT(f.data_documento)}</td>
+                    <td data-label="Ricezione" style={STILI.td}>{formatDateIT(f.data_ricezione)}</td>
+                    <td data-label="Periodo IVA" style={STILI.td}>
                       <strong>{f.periodo_iva_attribuito || '—'}</strong>
                     </td>
-                    <td style={{ ...STILI.td, fontSize: 12, color: COLORS.textMuted }}>
+                    <td data-label="Regola" style={{ ...STILI.td, fontSize: 12, color: COLORS.textMuted }}>
                       {REGOLA_LABEL[f.regola_iva_applicata] || f.regola_iva_applicata || '—'}
                     </td>
-                    <td style={{ ...STILI.td, textAlign: 'right', fontWeight: 700 }}>
-                      {formatEuro(f.iva_detraibile || f.iva || 0)}
+                    <td data-label="IVA detraibile" style={{ ...STILI.td, textAlign: 'right', fontWeight: 700 }}>
+                      {formatEuro(f.iva_detraibile ?? 0)}
                     </td>
-                    <td style={STILI.td}>
+                    <td data-label="Stato" style={STILI.td}>
                       <Badge variant={st.variant}>{st.label}</Badge>
                     </td>
                   </tr>

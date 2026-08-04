@@ -130,6 +130,28 @@ def test_check_liquidazioni_iva_integrita_formula_e_fatture():
     assert r["nome"] == "liquidazioni_iva_integrita"
 
 
+def test_check_fatture_iva_classificazione_segnala_solo_casi_reali():
+    db = _Db({
+        "invoices": _Coll([
+            {"id": "ok", "iva_documento": 22, "iva_detraibile": 11,
+             "stato_detrazione_iva": "DA_INSERIRE"},
+            {"id": "review", "iva_documento": 22, "iva_detraibile": 0,
+             "stato_detrazione_iva": "DA_VERIFICARE"},
+            {"id": "troppa", "iva_documento": 22, "iva_detraibile": 30,
+             "stato_detrazione_iva": "DA_INSERIRE"},
+            {"id": "mancante", "iva_documento": 22,
+             "stato_detrazione_iva": "DA_INSERIRE"},
+        ]),
+    })
+    r = _run(coll.check_fatture_iva_classificazione(db))
+    assert r["nome"] == "fatture_iva_classificazione"
+    assert r["violazioni"] == 3
+    motivi = {e["motivo"] for e in r["esempi"]}
+    assert "detraibilita IVA ancora da verificare" in motivi
+    assert "IVA detraibile superiore all'IVA del documento" in motivi
+    assert "stato operativo senza IVA detraibile esplicita" in motivi
+
+
 def test_esegui_collaudo_report_e_alert(monkeypatch):
     async def check_sporco(db):
         return {"nome": "sporco", "violazioni": 3, "descrizione": "x", "esempi": []}

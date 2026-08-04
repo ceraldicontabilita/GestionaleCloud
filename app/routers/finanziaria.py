@@ -119,7 +119,7 @@ async def get_financial_summary(
             }},
             {"$group": {
                 "_id": None,
-                "total_iva": {"$sum": "$iva"},
+                "total_iva": {"$sum": {"$ifNull": ["$iva_detraibile", 0]}},
                 "total_amount": {"$sum": "$total_amount"},
                 "count": {"$sum": 1}
             }}
@@ -144,7 +144,7 @@ async def get_financial_summary(
             }},
             {"$group": {
                 "_id": None,
-                "total_iva": {"$sum": "$iva"},
+                "total_iva": {"$sum": {"$ifNull": ["$iva_detraibile", 0]}},
                 "total_amount": {"$sum": "$total_amount"},
                 "count": {"$sum": 1}
             }}

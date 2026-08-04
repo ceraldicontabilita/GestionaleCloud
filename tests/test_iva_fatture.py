@@ -10,8 +10,32 @@ def test_fattura_immediata_stesso_mese():
     c = ivf.campi_iva_da_fattura(inv)
     assert c["periodo_iva_attribuito"] == "2026-03"
     assert c["regola_iva_applicata"] == "STESSO_MESE"
-    assert c["iva_detraibile"] == 220 and c["iva_utilizzata"] is False
+    assert c["iva_documento"] == 220
+    assert c["iva_detraibile"] == 0 and c["iva_utilizzata"] is False
+    assert c["stato_detrazione_iva"] == "DA_VERIFICARE"
+
+
+def test_fattura_classificata_preserva_iva_detraibile():
+    inv = {
+        "invoice_date": "2026-03-10", "iva": 220,
+        "iva_detraibile": 88, "classificato_da": "learning_machine",
+        "stato_classificazione": "classificata",
+    }
+    c = ivf.campi_iva_da_fattura(inv)
+    assert c["iva_documento"] == 220
+    assert c["iva_detraibile"] == 88
     assert c["stato_detrazione_iva"] == "DA_INSERIRE"
+
+
+def test_classificazione_incerta_non_diventa_credito_disponibile():
+    inv = {
+        "invoice_date": "2026-03-10", "iva": 220,
+        "iva_detraibile": 88, "classificato_da": "learning_machine",
+        "stato_classificazione": "da_verificare",
+    }
+    c = ivf.campi_iva_da_fattura(inv)
+    assert c["iva_detraibile"] == 88
+    assert c["stato_detrazione_iva"] == "DA_VERIFICARE"
 
 
 def test_ricevuta_entro_il_15_attribuita_mese_precedente():

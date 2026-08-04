@@ -37,6 +37,16 @@ def _float(value: Any) -> float:
         return 0.0
 
 
+def _iva_detraibile_fattura(doc: Dict[str, Any]) -> float:
+    """Ritorna solo l'IVA la cui detraibilita' e' stata valutata.
+
+    Il fallback sull'IVA esposta trasformava le fatture non classificate in
+    credito pienamente detraibile. Un valore mancante resta quindi zero finche'
+    il learning o una correzione fiscale non lo valorizzano esplicitamente.
+    """
+    return _float(doc.get("iva_detraibile"))
+
+
 def _utente_autenticato(current_user: Any, legacy_utente: Optional[str] = None) -> str:
     """Usa l'identita JWT; il parametro legacy non puo sovrascriverla."""
     if isinstance(current_user, dict):
@@ -108,6 +118,7 @@ _PROJ_RICALCOLO = {
     "data_registrazione": 1, "iva": 1, "total_iva": 1, "iva_totale": 1,
     "iva_utilizzata": 1, "periodo_iva_utilizzato": 1, "stato_detrazione_iva": 1,
     "periodo_iva_attribuito": 1, "regola_iva_applicata": 1, "tipo_documento": 1,
+    "iva_detraibile": 1, "stato_classificazione": 1, "classificato_da": 1,
 }
 
 
@@ -241,8 +252,12 @@ async def fatture_non_utilizzate(
         "stato_detrazione_iva": 1,
     }
     docs = await db[COLL].find(query, proj).sort("periodo_iva_attribuito", 1).to_list(limit)
-    docs = [d for d in docs if float(d.get("iva_detraibile") or d.get("iva") or 0) > 0]
-    totale_iva = round(sum(float(d.get("iva_detraibile") or d.get("iva") or 0) for d in docs), 2)
+    docs = [
+        d for d in docs
+        if d.get("stato_detrazione_iva") in liq.STATI_DETRAZIONE_AMMESSI
+        and _iva_detraibile_fattura(d) > 0
+    ]
+    totale_iva = round(sum(_iva_detraibile_fattura(d) for d in docs), 2)
     return {"fatture": docs, "totale": len(docs), "totale_iva_disponibile": totale_iva}
 
 
@@ -297,7 +312,7 @@ async def _componi_liquidazione(
                 "id": f.get("id"),
                 "invoice_number": f.get("invoice_number"),
                 "supplier_name": f.get("supplier_name"),
-                "iva": round(float(f.get("iva_detraibile") or f.get("iva") or 0), 2),
+                "iva": round(_iva_detraibile_fattura(f), 2),
             }
             for f in incluse
         ],
@@ -707,7 +722,7 @@ async def dashboard_iva_mensile(anno: int, mese: int) -> Dict[str, Any]:
     prev = _periodo_precedente(periodo)
 
     def _somma_iva(docs):
-        return round(sum(float(d.get("iva_detraibile") or d.get("iva") or 0) for d in docs), 2)
+        return round(sum(_iva_detraibile_fattura(d) for d in docs), 2)
 
     proj = {"_id": 0, "iva": 1, "iva_detraibile": 1, "stato_detrazione_iva": 1}
     attribuite = await db[COLL].find({"periodo_iva_attribuito": periodo}, proj).to_list(20000)
@@ -723,8 +738,10 @@ async def dashboard_iva_mensile(anno: int, mese: int) -> Dict[str, Any]:
         {"data_ricezione": {"$regex": f"^{periodo}"}, "periodo_iva_attribuito": prev}, proj
     ).to_list(20000)
 
-    non_utilizzate = [d for d in attribuite if d.get("stato_detrazione_iva") not in
-                      ("INSERITA_IN_LIQUIDAZIONE", "INDETRAIBILE")]
+    non_utilizzate = [
+        d for d in attribuite
+        if d.get("stato_detrazione_iva") in liq.STATI_DETRAZIONE_AMMESSI
+    ]
 
     liq_doc = await db[COLL_LIQ].find_one({"periodo": periodo}, {"_id": 0}, sort=[("versione", -1)])
     iva_vendite_corr = await _iva_vendite_corrispettivi(db, periodo)
@@ -811,7 +828,7 @@ async def _azione_stato_fattura(
         "fattura_id": fid,
         "tipo_movimento": tipo_movimento,
         "periodo": campi.get("periodo_iva_attribuito") or inv.get("periodo_iva_attribuito"),
-        "importo_iva": inv.get("iva_detraibile") or inv.get("iva"),
+        "importo_iva": _iva_detraibile_fattura(inv),
         "liquidazione_id": None,
         "motivazione": motivo,
         "valore_precedente": vecchio,
