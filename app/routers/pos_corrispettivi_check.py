@@ -59,6 +59,38 @@ def _coerenza_xml_pos(
     return differenza, differenza >= -abs(float(tolleranza_euro))
 
 
+def _importo_elettronico_xml(corrispettivo: Dict[str, Any]) -> float:
+    """Legge la quota elettronica sia dal modello canonico sia da quello Drive storico.
+
+    Il vecchio ``CorrispettiviService`` usato dallo scheduler Drive salvava
+    ``pagato_pos``. Gli upload diretti salvano invece ``pagato_elettronico``.
+    La pagina Coerenza POS deve leggere entrambi senza migrare o inventare dati.
+    """
+    valore = corrispettivo.get("pagato_elettronico")
+    if valore is None:
+        valore = corrispettivo.get("pagato_pos")
+    try:
+        return float(valore or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _e_corrispettivo_xml(corrispettivo: Dict[str, Any]) -> bool:
+    """Riconosce gli XML canonici e gli XML Drive importati prima dell'unificazione."""
+    if corrispettivo.get("stato") == "definitivo_xml":
+        return True
+    if corrispettivo.get("data_import_xml") or corrispettivo.get("totale_xml") is not None:
+        return True
+    source = str(corrispettivo.get("source") or "").strip().lower()
+    if source in {
+        "xml", "xml_import", "corrispettivo_import", "corrispettivo_xml",
+        "sincronizzazione", "corrispettivi_sync", "zip_upload",
+    }:
+        return True
+    filename = str(corrispettivo.get("filename") or "").strip().lower()
+    return bool(corrispettivo.get("content_hash") and filename.endswith(".xml"))
+
+
 @router.get("/verifica-coerenza")
 @handle_errors
 async def verifica_coerenza_pos_corrispettivi(
@@ -91,8 +123,13 @@ async def verifica_coerenza_pos_corrispettivi(
     
     # 1. Carica corrispettivi nel periodo
     corrispettivi = await db["corrispettivi"].find(
-        {"data": {"$gte": data_da, "$lte": data_a}},
-        {"_id": 0, "data": 1, "totale": 1, "pagato_contanti": 1, "pagato_elettronico": 1, 
+        {
+            "data": {"$gte": data_da, "$lte": data_a},
+            "entity_status": {"$ne": "deleted"},
+            "status": {"$nin": ["deleted", "archived", "archiviata"]},
+        },
+        {"_id": 0, "data": 1, "totale": 1, "pagato_contanti": 1,
+         "pagato_elettronico": 1, "pagato_pos": 1,
          "pagato_non_riscosso": 1, "matricola_rt": 1}
     ).sort("data", 1).to_list(10000)
     
@@ -171,7 +208,7 @@ async def verifica_coerenza_pos_corrispettivi(
             }
         corrispettivi_by_date[data]["totale"] += float(c.get("totale", 0) or 0)
         corrispettivi_by_date[data]["contanti"] += float(c.get("pagato_contanti", 0) or 0)
-        corrispettivi_by_date[data]["elettronico"] += float(c.get("pagato_elettronico", 0) or 0)
+        corrispettivi_by_date[data]["elettronico"] += _importo_elettronico_xml(c)
         corrispettivi_by_date[data]["non_riscosso"] += float(c.get("pagato_non_riscosso", 0) or 0)
         if c.get("matricola_rt"):
             corrispettivi_by_date[data]["matricole"].add(c.get("matricola_rt"))
@@ -344,12 +381,16 @@ async def riepilogo_mensile_pos_corrispettivi(
         
         # Corrispettivi del mese
         pipeline_corr = [
-            {"$match": {"data": {"$gte": data_da, "$lte": data_a}}},
+            {"$match": {
+                "data": {"$gte": data_da, "$lte": data_a},
+                "entity_status": {"$ne": "deleted"},
+                "status": {"$nin": ["deleted", "archived", "archiviata"]},
+            }},
             {"$group": {
                 "_id": None,
                 "totale": {"$sum": "$totale"},
                 "contanti": {"$sum": "$pagato_contanti"},
-                "elettronico": {"$sum": "$pagato_elettronico"},
+                "elettronico": {"$sum": {"$ifNull": ["$pagato_elettronico", "$pagato_pos"]}},
                 "count": {"$sum": 1}
             }}
         ]
@@ -444,7 +485,7 @@ async def riconcilia_pos_giorno(
     if not corr:
         return {"success": False, "message": "Nessun corrispettivo per questa data"}
     
-    elettronico = float(corr.get("pagato_elettronico", 0) or 0)
+    elettronico = _importo_elettronico_xml(corr)
     if elettronico <= 0:
         return {"success": False, "message": "Nessun pagamento elettronico per questa data"}
     
@@ -859,13 +900,19 @@ async def controllo_incassi_due_fasi(
 
     # Carica tutti i dati
     corrispettivi = await db["corrispettivi"].find(
-        {"data": {"$gte": data_da, "$lte": data_a}},
+        {
+            "data": {"$gte": data_da, "$lte": data_a},
+            "entity_status": {"$ne": "deleted"},
+            "status": {"$nin": ["deleted", "archived", "archiviata"]},
+        },
         {
             "_id": 0, "data": 1,
-            "pagato_elettronico": 1, "pagato_contanti": 1, "totale": 1,
+            "pagato_elettronico": 1, "pagato_pos": 1,
+            "pagato_contanti": 1, "totale": 1, "totale_complessivo": 1,
             # v2: stato del corrispettivo + dati provvisori/ufficiali
             "stato": 1, "totale_manuale": 1, "totale_xml": 1,
             "source": 1, "data_inserimento_manuale": 1, "data_import_xml": 1,
+            "content_hash": 1, "filename": 1,
         }
     ).sort("data", 1).to_list(10000)
 
@@ -884,14 +931,37 @@ async def controllo_incassi_due_fasi(
         if data_da <= d <= data_a:
             date_note.add(d)
 
-    # Index corrispettivi per data
+    # Index corrispettivi per data. Possono esistere piu' XML nella stessa
+    # giornata (piu' RT o sostituzione della matricola): vanno sommati, non
+    # sovrascritti con l'ultimo documento restituito da Mongo.
     corr_by_date: Dict[str, Dict] = {}
     for c in corrispettivi:
         d = c.get("data")
         if isinstance(d, datetime):
             d = d.strftime("%Y-%m-%d")
-        if d:
-            corr_by_date[d[:10]] = c
+        if not d:
+            continue
+        giorno = d[:10]
+        aggregato = corr_by_date.setdefault(giorno, {
+            "pagato_elettronico": 0.0,
+            "totale_xml": None,
+            "totale_manuale": None,
+            "stato": None,
+            "ha_xml": False,
+        })
+        aggregato["pagato_elettronico"] += _importo_elettronico_xml(c)
+        if c.get("totale_manuale") is not None:
+            aggregato["totale_manuale"] = c.get("totale_manuale")
+        if _e_corrispettivo_xml(c):
+            aggregato["ha_xml"] = True
+            aggregato["stato"] = "definitivo_xml"
+            aggregato["totale_xml"] = float(aggregato.get("totale_xml") or 0) + float(
+                c.get("totale_xml")
+                if c.get("totale_xml") is not None
+                else c.get("totale") or c.get("totale_complessivo") or 0
+            )
+        elif aggregato.get("stato") != "definitivo_xml":
+            aggregato["stato"] = c.get("stato")
 
     oggi = datetime.now().strftime("%Y-%m-%d")
     soglia_alert_xml = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
@@ -978,7 +1048,7 @@ async def controllo_incassi_due_fasi(
 
     for d in sorted(date_note):
         c_row = corr_by_date.get(d, {})
-        xml_el = float(c_row.get("pagato_elettronico") or 0)
+        xml_el = _importo_elettronico_xml(c_row)
         pos_man = float(pos_manuali.get(d) or 0)
         pos_man_presente = d in pos_manuali
 
@@ -988,7 +1058,7 @@ async def controllo_incassi_due_fasi(
         totale_xml_corr = c_row.get("totale_xml")
         if not stato_corr_raw:
             # Retrocompat: se non c'è stato esplicito, dedurlo dai campi
-            has_xml = bool(c_row.get("pagato_elettronico") is not None or totale_xml_corr)
+            has_xml = bool(c_row.get("ha_xml"))
             is_manual_source = c_row.get("source") in ("manuale_serale", "manuale", "manual_entry")
             if has_xml:
                 stato_corr = "definitivo_xml"

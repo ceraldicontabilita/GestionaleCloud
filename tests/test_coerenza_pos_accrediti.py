@@ -168,3 +168,42 @@ def test_controllo_due_fasi_non_certifica_un_importo_solo_trascritto(monkeypatch
         assert giorno["origine_accredito"] is None
 
     _run(scenario())
+
+
+def test_controllo_due_fasi_legge_e_somma_xml_drive_storici(monkeypatch):
+    """I record Drive legacy usano pagato_pos e non avevano stato definitivo_xml."""
+    async def scenario():
+        db = AsyncMongoMockClient()["test_xml_drive_legacy"]
+        await db["corrispettivi"].insert_many([
+            {
+                "data": "2026-01-02", "totale": 1000.00,
+                "pagato_pos": 600.00, "pagato_contanti": 400.00,
+                "content_hash": "hash-a", "filename": "rt-a.xml",
+                "status": "imported", "entity_status": "active",
+            },
+            {
+                "data": "2026-01-02", "totale": 250.00,
+                "pagato_pos": 150.00, "pagato_contanti": 100.00,
+                "content_hash": "hash-b", "filename": "rt-b.xml",
+                "status": "imported", "entity_status": "active",
+            },
+        ])
+        monkeypatch.setattr(pc.Database, "get_db", staticmethod(lambda: db))
+
+        result = await pc.controllo_incassi_due_fasi(
+            data_da=None, data_a=None, anno=2026, tolleranza_euro=0.50
+        )
+        giorno = next(g for g in result["giorni"] if g["data"] == "2026-01-02")
+
+        assert giorno["stato_corrispettivo"] == "definitivo_xml"
+        assert giorno["xml_elettronico"] == 750.00
+        assert giorno["totale_xml"] == 1250.00
+
+    _run(scenario())
+
+
+def test_helper_preferisce_campo_elettronico_canonico_all_alias_storico():
+    assert pc._importo_elettronico_xml({
+        "pagato_elettronico": 321.45,
+        "pagato_pos": 999.99,
+    }) == 321.45

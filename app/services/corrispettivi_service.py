@@ -114,6 +114,7 @@ class CorrispettiviService:
                             "totale_complessivo": parsed.get("totale", 0),
                             "pagato_contanti": parsed.get("pagato_contanti", 0),
                             "pagato_pos": parsed.get("pagato_pos", 0),
+                            "pagato_elettronico": parsed.get("pagato_pos", 0),
                             "non_riscosso": parsed.get("non_riscosso", 0),
                             "totale_iva": parsed.get("totale_iva", 0),
                             "imponibile": parsed.get("imponibile", 0),
@@ -189,6 +190,9 @@ class CorrispettiviService:
             "totale_complessivo": parsed["totale"],
             "pagato_contanti": parsed.get("pagato_contanti", 0),
             "pagato_pos": parsed.get("pagato_pos", 0),
+            # Campo canonico letto da Coerenza POS. Manteniamo pagato_pos
+            # come alias storico per compatibilita' con le viste esistenti.
+            "pagato_elettronico": parsed.get("pagato_pos", 0),
             "non_riscosso": parsed.get("non_riscosso", 0),
             
             # IVA
@@ -199,10 +203,14 @@ class CorrispettiviService:
             # Stati
             "status": CorrispettivoStatus.IMPORTED.value,
             "entity_status": EntityStatus.ACTIVE.value,
+            "stato": "definitivo_xml",
+            "totale_xml": parsed["totale"],
             
             # Metadata
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
+            "data_import_xml": datetime.now(timezone.utc).isoformat(),
+            "source": "xml",
 
             # Relazioni
             "prima_nota_id": None
