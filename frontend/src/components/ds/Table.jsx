@@ -97,7 +97,7 @@ export function RowActions({ children, style = {} }) {
 }
 
 export const RowActionButton = React.forwardRef(function RowActionButton(
-  { variant = 'neutral', children, style = {}, ...props },
+  { variant = 'neutral', children, style = {}, title, 'aria-label': ariaLabel, ...props },
   ref
 ) {
   const variants = {
@@ -110,6 +110,8 @@ export const RowActionButton = React.forwardRef(function RowActionButton(
   return (
     <button
       ref={ref}
+      title={title}
+      aria-label={ariaLabel || title}
       style={{
         display: 'inline-flex',
         alignItems: 'center',

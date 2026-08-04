@@ -97,6 +97,39 @@ def test_check_badge_status_conta():
     assert r["violazioni"] == 2
 
 
+def test_check_assegni_integrita_segnala_mancanze_reali():
+    db = _Db({
+        "assegni": _Coll([
+            {"id": "a1", "numero": "1", "stato": "incassato", "importo": 100,
+             "beneficiario": "", "fattura_collegata": "f-missing",
+             "movimento_estratto_conto_id": "ec-missing", "incassato_confermato_banca": False},
+        ]),
+        "invoices": _Coll([]),
+        "estratto_conto_movimenti": _Coll([]),
+    })
+    r = _run(coll.check_assegni_integrita(db))
+    assert r["violazioni"] >= 3
+    assert r["nome"] == "assegni_fatture_estratto_conto_integrita"
+
+
+def test_check_liquidazioni_iva_integrita_formula_e_fatture():
+    db = _Db({
+        "liquidazioni_iva": _Coll([
+            {"id": "l1", "periodo": "2026-01", "versione": 1, "stato": "CONFERMATA",
+             "iva_vendite": 300, "iva_acquisti": 100, "credito_precedente": 0,
+             "saldo": 999, "debito_periodo": 999, "credito_periodo": 0,
+             "fatture_incluse": [{"id": "f1", "iva": 100}]},
+        ]),
+        "invoices": _Coll([
+            {"id": "f1", "iva_utilizzata": False, "liquidazione_id": None,
+             "periodo_iva_utilizzato": None, "importo_iva_utilizzato": 0},
+        ]),
+    })
+    r = _run(coll.check_liquidazioni_iva_integrita(db))
+    assert r["violazioni"] >= 3
+    assert r["nome"] == "liquidazioni_iva_integrita"
+
+
 def test_esegui_collaudo_report_e_alert(monkeypatch):
     async def check_sporco(db):
         return {"nome": "sporco", "violazioni": 3, "descrizione": "x", "esempi": []}

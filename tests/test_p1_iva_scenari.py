@@ -74,8 +74,10 @@ def test_recupero_annuale_categoria_dedicata():
 
 def _match(doc, query):
     for k, v in query.items():
-        if isinstance(v, dict) and "$ne" in v:
-            if doc.get(k) == v["$ne"]:
+        if isinstance(v, dict):
+            if "$ne" in v and doc.get(k) == v["$ne"]:
+                return False
+            if "$in" in v and doc.get(k) not in v["$in"]:
                 return False
         elif doc.get(k) != v:
             return False

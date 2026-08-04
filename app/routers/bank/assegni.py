@@ -249,21 +249,40 @@ async def get_assegni_stats(anno: Optional[int] = Query(None)) -> Dict[str, Any]
 
 
 @router.get("/senza-associazione")
-async def get_assegni_senza_associazione_v2() -> Dict[str, Any]:
+async def get_assegni_senza_associazione_v2(
+    anno: Optional[int] = Query(None),
+) -> Dict[str, Any]:
     """
     Restituisce assegni che hanno importo ma nessun beneficiario/fattura associata.
     Utile per debug e verifica manuale.
     """
     db = Database.get_db()
     
-    assegni = await db[COLLECTION_ASSEGNI].find({
-        "$or": [
+    condizioni = [
+        {"entity_status": {"$ne": "deleted"}},
+        {"importo": {"$gt": 0}},
+        {"$or": [
             {"beneficiario": None},
             {"beneficiario": ""},
-            {"beneficiario": "N/A"}
-        ],
-        "importo": {"$gt": 0}
-    }, {"_id": 0}).to_list(500)
+            {"beneficiario": "N/A"},
+            {"beneficiario": "-"},
+            {"$and": [
+                {"fattura_id": {"$in": [None, ""]}},
+                {"fattura_collegata": {"$in": [None, ""]}},
+            ]},
+        ]},
+    ]
+    if anno:
+        condizioni.append({"$or": [
+            {"data_emissione": {"$regex": f"^{anno}"}},
+            {"data": {"$regex": f"^{anno}"}},
+            {"anno_creazione": anno},
+            {"anno": anno},
+            {"created_at": {"$regex": f"^{anno}"}},
+        ]})
+    assegni = await db[COLLECTION_ASSEGNI].find(
+        {"$and": condizioni}, {"_id": 0}
+    ).to_list(5000)
     
     # Raggruppa per importo
     from collections import defaultdict
@@ -369,7 +388,9 @@ async def preview_combinazioni_assegni_v2(
 
 
 @router.get("/verifica-associazioni")
-async def verifica_associazioni_assegni() -> Dict[str, Any]:
+async def verifica_associazioni_assegni(
+    anno: Optional[int] = Query(None),
+) -> Dict[str, Any]:
     """
     Analizza tutte le associazioni assegno-fattura e identifica quelle problematiche.
     
@@ -388,8 +409,23 @@ async def verifica_associazioni_assegni() -> Dict[str, Any]:
     db = Database.get_db()
     
     # Carica tutti gli assegni con fattura associata
+    condizioni = [
+        {"entity_status": {"$ne": "deleted"}},
+        {"$or": [
+            {"fattura_id": {"$exists": True, "$nin": [None, ""]}},
+            {"fattura_collegata": {"$exists": True, "$nin": [None, ""]}},
+        ]},
+    ]
+    if anno:
+        condizioni.append({"$or": [
+            {"data_emissione": {"$regex": f"^{anno}"}},
+            {"data": {"$regex": f"^{anno}"}},
+            {"anno_creazione": anno},
+            {"anno": anno},
+            {"created_at": {"$regex": f"^{anno}"}},
+        ]})
     assegni = await db[COLLECTION_ASSEGNI].find(
-        {"fattura_id": {"$exists": True, "$ne": None}},
+        {"$and": condizioni},
         {"_id": 0}
     ).to_list(10000)
     
@@ -412,7 +448,7 @@ async def verifica_associazioni_assegni() -> Dict[str, Any]:
     
     for assegno in assegni:
         assegno_id = assegno.get("id")
-        fattura_id = assegno.get("fattura_id")
+        fattura_id = assegno.get("fattura_id") or assegno.get("fattura_collegata")
         numero_assegno = assegno.get("numero_assegno") or assegno.get("numero")
         importo_assegno = float(assegno.get("importo") or 0)
         beneficiario = assegno.get("beneficiario") or ""
@@ -489,7 +525,9 @@ async def verifica_associazioni_assegni() -> Dict[str, Any]:
                 ha_problemi = True
         
         # PROBLEMA 4: Fattura già pagata
-        if fattura_pagata:
+        metodo_effettivo = str(fattura.get("metodo_pagamento_effettivo") or "").lower()
+        pagamento_coerente = assegno.get("stato") == "incassato" and metodo_effettivo == "assegno"
+        if fattura_pagata and not pagamento_coerente:
             problema["problemi"].append("Fattura già marcata come pagata")
             statistiche["problemi_fattura_pagata"] += 1
             ha_problemi = True

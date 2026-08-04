@@ -165,6 +165,19 @@ class _Coll:
             modified_count = 0
         return _R0()
 
+    async def update_many(self, query, update):
+        modified = 0
+        for d in self.docs:
+            if _match(d, query):
+                d.update(update.get("$set", {}))
+                modified += 1
+        return type("R", (), {"modified_count": modified})()
+
+    async def delete_many(self, query):
+        prima = len(self.docs)
+        self.docs = [d for d in self.docs if not _match(d, query)]
+        return type("R", (), {"deleted_count": prima - len(self.docs)})()
+
     async def replace_one(self, query, doc, upsert=False):
         for i, d in enumerate(self.docs):
             if _match(d, query):
@@ -245,6 +258,28 @@ def test_conferma_bloccata_se_gia_confermata(db):
     assert ei.value.status_code == 409
 
 
+def test_conferma_annulla_tutto_se_movimento_audit_fallisce(db, monkeypatch):
+    from fastapi import HTTPException
+
+    _inv(db, id="a")
+    calc = _run(iva_router.calcola_liquidazione(periodo="2026-01", iva_vendite=0))
+    liq_id = calc["liquidazione"]["id"]
+
+    async def insert_fallisce(_doc):
+        raise RuntimeError("audit non disponibile")
+
+    monkeypatch.setattr(db["movimenti_iva_fattura"], "insert_one", insert_fallisce)
+    with pytest.raises(HTTPException) as exc:
+        _run(iva_router.conferma_liquidazione(liq_id=liq_id))
+
+    assert exc.value.status_code == 500
+    inv = db["invoices"].docs[0]
+    assert inv["iva_utilizzata"] is False
+    assert inv["liquidazione_id"] is None
+    liquidazione = db["liquidazioni_iva"].docs[0]
+    assert liquidazione["stato"] == "CALCOLATA"
+
+
 def test_ricalcolo_bloccato_su_confermata(db):
     from fastapi import HTTPException
     _inv(db, id="a")
@@ -293,6 +328,50 @@ def test_credito_precedente_riportato(db):
     f = _run(iva_router.calcola_liquidazione(periodo="2026-02", iva_vendite=300))
     assert f["liquidazione"]["credito_precedente"] == 100
     assert f["liquidazione"]["saldo"] == 150
+
+
+def test_conferma_blocca_se_fattura_cambiata_dopo_calcolo(db):
+    from fastapi import HTTPException
+    _inv(db, id="a", iva_detraibile=100)
+    calc = _run(iva_router.calcola_liquidazione(periodo="2026-01", iva_vendite=0))
+    liq_id = calc["liquidazione"]["id"]
+    db["invoices"].docs[0].update({"iva_utilizzata": True, "liquidazione_id": "altra-liq"})
+
+    with pytest.raises(HTTPException) as exc:
+        _run(iva_router.conferma_liquidazione(liq_id=liq_id))
+
+    assert exc.value.status_code == 409
+    assert db["liquidazioni_iva"].docs[0]["stato"] == "CALCOLATA"
+    assert db["invoices"].docs[0]["liquidazione_id"] == "altra-liq"
+
+
+def test_audit_conferma_usa_identita_jwt_non_query_string(db):
+    _inv(db, id="a", iva_detraibile=100)
+    calc = _run(iva_router.calcola_liquidazione(periodo="2026-01", iva_vendite=0))
+    _run(iva_router.conferma_liquidazione(
+        liq_id=calc["liquidazione"]["id"],
+        utente="admin-finto",
+        current_user={"user_id": "utente-reale", "role": "operatore"},
+    ))
+    assert db["liquidazioni_iva"].docs[0]["confermata_da"] == "utente-reale"
+    assert db["movimenti_iva_fattura"].docs[0]["created_by"] == "utente-reale"
+
+
+def test_rettifica_senza_override_ricalcola_iva_vendite_da_corrispettivi(db):
+    _inv(db, id="a", iva_detraibile=100)
+    db["corrispettivi"].docs.append({
+        "data": "2026-01-15", "totale_iva": 220,
+        "corrispettivo_key": "rt-1", "entity_status": "active", "status": "active",
+    })
+    calc = _run(iva_router.calcola_liquidazione(periodo="2026-01", iva_vendite=220))
+    liq_id = calc["liquidazione"]["id"]
+    _run(iva_router.conferma_liquidazione(liq_id=liq_id))
+
+    ret = _run(iva_router.rettifica_liquidazione(
+        liq_id=liq_id, motivo="correzione", iva_vendite=None
+    ))
+    assert ret["nuova_liquidazione"]["iva_vendite"] == 220
+    assert ret["nuova_liquidazione"]["iva_vendite_fonte"] == "corrispettivi_xml"
 
 
 def test_lista_e_periodo(db):

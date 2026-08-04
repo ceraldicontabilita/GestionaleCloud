@@ -307,6 +307,140 @@ async def check_trascrizione_corrispettivo_manuale(db) -> Dict[str, Any]:
                            "cassa sbilanciata non reale)", "esempi": esempi}
 
 
+async def check_assegni_integrita(db) -> Dict[str, Any]:
+    """Assegni operativi sempre tracciabili fino a fattura ed estratto conto."""
+    attivi = await db["assegni"].find(
+        {"entity_status": {"$ne": "deleted"}},
+        {"_id": 0, "id": 1, "numero": 1, "stato": 1, "importo": 1,
+         "beneficiario": 1, "fattura_id": 1, "fattura_collegata": 1,
+         "movimento_estratto_conto_id": 1, "incassato_confermato_banca": 1},
+    ).to_list(20000)
+    fatture_ids = {
+        str(a.get("fattura_id") or a.get("fattura_collegata"))
+        for a in attivi if a.get("fattura_id") or a.get("fattura_collegata")
+    }
+    ec_ids = {
+        str(a.get("movimento_estratto_conto_id"))
+        for a in attivi if a.get("movimento_estratto_conto_id")
+    }
+    fatture = await db["invoices"].find(
+        {"id": {"$in": list(fatture_ids)}}, {"_id": 0, "id": 1}
+    ).to_list(max(len(fatture_ids), 1))
+    movimenti = await db["estratto_conto_movimenti"].find(
+        {"id": {"$in": list(ec_ids)}}, {"_id": 0, "id": 1}
+    ).to_list(max(len(ec_ids), 1))
+    fatture_esistenti = {str(f.get("id")) for f in fatture}
+    ec_esistenti = {str(m.get("id")) for m in movimenti}
+    uso_ec: Dict[str, int] = {}
+    problemi: List[Dict[str, Any]] = []
+
+    def aggiungi(a, motivo):
+        if len(problemi) < 5:
+            problemi.append({"assegno_id": a.get("id"), "numero": a.get("numero"), "motivo": motivo})
+
+    stati_operativi = {"compilato", "emesso", "assegnato", "parzialmente_assegnato", "incassato"}
+    count = 0
+    for a in attivi:
+        stato = str(a.get("stato") or "").lower()
+        importo = float(a.get("importo") or 0)
+        beneficiario = str(a.get("beneficiario") or "").strip().lower()
+        fid = a.get("fattura_id") or a.get("fattura_collegata")
+        ec_id = a.get("movimento_estratto_conto_id")
+        if stato in stati_operativi and importo > 0 and beneficiario in {"", "-", "n/a", "non disponibile"}:
+            count += 1
+            aggiungi(a, "beneficiario mancante")
+        if fid and str(fid) not in fatture_esistenti:
+            count += 1
+            aggiungi(a, "fattura collegata inesistente")
+        if stato == "incassato":
+            if not ec_id or str(ec_id) not in ec_esistenti or a.get("incassato_confermato_banca") is not True:
+                count += 1
+                aggiungi(a, "incassato senza riscontro valido in estratto conto")
+            if not fid:
+                count += 1
+                aggiungi(a, "incassato senza fattura collegata")
+        if ec_id:
+            uso_ec[str(ec_id)] = uso_ec.get(str(ec_id), 0) + 1
+
+    duplicati_ec = sum(n - 1 for n in uso_ec.values() if n > 1)
+    count += duplicati_ec
+    if duplicati_ec and len(problemi) < 5:
+        problemi.append({"motivo": "movimento estratto conto usato da piu assegni", "duplicati": duplicati_ec})
+    return {
+        "nome": "assegni_fatture_estratto_conto_integrita",
+        "violazioni": count,
+        "descrizione": "Assegni operativi senza beneficiario/fattura/prova bancaria o con movimento EC riutilizzato",
+        "esempi": problemi,
+    }
+
+
+async def check_liquidazioni_iva_integrita(db) -> Dict[str, Any]:
+    """Ricalcola i vincoli persistiti delle liquidazioni IVA confermate."""
+    docs = await db["liquidazioni_iva"].find({}, {"_id": 0}).sort(
+        [("periodo", 1), ("versione", 1)]
+    ).to_list(5000)
+    count = 0
+    esempi: List[Dict[str, Any]] = []
+
+    def problema(doc, motivo):
+        nonlocal count
+        count += 1
+        if len(esempi) < 5:
+            esempi.append({"liquidazione_id": doc.get("id"), "periodo": doc.get("periodo"), "motivo": motivo})
+
+    coppie: Dict[tuple, int] = {}
+    confermate_periodo: Dict[str, List[Dict[str, Any]]] = {}
+    for doc in docs:
+        key = (doc.get("periodo"), doc.get("versione"))
+        coppie[key] = coppie.get(key, 0) + 1
+        if doc.get("stato") in {"CONFERMATA", "TRASMESSA"}:
+            confermate_periodo.setdefault(str(doc.get("periodo")), []).append(doc)
+    for key, n in coppie.items():
+        if n > 1:
+            problema({"periodo": key[0], "id": None}, f"versione {key[1]} duplicata ({n} record)")
+    for periodo, gruppi in confermate_periodo.items():
+        if len(gruppi) > 1:
+            problema(gruppi[-1], f"{len(gruppi)} liquidazioni confermate nello stesso periodo")
+
+    for doc in [d for d in docs if d.get("stato") in {"CONFERMATA", "TRASMESSA"}]:
+        atteso = round(float(doc.get("iva_vendite") or 0) - float(doc.get("iva_acquisti") or 0)
+                       - float(doc.get("credito_precedente") or 0), 2)
+        if abs(atteso - float(doc.get("saldo") or 0)) > 0.01:
+            problema(doc, "formula saldo IVA incoerente")
+        debito = max(atteso, 0)
+        credito = max(-atteso, 0)
+        if abs(debito - float(doc.get("debito_periodo") or 0)) > 0.01 or abs(credito - float(doc.get("credito_periodo") or 0)) > 0.01:
+            problema(doc, "credito/debito periodo incoerente con il saldo")
+
+        incluse = [f for f in doc.get("fatture_incluse", []) if f.get("id")]
+        ids = [f["id"] for f in incluse]
+        invs = await db["invoices"].find(
+            {"id": {"$in": ids}},
+            {"_id": 0, "id": 1, "iva_utilizzata": 1, "liquidazione_id": 1,
+             "periodo_iva_utilizzato": 1, "importo_iva_utilizzato": 1},
+        ).to_list(max(len(ids), 1))
+        per_id = {f.get("id"): f for f in invs}
+        valide = [
+            per_id.get(fid) for fid in ids
+            if per_id.get(fid)
+            and per_id[fid].get("iva_utilizzata") is True
+            and per_id[fid].get("liquidazione_id") == doc.get("id")
+            and per_id[fid].get("periodo_iva_utilizzato") == doc.get("periodo")
+        ]
+        if len(valide) != len(ids):
+            problema(doc, "fatture incluse non interamente marcate nella liquidazione")
+        iva_marcata = round(sum(float(f.get("importo_iva_utilizzato") or 0) for f in valide), 2)
+        if abs(iva_marcata - float(doc.get("iva_acquisti") or 0)) > 0.01:
+            problema(doc, "IVA acquisti diversa dalla somma marcata sulle fatture")
+
+    return {
+        "nome": "liquidazioni_iva_integrita",
+        "violazioni": count,
+        "descrizione": "Formula, versioni, credito/debito e fatture marcate delle liquidazioni IVA",
+        "esempi": esempi,
+    }
+
+
 CHECKS = [
     check_fatture_banca_senza_ec,
     check_trasferimento_pos_speculare,
@@ -320,6 +454,8 @@ CHECKS = [
     check_prima_nota_link_rotti,
     check_salari_riconciliati_senza_banca,
     check_movimenti_malformati,
+    check_assegni_integrita,
+    check_liquidazioni_iva_integrita,
 ]
 
 

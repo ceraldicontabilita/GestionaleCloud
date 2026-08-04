@@ -107,6 +107,7 @@ export default function GestioneAssegni() {
   const [assegni, setAssegni] = useState([]);
   const [_stats, setStats] = useState({ totale: 0, per_stato: {} });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [filterStato, _setFilterStato] = useState('');
   const [search, _setSearch] = useState('');
 
@@ -204,6 +205,7 @@ export default function GestioneAssegni() {
   const loadData = async () => {
     try {
       setLoading(true);
+      setLoadError(null);
       const params = new URLSearchParams();
       if (filterStato) params.append('stato', filterStato);
       if (search) params.append('search', search);
@@ -225,6 +227,9 @@ export default function GestioneAssegni() {
       setStats(statsRes.data);
     } catch (error) {
       console.error('Error loading assegni:', error);
+      const dettaglio = error.response?.data?.detail || error.message;
+      setLoadError(`Impossibile caricare assegni e statistiche: ${dettaglio}`);
+      toast.error(`Errore caricamento assegni: ${dettaglio}`);
     } finally {
       setLoading(false);
     }
@@ -2444,7 +2449,12 @@ export default function GestioneAssegni() {
       </div>
 
       {/* Assegni Table/Cards */}
-      {loading ? (
+      {loadError ? (
+        <div role="alert" style={{ padding: 16, borderRadius: BORDER_RADIUS.md, background: COLORS.dangerLight, color: COLORS.danger }}>
+          <strong>Caricamento non riuscito.</strong> {loadError}{' '}
+          <Button variant="secondary" size="sm" onClick={loadData}>Riprova</Button>
+        </div>
+      ) : loading ? (
         <div style={{ textAlign: 'center', padding: 40 }}>Caricamento...</div>
       ) : filteredAssegni.length === 0 ? (
         <div

@@ -1591,7 +1591,7 @@ function RollbackDatiTab() {
 }
 
 // Collaudo automatico (richiesta utente 18/07/2026, audit esterno P-residuo
-// "Pagina Admin Esito ultimo collaudo"): mostra l'ultimo report dei 12
+// "Pagina Admin Esito ultimo collaudo"): mostra l'ultimo report degli
 // invarianti (nightly 4:30 + esecuzione on-demand), lo storico e il
 // dettaglio delle violazioni per check.
 function CollaudoTab() {
@@ -1599,6 +1599,7 @@ function CollaudoTab() {
   const [storico, setStorico] = useState([]);
   const [loading, setLoading] = useState(true);
   const [eseguendo, setEseguendo] = useState(false);
+  const [secondiEsecuzione, setSecondiEsecuzione] = useState(0);
   const [espanso, setEspanso] = useState(null); // nome check aperto
   const [errore, setErrore] = useState(null);
 
@@ -1620,11 +1621,20 @@ function CollaudoTab() {
 
   useEffect(() => { carica(); }, []);
 
+  useEffect(() => {
+    if (!eseguendo) {
+      setSecondiEsecuzione(0);
+      return undefined;
+    }
+    const timer = window.setInterval(() => setSecondiEsecuzione(s => s + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [eseguendo]);
+
   const eseguiOra = async () => {
     setEseguendo(true);
     setErrore(null);
     try {
-      await api.post('/api/collaudo/esegui');
+      await api.post('/api/collaudo/esegui', null, { timeout: 180000 });
       await carica();
       toast.success('Collaudo eseguito');
     } catch (e) {
@@ -1651,7 +1661,7 @@ function CollaudoTab() {
     <div style={{ display: 'grid', gap: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ fontSize: 13, color: COLORS.textMuted }}>
-          12 invarianti contabili/POS/documentali (sola lettura), eseguiti ogni notte
+          {ultimo?.checks_totali || 14} invarianti contabili/POS/documentali (sola lettura), eseguiti ogni notte
           alle 4:30 e on-demand qui. Ogni violazione genera un alert idempotente,
           risolto automaticamente quando il check torna pulito.
         </div>
@@ -1663,6 +1673,12 @@ function CollaudoTab() {
       {errore && (
         <div style={{ padding: '10px 14px', background: COLORS.dangerLight, color: COLORS.danger, borderRadius: BORDER_RADIUS.md, fontSize: 13 }}>
           {errore}
+        </div>
+      )}
+
+      {eseguendo && (
+        <div role="status" style={{ padding: '10px 14px', background: COLORS.primarySoft, color: COLORS.primary, borderRadius: BORDER_RADIUS.md, fontSize: 13 }}>
+          Collaudo in corso da {secondiEsecuzione}s. I valori sotto sono il risultato precedente e verranno aggiornati al termine.
         </div>
       )}
 
@@ -1679,6 +1695,7 @@ function CollaudoTab() {
             <StatCard icon="✅" label="Check puliti" value={`${ultimo.checks_totali - ultimo.checks_violati - ultimo.checks_in_errore}/${ultimo.checks_totali}`} accent={ultimo.checks_violati === 0 ? 'success' : 'primary'} />
             <StatCard icon="⚠️" label="Check con violazioni" value={ultimo.checks_violati} accent={ultimo.checks_violati > 0 ? 'warning' : 'success'} />
             <StatCard icon="❌" label="Violazioni totali" value={ultimo.violazioni_totali} accent={ultimo.violazioni_totali > 0 ? 'danger' : 'success'} />
+            <StatCard icon="!" label="Check in errore" value={ultimo.checks_in_errore || 0} accent={(ultimo.checks_in_errore || 0) > 0 ? 'danger' : 'success'} />
           </div>
 
           <Card title="Dettaglio invarianti">
