@@ -191,6 +191,59 @@ async def lifespan(app: FastAPI):
                     upsert=True,
                 )
 
+            # La stessa correzione operativa conferma che Carta & Party ha
+            # metodo predefinito misto. L'anagrafica resta riutilizzabile per
+            # le fatture future, mentre la fattura riaperta rimane provvisoria
+            # fino a una prova reale di pagamento.
+            carta_method_marker = "set_carta_party_payment_method_misto_20260804_v1"
+            carta_method_run = await db["migration_runs"].find_one(
+                {"id": carta_method_marker}
+            )
+            if not carta_method_run or carta_method_run.get("status") != "completed":
+                carta_method_status = "failed"
+                try:
+                    supplier_filter = {"$or": [
+                        {"partita_iva": "05851861210"},
+                        {"piva": "05851861210"},
+                        {"vat_number": "05851861210"},
+                    ]}
+                    carta_supplier = await db["fornitori"].find_one(supplier_filter)
+                    if not carta_supplier:
+                        raise RuntimeError("Fornitore Carta & Party non trovato")
+                    old_method = carta_supplier.get("metodo_pagamento") or ""
+                    method_now = datetime.now(timezone.utc).isoformat()
+                    update_method = {"$set": {
+                        "metodo_pagamento": "misto",
+                        "metodo_pagamento_dal": carta_supplier.get("metodo_pagamento_dal")
+                        or method_now[:10],
+                        "updated_at": method_now,
+                    }}
+                    if old_method != "misto":
+                        update_method["$push"] = {"storico_metodi_pagamento": {
+                            "metodo": "misto",
+                            "dal": method_now[:10],
+                            "registrato_il": method_now,
+                            "fonte": "correzione_amministrativa",
+                        }}
+                    await db["fornitori"].update_one(supplier_filter, update_method)
+                    carta_method_result = {
+                        "success": True, "old_method": old_method,
+                        "new_method": "misto",
+                    }
+                    carta_method_status = "completed"
+                except Exception as exc:
+                    carta_method_result = {"success": False, "reason": str(exc)}
+                await db["migration_runs"].update_one(
+                    {"id": carta_method_marker},
+                    {"$set": {
+                        "id": carta_method_marker,
+                        "status": carta_method_status,
+                        "finished_at": datetime.now(timezone.utc).isoformat(),
+                        "result": carta_method_result,
+                    }},
+                    upsert=True,
+                )
+
             # Le versioni precedenti confondevano "copiata in Prima Nota"
             # con "riconciliata": riapriamo soltanto le righe generiche che
             # non hanno alcun documento collegato. In questo modo una fattura
