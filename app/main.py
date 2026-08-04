@@ -272,6 +272,33 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error("Pulizia pregressi/riparazione metodo non completata: %s", e)
 
+        # Riallineamento una tantum del registro salari al registro canonico
+        # dei cedolini. I PDF vengono riletti per distinguere una mensilita'
+        # ordinaria da 13a/14a; pagamenti e riconciliazioni esistenti restano
+        # nei record originali e non vengono mai eliminati.
+        try:
+            salari_marker = "sync_prima_nota_salari_da_cedolini_2018_20260804_v1"
+            salari_run = await db["migration_runs"].find_one({"id": salari_marker})
+            if not salari_run or salari_run.get("status") != "completed":
+                from app.services.salari_sync import sincronizza_prima_nota_da_cedolini
+
+                salari_result = await sincronizza_prima_nota_da_cedolini(
+                    db, anno_minimo=2018
+                )
+                await db["migration_runs"].update_one(
+                    {"id": salari_marker},
+                    {"$set": {
+                        "id": salari_marker,
+                        "status": "completed",
+                        "finished_at": datetime.now(timezone.utc).isoformat(),
+                        "result": salari_result,
+                    }},
+                    upsert=True,
+                )
+                logger.info("Riallineamento cedolini/salari completato: %s", salari_result)
+        except Exception as e:
+            logger.error("Riallineamento cedolini/salari non completato: %s", e)
+
     # Backfill: fatture importate da Drive/bulk prima del fix campi — senza
     # `anno`/`data_documento` non comparivano nei filtri per anno.
     try:

@@ -516,6 +516,12 @@ async def processa_cedolino_v2(
                     "dipendente": nome.upper(),
                     "dipendente_nome": nome,
                     "codice_fiscale": cf,
+                    "mese": int(mese),
+                    "anno": int(anno),
+                    "importo_busta": netto,
+                    "tipo": "stipendio",
+                    "tipo_cedolino": tipo_cedolino,
+                    "descrizione": f"Stipendio {nome} - {int(mese):02d}/{anno}",
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }},
             )
