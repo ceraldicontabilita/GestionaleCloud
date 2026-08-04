@@ -74,3 +74,12 @@ def start_all(db: Any) -> Dict[str, str]:
         else "not_configured"
     )
     return statuses
+
+
+async def start_all_after_response(db: Any) -> None:
+    """Hook per FastAPI BackgroundTasks: la risposta HTTP viene inviata prima.
+
+    Gli importatori Drive legacy eseguono anche chiamate Google sincrone; avviarli
+    come background task evita che il pulsante resti bloccato durante la scansione.
+    """
+    start_all(db)
