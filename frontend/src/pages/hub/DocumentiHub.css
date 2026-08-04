@@ -71,6 +71,12 @@
 .documenti-hub__drive-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .8rem; }
 .documenti-hub__drive-heading div, .documenti-hub__drive-card div { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
 .documenti-hub__drive-heading span, .documenti-hub__drive-card small { color: #5d6b78; }
+.documenti-hub__drive-controls { display: flex !important; flex: 0 0 auto; flex-direction: row !important; align-items: center; gap: .55rem !important; }
+.documenti-hub__drive-sync { display: inline-flex; align-items: center; justify-content: center; gap: .45rem; min-height: 2.4rem; padding: .45rem .8rem; border: 1px solid #b8d4ee; border-radius: 10px; background: #f2f8ff; color: #155fa0; font: inherit; font-size: .86rem; font-weight: 700; cursor: pointer; }
+.documenti-hub__drive-sync:hover:not(:disabled) { border-color: #6ea7d7; background: #e7f3ff; }
+.documenti-hub__drive-sync:focus-visible { outline: 3px solid rgba(37, 99, 235, .25); outline-offset: 2px; }
+.documenti-hub__drive-sync:disabled { cursor: wait; opacity: .7; }
+.documenti-hub__drive-sync .is-spinning { animation: documenti-drive-spin 900ms linear infinite; }
 .documenti-hub__drive-total { min-width: 2.5rem; padding: .4rem .65rem; border-radius: 999px; background: #edf5ff; color: #155fa0 !important; text-align: center; font-weight: 700; }
 .documenti-hub__drive-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .6rem; }
 .documenti-hub__drive-card { display: flex; align-items: center; gap: .65rem; min-width: 0; padding: .7rem .8rem; border-radius: 12px; background: #f6f8fa; }
@@ -78,6 +84,8 @@
 .documenti-hub__drive-dot { width: .65rem; height: .65rem; flex: 0 0 .65rem; border-radius: 50%; background: #81909e; }
 .documenti-hub__drive-dot.is-pronto { background: #16865c; }
 .documenti-hub__drive-dot.is-catalogato { background: #2f72c4; }
+
+@keyframes documenti-drive-spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 680px) {
   .documenti-hub__actions {
@@ -90,6 +98,9 @@
   }
 
   .documenti-hub__drive { padding: .8rem; }
+  .documenti-hub__drive-heading { align-items: flex-start; flex-direction: column; }
+  .documenti-hub__drive-controls { width: 100%; }
+  .documenti-hub__drive-sync { flex: 1 1 auto; }
   .documenti-hub__drive-grid { grid-template-columns: 1fr 1fr; }
 }
 

@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1044 · tenere: 691 · verificare: 330 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1045 · tenere: 692 · verificare: 330 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -16,7 +16,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/batch-reprocess/status` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `GET /api/cedolini/drive/quadratura-completa` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
 | `GET /api/cedolini/drive/status` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
-| `POST /api/cedolini/drive/sync` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
+| `POST /api/cedolini/drive/sync` | drive_cedolini | — | sì | — | — | sì | tenere | in uso: scheduler |
 | `POST /api/dati-provvisori/riconcilia-estratto-conto` | dati_provvisori | — | sì | — | — | — | tenere | in uso: scheduler |
 
 ## Tutti gli endpoint
@@ -29,7 +29,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/batch-reprocess/status` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `GET /api/cedolini/drive/quadratura-completa` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
 | `GET /api/cedolini/drive/status` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
-| `POST /api/cedolini/drive/sync` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
+| `POST /api/cedolini/drive/sync` | drive_cedolini | — | sì | — | — | sì | tenere | in uso: scheduler |
 | `POST /api/dati-provvisori/riconcilia-estratto-conto` | dati_provvisori | — | sì | — | — | — | tenere | in uso: scheduler |
 | `DELETE /api/admin/cleanup-trattenute-disciplinari` | admin | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `GET /api/admin/collections` | admin | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -287,7 +287,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/corrispettivi/cleanup-duplicati-forte` | invoices.corrispettivi | sì | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/corrispettivi/drive/quadratura` | drive_corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/corrispettivi/drive/status` | drive_corrispettivi | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
-| `POST /api/corrispettivi/drive/sync` | drive_corrispettivi | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `POST /api/corrispettivi/drive/sync` | drive_corrispettivi | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `POST /api/corrispettivi/elimina-duplicati` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/corrispettivi/hard-delete-bulk` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/corrispettivi/hard-delete/{corrispettivo_id}` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
@@ -391,6 +391,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/documenti/documento/{doc_id}/download` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/documenti/documento/{doc_id}/processa` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti/drive/catalog` | documenti | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/documenti/drive/sync` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/documenti/elimina-processati` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/documenti/lista` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/documenti/lock-status` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -541,7 +542,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/f24/quietanze` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/f24/quietanze/drive/quadratura` | drive_quietanze | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/f24/quietanze/drive/status` | drive_quietanze | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
-| `POST /api/f24/quietanze/drive/sync` | drive_quietanze | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `POST /api/f24/quietanze/drive/sync` | drive_quietanze | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `GET /api/f24/quietanze/statistiche/tributi` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/f24/quietanze/upload` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/f24/quietanze/{f24_id}` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
@@ -585,7 +586,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/fatture/categorize-movements` | invoices.fatture_upload | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/fatture/drive/quadratura` | invoices.fatture_drive | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/fatture/drive/status` | invoices.fatture_drive | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
-| `POST /api/fatture/drive/sync` | invoices.fatture_drive | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `POST /api/fatture/drive/sync` | invoices.fatture_drive | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `POST /api/fatture/recalculate-iva` | invoices.fatture_upload | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/fatture/sync-suppliers` | invoices.fatture_upload | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/fatture/upload-xml` | invoices.fatture_upload | — | sì | — | — | — | tenere | in uso: scheduler |

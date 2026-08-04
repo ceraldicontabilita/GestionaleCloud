@@ -5,6 +5,7 @@ API per scaricare, visualizzare e processare documenti dalle email.
 
 from fastapi import APIRouter, Query, HTTPException, Depends
 from app.utils.dependencies import get_current_admin_user
+from app.utils.ruoli import richiedi_admin
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
@@ -37,6 +38,29 @@ async def catalogo_cartelle_drive() -> Dict[str, Any]:
     from app.services.drive_folder_registry import get_public_catalog
 
     return get_public_catalog()
+
+
+@router.post("/drive/sync")
+async def sincronizza_cartelle_drive(
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Avvia in background tutti gli import Drive configurati e autorizzati."""
+    from app.services.drive_sync_orchestrator import start_all
+
+    channels = start_all(Database.get_db())
+    started = sum(status == "started" for status in channels.values())
+    running = sum(status == "running" for status in channels.values())
+    return {
+        "status": "started" if started else "running" if running else "not_configured",
+        "message": (
+            "Sincronizzazione Drive avviata. I file restano tracciati nelle cartelle di lavorazione."
+            if started
+            else "Le sincronizzazioni Drive configurate sono gia in corso."
+            if running
+            else "Nessun import Drive automatico configurato."
+        ),
+        "channels": channels,
+    }
 
 
 # ============================================================
