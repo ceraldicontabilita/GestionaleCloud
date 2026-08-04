@@ -202,6 +202,33 @@ def parse_fattura_xml_multi(xml_content: str) -> List[Dict[str, Any]]:
             "email": get_nested_text(cedente, 'Contatti', 'Email'),
         }
 
+        # Il rappresentante fiscale, quando dichiarato, e' un soggetto
+        # distinto dal cedente e non deve essere appiattito nei normali campi
+        # anagrafici del fornitore. Lo conserviamo con la propria identita'
+        # affinche' la scheda fornitore possa mostrarlo/proporlo senza
+        # sovrascrivere dati gia' confermati dall'utente.
+        rappresentante_el = find_element(header, 'RappresentanteFiscale')
+        rappresentante_fiscale = {}
+        if rappresentante_el is not None:
+            rappresentante_fiscale = {
+                "denominazione": get_denominazione_o_persona_fisica(rappresentante_el),
+                "partita_iva": (
+                    get_nested_text(rappresentante_el, 'IdFiscaleIVA', 'IdCodice')
+                    or get_nested_text(
+                        rappresentante_el, 'DatiAnagrafici', 'IdFiscaleIVA', 'IdCodice'
+                    )
+                ),
+                "codice_fiscale": (
+                    get_nested_text(rappresentante_el, 'CodiceFiscale')
+                    or get_nested_text(rappresentante_el, 'DatiAnagrafici', 'CodiceFiscale')
+                ),
+            }
+            rappresentante_fiscale = {
+                key: value for key, value in rappresentante_fiscale.items() if value
+            }
+        if rappresentante_fiscale:
+            fornitore["rappresentante_fiscale"] = rappresentante_fiscale
+
         # Estrai dati cliente (CessionarioCommittente) — condiviso da tutti i body
         cessionario = find_element(header, 'CessionarioCommittente')
         cliente = {

@@ -254,3 +254,135 @@ def test_process_xml_filtro_anno_corrente_va_al_flusso_attivo():
     assert esito["status"] == "created"
     assert esito["prima_nota_id"] is not None
     assert len(db["prima_nota_banca"].docs) == 1  # trasferimento speculare
+
+
+def test_reimport_duplicato_ripara_prima_nota_mancante_senza_duplicare():
+    db = AsyncMongoMockClient()["corrispettivi_retry_test"]
+    svc = CorrispettiviService(db=db)
+    xml = b"<corrispettivo />"
+    parsed = {
+        "data": "2026-08-03", "totale": 100.0,
+        "pagato_contanti": 60.0, "pagato_pos": 40.0,
+        "id_dispositivo": "RT001", "progressivo": "1",
+        "totale_iva": 9.09, "imponibile": 90.91, "riepilogo_iva": [],
+    }
+    svc._parse_corrispettivo_xml = lambda _content: dict(parsed)
+    _run(db["corrispettivi"].insert_one({
+        "id": "corr-retry", "content_hash": hashlib.sha256(xml).hexdigest(),
+        "data": "2026-08-03", "totale": 100.0,
+        "pagato_contanti": 60.0, "pagato_pos": 40.0,
+        "id_dispositivo": "RT001", "entity_status": "active",
+        "status": "imported", "prima_nota_id": None,
+    }))
+
+    first = _run(svc.process_xml(xml, "retry.xml"))
+    second = _run(svc.process_xml(xml, "retry.xml"))
+
+    assert first["status"] == second["status"] == "duplicate"
+    assert first["repaired_accounting"] is True
+    assert _run(db["prima_nota_cassa"].count_documents({})) == 2
+    assert _run(db["prima_nota_banca"].count_documents({})) == 1
+    saved = _run(db["corrispettivi"].find_one({"id": "corr-retry"}))
+    assert saved["prima_nota_id"]
+
+
+def _parsed_corr(*, data, ora, totale, contanti, pos, progressivo, docs=1):
+    return {
+        "data": data,
+        "data_ora_rilevazione": f"{data}T{ora}+02:00",
+        "data_ora_trasmissione": f"{data}T{ora}+02:00",
+        "totale": totale,
+        "pagato_contanti": contanti,
+        "pagato_pos": pos,
+        "id_dispositivo": "99MEY026532",
+        "progressivo": progressivo,
+        "numero_documenti": docs,
+        "totale_iva": round(totale / 11, 2),
+        "imponibile": round(totale - (totale / 11), 2),
+        "non_riscosso": 0,
+        "riepilogo_iva": [],
+    }
+
+
+def test_xml_distinti_stessa_giornata_vengono_sommati_ma_retry_no():
+    db = AsyncMongoMockClient()["corrispettivi_multi_close_test"]
+    svc = CorrispettiviService(db=db)
+    parsed = {
+        b"chiusura-1": _parsed_corr(
+            data="2026-05-19", ora="20:33:34", totale=3104.40,
+            contanti=1077.30, pos=2027.10, progressivo="2534", docs=522,
+        ),
+        b"chiusura-2": _parsed_corr(
+            data="2026-05-19", ora="21:34:50", totale=133.00,
+            contanti=0, pos=133.00, progressivo="2535", docs=6,
+        ),
+    }
+    svc._parse_corrispettivo_xml = lambda content: dict(parsed[content])
+
+    first = _run(svc.process_xml(b"chiusura-1", "2534.xml"))
+    second = _run(svc.process_xml(b"chiusura-2", "2535.xml"))
+    retry = _run(svc.process_xml(b"chiusura-2", "2535-copia.xml"))
+
+    assert first["status"] == "created"
+    assert second["status"] == "aggregated"
+    assert retry["status"] == "duplicate"
+    assert _run(db["corrispettivi"].count_documents({})) == 1
+    saved = _run(db["corrispettivi"].find_one({"data": "2026-05-19"}))
+    assert saved["chiusure_sommate"] == 2
+    assert len(saved["source_hashes"]) == 2
+    assert saved["totale"] == 3237.40
+    assert saved["pagato_contanti"] == 1077.30
+    assert saved["pagato_pos"] == saved["pagato_elettronico"] == 2160.10
+    assert saved["numero_documenti"] == 528
+
+
+def test_chiusura_post_mezzanotte_va_al_giorno_precedente_se_vuoto():
+    db = AsyncMongoMockClient()["corrispettivi_after_midnight_test"]
+    svc = CorrispettiviService(db=db)
+    parsed = {
+        b"notte": _parsed_corr(
+            data="2026-04-04", ora="00:32:52", totale=4083.60,
+            contanti=1104.60, pos=2979.00, progressivo="2488", docs=575,
+        ),
+        b"sera": _parsed_corr(
+            data="2026-04-04", ora="21:37:38", totale=4699.10,
+            contanti=1065.80, pos=3633.30, progressivo="2489", docs=593,
+        ),
+    }
+    svc._parse_corrispettivo_xml = lambda content: dict(parsed[content])
+
+    night = _run(svc.process_xml(b"notte", "2488.xml"))
+    evening = _run(svc.process_xml(b"sera", "2489.xml"))
+
+    assert night["status"] == evening["status"] == "created"
+    previous = _run(db["corrispettivi"].find_one({"data": "2026-04-03"}))
+    current = _run(db["corrispettivi"].find_one({"data": "2026-04-04"}))
+    assert previous["totale"] == 4083.60
+    assert previous["data_rilevazione_xml"] == "2026-04-04"
+    assert previous["chiusura_post_mezzanotte"] is True
+    assert current["totale"] == 4699.10
+
+
+def test_chiusura_post_mezzanotte_non_sposta_se_precedente_valorizzato():
+    db = AsyncMongoMockClient()["corrispettivi_after_midnight_valued_test"]
+    svc = CorrispettiviService(db=db)
+    parsed = {
+        b"precedente": _parsed_corr(
+            data="2026-04-03", ora="21:00:00", totale=100.00,
+            contanti=50.00, pos=50.00, progressivo="2487", docs=10,
+        ),
+        b"notte": _parsed_corr(
+            data="2026-04-04", ora="00:32:52", totale=20.00,
+            contanti=10.00, pos=10.00, progressivo="2488", docs=2,
+        ),
+    }
+    svc._parse_corrispettivo_xml = lambda content: dict(parsed[content])
+
+    _run(svc.process_xml(b"precedente", "2487.xml"))
+    _run(svc.process_xml(b"notte", "2488.xml"))
+
+    previous = _run(db["corrispettivi"].find_one({"data": "2026-04-03"}))
+    current = _run(db["corrispettivi"].find_one({"data": "2026-04-04"}))
+    assert previous["totale"] == 100.00
+    assert current["totale"] == 20.00
+    assert current["chiusura_post_mezzanotte"] is False

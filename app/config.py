@@ -106,6 +106,7 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_CORRISPETTIVI_FOLDER_ID: Optional[str] = None # corrispettivi RT
     GOOGLE_DRIVE_QUIETANZE_FOLDER_ID: Optional[str] = None     # quietanze F24
     GOOGLE_DRIVE_ESTRATTI_FOLDER_ID: Optional[str] = None      # estratti conto
+    GOOGLE_DRIVE_ESTRATTI_FOLDER_IDS: Optional[str] = None     # piu radici, separate da virgola
     GOOGLE_DRIVE_BONIFICI_FOLDER_ID: Optional[str] = None      # bonifici stipendi (PDF)
     # Nuovi canali documentali (scelta utente 12-07-2026): cartelle Drive
     # dedicate. Gli ID vanno su Render; ogni cartella condivisa con la
@@ -121,6 +122,7 @@ class Settings(BaseSettings):
     DRIVE_FOLDER_CORRISPETTIVI_ID: Optional[str] = None
     DRIVE_FOLDER_QUIETANZE_ID: Optional[str] = None
     DRIVE_FOLDER_ESTRATTI_CONTO_ID: Optional[str] = None
+    DRIVE_FOLDER_ESTRATTI_CONTO_IDS: Optional[str] = None
     DRIVE_FOLDER_BONIFICI_ID: Optional[str] = None
     DRIVE_FOLDER_FATTURE_ID: Optional[str] = None
     DRIVE_FOLDER_DICHIARAZIONI_IVA_ID: Optional[str] = None
@@ -134,6 +136,7 @@ class Settings(BaseSettings):
     DRIVE_CORRISPETTIVI_FOLDER_ID: Optional[str] = None
     DRIVE_QUIETANZE_FOLDER_ID: Optional[str] = None
     DRIVE_ESTRATTI_CONTO_FOLDER_ID: Optional[str] = None
+    DRIVE_ESTRATTI_CONTO_FOLDER_IDS: Optional[str] = None
     DRIVE_PRESENZE_FOLDER_ID: Optional[str] = None
     DRIVE_F24_FOLDER_ID: Optional[str] = None
     DRIVE_CARTE_FOLDER_ID: Optional[str] = None

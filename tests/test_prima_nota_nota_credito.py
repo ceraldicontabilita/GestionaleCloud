@@ -5,6 +5,8 @@ categoria "Fatture" — invece deve essere ENTRATA (segno +), categoria
 "Nota credito fornitore", stessa regola già usata da
 registra_pagamento_fattura/determina_tipo_movimento_fattura."""
 import asyncio
+import pytest
+from fastapi import HTTPException
 
 from app.routers.prima_nota_module import sync as sync_mod
 from app.routers.prima_nota_module import common as common_mod
@@ -100,7 +102,7 @@ def _fattura(**over):
     base = {
         "id": "fatt-1", "invoice_number": "4", "invoice_date": "2026-06-05",
         "supplier_name": "RONDINELLA MARKET S.R.L.", "total_amount": 58.0,
-        "tipo_documento": "TD01",
+        "tipo_documento": "TD01", "metodo_pagamento": "cassa",
     }
     base.update(over)
     return base
@@ -237,6 +239,46 @@ def test_conferma_fattura_provvisoria_fattura_normale_resta_uscita(monkeypatch):
     cassa = db["prima_nota_cassa"].docs
     assert cassa[0]["tipo"] == "uscita"
     assert cassa[0]["categoria"] == "Fatture"
+
+
+def test_conferma_banca_senza_estratto_conto_resta_provvisoria(monkeypatch):
+    db = _FakeDb()
+    db["invoices"].docs = [_fattura(metodo_pagamento="banca")]
+    _patch_db(monkeypatch, db)
+
+    with pytest.raises(HTTPException) as exc:
+        _run(sync_mod.conferma_fattura_provvisoria({
+            "fattura_id": "fatt-1", "metodo": "banca",
+        }))
+
+    assert exc.value.status_code == 409
+    assert db["prima_nota_banca"].docs == []
+    assert db["invoices"].docs[0].get("stato_pagamento") != "pagata"
+
+
+def test_conferma_banca_con_riga_reale_marca_riconciliata(monkeypatch):
+    db = _FakeDb()
+    db["invoices"].docs = [_fattura(metodo_pagamento="banca")]
+    db["estratto_conto_movimenti"].docs = [{
+        "id": "ec-1", "data": "2026-06-10", "importo": -58.0,
+        "descrizione": "BONIFICO RONDINELLA", "riconciliato": False,
+    }]
+    _patch_db(monkeypatch, db)
+
+    res = _run(sync_mod.conferma_fattura_provvisoria({
+        "fattura_id": "fatt-1", "metodo": "banca", "movimento_banca_id": "ec-1",
+    }))
+
+    assert res["success"] is True
+    assert res["riconciliato"] is True
+    banca = db["prima_nota_banca"].docs
+    assert len(banca) == 1
+    assert banca[0]["estratto_conto_id"] == "ec-1"
+    assert banca[0]["riconciliato"] is True
+    fattura = db["invoices"].docs[0]
+    assert fattura["stato_finanziario"] == "pagata_e_riconciliata"
+    assert fattura["estratto_conto_id"] == "ec-1"
+    assert db["estratto_conto_movimenti"].docs[0]["fattura_id"] == "fatt-1"
 
 
 def test_sync_fatture_pagate_nota_credito_entrata(monkeypatch):

@@ -9,7 +9,7 @@ Servizio unificato per la gestione corrispettivi con:
 """
 
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import logging
 import uuid
@@ -79,9 +79,17 @@ class CorrispettiviService:
             logger.error(f"XML parse error: {e}")
             return {"status": "error", "message": f"Errore parsing XML: {str(e)}"}
 
-        # 2. Check duplicato
+        # Una chiusura eseguita poco dopo mezzanotte appartiene al giorno
+        # precedente solo quando quel giorno non ha ancora un valore. La data
+        # fiscale originale resta conservata nella provenienza XML.
+        await self._resolve_effective_date(parsed)
+
+        # 2. Check duplicato esatto. source_hashes copre anche gli XML gia'
+        # sommati in una chiusura giornaliera esistente.
         content_hash = hashlib.sha256(xml_content).hexdigest()
         existing = await self.corrispettivi.find_one({"content_hash": content_hash})
+        if existing is None:
+            existing = await self.corrispettivi.find_one({"source_hashes": content_hash})
         if existing:
             # Recupero conservativo dei PeriodoInattivo gia' importati dal
             # vecchio parser con data odierna: non sono vendite e non devono
@@ -136,6 +144,9 @@ class CorrispettiviService:
             return {
                 "status": "duplicate",
                 "corrispettivo_id": str(existing.get("id")),
+                "repaired_accounting": await self._repair_duplicate_accounting(
+                    existing, parsed, applica_filtro_anno, exact_source=True,
+                ),
                 "message": "Corrispettivo già presente"
             }
 
@@ -159,11 +170,10 @@ class CorrispettiviService:
             dup_query["id_dispositivo"] = parsed["id_dispositivo"]
         existing_date = await self.corrispettivi.find_one(dup_query)
         if existing_date:
-            return {
-                "status": "duplicate",
-                "corrispettivo_id": str(existing_date.get("id")),
-                "message": f"Corrispettivo per {parsed['data']} già presente"
-            }
+            return await self._merge_distinct_xml(
+                existing_date, parsed, filename, content_hash,
+                applica_filtro_anno=applica_filtro_anno,
+            )
 
         # Filtro anno: data mancante/illeggibile resta nel flusso attivo di
         # proposito (mai archiviare alla cieca un XML sospetto).
@@ -180,7 +190,12 @@ class CorrispettiviService:
             "id": self._generate_id(),
             "filename": filename,
             "content_hash": content_hash,
+            "source_hashes": [content_hash],
+            "source_files": [filename],
+            "chiusure_xml": [self._xml_component(parsed, filename, content_hash)],
             "data": parsed["data"],
+            "data_rilevazione_xml": parsed.get("data_originale_xml", parsed["data"]),
+            "chiusura_post_mezzanotte": bool(parsed.get("chiusura_post_mezzanotte")),
             "progressivo": parsed.get("progressivo", ""),
             "id_dispositivo": parsed.get("id_dispositivo", ""),
             "matricola_rt": parsed.get("id_dispositivo", ""),
@@ -194,6 +209,7 @@ class CorrispettiviService:
             # come alias storico per compatibilita' con le viste esistenti.
             "pagato_elettronico": parsed.get("pagato_pos", 0),
             "non_riscosso": parsed.get("non_riscosso", 0),
+            "numero_documenti": parsed.get("numero_documenti", 0),
             
             # IVA
             "totale_iva": parsed.get("totale_iva", 0),
@@ -430,6 +446,197 @@ class CorrispettiviService:
         return {"status": "success", "message": "Corrispettivo eliminato"}
     
     # ==================== HELPERS ====================
+
+    @staticmethod
+    def _number(value: Any) -> float:
+        try:
+            return float(value or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    async def _resolve_effective_date(self, parsed: Dict[str, Any]) -> None:
+        """Attribuisce al giorno precedente una chiusura post-mezzanotte.
+
+        La correzione si applica soltanto prima delle 04:00, con importi o
+        documenti reali, e soltanto se il giorno precedente non e' gia'
+        valorizzato per lo stesso registratore. La data XML non viene persa.
+        """
+        raw = str(parsed.get("data_ora_rilevazione") or "")
+        if not raw or not (self._number(parsed.get("totale")) > 0
+                           or int(parsed.get("numero_documenti", 0) or 0) > 0):
+            return
+        try:
+            detected = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return
+        if detected.hour >= 4:
+            return
+
+        original_date = str(parsed.get("data") or detected.date().isoformat())[:10]
+        previous_date = (detected.date() - timedelta(days=1)).isoformat()
+        query = {
+            "data": previous_date,
+            "entity_status": {"$ne": EntityStatus.DELETED.value},
+        }
+        if parsed.get("id_dispositivo"):
+            query["id_dispositivo"] = parsed["id_dispositivo"]
+        previous = await self.corrispettivi.find_one(query)
+        previous_valued = bool(previous and (
+            self._number(previous.get("totale")) > 0
+            or int(previous.get("numero_documenti", 0) or 0) > 0
+        ))
+        if previous_valued:
+            return
+
+        parsed["data_originale_xml"] = original_date
+        parsed["data"] = previous_date
+        parsed["chiusura_post_mezzanotte"] = True
+
+    @staticmethod
+    def _xml_component(parsed: Dict[str, Any], filename: str,
+                       content_hash: str) -> Dict[str, Any]:
+        return {
+            "content_hash": content_hash,
+            "filename": filename,
+            "data_effettiva": parsed.get("data"),
+            "data_rilevazione_xml": parsed.get("data_originale_xml", parsed.get("data")),
+            "data_ora_rilevazione": parsed.get("data_ora_rilevazione", ""),
+            "data_ora_trasmissione": parsed.get("data_ora_trasmissione", ""),
+            "progressivo": parsed.get("progressivo", ""),
+            "totale": round(float(parsed.get("totale", 0) or 0), 2),
+            "pagato_contanti": round(float(parsed.get("pagato_contanti", 0) or 0), 2),
+            "pagato_pos": round(float(parsed.get("pagato_pos", 0) or 0), 2),
+            "non_riscosso": round(float(parsed.get("non_riscosso", 0) or 0), 2),
+            "totale_iva": round(float(parsed.get("totale_iva", 0) or 0), 2),
+            "imponibile": round(float(parsed.get("imponibile", 0) or 0), 2),
+            "numero_documenti": int(parsed.get("numero_documenti", 0) or 0),
+            "riepilogo_iva": parsed.get("riepilogo_iva", []),
+            "chiusura_post_mezzanotte": bool(parsed.get("chiusura_post_mezzanotte")),
+        }
+
+    @classmethod
+    def _aggregate_riepilogo_iva(cls, components: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        grouped: Dict[tuple, Dict[str, Any]] = {}
+        for component in components:
+            for row in component.get("riepilogo_iva", []) or []:
+                key = (str(row.get("aliquota_iva", "")), str(row.get("natura", "")))
+                target = grouped.setdefault(key, {
+                    "aliquota_iva": key[0], "natura": key[1],
+                    "imposta": 0.0, "ammontare": 0.0,
+                    "importo_parziale": 0.0, "importo_lordo": 0.0,
+                })
+                for field in ("imposta", "ammontare", "importo_parziale", "importo_lordo"):
+                    target[field] += cls._number(row.get(field))
+        for target in grouped.values():
+            for field in ("imposta", "ammontare", "importo_parziale", "importo_lordo"):
+                target[field] = round(target[field], 2)
+        return list(grouped.values())
+
+    async def _merge_distinct_xml(
+        self, existing: Dict[str, Any], parsed: Dict[str, Any], filename: str,
+        content_hash: str, *, applica_filtro_anno: bool,
+    ) -> Dict[str, Any]:
+        """Somma chiusure XML distinte della stessa data/registratore.
+
+        Gli hash esatti sono intercettati prima di questo metodo. Qui ogni
+        componente conserva provenienza e importi, mentre la riga giornaliera
+        e le scritture contabili vengono ricalcolate in modo idempotente.
+        """
+        components = list(existing.get("chiusure_xml") or [])
+        if not components:
+            legacy = {
+                "data": existing.get("data"),
+                "data_originale_xml": existing.get("data_rilevazione_xml", existing.get("data")),
+                "data_ora_rilevazione": existing.get("data_ora_rilevazione", ""),
+                "data_ora_trasmissione": existing.get("data_ora_trasmissione", ""),
+                "progressivo": existing.get("progressivo", ""),
+                "totale": existing.get("totale", 0),
+                "pagato_contanti": existing.get("pagato_contanti", 0),
+                "pagato_pos": existing.get("pagato_pos", 0) or existing.get("pagato_elettronico", 0),
+                "non_riscosso": existing.get("non_riscosso", 0),
+                "totale_iva": existing.get("totale_iva", 0),
+                "imponibile": existing.get("imponibile", existing.get("totale_imponibile", 0)),
+                "numero_documenti": existing.get("numero_documenti", 0),
+                "riepilogo_iva": existing.get("riepilogo_iva", []),
+                "chiusura_post_mezzanotte": existing.get("chiusura_post_mezzanotte", False),
+            }
+            components.append(self._xml_component(
+                legacy, existing.get("filename", "fonte_precedente.xml"),
+                existing.get("content_hash", "legacy:" + str(existing.get("id", ""))),
+            ))
+        components.append(self._xml_component(parsed, filename, content_hash))
+
+        def summed(field: str) -> float:
+            return round(sum(self._number(c.get(field)) for c in components), 2)
+
+        pos = summed("pagato_pos")
+        source_hashes = list(dict.fromkeys(
+            [h for h in (existing.get("source_hashes") or [existing.get("content_hash")]) if h]
+            + [content_hash]
+        ))
+        source_files = list(dict.fromkeys(
+            [f for f in (existing.get("source_files") or [existing.get("filename")]) if f]
+            + [filename]
+        ))
+        canonical = {
+            "source_hashes": source_hashes,
+            "source_files": source_files,
+            "chiusure_xml": components,
+            "chiusure_sommate": len(components),
+            "totale": summed("totale"),
+            "totale_complessivo": summed("totale"),
+            "totale_xml": summed("totale"),
+            "pagato_contanti": summed("pagato_contanti"),
+            "pagato_pos": pos,
+            "pagato_elettronico": pos,
+            "non_riscosso": summed("non_riscosso"),
+            "totale_iva": summed("totale_iva"),
+            "imponibile": summed("imponibile"),
+            "totale_imponibile": summed("imponibile"),
+            "numero_documenti": int(sum(int(c.get("numero_documenti", 0) or 0) for c in components)),
+            "riepilogo_iva": self._aggregate_riepilogo_iva(components),
+            "progressivi_xml": [c.get("progressivo") for c in components if c.get("progressivo")],
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if pos > 0:
+            from app.utils.pos_accredito import data_accredito_prevista_str
+            prevista = data_accredito_prevista_str(existing.get("data", parsed.get("data")))
+            if prevista:
+                canonical["data_prevista_accredito"] = prevista
+                canonical["stato_accredito"] = "in_attesa_accredito"
+
+        await self.corrispettivi.update_one({"id": existing.get("id")}, {"$set": canonical})
+        merged = dict(existing)
+        merged.update(canonical)
+
+        archived = (merged.get("status") == "archiviata"
+                    or merged.get("stato_import") == "archivio_storico")
+        prima_nota_id = None
+        if not archived:
+            prima_nota_id = await self._create_prima_nota_entry(merged)
+            if prima_nota_id:
+                await self.corrispettivi.update_one(
+                    {"id": existing.get("id")}, {"$set": {"prima_nota_id": prima_nota_id}},
+                )
+
+            try:
+                from app.services.event_bus import propagate_event, EventTypes
+                await propagate_event(EventTypes.CORRISPETTIVI_IMPORTATI, {
+                    "corrispettivi": [merged], "data": merged.get("data"),
+                    "totale": merged.get("totale"), "id": merged.get("id"),
+                }, self.db, source_module="corrispettivi_service")
+            except Exception as exc:
+                logger.debug("Corrispettivi aggregati - Event Bus: %s", exc)
+
+        return {
+            "status": "aggregated",
+            "corrispettivo_id": str(existing.get("id")),
+            "data": merged.get("data"),
+            "totale": merged.get("totale"),
+            "chiusure_sommate": len(components),
+            "prima_nota_id": prima_nota_id,
+            "message": "Chiusura XML distinta sommata al corrispettivo giornaliero",
+        }
     
     def _parse_corrispettivo_xml(self, xml_content: bytes) -> Dict[str, Any]:
         """Adatta il parser COR10 canonico allo schema del servizio.
@@ -458,6 +665,8 @@ class CorrispettiviService:
         totale_iva = float(parsed.get("totale_iva", 0) or 0)
         return {
             "data": parsed.get("data"),
+            "data_ora_rilevazione": parsed.get("data_ora_rilevazione", ""),
+            "data_ora_trasmissione": parsed.get("data_ora_trasmissione", ""),
             "totale": totale,
             "pagato_contanti": float(parsed.get("pagato_contanti", 0) or 0),
             "pagato_pos": float(parsed.get("pagato_elettronico", 0) or 0),
@@ -466,10 +675,73 @@ class CorrispettiviService:
             "imponibile": float(parsed.get("totale_imponibile", totale - totale_iva) or 0),
             "riepilogo_iva": parsed.get("riepilogo_iva", []),
             "progressivo": parsed.get("numero_documento", ""),
+            "numero_documenti": int(parsed.get("numero_documenti", 0) or 0),
             "id_dispositivo": parsed.get("matricola_rt", ""),
             "_periodo_inattivo": bool(parsed.get("periodo_inattivo")),
         }
     
+    async def _repair_duplicate_accounting(
+        self,
+        existing: Dict[str, Any],
+        parsed: Dict[str, Any],
+        applica_filtro_anno: bool,
+        *,
+        exact_source: bool,
+    ) -> bool:
+        """Un retry non duplica il corrispettivo ma ripara i collegamenti.
+
+        Se l'hash e' identico, l'XML e' la stessa fonte e puo' completare i
+        campi canonici mancanti. Un duplicato solo per data/matricola non
+        sovrascrive invece gli importi gia' registrati. In entrambi i casi il
+        writer idempotente ricrea esclusivamente le scritture di Prima Nota
+        assenti, senza cancellare quelle esistenti.
+        """
+        if existing.get("status") == "archiviata" or existing.get("stato_import") == "archivio_storico":
+            return False
+        data = str(parsed.get("data") or existing.get("data") or "")[:10]
+        if applica_filtro_anno and data[:4].isdigit():
+            from app.services.config_import import get_anno_importazione_attivo
+            if int(data[:4]) != await get_anno_importazione_attivo(self.db):
+                return False
+
+        corr = dict(existing)
+        # Un retry di una delle fonti di un aggregato non deve mai riportare
+        # il totale giornaliero al valore della singola chiusura.
+        if exact_source and len(existing.get("chiusure_xml") or []) <= 1:
+            canonical = {
+                "data": parsed.get("data"),
+                "progressivo": parsed.get("progressivo", ""),
+                "id_dispositivo": parsed.get("id_dispositivo", ""),
+                "matricola_rt": parsed.get("id_dispositivo", ""),
+                "totale": parsed.get("totale", 0),
+                "totale_complessivo": parsed.get("totale", 0),
+                "pagato_contanti": parsed.get("pagato_contanti", 0),
+                "pagato_pos": parsed.get("pagato_pos", 0),
+                "pagato_elettronico": parsed.get("pagato_pos", 0),
+                "non_riscosso": parsed.get("non_riscosso", 0),
+                "totale_iva": parsed.get("totale_iva", 0),
+                "imponibile": parsed.get("imponibile", 0),
+                "riepilogo_iva": parsed.get("riepilogo_iva", []),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            corr.update(canonical)
+            await self.corrispettivi.update_one(
+                {"id": existing.get("id")}, {"$set": canonical},
+            )
+        corr.setdefault("matricola_rt", corr.get("id_dispositivo", ""))
+        corr.setdefault("pagato_elettronico", corr.get("pagato_pos", 0))
+
+        # Cancella e rigenera perche' un retry puo' aver corretto data,
+        # quota POS o totale aggregato; il writer "se assente" da solo non
+        # aggiornerebbe una scrittura storica gia' presente.
+        prima_nota_id = await self._create_prima_nota_entry(corr)
+        if prima_nota_id and not existing.get("prima_nota_id"):
+            await self.corrispettivi.update_one(
+                {"id": existing.get("id")},
+                {"$set": {"prima_nota_id": prima_nota_id}},
+            )
+        return bool(prima_nota_id)
+
     async def _create_prima_nota_entry(self, corr: Dict[str, Any]) -> Optional[str]:
         """
         Crea i movimenti Prima Nota per il corrispettivo.

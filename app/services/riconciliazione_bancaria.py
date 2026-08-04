@@ -308,8 +308,20 @@ async def _applica_pagamento_banca(db, fattura: Dict[str, Any], metodo_label: st
     fattura_id = str(fattura.get("id") or fattura.get("_id"))
     importo_fattura = float(fattura.get("total_amount") or fattura.get("importo_totale") or 0)
     quota = round(float(importo_pagamento if importo_pagamento is not None else importo_fattura), 2)
+    # Un movimento EC puo' pagare piu' fatture. L'idempotenza deve quindi
+    # essere sulla coppia (movimento, fattura), non sul solo movimento:
+    # altrimenti la seconda quota sovrascriverebbe la prima riga di banca.
     evidenza_esistente = await db["prima_nota_banca"].find_one({
-        "$or": [{"movimento_estratto_conto_id": mov_id}, {"estratto_conto_id": mov_id}],
+        "$and": [
+            {"$or": [
+                {"movimento_estratto_conto_id": mov_id},
+                {"estratto_conto_id": mov_id},
+            ]},
+            {"$or": [
+                {"invoice_id": fattura_id},
+                {"fattura_id": fattura_id},
+            ]},
+        ],
         "status": {"$nin": ["deleted", "archived"]},
     }, {"_id": 0}) if mov_id else None
     evidenza_gia_applicata = bool(
@@ -514,6 +526,65 @@ def match_numero_fattura_descrizione(numero_fattura: str, descrizione: str) -> b
     return False
 
 
+def _numero_fattura_citato_esplicitamente(numero_fattura: str, descrizione: str) -> bool:
+    """Match prudente per i bonifici cumulativi.
+
+    Per ripartire automaticamente un movimento su piu' fatture non basta il
+    fuzzy match generico: ogni numero deve essere davvero leggibile nella
+    causale. Si confrontano sia la forma compatta sia la variante senza zeri
+    iniziali, mantenendo una lunghezza minima per evitare che numeri brevi
+    (giorni, anni, ABI/CAB) vengano scambiati per fatture.
+    """
+    if not numero_fattura or not descrizione:
+        return False
+
+    numero = re.sub(
+        r'^(?:FT|FAT|FATT|FATTURA|INV|N\.?|NR\.?)\s*',
+        '', str(numero_fattura).strip().upper(),
+    )
+    numero_compatto = re.sub(r'[^A-Z0-9]', '', numero)
+    descrizione_compatta = re.sub(r'[^A-Z0-9]', '', str(descrizione).upper())
+    if len(numero_compatto) >= 4 and numero_compatto in descrizione_compatta:
+        return True
+
+    senza_zeri = numero_compatto.lstrip('0')
+    if len(senza_zeri) >= 4 and senza_zeri in descrizione_compatta:
+        return True
+
+    # Numeri corti alfanumerici (es. 25/D) sono ammessi soltanto nella forma
+    # originale, delimitata da caratteri non alfanumerici.
+    if 3 <= len(numero_compatto) < 4:
+        parti = [re.escape(p) for p in re.findall(r'[A-Z0-9]+', numero) if p]
+        if parti:
+            pattern = r'(?<![A-Z0-9])' + r'[\s./_-]*'.join(parti) + r'(?![A-Z0-9])'
+            return re.search(pattern, str(descrizione).upper()) is not None
+    return False
+
+
+def _quota_aperta_fattura(fattura: Dict[str, Any]) -> float:
+    """Quota ancora aperta da usare nella ripartizione del bonifico."""
+    totale = float(fattura.get("importo_totale") or fattura.get("total_amount") or 0)
+    if fattura.get("importo_residuo") is not None:
+        return round(max(0.0, float(fattura.get("importo_residuo") or 0)), 2)
+    return round(max(0.0, totale - float(fattura.get("importo_pagato") or 0)), 2)
+
+
+def _chiave_fornitore_fattura(fattura: Dict[str, Any]) -> str:
+    """Identita' stabile del fornitore per evitare ripartizioni cross-fornitore."""
+    piva = (
+        fattura.get("supplier_vat") or fattura.get("cedente_piva")
+        or fattura.get("fornitore_piva") or ""
+    )
+    if piva:
+        return "PIVA:" + re.sub(r'\W', '', str(piva).upper())
+    nome = (
+        fattura.get("cedente_denominazione") or fattura.get("supplier_name")
+        or fattura.get("fornitore_ragione_sociale") or ""
+    )
+    nome_norm = re.sub(r'\W', '', str(nome).upper())
+    return "NOME:" + nome_norm if nome_norm else ""
+
+
 def _evidenza_forte_fattura_banca(
     fattura: Dict[str, Any], descrizione: str, importo_movimento: float
 ) -> Dict[str, bool]:
@@ -648,6 +719,8 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
         "riconciliati_f24": 0,
         "riconciliati_pos": 0,
         "riconciliati_versamenti": 0,
+        "riconciliati_movimenti_multi_fattura": 0,
+        "fatture_ripartite_multi": 0,
         "commissioni_ignorate": 0,
         "dubbi": 0,
         "non_trovati": 0,
@@ -700,9 +773,152 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
             match_found = False
             match_type = None
             match_details = {}
+            blocca_match_singolo = False
+
+            # === 0. PAGAMENTO CUMULATIVO CON PIU' NUMERI FATTURA ===
+            # Un bonifico puo' riportare in causale l'elenco delle fatture
+            # saldate. In quel caso la prova forte non e' il totale della
+            # singola fattura, ma: numeri espliciti + stesso fornitore + somma
+            # dei residui uguale al movimento. Ogni fattura riceve la propria
+            # quota e la propria riga in Prima Nota Banca, tutte collegate allo
+            # stesso movimento EC.
+            riferimenti_potenziali = set(re.findall(
+                r'(?<![A-Z0-9])[A-Z0-9]*\d[A-Z0-9./_-]{2,}(?![A-Z0-9])',
+                str(descrizione).upper(),
+            ))
+            riferimenti_strutturati = {
+                riferimento for riferimento in riferimenti_potenziali
+                if "/" in riferimento or "-" in riferimento
+            }
+            causale_indica_fatture = bool(
+                re.search(r'\b(?:FATTURA|FATTURE|FATT|FAT|FT|INVOICE|INV)\b',
+                          str(descrizione), re.IGNORECASE)
+                # Senza una parola esplicita, due riferimenti devono almeno
+                # avere la forma tipica di un documento (es. 1855/01): evita
+                # di scansire come fatture CRO, ABI/CAB, date e altri numeri.
+                or len(riferimenti_strutturati) >= 2
+            )
+            if tipo == "uscita" and causale_indica_fatture:
+                fatture_aperte = await db[Collections.INVOICES].find({
+                    "pagato": {"$ne": True},
+                    "stato_pagamento": {"$nin": ["pagata", "paid", "sospesa"]},
+                }, {
+                    "id": 1, "invoice_number": 1, "numero_fattura": 1,
+                    "numero_documento": 1, "supplier_vat": 1,
+                    "cedente_piva": 1, "fornitore_piva": 1,
+                    "supplier_name": 1, "cedente_denominazione": 1,
+                    "fornitore_ragione_sociale": 1,
+                    "total_amount": 1, "importo_totale": 1,
+                    "importo_pagato": 1, "importo_residuo": 1,
+                    "invoice_date": 1, "data": 1,
+                }).to_list(5000)
+
+                fatture_esplicite = []
+                ids_espliciti = set()
+                for fattura in fatture_aperte:
+                    numero = (
+                        fattura.get("invoice_number") or fattura.get("numero_fattura")
+                        or fattura.get("numero_documento") or ""
+                    )
+                    quota = _quota_aperta_fattura(fattura)
+                    fattura_id = str(fattura.get("id") or fattura.get("_id"))
+                    if (
+                        quota > 0
+                        and fattura_id not in ids_espliciti
+                        and _numero_fattura_citato_esplicitamente(numero, descrizione)
+                    ):
+                        ids_espliciti.add(fattura_id)
+                        fatture_esplicite.append((fattura, quota))
+
+                if len(fatture_esplicite) >= 2:
+                    totale_quote = round(sum(quota for _, quota in fatture_esplicite), 2)
+                    chiavi_fornitore = {
+                        chiave for chiave in (
+                            _chiave_fornitore_fattura(fattura)
+                            for fattura, _ in fatture_esplicite
+                        ) if chiave
+                    }
+                    stesso_fornitore = len(chiavi_fornitore) <= 1
+                    somma_esatta = abs(totale_quote - importo) <= 0.01
+
+                    dettagli_fatture = [{
+                        "fattura_id": str(fattura.get("id") or fattura.get("_id")),
+                        "numero_fattura": (
+                            fattura.get("invoice_number") or fattura.get("numero_fattura")
+                            or fattura.get("numero_documento")
+                        ),
+                        "fornitore": (
+                            fattura.get("cedente_denominazione") or fattura.get("supplier_name")
+                            or fattura.get("fornitore_ragione_sociale")
+                        ),
+                        "quota": quota,
+                    } for fattura, quota in fatture_esplicite]
+
+                    if somma_esatta and stesso_fornitore:
+                        metodo_pagamento = "Bonifico"
+                        num_assegno_multi = extract_assegno_number(descrizione)
+                        if num_assegno_multi:
+                            metodo_pagamento = f"Assegno N.{num_assegno_multi}"
+
+                        for fattura, quota in fatture_esplicite:
+                            await _applica_pagamento_banca(
+                                db, fattura, metodo_pagamento, data_ec, mov_id,
+                                20, now, source="ric_auto_multi_fattura_causale",
+                                importo_pagamento=quota,
+                            )
+
+                        match_found = True
+                        match_type = "fatture_multiple_causale"
+                        match_details = {
+                            "metodo_pagamento": metodo_pagamento,
+                            "importo_movimento": importo,
+                            "importo_ripartito": totale_quote,
+                            "numero_fatture": len(dettagli_fatture),
+                            "fatture": dettagli_fatture,
+                            "match_type": "numeri_fattura+somma_residui+fornitore",
+                        }
+                        results["riconciliati_fatture"] += 1
+                        results["riconciliati_movimenti_multi_fattura"] += 1
+                        results["fatture_ripartite_multi"] += len(dettagli_fatture)
+                    else:
+                        # I numeri sono leggibili ma la somma non quadra o i
+                        # documenti appartengono a fornitori diversi: non si
+                        # inventano quote. Si blocca il match singolo e si crea
+                        # una sola proposta idempotente da confermare.
+                        blocca_match_singolo = True
+                        motivo = (
+                            f"Causale con {len(dettagli_fatture)} fatture esplicite; "
+                            f"movimento €{importo:.2f}, somma residui €{totale_quote:.2f}, "
+                            f"stesso fornitore: {'si' if stesso_fornitore else 'no'}"
+                        )
+                        operazione = {
+                            "id": str(uuid.uuid4()),
+                            "tipo": "riconciliazione_dubbio",
+                            "movimento_ec_id": mov_id,
+                            "data": data_ec,
+                            "importo": importo,
+                            "descrizione": descrizione,
+                            "tipo_movimento": tipo,
+                            "match_type": "fatture_multiple_causale",
+                            "confidence": "alto",
+                            "dettagli": {
+                                "fatture_candidate": dettagli_fatture,
+                                "importo_movimento": importo,
+                                "somma_residui": totale_quote,
+                                "differenza": round(importo - totale_quote, 2),
+                                "stesso_fornitore": stesso_fornitore,
+                                "motivo_dubbio": motivo,
+                            },
+                            "stato": "da_confermare",
+                            "created_at": now,
+                        }
+                        creata = await _crea_operazione_da_confermare_idempotente(db, operazione)
+                        results["dubbi"] += 1
+                        if creata:
+                            await _alert_match_ambiguo(db, mov_id, motivo)
 
             # === 1. CERCA FATTURE (per USCITE) ===
-            if tipo == "uscita" and not match_found:
+            if tipo == "uscita" and not match_found and not blocca_match_singolo:
                 num_fattura_ec = extract_invoice_number(descrizione)
                 num_assegno = extract_assegno_number(descrizione)
                 supplier_name_ec = extract_supplier_name(descrizione)
@@ -1148,7 +1364,7 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                         "updated_at": now
                     }}
                 )
-            else:
+            elif not blocca_match_singolo:
                 results["non_trovati"] += 1
                 await _alert_non_riconciliato(db, mov_id, importo, descrizione)
                 if tipo == "uscita":

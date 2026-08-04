@@ -211,31 +211,85 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     
     if filename.endswith('.pdf'):
         from app.parsers.estratto_conto_bpm_parser import parse_estratto_conto_bpm
+        from app.parsers.estratto_conto_bnl_parser import parse_estratto_conto_bnl
+        from app.parsers.estratto_conto_nexi_parser import EstrattoContoNexiParser
 
-        parsed = parse_estratto_conto_bpm(contents)
-        if not parsed.get("success"):
-            raise HTTPException(status_code=400, detail=parsed.get("error") or "PDF non riconosciuto")
-        for transazione in parsed.get("transazioni") or []:
-            data_contabile = date.fromisoformat(transazione["data"])
-            data_valuta = (
-                date.fromisoformat(transazione["data_valuta"])
-                if transazione.get("data_valuta") else None
+        # Un solo ingresso per tutti i PDF: prova i parser deterministici in
+        # ordine e accetta soltanto un risultato con movimenti reali. Prima
+        # questo endpoint provava esclusivamente BPM, quindi i PDF BNL e carta
+        # finivano in Errori anche se i parser esistevano gia' nel progetto.
+        attempts = []
+        parser_errors = []
+        for parser_name, parser in (
+            ("Banco BPM", parse_estratto_conto_bpm),
+            ("BNL", parse_estratto_conto_bnl),
+            ("Nexi", EstrattoContoNexiParser().parse_pdf),
+        ):
+            try:
+                attempts.append(parser(contents))
+            except Exception as exc:
+                # Un formato non riconosciuto da un parser non deve impedire
+                # agli altri parser di esaminare lo stesso PDF.
+                parser_errors.append(f"{parser_name}: {exc}")
+        parsed = next(
+            (candidate for candidate in attempts
+             if candidate.get("success") and candidate.get("transazioni")),
+            None,
+        )
+        if parsed is None:
+            errors = [candidate.get("error") for candidate in attempts if candidate.get("error")]
+            errors.extend(parser_errors)
+            raise HTTPException(
+                status_code=400,
+                detail="; ".join(errors) or "PDF bancario/carta non riconosciuto",
             )
-            descrizione = transazione.get("descrizione") or "Movimento Banco BPM"
+
+        def _date_obj(value):
+            if isinstance(value, datetime):
+                return value.date()
+            if isinstance(value, date):
+                return value
+            raw = str(value or "").strip()
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"):
+                try:
+                    return datetime.strptime(raw[:10], fmt).date()
+                except ValueError:
+                    continue
+            return None
+
+        banca_parser = parsed.get("banca") or (
+            "BNL" if "bnl" in (parsed.get("tipo_documento") or "").lower()
+            else "Nexi/Banco BPM" if "nexi" in (parsed.get("tipo_documento") or "").lower()
+            else "Banco BPM"
+        )
+        for transazione in parsed.get("transazioni") or []:
+            data_contabile = _date_obj(
+                transazione.get("data") or transazione.get("data_contabile")
+            )
+            if data_contabile is None:
+                continue
+            data_valuta = _date_obj(transazione.get("data_valuta"))
+            descrizione = transazione.get("descrizione") or f"Movimento {banca_parser}"
+            importo = float(transazione.get("importo") or 0)
+            tipo_parser = str(transazione.get("tipo") or "").lower()
+            if tipo_parser in {"uscita", "addebito", "carta_credito"}:
+                importo = -abs(importo)
+            elif tipo_parser in {"entrata", "accredito"}:
+                importo = abs(importo)
             movimenti.append({
                 "data": data_contabile,
                 "ragione_sociale": None,
                 "fornitore": estrai_fornitore_pulito(descrizione),
-                "importo": float(transazione.get("importo") or 0),
+                "importo": importo,
                 "numero_fattura": estrai_numero_fattura(descrizione),
                 "data_pagamento": data_valuta,
-                "categoria": "",
+                "categoria": transazione.get("categoria") or "",
                 "descrizione_originale": descrizione,
-                "banca": "Banco BPM",
-                "rapporto": None,
+                "banca": banca_parser,
+                "rapporto": (parsed.get("metadata") or {}).get("numero_conto"),
                 "divisa": transazione.get("divisa") or "EUR",
                 "hashtag": None,
-                "tipo": transazione.get("tipo"),
+                "tipo": "uscita" if importo < 0 else "entrata",
             })
 
     elif filename.endswith('.csv'):

@@ -991,56 +991,123 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
             ),
         )
 
-    pn_id = str(uuid.uuid4())
-    collection = COLLECTION_PRIMA_NOTA_CASSA if metodo == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
+    if metodo not in {"cassa", "banca"}:
+        raise HTTPException(status_code=400, detail="Metodo non valido")
 
-    # Dedup
-    existing = await db[collection].find_one({"riferimento": f"FATT-{fattura_id}"})
-    if existing:
-        # Already registered - aggiorna fattura con prima_nota_id per escluderla dai provvisori
-        await db["invoices"].update_one(
-            {"id": fattura_id},
-            {"$set": {
-                "stato_pagamento": "pagata",
-                "prima_nota_tipo": metodo,
-                "prima_nota_id": existing.get("id", str(existing.get("_id", ""))),
-            }}
+    # La conferma non cambia di nascosto il metodo configurato. Per la Cassa
+    # occorre una regola gia' approvata nella scheda fornitore o fattura;
+    # il metodo letto dall'XML resta soltanto una proposta.
+    metodo_previsto = (
+        fattura.get("metodo_pagamento_effettivo")
+        or fattura.get("metodo_pagamento_fornitore")
+        or fattura.get("payment_method")
+        or fattura.get("metodo_pagamento")
+    )
+    if piva_fornitore:
+        supplier = await db[Collections.SUPPLIERS].find_one(
+            {"$or": [
+                {"partita_iva": piva_fornitore},
+                {"piva": piva_fornitore},
+                {"vat_number": piva_fornitore},
+            ]},
+            {"_id": 0, "metodo_pagamento": 1, "metodo_pagamento_predefinito": 1},
         )
-        return {"success": True, "message": "Già registrata"}
+        if supplier:
+            metodo_previsto = (
+                supplier.get("metodo_pagamento_predefinito")
+                or supplier.get("metodo_pagamento")
+                or metodo_previsto
+            )
 
-    # CLAIM ATOMICO sulla fattura: un doppio click sulla Conferma trova
-    # prima_nota_id gia' valorizzato e viene rifiutato (niente doppioni).
-    claim = await db["invoices"].find_one_and_update(
-        {"id": fattura_id,
-         "$or": [{"prima_nota_id": None}, {"prima_nota_id": ""},
-                 {"prima_nota_id": {"$exists": False}}]},
-        {"$set": {"prima_nota_id": pn_id, "prima_nota_tipo": metodo}},
+    if metodo == "cassa" and normalizza_metodo_pagamento(metodo_previsto) != "cassa":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "La fattura puo' essere registrata in Cassa solo se il metodo "
+                "approvato del fornitore/fattura e' Cassa. Modifica prima la "
+                "scheda fornitore con audit."
+            ),
+        )
+
+    # Per Banca e' obbligatoria una riga reale dell'estratto conto. Metodo
+    # fornitore, rate XML, assegno emesso e proposte AI non provano il pagamento.
+    movimento_bancario = None
+    if metodo == "banca":
+        evidenza_id = data.get("movimento_banca_id") or data.get("estratto_conto_id")
+        if not evidenza_id:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Pagamento bancario non dimostrato: collega una riga reale "
+                    "dell'estratto conto. La fattura resta provvisoria."
+                ),
+            )
+        movimento_bancario = await db["estratto_conto_movimenti"].find_one(
+            {"id": evidenza_id}, {"_id": 0}
+        )
+        if not movimento_bancario:
+            raise HTTPException(status_code=404, detail="Movimento di estratto conto non trovato")
+        collegata_a = movimento_bancario.get("fattura_id") or movimento_bancario.get("documento_id")
+        if collegata_a and str(collegata_a) != str(fattura_id):
+            raise HTTPException(
+                status_code=409,
+                detail="Il movimento bancario e' gia' collegato a un altro documento",
+            )
+        importo_evidenza = abs(float(
+            movimento_bancario.get("importo")
+            or movimento_bancario.get("amount")
+            or movimento_bancario.get("uscite")
+            or 0
+        ))
+        if abs(importo_evidenza - abs(importo)) > 0.01:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Importo estratto conto ({importo_evidenza:.2f}) diverso dal "
+                    f"totale fattura ({abs(importo):.2f}). Usa la riconciliazione "
+                    "multipla se il movimento paga piu' fatture."
+                ),
+            )
+        movimento_bancario = {
+            **movimento_bancario,
+            "match_score": float(movimento_bancario.get("confidenza") or 1.0),
+        }
+
+    risultato = await registra_pagamento_fattura(
+        fattura=fattura,
+        metodo_pagamento=metodo,
+        source="conferma_provvisori",
+        movimento_bancario=movimento_bancario,
     )
-    if claim is None:
-        return {"success": True, "message": "Già registrata (conferma concorrente)"}
+    pn_id = risultato.get(metodo)
+    if not pn_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Pagamento non registrato: manca l'evidenza prevista dalla regola contabile",
+        )
 
-    movimento = {
-        "id": pn_id,
-        "data": data_fatt,
-        **costruisci_campi_movimento_fattura(fattura, importo),
-        "riferimento": f"FATT-{fattura_id}",
-        "fattura_id": fattura_id,
-        "source": "conferma_provvisori",
-        "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+    now_iso = datetime.now(timezone.utc).isoformat()
+    campi_fattura = {
+        "stato_pagamento": "pagata",
+        "stato_finanziario": "pagata_e_riconciliata" if metodo == "banca" else "pagata",
+        "pagato": True,
+        "paid": True,
+        "prima_nota_tipo": metodo,
+        "prima_nota_id": pn_id,
+        f"prima_nota_{metodo}_id": pn_id,
+        "metodo_pagamento_effettivo": metodo,
+        "data_pagamento": now_iso[:10],
+        "updated_at": now_iso,
     }
+    if metodo == "banca":
+        campi_fattura.update({
+            "riconciliato": True,
+            "pagata_e_riconciliata": True,
+            "movimento_banca_id": movimento_bancario.get("id"),
+            "estratto_conto_id": movimento_bancario.get("id"),
+        })
+    await db["invoices"].update_one({"id": fattura_id}, {"$set": campi_fattura})
 
-    await db[collection].insert_one(movimento)
-
-    # Update fattura
-    await db["invoices"].update_one(
-        {"id": fattura_id},
-        {"$set": {
-            "stato_pagamento": "pagata",
-            "payment_method": "contanti" if metodo == "cassa" else fattura.get("payment_method", "bonifico"),
-        }}
-    )
-
-    # Audit: chi ha confermato e quando.
     try:
         from app.services.audit_logger import log_evento
         await log_evento(
@@ -1049,15 +1116,26 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
             entita_id=fattura_id,
             entita_collection="invoices",
             db=db,
-            nuovo_stato={"metodo": metodo, "importo": importo, "movimento_id": pn_id},
+            nuovo_stato={
+                "metodo": metodo,
+                "importo": importo,
+                "movimento_id": pn_id,
+                "estratto_conto_id": movimento_bancario.get("id") if movimento_bancario else None,
+            },
             fonte="provvisori_conferma",
             utente=str(data.get("performed_by") or "operatore"),
         )
     except Exception:
         logger.exception("Audit conferma provvisoria fallito")
 
-    return {"success": True, "metodo": metodo, "importo": importo, "fornitore": fornitore}
-
+    return {
+        "success": True,
+        "metodo": metodo,
+        "importo": importo,
+        "fornitore": fornitore,
+        "movimento_id": pn_id,
+        "riconciliato": metodo == "banca",
+    }
 
 async def conferma_divisione_provvisoria(data: Dict = Body(...)) -> Dict:
     """

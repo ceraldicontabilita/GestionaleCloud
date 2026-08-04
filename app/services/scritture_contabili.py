@@ -478,7 +478,6 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
     esito["prima_nota_cassa_id"] = cassa_id
     if gia_esistente:
         esito["gia_esistente"] = True
-        return esito
 
     # USCITA POS: la chiusura manuale serale è il dato operativo vero;
     # l'elettronico XML è solo il fallback quando non è stata trascritta.
@@ -486,8 +485,23 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
     quota_pos = chiusura if chiusura is not None else elettronico
     fonte_quota = "chiusura_manuale" if chiusura is not None else "xml"
     if quota_pos > 0:
-        trasferimento_id = str(uuid.uuid4())
-        esito["prima_nota_cassa_uscita_pos_id"] = await scrivi_movimento(db, "cassa", {
+        filtro_attivo = {"status": {"$nin": ["deleted", "archived"]}}
+        cassa_query = {
+            "data": data, "tipo": "uscita", "categoria": "POS Verso Banca",
+            **filtro_attivo,
+        }
+        banca_query = {
+            "data": data, "tipo": "entrata", "categoria": "Corrispettivi POS",
+            **filtro_attivo,
+        }
+        cassa_esistente = await db["prima_nota_cassa"].find_one(cassa_query)
+        banca_esistente = await db["prima_nota_banca"].find_one(banca_query)
+        trasferimento_id = (
+            (cassa_esistente or {}).get("trasferimento_id")
+            or (banca_esistente or {}).get("trasferimento_id")
+            or str(uuid.uuid4())
+        )
+        cassa_pos_id, _ = await _scrivi_se_assente(db, "cassa", cassa_query, {
             "corrispettivo_id": corr_doc.get("id"),
             "data": data, "tipo": "uscita", "importo": quota_pos,
             "descrizione": (f"POS {data} → Banca"
@@ -498,9 +512,10 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
             "trasferimento_id": trasferimento_id,
             "anno": anno, "mese": mese,
         })
+        esito["prima_nota_cassa_uscita_pos_id"] = cassa_pos_id
         # REGOLA CANONICA: contropartita speculare in banca — stessa
         # operazione, secondo registro. L'accredito EC la riconcilierà.
-        esito["prima_nota_banca_id"] = await scrivi_movimento(db, "banca", {
+        banca_pos_id, _ = await _scrivi_se_assente(db, "banca", banca_query, {
             "corrispettivo_id": corr_doc.get("id"),
             "data": data, "tipo": "entrata", "importo": quota_pos,
             "descrizione": (f"POS {data} da cassa"
@@ -513,6 +528,7 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
             "riconciliato": False,
             "anno": anno, "mese": mese,
         })
+        esito["prima_nota_banca_id"] = banca_pos_id
     return esito
 
 

@@ -19,8 +19,11 @@ Helper Drive riusati da drive_invoice_ingest (stesso service account,
 stessa gestione Elaborate). Stato sync in sistema_stato, chiave dedicata.
 """
 import asyncio
+import io
 import logging
+import zipfile
 from datetime import datetime, timezone
+from pathlib import PurePosixPath
 from typing import Dict, Any, Optional, List
 
 from app.config import settings
@@ -40,6 +43,9 @@ _STATO_KEY = "drive_corrispettivi_last_sync"
 
 _sync_lock = asyncio.Lock()
 _bg_task: Optional[asyncio.Task] = None
+_MAX_ZIP_ENTRIES = 5000
+_MAX_ZIP_ENTRY_BYTES = 10 * 1024 * 1024
+_MAX_ZIP_TOTAL_BYTES = 100 * 1024 * 1024
 
 
 def is_sync_running() -> bool:
@@ -87,8 +93,54 @@ def is_configured() -> bool:
 
 
 def is_corrispettivo_filename(name: str) -> bool:
-    """Nella cartella corrispettivi si lavorano solo gli XML del RT."""
-    return bool(name) and name.lower().endswith(".xml")
+    """Accetta XML RT singoli e ZIP contenenti XML RT."""
+    return bool(name) and name.lower().endswith((".xml", ".zip"))
+
+
+def _xml_documents_from_source(name: str, content: bytes) -> List[tuple[str, bytes]]:
+    """Restituisce gli XML senza estrarre file su disco.
+
+    Gli archivi sono limitati per numero e dimensione per evitare path
+    traversal e zip bomb. Gli elementi estranei sono ignorati; uno ZIP senza
+    XML e' invece un errore operativo visibile.
+    """
+    if name.lower().endswith(".xml"):
+        return [(name, content)]
+    if not name.lower().endswith(".zip"):
+        raise ValueError("Formato corrispettivo supportato: XML o ZIP")
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(content))
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise ValueError("Archivio ZIP non valido") from exc
+
+    documents: List[tuple[str, bytes]] = []
+    total_bytes = 0
+    with archive:
+        entries = [entry for entry in archive.infolist() if not entry.is_dir()]
+        if len(entries) > _MAX_ZIP_ENTRIES:
+            raise ValueError(f"Archivio ZIP con troppi file ({len(entries)})")
+        for entry in entries:
+            normalized = entry.filename.replace("\\", "/")
+            path = PurePosixPath(normalized)
+            if path.is_absolute() or ".." in path.parts:
+                raise ValueError(f"Percorso non sicuro nello ZIP: {entry.filename}")
+            if not normalized.lower().endswith(".xml"):
+                continue
+            if entry.file_size > _MAX_ZIP_ENTRY_BYTES:
+                raise ValueError(f"XML troppo grande nello ZIP: {entry.filename}")
+            total_bytes += entry.file_size
+            if total_bytes > _MAX_ZIP_TOTAL_BYTES:
+                raise ValueError("Contenuto XML dello ZIP troppo grande")
+            try:
+                xml_content = archive.read(entry)
+            except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
+                raise ValueError(f"XML non leggibile nello ZIP: {entry.filename}") from exc
+            if not xml_content:
+                raise ValueError(f"XML vuoto nello ZIP: {entry.filename}")
+            documents.append((f"{name}::{normalized}", xml_content))
+    if not documents:
+        raise ValueError("Archivio ZIP senza file XML")
+    return documents
 
 
 def _build_drive_service():
@@ -106,10 +158,11 @@ def _build_drive_service():
         return None
 
 
-def _list_xml_files(service, parent_id: str) -> List[Dict[str, Any]]:
+def _list_source_files(service, parent_id: str) -> List[Dict[str, Any]]:
     q = (
         f"'{parent_id}' in parents and trashed = false "
-        "and (name contains '.xml' or name contains '.XML')"
+        "and (name contains '.xml' or name contains '.XML' "
+        "or name contains '.zip' or name contains '.ZIP')"
     )
     out: List[Dict[str, Any]] = []
     page_token = None
@@ -128,6 +181,11 @@ def _list_xml_files(service, parent_id: str) -> List[Dict[str, Any]]:
         if not page_token:
             break
     return out
+
+
+def _list_xml_files(service, parent_id: str) -> List[Dict[str, Any]]:
+    """Alias compatibile: ora include anche le sorgenti ZIP."""
+    return _list_source_files(service, parent_id)
 
 
 async def get_status(db) -> Dict[str, Any]:
@@ -175,7 +233,8 @@ async def _do_sync(db) -> Dict[str, Any]:
 
     parent_id = _folder_id()
     result = {
-        "status": "ok", "total": 0, "imported": 0, "duplicates": 0,
+        "status": "ok", "total": 0, "documents": 0,
+        "imported": 0, "duplicates": 0,
         "archiviate": 0, "errors": 0, "moved": 0, "details": [],
     }
     try:
@@ -183,9 +242,9 @@ async def _do_sync(db) -> Dict[str, Any]:
         elaborate_id = _get_or_create_elaborate_folder(service, parent_id)
         error_id = _get_or_create_error_folder(service, parent_id)
         source_id = inbox_id or parent_id
-        xml_files = _list_xml_files(service, source_id)
-        result["total"] = len(xml_files)
-        for f in xml_files:
+        source_files = _list_source_files(service, source_id)
+        result["total"] = len(source_files)
+        for f in source_files:
             fid, fname = f["id"], f["name"]
             try:
                 content = _download_bytes(service, fid)
@@ -201,22 +260,32 @@ async def _do_sync(db) -> Dict[str, Any]:
                 # selettore anno condiviso con l'import fatture): un
                 # corrispettivo di un anno diverso da quello attivo viene
                 # archiviato per sola consultazione, non in Prima Nota.
-                esito = await corr_service.process_xml(content, fname, applica_filtro_anno=True)
-                stato = esito.get("status")
-                if stato == "duplicate":
-                    result["duplicates"] += 1
-                elif stato == "error":
-                    result["errors"] += 1
-                    result["details"].append({"file": fname, "error": esito.get("message")})
+                source_has_errors = False
+                documents = _xml_documents_from_source(fname, content)
+                result["documents"] += len(documents)
+                for document_name, xml_content in documents:
+                    esito = await corr_service.process_xml(
+                        xml_content, document_name, applica_filtro_anno=True,
+                    )
+                    stato = esito.get("status")
+                    if stato == "duplicate":
+                        result["duplicates"] += 1
+                    elif stato == "error":
+                        source_has_errors = True
+                        result["errors"] += 1
+                        result["details"].append({
+                            "file": document_name, "error": esito.get("message"),
+                        })
+                    elif stato == "archiviata":
+                        result["archiviate"] += 1
+                        logger.info("Drive corrispettivi: archiviato %s", document_name)
+                    else:
+                        result["imported"] += 1
+                        logger.info("Drive corrispettivi: importato %s", document_name)
+                if source_has_errors:
                     if error_id:
                         _move_to_folder(service, fid, source_id, error_id)
                     continue
-                elif stato == "archiviata":
-                    result["archiviate"] += 1
-                    logger.info(f"Drive corrispettivi: archiviato (anno storico) {fname}")
-                else:
-                    result["imported"] += 1
-                    logger.info(f"Drive corrispettivi: importato {fname}")
                 # Sposta in `Elaborate` i file processati (importati/duplicati)
                 if elaborate_id:
                     _move_to_elaborate(service, fid, source_id, elaborate_id)
@@ -241,7 +310,9 @@ async def _do_sync(db) -> Dict[str, Any]:
         return {"status": "error", "message": str(e)}
 
     prev = await db["sistema_stato"].find_one({"chiave": _STATO_KEY}, {"_id": 0}) or {}
-    last_result = {k: result[k] for k in ("total", "imported", "duplicates", "archiviate", "errors", "moved")}
+    last_result = {k: result[k] for k in (
+        "total", "documents", "imported", "duplicates", "archiviate", "errors", "moved",
+    )}
     last_result["details"] = result["details"][:5]
     now = datetime.now(timezone.utc).isoformat()
     await db["sistema_stato"].update_one(
@@ -283,8 +354,7 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
         elaborate_id = _get_or_create_elaborate_folder(service, parent_id)
         if not elaborate_id:
             return {"status": "ok", "message": "Nessuna cartella Elaborate", **esito}
-        for f in _list_xml_files(service, elaborate_id):
-            esito["controllati"] += 1
+        for f in _list_source_files(service, elaborate_id):
             try:
                 content = _download_bytes(service, f["id"])
                 if not content:
@@ -293,16 +363,20 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
                 # Stesso filtro anno di _do_sync: un buco riparato qui non
                 # deve ripescare nel flusso attivo un corrispettivo storico
                 # (finisce comunque archiviato, non in Prima Nota).
-                r = await corr_service.process_xml(content, f["name"], applica_filtro_anno=True)
-                if r.get("status") == "duplicate":
-                    esito["quadrati"] += 1
-                elif r.get("status") == "error":
-                    esito["errori"] += 1
-                    esito["details"].append({"file": f["name"], "error": r.get("message")})
-                else:
-                    esito["recuperati"] += 1
-                    esito["details"].append({"file": f["name"], "recuperato": True})
-                    logger.warning(f"Quadratura corrispettivi: recuperato buco {f['name']}")
+                for document_name, xml_content in _xml_documents_from_source(f["name"], content):
+                    esito["controllati"] += 1
+                    r = await corr_service.process_xml(
+                        xml_content, document_name, applica_filtro_anno=True,
+                    )
+                    if r.get("status") == "duplicate":
+                        esito["quadrati"] += 1
+                    elif r.get("status") == "error":
+                        esito["errori"] += 1
+                        esito["details"].append({"file": document_name, "error": r.get("message")})
+                    else:
+                        esito["recuperati"] += 1
+                        esito["details"].append({"file": document_name, "recuperato": True})
+                        logger.warning("Quadratura corrispettivi: recuperato buco %s", document_name)
             except Exception as e:
                 esito["errori"] += 1
                 esito["details"].append({"file": f["name"], "error": str(e)})

@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useState, useEffect } from 'react';
+import api from '../api';
 
 const AnnoContext = createContext();
 const STORAGE_KEY = 'annoGlobale';
@@ -12,10 +13,42 @@ function normalizeYear(value) {
 }
 
 export function AnnoProvider({ children }) {
-  const [anno, setAnno] = useState(() => {
+  const [anno, setAnnoState] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     return normalizeYear(saved);
   });
+
+  // L'anno nell'header e l'anno usato dagli import automatici devono essere
+  // lo stesso parametro. Prima erano due impostazioni indipendenti: il
+  // frontend poteva mostrare il 2026 mentre il job Drive archiviava le
+  // fatture del 2026 come storico perché sul backend era rimasto il 2025.
+  useEffect(() => {
+    let active = true;
+    api.get('/api/config-import/anno')
+      .then(response => {
+        if (!active) return;
+        const remoto = normalizeYear(response?.data?.anno);
+        setAnnoState(remoto);
+        localStorage.setItem(STORAGE_KEY, String(remoto));
+      })
+      .catch(() => {
+        // In assenza di backend resta valido il valore locale: la
+        // navigazione non deve bloccarsi durante un cold start di Render.
+      });
+    return () => { active = false; };
+  }, []);
+
+  const setAnno = useCallback(value => {
+    const nuovoAnno = normalizeYear(
+      typeof value === 'function' ? value(anno) : value,
+    );
+    setAnnoState(nuovoAnno);
+    localStorage.setItem(STORAGE_KEY, String(nuovoAnno));
+
+    // Solo l'admin può modificare l'anno operativo del backend. Un eventuale
+    // 403 non annulla il filtro di consultazione dell'utente non-admin.
+    api.put('/api/config-import/anno', { anno: nuovoAnno }).catch(() => {});
+  }, [anno]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, String(normalizeYear(anno)));
@@ -24,7 +57,7 @@ export function AnnoProvider({ children }) {
   useEffect(() => {
     const handleStorage = event => {
       if (event.key !== STORAGE_KEY) return;
-      setAnno(normalizeYear(event.newValue));
+      setAnnoState(normalizeYear(event.newValue));
     };
 
     window.addEventListener('storage', handleStorage);

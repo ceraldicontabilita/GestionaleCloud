@@ -30,6 +30,7 @@ from app.engines.prima_nota_engine import (
 from app.parsers.fattura_elettronica_parser import parse_fattura_xml, TIPO_DOC_MAP
 from app.services.xml_invoice_processor import extract_xml_from_p7m, is_p7m_content
 from app.utils.error_handler import handle_errors
+from app.utils.iban import valida_iban
 from app.utils.ruoli import richiedi_admin
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,65 @@ _CAMPI_RATA_EVENTO = (
 def _pagamento_rate_per_evento(rate: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Propaga solo i dati necessari allo scadenzario, mai IBAN o beneficiario."""
     return [{campo: rata.get(campo) for campo in _CAMPI_RATA_EVENTO} for rata in (rate or [])]
+
+
+def _iban_xml_verificato(parsed_invoice: Dict[str, Any]) -> Optional[str]:
+    """Primo IBAN italiano formalmente valido dichiarato nei pagamenti XML.
+
+    L'IBAN grezzo resta sempre nella fattura/rata. Solo quello che supera la
+    validazione di formato puo' completare automaticamente un campo vuoto
+    della scheda fornitore.
+    """
+    candidati = [
+        rata.get("iban") for rata in (parsed_invoice.get("pagamento_rate") or [])
+        if isinstance(rata, dict)
+    ]
+    pagamento = parsed_invoice.get("pagamento") or {}
+    candidati.append(pagamento.get("iban"))
+    for candidato in candidati:
+        pulito = "".join(ch for ch in str(candidato or "") if ch.isalnum()).upper()
+        if valida_iban(pulito):
+            return pulito
+    return None
+
+
+def _analizza_pagamento_xml(
+    parsed_invoice: Dict[str, Any], metodo_fornitore: Optional[str]
+) -> Dict[str, Any]:
+    """Conserva il metodo XML come evidenza/proposta, mai come pagamento.
+
+    Il metodo della scheda fornitore resta il default operativo. Se l'XML
+    mostra chiaramente uno strumento diverso, la singola fattura espone la
+    proposta ma l'anagrafica non viene modificata senza conferma.
+    """
+    rate = [r for r in (parsed_invoice.get("pagamento_rate") or []) if isinstance(r, dict)]
+    modalita = []
+    condizioni = []
+    for rata in rate:
+        codice = str(rata.get("modalita") or "").strip().upper()
+        if codice and codice not in modalita:
+            modalita.append(codice)
+        condizione = str(rata.get("condizioni_pagamento") or "").strip().upper()
+        if condizione and condizione not in condizioni:
+            condizioni.append(condizione)
+
+    canonici = []
+    for codice in modalita:
+        canonico = normalizza_metodo_pagamento(codice)
+        if canonico and canonico not in canonici:
+            canonici.append(canonico)
+    proposta = canonici[0] if len(canonici) == 1 else ("misto" if len(canonici) > 1 else None)
+    metodo_default = normalizza_metodo_pagamento(metodo_fornitore)
+    richiede_conferma = bool(proposta and proposta != metodo_default)
+
+    return {
+        "modalita_pagamento_xml": modalita,
+        "condizioni_pagamento_xml": condizioni,
+        "metodo_pagamento_xml_proposto": proposta,
+        "metodo_pagamento_xml_richiede_conferma": richiede_conferma,
+        "metodo_pagamento_xml_fonte": "FatturaPA.DatiPagamento" if modalita else None,
+        "iban_pagamento_xml": _iban_xml_verificato(parsed_invoice),
+    }
 
 
 def _piva_italiana_valida(piva: str) -> bool:
@@ -224,6 +284,7 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
         "alert_created": False,
         "supplier_id": None,
         "metodo_pagamento": None,
+        "proposte_aggiornamento": {},
     }
 
     if not supplier_vat:
@@ -304,6 +365,7 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
                 existing = candidato
 
     fornitore_data = parsed_invoice.get("fornitore") or {}
+    iban_xml = _iban_xml_verificato(parsed_invoice)
 
     if existing:
         result["supplier_exists"] = True
@@ -342,15 +404,28 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
             "nome": supplier_name,
             "ragione_sociale": existing.get("ragione_sociale") or supplier_name,
             "codice_fiscale": fornitore_data.get("codice_fiscale") or existing.get("codice_fiscale") or supplier_vat,
-            "indirizzo": fornitore_data.get("indirizzo") or existing.get("indirizzo") or "",
-            "cap": fornitore_data.get("cap") or existing.get("cap") or "",
-            "comune": fornitore_data.get("comune") or existing.get("comune") or "",
-            "provincia": fornitore_data.get("provincia") or existing.get("provincia") or "",
-            "nazione": fornitore_data.get("nazione") or existing.get("nazione") or "IT",
+            "indirizzo": fornitore_data.get("indirizzo") or "",
+            "cap": fornitore_data.get("cap") or "",
+            "comune": fornitore_data.get("comune") or "",
+            "provincia": fornitore_data.get("provincia") or "",
+            "nazione": fornitore_data.get("nazione") or "IT",
+            "telefono": fornitore_data.get("telefono") or "",
+            "email": fornitore_data.get("email") or "",
+            "iban": iban_xml or "",
+            "rappresentante_fiscale": fornitore_data.get("rappresentante_fiscale") or None,
         }
         for field, value in field_map.items():
             if value and not existing.get(field):
                 update_data[field] = value
+            elif value and existing.get(field) and existing.get(field) != value:
+                # L'XML e' una fonte documentale, ma non deve sovrascrivere
+                # una scelta anagrafica gia' confermata. La differenza resta
+                # sulla fattura come proposta esplicita da verificare.
+                result["proposte_aggiornamento"][field] = {
+                    "valore_attuale": existing.get(field),
+                    "valore_xml": value,
+                    "fonte": "fattura_xml",
+                }
 
         if not existing.get("id"):
             update_data["id"] = supplier_id
@@ -383,7 +458,10 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
         "nazione": fornitore_data.get("nazione") or "IT",
         "metodo_pagamento": None,
         "giorni_pagamento": 30,
-        "iban": "",
+        "iban": iban_xml or "",
+        "telefono": fornitore_data.get("telefono") or "",
+        "email": fornitore_data.get("email") or "",
+        "rappresentante_fiscale": fornitore_data.get("rappresentante_fiscale") or None,
         "fatture_count": 1,
         "source": "auto_from_invoice",
         "dati_incompleti": False,
@@ -838,15 +916,39 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             except Exception:
                 logger.exception(f"Errore generazione alert FAT_TIPO_AMBIGUO per {invoice_key}")
 
-        # Calcola data scadenza
+        # La scadenza sintetica della fattura e' la prima scadenza XML
+        # valida. Il +30 giorni e' soltanto un fallback; non e' mai una data
+        # di pagamento e non sostituisce il piano rate conservato sotto.
         data_fattura_str = parsed.get("invoice_date", "")
         data_scadenza = None
+        scadenze_xml = sorted(
+            str(rata.get("data_scadenza"))[:10]
+            for rata in (parsed.get("pagamento_rate") or [])
+            if isinstance(rata, dict) and rata.get("data_scadenza")
+            and re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(rata.get("data_scadenza"))[:10])
+        )
+        if scadenze_xml:
+            data_scadenza = scadenze_xml[0]
         if data_fattura_str:
-            try:
-                data_fattura = datetime.strptime(data_fattura_str, "%Y-%m-%d")
-                data_scadenza = (data_fattura + timedelta(days=30)).strftime("%Y-%m-%d")
-            except (ValueError, TypeError):
-                pass
+            if not data_scadenza:
+                try:
+                    data_fattura = datetime.strptime(data_fattura_str, "%Y-%m-%d")
+                    data_scadenza = (data_fattura + timedelta(days=30)).strftime("%Y-%m-%d")
+                except (ValueError, TypeError):
+                    pass
+
+        pagamento_xml = _analizza_pagamento_xml(parsed, metodo_pagamento)
+        metodo_canonico = normalizza_metodo_pagamento(metodo_pagamento)
+        if metodo_canonico == "banca":
+            stato_finanziario = "in_attesa_estratto_conto"
+        elif metodo_canonico == "cassa" and len(parsed.get("pagamento_rate") or []) > 1:
+            stato_finanziario = "provvisoria_rate"
+        elif metodo_canonico == "cassa":
+            stato_finanziario = "da_pagare"
+        elif metodo_canonico == "misto":
+            stato_finanziario = "provvisoria"
+        else:
+            stato_finanziario = "da_verificare"
 
         # Crea documento fattura
         invoice = {
@@ -867,10 +969,16 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             "cliente": parsed.get("cliente", {}),
             "linee": parsed.get("linee", []),
             "riepilogo_iva": parsed.get("riepilogo_iva", []),
+            "pagamento": parsed.get("pagamento", {}),
             "pagamento_rate": parsed.get("pagamento_rate", []),
             "pagamento_rate_totale": parsed.get("pagamento_rate_totale"),
             "pagamento_rate_coerente": parsed.get("pagamento_rate_coerente"),
             "metodo_pagamento": metodo_pagamento,
+            **pagamento_xml,
+            "fornitore_dati_proposti": supplier_result.get("proposte_aggiornamento") or {},
+            "stato_classificazione": "da_classificare",
+            "stato_pagamento": "da_pagare",
+            "stato_finanziario": stato_finanziario,
             "status": "imported",
             "source": "xml_upload",
             "filename": filename,

@@ -87,7 +87,7 @@ Altre garanzie trasversali:
 |---|---|---|
 | Fatture fornitori | **Solo Google Drive** (cartella dedicata) | controllo automatico ogni ora + subito a ogni riavvio |
 | Corrispettivi RT | Google Drive (XML del registratore telematico) | ogni ora |
-| Estratti conto | Google Drive (CSV/Excel Banco BPM) | ogni ora (oggi spento, in attesa di validazione) |
+| Estratti conto e POS | Google Drive (PDF/CSV/Excel BNL, BPM, carte; export transazioni POS BPM) | ogni ora, se `ENABLE_DRIVE_ESTRATTI_CONTO_SYNC` è attivo |
 | Quietanze F24 | Google Drive (PDF) + upload manuale dalla pagina F24 | ogni ora (**attivo** dal 10/07/2026) |
 | Cedolini | **Email** da mittenti attendibili + **cartella Drive cedolini paga** (PDF) | ogni ora (attivo) |
 | F24 commercialista | Email da mittenti attendibili | ogni ora (**attivo** dal 13/07/2026, `ENABLE_EMAIL_F24_SYNC` — parser non ancora validato su F24 reali) |
@@ -120,6 +120,17 @@ Per ogni radice Drive operativa il sistema crea e usa tre sottocartelle:
 `Da elaborare`, `Elaborate` ed `Errori`. Lo scheduler legge `Da elaborare`;
 importati e duplicati vanno in `Elaborate`, mentre file vuoti, non leggibili o
 non riconosciuti vanno in `Errori`. Nessun file sorgente viene cancellato.
+
+Nell'area `Estratti conto` la scansione è ricorsiva e conserva la fonte:
+`BNL`, `BPM`, `CARTA DI CREDITO BNL`, `CARTA DI CREDITO BPM` e `pos bpm`
+mantengono ciascuna il proprio ciclo di lavorazione. Durante la migrazione
+sono letti anche i file messi direttamente nella cartella fonte; dopo l'esito
+vengono archiviati nella relativa `Elaborate`. Le cartelle `Elaborate`,
+`Errori` e `Duplicati` non vengono mai risalite. Gli export
+`Export_Mensile_*`/`Export_Transazioni_*` di `pos bpm` sono aggregati per
+giorno sulle sole operazioni approvate (gli storni approvati mantengono il
+segno) e alimentano il **POS reale**; non vengono trasformati in movimenti di
+conto corrente. I prospetti commissioni restano fuori da questo calcolo.
 
 ---
 
@@ -176,10 +187,17 @@ fonte.
 
 1. Il file XML/P7M viene scaricato da Drive e ne vengono estratti: fornitore, partita
    IVA, numero, data, imponibile, IVA, totale, righe di dettaglio (descrizione,
-   quantità, prezzi), data scadenza, modalità di pagamento.
+   quantità, prezzi), date di scadenza, modalità e condizioni di pagamento.
+   Ogni `DettaglioPagamento` XML resta una **rata distinta**, con importo,
+   data, modalità e ordine originali: il piano delle rate non è mai una prova
+   dell'avvenuto pagamento e non viene compattato nel totale documento.
 2. **Se il fornitore non esiste ancora, viene creato automaticamente** (la partita IVA
-   è la chiave). Il **metodo di pagamento del fornitore è una scelta tua** (Cassa /
-   Banca / Misto / Non definito): l'XML può suggerire, ma non decide mai.
+   è la chiave). Email, telefono, indirizzo, rappresentante fiscale e IBAN
+   formalmente valido riempiono soltanto i campi ancora vuoti; eventuali
+   conflitti restano proposte verificabili e non sovrascrivono l'anagrafica.
+   Il **metodo di pagamento del fornitore è una scelta tua** (Cassa /
+   Banca / Misto / Non definito): l'XML può suggerire, ma non decide mai e
+   una proposta diversa richiede conferma esplicita.
    Tre difese impediscono i "fornitori fantasma":
    - se il cedente coincide col cessionario della stessa fattura (autofatture,
      integrazioni reverse charge) **non** viene creato nessun fornitore: l'azienda
@@ -212,23 +230,27 @@ fonte.
    (es. fattura in Banca di un fornitore ora a Cassa, o riga banca mai
    riconciliata con l'estratto conto) tornano in **Provvisoria** e la
    fattura torna "da pagare", pronta per essere confermata dal lato giusto.
-4. **Data scadenza**: quella scritta in fattura è solo informativa. Diventa una
-   scadenza operativa (pagina Scadenze, con avvisi) **solo se la fattura indica
-   pagamento a mezzo agente** ("pagamento a mezzo agente", "rimessa diretta agente",
-   ecc.).
+4. **Scadenze e rate**: ogni rata XML genera una scadenza operativa idempotente
+   e separata nella pagina Scadenze. La data di scadenza resta una previsione:
+   non diventa `data_pagamento` e non marca la fattura pagata. La regola
+   specifica "pagamento a mezzo agente" resta utile per gli avvisi, ma non
+   elimina le altre rate XML.
 5. Se in una riga della fattura compare **esattamente una targa** dei veicoli
    aziendali censiti, la fattura viene collegata automaticamente a quel veicolo
    (correggibile a mano). Zero o più targhe → nessun collegamento automatico.
 6. "Segna pagata manualmente" esiste per i pagamenti avvenuti fuori sistema: la
    fattura risulta pagata ma senza un movimento di cassa/banca collegato.
-7. **Centri di costo (Learning Machine)**: all'import ogni fattura viene
-   classificata dal motore unico che consulta PRIMA ciò che hai insegnato
+7. **Centri di costo (Learning Machine)**: all'import viene classificata
+   **ogni singola riga** dal motore unico, che consulta PRIMA ciò che hai insegnato
    (fornitore → centro di costo/keywords nella pagina Learning Machine) e
    solo come ripiego la tabella statica dei settori.
    I **settori operativi** sono quattro: **Bar/Caffetteria (CDC-01),
    Pasticceria (CDC-02), Gelateria (CDC-03), Rosticceria (CDC-04)**; i costi di
    supporto (Personale/Amministrazione/Marketing) e di struttura (affitto,
    utenze, manutenzione) stanno su centri dedicati (CDC-90/91/92, CDC-99).
+   Una fattura può quindi ripartirsi su più centri di costo; imponibile, IVA e
+   totale vengono conservati per riga. Le descrizioni ambigue restano
+   `da_verificare`, senza imporre a tutto il fornitore una categoria unica.
    Il campo `classificazione_fonte` dice da dove viene la scelta
    (keywords personalizzate / keywords apprese / tabella statica).
    **Corretto 15/07/2026**: il parsing AI di fatture e F24 da foto/PDF non
@@ -405,6 +427,11 @@ distinto da uno automatico né controllato per duplicati.
   nella pipeline completa (fornitore, prima nota provvisoria, eventi).
   Endpoint admin: `POST /api/config-import/importa-anno` (imposta anche
   l'anno attivo condiviso, `PUT /api/config-import/anno`).
+- **Anno globale unico (04/08/2026)**: il selettore nell'header legge
+  all'avvio `GET /api/config-import/anno`; quando l'amministratore cambia
+  anno, aggiorna anche il parametro backend con `PUT /api/config-import/anno`.
+  In questo modo il filtro visibile e l'anno accettato dal job Drive non
+  possono più divergere silenziosamente.
 - **REGOLA (utente, 16/07/2026): in contabilità restano SOLO i dati
   dall'anno operativo 2026 in poi.** I dati di anni precedenti (movimenti
   2021-2022 da vecchi backfill, fatture 2021-2022, salari 2023-2025,
@@ -424,6 +451,18 @@ l'addebito reale: è la riconciliazione a registrare l'uscita in Prima Nota
 Banca e a marcare la fattura pagata. Solo il fornitore a metodo **cassa**
 (contanti) viene registrato subito in Prima Nota Cassa, perché il contante
 non lascia traccia da riconciliare.
+
+**Bonifico cumulativo con più fatture (utente, 04/08/2026)**: se la causale
+dell'estratto conto contiene due o più numeri fattura espliciti, il movimento
+viene ripartito sulle fatture indicate soltanto quando appartengono allo stesso
+fornitore e la somma dei rispettivi residui coincide al centesimo con l'importo
+bancario. Ogni quota crea una riga distinta in Prima Nota Banca, collegata sia
+alla propria fattura sia allo stesso movimento di estratto conto; il movimento
+EC conserva nell'audit l'elenco completo delle quote. Se la somma non coincide
+o i documenti appartengono a fornitori diversi, il sistema non inventa una
+ripartizione: blocca il match singolo e crea una proposta unica da confermare.
+La ripetizione del motore è idempotente sulla coppia movimento EC + fattura e
+non duplica le quote già registrate.
 
 **Provvisoria**
 - Fatture di fornitori "misto" o senza metodo (divisione manuale) E fatture
@@ -669,6 +708,18 @@ per quella giornata. Per riparare lo storico: pagina **Pulizia Prima Nota →
 quelli mai salvati) seguito da **"Ricostruisci da corrispettivi"** (rigenera
 Cassa/Banca dai corrispettivi ora completi).
 
+**Più chiusure XML nella stessa giornata** (regola operativa 04/08/2026):
+due XML con hash diverso, stessa data e stesso registratore sono chiusure
+distinte e vengono sommati nel corrispettivo giornaliero; una copia con hash
+identico viene invece ignorata. Ogni componente conserva hash, file,
+progressivo, data/ora, contanti, elettronico, IVA e numero documenti, così la
+somma resta verificabile e può essere rigenerata senza duplicazioni. Eccezione:
+una chiusura positiva rilevata prima delle 04:00 viene attribuita al giorno
+precedente se quel giorno non ha ancora un corrispettivo valorizzato; la data
+originale XML resta sempre nell'audit. Se il giorno precedente è già
+valorizzato, la chiusura resta sulla propria data XML e viene sommata alle altre
+chiusure di quel giorno.
+
 **Export mensile per il commercialista** (pagina Commercialista, bottone
 "🗂️ Export ZIP completo", `GET /api/commercialista/export-completo/{anno}/{mese}`
 — riscritto e collegato al bottone il 15/07/2026, prima l'endpoint esisteva
@@ -697,8 +748,8 @@ Riscritta il 15/07/2026 per rispecchiare il motore realmente in produzione
 di questo paragrafo descriveva un algoritmo a soglie fisse mai davvero
 implementato).
 
-**Da dove arrivano i movimenti banca**: l'estratto conto (CSV/Excel Banco BPM,
-cartella Drive dedicata **o** upload manuale dalla pagina Prima Nota) viene letto
+**Da dove arrivano i movimenti banca**: l'estratto conto (PDF/CSV/Excel BNL o
+Banco BPM e PDF carta, cartella Drive dedicata **o** upload manuale dalla pagina Prima Nota) viene letto
 riga per riga; ogni riga diventa un movimento in `estratto_conto_movimenti` con
 un'impronta propria (data+importo+descrizione): ricaricare lo stesso estratto non
 duplica nulla. Il motore di riconciliazione gira **subito dopo ogni import** e poi
@@ -1204,7 +1255,7 @@ modificano i dati.
 | Fatture da Drive | **Attivo** (ogni ora, scelta 13/07/2026) | parser validato su file reali |
 | Corrispettivi da Drive | **Attivo** | validato su file reale del registratore |
 | Cedolini via email | **Attivo** | validato su un file reale; sotto osservazione |
-| Estratti conto da Drive | Spento | in attesa di export reale Banco BPM di conferma |
+| Estratti conto da Drive | Controllato da `ENABLE_DRIVE_ESTRATTI_CONTO_SYNC` | scansione ricorsiva BNL/BPM/carte; POS BPM instradato al POS reale |
 | Quietanze da Drive | **Attivo** (scelta 10/07/2026) | stesso motore dell'upload manuale: dedup per impronta, matching automatico F24, quadratura domenicale 5:45 |
 | F24 via email | **Attivo** (scelta 13/07/2026) | interruttore `ENABLE_EMAIL_F24_SYNC`; gli F24 email confluiscono in `f24_unificato`. ⚠️ parser non ancora validato su F24 reali: controllare i primi risultati |
 | Verbali via email | **Attivo** (scelta 13/07/2026) | interruttore `ENABLE_EMAIL_VERBALI_SYNC` |
