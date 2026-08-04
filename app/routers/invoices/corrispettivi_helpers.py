@@ -376,7 +376,12 @@ async def rebuild_prima_nota_from_corrispettivi(
         "corrispettivo_xml", "corrispettivi_pos_sync", "manuale_da_xml",
     ]
     purge_filter_cassa = {"source": {"$in": purge_sources_cassa}}
-    purge_filter_banca = {"source": {"$in": ["corrispettivo_pos", "corrispettivi_sync"]}}
+    # La contropartita bancaria del motore unico usa source
+    # "trasferimento_pos". Se non viene rimossa, il rebuild conserva le
+    # vecchie quote POS invece di rigenerarle dai corrispettivi aggiornati.
+    purge_filter_banca = {"source": {"$in": [
+        "corrispettivo_pos", "corrispettivi_sync", "trasferimento_pos",
+    ]}}
     if anno:
         purge_filter_cassa["data"] = {"$regex": f"^{anno}"}
         purge_filter_banca["data"] = {"$regex": f"^{anno}"}

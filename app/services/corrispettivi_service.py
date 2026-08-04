@@ -477,6 +477,11 @@ class CorrispettiviService:
         query = {
             "data": previous_date,
             "entity_status": {"$ne": EntityStatus.DELETED.value},
+            # I residui archiviati restano in Mongo per audit, ma non sono
+            # una chiusura attiva. Se li consideriamo "giorno valorizzato"
+            # impediscono alla chiusura post-mezzanotte di tornare al giorno
+            # corretto (caso reale XML 04/04/2026 attribuito al 03/04).
+            "status": {"$nin": ["deleted", "archived", "archiviata"]},
         }
         if parsed.get("id_dispositivo"):
             query["id_dispositivo"] = parsed["id_dispositivo"]
@@ -710,6 +715,12 @@ class CorrispettiviService:
         if exact_source and len(existing.get("chiusure_xml") or []) <= 1:
             canonical = {
                 "data": parsed.get("data"),
+                "data_rilevazione_xml": parsed.get(
+                    "data_originale_xml", parsed.get("data")
+                ),
+                "chiusura_post_mezzanotte": bool(
+                    parsed.get("chiusura_post_mezzanotte")
+                ),
                 "progressivo": parsed.get("progressivo", ""),
                 "id_dispositivo": parsed.get("id_dispositivo", ""),
                 "matricola_rt": parsed.get("id_dispositivo", ""),

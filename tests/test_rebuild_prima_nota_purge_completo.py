@@ -122,6 +122,8 @@ def _setup_db():
     db["prima_nota_banca"].docs = [
         {"id": "b1", "data": "2026-01-02", "tipo": "entrata", "importo": 3617.0,
          "categoria": "Corrispettivi POS", "source": "corrispettivo_pos"},
+        {"id": "b1-new-engine-stale", "data": "2026-01-02", "tipo": "entrata", "importo": 999.0,
+         "categoria": "Corrispettivi POS", "source": "trasferimento_pos"},
         {"id": "b2", "data": "2026-01-03", "tipo": "uscita", "importo": 100.0,
          "categoria": "Pagamento fornitore", "source": "fattura_pagata"},
     ]
@@ -134,7 +136,7 @@ def test_purge_elimina_tutte_le_pipeline_e_ricrea_pulito():
     esito = _run(mod.rebuild_prima_nota_from_corrispettivi(db, anno=2026))
 
     assert esito["prima_nota_cassa_eliminati"] == 5  # e1 e2 u1 u2 u3, NON v1/f1
-    assert esito["prima_nota_banca_eliminati"] == 1  # b1, NON b2
+    assert esito["prima_nota_banca_eliminati"] == 2  # b1 + residuo trasferimento_pos, NON b2
     assert esito["corrispettivi_processati"] == 1
     assert esito["corrispettivi_duplicati_saltati"] == 1  # c1-dup non ricrea nulla
 
@@ -148,6 +150,8 @@ def test_purge_elimina_tutte_le_pipeline_e_ricrea_pulito():
     assert any(m["id"] == "f1" for m in cassa)
 
     banca = db["prima_nota_banca"].docs
-    entrate_pos = [m for m in banca if m.get("source") == "corrispettivo_pos"]
-    assert entrate_pos == []  # MODELLO POS 18/07/2026: mai banca sintetica (entrata banca = accredito EC reale)
+    entrate_pos_legacy = [m for m in banca if m.get("source") == "corrispettivo_pos"]
+    assert entrate_pos_legacy == []
+    entrate_pos = [m for m in banca if m.get("source") == "trasferimento_pos"]
+    assert len(entrate_pos) == 1 and entrate_pos[0]["importo"] == 3617.0
     assert any(m["id"] == "b2" for m in banca)

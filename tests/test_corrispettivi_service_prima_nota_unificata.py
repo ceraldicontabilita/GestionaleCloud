@@ -386,3 +386,36 @@ def test_chiusura_post_mezzanotte_non_sposta_se_precedente_valorizzato():
     assert previous["totale"] == 100.00
     assert current["totale"] == 20.00
     assert current["chiusura_post_mezzanotte"] is False
+
+
+def test_retry_post_mezzanotte_ignora_precedente_archiviato_e_ripara_data():
+    db = AsyncMongoMockClient()["corrispettivi_after_midnight_archived_test"]
+    svc = CorrispettiviService(db=db)
+    parsed = {
+        b"precedente": _parsed_corr(
+            data="2026-04-03", ora="21:00:00", totale=100.00,
+            contanti=50.00, pos=50.00, progressivo="2487", docs=10,
+        ),
+        b"notte": _parsed_corr(
+            data="2026-04-04", ora="00:32:52", totale=4083.60,
+            contanti=1104.60, pos=2979.00, progressivo="2488", docs=575,
+        ),
+    }
+    svc._parse_corrispettivo_xml = lambda content: dict(parsed[content])
+
+    _run(svc.process_xml(b"precedente", "2487.xml"))
+    first_night = _run(svc.process_xml(b"notte", "2488.xml"))
+    night_id = first_night["corrispettivo_id"]
+    assert _run(db["corrispettivi"].find_one({"id": night_id}))["data"] == "2026-04-04"
+
+    _run(db["corrispettivi"].update_one(
+        {"data": "2026-04-03"},
+        {"$set": {"status": "archived"}},
+    ))
+    retry = _run(svc.process_xml(b"notte", "2488-copia.xml"))
+
+    assert retry["status"] == "duplicate"
+    repaired = _run(db["corrispettivi"].find_one({"id": night_id}))
+    assert repaired["data"] == "2026-04-03"
+    assert repaired["data_rilevazione_xml"] == "2026-04-04"
+    assert repaired["chiusura_post_mezzanotte"] is True

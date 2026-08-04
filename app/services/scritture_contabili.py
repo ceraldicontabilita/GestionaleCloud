@@ -459,6 +459,12 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
             "source": {"$in": ["corrispettivo_import", "corrispettivi_sync",
                                 "corrispettivo_xml", "xml_import", "manuale_da_xml",
                                 "corrispettivo_manuale"]},
+            # Una vecchia scrittura soft-deleted/archiviata non deve bloccare
+            # la rigenerazione del movimento attivo. Senza questi filtri il
+            # rebuild poteva trovare il residuo storico e non inserire nulla
+            # di visibile in Prima Nota (caso reale 03/04/2026).
+            "status": {"$nin": ["deleted", "archived"]},
+            "entity_status": {"$ne": "deleted"},
         },
         {
             "corrispettivo_id": corr_doc.get("id"),
@@ -485,7 +491,10 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
     quota_pos = chiusura if chiusura is not None else elettronico
     fonte_quota = "chiusura_manuale" if chiusura is not None else "xml"
     if quota_pos > 0:
-        filtro_attivo = {"status": {"$nin": ["deleted", "archived"]}}
+        filtro_attivo = {
+            "status": {"$nin": ["deleted", "archived"]},
+            "entity_status": {"$ne": "deleted"},
+        }
         cassa_query = {
             "data": data, "tipo": "uscita", "categoria": "POS Verso Banca",
             **filtro_attivo,
