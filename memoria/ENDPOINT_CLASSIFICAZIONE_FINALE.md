@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1042 · tenere: 690 · verificare: 329 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1044 · tenere: 691 · verificare: 330 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -235,6 +235,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/commercialista/invia-prima-nota` | commercialista | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/commercialista/log` | commercialista | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/commercialista/prima-nota-cassa/{anno}/{mese}` | commercialista | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/commercialista/riepilogo/{anno}/{mese}` | commercialista | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/commercialista/schedula-export` | commercialista | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/commercialista/segna-inviata` | commercialista | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/conferma-tutte` | dati_provvisori | — | sì | — | — | — | tenere | in uso: scheduler |
@@ -835,6 +836,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/prima-nota-salari/salari/{record_id}/cedolino-pdf` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/prima-nota-salari/salari/{record_id}/riconcilia` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/anni-disponibili` | prima_nota_module.stats | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/prima-nota/annulla-associazione-fattura-banca` | prima_nota_module.manutenzione | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/arricchisci-pagamenti-banca` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota/banca` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/banca` | prima_nota_module.banca | sì | — | — | — | sì | tenere | in uso: FE |

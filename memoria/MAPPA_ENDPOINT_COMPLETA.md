@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1042 endpoint** in **109 gruppi**.
+> Totale **1044 endpoint** in **109 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 652 · ext esterni = 90 · — da verificare = 300
+**Riepilogo uso:** ✓ frontend = 655 · ext esterni = 90 · — da verificare = 299
 
 ## AI Parser  (11)
 
@@ -321,15 +321,15 @@
 | GET | `/api/collaudo/storico` | ✓ | collaudo |
 | GET | `/api/collaudo/ultimo` | ✓ | collaudo |
 
-## Commercialista  (14)
+## Commercialista  (15)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/commercialista/alert-status` | ✓ | commercialista |
 | GET | `/api/commercialista/config` | ✓ | commercialista |
 | PUT | `/api/commercialista/config` | ✓ | commercialista |
-| GET | `/api/commercialista/export-completo/{anno}/{mese}` | — | commercialista |
-| GET | `/api/commercialista/export-excel/{anno}/{mese}` | — | commercialista |
+| GET | `/api/commercialista/export-completo/{anno}/{mese}` | ✓ | commercialista |
+| GET | `/api/commercialista/export-excel/{anno}/{mese}` | ✓ | commercialista |
 | GET | `/api/commercialista/export-log` | — | commercialista |
 | GET | `/api/commercialista/fatture-cassa/{anno}/{mese}` | ✓ | commercialista |
 | POST | `/api/commercialista/invia-carnet` | ✓ | commercialista |
@@ -337,6 +337,7 @@
 | POST | `/api/commercialista/invia-prima-nota` | ✓ | commercialista |
 | GET | `/api/commercialista/log` | ✓ | commercialista |
 | GET | `/api/commercialista/prima-nota-cassa/{anno}/{mese}` | ✓ | commercialista |
+| GET | `/api/commercialista/riepilogo/{anno}/{mese}` | ✓ | commercialista |
 | POST | `/api/commercialista/schedula-export` | — | commercialista |
 | POST | `/api/commercialista/segna-inviata` | ✓ | commercialista |
 
@@ -1230,11 +1231,12 @@
 | GET | `/api/previsioni-acquisti/prodotti` | — | previsioni_acquisti |
 | GET | `/api/previsioni-acquisti/statistiche` | ✓ | previsioni_acquisti |
 
-## Prima Nota  (73)
+## Prima Nota  (74)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/prima-nota/anni-disponibili` | — | prima_nota_module.stats |
+| POST | `/api/prima-nota/annulla-associazione-fattura-banca` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/arricchisci-pagamenti-banca` | — | prima_nota_module.manutenzione |
 | GET | `/api/prima-nota/banca` | ✓ | prima_nota_module.banca |
 | POST | `/api/prima-nota/banca` | ✓ | prima_nota_module.banca |

@@ -61,9 +61,10 @@ def test_scansione_ricorsiva_separa_banca_pos_e_ignora_archivi():
 
     assert {(item["id"], item["route"]) for item in items} == {
         ("ec1", "bank"), ("pos1", "pos"), ("pos2", "pos"),
+        ("fee", "pos"),
     }
     assert {source["path"] for source in sources} == {"BNL", "pos bpm"}
-    assert all(item["id"] not in {"old", "fee", "root_old"} for item in items)
+    assert all(item["id"] not in {"old", "root_old"} for item in items)
 
 
 def test_piu_radici_da_env_e_registro_sono_deduplicate(monkeypatch):
