@@ -150,6 +150,47 @@ async def lifespan(app: FastAPI):
                     strict_result.get("ripristinati_provvisori", 0),
                 )
 
+            # Correzione puntuale autorizzata 04/08/2026: l'addebito nomina
+            # TIMAS, ma una precedente logica basata sul solo importo aveva
+            # chiuso anche Carta & Party fattura 56. TIMAS resta associata;
+            # viene riaperta esclusivamente la fattura estranea e l'estratto
+            # conto originale non viene modificato/eliminato.
+            carta_marker = "fix_carta_party_timas_collision_20260804_v1"
+            carta_run = await db["migration_runs"].find_one({"id": carta_marker})
+            if not carta_run or carta_run.get("status") != "completed":
+                from app.routers.prima_nota_module.manutenzione import (
+                    AnnullaAssociazioneFatturaBancaRequest,
+                    annulla_associazione_fattura_banca,
+                )
+                try:
+                    carta_result = await annulla_associazione_fattura_banca(
+                        AnnullaAssociazioneFatturaBancaRequest(
+                            partita_iva="05851861210",
+                            numero_fattura="56",
+                            importo_atteso=153.72,
+                            motivo=(
+                                "Correzione falsa associazione: il movimento bancario "
+                                "indica TIMAS ASCENSORI e non Carta & Party"
+                            ),
+                        ),
+                        {"username": "startup-migration"},
+                    )
+                    carta_status = "completed"
+                except Exception as exc:
+                    # Se la fattura e' gia' stata corretta o non e' presente,
+                    # non si altera alcun dato e il tentativo resta tracciato.
+                    # Lo stato resta failed affinche' un errore temporaneo di
+                    # database venga ritentato automaticamente al prossimo avvio.
+                    carta_result = {"skipped": True, "reason": str(exc)}
+                    carta_status = "failed"
+                await db["migration_runs"].update_one(
+                    {"id": carta_marker},
+                    {"$set": {"id": carta_marker, "status": carta_status,
+                              "finished_at": datetime.now(timezone.utc).isoformat(),
+                              "result": carta_result}},
+                    upsert=True,
+                )
+
             # Le versioni precedenti confondevano "copiata in Prima Nota"
             # con "riconciliata": riapriamo soltanto le righe generiche che
             # non hanno alcun documento collegato. In questo modo una fattura
