@@ -27,6 +27,16 @@ router = APIRouter()
 
 # Email commercialista di default
 DEFAULT_COMMERCIALISTA_EMAIL = "rosaria.marotta@email.it"
+MESI_NOMI = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+             "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
+
+
+def _periodo(anno: int, mese: int) -> tuple[str, str]:
+    if mese < 0 or mese > 12:
+        raise HTTPException(status_code=400, detail="Mese deve essere tra 0 e 12")
+    if mese == 0:
+        return str(anno), f"Intero anno {anno}"
+    return f"{anno}-{mese:02d}", f"{MESI_NOMI[mese]} {anno}"
 
 
 def get_smtp_config():
@@ -147,14 +157,9 @@ async def update_commercialista_config(data: Dict[str, Any] = Body(...)) -> Dict
 @router.get("/prima-nota-cassa/{anno}/{mese}")
 @handle_errors
 async def get_prima_nota_cassa_mensile(anno: int, mese: int) -> Dict[str, Any]:
-    """Get Prima Nota Cassa for a specific month."""
+    """Get Prima Nota Cassa for a month or the whole year (mese=0)."""
     db = Database.get_db()
-    
-    # Date range for the month - usa formato YYYY-MM per regex match
-    month_prefix = f"{anno}-{mese:02d}"
-    _, last_day = monthrange(anno, mese)
-    start_date = f"{anno}-{mese:02d}-01"
-    end_date = f"{anno}-{mese:02d}-{last_day:02d}"
+    month_prefix, periodo_nome = _periodo(anno, mese)
     
     # Query prima nota cassa - collection principale
     movements = []
@@ -205,8 +210,7 @@ async def get_prima_nota_cassa_mensile(anno: int, mese: int) -> Dict[str, Any]:
     return {
         "anno": anno,
         "mese": mese,
-        "mese_nome": ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
-                     "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"][mese],
+        "mese_nome": periodo_nome,
         "movimenti": movements,
         "totale_movimenti": len(movements),
         "totale_entrate": round(totale_entrate, 2),
@@ -218,10 +222,9 @@ async def get_prima_nota_cassa_mensile(anno: int, mese: int) -> Dict[str, Any]:
 @router.get("/fatture-cassa/{anno}/{mese}")
 @handle_errors
 async def get_fatture_pagate_cassa(anno: int, mese: int) -> Dict[str, Any]:
-    """Get invoices paid by cash for a specific month."""
+    """Get invoices paid by cash for a month or the whole year."""
     db = Database.get_db()
-    
-    month_prefix = f"{anno}-{mese:02d}"
+    month_prefix, periodo_nome = _periodo(anno, mese)
     
     # Query fatture with payment method = contanti/cassa and date in month
     cursor = db["invoices"].find({
@@ -245,11 +248,95 @@ async def get_fatture_pagate_cassa(anno: int, mese: int) -> Dict[str, Any]:
     return {
         "anno": anno,
         "mese": mese,
-        "mese_nome": ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
-                     "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"][mese],
+        "mese_nome": periodo_nome,
         "fatture": fatture,
         "totale_fatture": len(fatture),
         "totale_importo": round(totale, 2)
+    }
+
+
+@router.get("/riepilogo/{anno}/{mese}")
+@handle_errors
+async def get_riepilogo_commercialista(anno: int, mese: int) -> Dict[str, Any]:
+    """Card source-backed per mese o anno, senza trasformare proposte in pagamenti."""
+    db = Database.get_db()
+    prefix, periodo_nome = _periodo(anno, mese)
+
+    movimenti_fatture = await db["prima_nota_banca"].find({
+        "data": {"$regex": f"^{prefix}"},
+        "riconciliato": True,
+        "$or": [
+            {"categoria": {"$regex": "fattur", "$options": "i"}},
+            {"fattura_id": {"$exists": True, "$ne": None}},
+            {"invoice_id": {"$exists": True, "$ne": None}},
+        ],
+        "status": {"$nin": ["deleted", "archived"]},
+    }, {"_id": 0, "fattura_id": 1, "invoice_id": 1, "numero_fattura": 1,
+        "importo": 1, "amount": 1}).to_list(20000)
+    fatture_keys = {
+        str(m.get("fattura_id") or m.get("invoice_id") or m.get("numero_fattura") or "")
+        for m in movimenti_fatture
+        if m.get("fattura_id") or m.get("invoice_id") or m.get("numero_fattura")
+    }
+    totale_fatture_banca = round(sum(
+        abs(float(m.get("importo") or m.get("amount") or 0)) for m in movimenti_fatture
+    ), 2)
+
+    cedolini_query: Dict[str, Any] = {
+        "$or": [{"anno": anno}, {"anno": str(anno)}],
+        "entity_status": {"$ne": "deleted"},
+    }
+    if mese:
+        cedolini_query["$and"] = [{"$or": [{"mese": mese}, {"mese": str(mese)},
+                                              {"mese": f"{mese:02d}"}]}]
+    cedolini = await db["cedolini"].find(
+        cedolini_query, {"_id": 0, "netto": 1, "netto_mese": 1}
+    ).to_list(20000)
+    totale_netto_cedolini = round(sum(
+        float(c.get("netto") or c.get("netto_mese") or 0) for c in cedolini
+    ), 2)
+
+    commissioni = await db["pos_commissioni_giornaliere"].find(
+        {"data": {"$regex": f"^{prefix}"}},
+        {"_id": 0, "importo_lordo": 1, "importo_netto": 1,
+         "commissioni": 1, "quadrato": 1},
+    ).to_list(10000)
+
+    from app.routers.iva import _fatture_anno, _iva_vendite_corrispettivi
+    from app.engines import riepilogo_iva_engine as riep
+    fatture_iva = await _fatture_anno(db, anno)
+    categorie_iva = riep.riepilogo_categorie(fatture_iva)
+    iva_credito_annuale = round(float(categorie_iva["disponibile"]["iva"] or 0), 2)
+    iva_debito_annuale = round(sum(
+        [await _iva_vendite_corrispettivi(db, f"{anno}-{month:02d}") for month in range(1, 13)]
+    ), 2)
+
+    return {
+        "anno": anno,
+        "mese": mese,
+        "periodo_nome": periodo_nome,
+        "fatture_banca": {
+            "totale_fatture": len(fatture_keys),
+            "totale_importo": totale_fatture_banca,
+            "movimenti_riconciliati": len(movimenti_fatture),
+        },
+        "cedolini": {
+            "totale_cedolini": len(cedolini),
+            "totale_netto": totale_netto_cedolini,
+        },
+        "coerenza_pos": {
+            "giorni": len(commissioni),
+            "lordo": round(sum(float(c.get("importo_lordo") or 0) for c in commissioni), 2),
+            "netto": round(sum(float(c.get("importo_netto") or 0) for c in commissioni), 2),
+            "commissioni": round(sum(float(c.get("commissioni") or 0) for c in commissioni), 2),
+            "giorni_non_quadrati": sum(1 for c in commissioni if c.get("quadrato") is False),
+        },
+        "iva_annuale": {
+            "iva_credito": iva_credito_annuale,
+            "iva_debito": iva_debito_annuale,
+            "saldo": round(iva_debito_annuale - iva_credito_annuale, 2),
+            "fatture_da_verificare": categorie_iva["da_verificare"]["conteggio"],
+        },
     }
 
 
@@ -623,7 +710,7 @@ async def _get_prima_nota_banca_mensile(anno: int, mese: int) -> Dict[str, Any]:
     ma sulla collezione canonica prima_nota_banca (nessun fallback legacy:
     a differenza della cassa, per la banca esiste una sola collezione)."""
     db = Database.get_db()
-    month_prefix = f"{anno}-{mese:02d}"
+    month_prefix, _ = _periodo(anno, mese)
 
     movements = await db["prima_nota_banca"].find({
         "data": {"$regex": f"^{month_prefix}"}
@@ -652,7 +739,7 @@ async def _get_assegni_emessi_mensile(anno: int, mese: int) -> list:
     bianco) con data di emissione nel mese: stato diverso da "vuoto"/
     "compilato" e data_emissione valorizzata nel periodo."""
     db = Database.get_db()
-    month_prefix = f"{anno}-{mese:02d}"
+    month_prefix, _ = _periodo(anno, mese)
 
     return await db["assegni"].find({
         "stato": {"$nin": ["vuoto", "compilato"]},
@@ -665,7 +752,7 @@ async def _get_fatture_estere_mensili(anno: int, mese: int) -> list:
     che arrivano sempre via SDI/XML): identificate dal source impostato da
     process_fattura_estera_pdf, l'unico punto che le crea (fatture_upload.py)."""
     db = Database.get_db()
-    month_prefix = f"{anno}-{mese:02d}"
+    month_prefix, _ = _periodo(anno, mese)
 
     return await db["invoices"].find({
         "source": "email_gmail_estera",
@@ -695,7 +782,7 @@ async def export_dati_completi(anno: int, mese: int):
     from fastapi.responses import StreamingResponse
 
     db = Database.get_db()
-    mese_str = f"{anno}-{mese:02d}"
+    mese_str, _ = _periodo(anno, mese)
 
     zip_buffer = BytesIO()
 
@@ -795,9 +882,7 @@ async def export_excel_commercialista(anno: int, mese: int):
     from fastapi.responses import StreamingResponse
     
     db = Database.get_db()
-    mese_str = f"{anno}-{mese:02d}"
-    mese_nome = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
-                 "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"][mese]
+    mese_str, mese_nome = _periodo(anno, mese)
     
     # Stili
     header_font = Font(bold=True, color="FFFFFF")

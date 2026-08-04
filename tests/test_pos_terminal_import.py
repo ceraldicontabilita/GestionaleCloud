@@ -36,10 +36,11 @@ def test_xlsx_pos_trova_header_alla_terza_riga():
     assert result["daily_totals"] == {"2026-06-03": 15.4}
 
 
-def test_file_commissioni_non_e_un_export_transazioni():
-    # La selezione avviene prima del parser: serve a impedire che i riepiloghi
-    # commissioni vengano scambiati per incassi POS reali.
+def test_file_commissioni_viene_instradato_senza_essere_un_export_transazioni():
+    # Il dispatcher lo accetta, poi il nome lo invia al parser commissioni:
+    # non deve mai diventare una chiusura POS reale.
     from app.services.drive_estratti_conto_ingest import _supported_file
 
     assert _supported_file("pos", "Export_Transazioni_aprile_2026.xlsx") is True
-    assert _supported_file("pos", "Commissioni_Aprile_2026.xlsx") is False
+    assert _supported_file("pos", "Commissioni_Aprile_2026.xlsx") is True
+    assert _supported_file("mutuo", "Estratto mutuo_31-12-2022.pdf") is True

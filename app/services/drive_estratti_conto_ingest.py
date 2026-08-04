@@ -146,6 +146,8 @@ def _list_children(service, parent_id: str) -> List[Dict[str, Any]]:
 def _route_for_path(path: str, filename: str = "") -> Optional[str]:
     """Classifica la fonte senza usare dati contabili o importi."""
     source = f"{path}/{filename}".lower()
+    if "mutuo acquisto" in source:
+        return "mutuo"
     if "pos bpm" in source or "pos bnl" in source:
         return "pos"
     segments = {part.strip() for part in path.lower().split("/") if part.strip()}
@@ -171,8 +173,12 @@ def _supported_file(route: Optional[str], filename: str) -> bool:
     if route == "pos":
         return (
             lower.endswith((".csv", ".xlsx", ".xlsm"))
-            and any(token in lower for token in ("export_mensile", "export_transazioni"))
+            and any(token in lower for token in (
+                "export_mensile", "export_transazioni", "commissioni_",
+            ))
         )
+    if route == "mutuo":
+        return lower.endswith(".pdf")
     return False
 
 
@@ -269,11 +275,15 @@ async def sync(db) -> Dict[str, Any]:
 
         from app.routers.bank.estratto_conto import import_estratto_conto
         from app.services.pos_terminal_import import importa_pos_terminal_file
+        from app.services.pos_commissioni_import import importa_pos_commissioni_file
+        from app.services.mutui_document_import import importa_documento_mutuo
 
         result: Dict[str, Any] = {
             "status": "ok", "total": 0, "processed": 0, "moved": 0,
             "new_movements": 0, "duplicates": 0, "cheques": 0,
             "pos_files": 0, "pos_days": 0, "roots": len(_folder_ids()),
+            "pos_commission_files": 0, "pos_commission_days": 0,
+            "mutuo_files": 0, "mutuo_duplicates": 0,
             "sources": [], "errors": [],
         }
         files_by_id: Dict[str, Dict[str, Any]] = {}
@@ -304,11 +314,24 @@ async def sync(db) -> Dict[str, Any]:
                 if not content:
                     raise ValueError("file vuoto")
                 if item["route"] == "pos":
-                    esito = await importa_pos_terminal_file(
+                    if "commissioni_" in item["name"].lower():
+                        esito = await importa_pos_commissioni_file(
+                            db, content, item["name"], drive_file_id=item["id"],
+                        )
+                        result["pos_commission_files"] += 1
+                        result["pos_commission_days"] += int(esito.get("days") or 0)
+                    else:
+                        esito = await importa_pos_terminal_file(
+                            db, content, item["name"], drive_file_id=item["id"],
+                        )
+                        result["pos_files"] += 1
+                        result["pos_days"] += int(esito.get("days") or 0)
+                elif item["route"] == "mutuo":
+                    esito = await importa_documento_mutuo(
                         db, content, item["name"], drive_file_id=item["id"],
                     )
-                    result["pos_files"] += 1
-                    result["pos_days"] += int(esito.get("days") or 0)
+                    result["mutuo_files"] += 1
+                    result["mutuo_duplicates"] += int(bool(esito.get("duplicate")))
                 else:
                     esito = await import_estratto_conto(_UploadDrive(item["name"], content))
                     if isinstance(esito, dict) and (esito.get("error") or esito.get("detail")):

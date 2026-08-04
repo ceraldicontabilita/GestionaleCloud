@@ -26,6 +26,135 @@ class SpostaMovimentoRequest(BaseModel):
     a: str
 
 
+class AnnullaAssociazioneFatturaBancaRequest(BaseModel):
+    partita_iva: str
+    numero_fattura: str
+    motivo: str
+    importo_atteso: Optional[float] = None
+
+
+async def annulla_associazione_fattura_banca(
+    data: AnnullaAssociazioneFatturaBancaRequest,
+    _admin: Dict = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Annulla un falso positivo banca senza alterare l'estratto conto.
+
+    La correzione archivia soltanto le scritture collegate alla fattura,
+    riapre le sue rate e conserva l'eventuale riconciliazione dello stesso
+    movimento con un'altra fattura corretta.
+    """
+    db = Database.get_db()
+    piva = "".join(ch for ch in data.partita_iva if ch.isalnum()).upper()
+    numero = data.numero_fattura.strip()
+    fattura = await db["invoices"].find_one({
+        "$and": [
+            {"$or": [
+                {"supplier_vat": piva}, {"cedente_piva": piva},
+                {"partita_iva_fornitore": piva},
+            ]},
+            {"$or": [
+                {"invoice_number": numero}, {"numero_fattura": numero},
+            ]},
+        ]
+    })
+    if not fattura:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+
+    fattura_id = str(fattura.get("id") or fattura.get("_id"))
+    totale = round(float(fattura.get("total_amount") or fattura.get("importo_totale") or 0), 2)
+    if data.importo_atteso is not None and abs(totale - data.importo_atteso) > 0.01:
+        raise HTTPException(status_code=409, detail="Importo fattura diverso da quello atteso")
+
+    now = datetime.now(timezone.utc).isoformat()
+    query_pn = {
+        "$or": [{"fattura_id": fattura_id}, {"invoice_id": fattura_id}],
+        "status": {"$nin": ["deleted", "archived"]},
+    }
+    righe = await db["prima_nota_banca"].find(query_pn, {"_id": 0}).to_list(100)
+    movimento_ids = {
+        str(r.get("movimento_estratto_conto_id") or r.get("estratto_conto_id"))
+        for r in righe if r.get("movimento_estratto_conto_id") or r.get("estratto_conto_id")
+    }
+    await db["prima_nota_banca"].update_many(query_pn, {"$set": {
+        "status": "deleted", "deleted": True,
+        "deleted_reason": "associazione_banca_errata",
+        "deleted_detail": data.motivo, "deleted_at": now,
+    }})
+
+    # Rimuove esclusivamente le evidenze rateali riferite a questa coppia
+    # movimento/fattura e ricalcola lo stato della rata dalle evidenze residue.
+    rate = await db["scadenziario_fornitori"].find(
+        {"fattura_id": fattura_id}, {"_id": 0}
+    ).to_list(100)
+    for rata in rate:
+        evidenze = [
+            e for e in (rata.get("evidenze_pagamento") or [])
+            if not any(e.get("evidenza_id") == f"banca:{mid}:{fattura_id}" for mid in movimento_ids)
+        ]
+        pagato = round(sum(float(e.get("importo") or 0) for e in evidenze), 2)
+        importo_rata = round(float(rata.get("importo_rata") or rata.get("importo_totale") or rata.get("importo") or 0), 2)
+        chiusa = importo_rata > 0 and pagato >= importo_rata - 0.005
+        await db["scadenziario_fornitori"].update_one({"id": rata.get("id")}, {"$set": {
+            "evidenze_pagamento": evidenze,
+            "importo_pagato": pagato,
+            "importo_residuo": round(max(0.0, importo_rata - pagato), 2),
+            "pagato": chiusa,
+            "stato": "pagata" if chiusa else ("parziale" if pagato else "da_pagare"),
+            "data_pagamento": rata.get("data_pagamento") if chiusa else None,
+            "updated_at": now,
+        }})
+
+    await db["invoices"].update_one(
+        {"_id": fattura["_id"]} if fattura.get("_id") is not None else {"id": fattura_id},
+        {"$set": {
+            "pagato": False, "paid": False, "stato_pagamento": "da_pagare",
+            "payment_status": "unpaid", "importo_pagato": 0.0,
+            "importo_residuo": totale, "in_banca": False,
+            "data_pagamento": None, "riconciliato_con_ec": None,
+            "riconciliato_automaticamente": False,
+            "prima_nota_id": None, "prima_nota_tipo": None,
+            "prima_nota_banca_id": None, "updated_at": now,
+        }}
+    )
+
+    movimenti_liberati = 0
+    for movimento_id in movimento_ids:
+        altre = await db["prima_nota_banca"].count_documents({
+            "$and": [
+                {"$or": [
+                    {"movimento_estratto_conto_id": movimento_id},
+                    {"estratto_conto_id": movimento_id},
+                ]},
+                {"status": {"$nin": ["deleted", "archived"]}},
+            ]
+        })
+        if not altre:
+            await db["estratto_conto_movimenti"].update_one(
+                {"id": movimento_id},
+                {"$set": {"riconciliato": False, "riconciliato_automaticamente": False,
+                          "updated_at": now}}
+            )
+            movimenti_liberati += 1
+
+    from app.services.audit_logger import log_evento
+    await log_evento(
+        modulo="fatture", azione="associazione_banca_annullata",
+        entita_id=fattura_id, entita_collection="invoices", db=db,
+        vecchio_stato={"pagato": fattura.get("pagato"),
+                       "riconciliato_con_ec": fattura.get("riconciliato_con_ec")},
+        nuovo_stato={"pagato": False, "stato_pagamento": "da_pagare"},
+        fonte="correzione_amministrativa", utente=str(_admin.get("username") or "admin"),
+        dettaglio=data.motivo,
+        extra={"movimenti_banca": sorted(movimento_ids)},
+    )
+    return {
+        "success": True, "fattura_id": fattura_id,
+        "scritture_archiviate": len(righe),
+        "movimenti_estratto_liberati": movimenti_liberati,
+        "movimenti_con_altra_associazione": len(movimento_ids) - movimenti_liberati,
+    }
+
+
 async def fix_tipo_movimento_fatture() -> Dict:
     """Corregge il tipo movimento per tutti i movimenti collegati a fatture."""
     db = Database.get_db()

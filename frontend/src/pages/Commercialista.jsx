@@ -58,6 +58,7 @@ export default function Commercialista() {
   // Data states
   const [primaNotaData, setPrimaNotaData] = useState(null);
   const [fattureCassaData, setFattureCassaData] = useState(null);
+  const [riepilogoData, setRiepilogoData] = useState(null);
   const [carnets, setCarnets] = useState([]);
   const [selectedCarnets, setSelectedCarnets] = useState([]); // Array per selezione multipla
   const [carnetSearch, setCarnetSearch] = useState(''); // Barra di ricerca
@@ -107,16 +108,18 @@ export default function Commercialista() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const month = selectedMonth + 1; // Convert to 1-indexed
+      const month = selectedMonth < 0 ? 0 : selectedMonth + 1;
 
-      const [primaNotaRes, fattureCassaRes, assegniRes] = await Promise.all([
+      const [primaNotaRes, fattureCassaRes, assegniRes, riepilogoRes] = await Promise.all([
         api.get(`/api/commercialista/prima-nota-cassa/${selectedYear}/${month}`),
         api.get(`/api/commercialista/fatture-cassa/${selectedYear}/${month}`),
         api.get(`/api/assegni?anno=${selectedYear}`),
+        api.get(`/api/commercialista/riepilogo/${selectedYear}/${month}`),
       ]);
 
       setPrimaNotaData(primaNotaRes.data);
       setFattureCassaData(fattureCassaRes.data);
+      setRiepilogoData(riepilogoRes.data);
 
       // Group assegni by carnet (stessa logica di GestioneAssegni)
       const assegni = assegniRes.data || [];
@@ -142,6 +145,10 @@ export default function Commercialista() {
       setLoading(false);
     }
   }, [selectedYear, selectedMonth]);
+
+  const periodoLabel = selectedMonth < 0
+    ? `Intero anno ${selectedYear}`
+    : `${MESI[selectedMonth + 1]} ${selectedYear}`;
 
   useEffect(() => {
     loadConfig();
@@ -1003,6 +1010,7 @@ export default function Commercialista() {
               onChange={e => setSelectedMonth(parseInt(e.target.value))}
               style={{ minWidth: 150 }}
             >
+              <option value={-1}>Intero anno</option>
               {MESI.slice(1).map((m, idx) => (
                 <option key={idx} value={idx}>
                   {m}
@@ -1017,7 +1025,8 @@ export default function Commercialista() {
             <Button
               variant="success"
               onClick={() => {
-                const url = `/api/commercialista/export-excel/${selectedYear}/${selectedMonth + 1}`;
+                const month = selectedMonth < 0 ? 0 : selectedMonth + 1;
+                const url = `/api/commercialista/export-excel/${selectedYear}/${month}`;
                 window.open(url, '_blank');
               }}
               data-testid="export-excel-btn"
@@ -1030,7 +1039,8 @@ export default function Commercialista() {
             <Button
               variant="secondary"
               onClick={() => {
-                const url = `/api/commercialista/export-completo/${selectedYear}/${selectedMonth + 1}`;
+                const month = selectedMonth < 0 ? 0 : selectedMonth + 1;
+                const url = `/api/commercialista/export-completo/${selectedYear}/${month}`;
                 window.open(url, '_blank');
               }}
               data-testid="export-completo-btn"
@@ -1044,6 +1054,40 @@ export default function Commercialista() {
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>Caricamento...</div>
         ) : (
+          <>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 15,
+              marginBottom: 20,
+            }}
+          >
+            <StatCard
+              label="Fatture pagate per banca"
+              value={formatEuro(riepilogoData?.fatture_banca?.totale_importo)}
+              subtext={`${riepilogoData?.fatture_banca?.totale_fatture || 0} fatture riconciliate`}
+              accent="info"
+            />
+            <StatCard
+              label="Cedolini"
+              value={formatEuro(riepilogoData?.cedolini?.totale_netto)}
+              subtext={`${riepilogoData?.cedolini?.totale_cedolini || 0} cedolini · ${periodoLabel}`}
+              accent="primary"
+            />
+            <StatCard
+              label="Coerenza POS"
+              value={formatEuro(riepilogoData?.coerenza_pos?.netto)}
+              subtext={`${riepilogoData?.coerenza_pos?.giorni || 0} giorni · ${riepilogoData?.coerenza_pos?.giorni_non_quadrati || 0} da verificare`}
+              accent={(riepilogoData?.coerenza_pos?.giorni_non_quadrati || 0) ? 'warning' : 'success'}
+            />
+            <StatCard
+              label="IVA annuale: debito / credito"
+              value={`${formatEuro(riepilogoData?.iva_annuale?.iva_debito)} / ${formatEuro(riepilogoData?.iva_annuale?.iva_credito)}`}
+              subtext={`Saldo ${formatEuro(riepilogoData?.iva_annuale?.saldo)}`}
+              accent={(riepilogoData?.iva_annuale?.saldo || 0) > 0 ? 'danger' : 'success'}
+            />
+          </div>
           <div
             style={{
               display: 'grid',
@@ -1069,7 +1113,7 @@ export default function Commercialista() {
               >
                 <h3 style={{ margin: 0, color: 'white' }}>📒 Prima Nota Cassa</h3>
                 <p style={{ margin: '5px 0 0 0', opacity: 0.9, fontSize: 14 }}>
-                  {MESI[selectedMonth + 1]} {selectedYear}
+                  {periodoLabel}
                 </p>
               </div>
               <div style={{ padding: 20 }}>
@@ -1141,7 +1185,7 @@ export default function Commercialista() {
               >
                 <h3 style={{ margin: 0 }}>💵 Fatture Pagate per Cassa</h3>
                 <p style={{ margin: '5px 0 0 0', opacity: 0.9, fontSize: 14 }}>
-                  {MESI[selectedMonth + 1]} {selectedYear}
+                  {periodoLabel}
                 </p>
               </div>
               <div style={{ padding: 20 }}>
@@ -1514,6 +1558,7 @@ export default function Commercialista() {
               </div>
             </div>
           </div>
+          </>
         )}
 
         {/* Log Section */}

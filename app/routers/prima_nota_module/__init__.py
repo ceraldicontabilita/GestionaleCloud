@@ -53,6 +53,7 @@ from .manutenzione import (
     dedup_fatture_prima_nota, diagnostica_corrispettivi_vs_cassa,
     lista_movimenti_ec_non_in_prima_nota, importa_movimento_ec_in_prima_nota,
     diagnostica_metodi_discordanti,
+    annulla_associazione_fattura_banca,
 )
 
 # === ROTTE STATICHE (devono venire PRIMA delle dinamiche) ===
@@ -122,6 +123,12 @@ router.add_api_route("/diagnostica-corrispettivi", diagnostica_corrispettivi_vs_
 router.add_api_route("/diagnostica-metodi", diagnostica_metodi_discordanti, methods=["GET"])
 router.add_api_route("/movimenti-ec-non-in-prima-nota", lista_movimenti_ec_non_in_prima_nota, methods=["GET"])
 router.add_api_route("/importa-da-ec", importa_movimento_ec_in_prima_nota, methods=["POST"])
+router.add_api_route(
+    "/annulla-associazione-fattura-banca",
+    annulla_associazione_fattura_banca,
+    methods=["POST"],
+    dependencies=[Depends(get_current_admin_user)],
+)
 
 # === ROTTE DINAMICHE (devono venire DOPO le statiche) ===
 

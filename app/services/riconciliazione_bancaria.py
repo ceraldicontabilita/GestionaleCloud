@@ -552,11 +552,17 @@ def _numero_fattura_citato_esplicitamente(numero_fattura: str, descrizione: str)
         return True
 
     # Numeri corti alfanumerici (es. 25/D) sono ammessi soltanto nella forma
-    # originale, delimitata da caratteri non alfanumerici.
-    if 3 <= len(numero_compatto) < 4:
+    # originale, delimitata da caratteri non alfanumerici. I numeri di una o
+    # due cifre (es. fattura 56) richiedono anche la parola FATTURA/FT/INV:
+    # senza quel contesto sarebbero indistinguibili da giorni, mesi o codici.
+    if 2 <= len(numero_compatto) < 4:
         parti = [re.escape(p) for p in re.findall(r'[A-Z0-9]+', numero) if p]
         if parti:
-            pattern = r'(?<![A-Z0-9])' + r'[\s./_-]*'.join(parti) + r'(?![A-Z0-9])'
+            corpo = r'(?<![A-Z0-9])' + r'[\s./_-]*'.join(parti) + r'(?![A-Z0-9])'
+            if len(numero_compatto) <= 2:
+                pattern = r'(?:FATTURA|FATT|FAT|FT|INV|DOCUMENTO|DOC)\s*(?:N[.°º]?\s*)?' + corpo
+            else:
+                pattern = corpo
             return re.search(pattern, str(descrizione).upper()) is not None
     return False
 
@@ -591,8 +597,10 @@ def _evidenza_forte_fattura_banca(
     """Regola canonica per l'auto-match fattura/banca.
 
     Il solo importo, anche unico e con data plausibile, non prova il pagamento.
-    Servono importo al centesimo e almeno un'identita' leggibile nella causale:
-    fornitore oppure numero fattura. Per le fatture rateizzate e' ammesso
+    Servono importo al centesimo e le due identita' leggibili nella causale:
+    fornitore e numero fattura. Questa regola impedisce che due fatture dello
+    stesso importo (es. TIMAS e Carta & Party) vengano scambiate. Per le
+    fatture rateizzate e' ammesso
     l'importo esatto della rata XML o del residuo ancora aperto.
     """
     totale = float(fattura.get("importo_totale") or fattura.get("total_amount") or 0)
@@ -623,12 +631,14 @@ def _evidenza_forte_fattura_banca(
         or ""
     )
     fornitore_presente = match_fornitore_descrizione(fornitore, descrizione) > 0
-    numero_presente = match_numero_fattura_descrizione(numero, descrizione)
+    # Il matcher esplicito evita che numeri brevi, date, CRO o ABI/CAB siano
+    # interpretati come numero fattura.
+    numero_presente = _numero_fattura_citato_esplicitamente(numero, descrizione)
     return {
         "importo_esatto": importo_esatto,
         "fornitore_presente": fornitore_presente,
         "numero_presente": numero_presente,
-        "auto_ammesso": importo_esatto and (fornitore_presente or numero_presente),
+        "auto_ammesso": importo_esatto and fornitore_presente and numero_presente,
     }
 
 

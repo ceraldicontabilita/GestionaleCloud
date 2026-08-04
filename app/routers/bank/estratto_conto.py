@@ -10,6 +10,7 @@ import logging
 import io
 import re
 import csv
+from collections import Counter, defaultdict
 
 from app.database import Database
 from app.utils.error_handler import handle_errors
@@ -20,6 +21,14 @@ from app.services.bank_evidence import EVIDENZA_UFFICIALE, campi_evidenza
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _occorrenza_gia_importata(
+    existing_counts: Counter, incoming_occurrences: Counter, key: Any,
+) -> bool:
+    """Deduplica un reimport preservando due righe bancarie identiche reali."""
+    incoming_occurrences[key] += 1
+    return existing_counts[key] >= incoming_occurrences[key]
 
 
 def estrai_numero_fattura(descrizione: str) -> Optional[str]:
@@ -560,15 +569,16 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     def _norm_desc(desc: str) -> str:
         return re.sub(r"\s+", " ", (desc or "").strip())[:80]
 
-    existing_by_key: Dict[Any, Dict[str, Any]] = {}
+    existing_by_key: Dict[Any, List[Dict[str, Any]]] = defaultdict(list)
     async for rec in existing_cursor:
         dstr = rec.get("data", "")[:10]
         imp  = abs(float(rec.get("importo", 0)))
         desc = _norm_desc(rec.get("descrizione_originale") or rec.get("descrizione") or "")
-        existing_by_key[(dstr, round(imp, 2), desc)] = rec
+        existing_by_key[(dstr, round(imp, 2), desc)].append(rec)
     
     records_to_insert = []
     records_promossi = []
+    incoming_occurrences: Counter = Counter()
     for mov in movimenti:
         data_str    = mov["data"].isoformat()[:10] if hasattr(mov["data"], "isoformat") else str(mov["data"])[:10]
         importo_abs = abs(mov["importo"])
@@ -584,8 +594,11 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         # Dedup uniforme: vale anche per commissioni e piccoli importi.
         dedup_key = (data_str, round(importo_abs, 2), desc_raw)
         
-        existing = existing_by_key.get(dedup_key)
-        if existing:
+        incoming_occurrences[dedup_key] += 1
+        occurrence = incoming_occurrences[dedup_key]
+        existing_rows = existing_by_key.get(dedup_key, [])
+        if len(existing_rows) >= occurrence:
+            existing = existing_rows[occurrence - 1]
             if fonte_ufficiale and not (
                 existing.get("evidenza_bancaria_ufficiale") is True
                 or existing.get("livello_evidenza") == EVIDENZA_UFFICIALE
@@ -593,9 +606,6 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                 records_promossi.append(existing)
             duplicates += 1
             continue
-        
-        # Aggiungi la chiave al set per evitare doppioni dentro lo stesso file
-        existing_by_key[dedup_key] = {"id": None, **evidenza}
         
         row_uuid    = str(_uuid.uuid4())
         fingerprint = _hashlib.md5(f"{data_str}|{importo_abs:.2f}|{desc_raw}|{row_uuid}".encode()).hexdigest()
@@ -1246,7 +1256,7 @@ async def force_reimport_estratto_conto(file: UploadFile = File(...), _admin: Di
     data_min_csv, data_max_csv = date_nel_csv[0], date_nel_csv[-1]
     
     # Carica chiavi dedup esistenti per il range del CSV
-    existing_keys = set()
+    existing_counts: Counter = Counter()
     existing_cursor = db["estratto_conto_movimenti"].find(
         {"data": {"$gte": data_min_csv, "$lte": data_max_csv}},
         {"data": 1, "importo": 1, "descrizione_originale": 1, "descrizione": 1, "_id": 0}
@@ -1255,7 +1265,7 @@ async def force_reimport_estratto_conto(file: UploadFile = File(...), _admin: Di
         dstr = rec.get("data", "")[:10]
         imp = abs(float(rec.get("importo", 0)))
         desc = (rec.get("descrizione_originale") or rec.get("descrizione") or "")[:80]
-        existing_keys.add((dstr, round(imp, 2), desc))
+        existing_counts[(dstr, round(imp, 2), desc)] += 1
     
     cancellati = 0  # Non cancelliamo nulla
     
@@ -1265,6 +1275,7 @@ async def force_reimport_estratto_conto(file: UploadFile = File(...), _admin: Di
     # Inserisce SOLO i nuovi (dedup con chiavi esistenti)
     records = []
     duplicates_skipped = 0
+    incoming_occurrences: Counter = Counter()
     for mov in movimenti:
         data_str = mov["data"].isoformat()[:10]
         importo_abs = abs(mov["importo"])
@@ -1272,10 +1283,9 @@ async def force_reimport_estratto_conto(file: UploadFile = File(...), _admin: Di
         
         # Dedup: se esiste già, salta
         dedup_key = (data_str, round(importo_abs, 2), desc_raw)
-        if dedup_key in existing_keys:
+        if _occorrenza_gia_importata(existing_counts, incoming_occurrences, dedup_key):
             duplicates_skipped += 1
             continue
-        existing_keys.add(dedup_key)
         
         tipo_mov = "entrata" if mov["importo"] >= 0 else "uscita"
         if any(kw in desc_raw.upper() for kw in ["DISPOSIZIONE", "VS.DISP", "ADD.TOT", "I24 AGENZIA ENTRATE", "BOLL.CBILL", "PAG. UTENZE"]):
