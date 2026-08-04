@@ -801,12 +801,28 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
         if f.get("esclusa_da_cassa_banca") or piva in esclusi_cassa_banca:
             continue
         
-        # PRIORITÀ 0: Se la fattura è stata marcata come sospesa dall'utente
+        assegni_collegati = [
+            link for link in (f.get("assegni_collegati") or []) if isinstance(link, dict)
+        ]
+        assegno_specifico = (
+            f.get("metodo_pagamento_previsto") == "assegno"
+            or f.get("metodo_pagamento_override_source") == "assegno_compilato"
+            or bool(assegni_collegati)
+        )
+        fonte_metodo = "fornitore"
         stato_pag = f.get("stato_pagamento", "")
-        if stato_pag == "sospesa":
+
+        # PRIORITÀ 0: la scelta esplicita sulla singola fattura prevale sul
+        # metodo abituale del fornitore, anche se cassa o misto.
+        if assegno_specifico:
+            suggerimento = "banca"
+            stato_match = "in_attesa_estratto_conto"
+            fonte_metodo = "assegno_compilato"
+        # PRIORITÀ 1: Se la fattura è stata marcata come sospesa dall'utente
+        elif stato_pag == "sospesa":
             suggerimento = "sospesa"
             stato_match = "in_attesa"
-        # PRIORITÀ 1 (UNICA): Metodo dal fornitore in anagrafica, con la
+        # PRIORITÀ 2: Metodo dal fornitore in anagrafica, con la
         # STESSA classificazione usata dal job automatico (classifica_metodo_fornitore)
         # REGOLA: il metodo XML della fattura NON viene MAI usato
         else:
@@ -815,7 +831,7 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
         
         # Se banca: cerca INTELLIGENTEMENTE nell'estratto conto
         movimento_match = None
-        if suggerimento == "banca":
+        if suggerimento == "banca" and not assegno_specifico:
             candidati = movimenti_banca.get(round(importo, 2), [])
             nome = (f.get("supplier_name") or "").upper()
             numero_fatt = (f.get("invoice_number") or "").upper()
@@ -860,6 +876,11 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             "fornitore_piva": f.get("supplier_vat", ""),
             "importo": importo,
             "metodo_xml": metodo_xml,
+            "metodo_pagamento_previsto": f.get("metodo_pagamento_previsto"),
+            "fonte_metodo": fonte_metodo,
+            "assegno_numero": (
+                assegni_collegati[0].get("numero") if assegni_collegati else None
+            ),
             "suggerimento": suggerimento,
             "stato_match": stato_match,
             "movimento_banca": {

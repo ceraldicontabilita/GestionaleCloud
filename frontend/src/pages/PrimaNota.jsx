@@ -1180,7 +1180,7 @@ function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
       {attesaBancaVisibili.length > 0 && (
         <div style={{ marginTop: 8 }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: '#64748b', margin: '4px 0 8px' }}>
-            🏦 Fornitori a metodo banca — in attesa dell'addebito in estratto conto ({attesaBanca.length}).
+            🏦 Pagamenti previsti in banca — in attesa dell'addebito in estratto conto ({attesaBanca.length}).
             Si registrano da sole alla riconciliazione: nessuna azione richiesta.
           </div>
           {attesaBancaVisibili.map(p => (
@@ -1190,6 +1190,11 @@ function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
             >
               <span style={{ minWidth: 0 }}>
                 {p.fornitore || '—'} — Fatt. {p.fattura_numero || '—'} del {formatDateIT(p.fattura_data)}
+                {p.fonte_metodo === 'assegno_compilato' && (
+                  <span style={{ color: '#7c3aed', fontWeight: 700 }}>
+                    {' '}· Assegno{p.assegno_numero ? ` n. ${p.assegno_numero}` : ''} già predisposto
+                  </span>
+                )}
                 {p.movimento_banca && (
                   <span style={{ color: '#2563eb' }}> · possibile addebito {formatDateIT(p.movimento_banca.data)}</span>
                 )}
@@ -1204,13 +1209,15 @@ function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
                 >
                   <Eye size={18} />
                 </button>
-                <button
-                  onClick={() => conferma(p, 'banca')} disabled={busy === p.fattura_id}
-                  title="Registra subito in banca senza aspettare la riconciliazione"
-                  style={{ background: '#eff6ff', border: '1px solid #93c5fd', color: '#1d4ed8', borderRadius: 7, padding: '4px 10px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}
-                >
-                  Forza banca
-                </button>
+                {p.fonte_metodo !== 'assegno_compilato' && (
+                  <button
+                    onClick={() => conferma(p, 'banca')} disabled={busy === p.fattura_id}
+                    title="Registra subito in banca senza aspettare la riconciliazione"
+                    style={{ background: '#eff6ff', border: '1px solid #93c5fd', color: '#1d4ed8', borderRadius: 7, padding: '4px 10px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Forza banca
+                  </button>
+                )}
               </span>
             </div>
           ))}

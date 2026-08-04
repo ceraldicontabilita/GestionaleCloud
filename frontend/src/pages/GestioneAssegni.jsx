@@ -226,18 +226,11 @@ export default function GestioneAssegni() {
       // IMPORTANTE: se c'è un beneficiario, filtra SOLO quelle del beneficiario
       const res = await api.get(`/api/invoices?${params}`);
       const items = res.data.items || res.data || [];
-      // Escludi fatture già pagate E fornitori pagati per contanti
+      // Escludi soltanto le fatture già pagate. La scelta dell'assegno per
+      // una fattura specifica prevale sul metodo abituale cassa/misto del
+      // fornitore e viene poi confermata dall'estratto conto.
       let filtered = items.filter(f => {
         if (f.status === 'paid' || f.payment_status === 'paid' || f.pagato === true) return false;
-        // Escludi se il metodo di pagamento è contanti
-        const paymentMethod = (f.payment_method || f.metodo_pagamento || '').toLowerCase();
-        if (
-          paymentMethod.includes('contant') ||
-          paymentMethod.includes('cash') ||
-          paymentMethod === 'contanti'
-        ) {
-          return false;
-        }
         // Fornitori mai pagabili con assegno (dettato utente 18/07/2026):
         // arrivano su carta di credito o addebito bancario, mai su assegno.
         const fornitoreNome = (f.supplier_name || f.cedente_denominazione || '').toLowerCase();
@@ -3117,7 +3110,7 @@ export default function GestioneAssegni() {
                 <label
                   style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: COLORS.gray[700] }}
                 >
-                  Fatture Disponibili (esclusi pagamenti in contanti)
+                  Fatture disponibili (l'assegno prevale sul metodo fornitore)
                 </label>
                 <Input
                   type="text"

@@ -328,9 +328,22 @@ async def sincronizza_assegni_da_estratto_conto(db) -> Dict[str, Any]:
 
             fattura_id = (_invoice_ids_assegno(assegno) or [None])[0]
             pn_id = await _garantisci_prima_nota(db, assegno, movimento, fattura_id, now)
+            if fattura_id:
+                await db["invoices"].update_one({"id": fattura_id}, {"$set": {
+                    "riconciliato": True,
+                    "riconciliato_con_ec": True,
+                    "stato_finanziario": "riconciliato",
+                    "movimento_bancario_id": movimento.get("id"),
+                    "prima_nota_id": pn_id,
+                    "prima_nota_banca_id": pn_id,
+                    "prima_nota_tipo": "banca",
+                    "data_riconciliazione": data_movimento,
+                    "updated_at": now,
+                }})
             await db["assegni"].update_one({"id": assegno["id"]}, {"$set": {
                 "stato": "incassato", "data_incasso": data_movimento,
                 "incassato_confermato_banca": True,
+                "stato_finanziario": "riconciliato",
                 "movimento_estratto_conto_id": movimento.get("id"),
                 "prima_nota_banca_id": pn_id, "confermato": True, "updated_at": now,
             }})

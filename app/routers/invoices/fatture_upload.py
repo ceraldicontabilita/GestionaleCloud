@@ -534,6 +534,16 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     la stessa fattura). Ritorna il dict di update applicato alla fattura
     (già persistito), oppure None se resta provvisoria.
     """
+    # Un assegno compilato e collegato alla singola fattura prevale sul metodo
+    # abituale del fornitore. Finche' non arriva l'estratto conto resta nella
+    # sezione "in attesa banca" e non genera una scrittura bancaria fittizia.
+    if (
+        invoice.get("metodo_pagamento_previsto") == "assegno"
+        or invoice.get("metodo_pagamento_override_source") == "assegno_compilato"
+        or invoice.get("assegni_collegati")
+    ):
+        return None
+
     # Un piano XML a piu' rate non e' una prova di pagamento: anche per un
     # fornitore configurato "cassa" resta provvisorio finche' ogni quota non
     # viene confermata con la relativa evidenza.
@@ -883,6 +893,16 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
         invoice.pop("_id", None)
 
         logger.info(f"Fattura importata: {invoice.get('invoice_number')} - {invoice.get('supplier_name')}")
+
+        from app.services.assegni_fattura_intent import collega_intento_assegno_a_fattura
+        intento_assegno = await collega_intento_assegno_a_fattura(
+            db, invoice, session=session,
+        )
+        if intento_assegno.get("collegato"):
+            logger.info(
+                "Fattura %s collegata all'assegno anticipato %s",
+                invoice.get("invoice_number"), intento_assegno.get("assegno_id"),
+            )
 
         # AUTO-REGISTRA in Prima Nota: sempre provvisoria, conferma manuale
         # dell'utente da Prima Nota → Provvisori (vedi auto_registra_prima_nota).
@@ -1488,6 +1508,17 @@ async def archivia_fattura_storica(db, parsed: Dict[str, Any], filename: str, so
     }
     await db[Collections.INVOICES].insert_one(invoice.copy())
     invoice.pop("_id", None)
+
+    try:
+        from app.services.assegni_fattura_intent import collega_intento_assegno_a_fattura
+        intento_assegno = await collega_intento_assegno_a_fattura(db, invoice)
+        if intento_assegno.get("collegato"):
+            logger.info(
+                "Fattura %s collegata all'assegno anticipato %s",
+                invoice.get("invoice_number"), intento_assegno.get("assegno_id"),
+            )
+    except Exception:
+        logger.exception("Errore collegamento intento assegno per %s", filename)
 
     return {"status": "archiviata", "filename": filename,
             "invoice_number": parsed.get("invoice_number"),

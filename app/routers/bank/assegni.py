@@ -12,7 +12,6 @@ import logging
 from app.database import Database
 from app.models.stati import STATI_PAGATI
 from app.routers.bank.assegni_auto_match import _f, _norm_piva, TOLL, MAX_RATE, fornitore_esclude_assegno
-from app.services.scritture_contabili import scrivi_movimento
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -846,6 +845,9 @@ async def update_assegno(
     
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Assegno non trovato")
+
+    from app.services.assegni_fattura_intent import prepara_intento_assegno
+    await prepara_intento_assegno(db, assegno_id)
     
     return {"message": "Assegno aggiornato con successo"}
 
@@ -861,51 +863,35 @@ class FattureCollegateIn(BaseModel):
     fatture: List[FatturaQuotaIn] = Field(default_factory=list)
 
 
-async def _applica_delta_quota_fattura(db, fattura_id: str, delta_quota: float, now: str) -> None:
-    """Applica un delta (positivo per collegare, negativo per scollegare) alla
-    quota pagata di una fattura. Non tocca assegni_collegati (gestito a parte)."""
+async def _aggiorna_stato_intento_fattura(db, fattura_id: str, now: str) -> None:
+    """Ricalcola l'intento assegno senza alterare il pagamento reale."""
     inv = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
     if not inv:
         return
-    total = _f(inv.get("total_amount") or inv.get("importo_totale"))
-    nuovo_pagato = round(max(0.0, _f(inv.get("importo_pagato", 0)) + delta_quota), 2)
-    nuovo_stato = "paid" if abs(nuovo_pagato - total) <= TOLL else ("partial" if nuovo_pagato > TOLL else "aperta")
-    await db["invoices"].update_one(
-        {"id": fattura_id},
-        {"$set": {
-            "importo_pagato": nuovo_pagato,
-            "importo_residuo": round(max(0, total - nuovo_pagato), 2),
-            "payment_status": nuovo_stato,
-            "pagato": nuovo_stato == "paid",
+    links = [x for x in inv.get("assegni_collegati") or [] if isinstance(x, dict)]
+    if links or inv.get("riconciliato_con_ec"):
+        await db["invoices"].update_one({"id": fattura_id}, {"$set": {
+            "metodo_pagamento_previsto": "assegno",
+            "metodo_pagamento_override_source": "assegno_compilato",
+            "pagamento_specifico_prevale_su_fornitore": True,
+            "stato_finanziario": (
+                "riconciliato" if inv.get("riconciliato_con_ec")
+                else "in_attesa_estratto_conto"
+            ),
             "updated_at": now,
-        }},
-    )
-
-
-async def _crea_mov_banca_manuale(db, assegno: Dict[str, Any], quota: float, fattura_id: str, now: str) -> None:
-    """Crea un movimento in prima_nota_banca per un collegamento manuale
-    (source distinto da 'assegno_auto_match' per non interferire con
-    l'idempotenza dell'auto-matcher)."""
-    mov = {
-        "id": str(uuid.uuid4()),
-        "data": str(assegno.get("data_emissione") or now[:10])[:10],
-        "date": str(assegno.get("data_emissione") or now[:10])[:10],
-        "tipo": "uscita",
-        "type": "uscita",
-        "importo": round(quota, 2),
-        "amount": round(quota, 2),
-        "descrizione": f"Assegno n. {assegno.get('numero', '')} - {assegno.get('beneficiario', '')}".strip(" -"),
-        "description": f"Assegno n. {assegno.get('numero', '')}",
-        "categoria": "Assegni",
-        "category": "Assegni",
-        "assegno_id": assegno.get("id"),
-        "assegno_numero": assegno.get("numero"),
-        "invoice_id": fattura_id,
-        "source": "assegno_manuale",
-        "riconciliato": False,
-        "created_at": now,
+        }})
+        return
+    original = inv.get("metodo_pagamento_fornitore_originale")
+    update: Dict[str, Any] = {
+        "$set": {"stato_finanziario": "provvisoria", "updated_at": now},
+        "$unset": {
+            "metodo_pagamento_previsto": "", "metodo_pagamento_override_source": "",
+            "pagamento_specifico_prevale_su_fornitore": "",
+        },
     }
-    await scrivi_movimento(db, "banca", mov)
+    if original:
+        update["$set"]["metodo_pagamento"] = original
+    await db["invoices"].update_one({"id": fattura_id}, update)
 
 
 @router.put("/{assegno_id}/fatture-collegate")
@@ -971,11 +957,10 @@ async def collega_fatture_assegno(assegno_id: str, body: FattureCollegateIn) -> 
         old_fid = vc.get("fattura_id")
         if not old_fid:
             continue
-        await _applica_delta_quota_fattura(db, old_fid, -_f(vc.get("quota")), now)
         await db["invoices"].update_one(
             {"id": old_fid}, {"$pull": {"assegni_collegati": {"assegno_id": assegno["id"]}}}
         )
-    await db["prima_nota_banca"].delete_many({"assegno_id": assegno["id"], "source": "assegno_manuale"})
+        await _aggiorna_stato_intento_fattura(db, old_fid, now)
 
     # 2) Applica i nuovi collegamenti
     fatture_collegate = []
@@ -986,21 +971,34 @@ async def collega_fatture_assegno(assegno_id: str, body: FattureCollegateIn) -> 
             "quota": quota,
             "data_collegamento": now,
         })
-        await _applica_delta_quota_fattura(db, f.fattura_id, quota, now)
+        inv = fatture_map[f.fattura_id]
+        original_method = inv.get("metodo_pagamento") or inv.get("payment_method")
         await db["invoices"].update_one(
             {"id": f.fattura_id},
-            {"$push": {"assegni_collegati": {
-                "assegno_id": assegno["id"],
-                "numero": assegno.get("numero"),
-                "quota": quota,
-                "data_collegamento": now,
-            }}},
+            {
+                "$set": {
+                    "metodo_pagamento_fornitore_originale": original_method,
+                    "metodo_pagamento": "assegno",
+                    "metodo_pagamento_previsto": "assegno",
+                    "metodo_pagamento_override_source": "assegno_compilato",
+                    "pagamento_specifico_prevale_su_fornitore": True,
+                    "stato_finanziario": "in_attesa_estratto_conto",
+                    "updated_at": now,
+                },
+                "$addToSet": {"assegni_collegati": {
+                    "assegno_id": assegno["id"],
+                    "numero": assegno.get("numero"),
+                    "quota": quota,
+                    "data_collegamento": now,
+                    "match_auto": False,
+                    "banca_confermata": False,
+                }},
+            },
         )
         # Solo le quote positive (fatture normali) generano un movimento banca:
         # una nota di credito (quota negativa, Caso F) netta l'importo dovuto
         # ma non è di per sé un'uscita di denaro.
-        if quota > 0:
-            await _crea_mov_banca_manuale(db, assegno, quota, f.fattura_id, now)
+        # La Prima Nota Banca nasce solo dal movimento reale dell'estratto conto.
 
     fornitore_piva = next(iter(piva_set), None)
     first_inv = next(iter(fatture_map.values()), None)
@@ -1026,6 +1024,9 @@ async def collega_fatture_assegno(assegno_id: str, body: FattureCollegateIn) -> 
             "numero_fattura": numeri_fatture or assegno.get("numero_fattura"),
             "stato": nuovo_stato,
             "match_auto": False,
+            "metodo_pagamento_previsto": "assegno" if fatture_collegate else None,
+            "stato_finanziario": "in_attesa_estratto_conto" if fatture_collegate else None,
+            "pagamento_specifico_prevale_su_fornitore": bool(fatture_collegate),
             "updated_at": now,
         }}
     )
@@ -1071,55 +1072,7 @@ async def emetti_assegno(
         }}
     )
     
-    # C1: Registra movimento in prima_nota_banca all'emissione
-    assegno_upd = await db[COLLECTION_ASSEGNI].find_one(
-        {"$or": [{"id": assegno_id}, {"numero": assegno_id}]}, {"_id": 0}
-    )
-    if assegno_upd and assegno_upd.get("importo"):
-        # Anti-duplicato: se la fattura collegata ha gia' un movimento banca
-        # (es. creato dall'auto-instradamento per metodo fornitore "assegno"
-        # -> banca), non crearne un secondo per la stessa fattura.
-        fattura_collegata = assegno_upd.get("fattura_collegata")
-        if fattura_collegata:
-            esistente = await db["prima_nota_banca"].find_one({
-                "fattura_id": fattura_collegata,
-                "status": {"$nin": ["deleted", "archived"]},
-            }, {"_id": 0, "id": 1})
-            if esistente:
-                await db[COLLECTION_ASSEGNI].update_one(
-                    {"$or": [{"id": assegno_id}, {"numero": assegno_id}]},
-                    {"$set": {"prima_nota_banca_id": esistente["id"]}}
-                )
-                return {"message": "Assegno emesso (movimento banca già presente per la fattura collegata)"}
-        numero = assegno_upd.get("numero", assegno_id)
-        parti = [f"Assegno n.{numero}"]
-        if assegno_upd.get("numero_fattura"):
-            parti.append(f"Fatt.{assegno_upd['numero_fattura']}")
-        if assegno_upd.get("beneficiario"):
-            parti.append(assegno_upd["beneficiario"][:30])
-        mov = {
-            "id": str(uuid.uuid4()),
-            "tipo": "uscita",
-            "importo": float(assegno_upd["importo"]),
-            "data": data_emissione,
-            "descrizione": " - ".join(parti),
-            "categoria": "Addebito assegno",
-            "source": "assegno_emesso",
-            "riferimento_id": assegno_upd.get("id"),
-            "assegno_numero": numero,
-            "fattura_id": assegno_upd.get("fattura_collegata"),
-            "fornitore_piva": assegno_upd.get("fornitore_piva"),
-            "riconciliato": False,
-            "anno": int(data_emissione[:4]) if data_emissione and len(str(data_emissione)) >= 4 and str(data_emissione)[:4].isdigit() else datetime.now(timezone.utc).year,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        await scrivi_movimento(db, "banca", mov)
-        await db[COLLECTION_ASSEGNI].update_one(
-            {"$or": [{"id": assegno_id}, {"numero": assegno_id}]},
-            {"$set": {"prima_nota_banca_id": mov["id"]}}
-        )
-    
-    return {"message": "Assegno emesso"}
+    return {"message": "Assegno emesso: in attesa del riscontro nell'estratto conto"}
 
 
 @router.post("/{assegno_id}/incassa")
@@ -1136,7 +1089,32 @@ async def incassa_assegno(
     if not assegno:
         raise HTTPException(status_code=404, detail="Assegno non trovato")
     
-    data_incasso = data_incasso or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if not movimento_estratto_conto_id:
+        await db[COLLECTION_ASSEGNI].update_one(
+            {"id": assegno["id"]},
+            {"$set": {
+                "stato": "emesso",
+                "incassato_confermato_banca": False,
+                "stato_finanziario": "in_attesa_estratto_conto",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+        )
+        return {
+            "message": "Assegno in attesa del movimento reale nell'estratto conto",
+            "fattura_chiusa": False,
+            "prima_nota_riconciliata": False,
+            "confermato_banca": False,
+        }
+
+    movimento_ec = await db["estratto_conto_movimenti"].find_one(
+        {"id": movimento_estratto_conto_id}, {"_id": 0}
+    )
+    if not movimento_ec:
+        raise HTTPException(status_code=404, detail="Movimento dell'estratto conto non trovato")
+    data_incasso = (
+        movimento_ec.get("data") or movimento_ec.get("date") or data_incasso
+        or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    )
 
     # 1. Aggiorna stato assegno. "incassato_confermato_banca" distingue un
     # riscontro reale (movimento_estratto_conto_id valorizzato) da un
@@ -1146,11 +1124,11 @@ async def incassa_assegno(
     set_data = {
         "stato": "incassato",
         "data_incasso": data_incasso,
-        "incassato_confermato_banca": bool(movimento_estratto_conto_id),
+        "incassato_confermato_banca": True,
+        "stato_finanziario": "riconciliato",
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    if movimento_estratto_conto_id:
-        set_data["movimento_estratto_conto_id"] = movimento_estratto_conto_id
+    set_data["movimento_estratto_conto_id"] = movimento_estratto_conto_id
     await db[COLLECTION_ASSEGNI].update_one(
         {"id": assegno["id"]},
         {"$set": set_data}
@@ -1187,13 +1165,12 @@ async def incassa_assegno(
         except Exception:
             logger.exception("Errore propagazione fattura.pagata (incassa assegno)")
     # 5. Estratto conto → riconciliato
-    if movimento_estratto_conto_id:
-        await db["estratto_conto_movimenti"].update_one(
-            {"id": movimento_estratto_conto_id},
-            {"$set": {"riconciliato": True, "riconciliato_con": "assegno",
-                      "assegno_id": assegno["id"],
-                      "riconciliato_at": datetime.now(timezone.utc).isoformat()}}
-        )
+    await db["estratto_conto_movimenti"].update_one(
+        {"id": movimento_estratto_conto_id},
+        {"$set": {"riconciliato": True, "riconciliato_con": "assegno",
+                  "assegno_id": assegno["id"],
+                  "riconciliato_at": datetime.now(timezone.utc).isoformat()}}
+    )
     return {"message": "Assegno incassato",
             "fattura_chiusa": bool(assegno.get("fattura_collegata")),
             "prima_nota_riconciliata": bool(assegno.get("prima_nota_banca_id")),
