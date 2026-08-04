@@ -556,10 +556,12 @@ async def find_ec_match_for_invoice(
     """
     if not importo or importo <= 0:
         return None
+    from app.services.bank_evidence import filtro_solo_evidenza_ufficiale
     conds: Dict[str, Any] = {
         "tipo": "uscita",
         "abbinato": {"$ne": True},
         "$and": [
+            filtro_solo_evidenza_ufficiale(),
             {"$or": [
                 {"riconciliato": {"$ne": True}},
                 {"tipo_riconciliazione": "auto_generico"},

@@ -16,6 +16,7 @@ from app.utils.error_handler import handle_errors
 from app.routers.prima_nota_module.common import aggrega_saldo_prima_nota
 from app.routers.prima_nota_module.sync import costruisci_campi_movimento_fattura
 from app.services.scritture_contabili import scrivi_movimento
+from app.services.bank_evidence import EVIDENZA_UFFICIALE, campi_evidenza
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -204,7 +205,10 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     """
     db = Database.get_db()
     
-    filename = file.filename.lower()
+    filename_originale = file.filename or "estratto-conto"
+    filename = filename_originale.lower()
+    evidenza = campi_evidenza(filename_originale)
+    fonte_ufficiale = evidenza["livello_evidenza"] == EVIDENZA_UFFICIALE
     contents = await file.read()
     
     movimenti = []
@@ -547,7 +551,8 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     # Carica le chiavi dedup esistenti per quel range
     existing_cursor = db["estratto_conto_movimenti"].find(
         {"data": {"$gte": data_min, "$lte": data_max}},
-        {"data": 1, "importo": 1, "descrizione_originale": 1, "descrizione": 1, "_id": 0}
+        {"data": 1, "importo": 1, "descrizione_originale": 1, "descrizione": 1,
+         "id": 1, "livello_evidenza": 1, "evidenza_bancaria_ufficiale": 1, "_id": 0}
     )
     # chiave whitespace-insensibile: gli export bancari variano gli spazi
     # interni ("NUMIA-INTER  DEL" vs "NUMIA-INTER DEL") e senza normalizzare
@@ -555,14 +560,15 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     def _norm_desc(desc: str) -> str:
         return re.sub(r"\s+", " ", (desc or "").strip())[:80]
 
-    existing_keys: set = set()
+    existing_by_key: Dict[Any, Dict[str, Any]] = {}
     async for rec in existing_cursor:
         dstr = rec.get("data", "")[:10]
         imp  = abs(float(rec.get("importo", 0)))
         desc = _norm_desc(rec.get("descrizione_originale") or rec.get("descrizione") or "")
-        existing_keys.add((dstr, round(imp, 2), desc))
+        existing_by_key[(dstr, round(imp, 2), desc)] = rec
     
     records_to_insert = []
+    records_promossi = []
     for mov in movimenti:
         data_str    = mov["data"].isoformat()[:10] if hasattr(mov["data"], "isoformat") else str(mov["data"])[:10]
         importo_abs = abs(mov["importo"])
@@ -575,17 +581,21 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         if any(kw in desc_raw.upper() for kw in ["I24 AGENZIA ENTRATE", "BOLL.CBILL", "PAG. UTENZE"]):
             tipo_mov = "uscita"
         
-        # Dedup: commissioni piccole (≤2€) sempre inserite
-        is_commissione = importo_abs <= 2.00
+        # Dedup uniforme: vale anche per commissioni e piccoli importi.
         dedup_key = (data_str, round(importo_abs, 2), desc_raw)
         
-        if not is_commissione and dedup_key in existing_keys:
+        existing = existing_by_key.get(dedup_key)
+        if existing:
+            if fonte_ufficiale and not (
+                existing.get("evidenza_bancaria_ufficiale") is True
+                or existing.get("livello_evidenza") == EVIDENZA_UFFICIALE
+            ):
+                records_promossi.append(existing)
             duplicates += 1
             continue
         
         # Aggiungi la chiave al set per evitare doppioni dentro lo stesso file
-        if not is_commissione:
-            existing_keys.add(dedup_key)
+        existing_by_key[dedup_key] = {"id": None, **evidenza}
         
         row_uuid    = str(_uuid.uuid4())
         fingerprint = _hashlib.md5(f"{data_str}|{importo_abs:.2f}|{desc_raw}|{row_uuid}".encode()).hexdigest()
@@ -610,13 +620,36 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             "descrizione_hash": desc_raw[:50],
             "fingerprint": fingerprint,
             "riconciliato": False,
+            "source_filename": filename_originale,
+            **evidenza,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
+
+    promoted_ids = [record.get("id") for record in records_promossi if record.get("id")]
+    if promoted_ids:
+        await db["estratto_conto_movimenti"].update_many(
+            {"id": {"$in": promoted_ids}},
+            {"$set": {
+                **evidenza,
+                "source_filename_ufficiale": filename_originale,
+                "riconciliato": False,
+                "promosso_a_ufficiale_at": datetime.now(timezone.utc).isoformat(),
+            }, "$unset": {
+                "riconciliato_provvisoriamente": "",
+            }},
+        )
     
     # Inserimento bulk unico
     if records_to_insert:
         await db["estratto_conto_movimenti"].insert_many(records_to_insert, ordered=False)
         inserted = len(records_to_insert)
+
+    riconciliazione_operativa = None
+    if not fonte_ufficiale and records_to_insert:
+        from app.services.riconciliazione_operativa_banca import annota_movimenti_operativi
+        riconciliazione_operativa = await annota_movimenti_operativi(
+            db, [record["id"] for record in records_to_insert]
+        )
 
     
     # ===== RICONCILIAZIONE AUTOMATICA =====
@@ -624,7 +657,15 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     riconciliazione_results = None
     try:
         from app.services.riconciliazione_bancaria import riconcilia_movimenti_banca
-        riconciliazione_results = await riconcilia_movimenti_banca()
+        riconciliazione_results = (
+            await riconcilia_movimenti_banca()
+            if fonte_ufficiale
+            else {
+                "success": True,
+                "provvisoria": True,
+                "message": "Abbinamenti in attesa dell'estratto bancario ufficiale",
+            }
+        )
     except Exception as e:
         logger.error(f"Errore riconciliazione automatica: {e}")
         riconciliazione_results = {"error": str(e)}
@@ -633,7 +674,10 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     riconciliazione_paghe = None
     try:
         from app.services.paghe_riconciliazione import esegui_riconciliazione_paghe_completa
-        riconciliazione_paghe = await esegui_riconciliazione_paghe_completa(db)
+        riconciliazione_paghe = (
+            await esegui_riconciliazione_paghe_completa(db)
+            if fonte_ufficiale else {"provvisoria": True, "riconciliati": 0}
+        )
     except Exception as e:
         logger.error(f"Errore riconciliazione paghe: {e}")
     
@@ -656,7 +700,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         }, {"_id": 0, "id": 1, "supplier_name": 1, "supplier_vat": 1, "total_amount": 1,
             "invoice_date": 1, "invoice_number": 1, "tipo_documento": 1}).to_list(500)
 
-        for f in provvisori:
+        for f in provvisori if fonte_ufficiale else []:
             importo = float(f.get("total_amount", 0))
             match = await find_ec_match_for_invoice(
                 db, importo, f.get("supplier_name", ""), f.get("invoice_date", ""),
@@ -731,7 +775,11 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     # per sempre, perche inserted=0 impediva la riparazione.
     try:
         from app.routers.bank.assegni import sync_assegni_da_estratto_conto
-        assegni_sync = await sync_assegni_da_estratto_conto()
+        assegni_sync = (
+            await sync_assegni_da_estratto_conto()
+            if fonte_ufficiale
+            else {"provvisoria": True, "assegni_riconciliati": 0}
+        )
     except Exception as e:
         logger.error(f"Errore sync assegni da estratto conto: {e}")
 
@@ -793,7 +841,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                 # REGOLA CANONICA POS (utente 18/07/2026): l'accredito POS
                 # dell'estratto conto NON crea un'entrata — RICONCILIA il
                 # trasferimento cassa→banca del suo giorno di vendita.
-                if mov.get("tipo") == "entrata" and any(k in desc_upper for k in KEYWORDS_ACCREDITO_POS):
+                if fonte_ufficiale and mov.get("tipo") == "entrata" and any(k in desc_upper for k in KEYWORDS_ACCREDITO_POS):
                     try:
                         from app.services.scritture_contabili import riconcilia_accredito_pos_ec
                         if await riconcilia_accredito_pos_ec(db, mov):
@@ -813,13 +861,17 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                     "categoria": mappa_categoria_ec(mov.get("categoria"), desc_upper)
                                  or mov.get("categoria") or "Altro",
                     "estratto_conto_id": mid,
-                    "source": "estratto_conto_auto",
+                    "source": "estratto_conto_auto" if fonte_ufficiale else "export_bancario_operativo",
+                    "provvisorio": not fonte_ufficiale,
+                    "riconciliato": False,
+                    "in_attesa_estratto_ufficiale": not fonte_ufficiale,
+                    "stato": "da_verificare" if fonte_ufficiale else "in_attesa_estratto_bancario_ufficiale",
                     "created_at": now_iso,
                 })
 
                 is_prelievo = "PRELIEVO" in desc_upper and any(k in desc_upper for k in KEYWORDS_PRELIEVO)
                 is_versamento = is_versamento_contanti(desc_upper)
-                if is_prelievo:
+                if fonte_ufficiale and is_prelievo:
                     cassa_batch.append({
                         "id": str(_uuid.uuid4()), "data": mov["data"], "tipo": "entrata",
                         "importo": mov["importo"],
@@ -829,7 +881,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                         "source": "estratto_conto_auto_prelievo",
                         "created_at": now_iso,
                     })
-                elif is_versamento:
+                elif fonte_ufficiale and is_versamento:
                     cassa_batch.append({
                         "id": str(_uuid.uuid4()), "data": mov["data"], "tipo": "uscita",
                         "importo": mov["importo"],
@@ -852,7 +904,10 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                     {"$set": {
                         "importato_prima_nota": True,
                         "riconciliato": False,
-                        "stato_riconciliazione": "da_verificare",
+                        "stato_riconciliazione": (
+                            "da_verificare" if fonte_ufficiale
+                            else "in_attesa_estratto_bancario_ufficiale"
+                        ),
                     }, "$unset": {"tipo_riconciliazione": ""}}
                 )
             # (le entrate banca degli accrediti POS sono già state create
@@ -868,20 +923,21 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     # ── EVENTO: pubblica sul bus unico per matching automatico ──
     try:
         from app.services.event_bus import propagate_event, EventTypes
-        await propagate_event(EventTypes.ESTRATTO_CONTO_IMPORTATO, {
-            "movimenti": [
-                {
-                    "id":          m.get("id"),
-                    "data":        str(m.get("data", ""))[:10],
-                    "importo":     abs(float(m.get("importo", 0))),
-                    "tipo":        m.get("tipo", ""),
-                    "descrizione": m.get("descrizione", ""),
-                }
-                for m in records_to_insert
-            ],
-            "banca":    records_to_insert[0].get("banca", "") if records_to_insert else "",
-            "inseriti": inserted,
-        }, db, source_module="estratto_conto_import")
+        if fonte_ufficiale:
+            await propagate_event(EventTypes.ESTRATTO_CONTO_IMPORTATO, {
+                "movimenti": [
+                    {
+                        "id":          m.get("id"),
+                        "data":        str(m.get("data", ""))[:10],
+                        "importo":     abs(float(m.get("importo", 0))),
+                        "tipo":        m.get("tipo", ""),
+                        "descrizione": m.get("descrizione", ""),
+                    }
+                    for m in records_to_insert
+                ],
+                "banca": records_to_insert[0].get("banca", "") if records_to_insert else "",
+                "inseriti": inserted,
+            }, db, source_module="estratto_conto_import")
     except Exception as _ev:
         logger.debug(f"[EstrattoContoRouter] Event Bus: {_ev}")
 
@@ -900,12 +956,16 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         "movimenti_importati": inserted,
         "inseriti": inserted,
         "duplicati_saltati": duplicates,
+        "movimenti_promossi_a_ufficiali": len(promoted_ids),
+        "livello_evidenza": evidenza["livello_evidenza"],
+        "in_attesa_estratto_ufficiale": not fonte_ufficiale,
         "stats": {
             "nuovi": inserted,
             "duplicati": duplicates,
             "totale_letti": len(movimenti),
         },
         "riconciliazione_automatica": riconciliazione_results,
+        "riconciliazione_operativa": riconciliazione_operativa,
         "riconciliazione_summary": (riconciliazione_results or {}).get("summary"),
         "riconciliazione_paghe": riconciliazione_paghe,
         "provvisori_riconciliati": provvisori_riconciliati,

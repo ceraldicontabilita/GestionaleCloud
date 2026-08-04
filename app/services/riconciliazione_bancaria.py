@@ -728,8 +728,12 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
     }
 
     # Carica movimenti EC non riconciliati
+    from app.services.bank_evidence import filtro_solo_evidenza_ufficiale
     movimenti_ec = await db[COLLECTION_ESTRATTO_CONTO].find({
-        "riconciliato": {"$ne": True}
+        "$and": [
+            {"riconciliato": {"$ne": True}},
+            filtro_solo_evidenza_ufficiale(),
+        ]
     }, {"_id": 0}).to_list(5000)
 
     results["movimenti_analizzati"] = len(movimenti_ec)

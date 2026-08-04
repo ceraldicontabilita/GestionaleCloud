@@ -748,13 +748,22 @@ Riscritta il 15/07/2026 per rispecchiare il motore realmente in produzione
 di questo paragrafo descriveva un algoritmo a soglie fisse mai davvero
 implementato).
 
-**Da dove arrivano i movimenti banca**: l'estratto conto (PDF/CSV/Excel BNL o
-Banco BPM e PDF carta, cartella Drive dedicata **o** upload manuale dalla pagina Prima Nota) viene letto
-riga per riga; ogni riga diventa un movimento in `estratto_conto_movimenti` con
-un'impronta propria (data+importo+descrizione): ricaricare lo stesso estratto non
-duplica nulla. Il motore di riconciliazione gira **subito dopo ogni import** e poi
-di nuovo ogni 30 minuti (scheduler), sempre e solo sui movimenti non ancora
-riconciliati.
+**Da dove arrivano i movimenti banca e quale valore probatorio hanno**:
+l'export operativo CSV/Excel BNL o Banco BPM e l'estratto conto ufficiale PDF
+(cartella Drive dedicata **o** upload manuale dalla pagina Prima Nota) vengono
+letti riga per riga. Ogni riga diventa un movimento in
+`estratto_conto_movimenti` con un'impronta propria (data+importo+descrizione):
+ricaricare lo stesso file, incluse le commissioni di piccolo importo, non duplica
+nulla.
+
+CSV e Excel servono ad allineare il gestionale durante il trimestre: classificano
+e propongono collegamenti a fatture, cedolini, assegni e POS, ma le relative righe
+restano `in_attesa_estratto_bancario_ufficiale`; non marcano documenti pagati o
+riconciliati. Il PDF periodico della banca e' la prova ufficiale. Quando arriva,
+la riga gia' letta dal CSV/Excel viene promossa, conservando collegamenti e audit,
+senza crearne una seconda; solo allora il motore puo' chiudere la riconciliazione.
+I PDF storici privi del nuovo metadato restano considerati ufficiali per
+compatibilita'.
 
 **Come cerca un pagamento (per le USCITE)**: per ogni movimento banca in uscita non
 riconciliato, cerca fra le fatture fornitore **non pagate** con importo compatibile

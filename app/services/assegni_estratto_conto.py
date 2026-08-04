@@ -251,6 +251,7 @@ async def _garantisci_prima_nota(
 
 
 async def sincronizza_assegni_da_estratto_conto(db) -> Dict[str, Any]:
+    from app.services.bank_evidence import filtro_solo_evidenza_ufficiale
     risultati: Dict[str, Any] = {
         "movimenti_analizzati": 0, "assegni_trovati": 0, "assegni_creati": 0,
         "assegni_esistenti": 0, "assegni_riconciliati": 0,
@@ -258,6 +259,7 @@ async def sincronizza_assegni_da_estratto_conto(db) -> Dict[str, Any]:
     }
     movimenti = await db["estratto_conto_movimenti"].find({
         "$and": [
+            filtro_solo_evidenza_ufficiale(),
             {"$or": [
                 {"descrizione": {"$regex": "PRELIEVO.*ASSEGNO", "$options": "i"}},
                 {"descrizione_originale": {"$regex": "PRELIEVO.*ASSEGNO", "$options": "i"}},

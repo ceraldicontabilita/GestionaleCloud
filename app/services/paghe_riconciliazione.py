@@ -14,6 +14,11 @@ from typing import Optional, Tuple
 logger = logging.getLogger(__name__)
 
 
+def _solo_evidenza_ufficiale(query: dict) -> dict:
+    from app.services.bank_evidence import filtro_solo_evidenza_ufficiale
+    return {"$and": [query, filtro_solo_evidenza_ufficiale()]}
+
+
 async def cerca_in_estratto_conto(
     db,
     importo_uscita: float,
@@ -35,7 +40,11 @@ async def cerca_in_estratto_conto(
         
         # ---- 1. Cerca in estratto_conto_movimenti (importo negativo) ----
         query_ecm = {
-            "importo": {"$gte": -(importo_uscita + 1.0), "$lte": -(importo_uscita - 1.0)},
+            "$or": [
+                {"importo": {"$gte": importo_uscita - 1.0, "$lte": importo_uscita + 1.0}},
+                {"importo": {"$gte": -(importo_uscita + 1.0), "$lte": -(importo_uscita - 1.0)}},
+            ],
+            "tipo": "uscita",
             "data": {"$gte": data_min, "$lte": data_max},
             "riconciliato_paghe": {"$ne": True}
         }
@@ -43,11 +52,11 @@ async def cerca_in_estratto_conto(
         if keywords_descrizione:
             regex = "|".join(keywords_descrizione)
             query_ecm_kw = {**query_ecm, "descrizione_originale": {"$regex": regex, "$options": "i"}}
-            mov = await db.estratto_conto_movimenti.find_one(query_ecm_kw)
+            mov = await db.estratto_conto_movimenti.find_one(_solo_evidenza_ufficiale(query_ecm_kw))
             if mov:
                 return (str(mov.get("id", str(mov.get("_id", "")))), "estratto_conto_movimenti")
         
-        mov = await db.estratto_conto_movimenti.find_one(query_ecm)
+        mov = await db.estratto_conto_movimenti.find_one(_solo_evidenza_ufficiale(query_ecm))
         if mov:
             return (str(mov.get("id", str(mov.get("_id", "")))), "estratto_conto_movimenti")
         
@@ -56,7 +65,8 @@ async def cerca_in_estratto_conto(
             "tipo": "uscita",
             "importo": {"$gte": importo_uscita - 1.0, "$lte": importo_uscita + 1.0},
             "data": {"$gte": data_min, "$lte": data_max},
-            "riconciliato_paghe": {"$ne": True}
+            "riconciliato_paghe": {"$ne": True},
+            "in_attesa_estratto_ufficiale": {"$ne": True},
         }
         
         if keywords_descrizione:
@@ -87,14 +97,19 @@ async def _conta_candidati_banca(db, importo_uscita: float, data_ref_str: str, g
         data_min = (data_ref - timedelta(days=giorni_tolleranza)).strftime("%Y-%m-%d")
         data_max = (data_ref + timedelta(days=giorni_tolleranza // 2)).strftime("%Y-%m-%d")
 
-        n_ecm = await db.estratto_conto_movimenti.count_documents({
-            "importo": {"$gte": -(importo_uscita + 1.0), "$lte": -(importo_uscita - 1.0)},
+        n_ecm = await db.estratto_conto_movimenti.count_documents(_solo_evidenza_ufficiale({
+            "$or": [
+                {"importo": {"$gte": importo_uscita - 1.0, "$lte": importo_uscita + 1.0}},
+                {"importo": {"$gte": -(importo_uscita + 1.0), "$lte": -(importo_uscita - 1.0)}},
+            ],
+            "tipo": "uscita",
             "data": {"$gte": data_min, "$lte": data_max},
-        })
+        }))
         n_pnb = await db.prima_nota_banca.count_documents({
             "tipo": "uscita",
             "importo": {"$gte": importo_uscita - 1.0, "$lte": importo_uscita + 1.0},
             "data": {"$gte": data_min, "$lte": data_max},
+            "in_attesa_estratto_ufficiale": {"$ne": True},
         })
         return n_ecm + n_pnb
     except Exception:
