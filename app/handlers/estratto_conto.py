@@ -1,6 +1,7 @@
 """
-Handler Estratto Conto — reagisce a estratto_conto.importato
-Abbina automaticamente i movimenti bancari alle fatture, cedolini e F24.
+Handler Estratto Conto — reagisce a estratto_conto.importato.
+Abbina automaticamente solo le fatture con evidenza forte. F24, cedolini e
+corrispettivi POS restano proposte per i rispettivi motori canonici.
 
 Soglie di confidenza:
   > 90% → abbinamento automatico + scrittura prima nota
@@ -23,6 +24,43 @@ TOLLERANZA_IMPORTO = 0.01      # solo importo esatto (±1 centesimo)
 TOLLERANZA_GIORNI  = 30        # finestra temporale per il match
 SOGLIA_AUTO        = 0.90      # sopra questa soglia abbina in automatico
 SOGLIA_PROPOSTA    = 0.60      # sopra questa soglia propone all'utente
+
+
+async def _salva_proposta(
+    db,
+    *,
+    tipo: str,
+    movimento_id: str,
+    documento_id: str,
+    dati: Dict[str, Any],
+) -> None:
+    """Crea una proposta idempotente senza modificare i documenti sorgente."""
+    proposal_id = f"{tipo}:{movimento_id}:{documento_id}"
+    await db["operazioni_da_confermare"].update_one(
+        {"id": proposal_id},
+        {"$setOnInsert": {
+            "id": proposal_id,
+            "tipo": tipo,
+            "movimento_id": movimento_id,
+            "documento_id": documento_id,
+            "stato": "da_confermare",
+            "richiede_conferma": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            **dati,
+        }},
+        upsert=True,
+    )
+
+
+def _nome_presente_nella_causale(nome: str, causale: str) -> bool:
+    """Richiede tutti i token significativi del dipendente nella causale."""
+    stop = {"SIG", "SIGRA", "DIPENDENTE", "STIPENDIO", "SALARIO"}
+    token_nome = [
+        token for token in re.sub(r"[^A-Z0-9]+", " ", (nome or "").upper()).split()
+        if len(token) >= 3 and token not in stop
+    ]
+    token_causale = set(re.sub(r"[^A-Z0-9]+", " ", (causale or "").upper()).split())
+    return bool(token_nome) and all(token in token_causale for token in token_nome)
 
 
 def _score_match(movimento: Dict, fattura: Dict) -> float:
@@ -159,70 +197,72 @@ async def handler_matching_estratto_conto(payload: Dict[str, Any], db) -> Dict[s
             is_f24 = any(kw in desc for kw in ["F24", "TRIBUTI", "AGENZIA ENTRATE",
                                                  "IRPEF", "IVA", "INPS", "I24"])
             if is_f24:
-                # Cerca F24 con importo simile nella finestra temporale
+                # Un F24 puo' contenere piu' tributi (es. IVA + 1040): il
+                # totale bancario non identifica codice e periodo. Il motore
+                # legacy crea soltanto proposte, senza marcare nulla pagato.
                 try:
-                    data_mov = mov.get("data") or mov.get("data_operazione") or ""
-                    f24_match = await db["f24_unificato"].find_one({
+                    candidati_f24 = await db["f24_unificato"].find({
                         "totale_debito": {
                             "$gte": importo - TOLLERANZA_IMPORTO,
                             "$lte": importo + TOLLERANZA_IMPORTO
                         },
                         "riconciliato_banca": {"$ne": True}
-                    })
-                    if f24_match:
-                        await db["f24_unificato"].update_one(
-                            {"_id": f24_match["_id"]},
-                            {"$set": {
-                                "riconciliato_banca": True,
-                                "movimento_id": mov_id,
-                                "data_addebito": data_mov,
-                                "banca": banca,
-                            }}
+                    }).limit(20).to_list(20)
+                    for candidato in candidati_f24:
+                        candidato_id = str(candidato.get("id") or candidato.get("_id"))
+                        await _salva_proposta(
+                            db,
+                            tipo="abbinamento_f24_estratto_conto",
+                            movimento_id=mov_id,
+                            documento_id=candidato_id,
+                            dati={
+                                "f24_id": candidato_id,
+                                "importo_movimento": importo,
+                                "importo_f24": float(candidato.get("totale_debito") or 0),
+                                "confidenza": 0.50,
+                                "criterio": "solo_importo_documento_multi_tributo",
+                            },
                         )
-                        await db["estratto_conto_movimenti"].update_one(
-                            {"id": mov_id},
-                            {"$set": {
-                                "abbinato": True,
-                                "tipo_abbinamento": "f24",
-                                "documento_id": f24_match.get("id"),
-                                "confidenza": 0.95,
-                            }}
-                        )
-                        auto_abbinati += 1
-                        continue
+                    if candidati_f24:
+                        proposti += len(candidati_f24)
+                    else:
+                        non_abbinati += 1
                 except Exception as e:
                     logger.debug(f"[HandlerEstrattoC] F24 match errore: {e}")
+                    non_abbinati += 1
+                continue
 
             # Check stipendio dalla descrizione
             is_stipendio = any(kw in desc for kw in
                                ["STIP", "SALARIO", "BONIFICO DIPENDENTE",
                                 "YOUBUSINESS", "YOU BUSINESS"])
             if is_stipendio:
-                for ced in cedolini_aperti:
-                    imp_ced = float(ced.get("importo", 0))
-                    diff = abs(importo - imp_ced)
-                    if diff <= TOLLERANZA_IMPORTO:
-                        await db["prima_nota_salari"].update_one(
-                            {"id": ced["id"]},
-                            {"$set": {
-                                "riconciliato": True,
-                                "movimento_id": mov_id,
-                                "data_erogazione": mov.get("data"),
-                                "banca": banca,
-                            }}
-                        )
-                        await db["estratto_conto_movimenti"].update_one(
-                            {"id": mov_id},
-                            {"$set": {
-                                "abbinato": True,
-                                "tipo_abbinamento": "stipendio",
-                                "documento_id": ced["id"],
-                                "dipendente": ced.get("nome_dipendente"),
-                                "confidenza": 0.92,
-                            }}
-                        )
-                        auto_abbinati += 1
-                        break
+                candidati_salario = [
+                    ced for ced in cedolini_aperti
+                    if abs(importo - float(ced.get("importo", 0))) <= TOLLERANZA_IMPORTO
+                ]
+                for ced in candidati_salario:
+                    ced_id = str(ced.get("id"))
+                    identita_presente = _nome_presente_nella_causale(
+                        str(ced.get("nome_dipendente") or ""), desc
+                    )
+                    await _salva_proposta(
+                        db,
+                        tipo="abbinamento_stipendio_estratto_conto",
+                        movimento_id=mov_id,
+                        documento_id=ced_id,
+                        dati={
+                            "salario_id": ced_id,
+                            "dipendente_id": ced.get("dipendente_id"),
+                            "importo_movimento": importo,
+                            "importo_salario": float(ced.get("importo") or 0),
+                            "identita_dipendente_presente": identita_presente,
+                            "confidenza": 0.75 if identita_presente else 0.45,
+                            "criterio": "proposta_importo_identita_periodo_da_confermare",
+                        },
+                    )
+                if candidati_salario:
+                    proposti += len(candidati_salario)
                 else:
                     non_abbinati += 1
                 continue
@@ -327,24 +367,31 @@ async def handler_matching_estratto_conto(payload: Dict[str, Any], db) -> Dict[s
                     data_min  = (data_base - timedelta(days=3)).strftime("%Y-%m-%d")
                     data_max  = (data_base + timedelta(days=1)).strftime("%Y-%m-%d")
 
-                    corr = await db["corrispettivi"].find_one({
+                    candidati_pos = await db["corrispettivi"].find({
                         "data": {"$gte": data_min, "$lte": data_max},
                         "totale": {
                             "$gte": importo - 1.0,
                             "$lte": importo + 1.0,
                         },
                         "riconciliato": {"$ne": True},
-                    })
-                    if corr:
-                        await db["corrispettivi"].update_one(
-                            {"_id": corr["_id"]},
-                            {"$set": {
-                                "riconciliato": True,
-                                "movimento_id": mov_id,
-                                "data_accredito": data_str,
-                            }}
+                    }).limit(20).to_list(20)
+                    for corr in candidati_pos:
+                        corr_id = str(corr.get("id") or corr.get("_id"))
+                        await _salva_proposta(
+                            db,
+                            tipo="abbinamento_pos_estratto_conto",
+                            movimento_id=mov_id,
+                            documento_id=corr_id,
+                            dati={
+                                "corrispettivo_id": corr_id,
+                                "importo_movimento": importo,
+                                "importo_corrispettivo": float(corr.get("totale") or 0),
+                                "confidenza": 0.55,
+                                "criterio": "proposta_pos_chiusura_netto_accredito_da_confermare",
+                            },
                         )
-                        auto_abbinati += 1
+                    if candidati_pos:
+                        proposti += len(candidati_pos)
                     else:
                         non_abbinati += 1
                 except Exception:
