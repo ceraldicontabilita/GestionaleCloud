@@ -146,3 +146,65 @@ def test_numero_fattura_lungo_con_zeri_viene_riconosciuto_nella_causale():
         "12",
         "BONIFICO DEL 12 MARZO 2026",
     )
+
+
+def test_import_riconcilia_solo_i_nuovi_movimenti_richiesti(monkeypatch):
+    async def scenario():
+        db = _prepara_db(monkeypatch, 1.0)
+        await db.estratto_conto_movimenti.insert_many([
+            {
+                "id": "ec-nuovo",
+                "data": "2026-08-05",
+                "tipo": "uscita",
+                "importo": -1.0,
+                "descrizione_originale": "COMMISSIONE BANCARIA",
+                "riconciliato": False,
+            },
+            {
+                "id": "ec-storico",
+                "data": "2026-01-05",
+                "tipo": "uscita",
+                "importo": -1.0,
+                "descrizione_originale": "COMMISSIONE BANCARIA",
+                "riconciliato": False,
+            },
+        ])
+
+        risultato = await mod.riconcilia_movimenti_banca(
+            movimento_ids=["ec-nuovo", "ec-nuovo"],
+        )
+
+        assert risultato["ambito"] == "nuovi_movimenti"
+        assert risultato["movimenti_analizzati"] == 1
+        assert risultato["commissioni_ignorate"] == 1
+        assert await db.estratto_conto_movimenti.count_documents({
+            "id": "ec-nuovo", "riconciliato": True,
+        }) == 1
+        assert await db.estratto_conto_movimenti.count_documents({
+            "id": "ec-storico", "riconciliato": False,
+        }) == 1
+
+    _run(scenario())
+
+
+def test_scope_vuoto_non_avvia_una_scansione_completa(monkeypatch):
+    async def scenario():
+        db = _prepara_db(monkeypatch, 1.0)
+        await db.estratto_conto_movimenti.insert_one({
+            "id": "ec-storico",
+            "data": "2026-01-05",
+            "tipo": "uscita",
+            "importo": -1.0,
+            "descrizione_originale": "COMMISSIONE BANCARIA",
+            "riconciliato": False,
+        })
+
+        risultato = await mod.riconcilia_movimenti_banca(movimento_ids=[])
+
+        assert risultato["ambito"] == "nuovi_movimenti"
+        assert risultato["movimenti_analizzati"] == 0
+        assert await db.estratto_conto_movimenti.count_documents({
+            "id": "ec-storico", "riconciliato": False,
+        }) == 1
+
+    _run(scenario())

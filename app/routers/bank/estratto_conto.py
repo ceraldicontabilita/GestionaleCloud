@@ -673,8 +673,14 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     riconciliazione_results = None
     try:
         from app.services.riconciliazione_bancaria import riconcilia_movimenti_banca
+        ids_da_riconciliare = list(dict.fromkeys(
+            [record["id"] for record in records_to_insert if record.get("id")]
+            + promoted_ids
+        ))
         riconciliazione_results = (
-            await riconcilia_movimenti_banca()
+            await riconcilia_movimenti_banca(
+                movimento_ids=ids_da_riconciliare,
+            )
             if fonte_ufficiale and has_material_changes
             else {
                 "success": True,
