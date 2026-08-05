@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 from email.message import EmailMessage
 
 from mongomock_motor import AsyncMongoMockClient
@@ -82,3 +83,62 @@ def test_preparser_non_crea_verbale_anonimo_senza_identita():
 
     assert result == "ignored"
     assert asyncio.run(db["verbali_noleggio"].count_documents({})) == 0
+
+
+def test_credenziali_supportano_alias_ambiente_amministrativo(monkeypatch):
+    db = AsyncMongoMockClient()["verbali-credenziali"]
+    monkeypatch.setattr(scanner.settings, "GMAIL_EMAIL", None)
+    monkeypatch.setattr(scanner.settings, "IMAP_USER", None)
+    monkeypatch.setattr(scanner.settings, "GMAIL_APP_PASSWORD", None)
+    monkeypatch.setattr(scanner.settings, "IMAP_PASSWORD", None)
+    monkeypatch.setattr(
+        scanner.settings, "GMAIL_ACCOUNT_AMMINISTRATIVO", "contabilita@example.com"
+    )
+    monkeypatch.setattr(
+        scanner.settings, "GMAIL_APP_PASSWORD_AMMINISTRATIVO", "password-app-test"
+    )
+
+    user, password = asyncio.run(scanner._gmail_credentials(db))
+
+    assert user == "contabilita@example.com"
+    assert password == "password-app-test"
+
+
+def test_nome_allegato_normalizza_piegature_mime():
+    assert scanner._normalize_filename("VERBALE N. 123\r\n CERALDI GROUP.PDF") == (
+        "VERBALE N. 123 CERALDI GROUP.PDF"
+    )
+
+
+def test_documento_archiviato_manualmente_non_viene_ritrasmesso(monkeypatch, tmp_path):
+    content = b"%PDF-1.4 test"
+    digest = hashlib.md5(content).hexdigest()
+    path = tmp_path / "verbale.pdf"
+    path.write_bytes(content)
+    db = AsyncMongoMockClient()["verbali-drive-skip"]
+    asyncio.run(db["documents_inbox"].insert_one({
+        "id": "doc-archiviato",
+        "file_hash": digest,
+        "drive_archive_status": "archived_manual_oauth",
+    }))
+
+    async def fake_process(*args, **kwargs):
+        return {"status": "processed"}
+
+    def unexpected_archive(*args, **kwargs):
+        raise AssertionError("Drive non deve essere richiamato")
+
+    monkeypatch.setattr(
+        "app.services.verbali_document_import.process_verbale_document", fake_process
+    )
+    monkeypatch.setattr(
+        "app.services.email_drive_archive.archive_document_copy", unexpected_archive
+    )
+
+    result = asyncio.run(scanner._ingest_pdf_attachment(
+        db,
+        {"email_subject": "Verbale"},
+        {"filename": "verbale.pdf", "path": str(path), "file_hash": digest},
+    ))
+
+    assert result == {"documento": "duplicato", "drive": "archived_manual_oauth"}

@@ -39,7 +39,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 13 | [ ] IN CORREZIONE | Verbali noleggio — `/noleggio/verbali` | Verbali da email/documenti, targa, driver alla data, fattura, PagoPA e pagamento. | TENERE |
 | 14 | [ ] | Costi noleggio — `/noleggio/costi` | Riepiloga canoni, verbali, bollo, pedaggi e altri costi per veicolo. | TENERE |
 | 15 | [ ] | Dettaglio verbale — `/verbali-noleggio/:identificativo` | Mostra la singola catena Verbale -> veicolo -> driver -> fattura -> pagamento. | TENERE |
-| 16 | [ ] IN CORREZIONE | Piano dei Conti — `/contabilita` | Mostra un solo conto per codice e i saldi derivati dalle fonti contabili. | TENERE |
+| 16 | [x] VERIFICATA | Piano dei Conti — `/contabilita` | Mostra un solo conto per codice e i saldi derivati dalle fonti contabili. | TENERE |
 | 17 | [ ] | Bilancio — `/contabilita/bilancio` | Stato patrimoniale e conto economico per periodo. | TENERE |
 | 18 | [ ] | Verifica Bilancio — `/contabilita/verifica` | Controlla quadrature e incoerenze del bilancio. | TENERE |
 | 19 | [ ] | Libro Giornale — `/contabilita/giornale` | Elenca le scritture contabili cronologiche e i mastri. | TENERE |
@@ -77,7 +77,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 51 | [ ] | Impostazioni AI — `/impostazioni-ai` | Configurazione dei servizi AI usati dal gestionale. | TENERE SOLO ADMIN |
 | 52 | [ ] | Integrazione OpenAPI — `/integrazioni` | Richiede dati e bilanci ufficiali da OpenAPI.it. | TENERE SE CONFIGURATA |
 | 53 | [ ] | Integrazione PagoPA — `/integrazioni/pagopa` | Gestisce avvisi/ricevute PagoPA e collegamenti ai verbali. | TENERE |
-| 54 | [ ] IN CORREZIONE | Mittenti Email attendibili — `/integrazioni/mittenti-email` | Fonte unica dei mittenti autorizzati per classificare allegati email. | TENERE; FONTE DEL FLUSSO VERBALI |
+| 54 | [x] VERIFICATA | Mittenti Email attendibili — `/integrazioni/mittenti-email` | Fonte unica dei mittenti autorizzati per classificare allegati email. | TENERE; FONTE DEL FLUSSO VERBALI |
 | 55 | [ ] | Admin sistema — `/admin` | Stato servizi, email, Drive, rollback controllato e collaudo. | TENERE SOLO ADMIN |
 | 56 | [ ] | Admin MFA — `/admin/mfa` | Configura e controlla autenticazione multifattore. | TENERE SOLO ADMIN |
 | 57 | [ ] | Batch reprocessing — `/admin/batch-reprocessing` | Anteprima e rilavorazione controllata di F24/cedolini. | CANDIDATA AD ACCORPAMENTO CON 58 |
@@ -104,6 +104,8 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 - Ripetuto collaudo live: pagina caricata in circa 2 secondi; 22 righe visibili nelle categorie aperte, 22 codici univoci, 0 duplicati visibili.
 - Correzione permanente nel codice in corso: indici all'avvio e rimozione del secondo calcolo saldi duplicato dal frontend.
 - Suite completa locale dopo la correzione: 1092 test backend superati, 2 saltati; 79 test frontend superati; build di produzione completato.
+- Correzione pubblicata su `main` con merge `b54a99fb64bb5a5d9ad42f50a16f21c1a4a6a913`; deploy Render `dep-d9pp5fht0dsc738cc3jg` concluso con stato live.
+- Collaudo post-deploy con dati reali in sola lettura: 31 conti totali, 22 righe nelle sezioni aperte, 22 codici distinti e nessun duplicato visualizzato. Pagina 16 chiusa.
 
 ### 2026-08-05 — Pagine 13 e 54 Verbali / Mittenti attendibili
 
@@ -119,3 +121,17 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 - Aggiunto endpoint amministrativo separato `scan-gmail-attendibili`, che non richiama gli scanner legacy più permissivi e non marca i messaggi come letti.
 - Impedita la creazione di verbali anonimi dal pre-parser email: se numero/IUV non sono ancora disponibili, è il PDF classificato a creare l'unica entità corretta.
 - Test finali locali: 1092 backend superati, 2 saltati; 79 frontend superati; build di produzione completato. Le mappe tecniche risultano allineate ai 1047 endpoint backend realmente montati.
+- Correzione pubblicata su `main` con merge `b54a99fb64bb5a5d9ad42f50a16f21c1a4a6a913` e verificata dopo il deploy: 7 mittenti attendibili presenti, ASIA Napoli inclusa e il trasportatore generico Aruba escluso. Pagina 54 chiusa.
+- Scansione pilota reale Gmail su 120 giorni, limitata ai mittenti attendibili: 5 messaggi trovati, 8 PDF nuovi salvati in `documents_inbox`, 3 verbali identificati, 0 errori, 0 gruppi hash duplicati e 0 verbali anonimi.
+- Documenti reali acquisiti: due verbali amministrativi ASIA (`VV/24990121765`, `VV/26990000054`) e tre coppie copia conforme/relata per i verbali `B26120386585`, `B26120386528`, `A26110369901`.
+- La cartella Drive reale risolta e' `Verbali Auto/Elaborate`. Il caricamento automatico e' attualmente bloccato dalla quota propria dell'account di servizio; la copia applicativa resta integra. La pagina 13 rimane `IN CORREZIONE` finche' le otto copie non sono verificate anche su Drive e il flusso proprietario/OAuth non e' collaudato.
+
+### 2026-08-05 — Rafforzamento Gmail/Drive pagina 13
+
+- Riconosciuti anche gli alias di ambiente realmente configurati per l'account Gmail amministrativo, senza duplicare o rinominare segreti.
+- Normalizzati i nomi degli allegati MIME per eliminare a-capo e spazi anomali prima del salvataggio.
+- Risolta l'area reale `verbali_auto` e, quando presente, la destinazione di ciclo `Elaborate`.
+- Estesa la deduplica Drive al checksum MD5 nativo, così rileva anche file caricati con account proprietario senza `appProperties`.
+- Un documento con stato `archived`, `duplicate` o `archived_manual_oauth` non viene più ritrasmesso dalle scansioni Gmail successive.
+- I blocchi di quota/permesso Drive sono ora registrati come `blocked_owner_auth` con motivazione tecnica, senza perdere la copia applicativa.
+- Suite completa: 1098 test backend superati, 2 saltati; 79 test frontend superati; build di produzione completato e artefatti generati ripuliti dal working tree.

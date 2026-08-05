@@ -89,14 +89,30 @@ def _get_or_create_folder(service, parent_id: str, name: str) -> str:
     return created["id"]
 
 
+def _find_child_folder(service, parent_id: str, name: str) -> str | None:
+    """Restituisce una sottocartella esistente senza modificare Drive."""
+    escaped = _escape_query(name)
+    result = service.files().list(
+        q=(f"name = '{escaped}' and '{parent_id}' in parents and "
+           "mimeType = 'application/vnd.google-apps.folder' and trashed = false"),
+        fields="files(id)", pageSize=2, supportsAllDrives=True,
+        includeItemsFromAllDrives=True,
+    ).execute()
+    files = result.get("files", [])
+    return files[0]["id"] if files else None
+
+
 def _already_archived(service, parent_id: str, filename: str, digest: str) -> bool:
     result = service.files().list(
         q=f"name = '{_escape_query(filename)}' and '{parent_id}' in parents and trashed = false",
-        fields="files(id, appProperties)", pageSize=20, supportsAllDrives=True,
+        fields="files(id, appProperties, md5Checksum)", pageSize=20, supportsAllDrives=True,
         includeItemsFromAllDrives=True,
     ).execute()
-    return any((item.get("appProperties") or {}).get("gestionale_hash") == digest
-               for item in result.get("files", []))
+    return any(
+        (item.get("appProperties") or {}).get("gestionale_hash") == digest
+        or item.get("md5Checksum") == digest
+        for item in result.get("files", [])
+    )
 
 
 def archive_document_copy(doc: dict[str, Any], tipo: str) -> dict[str, Any]:
@@ -123,6 +139,11 @@ def archive_document_copy(doc: dict[str, Any], tipo: str) -> dict[str, Any]:
     if service is None:
         return {"status": "not_configured", "area": area}
 
+    # Le aree documentali possono adottare il ciclo Da elaborare/Elaborate/
+    # Errori. Le copie gia' processate dall'app vanno in Elaborate; se la
+    # sottocartella non esiste si mantiene la compatibilita' con la radice.
+    folder_id = _find_child_folder(service, folder_id, "Elaborate") or folder_id
+
     filename = str(doc.get("filename") or f"documento-{doc.get('id', 'email')}.pdf").strip()
     digest = str(doc.get("file_hash") or hashlib.md5(content).hexdigest())
     if _already_archived(service, folder_id, filename, digest):
@@ -131,14 +152,25 @@ def archive_document_copy(doc: dict[str, Any], tipo: str) -> dict[str, Any]:
     from googleapiclient.http import MediaIoBaseUpload
     mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
     media = MediaIoBaseUpload(io.BytesIO(content), mimetype=mime_type, resumable=False)
-    service.files().create(
-        body={
-            "name": filename,
-            "parents": [folder_id],
-            "appProperties": {"gestionale_hash": digest, "gestionale_source": "email"},
-        },
-        media_body=media,
-        fields="id",
-        supportsAllDrives=True,
-    ).execute()
+    try:
+        service.files().create(
+            body={
+                "name": filename,
+                "parents": [folder_id],
+                "appProperties": {"gestionale_hash": digest, "gestionale_source": "email"},
+            },
+            media_body=media,
+            fields="id",
+            supportsAllDrives=True,
+        ).execute()
+    except Exception as exc:
+        status_code = getattr(getattr(exc, "resp", None), "status", None)
+        message = str(exc).lower()
+        if status_code == 403 and "storage quota" in message:
+            return {"status": "blocked_owner_auth", "area": area,
+                    "reason": "service_account_storage_quota"}
+        if status_code == 403:
+            return {"status": "blocked_owner_auth", "area": area,
+                    "reason": "drive_permission_denied"}
+        raise
     return {"status": "archived", "area": area, "archived_at": datetime.now(timezone.utc).isoformat()}

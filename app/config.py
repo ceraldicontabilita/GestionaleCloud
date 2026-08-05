@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     GMAIL_IMAP_ENABLED: bool = False
     GMAIL_EMAIL: Optional[str] = None
     GMAIL_APP_PASSWORD: Optional[str] = None
+    # Alias effettivi presenti nell'ambiente operativo Ceraldi. Restano
+    # separati per non obbligare a rinominare o duplicare segreti su Render.
+    GMAIL_ACCOUNT_AMMINISTRATIVO: Optional[str] = None
+    GMAIL_APP_PASSWORD_AMMINISTRATIVO: Optional[str] = None
     EMAIL_USER: Optional[str] = None
     EMAIL_PASSWORD: Optional[str] = None
     EMAIL_APP_PASSWORD: Optional[str] = None

@@ -50,6 +50,11 @@ def _decode(s):
     return " ".join(parts)
 
 
+def _normalize_filename(value: str) -> str:
+    """Rimuove piegature MIME/a-capo senza alterare il nome del documento."""
+    return re.sub(r"\s+", " ", _decode(value or "")).strip()
+
+
 async def get_senders_whitelist(db: AsyncIOMotorDatabase) -> Set[str]:
     # Collezione canonica unica `mittenti_email` (con union legacy per
     # retro-compatibilità) tramite l'accessor condiviso (P2-2).
@@ -80,8 +85,10 @@ async def _gmail_credentials(db: AsyncIOMotorDatabase):
     except Exception:
         logger.exception("Credenziali Gmail Admin non leggibili")
     return (
-        user or settings.GMAIL_EMAIL or settings.IMAP_USER,
-        password or settings.GMAIL_APP_PASSWORD or settings.IMAP_PASSWORD,
+        user or settings.GMAIL_EMAIL or settings.IMAP_USER
+        or settings.GMAIL_ACCOUNT_AMMINISTRATIVO,
+        password or settings.GMAIL_APP_PASSWORD or settings.IMAP_PASSWORD
+        or settings.GMAIL_APP_PASSWORD_AMMINISTRATIVO,
     )
 
 
@@ -221,7 +228,7 @@ def _save_attachments(msg, key) -> List[Dict[str, Any]]:
     def _walk(m):
         for part in m.walk():
             ctype = part.get_content_type()
-            filename = _decode(part.get_filename() or "")
+            filename = _normalize_filename(part.get_filename() or "")
             if ctype == "application/pdf" and filename:
                 safe = re.sub(r'[^A-Za-z0-9._-]', '_', filename)
                 path = os.path.join(UPLOAD_DIR, f"{prefix}_{safe}")
@@ -253,7 +260,8 @@ async def _ingest_pdf_attachment(db, parsed: Dict[str, Any], allegato: Dict[str,
         content = handle.read()
     digest = allegato.get("file_hash") or hashlib.md5(content).hexdigest()
     existing = await db["documents_inbox"].find_one(
-        {"file_hash": digest}, {"_id": 0, "id": 1, "drive_archive_status": 1}
+        {"file_hash": digest},
+        {"_id": 0, "id": 1, "drive_archive_status": 1},
     )
     now = datetime.now(timezone.utc).isoformat()
     if existing:
@@ -292,6 +300,17 @@ async def _ingest_pdf_attachment(db, parsed: Dict[str, Any], allegato: Dict[str,
         source="email_verbale",
     )
 
+    # Un documento gia' archiviato non deve essere ritrasmesso a ogni nuova
+    # scansione Gmail. Questo protegge anche le copie caricate con OAuth/UI
+    # quando l'account di servizio non dispone di quota Drive propria.
+    previous_drive_status = str((existing or {}).get("drive_archive_status") or "")
+    if previous_drive_status in {"archived", "duplicate", "archived_manual_oauth"}:
+        await db["documents_inbox"].update_one(
+            {"id": document_id},
+            {"$set": {"updated_at": now}},
+        )
+        return {"documento": document_status, "drive": previous_drive_status}
+
     from app.services.email_drive_archive import archive_document_copy
     archive_doc = {
         "id": document_id,
@@ -310,6 +329,7 @@ async def _ingest_pdf_attachment(db, parsed: Dict[str, Any], allegato: Dict[str,
             "drive_archive_status": drive.get("status"),
             "drive_archive_area": drive.get("area"),
             "drive_archived_at": drive.get("archived_at"),
+            "drive_archive_reason": drive.get("reason"),
             "updated_at": now,
         }},
     )
