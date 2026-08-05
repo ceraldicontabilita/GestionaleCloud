@@ -4,7 +4,7 @@
 > Totale **1047 endpoint** in **109 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 657 · ext esterni = 90 · — da verificare = 300
+**Riepilogo uso:** ✓ frontend = 658 · ext esterni = 90 · — da verificare = 299
 
 ## AI Parser  (11)
 
@@ -1194,7 +1194,7 @@
 | GET | `/api/paypal-api/ricevuta-pdf/{transaction_id}` | — | paypal_api |
 | POST | `/api/paypal-api/riconcilia` | ✓ | paypal_api |
 | POST | `/api/paypal-api/smappa-fornitore` | — | paypal_api |
-| GET | `/api/paypal-api/status` | — | paypal_api |
+| GET | `/api/paypal-api/status` | ✓ | paypal_api |
 | POST | `/api/paypal-api/sync` | ✓ | paypal_api |
 | POST | `/api/paypal-api/sync/month` | ✓ | paypal_api |
 | POST | `/api/paypal-api/webhook` | ext | paypal_api |

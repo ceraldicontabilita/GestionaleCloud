@@ -195,7 +195,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/centri-costo/mapping-categorie` | accounting.centri_costo | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/centri-costo/ribaltamento/calcola` | accounting.centri_costo | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/centri-costo/ribaltamento/quote-ricavo` | accounting.centri_costo | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/centri-costo/utile-obiettivo` | accounting.centri_costo | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/centri-costo/utile-obiettivo` | accounting.centri_costo | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/centri-costo/utile-obiettivo` | accounting.centri_costo | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/centri-costo/utile-obiettivo/per-cdc` | accounting.centri_costo | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/centri-costo/utile-obiettivo/suggerimenti` | accounting.centri_costo | sì | — | — | — | — | tenere | in uso: FE |
@@ -770,7 +770,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/paypal-api/ricevuta-pdf/{transaction_id}` | paypal_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-api/riconcilia` | paypal_api | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/paypal-api/smappa-fornitore` | paypal_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/paypal-api/status` | paypal_api | — | sì | sì | — | sì | tenere | in uso: scheduler, chat |
+| `GET /api/paypal-api/status` | paypal_api | sì | sì | sì | — | sì | tenere | in uso: FE, scheduler, chat |
 | `POST /api/paypal-api/sync` | paypal_api | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/paypal-api/sync/month` | paypal_api | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/paypal-api/webhook` | paypal_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
