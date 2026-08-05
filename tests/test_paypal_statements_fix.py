@@ -129,3 +129,21 @@ def test_dashboard_conta_riconciliati_sia_da_statement_che_da_api(monkeypatch):
     res = _run(mod.paypal_dashboard(anno=None))
 
     assert res["riconciliati_banca"] == 2
+
+
+def test_dashboard_non_somma_due_volte_conversione_valuta(monkeypatch):
+    db = _FakeDb()
+    db["paypal_transactions"].docs = [
+        {"transaction_id": "PAY-USD", "lordo": -120.0, "currency": "USD",
+         "tipo": "pagamento_web", "nome_controparte": "Fornitore USA"},
+        {"transaction_id": "CONV-EUR", "paypal_reference_id": "PAY-USD",
+         "lordo": -100.0, "currency": "EUR", "tipo": "T0200"},
+        {"transaction_id": "CONV-USD", "paypal_reference_id": "PAY-USD",
+         "lordo": 120.0, "currency": "USD", "tipo": "T0200"},
+    ]
+    _patch_db(monkeypatch, db)
+
+    res = _run(mod.paypal_dashboard(anno=None))
+
+    assert res["totale_pagamenti"] == 1
+    assert res["totale_speso"] == -100.0

@@ -170,3 +170,31 @@ def test_registra_corrispettivo_scorporo(monkeypatch):
     # idempotenza
     r2 = _run(motore.registra_corrispettivo(db, {"id": "C1", "totale": 110.0}))
     assert r2["stato"] == "gia_registrato"
+
+
+def test_registra_corrispettivo_usa_iva_xml_esplicita(monkeypatch):
+    db = _Db()
+    _prepara(db, monkeypatch)
+    result = _run(motore.registra_corrispettivo(db, {
+        "id": "XML1", "totale": 122.0, "totale_imponibile": 100.0,
+        "totale_iva": 22.0, "pagato_contante": 20.0,
+        "pagato_elettronico": 102.0, "data": "2026-04-02",
+    }))
+
+    assert result["stato"] == "registrato"
+    assert result["movimento"]["imponibile"] == 100.0
+    assert result["movimento"]["iva"] == 22.0
+    assert result["movimento"]["totale_dare"] == result["movimento"]["totale_avere"] == 122.0
+
+
+def test_registra_corrispettivo_non_registra_ripartizione_non_quadrata(monkeypatch):
+    db = _Db()
+    _prepara(db, monkeypatch)
+    result = _run(motore.registra_corrispettivo(db, {
+        "id": "BAD1", "totale": 100.0, "totale_imponibile": 90.91,
+        "totale_iva": 9.09, "pagato_contante": 10.0,
+        "pagato_elettronico": 20.0, "data": "2026-04-02",
+    }))
+
+    assert result["stato"] == "da_verificare"
+    assert db["movimenti_contabili"].docs == []

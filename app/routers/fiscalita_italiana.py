@@ -295,6 +295,27 @@ AGEVOLAZIONI_FISCALI_SRL = [
 # CALENDARIO FISCALE COMPLETO SRL
 # ============================================
 
+FONTE_SCADENZARIO_AE = "https://www1.agenziaentrate.gov.it/servizi/scadenzario/main.php?lang=it"
+
+
+def _sposta_da_weekend(data_iso: str) -> str:
+    """Sposta sabato/domenica al primo giorno lavorativo successivo."""
+    data = datetime.strptime(data_iso, "%Y-%m-%d")
+    while data.weekday() >= 5:
+        data += timedelta(days=1)
+    return data.strftime("%Y-%m-%d")
+
+
+def _scadenza_mese_successivo(anno: int, mese: int) -> str:
+    """Termine del 16 del mese successivo; in agosto il termine e' il 20."""
+    mese_scadenza = mese + 1
+    anno_scadenza = anno
+    if mese_scadenza == 13:
+        mese_scadenza = 1
+        anno_scadenza += 1
+    giorno = 20 if mese_scadenza == 8 else 16
+    return _sposta_da_weekend(f"{anno_scadenza}-{mese_scadenza:02d}-{giorno:02d}")
+
 def genera_scadenze_anno(anno: int) -> List[Dict]:
     """Genera tutte le scadenze fiscali per l'anno"""
     
@@ -303,27 +324,24 @@ def genera_scadenze_anno(anno: int) -> List[Dict]:
     # === IVA ===
     # Liquidazioni mensili (contribuenti con volume affari > €400.000)
     for mese in range(1, 13):
-        giorno = 16
-        mese_liquidazione = mese + 1 if mese < 12 else 1
-        anno_liq = anno if mese < 12 else anno + 1
-        
         scadenze.append({
             "id": f"iva_liq_{anno}_{mese:02d}",
             "tipo": "IVA",
             "descrizione": f"Liquidazione IVA {mese:02d}/{anno}",
-            "data": f"{anno_liq}-{mese_liquidazione:02d}-{giorno:02d}",
+            "data": _scadenza_mese_successivo(anno, mese),
             "periodicita": "mensile",
             "codice_tributo": "6001" if mese == 1 else f"60{mese:02d}",
             "note": "Versamento IVA mese precedente",
-            "categoria": "versamento"
+            "categoria": "versamento",
+            "fonte_ufficiale": FONTE_SCADENZARIO_AE,
         })
     
     # Liquidazioni trimestrali
     scadenze_trim = [
-        (f"{anno}-05-16", "1° trimestre", "6031"),
+        (_sposta_da_weekend(f"{anno}-05-16"), "1° trimestre", "6031"),
         (f"{anno}-08-20", "2° trimestre", "6032"),  # 20 agosto
-        (f"{anno}-11-16", "3° trimestre", "6033"),
-        (f"{anno+1}-02-16", "4° trimestre", "6034"),
+        (_sposta_da_weekend(f"{anno}-11-16"), "3° trimestre", "6033"),
+        (_sposta_da_weekend(f"{anno+1}-02-16"), "4° trimestre", "6034"),
     ]
     for data, periodo, codice in scadenze_trim:
         scadenze.append({
@@ -431,7 +449,7 @@ def genera_scadenze_anno(anno: int) -> List[Dict]:
             "id": f"ritenute_{anno}_{mese:02d}",
             "tipo": "RITENUTE",
             "descrizione": f"Versamento ritenute {mese:02d}/{anno}",
-            "data": f"{anno}-{mese:02d}-16",
+            "data": _scadenza_mese_successivo(anno, mese),
             "codice_tributo": "1040",  # Lavoro dipendente
             "note": "Ritenute su lavoro dipendente, autonomo, provvigioni",
             "categoria": "versamento"
@@ -490,7 +508,7 @@ def genera_scadenze_anno(anno: int) -> List[Dict]:
             "id": f"inps_{anno}_{mese:02d}",
             "tipo": "INPS",
             "descrizione": f"Contributi INPS dipendenti {mese:02d}/{anno}",
-            "data": f"{anno}-{mese:02d}-16",
+            "data": _scadenza_mese_successivo(anno, mese),
             "note": "Contributi mese precedente",
             "categoria": "versamento"
         })
@@ -761,6 +779,21 @@ async def scadenze_imminenti(giorni: int = Query(30)) -> Dict[str, Any]:
 async def calendario_fiscale(anno: int) -> Dict[str, Any]:
     """Genera calendario fiscale completo per l'anno"""
     db = Database.get_db()
+
+    # Upsert ad ogni lettura: corregge date/periodi generati da versioni
+    # precedenti senza perdere completamento, quietanza o note dell'utente.
+    now = datetime.now(timezone.utc).isoformat()
+    scadenze_generate = genera_scadenze_anno(anno)
+    for scadenza in scadenze_generate:
+        template = {**scadenza, "anno": anno, "updated_at": now}
+        await db["calendario_fiscale"].update_one(
+            {"anno": anno, "id": scadenza["id"]},
+            {
+                "$set": template,
+                "$setOnInsert": {"completato": False, "created_at": now},
+            },
+            upsert=True,
+        )
     
     # Verifica se già generato
     existing = await db["calendario_fiscale"].find(
@@ -780,6 +813,28 @@ async def calendario_fiscale(anno: int) -> Dict[str, Any]:
         # Ricarica senza _id
         existing = await db["calendario_fiscale"].find({"anno": anno}, {"_id": 0}).to_list(500)
     
+    # Difesa di lettura sui dati legacy: una sola scadenza per chiave. Non
+    # elimina documenti; evita che copie storiche gonfino KPI e calendario.
+    per_id = {}
+    for scadenza in sorted(
+        existing,
+        key=lambda s: (
+            str(s.get("id") or ""),
+            not bool(s.get("completato")),
+            str(s.get("created_at") or ""),
+        ),
+    ):
+        chiave = scadenza.get("id") or (
+            f"legacy:{scadenza.get('tipo')}:{scadenza.get('data')}:"
+            f"{scadenza.get('descrizione')}"
+        )
+        per_id.setdefault(chiave, scadenza)
+    generate_per_id = {s["id"]: s for s in scadenze_generate}
+    existing = [
+        {**scadenza, **generate_per_id.get(chiave, {}), "anno": anno}
+        for chiave, scadenza in per_id.items()
+    ]
+
     # Raggruppa per mese
     per_mese = {}
     for s in existing:

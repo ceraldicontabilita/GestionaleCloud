@@ -152,13 +152,13 @@ async def inizializza_piano_conti_esteso(_admin: Dict[str, Any] = Depends(get_cu
 @handle_errors
 async def ricategorizza_tutte_fatture() -> Dict[str, Any]:
     """
-    Ricostruzione contabile completa: ricategorizza TUTTE le fatture con il sistema
-    intelligente (deducibilità IRES/IRAP) e ri-registra i corrispettivi.
+    Registrazione incrementale: classifica e registra soltanto fatture e
+    corrispettivi ancora assenti dal libro giornale definitivo.
 
     Passa per il MOTORE UNICO `app.services.registrazione_contabile` (P1 §6.1):
     schema/idempotenza/numero registrazione/audit unificati. La CATEGORIZZAZIONE
-    ricca resta qui (conti passati al motore). Preserva i movimenti di
-    ammortamento/TFR (prima venivano cancellati: azzeravano la chiusura esercizio).
+    ricca resta qui (conti passati al motore). Non cancella, non azzera e non
+    riscrive le registrazioni gia definitive.
     """
     from app.services.registrazione_contabile import (
         registra_fattura, registra_tutti_corrispettivi,
@@ -166,30 +166,14 @@ async def ricategorizza_tutte_fatture() -> Dict[str, Any]:
 
     db = Database.get_db()
 
-    # Reset saldi piano dei conti (tranne cassa/banca popolati da altre fonti)
-    conti_da_non_resettare = ["01.01.01", "01.01.02"]
-    await db["piano_conti"].update_many(
-        {"codice": {"$nin": conti_da_non_resettare}}, {"$set": {"saldo": 0}}
-    )
-
-    # Elimina SOLO i movimenti che ricostruiamo (fatture + corrispettivi),
-    # preservando ammortamenti/TFR letti dalla chiusura esercizio.
-    await db["movimenti_contabili"].delete_many(
-        {"tipo": {"$in": ["fattura_acquisto", "corrispettivo"]}}
-    )
-    await db["invoices"].update_many(
-        {"registrata_contabilita": True},
-        {"$set": {"registrata_contabilita": False}},
-    )
-    await db["corrispettivi"].update_many(
-        {"registrato_contabilita": True},
-        {"$set": {"registrato_contabilita": False}},
-    )
-
     fatture = await db["invoices"].find({
-        "$or": [
-            {"entity_status": {"$ne": "deleted"}},
-            {"entity_status": {"$exists": False}},
+        "$and": [
+            {"$or": [
+                {"entity_status": {"$ne": "deleted"}},
+                {"entity_status": {"$exists": False}},
+            ]},
+            {"status": {"$nin": ["deleted", "archived"]}},
+            {"registrata_contabilita": {"$ne": True}},
         ]
     }, {"_id": 0}).to_list(10000)
 
@@ -226,7 +210,7 @@ async def ricategorizza_tutte_fatture() -> Dict[str, Any]:
                 "percentuale_deducibilita_ires": categorizzazione["percentuale_deducibilita_ires"],
                 "percentuale_deducibilita_irap": categorizzazione["percentuale_deducibilita_irap"],
             }
-            r = await registra_fattura(db, fattura, force=True, conti=conti,
+            r = await registra_fattura(db, fattura, force=False, conti=conti,
                                        extra_movimento=extra_mov, extra_fattura=extra_fatt)
             if r.get("stato") != "registrato":
                 continue

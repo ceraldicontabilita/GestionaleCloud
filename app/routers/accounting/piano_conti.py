@@ -13,6 +13,7 @@ from pymongo.errors import DuplicateKeyError
 from app.database import Database
 from app.utils.error_handler import handle_errors
 from app.utils.parsing import safe_float
+from app.services.liquidita_service import calcola_liquidita
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -202,6 +203,10 @@ async def _calcola_saldi_piano_conti(db, anno: str = None) -> Dict[str, float]:
       05.03.02 Contributi previd. ← cedolini (contributi)
     """
     saldi: Dict[str, float] = {}
+    liquidita = (
+        await calcola_liquidita(db, int(anno), f"{anno}-12-31")
+        if anno else None
+    )
 
     # Filtri temporali (stringa ISO YYYY-MM-DD o campo numerico "anno")
     #
@@ -391,7 +396,10 @@ async def _calcola_saldi_piano_conti(db, anno: str = None) -> Dict[str, float]:
     res = await db["prima_nota_cassa"].aggregate(pipe_cassa).to_list(10)
     entrate_cassa = sum(float(r.get("tot") or 0) for r in res if r.get("_id") == "entrata")
     uscite_cassa  = sum(float(r.get("tot") or 0) for r in res if r.get("_id") == "uscita")
-    saldi["01.01.01"] = round(entrate_cassa - uscite_cassa, 2)
+    saldi["01.01.01"] = (
+        liquidita["cassa"]["saldo"]
+        if liquidita else round(entrate_cassa - uscite_cassa, 2)
+    )
 
     # ── BANCA c/c (saldo banca): Prima Nota Banca + Estratto Conto ───────────
     # Il saldo banca viene dai movimenti di Prima Nota Banca (che è la fonte
@@ -433,13 +441,20 @@ async def _calcola_saldi_piano_conti(db, anno: str = None) -> Dict[str, float]:
     uscite_ec  = sum(float(r.get("tot") or 0) for r in res_ec if r.get("_id") == "uscita")
     saldo_ec = entrate_ec - uscite_ec
 
-    # L'estratto conto e' la fonte finanziaria reale: se contiene righe
-    # prevale. Prima Nota Banca e' il registro collegato, non la fonte del
-    # saldo quando il documento bancario e' disponibile.
-    if res_ec:
-        saldi["01.01.02"] = round(saldo_ec, 2)
-    else:
-        saldi["01.01.02"] = round(saldo_pnb, 2)
+    # Il Piano dei Conti espone il saldo CONTABILE, quindi usa Prima Nota
+    # come Bilancio, Finanziaria e Contabilita Avanzata. L'Estratto Conto e'
+    # una prova bancaria distinta: il suo saldo non deve sostituire in modo
+    # silenzioso quello del mastro. Lo scarto viene mostrato dalle pagine di
+    # riconciliazione e dal servizio liquidita_service.
+    saldi["01.01.02"] = (
+        liquidita["banca_contabile"]["saldo"]
+        if liquidita else round(saldo_pnb, 2)
+    )
+    if res_ec and abs(round(saldo_ec - saldo_pnb, 2)) >= 0.01:
+        logger.warning(
+            "Scarto Banca %s: Estratto Conto %.2f, Prima Nota %.2f",
+            anno or "cumulativo", saldo_ec, saldo_pnb,
+        )
 
     # ── CEDOLINI (costi personale + TFR + contributi) ─────────────────────────
     match_ced = _anno_field() or {}

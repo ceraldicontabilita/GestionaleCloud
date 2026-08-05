@@ -25,6 +25,7 @@ export default function Finanziaria() {
   const { anno: selectedYear } = useAnnoGlobale();
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     loadSummary();
@@ -33,12 +34,13 @@ export default function Finanziaria() {
   async function loadSummary() {
     try {
       setLoading(true);
-      const r = await api
-        .get(`/api/finanziaria/summary?anno=${selectedYear}`)
-        .catch(() => ({ data: null }));
+      setLoadError('');
+      const r = await api.get(`/api/finanziaria/summary?anno=${selectedYear}`);
       setSummary(r.data);
     } catch (e) {
       console.error('Error loading financial summary:', e);
+      setSummary(null);
+      setLoadError(e.response?.data?.detail || e.message || 'Errore di caricamento');
     } finally {
       setLoading(false);
     }
@@ -56,13 +58,24 @@ export default function Finanziaria() {
     );
   }
 
+  if (loadError || !summary) {
+    return (
+      <PageLayout title="Situazione Finanziaria" icon="📊" subtitle={`Riepilogo finanziario ${selectedYear}`}>
+        <div role="alert" style={{ padding: 20, border: `1px solid ${COLORS.danger}`, background: COLORS.dangerLight, borderRadius: 8 }}>
+          <strong>Dati finanziari non disponibili.</strong>
+          <div style={{ marginTop: 6, fontSize: 13 }}>{loadError || 'Il servizio non ha restituito un riepilogo valido.'}</div>
+        </div>
+      </PageLayout>
+    );
+  }
+
   const hasNoData = summary?.total_income === 0 && summary?.total_expenses === 0;
 
   return (
     <PageLayout
       title="Situazione Finanziaria"
       icon="📊"
-      subtitle={`Riepilogo finanziario con IVA da Corrispettivi e Fatture - Anno ${selectedYear}`}
+      subtitle={`Riepilogo finanziario e stima IVA documentale - Anno ${selectedYear}`}
       actions={
         <Badge
           variant="info"
@@ -131,7 +144,8 @@ export default function Finanziaria() {
       {/* Sezione IVA */}
       <PageSection title="Riepilogo IVA" icon="🧾" style={{ marginTop: 20 }}>
         <p style={{ color: COLORS.textMuted, fontSize: 13, marginBottom: 16 }}>
-          IVA estratta automaticamente da Corrispettivi XML (vendite) e Fatture XML (acquisti)
+          Stima IVA da Corrispettivi XML e Fatture XML classificate. La liquidazione verificata,
+          l'F24 e l'addebito bancario restano controlli distinti.
         </p>
         <PageGrid cols={3} gap={16}>
           <StatCard
@@ -159,7 +173,7 @@ export default function Finanziaria() {
             accent="success"
           />
           <StatCard
-            label="⚖️ Saldo IVA"
+            label="⚖️ Stima saldo IVA"
             value={formatEuro(summary?.vat_balance)}
             subtext={
               <Badge variant={summary?.vat_balance > 0 ? 'danger' : 'success'}>

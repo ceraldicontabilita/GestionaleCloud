@@ -708,7 +708,7 @@ export default function GestioneAssegni() {
   // STATS AVANZATE
   const loadStatsAvanzate = async () => {
     try {
-      const res = await api.get('/api/assegni/learning/stats-avanzate');
+      const res = await api.get(`/api/assegni/learning/stats-avanzate?anno=${anno}`);
       setStatsAvanzate(res.data);
     } catch (error) {
       console.error('Errore caricamento stats:', error);
@@ -718,7 +718,8 @@ export default function GestioneAssegni() {
   // Carica stats all'avvio
   useEffect(() => {
     loadStatsAvanzate();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anno]);
 
   // Nuova funzione: Associazione combinata (somma di più assegni = importo fattura)
   const handleAssociaCombinazioni = async () => {
@@ -1569,7 +1570,7 @@ export default function GestioneAssegni() {
         >
           <StatCard
             icon="📊"
-            label="Health Score"
+            label="Salute assegni emessi"
             value={`${statsAvanzate.health_score}%`}
             accent={
               statsAvanzate.health_score >= 90
@@ -1585,6 +1586,14 @@ export default function GestioneAssegni() {
             label="Con Beneficiario"
             value={`${statsAvanzate.con_beneficiario}/${statsAvanzate.totale_assegni}`}
             accent="info"
+          />
+
+          <StatCard
+            icon="📒"
+            label="Fogli carnet vuoti"
+            value={statsAvanzate.carnet_vuoti || 0}
+            subtext="Esclusi dagli indicatori"
+            accent="none"
           />
 
           <StatCard

@@ -7,6 +7,7 @@ import os
 import re
 
 from app.database import Database
+from app.config import settings
 from app.services.paypal_api_sync import sync_paypal_period
 from app.services.paypal_api_client import paypal_client
 from app.services.paypal_riconciliazione import match_fornitore, normalize_string
@@ -143,6 +144,8 @@ async def status():
         "arricchite_da_api": enriched,
         "identificate_pagopa": pagopa,
         "ultimo_sync": last.get("enriched_at") if last else None,
+        "api_configurata": bool(settings.PAYPAL_CLIENT_ID and settings.PAYPAL_CLIENT_SECRET),
+        "webhook_configurato": bool(PAYPAL_WEBHOOK_ID),
     }
 
 

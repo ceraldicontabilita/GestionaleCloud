@@ -210,12 +210,41 @@ async def registra_corrispettivo(db, corr: Dict[str, Any], *, force: bool = Fals
     if totale <= 0:
         return {"stato": "saltato", "motivo": "importo nullo"}
 
-    iva = round(totale * _ALIQUOTA_CORRISPETTIVI / (1 + _ALIQUOTA_CORRISPETTIVI), 2)
-    imponibile = round(totale - iva, 2)
+    iva_raw = corr.get("totale_iva")
+    if iva_raw is None:
+        iva_raw = corr.get("iva")
+    imponibile_raw = corr.get("totale_imponibile")
+    if imponibile_raw is None:
+        imponibile_raw = corr.get("imponibile")
+
+    # L'XML del corrispettivo e' la fonte dell'aliquota effettiva. Il 10%
+    # resta solo un fallback per record storici privi del dettaglio fiscale.
+    try:
+        iva = round(float(iva_raw), 2) if iva_raw is not None else None
+        imponibile = round(float(imponibile_raw), 2) if imponibile_raw is not None else None
+    except (TypeError, ValueError):
+        return {"stato": "da_verificare", "motivo": "IVA o imponibile non numerico"}
+    if iva is None and imponibile is None:
+        iva = round(totale * _ALIQUOTA_CORRISPETTIVI / (1 + _ALIQUOTA_CORRISPETTIVI), 2)
+        imponibile = round(totale - iva, 2)
+    elif iva is None:
+        iva = round(totale - imponibile, 2)
+    elif imponibile is None:
+        imponibile = round(totale - iva, 2)
+    if iva < 0 or imponibile < 0 or abs(round(imponibile + iva - totale, 2)) > 0.01:
+        return {
+            "stato": "da_verificare",
+            "motivo": "totale, imponibile e IVA del corrispettivo non quadrano",
+        }
     cassa = float(corr.get("pagato_contante", corr.get("pagato_cassa", 0)) or 0)
     pos = float(corr.get("pagato_elettronico", 0) or 0)
     if cassa + pos == 0:
         cassa = totale
+    elif abs(round(cassa + pos - totale, 2)) > 0.01:
+        return {
+            "stato": "da_verificare",
+            "motivo": "ripartizione contanti/POS non quadrata con il totale",
+        }
 
     righe = []
     saldi = []

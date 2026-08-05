@@ -40,14 +40,147 @@ def _match_anno(data_str: str, anno: int) -> bool:
         return False
 
 
+def _tipo_conto_da_codice(codice: str) -> str:
+    """Classificazione operativa usata dalla vista del bilancio di verifica."""
+    gruppo = str(codice or "").split(".", 1)[0]
+    return {
+        "01": "attivo",
+        "02": "passivo",
+        "03": "patrimonio_netto",
+        "04": "ricavo",
+        "05": "costo",
+    }.get(gruppo, "altro")
+
+
+async def _bilancio_verifica_da_registro(
+    db, anno: int, dettaglio: bool,
+) -> Dict[str, Any]:
+    """Aggrega il registro definitivo, senza risommare le fonti operative."""
+    anno_str = str(anno)
+    query = {
+        "$and": [
+            {"righe": {"$exists": True, "$ne": []}},
+            {"$or": [
+                {"anno": anno},
+                {"data_documento": {"$regex": f"^{anno_str}"}},
+                {"data": {"$regex": f"^{anno_str}"}},
+            ]},
+        ]
+    }
+    scritture = await db["movimenti_contabili"].find(
+        query, {"_id": 0}
+    ).sort("data_documento", 1).to_list(100000)
+
+    conti = defaultdict(lambda: {
+        "codice": "", "nome": "", "tipo": "", "dare": 0.0,
+        "avere": 0.0, "n_movimenti": 0, "movimenti": [],
+    })
+    for scrittura in scritture:
+        conti_toccati = set()
+        for riga in scrittura.get("righe") or []:
+            codice = str(riga.get("conto_codice") or riga.get("conto") or "").strip()
+            if not codice:
+                continue
+            try:
+                dare = float(riga.get("dare") or 0)
+                avere = float(riga.get("avere") or 0)
+            except (TypeError, ValueError):
+                logger.warning("Riga non numerica nella scrittura %s", scrittura.get("id"))
+                continue
+            conto = conti[codice]
+            conto["codice"] = codice
+            conto["nome"] = riga.get("conto_nome") or conto["nome"] or codice
+            conto["tipo"] = _tipo_conto_da_codice(codice)
+            conto["dare"] += dare
+            conto["avere"] += avere
+            conti_toccati.add(codice)
+            if dettaglio and len(conto["movimenti"]) < 50:
+                conto["movimenti"].append({
+                    "data": scrittura.get("data_documento") or scrittura.get("data") or "",
+                    "descrizione": scrittura.get("descrizione") or "Scrittura contabile",
+                    "dare": round(dare, 2), "avere": round(avere, 2),
+                    "numero_registrazione": scrittura.get("numero_registrazione"),
+                })
+        for codice in conti_toccati:
+            conti[codice]["n_movimenti"] += 1
+
+    risultato = []
+    for codice in sorted(conti):
+        conto = conti[codice]
+        saldo = round(conto["dare"] - conto["avere"], 2)
+        voce = {
+            "codice": codice,
+            "nome": conto["nome"],
+            "tipo": conto["tipo"],
+            "dare": round(conto["dare"], 2),
+            "avere": round(conto["avere"], 2),
+            "saldo": saldo,
+            "saldo_dare": saldo if saldo > 0 else 0,
+            "saldo_avere": abs(saldo) if saldo < 0 else 0,
+            "n_movimenti": conto["n_movimenti"],
+        }
+        if dettaglio:
+            voce["movimenti"] = conto["movimenti"]
+        risultato.append(voce)
+
+    totale_dare = round(sum(v["dare"] for v in risultato), 2)
+    totale_avere = round(sum(v["avere"] for v in risultato), 2)
+    backlog_fatture = await db[Collections.INVOICES].count_documents({
+        "status": {"$nin": ["deleted", "archived"]},
+        "$or": [
+            {"invoice_date": {"$regex": f"^{anno_str}"}},
+            {"data_fattura": {"$regex": f"^{anno_str}"}},
+            {"data_documento": {"$regex": f"^{anno_str}"}},
+        ],
+        "registrata_contabilita": {"$ne": True},
+    })
+    backlog_corrispettivi = await db[Collections.CORRISPETTIVI].count_documents({
+        "entity_status": {"$ne": "deleted"},
+        "data": {"$regex": f"^{anno_str}"},
+        "registrato_contabilita": {"$ne": True},
+    })
+    backlog_totale = backlog_fatture + backlog_corrispettivi
+    return {
+        "success": True,
+        "anno": anno,
+        "data_generazione": datetime.now(timezone.utc).isoformat(),
+        "fonte": "movimenti_contabili",
+        "fonte_descrizione": "Registro definitivo in partita doppia",
+        "conti": risultato,
+        "totali": {
+            "dare": totale_dare,
+            "avere": totale_avere,
+            "saldo_dare": round(sum(v["saldo_dare"] for v in risultato), 2),
+            "saldo_avere": round(sum(v["saldo_avere"] for v in risultato), 2),
+            "sbilancio": round(totale_dare - totale_avere, 2),
+        },
+        "quadratura": abs(totale_dare - totale_avere) < 0.01,
+        "completezza_registro": {
+            "scritture_registrate": len(scritture),
+            "fatture_da_registrare": backlog_fatture,
+            "corrispettivi_da_registrare": backlog_corrispettivi,
+            "documenti_da_registrare": backlog_totale,
+            "completo": backlog_totale == 0,
+        },
+        "riepilogo": {
+            "n_conti": len(risultato),
+            "n_conti_attivo": sum(v["tipo"] == "attivo" for v in risultato),
+            "n_conti_passivo": sum(v["tipo"] == "passivo" for v in risultato),
+            "n_conti_ricavo": sum(v["tipo"] == "ricavo" for v in risultato),
+            "n_conti_costo": sum(v["tipo"] == "costo" for v in risultato),
+        },
+    }
+
+
 @router.get("/bilancio-verifica")
 async def get_bilancio_verifica_completo(
     anno: int = Query(..., description="Anno di riferimento"),
     dettaglio: bool = Query(False, description="Mostra dettaglio movimenti per conto")
 ) -> Dict[str, Any]:
     """
-    Bilancio di Verifica completo.
-    Aggrega da TUTTE le fonti contabili: fatture, corrispettivi, prima nota, cespiti, cedolini.
+    Bilancio di Verifica dal registro definitivo in partita doppia.
+    Le fonti operative non vengono risommate: i documenti mancanti sono
+    riportati separatamente come backlog di registrazione.
     
     Struttura: per ogni conto del piano dei conti mostra:
     - Saldo iniziale (dare/avere)
@@ -55,6 +188,10 @@ async def get_bilancio_verifica_completo(
     - Saldo finale (dare/avere)
     """
     db = Database.get_db()
+    return await _bilancio_verifica_da_registro(db, anno, dettaglio)
+
+    # Implementazione legacy lasciata temporaneamente sotto per agevolare il
+    # confronto storico; non e' piu' raggiungibile e non alimenta la pagina.
     anno_str = str(anno)
     
     # Struttura conti: {codice: {nome, dare, avere, movimenti[]}}

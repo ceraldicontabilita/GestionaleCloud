@@ -311,6 +311,18 @@ async def get_assegni_stats(anno: Optional[int] = Query(None)) -> Dict[str, Any]
                 {"created_at": {"$regex": f"^{anno}"}},
             ]},
         ]}]
+
+    filtro_tutti_anno = dict(match_filter)
+    if "$and" in match_filter:
+        filtro_tutti_anno["$and"] = list(match_filter["$and"])
+    operativi = {"$or": [
+        {"importo": {"$gt": 0}},
+        {"stato": {"$in": [
+            "compilato", "emesso", "parzialmente_assegnato", "assegnato",
+            "incassato", "annullato", "scaduto",
+        ]}},
+    ]}
+    match_filter.setdefault("$and", []).append(operativi)
     
     pipeline = [
         {"$match": match_filter},
@@ -324,9 +336,12 @@ async def get_assegni_stats(anno: Optional[int] = Query(None)) -> Dict[str, Any]
     by_stato = await db[COLLECTION_ASSEGNI].aggregate(pipeline).to_list(100)
     
     totale = await db[COLLECTION_ASSEGNI].count_documents(match_filter)
+    totale_record = await db[COLLECTION_ASSEGNI].count_documents(filtro_tutti_anno)
     
     return {
         "totale": totale,
+        "totale_record": totale_record,
+        "carnet_vuoti": max(totale_record - totale, 0),
         "per_stato": {item["_id"]: {"count": item["count"], "totale": item["totale"]} for item in by_stato}
     }
 

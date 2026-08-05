@@ -189,14 +189,47 @@ async def paypal_dashboard(
         tx_query["data"] = {"$regex": f"^{anno}"}
     total_transactions = await db[COLL_PAYPAL_TRANSACTIONS].count_documents(tx_query)
     
-    # Transazioni solo pagamenti (lordo < 0)
-    pag_query = {**tx_query, "lordo": {"$lt": 0}}
-    pagamenti = await db[COLL_PAYPAL_TRANSACTIONS].find(
-        pag_query, {"_id": 0, "lordo": 1, "tipo": 1, "nome_controparte": 1, "paypal_account_id": 1}
-    ).to_list(2000)
+    # Carica entrambe le gambe: per le operazioni in valuta l'importo EUR e'
+    # sulla conversione T02 collegata al pagamento originale. Filtrare subito
+    # solo i valori negativi faceva sommare pagamento estero e conversione.
+    tx_dashboard = await db[COLL_PAYPAL_TRANSACTIONS].find(
+        tx_query,
+        {"_id": 0, "lordo": 1, "tipo": 1, "nome_controparte": 1,
+         "paypal_account_id": 1, "paypal_reference_id": 1,
+         "transaction_id": 1, "currency": 1, "importo_eur": 1},
+    ).to_list(10000)
+
+    per_riferimento: Dict[str, List[Dict[str, Any]]] = {}
+    for tx in tx_dashboard:
+        ref = tx.get("paypal_reference_id")
+        if ref and str(tx.get("tipo", "")).startswith("T02"):
+            per_riferimento.setdefault(ref, []).append(tx)
+    for tx in tx_dashboard:
+        if str(tx.get("tipo", "")).startswith("T02"):
+            continue
+        if tx.get("currency") in (None, "", "EUR"):
+            continue
+        gambe = per_riferimento.get(tx.get("transaction_id"), [])
+        gamba_eur = next(
+            (g for g in gambe if g.get("currency") == "EUR"
+             and (float(g.get("lordo") or 0) < 0) == (float(tx.get("lordo") or 0) < 0)),
+            None,
+        )
+        if gamba_eur:
+            tx["importo_eur"] = gamba_eur.get("lordo")
+            for gamba in gambe:
+                gamba["is_conversione"] = True
+
+    pagamenti = [
+        tx for tx in tx_dashboard
+        if not tx.get("is_conversione")
+        and not str(tx.get("tipo", "")).startswith("T02")
+        and tx.get("tipo") != "conversione_valuta"
+        and float(tx.get("importo_eur", tx.get("lordo", 0)) or 0) < 0
+    ]
     _backfill_controparte(pagamenti)
 
-    totale_speso = sum(p['lordo'] for p in pagamenti)
+    totale_speso = sum(float(p.get("importo_eur", p.get("lordo", 0)) or 0) for p in pagamenti)
     
     # Top fornitori
     fornitori_map = {}
@@ -204,7 +237,7 @@ async def paypal_dashboard(
         nome = p.get('nome_controparte', 'N/D') or 'N/D'
         if nome not in fornitori_map:
             fornitori_map[nome] = {'nome': nome, 'totale': 0.0, 'count': 0}
-        fornitori_map[nome]['totale'] += p['lordo']
+        fornitori_map[nome]['totale'] += float(p.get("importo_eur", p.get("lordo", 0)) or 0)
         fornitori_map[nome]['count'] += 1
     
     top_fornitori = sorted(fornitori_map.values(), key=lambda x: x['totale'])[:10]
@@ -215,7 +248,7 @@ async def paypal_dashboard(
         tipo = p.get('tipo', 'altro')
         if tipo not in tipo_map:
             tipo_map[tipo] = {'tipo': tipo, 'totale': 0.0, 'count': 0}
-        tipo_map[tipo]['totale'] += p['lordo']
+        tipo_map[tipo]['totale'] += float(p.get("importo_eur", p.get("lordo", 0)) or 0)
         tipo_map[tipo]['count'] += 1
     
     # Riconciliazione con estratto conto — conta entrambi i flag: il percorso
@@ -251,6 +284,8 @@ async def paypal_dashboard(
         "per_tipo": list(tipo_map.values()),
         "riconciliati_banca": riconciliati,
         "movimenti_banca_paypal": ec_paypal,
+        "anomalia_fonti_mancanti": total_transactions == 0 and ec_paypal > 0,
+        "movimenti_banca_senza_sorgente_paypal": ec_paypal if total_transactions == 0 else 0,
         "anno_filtro": anno
     }
 

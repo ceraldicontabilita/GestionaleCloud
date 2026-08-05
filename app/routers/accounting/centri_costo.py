@@ -326,6 +326,11 @@ async def get_utile_obiettivo(anno: int = Query(...)) -> Dict[str, Any]:
     # Utile target proporzionato
     utile_target_ad_oggi = (utile_target / giorni_lavorativi) * giorni_lavorativi_trascorsi
     scostamento_ad_oggi = utile_corrente - utile_target_ad_oggi
+    percentuale_target_annuo = (
+        (utile_corrente / utile_target) * 100 if utile_target > 0 else 0
+    )
+    gap_target_annuo = max(utile_target - utile_corrente, 0)
+    surplus_target_annuo = max(utile_corrente - utile_target, 0)
     
     # Proiezione fine anno
     if giorni_trascorsi > 0:
@@ -364,6 +369,10 @@ async def get_utile_obiettivo(anno: int = Query(...)) -> Dict[str, Any]:
             "scostamento_ad_oggi": round(scostamento_ad_oggi, 2),
             "stato": "IN_TARGET" if scostamento_ad_oggi >= 0 else "SOTTO_TARGET",
             "percentuale_raggiungimento": round((utile_corrente / utile_target_ad_oggi) * 100, 1) if utile_target_ad_oggi > 0 else 0,
+            "percentuale_target_annuo": round(percentuale_target_annuo, 1),
+            "gap_target_annuo": round(gap_target_annuo, 2),
+            "surplus_target_annuo": round(surplus_target_annuo, 2),
+            "stato_target_annuo": "RAGGIUNTO" if gap_target_annuo == 0 else "DA_RAGGIUNGERE",
             "utile_proiezione_fine_anno": round(utile_proiezione, 2)
         },
         "tempo": {
