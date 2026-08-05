@@ -76,10 +76,13 @@ def _score_match(movimento: Dict, fattura: Dict) -> float:
 
     numero = (fattura.get("numero_fattura") or fattura.get("numero_documento")
               or fattura.get("invoice_number") or "")
-    numero_norm = re.sub(r"[^A-Z0-9]", "", str(numero).upper()).lstrip("0")
-    desc_norm = re.sub(r"[^A-Z0-9]", "", desc)
-    match_numero = bool(numero_norm and len(numero_norm) >= 4 and numero_norm in desc_norm)
-    if not match_fornitore and not match_numero:
+    from app.services.payment_invoice_matching import invoice_reference_in_text
+    match_numero = invoice_reference_in_text(numero, desc)
+    # Regola contabile unica: importo e fornitore non bastano, anche se la
+    # data coincide e la candidata e' una sola. Il numero fattura deve essere
+    # esplicitamente leggibile nella causale; in caso contrario non si crea
+    # neppure una proposta automatica da questo motore legacy.
+    if not (match_fornitore and match_numero):
         return 0.0
     score += 0.30
 
