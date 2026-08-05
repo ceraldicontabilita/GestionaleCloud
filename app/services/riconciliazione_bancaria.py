@@ -30,7 +30,7 @@ scheduler (ogni 30 min) e da app/routers/bank/estratto_conto.py dopo ogni
 upload — stesso pattern operativo già in produzione da mesi con il
 "motore A".
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone, timedelta
 import uuid
 import logging
@@ -742,7 +742,9 @@ def extract_supplier_name(descrizione: str) -> Optional[str]:
     return None
 
 
-async def riconcilia_movimenti_banca() -> Dict[str, Any]:
+async def riconcilia_movimenti_banca(
+    movimento_ids: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     """
     Motore unico di riconciliazione automatica estratto conto ↔ fatture/F24/
     POS/versamenti.
@@ -771,14 +773,34 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
         "errors": []
     }
 
-    # Carica movimenti EC non riconciliati
+    # Carica movimenti EC non riconciliati. Dopo un import il chiamante passa
+    # gli ID appena inseriti/promossi: riesaminare ogni volta l'intero storico
+    # (fino a 5.000 righe) moltiplicava le query su fatture, F24, POS e cassa e
+    # poteva bloccare la coda Drive per minuti. Lo scheduler continua invece a
+    # chiamare senza filtro ed esegue la riconciliazione generale periodica.
     from app.services.bank_evidence import filtro_solo_evidenza_ufficiale
-    movimenti_ec = await db[COLLECTION_ESTRATTO_CONTO].find({
-        "$and": [
-            {"riconciliato": {"$ne": True}},
-            filtro_solo_evidenza_ufficiale(),
-        ]
-    }, {"_id": 0}).to_list(5000)
+    filtri_movimenti = [
+        {"riconciliato": {"$ne": True}},
+        filtro_solo_evidenza_ufficiale(),
+    ]
+    ids_richiesti = list(dict.fromkeys(
+        str(movimento_id).strip()
+        for movimento_id in (movimento_ids or [])
+        if str(movimento_id).strip()
+    ))
+    if movimento_ids is not None:
+        if not ids_richiesti:
+            results["ambito"] = "nuovi_movimenti"
+            return results
+        filtri_movimenti.append({"id": {"$in": ids_richiesti}})
+        results["ambito"] = "nuovi_movimenti"
+    else:
+        results["ambito"] = "completo"
+
+    movimenti_ec = await db[COLLECTION_ESTRATTO_CONTO].find(
+        {"$and": filtri_movimenti},
+        {"_id": 0},
+    ).to_list(5000)
 
     results["movimenti_analizzati"] = len(movimenti_ec)
 
