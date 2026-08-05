@@ -1,7 +1,7 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **1047 endpoint** in **109 prefissi**.
+> Totale **1046 endpoint** in **109 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
@@ -81,13 +81,13 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/pagopa` | 8 | ✓ | pagopa |
 | `/api/partite-aperte` | 3 | ✓ | partite_aperte_api |
 | `/api/paypal-api` | 11 | ✓ | paypal_api |
-| `/api/paypal-statements` | 14 | ✓ | paypal_statements |
+| `/api/paypal-statements` | 15 | ✓ | paypal_statements |
 | `/api/pianificazione` | 5 | ✓ | pianificazione, public_api |
 | `/api/piano-conti` | 12 | ✓ | accounting.piano_conti |
 | `/api/portal` | 1 | ext | public_api |
 | `/api/pos-corrispettivi` | 9 | ✓ | pos_corrispettivi_check |
 | `/api/previsioni-acquisti` | 5 | ✓ | previsioni_acquisti |
-| `/api/prima-nota` | 74 | ✓ | prima_nota_module, prima_nota_module.banca, prima_nota_module.cassa, prima_nota_module.manutenzione, prima_nota_module.salari, prima_nota_module.stats, prima_nota_module.sync |
+| `/api/prima-nota` | 73 | ✓ | prima_nota_module, prima_nota_module.banca, prima_nota_module.cassa, prima_nota_module.manutenzione, prima_nota_module.salari, prima_nota_module.stats, prima_nota_module.sync |
 | `/api/prima-nota-salari` | 18 | ✓ | accounting.prima_nota_salari |
 | `/api/privacy` | 1 | — | legal_pages |
 | `/api/proposte` | 1 | — | dati_provvisori |
@@ -98,7 +98,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/rifiuta` | 1 | — | dati_provvisori |
 | `/api/ritenute` | 3 | ✓ | ritenute |
 | `/api/scadenzario-fornitori` | 6 | ✓ | scadenzario_fornitori |
-| `/api/scadenze` | 10 | ✓ | scadenze |
+| `/api/scadenze` | 9 | ✓ | scadenze |
 | `/api/settings` | 12 | ✓ | settings, settings_router |
 | `/api/suppliers` | 33 | ✓ | public_api, suppliers_module.base, suppliers_module.bulk, suppliers_module.iban, suppliers_module.import_export, suppliers_module.validation |
 | `/api/suppliers-legacy` | 1 | ✓ | public_api |

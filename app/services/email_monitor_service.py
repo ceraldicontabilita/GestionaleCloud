@@ -33,6 +33,63 @@ _sync_stats = {
     "last_error": None
 }
 
+_TIPI_EMAIL_ALIAS = {
+    "cedolino": "busta_paga",
+    "busta paga": "busta_paga",
+    "cartella": "cartella_esattoriale",
+    "avviso": "avviso_bonario",
+    "verbali": "verbale",
+    "fattura_xml": "fattura_xml",
+}
+
+_TIPI_EMAIL_RILEVANTI = {
+    "fattura_xml", "fattura", "fattura_estera_pdf", "f24", "quietanza",
+    "busta_paga", "pagopa", "contributi_inps", "inps", "inail", "paypal",
+    "satispay", "cartella_esattoriale", "avviso_bonario", "verbale",
+    "dichiarazione_iva", "certificazione_unica", "estratto_conto", "bonifico",
+}
+
+
+def _normalizza_tipo_email(value: Any) -> str:
+    tipo = str(value or "").strip().lower().replace("-", "_")
+    return _TIPI_EMAIL_ALIAS.get(tipo, tipo)
+
+
+def _risolvi_tipo_documento_email(doc: Dict[str, Any], mittente: Dict[str, Any]) -> Optional[str]:
+    """La classificazione dell'allegato prevale sul profilo del mittente.
+
+    Il profilo mittente e' solo un fallback per i casi specifici gia'
+    configurati (es. fattura estera). Non trasforma allegati sconosciuti in
+    documenti generici e non forza una fattura su un F24/cedolino.
+    """
+    rilevato = _normalizza_tipo_email(
+        doc.get("tipo_documento") or doc.get("categoria") or doc.get("category")
+    )
+    fallback = _normalizza_tipo_email(mittente.get("tipo_documento"))
+    if rilevato == "fattura" and fallback in {"fattura_estera_pdf", "fattura_xml"}:
+        return fallback
+    if rilevato in _TIPI_EMAIL_RILEVANTI:
+        return rilevato
+    return fallback if fallback in _TIPI_EMAIL_RILEVANTI else None
+
+
+async def _archivia_copia_drive(db, doc: Dict[str, Any], tipo: str) -> None:
+    """Archivia in Drive senza bloccare ne' rimuovere la copia applicativa."""
+    try:
+        from app.services.email_drive_archive import archive_document_copy
+        result = await asyncio.to_thread(archive_document_copy, doc, tipo)
+    except Exception as exc:
+        logger.warning("[Gmail] Archivio Drive fallito per %s: %s", doc.get("filename"), exc)
+        result = {"status": "error", "reason": str(exc)}
+    await db["documents_inbox"].update_one(
+        {"id": doc.get("id")},
+        {"$set": {
+            "drive_archive_status": result.get("status"),
+            "drive_archive_area": result.get("area"),
+            "drive_archived_at": result.get("archived_at"),
+        }},
+    )
+
 
 async def _check_mittente(db, from_addr: str, canale: str) -> Optional[Dict]:
     """
@@ -176,7 +233,8 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
     unprocessed = await db["documents_inbox"].find(
         {"xml_processed": {"$ne": True}, "fonte": {"$in": ["gmail_monitor", "email_sync", None]}},
         {"_id": 0, "id": 1, "filename": 1, "file_path": 1, "content": 1,
-         "pdf_data": 1, "email_from": 1, "email_subject": 1, "tipo_documento": 1}
+         "pdf_data": 1, "email_from": 1, "email_subject": 1, "tipo_documento": 1,
+         "categoria": 1, "category": 1, "category_label": 1, "file_hash": 1}
     ).to_list(200)
 
     for doc in unprocessed:
@@ -191,7 +249,27 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
             )
             continue
 
-        tipo = mittente.get("tipo_documento", "generico")
+        tipo = _risolvi_tipo_documento_email(doc, mittente)
+        if not tipo:
+            await db["documents_inbox"].update_one(
+                {"id": doc["id"]},
+                {"$set": {
+                    "xml_processed": True,
+                    "stato": "non_rilevante",
+                    "xml_result": {"skipped": True, "reason": "allegato_non_rilevante"},
+                }},
+            )
+            continue
+
+        from app.constants.tipi_documento import set_tassonomia_documento
+        tassonomia = set_tassonomia_documento(
+            {}, tipo, label=doc.get("category_label") or tipo.replace("_", " ").title()
+        )
+        await db["documents_inbox"].update_one(
+            {"id": doc["id"]}, {"$set": tassonomia}
+        )
+        doc.update(tassonomia)
+        await _archivia_copia_drive(db, doc, tipo)
 
         if tipo == "fattura_xml":
             # ── Processo XML FatturaPA con la PIPELINE UNICA condivisa con
@@ -268,8 +346,7 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
                 {"id": doc["id"]},
                 {"$set": {
                     "xml_processed": True,
-                    "tipo_documento": tipo,
-                    "categoria": tipo,
+                    **set_tassonomia_documento({}, tipo),
                     "mittente_pattern": mittente.get("pattern"),
                     "xml_result": {"routed": True, "tipo": tipo, "estrazione": res}
                 }}
@@ -282,8 +359,7 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
                 {"id": doc["id"]},
                 {"$set": {
                     "xml_processed": True,
-                    "tipo_documento": tipo,
-                    "categoria": tipo,
+                    **set_tassonomia_documento({}, tipo),
                     "mittente_pattern": mittente.get("pattern"),
                     "xml_result": {"routed": True, "tipo": tipo}
                 }}

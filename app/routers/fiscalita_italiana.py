@@ -336,24 +336,6 @@ def genera_scadenze_anno(anno: int) -> List[Dict]:
             "fonte_ufficiale": FONTE_SCADENZARIO_AE,
         })
     
-    # Liquidazioni trimestrali
-    scadenze_trim = [
-        (_sposta_da_weekend(f"{anno}-05-16"), "1° trimestre", "6031"),
-        (f"{anno}-08-20", "2° trimestre", "6032"),  # 20 agosto
-        (_sposta_da_weekend(f"{anno}-11-16"), "3° trimestre", "6033"),
-        (_sposta_da_weekend(f"{anno+1}-02-16"), "4° trimestre", "6034"),
-    ]
-    for data, periodo, codice in scadenze_trim:
-        scadenze.append({
-            "id": f"iva_trim_{codice}",
-            "tipo": "IVA",
-            "descrizione": f"Liquidazione IVA trimestrale {periodo} {anno}",
-            "data": data,
-            "periodicita": "trimestrale",
-            "codice_tributo": codice,
-            "categoria": "versamento"
-        })
-    
     # Acconto IVA
     scadenze.append({
         "id": f"iva_acconto_{anno}",
@@ -361,7 +343,7 @@ def genera_scadenze_anno(anno: int) -> List[Dict]:
         "descrizione": f"Acconto IVA {anno}",
         "data": f"{anno}-12-27",
         "codice_tributo": "6013",
-        "note": "88% dell'IVA versata ultimo mese/trimestre anno precedente",
+        "note": "Acconto annuale: importo da verificare sul modello F24 del commercialista",
         "categoria": "versamento"
     })
     

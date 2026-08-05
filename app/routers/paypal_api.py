@@ -11,6 +11,7 @@ from app.config import settings
 from app.services.paypal_api_sync import sync_paypal_period
 from app.services.paypal_api_client import paypal_client
 from app.services.paypal_riconciliazione import match_fornitore, normalize_string
+from app.services.paypal_invoice_matching import business_name_matches
 
 router = APIRouter(tags=["PayPal API"])
 logger = logging.getLogger(__name__)
@@ -184,7 +185,9 @@ async def riconcilia_da_collection(
     r_fatt = await riconcilia_pagamenti_paypal(db, [
         {
             "data": (t.get("initiation_date") or "")[:10],
-            "beneficiario": t.get("paypal_account_id", "") or t.get("transaction_subject", ""),
+            "beneficiario": t.get("nome_controparte") or t.get("transaction_subject", ""),
+            "email_controparte": t.get("email_controparte"),
+            "invoice_id_fornitore": t.get("invoice_id_fornitore"),
             "paypal_account_id": t.get("paypal_account_id"),
             "importo": t.get("importo", 0),
             "codice_transazione": t.get("transaction_id"),
@@ -385,11 +388,9 @@ async def account_ids_non_mappati(anno: Optional[int] = None):
                 cp_score = match_fornitore(nome_controparte, nome)
                 if cp_score > score:
                     score = cp_score
-            # Senza una minima somiglianza testuale la sola coincidenza di
-            # importo non significa nulla (segnalato dall'utente 18/07/2026:
-            # un abbonamento OpenAI proponeva grossisti alimentari a caso
-            # solo perché la fattura aveva un importo simile) — scarta.
-            if score <= 0:
+            # La coincidenza di importo non prova l'identita': proponi il
+            # fornitore solo se le due ragioni sociali sono coerenti.
+            if not nome_controparte or not business_name_matches(nome_controparte, nome):
                 continue
             forn = await db["fornitori"].find_one(
                 {"$or": [{"piva": piva}, {"partita_iva": piva}, {"codice_fiscale": piva}]},
@@ -403,7 +404,7 @@ async def account_ids_non_mappati(anno: Optional[int] = None):
                     "piva": forn.get("piva") or piva,
                     "n_fatture_simili": fc.get("n_fatture", 0),
                     "score": round(score, 2),
-                    "source": "importo_simile",
+                    "source": "nome_e_fatture_coerenti",
                 })
         # Ordina per score desc poi per n_fatture desc
         candidati.sort(key=lambda c: (c["score"], c["n_fatture_simili"]), reverse=True)
@@ -466,6 +467,7 @@ async def cerca_fattura_email_per_account(paypal_account_id: str) -> Dict[str, A
     from app.services.paypal_email_recovery import _mappa_da_fornitore_esistente
     if await _mappa_da_fornitore_esistente(db, paypal_account_id, nome_controparte):
         return {
+            "ok": True,
             "paypal_account_id": paypal_account_id,
             "nome_controparte": nome_controparte,
             "fornitore_agganciato": True,
@@ -478,7 +480,16 @@ async def cerca_fattura_email_per_account(paypal_account_id: str) -> Dict[str, A
 
     user, pwd, _ = await get_gmail_credentials(db)
     if not user or not pwd:
-        raise HTTPException(400, "Nessun account Gmail configurato (Admin → Email, con App Password)")
+        return {
+            "ok": False,
+            "paypal_account_id": paypal_account_id,
+            "nome_controparte": nome_controparte,
+            "cercato_per": parola_chiave or email_controparte,
+            "errore": "Nessun account Gmail configurato",
+            "azione": "Configura l'account in Admin → Email con una App Password",
+            "documents": [],
+            "stats": {"emails_found": 0, "new_documents": 0},
+        }
 
     # NON passare allowed_senders insieme a search_keywords: se valorizzato,
     # download_documents_from_email() ignora del tutto la ricerca per parola
@@ -501,6 +512,7 @@ async def cerca_fattura_email_per_account(paypal_account_id: str) -> Dict[str, A
         )
 
     return {
+        "ok": True,
         "paypal_account_id": paypal_account_id,
         "nome_controparte": nome_controparte,
         "email_controparte": email_controparte,

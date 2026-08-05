@@ -10,6 +10,7 @@ import asyncio
 import logging
 
 from app.database import Database
+from app.services.identity_matching import identita_coincide, nome_presente_nel_testo
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,6 @@ def trova_movimento_bancario_univoco(
     bonifico: Dict[str, Any], movimenti: list, movimenti_usati: set
 ):
     """Nome completo in causale + importo esatto + data vicina, un solo match."""
-    from app.services.bonifici_pdf_ingest import nome_presente_nel_testo
     nome = _nome_beneficiario(bonifico)
     data_bonifico = _parse_data(bonifico.get("data"))
     try:
@@ -333,7 +333,6 @@ async def reset_riconciliazione(_admin: Dict[str, Any] = Depends(get_current_adm
 
 async def associa_bonifici_dipendenti(dry_run: bool = True) -> Dict[str, Any]:
     """Associa bonifici ai dipendenti tramite nome beneficiario."""
-    from app.services.bonifici_pdf_ingest import identita_coincide
     db = Database.get_db()
     
     bonifici = await db.bonifici_transfers.find(

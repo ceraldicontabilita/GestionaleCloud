@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1047 · tenere: 691 · verificare: 333 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1046 · tenere: 691 · verificare: 332 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -506,7 +506,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `PUT /api/f24-public/models/{f24_id}/pagato` | f24.f24_public | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/f24-public/pdf/{f24_id}` | f24.f24_public | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/f24-public/scadenze-prossime` | f24.f24_public | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/f24-public/test` | f24.f24_public | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/f24-public/test` | f24.f24_public | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/f24-public/upload` | f24.f24_public | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/f24-public/upload-overwrite` | f24.f24_public | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/f24-riconciliazione/alerts` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -776,13 +776,14 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/paypal-api/webhook` | paypal_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-statements/auto-associa` | paypal_statements | — | sì | — | — | sì | tenere | in uso: scheduler |
 | `POST /api/paypal-statements/auto-cerca-gmail` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/paypal-statements/bank-movements` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/paypal-statements/dashboard` | paypal_statements | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-statements/import-all-local` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-statements/import-csv` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/paypal-statements/import-pdf` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-statements/pulisci-match-solo-importo` | paypal_statements | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/paypal-statements/report` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/paypal-statements/riconcilia-banca` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/paypal-statements/riconcilia-banca` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/paypal-statements/statements` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/paypal-statements/transactions` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/paypal-statements/transazione/{transaction_id}/associa` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
@@ -880,7 +881,6 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/prima-nota/fix-tipo-movimento` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/fix-versamenti-duplicati` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/import-batch` | prima_nota_module.sync | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/prima-nota/importa-da-ec` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/migra-pos-accrediti-reali` | prima_nota_module.manutenzione | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/prima-nota/migrazione-pulisci-bancari-cassa` | prima_nota_module.manutenzione | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `GET /api/prima-nota/movimenti-ec-non-in-prima-nota` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
@@ -941,13 +941,12 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/scadenzario-fornitori/cash-flow-previsionale` | scadenzario_fornitori | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/scadenzario-fornitori/scadenze-integrate` | scadenzario_fornitori | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/scadenzario-fornitori/urgenti` | scadenzario_fornitori | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/scadenze` | scadenze | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/scadenze/` | scadenze | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/scadenze` | scadenze | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/scadenze/` | scadenze | sì | — | — | — | sì | tenere | in uso: FE |
 | `PUT /api/scadenze/completa/{notifica_id}` | scadenze | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/scadenze/crea` | scadenze | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/scadenze/dashboard-widget` | scadenze | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/scadenze/iva-mensile/{anno}` | scadenze | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/scadenze/iva/{anno}` | scadenze | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/scadenze/prossime` | scadenze | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/scadenze/tutte` | scadenze | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/scadenze/{notifica_id}` | scadenze | sì | — | — | — | — | tenere | in uso: FE |

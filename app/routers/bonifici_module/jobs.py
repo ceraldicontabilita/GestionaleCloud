@@ -10,6 +10,7 @@ import zipfile
 import shutil
 
 from app.database import Database
+from app.routers.bonifici_module.associazioni import _valuta_fattura_bonifico
 from .common import (
     UPLOAD_DIR, safe_filename, build_dedup_key,
     parse_filename_data, logger
@@ -280,11 +281,10 @@ async def _auto_associate_bonifici(db, job_id: str) -> tuple:
                     {"importo_totale": importo},
                 ],
             }, {"_id": 0}).to_list(100)
-            fatture_compatibili = []
-            for candidata in fatture:
-                fornitore = (candidata.get("supplier_name") or candidata.get("fornitore_denominazione") or "").lower()
-                if fornitore and (fornitore in beneficiario_nome or fornitore in causale):
-                    fatture_compatibili.append(candidata)
+            fatture_compatibili = [
+                candidata for candidata in fatture
+                if _valuta_fattura_bonifico(bonifico, candidata)["compatibile"]
+            ]
             if len(fatture_compatibili) == 1:
                 fattura_match = fatture_compatibili[0]
                 await db.bonifici_transfers.update_one(

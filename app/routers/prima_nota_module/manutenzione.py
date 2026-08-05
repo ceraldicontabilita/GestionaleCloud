@@ -2,7 +2,7 @@
 Prima Nota Module - Manutenzione e Fix.
 Funzioni di fix, cleanup, recalculate per manutenzione dati.
 """
-from fastapi import HTTPException, Query, Body, Depends
+from fastapi import HTTPException, Query, Depends
 from app.utils.dependencies import get_current_admin_user
 from pydantic import BaseModel
 from typing import Dict, Optional, Any
@@ -2040,74 +2040,6 @@ async def lista_movimenti_ec_non_in_prima_nota(
             sum(x["importo"] for x in mancanti if x["tipo"] == "uscita"), 2
         ),
         "movimenti": mancanti,
-    }
-
-
-async def importa_movimento_ec_in_prima_nota(
-    data: Dict[str, Any] = Body(...)
-) -> Dict[str, Any]:
-    """Crea un movimento in Prima Nota Banca a partire da un movimento EC.
-
-    Body:
-      - ec_id: id del movimento estratto_conto_movimenti da importare
-      - categoria (opzionale): categoria da assegnare al movimento PN
-      - descrizione (opzionale): sovrascrive la descrizione EC
-
-    Effetti:
-      - Inserisce un record in prima_nota_banca con source='import_da_ec'
-      - Segna il movimento EC con riconciliato=True e estratto_conto_ref impostato
-      - Idempotente: se esiste già un PN con estratto_conto_ref=ec_id, non crea duplicati
-    """
-    db = Database.get_db()
-    ec_id = data.get("ec_id")
-    if not ec_id:
-        raise HTTPException(status_code=400, detail="ec_id richiesto")
-
-    ec = await db[COLLECTION_ESTRATTO_CONTO].find_one({"id": ec_id}, {"_id": 0})
-    if not ec:
-        raise HTTPException(status_code=404, detail="Movimento estratto conto non trovato")
-
-    # Idempotenza
-    existing = await db[COLLECTION_PRIMA_NOTA_BANCA].find_one({
-        "estratto_conto_ref": ec_id,
-        "status": {"$nin": ["deleted", "archived"]},
-    })
-    if existing:
-        return {
-            "success": True,
-            "message": "Movimento già importato in precedenza",
-            "prima_nota_id": existing.get("id"),
-            "duplicato": True,
-        }
-
-    now = datetime.now(timezone.utc).isoformat()
-    pn_id = str(uuid.uuid4())
-    movimento = {
-        "id": pn_id,
-        "data": ec.get("data"),
-        "tipo": ec.get("tipo", "uscita"),
-        "importo": round(float(ec.get("importo", 0) or 0), 2),
-        "descrizione": data.get("descrizione") or ec.get("descrizione", ""),
-        "categoria": data.get("categoria") or ec.get("categoria") or "Da categorizzare",
-        "riferimento": f"EC-{ec_id[:8]}",
-        "source": "import_da_ec",
-        "estratto_conto_ref": ec_id,
-        "created_at": now,
-    }
-    await db[COLLECTION_PRIMA_NOTA_BANCA].insert_one(movimento.copy())
-
-    # Segno il movimento EC come riconciliato
-    await db[COLLECTION_ESTRATTO_CONTO].update_one(
-        {"id": ec_id},
-        {"$set": {"riconciliato": True, "prima_nota_id": pn_id, "riconciliato_at": now}}
-    )
-
-    return {
-        "success": True,
-        "message": "Movimento importato in Prima Nota Banca",
-        "prima_nota_id": pn_id,
-        "ec_id": ec_id,
-        "duplicato": False,
     }
 
 

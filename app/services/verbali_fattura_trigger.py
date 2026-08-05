@@ -59,10 +59,14 @@ async def processa_fattura_per_verbali(db: AsyncIOMotorDatabase, fattura: Dict[s
             existing = await db["verbali_noleggio"].find_one({"numero_verbale": nv})
             if existing:
                 fields = {
+                    "fattura_id": fattura_id,
                     "fattura_associata_id": fattura_id,
+                    "fattura_numero": fattura.get("numero") or fattura.get("invoice_number"),
+                    "numero_fattura": fattura.get("numero") or fattura.get("invoice_number"),
                     "fattura_associata_numero": fattura.get("numero") or fattura.get("invoice_number"),
                     "fattura_associata_data": fattura.get("data_documento") or fattura.get("invoice_date"),
                     "fattura_associata_fornitore": fornitore,
+                    "fornitore": fornitore,
                     "fattura_associata_importo": fattura.get("importo_totale") or fattura.get("total_amount"),
                     "updated_at": _utc_now_iso(),
                 }
@@ -87,10 +91,14 @@ async def processa_fattura_per_verbali(db: AsyncIOMotorDatabase, fattura: Dict[s
                     "data_violazione": dm.group(1) if dm else None,
                     "importo_addebitato_fornitore": float(importo_linea) if importo_linea else None,
                     "descrizione_da_fattura": desc[:300],
+                    "fattura_id": fattura_id,
                     "fattura_associata_id": fattura_id,
+                    "fattura_numero": fattura.get("numero") or fattura.get("invoice_number"),
+                    "numero_fattura": fattura.get("numero") or fattura.get("invoice_number"),
                     "fattura_associata_numero": fattura.get("numero") or fattura.get("invoice_number"),
                     "fattura_associata_data": fattura.get("data_documento") or fattura.get("invoice_date"),
                     "fattura_associata_fornitore": fornitore,
+                    "fornitore": fornitore,
                     "fattura_associata_importo": fattura.get("importo_totale") or fattura.get("total_amount"),
                     "stato": "notifica_attesa",
                     "source": "fattura_xml_trigger",
@@ -101,4 +109,8 @@ async def processa_fattura_per_verbali(db: AsyncIOMotorDatabase, fattura: Dict[s
                 await db["verbali_noleggio"].insert_one(new_doc)
                 result["verbali_creati"] += 1
                 result["verbali_trovati"].append({"numero_verbale": nv, "azione": "creato"})
+            await db["invoices"].update_one(
+                {"id": fattura_id},
+                {"$addToSet": {"verbali_collegati": nv}},
+            )
     return result

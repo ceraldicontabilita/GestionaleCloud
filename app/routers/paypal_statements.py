@@ -17,6 +17,8 @@ from app.db_collections import (
     COLL_FORNITORI,
     COLL_EMPLOYEES
 )
+from app.services.paypal_invoice_matching import evaluate_paypal_invoice_match
+from app.services.payment_invoice_matching import amounts_equal_to_cent
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -60,6 +62,107 @@ def _backfill_controparte(transactions: List[Dict[str, Any]]) -> None:
             t["email_controparte"] = known["email_controparte"]
 
 
+def _data_documento(doc: Dict[str, Any]) -> Optional[datetime]:
+    """Normalizza le date dei due schemi PayPal e dell'estratto conto."""
+    value = (
+        doc.get("data")
+        or doc.get("data_contabile")
+        or doc.get("booking_date")
+        or doc.get("initiation_date")
+        or doc.get("transaction_initiation_date")
+    )
+    if not value:
+        return None
+    text = str(value).strip()[:10]
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(text, fmt)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _importo_paypal(tx: Dict[str, Any]) -> float:
+    """Importo EUR canonico, compatibile con statement e API Reporting."""
+    for field in ("importo_eur", "lordo", "importo"):
+        value = tx.get(field)
+        if value not in (None, ""):
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return 0.0
+    return 0.0
+
+
+def _descrizione_banca(mov: Dict[str, Any]) -> str:
+    return str(mov.get("descrizione_originale") or mov.get("descrizione") or "")
+
+
+def _id_movimento(mov: Dict[str, Any]) -> str:
+    return str(mov.get("id") or mov.get("_id") or "")
+
+
+def _score_match_banca(tx: Dict[str, Any], mov: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Valuta un collegamento PayPal-banca senza accettare l'importo da solo.
+
+    Sono sufficienti importo esatto, segno coerente e data vicina; un ID
+    PayPal presente nella causale e' una prova ancora piu' forte. A parita'
+    di score il chiamante lascia il movimento non riconciliato.
+    """
+    tx_amount = _importo_paypal(tx)
+    try:
+        mov_amount = float(mov.get("importo") or 0)
+    except (TypeError, ValueError):
+        return None
+    movimento_uscita = mov.get("tipo") == "uscita" or mov_amount < 0
+    transazione_uscita = tx_amount < 0
+    if not tx_amount or not mov_amount or movimento_uscita != transazione_uscita:
+        return None
+
+    descrizione = _descrizione_banca(mov).lower()
+    riferimenti = {
+        str(tx.get("transaction_id") or "").lower(),
+        str(tx.get("paypal_reference_id") or "").lower(),
+        str(tx.get("reference_id") or "").lower(),
+    } - {""}
+    riferimento_esplicito = next((r for r in riferimenti if len(r) >= 8 and r in descrizione), None)
+
+    importo_esatto = amounts_equal_to_cent(tx_amount, mov_amount)
+    if not importo_esatto:
+        return None
+
+    tx_date = _data_documento(tx)
+    mov_date = _data_documento(mov)
+    if not tx_date or not mov_date:
+        return None
+    delta = abs((tx_date - mov_date).days)
+    if delta > 10 and not riferimento_esplicito:
+        return None
+
+    score = 10  # segno coerente
+    evidenze = ["segno_coerente"]
+    if importo_esatto:
+        score += 55
+        evidenze.append("importo_esatto")
+    if riferimento_esplicito:
+        score += 100
+        evidenze.append("riferimento_paypal_in_causale")
+    if delta == 0:
+        score += 30
+        evidenze.append("stessa_data")
+    elif delta <= 3:
+        score += 24
+        evidenze.append("data_entro_3_giorni")
+    elif delta <= 7:
+        score += 15
+        evidenze.append("data_entro_7_giorni")
+    elif delta <= 10:
+        score += 5
+        evidenze.append("data_entro_10_giorni")
+
+    return {"score": score, "evidenze": evidenze, "delta_giorni": delta}
+
+
 @router.get("/statements")
 async def get_paypal_statements(
     anno: Optional[int] = None,
@@ -76,6 +179,89 @@ async def get_paypal_statements(
     ).sort("periodo_inizio", -1).limit(limit).to_list(limit)
     
     return {"statements": statements, "totale": len(statements)}
+
+
+@router.get("/bank-movements")
+async def get_paypal_bank_movements(
+    anno: Optional[int] = None,
+    search: Optional[str] = None,
+    stato: str = Query(default="tutti", pattern="^(tutti|riconciliati|da_associare)$"),
+    direzione: str = Query(default="tutte", pattern="^(tutte|uscite|entrate)$"),
+    limit: int = Query(default=1000, le=5000),
+):
+    """Espone le righe bancarie PayPal, distinte dai documenti MSR/CSV."""
+    db = Database.get_db()
+    paypal_filter: Dict[str, Any] = {"$or": [
+        {"descrizione": {"$regex": "paypal", "$options": "i"}},
+        {"descrizione_originale": {"$regex": "paypal", "$options": "i"}},
+    ]}
+    query: Dict[str, Any] = paypal_filter
+    if anno:
+        query = {"$and": [paypal_filter, {"$or": [
+            {"data": {"$regex": f"^{anno}"}},
+            {"data_contabile": {"$regex": f"^{anno}"}},
+        ]}]}
+
+    movimenti = await db[COLL_ESTRATTO_CONTO].find(query, {"_id": 0}).sort("data", -1).to_list(limit)
+    ids = {_id_movimento(m) for m in movimenti} - {""}
+    tx_collegate = await db[COLL_PAYPAL_TRANSACTIONS].find(
+        {"$or": [
+            {"movimento_banca_id": {"$in": list(ids)}},
+            {"estratto_conto_movimento_id": {"$in": list(ids)}},
+        ]},
+        {"_id": 0, "transaction_id": 1, "movimento_banca_id": 1,
+         "estratto_conto_movimento_id": 1},
+    ).to_list(limit) if ids else []
+    tx_per_movimento: Dict[str, str] = {}
+    for tx in tx_collegate:
+        mid = str(tx.get("movimento_banca_id") or tx.get("estratto_conto_movimento_id") or "")
+        if mid:
+            tx_per_movimento[mid] = str(tx.get("transaction_id") or "")
+
+    output = []
+    riconciliati_totali = 0
+    search_norm = (search or "").strip().lower()
+    for mov in movimenti:
+        mov_id = _id_movimento(mov)
+        tx_id = str(mov.get("paypal_transaction_id") or tx_per_movimento.get(mov_id) or "")
+        riconciliato = bool(tx_id)
+        if riconciliato:
+            riconciliati_totali += 1
+        try:
+            amount = float(mov.get("importo") or 0)
+        except (TypeError, ValueError):
+            amount = 0.0
+        if stato == "riconciliati" and not riconciliato:
+            continue
+        if stato == "da_associare" and riconciliato:
+            continue
+        if direzione == "uscite" and amount >= 0:
+            continue
+        if direzione == "entrate" and amount <= 0:
+            continue
+        descrizione = _descrizione_banca(mov)
+        if search_norm and search_norm not in f"{descrizione} {tx_id} {mov_id}".lower():
+            continue
+        output.append({
+            "id": mov_id,
+            "data": str(mov.get("data") or mov.get("data_contabile") or "")[:10],
+            "descrizione": descrizione,
+            "importo": amount,
+            "direzione": "uscita" if amount < 0 else "entrata",
+            "riconciliato_paypal": riconciliato,
+            "paypal_transaction_id": tx_id or None,
+            "tipo_riconciliazione": mov.get("tipo_riconciliazione"),
+            "riconciliazione_evidenze": mov.get("riconciliazione_evidenze") or [],
+        })
+
+    return {
+        "anno": anno,
+        "movimenti": output,
+        "totale": len(output),
+        "totale_banca_paypal": len(movimenti),
+        "riconciliati": riconciliati_totali,
+        "da_associare": len(movimenti) - riconciliati_totali,
+    }
 
 
 @router.get("/transactions")
@@ -397,89 +583,113 @@ async def import_paypal_csv(file: UploadFile = File(...)):
 
 
 @router.post("/riconcilia-banca")
-async def riconcilia_con_banca():
+async def riconcilia_con_banca(anno: Optional[int] = None):
     """Riconcilia manualmente (normalmente è automatico dopo import)."""
     db = Database.get_db()
-    result = await _auto_riconcilia(db)
+    result = await _auto_riconcilia(db, anno=anno)
     return result
 
 
-async def _auto_riconcilia(db) -> Dict:
+async def _auto_riconcilia(db, anno: Optional[int] = None) -> Dict:
     """Riconcilia transazioni PayPal con movimenti estratto conto bancario.
-    Matching per importo + data con tolleranza 3 giorni (ritardo SDD).
+    Matching univoco per segno + importo + data, oppure riferimento PayPal
+    esplicito in causale. L'importo da solo non produce mai un'associazione.
     """
-    from datetime import timedelta
-    
     paypal_txs = await db[COLL_PAYPAL_TRANSACTIONS].find(
-        {"riconciliato_banca": {"$ne": True}, "lordo": {"$lt": 0}},
+        {"$and": [
+            {"riconciliato_banca": {"$ne": True}},
+            {"riconciliato_con_estratto_banca": {"$ne": True}},
+        ]},
         {"_id": 0}
     ).to_list(5000)
+    paypal_txs = [
+        tx for tx in paypal_txs
+        if _importo_paypal(tx)
+        and not str(tx.get("tipo") or tx.get("event_code") or "").startswith("T02")
+        and (not anno or (_data_documento(tx) and _data_documento(tx).year == anno))
+    ]
     
     # Cerca su descrizione_originale E descrizione (entrambi i campi)
-    banca_paypal = await db[COLL_ESTRATTO_CONTO].find(
-        {"$or": [
+    banca_query: Dict[str, Any] = {"$or": [
             {"descrizione": {"$regex": "paypal", "$options": "i"}},
             {"descrizione_originale": {"$regex": "paypal", "$options": "i"}}
-        ]},
+        ]}
+    if anno:
+        banca_query = {"$and": [banca_query, {"$or": [
+            {"data": {"$regex": f"^{anno}"}},
+            {"data_contabile": {"$regex": f"^{anno}"}},
+        ]}]}
+    banca_paypal = await db[COLL_ESTRATTO_CONTO].find(
+        banca_query,
         {"_id": 0}
     ).to_list(5000)
     
     # Index banca per importo per velocizzare matching
-    banca_usati = set()
+    banca_usati = {
+        _id_movimento(m) for m in banca_paypal
+        if m.get("paypal_transaction_id")
+    }
+    tx_usate = set()
     riconciliati = 0
-    
-    for tx in paypal_txs:
-        tx_importo = abs(tx['lordo'])
-        tx_data = tx['data']
-        tx_id = tx.get('transaction_id', '')
-        
-        try:
-            tx_dt = datetime.strptime(tx_data, '%Y-%m-%d')
-        except (ValueError, TypeError):
+    ambigui = 0
+
+    for mov in banca_paypal:
+        mov_id = _id_movimento(mov)
+        if not mov_id or mov_id in banca_usati:
             continue
-        
-        best_match = None
-        best_delta = 999
-        
-        for mov in banca_paypal:
-            mov_id = mov.get('id', '')
-            if mov_id in banca_usati:
+        candidati = []
+        for tx in paypal_txs:
+            tx_id = str(tx.get("transaction_id") or tx.get("id") or "")
+            if not tx_id or tx_id in tx_usate:
                 continue
-            
-            mov_importo = abs(mov.get('importo', 0))
-            importo_match = abs(tx_importo - mov_importo) < 0.02
-            if not importo_match:
-                continue
-            
-            mov_data_str = str(mov.get('data', ''))[:10]
-            try:
-                mov_dt = datetime.strptime(mov_data_str, '%Y-%m-%d')
-                delta = abs((tx_dt - mov_dt).days)
-            except (ValueError, TypeError):
-                continue
-            
-            if delta <= 3 and delta < best_delta:
-                best_match = mov
-                best_delta = delta
-        
-        if best_match:
-            banca_usati.add(best_match.get('id', ''))
-            await db[COLL_PAYPAL_TRANSACTIONS].update_one(
-                {"transaction_id": tx_id},
-                {"$set": {
-                    "riconciliato_banca": True,
-                    "movimento_banca_id": best_match.get('id'),
-                    "data_banca": str(best_match.get('data', ''))[:10],
-                    "riconciliato_il": datetime.now(timezone.utc).isoformat()
-                }}
-            )
-            riconciliati += 1
+            match = _score_match_banca(tx, mov)
+            if match and match["score"] >= 85:
+                candidati.append((match["score"], tx_id, tx, match))
+        candidati.sort(key=lambda item: item[0], reverse=True)
+        if not candidati:
+            continue
+        if len(candidati) > 1 and candidati[0][0] == candidati[1][0]:
+            ambigui += 1
+            continue
+
+        _, tx_id, tx, match = candidati[0]
+        tx_usate.add(tx_id)
+        banca_usati.add(mov_id)
+        now = datetime.now(timezone.utc).isoformat()
+        mov_date = str(mov.get("data") or mov.get("data_contabile") or "")[:10]
+        await db[COLL_PAYPAL_TRANSACTIONS].update_one(
+            {"transaction_id": tx_id},
+            {"$set": {
+                "riconciliato_banca": True,
+                "riconciliato_con_estratto_banca": True,
+                "movimento_banca_id": mov_id,
+                "estratto_conto_movimento_id": mov_id,
+                "data_banca": mov_date,
+                "riconciliazione_banca_score": match["score"],
+                "riconciliazione_banca_evidenze": match["evidenze"],
+                "riconciliato_il": now,
+            }}
+        )
+        await db[COLL_ESTRATTO_CONTO].update_one(
+            {"id": mov_id},
+            {"$set": {
+                "riconciliato": True,
+                "tipo_riconciliazione": "paypal_evidenze_univoche",
+                "paypal_transaction_id": tx_id,
+                "riconciliazione_evidenze": match["evidenze"],
+                "riconciliazione_score": match["score"],
+                "data_riconciliazione": now,
+            }}
+        )
+        riconciliati += 1
     
     return {
         "totale_paypal": len(paypal_txs),
         "totale_banca": len(banca_paypal),
         "riconciliati": riconciliati,
-        "non_riconciliati": len(paypal_txs) - riconciliati
+        "non_riconciliati": len(paypal_txs) - riconciliati,
+        "ambigui": ambigui,
+        "criterio": "riferimento oppure importo+segno+data; parita non confermate",
     }
 
 
@@ -680,25 +890,27 @@ async def dettaglio_transazione_paypal(transaction_id: str) -> Dict[str, Any]:
                 "fornitore_piva": forn.get("piva") or forn.get("partita_iva"),
             }
 
-    # 6. Fatture del fornitore associato (best-effort).
-    # STRATEGIA MULTI-LIVELLO:
-    #   a) Se il mapping ha una P.IVA → match esatto su P.IVA (miglior risultato)
-    #   b) Altrimenti, cerca per nome con fuzzy: estrae parole significative
-    #      (>=4 lettere, non "SRL", "SPA", "LTD") e cerca fatture che contengano
-    #      almeno una di quelle parole nel nome fornitore (case-insensitive)
-    #   c) Se c'è la stessa email PayPal nelle fatture (raro ma succede)
-    #   d) Se nessuna strategia trova qualcosa, ritorna [] con suggerimento "collega manualmente"
+    # 6. Fatture del fornitore associato. Numero fattura e importo possono
+    # ripetersi tra fornitori diversi: ogni risultato viene rivalidato con
+    # P.IVA/CF, denominazione o email. Il solo importo non e' un candidato.
     fatture_collegate = []
     nome_controparte = (tx.get("nome_controparte") or tx.get("payer_name") or "").strip()
     email_controparte = (tx.get("email_controparte") or tx.get("payer_email") or "").strip().lower()
-    importo_tx = abs(float(tx.get("importo") or tx.get("lordo") or 0))
+    projection = {
+        "_id": 0, "id": 1, "invoice_number": 1, "numero_fattura": 1,
+        "invoice_date": 1, "data_fattura": 1, "data_documento": 1,
+        "total_amount": 1, "importo_totale": 1,
+        "supplier_name": 1, "cedente_denominazione": 1,
+        "supplier_vat": 1, "cedente_piva": 1, "piva_cedente": 1,
+        "supplier_tax_code": 1, "cedente_codice_fiscale": 1,
+        "supplier_email": 1, "cedente_email": 1, "email_cedente": 1,
+        "stato_pagamento": 1,
+    }
 
     # STRATEGIA 0 (prioritaria): la transazione PayPal porta spesso il numero
     # fattura del fornitore (invoice_id_fornitore, es. Sklum "229819653").
-    # Se c'è, la fattura REALE è quella: cercarla per numero batte qualunque
-    # euristica. Prima questa informazione era ignorata e la Strategia A
-    # restituiva "le ultime 10 fatture del fornitore per data" senza alcuna
-    # correlazione con l'importo → dati sbagliati nel dettaglio (bug Sklum).
+    # Il riferimento restringe la ricerca, ma non basta: numeri come "120"
+    # non sono univoci senza identita' del fornitore.
     rif_fattura = str(tx.get("invoice_id_fornitore") or tx.get("invoice_id") or "").strip()
     if rif_fattura:
         import re as _re
@@ -708,14 +920,8 @@ async def dettaglio_transazione_paypal(transaction_id: str) -> Dict[str, Any]:
                 {"numero_fattura": rif_fattura},
                 {"invoice_number": {"$regex": _re.escape(rif_fattura) + "$"}},
             ]},
-            {"_id": 0, "id": 1, "invoice_number": 1, "numero_fattura": 1,
-             "invoice_date": 1, "data_fattura": 1,
-             "total_amount": 1, "importo_totale": 1,
-             "supplier_name": 1, "cedente_denominazione": 1,
-             "stato_pagamento": 1}
-        ).sort("invoice_date", -1).limit(5).to_list(5)
-        for f in fatture_collegate:
-            f["match"] = "riferimento"
+            projection,
+        ).sort("invoice_date", -1).limit(20).to_list(20)
 
     if not fatture_collegate and mapping_fornitore and mapping_fornitore.get("fornitore_piva"):
         # STRATEGIA A: P.IVA (il match più affidabile)
@@ -728,11 +934,7 @@ async def dettaglio_transazione_paypal(transaction_id: str) -> Dict[str, Any]:
                     {"piva_cedente": piva},
                 ]
             },
-            {"_id": 0, "id": 1, "invoice_number": 1, "numero_fattura": 1,
-             "invoice_date": 1, "data_fattura": 1,
-             "total_amount": 1, "importo_totale": 1,
-             "supplier_name": 1, "cedente_denominazione": 1,
-             "stato_pagamento": 1}
+            projection,
         ).sort("invoice_date", -1).limit(10).to_list(10)
 
     if not fatture_collegate and nome_controparte:
@@ -754,11 +956,7 @@ async def dettaglio_transazione_paypal(transaction_id: str) -> Dict[str, Any]:
                 or_query.append({"cedente_denominazione": {"$regex": escaped, "$options": "i"}})
             fatture_collegate = await db[COLL_INVOICES].find(
                 {"$or": or_query},
-                {"_id": 0, "id": 1, "invoice_number": 1, "numero_fattura": 1,
-                 "invoice_date": 1, "data_fattura": 1,
-                 "total_amount": 1, "importo_totale": 1,
-                 "supplier_name": 1, "cedente_denominazione": 1,
-                 "stato_pagamento": 1}
+                projection,
             ).sort("invoice_date", -1).limit(5).to_list(5)
 
     if not fatture_collegate and email_controparte:
@@ -772,50 +970,31 @@ async def dettaglio_transazione_paypal(transaction_id: str) -> Dict[str, Any]:
                     {"email_cedente": email_controparte},
                 ]
             },
-            {"_id": 0, "id": 1, "invoice_number": 1, "numero_fattura": 1,
-             "invoice_date": 1, "data_fattura": 1,
-             "total_amount": 1, "importo_totale": 1,
-             "supplier_name": 1, "cedente_denominazione": 1,
-             "stato_pagamento": 1}
+            projection,
         ).sort("invoice_date", -1).limit(5).to_list(5)
 
-    # STRATEGIA D: match per IMPORTO su QUALSIASI anno.
-    # Fondamentale per le transazioni senza controparte (es. T0200) e per le
-    # fatture registrate in anni diversi da quello del filtro globale.
-    if not fatture_collegate and importo_tx > 0:
-        fatture_collegate = await db[COLL_INVOICES].find(
-            {"$or": [
-                {"total_amount": {"$gte": importo_tx - 0.05, "$lte": importo_tx + 0.05}},
-                {"importo_totale": {"$gte": importo_tx - 0.05, "$lte": importo_tx + 0.05}},
-            ]},
-            {"_id": 0, "id": 1, "invoice_number": 1, "numero_fattura": 1,
-             "invoice_date": 1, "data_fattura": 1,
-             "total_amount": 1, "importo_totale": 1,
-             "supplier_name": 1, "cedente_denominazione": 1,
-             "stato_pagamento": 1}
-        ).sort("invoice_date", -1).limit(10).to_list(10)
-        for f in fatture_collegate:
-            f["match"] = "importo"
-
-    # Ordinamento e pulizia finale:
-    # 1) dedup per numero fattura (in collection esistono duplicati storici)
-    # 2) le fatture con importo uguale alla transazione (±0.05) in cima e
-    #    marcate, così il frontend le evidenzia; poi per data discendente.
+    # Rivalidazione finale. Dedup per ID, non per numero fattura: lo stesso
+    # numero puo' esistere legittimamente presso fornitori diversi.
     visti = set()
     dedup = []
     for f in fatture_collegate:
-        chiave = (f.get("invoice_number") or f.get("numero_fattura") or f.get("id"))
+        chiave = f.get("id")
         if chiave in visti:
             continue
         visti.add(chiave)
-        imp_f = abs(float(f.get("total_amount") or f.get("importo_totale") or 0))
-        if importo_tx > 0 and abs(imp_f - importo_tx) <= 0.05 and not f.get("match"):
-            f["match"] = "importo"
+        valutazione = evaluate_paypal_invoice_match(tx, f, mapping_fornitore)
+        if not valutazione["identita_fornitore"]:
+            continue
+        f["associabile"] = valutazione["associabile"]
+        f["match_score"] = valutazione["score"]
+        f["match_evidenze"] = valutazione["evidenze"]
+        f["match_scarto"] = valutazione["scarto"]
+        if "numero_fattura" in valutazione["evidenze"]:
+            f["match"] = "riferimento_e_fornitore"
+        elif valutazione["associabile"]:
+            f["match"] = "fornitore_e_importo"
         dedup.append(f)
-    # sort stabile: entro la stessa priorità resta l'ordine per data desc
-    # già prodotto dalle query
-    dedup.sort(key=lambda f: 0 if f.get("match") == "riferimento"
-               else 1 if f.get("match") == "importo" else 2)
+    dedup.sort(key=lambda f: (f.get("associabile", False), f.get("match_score", 0)), reverse=True)
     fatture_collegate = dedup[:6]
 
     # Link diretto alla vista AssoSoftware: la fattura si può SEMPRE vedere,
@@ -896,7 +1075,7 @@ async def associa_transazione(transaction_id: str, body: Dict[str, Any] = Body(.
     db = Database.get_db()
     tx = await db[COLL_PAYPAL_TRANSACTIONS].find_one(
         {"$or": [{"transaction_id": transaction_id}, {"id": transaction_id}]},
-        {"_id": 0, "transaction_id": 1, "id": 1},
+        {"_id": 0},
     )
     if not tx:
         raise HTTPException(status_code=404, detail="Transazione PayPal non trovata")
@@ -905,18 +1084,42 @@ async def associa_transazione(transaction_id: str, body: Dict[str, Any] = Body(.
     if body.get("fattura_id"):
         fatt = await db[COLL_INVOICES].find_one(
             {"id": body["fattura_id"]},
-            {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1,
-             "supplier_name": 1, "total_amount": 1})
+            {"_id": 0})
         if not fatt:
             raise HTTPException(status_code=404, detail="Fattura non trovata")
+        mapping = None
+        paypal_account_id = tx.get("paypal_account_id") or tx.get("account_id")
+        if paypal_account_id:
+            forn = await db["fornitori"].find_one(
+                {"paypal_account_id": paypal_account_id}, {"_id": 0}
+            )
+            if forn:
+                mapping = {
+                    "fornitore_piva": forn.get("piva") or forn.get("partita_iva"),
+                    "codice_fiscale": forn.get("codice_fiscale"),
+                    "fornitore_nome": forn.get("nome"),
+                    "fornitore_ragione_sociale": forn.get("ragione_sociale"),
+                }
+        valutazione = evaluate_paypal_invoice_match(tx, fatt, mapping)
+        if not valutazione["associabile"]:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "messaggio": "Associazione rifiutata: fattura e transazione non hanno evidenze sufficienti",
+                    "motivo": valutazione["scarto"],
+                    "evidenze": valutazione["evidenze"],
+                },
+            )
         set_data["fattura_associata"] = {
             "fattura_id": fatt["id"],
-            "numero": fatt.get("invoice_number"),
-            "data": fatt.get("invoice_date"),
-            "fornitore": fatt.get("supplier_name"),
-            "importo": fatt.get("total_amount"),
+            "numero": fatt.get("invoice_number") or fatt.get("numero_fattura"),
+            "data": fatt.get("invoice_date") or fatt.get("data_fattura"),
+            "fornitore": fatt.get("supplier_name") or fatt.get("cedente_denominazione"),
+            "importo": fatt.get("total_amount") or fatt.get("importo_totale"),
             "view_url": f"/api/fatture-ricevute/fattura/{fatt['id']}/view-assoinvoice",
             "auto": False,
+            "match": "manuale_validato",
+            "evidenze": valutazione["evidenze"],
         }
     elif body.get("gmail"):
         g = body["gmail"]
@@ -945,7 +1148,9 @@ async def auto_associa_transazioni() -> Dict[str, Any]:
     txs = await db[COLL_PAYPAL_TRANSACTIONS].find(
         {"lordo": {"$lt": 0}, "fattura_associata": {"$exists": False}},
         {"_id": 0, "transaction_id": 1, "importo": 1, "lordo": 1,
-         "nome_controparte": 1, "data": 1},
+         "nome_controparte": 1, "email_controparte": 1, "data": 1,
+         "initiation_date": 1, "invoice_id_fornitore": 1, "invoice_id": 1,
+         "paypal_account_id": 1},
     ).to_list(2000)
 
     associate = 0
@@ -962,22 +1167,42 @@ async def auto_associa_transazioni() -> Dict[str, Any]:
             {"$addFields": {"_importo_coalesced": {
                 "$ifNull": ["$total_amount", "$importo_totale"]
             }}},
-            {"$match": {"_importo_coalesced": {"$gte": importo - 0.05, "$lte": importo + 0.05}}},
-            {"$project": {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1,
-                          "supplier_name": 1, "cedente_denominazione": 1, "total_amount": 1}},
+            {"$match": {"_importo_coalesced": {"$gte": importo - 0.004, "$lte": importo + 0.004}}},
+            {"$project": {"_id": 0, "id": 1, "invoice_number": 1, "numero_fattura": 1,
+                          "invoice_date": 1, "data_fattura": 1,
+                          "supplier_name": 1, "cedente_denominazione": 1,
+                          "supplier_vat": 1, "cedente_piva": 1, "piva_cedente": 1,
+                          "supplier_tax_code": 1, "cedente_codice_fiscale": 1,
+                          "supplier_email": 1, "cedente_email": 1,
+                          "total_amount": 1, "importo_totale": 1}},
             {"$limit": 10},
         ]).to_list(10)
         if not cands:
             continue
-        scelta = None
-        nome = (tx.get("nome_controparte") or "").lower()
-        parole = [w for w in nome.replace(",", " ").split() if len(w) >= 4]
-        if parole:
-            for c in cands:
-                forn = ((c.get("supplier_name") or c.get("cedente_denominazione") or "")).lower()
-                if any(w in forn for w in parole):
-                    scelta = c
-                    break
+        mapping = None
+        if tx.get("paypal_account_id"):
+            forn = await db["fornitori"].find_one(
+                {"paypal_account_id": tx["paypal_account_id"]}, {"_id": 0}
+            )
+            if forn:
+                mapping = {
+                    "fornitore_piva": forn.get("piva") or forn.get("partita_iva"),
+                    "codice_fiscale": forn.get("codice_fiscale"),
+                    "fornitore_nome": forn.get("nome"),
+                    "fornitore_ragione_sociale": forn.get("ragione_sociale"),
+                }
+        validi = []
+        for candidato in cands:
+            valutazione = evaluate_paypal_invoice_match(tx, candidato, mapping)
+            if valutazione["associabile"]:
+                validi.append((valutazione, candidato))
+        validi.sort(key=lambda item: item[0]["score"], reverse=True)
+        scelta = validi[0][1] if validi else None
+        valutazione_scelta = validi[0][0] if validi else None
+        # Due fatture con lo stesso punteggio sono ambigue: nessuna scrittura.
+        if len(validi) > 1 and validi[0][0]["score"] == validi[1][0]["score"]:
+            scelta = None
+            valutazione_scelta = None
         # FIX 18/07/2026 (segnalato dall'utente: un pagamento Spotify era
         # collegato alla fattura di "Ricambi Manzo sas", un altro puntava a
         # una fattura ormai cancellata — "Fattura non trovata"): un solo
@@ -1001,7 +1226,8 @@ async def auto_associa_transazioni() -> Dict[str, Any]:
                 "importo": scelta.get("total_amount"),
                 "view_url": f"/api/fatture-ricevute/fattura/{scelta['id']}/view-assoinvoice",
                 "auto": True,
-                "match": "nome_e_importo",
+                "match": "fornitore_numero_importo_esatti",
+                "evidenze": valutazione_scelta["evidenze"],
             }}},
         )
         associate += 1
@@ -1011,26 +1237,25 @@ async def auto_associa_transazioni() -> Dict[str, Any]:
 
 @router.post("/pulisci-match-solo-importo")
 async def pulisci_match_solo_importo(dry_run: bool = Query(True)) -> Dict[str, Any]:
-    """Rimuove le associazioni fattura PayPal non valide — segnalato
-    dall'utente 18/07/2026: un pagamento Spotify risultava collegato alla
-    fattura di "Ricambi Manzo sas" (fornitore completamente estraneo), un
-    altro a una fattura ormai cancellata ("Fattura non trovata"). L'etichetta
-    "match" salvata sulla transazione NON è affidabile per individuare questi
-    casi: alcune associazioni scritte da versioni precedenti della logica di
-    auto_associa_transazioni risultano etichettate "nome_e_importo" pur non
-    avendo mai avuto un vero riscontro sul nome fornitore (i tre pagamenti
-    Spotify del caso segnalato ne sono la prova). Qui si RIVALIDA quindi ogni
-    associazione automatica (fattura_associata.auto == true), a prescindere
-    dall'etichetta storica, rimuovendo quelle dove: la fattura collegata non
-    esiste più (riferimento pendente), oppure nessuna parola (>=4 lettere)
-    del nome controparte PayPal compare nel nome fornitore ATTUALE della
-    fattura (stessa regola di corroborazione usata da auto_associa_transazioni).
-    Le transazioni tornano "non associate" (si ritrovano con Cerca fattura
-    via email o a mano)."""
+    """Rivalida tutte le associazioni automatiche PayPal-fattura storiche.
+
+    Il collegamento resta valido solo quando la fattura esiste e la transazione
+    prova contemporaneamente identita' fornitore, numero fattura e importo
+    uguale al centesimo. Le vecchie etichette ``match`` non sono considerate
+    attendibili: una versione precedente poteva aver salvato collegamenti
+    basati sul solo importo o su un nome approssimativo.
+    """
     db = Database.get_db()
     query = {"fattura_associata.auto": True}
     txs = await db[COLL_PAYPAL_TRANSACTIONS].find(
-        query, {"_id": 0, "transaction_id": 1, "nome_controparte": 1, "fattura_associata": 1}
+        query,
+        {
+            "_id": 0, "transaction_id": 1, "nome_controparte": 1,
+            "payer_name": 1, "email_controparte": 1, "payer_email": 1,
+            "invoice_id_fornitore": 1, "invoice_id": 1,
+            "importo": 1, "lordo": 1, "amount": 1,
+            "fattura_associata": 1,
+        },
     ).to_list(2000)
 
     da_rimuovere = []
@@ -1038,16 +1263,20 @@ async def pulisci_match_solo_importo(dry_run: bool = Query(True)) -> Dict[str, A
         fa = t.get("fattura_associata") or {}
         invoice = await db[COLL_INVOICES].find_one(
             {"id": fa.get("fattura_id")},
-            {"_id": 0, "id": 1, "supplier_name": 1, "cedente_denominazione": 1},
+            {
+                "_id": 0, "id": 1, "supplier_name": 1,
+                "cedente_denominazione": 1, "supplier_vat": 1,
+                "cedente_piva": 1, "piva_cedente": 1,
+                "invoice_number": 1, "numero_fattura": 1,
+                "total_amount": 1, "importo_totale": 1,
+            },
         )
         if not invoice:
             da_rimuovere.append({**t, "_motivo": "fattura_non_trovata"})
             continue
-        forn = (invoice.get("supplier_name") or invoice.get("cedente_denominazione") or "").lower()
-        nome = (t.get("nome_controparte") or "").lower()
-        parole = [w for w in nome.replace(",", " ").split() if len(w) >= 4]
-        if not parole or not any(w in forn for w in parole):
-            da_rimuovere.append({**t, "_motivo": "nessun_riscontro_nome"})
+        valutazione = evaluate_paypal_invoice_match(t, invoice)
+        if not valutazione["associabile"]:
+            da_rimuovere.append({**t, "_motivo": valutazione["scarto"]})
 
     if not dry_run and da_rimuovere:
         ids = [t["transaction_id"] for t in da_rimuovere]

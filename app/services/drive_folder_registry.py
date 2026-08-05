@@ -11,7 +11,23 @@ from app.config import settings
 
 _AUTOMATIC_AREAS = {
     "fatture", "cedolini", "corrispettivi", "quietanze", "estratti_conto",
-    "bonifici_dipendenti", "cartelle_esattoriali", "avvisi_bonari",
+    "bonifici_dipendenti", "cartelle_esattoriali", "avvisi_bonari", "f24",
+    "verbali", "dichiarazioni_iva", "documenti",
+}
+
+_AREA_ALIASES = {
+    "busta_paga": ("cedolini", "buste_paga"),
+    "cedolino": ("cedolini", "buste_paga"),
+    "cartella_esattoriale": ("cartelle_esattoriali", "avvisi_esattoriali"),
+    "avviso_bonario": ("avvisi_bonari",),
+    "verbale": ("verbali",),
+    "f24": ("f24", "quietanze"),
+    "quietanza": ("quietanze", "f24"),
+    "dichiarazione_iva": ("dichiarazioni_iva",),
+    "estratto_conto": ("estratti_conto",),
+    "bonifico": ("bonifici_dipendenti", "bonifici"),
+    "fattura": ("fatture",),
+    "fattura_xml": ("fatture",),
 }
 
 
@@ -31,6 +47,31 @@ def _registry_entries() -> list[dict[str, Any]]:
     if isinstance(payload, dict):
         payload = payload.get("folders", [])
     return [entry for entry in payload if isinstance(entry, dict)] if isinstance(payload, list) else []
+
+
+def get_folder_id(area: str) -> str | None:
+    """Risolve internamente una cartella configurata senza esporne l'ID via API."""
+    requested = _slug(area)
+    candidates = (requested, *_AREA_ALIASES.get(requested, ()))
+    entries = _registry_entries()
+    for candidate in candidates:
+        for entry in entries:
+            entry_area = _slug(entry.get("area") or entry.get("label"))
+            if entry_area != candidate:
+                continue
+            folder_id = str(entry.get("folder_id") or "").strip()
+            if folder_id:
+                return folder_id
+    return None
+
+
+def get_generic_documents_folder_id() -> str | None:
+    """Radice sotto cui creare cartelle documentali mancanti, se configurata."""
+    for area in ("documenti", "documenti_generici", "archivio_documenti"):
+        folder_id = get_folder_id(area)
+        if folder_id:
+            return folder_id
+    return None
 
 
 def get_public_catalog() -> dict[str, Any]:

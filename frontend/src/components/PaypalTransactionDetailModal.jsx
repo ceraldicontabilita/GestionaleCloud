@@ -84,6 +84,8 @@ export default function PaypalTransactionDetailModal({
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [gmailLoading, setGmailLoading] = useState(false);
+  const [associandoId, setAssociandoId] = useState(null);
+  const [refreshSerial, setRefreshSerial] = useState(0);
   const [pdfViewer, setPdfViewer] = useState(null); // {title, src(blob)} — viewer canonico §8
   const [gmailData, setGmailData] = useState(null);
 
@@ -107,7 +109,7 @@ export default function PaypalTransactionDetailModal({
       }
     })();
     return () => { cancelled = true; };
-  }, [open, transactionId]);
+  }, [open, transactionId, refreshSerial]);
 
   // Chiudi con ESC
   useEffect(() => {
@@ -208,6 +210,32 @@ export default function PaypalTransactionDetailModal({
     }
 
     onClose?.();
+  };
+
+  const handleAssociaFattura = async (fattura) => {
+    if (!fattura?.associabile || !fattura?.id) return;
+    setAssociandoId(fattura.id);
+    try {
+      await api.post(
+        `/api/paypal-statements/transazione/${encodeURIComponent(
+          tx.transaction_id || transactionId
+        )}/associa`,
+        { fattura_id: fattura.id }
+      );
+      toast.success(
+        `Fattura ${fattura.invoice_number || fattura.numero_fattura || ''} associata con controlli superati`
+      );
+      setRefreshSerial(value => value + 1);
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      toast.error(
+        typeof detail === 'string'
+          ? detail
+          : detail?.messaggio || e?.message || 'Associazione non riuscita'
+      );
+    } finally {
+      setAssociandoId(null);
+    }
   };
 
   return (
@@ -380,9 +408,12 @@ export default function PaypalTransactionDetailModal({
               {/* ============ SEZIONE 4 - FORNITORE / FATTURE ============ */}
               <Section icon={<Link2 size={14} />} title="Fornitore e fatture">
                 {mapping ? (
-                  <Row label="Fornitore mappato" value={
-                    <strong>{mapping.fornitore_nome || mapping.fornitore_ragione_sociale || '—'}</strong>
-                  } />
+                  <>
+                    <Row label="Fornitore mappato" value={
+                      <strong>{mapping.fornitore_nome || mapping.fornitore_ragione_sociale || '—'}</strong>
+                    } />
+                    <Row label="P.IVA / CF" value={<code>{mapping.fornitore_piva || '—'}</code>} />
+                  </>
                 ) : (
                   <div style={{ fontSize: 12, color: COLORS.warning, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <AlertCircle size={13} style={{ verticalAlign: 'text-bottom' }} />
@@ -396,20 +427,21 @@ export default function PaypalTransactionDetailModal({
                 {fatture.length > 0 ? (
                   <div style={{ marginTop: 8 }}>
                     <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.3 }}>
-                      Altre fatture di questo fornitore ({fatture.length})
+                      Fatture verificate di questo fornitore ({fatture.length})
                     </div>
                     <div style={{ fontSize: 11, color: COLORS.textSubtle, fontStyle: 'italic', marginBottom: 8 }}>
-                      Sono le fatture di {tx.nome_controparte || tx.payer_name || 'questo fornitore'} nel gestionale.
-                      Le fatture con importo uguale a questa transazione (<strong>{fmtEuro(tx.lordo ?? tx.amount)}</strong>) sono evidenziate in oro —
-                      potrebbero essere ciò che questo pagamento PayPal ha saldato.
+                      Sono mostrate solo fatture con identità fornitore verificata. Il collegamento è disponibile
+                      soltanto se coincidono sia il numero fattura sia l'importo al centesimo ({fmtEuro(tx.lordo ?? tx.amount)}).
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                       {fatture.map((f) => {
                         const importoFattura = Math.abs(Number(f.total_amount ?? f.importo_totale ?? 0));
                         const importoTx = Math.abs(Number(tx.lordo ?? tx.amount ?? 0));
-                        const matchRiferimento = f.match === 'riferimento';
-                        const matchImporto = matchRiferimento ||
-                          (importoTx > 0 && Math.abs(importoFattura - importoTx) < 0.06);
+                        const matchRiferimento = f.match === 'riferimento_e_fornitore';
+                        const matchImporto = Boolean(f.associabile) && (
+                          matchRiferimento ||
+                          (importoTx > 0 && Math.abs(importoFattura - importoTx) < 0.06)
+                        );
                         return (
                           <div
                             key={f.id}
@@ -434,11 +466,16 @@ export default function PaypalTransactionDetailModal({
                               </span>
                               {matchRiferimento ? (
                                 <span style={{ marginLeft: 8, fontSize: 10, color: COLORS.success, fontWeight: 700 }}>
-                                  ✓ fattura indicata da PayPal
+                                  ✓ numero e fornitore verificati
                                 </span>
                               ) : matchImporto && (
                                 <span style={{ marginLeft: 8, fontSize: 10, color: COLORS.accent, fontWeight: 700 }}>
-                                  ★ stesso importo
+                                  ★ fornitore e importo verificati
+                                </span>
+                              )}
+                              {f.match_evidenze?.length > 0 && (
+                                <span style={{ display: 'block', marginTop: 2, fontSize: 9, color: COLORS.textSubtle }}>
+                                  Evidenze: {f.match_evidenze.join(', ')}
                                 </span>
                               )}
                             </span>
@@ -465,6 +502,19 @@ export default function PaypalTransactionDetailModal({
                               >
                                 Vedi
                               </Badge>
+                              {f.associabile && (
+                                <Button
+                                  size="sm"
+                                  variant="primary"
+                                  disabled={associandoId === f.id}
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    handleAssociaFattura(f);
+                                  }}
+                                >
+                                  {associandoId === f.id ? 'Associo…' : 'Associa'}
+                                </Button>
+                              )}
                             </span>
                           </div>
                         );

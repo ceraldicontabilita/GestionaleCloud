@@ -22,7 +22,7 @@ export default function Bilancio() {
   const location = useLocation();
 
   const getTabFromPath = () => {
-    const match = location.pathname.match(/\/bilancio\/([\w-]+)/);
+    const match = location.pathname.match(/\/contabilita\/bilancio\/([\w-]+)/);
     return match ? match[1] : 'patrimoniale';
   };
 
@@ -30,7 +30,7 @@ export default function Bilancio() {
 
   const handleTabChange = tabId => {
     setActiveTab(tabId);
-    navigate(`/bilancio/${tabId}`);
+    navigate(`/contabilita/bilancio/${tabId}`);
   };
 
   useEffect(() => {

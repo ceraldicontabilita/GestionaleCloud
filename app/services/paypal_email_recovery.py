@@ -13,6 +13,8 @@ from typing import Any, Dict, List
 import logging
 import uuid
 
+from app.services.paypal_invoice_matching import business_name_matches
+
 logger = logging.getLogger(__name__)
 
 COLL_TENTATIVI = "email_search_attempts"
@@ -86,6 +88,14 @@ async def _aggancia_documenti_trovati(
         piva = (doc_db or {}).get("fornitore_piva")
         if not piva:
             continue  # AI non ha estratto una P.IVA: resta per revisione manuale
+        nome_estratto = (doc_db or {}).get("fornitore_nome") or ""
+        if not business_name_matches(nome_controparte, nome_estratto):
+            logger.warning(
+                "[PayPal Email Recovery] Documento %s non mappato: fornitore estratto '%s' "
+                "diverso dalla controparte PayPal '%s'",
+                doc_id, nome_estratto, nome_controparte,
+            )
+            continue
 
         already_mapped = await db["fornitori"].find_one(
             {"paypal_account_id": account_id}, {"_id": 0, "id": 1}
@@ -103,7 +113,7 @@ async def _aggancia_documenti_trovati(
             agganciati += 1
             logger.info("[PayPal Email Recovery] Fornitore esistente %s mappato a %s", piva, account_id)
         else:
-            nome_forn = (doc_db or {}).get("fornitore_nome") or nome_controparte
+            nome_forn = nome_estratto
             now_iso = datetime.now(timezone.utc).isoformat()
             await db["fornitori"].insert_one({
                 "id": str(uuid.uuid4()),
@@ -134,12 +144,8 @@ async def _mappa_da_fornitore_esistente(db, account_id: str, nome_controparte: s
     italiano già censito sarebbe solo rumore nella casella di posta.
     Ritorna True se ha trovato ed eseguito un match certo.
     """
-    from app.services.paypal_riconciliazione import match_fornitore, normalize_string
-
     if not nome_controparte:
         return False
-
-    norm_cp = normalize_string(nome_controparte)
     parole = [w for w in nome_controparte.split() if len(w) >= 4]
     ricerca = parole[0] if parole else nome_controparte
 
@@ -156,11 +162,7 @@ async def _mappa_da_fornitore_esistente(db, account_id: str, nome_controparte: s
         if forn.get("paypal_account_id"):
             continue  # già mappato ad un altro account, non è questo
         forn_nome = forn.get("ragione_sociale") or forn.get("nome") or ""
-        norm_fn = normalize_string(forn_nome)
-        match_certo = norm_cp == norm_fn or norm_cp in norm_fn or norm_fn in norm_cp
-        if not match_certo:
-            match_certo = match_fornitore(nome_controparte, forn_nome) >= 0.85
-        if match_certo:
+        if business_name_matches(nome_controparte, forn_nome):
             await db["fornitori"].update_one(
                 {"id": forn["id"]},
                 {"$set": {"paypal_account_id": account_id,

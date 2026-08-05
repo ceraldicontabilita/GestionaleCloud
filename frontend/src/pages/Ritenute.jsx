@@ -14,7 +14,8 @@ const BLU = '#0f2744';
 const STATI = {
   da_pagare: { label: 'Da pagare', bg: '#fef3c7', fg: '#92400e' },
   scaduta_da_versare: { label: '⚠️ SCADUTA da versare', bg: '#fee2e2', fg: '#991b1b' },
-  f24_associato_da_pagare: { label: 'F24 associato, da pagare', bg: '#dbeafe', fg: '#1e40af' },
+  f24_associato_da_pagare: { label: 'F24 trovato, banca da verificare', bg: '#dbeafe', fg: '#1e40af' },
+  da_verificare_associazione_f24: { label: 'Più F24 compatibili: verifica', bg: '#fef3c7', fg: '#92400e' },
   pagata_puntuale: { label: '✓ Pagata puntuale', bg: '#dcfce7', fg: '#166534' },
   pagata_con_ravvedimento: { label: 'Pagata con ravvedimento', bg: '#fef9c3', fg: '#854d0e' },
   pagata_in_ritardo_senza_ravvedimento: { label: '⚠️ In ritardo SENZA ravvedimento', bg: '#fee2e2', fg: '#991b1b' },
@@ -113,7 +114,23 @@ export default function Ritenute() {
               </div>
               {r.f24_id && (
                 <div style={{ fontSize: 11.5, color: '#1e40af', marginTop: 4 }}>
-                  🔗 F24 (1040): {r.f24_descrizione || r.f24_id}
+                  🔗 F24, riga 1040 {r.f24_periodo ? `(${r.f24_periodo})` : ''}:{' '}
+                  {r.f24_descrizione || r.f24_id}
+                  <div>
+                    Quota {eur(r.f24_quota_ritenuta)}
+                    {r.f24_associazione_tipo === 'aggregata'
+                      ? ` su riga aggregata ${eur(r.f24_importo_tributo)}`
+                      : ''}
+                    {r.f24_multi_tributo ? ' · F24 multi-tributo' : ''}
+                  </div>
+                  {r.stato_evidenza_pagamento !== 'PAGATO_BANCA' && (
+                    <div style={{ color: '#92400e' }}>Addebito bancario dell'intero F24 non verificato.</div>
+                  )}
+                </div>
+              )}
+              {!r.f24_id && r.stato === 'da_verificare_associazione_f24' && (
+                <div style={{ fontSize: 11.5, color: '#92400e', marginTop: 4 }}>
+                  Candidati F24: {(r.f24_candidati || []).join(', ') || 'più documenti equivalenti'}
                 </div>
               )}
             </div>
@@ -142,7 +159,25 @@ export default function Ritenute() {
                   <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(r.importo)}</td>
                   <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>{formatDateIT(r.scadenza)}</td>
                   <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>{r.data_pagamento ? formatDateIT(r.data_pagamento) : '—'}</td>
-                  <td style={{ padding: '8px 10px', fontSize: 11.5, color: '#1e40af' }}>{r.f24_id ? `🔗 ${r.f24_descrizione || 'associato'}` : '—'}</td>
+                  <td style={{ padding: '8px 10px', fontSize: 11.5, color: '#1e40af' }}>
+                    {r.f24_id ? (
+                      <div>
+                        <div>🔗 1040 {r.f24_periodo || 'periodo da verificare'}</div>
+                        <div>
+                          quota {eur(r.f24_quota_ritenuta)}
+                          {r.f24_associazione_tipo === 'aggregata'
+                            ? ` / riga ${eur(r.f24_importo_tributo)}`
+                            : ''}
+                        </div>
+                        {r.f24_multi_tributo && <div>F24 multi-tributo</div>}
+                        {r.stato_evidenza_pagamento !== 'PAGATO_BANCA' && (
+                          <div style={{ color: '#92400e' }}>Banca non verificata</div>
+                        )}
+                      </div>
+                    ) : r.stato === 'da_verificare_associazione_f24' ? (
+                      <span style={{ color: '#92400e' }}>Più candidati</span>
+                    ) : '—'}
+                  </td>
                   <td style={{ padding: '8px 10px' }}>{badge(r.stato)}</td>
                 </tr>
               ))}

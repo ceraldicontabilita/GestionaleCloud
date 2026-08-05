@@ -39,6 +39,11 @@ from typing import Any, Dict, List, Optional, Tuple
 import logging
 import uuid
 
+from app.services.payment_invoice_matching import (
+    invoice_reference_equals,
+    invoice_reference_in_text,
+)
+
 logger = logging.getLogger(__name__)
 
 TOLL = 0.005  # mezzo centesimo
@@ -78,6 +83,18 @@ def _is_paid_status(s: Any) -> bool:
         return False
     s = str(s).lower()
     return s in {"paid", "pagata", "pagato"}
+
+
+def _assegno_cita_fattura(assegno: Dict[str, Any], fattura: Dict[str, Any]) -> bool:
+    """Il motore può proporre solo fatture dichiarate sul pagamento."""
+    numero = fattura.get("invoice_number") or fattura.get("numero_fattura") or ""
+    dichiarato = assegno.get("numero_fattura") or assegno.get("fattura_numero") or ""
+    if invoice_reference_equals(numero, dichiarato):
+        return True
+    testo = " ".join(str(assegno.get(campo) or "") for campo in (
+        "numero_fattura", "fattura_numero", "causale", "note", "descrizione"
+    ))
+    return invoice_reference_in_text(numero, testo)
 
 
 def _anno_filter_assegni(anno: Optional[int]) -> Dict[str, Any]:
@@ -647,7 +664,11 @@ async def run_auto_match(
         for ass in lista_ass:
             if ass["id"] in matched_ids:
                 continue
-            status, cands = _try_l1(ass, [f for f in fatture if f.get("id") not in _used_invoice_ids(report)])
+            status, cands = _try_l1(ass, [
+                f for f in fatture
+                if f.get("id") not in _used_invoice_ids(report)
+                and _assegno_cita_fattura(ass, f)
+            ])
             if status == "ok":
                 res = await _apply_match(db, [ass], cands, livello="L1", dry_run=dry_run)
                 report["match_l1"].append(res)
@@ -676,7 +697,11 @@ async def run_auto_match(
         for imp, grp in groups.items():
             if len(grp) < 2:
                 continue
-            fatture_disp = [f for f in fatture if f.get("id") not in _used_invoice_ids(report)]
+            fatture_disp = [
+                f for f in fatture
+                if f.get("id") not in _used_invoice_ids(report)
+                and all(_assegno_cita_fattura(assegno, f) for assegno in grp)
+            ]
             # prova con il gruppo intero, poi con sottogruppi
             for n in range(min(len(grp), MAX_RATE), 1, -1):
                 sub = grp[:n]
@@ -711,7 +736,11 @@ async def run_auto_match(
         non_match = [a for a in lista_ass if a["id"] not in matched_ids]
         if len(non_match) < 2:
             continue
-        fatture_disp = [f for f in inv_by_piva.get(piva, []) if f.get("id") not in _used_invoice_ids(report)]
+        fatture_disp = [
+            f for f in inv_by_piva.get(piva, [])
+            if f.get("id") not in _used_invoice_ids(report)
+            and all(_assegno_cita_fattura(assegno, f) for assegno in non_match)
+        ]
         risultati_l3 = _try_l3(non_match, fatture_disp)
         for fattura, combo in risultati_l3:
             res = await _apply_match(db, combo, [fattura], livello="L3", dry_run=dry_run)
@@ -726,7 +755,11 @@ async def run_auto_match(
         for ass in lista_ass:
             if ass["id"] in matched_ids:
                 continue
-            fatture_disp = [f for f in fatture if f.get("id") not in _used_invoice_ids(report)]
+            fatture_disp = [
+                f for f in fatture
+                if f.get("id") not in _used_invoice_ids(report)
+                and _assegno_cita_fattura(ass, f)
+            ]
             if len(fatture_disp) < 2:
                 continue
             status, combo = _try_l4(ass, fatture_disp)

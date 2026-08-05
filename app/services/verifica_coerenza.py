@@ -133,6 +133,89 @@ class VerificaCoerenza:
             "num_corrispettivi": count_corr,
             "periodo": periodo
         }
+
+    async def trova_f24_iva_mensile(self, anno: int, mese: int) -> Dict[str, Any]:
+        """Trova la riga IVA nel modello F24 ricevuto dalla commercialista.
+
+        Il confronto riguarda la singola riga tributo 6001..6012. Gli altri
+        codici dello stesso F24 (per esempio 1040) restano righe distinte e
+        l'eventuale addebito bancario dell'intero modello non modifica il
+        valore IVA da confrontare.
+        """
+        from app.routers.ritenute import _tributi_di
+        from app.services.f24_payment_evidence import stato_evidenza_pagamento
+
+        periodo = f"{anno}-{mese:02d}"
+        codice = str(6000 + mese)
+        docs = getattr(self, "_f24_docs_cache", None)
+        if docs is None:
+            docs = await self.db["f24_unificato"].find({}, {"_id": 0}).to_list(5000)
+            self._f24_docs_cache = docs
+        candidati = []
+        for f24 in docs:
+            righe = _tributi_di(f24)
+            for riga in righe:
+                if riga.get("codice") != codice:
+                    continue
+                periodo_riga = riga.get("periodo")
+                if periodo_riga and periodo_riga != periodo:
+                    continue
+                candidati.append({
+                    "f24": f24,
+                    "riga": riga,
+                    "periodo_verificato": periodo_riga == periodo,
+                    "altri_codici": sorted({
+                        t.get("codice") for t in righe
+                        if t.get("codice") and t.get("codice") != codice
+                    }),
+                })
+
+        # Deduplica la stessa sorgente eventualmente salvata con più alias.
+        unici = {}
+        for c in candidati:
+            f24 = c["f24"]
+            identita = str(
+                f24.get("id") or f24.get("document_id") or f24.get("sha256")
+                or f24.get("filename") or f24.get("file_name") or ""
+            )
+            key = (identita, c["riga"].get("indice"))
+            unici[key] = c
+        candidati = list(unici.values())
+
+        if not candidati:
+            return {
+                "codice_tributo": codice,
+                "periodo": periodo,
+                "stato": "in_attesa_f24",
+                "importo_f24": None,
+                "documenti_candidati": 0,
+            }
+
+        verificati = [c for c in candidati if c["periodo_verificato"]]
+        migliori = verificati or candidati
+        if len(migliori) != 1:
+            return {
+                "codice_tributo": codice,
+                "periodo": periodo,
+                "stato": "f24_ambiguo",
+                "importo_f24": None,
+                "documenti_candidati": len(migliori),
+            }
+
+        c = migliori[0]
+        f24 = c["f24"]
+        evidenza = stato_evidenza_pagamento(f24)
+        return {
+            "codice_tributo": codice,
+            "periodo": periodo,
+            "stato": "f24_ricevuto" if c["periodo_verificato"] else "periodo_f24_da_verificare",
+            "importo_f24": c["riga"].get("importo"),
+            "periodo_verificato": c["periodo_verificato"],
+            "documenti_candidati": 1,
+            "f24_multi_tributo": bool(c["altri_codici"]),
+            "altri_codici_tributo": c["altri_codici"],
+            "stato_pagamento_intero_f24": evidenza["stato"],
+        }
     
     async def verifica_versamenti_vs_banca(self, anno: int, mese: int = None) -> List[Dict]:
         """
@@ -354,9 +437,11 @@ class VerificaCoerenza:
         
         # Verifica IVA per ogni mese
         iva_mensile = []
+        f24_iva_mensile = []
         for mese in range(1, 13):
             iva_credito = await self.verifica_iva_credito_mensile(anno, mese)
             iva_debito = await self.verifica_iva_debito_mensile(anno, mese)
+            f24_iva = await self.trova_f24_iva_mensile(anno, mese)
             
             iva_mensile.append({
                 "mese": mese,
@@ -364,6 +449,7 @@ class VerificaCoerenza:
                 **iva_credito,
                 **iva_debito
             })
+            f24_iva_mensile.append({"mese": mese, "mese_nome": MESI_NOMI[mese], **f24_iva})
         
         risultati["verifiche"]["iva_mensile"] = iva_mensile
         
@@ -376,10 +462,19 @@ class VerificaCoerenza:
             "iva_debito_totale": round(totale_iva_debito, 2),
             "saldo_iva": round(totale_iva_debito - totale_iva_credito, 2)
         }
-        
-        # Verifica versamenti
-        versamenti = await self.verifica_versamenti_vs_banca(anno)
-        risultati["verifiche"]["versamenti"] = versamenti
+        risultati["verifiche"]["f24_iva"] = {
+            "mensile": f24_iva_mensile,
+            "ricevuti": sum(1 for r in f24_iva_mensile if r["stato"] == "f24_ricevuto"),
+            "in_attesa": sum(1 for r in f24_iva_mensile if r["stato"] == "in_attesa_f24"),
+            "da_verificare": sum(
+                1 for r in f24_iva_mensile
+                if r["stato"] in ("f24_ambiguo", "periodo_f24_da_verificare")
+            ),
+        }
+
+        # Il vecchio confronto "Versamenti Cassa vs Banca" non rappresenta
+        # l'IVA e produceva falsi allarmi. La pagina di coerenza usa ora le
+        # righe IVA dei modelli F24 ricevuti dalla commercialista.
 
         # NOTA: la verifica "Saldo Prima Nota vs Estratto Conto" è stata
         # DISABILITATA su richiesta dell'utente perché produceva una discrepanza
@@ -452,9 +547,14 @@ class VerificaCoerenza:
         res_corr = await self.db["corrispettivi"].aggregate(pipeline_corr).to_list(1)
         iva_debito_corrispettivi = res_corr[0]["totale"] if res_corr else 0
         count_corrispettivi = res_corr[0]["count"] if res_corr else 0
-        
-        # 2. Da Prima Nota (se registrato separatamente)
-        # Alcuni utenti potrebbero registrare IVA anche in prima nota
+
+        saldo_gestionale = round(iva_debito_corrispettivi - iva_credito_fatture, 2)
+        f24_iva = await self.trova_f24_iva_mensile(anno, mese)
+        importo_f24 = f24_iva.get("importo_f24")
+        scostamento_f24 = (
+            round(float(importo_f24) - max(saldo_gestionale, 0), 2)
+            if importo_f24 is not None else None
+        )
         
         risultato = {
             "periodo": periodo,
@@ -471,8 +571,16 @@ class VerificaCoerenza:
                 "num_corrispettivi": count_corrispettivi
             },
             "saldo": {
-                "iva_da_versare": round(max(iva_debito_corrispettivi - iva_credito_fatture, 0), 2),
-                "iva_a_credito": round(max(iva_credito_fatture - iva_debito_corrispettivi, 0), 2)
+                "iva_da_versare": round(max(saldo_gestionale, 0), 2),
+                "iva_a_credito": round(max(-saldo_gestionale, 0), 2)
+            },
+            "f24_commercialista": {
+                **f24_iva,
+                "scostamento_gestionale": scostamento_f24,
+                "coerente": (
+                    abs(scostamento_f24) <= self.tolleranza
+                    if scostamento_f24 is not None else None
+                ),
             },
             "discrepanze": self.discrepanze
         }

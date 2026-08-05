@@ -14,8 +14,8 @@ export default function AdminHub() {
   const location = useLocation();
   const path = location.pathname;
 
-  const isBatch = path.includes('/batch-reprocessing');
-  const isBatchProc = path.includes('/batch-processor');
+  const isBatch = path.includes('/admin/batch-reprocessing');
+  const isBatchProc = path.includes('/admin/batch-processor');
   const isMfa = path.includes('/admin/mfa');
   const isAdmin = !isBatch && !isBatchProc && !isMfa;
 
@@ -34,8 +34,8 @@ export default function AdminHub() {
   const tabs = [
     { id: 'admin', label: 'Sistema', Icon: Settings, to: '/admin' },
     { id: 'mfa', label: 'Sicurezza MFA', Icon: ShieldCheck, to: '/admin/mfa' },
-    { id: 'batch-reprocessing', label: 'Batch Reprocessing', Icon: Activity, to: '/batch-reprocessing' },
-    { id: 'batch-processor', label: 'Batch Processor', Icon: Workflow, to: '/batch-processor' },
+    { id: 'batch-reprocessing', label: 'Batch Reprocessing', Icon: Activity, to: '/admin/batch-reprocessing' },
+    { id: 'batch-processor', label: 'Batch Processor', Icon: Workflow, to: '/admin/batch-processor' },
   ];
   const activeTab = isBatch ? 'batch-reprocessing' : isBatchProc ? 'batch-processor' : isMfa ? 'mfa' : 'admin';
 

@@ -3,13 +3,13 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 156
+**Totale file analizzati:** 158
 
 | Classificazione | File |
 |---|---:|
 | ENTRYPOINT | 3 |
-| ROUTE_ATTIVA | 30 |
-| COMPONENTE_USATO | 80 |
+| ROUTE_ATTIVA | 27 |
+| COMPONENTE_USATO | 85 |
 | MODALE_USATO | 4 |
 | HOOK_USATO | 3 |
 | TEST_ONLY | 13 |
@@ -86,7 +86,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ds/StatCard.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ds/Table.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/ds/Tabs.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/components/ds/index.js` | COMPONENTE_USATO | 57 |
+| `frontend/src/components/ds/index.js` | COMPONENTE_USATO | 58 |
 | `frontend/src/components/layout/TopNav.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ui/ConfirmDialog.jsx` | MODALE_USATO | 24 |
 | `frontend/src/components/ui/alert.jsx` | COMPONENTE_USATO | 1 |
@@ -125,7 +125,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/hooks/usePrimaNota.js` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/hooks/useWebSocket.js` | HOOK_USATO | 1 |
 | `frontend/src/lib/queryClient.js` | COMPONENTE_USATO | 2 |
-| `frontend/src/lib/utils.js` | COMPONENTE_USATO | 99 |
+| `frontend/src/lib/utils.js` | COMPONENTE_USATO | 100 |
 | `frontend/src/lib/utils.test.js` | TEST_ONLY | 0 |
 | `frontend/src/main.jsx` | ENTRYPOINT | 0 |
 | `frontend/src/navigation.config.js` | ENTRYPOINT | 0 |
@@ -150,8 +150,8 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/ControlloMensile.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/Corrispettivi.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/Dashboard.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/pages/DashboardRelazionale.jsx` | ROUTE_ATTIVA | 2 |
-| `frontend/src/pages/DatiProvvisoriPage.jsx` | ROUTE_ATTIVA | 2 |
+| `frontend/src/pages/DashboardRelazionale.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/pages/DatiProvvisoriPage.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/DettaglioVerbale.jsx` | ROUTE_ATTIVA | 2 |
 | `frontend/src/pages/DettaglioVerbale.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/Documenti.jsx` | COMPONENTE_USATO | 1 |
@@ -173,6 +173,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/IntegrazioniOpenAPI.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/LearningMachine.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/LearningMachineUniversale.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/pages/LegacyRouteResolver.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/LibroGiornale.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/Login.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/MFAAdmin.jsx` | COMPONENTE_USATO | 2 |
@@ -181,13 +182,13 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/MittentiEmail.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/Mutui.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/NoleggioAuto.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/pages/PaginaNonTrovata.jsx` | ROUTE_ATTIVA | 1 |
+| `frontend/src/pages/PaginaNonTrovata.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/Pianificazione.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/PianoDeiConti.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/PrevisioniAcquisti.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/PrimaNota.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/pages/PrimaNota.test.jsx` | TEST_ONLY | 0 |
-| `frontend/src/pages/PuliziaPrimaNota.jsx` | ROUTE_ATTIVA | 2 |
+| `frontend/src/pages/PuliziaPrimaNota.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/RegoleCategorizzazione.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/RiconciliazionePaypal.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/pages/RiconciliazioneUnificata.jsx` | COMPONENTE_USATO | 1 |
@@ -210,6 +211,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/hub/RiconciliazioneHub.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/hub/StrumentiHub.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/hub/VeicoliHub.jsx` | ROUTE_ATTIVA | 1 |
+| `frontend/src/pages/iva/IvaAuditSections.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/stores/primaNotaStore.js` | DINAMICO_DA_VERIFICARE | 1 |
 | `frontend/src/test/setup.js` | DINAMICO_DA_VERIFICARE | 0 |
 

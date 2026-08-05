@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { formatEuro, COLORS, SHADOWS, BORDER_RADIUS, FONT } from '../lib/utils';
+import { formatEuro, COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
-import { Button, Badge, Card, Tabs, TableWrap, Table, Th, Td } from '../components/ds';
+import { Button, Badge, Card, Tabs } from '../components/ds';
 
 export default function VerificaCoerenza() {
   const { anno } = useAnnoGlobale();
@@ -15,15 +15,14 @@ export default function VerificaCoerenza() {
 
   const getTabFromPath = () => {
     const path = location.pathname;
-    const match = path.match(/\/verifica-coerenza\/([\w-]+)/);
-    return match ? match[1] : 'riepilogo';
+    return path.endsWith('/discrepanze') ? 'discrepanze' : 'riepilogo';
   };
 
   const [activeTab, setActiveTab] = useState(getTabFromPath());
 
   const handleTabChange = tabId => {
     setActiveTab(tabId);
-    navigate(`/verifica-coerenza/${tabId}`);
+    navigate(tabId === 'riepilogo' ? '/strumenti' : `/strumenti/verifica/${tabId}`);
   };
 
   useEffect(() => {
@@ -31,7 +30,6 @@ export default function VerificaCoerenza() {
     if (tab !== activeTab) setActiveTab(tab);
   }, [location.pathname]);
   const [verificaCompleta, setVerificaCompleta] = useState(null);
-  const [confrontoIva, setConfrontoIva] = useState(null);
   // 'bonifici' rimosso: il box 'Bonifici vs Banca' è stato eliminato (sempre a zero, fuorviante)
   const [error, setError] = useState(null);
 
@@ -43,14 +41,10 @@ export default function VerificaCoerenza() {
     setLoading(true);
     setError(null);
     try {
-      const [completa, iva] = await Promise.all([
-        api.get(`/api/verifica-coerenza/completa/${anno}`).catch(() => ({ data: null })),
-        api
-          .get(`/api/verifica-coerenza/confronto-iva-completo/${anno}`)
-          .catch(() => ({ data: null })),
-      ]);
+      const completa = await api
+        .get(`/api/verifica-coerenza/completa/${anno}`)
+        .catch(() => ({ data: null }));
       setVerificaCompleta(completa.data);
-      setConfrontoIva(iva.data);
     } catch (err) {
       console.error('Errore caricamento:', err);
       setError('Errore nel caricamento dei dati');
@@ -225,7 +219,6 @@ export default function VerificaCoerenza() {
           onChange={handleTabChange}
           items={[
             { key: 'riepilogo', label: '📋 Riepilogo' },
-            { key: 'iva', label: '📈 IVA Mensile' },
             { key: 'discrepanze', label: '⚠️ Discrepanze' },
           ]}
           style={{ marginBottom: 16 }}
@@ -305,47 +298,30 @@ export default function VerificaCoerenza() {
             )}
           </Card>
 
-          {/* Versamenti */}
-          <Card title="Versamenti Cassa vs Banca" icon="💳">
-            {verificaCompleta?.verifiche?.versamenti && (
+          <Card title="F24 IVA dalla commercialista" icon="🧾">
+            {verificaCompleta?.verifiche?.f24_iva && (
               <div style={{ display: 'grid', gap: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                  <span>Versamenti (Cassa)</span>
-                  <strong>
-                    {formatEuro(verificaCompleta.verifiche.versamenti.versamenti_manuali)}
+                  <span>Righe IVA ricevute</span>
+                  <strong style={{ color: COLORS.success }}>
+                    {verificaCompleta.verifiche.f24_iva.ricevuti || 0}
                   </strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                  <span>Versamenti (Banca)</span>
-                  <strong>
-                    {formatEuro(verificaCompleta.verifiche.versamenti.versamenti_banca)}
+                  <span>In attesa dalla posta</span>
+                  <strong style={{ color: COLORS.warning }}>
+                    {verificaCompleta.verifiche.f24_iva.in_attesa || 0}
                   </strong>
                 </div>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    padding: 10,
-                    background:
-                      Math.abs(verificaCompleta.verifiche.versamenti.differenza) < 1
-                        ? COLORS.successLight
-                        : COLORS.dangerLight,
-                    borderRadius: BORDER_RADIUS.sm,
-                  }}
-                >
-                  <span style={{ fontSize: 13 }}>Differenza</span>
-                  <strong
-                    style={{
-                      color:
-                        Math.abs(verificaCompleta.verifiche.versamenti.differenza) < 1
-                          ? COLORS.success
-                          : COLORS.danger,
-                    }}
-                  >
-                    {Math.abs(verificaCompleta.verifiche.versamenti.differenza) < 1
-                      ? '✅ OK'
-                      : formatEuro(verificaCompleta.verifiche.versamenti.differenza)}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                  <span>Da verificare</span>
+                  <strong style={{ color: COLORS.danger }}>
+                    {verificaCompleta.verifiche.f24_iva.da_verificare || 0}
                   </strong>
+                </div>
+                <div style={{ padding: 10, background: COLORS.infoLight, borderRadius: BORDER_RADIUS.sm, fontSize: 12, color: COLORS.info }}>
+                  Il confronto usa la riga IVA 6001–6012 del modello F24. Un F24 può contenere
+                  anche 1040 e altri tributi; la banca prova solo il pagamento complessivo.
                 </div>
               </div>
             )}
@@ -357,84 +333,6 @@ export default function VerificaCoerenza() {
               sostituito da una tab dedicata che elenca i singoli movimenti
               bancari non presenti in Prima Nota, con azioni di import. */}
         </div>
-      )}
-
-      {/* TAB IVA MENSILE */}
-      {!loading && activeTab === 'iva' && confrontoIva && (
-        <Card title={`Confronto IVA Mensile ${anno}`}>
-          <TableWrap>
-            <Table>
-              <thead>
-                <tr>
-                  <Th>Mese</Th>
-                  <Th align="right">IVA Debito</Th>
-                  <Th align="center">N.Corr</Th>
-                  <Th align="right">IVA Credito</Th>
-                  <Th align="center">N.Fatt</Th>
-                  <Th align="right">Saldo</Th>
-                  <Th align="center">Stato</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {confrontoIva.mensile?.map((m, idx) => (
-                  <tr key={idx}>
-                    <Td style={{ fontWeight: 'bold' }}>{m.mese_nome}</Td>
-                    <Td align="right" mono style={{ color: COLORS.danger }}>
-                      {formatEuro(m.iva_debito_corrispettivi)}
-                    </Td>
-                    <Td align="center" style={{ color: COLORS.textMuted }}>
-                      {m.num_corrispettivi}
-                    </Td>
-                    <Td align="right" mono style={{ color: COLORS.success }}>
-                      {formatEuro(m.iva_credito_fatture)}
-                    </Td>
-                    <Td align="center" style={{ color: COLORS.textMuted }}>
-                      {m.num_fatture}
-                    </Td>
-                    <Td
-                      align="right"
-                      mono
-                      style={{
-                        fontWeight: 'bold',
-                        color: m.saldo > 0 ? COLORS.danger : COLORS.success,
-                      }}
-                    >
-                      {m.saldo > 0 ? '+' : ''}
-                      {formatEuro(m.saldo)}
-                    </Td>
-                    <Td align="center">
-                      {m.da_versare > 0 ? (
-                        <Badge variant="warning">Versare {formatEuro(m.da_versare)}</Badge>
-                      ) : (
-                        <Badge variant="info">Credito {formatEuro(m.a_credito)}</Badge>
-                      )}
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: COLORS.gray[800], color: COLORS.white, fontWeight: 'bold' }}>
-                  <td style={{ padding: '10px 14px' }}>TOTALE {anno}</td>
-                  <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: FONT.mono }}>
-                    {formatEuro(confrontoIva.totali?.iva_debito_totale)}
-                  </td>
-                  <td style={{ padding: '10px 14px' }}></td>
-                  <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: FONT.mono }}>
-                    {formatEuro(confrontoIva.totali?.iva_credito_totale)}
-                  </td>
-                  <td style={{ padding: '10px 14px' }}></td>
-                  <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: FONT.mono }}>
-                    {confrontoIva.totali?.saldo_annuale > 0 ? '+' : ''}
-                    {formatEuro(confrontoIva.totali?.saldo_annuale)}
-                  </td>
-                  <td style={{ padding: '10px 14px', textAlign: 'center', fontSize: 10 }}>
-                    {confrontoIva.totali?.saldo_annuale > 0 ? 'DA VERSARE' : 'A CREDITO'}
-                  </td>
-                </tr>
-              </tfoot>
-            </Table>
-          </TableWrap>
-        </Card>
       )}
 
       {/* TAB DISCREPANZE */}

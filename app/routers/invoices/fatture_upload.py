@@ -551,8 +551,8 @@ async def find_ec_match_for_invoice(
       con segno negativo per le uscite);
     - esclude i movimenti già riconciliati (un movimento paga UNA fattura);
     - applica una finestra temporale plausibile rispetto alla data fattura;
-    - preferisce il match con il nome fornitore in descrizione; senza nome
-      accetta il solo importo SOLO dentro la finestra temporale.
+    - richiede sempre importo al centesimo, numero fattura esplicito e nome
+      fornitore nella descrizione; data/fuzzy non sostituiscono queste prove.
     """
     if not importo or importo <= 0:
         return None
@@ -567,8 +567,8 @@ async def find_ec_match_for_invoice(
                 {"tipo_riconciliazione": "auto_generico"},
             ]},
             {"$or": [
-                {"importo": {"$gte": importo - 0.01, "$lte": importo + 0.01}},
-                {"importo": {"$gte": -importo - 0.01, "$lte": -importo + 0.01}},
+                {"importo": {"$gte": importo - 0.004, "$lte": importo + 0.004}},
+                {"importo": {"$gte": -importo - 0.004, "$lte": -importo + 0.004}},
             ]},
         ],
     }
@@ -579,22 +579,22 @@ async def find_ec_match_for_invoice(
         conds, {"_id": 0}, session=session
     ).limit(50).to_list(50)
     tokens = _token_identita_fornitore(supplier_name)
-    numero = _normalizza_identificativo_bancario(invoice_number)
+    from app.services.payment_invoice_matching import (
+        amounts_equal_to_cent,
+        invoice_reference_in_text,
+    )
     forti = []
     for mov in candidati:
         testo = " ".join(str(mov.get(k) or "") for k in (
             "descrizione", "descrizione_originale", "causale", "beneficiario"
         )).upper()
-        testo_norm = _normalizza_identificativo_bancario(testo)
-        match_numero = bool(numero and len(numero) >= 4 and numero in testo_norm)
+        match_numero = invoice_reference_in_text(invoice_number, testo)
         match_nome = any(token in testo for token in tokens)
-        if match_numero or match_nome:
+        if (amounts_equal_to_cent(mov.get("importo"), importo)
+                and match_numero and match_nome):
             mov = dict(mov)
-            mov["match_score"] = 1.0 if match_numero and match_nome else 0.95
-            mov["match_tipo"] = (
-                "numero_fattura+fornitore" if match_numero and match_nome
-                else "numero_fattura" if match_numero else "fornitore"
-            )
+            mov["match_score"] = 1.0
+            mov["match_tipo"] = "numero_fattura+importo_centesimo+fornitore"
             forti.append(mov)
     return forti[0] if len(forti) == 1 else None
 

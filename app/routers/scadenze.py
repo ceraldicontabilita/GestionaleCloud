@@ -2,7 +2,7 @@
 Scadenze e Notifiche Router - Sistema alert per scadenze fiscali e pagamenti
 
 Gestisce:
-- Scadenze IVA trimestrali (16 del mese successivo al trimestre)
+- Scadenze IVA mensili e confronto con F24 ricevuti
 - Scadenze F24 (16 di ogni mese)
 - Fatture in scadenza (pagamento entro X giorni)
 - Notifiche personalizzate
@@ -261,83 +261,6 @@ async def get_prossime_scadenze(
     }
 
 
-@router.get("/iva/{anno}")
-@handle_errors
-async def get_scadenze_iva(anno: int) -> Dict[str, Any]:
-    """
-    Ottiene le scadenze IVA per un anno con importi calcolati.
-    """
-    db = Database.get_db()
-    
-    scadenze_iva = []
-    
-    for q in range(1, 5):
-        # Calcola importo IVA trimestre
-        start_month = (q - 1) * 3 + 1
-        end_month = q * 3
-        
-        # IVA Debito (corrispettivi)
-        iva_debito = 0
-        for m in range(start_month, end_month + 1):
-            prefix = f"{anno}-{m:02d}"
-            result = await db["corrispettivi"].aggregate([
-                {"$match": {"data": {"$regex": f"^{prefix}"}}},
-                {"$group": {"_id": None, "totale": {"$sum": "$totale_iva"}}}
-            ]).to_list(1)
-            iva_debito += result[0]["totale"] if result else 0
-        
-        # IVA Credito (fatture) — motore ufficiale di liquidazione, vedi
-        # _iva_acquisti_ufficiale.
-        iva_credito = 0
-        fonte_stima = False
-        for m in range(start_month, end_month + 1):
-            periodo = f"{anno}-{m:02d}"
-            esito = await _iva_acquisti_ufficiale(db, periodo)
-            iva_credito += esito["iva_acquisti"]
-            if esito["fonte"] == "stima":
-                fonte_stima = True
-
-        saldo = iva_debito - iva_credito
-        
-        # Data scadenza
-        if q == 1:
-            data_scad = f"{anno}-05-16"
-        elif q == 2:
-            data_scad = f"{anno}-08-20"  # 20 agosto
-        elif q == 3:
-            data_scad = f"{anno}-11-16"
-        else:
-            data_scad = f"{anno + 1}-03-16"
-        
-        scadenze_iva.append({
-            "trimestre": q,
-            "periodo": f"Q{q} {anno}",
-            "data_scadenza": data_scad,
-            "iva_debito": round(iva_debito, 2),
-            "iva_credito": round(iva_credito, 2),
-            "saldo": round(saldo, 2),
-            "da_versare": saldo > 0,
-            "importo_versamento": round(max(saldo, 0), 2),
-            "a_credito": round(abs(min(saldo, 0)), 2),  # Importo a credito quando saldo < 0
-            "stato": "da_versare" if saldo > 0 else "a_credito",
-            "giorni_mancanti": _giorni_mancanti(data_scad),
-            # "stima" se almeno un mese del trimestre non ha ancora una
-            # liquidazione confermata in Gestione IVA — il numero definitivo
-            # nasce solo confermandola lì.
-            "fonte": "stima" if fonte_stima else "liquidazione_confermata",
-        })
-    
-    totale_da_versare = sum(s["importo_versamento"] for s in scadenze_iva)
-    
-    return {
-        "anno": anno,
-        "scadenze": scadenze_iva,
-        "totale_da_versare": round(totale_da_versare, 2),
-        "prossima_scadenza": next((s for s in scadenze_iva if s["giorni_mancanti"] and s["giorni_mancanti"] > 0), None)
-    }
-
-
-
 @router.get("/iva-mensile/{anno}")
 @handle_errors
 async def get_scadenze_iva_mensile(anno: int) -> Dict[str, Any]:
@@ -498,48 +421,6 @@ def _genera_scadenze_fiscali(anno: int, mese: int, include_passate: bool) -> Lis
             "priorita": _calcola_priorita(data_16),
             "source": "fiscale"
         })
-    
-    # IVA trimestrale
-    if mese == 5:  # Q1
-        data = f"{anno}-05-16"
-        if include_passate or data >= oggi.isoformat():
-            scadenze.append({
-                "data": data,
-                "tipo": "IVA",
-                "descrizione": f"IVA 1° Trimestre {anno}",
-                "priorita": _calcola_priorita(data),
-                "source": "fiscale"
-            })
-    elif mese == 8:  # Q2
-        data = f"{anno}-08-20"
-        if include_passate or data >= oggi.isoformat():
-            scadenze.append({
-                "data": data,
-                "tipo": "IVA",
-                "descrizione": f"IVA 2° Trimestre {anno}",
-                "priorita": _calcola_priorita(data),
-                "source": "fiscale"
-            })
-    elif mese == 11:  # Q3
-        data = f"{anno}-11-16"
-        if include_passate or data >= oggi.isoformat():
-            scadenze.append({
-                "data": data,
-                "tipo": "IVA",
-                "descrizione": f"IVA 3° Trimestre {anno}",
-                "priorita": _calcola_priorita(data),
-                "source": "fiscale"
-            })
-    elif mese == 3:  # Q4 anno precedente
-        data = f"{anno}-03-16"
-        if include_passate or data >= oggi.isoformat():
-            scadenze.append({
-                "data": data,
-                "tipo": "IVA",
-                "descrizione": f"IVA 4° Trimestre {anno - 1}",
-                "priorita": _calcola_priorita(data),
-                "source": "fiscale"
-            })
     
     return scadenze
 

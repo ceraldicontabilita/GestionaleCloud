@@ -77,8 +77,9 @@ def test_calendario_periodico_usa_mese_successivo_e_agosto_20():
     assert per_id["inps_2026_07"]["data"] == "2026-08-20"
     assert per_id["iva_liq_2026_07"]["data"] == "2026-08-20"
     assert per_id["ritenute_2026_08"]["data"] == "2026-09-16"
-    # 16 maggio 2026 cade di sabato.
-    assert per_id["iva_trim_6031"]["data"] == "2026-05-18"
+    # L'azienda usa solo la liquidazione mensile: nessuna seconda logica
+    # trimestrale deve comparire nel calendario operativo.
+    assert not any(key.startswith("iva_trim_") for key in per_id)
 
 
 def test_percentuale_target_annuo_non_usa_target_prorata(monkeypatch):

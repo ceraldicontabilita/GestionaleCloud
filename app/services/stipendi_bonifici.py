@@ -12,11 +12,8 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.services.bonifici_pdf_ingest import (
-    arricchisci_nomi_salari_da_cedolini,
-    nome_presente_nel_testo,
-    nome_tokens,
-)
+from app.services.bonifici_pdf_ingest import arricchisci_nomi_salari_da_cedolini
+from app.services.identity_matching import nome_presente_nel_testo, nome_tokens
 
 logger = logging.getLogger(__name__)
 
