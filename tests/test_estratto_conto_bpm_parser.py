@@ -1,4 +1,7 @@
-from app.parsers.estratto_conto_bpm_parser import parse_bpm_text
+from app.parsers.estratto_conto_bpm_parser import (
+    parse_bpm_card_movements_text,
+    parse_bpm_text,
+)
 
 
 def test_parser_bpm_conserva_segno_beneficiario_e_pos():
@@ -45,3 +48,25 @@ def test_parser_bpm_assegno_non_inventa_beneficiario():
     assert len(rows) == 2
     assert rows[0]["descrizione"] == "VOSTRO ASSEGNO N. 0208770767"
     assert "EUREKA" not in rows[0]["descrizione"]
+
+
+def test_parser_movimenti_carta_debito_bpm_conserva_segno_e_descrizione():
+    text = """Carta di debito
+Circuito: MASTERCARD Conto Appoggio: 5462
+Filtro
+Data da: 12/05/2025 Data a: 12/06/2025
+Data e ora Importo Descrizione Tipo operazione
+03/06/2025 10:30:00 -716,72 EUR FORNITORE ESEMPIO SRL NAPOLI PAGAMENTO
+Creato il 12/06/2025 alle ore 08.45.40 Pagina 1 di 1
+"""
+
+    rows = parse_bpm_card_movements_text(text)
+
+    assert len(rows) == 1
+    assert rows[0]["data"] == "2025-06-03"
+    assert rows[0]["data_ora"] == "2025-06-03T10:30:00"
+    assert rows[0]["importo"] == -716.72
+    assert rows[0]["tipo"] == "uscita"
+    assert rows[0]["tipo_operazione"] == "pagamento"
+    assert rows[0]["descrizione"] == "FORNITORE ESEMPIO SRL NAPOLI"
+    assert rows[0]["divisa"] == "EUR"
