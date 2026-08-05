@@ -136,7 +136,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/assegni/preview-combinazioni` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/assegni/proposte-associazione` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/assegni/pulisci-beneficiari-fittizi` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/assegni/ricostruisci-dati` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/assegni/ricostruisci-dati` | bank.assegni | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/assegni/rifiuta-proposta/{proposta_id}` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/assegni/senza-associazione` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/assegni/stati` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |

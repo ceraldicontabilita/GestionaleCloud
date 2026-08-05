@@ -1911,20 +1911,22 @@ async def sync_assegni_da_estratto_conto() -> Dict[str, Any]:
 
 
 @router.post("/ricostruisci-dati")
-async def ricostruisci_dati_assegni() -> Dict[str, Any]:
+async def ricostruisci_dati_assegni(
+    dry_run: bool = Query(True, description="Sola anteprima; nessuna modifica ai dati"),
+) -> Dict[str, Any]:
     """
-    LOGICA INTELLIGENTE: Ricostruisce automaticamente i dati mancanti degli assegni.
-    
-    Questa funzione viene chiamata automaticamente dal frontend quando si carica
-    la pagina Gestione Assegni. Implementa la logica di un commercialista esperto.
-    
-    REGOLE:
-    1. Estrae beneficiario dalla descrizione bancaria se mancante
-    2. Cerca fatture con lo stesso importo per associazione
-    3. Gestisce pagamenti parziali/splittati
-    4. Cerca nel database fornitori per conferma nome
+    Anteprima prudenziale dei dati recuperabili per gli assegni incompleti.
+
+    Non applica mai associazioni: beneficiario e fattura devono essere confermati
+    con gli endpoint espliciti di auto-match/conferma. In particolare, l'importo
+    da solo non costituisce prova sufficiente per collegare una fattura.
     """
     import re
+    if not dry_run:
+        raise HTTPException(
+            status_code=400,
+            detail="Ricostruzione diretta disabilitata: usa auto-match e conferma una proposta esplicita",
+        )
     db = Database.get_db()
     
     risultati = {
@@ -1932,7 +1934,9 @@ async def ricostruisci_dati_assegni() -> Dict[str, Any]:
         "assegni_processati": 0,
         "beneficiari_trovati": 0,
         "fatture_associate": 0,
-        "errori": []
+        "errori": [],
+        "dry_run": True,
+        "nessuna_modifica_applicata": True,
     }
     
     # 1. Carica assegni con dati mancanti
@@ -1966,11 +1970,17 @@ async def ricostruisci_dati_assegni() -> Dict[str, Any]:
         "beneficiario": 1, "controparte": 1
     }).to_list(10000)
     
+    def normalizza_importo_match(valore: Any) -> float:
+        try:
+            return round(float(valore or 0), 2)
+        except (TypeError, ValueError):
+            return 0.0
+
     # 3. Crea indici
     # Indice fatture per importo
     fatture_per_importo = {}
     for f in fatture:
-        imp = round(float(f.get("total_amount") or f.get("importo_totale") or 0), 2)
+        imp = normalizza_importo_match(f.get("total_amount") or f.get("importo_totale"))
         if imp > 0:
             if imp not in fatture_per_importo:
                 fatture_per_importo[imp] = []
@@ -1981,6 +1991,9 @@ async def ricostruisci_dati_assegni() -> Dict[str, Any]:
     
     # Indice movimenti per id
     movimenti_idx = {m.get("id"): m for m in movimenti}
+
+    def normalizza_nome_match(valore: Any) -> str:
+        return re.sub(r"[^A-Z0-9]", "", str(valore or "").upper())
     
     # 4. Pattern per estrarre beneficiario
     def estrai_beneficiario(testo):
@@ -2013,10 +2026,10 @@ async def ricostruisci_dati_assegni() -> Dict[str, Any]:
     # 5. Processa ogni assegno
     for ass in assegni:
         ass_id = ass.get("id")
-        importo = round(float(ass.get("importo", 0)), 2)
+        importo = normalizza_importo_match(ass.get("importo"))
         descrizione = ass.get("descrizione", "")
         beneficiario = ass.get("beneficiario")
-        mov_id = ass.get("movimento_id")
+        mov_id = ass.get("movimento_estratto_conto_id") or ass.get("movimento_id")
         
         aggiornamenti = {}
         
@@ -2035,45 +2048,33 @@ async def ricostruisci_dati_assegni() -> Dict[str, Any]:
                 risultati["beneficiari_trovati"] += 1
         
         # b) Trova fattura se mancante
-        if not ass.get("numero_fattura") and importo > 0:
+        beneficiario_effettivo = beneficiario or aggiornamenti.get("beneficiario")
+        if not ass.get("numero_fattura") and importo > 0 and beneficiario_effettivo:
             if importo in fatture_per_importo:
                 candidates = fatture_per_importo[importo]
-                
-                # Se una sola fattura con questo importo, associa direttamente
-                if len(candidates) == 1:
-                    fatt = candidates[0]
+                ben_search = normalizza_nome_match(beneficiario_effettivo)
+                candidates_nome = [
+                    fatt for fatt in candidates
+                    if ben_search and (
+                        ben_search in normalizza_nome_match(
+                            fatt.get("supplier_name") or fatt.get("fornitore_ragione_sociale") or ""
+                        )
+                        or normalizza_nome_match(
+                            fatt.get("supplier_name") or fatt.get("fornitore_ragione_sociale") or ""
+                        ) in ben_search
+                    )
+                ]
+
+                # L'importo conta soltanto insieme a un beneficiario coerente e
+                # a una singola fattura candidata.
+                if len(candidates_nome) == 1:
+                    fatt = candidates_nome[0]
                     aggiornamenti["fattura_id"] = fatt.get("id")
                     aggiornamenti["numero_fattura"] = fatt.get("invoice_number") or fatt.get("numero_documento")
                     aggiornamenti["fornitore_fattura"] = fatt.get("supplier_name") or fatt.get("fornitore_ragione_sociale")
-                    
-                    # Se non avevamo beneficiario, usa quello della fattura
-                    if "beneficiario" not in aggiornamenti and not beneficiario:
-                        aggiornamenti["beneficiario"] = aggiornamenti["fornitore_fattura"]
-                    
                     risultati["fatture_associate"] += 1
-                
-                # Se più fatture, cerca match per beneficiario
-                elif len(candidates) > 1 and (beneficiario or aggiornamenti.get("beneficiario")):
-                    ben_search = (beneficiario or aggiornamenti.get("beneficiario", "")).upper()[:15]
-                    for fatt in candidates:
-                        nome_forn = (fatt.get("supplier_name") or fatt.get("fornitore_ragione_sociale") or "").upper()
-                        if ben_search in nome_forn or nome_forn[:15] in ben_search:
-                            aggiornamenti["fattura_id"] = fatt.get("id")
-                            aggiornamenti["numero_fattura"] = fatt.get("invoice_number") or fatt.get("numero_documento")
-                            aggiornamenti["fornitore_fattura"] = fatt.get("supplier_name") or fatt.get("fornitore_ragione_sociale")
-                            risultati["fatture_associate"] += 1
-                            break
-        
-        # c) Aggiorna nel DB
-        if aggiornamenti:
-            aggiornamenti["ultima_ricostruzione"] = datetime.now(timezone.utc).isoformat()
-            try:
-                await db[COLLECTION_ASSEGNI].update_one(
-                    {"id": ass_id},
-                    {"$set": aggiornamenti}
-                )
-            except Exception as e:
-                risultati["errori"].append(f"Errore aggiornamento {ass_id}: {str(e)}")
+
+        # Nessun update: gli aggiornamenti restano una simulazione in memoria.
     
     return risultati
 
