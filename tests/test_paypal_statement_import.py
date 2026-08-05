@@ -1,7 +1,10 @@
 import asyncio
 import copy
 
-from app.services.paypal_statement_import import save_parsed_statement
+from app.services.paypal_statement_import import (
+    import_paypal_statement_pdf,
+    save_parsed_statement,
+)
 
 
 def _match(doc, query):
@@ -170,3 +173,46 @@ def test_transazione_senza_id_usa_chiave_stabile_e_non_si_duplica():
     tx = db["paypal_transactions"].docs[0]
     assert tx["source_transaction_key"].startswith("paypal_tx_")
     assert second["transazioni_ricollegate"] == 1
+
+
+def test_pdf_annuale_inferisce_periodo_dalle_date_delle_transazioni(monkeypatch):
+    db = _Db()
+    parsed = _parsed(transaction_id="TX-ANNUALE-1")
+    parsed["periodo"] = {}
+    parsed["transazioni"] = [
+        {
+            "transaction_id": "TX-ANNUALE-1",
+            "data": "2022-01-03",
+            "lordo": -10.0,
+            "netto": -10.0,
+            "valuta": "EUR",
+        },
+        {
+            "transaction_id": "TX-ANNUALE-2",
+            "data": "2022-12-29",
+            "lordo": -20.0,
+            "netto": -20.0,
+            "valuta": "EUR",
+        },
+    ]
+    monkeypatch.setattr(
+        "app.parsers.paypal_msr_parser.parse_paypal_msr",
+        lambda _path: parsed,
+    )
+
+    result = _run(import_paypal_statement_pdf(
+        db,
+        b"%PDF-1.7 annual-statement",
+        "paypal 2022.PDF",
+        source="drive_paypal_statement",
+        drive_file_id="drive-2022",
+        source_path="Paypal/paypal 2022.PDF",
+    ))
+
+    statement = db["paypal_statements"].docs[0]
+    assert result["periodo"] == "2022-01-03 - 2022-12-29"
+    assert statement["periodo_inizio"] == "2022-01-03"
+    assert statement["periodo_fine"] == "2022-12-29"
+    assert statement["anno"] == 2022
+    assert statement["mese"] is None
+    assert statement["totale_transazioni"] == 2
