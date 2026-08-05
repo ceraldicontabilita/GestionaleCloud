@@ -83,24 +83,10 @@ async def get_verbale_dettaglio(numero_verbale: str) -> Dict[str, Any]:
             veicolo.pop("_id", None)
             verbale["veicolo_dettaglio"] = veicolo
     
-    # Costruisci pdf_disponibili dal pdf_data se non esiste pdf_allegati
-    if not verbale.get("pdf_disponibili"):
-        pdf_list = []
-        if verbale.get("pdf_data"):
-            pdf_list.append({
-                "indice": 0,
-                "filename": verbale.get("pdf_filename", "verbale.pdf"),
-                "tipo": "verbale",
-                "size": verbale.get("pdf_size", 0)
-            })
-        if verbale.get("quietanza_pdf"):
-            pdf_list.append({
-                "indice": 1,
-                "filename": verbale.get("quietanza_filename", "quietanza.pdf"),
-                "tipo": "quietanza",
-                "size": 0
-            })
-        verbale["pdf_disponibili"] = pdf_list
+    from app.services.verbali_pdf_service import collect_verbale_pdfs, pdf_metadata
+    verbale["pdf_disponibili"] = pdf_metadata(
+        await collect_verbale_pdfs(db, verbale, include_content=False)
+    )
     
     # Cerca fattura associata (per noleggiatori come ARVAL, Leasys, ALD)
     if not verbale.get("fattura_id") and verbale.get("targa"):

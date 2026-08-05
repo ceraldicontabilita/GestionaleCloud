@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api/verbali-noleggio", tags=["Verbali Noleggio"])
 COLLECTION_VERBALI = "verbali_noleggio"
 
 
-@router.get("/pdf/{numero_verbale}")
+@router.get("/pdf/{numero_verbale:path}")
 @handle_errors
 async def get_pdf_verbale(numero_verbale: str, indice: int = 0) -> Dict[str, Any]:
     """
@@ -43,31 +43,17 @@ async def get_pdf_verbale(numero_verbale: str, indice: int = 0) -> Dict[str, Any
     if not verbale:
         raise HTTPException(status_code=404, detail="Verbale non trovato")
 
-    # Vecchio formato: pdf_allegati
-    pdf_allegati = verbale.get("pdf_allegati", [])
-    if pdf_allegati and indice < len(pdf_allegati):
-        pdf = pdf_allegati[indice]
+    from app.services.verbali_pdf_service import collect_verbale_pdfs
+
+    pdfs = await collect_verbale_pdfs(db, verbale)
+    pdf = next((item for item in pdfs if item.get("indice") == indice), None)
+    if pdf and pdf.get("content_base64"):
         return {
-            "numero_verbale": numero_verbale,
+            "numero_verbale": verbale.get("numero_verbale", numero_verbale),
             "filename": pdf.get("filename"),
             "content_base64": pdf.get("content_base64"),
-            "size": pdf.get("size")
-        }
-
-    # Nuovo formato: pdf_data / quietanza_pdf
-    if indice == 0 and verbale.get("pdf_data"):
-        return {
-            "numero_verbale": verbale.get("numero_verbale", numero_verbale),
-            "filename": verbale.get("pdf_filename", f"verbale_{numero_verbale}.pdf"),
-            "content_base64": verbale["pdf_data"],
-            "size": verbale.get("pdf_size", 0)
-        }
-    if indice == 1 and verbale.get("quietanza_pdf"):
-        return {
-            "numero_verbale": verbale.get("numero_verbale", numero_verbale),
-            "filename": verbale.get("quietanza_filename", f"quietanza_{numero_verbale}.pdf"),
-            "content_base64": verbale["quietanza_pdf"],
-            "size": 0
+            "size": pdf.get("size") or 0,
+            "document_id": pdf.get("document_id"),
         }
 
     raise HTTPException(status_code=404, detail="PDF non trovato")
@@ -194,31 +180,10 @@ async def get_dettaglio_verbale(numero_verbale: str) -> Dict[str, Any]:
         )
         risultato["movimento_info"] = movimento
 
-    # Carica PDF se disponibili - gestisce sia pdf_allegati che pdf_data
-    pdf_list = verbale.get("pdf_allegati", [])
-    if pdf_list:
-        risultato["pdf_disponibili"] = [
-            {"filename": p.get("filename"), "size": p.get("size"), "indice": i, "tipo": "allegato"}
-            for i, p in enumerate(pdf_list)
-        ]
-    else:
-        # Costruisci da pdf_data e quietanza_pdf
-        pdfs = []
-        if verbale.get("pdf_data"):
-            pdfs.append({
-                "indice": 0,
-                "filename": verbale.get("pdf_filename", "verbale.pdf"),
-                "tipo": "verbale",
-                "size": verbale.get("pdf_size", 0)
-            })
-        if verbale.get("quietanza_pdf"):
-            pdfs.append({
-                "indice": 1,
-                "filename": verbale.get("quietanza_filename", "quietanza.pdf"),
-                "tipo": "quietanza",
-                "size": 0
-            })
-        risultato["pdf_disponibili"] = pdfs
+    from app.services.verbali_pdf_service import collect_verbale_pdfs, pdf_metadata
+    risultato["pdf_disponibili"] = pdf_metadata(
+        await collect_verbale_pdfs(db, verbale, include_content=False)
+    )
 
     # Non inviare dati binari pesanti nel response JSON
     risultato.pop("pdf_data", None)

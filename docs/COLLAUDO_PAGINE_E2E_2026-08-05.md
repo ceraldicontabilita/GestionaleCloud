@@ -38,7 +38,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 12 | [ ] | Flotta noleggio — `/noleggio` | Veicoli, contratti, driver storico e costi ricavati dalle fatture. | TENERE |
 | 13 | [ ] IN CORREZIONE | Verbali noleggio — `/noleggio/verbali` | Verbali da email/documenti, targa, driver alla data, fattura, PagoPA e pagamento. | TENERE |
 | 14 | [ ] | Costi noleggio — `/noleggio/costi` | Riepiloga canoni, verbali, bollo, pedaggi e altri costi per veicolo. | TENERE |
-| 15 | [ ] | Dettaglio verbale — `/verbali-noleggio/:identificativo` | Mostra la singola catena Verbale -> veicolo -> driver -> fattura -> pagamento. | TENERE |
+| 15 | [ ] IN CORREZIONE | Dettaglio verbale — `/verbali-noleggio/:identificativo` | Mostra la singola catena Verbale -> veicolo -> driver -> fattura -> pagamento. | TENERE |
 | 16 | [x] VERIFICATA | Piano dei Conti — `/contabilita` | Mostra un solo conto per codice e i saldi derivati dalle fonti contabili. | TENERE |
 | 17 | [ ] | Bilancio — `/contabilita/bilancio` | Stato patrimoniale e conto economico per periodo. | TENERE |
 | 18 | [ ] | Verifica Bilancio — `/contabilita/verifica` | Controlla quadrature e incoerenze del bilancio. | TENERE |
@@ -135,3 +135,10 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 - Un documento con stato `archived`, `duplicate` o `archived_manual_oauth` non viene più ritrasmesso dalle scansioni Gmail successive.
 - I blocchi di quota/permesso Drive sono ora registrati come `blocked_owner_auth` con motivazione tecnica, senza perdere la copia applicativa.
 - Suite completa: 1098 test backend superati, 2 saltati; 79 test frontend superati; build di produzione completato e artefatti generati ripuliti dal working tree.
+
+### 2026-08-05 — Pagina 15 Dettaglio verbale
+
+- Difetto riprodotto sul deploy reale con `VV/24990121765`: il dettaglio si apriva ma indicava `PDF disponibili: 0`, benché il documento fosse presente e processato in `documents_inbox`.
+- Causa: gli endpoint dettaglio/PDF leggevano soltanto i vecchi campi binari incorporati nel verbale e ignoravano la relazione `document_ids` / `source_document_id` creata dal nuovo import Gmail.
+- Correzione in corso: vista PDF unica per formati storici e `documents_inbox`, metadati leggeri nel dettaglio e download per indice anche per numeri verbale contenenti `/`.
+- Test locali dopo la correzione: 1101 backend superati, 2 saltati; 79 frontend superati. La pagina resta aperta fino al collaudo post-deploy con il PDF reale.
