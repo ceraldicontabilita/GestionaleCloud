@@ -8,7 +8,12 @@ per codice; il bilancio sommava poi due volte gli stessi saldi.
 import asyncio
 from copy import deepcopy
 
+import pytest
+from fastapi import HTTPException
+from pymongo.errors import DuplicateKeyError
+
 import app.routers.accounting.piano_conti as pc
+import app.routers.accounting.contabilita_avanzata as ca
 
 
 class _Cursor:
@@ -29,8 +34,9 @@ class _Cursor:
 
 
 class _UpdateResult:
-    def __init__(self, upserted_id=None):
+    def __init__(self, upserted_id=None, modified_count=0):
         self.upserted_id = upserted_id
+        self.modified_count = modified_count
 
 
 class _Collection:
@@ -59,6 +65,7 @@ class _Collection:
                 return _UpdateResult()
             stored = deepcopy(update["$setOnInsert"])
             stored.update(query)
+            stored.setdefault("_id", f"upsert-{len(self.docs)}")
             self.docs.append(stored)
             return _UpdateResult(stored.get("_id"))
 
@@ -156,4 +163,56 @@ def test_inizializzazione_concorrente_crea_un_solo_conto_per_codice():
     }
     assert len(codici) == len(codici_attesi)
     assert set(codici) == codici_attesi
+
+
+def test_creazione_concorrente_restituisce_conflitto_anziche_errore_500(monkeypatch):
+    class _DuplicateOnInsertCollection:
+        async def find_one(self, query):
+            # Riproduce la finestra di concorrenza: al controllo preventivo il
+            # codice non esiste ancora, ma un'altra richiesta lo inserisce
+            # prima di questa insert.
+            return None
+
+        async def insert_one(self, document):
+            raise DuplicateKeyError("codice duplicato")
+
+    class _DuplicateDb:
+        def __getitem__(self, name):
+            assert name == "piano_conti"
+            return _DuplicateOnInsertCollection()
+
+    monkeypatch.setattr(pc.Database, "get_db", staticmethod(_DuplicateDb))
+
+    with pytest.raises(HTTPException) as exc_info:
+        _run(pc.create_conto({
+            "codice": " 05.02.03 ",
+            "nome": " Spese telefoniche ",
+            "categoria": " costi ",
+        }))
+
+    assert exc_info.value.status_code == 409
+    assert "05.02.03" in exc_info.value.detail
+
+
+def test_inizializzazione_piano_esteso_usa_upsert_atomico(monkeypatch):
+    db = _Db()
+    monkeypatch.setattr(ca.Database, "get_db", staticmethod(lambda: db))
+    monkeypatch.setattr(ca, "PIANO_CONTI_ESTESO", {
+        "05.02.03": {
+            "nome": "Spese telefoniche",
+            "categoria": "costi",
+            "natura": "economico",
+        }
+    })
+
+    async def _inizializza_due_endpoint():
+        return await asyncio.gather(
+            ca.inizializza_piano_conti_esteso(),
+            ca.inizializza_piano_conti_esteso(),
+        )
+
+    risultati = _run(_inizializza_due_endpoint())
+
+    assert [doc["codice"] for doc in db.collection.docs] == ["05.02.03"]
+    assert sum(result["conti_aggiunti"] for result in risultati) == 1
 
