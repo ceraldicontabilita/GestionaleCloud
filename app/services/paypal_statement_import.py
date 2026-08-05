@@ -27,6 +27,48 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _infer_period_from_transactions(parsed: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Ricava un periodo affidabile dalle date delle transazioni parse.
+
+    Alcuni report PayPal annuali non espongono l'intestazione mensile usata
+    dagli MSR italiani. In quel caso le date normalizzate delle transazioni
+    sono la fonte strutturata piu' affidabile: usiamo il minimo e il massimo,
+    senza dedurre il periodo dal nome del file.
+    """
+    transaction_dates = []
+    for transaction in parsed.get("transazioni") or []:
+        raw_date = (
+            transaction.get("data")
+            or transaction.get("data_operazione")
+            or transaction.get("initiation_date")
+        )
+        if not raw_date:
+            continue
+        normalized = str(raw_date).strip()[:10]
+        try:
+            transaction_dates.append(datetime.strptime(normalized, "%Y-%m-%d").date())
+        except (TypeError, ValueError):
+            continue
+
+    if not transaction_dates:
+        return None
+
+    period_start = min(transaction_dates)
+    period_end = max(transaction_dates)
+    same_month = (
+        period_start.year == period_end.year
+        and period_start.month == period_end.month
+    )
+    return {
+        "periodo_inizio": period_start.isoformat(),
+        "periodo_fine": period_end.isoformat(),
+        "mese": period_start.month if same_month else None,
+        "anno": period_start.year if period_start.year == period_end.year else None,
+        "periodo_inferito": True,
+        "fonte_periodo": "date_transazioni",
+    }
+
+
 def _canonical_fingerprint(parsed: Dict[str, Any], source_sha256: str = "") -> str:
     """Identita' stabile dello statement, distinta anche per periodo.
 
@@ -334,7 +376,10 @@ async def import_paypal_statement_pdf(
         raise ValueError(f"errore parsing PayPal: {parsed.get('errors') or 'documento non riconosciuto'}")
     periodo = parsed.get("periodo") or {}
     if not (periodo.get("periodo_inizio") and periodo.get("periodo_fine")):
-        raise ValueError("periodo dell'estratto PayPal non riconosciuto")
+        periodo = _infer_period_from_transactions(parsed)
+        if not periodo:
+            raise ValueError("periodo dell'estratto PayPal non riconosciuto")
+        parsed["periodo"] = periodo
     parsed["file_name"] = os.path.basename(filename or "estratto-paypal.pdf")
     parsed.pop("file_path", None)
     return await save_parsed_statement(
