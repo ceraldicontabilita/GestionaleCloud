@@ -47,6 +47,25 @@ def test_uscita_con_importo_e_fornitore_e_match_forte():
     assert _score_match(movimento, FATTURA_LEASYS) >= 0.90
 
 
+def test_carta_con_importo_fornitore_e_stessa_data_ma_senza_numero_non_abbina():
+    fattura = {
+        "total_amount": 716.72,
+        "invoice_date": "2025-06-03",
+        "supplier_name": "F.lli Fiorentino Srl",
+        "invoice_number": "1/7184",
+    }
+    movimento = {
+        "tipo": "uscita",
+        "importo": 716.72,
+        "data": "2025-06-03",
+        "descrizione": (
+            "FLLI FIORENTINO SRL NAPOLI VIA REPUBBLICHE MARINARE"
+        ),
+    }
+
+    assert _score_match(movimento, fattura) == 0.0
+
+
 def test_secondo_motore_non_auto_abbina_il_solo_importo():
     evidenza = _evidenza_forte_fattura_banca(
         FATTURA_LEASYS,
