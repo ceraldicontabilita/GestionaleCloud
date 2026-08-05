@@ -745,6 +745,14 @@ async def dashboard_iva_mensile(anno: int, mese: int) -> Dict[str, Any]:
 
     liq_doc = await db[COLL_LIQ].find_one({"periodo": periodo}, {"_id": 0}, sort=[("versione", -1)])
     iva_vendite_corr = await _iva_vendite_corrispettivi(db, periodo)
+    from app.services.iva_f24_verifica import verifica_versamento_iva
+
+    versamento = await verifica_versamento_iva(
+        db,
+        anno=anno,
+        mese=mese,
+        debito_liquidazione=(liq_doc or {}).get("debito_periodo"),
+    )
 
     return {
         "periodo": periodo,
@@ -760,7 +768,28 @@ async def dashboard_iva_mensile(anno: int, mese: int) -> Dict[str, Any]:
         "iva_vendite_fonte": (liq_doc or {}).get("iva_vendite_fonte", "corrispettivi_xml"),
         "saldo": (liq_doc or {}).get("saldo"),
         "stato_liquidazione": (liq_doc or {}).get("stato"),
+        "versamento_iva": versamento,
     }
+
+
+@router.get("/versamento/{anno}/{mese}")
+async def verifica_versamento_iva_mensile(anno: int, mese: int) -> Dict[str, Any]:
+    """Verifica F24 IVA, quietanza e prova bancaria del periodo mensile."""
+    if mese not in range(1, 13):
+        raise HTTPException(status_code=422, detail="Mese non valido")
+    db = Database.get_db()
+    periodo = f"{anno}-{mese:02d}"
+    liq_doc = await db[COLL_LIQ].find_one(
+        {"periodo": periodo}, {"_id": 0}, sort=[("versione", -1)]
+    )
+    from app.services.iva_f24_verifica import verifica_versamento_iva
+
+    return await verifica_versamento_iva(
+        db,
+        anno=anno,
+        mese=mese,
+        debito_liquidazione=(liq_doc or {}).get("debito_periodo"),
+    )
 
 
 @router.get("/riepilogo-annuale/{anno}")

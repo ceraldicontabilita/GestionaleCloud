@@ -121,6 +121,17 @@ export default function RiconciliazionePaypal() {
   const csvInputRef = useRef(null);
   const [syncMesi, setSyncMesi] = useState(3);
   const [syncing, setSyncing] = useState(false);
+  const [apiStatus, setApiStatus] = useState(null);
+
+  const loadApiStatus = useCallback(async () => {
+    try {
+      const res = await api.get('/api/paypal-api/status');
+      setApiStatus(res.data);
+    } catch (e) {
+      console.error(e);
+      setLoadError(true);
+    }
+  }, []);
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -171,9 +182,9 @@ export default function RiconciliazionePaypal() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     setLoadError(false);
-    await Promise.all([loadDashboard(), loadTransactions(), loadReport(), loadStatements()]);
+    await Promise.all([loadDashboard(), loadTransactions(), loadReport(), loadStatements(), loadApiStatus()]);
     setLoading(false);
-  }, [loadDashboard, loadTransactions, loadReport, loadStatements]);
+  }, [loadDashboard, loadTransactions, loadReport, loadStatements, loadApiStatus]);
 
   const handleImportCsv = async e => {
     const file = e.target.files?.[0];
@@ -377,6 +388,34 @@ export default function RiconciliazionePaypal() {
             (i valori mostrati potrebbero essere incompleti). Riprova con «Aggiorna».
           </div>
         )}
+        {dashboard?.anomalia_fonti_mancanti && (
+          <div
+            role="alert"
+            style={{
+              background: COLORS.warningLight, color: COLORS.warning,
+              border: `1px solid ${COLORS.warning}`, borderRadius: BORDER_RADIUS.md,
+              padding: '10px 14px', marginBottom: 12, fontSize: 14,
+            }}
+          >
+            <strong>Fonte PayPal mancante:</strong> in banca risultano{' '}
+            {dashboard.movimenti_banca_senza_sorgente_paypal} movimenti PayPal per {annoFiltro},
+            ma non è presente alcuna transazione PayPal da riconciliare. Importa il documento da
+            “Documenti” oppure configura la sincronizzazione API.
+          </div>
+        )}
+        {apiStatus && !apiStatus.api_configurata && (
+          <div
+            role="status"
+            style={{
+              background: COLORS.infoLight, color: COLORS.info,
+              border: `1px solid ${COLORS.info}`, borderRadius: BORDER_RADIUS.md,
+              padding: '10px 14px', marginBottom: 12, fontSize: 14,
+            }}
+          >
+            La sincronizzazione automatica PayPal non è configurata. Nessuna credenziale viene
+            mostrata: per ora usa l'importazione controllata da “Documenti”.
+          </div>
+        )}
         {/* Header */}
         <div
           style={{
@@ -479,7 +518,7 @@ export default function RiconciliazionePaypal() {
             </Select>
             <Button
               data-testid="sync-paypal-api-btn"
-              disabled={syncing}
+              disabled={syncing || apiStatus?.api_configurata === false}
               iconLeft={
                 syncing ? <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> : null
               }
@@ -528,7 +567,9 @@ export default function RiconciliazionePaypal() {
                 color: 'white',
                 borderColor: 'rgba(184, 134, 11, 0.7)',
               }}
-              title="Sincronizza le transazioni PayPal via API (Transaction Search) e le riconcilia con fatture/banca"
+              title={apiStatus?.api_configurata === false
+                ? 'Configura prima le credenziali PayPal sul server'
+                : 'Sincronizza le transazioni PayPal via API e le riconcilia con fatture/banca'}
             >
               {syncing ? 'Sync…' : 'Sync PayPal API'}
             </Button>

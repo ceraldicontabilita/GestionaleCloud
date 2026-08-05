@@ -180,7 +180,7 @@ export default function ContabilitaAvanzata() {
       if (data.success) {
         setMessage({
           type: 'success',
-          text: `Ricategorizzate ${data.fatture_processate} fatture. ${data.movimenti_creati} movimenti creati.`,
+          text: `Registrate ${data.fatture_processate} fatture mancanti. ${data.movimenti_creati} movimenti creati.`,
         });
         fetchData();
       } else {
@@ -348,6 +348,30 @@ export default function ContabilitaAvanzata() {
           </div>
         )}
 
+        {disponibilita?.riconciliazione_banca?.estratto_conto_disponibile && (
+          <div
+            role="status"
+            style={{
+              marginTop: -12,
+              marginBottom: 24,
+              padding: '12px 14px',
+              borderRadius: BORDER_RADIUS.md,
+              border: `1px solid ${disponibilita.riconciliazione_banca.riconciliato ? COLORS.success : COLORS.warning}`,
+              background: disponibilita.riconciliazione_banca.riconciliato ? COLORS.successLight : COLORS.warningLight,
+              color: COLORS.text,
+              fontSize: 13,
+            }}
+          >
+            <strong>Confronto banca:</strong> saldo contabile{' '}
+            {formatEuro(disponibilita.riconciliazione_banca.saldo_contabile)} · saldo da Estratto Conto{' '}
+            {formatEuro(disponibilita.riconciliazione_banca.saldo_estratto_conto)} · scarto{' '}
+            {formatEuro(disponibilita.riconciliazione_banca.scarto)}.
+            {!disponibilita.riconciliazione_banca.riconciliato && (
+              <> Lo scarto deve essere riconciliato; non viene corretto automaticamente.</>
+            )}
+          </div>
+        )}
+
         {/* Tabs */}
         <div style={styles.tabsRow}>
           {['imposte', 'statistiche', 'bilancio'].map(tab => (
@@ -394,10 +418,17 @@ export default function ContabilitaAvanzata() {
                   style={{ marginLeft: 'auto' }}
                   data-testid="btn-ricategorizza"
                 >
-                  {processing ? '⏳ Elaborazione...' : '🔄 Ricategorizza Fatture'}
+                  {processing ? '⏳ Elaborazione...' : '✅ Registra documenti mancanti'}
                 </Button>
               </div>
             </Card>
+
+            <div style={{ ...styles.note, background: COLORS.warningLight, borderColor: COLORS.warning }}>
+              <strong>Calcolo provvisorio, non debito fiscale definitivo.</strong>{' '}
+              IRES e IRAP dipendono dalla completezza del libro giornale, dalle variazioni fiscali,
+              dalle deduzioni e dalla dichiarazione. Verifica liquidazione, F24 e addebito bancario
+              prima di considerare un importo dovuto o pagato.
+            </div>
 
             {/* Cards Riepilogo */}
             <div style={styles.grid4(isMobile)}>
@@ -408,19 +439,19 @@ export default function ContabilitaAvanzata() {
                 </p>
               </div>
               <div style={styles.statBox}>
-                <p style={styles.statBoxLabel}>IRES (24%)</p>
+                <p style={styles.statBoxLabel}>Stima IRES (24%)</p>
                 <p style={styles.statBoxValue} data-testid="ires-dovuta">
                   {formatEuro(imposte.ires.imposta_dovuta)}
                 </p>
               </div>
               <div style={styles.statBox}>
-                <p style={styles.statBoxLabel}>IRAP ({imposte.irap.aliquota}%)</p>
+                <p style={styles.statBoxLabel}>Stima IRAP ({imposte.irap.aliquota}%)</p>
                 <p style={styles.statBoxValue} data-testid="irap-dovuta">
                   {formatEuro(imposte.irap.imposta_dovuta)}
                 </p>
               </div>
               <div style={styles.statBox}>
-                <p style={styles.statBoxLabel}>Totale Imposte</p>
+                <p style={styles.statBoxLabel}>Stima Totale Imposte</p>
                 <p style={styles.statBoxValue} data-testid="totale-imposte">
                   {formatEuro(imposte.totale_imposte)}
                 </p>
@@ -470,7 +501,7 @@ export default function ContabilitaAvanzata() {
                         </Td>
                       </tr>
                       <tr style={{ background: COLORS.bgAlt }}>
-                        <Td style={{ fontWeight: 'bold', padding: 12 }}>IRES DOVUTA (24%)</Td>
+                        <Td style={{ fontWeight: 'bold', padding: 12 }}>STIMA IRES (24%)</Td>
                         <Td
                           align="right"
                           mono
@@ -516,7 +547,7 @@ export default function ContabilitaAvanzata() {
                       </tr>
                       <tr style={{ background: COLORS.bgAlt }}>
                         <Td style={{ fontWeight: 'bold', padding: 12 }}>
-                          IRAP DOVUTA ({imposte.irap.aliquota}%)
+                          STIMA IRAP ({imposte.irap.aliquota}%)
                         </Td>
                         <Td
                           align="right"

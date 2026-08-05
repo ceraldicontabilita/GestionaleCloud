@@ -7,6 +7,7 @@ from pydantic import BaseModel, EmailStr
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from app.database import Database
+from app.services.f24_payment_evidence import stato_evidenza_pagamento
 import logging
 
 router = APIRouter()
@@ -255,8 +256,11 @@ async def get_stato_sistema() -> Dict[str, Any]:
     )
     
     # Conteggi F24
-    f24_da_pagare = await db["f24_unificato"].count_documents({"status": "da_pagare"})
-    f24_pagati = await db["f24_unificato"].count_documents({"status": "pagato"})
+    f24_docs = await db["f24_unificato"].find(
+        {"status": {"$ne": "eliminato"}}, {"_id": 0, "pdf_data": 0}
+    ).to_list(10000)
+    f24_pagati = sum(1 for f in f24_docs if stato_evidenza_pagamento(f)["pagato"])
+    f24_da_pagare = len(f24_docs) - f24_pagati
     allegati_da_processare = await db["email_allegati"].count_documents({"processato": False})
     
     return {

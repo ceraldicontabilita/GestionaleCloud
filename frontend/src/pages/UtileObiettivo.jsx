@@ -30,8 +30,9 @@ export default function UtileObiettivo() {
         ricavi_totali: data.reale?.ricavi_totali || 0,
         costi_totali: data.reale?.costi_totali || 0,
         utile_attuale: data.reale?.utile_corrente || 0,
-        percentuale_raggiungimento: Math.max(0, data.analisi?.percentuale_raggiungimento || 0),
-        gap_da_colmare: Math.abs(data.analisi?.scostamento_ad_oggi || 0),
+        percentuale_raggiungimento: Math.max(0, data.analisi?.percentuale_target_annuo || 0),
+        gap_da_colmare: Math.max(0, data.analisi?.gap_target_annuo || 0),
+        surplus_target: Math.max(0, data.analisi?.surplus_target_annuo || 0),
         per_centro_costo: {},
       });
       setSettings({
@@ -63,8 +64,8 @@ export default function UtileObiettivo() {
   }
 
   const percentualeRaggiungimento = status?.percentuale_raggiungimento || 0;
-  const isOnTrack = percentualeRaggiungimento >= 80;
-  const isAtRisk = percentualeRaggiungimento >= 50 && percentualeRaggiungimento < 80;
+  const isOnTrack = (status?.gap_da_colmare || 0) === 0 && (status?.target_utile || 0) > 0;
+  const isAtRisk = !isOnTrack && percentualeRaggiungimento >= 50;
   const progressColor = isOnTrack ? COLORS.success : isAtRisk ? COLORS.warning : COLORS.danger;
   const progressVariant = isOnTrack ? 'success' : isAtRisk ? 'warning' : 'danger';
 
@@ -219,7 +220,7 @@ export default function UtileObiettivo() {
                       <TrendingDown size={18} />
                     )}
                     {isOnTrack
-                      ? 'In linea con obiettivo'
+                      ? `Obiettivo raggiunto${status.surplus_target > 0 ? ` · Superato di ${formatEuro(status.surplus_target)}` : ''}`
                       : isAtRisk
                         ? 'Attenzione richiesta'
                         : 'Sotto obiettivo'}
@@ -249,9 +250,10 @@ export default function UtileObiettivo() {
                     accent={(status.utile_attuale || 0) >= 0 ? 'success' : 'danger'}
                   />
                   <StatCard
-                    label="Gap da Colmare"
+                    label={status.gap_da_colmare > 0 ? 'Gap da Colmare' : 'Target Superato'}
                     value={formatEuro(status.gap_da_colmare || 0)}
                     icon={<BarChart3 size={18} />}
+                    subtext={status.gap_da_colmare > 0 ? undefined : formatEuro(status.surplus_target || 0)}
                     accent={(status.gap_da_colmare || 0) > 0 ? 'warning' : 'success'}
                   />
                 </PageGrid>

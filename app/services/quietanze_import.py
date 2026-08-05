@@ -27,6 +27,7 @@ COLL_CALENDARIO = "calendario_fiscale"
 
 # Codici ravvedimento da escludere dal confronto tributi — fonte unica condivisa.
 from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
+from app.services.f24_payment_evidence import patch_quietanza_associata
 
 # Codici tributo → tipo di scadenza del calendario fiscale (app/routers/
 # fiscalita_italiana.py::genera_scadenze_anno). Servono a segnare COMPLETATA
@@ -248,11 +249,11 @@ async def importa_quietanza_bytes(
         saldo_f24 = f24.get("totali", {}).get("saldo_netto", 0)
         is_ravveduto = len(codici_ravv) > 0
         update_data = {
-            "status": "pagato",
-            "quietanza_id": file_id,
-            "protocollo_quietanza": protocollo,
-            "data_pagamento_quietanza": data_pagamento,
-            "riconciliato_quietanza": True,
+            **patch_quietanza_associata(
+                quietanza_id=file_id,
+                protocollo=protocollo,
+                data_quietanza=data_pagamento,
+            ),
             "match_tributi_trovati": tributi_trovati,
             "match_tributi_totali": len(tributi_f24_principali),
             "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -266,16 +267,10 @@ async def importa_quietanza_bytes(
         await db[COLL_QUIETANZE].update_one(
             {"id": file_id}, {"$push": {"f24_associati": f24["id"]}}
         )
-        # Quietanza AdE arrivata → segna COMPLETATE le relative scadenze del
-        # calendario fiscale (ritenute/IVA/INPS del periodo pagato). Difensivo:
-        # un problema qui non deve MAI far fallire l'import della quietanza.
-        try:
-            scadenze_completate = await _marca_scadenze_calendario(
-                db, f24, data_pagamento, file_id
-            )
-        except Exception as e:
-            logger.warning(f"Marcatura scadenze calendario non riuscita (non bloccante): {e}")
-            scadenze_completate = []
+        # La quietanza collega il documento, ma la scadenza diventa completata
+        # solo dopo l'addebito bancario. Prima il calendario veniva chiuso qui,
+        # creando falsi pagamenti.
+        scadenze_completate = []
         f24_matchati.append({
             "f24_id": f24["id"],
             "f24_filename": f24.get("file_name"),

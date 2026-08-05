@@ -7,7 +7,11 @@ import logging
 
 from app.database import Database
 from app.models.stati import STATI_PAGATI
-from app.routers.prima_nota_module.common import CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA
+from app.routers.prima_nota_module.common import (
+    CATEGORIE_ESCLUSE,
+    ESCLUSIONI_PRIMA_NOTA,
+    aggrega_saldo_prima_nota,
+)
 from app.utils.error_handler import handle_errors
 
 logger = logging.getLogger(__name__)
@@ -41,11 +45,20 @@ async def get_financial_summary(
         "status": {"$nin": ["deleted", "archived"]},
         **ESCLUSIONI_PRIMA_NOTA,
     }
+    flusso_economico_match = {
+        "$and": [
+            prima_nota_match,
+            {"$nor": [
+                {"categoria": {"$regex": "versament|prelevament|trasferiment", "$options": "i"}},
+                {"source": "trasferimento_interno"},
+            ]},
+        ]
+    }
 
     try:
         # Get Prima Nota Cassa totals
         cassa_pipeline = [
-            {"$match": {**prima_nota_match, "data": date_range}},
+            {"$match": {"$and": [flusso_economico_match, {"data": date_range}]}},
             {"$group": {
                 "_id": "$tipo",
                 "total": {"$sum": "$importo"}
@@ -57,7 +70,7 @@ async def get_financial_summary(
 
         # Get Prima Nota Banca totals
         banca_pipeline = [
-            {"$match": {**prima_nota_match, "data": date_range}},
+            {"$match": {"$and": [flusso_economico_match, {"data": date_range}]}},
             {"$group": {
                 "_id": "$tipo",
                 "total": {"$sum": "$importo"}
@@ -70,13 +83,15 @@ async def get_financial_summary(
         # Riporto iniziale (impostato a mano dall'utente o cumulato anni
         # precedenti): senza, i saldi qui differivano dalla Prima Nota
         # appena l'utente impostava il riporto al 01/01.
-        from app.routers.prima_nota_module.common import get_saldo_iniziale_manuale, calcola_saldo_anni_precedenti
-        riporto_cassa = await get_saldo_iniziale_manuale(db, "prima_nota_cassa", anno)
-        if riporto_cassa is None:
-            riporto_cassa = await calcola_saldo_anni_precedenti(db, "prima_nota_cassa", anno)
-        riporto_banca = await get_saldo_iniziale_manuale(db, "prima_nota_banca", anno)
-        if riporto_banca is None:
-            riporto_banca = await calcola_saldo_anni_precedenti(db, "prima_nota_banca", anno)
+        saldo_query = {**prima_nota_match, "data": date_range}
+        saldi_cassa = await aggrega_saldo_prima_nota(
+            db, "prima_nota_cassa", saldo_query, anno,
+        )
+        saldi_banca = await aggrega_saldo_prima_nota(
+            db, "prima_nota_banca", saldo_query, anno,
+        )
+        riporto_cassa = saldi_cassa["saldo_precedente"]
+        riporto_banca = saldi_banca["saldo_precedente"]
         
         # Get Salari totals
         salari_pipeline = [
@@ -91,7 +106,11 @@ async def get_financial_summary(
         
         # ============ IVA DAI CORRISPETTIVI (DEBITO) ============
         corr_pipeline = [
-            {"$match": {"data": date_range}},
+            {"$match": {
+                "data": date_range,
+                "entity_status": {"$ne": "deleted"},
+                "status": {"$nin": ["deleted", "archived"]},
+            }},
             {"$group": {
                 "_id": None,
                 "totale_iva": {"$sum": "$totale_iva"},
@@ -115,7 +134,9 @@ async def get_financial_summary(
                     {"data_ricezione": date_range},
                     {"$and": [{"data_ricezione": {"$exists": False}}, {"invoice_date": date_range}]}
                 ],
-                "tipo_documento": {"$nin": NOTE_CREDITO_TYPES}
+                "tipo_documento": {"$nin": NOTE_CREDITO_TYPES},
+                "status": {"$nin": ["deleted", "archived"]},
+                "entity_status": {"$ne": "deleted"},
             }},
             {"$group": {
                 "_id": None,
@@ -140,7 +161,9 @@ async def get_financial_summary(
                     {"data_ricezione": date_range},
                     {"$and": [{"data_ricezione": {"$exists": False}}, {"invoice_date": date_range}]}
                 ],
-                "tipo_documento": {"$in": NOTE_CREDITO_TYPES}
+                "tipo_documento": {"$in": NOTE_CREDITO_TYPES},
+                "status": {"$nin": ["deleted", "archived"]},
+                "entity_status": {"$ne": "deleted"},
             }},
             {"$group": {
                 "_id": None,
@@ -163,7 +186,9 @@ async def get_financial_summary(
         fatture_da_pagare = await db["invoices"].aggregate([
             {"$match": {
                 "invoice_date": date_range,
-                "status": {"$nin": STATI_PAGATI}
+                "status": {"$nin": STATI_PAGATI + ["deleted", "archived"]},
+                "entity_status": {"$ne": "deleted"},
+                "pagato": {"$ne": True},
             }},
             {"$group": {"_id": None, "total": {"$sum": "$total_amount"}}}
         ]).to_list(1)
@@ -194,13 +219,15 @@ async def get_financial_summary(
                 "entrate": round(cassa_entrate, 2),
                 "uscite": round(cassa_uscite, 2),
                 "riporto": round(riporto_cassa, 2),
-                "saldo": round(riporto_cassa + cassa_entrate - cassa_uscite, 2)
+                "saldo": saldi_cassa["saldo"],
+                "nota_flussi": "Entrate/uscite escludono i trasferimenti interni; il saldo li include.",
             },
             "banca": {
                 "entrate": round(banca_entrate, 2),
                 "uscite": round(banca_uscite, 2),  # Include già salari e F24
                 "riporto": round(riporto_banca, 2),
-                "saldo": round(riporto_banca + banca_entrate - banca_uscite, 2)
+                "saldo": saldi_banca["saldo"],
+                "nota_flussi": "Entrate/uscite escludono i trasferimenti interni; il saldo li include.",
             },
             "salari": {
                 "totale": round(salari_totale, 2),
@@ -211,6 +238,11 @@ async def get_financial_summary(
             "vat_credit": round(iva_credito, 2),
             "vat_balance": round(saldo_iva, 2),
             "vat_status": "Da versare" if saldo_iva > 0 else "A credito",
+            "vat_basis": "stima_classificata",
+            "vat_note": (
+                "Stima da documenti classificati; non sostituisce la liquidazione IVA "
+                "mensile verificata con F24 e addebito bancario."
+            ),
             # Corrispettivi (incassi giornalieri)
             "corrispettivi": {
                 "totale": round(totale_corrispettivi, 2),
@@ -224,25 +256,18 @@ async def get_financial_summary(
                 "iva": round(iva_credito, 2)
             },
             # Campi H1 richiesti dalla specifica (con riporto iniziale)
-            "saldo_cassa": round(riporto_cassa + cassa_entrate - cassa_uscite, 2),
-            "saldo_banca": round(riporto_banca + banca_entrate - banca_uscite, 2),
-            "saldo_totale": round(
-                riporto_cassa + riporto_banca
-                + (cassa_entrate - cassa_uscite) + (banca_entrate - banca_uscite), 2),
+            "saldo_cassa": saldi_cassa["saldo"],
+            "saldo_banca": saldi_banca["saldo"],
+            "saldo_totale": round(saldi_cassa["saldo"] + saldi_banca["saldo"], 2),
             # Payables/Receivables
             "payables": round(payables, 2),
             "receivables": 0  # Non gestiamo fatture attive per ora
         }
     except Exception as e:
-        logger.error(f"Errore financial summary: {e}")
-        # Ritorna dati parziali in caso di errore
-        return {
-            "anno": anno,
-            "total_income": 0,
-            "total_expenses": 0,
-            "balance": 0,
-            "error": str(e)
-        }
+        logger.exception("Errore financial summary")
+        # Non trasformare un errore reale in un riepilogo a zero, che puo'
+        # essere scambiato per un dato contabile valido dal frontend.
+        raise
 
 
 @router.get(

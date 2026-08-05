@@ -16,6 +16,11 @@ import base64
 import logging
 from app.utils.error_handler import handle_errors
 from app.services.scritture_contabili import scrivi_movimento
+from app.services.f24_payment_evidence import (
+    patch_quietanza_associata,
+    stato_evidenza_pagamento,
+)
+from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -354,25 +359,39 @@ async def riconcilia_con_quietanza(
         if confronto["match"]:
             risultati["nessun_match"] = False
             
-            # Aggiorna F24 come PAGATO
+            # Collega la quietanza al modello. Il pagamento resta da
+            # verificare sull'estratto conto: il PDF non e' l'addebito banca.
             await db[COLL_F24_COMMERCIALISTA].update_one(
                 {"id": f24["id"]},
                 {"$set": {
-                    "status": "pagato",
-                    "riconciliato": True,
-                    "quietanza_id": quietanza_id,
+                    **patch_quietanza_associata(
+                        quietanza_id=quietanza_id,
+                        protocollo=(quietanza.get("protocollo_telematico") or ""),
+                        data_quietanza=(
+                            quietanza.get("data_pagamento")
+                            or (quietanza.get("dati_generali") or {}).get("data_pagamento")
+                        ),
+                    ),
+                    "riconciliato": False,
                     "data_riconciliazione": datetime.now(timezone.utc).isoformat(),
                     "differenza_ravvedimento": confronto["differenza_importo"],
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }}
             )
-            # D: Riconcilia il movimento prima_nota_banca associato
+            # La riga provvisoria di Prima Nota conserva il collegamento al
+            # documento, ma non diventa riconciliata finche' manca il vero
+            # movimento dell'estratto conto.
             pnb_id = f24.get("prima_nota_banca_id")
             if pnb_id:
                 await db["prima_nota_banca"].update_one(
                     {"id": pnb_id},
-                    {"$set": {"riconciliato": True, "quietanza_id": quietanza_id,
-                              "data_riconciliazione": datetime.now(timezone.utc).isoformat()}}
+                    {"$set": {
+                        "riconciliato": False,
+                        "quietanza_associata": True,
+                        "quietanza_id": quietanza_id,
+                        "stato_evidenza": "DA_VERIFICARE_BANCA",
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }}
                 )
             
             risultati["f24_riconciliati"].append({
@@ -404,7 +423,7 @@ async def riconcilia_con_quietanza(
                         "f24_id": f24_vecchio["id"],
                         "f24_pagato_id": f24["id"],
                         "quietanza_id": quietanza_id,
-                        "message": f"L'F24 del {f24_vecchio.get('dati_generali', {}).get('data_versamento', 'N/A')} (€{f24_vecchio.get('totali', {}).get('saldo_netto', 0)}) è stato sostituito da F24 con ravvedimento ora PAGATO. Eliminare?",
+                        "message": f"L'F24 del {f24_vecchio.get('dati_generali', {}).get('data_versamento', 'N/A')} (€{f24_vecchio.get('totali', {}).get('saldo_netto', 0)}) è stato sostituito da un F24 con ravvedimento e quietanza. Verificare l'addebito bancario prima di archiviare il precedente.",
                         "importo": f24_vecchio.get("totali", {}).get("saldo_netto", 0),
                         "status": "pending",
                         "created_at": datetime.now(timezone.utc).isoformat()
@@ -505,7 +524,7 @@ async def list_f24_commercialista(
 @router.put("/commercialista/{f24_id}/pagato")
 @handle_errors
 async def mark_f24_pagato(f24_id: str) -> Dict[str, Any]:
-    """Segna un F24 come pagato manualmente."""
+    """Registra una dichiarazione manuale, in attesa della prova bancaria."""
     db = Database.get_db()
     
     f24 = await db[COLL_F24_COMMERCIALISTA].find_one({"id": f24_id})
@@ -515,13 +534,21 @@ async def mark_f24_pagato(f24_id: str) -> Dict[str, Any]:
     await db[COLL_F24_COMMERCIALISTA].update_one(
         {"id": f24_id},
         {"$set": {
-            "status": "pagato",
+            "status": "da_pagare",
+            "stato_pagamento": "DA_VERIFICARE_BANCA",
+            "pagato": False,
             "pagato_manualmente": True,
+            "pagamento_dichiarato_manualmente": True,
+            "pagamento_verificato_banca": False,
             "updated_at": datetime.now(timezone.utc).isoformat()
         }}
     )
     
-    return {"success": True, "message": "F24 segnato come pagato"}
+    return {
+        "success": True,
+        "message": "Pagamento dichiarato; resta da verificare sul movimento bancario",
+        "stato_pagamento": "DA_VERIFICARE_BANCA",
+    }
 
 
 @router.get("/commercialista/{f24_id}/pdf")
@@ -834,8 +861,22 @@ async def verifica_codice_tributo(
     
     quietanze = await db[COLL_QUIETANZE].find(query, {"_id": 0}).to_list(100)
     
+    quietanza_ids = [q.get("id") for q in quietanze if q.get("id")]
+    modelli_collegati = await db[COLL_F24_COMMERCIALISTA].find(
+        {"quietanza_id": {"$in": quietanza_ids}},
+        {"_id": 0},
+    ).to_list(1000) if quietanza_ids else []
+    modello_per_quietanza = {
+        str(f.get("quietanza_id")): f
+        for f in modelli_collegati
+        if f.get("quietanza_id")
+    }
+
     risultati = []
     for q in quietanze:
+        evidenza = stato_evidenza_pagamento(
+            modello_per_quietanza.get(str(q.get("id")), q)
+        )
         # Cerca il codice specifico nelle sezioni
         for sezione in ["sezione_erario", "sezione_inps", "sezione_regioni"]:
             for item in q.get(sezione, []):
@@ -848,7 +889,14 @@ async def verifica_codice_tributo(
                     
                     risultati.append({
                         "quietanza_id": q.get("id"),
-                        "data_pagamento": q.get("dati_generali", {}).get("data_pagamento"),
+                        "data_quietanza": (
+                            q.get("data_pagamento")
+                            or q.get("dati_generali", {}).get("data_pagamento")
+                        ),
+                        "data_pagamento": evidenza["data_pagamento"],
+                        "pagato": evidenza["pagato"],
+                        "pagamento_verificato_banca": evidenza["verificato_banca"],
+                        "stato_evidenza_pagamento": evidenza["stato"],
                         "codice_tributo": codice,
                         "periodo": periodo,
                         "importo_debito": item.get("importo_debito", 0),
@@ -856,7 +904,7 @@ async def verifica_codice_tributo(
                         "descrizione": item.get("descrizione", "")
                     })
     
-    is_pagato = len(risultati) > 0
+    is_pagato = any(r["pagamento_verificato_banca"] for r in risultati)
     
     # Cerca anche in F24 commercialista per vedere se è in attesa
     f24_attesa = await db[COLL_F24_COMMERCIALISTA].find({
@@ -873,6 +921,9 @@ async def verifica_codice_tributo(
         "periodo_cercato": periodo_pattern or "tutti",
         "pagato": is_pagato,
         "pagamenti": risultati,
+        "quietanze_da_verificare_banca": sum(
+            1 for r in risultati if not r["pagamento_verificato_banca"]
+        ),
         "in_attesa": [{
             "f24_id": f["id"],
             "scadenza": f.get("dati_generali", {}).get("data_versamento"),
@@ -898,32 +949,48 @@ async def dashboard_riconciliazione(
     if anno:
         anno_str = str(anno)
         anno_q = {"$or": [
+            {"anno": anno},
             {"periodo_riferimento": {"$regex": anno_str}},
             {"data_scadenza": {"$regex": f"^{anno_str}"}},
-            {"scadenza_stimata": {"$regex": f"^{anno_str}"}}
+            {"scadenza_stimata": {"$regex": f"^{anno_str}"}},
+            {"dati_generali.data_scadenza": {"$regex": f"^{anno_str}"}},
+            {"dati_generali.data_versamento": {"$regex": f"^{anno_str}"}},
         ]}
-    
-    # F24 commercialista
-    q_da_pagare = {"status": "da_pagare"}
-    q_pagato = {"status": "pagato"}
-    q_eliminato = {"status": "eliminato"}
-    if anno_q:
-        q_da_pagare = {"$and": [q_da_pagare, anno_q]}
-        q_pagato = {"$and": [q_pagato, anno_q]}
-        q_eliminato = {"$and": [q_eliminato, anno_q]}
-    
+
+    # Non ci fidiamo dei soli flag legacy: quietanza e dichiarazione manuale
+    # restano DA VERIFICARE finche' manca il movimento bancario.
+    docs = await db[COLL_F24_COMMERCIALISTA].find(
+        anno_q or {}, {"_id": 0}
+    ).to_list(10000)
+    eliminati = [f for f in docs if f.get("status") == "eliminato"]
+    attivi = [f for f in docs if f.get("status") != "eliminato"]
+    pagati = [f for f in attivi if stato_evidenza_pagamento(f)["pagato"]]
+    da_pagare = [f for f in attivi if not stato_evidenza_pagamento(f)["pagato"]]
+
     f24_stats = {
-        "da_pagare": await db[COLL_F24_COMMERCIALISTA].count_documents(q_da_pagare),
-        "pagato": await db[COLL_F24_COMMERCIALISTA].count_documents(q_pagato),
-        "eliminato": await db[COLL_F24_COMMERCIALISTA].count_documents(q_eliminato)
+        "da_pagare": len(da_pagare),
+        "pagato": len(pagati),
+        "eliminato": len(eliminati),
+        "quietanza_da_verificare_banca": sum(
+            1 for f in da_pagare
+            if stato_evidenza_pagamento(f)["quietanza_presente"]
+        ),
     }
-    
-    # Totali importi da pagare
-    pipeline_da_pagare = [
-        {"$match": {"status": "da_pagare"}},
-        {"$group": {"_id": None, "totale": {"$sum": "$totali.saldo_netto"}}}
-    ]
-    tot_da_pagare = await db[COLL_F24_COMMERCIALISTA].aggregate(pipeline_da_pagare).to_list(1)
+
+    def importo_f24(f24: Dict[str, Any]) -> float:
+        try:
+            return float(
+                (f24.get("totali") or {}).get("saldo_netto")
+                or f24.get("saldo_finale")
+                or f24.get("importo_totale")
+                or f24.get("importo")
+                or 0
+            )
+        except (TypeError, ValueError):
+            return 0.0
+
+    totale_da_pagare = sum(importo_f24(f) for f in da_pagare)
+    totale_pagato_banca = sum(importo_f24(f) for f in pagati)
     
     # Quietanze
     quietanze_count = await db[COLL_QUIETANZE].count_documents({})
@@ -940,21 +1007,36 @@ async def dashboard_riconciliazione(
     oggi = datetime.now(timezone.utc).date()
     tra_7_giorni = (oggi + timedelta(days=7)).isoformat()
     
-    f24_in_scadenza = await db[COLL_F24_COMMERCIALISTA].find({
-        "status": "da_pagare",
-        "dati_generali.data_versamento": {"$lte": tra_7_giorni}
-    }, {"_id": 0, "id": 1, "dati_generali.data_versamento": 1, "totali.saldo_netto": 1}).to_list(20)
+    oggi_iso = oggi.isoformat()
+    f24_in_scadenza = []
+    for f in da_pagare:
+        scadenza = (
+            (f.get("dati_generali") or {}).get("data_scadenza")
+            or (f.get("dati_generali") or {}).get("data_versamento")
+            or f.get("data_scadenza")
+            or f.get("scadenza_stimata")
+        )
+        if scadenza and oggi_iso <= str(scadenza)[:10] <= tra_7_giorni:
+            f24_in_scadenza.append(f)
+    f24_in_scadenza = f24_in_scadenza[:20]
     
     return {
         "f24_commercialista": f24_stats,
-        "totale_da_pagare": round(tot_da_pagare[0]["totale"], 2) if tot_da_pagare else 0,
+        "totale_da_pagare": round(totale_da_pagare, 2),
+        "totale_pagato_banca": round(totale_pagato_banca, 2),
         "quietanze_caricate": quietanze_count,
-        "totale_pagato_quietanze": round(tot_quietanze[0]["totale"], 2) if tot_quietanze else 0,
+        "totale_documentato_quietanze": round(tot_quietanze[0]["totale"], 2) if tot_quietanze else 0,
+        "totale_pagato_quietanze": round(sum(
+            importo_f24(f) for f in pagati if f.get("quietanza_id")
+        ), 2),
         "alerts_pendenti": alerts_pending,
         "f24_in_scadenza": [{
             "id": f["id"],
-            "scadenza": f.get("dati_generali", {}).get("data_versamento"),
-            "importo": f.get("totali", {}).get("saldo_netto", 0)
+            "scadenza": (
+                f.get("dati_generali", {}).get("data_scadenza")
+                or f.get("dati_generali", {}).get("data_versamento")
+            ),
+            "importo": importo_f24(f),
         } for f in f24_in_scadenza]
     }
 
@@ -974,7 +1056,7 @@ async def upload_quietanze_multiplo(
     Il sistema:
     1. Parsa ogni quietanza ed estrae codici tributo + protocollo
     2. Cerca F24 commercialista con codici corrispondenti
-    3. Associa automaticamente e segna come "pagato"
+    3. Associa automaticamente e lascia "da verificare in banca"
     4. Crea alert per discrepanze
     
     La VERA riconciliazione avviene poi con l'estratto conto bancario.
@@ -1087,8 +1169,6 @@ async def riconcilia_tutto() -> Dict[str, Any]:
     db = Database.get_db()
 
     # Codici ravvedimento/interessi da escludere dal confronto — fonte unica.
-    from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
-
     # Recupera tutti gli F24 da pagare
     f24_da_pagare = await db[COLL_F24_COMMERCIALISTA].find(
         {"status": "da_pagare"},
@@ -1267,13 +1347,14 @@ async def riconcilia_tutto() -> Dict[str, Any]:
             # Flag ravveduto
             is_ravveduto = confronto["ravveduto"]
             
-            # Aggiorna F24 come pagato
+            # La quietanza associa il documento al modello, ma lo stato
+            # PAGATO richiede anche un movimento bancario identificabile.
             update_data = {
-                "status": "pagato",
-                "quietanza_id": quietanza["id"],
-                "protocollo_quietanza": quietanza.get("protocollo_telematico"),
-                "data_pagamento_quietanza": quietanza.get("data_pagamento"),
-                "riconciliato_quietanza": True,
+                **patch_quietanza_associata(
+                    quietanza_id=quietanza["id"],
+                    protocollo=quietanza.get("protocollo_telematico") or "",
+                    data_quietanza=quietanza.get("data_pagamento"),
+                ),
                 "match_tributi_trovati": confronto["tributi_trovati"],
                 "match_tributi_totali": confronto["tributi_f24"],
                 "updated_at": datetime.now(timezone.utc).isoformat()

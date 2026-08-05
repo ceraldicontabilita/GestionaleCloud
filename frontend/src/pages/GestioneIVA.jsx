@@ -449,6 +449,67 @@ export default function GestioneIVA() {
           </div>
         )}
 
+        {dashboard?.versamento_iva && (
+          <div
+            style={{
+              ...STILI.sezione,
+              marginTop: 8,
+              borderColor: dashboard.versamento_iva.pagato_banca
+                ? COLORS.success
+                : (dashboard.versamento_iva.scaduto ? COLORS.danger : COLORS.warning),
+            }}
+            data-testid="iva-verifica-f24-banca"
+          >
+            <div style={STILI.bloccoTitolo}>Versamento IVA · F24 · banca</div>
+            <div style={{ ...STILI.riepilogo, borderBottom: 'none' }}>
+              <div style={STILI.voce}>
+                <span style={STILI.voceLabel}>Codice tributo</span>
+                <strong>{dashboard.versamento_iva.codice_tributo}</strong>
+              </div>
+              <div style={STILI.voce}>
+                <span style={STILI.voceLabel}>Scadenza</span>
+                <strong>{formatDateIT(dashboard.versamento_iva.scadenza)}</strong>
+              </div>
+              <div style={STILI.voce}>
+                <span style={STILI.voceLabel}>F24 trovato</span>
+                <strong>{dashboard.versamento_iva.f24_trovati || 0}</strong>
+              </div>
+              <div style={STILI.voce}>
+                <span style={STILI.voceLabel}>Importo IVA nel F24</span>
+                <strong>
+                  {dashboard.versamento_iva.f24?.importo_iva == null
+                    ? '—'
+                    : formatEuro(dashboard.versamento_iva.f24.importo_iva)}
+                </strong>
+              </div>
+              <div style={STILI.voce}>
+                <span style={STILI.voceLabel}>Prova pagamento</span>
+                <Badge variant={dashboard.versamento_iva.pagato_banca ? 'success' : 'warning'}>
+                  {dashboard.versamento_iva.pagato_banca
+                    ? 'Addebito bancario verificato'
+                    : dashboard.versamento_iva.f24?.quietanza_id
+                      ? 'Quietanza presente · banca da verificare'
+                      : 'Pagamento non provato in banca'}
+                </Badge>
+              </div>
+            </div>
+            {dashboard.versamento_iva.f24_trovati > 1 && (
+              <div style={STILI.msgErr} role="alert">
+                Più F24 trovati per lo stesso codice e anno: associazione ambigua, non sommare automaticamente.
+              </div>
+            )}
+            {dashboard.versamento_iva.ravvedimento?.necessario && (
+              <div style={{ ...STILI.msg, ...STILI.msgErr, margin: '8px 0 0' }} role="alert">
+                Scadenza superata senza prova bancaria. Verificare ravvedimento con tributo{' '}
+                <strong>{dashboard.versamento_iva.codice_tributo}</strong>, sanzione{' '}
+                <strong>{dashboard.versamento_iva.ravvedimento.codice_sanzione}</strong> e interessi{' '}
+                <strong>{dashboard.versamento_iva.ravvedimento.codice_interessi}</strong>.
+                Gli importi devono essere revisionati prima del versamento.
+              </div>
+            )}
+          </div>
+        )}
+
         {!liquidazione ? (
           <div style={STILI.vuoto}>
             Nessuna liquidazione per {MESI_FULL[mese]} {anno}. Premi «Calcola» per crearla.

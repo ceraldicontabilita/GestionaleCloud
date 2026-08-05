@@ -632,18 +632,47 @@ async def associa_combinazioni_avanzato(
 # ============================================================
 
 @router.get("/stats-avanzate")
-async def get_stats_avanzate() -> Dict[str, Any]:
+async def get_stats_avanzate(
+    anno: Optional[int] = Query(None, ge=2000, le=2100),
+) -> Dict[str, Any]:
     """
     Statistiche avanzate sullo stato degli assegni.
     """
     db = Database.get_db()
     
-    assegni = await db[COLLECTION_ASSEGNI].find({}, {"_id": 0}).to_list(10000)
+    query: Dict[str, Any] = {"entity_status": {"$ne": "deleted"}}
+    if anno:
+        query["$and"] = [{"$or": [
+            {"data_emissione": {"$regex": f"^{anno}"}},
+            {"data": {"$regex": f"^{anno}"}},
+            {"anno_creazione": anno},
+            {"anno": anno},
+            {"$and": [
+                {"data_emissione": {"$in": [None, ""]}},
+                {"data": {"$in": [None, ""]}},
+                {"anno_creazione": {"$exists": False}},
+                {"anno": {"$exists": False}},
+                {"created_at": {"$regex": f"^{anno}"}},
+            ]},
+        ]}]
+    tutti = await db[COLLECTION_ASSEGNI].find(query, {"_id": 0}).to_list(10000)
+
+    # I fogli ancora vuoti del carnet sono scorte numerate, non pagamenti.
+    # Includerli nel denominatore produceva l'Health Score 45,9% visto live.
+    carnet_vuoti = [
+        a for a in tutti
+        if a.get("stato", "vuoto") == "vuoto" and float(a.get("importo") or 0) <= 0
+    ]
+    assegni = [a for a in tutti if a not in carnet_vuoti]
     
     # Statistiche base
     totale = len(assegni)
     con_beneficiario = len([a for a in assegni if a.get("beneficiario") and a.get("beneficiario") not in ["", "-", "N/A"]])
-    con_fattura = len([a for a in assegni if a.get("fattura_id") or a.get("numero_fattura")])
+    con_fattura = len([
+        a for a in assegni
+        if a.get("fattura_id") or a.get("fattura_collegata")
+        or a.get("numero_fattura") or a.get("fatture_collegate")
+    ])
     
     # Per stato
     stati = Counter([a.get("stato", "unknown") for a in assegni])
@@ -664,6 +693,9 @@ async def get_stats_avanzate() -> Dict[str, Any]:
     
     return {
         "totale_assegni": totale,
+        "totale_record": len(tutti),
+        "carnet_vuoti": len(carnet_vuoti),
+        "anno": anno,
         "con_beneficiario": con_beneficiario,
         "senza_beneficiario": totale - con_beneficiario,
         "con_fattura": con_fattura,

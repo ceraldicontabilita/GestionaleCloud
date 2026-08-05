@@ -28,6 +28,7 @@ from fastapi import APIRouter, Query
 
 from app.database import Database
 from app.utils.error_handler import handle_errors
+from app.services.f24_payment_evidence import stato_evidenza_pagamento
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -139,20 +140,12 @@ def _tributi_di(f24: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def _data_pagamento_f24(f24: Dict[str, Any]) -> Optional[str]:
-    for k in ("data_pagamento", "data_versamento", "data_quietanza", "data_addebito"):
-        if f24.get(k):
-            return str(f24[k])[:10]
-    ric = f24.get("riconciliazione") or {}
-    if isinstance(ric, dict) and ric.get("data"):
-        return str(ric["data"])[:10]
-    return None
+    data = stato_evidenza_pagamento(f24).get("data_pagamento")
+    return str(data)[:10] if data else None
 
 
 def _f24_risulta_pagato(f24: Dict[str, Any]) -> bool:
-    if _data_pagamento_f24(f24):
-        return True
-    stato = str(f24.get("stato") or f24.get("stato_pagamento") or "").lower()
-    return bool(f24.get("pagato")) or stato in ("pagato", "quietanzato", "pagata")
+    return bool(stato_evidenza_pagamento(f24)["pagato"])
 
 
 async def _riconcilia_ritenuta(db, rit: Dict[str, Any]) -> Dict[str, Any]:

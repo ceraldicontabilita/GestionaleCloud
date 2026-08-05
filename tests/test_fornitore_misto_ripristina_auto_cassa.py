@@ -19,8 +19,12 @@ def test_fornitore_misto_rimette_provvisoria_solo_auto_cassa(monkeypatch):
             {
                 "id": "invoice-auto", "supplier_vat": "00000000001",
                 "invoice_number": "AUTO-1", "supplier_name": "FORNITORE TEST",
-                "pagato": True, "stato_pagamento": "pagata",
+                "pagato": True, "paid": True,
+                "stato_pagamento": "pagata", "payment_status": "paid",
+                "importo_pagato": 100, "importo_residuo": 0,
+                "data_pagamento": "2026-06-15",
                 "prima_nota_id": "pn-auto", "prima_nota_tipo": "cassa",
+                "prima_nota_cassa_id": "pn-auto",
                 "registrata_auto_da_metodo_fornitore": True,
             },
             {
@@ -53,8 +57,14 @@ def test_fornitore_misto_rimette_provvisoria_solo_auto_cassa(monkeypatch):
         pn_auto = await db["prima_nota_cassa"].find_one({"id": "pn-auto"})
         pn_manuale = await db["prima_nota_cassa"].find_one({"id": "pn-manuale"})
         assert auto["pagato"] is False
+        assert auto["paid"] is False
         assert auto["stato_pagamento"] == "da_pagare"
+        assert auto["payment_status"] == "open"
+        assert auto["importo_pagato"] == 0
         assert auto["prima_nota_id"] is None
+        assert auto.get("prima_nota_cassa_id") is None
+        assert auto.get("prima_nota_banca_id") is None
+        assert auto.get("data_pagamento") is None
         assert pn_auto["status"] == "deleted"
         assert manuale["pagato"] is True
         assert pn_manuale.get("status") != "deleted"

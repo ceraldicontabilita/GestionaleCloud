@@ -12,6 +12,10 @@ import os
 from app.database import Database
 from app.utils.dependencies import get_current_user
 from app.db_collections import COLL_F24
+from app.services.f24_payment_evidence import (
+    patch_pagamento_banca,
+    stato_evidenza_pagamento,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -640,8 +644,8 @@ async def get_f24_dashboard(
     
     all_f24 = await db[COLL_F24].find({}, {"_id": 0}).to_list(10000)
     
-    pagati = [f for f in all_f24 if f.get("status") == "paid"]
-    non_pagati = [f for f in all_f24 if f.get("status") != "paid"]
+    pagati = [f for f in all_f24 if stato_evidenza_pagamento(f)["pagato"]]
+    non_pagati = [f for f in all_f24 if not stato_evidenza_pagamento(f)["pagato"]]
     
     totale_pagato = sum(float(f.get("importo", 0) or 0) for f in pagati)
     totale_da_pagare = sum(float(f.get("importo", 0) or 0) for f in non_pagati)
@@ -664,7 +668,7 @@ async def get_f24_dashboard(
             per_codice[cod]["count"] += 1
             importo = float(codice.get("importo", 0) or f24.get("importo", 0) or 0)
             per_codice[cod]["totale"] += importo
-            if f24.get("status") == "paid":
+            if stato_evidenza_pagamento(f24)["pagato"]:
                 per_codice[cod]["pagato"] += importo
             else:
                 per_codice[cod]["da_pagare"] += importo
@@ -724,8 +728,18 @@ async def riconcilia_f24(
     if not movimento:
         return {"success": False, "error": "Movimento bancario non trovato"}
     
-    importo_f24 = float(f24.get("importo", 0) or 0)
-    importo_mov = abs(float(movimento.get("amount", 0) or 0))
+    importo_f24 = float(
+        f24.get("importo")
+        or f24.get("importo_totale")
+        or (f24.get("totali") or {}).get("saldo_netto")
+        or 0
+    )
+    importo_mov = abs(float(
+        movimento.get("amount")
+        or movimento.get("importo")
+        or movimento.get("uscite")
+        or 0
+    ))
     
     if abs(importo_f24 - importo_mov) > 1:
         return {
@@ -736,11 +750,20 @@ async def riconcilia_f24(
     
     now = datetime.now(timezone.utc).isoformat()
     
+    data_banca = (
+        movimento.get("data_contabile")
+        or movimento.get("data")
+        or movimento.get("booking_date")
+        or now
+    )
     await db[COLL_F24].update_one(
         {"id": f24_id},
         {"$set": {
-            "status": "paid",
-            "paid_date": now,
+            **patch_pagamento_banca(
+                movimento_id=movimento_bancario_id,
+                data_pagamento=data_banca,
+            ),
+            "paid_date": data_banca,
             "bank_movement_id": movimento_bancario_id,
             "reconciled_at": now
         }}
@@ -773,7 +796,7 @@ async def mark_f24_paid(
     paid_date: Optional[str] = None,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, Any]:
-    """Mark F24 as paid manually."""
+    """Registra una dichiarazione manuale, non una prova bancaria."""
     db = Database.get_db()
     
     now = datetime.now(timezone.utc).isoformat()
@@ -781,8 +804,12 @@ async def mark_f24_paid(
     result = await db[COLL_F24].update_one(
         {"id": f24_id},
         {"$set": {
-            "status": "paid",
-            "paid_date": paid_date or now,
+            "status": "da_pagare",
+            "stato_pagamento": "DA_VERIFICARE_BANCA",
+            "pagato": False,
+            "pagato_manualmente": True,
+            "pagamento_dichiarato_manualmente": True,
+            "data_pagamento_dichiarata": paid_date or now,
             "updated_at": now
         }}
     )
@@ -790,7 +817,11 @@ async def mark_f24_paid(
     if result.matched_count == 0:
         return {"success": False, "error": "F24 non trovato"}
     
-    return {"success": True, "message": "F24 marcato come pagato"}
+    return {
+        "success": True,
+        "message": "Pagamento dichiarato; resta da verificare sul movimento bancario",
+        "stato_pagamento": "DA_VERIFICARE_BANCA",
+    }
 
 
 # ============== CODICI TRIBUTO ==============

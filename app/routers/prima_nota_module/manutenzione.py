@@ -950,6 +950,7 @@ async def ripristina_provvisori_metodo_errato(
                 {"id": fid},
                 {"_id": 0, "supplier_vat": 1, "cedente_piva": 1,
                  "invoice_number": 1, "supplier_name": 1,
+                 "total_amount": 1, "importo_totale": 1,
                  "registrata_auto_da_metodo_fornitore": 1},
             )
             if not fattura:
@@ -1009,9 +1010,35 @@ async def ripristina_provvisori_metodo_errato(
             )
             await db["invoices"].update_one(
                 {"id": mov["fattura_id"]},
-                {"$set": {"pagato": False, "stato_pagamento": "da_pagare",
-                          "prima_nota_id": None, "prima_nota_tipo": None},
-                 "$unset": {"registrata_auto_da_metodo_fornitore": ""}},
+                {"$set": {
+                    # Tutte le viste usano ancora alias storici diversi.
+                    # Lasciarne uno solo a True rendeva la fattura
+                    # invisibile in Prima Nota pur avendo il movimento
+                    # collegato soft-deleted (32 casi live il 05/08/2026).
+                    "pagato": False,
+                    "paid": False,
+                    "stato_pagamento": "da_pagare",
+                    "payment_status": "open",
+                    "stato_finanziario": "da_registrare",
+                    "importo_pagato": 0,
+                    "importo_residuo": float(
+                        fattura.get("total_amount")
+                        or fattura.get("importo_totale")
+                        or 0
+                    ),
+                    "prima_nota_id": None,
+                    "prima_nota_tipo": None,
+                },
+                 "$unset": {
+                     "prima_nota_cassa_id": "",
+                     "prima_nota_banca_id": "",
+                     "data_pagamento": "",
+                     "movimento_bancario_id": "",
+                     "estratto_conto_id": "",
+                     "riconciliato": "",
+                     "riconciliato_con_ec": "",
+                     "registrata_auto_da_metodo_fornitore": "",
+                 }},
             )
 
     # ── Un addebito reale = UNA riga (caso TOP SPINA 05/01, triplo conteggio) ──
@@ -2258,27 +2285,26 @@ async def ripristina_fatture_con_movimento_cancellato(
     prima_nota_id punta a una riga soft-deletata (residuo delle pulizie):
     tornano 'da pagare' e rientrano nel giro normale (provvisori /
     attesa banca / riconciliazione)."""
+    from app.services.prima_nota_integrity import (
+        filtro_fatture_marcate_pagate,
+        ripristina_fattura_senza_movimento_attivo,
+        trova_movimento_prima_nota_attivo,
+    )
+
     db = Database.get_db()
     fatture = await db["invoices"].find(
-        {"pagato": True, "prima_nota_id": {"$exists": True, "$nin": [None, ""]},
-         "status": {"$nin": ["deleted", "archived"]}},
-        {"id": 1, "invoice_number": 1, "supplier_name": 1,
-         "prima_nota_id": 1, "total_amount": 1},  # _id incluso: le legacy non hanno id
+        filtro_fatture_marcate_pagate(),
+        {"id": 1, "invoice_key": 1,
+         "invoice_number": 1, "supplier_name": 1,
+         "prima_nota_id": 1, "prima_nota_cassa_id": 1,
+         "prima_nota_banca_id": 1, "total_amount": 1,
+         "importo_totale": 1},  # _id incluso: le legacy non hanno id
     ).to_list(10000)
 
     ripristinate = 0
     dettaglio = []
     for f in fatture:
-        pn_id = f["prima_nota_id"]
-        viva = False
-        for coll in ("prima_nota_banca", "prima_nota_cassa"):
-            r = await db[coll].find_one(
-                {"id": pn_id, "status": {"$nin": ["deleted", "archived"]}},
-                {"_id": 0, "id": 1})
-            if r:
-                viva = True
-                break
-        if viva:
+        if await trova_movimento_prima_nota_attivo(db, f):
             continue
         ripristinate += 1
         if len(dettaglio) < 40:
@@ -2286,14 +2312,7 @@ async def ripristina_fatture_con_movimento_cancellato(
                               "fornitore": f.get("supplier_name"),
                               "importo": f.get("total_amount")})
         if not dry_run:
-            # le fatture legacy non hanno il campo id: si aggiornano per _id
-            filtro = {"id": f["id"]} if f.get("id") else {"_id": f["_id"]}
-            await db["invoices"].update_one(filtro, {"$set": {
-                "pagato": False, "paid": False, "stato_pagamento": "da_pagare",
-                "prima_nota_id": None, "prima_nota_tipo": None,
-                "prima_nota_banca_id": None, "riconciliato_con_ec": None,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }})
+            await ripristina_fattura_senza_movimento_attivo(db, f)
     return {"dry_run": dry_run,
             "ripristinate" if not dry_run else "da_ripristinare": ripristinate,
             "dettaglio": dettaglio}

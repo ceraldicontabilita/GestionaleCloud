@@ -243,6 +243,31 @@ export default function BilancioVerifica() {
         <>
           <SummaryCards />
 
+          <div
+            role="status"
+            style={{
+              marginTop: 16,
+              padding: '12px 14px',
+              borderRadius: BORDER_RADIUS.md,
+              border: `1px solid ${data.completezza_registro?.completo ? COLORS.success : COLORS.warning}`,
+              background: data.completezza_registro?.completo ? COLORS.successLight : COLORS.warningLight,
+              color: COLORS.text,
+              fontSize: 13,
+              lineHeight: 1.5,
+            }}
+          >
+            <strong>Fonte: libro giornale definitivo.</strong>{' '}
+            {data.completezza_registro?.scritture_registrate || 0} scritture registrate.
+            {!data.completezza_registro?.completo && (
+              <>
+                {' '}Il risultato quadra, ma non è ancora completo: restano{' '}
+                <strong>{data.completezza_registro?.documenti_da_registrare || 0}</strong> documenti
+                ({data.completezza_registro?.fatture_da_registrare || 0} fatture e{' '}
+                {data.completezza_registro?.corrispettivi_da_registrare || 0} corrispettivi).
+              </>
+            )}
+          </div>
+
           {/* Filtri */}
           <div
             style={{

@@ -213,7 +213,7 @@ async def get_f24_dashboard_public(
 # ============== SUPPLIERS ==============
 # NOTE: GET /suppliers è gestito da suppliers.py router con supporto per filtri (search, metodo_pagamento, etc.)
 
-@router.post("/suppliers")
+@router.post("/suppliers-legacy", include_in_schema=False)
 async def create_supplier(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """
     Crea fornitore.
@@ -503,7 +503,7 @@ async def create_bank(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 
 # ============== ASSEGNI ==============
 
-@router.get("/assegni")
+@router.get("/assegni-legacy", include_in_schema=False)
 async def list_assegni(
     skip: int = 0, 
     limit: int = 10000,
@@ -714,7 +714,7 @@ async def portal_upload(
 
 # ============== DASHBOARD STATS ==============
 
-@router.get("/dashboard/stats")
+@router.get("/dashboard/stats-legacy", include_in_schema=False)
 async def get_dashboard_stats() -> Dict[str, Any]:
     """Statistiche dashboard."""
     db = Database.get_db()

@@ -13,6 +13,7 @@ import base64
 from app.database import Database
 from app.db_collections import COLL_F24
 from app.utils.error_handler import handle_errors
+from app.services.f24_payment_evidence import stato_evidenza_pagamento
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -59,6 +60,14 @@ async def list_f24_models(anno: int = None) -> Dict[str, Any]:
             u_filter,
             {"_id": 0, "pdf_data": 0}
         ).sort("created_at", -1).to_list(100)
+
+        # La quietanza viene mostrata insieme al relativo modello, ma eredita
+        # lo stato PAGATO soltanto se quel modello possiede la prova bancaria.
+        f24_per_quietanza = {
+            str(f.get("quietanza_id")): f
+            for f in f24_uni
+            if f.get("quietanza_id")
+        }
         
         # Trasforma quietanze nel formato atteso dal frontend
         f24s = []
@@ -79,6 +88,9 @@ async def list_f24_models(anno: int = None) -> Dict[str, Any]:
             if qid:
                 seen_ids.add(qid)
             
+            evidenza = stato_evidenza_pagamento(
+                f24_per_quietanza.get(str(qid), q)
+            )
             f24s.append({
                 "id": qid,
                 "tipo_modello": "F24",
@@ -86,10 +98,12 @@ async def list_f24_models(anno: int = None) -> Dict[str, Any]:
                 "data_scadenza": data_pag,
                 "data_versamento": data_pag,
                 "saldo_finale": saldo,
-                "pagato": True,
+                "pagato": evidenza["pagato"],
                 "contribuente": dati.get("ragione_sociale", dati.get("codice_fiscale", q.get("codice_fiscale", ""))),
                 "file_name": q.get("filename"),
-                "status": "pagato",
+                "status": "pagato" if evidenza["pagato"] else "da_verificare_banca",
+                "stato_evidenza_pagamento": evidenza["stato"],
+                "pagamento_verificato_banca": evidenza["verificato_banca"],
                 "protocollo": q.get("protocollo_telematico", ""),
                 "tributi_erario": q.get("sezione_erario", []),
                 "tributi_inps": q.get("sezione_inps", []),
@@ -114,6 +128,7 @@ async def list_f24_models(anno: int = None) -> Dict[str, Any]:
             if not data_vers and not saldo:
                 continue  # Skip documenti completamente vuoti
             
+            evidenza = stato_evidenza_pagamento(f)
             f24s.append({
                 "id": fid,
                 "tipo_modello": "F24",
@@ -121,10 +136,12 @@ async def list_f24_models(anno: int = None) -> Dict[str, Any]:
                 "data_scadenza": data_vers,
                 "data_versamento": data_vers,
                 "saldo_finale": saldo,
-                "pagato": f.get("status") == "pagato",
+                "pagato": evidenza["pagato"],
                 "contribuente": dati.get("ragione_sociale", dati.get("codice_fiscale", f.get("codice_fiscale", ""))),
                 "file_name": f.get("filename") or f.get("file_name"),
-                "status": f.get("status"),
+                "status": "pagato" if evidenza["pagato"] else f.get("status", "da_pagare"),
+                "stato_evidenza_pagamento": evidenza["stato"],
+                "pagamento_verificato_banca": evidenza["verificato_banca"],
                 "source": "f24_unificato"
             })
         
@@ -510,18 +527,29 @@ async def get_f24_pdf(f24_id: str):
 @router.put("/models/{f24_id}/pagato")
 @handle_errors
 async def mark_f24_pagato(f24_id: str) -> Dict[str, str]:
-    """Segna un F24 come pagato."""
+    """Registra la dichiarazione manuale; la banca resta da verificare."""
     db = Database.get_db()
     
     result = await db[F24_COLLECTION].update_one(
         {"id": f24_id},
-        {"$set": {"status": "pagato", "updated_at": datetime.now(timezone.utc).isoformat()}}
+        {"$set": {
+            "status": "da_pagare",
+            "stato_pagamento": "DA_VERIFICARE_BANCA",
+            "pagato": False,
+            "pagato_manualmente": True,
+            "pagamento_dichiarato_manualmente": True,
+            "pagamento_verificato_banca": False,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }}
     )
     
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="F24 non trovato")
     
-    return {"message": "F24 segnato come pagato", "id": f24_id}
+    return {
+        "message": "Pagamento dichiarato; resta da verificare sul movimento bancario",
+        "id": f24_id,
+    }
 
 
 @router.put("/models/{f24_id}")
@@ -538,7 +566,14 @@ async def update_f24_model(f24_id: str, data: Dict[str, Any] = Body(...)) -> Dic
     if "contribuente" in data:
         update_data["dati_generali.ragione_sociale"] = data["contribuente"]
     if "pagato" in data:
-        update_data["status"] = "pagato" if data["pagato"] else "da_pagare"
+        update_data["status"] = "da_pagare"
+        update_data["pagato"] = False
+        update_data["pagamento_verificato_banca"] = False
+        update_data["pagamento_dichiarato_manualmente"] = bool(data["pagato"])
+        update_data["pagato_manualmente"] = bool(data["pagato"])
+        update_data["stato_pagamento"] = (
+            "DA_VERIFICARE_BANCA" if data["pagato"] else "DA_PAGARE"
+        )
     if "note" in data:
         update_data["note"] = data["note"]
     if "saldo_finale" in data:

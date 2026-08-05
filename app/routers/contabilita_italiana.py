@@ -16,6 +16,7 @@ chiamanti (FE, interni, test): rimosse. Storia completa in git.
 from fastapi import APIRouter, Query
 
 from app.database import Database
+from app.services.liquidita_service import calcola_liquidita
 
 router = APIRouter()
 
@@ -43,33 +44,14 @@ async def get_disponibilita_liquide(
     """
     from datetime import datetime as _dt
     if data_rif is None:
-        data_rif = _dt.now().strftime("%Y-%m-%d")
+        oggi = _dt.now().strftime("%Y-%m-%d")
+        data_rif = oggi if oggi.startswith(f"{anno}-") else f"{anno}-12-31"
     inizio_anno = f"{anno}-01-01"
     db = Database.get_db()
-
-    async def _saldo(coll_name: str, data_from: str | None, data_to: str) -> tuple[float, float, float]:
-        """Ritorna (entrate, uscite, saldo) sulla coll nel range (data_from, data_to]."""
-        date_filter: dict = {"$lte": data_to}
-        if data_from:
-            date_filter["$gte"] = data_from
-        pipeline = [
-            {"$match": {"data": date_filter}},
-            {"$group": {
-                "_id": "$tipo",
-                "tot": {"$sum": "$importo"},
-            }}
-        ]
-        e, u = 0.0, 0.0
-        async for r in db[coll_name].aggregate(pipeline):
-            imp = float(r.get("tot") or 0)
-            if r["_id"] == "entrata":
-                e = imp
-            elif r["_id"] == "uscita":
-                u = imp
-        return round(e, 2), round(u, 2), round(e - u, 2)
-
-    cassa_e, cassa_u, cassa_saldo = await _saldo("prima_nota_cassa", inizio_anno, data_rif)
-    banca_e, banca_u, banca_saldo = await _saldo("prima_nota_banca", inizio_anno, data_rif)
+    liquidita = await calcola_liquidita(db, anno, data_rif)
+    data_rif = liquidita["data_riferimento"]
+    cassa = liquidita["cassa"]
+    banca = liquidita["banca_contabile"]
 
     # Versamenti = movimenti cassa tipo=uscita categoria~Versament*
     vers_pipeline = [
@@ -92,12 +74,28 @@ async def get_disponibilita_liquide(
         "anno": anno,
         "data_riferimento": data_rif,
         "cassa": {
-            "entrate": cassa_e, "uscite": cassa_u, "saldo": cassa_saldo,
+            "entrate": cassa["totale_entrate"],
+            "uscite": cassa["totale_uscite"],
+            "riporto": cassa["saldo_precedente"],
+            "saldo": cassa["saldo"],
         },
         "banca": {
-            "entrate": banca_e, "uscite": banca_u, "saldo": banca_saldo,
+            "entrate": banca["totale_entrate"],
+            "uscite": banca["totale_uscite"],
+            "riporto": banca["saldo_precedente"],
+            "saldo": banca["saldo"],
         },
-        "totale_disponibilita_liquide": round(cassa_saldo + banca_saldo, 2),
+        "totale_disponibilita_liquide": round(cassa["saldo"] + banca["saldo"], 2),
+        "riconciliazione_banca": {
+            "saldo_contabile": banca["saldo"],
+            "saldo_estratto_conto": liquidita["banca_estratto_conto"]["saldo"],
+            "estratto_conto_disponibile": liquidita["banca_estratto_conto"]["disponibile"],
+            "righe_estratto_conto": liquidita["banca_estratto_conto"]["righe"],
+            "scarto": liquidita["scarto_banca"],
+            "riconciliato": liquidita["riconciliato"],
+        },
+        "fonte_saldo": liquidita["fonte_principale"],
+        "nota_saldo": liquidita["nota"],
         "versamenti_cassa_to_banca": {
             "totale": vers_tot,
             "operazioni": vers_count,
