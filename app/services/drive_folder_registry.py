@@ -12,7 +12,7 @@ from app.config import settings
 _AUTOMATIC_AREAS = {
     "fatture", "cedolini", "corrispettivi", "quietanze", "estratti_conto",
     "bonifici_dipendenti", "cartelle_esattoriali", "avvisi_bonari", "f24",
-    "verbali", "dichiarazioni_iva", "documenti",
+    "verbali", "verbali_auto", "dichiarazioni_iva", "documenti",
     "paypal", "noleggio",
 }
 
@@ -21,7 +21,10 @@ _AREA_ALIASES = {
     "cedolino": ("cedolini", "buste_paga"),
     "cartella_esattoriale": ("cartelle_esattoriali", "avvisi_esattoriali"),
     "avviso_bonario": ("avvisi_bonari",),
-    "verbale": ("verbali",),
+    # Il catalogo Drive reale usa `verbali_auto`; i servizi documentali usano
+    # sia il singolare `verbale` sia l'area canonica `verbali`.
+    "verbale": ("verbali", "verbali_auto"),
+    "verbali": ("verbali_auto",),
     "paypal": ("paypal", "estratti_conto_paypal"),
     "noleggio": ("noleggio", "noleggio_auto"),
     "f24": ("f24", "quietanze"),

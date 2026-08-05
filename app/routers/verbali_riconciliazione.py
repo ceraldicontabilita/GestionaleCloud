@@ -188,10 +188,14 @@ async def get_verbali_dashboard() -> Dict[str, Any]:
         from app.config import settings
         from app.services.drive_folder_registry import get_folder_id
 
-        email_user = settings.GMAIL_EMAIL or settings.IMAP_USER or settings.EMAIL_USER
+        email_user = (
+            settings.GMAIL_EMAIL or settings.IMAP_USER or settings.EMAIL_USER
+            or settings.GMAIL_ACCOUNT_AMMINISTRATIVO
+        )
         email_password = (
             settings.GMAIL_APP_PASSWORD or settings.IMAP_PASSWORD
             or settings.EMAIL_PASSWORD or settings.EMAIL_APP_PASSWORD
+            or settings.GMAIL_APP_PASSWORD_AMMINISTRATIVO
         )
         email_configurata = bool(email_user and email_password)
         email_abilitata = bool(settings.ENABLE_EMAIL_VERBALI_SYNC)
