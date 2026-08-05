@@ -649,7 +649,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/invoices/{invoice_id}` | invoices.invoices_main | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/iva/anomalie` | iva | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/iva/dashboard/{anno}/{mese}` | iva | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/iva/fatture` | iva | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/iva/fatture` | iva | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `GET /api/iva/fatture/non-utilizzate` | iva | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/iva/fatture/{fid}/correggi-periodo` | iva | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/iva/fatture/{fid}/escludi` | iva | sì | — | — | — | sì | tenere | in uso: FE |
