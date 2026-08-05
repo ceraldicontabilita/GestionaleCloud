@@ -869,7 +869,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/prima-nota/collega-fatture` | prima_nota_module.sync | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota/corrispettivi-status` | prima_nota_module.sync | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/dedup-fatture` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/prima-nota/dedup-righe-estratto-conto` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/prima-nota/dedup-righe-estratto-conto` | prima_nota_module.manutenzione | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota/diagnostica-corrispettivi` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/diagnostica-metodi` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/export/excel` | prima_nota_module.stats | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

@@ -25,6 +25,39 @@ def _es(riga: Dict[str, Any], campi: List[str]) -> Dict[str, Any]:
     return {k: riga.get(k) for k in campi if riga.get(k) is not None}
 
 
+def _fattura_id_riga_banca(riga: Dict[str, Any]) -> str:
+    return str(riga.get("invoice_id") or riga.get("fattura_id") or "").strip()
+
+
+def _importo_assoluto(valore: Any) -> float:
+    try:
+        return round(abs(float(valore or 0)), 2)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def gruppo_multi_fattura_valido(
+    righe: List[Dict[str, Any]], movimento_ec: Dict[str, Any] | None,
+) -> bool:
+    """Riconosce una ripartizione reale di un unico bonifico su più fatture."""
+    if not movimento_ec or len(righe) < 2:
+        return False
+    if movimento_ec.get("riconciliato") is not True:
+        return False
+    if movimento_ec.get("tipo_riconciliazione") != "fatture_multiple_causale":
+        return False
+    if any(r.get("source") != "ric_auto_multi_fattura_causale" for r in righe):
+        return False
+    fatture = [_fattura_id_riga_banca(r) for r in righe]
+    if any(not fattura_id for fattura_id in fatture):
+        return False
+    if len(set(fatture)) != len(fatture):
+        return False
+    totale_quote = round(sum(_importo_assoluto(r.get("importo")) for r in righe), 2)
+    totale_ec = _importo_assoluto(movimento_ec.get("importo"))
+    return totale_ec > 0 and abs(totale_quote - totale_ec) <= 0.01
+
+
 async def check_fatture_banca_senza_ec(db) -> Dict[str, Any]:
     """REGOLA UTENTE 18/07: una fattura risulta pagata per banca SOLO se
     riconciliata con un movimento reale (estratto conto / PayPal / carta)."""
@@ -52,24 +85,32 @@ async def check_fatture_banca_senza_ec(db) -> Dict[str, Any]:
 
 async def check_ec_dangling_e_duplicati(db) -> Dict[str, Any]:
     """Un addebito reale = una riga: ogni estratto_conto_id referenziato deve
-    esistere e comparire in UNA sola riga banca attiva."""
-    ec_ids = {m["id"] async for m in db["estratto_conto_movimenti"].find({}, {"_id": 0, "id": 1})}
-    visti: Dict[str, int] = {}
+    esistere e comparire in UNA sola riga banca attiva, salvo una ripartizione
+    multi-fattura esplicita e quadrata al centesimo."""
+    movimenti_ec = {
+        m["id"]: m async for m in db["estratto_conto_movimenti"].find(
+            {}, {"_id": 0, "id": 1, "importo": 1, "riconciliato": 1,
+                 "tipo_riconciliazione": 1}
+        ) if m.get("id")
+    }
+    visti: Dict[str, List[Dict[str, Any]]] = {}
     dangling, duplicati, esempi = 0, 0, []
     async for r in db["prima_nota_banca"].find(
             {**_ATTIVO, "estratto_conto_id": {"$exists": True, "$nin": [None, ""]}},
-            {"_id": 0, "id": 1, "estratto_conto_id": 1, "data": 1, "importo": 1, "descrizione": 1}):
+            {"_id": 0, "id": 1, "estratto_conto_id": 1, "data": 1,
+             "importo": 1, "descrizione": 1, "source": 1,
+             "invoice_id": 1, "fattura_id": 1}):
         eid = r["estratto_conto_id"]
-        visti[eid] = visti.get(eid, 0) + 1
-        if eid not in ec_ids:
+        visti.setdefault(eid, []).append(r)
+        if eid not in movimenti_ec:
             dangling += 1
             if len(esempi) < 5:
                 esempi.append({**_es(r, ["data", "importo", "descrizione"]), "problema": "estratto_conto_id inesistente"})
-    for eid, n in visti.items():
-        if n > 1:
-            duplicati += n - 1
+    for eid, righe in visti.items():
+        if len(righe) > 1 and not gruppo_multi_fattura_valido(righe, movimenti_ec.get(eid)):
+            duplicati += len(righe) - 1
             if len(esempi) < 5:
-                esempi.append({"estratto_conto_id": eid, "righe_attive": n, "problema": "stesso addebito su più righe"})
+                esempi.append({"estratto_conto_id": eid, "righe_attive": len(righe), "problema": "stesso addebito su più righe"})
     return {"nome": "banca_ec_dangling_o_duplicati", "violazioni": dangling + duplicati,
             "descrizione": "Righe banca collegate a movimenti EC inesistenti o "
                            "stesso addebito registrato più volte", "esempi": esempi}
