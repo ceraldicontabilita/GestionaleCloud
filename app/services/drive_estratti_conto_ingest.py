@@ -259,6 +259,8 @@ def _discover_work_items(
 
 
 class _UploadDrive:
+    skip_duplicate_repairs = True
+
     def __init__(self, name: str, content: bytes):
         self.filename = name
         self._content = content

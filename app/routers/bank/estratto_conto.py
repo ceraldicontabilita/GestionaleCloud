@@ -213,6 +213,10 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     Evita duplicati controllando data + importo + descrizione.
     """
     db = Database.get_db()
+    # Il job Drive puo' incontrare archivi storici gia' importati. In quel
+    # canale non ripete le riparazioni globali per ogni file interamente
+    # duplicato; upload manuali conservano invece il comportamento storico.
+    skip_duplicate_repairs = bool(getattr(file, "skip_duplicate_repairs", False))
     
     filename_originale = file.filename or "estratto-conto"
     filename = filename_originale.lower()
@@ -654,6 +658,8 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         await db["estratto_conto_movimenti"].insert_many(records_to_insert, ordered=False)
         inserted = len(records_to_insert)
 
+    has_material_changes = bool(records_to_insert or promoted_ids)
+
     riconciliazione_operativa = None
     if not fonte_ufficiale and records_to_insert:
         from app.services.riconciliazione_operativa_banca import annota_movimenti_operativi
@@ -669,6 +675,12 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         from app.services.riconciliazione_bancaria import riconcilia_movimenti_banca
         riconciliazione_results = (
             await riconcilia_movimenti_banca()
+            if fonte_ufficiale and has_material_changes
+            else {
+                "success": True,
+                "skipped": True,
+                "message": "Nessun nuovo movimento bancario da riconciliare",
+            }
             if fonte_ufficiale
             else {
                 "success": True,
@@ -686,7 +698,10 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         from app.services.paghe_riconciliazione import esegui_riconciliazione_paghe_completa
         riconciliazione_paghe = (
             await esegui_riconciliazione_paghe_completa(db)
-            if fonte_ufficiale else {"provvisoria": True, "riconciliati": 0}
+            if fonte_ufficiale and has_material_changes
+            else {"skipped": True, "riconciliati": 0}
+            if fonte_ufficiale
+            else {"provvisoria": True, "riconciliati": 0}
         )
     except Exception as e:
         logger.error(f"Errore riconciliazione paghe: {e}")
@@ -710,7 +725,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         }, {"_id": 0, "id": 1, "supplier_name": 1, "supplier_vat": 1, "total_amount": 1,
             "invoice_date": 1, "invoice_number": 1, "tipo_documento": 1}).to_list(500)
 
-        for f in provvisori if fonte_ufficiale else []:
+        for f in provvisori if fonte_ufficiale and has_material_changes else []:
             importo = float(f.get("total_amount", 0))
             match = await find_ec_match_for_invoice(
                 db, importo, f.get("supplier_name", ""), f.get("invoice_date", ""),
@@ -787,6 +802,11 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         from app.routers.bank.assegni import sync_assegni_da_estratto_conto
         assegni_sync = (
             await sync_assegni_da_estratto_conto()
+            if fonte_ufficiale and (has_material_changes or not skip_duplicate_repairs)
+            else {
+                "skipped": True,
+                "message": "File Drive interamente duplicato: riparazione assegni non ripetuta",
+            }
             if fonte_ufficiale
             else {"provvisoria": True, "assegni_riconciliati": 0}
         )
