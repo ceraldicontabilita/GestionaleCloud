@@ -13,6 +13,11 @@ from app.services.payment_invoice_matching import amounts_equal_to_cent
 _IUV_RE = re.compile(r"\b([03]\d{17})\b")
 _TARGA_RE = re.compile(r"\b([A-Z]{2}\d{3}[A-Z]{2})\b", re.IGNORECASE)
 _VERBALE_PATTERNS = (
+    re.compile(
+        r"\bverbale\s+(?:n(?:r)?[.°º]?|numero)?\s*[:#-]?\s*"
+        r"([A-Z]{0,3}[/-]?\d{6,20})\b",
+        re.I,
+    ),
     re.compile(r"(?:numero|n[.°º]?|nr[.]?)?\s*verbale\s*[:#-]?\s*([A-Z0-9/-]{6,30})", re.I),
     re.compile(r"\b([A-Z]\d{8,14})\b", re.I),
 )
@@ -37,6 +42,27 @@ def _extract_numero(text: str) -> Optional[str]:
             if value and value not in {"NUMERO", "VERBALE"}:
                 return value
     return None
+
+
+def _normalizza_numero(value: Any) -> Optional[str]:
+    numero = str(value or "").strip().upper()
+    numero = re.sub(r"^VERBALE\s*(?:N(?:R)?[.°º]?|NUMERO)?\s*", "", numero)
+    numero = numero.strip(" .:-")
+    return numero or None
+
+
+def _float_or_none(value: Any) -> Optional[float]:
+    if value in (None, ""):
+        return None
+    try:
+        if isinstance(value, str):
+            raw = value.strip().replace("€", "").replace(" ", "")
+            if "," in raw:
+                raw = raw.replace(".", "").replace(",", ".")
+            return float(raw)
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _extract_amount(text: str) -> Optional[float]:
@@ -98,22 +124,41 @@ async def process_verbale_document(
     sha256 = hashlib.sha256(content).hexdigest()
     try:
         text = _extract_text(content)
-    except Exception as exc:
-        await db["documents_inbox"].update_one(
-            {"id": document_id},
-            {"$set": {"status": "errore", "processed": False, "processing_error": str(exc)}},
-        )
-        return {"status": "error", "error": str(exc)}
+    except Exception:
+        text = ""
+
+    ai_data: Dict[str, Any] = {}
+    ai_error: Optional[str] = None
+    # Il fallback vision serve solo per veri PDF scansione. Questa guardia
+    # evita chiamate esterne su payload corrotti o sui fixture testuali.
+    if content.startswith(b"%PDF") and len(text.strip()) < 80:
+        try:
+            from app.services.ai_document_parser import parse_verbale_ai
+            ai_result = await parse_verbale_ai(file_bytes=content)
+            if ai_result.get("success"):
+                ai_data = ai_result
+            else:
+                ai_error = str(ai_result.get("error") or "estrazione AI non disponibile")
+        except Exception as exc:
+            ai_error = str(exc)
 
     combined = f"{filename}\n{text}"
-    numero = _extract_numero(combined)
+    numero = _normalizza_numero(ai_data.get("numero_verbale")) or _extract_numero(combined)
     iuv_match = _IUV_RE.search(combined)
     targa_match = _TARGA_RE.search(combined)
-    iuv = iuv_match.group(1) if iuv_match else None
-    targa = targa_match.group(1).upper() if targa_match else None
-    importo = _extract_amount(text)
+    iuv = str(ai_data.get("iuv") or "").strip() or (iuv_match.group(1) if iuv_match else None)
+    targa_ai = str(ai_data.get("targa") or "").strip().upper()
+    targa = targa_ai if _TARGA_RE.fullmatch(targa_ai) else (targa_match.group(1).upper() if targa_match else None)
+    importo = (
+        _float_or_none(ai_data.get("importo_ridotto"))
+        or _float_or_none(ai_data.get("importo_ordinario"))
+        or _extract_amount(text)
+    )
     data_pagamento = _extract_payment_date(text)
-    is_receipt = any(marker in combined.casefold() for marker in _RICEVUTA_MARKERS)
+    is_receipt = (
+        ai_data.get("tipo_documento") == "ricevuta_pagopa"
+        or any(marker in combined.casefold() for marker in _RICEVUTA_MARKERS)
+    )
     now = datetime.now(timezone.utc).isoformat()
 
     extracted = {
@@ -122,6 +167,8 @@ async def process_verbale_document(
         "targa_estratta": targa,
         "importo_estratto": importo,
         "document_text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "estrazione_ai_usata": bool(ai_data),
+        "estrazione_ai_errore": ai_error,
         "updated_at": now,
     }
 
@@ -217,6 +264,17 @@ async def process_verbale_document(
         "iuv": iuv,
         "targa": targa,
         "importo": importo,
+        "data_verbale": ai_data.get("data_verbale"),
+        "data_violazione": ai_data.get("data_violazione"),
+        "ora_violazione": ai_data.get("ora_violazione"),
+        "numero_atto": ai_data.get("numero_atto"),
+        "ente_creditore": ai_data.get("ente_creditore"),
+        "articolo_cds": ai_data.get("articolo_cds"),
+        "descrizione_violazione": ai_data.get("descrizione_violazione"),
+        "responsabile": ai_data.get("responsabile"),
+        "partita_iva_responsabile": ai_data.get("partita_iva_responsabile"),
+        "indirizzo_violazione": ai_data.get("indirizzo_violazione"),
+        "ambito": "veicolo" if targa else "amministrativo",
         "source_document_id": document_id,
         "source_sha256": sha256,
         "source": source,

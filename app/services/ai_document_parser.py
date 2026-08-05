@@ -1,7 +1,7 @@
 """
 Parser AI Universale per Documenti
 Usa Claude Anthropic API (vision) per estrarre dati strutturati da PDF.
-Supporta: Fatture, F24, Buste Paga
+Supporta: Fatture, F24, Buste Paga, Verbali/PagoPA
 
 Converte PDF in immagini e le invia a Claude per l'analisi.
 """
@@ -21,6 +21,36 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # Prompts specifici per ogni tipo di documento
+PROMPT_VERBALE = """Analizza questo verbale, sanzione amministrativa o avviso collegato e restituisci SOLO JSON.
+
+{
+  "tipo_documento": "verbale" | "avviso_pagopa" | "ricevuta_pagopa",
+  "numero_verbale": "stringa esatta, incluse eventuali lettere e barre",
+  "numero_atto": "stringa o null",
+  "data_verbale": "YYYY-MM-DD o null",
+  "data_violazione": "YYYY-MM-DD o null",
+  "ora_violazione": "HH:MM o null",
+  "targa": "stringa o null",
+  "iuv": "stringa o null",
+  "importo_ridotto": "numero decimale o null",
+  "importo_ordinario": "numero decimale o null",
+  "ente_creditore": "stringa o null",
+  "articolo_cds": "stringa o null",
+  "descrizione_violazione": "stringa o null",
+  "responsabile": "stringa o null",
+  "partita_iva_responsabile": "stringa o null",
+  "indirizzo_violazione": "stringa o null",
+  "data_scadenza": "YYYY-MM-DD o null"
+}
+
+Regole:
+- non inventare campi illeggibili;
+- distingui il numero del verbale da protocollo, IUV e numero atto;
+- non scambiare il trasportatore PEC per l'ente creditore;
+- se non compare una targa restituisci null;
+- usa il punto come separatore decimale;
+- rispondi esclusivamente con JSON valido."""
+
 PROMPT_FATTURA = """Analizza questa fattura e estrai TUTTI i dati in formato JSON strutturato.
 
 Estrai:
@@ -331,6 +361,8 @@ Rispondi con UNA SOLA PAROLA senza punteggiatura."""
             prompt = PROMPT_F24
         elif document_type == "busta_paga":
             prompt = PROMPT_BUSTA_PAGA
+        elif document_type == "verbale":
+            prompt = PROMPT_VERBALE
         else:
             prompt = PROMPT_FATTURA  # Default
         
@@ -437,6 +469,15 @@ async def parse_busta_paga_ai(file_path: str = None, file_bytes: bytes = None) -
         file_path=file_path,
         file_bytes=file_bytes,
         document_type="busta_paga"
+    )
+
+
+async def parse_verbale_ai(file_path: str = None, file_bytes: bytes = None) -> Dict[str, Any]:
+    """Wrapper per verbali e documenti PagoPA, inclusi PDF scansione."""
+    return await parse_document_with_ai(
+        file_path=file_path,
+        file_bytes=file_bytes,
+        document_type="verbale"
     )
 
 

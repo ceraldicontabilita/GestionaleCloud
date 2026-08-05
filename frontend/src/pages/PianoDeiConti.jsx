@@ -10,6 +10,26 @@ import { Button, Badge, StatCard, Tabs, Input, Select, Table, TableWrap, Th, Td 
 
 const MONO = FONT.mono;
 
+export function buildBalanceSummary(grouped = {}) {
+  const totale = categoria =>
+    (grouped[categoria] || []).reduce((somma, conto) => somma + Number(conto.saldo || 0), 0);
+  const ricavi = totale('ricavi');
+  const costi = totale('costi');
+
+  return {
+    stato_patrimoniale: {
+      attivo: { totale: totale('attivo') },
+      passivo: { totale: totale('passivo') },
+      patrimonio_netto: { totale: totale('patrimonio_netto') },
+    },
+    conto_economico: {
+      ricavi: { totale: ricavi },
+      costi: { totale: costi },
+      risultato: ricavi - costi,
+    },
+  };
+}
+
 const CATEGORIE = {
   attivo: { nome: 'ATTIVO', color: COLORS.info, icon: '📊' },
   passivo: { nome: 'PASSIVO', color: COLORS.danger, icon: '📉' },
@@ -139,22 +159,19 @@ export default function PianoDeiConti() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [contiRes, regoleRes, bilancioRes] = await Promise.all([
+      const [contiRes, regoleRes] = await Promise.all([
         api.get(`/api/piano-conti/?anno=${annoGlobale}`),
         api.get('/api/piano-conti/regole'),
-        api.get(`/api/piano-conti/bilancio?anno=${annoGlobale}`),
       ]);
 
+      const groupedConti = contiRes.data?.grouped || {};
       setConti(contiRes.data?.conti || []);
-      setGrouped(contiRes.data?.grouped || {});
+      setGrouped(groupedConti);
       setRegole(regoleRes.data?.regole || []);
       // Difesa sulla forma: se il backend risponde con payload vuoto/inatteso
       // (riavvio in corso) le card bilancio leggono i sotto-oggetti e
       // manderebbero in crash la pagina — meglio nasconderle.
-      const bil = bilancioRes.data;
-      setBilancio(
-        bil?.stato_patrimoniale?.attivo && bil?.conto_economico?.ricavi ? bil : null
-      );
+      setBilancio(buildBalanceSummary(groupedConti));
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {

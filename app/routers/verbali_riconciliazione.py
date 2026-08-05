@@ -113,6 +113,29 @@ async def scan_email_verbali(
     return await scan_email_con_priorita(db, days_back=days_back)
 
 
+@router.post("/scan-gmail-attendibili")
+@handle_errors
+async def scan_gmail_mittenti_attendibili(
+    days_back: int = Query(
+        30,
+        ge=1,
+        le=3650,
+        description="Giorni indietro; vengono ammessi solo mittenti verbali attendibili",
+    ),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Importa PDF verbali solo dalla whitelist canonica.
+
+    Endpoint di collaudo e recupero storico separato dall'orchestratore legacy:
+    conserva una copia nell'app, deduplica per hash e archivia su Drive.
+    """
+    from app.services.verbali_gmail_scanner import scan_gmail_verbali
+
+    return await scan_gmail_verbali(
+        Database.get_db(), days_back=days_back, mark_as_read=False
+    )
+
+
 @router.get("/dashboard")
 @handle_errors
 async def get_verbali_dashboard() -> Dict[str, Any]:

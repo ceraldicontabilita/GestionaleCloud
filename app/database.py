@@ -30,6 +30,7 @@ class Database:
                 cls.client = AsyncMongoMockClient()
                 cls.db = cls.client[settings.DB_NAME]
                 await cls._create_indexes()
+                await cls._ensure_builtin_senders()
                 logger.info("Connected to isolated in-memory MongoDB for local testing")
                 return
 
@@ -48,10 +49,26 @@ class Database:
             
             # Create indexes for unique constraints
             await cls._create_indexes()
+
+            # Rende visibili nella pagina Mittenti Email le fonti istituzionali
+            # gia' previste dai servizi Verbali/PagoPA. Operazione idempotente:
+            # non riattiva e non modifica mai un mittente disabilitato.
+            await cls._ensure_builtin_senders()
             
         except Exception as e:
             logger.error(f"❌ Error connecting to MongoDB: {e}")
             raise
+
+    @classmethod
+    async def _ensure_builtin_senders(cls) -> None:
+        try:
+            from app.services.mittenti import assicura_mittenti_builtin
+            result = await assicura_mittenti_builtin(cls.db)
+            logger.info("Mittenti istituzionali: %s", result)
+        except Exception:
+            # Una configurazione email non deve impedire l'avvio dell'intero
+            # gestionale; il difetto resta visibile nei log e nella pagina.
+            logger.exception("Impossibile assicurare i mittenti istituzionali")
 
     @classmethod
     async def _create_indexes(cls) -> None:
@@ -77,6 +94,9 @@ class Database:
         # --- Invoices ---
         await _safe_index(Collections.INVOICES, "invoice_key", unique=True, sparse=True, name="idx_invoice_key_unique")
         await _safe_index(Collections.INVOICES, [("fornitore_piva", 1), ("invoice_date", -1)], name="idx_invoices_fornitore_data")
+        # Le aggregazioni contabili filtrano per data senza fornitore.
+        await _safe_index(Collections.INVOICES, [("invoice_date", -1)],
+                          name="idx_invoices_invoice_date")
         await _safe_index(Collections.INVOICES, "stato", name="idx_invoices_stato")
         
         # --- Employees ---
@@ -96,6 +116,10 @@ class Database:
         # restano comunque protette dalla deduplica difensiva degli endpoint.
         await _safe_index("piano_conti", "codice", unique=True,
                           name="idx_piano_conti_codice_unique")
+        # Join esatto riga fattura -> sottoconto. Senza indice il Piano dei
+        # Conti scandiva il dizionario per ogni riga del documento.
+        await _safe_index("dizionario_articoli", [("descrizione", 1)],
+                          name="idx_dizionario_descrizione")
         
         # --- Estratto Conto ---
         await _safe_index(Collections.BANK_STATEMENTS, [("data", -1)], name="idx_ec_data")

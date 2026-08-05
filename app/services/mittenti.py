@@ -21,6 +21,49 @@ COLL = "mittenti_email"
 COLL_LEGACY = "mittenti_attendibili"
 
 
+# Mittenti istituzionali gia' previsti dai servizi Verbali/PagoPA, resi
+# espliciti nella collezione canonica. Il trasportatore PEC
+# `posta-certificata@pec.aruba.it` NON e' attendibile da solo: consegna PEC di
+# qualunque origine e causava l'acquisizione di documenti non pertinenti.
+BUILTIN_MITTENTI = (
+    {
+        "pattern": "notifica.pl.napoli@pec.it",
+        "tipo_documento": "verbale",
+        "descrizione": "Polizia Locale Napoli - notifiche verbali",
+    },
+    {
+        "pattern": "asianapoli.protocollo@pec.it",
+        "tipo_documento": "verbale",
+        "descrizione": "ASIA Napoli - verbali Comune di Napoli",
+    },
+    {
+        "pattern": "ufficiosanzioni@arval.it",
+        "tipo_documento": "verbale",
+        "descrizione": "Arval - ufficio sanzioni",
+    },
+    {
+        "pattern": "comando.pm@pec.comune.napoli.it",
+        "tipo_documento": "verbale",
+        "descrizione": "Polizia Municipale Napoli",
+    },
+    {
+        "pattern": "prefettura.napoli@pec.interno.it",
+        "tipo_documento": "verbale",
+        "descrizione": "Prefettura di Napoli",
+    },
+    {
+        "pattern": "partenopay@ext.comune.napoli.it",
+        "tipo_documento": "pagopa",
+        "descrizione": "Comune di Napoli - PagoPA",
+    },
+    {
+        "pattern": "noreply-checkout@ricevute.pagopa.it",
+        "tipo_documento": "pagopa",
+        "descrizione": "Ricevute PagoPA",
+    },
+)
+
+
 def _addr(m: Dict[str, Any]) -> str:
     return (m.get("indirizzo_email") or m.get("pattern") or "").strip().lower()
 
@@ -44,6 +87,37 @@ async def senders_attendibili(db, tipo_documento: str, canale: str) -> Set[str]:
     except Exception:
         pass
     return out
+
+
+async def assicura_mittenti_builtin(db) -> Dict[str, Any]:
+    """Registra i mittenti istituzionali in modo idempotente.
+
+    Usa solo ``$setOnInsert``: una scelta dell'utente (per esempio disattivare
+    un mittente) non viene mai sovrascritta al riavvio.
+    """
+    inseriti = gia_presenti = 0
+    for item in BUILTIN_MITTENTI:
+        pattern = item["pattern"].strip().lower()
+        result = await db[COLL].update_one(
+            {"pattern": pattern, "canale": "gmail"},
+            {"$setOnInsert": {
+                "id": str(uuid.uuid4()),
+                "pattern": pattern,
+                "indirizzo_email": pattern,
+                "canale": "gmail",
+                "tipo_documento": item["tipo_documento"],
+                "descrizione": item["descrizione"],
+                "attivo": True,
+                "builtin": True,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
+        if result.upserted_id is not None:
+            inseriti += 1
+        else:
+            gia_presenti += 1
+    return {"inseriti": inseriti, "gia_presenti": gia_presenti}
 
 
 async def migra_mittenti_legacy(db, dry_run: bool = True) -> Dict[str, Any]:
