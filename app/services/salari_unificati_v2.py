@@ -30,6 +30,8 @@ Collections coinvolte:
 - anagrafica_dipendenti: dati dipendente + saldi ferie/ROL
 """
 
+import base64
+import hashlib
 import logging
 import uuid
 import re
@@ -201,22 +203,53 @@ def _cedolino_identity_filter(
     mese: int,
     anno: int,
     tipo_cedolino: str,
+    cedolino_dedup_key: str = "",
+    filename: str = "",
+    netto: float = 0,
+    lordo: float = 0,
 ) -> Dict[str, Any]:
-    """Identita' logica senza confondere mensile, 13a, 14a o acconto."""
-    filtro: Dict[str, Any] = {
+    """Identita' documentale con fallback compatibile per i record legacy."""
+    if not cedolino_dedup_key:
+        filtro: Dict[str, Any] = {
+            "codice_fiscale": codice_fiscale,
+            "mese": int(mese),
+            "anno": int(anno),
+        }
+        if tipo_cedolino == "mensile":
+            filtro["$or"] = [
+                {"tipo_cedolino": "mensile"},
+                {"tipo_cedolino": None},
+                {"tipo_cedolino": {"$exists": False}},
+            ]
+        else:
+            filtro["tipo_cedolino"] = tipo_cedolino
+        return filtro
+    legacy: Dict[str, Any] = {
+        "cedolino_dedup_key": {"$exists": False},
         "codice_fiscale": codice_fiscale,
         "mese": int(mese),
         "anno": int(anno),
+        "filename": filename,
+        "netto": netto,
+        "lordo": lordo,
     }
     if tipo_cedolino == "mensile":
-        filtro["$or"] = [
-            {"tipo_cedolino": "mensile"},
-            {"tipo_cedolino": None},
-            {"tipo_cedolino": {"$exists": False}},
-        ]
+        legacy["tipo_cedolino"] = {"$in": [None, "mensile"]}
     else:
-        filtro["tipo_cedolino"] = tipo_cedolino
-    return filtro
+        legacy["tipo_cedolino"] = tipo_cedolino
+    return {"$or": [{"cedolino_dedup_key": cedolino_dedup_key}, legacy]}
+
+
+def _cedolino_document_key(cedolino_data: Dict[str, Any], pdf_data: str = None) -> str:
+    from app.services.cedolini_canonico import chiave_cedolino
+
+    identity = dict(cedolino_data)
+    if pdf_data:
+        try:
+            identity["file_hash"] = hashlib.md5(base64.b64decode(pdf_data)).hexdigest()
+        except Exception:
+            pass
+    return chiave_cedolino(identity)
 
 
 def _preserva_stato_pagamenti(
@@ -267,6 +300,7 @@ async def processa_cedolino_v2(
         tipo_cedolino = (cedolino_data.get("tipo_cedolino") or "mensile").strip().lower()
         netto = float(cedolino_data.get("netto_mese") or cedolino_data.get("netto") or 0)
         lordo = float(cedolino_data.get("lordo") or 0)
+        cedolino_dedup_key = _cedolino_document_key(cedolino_data, pdf_data)
         
         if not cf or not mese or not anno or netto == 0:
             result["errore"] = "Dati mancanti (CF, mese, anno, o netto=0)"
@@ -360,7 +394,10 @@ async def processa_cedolino_v2(
         result["dipendente_id"] = dipendente_id
         
         # --- 2. Salva cedolino COMPLETO ---
-        cedolino_filter = _cedolino_identity_filter(cf, mese, anno, tipo_cedolino)
+        cedolino_filter = _cedolino_identity_filter(
+            cf, mese, anno, tipo_cedolino, cedolino_dedup_key,
+            filename, netto, lordo,
+        )
 
         cedolino_esistente = await db["cedolini"].find_one(
             cedolino_filter,
@@ -377,6 +414,7 @@ async def processa_cedolino_v2(
             "anno": int(anno),
             "periodo": f"{int(mese):02d}/{int(anno)}",
             "tipo_cedolino": tipo_cedolino,
+            "cedolino_dedup_key": cedolino_dedup_key,
             # Importi principali
             "netto": netto,
             "netto_mese": netto,
@@ -460,19 +498,23 @@ async def processa_cedolino_v2(
         )
         existing_pn = await db["prima_nota_salari"].find_one({
             "$or": [
-                {
-                    "codice_fiscale": cf,
-                    "mese": int(mese),
-                    "anno": int(anno),
-                    "tipo": "stipendio",
-                    "tipo_cedolino": pn_tipo_filter,
-                },
-                {
-                    "dipendente_id": dipendente_id,
-                    "mese": int(mese),
-                    "anno": int(anno),
-                    "tipo_cedolino": pn_tipo_filter,
-                },
+                {"cedolino_dedup_key": cedolino_dedup_key},
+                {"$and": [
+                    {
+                        "cedolino_dedup_key": {"$exists": False},
+                        "mese": int(mese), "anno": int(anno),
+                        "tipo_cedolino": pn_tipo_filter,
+                    },
+                    {"$or": [
+                        {"cedolino_id": cedolino_id},
+                        {"dipendente_id": dipendente_id},
+                        {"codice_fiscale": cf},
+                    ]},
+                    {"$or": [
+                        {"importo_busta": netto},
+                        {"importo": netto},
+                    ]},
+                ]},
             ]
         })
         
@@ -498,6 +540,7 @@ async def processa_cedolino_v2(
                 "riconciliato": False,
                 "descrizione": f"Stipendio {nome} - {int(mese):02d}/{anno}",
                 "cedolino_id": cedolino_id,
+                "cedolino_dedup_key": cedolino_dedup_key,
                 "source": "cedolino_v2",
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
@@ -512,6 +555,7 @@ async def processa_cedolino_v2(
                 {"id": existing_pn.get("id")},
                 {"$set": {
                     "cedolino_id": cedolino_id,
+                    "cedolino_dedup_key": cedolino_dedup_key,
                     "dipendente_id": dipendente_id,
                     "dipendente": nome.upper(),
                     "dipendente_nome": nome,
@@ -568,6 +612,7 @@ async def processa_cedolino_v2(
                 "mese": int(mese),
                 "anno": int(anno),
                 "tipo_cedolino": cedolino_data.get("tipo_cedolino", "mensile"),
+                "cedolino_dedup_key": cedolino_dedup_key,
                 # TFR letto dal cedolino (regex "Quota anno/TFR mese" sul PDF,
                 # vedi cedolino_record["tfr_mese"] sopra): handler_aggiorna_tfr
                 # lo usa al posto della stima lordo/13.5 quando disponibile.

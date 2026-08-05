@@ -61,6 +61,17 @@ def test_selezione_esclude_stato_non_ammesso():
     assert escl[0]["id"] == "x"
 
 
+def test_iva_esposta_senza_classificazione_non_entra_in_liquidazione():
+    fattura = {
+        "id": "non-classificata", "periodo_iva_attribuito": "2026-01",
+        "iva": 220.0, "iva_utilizzata": False,
+        "stato_detrazione_iva": "DA_VERIFICARE",
+    }
+    incl, escl = liq.seleziona_fatture_per_liquidazione([fattura], "2026-01")
+    assert incl == []
+    assert escl[0]["iva"] == 0
+
+
 def test_totali_saldo_debito_e_credito():
     incl = [_fatt(iva_detraibile=200)]
     # vendite 500, acquisti 200, nessun credito precedente → debito 300

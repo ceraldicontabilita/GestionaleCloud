@@ -38,9 +38,10 @@ def _run(c):
 
 
 def test_chiave_stabile_tra_schemi():
-    espliciti = {"codice_fiscale": "RSSMRA80A01H501U", "anno": 2026, "mese": 3}
-    periodo_iso = {"codice_fiscale": "rssmra80a01h501u", "periodo": "2026-03"}
-    periodo_slash = {"employee_id": "RSSMRA80A01H501U", "periodo": "03/2026"}
+    valori = {"netto": 1500, "lordo": 2000}
+    espliciti = {"codice_fiscale": "RSSMRA80A01H501U", "anno": 2026, "mese": 3, **valori}
+    periodo_iso = {"codice_fiscale": "rssmra80a01h501u", "periodo": "2026-03", **valori}
+    periodo_slash = {"employee_id": "RSSMRA80A01H501U", "periodo": "03/2026", **valori}
     k = chiave_cedolino(espliciti)
     assert chiave_cedolino(periodo_iso) == k
     assert chiave_cedolino(periodo_slash) == k
@@ -57,9 +58,28 @@ def test_salva_idempotente():
     db = _Db()
     doc = {"codice_fiscale": "CF1", "anno": 2026, "mese": 3, "netto": 1500}
     id1 = _run(salva_cedolino(db, doc, source="mig"))
-    id2 = _run(salva_cedolino(db, dict(doc, netto=1600), source="mig"))
+    id2 = _run(salva_cedolino(db, dict(doc), source="mig"))
     assert id1 == id2
     assert len(db.c.docs) == 1
+
+
+def test_stesso_dipendente_mese_ma_importi_diversi_non_viene_perso():
+    db = _Db()
+    base = {"codice_fiscale": "CF1", "anno": 2026, "mese": 3, "lordo": 2000}
+    id1 = _run(salva_cedolino(db, {**base, "netto": 1500}, source="mig"))
+    id2 = _run(salva_cedolino(db, {**base, "netto": 900}, source="mig"))
+    assert id1 != id2
+    assert len(db.c.docs) == 2
+
+
+def test_tipo_e_hash_documento_separano_identita():
+    base = {"codice_fiscale": "CF1", "anno": 2026, "mese": 12, "netto": 1000}
+    assert chiave_cedolino({**base, "tipo_cedolino": "mensile"}) != chiave_cedolino(
+        {**base, "tipo_cedolino": "tredicesima"}
+    )
+    assert chiave_cedolino({**base, "file_hash": "a" * 32}) != chiave_cedolino(
+        {**base, "file_hash": "b" * 32}
+    )
 
 
 def test_salta_dati_insufficienti():

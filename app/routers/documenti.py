@@ -1033,7 +1033,9 @@ async def processa_f24_scaricati() -> Dict[str, Any]:
     f24_errori = []
     
     from app.services.parser_f24 import parse_f24_commercialista
+    from app.services.f24_canonico import chiave_f24, salva_f24
     import base64
+    import hashlib
     
     for doc in f24_docs:
         try:
@@ -1059,6 +1061,10 @@ async def processa_f24_scaricati() -> Dict[str, Any]:
                 # find_one({"file_name": None}) matcherebbe a vuoto e salterebbe
                 # SEMPRE l'import (come fa sync_f24_automatico). Vedi P0.8.
                 f24_data["file_name"] = doc.get("filename")
+                f24_data["pdf_hash"] = hashlib.md5(pdf_content).hexdigest()
+                f24_data["document_id"] = doc.get("id")
+                f24_data["status"] = "da_pagare"
+                f24_data["riconciliato"] = False
 
                 # Rimuovi _id
                 if "_id" in f24_data:
@@ -1074,9 +1080,11 @@ async def processa_f24_scaricati() -> Dict[str, Any]:
                 f24_data["auto_imported"] = True
                 f24_data["import_date"] = datetime.now(timezone.utc).isoformat()
                 
-                # Controlla duplicati
+                # Dedup canonica per contenuto e dati F24. Il solo filename non
+                # e' sufficiente: nomi uguali possono contenere modelli diversi.
+                f24_data["f24_dedup_key"] = chiave_f24(f24_data)
                 existing = await db["f24_unificato"].find_one({
-                    "file_name": f24_data.get("file_name")
+                    "f24_dedup_key": f24_data["f24_dedup_key"]
                 })
                 
                 if existing:
@@ -1087,14 +1095,14 @@ async def processa_f24_scaricati() -> Dict[str, Any]:
                     )
                     continue
                 
-                await db["f24_unificato"].insert_one(f24_data.copy())
+                await salva_f24(db, f24_data, source="documents_inbox")
                 
                 await db["documents_inbox"].update_one(
                     {"id": doc["id"]},
                     {"$set": {
                         "status": "processato",
                         "processed": True,
-                        "processed_to": "f24_commercialista",
+                        "processed_to": "f24_unificato",
                         "processed_at": datetime.now(timezone.utc).isoformat()
                     }}
                 )
@@ -1110,6 +1118,14 @@ async def processa_f24_scaricati() -> Dict[str, Any]:
                     "file": doc["filename"],
                     "errore": parsed.get("error", "Parsing fallito")
                 })
+                await db["documents_inbox"].update_one(
+                    {"id": doc["id"]},
+                    {"$set": {
+                        "status": "errore_parser", "processed": False,
+                        "parser_errors": [parsed.get("error", "Parsing fallito")],
+                        "parser_checked_at": datetime.now(timezone.utc).isoformat(),
+                    }},
+                )
                 
         except Exception as e:
             f24_errori.append({"file": doc["filename"], "errore": str(e)})

@@ -441,6 +441,71 @@ async def check_liquidazioni_iva_integrita(db) -> Dict[str, Any]:
     }
 
 
+async def check_fatture_iva_classificazione(db) -> Dict[str, Any]:
+    """Segnala IVA acquisti non classificata o numericamente impossibile.
+
+    L'IVA esposta in fattura non e' automaticamente detraibile. I documenti
+    ancora ``DA_VERIFICARE`` restano fuori dalle liquidazioni, ma devono
+    comparire nel collaudo notturno finche' non sono stati valutati. Sono
+    inoltre violazioni i valori detraibili negativi o superiori all'IVA del
+    documento e gli stati operativi privi di un importo esplicito.
+    """
+    docs = await db["invoices"].find(
+        {"status": {"$nin": ["deleted", "archived"]}},
+        {
+            "_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1,
+            "iva": 1, "total_iva": 1, "iva_totale": 1, "iva_documento": 1,
+            "iva_detraibile": 1, "stato_detrazione_iva": 1,
+        },
+    ).to_list(50000)
+    count = 0
+    esempi: List[Dict[str, Any]] = []
+    stati_operativi = {"DA_INSERIRE", "RINVIATA", "INSERITA_IN_LIQUIDAZIONE"}
+
+    def valore(doc, *nomi):
+        for nome in nomi:
+            if doc.get(nome) is not None:
+                try:
+                    return round(float(doc[nome]), 2)
+                except (TypeError, ValueError):
+                    return None
+        return 0.0
+
+    def problema(doc, motivo):
+        nonlocal count
+        count += 1
+        if len(esempi) < 5:
+            esempi.append({
+                "fattura_id": doc.get("id"),
+                "numero": doc.get("invoice_number"),
+                "fornitore": doc.get("supplier_name"),
+                "motivo": motivo,
+            })
+
+    for doc in docs:
+        iva_documento = valore(doc, "iva_documento", "iva", "total_iva", "iva_totale")
+        iva_detraibile = valore(doc, "iva_detraibile")
+        stato = str(doc.get("stato_detrazione_iva") or "").upper()
+        if iva_documento is None or iva_detraibile is None:
+            problema(doc, "importo IVA non numerico")
+            continue
+        if iva_detraibile < 0:
+            problema(doc, "IVA detraibile negativa")
+        elif iva_documento >= 0 and iva_detraibile > iva_documento + 0.01:
+            problema(doc, "IVA detraibile superiore all'IVA del documento")
+        if iva_documento > 0 and stato == "DA_VERIFICARE":
+            problema(doc, "detraibilita IVA ancora da verificare")
+        elif stato in stati_operativi and "iva_detraibile" not in doc:
+            problema(doc, "stato operativo senza IVA detraibile esplicita")
+
+    return {
+        "nome": "fatture_iva_classificazione",
+        "violazioni": count,
+        "descrizione": "Fatture con detraibilita IVA irrisolta o importi IVA incoerenti",
+        "esempi": esempi,
+    }
+
+
 CHECKS = [
     check_fatture_banca_senza_ec,
     check_trasferimento_pos_speculare,
@@ -455,6 +520,7 @@ CHECKS = [
     check_salari_riconciliati_senza_banca,
     check_movimenti_malformati,
     check_assegni_integrita,
+    check_fatture_iva_classificazione,
     check_liquidazioni_iva_integrita,
 ]
 

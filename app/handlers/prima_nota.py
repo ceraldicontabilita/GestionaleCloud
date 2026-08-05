@@ -46,9 +46,18 @@ async def handler_prima_nota_cedolino(payload: Dict[str, Any], db) -> Dict[str, 
     # dipendente+mese+anno in prima_nota_salari, da qualunque canale sia
     # nato, e' comunque "lo stipendio di quel mese": basta a bloccare il
     # doppione, senza serve il match esatto sul source.
+    # Aggiornamento 05/08/2026: se il canale fornisce la chiave documentale,
+    # il controllo e' sul singolo PDF. Tredicesima e competenze separate nello
+    # stesso mese restano quindi distinte; il fallback mensile vale solo per i
+    # canali legacy che non inviano ancora la chiave.
     if not (dipendente_id and mese and anno):
         return {"skipped": True, "reason": "chiave anti-duplicato incompleta (dipendente/mese/anno)"}
-    anti_dup = {"dipendente_id": dipendente_id, "mese": mese, "anno": anno}
+    dedup_key = payload.get("cedolino_dedup_key")
+    anti_dup = (
+        {"cedolino_dedup_key": dedup_key}
+        if dedup_key
+        else {"dipendente_id": dipendente_id, "mese": mese, "anno": anno}
+    )
     esistente = await db["prima_nota_salari"].find_one(anti_dup)
     if esistente:
         return {"skipped": True, "reason": "movimento già presente", "movimento_id": esistente["id"]}
@@ -68,6 +77,7 @@ async def handler_prima_nota_cedolino(payload: Dict[str, Any], db) -> Dict[str, 
         "anno":           anno,
         "periodo":        periodo,
         "source":         "cedolino_auto",
+        "cedolino_dedup_key": dedup_key,
         "created_at":     datetime.now(timezone.utc).isoformat(),
     }
 

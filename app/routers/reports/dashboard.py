@@ -268,7 +268,7 @@ async def get_trend_mensile(
             {"$group": {
                 "_id": "$mese",
                 "totale": {"$sum": {"$toDouble": {"$ifNull": ["$total_amount", {"$ifNull": ["$importo_totale", 0]}]}}},
-                "totale_iva": {"$sum": {"$toDouble": {"$ifNull": ["$iva", {"$ifNull": ["$importo_iva", 0]}]}}}
+                "totale_iva": {"$sum": {"$toDouble": {"$ifNull": ["$iva_detraibile", 0]}}}
             }}
         ]
         fatt_results = await db[Collections.INVOICES].aggregate(fatt_pipeline).to_list(12)
@@ -644,7 +644,7 @@ async def get_bilancio_istantaneo(
             {"$group": {
                 "_id": None,
                 "imponibile": {"$sum": {"$ifNull": ["$importo_imponibile", {"$ifNull": ["$imponibile", 0]}]}},
-                "iva": {"$sum": {"$ifNull": ["$importo_iva", {"$ifNull": ["$iva", 0]}]}},
+                "iva": {"$sum": {"$ifNull": ["$iva_detraibile", 0]}},
                 "totale": {"$sum": {"$ifNull": ["$importo_totale", {"$ifNull": ["$total_amount", 0]}]}}
             }}
         ]).to_list(1)

@@ -85,6 +85,7 @@ def test_registra_fattura_idempotente_e_quadrata(monkeypatch):
     db = _Db()
     _prepara(db, monkeypatch)
     fattura = {"id": "F1", "total_amount": 122.0, "total_tax": 22.0,
+               "iva_detraibile": 22.0,
                "invoice_number": "1/2026", "invoice_date": "2026-03-10",
                "supplier_name": "ACME"}
 
@@ -138,6 +139,23 @@ def test_iva_indetraibile_aumenta_il_costo_non_il_credito_iva(monkeypatch):
     assert righe["05.01.01"]["dare"] == 113.20
     assert mov["iva_indetraibile"] == 13.20
     assert mov["totale_dare"] == mov["totale_avere"] == 122.0
+
+
+def test_fattura_con_iva_non_classificata_non_crea_credito(monkeypatch):
+    db = _Db()
+    _prepara(db, monkeypatch)
+    fattura = {
+        "id": "REVIEW1", "total_amount": 122.0, "total_tax": 22.0,
+        "invoice_date": "2026-03-10",
+    }
+
+    result = _run(motore.registra_fattura(db, fattura))
+
+    assert result == {
+        "stato": "da_verificare",
+        "motivo": "IVA detraibile non classificata",
+    }
+    assert db["movimenti_contabili"].docs == []
 
 
 def test_registra_corrispettivo_scorporo(monkeypatch):

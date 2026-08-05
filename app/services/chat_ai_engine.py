@@ -558,11 +558,17 @@ async def _tool_spiega_iva_fattura(db, args):
             f"IVA attribuita per competenza al periodo {periodo_attr}"
             + (f" ({motivo})." if motivo else ".")
         )
+    iva_detraibile = campi.get("iva_detraibile") or 0
+    stato_detrazione = str(inv.get("stato_detrazione_iva") or "").upper()
     if utilizzata:
         narrazione.append(
             f"IVA già utilizzata nella liquidazione di {periodo_uso or 'un periodo precedente'}"
             + (f" ({liq_stato})" if liq_stato else "")
             + ": non viene conteggiata di nuovo."
+        )
+    elif stato_detrazione == "DA_VERIFICARE":
+        narrazione.append(
+            "Detraibilita non ancora classificata: l'IVA a credito resta a zero fino alla verifica."
         )
     else:
         narrazione.append("IVA non ancora utilizzata in alcuna liquidazione: disponibile per il calcolo o la verifica annuale.")
@@ -575,7 +581,7 @@ async def _tool_spiega_iva_fattura(db, args):
         "data_ricezione": data_ric,
         "periodo_iva_attribuito": periodo_attr,
         "regola_applicata": regola,
-        "iva_detraibile": campi.get("iva_detraibile") or inv.get("iva"),
+        "iva_detraibile": iva_detraibile,
         "iva_utilizzata": utilizzata,
         "periodo_iva_utilizzato": periodo_uso,
         "liquidazione_id": liq_id,

@@ -341,7 +341,7 @@ async def get_conto_economico(
         {"$group": {
             "_id": None,
             "totale_imponibile": {"$sum": {"$ifNull": ["$imponibile", {"$subtract": ["$total_amount", {"$ifNull": ["$iva", 0]}]}]}},
-            "totale_iva": {"$sum": {"$ifNull": ["$iva", 0]}},
+            "totale_iva": {"$sum": {"$ifNull": ["$iva_detraibile", 0]}},
             "totale_lordo": {"$sum": "$total_amount"},
             "count": {"$sum": 1}
         }}
@@ -364,7 +364,7 @@ async def get_conto_economico(
         {"$group": {
             "_id": None,
             "totale_imponibile": {"$sum": {"$ifNull": ["$imponibile", {"$subtract": ["$total_amount", {"$ifNull": ["$iva", 0]}]}]}},
-            "totale_iva": {"$sum": {"$ifNull": ["$iva", 0]}},
+            "totale_iva": {"$sum": {"$ifNull": ["$iva_detraibile", 0]}},
             "count": {"$sum": 1}
         }}
     ]).to_list(1)

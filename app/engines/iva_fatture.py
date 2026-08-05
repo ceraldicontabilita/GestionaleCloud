@@ -54,6 +54,16 @@ def campi_iva_da_fattura(inv: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     iva = float(inv.get("iva") or inv.get("total_iva") or inv.get("iva_totale") or 0)
+    # L'IVA esposta nel documento non coincide automaticamente con l'IVA
+    # detraibile. Quest'ultima e' affidabile solo quando un classificatore
+    # fiscale (o una correzione esplicita) l'ha gia' valorizzata. In assenza di
+    # tale evidenza la fattura resta DA_VERIFICARE e non entra in liquidazione.
+    detraibilita_valutata = (
+        "iva_detraibile" in inv and inv.get("iva_detraibile") is not None
+    )
+    iva_detraibile = (
+        float(inv.get("iva_detraibile") or 0) if detraibilita_valutata else 0.0
+    )
     gia_utilizzata = bool(inv.get("iva_utilizzata"))
 
     if gia_utilizzata:
@@ -67,11 +77,19 @@ def campi_iva_da_fattura(inv: Dict[str, Any]) -> Dict[str, Any]:
             or inv.get("periodo_iva_utilizzato")
             or periodo_attribuito
         )
-    elif periodo_attribuito is None:
+    elif periodo_attribuito is None or not detraibilita_valutata:
+        stato = "DA_VERIFICARE"
+        periodo_attribuito_finale = periodo_attribuito
+    elif str(inv.get("stato_classificazione") or "").lower() == "da_verificare":
         stato = "DA_VERIFICARE"
         periodo_attribuito_finale = periodo_attribuito
     else:
-        stato = "DA_INSERIRE"
+        stato_esistente = inv.get("stato_detrazione_iva")
+        stato = (
+            stato_esistente
+            if stato_esistente in {"INDETRAIBILE", "RINVIATA", "DA_VERIFICARE"}
+            else "DA_INSERIRE"
+        )
         periodo_attribuito_finale = periodo_attribuito
 
     # Data di trasmissione allo SDI (§7): serve al controllo documentale dei
@@ -86,7 +104,8 @@ def campi_iva_da_fattura(inv: Dict[str, Any]) -> Dict[str, Any]:
         "data_trasmissione_sdi": data_trasmissione_sdi,
         "periodo_iva_attribuito": periodo_attribuito_finale,
         "regola_iva_applicata": regola,
-        "iva_detraibile": round(iva, 2),
+        "iva_documento": round(iva, 2),
+        "iva_detraibile": round(iva_detraibile, 2),
         "iva_utilizzata": gia_utilizzata,
         "periodo_iva_utilizzato": inv.get("periodo_iva_utilizzato"),
         "stato_detrazione_iva": inv.get("stato_detrazione_iva") if gia_utilizzata else stato,

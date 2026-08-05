@@ -13,6 +13,8 @@ Questo processo avviene automaticamente:
 - Download da posta elettronica (ogni 10 minuti)
 - Upload da Import/Export Manager
 """
+import base64
+import hashlib
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -24,6 +26,22 @@ logger = logging.getLogger(__name__)
 # La guardia evita che un file piu' vecchio, caricato per errore, entri nei
 # registri o generi prima nota/partite aperte.
 PAYROLL_MIN_YEAR = 2018
+
+
+def _chiave_documentale_cedolino(cedolino_data: Dict[str, Any], pdf_data: str = None) -> str:
+    """Identifica il PDF, non soltanto dipendente e mese."""
+    from app.services.cedolini_canonico import chiave_cedolino
+
+    content_hash = ""
+    if pdf_data:
+        try:
+            content_hash = hashlib.md5(base64.b64decode(pdf_data)).hexdigest()
+        except Exception:
+            content_hash = ""
+    identity = dict(cedolino_data)
+    if content_hash:
+        identity["file_hash"] = content_hash
+    return chiave_cedolino(identity)
 
 
 async def processa_cedolino_completo(
@@ -65,6 +83,7 @@ async def processa_cedolino_completo(
         mese = cedolino_data.get("mese")
         anno = cedolino_data.get("anno")
         netto = cedolino_data.get("netto_mese", 0)
+        cedolino_dedup_key = _chiave_documentale_cedolino(cedolino_data, pdf_data)
         
         if not cf or not mese or not anno:
             result["errore"] = "Dati mancanti (CF, mese o anno)"
@@ -157,14 +176,33 @@ async def processa_cedolino_completo(
             "filename": filename,
             "pdf_data": pdf_data,  # Architettura MongoDB-only
             "formato": cedolino_data.get("formato_rilevato"),
+            "tipo_cedolino": cedolino_data.get("tipo_cedolino", "mensile"),
+            "cedolino_dedup_key": cedolino_dedup_key,
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
-        
-        await db["riepilogo_cedolini"].update_one(
-            {"codice_fiscale": cf, "mese": mese, "anno": anno},
-            {"$set": cedolino_record},
-            upsert=True
-        )
+
+        riepilogo_esistente = await db["riepilogo_cedolini"].find_one({
+            "$or": [
+                {"cedolino_dedup_key": cedolino_dedup_key},
+                {
+                    "cedolino_dedup_key": {"$exists": False},
+                    "codice_fiscale": cf, "mese": mese, "anno": anno,
+                    "filename": filename, "netto_mese": netto,
+                    "lordo": cedolino_data.get("lordo", 0),
+                },
+            ]
+        })
+        if riepilogo_esistente:
+            filtro_riepilogo = (
+                {"_id": riepilogo_esistente["_id"]}
+                if riepilogo_esistente.get("_id") is not None
+                else {"cedolino_dedup_key": riepilogo_esistente.get("cedolino_dedup_key")}
+            )
+            await db["riepilogo_cedolini"].update_one(
+                filtro_riepilogo, {"$set": cedolino_record}
+            )
+        else:
+            await db["riepilogo_cedolini"].insert_one(dict(cedolino_record))
         result["cedolino_salvato"] = True
         
         # ============================================
@@ -172,9 +210,19 @@ async def processa_cedolino_completo(
         # ============================================
         # Controlla se esiste già
         existing_pn = await db["prima_nota_salari"].find_one({
-            "dipendente_id": dipendente_id,
-            "mese": mese,
-            "anno": anno
+            "$or": [
+                {"cedolino_dedup_key": cedolino_dedup_key},
+                {
+                    "cedolino_dedup_key": {"$exists": False},
+                    "dipendente_id": dipendente_id, "mese": mese, "anno": anno,
+                    "importo": netto,
+                },
+                {
+                    "cedolino_dedup_key": {"$exists": False},
+                    "dipendente_id": dipendente_id, "mese": mese, "anno": anno,
+                    "importo_busta": netto,
+                },
+            ]
         })
         
         # movimento_id garantito in entrambi i rami (if existing_pn / if not)
@@ -182,6 +230,11 @@ async def processa_cedolino_completo(
         movimento_id = None
         if existing_pn:
             movimento_id = existing_pn.get("id")
+            if not existing_pn.get("cedolino_dedup_key"):
+                await db["prima_nota_salari"].update_one(
+                    {"id": movimento_id},
+                    {"$set": {"cedolino_dedup_key": cedolino_dedup_key}},
+                )
 
         if not existing_pn:
             movimento_id = str(uuid.uuid4())
@@ -206,6 +259,7 @@ async def processa_cedolino_completo(
                 "riconciliato": False,
                 "bonifico_id": None,
                 "estratto_conto_id": None,
+                "cedolino_dedup_key": cedolino_dedup_key,
                 "source": "cedolino_auto",
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
@@ -251,6 +305,7 @@ async def processa_cedolino_completo(
                 "mese": mese,
                 "anno": anno,
                 "tipo_cedolino": cedolino_data.get("tipo_cedolino", "mensile"),
+                "cedolino_dedup_key": cedolino_dedup_key,
             }, db, source_module="cedolini_manager_v1")
         except Exception:
             logger.exception("Errore propagazione cedolino.importato (canale D V1)")

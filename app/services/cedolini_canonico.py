@@ -13,9 +13,10 @@ viene toccato qui, sarà consolidato in una fase dedicata insieme al flusso pagh
 
 Fornisce:
 - `COLL` = "cedolini";
-- `chiave_cedolino(doc)`: chiave naturale (contribuente + anno + mese);
+- `chiave_cedolino(doc)`: identita prudente del documento;
 - `salva_cedolino(db, doc, source)`: upsert idempotente per chiave naturale.
 """
+import hashlib
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
@@ -56,19 +57,49 @@ def _anno_mese(doc: Dict[str, Any]):
 
 
 def chiave_cedolino(doc: Dict[str, Any]) -> str:
-    """Chiave naturale stabile di un cedolino: contribuente + anno + mese."""
+    """Identita stabile senza collassare cedolini legittimi dello stesso mese.
+
+    CF+periodo non e' sufficiente: lo stesso dipendente puo' avere piu'
+    documenti mensili distinti. Si aggiungono tipo, datore e, quando presente,
+    hash del PDF; in assenza dell'hash si usa una firma economico-lavorativa.
+    """
     anno, mese = _anno_mese(doc)
     try:
         mese_str = f"{int(mese):02d}" if mese is not None else ""
     except (TypeError, ValueError):
         mese_str = str(mese or "")
-    return f"ced_{_contribuente(doc)}_{anno or ''}_{mese_str}"
+    tipo = str(doc.get("tipo_cedolino") or "mensile").strip().lower()
+    datore = str(
+        doc.get("datore_piva")
+        or doc.get("datore_codice_fiscale")
+        or doc.get("company_vat")
+        or doc.get("azienda_id")
+        or ""
+    ).strip().upper()
+    content_hash = str(
+        doc.get("file_hash")
+        or doc.get("pdf_hash")
+        or doc.get("document_hash")
+        or doc.get("sha256")
+        or ""
+    ).strip().lower()
+    if content_hash:
+        discriminante = content_hash[:32]
+    else:
+        valori = [
+            doc.get("netto"), doc.get("netto_mese"), doc.get("lordo"),
+            doc.get("ore_lavorate"), doc.get("giorni_lavorati"),
+        ]
+        firma = "|".join("" if value is None else str(value).strip() for value in valori)
+        discriminante = hashlib.sha256(firma.encode("utf-8")).hexdigest()[:16] if firma.strip("|") else ""
+    parti = ["ced", _contribuente(doc), str(anno or ""), mese_str, tipo, datore, discriminante]
+    return "_".join(parti)
 
 
 async def salva_cedolino(db, doc: Dict[str, Any], source: Optional[str] = None) -> Optional[str]:
     """Upsert idempotente di un cedolino nella collezione canonica `cedolini`,
-    deduplicando per chiave naturale. Non duplica lo stesso cedolino (stesso
-    contribuente/anno/mese); se esiste, ritorna l'id senza sovrascrivere."""
+    deduplicando per identita documentale prudente. Non presume che due
+    cedolini dello stesso dipendente e mese siano lo stesso documento."""
     doc = dict(doc)
     doc.pop("_id", None)
     contrib = _contribuente(doc)

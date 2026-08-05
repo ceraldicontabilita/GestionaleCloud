@@ -78,3 +78,15 @@ def test_spiega_iva_fattura_gia_utilizzata(db):
 def test_spiega_iva_fattura_non_trovata(db):
     out = _run(chat._tool_spiega_iva_fattura(db, {"fattura_id": "zzz"}))
     assert "errore" in out
+
+
+def test_spiega_iva_fattura_non_inventa_detraibilita(db):
+    db["invoices"].docs.append({
+        "id": "review", "iva": 220, "periodo_iva_attribuito": "2026-01",
+        "stato_detrazione_iva": "DA_VERIFICARE", "iva_utilizzata": False,
+    })
+
+    out = _run(chat._tool_spiega_iva_fattura(db, {"fattura_id": "review"}))
+
+    assert out["iva_detraibile"] == 0
+    assert "resta a zero" in out["spiegazione"]

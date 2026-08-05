@@ -66,7 +66,9 @@ class VerificaCoerenza:
                 ],
                 "tipo_documento": {"$nin": ["TD04", "TD08"]}  # Escludi note credito
             }},
-            {"$group": {"_id": None, "totale_iva": {"$sum": "$iva"}}}
+            {"$group": {"_id": None, "totale_iva": {
+                "$sum": {"$ifNull": ["$iva_detraibile", 0]}
+            }}}
         ]
         result_fatture = await self.db[Collections.INVOICES].aggregate(pipeline_fatture).to_list(1)
         iva_fatture = result_fatture[0]["totale_iva"] if result_fatture else 0
@@ -80,7 +82,9 @@ class VerificaCoerenza:
                 ],
                 "tipo_documento": {"$in": ["TD04", "TD08"]}
             }},
-            {"$group": {"_id": None, "totale_iva": {"$sum": "$iva"}}}
+            {"$group": {"_id": None, "totale_iva": {
+                "$sum": {"$ifNull": ["$iva_detraibile", 0]}
+            }}}
         ]
         result_nc = await self.db[Collections.INVOICES].aggregate(pipeline_nc).to_list(1)
         iva_note_credito = result_nc[0]["totale_iva"] if result_nc else 0
@@ -426,7 +430,9 @@ class VerificaCoerenza:
                     {"invoice_date": {"$regex": f"^{prefix}"}}
                 ]
             }},
-            {"$group": {"_id": None, "totale": {"$sum": "$iva"}, "count": {"$sum": 1}}}
+            {"$group": {"_id": None, "totale": {
+                "$sum": {"$ifNull": ["$iva_detraibile", 0]}
+            }, "count": {"$sum": 1}}}
         ]
         res_fatture = await self.db[Collections.INVOICES].aggregate(pipeline_fatture).to_list(1)
         iva_credito_fatture = res_fatture[0]["totale"] if res_fatture else 0
