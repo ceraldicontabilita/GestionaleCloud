@@ -50,10 +50,34 @@ def extract_period_from_header(text: str) -> Dict[str, str]:
     if match:
         result['periodo_inizio'] = parse_italian_date(match.group(1))
         result['periodo_fine'] = parse_italian_date(match.group(2))
-        if result['periodo_inizio']:
-            dt = datetime.strptime(result['periodo_inizio'], '%Y-%m-%d')
-            result['mese'] = dt.month
-            result['anno'] = dt.year
+    else:
+        # I report annuali esportati dalla cronologia PayPal usano, anche per
+        # account italiani, un'intestazione inglese come:
+        # "January 01, 2022 through December 31, 2022".
+        english_pattern = (
+            r'([A-Z][a-z]+\s+\d{1,2},\s+\d{4})\s+'
+            r'(?:through|to)\s+'
+            r'([A-Z][a-z]+\s+\d{1,2},\s+\d{4})'
+        )
+        english_match = re.search(english_pattern, text)
+        if english_match:
+            try:
+                start = datetime.strptime(english_match.group(1), '%B %d, %Y')
+                end = datetime.strptime(english_match.group(2), '%B %d, %Y')
+                result['periodo_inizio'] = start.strftime('%Y-%m-%d')
+                result['periodo_fine'] = end.strftime('%Y-%m-%d')
+            except ValueError:
+                pass
+
+    if result['periodo_inizio'] and result['periodo_fine']:
+        start = datetime.strptime(result['periodo_inizio'], '%Y-%m-%d')
+        end = datetime.strptime(result['periodo_fine'], '%Y-%m-%d')
+        result['anno'] = start.year if start.year == end.year else None
+        result['mese'] = (
+            start.month
+            if start.year == end.year and start.month == end.month
+            else None
+        )
     
     return result
 
@@ -69,6 +93,11 @@ def extract_account_info(text: str) -> Dict[str, str]:
     match = re.search(r'ID PayPal:\s*(\S+)', text)
     if match:
         info['email_paypal'] = match.group(1)
+
+    if not info['email_paypal']:
+        match = re.search(r'\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b', text, re.I)
+        if match:
+            info['email_paypal'] = match.group(0)
     
     return info
 
@@ -271,6 +300,118 @@ def extract_transactions_from_text(text: str) -> List[Dict[str, Any]]:
     return transactions
 
 
+_PAYPAL_ENGLISH_STATUSES = (
+    'Completed', 'Pending', 'Cancelled', 'Canceled', 'Denied', 'Reversed',
+    'Refunded', 'Processed', 'Placed', 'Removed', 'Unclaimed', 'Expired',
+    'Failed', 'Cleared', 'Held', 'Partially Refunded',
+)
+
+
+def _classify_english_transaction(description: str, gross: float) -> str:
+    normalized = description.lower()
+    if 'refund' in normalized:
+        return 'rimborso'
+    if 'withdrawal' in normalized:
+        return 'prelievo'
+    if 'bank deposit' in normalized or 'card deposit' in normalized:
+        return 'accredito'
+    if 'payment' in normalized and gross < 0:
+        if 'express checkout' in normalized:
+            return 'express_checkout'
+        if 'preapproved' in normalized or 'bill user' in normalized:
+            return 'pagamento_utenza'
+        if 'website payment' in normalized:
+            return 'pagamento_web'
+        return 'pagamento'
+    return 'altro'
+
+
+def extract_transactions_from_english_text(text: str) -> List[Dict[str, Any]]:
+    """Estrae i report PayPal ``Transaction History`` annuali.
+
+    In questo layout la descrizione precede la riga contabile; se il nome del
+    fornitore va a capo, la continuazione compare tra data e stato. Il parser
+    legge la riga da destra (valuta e tre importi) e accetta solo stati PayPal
+    noti, evitando di trasformare intestazioni o note in transazioni.
+    """
+    transactions: List[Dict[str, Any]] = []
+    description_lines: List[str] = []
+    current_transaction: Optional[Dict[str, Any]] = None
+    in_table = False
+    status_pattern = '|'.join(
+        re.escape(status) for status in sorted(_PAYPAL_ENGLISH_STATUSES, key=len, reverse=True)
+    )
+    row_pattern = re.compile(
+        r'^(\d{1,2}/\d{1,2}/\d{2,4})\s+'
+        r'(.+?)\s+([A-Z]{3})\s+'
+        r'(-?[\d.,]+)\s+(-?[\d.,]+)\s+(-?[\d.,]+)$'
+    )
+    status_at_end = re.compile(rf'(?:^|\s)({status_pattern})$')
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line == 'Date Description Status Currency Gross Fee Net':
+            in_table = True
+            description_lines = []
+            current_transaction = None
+            continue
+        if not in_table:
+            continue
+        if line == 'Transaction History' or re.search(r'\sPage\s+\d+$', line):
+            continue
+
+        id_match = re.fullmatch(r'ID:\s*(\S+)', line)
+        if id_match:
+            if current_transaction is not None:
+                current_transaction['transaction_id'] = id_match.group(1)
+            continue
+
+        row_match = row_pattern.match(line)
+        if row_match:
+            date_value = parse_italian_date(row_match.group(1))
+            prefix = row_match.group(2).strip()
+            status_match = status_at_end.search(prefix)
+            if not date_value or not status_match:
+                description_lines = []
+                current_transaction = None
+                continue
+
+            status = status_match.group(1)
+            inline_description = prefix[:status_match.start()].strip()
+            description = ' '.join(
+                part for part in (*description_lines, inline_description) if part
+            ).strip()
+            gross = parse_italian_amount(row_match.group(4))
+            fee = parse_italian_amount(row_match.group(5))
+            net = parse_italian_amount(row_match.group(6))
+            counterparty = description.split(':', 1)[1].strip() if ':' in description else ''
+            current_transaction = {
+                'data': date_value,
+                'descrizione': description,
+                'transaction_id': '',
+                'nome_controparte': counterparty,
+                'email_controparte': '',
+                'lordo': gross,
+                'tariffa': fee,
+                'netto': net,
+                'tipo': _classify_english_transaction(description, gross),
+                'stato': status.lower().replace(' ', '_'),
+                'valuta': row_match.group(3),
+            }
+            transactions.append(current_transaction)
+            description_lines = []
+            continue
+
+        # Dopo l'intestazione, le sole righe non contabili ammesse sono la
+        # descrizione e le sue eventuali continuazioni.
+        description_lines.append(line)
+        current_transaction = None
+
+    return transactions
+
+
 def parse_paypal_msr(file_path: str) -> Dict[str, Any]:
     """
     Parser principale per PDF PayPal MSR/CSR.
@@ -330,6 +471,9 @@ def parse_paypal_msr(file_path: str) -> Dict[str, Any]:
                     if not all_transactions:
                         txs = extract_transactions_from_text(text)
                         all_transactions.extend(txs)
+
+                if 'Transaction History' in text:
+                    all_transactions.extend(extract_transactions_from_english_text(text))
             
             # Deduplica per transaction_id
             seen_ids = set()
