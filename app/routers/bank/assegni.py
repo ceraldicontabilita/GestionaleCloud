@@ -1899,7 +1899,9 @@ async def rifiuta_proposta_associazione(proposta_id: str) -> Dict[str, Any]:
 
 
 @router.post("/sync-da-estratto-conto")
-async def sync_assegni_da_estratto_conto() -> Dict[str, Any]:
+async def sync_assegni_da_estratto_conto(
+    movimento_ids: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     """
     Sincronizza gli assegni dall'estratto conto.
     
@@ -1917,7 +1919,9 @@ async def sync_assegni_da_estratto_conto() -> Dict[str, Any]:
     # Il vecchio codice qui sotto resta temporaneamente come riferimento di
     # migrazione ma non viene piu eseguito.
     from app.services.assegni_estratto_conto import sincronizza_assegni_da_estratto_conto
-    return await sincronizza_assegni_da_estratto_conto(Database.get_db())
+    return await sincronizza_assegni_da_estratto_conto(
+        Database.get_db(), movimento_ids=movimento_ids,
+    )
 
     import re
     db = Database.get_db()

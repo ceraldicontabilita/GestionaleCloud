@@ -79,8 +79,16 @@ def test_quattro_assegni_da_tremila_chiudono_quattro_rate_non_il_totale_subito()
             ],
         })
         for idx in range(1, 5):
+            numero = f"02087709{idx:02d}"
+            await db.assegni.insert_one({
+                "id": f"ass-rata-{idx}",
+                "numero": numero,
+                "importo": 3000.0,
+                "fattura_collegata": "fatt-rata",
+                "stato": "emesso",
+            })
             await db.estratto_conto_movimenti.insert_one(
-                _mov(numero=f"02087709{idx:02d}", importo=3000.0, idx=idx)
+                _mov(numero=numero, importo=3000.0, idx=idx)
             )
 
         esito = await sincronizza_assegni_da_estratto_conto(db)
@@ -92,6 +100,51 @@ def test_quattro_assegni_da_tremila_chiudono_quattro_rate_non_il_totale_subito()
         assert fattura["pagato"] is True
         assert len(fattura["assegni_collegati"]) == 4
         assert await db.prima_nota_banca.count_documents({}) == 4
+
+    _run(scenario())
+
+
+def test_importo_univoco_senza_numero_fattura_resta_proposta():
+    async def scenario():
+        db = AsyncMongoMockClient().db
+        await db.invoices.insert_one({
+            "id": "fatt-unica", "invoice_number": "TEST-UNICA",
+            "invoice_date": "2026-04-01", "supplier_vat": "00000000001",
+            "supplier_name": "FORNITORE TEST", "total_amount": 1853.02,
+            "importo_pagato": 0.0, "payment_status": "open", "pagato": False,
+        })
+        await db.estratto_conto_movimenti.insert_one(_mov())
+
+        esito = await sincronizza_assegni_da_estratto_conto(db)
+
+        assert esito["fatture_associate"] == 0
+        assert esito["proposte_ambigue"] == 1
+        assert await db.invoices.count_documents({"pagato": True}) == 0
+        proposta = await db.proposte_associazione_assegni.find_one({}, {"_id": 0})
+        assert proposta["fattura_id"] == "fatt-unica"
+        assert proposta["stato"] == "da_confermare"
+
+    _run(scenario())
+
+
+def test_sync_limitata_non_riesamina_gli_assegni_storici():
+    async def scenario():
+        db = AsyncMongoMockClient().db
+        await db.estratto_conto_movimenti.insert_many([
+            _mov(numero="0208770981", idx=1),
+            _mov(numero="0208770982", idx=2),
+        ])
+
+        esito = await sincronizza_assegni_da_estratto_conto(
+            db, movimento_ids=["ec-2", "ec-2"],
+        )
+
+        assert esito["ambito"] == "nuovi_movimenti"
+        assert esito["movimenti_analizzati"] == 1
+        assert await db.assegni.count_documents({"numero": "0208770982"}) == 1
+        assert await db.assegni.count_documents({"numero": "0208770981"}) == 0
+        storico = await db.estratto_conto_movimenti.find_one({"id": "ec-1"}, {"_id": 0})
+        assert storico["riconciliato"] is False
 
     _run(scenario())
 

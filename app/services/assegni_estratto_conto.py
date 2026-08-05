@@ -137,7 +137,10 @@ async def _registra_proposte_ambigue(
             "importo": round(_f(assegno.get("importo")), 2),
             "tipo_match": "estratto_conto_importo_ambiguo",
             "confidenza": 0.5,
-            "nota": "Importo assegno compatibile con piu fatture: conferma manuale necessaria",
+            "nota": (
+                "Importo compatibile ma manca un riferimento esplicito alla fattura: "
+                "conferma manuale necessaria"
+            ),
             "stato": "da_confermare",
             "source": "estratto_conto",
             "created_at": now,
@@ -250,15 +253,17 @@ async def _garantisci_prima_nota(
     })
 
 
-async def sincronizza_assegni_da_estratto_conto(db) -> Dict[str, Any]:
+async def sincronizza_assegni_da_estratto_conto(
+    db,
+    movimento_ids: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     from app.services.bank_evidence import filtro_solo_evidenza_ufficiale
     risultati: Dict[str, Any] = {
         "movimenti_analizzati": 0, "assegni_trovati": 0, "assegni_creati": 0,
         "assegni_esistenti": 0, "assegni_riconciliati": 0,
         "fatture_associate": 0, "proposte_ambigue": 0, "errori": [], "dettagli": [],
     }
-    movimenti = await db["estratto_conto_movimenti"].find({
-        "$and": [
+    filtri_movimenti: List[Dict[str, Any]] = [
             filtro_solo_evidenza_ufficiale(),
             {"$or": [
                 {"descrizione": {"$regex": "PRELIEVO.*ASSEGNO", "$options": "i"}},
@@ -267,8 +272,23 @@ async def sincronizza_assegni_da_estratto_conto(db) -> Dict[str, Any]:
                 {"descrizione_originale": {"$regex": "VOSTRO.*ASSEGNO", "$options": "i"}},
             ]},
             {"$or": [{"tipo": "uscita"}, {"type": "uscita"}, {"importo": {"$lt": 0}}]},
-        ]
-    }, {"_id": 0}).to_list(10000)
+    ]
+    ids_richiesti = list(dict.fromkeys(
+        str(movimento_id).strip()
+        for movimento_id in (movimento_ids or [])
+        if str(movimento_id).strip()
+    ))
+    if movimento_ids is not None:
+        risultati["ambito"] = "nuovi_movimenti"
+        if not ids_richiesti:
+            return risultati
+        filtri_movimenti.append({"id": {"$in": ids_richiesti}})
+    else:
+        risultati["ambito"] = "completo"
+
+    movimenti = await db["estratto_conto_movimenti"].find(
+        {"$and": filtri_movimenti}, {"_id": 0},
+    ).to_list(10000)
     movimenti = [
         movimento for movimento in movimenti
         if "RILASCIO CARNET" not in (
@@ -316,9 +336,11 @@ async def sincronizza_assegni_da_estratto_conto(db) -> Dict[str, Any]:
                 fattura = await _fattura_da_prima_nota(db, numero, importo)
             if not fattura:
                 candidate = await _fatture_aperte_stesso_importo(db, importo, data_movimento)
-                if len(candidate) == 1:
-                    fattura = candidate[0]
-                elif len(candidate) > 1:
+                # L'importo, anche se individua una sola fattura aperta, non e'
+                # prova sufficiente. Il collegamento automatico richiede un
+                # intento assegno->fattura gia' esplicito oppure una Prima Nota
+                # gia' collegata; qui si salvano soltanto proposte da confermare.
+                if candidate:
                     risultati["proposte_ambigue"] += await _registra_proposte_ambigue(db, assegno, candidate, now)
 
             nuova_associazione = False
