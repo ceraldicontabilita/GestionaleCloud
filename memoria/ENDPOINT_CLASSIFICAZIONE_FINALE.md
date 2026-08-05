@@ -1031,9 +1031,9 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/v1/keys/generate` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/v1/movimenti` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/v1/stats` | public_api | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-noleggio/dettaglio/{numero_verbale:path}` | verbali_noleggio_api | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `GET /api/verbali-noleggio/dettaglio/{numero_verbale:path}` | verbali_noleggio_api | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `GET /api/verbali-noleggio/dettaglio/{numero_verbale}` | verbali_noleggio | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/verbali-noleggio/pdf/{numero_verbale}` | verbali_noleggio | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/verbali-noleggio/pdf/{numero_verbale:path}` | verbali_noleggio | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/verbali-noleggio/verbali-completi` | verbali_noleggio | — | — | sì | — | — | tenere | in uso: chat |
 | `POST /api/verbali-noleggio/{verbale_id}/upload-quietanza` | verbali_noleggio_api | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/verbali-riconciliazione/collega-driver-massivo` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |

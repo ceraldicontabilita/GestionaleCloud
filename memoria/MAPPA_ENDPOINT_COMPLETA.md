@@ -1551,7 +1551,7 @@
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/verbali-noleggio/dettaglio/{numero_verbale}` | ✓ | verbali_noleggio |
-| GET | `/api/verbali-noleggio/pdf/{numero_verbale}` | — | verbali_noleggio |
+| GET | `/api/verbali-noleggio/pdf/{numero_verbale:path}` | — | verbali_noleggio |
 | GET | `/api/verbali-noleggio/verbali-completi` | — | verbali_noleggio |
 
 ## Verbali Riconciliazione  (8)
