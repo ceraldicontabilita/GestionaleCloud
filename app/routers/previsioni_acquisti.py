@@ -121,6 +121,9 @@ async def lista_prodotti(
             "unita_misura": {"$first": "$unita_misura"},
             "quantita_totale": {"$sum": "$quantita"},
             "spesa_totale": {"$sum": "$totale_linea"},
+            "righe_con_costo": {"$sum": {"$cond": [
+                {"$gt": ["$totale_linea", 0]}, 1, 0
+            ]}},
             "num_acquisti": {"$sum": 1},
             "fornitori": {"$addToSet": "$fornitore"},
             "primo_acquisto": {"$min": "$data_fattura"},
@@ -173,6 +176,9 @@ async def statistiche_acquisti(
             "unita_misura": {"$first": "$unita_misura"},
             "quantita_totale": {"$sum": "$quantita"},
             "spesa_totale": {"$sum": "$totale_linea"},
+            "righe_con_costo": {"$sum": {"$cond": [
+                {"$gt": ["$totale_linea", 0]}, 1, 0
+            ]}},
             "num_acquisti": {"$sum": 1},
             "date_acquisti": {"$push": "$data_fattura"},
             "primo_acquisto": {"$min": "$data_fattura"},
@@ -229,6 +235,7 @@ async def statistiche_acquisti(
             "unita_misura": doc["unita_misura"],
             "quantita_totale": quantita,
             "spesa_totale": doc["spesa_totale"],
+            "costo_disponibile": doc.get("righe_con_costo", 0) > 0,
             "num_acquisti": num_acquisti,
             "media_giornaliera": round(media_giornaliera, 2),
             "media_settimanale": round(media_settimanale, 2),
@@ -253,16 +260,22 @@ async def statistiche_acquisti(
         
         if q_prec > 0:
             variazione_pct = ((q_corr - q_prec) / q_prec) * 100
+            trend = "↑" if variazione_pct > 5 else ("↓" if variazione_pct < -5 else "→")
         else:
-            variazione_pct = 100 if q_corr > 0 else 0
+            # Un prodotto senza base nell'anno precedente e' "nuovo": +100%
+            # sarebbe matematicamente falso (divisione per zero).
+            variazione_pct = None
+            trend = "nuovo" if q_corr > 0 else "→"
         
         risultato = {
             **stats,
             "id": prod_id,
             "anno": anno,
+            "quantita_anno_corrente": q_corr,
             "quantita_anno_prec": q_prec,
-            "variazione_pct": round(variazione_pct, 1),
-            "trend": "↑" if variazione_pct > 5 else ("↓" if variazione_pct < -5 else "→")
+            "differenza_quantita": round(q_corr - q_prec, 2),
+            "variazione_pct": round(variazione_pct, 1) if variazione_pct is not None else None,
+            "trend": trend,
         }
         risultati.append(risultato)
     

@@ -61,19 +61,25 @@ def gruppo_multi_fattura_valido(
 async def check_fatture_banca_senza_ec(db) -> Dict[str, Any]:
     """REGOLA UTENTE 18/07: una fattura risulta pagata per banca SOLO se
     riconciliata con un movimento reale (estratto conto / PayPal / carta)."""
+    from app.services.prima_nota_integrity import CAMPI_EVIDENZA_BANCA
+
     esempi, count = [], 0
+    projection = {
+        "_id": 0, "id": 1, "fattura_id": 1, "invoice_id": 1,
+        "data": 1, "importo": 1,
+        "descrizione": 1, "source": 1,
+        **{campo: 1 for campo in CAMPI_EVIDENZA_BANCA},
+    }
     righe = await db["prima_nota_banca"].find(
-        {**_ATTIVO, "tipo": "uscita",
-         "fattura_id": {"$exists": True, "$nin": [None, ""]},
-         "$and": [{"$or": [{"estratto_conto_id": None},
-                           {"estratto_conto_id": {"$exists": False}},
-                           {"estratto_conto_id": ""}]}]},
-        {"_id": 0, "id": 1, "fattura_id": 1, "data": 1, "importo": 1,
-         "descrizione": 1, "source": 1, "riconciliato": 1},
+        {**_ATTIVO, "tipo": "uscita", "$or": [
+            {"fattura_id": {"$exists": True, "$nin": [None, ""]}},
+            {"invoice_id": {"$exists": True, "$nin": [None, ""]}},
+        ]},
+        projection,
     ).to_list(5000)
     for r in righe:
-        if r.get("riconciliato"):
-            continue  # riconciliata con PayPal/carta da altro flusso
+        if any(r.get(campo) not in (None, "") for campo in CAMPI_EVIDENZA_BANCA):
+            continue
         count += 1
         if len(esempi) < 5:
             esempi.append(_es(r, ["data", "importo", "descrizione", "source"]))
@@ -235,22 +241,25 @@ async def check_fatture_duplicate(db) -> Dict[str, Any]:
 
 
 async def check_prima_nota_link_rotti(db) -> Dict[str, Any]:
-    """Fatture il cui prima_nota_id punta a una riga soft-deletata: risultano
-    pagate ma il movimento non esiste più."""
+    """Fatture pagate senza alcuna riga attiva di Prima Nota.
+
+    Copre tutti gli alias storici: pagato/paid/stato_pagamento e
+    prima_nota_id/prima_nota_cassa_id/prima_nota_banca_id.
+    """
+    from app.services.prima_nota_integrity import (
+        filtro_fatture_marcate_pagate,
+        trova_movimento_prima_nota_attivo,
+    )
+
     count, esempi = 0, []
     async for f in db["invoices"].find(
-            {"pagato": True, "prima_nota_id": {"$exists": True, "$nin": [None, ""]},
-             "status": {"$nin": ["deleted", "archived"]}},
-            {"_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1,
-             "prima_nota_id": 1, "prima_nota_tipo": 1, "total_amount": 1}):
-        pn_id = f["prima_nota_id"]
-        viva = False
-        for coll in ("prima_nota_banca", "prima_nota_cassa"):
-            r = await db[coll].find_one({"id": pn_id, **_ATTIVO}, {"_id": 0, "id": 1})
-            if r:
-                viva = True
-                break
-        if not viva:
+            filtro_fatture_marcate_pagate(),
+            {"_id": 0, "id": 1, "invoice_key": 1,
+             "invoice_number": 1, "supplier_name": 1,
+             "prima_nota_id": 1, "prima_nota_tipo": 1,
+             "prima_nota_cassa_id": 1, "prima_nota_banca_id": 1,
+             "total_amount": 1}):
+        if not await trova_movimento_prima_nota_attivo(db, f):
             count += 1
             if len(esempi) < 5:
                 esempi.append(_es(f, ["invoice_number", "supplier_name", "total_amount"]))
@@ -547,6 +556,36 @@ async def check_fatture_iva_classificazione(db) -> Dict[str, Any]:
     }
 
 
+async def check_f24_pagati_senza_banca(db) -> Dict[str, Any]:
+    """F24 dichiarati pagati ma privi di riferimento+data dell'addebito."""
+    from app.services.f24_payment_evidence import ha_evidenza_bancaria
+
+    docs = await db["f24_unificato"].find(
+        {"$or": [
+            {"status": {"$in": ["paid", "pagato"]}},
+            {"stato_pagamento": "PAGATO"},
+            {"pagato": True},
+        ]},
+        {"_id": 0, "pdf_data": 0},
+    ).to_list(50000)
+    incoerenti = [doc for doc in docs if not ha_evidenza_bancaria(doc)]
+    return {
+        "nome": "f24_pagati_senza_prova_bancaria",
+        "violazioni": len(incoerenti),
+        "descrizione": "F24 marcati pagati senza movimento bancario identificato e datato",
+        "esempi": [
+            {
+                "f24_id": d.get("id"),
+                "file": d.get("file_name") or d.get("filename"),
+                "status": d.get("status"),
+                "stato_pagamento": d.get("stato_pagamento"),
+                "quietanza_id": d.get("quietanza_id"),
+            }
+            for d in incoerenti[:5]
+        ],
+    }
+
+
 CHECKS = [
     check_fatture_banca_senza_ec,
     check_trasferimento_pos_speculare,
@@ -563,6 +602,7 @@ CHECKS = [
     check_assegni_integrita,
     check_fatture_iva_classificazione,
     check_liquidazioni_iva_integrita,
+    check_f24_pagati_senza_banca,
 ]
 
 

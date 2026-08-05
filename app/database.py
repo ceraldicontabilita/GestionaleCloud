@@ -82,6 +82,14 @@ class Database:
         await _safe_index(Collections.CASH_MOVEMENTS, [("anno", 1), ("tipo", 1)], name="idx_pn_cassa_anno_tipo")
         await _safe_index("prima_nota_banca", [("data", -1)], name="idx_pn_banca_data")
         await _safe_index("prima_nota_banca", [("anno", 1), ("tipo", 1)], name="idx_pn_banca_anno_tipo")
+
+        # --- Piano dei Conti ---
+        # La stessa chiave contabile non può esistere due volte. Su database
+        # storici già duplicati la creazione viene rinviata dalla guardia
+        # _safe_index fino alla bonifica esplicitamente approvata; le letture
+        # restano comunque protette dalla deduplica difensiva degli endpoint.
+        await _safe_index("piano_conti", "codice", unique=True,
+                          name="idx_piano_conti_codice_unique")
         
         # --- Estratto Conto ---
         await _safe_index(Collections.BANK_STATEMENTS, [("data", -1)], name="idx_ec_data")
@@ -130,6 +138,8 @@ class Database:
         await _safe_index("dipendenti", [("cognome", 1), ("nome", 1)], name="idx_dipendenti_nome")
 
         # --- Assegni (query per stato, fornitore, data) ---
+        await _safe_index("assegni", "numero", unique=True, sparse=True,
+                          name="idx_assegni_numero_unique")
         await _safe_index("assegni", "stato", name="idx_assegni_stato")
         await _safe_index("assegni", "pagato", name="idx_assegni_pagato")
         await _safe_index("assegni", [("fornitore_piva", 1), ("data_emissione", -1)], name="idx_assegni_fornitore_data")

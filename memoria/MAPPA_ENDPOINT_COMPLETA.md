@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1045 endpoint** in **109 gruppi**.
+> Totale **1047 endpoint** in **109 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 656 · ext esterni = 90 · — da verificare = 299
+**Riepilogo uso:** ✓ frontend = 657 · ext esterni = 90 · — da verificare = 300
 
 ## AI Parser  (11)
 
@@ -118,7 +118,7 @@
 | PUT | `/api/archivio-bonifici/transfers/{transfer_id}` | ✓ | bonifici_module.transfers |
 | GET | `/api/archivio-bonifici/transfers/{transfer_id}/pdf` | ✓ | bonifici_module.transfers |
 
-## Assegni  (31)
+## Assegni  (32)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -143,6 +143,7 @@
 | GET | `/api/assegni/senza-associazione` | ✓ | bank.assegni |
 | GET | `/api/assegni/stati` | ✓ | bank.assegni |
 | GET | `/api/assegni/stats` | ✓ | bank.assegni |
+| GET | `/api/assegni/supporto/fatture-disponibili` | ✓ | bank.assegni |
 | POST | `/api/assegni/sync-da-estratto-conto` | ✓ | bank.assegni |
 | GET | `/api/assegni/verifica-associazioni` | ✓ | bank.assegni |
 | GET | `/api/assegni/{assegno_id}` | ✓ | bank.assegni |
@@ -913,7 +914,7 @@
 | GET | `/api/gestione-riservata/riepilogo` | ✓ | gestione_riservata |
 | GET | `/api/gestione-riservata/volume-affari-reale` | — | gestione_riservata |
 
-## IVA  (19)
+## IVA  (20)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -936,6 +937,7 @@
 | POST | `/api/iva/ricalcola-attribuzione` | ✓ | iva |
 | GET | `/api/iva/ricalcola-attribuzione/ultimo` | ✓ | iva |
 | GET | `/api/iva/riepilogo-annuale/{anno}` | ✓ | iva |
+| GET | `/api/iva/versamento/{anno}/{mese}` | — | iva |
 
 ## Inserimento Rapido  (8)
 
@@ -1338,20 +1340,20 @@
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| GET | `/api/assegni` | ✓ | public_api |
 | POST | `/api/assegni` | ✓ | public_api |
+| GET | `/api/assegni-legacy` | ✓ | public_api |
 | GET | `/api/bank/statements` | ✓ | public_api |
 | POST | `/api/bank/statements` | ✓ | public_api |
 | GET | `/api/cash` | ✓ | public_api |
 | POST | `/api/cash` | ✓ | public_api |
-| GET | `/api/dashboard/stats` | — | public_api |
+| GET | `/api/dashboard/stats-legacy` | — | public_api |
 | GET | `/api/f24-public/alerts` | ext | public_api |
 | GET | `/api/f24-public/dashboard` | ext | public_api |
 | GET | `/api/pianificazione/events` | ✓ | public_api |
 | POST | `/api/pianificazione/events` | ✓ | public_api |
 | POST | `/api/portal/upload` | ext | public_api |
 | GET | `/api/ricerca-globale` | — | public_api |
-| POST | `/api/suppliers` | ✓ | public_api |
+| POST | `/api/suppliers-legacy` | ✓ | public_api |
 | GET | `/api/suppliers/{supplier_id}/inventory` | ✓ | public_api |
 | GET | `/api/v1/fatture` | ext | public_api |
 | GET | `/api/v1/keys` | ext | public_api |

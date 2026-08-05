@@ -205,7 +205,7 @@ const AREAS = [
     Icon: ReceiptText,
     color: '#be123c',
     group: 'Fisco',
-    purpose: 'F24 genera posizione da pagare; quietanza chiude ufficialmente il pagamento come prova.',
+    purpose: 'F24 genera la posizione; la quietanza documenta l’esito telematico; il pagamento si chiude solo con l’addebito bancario.',
     pages: ['F24', 'Quietanze', 'Cartelle', 'Avvisi bonari', 'TARI/ADER'],
     inputs: ['F24 email', 'Quietanze Drive', 'PagoPA', 'Banca', 'Documenti Agenzia'],
     outputs: ['Scadenze fiscali', 'Movimenti attesi banca', 'Pagamento ufficiale confermato'],
@@ -381,7 +381,7 @@ const RULES = [
   {
     title: 'F24 e quietanze',
     Icon: ReceiptText,
-    text: 'F24 estrae tributi e debito; quietanza e documento ufficiale che chiude il pagamento.',
+    text: 'F24 estrae tributi e debito; la quietanza collega il documento; l’estratto conto conferma il pagamento.',
   },
   {
     title: 'Cedolini completi',

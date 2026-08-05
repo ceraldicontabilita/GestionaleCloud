@@ -240,6 +240,7 @@ def riconcilia_f24_con_estratto(f24_list: List[Dict], movimenti_f24: List[Dict])
             "totale_f24": len(f24_list),
             "totale_movimenti_f24": len(movimenti_f24),
             "riconciliati": 0,
+            "ambigui": 0,
             "non_pagati": 0,
             "non_associati": 0
         }
@@ -261,8 +262,7 @@ def riconcilia_f24_con_estratto(f24_list: List[Dict], movimenti_f24: List[Dict])
             f24_data = None
         
         # Cerca movimento corrispondente
-        match_found = None
-        match_index = -1
+        candidati = []
         
         for idx, mov in enumerate(movimenti_disponibili):
             mov_importo = abs(mov.get("importo", 0))
@@ -277,17 +277,18 @@ def riconcilia_f24_con_estratto(f24_list: List[Dict], movimenti_f24: List[Dict])
                 mov_data = None
             
             # Check importo (tolleranza 0.01€)
+            if not f24_data or not mov_data:
+                continue
             importo_match = abs(f24_importo - mov_importo) <= 0.01
             
             # Check data (tolleranza 3 giorni)
-            data_match = True
-            if f24_data and mov_data:
-                data_match = abs((f24_data - mov_data).days) <= 3
+            data_match = abs((f24_data - mov_data).days) <= 3
             
             if importo_match and data_match:
-                match_found = mov
-                match_index = idx
-                break
+                candidati.append((idx, mov))
+
+        # Il solo importo non basta e piu' candidati restano ambigui.
+        match_index, match_found = candidati[0] if len(candidati) == 1 else (-1, None)
         
         if match_found:
             # F24 riconciliato
@@ -308,10 +309,16 @@ def riconcilia_f24_con_estratto(f24_list: List[Dict], movimenti_f24: List[Dict])
             f24_non_pagato = {
                 **f24,
                 "stato_pagamento": "DA_PAGARE",
-                "movimento_bancario": None
+                "movimento_bancario": None,
+                "match_ambiguo": len(candidati) > 1,
+                "candidati_movimenti": [
+                    m.get("id") or m.get("fingerprint") for _, m in candidati
+                ],
             }
             result["f24_non_pagati"].append(f24_non_pagato)
             result["stats"]["non_pagati"] += 1
+            if candidati:
+                result["stats"]["ambigui"] += 1
     
     # Movimenti non associati
     result["movimenti_non_associati"] = movimenti_disponibili

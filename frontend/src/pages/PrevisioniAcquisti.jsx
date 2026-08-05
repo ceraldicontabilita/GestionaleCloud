@@ -66,6 +66,7 @@ export default function PrevisioniAcquisti() {
   const getTrendVariant = trend => {
     if (trend === '↑') return 'success';
     if (trend === '↓') return 'danger';
+    if (trend === 'nuovo') return 'primary';
     return 'neutral';
   };
 
@@ -258,9 +259,15 @@ export default function PrevisioniAcquisti() {
 
                     {activeTab === 'statistiche' && item.trend && (
                       <Badge variant={getTrendVariant(item.trend)}>
-                        {item.trend === '↑' ? '📈' : item.trend === '↓' ? '📉' : ''}
-                        {item.variazione_pct > 0 ? '+' : ''}
-                        {item.variazione_pct}%
+                        {item.trend === 'nuovo' ? (
+                          <>🆕 Nuovo nel {annoGlobale}</>
+                        ) : (
+                          <>
+                            {item.trend === '↑' ? '📈' : item.trend === '↓' ? '📉' : ''}
+                            {item.variazione_pct > 0 ? '+' : ''}
+                            {item.variazione_pct}%
+                          </>
+                        )}
                       </Badge>
                     )}
 
@@ -287,17 +294,29 @@ export default function PrevisioniAcquisti() {
                           }}
                         >
                           <div>
-                            <strong>Spesa totale:</strong> {formatEuro(item.spesa_totale)}
+                            <strong>Quantità {annoGlobale}:</strong>{' '}
+                            {item.quantita_anno_corrente?.toFixed(1)} {item.unita_misura}
+                          </div>
+                          <div>
+                            <strong>Quantità {annoGlobale - 1}:</strong>{' '}
+                            {item.quantita_anno_prec?.toFixed(1)} {item.unita_misura}
+                          </div>
+                          <div>
+                            <strong>Differenza:</strong>{' '}
+                            {(item.differenza_quantita || 0) > 0 ? '+' : ''}
+                            {item.differenza_quantita?.toFixed(1)} {item.unita_misura}
+                          </div>
+                          <div>
+                            <strong>Spesa totale:</strong>{' '}
+                            {item.costo_disponibile
+                              ? formatEuro(item.spesa_totale)
+                              : 'Costo non disponibile nei dati XML'}
                           </div>
                           <div>
                             <strong>N. ordini:</strong> {item.num_acquisti}
                           </div>
                           <div>
                             <strong>Ogni:</strong> {item.frequenza_giorni} giorni
-                          </div>
-                          <div>
-                            <strong>Anno prec.:</strong> {item.quantita_anno_prec?.toFixed(1)}{' '}
-                            {item.unita_misura}
                           </div>
                           <div>
                             <strong>Primo:</strong> {item.primo_acquisto}

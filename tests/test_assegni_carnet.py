@@ -1,0 +1,106 @@
+import asyncio
+
+import pytest
+from mongomock_motor import AsyncMongoMockClient
+
+from app.routers.bank import assegni as assegni_router
+
+
+async def _scenario_carnet_salvato(monkeypatch):
+    db = AsyncMongoMockClient()["test_assegni_carnet"]
+    monkeypatch.setattr(
+        assegni_router.Database,
+        "get_db",
+        staticmethod(lambda: db),
+    )
+
+    esito = await assegni_router.genera_assegni(
+        numero_primo="0208770000-01",
+        quantita=3,
+        anno=2026,
+    )
+
+    assert esito["success"] is True
+    assert esito["generati"] == 3
+    assert await db["assegni"].count_documents({"anno_creazione": 2026}) == 3
+
+    righe = await assegni_router.list_assegni(
+        skip=0, limit=1000, stato=None, fornitore_piva=None,
+        search=None, anno=2026,
+    )
+    assert [r["numero"] for r in righe] == [
+        "0208770000-01",
+        "0208770000-02",
+        "0208770000-03",
+    ]
+
+
+async def _scenario_carnet_duplicato(monkeypatch):
+    db = AsyncMongoMockClient()["test_assegni_carnet_duplicato"]
+    await db["assegni"].insert_one({"numero": "0208770001-02"})
+    monkeypatch.setattr(
+        assegni_router.Database,
+        "get_db",
+        staticmethod(lambda: db),
+    )
+
+    with pytest.raises(Exception) as exc:
+        await assegni_router.genera_assegni(
+            numero_primo="0208770001-01",
+            quantita=3,
+            anno=2026,
+        )
+
+    assert getattr(exc.value, "status_code", None) == 400
+    assert await db["assegni"].count_documents({}) == 1
+
+
+async def _scenario_fatture_disponibili(monkeypatch):
+    db = AsyncMongoMockClient()["test_fatture_disponibili_assegno"]
+    await db["invoices"].insert_many([
+        {
+            "id": "f1", "invoice_key": "K1", "invoice_number": "10",
+            "invoice_date": "2026-06-01", "supplier_name": "Fornitore A",
+            "total_amount": 100.0, "pagato": False, "xml_content": "molto grande",
+        },
+        {
+            "id": "f1-duplicata", "invoice_key": "K1", "invoice_number": "10",
+            "invoice_date": "2026-06-01", "supplier_name": "Fornitore A",
+            "total_amount": 100.0, "pagato": False,
+        },
+        {
+            "id": "f2", "invoice_key": "K2", "invoice_number": "11",
+            "invoice_date": "2026-06-02", "supplier_name": "Fornitore B",
+            "total_amount": 200.0, "pagato": True,
+        },
+        {
+            "id": "f3", "invoice_key": "K3", "invoice_number": "12",
+            "invoice_date": "2025-06-02", "supplier_name": "Fornitore C",
+            "total_amount": 300.0, "pagato": False,
+        },
+    ])
+    monkeypatch.setattr(
+        assegni_router.Database,
+        "get_db",
+        staticmethod(lambda: db),
+    )
+
+    righe = await assegni_router.fatture_disponibili_per_assegno(
+        anno=2026, limit=1000,
+    )
+
+    assert len(righe) == 1
+    assert righe[0]["invoice_key"] == "K1"
+    assert "xml_content" not in righe[0]
+
+
+def test_carnet_salvato_in_blocco_e_visibile_nell_anno(monkeypatch):
+    asyncio.run(_scenario_carnet_salvato(monkeypatch))
+
+
+def test_carnet_duplicato_non_inserisce_righe_parziali(monkeypatch):
+    asyncio.run(_scenario_carnet_duplicato(monkeypatch))
+
+
+def test_fatture_disponibili_sono_leggere_aperte_e_deduplicate(monkeypatch):
+    asyncio.run(_scenario_fatture_disponibili(monkeypatch))

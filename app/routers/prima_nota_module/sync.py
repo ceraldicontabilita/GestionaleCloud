@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 TIPI_FATTURA_ATTIVA = ["TD24", "TD25", "TD26", "TD27"]
 from app.constants.tipi_documento import TIPI_NOTA_CREDITO
 from app.services.scritture_contabili import scrivi_movimento
+from app.services.prima_nota_integrity import (
+    fatture_senza_pagamento_contabile_confermato,
+)
 
 # Metodi fornitore -> destinazione Prima Nota: REGOLA UNICA, delegata al
 # motore centralizzato app.engines.prima_nota_engine (prima esistevano liste
@@ -774,21 +777,26 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
     """
     db = Database.get_db()
     
-    # Fatture dell'anno NON ancora registrate in Prima Nota
-    # Logica: esclude fatture con stato_pagamento="pagata" E quelle con prima_nota_id valido
+    # Tutte le fatture attive dell'anno. I flag pagato/paid legacy non sono
+    # sufficienti: sotto verifichiamo la riga contabile reale e, per banca,
+    # la presenza dell'evidenza dell'estratto conto.
     fatture = await db["invoices"].find(
         {
-            "invoice_date": {"$regex": f"^{anno}"},
-            "total_amount": {"$gt": 0},
-            "stato_pagamento": {"$nin": ["pagata", "paid"]},
-            "pagato": {"$ne": True},  # coerenza: alcuni flussi settano solo questo flag
+            "status": {"$nin": ["deleted", "archived"]},
+            "entity_status": {"$ne": "deleted"},
             "$or": [
-                {"prima_nota_id": None}, {"prima_nota_id": ""},
-                {"prima_nota_id": {"$exists": False}},
-            ]
+                {"invoice_date": {"$regex": f"^{anno}"}},
+                {"data_documento": {"$regex": f"^{anno}"}},
+                {"data_fattura": {"$regex": f"^{anno}"}},
+            ],
         },
         {"_id": 0, "xml_raw": 0, "linee": 0}
-    ).sort("invoice_date", -1).to_list(500)
+    ).sort("invoice_date", -1).to_list(5000)
+    fatture = [
+        f for f in fatture
+        if float(f.get("total_amount") or f.get("importo_totale") or 0) > 0
+    ]
+    fatture = await fatture_senza_pagamento_contabile_confermato(db, fatture)
 
     # Movimenti banca per match.
     # NB: l'importer EC scrive la data nel campo "data" (YYYY-MM-DD); i record
@@ -833,7 +841,7 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
 
     provvisori = []
     for f in fatture:
-        importo = float(f.get("total_amount", 0))
+        importo = float(f.get("total_amount") or f.get("importo_totale") or 0)
         metodo_xml = f.get("payment_method", "")
         metodo_code = f.get("payment_method_code", "")
         piva = (f.get("supplier_vat") or f.get("cedente_piva") or "").strip()
@@ -954,7 +962,8 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
     return {
         "provvisori": provvisori_finali,
         "in_attesa_banca": in_attesa_banca,
-        "totale": len(provvisori_finali),
+        "totale": len(provvisori),
+        "totale_da_decidere": len(provvisori_finali),
         "totale_in_attesa_banca": len(in_attesa_banca),
         "totale_cassa": round(tot_cassa, 2),
         "totale_banca": round(tot_banca, 2),

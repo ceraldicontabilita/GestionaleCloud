@@ -152,6 +152,20 @@ def test_check_fatture_iva_classificazione_segnala_solo_casi_reali():
     assert "stato operativo senza IVA detraibile esplicita" in motivi
 
 
+def test_check_f24_pagati_senza_banca_distingue_quietanza_e_addebito():
+    db = _Db({
+        "f24_unificato": _Coll([
+            {"id": "solo-quietanza", "status": "pagato", "quietanza_id": "q1"},
+            {"id": "con-banca", "status": "pagato", "movimento_bancario_id": "m1",
+             "data_pagamento_effettivo": "2026-07-16"},
+        ]),
+    })
+    r = _run(coll.check_f24_pagati_senza_banca(db))
+    assert r["nome"] == "f24_pagati_senza_prova_bancaria"
+    assert r["violazioni"] == 1
+    assert r["esempi"][0]["f24_id"] == "solo-quietanza"
+
+
 def test_esegui_collaudo_report_e_alert(monkeypatch):
     async def check_sporco(db):
         return {"nome": "sporco", "violazioni": 3, "descrizione": "x", "esempi": []}

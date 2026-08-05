@@ -215,7 +215,9 @@ export default function GestioneAssegni() {
       params.append('anno', anno);
       params.append('limit', '1000');
       // IMPORTANTE: se c'è un beneficiario, filtra SOLO quelle del beneficiario
-      const res = await api.get(`/api/invoices?${params}`);
+      // Endpoint leggero: restituisce solo i campi necessari al modale e non
+      // trascina XML/PDF e metadati completi delle fatture.
+      const res = await api.get(`/api/assegni/supporto/fatture-disponibili?${params}`);
       const items = res.data.items || res.data || [];
       // Escludi soltanto le fatture già pagate. La scelta dell'assegno per
       // una fattura specifica prevale sul metodo abituale cassa/misto del

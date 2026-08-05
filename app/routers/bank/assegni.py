@@ -62,6 +62,7 @@ async def genera_assegni(
     
     parts = numero_primo.rsplit("-", 1)
     prefix = parts[0]
+    suffix_width = len(parts[1])
     
     try:
         start_num = int(parts[1])
@@ -69,12 +70,17 @@ async def genera_assegni(
         raise HTTPException(status_code=400, detail="Il numero dopo il trattino deve essere numerico")
     
     # Verifica se alcuni numeri esistono già
-    existing_numbers = []
-    for i in range(quantita):
-        num = f"{prefix}-{start_num + i}"
-        existing = await db[COLLECTION_ASSEGNI].find_one({"numero": num})
-        if existing:
-            existing_numbers.append(num)
+    # Una sola query per tutto il carnet. Il vecchio ciclo eseguiva fino a
+    # 100 round-trip Atlas prima ancora di salvare.
+    numeri_richiesti = [
+        f"{prefix}-{start_num + i:0{suffix_width}d}"
+        for i in range(quantita)
+    ]
+    esistenti = await db[COLLECTION_ASSEGNI].find(
+        {"numero": {"$in": numeri_richiesti}},
+        {"_id": 0, "numero": 1},
+    ).to_list(quantita)
+    existing_numbers = [a.get("numero") for a in esistenti if a.get("numero")]
     
     if existing_numbers:
         raise HTTPException(
@@ -84,12 +90,12 @@ async def genera_assegni(
     
     # Genera assegni
     assegni_creati = []
+    nuovi_assegni = []
     now = datetime.now(timezone.utc).isoformat()
     anno_carnet = anno or datetime.now(timezone.utc).year
     carnet_id = prefix
     
-    for i in range(quantita):
-        numero = f"{prefix}-{start_num + i}"
+    for numero in numeri_richiesti:
         assegno = {
             "id": str(uuid.uuid4()),
             "numero": numero,
@@ -111,8 +117,12 @@ async def genera_assegni(
             "created_at": now,
             "updated_at": now
         }
-        await db[COLLECTION_ASSEGNI].insert_one(assegno.copy())
+        nuovi_assegni.append(assegno)
         assegni_creati.append(numero)
+
+    # Salvataggio unico: il carnet compare integralmente senza una latenza di
+    # rete per ogni assegno.
+    await db[COLLECTION_ASSEGNI].insert_many(nuovi_assegni, ordered=True)
     
     return {
         "success": True,
@@ -205,6 +215,79 @@ async def list_assegni(
                 a["fornitore_fattura"] = f.get("supplier_name") or f.get("cedente_denominazione") or ""
 
     return assegni
+
+
+@router.get("/supporto/fatture-disponibili")
+async def fatture_disponibili_per_assegno(
+    anno: int = Query(..., ge=2000, le=2100),
+    limit: int = Query(1000, ge=1, le=2000),
+) -> List[Dict[str, Any]]:
+    """Elenco leggero delle fatture aperte associabili a un assegno.
+
+    Evita di caricare migliaia di XML/documenti completi tramite l'endpoint
+    generale delle fatture, causa del timeout del modale di associazione.
+    """
+    db = Database.get_db()
+    inizio, fine = f"{anno}-01-01", f"{anno}-12-31"
+    query = {
+        "$and": [
+            {"$or": [
+                {"invoice_date": {"$gte": inizio, "$lte": fine}},
+                {"data_documento": {"$gte": inizio, "$lte": fine}},
+                {"data_fattura": {"$gte": inizio, "$lte": fine}},
+            ]},
+            {"status": {"$nin": ["deleted", "archived", "paid", "pagato"]}},
+            {"payment_status": {"$nin": ["paid", "pagato", "pagata"]}},
+            {"stato_pagamento": {"$nin": ["paid", "pagato", "pagata"]}},
+            {"pagato": {"$ne": True}},
+            {"paid": {"$ne": True}},
+        ]
+    }
+    projection = {
+        "_id": 0,
+        "id": 1,
+        "invoice_key": 1,
+        "invoice_number": 1,
+        "numero_fattura": 1,
+        "numero_documento": 1,
+        "invoice_date": 1,
+        "data_fattura": 1,
+        "data_documento": 1,
+        "supplier_name": 1,
+        "cedente_denominazione": 1,
+        "supplier_vat": 1,
+        "cedente_piva": 1,
+        "fornitore_partita_iva": 1,
+        "total_amount": 1,
+        "importo_totale": 1,
+        "tipo_documento": 1,
+        "document_type": 1,
+        "importo_pagato": 1,
+        "importo_residuo": 1,
+        "pagamento_rate": 1,
+    }
+    candidati = await db["invoices"].find(
+        query, projection
+    ).sort("invoice_date", -1).limit(limit * 2).to_list(limit * 2)
+
+    # Difesa sui dati legacy: una sola riga per identita' fiscale.
+    risultato: List[Dict[str, Any]] = []
+    visti = set()
+    for f in candidati:
+        numero = f.get("invoice_number") or f.get("numero_fattura") or f.get("numero_documento") or ""
+        piva = f.get("supplier_vat") or f.get("cedente_piva") or f.get("fornitore_partita_iva") or ""
+        data = f.get("invoice_date") or f.get("data_fattura") or f.get("data_documento") or ""
+        totale = f.get("total_amount") if f.get("total_amount") is not None else f.get("importo_totale")
+        chiave = f.get("invoice_key") or (
+            str(piva).strip().upper(), str(numero).strip().upper(), str(data)[:10], str(totale)
+        )
+        if chiave in visti:
+            continue
+        visti.add(chiave)
+        risultato.append(f)
+        if len(risultato) >= limit:
+            break
+    return risultato
 
 
 @router.get("/stats")

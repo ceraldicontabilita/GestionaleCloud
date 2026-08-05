@@ -1,7 +1,7 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **1045 endpoint** in **107 prefissi**.
+> Totale **1047 endpoint** in **109 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
@@ -14,6 +14,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/anagrafica-fornitori` | 2 | ✓ | anagrafica_fornitori_xml |
 | `/api/archivio-bonifici` | 28 | ✓ | bank.bonifici_import_unificato, bonifici_module.associazioni, bonifici_module.jobs, bonifici_module.riconciliazione, bonifici_module.transfers |
 | `/api/assegni` | 39 | ✓ | bank.assegni, bank.assegni_learning, public_api |
+| `/api/assegni-legacy` | 1 | ✓ | public_api |
 | `/api/auth` | 11 | ext | auth, mfa, pin_login |
 | `/api/auto-repair` | 1 | ✓ | auto_repair |
 | `/api/bank` | 2 | ✓ | public_api |
@@ -66,7 +67,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/genera-proposte` | 1 | — | dati_provvisori |
 | `/api/gestione-riservata` | 7 | ✓ | gestione_riservata |
 | `/api/invoices` | 8 | ✓ | invoices.invoices_emesse, invoices.invoices_main |
-| `/api/iva` | 19 | ✓ | iva |
+| `/api/iva` | 20 | ✓ | iva |
 | `/api/learning-machine` | 7 | ✓ | learning_machine |
 | `/api/learning-universal` | 5 | ✓ | learning_universal |
 | `/api/mutui` | 13 | ✓ | mutui, mutui_parser |
@@ -99,7 +100,8 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/scadenzario-fornitori` | 6 | ✓ | scadenzario_fornitori |
 | `/api/scadenze` | 10 | ✓ | scadenze |
 | `/api/settings` | 12 | ✓ | settings, settings_router |
-| `/api/suppliers` | 34 | ✓ | public_api, suppliers_module.base, suppliers_module.bulk, suppliers_module.iban, suppliers_module.import_export, suppliers_module.validation |
+| `/api/suppliers` | 33 | ✓ | public_api, suppliers_module.base, suppliers_module.bulk, suppliers_module.iban, suppliers_module.import_export, suppliers_module.validation |
+| `/api/suppliers-legacy` | 1 | ✓ | public_api |
 | `/api/sync` | 8 | ✓ | sync_relazionale |
 | `/api/terms` | 1 | — | legal_pages |
 | `/api/tfr` | 17 | ✓ | tfr |

@@ -99,7 +99,8 @@ def test_f24_1040_puntuale():
     db = _Db()
     db["f24_unificato"].docs = [{
         "id": "F1", "tributi": [{"codice": "1040", "importo": 280.0}],
-        "data_pagamento": "2026-04-16",
+        "movimento_bancario_id": "ec-1",
+        "data_pagamento_effettivo": "2026-04-16",
     }]
     upd = _run(mod._riconcilia_ritenuta(db, dict(RIT)))
     assert upd["f24_id"] == "F1"
@@ -113,7 +114,8 @@ def test_f24_1040_tardivo_con_ravvedimento():
         "tributi": [{"codice": "1040", "importo": 280.0},
                     {"codice": "8906", "importo": 3.5},
                     {"codice": "1989", "importo": 0.4}],
-        "data_pagamento": "2026-05-02",
+        "movimento_bancario_id": "ec-2",
+        "data_pagamento_effettivo": "2026-05-02",
     }]
     upd = _run(mod._riconcilia_ritenuta(db, dict(RIT)))
     assert upd["stato"] == "pagata_con_ravvedimento"
@@ -124,7 +126,8 @@ def test_f24_1040_tardivo_senza_ravvedimento():
     db = _Db()
     db["f24_unificato"].docs = [{
         "id": "F3", "tributi": [{"codice": "1040", "importo": 280.0}],
-        "data_pagamento": "2026-05-02",
+        "movimento_bancario_id": "ec-3",
+        "data_pagamento_effettivo": "2026-05-02",
     }]
     upd = _run(mod._riconcilia_ritenuta(db, dict(RIT)))
     assert upd["stato"] == "pagata_in_ritardo_senza_ravvedimento"
@@ -141,5 +144,15 @@ def test_senza_f24_resta_da_pagare_o_scaduta():
 def test_f24_associato_ma_non_pagato():
     db = _Db()
     db["f24_unificato"].docs = [{"id": "F4", "tributi": [{"codice": "1040", "importo": 280.0}]}]
+    upd = _run(mod._riconcilia_ritenuta(db, dict(RIT)))
+    assert upd["stato"] == "f24_associato_da_pagare"
+
+
+def test_f24_con_sola_quietanza_non_chiude_la_ritenuta():
+    db = _Db()
+    db["f24_unificato"].docs = [{
+        "id": "F5", "tributi": [{"codice": "1040", "importo": 280.0}],
+        "quietanza_id": "q-1", "data_pagamento_quietanza": "2026-04-16",
+    }]
     upd = _run(mod._riconcilia_ritenuta(db, dict(RIT)))
     assert upd["stato"] == "f24_associato_da_pagare"

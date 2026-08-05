@@ -1355,7 +1355,7 @@ export default function PrimaNota() {
         {tab('cassa', `💵 Cassa ${anno}`)}
         {tab('banca', `🏦 Banca ${anno}`)}
         {tab('soci', '👥 Soci')}
-        {tab('provvisori', `⚠️ Provvisori (${provvisori.length})`)}
+        {tab('provvisori', `⚠️ Provvisori (${provvisori.length + attesaBanca.length})`)}
       </div>
 
       {loading && sezione !== 'soci' && (

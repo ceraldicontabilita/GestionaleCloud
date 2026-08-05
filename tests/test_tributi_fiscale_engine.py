@@ -14,6 +14,8 @@ from app.engines import fiscale_engine as fe
 F24_50_61 = {
     "dati_generali": {"codice_fiscale": "04523831214", "data_pagamento": "2023-01-16",
                       "saldo_delega": 50.61},
+    "movimento_bancario_id": "mov-50-61",
+    "data_pagamento_effettivo": "2023-01-16",
     "sezione_erario": [
         {"codice_tributo": "1001", "periodo_riferimento": "11/2022", "importo_debito": 1382.12},
         {"codice_tributo": "8906", "periodo_riferimento": "11/2022", "importo_debito": 36.56},

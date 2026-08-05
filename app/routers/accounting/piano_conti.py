@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 import uuid
 import logging
 
+from pymongo.errors import DuplicateKeyError
+
 from app.database import Database
 from app.utils.error_handler import handle_errors
 from app.utils.parsing import safe_float
@@ -99,6 +101,49 @@ STRUTTURA_BASE = {
 }
 
 
+def _deduplica_conti_per_codice(conti: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Restituisce una vista deterministica con un solo conto per codice.
+
+    Il frontend carica elenco e bilancio in parallelo. Prima della protezione
+    atomica, due inizializzazioni concorrenti potevano inserire due copie
+    identiche dell'intero piano. I saldi sono calcolati per codice: lasciare le
+    copie nella risposta li sommerebbe più volte anche se i movimenti sorgente
+    sono unici.
+
+    I record senza codice non vengono fusi: non hanno una chiave contabile
+    sufficiente e devono restare visibili per una verifica separata.
+    """
+    ordinati = sorted(
+        conti,
+        key=lambda conto: (
+            str(conto.get("codice") or ""),
+            str(conto.get("created_at") or ""),
+            str(conto.get("id") or ""),
+        ),
+    )
+    unici: Dict[str, Dict[str, Any]] = {}
+    senza_codice: List[Dict[str, Any]] = []
+    copie_eccedenti = 0
+
+    for conto in ordinati:
+        codice = str(conto.get("codice") or "").strip()
+        if not codice:
+            senza_codice.append(conto)
+            continue
+        if codice in unici:
+            copie_eccedenti += 1
+            continue
+        unici[codice] = conto
+
+    if copie_eccedenti:
+        logger.warning(
+            "Piano dei Conti: escluse dalla vista %s copie eccedenti per codice",
+            copie_eccedenti,
+        )
+
+    return [*unici.values(), *senza_codice]
+
+
 @router.get("/")
 @handle_errors
 async def get_piano_conti(anno: str = None) -> Dict[str, Any]:
@@ -110,6 +155,7 @@ async def get_piano_conti(anno: str = None) -> Dict[str, Any]:
     conti = await db[COLLECTION_PIANO_CONTI].find({}, {"_id": 0}).sort("codice", 1).to_list(1000)
     if not conti:
         conti = await inizializza_piano_conti_base(db)
+    conti = _deduplica_conti_per_codice(conti)
 
     # Calcola i saldi reali dalle collection di origine, filtrando per anno se passato
     saldi = await _calcola_saldi_piano_conti(db, anno)
@@ -439,10 +485,16 @@ async def _calcola_saldi_piano_conti(db, anno: str = None) -> Dict[str, float]:
 
 
 async def inizializza_piano_conti_base(db) -> List[Dict[str, Any]]:
-    """Inizializza il piano dei conti con la struttura base."""
-    conti = []
+    """Inizializza il piano base in modo idempotente anche in concorrenza.
+
+    Ogni conto usa un ``_id`` interno deterministico. MongoDB protegge ``_id``
+    con un indice univoco nativo, quindi due endpoint concorrenti non possono
+    inserire due copie dello stesso conto neppure prima della creazione
+    dell'indice univoco applicativo su ``codice``.
+    """
+    collection = db[COLLECTION_PIANO_CONTI]
     now = datetime.now(timezone.utc).isoformat()
-    
+
     for categoria, data in STRUTTURA_BASE.items():
         for conto_base in data["conti_tipici"]:
             conto = {
@@ -458,18 +510,23 @@ async def inizializza_piano_conti_base(db) -> List[Dict[str, Any]]:
                 "created_at": now,
                 "updated_at": now
             }
-            conti.append(conto)
-    
-    if conti:
-        await db[COLLECTION_PIANO_CONTI].insert_many(conti)
-        # insert_many muta ogni dict IN-PLACE aggiungendo "_id" (ObjectId,
-        # non serializzabile in JSON): senza questo pop, il primo GET su
-        # un'azienda con piano_conti vuoto va in 500 "Unable to serialize
-        # ObjectId" (trovato da QA end-to-end lug 2026).
-        for c in conti:
-            c.pop("_id", None)
+            internal_id = f"piano-conti-base:{conto_base['codice']}"
+            try:
+                await collection.update_one(
+                    {"_id": internal_id},
+                    {"$setOnInsert": conto},
+                    upsert=True,
+                )
+            except DuplicateKeyError:
+                # Un'altra richiesta ha completato lo stesso upsert tra la
+                # ricerca e l'inserimento: il record corretto esiste già.
+                logger.info(
+                    "Inizializzazione concorrente già completata per il conto %s",
+                    conto_base["codice"],
+                )
 
-    return conti
+    conti = await collection.find({}, {"_id": 0}).sort("codice", 1).to_list(1000)
+    return _deduplica_conti_per_codice(conti)
 
 
 @router.post("/")
@@ -1068,6 +1125,7 @@ async def get_bilancio(anno: str = None) -> Dict[str, Any]:
     conti = await db[COLLECTION_PIANO_CONTI].find({}, {"_id": 0}).to_list(1000)
     if not conti:
         conti = await inizializza_piano_conti_base(db)
+    conti = _deduplica_conti_per_codice(conti)
 
     real_saldi = await _calcola_saldi_piano_conti(db, anno)
 

@@ -271,11 +271,20 @@ def classifica_f24(f24: Dict[str, Any]) -> Dict[str, Any]:
 
     periodo = periodo_prevalente(f24)
     dg = f24.get("dati_generali", {}) or {}
-    data_pag = (dg.get("data_pagamento") or f24.get("data_pagamento")
-                or f24.get("data_pagamento_quietanza"))
+    # La data stampata sul modello/quietanza non e' prova dell'addebito nel
+    # conto. Il vecchio codice usava data_pagamento_quietanza e ignorava
+    # data_pagamento_effettivo della banca: il significato risultava invertito.
+    from app.services.f24_payment_evidence import stato_evidenza_pagamento
+
+    evidenza = stato_evidenza_pagamento(f24)
+    data_pag = evidenza["data_pagamento"]
     pagamento = (valuta_pagamento(periodo[0], periodo[1], data_pag)
                  if periodo else {"scadenza_naturale": None, "data_pagamento": None,
                                   "giorni_ritardo": None, "stato": "periodo_ignoto"})
+    if not evidenza["pagato"] and evidenza["quietanza_presente"]:
+        pagamento["stato"] = "quietanza_presente_da_verificare_banca"
+    elif not evidenza["pagato"] and f24.get("pagato_manualmente"):
+        pagamento["stato"] = "dichiarato_pagato_da_verificare_banca"
 
     saldo = dg.get("saldo_delega") or (f24.get("totali", {}) or {}).get("saldo_netto", 0)
     return {
@@ -287,6 +296,7 @@ def classifica_f24(f24: Dict[str, Any]) -> Dict[str, Any]:
         "saldo_finale": float(saldo or 0),
         "nota_saldo": "Il saldo finale è l'uscita finanziaria netta: NON coincide "
                       "col costo deducibile (ritenute e crediti compensati non sono costi)",
+        "evidenza_pagamento": evidenza,
         **pagamento,
     }
 

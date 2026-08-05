@@ -32,6 +32,11 @@ from app.services.estratto_conto_bpm_parser import (
     genera_report_riconciliazione
 )
 from app.services.alert_engine import genera_alert
+from app.services.f24_payment_evidence import (
+    ha_evidenza_bancaria,
+    ha_quietanza,
+    patch_pagamento_banca,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -241,21 +246,33 @@ async def riconcilia_f24_con_banca():
         
         # Aggiorna stato F24 nel database
         for f24_pagato in result["f24_riconciliati"]:
+            movimento = f24_pagato.get("movimento_bancario") or {}
+            movimento_id = movimento.get("id") or movimento.get("fingerprint")
+            if not movimento_id:
+                logger.warning(
+                    "F24 %s non marcato pagato: movimento senza identificativo",
+                    f24_pagato.get("id"),
+                )
+                continue
+            data_effettiva = f24_pagato.get("data_pagamento_effettivo")
+            riferimento = (movimento.get("f24_info") or {}).get("riferimento")
             await db[COLL_F24_COMMERCIALISTA].update_one(
                 {"id": f24_pagato.get("id")},
                 {"$set": {
-                    "stato_pagamento": "PAGATO",
-                    "data_pagamento_effettivo": f24_pagato.get("data_pagamento_effettivo"),
-                    "movimento_bancario_ref": f24_pagato.get("movimento_bancario", {}).get("f24_info", {}).get("riferimento")
+                    **patch_pagamento_banca(
+                        movimento_id=str(movimento_id),
+                        data_pagamento=data_effettiva,
+                        riferimento=riferimento,
+                    ),
                 }}
             )
         
         for f24_non_pagato in result["f24_non_pagati"]:
             f24_id = f24_non_pagato.get("id")
             esistente = await db[COLL_F24_COMMERCIALISTA].find_one(
-                {"id": f24_id}, {"_id": 0, "stato_pagamento": 1}
+                {"id": f24_id}, {"_id": 0, "pdf_data": 0}
             )
-            era_gia_pagato = (esistente or {}).get("stato_pagamento") == "PAGATO"
+            era_gia_pagato = ha_evidenza_bancaria(esistente or {})
             if era_gia_pagato:
                 # Non declassare un F24 già segnato pagato (es. da quietanza
                 # arrivata via email) solo perché QUESTO giro di matching non
@@ -270,9 +287,15 @@ async def riconcilia_f24_con_banca():
                     db,
                 )
             else:
+                stato = "DA_VERIFICARE_BANCA" if ha_quietanza(esistente or {}) else "DA_PAGARE"
                 await db[COLL_F24_COMMERCIALISTA].update_one(
                     {"id": f24_id},
-                    {"$set": {"stato_pagamento": "DA_PAGARE"}}
+                    {"$set": {
+                        "status": "da_pagare",
+                        "stato_pagamento": stato,
+                        "pagato": False,
+                        "pagamento_verificato_banca": False,
+                    }}
                 )
 
         for mov in result["movimenti_non_associati"]:

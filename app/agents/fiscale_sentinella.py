@@ -4,6 +4,7 @@ import base64
 import logging
 from datetime import datetime, timezone, date, timedelta
 from app.agents.notifier import crea_segnalazione
+from app.services.f24_payment_evidence import stato_evidenza_pagamento
 
 logger = logging.getLogger(__name__)
 
@@ -97,18 +98,21 @@ class FiscaleSentinella:
         scadenza = avviso.get("scadenza_pagamento")
 
         f24_pagato = None
+        f24_ravveduto = None
         if codice and periodo:
-            f24_pagato = await db["f24_unificato"].find_one({
+            candidati_f24 = await db["f24_unificato"].find({
                 "codici_univoci": {"$in": [codice]},
                 "periodo_riferimento": {"$regex": periodo[:7] if periodo else ""},
-                "status": "pagato"
-            })
-
-        f24_ravveduto = await db["f24_unificato"].find_one({
-            "has_ravvedimento": True,
-            "codici_univoci": {"$in": [codice] if codice else []},
-            "status": "pagato"
-        }) if codice else None
+                "status": {"$ne": "eliminato"},
+            }, {"_id": 0, "pdf_data": 0}).to_list(100)
+            pagati_banca = [
+                f for f in candidati_f24
+                if stato_evidenza_pagamento(f)["pagato"]
+            ]
+            f24_pagato = pagati_banca[0] if pagati_banca else None
+            f24_ravveduto = next(
+                (f for f in pagati_banca if f.get("has_ravvedimento")), None
+            )
 
         if f24_ravveduto:
             tipo = "info"
@@ -129,7 +133,7 @@ class FiscaleSentinella:
                 f"Probabile ritardo ADE nel registrare il pagamento. "
                 f"Conserva la quietanza e attendi. Se persiste, contatta il commercialista."
             )
-            azione = "Verifica quietanza F24 già pagato"
+            azione = "Verifica addebito bancario F24 e quietanza"
         else:
             giorni = None
             if scadenza:
@@ -142,7 +146,7 @@ class FiscaleSentinella:
             desc = (
                 f"Avviso bonario ADE per codice {codice} periodo {periodo}. "
                 f"Importo: €{importo:.2f}. "
-                f"Se pagato entro 30 giorni la sanzione è ridotta al 10%. "
+                f"Verifica nel documento il termine e l'eventuale riduzione applicabile. "
                 f"Scadenza: {scadenza or 'da verificare nel documento'}. "
                 f"{'URGENTE: mancano ' + str(giorni) + ' giorni!' if giorni and giorni < 15 else ''} "
                 f"Invia subito al commercialista per preparare l'F24."

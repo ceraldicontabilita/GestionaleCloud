@@ -138,6 +138,8 @@ def test_avviso_gia_ravveduto_non_chiede_di_pagare():
     db["f24_unificato"].docs.append({
         "id": "f24-1", "has_ravvedimento": True,
         "codici_univoci": ["9001"], "status": "pagato",
+        "movimento_bancario_id": "ec-1",
+        "data_pagamento_effettivo": "2026-07-30",
     })
     fs = FiscaleSentinella()
     asyncio.run(fs._processa_avviso_bonario(
@@ -155,6 +157,8 @@ def test_avviso_gia_pagato_segnala_probabile_ritardo_ade_non_urgente_di_pagare()
     db["f24_unificato"].docs.append({
         "id": "f24-2", "codici_univoci": ["9001"], "status": "pagato",
         "data_scadenza": "2026-06-30",
+        "movimento_bancario_id": "ec-2",
+        "data_pagamento_effettivo": "2026-06-30",
     })
     fs = FiscaleSentinella()
     asyncio.run(fs._processa_avviso_bonario(
@@ -165,6 +169,26 @@ def test_avviso_gia_pagato_segnala_probabile_ritardo_ade_non_urgente_di_pagare()
     assert len(segn) == 1
     assert "già pagato" in segn[0]["titolo"]
     assert segn[0]["tipo"] == "avviso"  # non "urgente": è già stato pagato
+
+
+def test_avviso_con_sola_quietanza_resta_da_pagare_finche_la_banca_non_conferma():
+    db = _Db()
+    db["f24_unificato"].docs.append({
+        "id": "f24-sola-quietanza",
+        "codici_univoci": ["9001"],
+        "status": "pagato",
+        "data_scadenza": "2026-06-30",
+        "quietanza_id": "quietanza-1",
+        "data_pagamento_quietanza": "2026-06-30",
+    })
+    fs = FiscaleSentinella()
+    asyncio.run(fs._processa_avviso_bonario(
+        db, {"id": "doc-sola-quietanza"},
+        testo="codice tributo: 9001 periodo: 06/2026 importo: 500,00 entro il: 15/08/2026",
+    ))
+    segn = db["agenti_segnalazioni"].docs
+    assert len(segn) == 1
+    assert "DA PAGARE" in segn[0]["titolo"]
 
 
 def test_avviso_da_pagare_urgente_se_scadenza_vicina():
