@@ -224,6 +224,47 @@ async def registra_pagamento_fattura(
             if existing:
                 return (existing.get("id") or str(existing.get("_id")), True)
 
+        # L'import dell'estratto conto può avere già creato la riga bancaria
+        # generica. Quando la fattura viene riconosciuta, completiamo quella
+        # stessa riga invece di rappresentare due volte il medesimo addebito.
+        if collection == COLLECTION_PRIMA_NOTA_BANCA and movimento_bancario:
+            evidenza_id = movimento_bancario.get("id") or movimento_bancario.get("movimento_id")
+            generic = await db[collection].find_one({
+                "$and": [
+                    {"$or": [
+                        {"estratto_conto_id": evidenza_id},
+                        {"movimento_bancario_id": evidenza_id},
+                    ]},
+                    {"$or": [
+                        {"fattura_id": {"$exists": False}}, {"fattura_id": None},
+                    ]},
+                    {"$or": [
+                        {"invoice_id": {"$exists": False}}, {"invoice_id": None},
+                    ]},
+                ],
+                "source": "estratto_conto_auto",
+                "importo": {"$gte": float(importo) - 0.01, "$lte": float(importo) + 0.01},
+                "status": {"$nin": ["deleted", "archived"]},
+            }, session=session)
+            if generic:
+                await db[collection].update_one(
+                    {"id": generic["id"]},
+                    {"$set": {
+                        "tipo": tipo_movimento, "categoria": categoria,
+                        "descrizione": desc, "riferimento": riferimento,
+                        "numero_fattura": numero_fattura, "fornitore": fornitore,
+                        "fornitore_piva": fornitore_piva, "fattura_id": fattura_id,
+                        "tipo_documento": fattura.get("tipo_documento"),
+                        "estratto_conto_id": evidenza_id,
+                        "movimento_bancario_id": evidenza_id,
+                        "riconciliato": True,
+                        "confidenza": movimento_bancario.get("match_score", 1.0),
+                        "updated_at": now,
+                    }},
+                    session=session,
+                )
+                return (generic.get("id") or str(generic.get("_id")), False)
+
         mov = {**movimento_base, "id": str(uuid.uuid4()), "importo": float(importo), "descrizione": desc}
         if collection == COLLECTION_PRIMA_NOTA_BANCA and movimento_bancario:
             evidenza_id = movimento_bancario.get("id") or movimento_bancario.get("movimento_id")

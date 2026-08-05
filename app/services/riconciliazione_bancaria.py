@@ -324,6 +324,33 @@ async def _applica_pagamento_banca(db, fattura: Dict[str, Any], metodo_label: st
         ],
         "status": {"$nin": ["deleted", "archived"]},
     }, {"_id": 0}) if mov_id else None
+    if not evidenza_esistente and mov_id:
+        # Se l'import dell'EC ha già creato la riga generica dell'intero
+        # addebito, un match singolo la completa con la fattura. Le quote di un
+        # pagamento multi-fattura non coincidono con l'intero EC e restano
+        # quindi righe distinte intenzionali.
+        evidenza_esistente = await db["prima_nota_banca"].find_one({
+            "$and": [
+                {"$or": [
+                    {"movimento_estratto_conto_id": mov_id},
+                    {"estratto_conto_id": mov_id},
+                ]},
+                {"$or": [
+                    {"invoice_id": {"$exists": False}}, {"invoice_id": None},
+                ]},
+                {"$or": [
+                    {"fattura_id": {"$exists": False}}, {"fattura_id": None},
+                ]},
+            ],
+            "source": "estratto_conto_auto",
+            "importo": {"$gte": quota - 0.01, "$lte": quota + 0.01},
+            "status": {"$nin": ["deleted", "archived"]},
+        }, {"_id": 0})
+    riga_generica_promossa = bool(
+        evidenza_esistente and not (
+            evidenza_esistente.get("invoice_id") or evidenza_esistente.get("fattura_id")
+        )
+    )
     evidenza_gia_applicata = bool(
         evidenza_esistente
         and str(evidenza_esistente.get("invoice_id") or evidenza_esistente.get("fattura_id") or "") == fattura_id
@@ -356,6 +383,12 @@ async def _applica_pagamento_banca(db, fattura: Dict[str, Any], metodo_label: st
             "match_score": score,
             "data_riconciliazione": data_ec, "updated_at": now,
         }
+        if riga_generica_promossa:
+            pn_fields.update({
+                "importo": quota, "categoria": "Fatture", "source": source,
+                "descrizione": f"Pagamento {metodo_label} fattura "
+                               f"{fattura.get('invoice_number') or fattura.get('numero_fattura') or ''}".strip(),
+            })
         if pn:
             await db["prima_nota_banca"].update_one({"id": pn["id"]}, {"$set": pn_fields})
             pn_id = pn["id"]

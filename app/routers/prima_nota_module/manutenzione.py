@@ -2314,20 +2314,33 @@ async def dedup_righe_stesso_estratto_conto(
     SOURCE_NATE_DA_EC = ("sync_generico", "estratto_conto", "riconciliazione_ec_auto",
                          "retro_collegamento_ec", "ec_override_metodo_cassa")
 
-    ec_ids = {m["id"] async for m in db["estratto_conto_movimenti"].find({}, {"_id": 0, "id": 1})}
+    from app.services.collaudo_invarianti import (
+        _fattura_id_riga_banca,
+        _importo_assoluto,
+        gruppo_multi_fattura_valido,
+    )
+
+    movimenti_ec = {
+        m["id"]: m async for m in db["estratto_conto_movimenti"].find(
+            {}, {"_id": 0, "id": 1, "importo": 1, "riconciliato": 1,
+                 "tipo_riconciliazione": 1}
+        ) if m.get("id")
+    }
     gruppi: Dict[str, list] = {}
     async for r in db["prima_nota_banca"].find(
             {"estratto_conto_id": {"$exists": True, "$nin": [None, ""]},
              "status": {"$nin": ["deleted", "archived"]}},
             {"_id": 0, "id": 1, "estratto_conto_id": 1, "created_at": 1,
-             "data": 1, "importo": 1, "descrizione": 1, "source": 1, "fattura_id": 1}):
+             "data": 1, "importo": 1, "descrizione": 1, "source": 1,
+             "fattura_id": 1, "invoice_id": 1, "riconciliato": 1}):
         gruppi.setdefault(r["estratto_conto_id"], []).append(r)
 
     duplicate_rimosse = orfane_rimosse = orfane_scollegate = 0
+    multi_fattura_preservati = ambigui_non_modificati = 0
     dettaglio = []
     for eid, righe in gruppi.items():
         righe.sort(key=lambda x: str(x.get("created_at") or ""))
-        if eid not in ec_ids:
+        if eid not in movimenti_ec:
             for r in righe:
                 nata_da_ec = any((r.get("source") or "").startswith(s) for s in SOURCE_NATE_DA_EC)
                 if len(dettaglio) < 40:
@@ -2351,7 +2364,30 @@ async def dedup_righe_stesso_estratto_conto(
                                   "updated_at": now}})
                     orfane_scollegate += 1
             continue
-        for r in righe[1:]:  # duplicate: resta la più vecchia
+        if len(righe) <= 1:
+            continue
+        if gruppo_multi_fattura_valido(righe, movimenti_ec[eid]):
+            multi_fattura_preservati += 1
+            continue
+
+        fatture_collegate = {
+            _fattura_id_riga_banca(r) for r in righe
+            if _fattura_id_riga_banca(r)
+        }
+        importi = {_importo_assoluto(r.get("importo")) for r in righe}
+        if len(fatture_collegate) > 1 or len(importi) > 1:
+            ambigui_non_modificati += 1
+            if len(dettaglio) < 40:
+                dettaglio.append({"caso": "duplicato_ambiguo", "righe": len(righe),
+                                  "azione": "nessuna_modifica"})
+            continue
+
+        # La riga collegata alla fattura contiene più contesto probatorio di
+        # una riga generica, anche quando è stata creata successivamente.
+        collegate = [r for r in righe if _fattura_id_riga_banca(r)]
+        keeper = collegate[0] if collegate else righe[0]
+        duplicate = [r for r in righe if r.get("id") != keeper.get("id")]
+        for r in duplicate:
             if len(dettaglio) < 40:
                 dettaglio.append({"caso": "duplicata", "data": r.get("data"),
                                   "importo": r.get("importo"),
@@ -2364,18 +2400,22 @@ async def dedup_righe_stesso_estratto_conto(
                     {"$set": {"status": "deleted", "deleted": True,
                               "deleted_reason": "stesso_addebito_ec_duplicato",
                               "deleted_at": now}})
-                if r.get("fattura_id"):
+                fattura_id_rimossa = _fattura_id_riga_banca(r)
+                if fattura_id_rimossa:
                     await db["invoices"].update_one(
-                        {"id": r["fattura_id"], "prima_nota_id": r["id"]},
-                        {"$set": {"pagato": False, "paid": False,
-                                  "stato_pagamento": "da_pagare", "prima_nota_id": None}})
+                        {"id": fattura_id_rimossa,
+                         "$or": [{"prima_nota_id": r["id"]},
+                                 {"prima_nota_banca_id": r["id"]}]},
+                        {"$set": {"prima_nota_id": keeper["id"],
+                                  "prima_nota_banca_id": keeper["id"],
+                                  "prima_nota_tipo": "banca"}})
 
-    if dry_run:
-        duplicate_rimosse = sum(1 for d in dettaglio if d["caso"] == "duplicata")
     return {"dry_run": dry_run,
             "duplicate": duplicate_rimosse,
             "orfane_eliminate": orfane_rimosse,
             "orfane_scollegate": orfane_scollegate,
+            "multi_fattura_preservati": multi_fattura_preservati,
+            "ambigui_non_modificati": ambigui_non_modificati,
             "dettaglio": dettaglio}
 
 
