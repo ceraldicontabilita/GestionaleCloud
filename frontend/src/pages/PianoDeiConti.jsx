@@ -95,7 +95,7 @@ export default function PianoDeiConti() {
 
   const getTabFromPath = () => {
     const path = location.pathname;
-    const match = path.match(/\/piano-dei-conti\/([\w-]+)/);
+    const match = path.match(/\/contabilita\/piano-conti\/([\w-]+)/);
     return match ? match[1] : 'conti';
   };
 
@@ -103,7 +103,7 @@ export default function PianoDeiConti() {
 
   const handleTabChange = tabId => {
     setActiveTab(tabId);
-    navigate(`/piano-dei-conti/${tabId}`);
+    navigate(`/contabilita/piano-conti/${tabId}`);
   };
 
   useEffect(() => {

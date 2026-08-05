@@ -16,6 +16,7 @@ import logging
 import re
 
 from app.database import Database
+from app.services.payment_invoice_matching import amounts_equal_to_cent
 from app.utils.error_handler import handle_errors
 
 logger = logging.getLogger(__name__)
@@ -123,7 +124,7 @@ async def upload_ricevuta(
     
     # Se abbiamo l'identificativo bolletta, cerca il movimento
     if identificativo_bolletta:
-        movimento = await cerca_movimento_per_bolletta(db, identificativo_bolletta)
+        movimento = await cerca_movimento_per_bolletta(db, identificativo_bolletta, importo)
         if movimento:
             ricevuta["movimento_id"] = movimento.get("id")
             ricevuta["associazione_automatica"] = True
@@ -163,7 +164,26 @@ async def associa_manuale(data: Dict[str, Any]) -> Dict[str, Any]:
     if not ricevuta_id or not movimento_id:
         raise HTTPException(status_code=400, detail="ricevuta_id e movimento_id sono obbligatori")
     
-    # Aggiorna ricevuta
+    ricevuta = await db[COLLECTION_RICEVUTE].find_one({"id": ricevuta_id}, {"_id": 0})
+    movimento = await db.estratto_conto_movimenti.find_one({"id": movimento_id}, {"_id": 0})
+    if not ricevuta or not movimento:
+        raise HTTPException(status_code=404, detail="Ricevuta o movimento non trovato")
+    codice = str(ricevuta.get("identificativo_bolletta") or ricevuta.get("iuv") or "").strip()
+    testo = " ".join(str(movimento.get(campo) or "") for campo in (
+        "descrizione", "descrizione_originale", "causale"
+    ))
+    if not codice or codice not in re.sub(r"\s+", "", testo):
+        raise HTTPException(status_code=409, detail="IUV/codice bolletta non presente nel movimento")
+    if not amounts_equal_to_cent(ricevuta.get("importo"), movimento.get("importo")):
+        raise HTTPException(status_code=409, detail="Importi ricevuta e movimento non coincidono al centesimo")
+    altro = await db[COLLECTION_RICEVUTE].find_one({
+        "movimento_id": movimento_id,
+        "id": {"$ne": ricevuta_id},
+    })
+    if altro:
+        raise HTTPException(status_code=409, detail="Movimento già associato a un'altra ricevuta")
+
+    # Aggiorna ricevuta dopo la rivalidazione completa.
     result = await db[COLLECTION_RICEVUTE].update_one(
         {"id": ricevuta_id},
         {"$set": {
@@ -226,7 +246,9 @@ async def auto_associa_ricevute() -> Dict[str, Any]:
         if not cod_bolletta:
             continue
         
-        movimento = await cerca_movimento_per_bolletta(db, cod_bolletta)
+        movimento = await cerca_movimento_per_bolletta(
+            db, cod_bolletta, ricevuta.get("importo")
+        )
         
         if movimento:
             try:
@@ -375,23 +397,29 @@ async def stats_pagopa(anno: int = None) -> Dict[str, Any]:
     }
 
 
-async def cerca_movimento_per_bolletta(db, codice_bolletta: str) -> Optional[Dict[str, Any]]:
+async def cerca_movimento_per_bolletta(
+    db, codice_bolletta: str, importo: Optional[float] = None
+) -> Optional[Dict[str, Any]]:
     """
     Cerca un movimento nell'estratto conto usando il codice bolletta.
     Il codice appare nella descrizione come "CBILL 180071110618697515"
     """
-    if not codice_bolletta:
+    if not codice_bolletta or importo in (None, ""):
         return None
     
-    # Cerca il codice nella descrizione
-    movimento = await db.estratto_conto_movimenti.find_one({
+    # Codice esplicito, importo al centesimo e candidato unico.
+    movimenti = await db.estratto_conto_movimenti.find({
         "$or": [
-            {"descrizione_originale": {"$regex": codice_bolletta}},
-            {"descrizione": {"$regex": codice_bolletta}}
-        ]
-    }, {"_id": 0})
-    
-    return movimento
+            {"descrizione_originale": {"$regex": re.escape(codice_bolletta)}},
+            {"descrizione": {"$regex": re.escape(codice_bolletta)}}
+        ],
+        "ricevuta_pagopa_id": {"$in": [None, ""]},
+    }, {"_id": 0}).limit(20).to_list(20)
+    movimenti = [
+        movimento for movimento in movimenti
+        if amounts_equal_to_cent(movimento.get("importo"), importo)
+    ]
+    return movimenti[0] if len(movimenti) == 1 else None
 
 
 # Alias per compatibilità

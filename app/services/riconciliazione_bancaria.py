@@ -22,8 +22,8 @@ REGOLE FONDAMENTALI:
 1. Se TROVO match in estratto conto banca → posso mettere "Bonifico" o "Assegno N.XXX"
 2. Se NON TROVO in estratto conto → NON posso mettere "Bonifico"
 3. Devo rispettare il metodo di pagamento del fornitore (Cassa, Bonifico, etc.)
-4. Match ESATTO per importo (±0.05€) o match parziale (pagamento rate)
-5. Fuzzy matching per nome fornitore
+4. Una fattura richiede numero esplicito e importo identico al centesimo
+5. Il fornitore deve essere coerente; fuzzy/data producono solo proposte
 
 Punto di ingresso unico: `riconcilia_movimenti_banca()`, richiamata dallo
 scheduler (ogni 30 min) e da app/routers/bank/estratto_conto.py dopo ogni
@@ -38,6 +38,7 @@ import re
 import itertools
 
 from app.database import Database, Collections
+from app.services.payment_invoice_matching import amounts_equal_to_cent
 from app.services.scritture_contabili import scrivi_movimento
 
 # Fuzzy matching per nomi fornitori
@@ -648,7 +649,7 @@ def _evidenza_forte_fattura_banca(
         if isinstance(rata, dict)
     ]
     importo_esatto = any(
-        valore > 0 and abs(valore - importo_movimento) <= 0.01
+        valore > 0 and amounts_equal_to_cent(valore, importo_movimento)
         for valore in [totale, residuo, *rate]
     )
     fornitore = (
@@ -886,7 +887,16 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                         ) if chiave
                     }
                     stesso_fornitore = len(chiavi_fornitore) <= 1
-                    somma_esatta = abs(totale_quote - importo) <= 0.01
+                    somma_esatta = amounts_equal_to_cent(totale_quote, importo)
+                    fornitore_documento = (
+                        fatture_esplicite[0][0].get("cedente_denominazione")
+                        or fatture_esplicite[0][0].get("supplier_name")
+                        or fatture_esplicite[0][0].get("fornitore_ragione_sociale")
+                        or ""
+                    )
+                    fornitore_presente = (
+                        match_fornitore_descrizione(fornitore_documento, descrizione) > 0
+                    )
 
                     dettagli_fatture = [{
                         "fattura_id": str(fattura.get("id") or fattura.get("_id")),
@@ -901,7 +911,7 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                         "quota": quota,
                     } for fattura, quota in fatture_esplicite]
 
-                    if somma_esatta and stesso_fornitore:
+                    if somma_esatta and stesso_fornitore and fornitore_presente:
                         metodo_pagamento = "Bonifico"
                         num_assegno_multi = extract_assegno_number(descrizione)
                         if num_assegno_multi:
@@ -936,7 +946,8 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                         motivo = (
                             f"Causale con {len(dettagli_fatture)} fatture esplicite; "
                             f"movimento €{importo:.2f}, somma residui €{totale_quote:.2f}, "
-                            f"stesso fornitore: {'si' if stesso_fornitore else 'no'}"
+                            f"stesso fornitore: {'si' if stesso_fornitore else 'no'}, "
+                            f"fornitore presente: {'si' if fornitore_presente else 'no'}"
                         )
                         operazione = {
                             "id": str(uuid.uuid4()),
@@ -954,6 +965,7 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                                 "somma_residui": totale_quote,
                                 "differenza": round(importo - totale_quote, 2),
                                 "stesso_fornitore": stesso_fornitore,
+                                "fornitore_presente": fornitore_presente,
                                 "motivo_dubbio": motivo,
                             },
                             "stato": "da_confermare",

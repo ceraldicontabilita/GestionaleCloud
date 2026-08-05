@@ -99,8 +99,8 @@ async def widget_discrepanze(
         # IVA del mese
         iva = await verificatore.verifica_coerenza_iva_tra_pagine(anno, mese_corrente)
         
-        # Versamenti
-        versamenti = await verificatore.verifica_versamenti_vs_banca(anno, mese_corrente)
+        # F24 IVA ricevuto dalla commercialista (non un movimento bancario IVA)
+        f24_iva = await verificatore.trova_f24_iva_mensile(anno, mese_corrente)
         
         # Raccogli discrepanze
         discrepanze = verificatore.discrepanze
@@ -115,7 +115,8 @@ async def widget_discrepanze(
             "critical_count": len([d for d in discrepanze if d["severita"] == "critical"]),
             "iva_credito": iva["iva_credito"]["da_fatture"],
             "iva_debito": iva["iva_debito"]["da_corrispettivi"],
-            "versamenti_ok": abs(versamenti.get("differenza", 0)) < 1
+            "f24_iva_stato": f24_iva.get("stato"),
+            "f24_iva_importo": f24_iva.get("importo_f24"),
         }
     except Exception as e:
         logger.error(f"Errore widget discrepanze: {e}")
@@ -146,6 +147,7 @@ async def confronto_iva_completo(anno: int) -> Dict[str, Any]:
             
             credito = iva["iva_credito"]["da_fatture"]
             debito = iva["iva_debito"]["da_corrispettivi"]
+            f24_iva = iva.get("f24_commercialista") or {}
             
             totale_credito_fatture += credito
             totale_debito_corrispettivi += debito
@@ -159,7 +161,14 @@ async def confronto_iva_completo(anno: int) -> Dict[str, Any]:
                 "num_corrispettivi": iva["iva_debito"]["num_corrispettivi"],
                 "saldo": round(debito - credito, 2),
                 "da_versare": max(debito - credito, 0),
-                "a_credito": max(credito - debito, 0)
+                "a_credito": max(credito - debito, 0),
+                "codice_tributo_iva": f24_iva.get("codice_tributo"),
+                "importo_f24_commercialista": f24_iva.get("importo_f24"),
+                "stato_f24": f24_iva.get("stato"),
+                "scostamento_f24": f24_iva.get("scostamento_gestionale"),
+                "coerente_f24": f24_iva.get("coerente"),
+                "f24_multi_tributo": f24_iva.get("f24_multi_tributo", False),
+                "altri_codici_tributo": f24_iva.get("altri_codici_tributo", []),
             })
         
         return {

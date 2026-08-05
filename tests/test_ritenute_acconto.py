@@ -156,3 +156,38 @@ def test_f24_con_sola_quietanza_non_chiude_la_ritenuta():
     }]
     upd = _run(mod._riconcilia_ritenuta(db, dict(RIT)))
     assert upd["stato"] == "f24_associato_da_pagare"
+
+
+def test_f24_multi_tributo_associa_solo_riga_1040_aggregata_del_periodo():
+    db = _Db()
+    r1 = {"id": "r1", "importo": 280.0, "periodo_ritenuta": "2026-03", "scadenza": "2026-04-16"}
+    r2 = {"id": "r2", "importo": 210.0, "periodo_ritenuta": "2026-03", "scadenza": "2026-04-16"}
+    f24 = {
+        "id": "F-MULTI",
+        "sezione_erario": {"righe": [
+            {"codice_tributo": "1040", "periodo_riferimento": "03/2026", "importo_debito": "490,00"},
+            {"codice_tributo": "6003", "periodo_riferimento": "03/2026", "importo_debito": "1.250,00"},
+        ]},
+    }
+    upd = _run(mod._riconcilia_ritenuta(
+        db, r1, ritenute_periodo=[r1, r2], f24_docs=[f24]
+    ))
+    assert upd["f24_id"] == "F-MULTI"
+    assert upd["f24_associazione_tipo"] == "aggregata"
+    assert upd["f24_importo_tributo"] == 490.0
+    assert upd["f24_quota_ritenuta"] == 280.0
+    assert upd["f24_multi_tributo"] is True
+    assert upd["stato"] == "f24_associato_da_pagare"
+
+
+def test_due_f24_equivalenti_restano_ambigui():
+    db = _Db()
+    rit = {"importo": 280.0, "periodo_ritenuta": "2026-03", "scadenza": "2026-04-16"}
+    docs = [
+        {"id": "F-A", "sezione_erario": [{"codice_tributo": "1040", "mese": "03", "anno": "2026", "importo_debito": 280}]},
+        {"id": "F-B", "sezione_erario": [{"codice_tributo": "1040", "mese": "03", "anno": "2026", "importo_debito": 280}]},
+    ]
+    upd = _run(mod._riconcilia_ritenuta(db, rit, ritenute_periodo=[rit], f24_docs=docs))
+    assert upd["stato"] == "da_verificare_associazione_f24"
+    assert upd["f24_id"] is None
+    assert upd["f24_candidati"] == ["F-A", "F-B"]

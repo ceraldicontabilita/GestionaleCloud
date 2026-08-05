@@ -176,7 +176,8 @@ def test_estratto_prima_della_fattura_abbina_solo_uscita_con_identita(monkeypatc
     db = _setup(monkeypatch, "banca")
     db["estratto_conto_movimenti"].docs = [{
         "id": "ec-1", "tipo": "uscita", "importo": -122.0,
-        "data": "2026-06-10", "descrizione": "SDD DOLCIARIA ACQUAVIVA 77/A",
+        "data": "2026-06-10",
+        "descrizione": "SDD DOLCIARIA ACQUAVIVA FATTURA 77/A",
     }]
 
     update = _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))

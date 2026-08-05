@@ -193,9 +193,9 @@ async def batch_chiudi_scadenze(
 @router.post("/auto-riconcilia-tutto")
 async def auto_riconcilia_tutto(
     min_confidence: int = Body(90),
-    dry_run: bool = Body(False)
+    dry_run: bool = Body(True)
 ) -> Dict[str, Any]:
-    """Riconcilia automaticamente tutti i movimenti con match >= min_confidence%."""
+    """Propone match; scrive solo con numero, centesimi e fornitore certi."""
     db = Database.get_db()
     
     movimenti = await db["estratto_conto_movimenti"].find(
@@ -210,69 +210,66 @@ async def auto_riconcilia_tutto(
         if importo < 1:
             continue
         
-        # Cerca fatture con importo simile
+        # Preselezione stretta; la decisione finale usa la regola canonica.
         fatture = await db["invoices"].find({
             "status": {"$in": ["da_pagare", "pending", "in_scadenza", "scaduto"]},
-            "total_amount": {"$gte": importo - 2, "$lte": importo + 2}
-        }).to_list(10)
-        
-        for f in fatture:
-            diff = abs(float(f.get("total_amount", 0)) - importo)
-            score = 90 if diff < 0.5 else (70 if diff < 2 else 50)
-            
-            # Bonus se nome fornitore in descrizione
-            desc = (mov.get("descrizione") or "").lower()
-            forn = (f.get("supplier_name") or "").lower()
-            if forn and any(w in desc for w in forn.split()[:2] if len(w) > 3):
-                score += 20
-            
-            if score >= min_confidence:
-                proposte.append({
+            "total_amount": {"$gte": importo - 0.004, "$lte": importo + 0.004}
+        }).to_list(50)
+        from app.services.riconciliazione_bancaria import _evidenza_forte_fattura_banca
+        descrizione = " ".join(str(mov.get(k) or "") for k in (
+            "descrizione", "descrizione_originale", "causale", "beneficiario"
+        ))
+        sicure = [
+            (f, _evidenza_forte_fattura_banca(f, descrizione, importo))
+            for f in fatture
+        ]
+        sicure = [(f, evidenza) for f, evidenza in sicure if evidenza["auto_ammesso"]]
+        for f, evidenza in sicure:
+            proposte.append({
                     "movimento_id": mov.get("id"),
                     "movimento_desc": mov.get("descrizione", "")[:50],
                     "movimento_importo": importo,
                     "fattura_id": f.get("id"),
                     "fattura_fornitore": f.get("supplier_name"),
                     "fattura_importo": f.get("total_amount"),
-                    "score": min(score, 100)
+                    "score": 100,
+                    "evidenze": evidenza,
+                    "ambiguo": len(sicure) != 1,
                 })
-                
-                if not dry_run:
-                    await db["estratto_conto_movimenti"].update_one(
-                        {"id": mov.get("id")},
-                        {"$set": {
-                            "riconciliato": "riconciliato",
-                            "fattura_id": f.get("id"),
-                            "riconciliazione_auto": True,
-                            "riconciliazione_score": score,
-                            "riconciliazione_timestamp": datetime.now(timezone.utc).isoformat()
-                        }}
-                    )
-                    await db["invoices"].update_one(
-                        {"id": f.get("id")},
-                        {"$set": {"status": "pagato", "movimento_banca_id": mov.get("id")}}
-                    )
-                    # Chiudi anche scadenza
-                    await db["scadenzario"].update_one(
-                        {"fattura_id": f.get("id")},
-                        {"$set": {"stato": "pagato"}}
-                    )
-                    applicati += 1
 
-                    # --- EVENT BUS: propaga FATTURA_PAGATA (auto-riconcilia batch) ---
-                    # Chiude la partita aperta e risolve alert a cascata.
-                    try:
-                        from app.services.event_bus import propagate_event, EventTypes
-                        await propagate_event(EventTypes.FATTURA_PAGATA, {
-                            "fattura_id": f.get("id"),
-                            "metodo_pagamento": "banca",
-                            "data_pagamento": mov.get("data") or datetime.now(timezone.utc).isoformat()[:10],
-                            "movimento_id": mov.get("id"),
-                            "importo": importo,
-                        }, db, source_module="batch_auto_riconcilia")
-                    except Exception:
-                        logger.exception("Errore propagazione fattura.pagata (auto-riconcilia)")
-                break
+        if len(sicure) == 1 and min_confidence <= 100 and not dry_run:
+            f, _ = sicure[0]
+            await db["estratto_conto_movimenti"].update_one(
+                {"id": mov.get("id")},
+                {"$set": {
+                    "riconciliato": "riconciliato",
+                    "fattura_id": f.get("id"),
+                    "riconciliazione_auto": True,
+                    "riconciliazione_score": 100,
+                    "riconciliazione_timestamp": datetime.now(timezone.utc).isoformat()
+                }}
+            )
+            await db["invoices"].update_one(
+                {"id": f.get("id")},
+                {"$set": {"status": "pagato", "movimento_banca_id": mov.get("id")}}
+            )
+            await db["scadenzario"].update_one(
+                {"fattura_id": f.get("id")},
+                {"$set": {"stato": "pagato"}}
+            )
+            applicati += 1
+
+            try:
+                from app.services.event_bus import propagate_event, EventTypes
+                await propagate_event(EventTypes.FATTURA_PAGATA, {
+                    "fattura_id": f.get("id"),
+                    "metodo_pagamento": "banca",
+                    "data_pagamento": mov.get("data") or datetime.now(timezone.utc).isoformat()[:10],
+                    "movimento_id": mov.get("id"),
+                    "importo": importo,
+                }, db, source_module="batch_auto_riconcilia")
+            except Exception:
+                logger.exception("Errore propagazione fattura.pagata (auto-riconcilia)")
     
     return {
         "success": True,

@@ -14,6 +14,7 @@ from typing import Dict, Any, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.config import settings
+from app.services.payment_invoice_matching import amounts_equal_to_cent
 from app.services.verbali_iuv_extractor import get_iuv_from_verbale
 
 logger = logging.getLogger(__name__)
@@ -41,8 +42,11 @@ async def trova_pagamento_verbale(db: AsyncIOMotorDatabase, verbale: Dict[str, A
     m = await _cerca_in_gmail(db, iuv, numero_verbale, verbale)
     if m:
         return m
-    # 3. estratto conto
-    return await _cerca_in_estratto_conto(db, importo, verbale)
+    # 3. estratto conto: solo con un riferimento del verbale/IUV/targa.
+    # Importo e data da soli non identificano un pagamento.
+    return await _cerca_in_estratto_conto(
+        db, iuv, numero_verbale, targa, importo, verbale
+    )
 
 
 async def _cerca_in_paypal(db, iuv, numero_verbale, targa, importo):
@@ -71,8 +75,10 @@ async def _cerca_in_paypal(db, iuv, numero_verbale, targa, importo):
             "importo": {"$gte": -imp - 2, "$lte": -imp + 2},
         })
     for q in queries:
-        doc = await db["paypal_transactions"].find_one(q, {"_id": 0})
-        if doc:
+        docs = await db["paypal_transactions"].find(q, {"_id": 0}).limit(20).to_list(20)
+        for doc in docs:
+            if importo and not amounts_equal_to_cent(doc.get("importo") or doc.get("lordo"), importo):
+                continue
             return {
                 "fonte": "paypal",
                 "psp": PSP_MAP.get(
@@ -174,6 +180,8 @@ async def _cerca_in_gmail(db, iuv, numero_verbale, verbale):
                     default_psp = "PagoPA"
                     default_metodo = "PagoPA"
 
+                if importo and not amounts_equal_to_cent(parsed.get("totale"), importo):
+                    continue
                 return {
                     "fonte": "gmail",
                     "psp": parsed.get("psp") or default_psp,
@@ -305,7 +313,7 @@ def _genera_pdf_da_testo(testo, path, titolo="Ricevuta"):
     c.save()
 
 
-async def _cerca_in_estratto_conto(db, importo, verbale):
+async def _cerca_in_estratto_conto(db, iuv, numero_verbale, targa, importo, verbale):
     if not importo or float(importo) <= 0:
         return None
     imp = float(importo)
@@ -328,13 +336,30 @@ async def _cerca_in_estratto_conto(db, importo, verbale):
         return None
     after = data_dt.strftime("%Y-%m-%d")
     before = (data_dt + timedelta(days=120)).strftime("%Y-%m-%d")
-    mov = await db["estratto_conto_movimenti"].find_one({
-        "descrizione": {"$regex": "PayPal.*49RJ2252ASLM4", "$options": "i"},
-        "importo": {"$gte": -imp - 2, "$lte": -imp + 2},
-        "data_contabile": {"$gte": after, "$lte": before},
-    })
-    if not mov:
+    riferimenti = [str(v).strip() for v in (iuv, numero_verbale, targa) if str(v or "").strip()]
+    if not riferimenti:
         return None
+    riferimento_rx = "|".join(re.escape(value) for value in riferimenti)
+    movimenti = await db["estratto_conto_movimenti"].find({
+        "$or": [
+            {"descrizione": {"$regex": riferimento_rx, "$options": "i"}},
+            {"descrizione_originale": {"$regex": riferimento_rx, "$options": "i"}},
+        ],
+        "$and": [
+            {"$or": [
+                {"importo": {"$gte": imp - 0.004, "$lte": imp + 0.004}},
+                {"importo": {"$gte": -imp - 0.004, "$lte": -imp + 0.004}},
+            ]},
+            {"$or": [
+                {"data_contabile": {"$gte": after, "$lte": before}},
+                {"data": {"$gte": after, "$lte": before}},
+            ]},
+        ],
+    }).limit(20).to_list(20)
+    movimenti = [m for m in movimenti if amounts_equal_to_cent(m.get("importo"), imp)]
+    if len(movimenti) != 1:
+        return None
+    mov = movimenti[0]
     return {
         "fonte": "estratto_conto",
         "psp": "SDD PayPal",
@@ -342,6 +367,7 @@ async def _cerca_in_estratto_conto(db, importo, verbale):
         "data_pagamento": mov.get("data_contabile"),
         "metodo_pagamento": "PayPal (SDD)",
         "paypal_transaction_id": None,
+        "movimento_id": str(mov.get("id") or mov.get("_id") or ""),
         "pdf_ricevuta_path": None,
         "iuv_usato": None,
         "dettagli_grezzi": {
@@ -353,6 +379,11 @@ async def _cerca_in_estratto_conto(db, importo, verbale):
 
 async def applica_pagamento_a_verbale(db, verbale_id, match):
     """Applica il match al verbale — ricerca per id oppure per numero_verbale."""
+    pagamento_id = (
+        match.get("paypal_transaction_id")
+        or match.get("ricevuta_pagopa_id")
+        or match.get("movimento_id")
+    )
     update = {
         "stato": "pagato",
         "importo": match.get("importo") or None,
@@ -363,12 +394,37 @@ async def applica_pagamento_a_verbale(db, verbale_id, match):
         "riconciliato_paypal": match.get("fonte") == "paypal",
         "pdf_ricevuta_path": match.get("pdf_ricevuta_path"),
         "paypal_transaction_id": match.get("paypal_transaction_id"),
+        "movimento_banca_id": match.get("movimento_id"),
+        "ricevuta_pagopa_id": match.get("ricevuta_pagopa_id"),
+        "pagamento_id": pagamento_id,
         "iuv": match.get("iuv_usato"),
         "updated_at": datetime.utcnow().isoformat(),
     }
     update = {k: v for k, v in update.items() if v is not None}
+    verbale = await db["verbali_noleggio"].find_one(
+        {"$or": [{"id": verbale_id}, {"numero_verbale": verbale_id}]},
+        {"_id": 0, "id": 1, "numero_verbale": 1},
+    )
     res = await db["verbali_noleggio"].update_one(
         {"$or": [{"id": verbale_id}, {"numero_verbale": verbale_id}]},
         {"$set": update}
     )
+    if res.modified_count > 0 and verbale:
+        reverse = {
+            "verbale_id": verbale.get("id") or verbale_id,
+            "numero_verbale_collegato": verbale.get("numero_verbale") or verbale_id,
+        }
+        if match.get("paypal_transaction_id"):
+            await db["paypal_transactions"].update_one(
+                {"transaction_id": match["paypal_transaction_id"]}, {"$set": reverse}
+            )
+        if match.get("movimento_id"):
+            await db["estratto_conto_movimenti"].update_one(
+                {"$or": [{"id": match["movimento_id"]}, {"_id": match["movimento_id"]}]},
+                {"$set": reverse},
+            )
+        if match.get("ricevuta_pagopa_id"):
+            await db["ricevute_pagopa"].update_one(
+                {"id": match["ricevuta_pagopa_id"]}, {"$set": reverse}
+            )
     return res.modified_count > 0

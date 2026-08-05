@@ -119,23 +119,103 @@ def _estrai_dati_ritenuta(xml_raw, body_index: int = 0) -> Optional[Dict[str, An
     }
 
 
+def _numero(value: Any) -> Optional[float]:
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        return round(float(value), 2)
+    text = str(value).strip().replace("€", "").replace(" ", "")
+    if "," in text:
+        text = text.replace(".", "").replace(",", ".")
+    try:
+        return round(float(text), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def _periodo_tributo(t: Dict[str, Any]) -> Optional[str]:
+    """Normalizza mese/anno della singola riga F24 nel formato YYYY-MM."""
+    raw = str(
+        t.get("periodo_riferimento")
+        or t.get("riferimento")
+        or t.get("mese_riferimento")
+        or t.get("mese")
+        or ""
+    ).strip()
+    anno = str(t.get("anno_riferimento") or t.get("anno") or "").strip()
+    digits = re.sub(r"\D", "", raw)
+    year_digits = re.sub(r"\D", "", anno)
+
+    if len(digits) == 6:
+        if digits[:4].startswith("20"):
+            year_digits, digits = digits[:4], digits[4:]
+        else:
+            year_digits, digits = digits[-4:], digits[:2]
+    elif len(digits) == 4 and not year_digits and digits.startswith("20"):
+        return None  # solo anno: non identifica il mese della ritenuta
+    elif len(digits) == 4:
+        # Alcuni parser conservano il campo F24 MM/AAAA come quattro cifre.
+        first, last = digits[:2], digits[-2:]
+        digits = first if 1 <= int(first or 0) <= 12 else last
+    elif len(digits) > 2:
+        digits = digits[:2]
+
+    if len(year_digits) >= 4 and digits:
+        month = int(digits[:2])
+        if 1 <= month <= 12:
+            return f"{year_digits[:4]}-{month:02d}"
+    return None
+
+
+def _righe_sezione(value: Any) -> List[Dict[str, Any]]:
+    if isinstance(value, list):
+        return [r for r in value if isinstance(r, dict)]
+    if isinstance(value, dict):
+        for key in ("righe", "tributi", "dettaglio", "items"):
+            if isinstance(value.get(key), list):
+                return [r for r in value[key] if isinstance(r, dict)]
+        if value.get("codice") or value.get("codice_tributo"):
+            return [value]
+    return []
+
+
 def _tributi_di(f24: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """f24_unificato ha più schemi coesistenti: normalizza la lista tributi."""
-    out = []
-    righe = list(f24.get("tributi") or f24.get("righe") or f24.get("dettaglio_tributi") or [])
-    # schema del parser F24 commercialista (parse_f24_commercialista):
-    # sezioni separate con codice_tributo/importo_debito
-    for sezione in ("sezione_erario", "sezione_inps", "sezione_regioni", "sezione_tributi_locali"):
-        righe.extend(f24.get(sezione) or [])
-    for t in righe:
-        if isinstance(t, dict):
+    """Normalizza tutte le righe di un F24, anche da sezioni annidate."""
+    sorgenti = (
+        "tributi", "righe", "dettaglio_tributi", "sezione_erario",
+        "sezione_inps", "sezione_regioni", "sezione_tributi_locali", "sezione_imu",
+    )
+    out: List[Dict[str, Any]] = []
+    viste = set()
+    for sezione in sorgenti:
+        for t in _righe_sezione(f24.get(sezione)):
+            codice = str(t.get("codice") or t.get("codice_tributo") or "").strip()
+            importo = _numero(t.get("importo_debito"))
+            if importo is None:
+                importo = _numero(t.get("debito"))
+            if importo is None:
+                importo = _numero(t.get("importo"))
+            periodo = _periodo_tributo(t)
+            firma = (codice, importo, periodo)
+            if not codice or firma in viste:
+                continue
+            viste.add(firma)
             out.append({
-                "codice": str(t.get("codice") or t.get("codice_tributo") or "").strip(),
-                "importo": float(t.get("importo") or t.get("importo_debito") or t.get("debito") or 0),
+                "indice": len(out),
+                "sezione": sezione,
+                "codice": codice,
+                "importo": importo,
+                "periodo": periodo,
             })
     for c in (f24.get("codici_tributo") or []):
         codice = c.get("codice") if isinstance(c, dict) else c
-        out.append({"codice": str(codice or "").strip(), "importo": None})
+        firma = (str(codice or "").strip(), None, None)
+        if firma[0] and firma not in viste:
+            viste.add(firma)
+            out.append({
+                "indice": len(out), "sezione": "codici_tributo",
+                "codice": firma[0], "importo": None, "periodo": None,
+            })
     return out
 
 
@@ -144,37 +224,133 @@ def _data_pagamento_f24(f24: Dict[str, Any]) -> Optional[str]:
     return str(data)[:10] if data else None
 
 
-def _f24_risulta_pagato(f24: Dict[str, Any]) -> bool:
-    return bool(stato_evidenza_pagamento(f24)["pagato"])
+def _periodo_ritenuta(rit: Dict[str, Any]) -> Optional[str]:
+    periodo = str(rit.get("periodo_ritenuta") or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}", periodo):
+        return periodo
+    data = str(rit.get("data_fattura") or "")[:7]
+    return data if re.fullmatch(r"\d{4}-\d{2}", data) else None
 
 
-async def _riconcilia_ritenuta(db, rit: Dict[str, Any]) -> Dict[str, Any]:
-    """Cerca l'F24 col codice 1040 e lo stesso importo; classifica lo stato."""
+def _id_f24(f24: Dict[str, Any]) -> str:
+    return str(
+        f24.get("id") or f24.get("document_id") or f24.get("sha256")
+        or f24.get("filename") or f24.get("file_name") or ""
+    )
+
+
+async def _carica_f24(db) -> List[Dict[str, Any]]:
+    return [doc async for doc in db["f24_unificato"].find({}, {"_id": 0})]
+
+
+async def _riconcilia_ritenuta(
+    db,
+    rit: Dict[str, Any],
+    *,
+    ritenute_periodo: Optional[List[Dict[str, Any]]] = None,
+    f24_docs: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Associa la riga 1040 corretta, distinguendo F24 e prova bancaria.
+
+    Una riga 1040 può coprire una sola ritenuta oppure la somma delle
+    ritenute dello stesso periodo. Gli altri tributi dell'F24 non vengono
+    confusi con la quota 1040 e l'addebito bancario resta prova dell'intero
+    modello, non della singola ritenuta.
+    """
     oggi = datetime.now(timezone.utc).date().isoformat()
-    upd: Dict[str, Any] = {}
+    upd: Dict[str, Any] = {
+        "f24_id": None,
+        "f24_descrizione": None,
+        "f24_tributo_indice": None,
+        "f24_tributo_sezione": None,
+        "f24_periodo": None,
+        "f24_importo_tributo": None,
+        "f24_associazione_tipo": None,
+        "f24_quota_ritenuta": None,
+        "f24_multi_tributo": False,
+        "stato_evidenza_pagamento": None,
+        "movimento_bancario_f24_id": None,
+        "data_pagamento": None,
+        "f24_candidati": [],
+    }
+    periodo = _periodo_ritenuta(rit)
+    gruppo = [
+        r for r in (ritenute_periodo or [rit])
+        if _periodo_ritenuta(r) == periodo
+    ] if periodo else [rit]
+    importo = round(float(rit.get("importo") or 0), 2)
+    totale_gruppo = round(sum(float(r.get("importo") or 0) for r in gruppo), 2)
+    stesso_importo = sum(
+        1 for r in gruppo if abs(float(r.get("importo") or 0) - importo) <= 0.01
+    )
 
-    f24_match = None
-    tributo_1040 = None
-    async for f24 in db["f24_unificato"].find({}, {"_id": 0}):
-        for t in _tributi_di(f24):
-            if t["codice"] == "1040" and (
-                t["importo"] is None or abs(t["importo"] - rit["importo"]) < 0.01
+    candidati = []
+    for f24 in (f24_docs if f24_docs is not None else await _carica_f24(db)):
+        for tributo in _tributi_di(f24):
+            if tributo["codice"] != "1040" or tributo["importo"] is None:
+                continue
+            periodo_riga = tributo.get("periodo")
+            if periodo and periodo_riga and periodo != periodo_riga:
+                continue
+
+            tipo = None
+            # Una riga senza periodo può essere usata solo per un importo
+            # individuale univoco, mai per un'aggregazione mensile.
+            if abs(tributo["importo"] - importo) <= 0.01 and stesso_importo == 1:
+                tipo = "singola"
+            if (
+                len(gruppo) > 1
+                and periodo
+                and periodo_riga == periodo
+                and abs(tributo["importo"] - totale_gruppo) <= 0.01
             ):
-                f24_match = f24
-                tributo_1040 = t
-                break
-        if f24_match:
-            break
+                tipo = "aggregata"
+            if not tipo:
+                continue
+            score = 100 + (30 if periodo_riga == periodo and periodo else 0)
+            candidati.append({
+                "f24": f24,
+                "tributo": tributo,
+                "tipo": tipo,
+                "score": score,
+            })
 
-    if not f24_match:
+    if not candidati:
         upd["stato"] = "scaduta_da_versare" if oggi > rit["scadenza"] else "da_pagare"
         upd["f24_id"] = None
         return upd
 
-    upd["f24_id"] = f24_match.get("id")
-    upd["f24_descrizione"] = (f24_match.get("descrizione") or f24_match.get("filename") or "")[:120]
+    max_score = max(c["score"] for c in candidati)
+    migliori = [c for c in candidati if c["score"] == max_score]
+    identita = {
+        (_id_f24(c["f24"]), c["tributo"]["indice"], c["tipo"])
+        for c in migliori
+    }
+    if len(identita) != 1:
+        upd.update({
+            "stato": "da_verificare_associazione_f24",
+            "f24_id": None,
+            "f24_candidati": sorted({_id_f24(c["f24"]) for c in migliori if _id_f24(c["f24"])}),
+        })
+        return upd
 
-    if not _f24_risulta_pagato(f24_match):
+    scelto = migliori[0]
+    f24_match = scelto["f24"]
+    tributo_1040 = scelto["tributo"]
+    evidenza = stato_evidenza_pagamento(f24_match)
+    upd["f24_id"] = _id_f24(f24_match)
+    upd["f24_descrizione"] = (f24_match.get("descrizione") or f24_match.get("filename") or "")[:120]
+    upd["f24_tributo_indice"] = tributo_1040["indice"]
+    upd["f24_tributo_sezione"] = tributo_1040["sezione"]
+    upd["f24_periodo"] = tributo_1040.get("periodo")
+    upd["f24_importo_tributo"] = tributo_1040["importo"]
+    upd["f24_associazione_tipo"] = scelto["tipo"]
+    upd["f24_quota_ritenuta"] = importo
+    upd["f24_multi_tributo"] = len(_tributi_di(f24_match)) > 1
+    upd["stato_evidenza_pagamento"] = evidenza["stato"]
+    upd["movimento_bancario_f24_id"] = evidenza.get("movimento_bancario_id")
+
+    if not evidenza["pagato"]:
         upd["stato"] = "f24_associato_da_pagare"
         return upd
 
@@ -222,13 +398,12 @@ async def scan_ritenute(anno: int = Query(2026)) -> Dict[str, Any]:
             "importo": dati["importo"],
             "aliquota": dati["aliquota"],
             "causale": dati["causale"],
+            "periodo_ritenuta": (f.get("invoice_date") or "")[:7],
             "scadenza": _scadenza_16_mese_successivo((f.get("invoice_date") or "")[:10]),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         esistente = await db[COLLECTION].find_one({"fattura_id": f["id"]})
         rit = {**base, "id": esistente["id"] if esistente else str(uuid.uuid4())}
-        upd = await _riconcilia_ritenuta(db, rit)
-        rit.update(upd)
         if esistente:
             await db[COLLECTION].update_one({"id": rit["id"]}, {"$set": rit})
             aggiornate += 1
@@ -237,8 +412,21 @@ async def scan_ritenute(anno: int = Query(2026)) -> Dict[str, Any]:
             await db[COLLECTION].insert_one(dict(rit))
             nuove += 1
 
+    # Seconda fase: dopo aver acquisito tutte le ritenute, una singola riga
+    # 1040 dell'F24 può essere riconosciuta come somma del periodo.
+    ritenute_anno = await db[COLLECTION].find(
+        {"data_fattura": {"$regex": f"^{anno}"}}, {"_id": 0}
+    ).to_list(5000)
+    f24_docs = await _carica_f24(db)
+    for rit in ritenute_anno:
+        upd = await _riconcilia_ritenuta(
+            db, rit, ritenute_periodo=ritenute_anno, f24_docs=f24_docs
+        )
+        await db[COLLECTION].update_one({"id": rit["id"]}, {"$set": upd})
+
     return {"anno": anno, "fatture_con_ritenuta": len(fatture),
-            "nuove": nuove, "aggiornate": aggiornate}
+            "nuove": nuove, "aggiornate": aggiornate,
+            "f24_analizzati": len(f24_docs)}
 
 
 @router.get("")

@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react';
-import { ArrowLeftRight, Banknote, CreditCard, Landmark, ScrollText } from 'lucide-react';
+import { ArrowLeftRight, Banknote, CreditCard, Landmark, Receipt, ScrollText } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { HubTabs, PageLoader } from '../../components/ds';
@@ -19,13 +19,16 @@ export default function RiconciliazioneHub() {
 
   const tabs = [
     { id: 'bancaria', label: 'Bancaria', Icon: Landmark, to: '/riconciliazione' },
+    { id: 'f24', label: 'F24', Icon: Receipt, to: '/riconciliazione/f24' },
     { id: 'bonifici', label: 'Archivio bonifici', Icon: ArrowLeftRight, to: '/riconciliazione/archivio-bonifici' },
     { id: 'assegni', label: 'Assegni', Icon: ScrollText, to: '/riconciliazione/assegni' },
     { id: 'paypal', label: 'PayPal', Icon: CreditCard, to: '/riconciliazione/paypal' },
     { id: 'coerenza-pos', label: 'Coerenza POS', Icon: Banknote, to: '/riconciliazione/coerenza-pos' },
   ];
 
-  const activeTab = path.includes('/archivio-bonifici')
+  const activeTab = path.includes('/f24')
+    ? 'f24'
+    : path.includes('/archivio-bonifici')
     ? 'bonifici'
     : path.includes('/gestione-assegni') || path.includes('/assegni')
       ? 'assegni'
@@ -37,6 +40,9 @@ export default function RiconciliazioneHub() {
 
   // Determina quale contenuto mostrare
   const getContent = () => {
+    if (path.includes('/f24')) {
+      return <RiconciliazioneContent key={`f24-${anno}`} />;
+    }
     if (path.includes('/archivio-bonifici')) {
       return <BonificiContent key={`bonifici-${anno}`} />;
     }

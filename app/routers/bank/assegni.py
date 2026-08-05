@@ -12,6 +12,11 @@ import logging
 from app.database import Database
 from app.models.stati import STATI_PAGATI
 from app.routers.bank.assegni_auto_match import _f, _norm_piva, TOLL, MAX_RATE, fornitore_esclude_assegno
+from app.services.identity_matching import identita_coincide
+from app.services.payment_invoice_matching import (
+    amounts_equal_to_cent,
+    invoice_reference_equals,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -714,9 +719,29 @@ async def correggi_associazione_assegno(
         numero_fattura_val = fattura.get("invoice_number") or fattura.get("numero_documento")
         importo_fattura_val = float(fattura.get("total_amount") or fattura.get("importo_totale") or 0)
         importo_assegno_val = float(assegno.get("importo") or 0)
+        if not amounts_equal_to_cent(importo_assegno_val, importo_fattura_val):
+            raise HTTPException(
+                status_code=409,
+                detail="Importo assegno e fattura devono coincidere al centesimo",
+            )
+        piva_assegno = _norm_piva(assegno.get("fornitore_piva"))
+        piva_fattura = _norm_piva(
+            fattura.get("supplier_vat") or fattura.get("cedente_piva")
+            or fattura.get("partita_iva")
+        )
+        beneficiario = assegno.get("beneficiario") or ""
+        fornitore = fattura.get("supplier_name") or fattura.get("fornitore_ragione_sociale") or ""
+        if not ((piva_assegno and piva_assegno == piva_fattura)
+                or (beneficiario and fornitore and identita_coincide(beneficiario, fornitore))):
+            raise HTTPException(status_code=409, detail="Fornitore della fattura non coerente con l'assegno")
+        banca_confermata = bool(
+            assegno.get("movimento_estratto_conto_id")
+            or assegno.get("riconciliato_con_ec")
+            or assegno.get("stato") == "incassato"
+        )
 
         update_data["fattura_id"] = nuova_fattura_id
-        update_data["pagato"] = True
+        update_data["pagato"] = banca_confermata
         # Stato canonico: "assegnato" (era "associato", valore NON presente in
         # ASSEGNO_STATI → fuori schema, invisibile ai filtri per stato). Vedi P0.5.
         update_data["stato"] = "assegnato"
@@ -726,8 +751,7 @@ async def correggi_associazione_assegno(
         update_data["data_fattura"] = fattura.get("invoice_date") or fattura.get("data_documento")
         update_data["importo_fattura"] = importo_fattura_val
 
-        # FIX 3: scarto fattura/assegno
-        scarto = round(importo_fattura_val - importo_assegno_val, 2)
+        scarto = 0.0
         update_data["scarto_fattura_assegno"] = scarto
 
         if aggiorna_beneficiario:
@@ -739,14 +763,19 @@ async def correggi_associazione_assegno(
                 {"$set": {"pagato": False, "status": "imported", "assegno_id": None}}
             )
 
-        # FIX 2: fattura marcata come pagata
+        # Il collegamento assegno-fattura è un intento; il pagamento diventa
+        # reale soltanto con il riscontro dell'estratto conto.
         await db["invoices"].update_one(
             {"id": nuova_fattura_id},
             {"$set": {
                 "assegno_id": assegno_id,
-                "pagato": True,
-                "status": "paid",
-                "data_pagamento": assegno.get("data_incasso") or assegno.get("data_emissione"),
+                "pagato": banca_confermata,
+                "status": "paid" if banca_confermata else "pending",
+                "stato_finanziario": "riconciliato" if banca_confermata else "in_attesa_estratto_conto",
+                "data_pagamento": (
+                    assegno.get("data_incasso") or assegno.get("data_emissione")
+                    if banca_confermata else None
+                ),
                 "metodo_pagamento_effettivo": "assegno",
             }}
         )
@@ -780,11 +809,7 @@ async def correggi_associazione_assegno(
     }
     if nuova_fattura_id:
         response["scarto_fattura_assegno"] = update_data.get("scarto_fattura_assegno")
-        if abs(update_data.get("scarto_fattura_assegno") or 0) > 0.01:
-            response["warning_scarto"] = (
-                f"Attenzione: scarto di {update_data['scarto_fattura_assegno']}€ tra "
-                f"importo fattura ({importo_fattura_val}€) e importo assegno ({importo_assegno_val}€)"
-            )
+        response["banca_confermata"] = banca_confermata
     return response
 
 
@@ -1081,11 +1106,28 @@ async def collega_fatture_assegno(assegno_id: str, body: FattureCollegateIn) -> 
         )
 
     somma_quote = round(sum(f.quota for f in body.fatture), 2)
-    if somma_quote - importo_assegno > TOLL:
+    if body.fatture and not amounts_equal_to_cent(somma_quote, importo_assegno):
         raise HTTPException(
             status_code=400,
-            detail=f"La somma delle quote (€{somma_quote}) supera l'importo dell'assegno (€{importo_assegno})",
+            detail=(
+                f"La somma delle fatture (€{somma_quote:.2f}) deve coincidere al centesimo "
+                f"con l'importo dell'assegno (€{importo_assegno:.2f})"
+            ),
         )
+
+    for quota_input in body.fatture:
+        inv = fatture_map[quota_input.fattura_id]
+        totale = _f(inv.get("importo_residuo") if inv.get("importo_residuo") is not None
+                    else inv.get("total_amount") or inv.get("importo_totale"))
+        if not amounts_equal_to_cent(quota_input.quota, totale):
+            numero = inv.get("invoice_number") or inv.get("numero_fattura") or quota_input.fattura_id
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"La quota della fattura {numero} deve coincidere al centesimo "
+                    f"con il suo importo aperto (€{abs(totale):.2f})"
+                ),
+            )
 
     # 1) Annulla i vecchi collegamenti sulle fatture precedentemente collegate
     vecchie = assegno.get("fatture_collegate") or []
@@ -1641,11 +1683,12 @@ async def auto_associa_assegni() -> Dict[str, Any]:
                     fatture_usate.add(fattura.get("id"))
                     break
     
-    # === APPLICA ASSOCIAZIONI (solo confidence >= 80%) ===
-    MIN_CONFIDENCE_AUTO = 0.80
-    
-    associazioni_auto = [a for a in associazioni if a.get("confidenza", 0) >= MIN_CONFIDENCE_AUTO]
-    proposte_manuali = [a for a in associazioni if a.get("confidenza", 0) < MIN_CONFIDENCE_AUTO]
+    # Nessun collegamento viene applicato dal vecchio motore statistico: non
+    # dispone del numero fattura dichiarato sul pagamento. I risultati sono
+    # soltanto proposte e la conferma viene rivalidata qui sotto.
+    MIN_CONFIDENCE_AUTO = 1.01
+    associazioni_auto = []
+    proposte_manuali = associazioni
     
     updated = 0
     for assoc in associazioni_auto:
@@ -1746,8 +1789,31 @@ async def conferma_proposta_associazione(proposta_id: str) -> Dict[str, Any]:
     # fattura: se non c'è già un beneficiario reale, l'assegno resta
     # "da associare" pur avendo la fattura collegata.
     assegno_corrente = await db[COLLECTION_ASSEGNI].find_one(
-        {"id": proposta["assegno_id"]}, {"_id": 0, "beneficiario": 1}
+        {"id": proposta["assegno_id"]}, {"_id": 0}
     )
+    fattura_corrente = await db["invoices"].find_one(
+        {"id": proposta["fattura_id"]}, {"_id": 0}
+    )
+    if not assegno_corrente or not fattura_corrente:
+        raise HTTPException(status_code=409, detail="Assegno o fattura non più disponibili")
+    numero = fattura_corrente.get("invoice_number") or fattura_corrente.get("numero_fattura")
+    importo_fattura = fattura_corrente.get("importo_residuo")
+    if importo_fattura is None:
+        importo_fattura = fattura_corrente.get("total_amount") or fattura_corrente.get("importo_totale")
+    if not invoice_reference_equals(numero, proposta.get("fattura_numero")):
+        raise HTTPException(status_code=409, detail="Numero fattura della proposta non più coerente")
+    if not amounts_equal_to_cent(assegno_corrente.get("importo"), importo_fattura):
+        raise HTTPException(status_code=409, detail="Importo assegno e fattura non coincidono al centesimo")
+    beneficiario = assegno_corrente.get("beneficiario") or ""
+    fornitore = fattura_corrente.get("supplier_name") or fattura_corrente.get("cedente_denominazione") or ""
+    piva_assegno = _norm_piva(assegno_corrente.get("fornitore_piva"))
+    piva_fattura = _norm_piva(
+        fattura_corrente.get("supplier_vat") or fattura_corrente.get("cedente_piva")
+        or fattura_corrente.get("partita_iva")
+    )
+    if not ((piva_assegno and piva_assegno == piva_fattura)
+            or (beneficiario and fornitore and identita_coincide(beneficiario, fornitore))):
+        raise HTTPException(status_code=409, detail="Identità del fornitore non coerente con l'assegno")
     ha_beneficiario_reale = bool(
         assegno_corrente and (assegno_corrente.get("beneficiario") or "") not in ("", "-", "N/A")
     )
@@ -2245,6 +2311,16 @@ async def associa_beneficiari_robusto() -> Dict[str, Any]:
     5. Gestisce pagamenti multipli (una fattura pagata con più assegni)
     """
     db = Database.get_db()
+    from app.routers.bank.assegni_auto_match import run_auto_match
+    return {
+        "success": True,
+        "sola_lettura": True,
+        "message": (
+            "Il vecchio abbinamento per importo/data è disattivato. "
+            "Sono restituite soltanto proposte con numero fattura esplicito."
+        ),
+        "anteprima": await run_auto_match(db, dry_run=True),
+    }
     
     risultati = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -2378,6 +2454,16 @@ async def associa_pagamenti_multipli() -> Dict[str, Any]:
     3. Se trovato, marca tutti gli assegni come parte dello stesso pagamento
     """
     db = Database.get_db()
+    from app.routers.bank.assegni_auto_match import run_auto_match
+    return {
+        "success": True,
+        "sola_lettura": True,
+        "message": (
+            "Il raggruppamento per solo beneficiario/importo è disattivato. "
+            "La somma è valutata soltanto se i numeri fattura sono dichiarati."
+        ),
+        "anteprima": await run_auto_match(db, dry_run=True),
+    }
     
     risultati = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -2493,6 +2579,16 @@ async def cerca_combinazioni_assegni(
     """
     from itertools import combinations
     db = Database.get_db()
+    from app.routers.bank.assegni_auto_match import run_auto_match
+    return {
+        "success": True,
+        "sola_lettura": True,
+        "message": (
+            "La ricerca combinatoria legacy non scrive più associazioni per coincidenza. "
+            "Usare le proposte conservative numero+somma esatta+fornitore."
+        ),
+        "anteprima": await run_auto_match(db, dry_run=True),
+    }
     
     risultati = {
         "timestamp": datetime.now(timezone.utc).isoformat(),

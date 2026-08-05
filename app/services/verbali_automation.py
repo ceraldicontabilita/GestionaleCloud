@@ -175,9 +175,14 @@ async def processa_verbali_da_fattura(db, parsed_invoice: Dict[str, Any], invoic
         verbale_doc = {
             "numero_verbale": numero_verbale,
             "fattura_id": invoice_id,
+            "fattura_associata_id": invoice_id,
             "fattura_numero": invoice_number,
+            "fattura_associata_numero": invoice_number,
+            "numero_fattura": invoice_number,
             "data_fattura": invoice_date,
+            "fattura_associata_data": invoice_date,
             "fornitore": supplier_name,
+            "fattura_associata_fornitore": supplier_name,
             "fornitore_piva": supplier_vat,
             "descrizione": descrizione,
             "importo_rinotifica": float(importo) if importo else 0,
@@ -233,6 +238,11 @@ async def processa_verbali_da_fattura(db, parsed_invoice: Dict[str, Any], invoic
             verbale_doc["created_at"] = datetime.now(timezone.utc)
             await db["verbali_noleggio"].insert_one(verbale_doc.copy())
             result["verbali_creati"] += 1
+
+        await db["invoices"].update_one(
+            {"id": invoice_id},
+            {"$addToSet": {"verbali_collegati": numero_verbale}},
+        )
         
         # === CREA VOCE COSTO DIPENDENTE ===
         if driver_info and driver_info.get("id"):

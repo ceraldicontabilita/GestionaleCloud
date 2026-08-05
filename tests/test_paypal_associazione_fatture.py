@@ -159,11 +159,12 @@ def test_auto_associa_non_scrive_match_solo_importo(monkeypatch):
     assert "fattura_associata" not in db["paypal_transactions"].docs[0]
 
 
-def test_auto_associa_scrive_solo_con_riscontro_nome(monkeypatch):
+def test_auto_associa_scrive_solo_con_numero_importo_e_fornitore(monkeypatch):
     db = _DB()
     db["paypal_transactions"].docs = [
         {"transaction_id": "t1", "importo": -100.0, "lordo": -100.0,
-         "nome_controparte": "Fornitore Rossi Srl", "data": "2026-07-12"},
+         "nome_controparte": "Fornitore Rossi Srl", "invoice_id_fornitore": "X1",
+         "data": "2026-07-12"},
     ]
     db["invoices"].docs = [
         {"id": "f1", "invoice_number": "X1", "invoice_date": "2026-07-10",
@@ -179,7 +180,8 @@ def test_auto_associa_scrive_solo_con_riscontro_nome(monkeypatch):
     assert res["associate"] == 1
     fa = db["paypal_transactions"].docs[0]["fattura_associata"]
     assert fa["fattura_id"] == "f1"
-    assert fa["match"] == "nome_e_importo"
+    assert fa["match"] == "fornitore_numero_importo_esatti"
+    assert set(fa["evidenze"]) >= {"denominazione_fornitore", "numero_fattura", "importo"}
 
 
 def test_pulisci_rimuove_associazione_storica_senza_riscontro_anche_se_etichettata_bene(monkeypatch):
@@ -193,12 +195,14 @@ def test_pulisci_rimuove_associazione_storica_senza_riscontro_anche_se_etichetta
          "fattura_associata": {"fattura_id": "f1", "fornitore": "Ricambi Manzo sas",
                                 "auto": True, "match": "nome_e_importo"}},
         {"transaction_id": "t2", "nome_controparte": "Fornitore Rossi Srl",
+         "invoice_id_fornitore": "FT-2", "lordo": -250.00,
          "fattura_associata": {"fattura_id": "f2", "fornitore": "Fornitore Rossi Srl",
                                 "auto": True, "match": "nome_e_importo"}},
     ]
     db["invoices"].docs = [
         {"id": "f1", "supplier_name": "Ricambi Manzo sas di Manzo dr. Raf"},
-        {"id": "f2", "supplier_name": "Fornitore Rossi Srl"},
+        {"id": "f2", "supplier_name": "Fornitore Rossi Srl",
+         "invoice_number": "FT-2", "total_amount": 250.00},
     ]
     import app.routers.paypal_statements as mod
     monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
@@ -206,7 +210,7 @@ def test_pulisci_rimuove_associazione_storica_senza_riscontro_anche_se_etichetta
     res = _run(pulisci_match_solo_importo(dry_run=True))
     assert res["trovate"] == 1
     assert res["esempi"][0]["transaction_id"] == "5BX54306V8803724Y"
-    assert res["esempi"][0]["motivo"] == "nessun_riscontro_nome"
+    assert res["esempi"][0]["motivo"] == "identita_fornitore_non_verificata"
     # dry_run: nessuna modifica
     assert "fattura_associata" in db["paypal_transactions"].docs[0]
 
@@ -228,17 +232,40 @@ def test_pulisci_rimuove_riferimento_a_fattura_cancellata(monkeypatch):
     assert "fattura_associata" not in db["paypal_transactions"].docs[0]
 
 
+def test_pulisci_rimuove_match_senza_numero_fattura_anche_con_nome_e_importo(monkeypatch):
+    db = _DB()
+    db["paypal_transactions"].docs = [
+        {"transaction_id": "t1", "nome_controparte": "Fornitore Rossi Srl",
+         "lordo": -100.01,
+         "fattura_associata": {"fattura_id": "f1", "auto": True}},
+    ]
+    db["invoices"].docs = [
+        {"id": "f1", "supplier_name": "Fornitore Rossi Srl",
+         "invoice_number": "FT-10", "total_amount": 100.01},
+    ]
+    import app.routers.paypal_statements as mod
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+
+    res = _run(pulisci_match_solo_importo(dry_run=False))
+
+    assert res["trovate"] == 1
+    assert res["esempi"][0]["motivo"] == "numero_fattura_mancante_o_non_coincidente"
+    assert "fattura_associata" not in db["paypal_transactions"].docs[0]
+
+
 def test_pulisci_non_tocca_associazioni_manuali_ne_valide(monkeypatch):
     db = _DB()
     db["paypal_transactions"].docs = [
         {"transaction_id": "t1", "nome_controparte": "Fornitore Rossi Srl",
+         "invoice_id_fornitore": "FT-10", "lordo": -100.01,
          "fattura_associata": {"fattura_id": "f1", "fornitore": "Fornitore Rossi Srl",
                                 "auto": True, "match": "nome_e_importo"}},
         {"transaction_id": "t2", "nome_controparte": "Chiunque",
          "fattura_associata": {"fattura_id": "f1", "fornitore": "Fornitore Rossi Srl",
                                 "auto": False}},
     ]
-    db["invoices"].docs = [{"id": "f1", "supplier_name": "Fornitore Rossi Srl"}]
+    db["invoices"].docs = [{"id": "f1", "supplier_name": "Fornitore Rossi Srl",
+                             "invoice_number": "FT-10", "total_amount": 100.01}]
     import app.routers.paypal_statements as mod
     monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
 

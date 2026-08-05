@@ -1336,6 +1336,26 @@ export default function ArchivioBonifici() {
                             ✕
                           </button>
                         </div>
+                      ) : t.destinazione_dipendente ? (
+                        <span
+                          title={
+                            t.dipendente_nome_rilevato
+                              ? `Pagamento a ${t.dipendente_nome_rilevato}: associa solo il salario`
+                              : 'Causale retributiva: associa solo il salario'
+                          }
+                          style={{
+                            display: 'inline-block',
+                            padding: '4px 8px',
+                            borderRadius: 6,
+                            background: '#fef3c7',
+                            color: '#92400e',
+                            fontSize: 10,
+                            fontWeight: 700,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          Solo salario
+                        </span>
                       ) : (
                         <div>
                           <button

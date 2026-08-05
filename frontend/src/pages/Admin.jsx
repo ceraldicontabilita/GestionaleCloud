@@ -424,6 +424,18 @@ export default function Admin() {
       {/* TAB EMAIL */}
       {activeTab === 'email' && (
         <div style={{ display: 'grid', gap: 16 }}>
+          <div style={{
+            padding: 14, borderRadius: BORDER_RADIUS.md,
+            border: `1px solid ${COLORS.info}`, background: COLORS.infoLight,
+            color: COLORS.text, fontSize: 13, lineHeight: 1.55,
+          }}>
+            <strong>Smistamento controllato:</strong> gli account servono solo a leggere la posta.
+            Il sistema conserva nell'app esclusivamente allegati amministrativi riconosciuti
+            (F24, cedolini, avvisi bonari, verbali, cartelle esattoriali e documenti equivalenti),
+            li classifica dal contenuto/nome del documento e ne archivia una copia nella cartella
+            Drive corrispondente. Gli allegati non pertinenti vengono ignorati; il tipo del mittente
+            non puo piu sovrascrivere una classificazione documentale certa.
+          </div>
           <Card
             title="Account Email Configurati"
             actions={

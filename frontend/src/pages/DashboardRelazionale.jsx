@@ -600,13 +600,13 @@ function _destinazioneAlert(a) {
   const coll = (a.entita_collection || '').toLowerCase();
   const id = a.entita_id;
   if (!id) return null;
-  if (coll === 'invoices') return `/archivio-fatture-ricevute?invoice_id=${id}`;
+  if (coll === 'invoices') return `/fatture?invoice_id=${id}`;
   if (coll.startsWith('prima_nota')) return '/prima-nota';
   if (coll.includes('f24')) return '/riconciliazione/f24';
   if (coll.includes('fornitori') || coll === 'suppliers') return `/fornitori#search=${id}`;
-  if (coll.includes('corrispettivi')) return '/corrispettivi';
+  if (coll.includes('corrispettivi')) return '/fatture/corrispettivi';
   if (coll.includes('estratto')) return '/riconciliazione';
-  if (coll.includes('assegni')) return '/assegni';
+  if (coll.includes('assegni')) return '/riconciliazione/assegni';
   if (coll.includes('cedolini') || coll.includes('salari')) return '/salari';
   if (coll.includes('attachment') || coll.includes('documenti') || coll.includes('inbox')) return '/documenti';
   return null;

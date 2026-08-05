@@ -15,7 +15,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Tuple
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from app.services.scritture_contabili import scrivi_movimento
+from app.services.paypal_invoice_matching import evaluate_paypal_invoice_match
 
 logger = logging.getLogger(__name__)
 
@@ -231,15 +231,22 @@ async def riconcilia_pagamenti_paypal(
             data_pag = parse_paypal_date(pag.get("data", ""))
             beneficiario = pag.get("beneficiario", "") or pag.get("descrizione", "")
 
-            # STRATEGIA PRIMARIA: match tramite paypal_account_id
+            # STRATEGIA PRIMARIA: identita' fornitore tramite paypal_account_id.
+            # La sola coincidenza dell'importo non e' mai sufficiente.
             paypal_account_id = pag.get("paypal_account_id")
             fatture_candidate = []
-            match_certo_paypal_id = False
+            mapping = None
             if paypal_account_id:
                 fornitore_match = await match_fornitore_by_paypal_id(db, paypal_account_id)
                 if fornitore_match:
                     forn_id = fornitore_match.get("id") or str(fornitore_match.get("_id", ""))
                     forn_piva = fornitore_match.get("anagrafica", {}).get("piva") or fornitore_match.get("piva")
+                    mapping = {
+                        "fornitore_piva": forn_piva or fornitore_match.get("partita_iva"),
+                        "codice_fiscale": fornitore_match.get("codice_fiscale"),
+                        "fornitore_nome": fornitore_match.get("nome"),
+                        "fornitore_ragione_sociale": fornitore_match.get("ragione_sociale"),
+                    }
                     or_conds = [{"fornitore_id": forn_id}]
                     if forn_piva:
                         or_conds.append({"fornitore_piva": forn_piva})
@@ -247,18 +254,17 @@ async def riconcilia_pagamenti_paypal(
                         or_conds.append({"supplier_vat": forn_piva})
                     query_fatt = {
                         "$or": or_conds,
-                        "total_amount": {"$gte": importo * 0.98 - 1, "$lte": importo * 1.02 + 1}
+                        "total_amount": {"$gte": importo - 0.004, "$lte": importo + 0.004}
                     }
                     fatture_candidate = await db[collection_name].find(
                         query_fatt, {"_id": 0}
                     ).to_list(100)
-                    if fatture_candidate:
-                        match_certo_paypal_id = True
 
-            # Fallback: cerca per importo simile (tolleranza 2% o 1€)
+            # Fallback di ricerca: importo esatto, seguito comunque dalla
+            # validazione dell'identita' fornitore sottostante.
             if not fatture_candidate:
-                min_importo = importo * (1 - tolleranza_importo) - 1
-                max_importo = importo * (1 + tolleranza_importo) + 1
+                min_importo = importo - 0.004
+                max_importo = importo + 0.004
 
                 query = {
                     "total_amount": {"$gte": min_importo, "$lte": max_importo}
@@ -277,47 +283,40 @@ async def riconcilia_pagamenti_paypal(
                 })
                 continue
             
-            # Trova la migliore corrispondenza per nome fornitore
-            best_match = None
-            best_score = 0.0
-
+            transaction = {
+                "transaction_id": pag.get("codice_transazione"),
+                "paypal_account_id": paypal_account_id,
+                "nome_controparte": beneficiario,
+                "email_controparte": pag.get("email_controparte"),
+                "invoice_id_fornitore": pag.get("invoice_id_fornitore"),
+                "importo": -importo,
+                "data": pag.get("data"),
+            }
+            validi = []
             for fattura in fatture_candidate:
-                # Supporta entrambi i formati: supplier_name e fornitore_ragione_sociale
-                fornitore = fattura.get("supplier_name") or fattura.get("fornitore_ragione_sociale", "")
-                # Se match primario via paypal_account_id è certo → score base 1.0
-                if match_certo_paypal_id:
-                    score = 1.0
-                else:
-                    score = match_fornitore(beneficiario, fornitore)
+                valutazione = evaluate_paypal_invoice_match(transaction, fattura, mapping)
+                if valutazione["associabile"]:
+                    validi.append((valutazione, fattura))
+            validi.sort(key=lambda item: item[0]["score"], reverse=True)
+            ambiguo = len(validi) > 1 and validi[0][0]["score"] == validi[1][0]["score"]
+            best_match = validi[0][1] if validi and not ambiguo else None
+            best_evaluation = validi[0][0] if validi and not ambiguo else None
 
-                # Bonus se data è vicina
-                if data_pag:
-                    data_fatt_str = fattura.get("invoice_date") or fattura.get("data_documento")
-                    if data_fatt_str:
-                        try:
-                            data_fatt = datetime.strptime(str(data_fatt_str)[:10], "%Y-%m-%d")
-                            diff_giorni = abs((data_pag - data_fatt).days)
-                            if diff_giorni <= 7:
-                                score += 0.2
-                            elif diff_giorni <= 30:
-                                score += 0.1
-                        except (ValueError, TypeError):
-                            pass
-
-                if score > best_score:
-                    best_score = score
-                    best_match = fattura
-
-            # Soglia: 0.3 per match nome, ma bypassata da match_certo_paypal_id (score sempre ≥1.0)
-            if best_match and (match_certo_paypal_id or best_score >= 0.3):
+            if best_match:
                 fattura_id = best_match.get("id")
                 fornitore_nome = best_match.get("supplier_name") or best_match.get("fornitore_ragione_sociale", "?")
                 importo_fatt = best_match.get("total_amount") or best_match.get("importo_totale", 0)
                 numero_fatt = best_match.get("invoice_number") or best_match.get("numero_documento", "?")
                 data_fatt = best_match.get("invoice_date") or best_match.get("data_documento", "?")
                 
-                # Verifica se già pagata via PayPal
-                if best_match.get("riconciliato_paypal"):
+                codice_transazione = pag.get("codice_transazione", "")
+                # Una fattura gia' collegata a un'altra transazione non puo'
+                # essere riutilizzata per questo pagamento.
+                if (
+                    best_match.get("riconciliato_paypal")
+                    and best_match.get("paypal_transaction_id")
+                    and best_match.get("paypal_transaction_id") != codice_transazione
+                ):
                     risultato["gia_pagati_paypal"] += 1
                     continue
                 
@@ -327,7 +326,7 @@ async def riconcilia_pagamenti_paypal(
                     "metodo_pagamento": "PayPal",
                     "data_pagamento": data_pag.isoformat() if data_pag else datetime.now(timezone.utc).isoformat(),
                     "riconciliato_paypal": True,
-                    "paypal_transaction_id": pag.get("codice_transazione", ""),
+                    "paypal_transaction_id": codice_transazione,
                     "paypal_beneficiario": beneficiario,
                     "updated_at": datetime.now(timezone.utc)
                 }
@@ -336,39 +335,28 @@ async def riconcilia_pagamenti_paypal(
                     {"id": fattura_id},
                     {"$set": update_data}
                 )
-                
-                # Crea movimento in Prima Nota Banca se non già pagata
-                if not best_match.get("pagato"):
-                    import uuid
-                    movimento_id = str(uuid.uuid4())
-                    data_mov = data_pag.strftime("%Y-%m-%d") if data_pag else datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                    anno_mov = int(data_mov[:4]) if data_mov and len(str(data_mov)) >= 4 and str(data_mov)[:4].isdigit() else None
-                    
-                    movimento = {
-                        "id": movimento_id,
-                        "data": data_mov,
-                        "anno": anno_mov,
-                        "descrizione": f"PayPal - {fornitore_nome} - Fatt. {numero_fatt}",
-                        "causale": "Pagamento fattura fornitore via PayPal",
-                        "importo": float(importo),
-                        "tipo": "uscita",
-                        "categoria": "Fatture",
-                        "stato": "confermato",
-                        "fattura_id": fattura_id,
-                        "fattura_collegata": fattura_id,
-                        "fattura_numero": numero_fatt,
-                        "fornitore": fornitore_nome,
-                        "metodo_pagamento": "PayPal",
-                        "paypal_transaction_id": pag.get("codice_transazione", ""),
-                        "riconciliato": True,
-                        "source": "riconciliazione_paypal",
-                        "created_at": datetime.now(timezone.utc).isoformat()
-                    }
-                    
-                    await scrivi_movimento(db, "banca", movimento)
-                    risultato["riconciliati"] += 1
-                else:
+                if codice_transazione:
+                    await db["paypal_transactions"].update_one(
+                        {"transaction_id": codice_transazione},
+                        {"$set": {"fattura_associata": {
+                            "fattura_id": fattura_id,
+                            "numero": numero_fatt,
+                            "data": data_fatt,
+                            "fornitore": fornitore_nome,
+                            "importo": importo_fatt,
+                            "auto": True,
+                            "match": "fornitore_numero_importo_esatti",
+                            "evidenze": best_evaluation["evidenze"],
+                        }}},
+                    )
+
+                # La transazione PayPal documenta il pagamento, ma non crea
+                # una nuova riga di Prima Nota: la banca resta la fonte della
+                # scrittura bancaria e viene collegata dal flusso dedicato.
+                if best_match.get("pagato"):
                     risultato["aggiornati_metodo"] += 1
+                else:
+                    risultato["riconciliati"] += 1
                     
                 risultato["dettaglio_riconciliazioni"].append({
                     "pagamento_paypal": {
@@ -384,7 +372,8 @@ async def riconcilia_pagamenti_paypal(
                         "numero": numero_fatt,
                         "data": str(data_fatt)[:10] if data_fatt else "?"
                     },
-                    "score_matching": best_score,
+                    "score_matching": best_evaluation["score"],
+                    "evidenze": best_evaluation["evidenze"],
                     "azione": "aggiornato_metodo" if best_match.get("pagato") else "riconciliato"
                 })
             else:
@@ -397,7 +386,10 @@ async def riconcilia_pagamenti_paypal(
                 
                 risultato["dettaglio_non_trovati"].append({
                     "pagamento": pag,
-                    "motivo": f"Nessun fornitore corrispondente a '{beneficiario}' (best score: {best_score:.2f})",
+                    "motivo": (
+                        f"Nessuna associazione univoca per '{beneficiario}': "
+                        "servono identita' fornitore e importo/numero fattura"
+                    ),
                     "candidati": candidati_info
                 })
                 

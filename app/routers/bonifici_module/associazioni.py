@@ -10,6 +10,12 @@ from datetime import datetime, timezone
 import logging
 
 from app.database import Database, Collections
+from app.services.identity_matching import identita_coincide, nome_presente_nel_testo
+from app.services.payment_invoice_matching import (
+    amounts_equal_to_cent,
+    invoice_reference_in_text,
+)
+from .classification import classifica_bonifico_dipendente
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/archivio-bonifici", tags=["Archivio Bonifici Extra"])
@@ -28,9 +34,37 @@ async def associa_fattura_a_bonifico(
     if not fattura_id or not fattura_id.strip():
         raise HTTPException(status_code=422, detail="fattura_id non può essere vuoto")
 
+    bonifico = await _trova_bonifico(db, bonifico_id)
+    if not bonifico:
+        raise HTTPException(404, "Bonifico non trovato in nessuna collection")
+    destinazione = await classifica_bonifico_dipendente(db, bonifico)
+    if destinazione["destinazione_dipendente"]:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Bonifico destinato a un dipendente: può essere associato solo a un salario, "
+                "non a una fattura."
+            ),
+        )
+
+    fattura = await db[Collections.INVOICES].find_one({"id": fattura_id}, {"_id": 0})
+    if not fattura:
+        raise HTTPException(404, "Fattura non trovata")
+    compatibilita = _valuta_fattura_bonifico(bonifico, fattura)
+    if not compatibilita["compatibile"]:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Associazione non confermata: servono numero fattura esplicito nella causale, "
+                "importo identico al centesimo e identità del fornitore coerente."
+            ),
+        )
+
     aggiornamento = {
         "fattura_associata_id": fattura_id,
         "fattura_collection": collection,
+        "fattura_associazione_evidenze": compatibilita["evidenze"],
+        "fattura_associazione_score": compatibilita["score"],
         "stato_riconciliazione": "associato",
         "data_associazione": datetime.now(timezone.utc).isoformat()
     }
@@ -185,48 +219,129 @@ def _compatibilita_score(importo_riferimento: float, importo_confronto: float) -
     return max(0, round((1 - diff_pct / 0.05) * 100))
 
 
+def _importo_fattura(fattura: Dict[str, Any]) -> float:
+    for field in ("total_amount", "totale", "importo_totale"):
+        if fattura.get(field) not in (None, ""):
+            try:
+                return abs(float(fattura[field]))
+            except (TypeError, ValueError):
+                return 0.0
+    return 0.0
+
+
+def _valuta_fattura_bonifico(
+    bonifico: Dict[str, Any], fattura: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Valuta una fattura senza usare il solo importo come prova."""
+    importo_bonifico = abs(float(bonifico.get("importo") or 0))
+    importo_fattura = _importo_fattura(fattura)
+    importo_esatto = amounts_equal_to_cent(importo_bonifico, importo_fattura)
+
+    beneficiario = bonifico.get("beneficiario") or {}
+    beneficiario_nome = (
+        beneficiario.get("nome") if isinstance(beneficiario, dict) else str(beneficiario)
+    ) or ""
+    causale = str(bonifico.get("causale") or "")
+    fornitore = str(
+        fattura.get("supplier_name")
+        or fattura.get("fornitore_denominazione")
+        or fattura.get("fornitore")
+        or fattura.get("cedente_denominazione")
+        or ""
+    )
+    numero = str(fattura.get("invoice_number") or fattura.get("numero_fattura") or "")
+
+    identita = bool(
+        beneficiario_nome and fornitore and identita_coincide(beneficiario_nome, fornitore)
+    )
+    fornitore_in_causale = bool(
+        fornitore and nome_presente_nel_testo(fornitore, causale)
+    )
+    fattura_in_causale = invoice_reference_in_text(numero, causale)
+
+    evidenze: List[str] = []
+    score = 0
+    if importo_esatto:
+        score += 55
+        evidenze.append("importo_esatto")
+    if identita:
+        score += 40
+        evidenze.append("identita_fornitore")
+    if fornitore_in_causale:
+        score += 35
+        evidenze.append("fornitore_in_causale")
+    if fattura_in_causale:
+        score += 50
+        evidenze.append("numero_fattura_in_causale")
+
+    return {
+        "compatibile": importo_esatto and fattura_in_causale and bool(
+            identita or fornitore_in_causale
+        ),
+        "score": score,
+        "evidenze": evidenze,
+        "importo_fattura": importo_fattura,
+    }
+
+
 @router.get("/fatture-compatibili/{bonifico_id}")
 async def get_fatture_compatibili(bonifico_id: str) -> Dict[str, Any]:
-    """Trova fatture compatibili con un bonifico (per importo simile)."""
+    """Trova fatture compatibili usando importo e prova del fornitore."""
     db = Database.get_db()
 
     bonifico = await _trova_bonifico(db, bonifico_id)
     if not bonifico:
         raise HTTPException(404, "Bonifico non trovato")
 
+    destinazione = await classifica_bonifico_dipendente(db, bonifico)
+    if destinazione["destinazione_dipendente"]:
+        return {
+            "fatture_compatibili": [],
+            "non_associabile_fattura": True,
+            "motivo": destinazione["motivo_destinazione"],
+            "dipendente_nome": destinazione.get("dipendente_nome_rilevato"),
+        }
+
     importo = abs(bonifico.get("importo", 0))
 
-    # Cerca fatture con importo simile (±5%)
+    # Preselezione per importo esatto al centesimo. Il filtro semantico sotto
+    # richiede inoltre identità fornitore o riferimento esplicito in causale.
     query = {}
     if importo > 0:
-        tolerance = importo * 0.05
+        tolerance = 0.004
         query["$or"] = [
+            {"total_amount": {"$gte": importo - tolerance, "$lte": importo + tolerance}},
             {"totale": {"$gte": importo - tolerance, "$lte": importo + tolerance}},
             {"importo_totale": {"$gte": importo - tolerance, "$lte": importo + tolerance}},
         ]
 
     fatture_raw = await db[Collections.INVOICES].find(
-        query, {"_id": 0, "id": 1, "fornitore": 1, "totale": 1, "importo_totale": 1,
-                "invoice_number": 1, "invoice_date": 1, "fornitore_denominazione": 1}
+        query, {"_id": 0, "id": 1, "fornitore": 1, "supplier_name": 1,
+                "cedente_denominazione": 1, "totale": 1, "total_amount": 1,
+                "importo_totale": 1, "invoice_number": 1, "invoice_date": 1,
+                "fornitore_denominazione": 1}
     ).to_list(50)
 
     fatture = []
     for f in fatture_raw:
-        importo_f = f.get("totale")
-        if importo_f is None:
-            importo_f = f.get("importo_totale", 0)
+        valutazione = _valuta_fattura_bonifico(bonifico, f)
+        if not valutazione["compatibile"]:
+            continue
+        importo_f = valutazione["importo_fattura"]
         fatture.append({
             "id": f.get("id"),
             "numero_fattura": f.get("invoice_number"),
-            "fornitore": f.get("fornitore_denominazione") or f.get("fornitore"),
+            "fornitore": (f.get("supplier_name") or f.get("fornitore_denominazione")
+                           or f.get("fornitore") or f.get("cedente_denominazione")),
             "data_fattura": f.get("invoice_date"),
             "importo": importo_f,
             "collection": "invoices",
-            "compatibilita_score": _compatibilita_score(importo, importo_f or 0),
+            "compatibilita_score": valutazione["score"],
+            "evidenze": valutazione["evidenze"],
         })
     fatture.sort(key=lambda x: x["compatibilita_score"], reverse=True)
 
-    return {"fatture_compatibili": fatture}
+    return {"fatture_compatibili": fatture, "non_associabile_fattura": False}
 
 
 @router.get("/operazioni-salari/{bonifico_id}")

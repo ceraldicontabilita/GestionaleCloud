@@ -38,6 +38,7 @@ CATEGORIES = {
     "satispay": "Satispay",
     "contributi_inps": "INPS",
     "certificazione_unica": "Certificazioni Uniche",
+    "verbale": "Verbali",
     "altro": "Altri"
 }
 
@@ -98,6 +99,19 @@ FILE_FATTURA_SDI_RE = re.compile(
     r"^IT[A-Z0-9]{11,16}_[A-Z0-9]{4,5}\.xml(\.p7m)?$", re.IGNORECASE
 )
 
+
+def is_relevant_email_document(doc: Dict[str, Any]) -> bool:
+    """Accetta solo allegati con una classificazione amministrativa certa.
+
+    I nomi SDI sono l'unica eccezione: non contengono la parola ``fattura``
+    ma identificano in modo strutturato una FatturaPA. Un PDF/ZIP generico non
+    entra nel gestionale solo perche' proviene da un mittente autorizzato.
+    """
+    category = str((doc or {}).get("category") or "altro").strip().lower()
+    if category and category != "altro":
+        return True
+    return bool(FILE_FATTURA_SDI_RE.fullmatch(str((doc or {}).get("filename") or "").strip()))
+
 for cat_dir in CATEGORIES.values():
     (DOCUMENTS_DIR / cat_dir).mkdir(exist_ok=True)
 
@@ -141,6 +155,11 @@ def categorize_document(filename: str, subject: str = "", sender: str = "", sear
     filename_lower = filename.lower()
     subject_lower = subject.lower()
     sender_lower = sender.lower()
+    # I nomi reali degli allegati usano spesso underscore o trattini al
+    # posto degli spazi (es. ``ricevuta_f24.pdf``). Per le regole composte
+    # manteniamo anche una versione lessicale normalizzata.
+    filename_words = re.sub(r"[_\-.]+", " ", filename_lower)
+    subject_words = re.sub(r"[_\-.]+", " ", subject_lower)
     
     # Se ci sono parole chiave specifiche dalla ricerca, usa quelle per determinare la categoria
     if search_keywords:
@@ -167,14 +186,31 @@ def categorize_document(filename: str, subject: str = "", sender: str = "", sear
     if any(x in subject_lower or x in filename_lower for x in inps_patterns):
         return "contributi_inps"
 
-    # F24 - Pattern nell'oggetto o nel nome file
-    f24_patterns = ['f24', 'f-24', 'f_24', 'mod.f24', 'modello f24', 'tribut']
+    # Quietanze F24
+    if any(x in filename_words or x in subject_words for x in ['quietanza', 'ricevuta f24', 'pagamento f24']):
+        return "quietanza"
+
+    # F24: niente parola generica "tributi", che classificava documenti
+    # amministrativi non pertinenti come modelli di pagamento.
+    f24_patterns = ['f24', 'f-24', 'f_24', 'mod.f24', 'modello f24']
     if any(x in subject_lower or x in filename_lower for x in f24_patterns):
         return "f24"
 
-    # Quietanze F24
-    if any(x in filename_lower or x in subject_lower for x in ['quietanza', 'ricevuta f24', 'pagamento f24']):
-        return "quietanza"
+    if any(x in subject_lower or x in filename_lower for x in [
+        'avviso bonario', 'comunicazione di irregolar', 'controllo automatizzato',
+        'art. 36-bis', 'articolo 36-bis',
+    ]):
+        return "avviso_bonario"
+
+    if any(x in subject_lower or x in filename_lower for x in [
+        'dichiarazione iva', 'modello iva', 'iva annuale', 'lipe',
+    ]):
+        return "dichiarazione_iva"
+
+    if any(x in subject_lower or x in filename_lower for x in [
+        'verbale', 'contravvenzione', 'sanzione amministrativa', 'multa',
+    ]):
+        return "verbale"
 
     # Fatture
     fattura_patterns = ['fattura', 'invoice', 'fatt.', 'ft.']
@@ -738,6 +774,7 @@ class EmailDocumentDownloader:
             keyword_senders: Lista di tuple (email, [keywords]) per mittenti speciali
         """
         all_documents = []
+
         stats = {
             "emails_checked": 0,
             "documents_found": 0,
@@ -763,6 +800,10 @@ class EmailDocumentDownloader:
                 stats["by_category"][cat] = stats["by_category"].get(cat, 0) + 1
         
         stats["documents_found"] = len(all_documents)
+        stats["documents_ignored_not_relevant"] = sum(
+            1 for doc in all_documents if not is_relevant_email_document(doc)
+        )
+        all_documents = [doc for doc in all_documents if is_relevant_email_document(doc)]
         
         return all_documents, stats
 
@@ -890,12 +931,26 @@ async def download_documents_from_email(
                     seen_message_ids.add(msg_id)
                 except Exception as e:
                     logger.debug(f"Errore salvataggio dizionario: {e}")
+
+        # Gli allegati senza una classificazione amministrativa certa non
+        # entrano nel gestionale. Il Message-ID e' gia' nel dizionario: il
+        # messaggio non verra' riscaricato a ogni scansione. I nomi FatturaPA
+        # SDI restano ammessi e vengono tipizzati per la pipeline XML.
+        documenti_ignorati = sum(
+            1 for doc in all_docs_raw if not is_relevant_email_document(doc)
+        )
+        all_docs_raw = [doc for doc in all_docs_raw if is_relevant_email_document(doc)]
+        for doc in all_docs_raw:
+            if FILE_FATTURA_SDI_RE.fullmatch(str(doc.get("filename") or "").strip()):
+                doc["category"] = "fattura_xml"
+                doc["category_label"] = "Fattura elettronica XML"
         
         stats = {
             "emails_found": len(all_email_ids),
             "skipped_by_dict": skipped_by_dict,
             "new_emails": len(new_email_ids),
             "documents_found": len(all_docs_raw),
+            "documents_ignored_not_relevant": documenti_ignorati,
             "by_category": {}
         }
         for doc in all_docs_raw:
@@ -948,7 +1003,12 @@ async def download_documents_from_email(
                 duplicates += 1
                 continue
             
-            doc_to_insert = dict(doc)
+            from app.constants.tipi_documento import set_tassonomia_documento
+            doc_to_insert = set_tassonomia_documento(
+                dict(doc),
+                str(doc.get("category") or "").strip(),
+                label=doc.get("category_label"),
+            )
             await db["documents_inbox"].insert_one(doc_to_insert.copy())
             
             if doc.get("identificatore_periodo"):

@@ -9,13 +9,15 @@ import api from '../api';
 
 const TIPI_DOCUMENTO = [
   { value: 'fattura_estera_pdf', label: 'Fattura estera (PDF) — fornitori UE/extra-UE, niente SDI' },
-  { value: 'cedolino', label: 'Cedolino / busta paga' },
   { value: 'pagopa', label: 'PagoPA' },
   { value: 'inps', label: 'INPS' },
   { value: 'inail', label: 'INAIL' },
   { value: 'paypal', label: 'PayPal' },
   { value: 'cartella_esattoriale', label: 'Cartella esattoriale' },
-  { value: 'generico', label: 'Generico (solo archivio)' },
+  { value: 'avviso_bonario', label: 'Avviso bonario' },
+  { value: 'verbale', label: 'Verbale / sanzione' },
+  { value: 'busta_paga', label: 'Cedolino / busta paga' },
+  { value: 'f24', label: 'Modello F24' },
 ];
 
 const labelTipo = v => (TIPI_DOCUMENTO.find(t => t.value === v) || {}).label || v;
@@ -94,6 +96,16 @@ export default function MittentiEmail() {
         title="Mittenti Email"
         subtitle="Indirizzi da cui il sistema scarica ed elabora documenti automaticamente, ogni ora"
       />
+
+      <div style={{
+        background: COLORS.infoLight, border: `1px solid ${COLORS.info}`,
+        borderRadius: BORDER_RADIUS.md, padding: '10px 14px', fontSize: 13,
+        color: COLORS.text, marginBottom: 12,
+      }}>
+        Il tipo scelto qui e un <strong>fallback</strong>: F24, cedolini, verbali,
+        avvisi e cartelle riconosciuti dall'allegato mantengono sempre la propria
+        categoria. I file non riconosciuti non vengono inseriti come generici.
+      </div>
 
       <div style={{
         background: COLORS.infoLight, border: `1px solid ${COLORS.info}`, borderRadius: BORDER_RADIUS.md,

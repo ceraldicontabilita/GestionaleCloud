@@ -12,8 +12,9 @@ import base64
 import zipfile
 import re as _re_zip
 
-from app.database import Database
+from app.database import Database, Collections
 from .common import UPLOAD_DIR
+from .classification import classifica_destinazione_dipendente
 
 
 async def list_transfers(
@@ -52,6 +53,11 @@ async def list_transfers(
         query['$and'] = ands
     
     transfers = await db.bonifici_transfers.find(query, {'_id': 0}).sort('data', -1).to_list(limit)
+    dipendenti = await db[Collections.EMPLOYEES].find(
+        {}, {'_id': 0, 'id': 1, 'nome': 1, 'cognome': 1, 'nome_completo': 1, 'iban': 1}
+    ).to_list(5000)
+    for transfer in transfers:
+        transfer.update(classifica_destinazione_dipendente(transfer, dipendenti))
     return transfers
 
 

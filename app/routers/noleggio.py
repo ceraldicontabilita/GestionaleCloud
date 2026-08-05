@@ -72,11 +72,25 @@ async def _get_verbali_completi_per_targa(
             "data_verbale": str(v.get("data_verbale") or v.get("created_at") or "")[:10],
             "importo": float(v.get("importo") or 0),
             "stato": v.get("stato"),
-            "pagato": v.get("stato") == "pagato",
-            "fattura_id": v.get("fattura_id"),
-            "fattura_numero": v.get("fattura_numero"),
-            "ha_ricevuta": bool(v.get("pdf_ricevuta_path") or v.get("quietanza_ricevuta")),
-            "metodo_pagamento": v.get("psp") or v.get("metodo"),
+            "pagato": bool(
+                v.get("stato") in ("pagato", "riconciliato", "chiuso")
+                or v.get("pagamento_id") or v.get("paypal_transaction_id")
+                or v.get("ricevuta_pagopa_id") or v.get("movimento_banca_id")
+            ),
+            "fattura_id": v.get("fattura_id") or v.get("fattura_associata_id"),
+            "fattura_numero": (
+                v.get("fattura_numero") or v.get("fattura_associata_numero")
+                or v.get("numero_fattura")
+            ),
+            "ha_ricevuta": bool(
+                v.get("pdf_ricevuta_path") or v.get("quietanza_ricevuta")
+                or v.get("ricevuta_pagopa_id")
+            ),
+            "metodo_pagamento": v.get("psp") or v.get("metodo_pagamento") or v.get("metodo"),
+            "pagamento_id": (
+                v.get("pagamento_id") or v.get("paypal_transaction_id")
+                or v.get("ricevuta_pagopa_id") or v.get("movimento_banca_id")
+            ),
             "fonte": "posta",
         }
 
@@ -333,9 +347,23 @@ async def get_veicoli(
         if not targa:
             continue
         verbali_completi = await _get_verbali_completi_per_targa(db, targa, anno)
-        existing_nums = {v.get("numero_verbale") for v in veicolo_target.get("verbali", [])}
+        existing_by_numero = {
+            v.get("numero_verbale"): v
+            for v in veicolo_target.get("verbali", []) if v.get("numero_verbale")
+        }
         for verbale in verbali_completi:
-            if verbale["numero_verbale"] in existing_nums:
+            if verbale["numero_verbale"] in existing_by_numero:
+                riga = existing_by_numero[verbale["numero_verbale"]]
+                riga.update({
+                    "stato": verbale["stato"],
+                    "pagato": verbale["pagato"],
+                    "ha_ricevuta": verbale["ha_ricevuta"],
+                    "fonte": verbale["fonte"],
+                    "fattura_id": verbale["fattura_id"] or riga.get("fattura_id"),
+                    "fattura_numero": verbale["fattura_numero"] or riga.get("numero_fattura"),
+                    "pagamento_id": verbale.get("pagamento_id"),
+                    "metodo_pagamento": verbale.get("metodo_pagamento"),
+                })
                 continue
             importo = verbale["importo"]
             veicolo_target.setdefault("verbali", []).append({
@@ -351,6 +379,8 @@ async def get_veicoli(
                 "fonte": verbale["fonte"],
                 "fattura_id": verbale["fattura_id"],
                 "fattura_numero": verbale["fattura_numero"],
+                "pagamento_id": verbale.get("pagamento_id"),
+                "metodo_pagamento": verbale.get("metodo_pagamento"),
             })
             veicolo_target["totale_verbali"] = veicolo_target.get("totale_verbali", 0) + importo
             veicolo_target["totale_generale"] = veicolo_target.get("totale_generale", 0) + importo

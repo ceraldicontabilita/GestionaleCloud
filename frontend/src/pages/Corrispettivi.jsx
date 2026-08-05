@@ -119,7 +119,7 @@ export default function Corrispettivi() {
       actions={
         <div style={{ display: 'flex', gap: 10 }}>
           <Link
-            to="/import-documenti"
+            to="/documenti/import"
             style={{
               padding: '10px 16px',
               background: COLORS.success,
@@ -323,7 +323,7 @@ export default function Corrispettivi() {
               <div style={{ padding: 40 }}>
                 <PageEmpty icon="🧾" message="Nessun corrispettivo registrato per questo anno" />
                 <div style={{ textAlign: 'center', marginTop: 16 }}>
-                  <Link to="/import-documenti" style={{ color: COLORS.info, fontSize: 14 }}>
+                  <Link to="/documenti/import" style={{ color: COLORS.info, fontSize: 14 }}>
                     Vai a Import Documenti per caricare i corrispettivi
                   </Link>
                 </div>

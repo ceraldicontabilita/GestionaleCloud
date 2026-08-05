@@ -51,7 +51,7 @@ from .manutenzione import (
     unifica_categorie, ripristina_provvisori_metodo_errato, collega_corrispettivi_prima_nota,
     arricchisci_pagamenti_banca,
     dedup_fatture_prima_nota, diagnostica_corrispettivi_vs_cassa,
-    lista_movimenti_ec_non_in_prima_nota, importa_movimento_ec_in_prima_nota,
+    lista_movimenti_ec_non_in_prima_nota,
     diagnostica_metodi_discordanti,
     annulla_associazione_fattura_banca,
 )
@@ -122,7 +122,6 @@ router.add_api_route("/dedup-fatture", dedup_fatture_prima_nota, methods=["POST"
 router.add_api_route("/diagnostica-corrispettivi", diagnostica_corrispettivi_vs_cassa, methods=["GET"])
 router.add_api_route("/diagnostica-metodi", diagnostica_metodi_discordanti, methods=["GET"])
 router.add_api_route("/movimenti-ec-non-in-prima-nota", lista_movimenti_ec_non_in_prima_nota, methods=["GET"])
-router.add_api_route("/importa-da-ec", importa_movimento_ec_in_prima_nota, methods=["POST"])
 router.add_api_route(
     "/annulla-associazione-fattura-banca",
     annulla_associazione_fattura_banca,

@@ -50,7 +50,10 @@ async def collega_verbali_a_fatture(db: AsyncIOMotorDatabase) -> Dict[str, int]:
             await db["verbali_noleggio"].update_one(
                 {"_id": v["_id"]},
                 {"$set": {
+                    "fattura_id": m["fattura_id"],
                     "fattura_associata_id": m["fattura_id"],
+                    "fattura_numero": m["numero_fattura"],
+                    "numero_fattura": m["numero_fattura"],
                     "fattura_associata_numero": m["numero_fattura"],
                     "fattura_associata_data": m["data_fattura"],
                     "fattura_associata_fornitore": m["fornitore"],
@@ -59,7 +62,7 @@ async def collega_verbali_a_fatture(db: AsyncIOMotorDatabase) -> Dict[str, int]:
                 }}
             )
             await db["invoices"].update_one(
-                {"$or": [{"id": m["fattura_id"]}, {"_id": m["fattura_id"]}]},
+                {"id": m["fattura_id"]},
                 {"$addToSet": {"verbali_collegati": v.get("numero_verbale")}}
             )
             stats["collegati"] += 1

@@ -15,9 +15,6 @@ export default function Scadenze() {
   const navigate = useNavigate();
   const confirm = useConfirm();
   const [scadenze, setScadenze] = useState([]);
-  const [scadenzeIva, setScadenzeIva] = useState(null);
-  const [scadenzeIvaMensili, setScadenzeIvaMensili] = useState(null);
-  const [vistaIva, setVistaIva] = useState('trimestrale'); // 'trimestrale' o 'mensile'
   const [alertWidget, setAlertWidget] = useState(null);
   const [loading, setLoading] = useState(true);
   const [filtroTipo, setFiltroTipo] = useState('');
@@ -51,17 +48,13 @@ export default function Scadenze() {
       params.append('include_passate', includePassate);
       params.append('limit', '50');
 
-      const [scadenzeRes, ivaRes, ivaMensileRes, alertRes, docRiconcRes] = await Promise.all([
+      const [scadenzeRes, alertRes, docRiconcRes] = await Promise.all([
         api.get(`/api/scadenze/tutte?${params}`),
-        api.get(`/api/scadenze/iva/${anno}`),
-        api.get(`/api/scadenze/iva-mensile/${anno}`),
         api.get('/api/scadenze/dashboard-widget').catch(() => ({ data: null })),
         api.get('/api/email-scanner/statistiche').catch(() => ({ data: null })),
       ]);
 
       setScadenze(scadenzeRes.data.scadenze || []);
-      setScadenzeIva(ivaRes.data);
-      setScadenzeIvaMensili(ivaMensileRes.data);
       setAlertWidget(alertRes.data);
       setDocumentiRiconciliare(docRiconcRes.data);
     } catch (error) {
@@ -410,236 +403,6 @@ export default function Scadenze() {
               </div>
             </div>
           )}
-
-        {/* Riepilogo IVA - Trimestrale e Mensile */}
-        {(scadenzeIva || scadenzeIvaMensili) && (
-          <div
-            style={{
-              background: COLORS.info,
-              borderRadius: BORDER_RADIUS.xl,
-              padding: 20,
-              marginBottom: 20,
-              color: 'white',
-            }}
-          >
-            {/* Header con bottoni toggle */}
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 15,
-              }}
-            >
-              <h3 style={{ margin: 0 }}>🧾 Scadenze IVA {anno}</h3>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <Button
-                  variant={vistaIva === 'trimestrale' ? 'warning' : 'secondary'}
-                  onClick={() => setVistaIva('trimestrale')}
-                  style={
-                    vistaIva === 'trimestrale'
-                      ? {}
-                      : { background: 'rgba(255,255,255,0.2)', color: '#fff', borderColor: 'rgba(255,255,255,0.3)' }
-                  }
-                  data-testid="btn-vista-trimestrale"
-                >
-                  📊 Trimestrale
-                </Button>
-                <Button
-                  variant={vistaIva === 'mensile' ? 'success' : 'secondary'}
-                  onClick={() => setVistaIva('mensile')}
-                  style={
-                    vistaIva === 'mensile'
-                      ? {}
-                      : { background: 'rgba(255,255,255,0.2)', color: '#fff', borderColor: 'rgba(255,255,255,0.3)' }
-                  }
-                  data-testid="btn-vista-mensile"
-                >
-                  📅 Mensile
-                </Button>
-              </div>
-            </div>
-
-            {/* Vista Trimestrale */}
-            {vistaIva === 'trimestrale' && scadenzeIva && (
-              <>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                    gap: 15,
-                  }}
-                >
-                  {scadenzeIva.scadenze?.map((s, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        background: 'rgba(255,255,255,0.1)',
-                        padding: 15,
-                        borderRadius: BORDER_RADIUS.md,
-                        borderLeft: `4px solid ${s.da_versare ? COLORS.warning : COLORS.success}`,
-                      }}
-                    >
-                      <div style={{ fontWeight: 'bold', marginBottom: 8 }}>
-                        {s.periodo}
-                        {s.fonte === 'stima' && (
-                          <span
-                            title="Nessuna liquidazione confermata per questo periodo in Gestione IVA: importo calcolato in tempo reale, non ancora definitivo."
-                            style={{
-                              marginLeft: 8,
-                              fontSize: 10,
-                              fontWeight: 'normal',
-                              padding: '2px 6px',
-                              borderRadius: BORDER_RADIUS.sm,
-                              background: 'rgba(255,255,255,0.2)',
-                              opacity: 0.9,
-                            }}
-                          >
-                            stima
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 13, opacity: 0.9 }}>
-                        <div>Debito: {formatEuro(s.iva_debito)}</div>
-                        <div>Credito: {formatEuro(s.iva_credito)}</div>
-                      </div>
-                      <div
-                        style={{
-                          marginTop: 10,
-                          padding: '6px 10px',
-                          background: s.da_versare ? COLORS.warningLight : COLORS.successLight,
-                          borderRadius: BORDER_RADIUS.sm,
-                          color: s.da_versare ? COLORS.warning : COLORS.success,
-                          fontWeight: 'bold',
-                          fontSize: 14,
-                          textAlign: 'center',
-                        }}
-                      >
-                        {s.da_versare
-                          ? `Versare ${formatEuro(s.importo_versamento)}`
-                          : `A credito ${formatEuro(s.a_credito || Math.abs(s.saldo || 0))}`}
-                      </div>
-                      <div style={{ fontSize: 11, marginTop: 8, opacity: 0.8 }}>
-                        Scadenza: {formatDate(s.data_scadenza)}
-                        {s.giorni_mancanti !== null && s.giorni_mancanti >= 0 && (
-                          <span style={{ marginLeft: 8 }}>
-                            ({s.giorni_mancanti === 0 ? 'OGGI' : `tra ${s.giorni_mancanti}g`})
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {scadenzeIva.totale_da_versare > 0 && (
-                  <div style={{ marginTop: 15, textAlign: 'right', fontSize: 18 }}>
-                    Totale da versare: <strong>{formatEuro(scadenzeIva.totale_da_versare)}</strong>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Vista Mensile */}
-            {vistaIva === 'mensile' && scadenzeIvaMensili && (
-              <>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                    gap: 10,
-                  }}
-                >
-                  {scadenzeIvaMensili.scadenze?.map((s, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        background: 'rgba(255,255,255,0.1)',
-                        padding: 12,
-                        borderRadius: BORDER_RADIUS.md,
-                        borderLeft: `3px solid ${s.da_versare ? COLORS.warning : COLORS.success}`,
-                      }}
-                    >
-                      <div style={{ fontWeight: 'bold', marginBottom: 6, fontSize: 13 }}>
-                        {s.mese_nome}
-                        {s.fonte === 'stima' && (
-                          <span
-                            title="Nessuna liquidazione confermata per questo mese in Gestione IVA: importo calcolato in tempo reale, non ancora definitivo."
-                            style={{
-                              marginLeft: 6,
-                              fontSize: 9,
-                              fontWeight: 'normal',
-                              padding: '1px 5px',
-                              borderRadius: BORDER_RADIUS.sm,
-                              background: 'rgba(255,255,255,0.2)',
-                              opacity: 0.9,
-                            }}
-                          >
-                            stima
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 11, opacity: 0.9 }}>
-                        <div>D: {formatEuro(s.iva_debito)}</div>
-                        <div>C: {formatEuro(s.iva_credito)}</div>
-                      </div>
-                      <div
-                        style={{
-                          marginTop: 8,
-                          padding: '4px 8px',
-                          background: s.da_versare ? COLORS.warningLight : COLORS.successLight,
-                          borderRadius: BORDER_RADIUS.sm,
-                          color: s.da_versare ? COLORS.warning : COLORS.success,
-                          fontWeight: 'bold',
-                          fontSize: 12,
-                          textAlign: 'center',
-                        }}
-                      >
-                        {s.da_versare
-                          ? formatEuro(s.importo_versamento)
-                          : `- ${formatEuro(s.a_credito || Math.abs(s.saldo || 0))}`}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div
-                  style={{
-                    marginTop: 15,
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    fontSize: 14,
-                  }}
-                >
-                  <div>
-                    Totale a credito:{' '}
-                    <strong style={{ color: COLORS.successLight }}>
-                      {formatEuro(scadenzeIvaMensili.totale_a_credito)}
-                    </strong>
-                  </div>
-                  <div>
-                    Totale da versare:{' '}
-                    <strong style={{ color: COLORS.warningLight }}>
-                      {formatEuro(scadenzeIvaMensili.totale_da_versare)}
-                    </strong>
-                  </div>
-                  <div>
-                    Saldo annuale:{' '}
-                    <strong
-                      style={{
-                        color:
-                          scadenzeIvaMensili.saldo_annuale > 0
-                            ? COLORS.warningLight
-                            : COLORS.successLight,
-                      }}
-                    >
-                      {scadenzeIvaMensili.saldo_annuale > 0
-                        ? `Da versare ${formatEuro(scadenzeIvaMensili.saldo_annuale)}`
-                        : `A credito ${formatEuro(Math.abs(scadenzeIvaMensili.saldo_annuale))}`}
-                    </strong>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        )}
 
         {/* Filtri */}
         <div

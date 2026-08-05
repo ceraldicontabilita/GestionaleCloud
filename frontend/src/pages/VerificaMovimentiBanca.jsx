@@ -1,27 +1,23 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
-import { toast } from 'sonner';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { RefreshCw, Download, AlertTriangle, CheckCircle, Loader2, Info } from 'lucide-react';
+import { RefreshCw, AlertTriangle, CheckCircle, Loader2, Info } from 'lucide-react';
 
 /**
  * Pagina: movimenti bancari (da estratto conto) che NON sono in Prima Nota Banca.
  *
  * Sostituisce i vecchi box "Prima Nota vs Estratto Conto" e "Bonifici vs Banca"
  * che mostravano solo numeri aggregati incomprensibili. Qui l'utente vede
- * la LISTA esatta dei movimenti mancanti e può decidere cosa importare.
+ * la lista esatta e una proposta; questa pagina non scrive in Prima Nota.
  *
  * Endpoint usati (PR: fix/strumenti-pulizia-e-importa-ec):
  *   GET  /api/prima-nota/movimenti-ec-non-in-prima-nota?anno=N&tipo=entrata|uscita
- *   POST /api/prima-nota/importa-da-ec  { ec_id, categoria?, descrizione? }
  */
 export default function VerificaMovimentiBanca() {
   const { anno } = useAnnoGlobale();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
   const [filtroTipo, setFiltroTipo] = useState('all'); // all | entrata | uscita
-  const [importing, setImporting] = useState({}); // {ec_id: true/false}
-  const [imported, setImported] = useState({}); // {ec_id: 'ok' | 'err'}
   const [error, setError] = useState(null);
 
   const caricaDati = useCallback(async () => {
@@ -40,31 +36,6 @@ export default function VerificaMovimentiBanca() {
   }, [anno, filtroTipo]);
 
   useEffect(() => { caricaDati(); }, [caricaDati]);
-
-  const importaSingolo = async (ec_id) => {
-    setImporting(s => ({ ...s, [ec_id]: true }));
-    try {
-      const r = await api.post('/api/prima-nota/importa-da-ec', { ec_id });
-      if (r.data?.success) {
-        setImported(s => ({ ...s, [ec_id]: 'ok' }));
-        // Tolgo dalla lista dopo 1.5s per dare feedback visivo
-        setTimeout(() => {
-          setData(d => d ? {
-            ...d,
-            movimenti: (d.movimenti || []).filter(m => m.id !== ec_id),
-            totale_mancanti: Math.max(0, (d.totale_mancanti || 1) - 1),
-          } : d);
-        }, 1500);
-      } else {
-        setImported(s => ({ ...s, [ec_id]: 'err' }));
-      }
-    } catch (e) {
-      setImported(s => ({ ...s, [ec_id]: 'err' }));
-      toast.error('Errore import: ' + (e?.response?.data?.detail || e?.message));
-    } finally {
-      setImporting(s => ({ ...s, [ec_id]: false }));
-    }
-  };
 
   const fmtEuro = (n) => new Intl.NumberFormat('it-IT', {
     style: 'currency', currency: 'EUR',
@@ -85,11 +56,12 @@ export default function VerificaMovimentiBanca() {
       }}>
         <Info size={18} color="#0284c7" style={{ flexShrink: 0, marginTop: 2 }} />
         <div style={{ fontSize: 13, color: '#0c4a6e', lineHeight: 1.5 }}>
-          Qui vedi i movimenti presenti nell'<strong>Estratto Conto bancario</strong> che
-          NON risultano ancora registrati in <strong>Prima Nota Banca</strong>.
+          Vista di controllo in <strong>sola lettura</strong>: qui vedi i movimenti
+          dell'<strong>Estratto Conto bancario</strong> che non risultano collegati alla
+          <strong> Prima Nota Banca</strong>.
           <br />
-          Se un movimento è legittimo, clicca <strong>Importa in Prima Nota</strong> per aggiungerlo.
-          Se invece è già in Prima Nota ma non è stato riconciliato, lo vedi segnalato con un'icona gialla.
+          Il gestionale propone il controllo da fare ma non inserisce nuove righe: così una voce
+          già presente ma non riconciliata non viene duplicata.
         </div>
       </div>
 
@@ -190,19 +162,12 @@ export default function VerificaMovimentiBanca() {
                 <th style={thStyle}>Tipo</th>
                 <th style={thStyle}>Descrizione</th>
                 <th style={{ ...thStyle, textAlign: 'right' }}>Importo</th>
-                <th style={{ ...thStyle, textAlign: 'center' }}>Azione</th>
+                <th style={{ ...thStyle, textAlign: 'center' }}>Proposta</th>
               </tr>
             </thead>
             <tbody>
-              {movimenti.map(m => {
-                const status = imported[m.id];
-                const isBusy = importing[m.id];
-                return (
-                  <tr key={m.id} style={{
-                    borderBottom: '1px solid #f1f5f9',
-                    background: status === 'ok' ? '#f0fdf4' : 'transparent',
-                    transition: 'background 200ms',
-                  }}>
+              {movimenti.map(m => (
+                  <tr key={m.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={tdStyle}>{fmtData(m.data)}</td>
                     <td style={tdStyle}>
                       <span style={{
@@ -236,34 +201,19 @@ export default function VerificaMovimentiBanca() {
                       {fmtEuro(m.importo)}
                     </td>
                     <td style={{ ...tdStyle, textAlign: 'center' }}>
-                      {status === 'ok' ? (
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                          color: '#16a34a', fontSize: 12, fontWeight: 600,
-                        }}>
-                          <CheckCircle size={14} /> Importato
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => importaSingolo(m.id)}
-                          disabled={isBusy}
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 5,
-                            padding: '5px 10px', fontSize: 12, fontWeight: 500,
-                            background: '#b8860b', color: '#fff',
-                            border: 'none', borderRadius: 5,
-                            cursor: isBusy ? 'not-allowed' : 'pointer',
-                            opacity: isBusy ? 0.6 : 1,
-                          }}
-                        >
-                          {isBusy ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-                          {isBusy ? 'Importo…' : 'Importa in Prima Nota'}
-                        </button>
-                      )}
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                        color: m.possibile_match_esistente ? '#92400e' : '#1e40af',
+                        background: m.possibile_match_esistente ? '#fef3c7' : '#dbeafe',
+                        borderRadius: 6, padding: '4px 8px', fontSize: 11, fontWeight: 700,
+                      }}>
+                        {m.possibile_match_esistente
+                          ? 'Collegare alla riga esistente'
+                          : `Verificare ${m.categoria || 'categoria e origine'}`}
+                      </span>
                     </td>
                   </tr>
-                );
-              })}
+                ))}
             </tbody>
           </table>
         </div>

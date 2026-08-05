@@ -172,7 +172,7 @@ export default function App() {
                 <strong>{alertCommercialista.message}</strong>
               </div>
               <NavLink
-                to={`/commercialista?mese=${alertCommercialista?.mese_pendente || ''}&anno=${alertCommercialista?.anno_pendente || ''}`}
+                to={`/strumenti/commercialista?mese=${alertCommercialista?.mese_pendente || ''}&anno=${alertCommercialista?.anno_pendente || ''}`}
                 style={{
                   padding: '8px 16px',
                   background: 'white',

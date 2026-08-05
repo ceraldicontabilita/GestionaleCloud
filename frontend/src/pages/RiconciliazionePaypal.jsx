@@ -1,6 +1,6 @@
 /**
  * RiconciliazionePaypal.jsx
- * Gestione completa estratti conto PayPal: import PDF, transazioni, report, riconciliazione banca.
+ * Gestione documenti e transazioni PayPal con riconciliazione dei movimenti bancari.
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -94,6 +94,8 @@ export default function RiconciliazionePaypal() {
   const [transactions, setTransactions] = useState([]);
   const [report, setReport] = useState(null);
   const [statements, setStatements] = useState([]);
+  const [bankMovements, setBankMovements] = useState([]);
+  const [bankSummary, setBankSummary] = useState(null);
   // Deep link ?tab=mapping (usato dal bottone "Mappa fornitore" del modale
   // dettaglio transazione, PaypalTransactionDetailModal.jsx) — prima veniva
   // ignorato e la pagina apriva sempre su "dashboard".
@@ -122,6 +124,10 @@ export default function RiconciliazionePaypal() {
   const [syncMesi, setSyncMesi] = useState(3);
   const [syncing, setSyncing] = useState(false);
   const [apiStatus, setApiStatus] = useState(null);
+  const [searchBank, setSearchBank] = useState('');
+  const [bankStatus, setBankStatus] = useState('tutti');
+  const [bankDirection, setBankDirection] = useState('tutte');
+  const [reconcilingBank, setReconcilingBank] = useState(false);
 
   const loadApiStatus = useCallback(async () => {
     try {
@@ -179,12 +185,29 @@ export default function RiconciliazionePaypal() {
     }
   }, []);
 
+  const loadBankMovements = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (annoFiltro) params.append('anno', annoFiltro);
+      params.append('limit', '5000');
+      const res = await api.get(`/api/paypal-statements/bank-movements?${params}`);
+      setBankMovements(res.data.movimenti || []);
+      setBankSummary(res.data || null);
+    } catch (e) {
+      console.error(e);
+      setLoadError(true);
+    }
+  }, [annoFiltro]);
+
   const loadAll = useCallback(async () => {
     setLoading(true);
     setLoadError(false);
-    await Promise.all([loadDashboard(), loadTransactions(), loadReport(), loadStatements(), loadApiStatus()]);
+    await Promise.all([
+      loadDashboard(), loadTransactions(), loadReport(), loadStatements(),
+      loadBankMovements(), loadApiStatus(),
+    ]);
     setLoading(false);
-  }, [loadDashboard, loadTransactions, loadReport, loadStatements, loadApiStatus]);
+  }, [loadDashboard, loadTransactions, loadReport, loadStatements, loadBankMovements, loadApiStatus]);
 
   const handleImportCsv = async e => {
     const file = e.target.files?.[0];
@@ -297,8 +320,14 @@ export default function RiconciliazionePaypal() {
   const handleCercaFatturaEmail = async paypalAccountId => {
     setCercandoEmail(paypalAccountId);
     try {
-      const res = await api.post(`/api/paypal-api/account/${paypalAccountId}/cerca-fattura-email`);
+      const res = await api.post(
+        `/api/paypal-api/account/${encodeURIComponent(paypalAccountId)}/cerca-fattura-email`
+      );
       const r = res.data || {};
+      if (r.ok === false) {
+        toast.error(`${r.errore || 'Ricerca email non disponibile'}. ${r.azione || ''}`.trim());
+        return;
+      }
       const trovati = r.stats?.new_documents ?? 0;
       if (trovati > 0) {
         toast.success(
@@ -333,6 +362,18 @@ export default function RiconciliazionePaypal() {
     );
   });
 
+  const filteredBankMovements = bankMovements.filter(mov => {
+    if (bankStatus === 'riconciliati' && !mov.riconciliato_paypal) return false;
+    if (bankStatus === 'da_associare' && mov.riconciliato_paypal) return false;
+    if (bankDirection === 'uscite' && mov.importo >= 0) return false;
+    if (bankDirection === 'entrate' && mov.importo <= 0) return false;
+    if (!searchBank) return true;
+    const needle = searchBank.toLowerCase();
+    return `${mov.descrizione || ''} ${mov.paypal_transaction_id || ''} ${mov.id || ''}`
+      .toLowerCase()
+      .includes(needle);
+  });
+
   if (loading) {
     return (
       <div
@@ -361,7 +402,13 @@ export default function RiconciliazionePaypal() {
     { id: 'report', label: 'Report Spese', icon: <TrendingDown size={16} /> },
     {
       id: 'estratti',
-      label: 'Estratti Conto',
+      label: 'Movimenti Banca',
+      icon: <Link2 size={16} />,
+      count: dashboard?.movimenti_banca_paypal,
+    },
+    {
+      id: 'documenti',
+      label: 'Documenti PayPal',
       icon: <FileText size={16} />,
       count: statements.length,
     },
@@ -447,7 +494,7 @@ export default function RiconciliazionePaypal() {
               <CreditCard size={24} /> Gestione PayPal
             </h1>
             <p style={{ margin: '4px 0 0', fontSize: 13, opacity: 0.85 }}>
-              {dashboard?.total_statements || 0} estratti conto ·{' '}
+              {dashboard?.total_statements || 0} documenti PayPal ·{' '}
               {dashboard?.total_transactions || 0} transazioni ·{' '}
               {formatEuro(Math.abs(dashboard?.totale_speso || 0))} spesi
             </p>
@@ -587,7 +634,7 @@ export default function RiconciliazionePaypal() {
         >
           <StatCard
             icon={<FileText size={16} />}
-            label="Estratti Conto"
+            label="Documenti PayPal"
             value={dashboard?.total_statements || 0}
             accent="primary"
           />
@@ -1041,9 +1088,159 @@ export default function RiconciliazionePaypal() {
           </div>
         )}
 
-        {/* Estratti Conto Tab */}
+        {/* Movimenti bancari PayPal */}
         {activeTab === 'estratti' && (
-          <Card title={`Estratti Conto Importati (${statements.length})`} bodyStyle={{ padding: 0 }}>
+          <Card
+            title={`Movimenti bancari PayPal (${filteredBankMovements.length})`}
+            bodyStyle={{ padding: 0 }}
+          >
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: isMobile ? '1fr' : 'minmax(240px, 1fr) 180px 160px auto',
+                gap: 8,
+                padding: 12,
+                borderBottom: `1px solid ${COLORS.border}`,
+              }}
+            >
+              <Input
+                value={searchBank}
+                onChange={e => setSearchBank(e.target.value)}
+                placeholder="Cerca causale, ID PayPal o movimento…"
+                iconLeft={<Search size={15} />}
+                aria-label="Cerca nei movimenti bancari PayPal"
+              />
+              <Select
+                value={bankStatus}
+                onChange={e => setBankStatus(e.target.value)}
+                aria-label="Filtra per stato riconciliazione"
+              >
+                <option value="tutti">Tutti gli stati</option>
+                <option value="da_associare">Da associare</option>
+                <option value="riconciliati">Riconciliati</option>
+              </Select>
+              <Select
+                value={bankDirection}
+                onChange={e => setBankDirection(e.target.value)}
+                aria-label="Filtra per direzione del movimento"
+              >
+                <option value="tutte">Entrate e uscite</option>
+                <option value="entrate">Solo entrate</option>
+                <option value="uscite">Solo uscite</option>
+              </Select>
+              <Button
+                disabled={reconcilingBank}
+                iconLeft={
+                  <RefreshCw
+                    size={14}
+                    style={reconcilingBank ? { animation: 'spin 1s linear infinite' } : undefined}
+                  />
+                }
+                onClick={async () => {
+                  setReconcilingBank(true);
+                  try {
+                    const res = await api.post(
+                      `/api/paypal-statements/riconcilia-banca?anno=${annoFiltro}`
+                    );
+                    const r = res.data || {};
+                    toast.success(
+                      `${r.riconciliati || 0} movimenti riconciliati; ` +
+                        `${r.ambigui || 0} lasciati da verificare`
+                    );
+                    await Promise.all([loadBankMovements(), loadTransactions(), loadDashboard()]);
+                  } catch (err) {
+                    toast.error(
+                      'Riconciliazione non completata: ' +
+                        (err.response?.data?.detail || err.message)
+                    );
+                  } finally {
+                    setReconcilingBank(false);
+                  }
+                }}
+              >
+                {reconcilingBank ? 'Riconciliazione…' : 'Riconcilia con PayPal'}
+              </Button>
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                gap: 14,
+                flexWrap: 'wrap',
+                padding: '9px 12px',
+                color: COLORS.textMuted,
+                fontSize: 12,
+                borderBottom: `1px solid ${COLORS.border}`,
+              }}
+            >
+              <span>Totale banca: <b>{bankSummary?.totale_banca_paypal || 0}</b></span>
+              <span>Riconciliati: <b>{bankSummary?.riconciliati || 0}</b></span>
+              <span>Da associare: <b>{bankSummary?.da_associare || 0}</b></span>
+              <span>Importo e data da soli non confermano casi ambigui.</span>
+            </div>
+            <TableWrap style={{ border: 'none', borderRadius: 0 }}>
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Data</Th>
+                    <Th>Causale banca</Th>
+                    <Th>Direzione</Th>
+                    <Th align="right">Importo</Th>
+                    <Th>Stato</Th>
+                    <Th>Transazione PayPal</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredBankMovements.map(mov => (
+                    <tr key={mov.id}>
+                      <Td style={{ whiteSpace: 'nowrap' }}>{formatDate(mov.data)}</Td>
+                      <Td style={{ minWidth: 260 }}>{mov.descrizione || '—'}</Td>
+                      <Td>
+                        <Badge variant={mov.importo < 0 ? 'danger' : 'success'}>
+                          {mov.importo < 0 ? 'Uscita' : 'Entrata'}
+                        </Badge>
+                      </Td>
+                      <Td
+                        align="right"
+                        mono
+                        style={{ color: mov.importo < 0 ? COLORS.danger : COLORS.success }}
+                      >
+                        {formatEuro(mov.importo)}
+                      </Td>
+                      <Td>
+                        <Badge variant={mov.riconciliato_paypal ? 'success' : 'warning'}>
+                          {mov.riconciliato_paypal ? 'Riconciliato' : 'Da associare'}
+                        </Badge>
+                      </Td>
+                      <Td>
+                        {mov.paypal_transaction_id ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setSearchTx(mov.paypal_transaction_id);
+                              setActiveTab('transazioni');
+                            }}
+                          >
+                            {mov.paypal_transaction_id}
+                          </Button>
+                        ) : '—'}
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </TableWrap>
+            {filteredBankMovements.length === 0 && (
+              <div style={{ padding: 40, textAlign: 'center', color: COLORS.textSubtle }}>
+                Nessun movimento bancario PayPal con i filtri selezionati.
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* Documenti PayPal importati */}
+        {activeTab === 'documenti' && (
+          <Card title={`Documenti PayPal importati (${statements.length})`} bodyStyle={{ padding: 0 }}>
             <TableWrap style={{ border: 'none', borderRadius: 0 }}>
               <Table>
                 <thead>
@@ -1051,9 +1248,9 @@ export default function RiconciliazionePaypal() {
                     <Th>Tipo</Th>
                     <Th>Periodo</Th>
                     <Th align="center">Transazioni</Th>
-                    <Th align="right">Pag. Inviati</Th>
+                    <Th align="right">Pag. inviati</Th>
                     <Th align="right">Depositi</Th>
-                    <Th align="right">Saldo Finale</Th>
+                    <Th align="right">Saldo finale</Th>
                     <Th>File</Th>
                   </tr>
                 </thead>
@@ -1075,9 +1272,7 @@ export default function RiconciliazionePaypal() {
                       <Td align="right" mono style={{ color: COLORS.success }}>
                         {formatEuro(s.riepilogo?.depositi_accrediti)}
                       </Td>
-                      <Td align="right" mono>
-                        {formatEuro(s.riepilogo?.saldo_finale)}
-                      </Td>
+                      <Td align="right" mono>{formatEuro(s.riepilogo?.saldo_finale)}</Td>
                       <Td style={{ fontSize: 11, color: COLORS.textSubtle }}>{s.file_name}</Td>
                     </tr>
                   ))}
@@ -1086,7 +1281,7 @@ export default function RiconciliazionePaypal() {
             </TableWrap>
             {statements.length === 0 && (
               <div style={{ padding: 40, textAlign: 'center', color: COLORS.textSubtle }}>
-                Nessun estratto conto importato.
+                Nessun documento PayPal importato.
               </div>
             )}
           </Card>
@@ -1281,10 +1476,10 @@ export default function RiconciliazionePaypal() {
                             ))}
                         </optgroup>
                       )}
-                      {item.candidati?.filter(c => c.source === 'importo_simile').length > 0 && (
-                        <optgroup label="Candidati (importo simile)">
+                      {item.candidati?.filter(c => c.source === 'nome_e_fatture_coerenti').length > 0 && (
+                        <optgroup label="Fornitori coerenti con nome e fatture">
                           {item.candidati
-                            .filter(c => c.source === 'importo_simile')
+                            .filter(c => c.source === 'nome_e_fatture_coerenti')
                             .map(c => (
                               <option key={c.fornitore_id} value={c.fornitore_id}>
                                 {c.nome} — P.IVA {c.piva} — {c.n_fatture_simili} fatture

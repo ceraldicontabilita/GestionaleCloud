@@ -6,6 +6,7 @@ import { formatEuro, formatDateIT, COLORS, MESI_FULL } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import { Button, Badge } from '../components/ds';
 import { useConfirm } from '../components/ui/ConfirmDialog';
+import { ConfrontoIvaCommercialista, ScadenzeIvaMensili } from './iva/IvaAuditSections';
 import './GestioneIVA.css';
 
 /**
@@ -64,6 +65,32 @@ export default function GestioneIVA() {
 
   // Calcola pregresso: esito persistente dell'ultimo ricalcolo
   const [ultimoRic, setUltimoRic] = useState(null);
+
+  // Pagina IVA unica: confronto F24 commercialista e scadenze mensili.
+  const [confrontoCommercialista, setConfrontoCommercialista] = useState(null);
+  const [scadenzeMensili, setScadenzeMensili] = useState(null);
+  const [controlliLoading, setControlliLoading] = useState(true);
+  const [controlliError, setControlliError] = useState({ confronto: null, scadenze: null });
+
+  const caricaControlliIva = async () => {
+    setControlliLoading(true);
+    const [confronto, scadenze] = await Promise.allSettled([
+      api.get(`/api/verifica-coerenza/confronto-iva-completo/${anno}`),
+      api.get(`/api/scadenze/iva-mensile/${anno}`),
+    ]);
+
+    setConfrontoCommercialista(confronto.status === 'fulfilled' ? confronto.value.data : null);
+    setScadenzeMensili(scadenze.status === 'fulfilled' ? scadenze.value.data : null);
+    setControlliError({
+      confronto: confronto.status === 'rejected'
+        ? `Confronto F24 non disponibile: ${confronto.reason?.response?.data?.detail || confronto.reason?.message || 'errore sconosciuto'}`
+        : null,
+      scadenze: scadenze.status === 'rejected'
+        ? `Scadenze IVA non disponibili: ${scadenze.reason?.response?.data?.detail || scadenze.reason?.message || 'errore sconosciuto'}`
+        : null,
+    });
+    setControlliLoading(false);
+  };
 
   const caricaUltimoRic = async () => {
     try {
@@ -186,6 +213,7 @@ export default function GestioneIVA() {
   useEffect(() => {
     caricaRiepilogo();
     caricaUltimoRic();
+    caricaControlliIva();
   }, [anno]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Calcola pregresso: rilegge DAVVERO le fatture (tutte, o solo l'anno) e
@@ -221,8 +249,22 @@ export default function GestioneIVA() {
 
   const fatture = dati?.fatture || [];
 
+  const aggiornaTutto = () => Promise.all([
+    carica(),
+    caricaLiquidazione(),
+    caricaRiepilogo(),
+    caricaUltimoRic(),
+    caricaControlliIva(),
+  ]);
+
   return (
-    <PageLayout title="Gestione IVA" icon="📊" subtitle={`IVA disponibile non utilizzata — ${anno}`}>
+    <PageLayout title="Gestione IVA" icon="📊" subtitle={`Attribuzione, liquidazione, F24 e scadenze — ${anno}`}>
+      <nav aria-label="Percorso gestione IVA" style={STILI.percorso}>
+        <a href="#iva-attribuzione" style={STILI.percorsoLink}>1. Fatture e attribuzione</a>
+        <a href="#iva-liquidazione" style={STILI.percorsoLink}>2. Liquidazione mensile</a>
+        <a href="#iva-confronto-f24" style={STILI.percorsoLink}>3. F24 commercialista</a>
+        <a href="#iva-scadenze" style={STILI.percorsoLink}>4. Scadenze mensili</a>
+      </nav>
       <div style={STILI.barra}>
         <div style={STILI.totale} data-testid="iva-totale-disponibile">
           <Wallet size={20} style={{ color: COLORS.primary }} />
@@ -234,14 +276,14 @@ export default function GestioneIVA() {
           </div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <Button variant="secondary" onClick={carica} disabled={loading}>
-            <RefreshCw size={16} className={loading ? 'spin' : ''} /> Aggiorna
+          <Button variant="secondary" onClick={aggiornaTutto} disabled={loading || controlliLoading}>
+            <RefreshCw size={16} className={loading || controlliLoading ? 'spin' : ''} /> Aggiorna tutto
           </Button>
         </div>
       </div>
 
       {/* ── Calcola pregresso (persistente) ───────────────────────────── */}
-      <div style={STILI.sezione} data-testid="calcola-pregresso">
+      <div id="iva-attribuzione" style={STILI.sezione} data-testid="calcola-pregresso">
         <h3 style={STILI.sezioneTitolo}>
           <Calculator size={18} style={{ color: COLORS.primary }} /> Calcola pregresso
         </h3>
@@ -376,7 +418,7 @@ export default function GestioneIVA() {
       )}
 
       {/* ── Liquidazione mensile (Fase 3) ─────────────────────────────── */}
-      <div style={STILI.sezione} data-testid="liquidazione-mensile">
+      <div id="iva-liquidazione" style={STILI.sezione} data-testid="liquidazione-mensile">
         <h3 style={STILI.sezioneTitolo}>
           <Calculator size={18} style={{ color: COLORS.primary }} /> Liquidazione mensile
         </h3>
@@ -454,13 +496,13 @@ export default function GestioneIVA() {
             style={{
               ...STILI.sezione,
               marginTop: 8,
-              borderColor: dashboard.versamento_iva.pagato_banca
+              borderColor: dashboard.versamento_iva.f24_trovati === 1
                 ? COLORS.success
-                : (dashboard.versamento_iva.scaduto ? COLORS.danger : COLORS.warning),
+                : COLORS.warning,
             }}
-            data-testid="iva-verifica-f24-banca"
+            data-testid="iva-f24-documento"
           >
-            <div style={STILI.bloccoTitolo}>Versamento IVA · F24 · banca</div>
+            <div style={STILI.bloccoTitolo}>Documento F24 del commercialista</div>
             <div style={{ ...STILI.riepilogo, borderBottom: 'none' }}>
               <div style={STILI.voce}>
                 <span style={STILI.voceLabel}>Codice tributo</span>
@@ -483,28 +525,19 @@ export default function GestioneIVA() {
                 </strong>
               </div>
               <div style={STILI.voce}>
-                <span style={STILI.voceLabel}>Prova pagamento</span>
-                <Badge variant={dashboard.versamento_iva.pagato_banca ? 'success' : 'warning'}>
-                  {dashboard.versamento_iva.pagato_banca
-                    ? 'Addebito bancario verificato'
-                    : dashboard.versamento_iva.f24?.quietanza_id
-                      ? 'Quietanza presente · banca da verificare'
-                      : 'Pagamento non provato in banca'}
+                <span style={STILI.voceLabel}>Stato documento</span>
+                <Badge variant={dashboard.versamento_iva.f24_trovati === 1 ? 'success' : 'warning'}>
+                  {dashboard.versamento_iva.f24_trovati === 1
+                    ? 'F24 acquisito'
+                    : dashboard.versamento_iva.f24_trovati > 1
+                      ? 'Associazione ambigua'
+                      : 'In attesa dalla posta'}
                 </Badge>
               </div>
             </div>
             {dashboard.versamento_iva.f24_trovati > 1 && (
               <div style={STILI.msgErr} role="alert">
                 Più F24 trovati per lo stesso codice e anno: associazione ambigua, non sommare automaticamente.
-              </div>
-            )}
-            {dashboard.versamento_iva.ravvedimento?.necessario && (
-              <div style={{ ...STILI.msg, ...STILI.msgErr, margin: '8px 0 0' }} role="alert">
-                Scadenza superata senza prova bancaria. Verificare ravvedimento con tributo{' '}
-                <strong>{dashboard.versamento_iva.codice_tributo}</strong>, sanzione{' '}
-                <strong>{dashboard.versamento_iva.ravvedimento.codice_sanzione}</strong> e interessi{' '}
-                <strong>{dashboard.versamento_iva.ravvedimento.codice_interessi}</strong>.
-                Gli importi devono essere revisionati prima del versamento.
               </div>
             )}
           </div>
@@ -644,6 +677,19 @@ export default function GestioneIVA() {
           )}
         </div>
       )}
+
+      <ConfrontoIvaCommercialista
+        anno={anno}
+        dati={confrontoCommercialista}
+        loading={controlliLoading}
+        error={controlliError.confronto}
+      />
+      <ScadenzeIvaMensili
+        anno={anno}
+        dati={scadenzeMensili}
+        loading={controlliLoading}
+        error={controlliError.scadenze}
+      />
     </PageLayout>
   );
 }
@@ -653,6 +699,16 @@ const STILI = {
     display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center',
     background: COLORS.card, border: `1px solid ${COLORS.border}`,
     borderRadius: 10, padding: 14, marginBottom: 12,
+  },
+  percorso: {
+    display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12,
+    padding: 10, background: COLORS.bgAlt, border: `1px solid ${COLORS.border}`,
+    borderRadius: 10,
+  },
+  percorsoLink: {
+    color: COLORS.primary, textDecoration: 'none', fontSize: 12, fontWeight: 700,
+    padding: '6px 9px', background: COLORS.card, border: `1px solid ${COLORS.border}`,
+    borderRadius: 7,
   },
   totale: { display: 'flex', alignItems: 'center', gap: 10 },
   msg: { padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 },

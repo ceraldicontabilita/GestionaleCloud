@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1047 endpoint** in **109 gruppi**.
+> Totale **1046 endpoint** in **109 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 658 · ext esterni = 90 · — da verificare = 299
+**Riepilogo uso:** ✓ frontend = 657 · ext esterni = 90 · — da verificare = 299
 
 ## AI Parser  (11)
 
@@ -1164,19 +1164,20 @@
 | GET | `/api/partite-aperte/scadute` | — | partite_aperte_api |
 | GET | `/api/partite-aperte/stats` | ✓ | partite_aperte_api |
 
-## PayPal  (14)
+## PayPal  (15)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | POST | `/api/paypal-statements/auto-associa` | — | paypal_statements |
 | POST | `/api/paypal-statements/auto-cerca-gmail` | — | paypal_statements |
+| GET | `/api/paypal-statements/bank-movements` | ✓ | paypal_statements |
 | GET | `/api/paypal-statements/dashboard` | ✓ | paypal_statements |
 | POST | `/api/paypal-statements/import-all-local` | — | paypal_statements |
 | POST | `/api/paypal-statements/import-csv` | ✓ | paypal_statements |
 | POST | `/api/paypal-statements/import-pdf` | — | paypal_statements |
 | POST | `/api/paypal-statements/pulisci-match-solo-importo` | — | paypal_statements |
 | GET | `/api/paypal-statements/report` | ✓ | paypal_statements |
-| POST | `/api/paypal-statements/riconcilia-banca` | — | paypal_statements |
+| POST | `/api/paypal-statements/riconcilia-banca` | ✓ | paypal_statements |
 | GET | `/api/paypal-statements/statements` | ✓ | paypal_statements |
 | GET | `/api/paypal-statements/transactions` | ✓ | paypal_statements |
 | POST | `/api/paypal-statements/transazione/{transaction_id}/associa` | — | paypal_statements |
@@ -1188,7 +1189,7 @@
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/paypal-api/account-ids-non-mappati` | ✓ | paypal_api |
-| POST | `/api/paypal-api/account/{paypal_account_id}/cerca-fattura-email` | ✓ | paypal_api |
+| POST | `/api/paypal-api/account/{paypal_account_id}/cerca-fattura-email` | — | paypal_api |
 | POST | `/api/paypal-api/crea-fornitore-e-mappa` | ✓ | paypal_api |
 | POST | `/api/paypal-api/mappa-fornitore` | ✓ | paypal_api |
 | GET | `/api/paypal-api/ricevuta-pdf/{transaction_id}` | — | paypal_api |
@@ -1234,7 +1235,7 @@
 | GET | `/api/previsioni-acquisti/prodotti` | — | previsioni_acquisti |
 | GET | `/api/previsioni-acquisti/statistiche` | ✓ | previsioni_acquisti |
 
-## Prima Nota  (74)
+## Prima Nota  (73)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1280,7 +1281,6 @@
 | POST | `/api/prima-nota/fix-tipo-movimento` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/fix-versamenti-duplicati` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/import-batch` | — | prima_nota_module.sync |
-| POST | `/api/prima-nota/importa-da-ec` | ✓ | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/migra-pos-accrediti-reali` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/migrazione-pulisci-bancari-cassa` | — | prima_nota_module.manutenzione |
 | GET | `/api/prima-nota/movimenti-ec-non-in-prima-nota` | ✓ | prima_nota_module.manutenzione |
@@ -1422,7 +1422,7 @@
 | GET | `/api/scadenzario-fornitori/scadenze-integrate` | ✓ | scadenzario_fornitori |
 | GET | `/api/scadenzario-fornitori/urgenti` | ✓ | scadenzario_fornitori |
 
-## Scadenze  (10)
+## Scadenze  (9)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1432,7 +1432,6 @@
 | POST | `/api/scadenze/crea` | ✓ | scadenze |
 | GET | `/api/scadenze/dashboard-widget` | ✓ | scadenze |
 | GET | `/api/scadenze/iva-mensile/{anno}` | ✓ | scadenze |
-| GET | `/api/scadenze/iva/{anno}` | ✓ | scadenze |
 | GET | `/api/scadenze/prossime` | ✓ | scadenze |
 | GET | `/api/scadenze/tutte` | ✓ | scadenze |
 | DELETE | `/api/scadenze/{notifica_id}` | ✓ | scadenze |

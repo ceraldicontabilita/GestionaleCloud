@@ -147,3 +147,35 @@ def test_dashboard_non_somma_due_volte_conversione_valuta(monkeypatch):
 
     assert res["totale_pagamenti"] == 1
     assert res["totale_speso"] == -100.0
+
+
+def test_match_banca_paypal_richiede_importo_segno_e_data_non_solo_importo():
+    tx = {"transaction_id": "PAY-12345678", "data": "2026-07-15", "lordo": -42.62}
+    corretto = {
+        "data": "2026-07-17", "importo": -42.62,
+        "descrizione": "ADDEBITO DIRETTO PAYPAL EUROPE",
+    }
+    lontano = {**corretto, "data": "2026-06-01"}
+    segno_errato = {**corretto, "importo": 42.62}
+    assert mod._score_match_banca(tx, corretto)["score"] >= 85
+    assert mod._score_match_banca(tx, lontano) is None
+    assert mod._score_match_banca(tx, segno_errato) is None
+
+
+def test_riferimento_paypal_non_supera_un_importo_diverso():
+    tx = {"transaction_id": "8ABCDEFGH12345", "data": "2026-07-15", "lordo": -42.62}
+    mov = {
+        "data": "2026-07-25", "importo": -40,
+        "descrizione": "PAYPAL 8ABCDEFGH12345 regolazione",
+    }
+    assert mod._score_match_banca(tx, mov) is None
+
+
+def test_match_banca_accetta_uscita_canonica_positiva_solo_al_centesimo():
+    tx = {"transaction_id": "PAY-12345678", "data": "2026-07-15", "lordo": -42.62}
+    movimento = {
+        "data": "2026-07-17", "tipo": "uscita", "importo": 42.62,
+        "descrizione": "ADDEBITO DIRETTO PAYPAL EUROPE",
+    }
+    assert mod._score_match_banca(tx, movimento)["score"] >= 85
+    assert mod._score_match_banca(tx, {**movimento, "importo": 42.63}) is None

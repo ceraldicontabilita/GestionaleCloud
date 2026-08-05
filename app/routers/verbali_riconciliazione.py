@@ -220,10 +220,19 @@ async def get_lista_verbali(
             "driver_id": 1,
             "veicolo_id": 1,
             "fattura_id": 1,
+            "fattura_associata_id": 1,
             "fattura_numero": 1,
+            "fattura_associata_numero": 1,
+            "fattura_associata_data": 1,
+            "fattura_associata_fornitore": 1,
+            "fattura_associata_importo": 1,
             "numero_fattura": 1,
             "fornitore": 1,
             "pagamento_id": 1,
+            "paypal_transaction_id": 1,
+            "movimento_banca_id": 1,
+            "ricevuta_pagopa_id": 1,
+            "iuv": 1,
             "data_pagamento": 1,
             "quietanza_ricevuta": 1,
             "stato_pagamento": 1,
@@ -247,6 +256,26 @@ async def get_lista_verbali(
                 v["driver_nome"] = v["driver"]
             if not v.get("fattura_numero") and v.get("numero_fattura"):
                 v["fattura_numero"] = v["numero_fattura"]
+            v["fattura_id"] = v.get("fattura_id") or v.get("fattura_associata_id")
+            v["fattura_numero"] = (
+                v.get("fattura_numero")
+                or v.get("fattura_associata_numero")
+                or v.get("numero_fattura")
+            )
+            v["fornitore"] = v.get("fornitore") or v.get("fattura_associata_fornitore")
+            v["pagamento_id"] = (
+                v.get("pagamento_id")
+                or v.get("paypal_transaction_id")
+                or v.get("ricevuta_pagopa_id")
+                or v.get("movimento_banca_id")
+            )
+            if not v.get("metodo_pagamento"):
+                if v.get("paypal_transaction_id"):
+                    v["metodo_pagamento"] = "PayPal"
+                elif v.get("ricevuta_pagopa_id"):
+                    v["metodo_pagamento"] = "PagoPA"
+                elif v.get("movimento_banca_id"):
+                    v["metodo_pagamento"] = "Bonifico bancario"
         
         return {
             "success": True,
@@ -315,11 +344,16 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
             
             if numero_verbale:
                 verbali_trovati += 1
+                fattura_id = fattura.get("id") or str(fattura.get("_id"))
+                fattura_numero = fattura.get("invoice_number") or fattura.get("numero_fattura")
                 
                 # Verifica se esiste già l'associazione
                 existing = await db["verbali_noleggio"].find_one({
                     "numero_verbale": numero_verbale,
-                    "fattura_id": str(fattura.get("_id"))
+                    "$or": [
+                        {"fattura_id": fattura_id},
+                        {"fattura_associata_id": fattura_id},
+                    ],
                 })
                 
                 if not existing:
@@ -327,16 +361,27 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
                     verbale_doc = await db["verbali_noleggio"].find_one({"numero_verbale": numero_verbale})
                     
                     update_data = {
-                        "fattura_id": str(fattura.get("_id")),
-                        "fattura_numero": fattura.get("invoice_number"),
+                        "fattura_id": fattura_id,
+                        "fattura_associata_id": fattura_id,
+                        "fattura_numero": fattura_numero,
+                        "fattura_associata_numero": fattura_numero,
+                        "numero_fattura": fattura_numero,
+                        "fattura_associata_data": fattura.get("invoice_date") or fattura.get("data_documento"),
+                        "fattura_associata_importo": fattura.get("total_amount") or fattura.get("importo_totale"),
                         "fornitore": fattura.get("supplier_name") or fattura.get("fornitore"),
+                        "fattura_associata_fornitore": fattura.get("supplier_name") or fattura.get("fornitore"),
                         "targa": fattura.get("targa"),
                         "updated_at": datetime.now(timezone.utc)
                     }
                     
                     if verbale_doc:
                         # Aggiorna esistente
-                        nuovo_stato = "riconciliato" if verbale_doc.get("pagamento_id") else "fattura_ricevuta"
+                        nuovo_stato = "riconciliato" if (
+                            verbale_doc.get("pagamento_id")
+                            or verbale_doc.get("paypal_transaction_id")
+                            or verbale_doc.get("ricevuta_pagopa_id")
+                            or verbale_doc.get("movimento_banca_id")
+                        ) else "fattura_ricevuta"
                         update_data["stato"] = nuovo_stato
                         await db["verbali_noleggio"].update_one(
                             {"numero_verbale": numero_verbale},
@@ -348,6 +393,10 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
                         update_data["stato"] = "fattura_ricevuta"
                         update_data["created_at"] = datetime.now(timezone.utc)
                         await db["verbali_noleggio"].insert_one(update_data)
+                    await db["invoices"].update_one(
+                        {"id": fattura_id},
+                        {"$addToSet": {"verbali_collegati": numero_verbale}},
+                    )
                     
                     associazioni_create += 1
         
@@ -479,9 +528,24 @@ async def riconcilia_verbale(numero_verbale: str) -> Dict[str, Any]:
             if fattura:
                 # id canonico UUID (non l'ObjectId _id): tutto il resto dell'app
                 # collega le fatture per `id`. Vedi P0.4.
-                updates["fattura_id"] = fattura.get("id") or str(fattura.get("_id"))
-                updates["fattura_numero"] = fattura.get("invoice_number")
-                updates["fornitore"] = fattura.get("supplier_name") or fattura.get("fornitore")
+                fattura_id = fattura.get("id") or str(fattura.get("_id"))
+                fattura_numero = fattura.get("invoice_number") or fattura.get("numero_fattura")
+                fornitore = fattura.get("supplier_name") or fattura.get("fornitore")
+                updates.update({
+                    "fattura_id": fattura_id,
+                    "fattura_associata_id": fattura_id,
+                    "fattura_numero": fattura_numero,
+                    "fattura_associata_numero": fattura_numero,
+                    "numero_fattura": fattura_numero,
+                    "fattura_associata_data": fattura.get("invoice_date") or fattura.get("data_documento"),
+                    "fattura_associata_importo": fattura.get("total_amount") or fattura.get("importo_totale"),
+                    "fornitore": fornitore,
+                    "fattura_associata_fornitore": fornitore,
+                })
+                await db["invoices"].update_one(
+                    {"id": fattura_id},
+                    {"$addToSet": {"verbali_collegati": numero_verbale}},
+                )
                 messages.append(f"Fattura trovata: {fattura.get('invoice_number')}")
         
         # 2. Cerca targa se non presente
@@ -512,7 +576,12 @@ async def riconcilia_verbale(numero_verbale: str) -> Dict[str, Any]:
         
         # 4. Determina nuovo stato
         has_fattura = verbale.get("fattura_id") or updates.get("fattura_id")
-        has_pagamento = verbale.get("pagamento_id")
+        has_pagamento = (
+            verbale.get("pagamento_id")
+            or verbale.get("paypal_transaction_id")
+            or verbale.get("ricevuta_pagopa_id")
+            or verbale.get("movimento_banca_id")
+        )
         
         if has_fattura and has_pagamento:
             updates["stato"] = "riconciliato"

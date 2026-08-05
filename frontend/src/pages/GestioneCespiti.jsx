@@ -159,7 +159,7 @@ export default function GestioneCespiti() {
 
   const getTabFromPath = () => {
     const path = location.pathname;
-    const match = path.match(/\/cespiti\/([\w-]+)/);
+    const match = path.match(/\/contabilita\/cespiti\/([\w-]+)/);
     return match ? match[1] : 'cespiti';
   };
 
@@ -167,7 +167,7 @@ export default function GestioneCespiti() {
 
   const handleTabChange = tabId => {
     setActiveTab(tabId);
-    navigate(`/cespiti/${tabId}`);
+    navigate(`/contabilita/cespiti/${tabId}`);
   };
 
   useEffect(() => {
