@@ -142,6 +142,7 @@ class Settings(BaseSettings):
     DRIVE_CARTE_FOLDER_ID: Optional[str] = None
     DRIVE_PAYPAL_FOLDER_ID: Optional[str] = None
     DRIVE_NOLEGGIO_FOLDER_ID: Optional[str] = None
+    DRIVE_VERBALI_FOLDER_ID: Optional[str] = None
     DRIVE_AVVISI_ESATTORIALI_FOLDER_ID: Optional[str] = None
     DRIVE_FOLDER_REGISTRY_JSON: Optional[str] = None
     GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: Optional[str] = None
@@ -171,6 +172,7 @@ class Settings(BaseSettings):
     ENABLE_DRIVE_DICHIARAZIONI_IVA_SYNC: bool = False
     ENABLE_DRIVE_CARTELLE_ESATTORIALI_SYNC: bool = False
     ENABLE_DRIVE_AVVISI_BONARI_SYNC: bool = False
+    ENABLE_DRIVE_VERBALI_SYNC: bool = True
     # Canali EMAIL F24 e Verbali: ACCESI su scelta esplicita dell'utente
     # (13/07/2026). Interruttore dedicato per poterli spegnere senza toccare
     # le credenziali IMAP. NB: il parser F24 email non è ancora validato su

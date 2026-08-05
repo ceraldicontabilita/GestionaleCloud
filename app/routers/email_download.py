@@ -667,9 +667,9 @@ async def riconcilia_verbali_banca() -> Dict[str, Any]:
     Match per: numero verbale nella descrizione, importo esatto, quietanze email.
     Crea trattenute busta paga per verbali pagati con driver assegnato.
     """
-    from app.services.post_download_pipeline import riconcilia_verbali_con_banca
+    from app.services.verbali_pagamento_finder import riconcilia_verbali_strict
     db = Database.get_db()
-    stats = await riconcilia_verbali_con_banca(db)
+    stats = await riconcilia_verbali_strict(db)
     return {"success": True, "stats": stats}
 
 
@@ -695,9 +695,9 @@ async def riconcilia_verbali_avanzato() -> Dict[str, Any]:
     4. Quietanze email PagoPA/PayPal
     5. Importi multipli
     """
-    from app.services.post_download_pipeline import riconcilia_verbali_avanzato
+    from app.services.verbali_pagamento_finder import riconcilia_verbali_strict
     db = Database.get_db()
-    stats = await riconcilia_verbali_avanzato(db)
+    stats = await riconcilia_verbali_strict(db)
     return {"success": True, "stats": stats}
 
 

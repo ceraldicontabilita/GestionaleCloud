@@ -13,6 +13,7 @@ _AUTOMATIC_AREAS = {
     "fatture", "cedolini", "corrispettivi", "quietanze", "estratti_conto",
     "bonifici_dipendenti", "cartelle_esattoriali", "avvisi_bonari", "f24",
     "verbali", "dichiarazioni_iva", "documenti",
+    "paypal", "noleggio",
 }
 
 _AREA_ALIASES = {
@@ -21,6 +22,8 @@ _AREA_ALIASES = {
     "cartella_esattoriale": ("cartelle_esattoriali", "avvisi_esattoriali"),
     "avviso_bonario": ("avvisi_bonari",),
     "verbale": ("verbali",),
+    "paypal": ("paypal", "estratti_conto_paypal"),
+    "noleggio": ("noleggio", "noleggio_auto"),
     "f24": ("f24", "quietanze"),
     "quietanza": ("quietanze", "f24"),
     "dichiarazione_iva": ("dichiarazioni_iva",),

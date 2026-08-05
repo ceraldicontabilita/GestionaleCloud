@@ -21,6 +21,7 @@ from typing import Any, Dict, Optional
 from app.config import settings
 from app.constants.tipi_documento import set_tassonomia_documento
 from app.services import drive_cedolini_ingest as _base
+from app.services.drive_folder_registry import get_folder_id
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +30,13 @@ CANALI: Dict[str, Dict[str, Any]] = {
     "bonifico": {
         "category": "bonifico",
         "label": "Bonifici stipendi",
-        "folder": lambda s: s.GOOGLE_DRIVE_BONIFICI_FOLDER_ID or s.DRIVE_FOLDER_BONIFICI_ID,
+        "folder": lambda s: s.GOOGLE_DRIVE_BONIFICI_FOLDER_ID or s.DRIVE_FOLDER_BONIFICI_ID or get_folder_id("bonifico"),
         "enable": lambda s: s.ENABLE_DRIVE_BONIFICI_SYNC,
     },
     "dichiarazione_iva": {
         "category": "dichiarazione_iva",
         "label": "Dichiarazioni IVA",
-        "folder": lambda s: s.GOOGLE_DRIVE_DICHIARAZIONI_IVA_FOLDER_ID or s.DRIVE_FOLDER_DICHIARAZIONI_IVA_ID,
+        "folder": lambda s: s.GOOGLE_DRIVE_DICHIARAZIONI_IVA_FOLDER_ID or s.DRIVE_FOLDER_DICHIARAZIONI_IVA_ID or get_folder_id("dichiarazione_iva"),
         "enable": lambda s: s.ENABLE_DRIVE_DICHIARAZIONI_IVA_SYNC,
     },
     "cartella_esattoriale": {
@@ -43,14 +44,21 @@ CANALI: Dict[str, Dict[str, Any]] = {
         "label": "Cartelle Esattoriali",
         "folder": lambda s: (s.GOOGLE_DRIVE_CARTELLE_ESATTORIALI_FOLDER_ID
                              or s.DRIVE_FOLDER_CARTELLE_ESATTORIALI_ID
-                             or s.DRIVE_AVVISI_ESATTORIALI_FOLDER_ID),
+                             or s.DRIVE_AVVISI_ESATTORIALI_FOLDER_ID
+                             or get_folder_id("cartella_esattoriale")),
         "enable": lambda s: s.ENABLE_DRIVE_CARTELLE_ESATTORIALI_SYNC,
     },
     "avviso_bonario": {
         "category": "avviso_bonario",
         "label": "Avvisi Bonari",
-        "folder": lambda s: s.GOOGLE_DRIVE_AVVISI_BONARI_FOLDER_ID or s.DRIVE_FOLDER_AVVISI_BONARI_ID,
+        "folder": lambda s: s.GOOGLE_DRIVE_AVVISI_BONARI_FOLDER_ID or s.DRIVE_FOLDER_AVVISI_BONARI_ID or get_folder_id("avviso_bonario"),
         "enable": lambda s: s.ENABLE_DRIVE_AVVISI_BONARI_SYNC,
+    },
+    "verbale": {
+        "category": "verbale",
+        "label": "Verbali e avvisi PagoPA",
+        "folder": lambda s: s.DRIVE_VERBALI_FOLDER_ID or get_folder_id("verbale"),
+        "enable": lambda s: s.ENABLE_DRIVE_VERBALI_SYNC,
     },
 }
 
@@ -69,7 +77,14 @@ def is_configured(canale: str) -> bool:
     return bool(_folder_id(canale))
 
 
-def _build_inbox_doc(content: bytes, filename: str, canale: str) -> Dict[str, Any]:
+def _build_inbox_doc(
+    content: bytes,
+    filename: str,
+    canale: str,
+    *,
+    drive_file_id: Optional[str] = None,
+    source_path: Optional[str] = None,
+) -> Dict[str, Any]:
     now = datetime.now(timezone.utc).isoformat()
     conf = CANALI[canale]
     doc = {
@@ -77,9 +92,12 @@ def _build_inbox_doc(content: bytes, filename: str, canale: str) -> Dict[str, An
         "filename": filename,
         "pdf_data": base64.b64encode(content).decode(),
         "file_hash": hashlib.md5(content).hexdigest(),
+        "sha256": hashlib.sha256(content).hexdigest(),
         "size_bytes": len(content),
         "fonte": f"drive_{canale}",
         "source": f"drive_{canale}",
+        "drive_file_id": drive_file_id,
+        "source_path": source_path or filename,
         "stato": "importato",
         "status": "nuovo",
         "processed": False,
@@ -122,11 +140,18 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
         inbox_id = _base._get_or_create_inbox_folder(service, parent_id)
         elaborate_id = _base._get_or_create_elaborate_folder(service, parent_id)
         error_id = _base._get_or_create_error_folder(service, parent_id)
-        source_id = inbox_id or parent_id
-        pdf_files = _base._list_pdf_files(service, source_id)
+        inbox_files = _base._list_pdf_files(service, inbox_id) if inbox_id else []
+        root_files = _base._list_pdf_files(service, parent_id)
+        pdf_files_by_id = {}
+        for item in root_files:
+            pdf_files_by_id[item["id"]] = {**item, "source_parent_id": parent_id}
+        for item in inbox_files:
+            pdf_files_by_id[item["id"]] = {**item, "source_parent_id": inbox_id}
+        pdf_files = list(pdf_files_by_id.values())
         result["total"] = len(pdf_files)
         for f in pdf_files:
             fid, fname = f["id"], f["name"]
+            source_id = f.get("source_parent_id") or parent_id
             try:
                 content = _base._download_bytes(service, fid)
                 if not content:
@@ -142,10 +167,30 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
                 if existing:
                     result["duplicates"] += 1
                 else:
-                    doc = _build_inbox_doc(content, fname, canale)
+                    doc = _build_inbox_doc(
+                        content,
+                        fname,
+                        canale,
+                        drive_file_id=fid,
+                        source_path=f"{CANALI[canale]['label']}/{fname}",
+                    )
                     await db["documents_inbox"].insert_one(doc)
                     result["imported"] += 1
                     logger.info(f"Drive {canale}: importato {fname}")
+                    document_id = doc["id"]
+                if existing:
+                    document_id = existing["id"]
+                if canale == "verbale":
+                    from app.services.verbali_document_import import process_verbale_document
+
+                    detail = await process_verbale_document(
+                        db,
+                        document_id=document_id,
+                        content=content,
+                        filename=fname,
+                        source="drive_verbale",
+                    )
+                    result["details"].append({"file": fname, "processing": detail})
                 if elaborate_id:
                     _base._move_to_elaborate(service, fid, source_id, elaborate_id)
                     result["moved"] += 1

@@ -162,6 +162,32 @@ async def get_verbali_dashboard() -> Dict[str, Any]:
         }
         ultimi = await db["verbali_noleggio"].find({}, projection).sort("created_at", -1).limit(5).to_list(5)
         
+        from app.config import settings
+        from app.services.drive_folder_registry import get_folder_id
+
+        email_user = settings.GMAIL_EMAIL or settings.IMAP_USER or settings.EMAIL_USER
+        email_password = (
+            settings.GMAIL_APP_PASSWORD or settings.IMAP_PASSWORD
+            or settings.EMAIL_PASSWORD or settings.EMAIL_APP_PASSWORD
+        )
+        email_configurata = bool(email_user and email_password)
+        email_abilitata = bool(settings.ENABLE_EMAIL_VERBALI_SYNC)
+        drive_configurato = bool(get_folder_id("verbale"))
+        documenti_drive = await db["documents_inbox"].count_documents({
+            "$or": [
+                {"tipo_documento": "verbale"},
+                {"category": "verbale"},
+                {"categoria": "verbale"},
+            ]
+        })
+        avviso_sorgenti = None
+        if not email_configurata and not drive_configurato:
+            avviso_sorgenti = "Nessuna sorgente verbali configurata: il totale zero non e' un collaudo valido."
+        elif email_configurata and not email_abilitata:
+            avviso_sorgenti = "La casella email e' configurata ma la sincronizzazione automatica verbali e' disattivata."
+        elif drive_configurato and documenti_drive == 0 and not email_configurata:
+            avviso_sorgenti = "La cartella Drive Verbali e' collegata ma non contiene documenti importati."
+
         return {
             "success": True,
             "riepilogo": {
@@ -170,7 +196,18 @@ async def get_verbali_dashboard() -> Dict[str, Any]:
                 "da_riconciliare": da_riconciliare,
                 "per_stato": per_stato
             },
-            "ultimi_verbali": [serialize_doc(v) for v in ultimi]
+            "ultimi_verbali": [serialize_doc(v) for v in ultimi],
+            "sorgenti": {
+                "email": {
+                    "configurata": email_configurata,
+                    "sincronizzazione_attiva": email_abilitata,
+                },
+                "drive": {
+                    "configurata": drive_configurato,
+                    "documenti_importati": documenti_drive,
+                },
+                "avviso": avviso_sorgenti,
+            },
         }
     except Exception as e:
         logger.error(f"Errore dashboard verbali: {e}")

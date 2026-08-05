@@ -39,7 +39,7 @@ async def trova_pagamento_verbale(db: AsyncIOMotorDatabase, verbale: Dict[str, A
     if m:
         return m
     # 2. Gmail
-    m = await _cerca_in_gmail(db, iuv, numero_verbale, verbale)
+    m = await _cerca_in_gmail(db, iuv, numero_verbale, importo, verbale)
     if m:
         return m
     # 3. estratto conto: solo con un riferimento del verbale/IUV/targa.
@@ -100,7 +100,7 @@ async def _cerca_in_paypal(db, iuv, numero_verbale, targa, importo):
     return None
 
 
-async def _cerca_in_gmail(db, iuv, numero_verbale, verbale):
+async def _cerca_in_gmail(db, iuv, numero_verbale, importo, verbale):
     user = settings.GMAIL_EMAIL or settings.IMAP_USER
     pwd = settings.GMAIL_APP_PASSWORD or settings.IMAP_PASSWORD
     if not user or not pwd:
@@ -428,3 +428,57 @@ async def applica_pagamento_a_verbale(db, verbale_id, match):
                 {"id": match["ricevuta_pagopa_id"]}, {"$set": reverse}
             )
     return res.modified_count > 0
+
+
+async def riconcilia_verbali_strict(db) -> Dict[str, Any]:
+    """Riconcilia solo con prove strutturate, mai per importo/data da soli.
+
+    Le fonti ammesse sono quelle verificate da ``trova_pagamento_verbale``:
+    IUV o numero verbale (oppure targa esplicita) e importo uguale al
+    centesimo. Un candidato assente o ambiguo resta non riconciliato.
+    """
+    verbali = await db["verbali_noleggio"].find(
+        {
+            "stato": {"$nin": ["pagato", "PAGATO", "riconciliato"]},
+            "$or": [
+                {"numero_verbale": {"$nin": [None, ""]}},
+                {"iuv": {"$nin": [None, ""]}},
+            ],
+        },
+        {"_id": 0},
+    ).to_list(1000)
+    stats: Dict[str, Any] = {
+        "verbali_da_riconciliare": len(verbali),
+        "riconciliati": 0,
+        "riconciliati_paypal": 0,
+        "riconciliati_pagopa": 0,
+        "riconciliati_banca": 0,
+        "non_riconciliati": 0,
+        "errori": 0,
+        "regola": "riferimento_strutturato_e_importo_esatto_al_centesimo",
+    }
+    for verbale in verbali:
+        try:
+            match = await trova_pagamento_verbale(db, verbale)
+            if not match:
+                stats["non_riconciliati"] += 1
+                continue
+            verbale_id = verbale.get("id") or verbale.get("numero_verbale")
+            if not verbale_id or not await applica_pagamento_a_verbale(db, verbale_id, match):
+                stats["non_riconciliati"] += 1
+                continue
+            stats["riconciliati"] += 1
+            fonte = str(match.get("fonte") or "").lower()
+            if fonte == "paypal":
+                stats["riconciliati_paypal"] += 1
+            elif fonte == "gmail":
+                stats["riconciliati_pagopa"] += 1
+            elif fonte == "estratto_conto":
+                stats["riconciliati_banca"] += 1
+        except Exception:
+            logger.exception(
+                "Errore riconciliazione verbale %s",
+                verbale.get("numero_verbale") or verbale.get("id"),
+            )
+            stats["errori"] += 1
+    return stats

@@ -43,9 +43,12 @@ def _file(id_, name):
     return {"id": id_, "name": name, "mimeType": "application/octet-stream"}
 
 
-def test_scansione_ricorsiva_separa_banca_pos_e_ignora_archivi():
+def test_scansione_ricorsiva_separa_banca_pos_paypal_e_ignora_archivi():
     service = _Service({
-        "root": [_folder("bnl", "BNL"), _folder("pos", "pos bpm"), _folder("done", "Elaborate")],
+        "root": [
+            _folder("bnl", "BNL"), _folder("pos", "pos bpm"),
+            _folder("paypal", "Paypal"), _folder("done", "Elaborate"),
+        ],
         "bnl": [_file("ec1", "2019-Q4 Estratto BNL.pdf"), _folder("bnl_done", "Elaborate")],
         "bnl_done": [_file("old", "gia-elaborato.pdf")],
         "pos": [
@@ -54,6 +57,13 @@ def test_scansione_ricorsiva_separa_banca_pos_e_ignora_archivi():
             _folder("pos_inbox", "Da elaborare"),
         ],
         "pos_inbox": [_file("pos2", "Export_Transazioni_Luglio_2026.xlsx")],
+        "paypal": [
+            _file("pp1", "2025-06-MSR.pdf"),
+            _folder("paypal_inbox", "Da elaborare"),
+            _folder("paypal_done", "Elaborate"),
+        ],
+        "paypal_inbox": [_file("pp2", "2025-07-CSR.pdf")],
+        "paypal_done": [_file("pp_old", "2024-01-MSR.pdf")],
         "done": [_file("root_old", "estratto-archiviato.pdf")],
     })
 
@@ -62,9 +72,10 @@ def test_scansione_ricorsiva_separa_banca_pos_e_ignora_archivi():
     assert {(item["id"], item["route"]) for item in items} == {
         ("ec1", "bank"), ("pos1", "pos"), ("pos2", "pos"),
         ("fee", "pos"),
+        ("pp1", "paypal"), ("pp2", "paypal"),
     }
-    assert {source["path"] for source in sources} == {"BNL", "pos bpm"}
-    assert all(item["id"] not in {"old", "root_old"} for item in items)
+    assert {source["path"] for source in sources} == {"BNL", "pos bpm", "Paypal"}
+    assert all(item["id"] not in {"old", "root_old", "pp_old"} for item in items)
 
 
 def test_piu_radici_da_env_e_registro_sono_deduplicate(monkeypatch):
