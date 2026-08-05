@@ -291,6 +291,13 @@ async def cerca_verbale_in_estratto_conto(numero_verbale: str, importo: float) -
 
 
 async def riconcilia_verbali() -> Dict[str, Any]:
+    """Mantiene l'API storica ma applica soltanto regole probatorie strict."""
+    from app.services.verbali_pagamento_finder import riconcilia_verbali_strict
+
+    return await riconcilia_verbali_strict(Database.get_db())
+
+
+async def _legacy_riconcilia_verbali_non_usare() -> Dict[str, Any]:
     """
     Tenta di riconciliare tutti i verbali con l'estratto conto.
     
@@ -443,8 +450,10 @@ async def scansiona_e_salva_tutti_verbali() -> Dict[str, Any]:
             risultato_totale["duplicati"] += save_result["duplicati"]
             risultato_totale["errori"] += save_result["errori"]
     
-    # Tenta riconciliazione
-    riconc = await riconcilia_verbali()
+    # Tenta la sola riconciliazione canonica: riferimento strutturato e
+    # importo esatto al centesimo, mai importo/data da soli.
+    from app.services.verbali_pagamento_finder import riconcilia_verbali_strict
+    riconc = await riconcilia_verbali_strict(Database.get_db())
     risultato_totale["riconciliazione"] = riconc
     
     return risultato_totale

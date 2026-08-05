@@ -5,10 +5,8 @@ Import PDF, visualizzazione transazioni, riconciliazione con estratto conto banc
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Body
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
-import uuid
 import os
 import logging
-import shutil
 
 from app.database import Database
 from app.db_collections import (
@@ -479,25 +477,22 @@ async def paypal_dashboard(
 @router.post("/import-pdf")
 async def import_paypal_pdf(file: UploadFile = File(...)):
     """Importa un singolo PDF PayPal MSR/CSR e riconcilia automaticamente."""
-    from app.parsers.paypal_msr_parser import parse_paypal_msr
+    from app.services.paypal_statement_import import import_paypal_statement_pdf
     
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Solo file PDF accettati")
     
-    # Salva file (sanitize filename to prevent path traversal)
-    safe_filename = os.path.basename(file.filename)
-    file_path = os.path.join(UPLOAD_DIR, safe_filename)
-    with open(file_path, 'wb') as f:
-        shutil.copyfileobj(file.file, f)
-    
-    # Parsa
-    parsed = parse_paypal_msr(file_path)
-    if not parsed['success']:
-        raise HTTPException(status_code=422, detail=f"Errore parsing: {parsed['errors']}")
-    
-    # Salva in DB
+    content = await file.read()
     db = Database.get_db()
-    result = await _save_parsed_statement(db, parsed)
+    try:
+        result = await import_paypal_statement_pdf(
+            db,
+            content,
+            os.path.basename(file.filename),
+            source="paypal_upload_manuale",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     
     # AUTO-RICONCILIAZIONE dopo import
     ric_result = await _auto_riconcilia(db)
@@ -749,59 +744,10 @@ async def paypal_report(anno: Optional[int] = None):
 
 
 async def _save_parsed_statement(db, parsed: Dict) -> Dict:
-    """Salva statement e transazioni nel database."""
-    periodo = parsed.get('periodo', {})
-    account = parsed.get('account_info', {})
-    
-    statement_id = str(uuid.uuid4())
-    
-    # Salva statement
-    statement_doc = {
-        "id": statement_id,
-        "tipo_documento": parsed.get('tipo_documento', 'MSR'),
-        "codice_conto": account.get('codice_conto'),
-        "email_paypal": account.get('email_paypal'),
-        "periodo_inizio": periodo.get('periodo_inizio'),
-        "periodo_fine": periodo.get('periodo_fine'),
-        "mese": periodo.get('mese'),
-        "anno": periodo.get('anno'),
-        "riepilogo": parsed.get('riepilogo_attivita', {}),
-        "totale_transazioni": parsed.get('totale_transazioni', 0),
-        "file_name": parsed.get('file_name'),
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    
-    # Upsert statement (evita duplicati per periodo)
-    await db[COLL_PAYPAL_STATEMENTS].update_one(
-        {"periodo_inizio": periodo.get('periodo_inizio'), "periodo_fine": periodo.get('periodo_fine')},
-        {"$set": statement_doc},
-        upsert=True
-    )
-    
-    # Salva transazioni
-    inserted = 0
-    duplicates = 0
-    for tx in parsed.get('transazioni', []):
-        tx['statement_id'] = statement_id
-        tx['riconciliato_banca'] = False
-        tx['created_at'] = datetime.now(timezone.utc).isoformat()
-        
-        tid = tx.get('transaction_id')
-        if tid:
-            existing = await db[COLL_PAYPAL_TRANSACTIONS].find_one({"transaction_id": tid})
-            if existing:
-                duplicates += 1
-                continue
-        
-        await db[COLL_PAYPAL_TRANSACTIONS].insert_one(tx)
-        inserted += 1
-    
-    return {
-        "statement_id": statement_id,
-        "periodo": f"{periodo.get('periodo_inizio')} - {periodo.get('periodo_fine')}",
-        "transazioni_inserite": inserted,
-        "transazioni_duplicate": duplicates
-    }
+    """Compatibilita' per CSV e test: usa il writer canonico condiviso."""
+    from app.services.paypal_statement_import import save_parsed_statement
+
+    return await save_parsed_statement(db, parsed, source="paypal_import_parser")
 
 
 @router.get("/transazione/{transaction_id}/dettaglio")

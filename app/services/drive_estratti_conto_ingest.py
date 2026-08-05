@@ -146,6 +146,8 @@ def _list_children(service, parent_id: str) -> List[Dict[str, Any]]:
 def _route_for_path(path: str, filename: str = "") -> Optional[str]:
     """Classifica la fonte senza usare dati contabili o importi."""
     source = f"{path}/{filename}".lower()
+    if "paypal" in source:
+        return "paypal"
     if "mutuo acquisto" in source:
         return "mutuo"
     if "pos bpm" in source or "pos bnl" in source:
@@ -178,6 +180,8 @@ def _supported_file(route: Optional[str], filename: str) -> bool:
             ))
         )
     if route == "mutuo":
+        return lower.endswith(".pdf")
+    if route == "paypal":
         return lower.endswith(".pdf")
     return False
 
@@ -277,6 +281,7 @@ async def sync(db) -> Dict[str, Any]:
         from app.services.pos_terminal_import import importa_pos_terminal_file
         from app.services.pos_commissioni_import import importa_pos_commissioni_file
         from app.services.mutui_document_import import importa_documento_mutuo
+        from app.services.paypal_statement_import import import_paypal_statement_pdf
 
         result: Dict[str, Any] = {
             "status": "ok", "total": 0, "processed": 0, "moved": 0,
@@ -284,6 +289,8 @@ async def sync(db) -> Dict[str, Any]:
             "pos_files": 0, "pos_days": 0, "roots": len(_folder_ids()),
             "pos_commission_files": 0, "pos_commission_days": 0,
             "mutuo_files": 0, "mutuo_duplicates": 0,
+            "paypal_files": 0, "paypal_statements": 0,
+            "paypal_transactions": 0, "paypal_transactions_linked": 0,
             "sources": [], "errors": [],
         }
         files_by_id: Dict[str, Dict[str, Any]] = {}
@@ -332,6 +339,19 @@ async def sync(db) -> Dict[str, Any]:
                     )
                     result["mutuo_files"] += 1
                     result["mutuo_duplicates"] += int(bool(esito.get("duplicate")))
+                elif item["route"] == "paypal":
+                    esito = await import_paypal_statement_pdf(
+                        db,
+                        content,
+                        item["name"],
+                        source="drive_paypal_statement",
+                        drive_file_id=item["id"],
+                        source_path=item.get("source_path"),
+                    )
+                    result["paypal_files"] += 1
+                    result["paypal_statements"] += 1
+                    result["paypal_transactions"] += int(esito.get("transazioni_inserite") or 0)
+                    result["paypal_transactions_linked"] += int(esito.get("transazioni_ricollegate") or 0)
                 else:
                     esito = await import_estratto_conto(_UploadDrive(item["name"], content))
                     if isinstance(esito, dict) and (esito.get("error") or esito.get("detail")):
@@ -353,6 +373,20 @@ async def sync(db) -> Dict[str, Any]:
                         _move_to_folder(service, item["id"], source_id, target["error"])
                     except Exception:
                         logger.exception("Drive estratti conto: impossibile spostare %s in Errori", item.get("name"))
+
+        if result["paypal_files"]:
+            try:
+                # Una sola riconciliazione a fine lotto: evita N scansioni
+                # complete mentre vengono importati piu' mesi PayPal.
+                from app.routers.paypal_statements import _auto_riconcilia
+
+                result["paypal_reconciliation"] = await _auto_riconcilia(db)
+            except Exception as exc:
+                logger.exception("Drive PayPal: riconciliazione finale fallita")
+                result["errors"].append({
+                    "file": "PayPal (riconciliazione finale)",
+                    "error": str(exc),
+                })
 
         now = datetime.now(timezone.utc).isoformat()
         await db["sistema_stato"].update_one(

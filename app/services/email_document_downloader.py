@@ -39,6 +39,8 @@ CATEGORIES = {
     "contributi_inps": "INPS",
     "certificazione_unica": "Certificazioni Uniche",
     "verbale": "Verbali",
+    "paypal_statement": "Estratti conto PayPal",
+    "ricevuta_pagopa": "Ricevute PagoPA",
     "altro": "Altri"
 }
 

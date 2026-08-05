@@ -690,7 +690,8 @@ async def esegui_pipeline_completa(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
     
     # 5. Riconciliazione verbali con banca/PagoPA
     try:
-        risultati["riconciliazione_verbali"] = await riconcilia_verbali_con_banca(db)
+        from app.services.verbali_pagamento_finder import riconcilia_verbali_strict
+        risultati["riconciliazione_verbali"] = await riconcilia_verbali_strict(db)
     except Exception as e:
         logger.error(f"[PIPELINE] Errore Riconciliazione: {e}")
         risultati["riconciliazione_verbali"] = {"errore": str(e)}
@@ -704,6 +705,15 @@ async def esegui_pipeline_completa(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
 # ============================================================
 
 async def riconcilia_verbali_con_banca(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+    """Compatibilita: usa esclusivamente la riconciliazione probatoria strict."""
+    from app.services.verbali_pagamento_finder import riconcilia_verbali_strict
+
+    return await riconcilia_verbali_strict(db)
+
+
+async def _legacy_riconcilia_verbali_con_banca_non_usare(
+    db: AsyncIOMotorDatabase,
+) -> Dict[str, Any]:
     """
     Riconcilia verbali con movimenti bancari, PagoPA e PayPal.
     
@@ -1011,6 +1021,15 @@ async def scarica_pdf_verbali_mancanti(db: AsyncIOMotorDatabase) -> Dict[str, An
 # ============================================================
 
 async def riconcilia_verbali_avanzato(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+    """Compatibilita: vieta i match storici basati sul solo importo/data."""
+    from app.services.verbali_pagamento_finder import riconcilia_verbali_strict
+
+    return await riconcilia_verbali_strict(db)
+
+
+async def _legacy_riconcilia_verbali_avanzato_non_usare(
+    db: AsyncIOMotorDatabase,
+) -> Dict[str, Any]:
     """
     Riconciliazione avanzata verbali ↔ banca con 5 strategie:
     1. Match per numero verbale nella descrizione bancaria

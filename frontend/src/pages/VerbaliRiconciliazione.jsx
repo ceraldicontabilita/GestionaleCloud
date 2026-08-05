@@ -453,6 +453,28 @@ export default function VerbaliRiconciliazione() {
           </div>
         )}
 
+        {dashboard?.sorgenti?.avviso && (
+          <Card
+            role="status"
+            aria-live="polite"
+            style={{
+              marginBottom: 20,
+              borderLeft: `5px solid ${COLORS.warning}`,
+              background: COLORS.warningLight,
+            }}
+          >
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              <span aria-hidden="true" style={{ fontSize: 22, fontWeight: 800 }}>!</span>
+              <div>
+                <strong style={{ display: 'block', color: COLORS.text, marginBottom: 4 }}>
+                  Sorgenti documentali da completare
+                </strong>
+                <span style={{ color: COLORS.textMuted }}>{dashboard.sorgenti.avviso}</span>
+              </div>
+            </div>
+          </Card>
+        )}
+
         {/* Dashboard Cards */}
         {dashboard && (
           <div

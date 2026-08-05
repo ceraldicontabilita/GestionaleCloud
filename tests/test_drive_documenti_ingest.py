@@ -17,7 +17,8 @@ def _run(coro):
 
 def test_canali_definiti():
     assert set(d.CANALI) == {
-        "bonifico", "dichiarazione_iva", "cartella_esattoriale", "avviso_bonario"
+        "bonifico", "dichiarazione_iva", "cartella_esattoriale", "avviso_bonario",
+        "verbale",
     }
 
 
