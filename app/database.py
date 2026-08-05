@@ -65,8 +65,14 @@ class Database:
             try:
                 await db[collection_name].create_index(keys, **kwargs)
                 created += 1
-            except Exception:
+            except Exception as exc:
                 skipped += 1
+                logger.warning(
+                    "Indice non creato su %s (%s): %s",
+                    collection_name,
+                    kwargs.get("name") or keys,
+                    exc,
+                )
         
         # --- Invoices ---
         await _safe_index(Collections.INVOICES, "invoice_key", unique=True, sparse=True, name="idx_invoice_key_unique")

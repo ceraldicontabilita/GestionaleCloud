@@ -550,9 +550,9 @@ async def create_conto(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """Crea un nuovo conto nel piano dei conti."""
     db = Database.get_db()
     
-    codice = data.get("codice")
-    nome = data.get("nome")
-    categoria = data.get("categoria")
+    codice = str(data.get("codice") or "").strip()
+    nome = str(data.get("nome") or "").strip()
+    categoria = str(data.get("categoria") or "").strip()
     
     if not codice or not nome or not categoria:
         raise HTTPException(status_code=400, detail="Codice, nome e categoria sono obbligatori")
@@ -578,7 +578,16 @@ async def create_conto(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         "updated_at": now
     }
     
-    await db[COLLECTION_PIANO_CONTI].insert_one(conto.copy())
+    try:
+        await db[COLLECTION_PIANO_CONTI].insert_one(conto.copy())
+    except DuplicateKeyError:
+        # La ricerca preventiva migliora il messaggio nel caso ordinario, ma
+        # due richieste simultanee possono entrambe arrivare all'insert. Il
+        # vincolo univoco su ``codice`` resta la fonte atomica di verita'.
+        raise HTTPException(
+            status_code=409,
+            detail=f"Conto con codice {codice} gia' esistente",
+        )
     conto.pop("_id", None)
     
     return {"success": True, "conto": conto}

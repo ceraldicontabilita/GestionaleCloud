@@ -16,6 +16,8 @@ import uuid
 import logging
 import io
 
+from pymongo.errors import DuplicateKeyError
+
 from app.database import Database
 from app.services.categorizzazione_contabile import (
     get_categorizzatore,
@@ -99,46 +101,46 @@ async def inizializza_piano_conti_esteso(_admin: Dict[str, Any] = Depends(get_cu
     """
     db = Database.get_db()
     
-    # Recupera conti esistenti
-    conti_esistenti = await db["piano_conti"].find({}, {"_id": 0}).to_list(500)
-    saldi_esistenti = {c.get("codice"): c.get("saldo", 0) for c in conti_esistenti}
-    
     conti_aggiunti = 0
     conti_aggiornati = 0
     now = datetime.now(timezone.utc).isoformat()
     
     for codice, info in PIANO_CONTI_ESTESO.items():
-        existing = await db["piano_conti"].find_one({"codice": codice})
-        
-        if existing:
-            # Aggiorna solo nome e categoria se diversi
-            if existing.get("nome") != info["nome"] or existing.get("categoria") != info["categoria"]:
-                await db["piano_conti"].update_one(
-                    {"codice": codice},
-                    {"$set": {
-                        "nome": info["nome"],
-                        "categoria": info["categoria"],
-                        "natura": info["natura"],
-                        "updated_at": now
-                    }}
-                )
-                conti_aggiornati += 1
-        else:
-            # Crea nuovo conto
-            nuovo_conto = {
-                "id": str(uuid.uuid4()),
-                "codice": codice,
-                "nome": info["nome"],
-                "categoria": info["categoria"],
-                "natura": info["natura"],
-                "gruppo_codice": codice[:2],
-                "attivo": True,
-                "saldo": 0,
-                "created_at": now,
-                "updated_at": now
-            }
-            await db["piano_conti"].insert_one(nuovo_conto.copy())
+        # Un solo upsert elimina la finestra find-then-insert che poteva
+        # duplicare un conto quando due richieste inizializzavano il piano in
+        # parallelo. L'indice univoco su ``codice`` completa la protezione.
+        fields_to_update = {
+            "nome": info["nome"],
+            "categoria": info["categoria"],
+            "natura": info["natura"],
+            "updated_at": now,
+        }
+        try:
+            result = await db["piano_conti"].update_one(
+                {"codice": codice},
+                {
+                    "$set": fields_to_update,
+                    "$setOnInsert": {
+                        "id": str(uuid.uuid4()),
+                        "gruppo_codice": codice[:2],
+                        "attivo": True,
+                        "saldo": 0,
+                        "created_at": now,
+                    },
+                },
+                upsert=True,
+            )
+        except DuplicateKeyError:
+            # Un altro processo ha appena inserito lo stesso codice. Il dato
+            # esiste gia': completiamo soltanto l'aggiornamento descrittivo.
+            result = await db["piano_conti"].update_one(
+                {"codice": codice},
+                {"$set": fields_to_update},
+            )
+        if result.upserted_id is not None:
             conti_aggiunti += 1
+        elif result.modified_count:
+            conti_aggiornati += 1
     
     return {
         "success": True,
