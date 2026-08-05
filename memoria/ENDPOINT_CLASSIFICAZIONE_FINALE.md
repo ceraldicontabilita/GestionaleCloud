@@ -273,7 +273,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/contabilita/categorizzazione-preview` | accounting.contabilita_avanzata | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/contabilita/disponibilita-liquide` | contabilita_italiana | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/contabilita/export/pdf-dichiarazione` | accounting.contabilita_avanzata | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/contabilita/inizializza-piano-esteso` | accounting.contabilita_avanzata | sì | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
+| `POST /api/contabilita/inizializza-piano-esteso` | accounting.contabilita_avanzata | sì | — | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `GET /api/contabilita/piano-conti-esteso` | accounting.contabilita_avanzata | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/contabilita/ricategorizza-fatture` | accounting.contabilita_avanzata | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/contabilita/statistiche-categorizzazione` | accounting.contabilita_avanzata | sì | — | — | — | — | tenere | in uso: FE |
@@ -795,7 +795,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/pianificazione/events` | public_api | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/pianificazione/events` | public_api | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/piano-conti/` | accounting.piano_conti | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/piano-conti/` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/piano-conti/` | accounting.piano_conti | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/piano-conti/bilancio` | accounting.piano_conti | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/piano-conti/conto/{codice}/movimenti` | accounting.piano_conti | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/piano-conti/movimenti` | accounting.piano_conti | sì | — | — | — | — | tenere | in uso: FE |
