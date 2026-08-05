@@ -186,6 +186,22 @@ def _supported_file(route: Optional[str], filename: str) -> bool:
     return False
 
 
+def _work_item_priority(item: Dict[str, Any]) -> Tuple[int, str, str]:
+    """Da precedenza ai file affidati esplicitamente a ``Da elaborare``.
+
+    Le vecchie strutture possono contenere molti file direttamente nella
+    cartella della banca. Restano tutti processabili, ma non devono precedere
+    un documento appena inserito nell'inbox operativo.
+    """
+    path = str(item.get("source_path") or "").replace("\\", "/")
+    segments = {segment.strip().lower() for segment in path.split("/")}
+    return (
+        0 if "da elaborare" in segments else 1,
+        path.lower(),
+        str(item.get("id") or ""),
+    )
+
+
 def _discover_work_items(
     service,
     root_id: str,
@@ -303,7 +319,7 @@ async def sync(db) -> Dict[str, Any]:
                 files_by_id.setdefault(item["id"], item)
             for source in root_sources:
                 sources_by_id.setdefault(source["id"], source)
-        files = list(files_by_id.values())
+        files = sorted(files_by_id.values(), key=_work_item_priority)
         sources = list(sources_by_id.values())
         result["sources"] = [source["path"] for source in sources]
         result["total"] = len(files)
