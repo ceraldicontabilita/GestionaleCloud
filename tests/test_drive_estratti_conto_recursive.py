@@ -2,7 +2,11 @@ import json
 import re
 
 from app.config import settings
-from app.services.drive_estratti_conto_ingest import _discover_work_items, _folder_ids
+from app.services.drive_estratti_conto_ingest import (
+    _discover_work_items,
+    _folder_ids,
+    _work_item_priority,
+)
 
 
 FOLDER = "application/vnd.google-apps.folder"
@@ -103,3 +107,17 @@ def test_crea_ciclo_anche_per_fonte_riconosciuta_senza_file():
 
     assert items == []
     assert sources == [{"id": "bpm", "path": "BPM"}]
+
+
+def test_da_elaborare_ha_priorita_sui_file_storici_diretti():
+    items = [
+        {"id": "storico", "source_path": "BPM/estratto-2024.pdf"},
+        {"id": "inbox-b", "source_path": "BPM/Da elaborare/b.pdf"},
+        {"id": "inbox-a", "source_path": "BNL/Da elaborare/a.pdf"},
+    ]
+
+    ordinati = sorted(items, key=_work_item_priority)
+
+    assert [item["id"] for item in ordinati] == [
+        "inbox-a", "inbox-b", "storico",
+    ]
