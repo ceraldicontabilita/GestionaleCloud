@@ -11,6 +11,9 @@ import re
 import os
 import uuid
 import logging
+import asyncio
+import base64
+import hashlib
 from datetime import datetime, timezone, timedelta
 from email.header import decode_header
 from email.parser import BytesParser
@@ -24,13 +27,6 @@ logger = logging.getLogger(__name__)
 UPLOAD_DIR = "/tmp/uploads/verbali_gmail"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-SENDERS_VERBALI_DEFAULT: Set[str] = {
-    "notifica.pl.napoli@pec.it",
-    "posta-certificata@pec.aruba.it",
-    "ufficiosanzioni@arval.it",
-    "comando.pm@pec.comune.napoli.it",
-    "prefettura.napoli@pec.interno.it",
-}
 SUBJECT_KEYWORDS = [
     "sanzione amministrativa",
     "codice della strada",
@@ -59,35 +55,62 @@ async def get_senders_whitelist(db: AsyncIOMotorDatabase) -> Set[str]:
     # retro-compatibilità) tramite l'accessor condiviso (P2-2).
     try:
         from app.services.mittenti import senders_attendibili
-        senders = await senders_attendibili(db, tipo_documento="verbale_cds", canale="gmail")
+        # Il valore selezionabile nella UI e' `verbale`; `verbale_cds` resta
+        # accettato per le configurazioni storiche.
+        senders = await senders_attendibili(db, tipo_documento="verbale", canale="gmail")
+        senders |= await senders_attendibili(db, tipo_documento="verbale_cds", canale="gmail")
         if senders:
             return senders
     except Exception:
-        pass
-    return SENDERS_VERBALI_DEFAULT
+        logger.exception("Errore lettura mittenti attendibili verbali")
+    # Lista vuota = zero download. Non si ricade su un trasportatore PEC
+    # generico: la whitelist canonica e' la fonte di verita'.
+    return set()
+
+
+async def _gmail_credentials(db: AsyncIOMotorDatabase):
+    """Usa prima le credenziali salvate dall'Admin, poi quelle d'ambiente."""
+    user = password = None
+    try:
+        from app.utils.crypto import decrypt_credential
+        cfg = await db["settings"].find_one({"chiave": "gmail"}, {"_id": 0})
+        if cfg and cfg.get("imap_user") and cfg.get("gmail_app_password"):
+            user = cfg["imap_user"]
+            password = decrypt_credential(cfg["gmail_app_password"])
+    except Exception:
+        logger.exception("Credenziali Gmail Admin non leggibili")
+    return (
+        user or settings.GMAIL_EMAIL or settings.IMAP_USER,
+        password or settings.GMAIL_APP_PASSWORD or settings.IMAP_PASSWORD,
+    )
 
 
 async def scan_gmail_verbali(db: AsyncIOMotorDatabase, days_back: int = 7, mark_as_read: bool = False) -> Dict[str, Any]:
     stats = {
         "email_scansionate": 0, "email_match": 0,
         "verbali_nuovi": 0, "verbali_aggiornati": 0, "errori": [],
+        "documenti_nuovi": 0, "documenti_duplicati": 0,
+        "drive_archiviati": 0, "drive_duplicati": 0,
     }
-    if not settings.GMAIL_EMAIL and not settings.IMAP_USER:
+    email_user, email_password = await _gmail_credentials(db)
+    if not email_user or not email_password:
         stats["errori"].append("Gmail non configurato")
         return stats
 
     senders = await get_senders_whitelist(db)
+    if not senders:
+        stats["errori"].append("Nessun mittente attendibile per i verbali")
+        return stats
     try:
         conn = imaplib.IMAP4_SSL("imap.gmail.com", 993)
-        conn.login(settings.GMAIL_EMAIL or settings.IMAP_USER,
-                   settings.GMAIL_APP_PASSWORD or settings.IMAP_PASSWORD)
+        conn.login(email_user, email_password)
         conn.select("INBOX")
         from_clause = " OR ".join(f"from:{s}" for s in senders)
-        # Subject: Gmail X-GM-RAW usa parentesi per frasi, evitiamo doppi apici nested
-        subj_clause = " OR ".join(f"subject:({k.replace(' ', '-')})" for k in SUBJECT_KEYWORDS[:3])
         after = (datetime.now() - timedelta(days=days_back)).strftime("%Y/%m/%d")
-        q = f'(X-GM-RAW "({from_clause} OR ({subj_clause})) after:{after}")'
-        status, data = conn.search(None, q)
+        # Il mittente attendibile e' obbligatorio. Prima il ramo OR sui subject
+        # permetteva a qualunque mittente di entrare se scriveva "verbale".
+        raw_query = f"({from_clause}) has:attachment after:{after}"
+        status, data = conn.search(None, "X-GM-RAW", f'"{raw_query}"')
         if status != "OK" or not data or not data[0]:
             try:
                 conn.logout()
@@ -126,6 +149,16 @@ async def scan_gmail_verbali(db: AsyncIOMotorDatabase, days_back: int = 7, mark_
                         logger.exception("Errore ricerca fattura per verbale nuovo")
                 elif op == "updated":
                     stats["verbali_aggiornati"] += 1
+                for allegato in parsed["allegati"]:
+                    ingest = await _ingest_pdf_attachment(db, parsed, allegato)
+                    if ingest["documento"] == "nuovo":
+                        stats["documenti_nuovi"] += 1
+                    else:
+                        stats["documenti_duplicati"] += 1
+                    if ingest["drive"] == "archived":
+                        stats["drive_archiviati"] += 1
+                    elif ingest["drive"] == "duplicate":
+                        stats["drive_duplicati"] += 1
                 if mark_as_read:
                     conn.store(num, "+FLAGS", "\\Seen")
             except Exception as e:
@@ -141,8 +174,11 @@ async def scan_gmail_verbali(db: AsyncIOMotorDatabase, days_back: int = 7, mark_
 def _parse_email_verbale(msg, senders_whitelist: Set[str]):
     sender = (msg.get("From") or "").lower()
     subject = _decode(msg.get("Subject") or "")
-    if not any(s in sender for s in senders_whitelist) \
-       and not any(k in subject.lower() for k in SUBJECT_KEYWORDS):
+    addresses = {
+        value.lower()
+        for value in re.findall(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", sender, re.IGNORECASE)
+    }
+    if not addresses.intersection({s.lower() for s in senders_whitelist}):
         return None
     try:
         data_ric = email_lib.utils.parsedate_to_datetime(msg.get("Date", ""))
@@ -190,10 +226,12 @@ def _save_attachments(msg, key) -> List[Dict[str, Any]]:
                 safe = re.sub(r'[^A-Za-z0-9._-]', '_', filename)
                 path = os.path.join(UPLOAD_DIR, f"{prefix}_{safe}")
                 try:
+                    content = part.get_payload(decode=True)
                     with open(path, "wb") as f:
-                        f.write(part.get_payload(decode=True))
+                        f.write(content)
                     out.append({"filename": filename, "path": path,
-                                "size": os.path.getsize(path)})
+                                "size": os.path.getsize(path),
+                                "file_hash": hashlib.md5(content).hexdigest()})
                 except Exception as e:
                     logger.warning("save %s: %s", filename, e)
             elif ctype == "message/rfc822" or (filename and filename.lower().endswith(".eml")):
@@ -207,6 +245,75 @@ def _save_attachments(msg, key) -> List[Dict[str, Any]]:
 
     _walk(msg)
     return out
+
+
+async def _ingest_pdf_attachment(db, parsed: Dict[str, Any], allegato: Dict[str, Any]) -> Dict[str, str]:
+    """Conserva il PDF nell'app, lo classifica e ne archivia una copia Drive."""
+    with open(allegato["path"], "rb") as handle:
+        content = handle.read()
+    digest = allegato.get("file_hash") or hashlib.md5(content).hexdigest()
+    existing = await db["documents_inbox"].find_one(
+        {"file_hash": digest}, {"_id": 0, "id": 1, "drive_archive_status": 1}
+    )
+    now = datetime.now(timezone.utc).isoformat()
+    if existing:
+        document_id = existing["id"]
+        document_status = "duplicato"
+    else:
+        document_id = str(uuid.uuid4())
+        document = {
+            "id": document_id,
+            "filename": allegato["filename"],
+            "file_hash": digest,
+            "pdf_data": base64.b64encode(content).decode("ascii"),
+            "tipo_documento": "verbale",
+            "categoria": "verbale",
+            "category": "verbale",
+            "email_from": parsed.get("email_sender_visibile"),
+            "email_sender_originale": parsed.get("email_sender_originale"),
+            "email_subject": parsed.get("email_subject"),
+            "email_date": parsed.get("data_ricezione_notifica"),
+            "fonte": "gmail_verbali",
+            "source": "gmail_verbali",
+            "stato": "importato",
+            "status": "importato",
+            "processed": False,
+            "created_at": now,
+        }
+        await db["documents_inbox"].insert_one(dict(document))
+        document_status = "nuovo"
+
+    from app.services.verbali_document_import import process_verbale_document
+    await process_verbale_document(
+        db,
+        document_id=document_id,
+        content=content,
+        filename=allegato["filename"],
+        source="email_verbale",
+    )
+
+    from app.services.email_drive_archive import archive_document_copy
+    archive_doc = {
+        "id": document_id,
+        "filename": allegato["filename"],
+        "file_hash": digest,
+        "pdf_data": base64.b64encode(content).decode("ascii"),
+    }
+    try:
+        drive = await asyncio.to_thread(archive_document_copy, archive_doc, "verbale")
+    except Exception as exc:
+        logger.exception("Archivio Drive verbale fallito: %s", allegato["filename"])
+        drive = {"status": "error", "reason": str(exc)}
+    await db["documents_inbox"].update_one(
+        {"id": document_id},
+        {"$set": {
+            "drive_archive_status": drive.get("status"),
+            "drive_archive_area": drive.get("area"),
+            "drive_archived_at": drive.get("archived_at"),
+            "updated_at": now,
+        }},
+    )
+    return {"documento": document_status, "drive": str(drive.get("status") or "error")}
 
 
 def _parse_avviso_digitale_pdf(pdf_path: str) -> Dict[str, Any]:
@@ -259,7 +366,7 @@ async def _upsert_verbale(db, parsed) -> str:
                "data_scadenza_riduzione_30": data_scad_30,
                "data_scadenza_ordinaria_60": data_scad_60,
                "stato": "notificato",
-               "updated_at": datetime.utcnow().isoformat()}
+               "updated_at": datetime.now(timezone.utc).isoformat()}
     payload = {k: v for k, v in payload.items() if v not in (None, "", [])}
 
     q = None
@@ -267,20 +374,25 @@ async def _upsert_verbale(db, parsed) -> str:
         q = {"numero_verbale": parsed["numero_verbale"]}
     elif parsed.get("upec_id"):
         q = {"upec_id": parsed["upec_id"]}
-    if q:
-        existing = await db["verbali_noleggio"].find_one(q)
-        if existing:
-            fields = {k: v for k, v in payload.items()
-                      if not existing.get(k) and v not in (None, "", 0, [], {})}
-            if fields:
-                fields["updated_at"] = payload["updated_at"]
-                await db["verbali_noleggio"].update_one(
-                    {"_id": existing["_id"]}, {"$set": fields}
-                )
-                return "updated"
-            return "unchanged"
+    if not q:
+        # Il PDF classificato puo' ancora ricavare il numero con OCR/vision.
+        # Non creiamo una riga anonima che diventerebbe un duplicato quando
+        # il documento genera poi l'entita' corretta.
+        return "ignored"
+
+    existing = await db["verbali_noleggio"].find_one(q)
+    if existing:
+        fields = {k: v for k, v in payload.items()
+                  if not existing.get(k) and v not in (None, "", 0, [], {})}
+        if fields:
+            fields["updated_at"] = payload["updated_at"]
+            await db["verbali_noleggio"].update_one(
+                {"_id": existing["_id"]}, {"$set": fields}
+            )
+            return "updated"
+        return "unchanged"
     payload["id"] = str(uuid.uuid4())
-    payload["creato_il"] = datetime.utcnow().isoformat()
+    payload["creato_il"] = datetime.now(timezone.utc).isoformat()
     await db["verbali_noleggio"].insert_one(payload)
     return "new"
 
@@ -294,6 +406,6 @@ async def _collega_fattura(db, numero_verbale: str, fm: Dict[str, Any]) -> None:
             "fattura_associata_data": fm["data_fattura"],
             "fattura_associata_fornitore": fm["fornitore"],
             "fattura_associata_importo": fm["importo_fattura"],
-            "updated_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }}
     )

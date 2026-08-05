@@ -2,6 +2,7 @@ import asyncio
 import copy
 import re
 
+from app.services import ai_document_parser
 from app.services import verbali_document_import as mod
 
 
@@ -79,6 +80,48 @@ class _Db:
 
 def _run(coro):
     return asyncio.run(coro)
+
+
+def test_numero_verbale_estratto_dai_nomi_file_reali():
+    assert mod._extract_numero(
+        "VERBALE N. 24990121765 DEL 13 MAGGIO 2026 CERALDI GROUP SRL.PDF"
+    ) == "24990121765"
+    assert mod._extract_numero("VERBALE N. VV/24990121765.pdf") == "VV/24990121765"
+
+
+def test_pdf_scansione_usa_vision_e_crea_verbale_amministrativo(monkeypatch):
+    db = _Db()
+    db["documents_inbox"].docs = [{"id": "doc-scan"}]
+    monkeypatch.setattr(mod, "_extract_text", lambda _content: "")
+
+    async def fake_ai(**_kwargs):
+        return {
+            "success": True,
+            "tipo_documento": "verbale",
+            "numero_verbale": "VV/24990121765",
+            "data_verbale": "2026-05-13",
+            "data_violazione": "2026-04-24",
+            "importo_ridotto": 25.82,
+            "ente_creditore": "Comune di Napoli",
+            "partita_iva_responsabile": "04523831214",
+            "targa": None,
+        }
+
+    monkeypatch.setattr(ai_document_parser, "parse_verbale_ai", fake_ai)
+    result = _run(mod.process_verbale_document(
+        db,
+        document_id="doc-scan",
+        content=b"%PDF-1.7 scanned",
+        filename="VERBALE N. 24990121765.pdf",
+    ))
+
+    assert result["status"] == "linked"
+    verbale = db["verbali_noleggio"].docs[0]
+    assert verbale["numero_verbale"] == "VV/24990121765"
+    assert verbale["importo"] == 25.82
+    assert verbale["ambito"] == "amministrativo"
+    assert verbale["targa"] is None
+    assert db["documents_inbox"].docs[0]["estrazione_ai_usata"] is True
 
 
 def test_documento_senza_numero_o_iuv_resta_da_revisionare(monkeypatch):

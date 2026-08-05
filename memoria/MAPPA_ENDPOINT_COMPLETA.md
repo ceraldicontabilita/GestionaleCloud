@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1046 endpoint** in **109 gruppi**.
+> Totale **1047 endpoint** in **109 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 657 · ext esterni = 90 · — da verificare = 299
+**Riepilogo uso:** ✓ frontend = 657 · ext esterni = 90 · — da verificare = 300
 
 ## AI Parser  (11)
 
@@ -1554,7 +1554,7 @@
 | GET | `/api/verbali-noleggio/pdf/{numero_verbale}` | — | verbali_noleggio |
 | GET | `/api/verbali-noleggio/verbali-completi` | — | verbali_noleggio |
 
-## Verbali Riconciliazione  (7)
+## Verbali Riconciliazione  (8)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1565,6 +1565,7 @@
 | POST | `/api/verbali-riconciliazione/riconcilia/{numero_verbale}` | ✓ | verbali_riconciliazione |
 | POST | `/api/verbali-riconciliazione/scan-email` | — | verbali_riconciliazione |
 | POST | `/api/verbali-riconciliazione/scan-fatture-verbali` | ✓ | verbali_riconciliazione |
+| POST | `/api/verbali-riconciliazione/scan-gmail-attendibili` | — | verbali_riconciliazione |
 
 ## Verifica Coerenza  (7)
 
