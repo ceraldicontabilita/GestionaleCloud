@@ -34,6 +34,8 @@ Sono stati individuati 1.903 gruppi di copie identiche nella stessa cartella, eq
 
 Il ricalcolo controllato ha aggiornato 1.567 fatture: 180 risultano pronte per l'inserimento e 1.387 restano da verificare. L'IVA detraibile complessiva classificata non è stata aumentata dal ricalcolo.
 
+Al collaudo finale del 5 agosto 2026 restano 1.358 fatture `DA_VERIFICARE`. Non risultano IVA detraibili negative, superiori all'IVA del documento o stati operativi privi dell'importo esplicito. Le 1.358 posizioni non sono errori di calcolo: sono decisioni di detraibilità che devono essere supportate dalla fattura e dalla relativa natura fiscale.
+
 ### F24 e quietanze
 
 Su 788 PDF fiscali unici:
@@ -66,6 +68,13 @@ Il collaudo controlla:
 - coerenza POS tra chiusura manuale, corrispettivi XML e accredito banca.
 
 Gli importi simili, da soli, non autorizzano alcun collegamento.
+
+Il controllo di produzione ha inoltre separato due casi prima confusi dallo stesso contatore:
+
+- 23 righe generiche di prima nota duplicavano altrettante righe già collegate alla fattura; sono state messe in stato cancellato logico, conservando la riga probatoria e quindi la possibilità di recupero;
+- quattro movimenti erano pagamenti cumulativi validi su più fatture: ogni quota è collegata a una fattura diversa e la somma coincide al centesimo con l'unico movimento di estratto conto; sono stati correttamente conservati.
+
+Dopo la pulizia risultano zero collegamenti a movimenti bancari inesistenti, zero duplicazioni bancarie attive e zero fatture pagate con movimento cancellato.
 
 ## Controlli automatici
 
@@ -118,16 +127,19 @@ npm.cmd run build
 
 Il bundle locale `frontend/dist` non va pubblicato: Render compila il frontend dalla sorgente.
 
-Esito dell'ultima suite completa: 986 test superati, due saltati e nessun errore. Gli avvisi residui riguardano principalmente API `datetime.utcnow()` deprecate e non modificano l'esito funzionale.
+Esito dell'ultima suite completa: 990 test superati, due saltati e nessun errore. Gli avvisi residui riguardano principalmente API `datetime.utcnow()` deprecate e non modificano l'esito funzionale.
+
+Esito del collaudo di produzione `collaudo-20260805-040824`: 15 controlli eseguiti, nessun controllo in errore, 12 controlli completamente puliti e tre aree aperte esclusivamente per verifica documentale o riconciliazione assistita.
 
 ## Limiti e rischi residui
 
 - La pulizia delle copie Drive è bloccata finché non viene concessa l'autorizzazione in scrittura.
 - I 610 PDF fiscali non riconosciuti richiedono un parser aggiuntivo o verifica manuale.
-- Le fatture con detraibilità non classificata non producono credito IVA finché non vengono confermate.
+- Le 1.358 fatture con detraibilità non classificata non producono credito IVA finché non vengono confermate.
 - Le quietanze senza F24 corrispondente provano il pagamento, ma non autorizzano la ricostruzione dei dettagli del modello.
 - Le differenze fra totale fattura, imponibile e IVA possono includere ritenute, bollo, cassa previdenziale o arrotondamenti e non sono corrette automaticamente.
-- Il collaudo finale mantiene aperte 33 anomalie su collegamenti banca, 64 scostamenti POS/XML/banca e 294 anomalie sugli assegni: sono segnalazioni da verificare con evidenza, non correzioni automatiche.
+- I collegamenti banca risultano ora puliti. Restano 65 giornate con scostamento POS/XML/banca da verificare sulle chiusure e sugli accrediti effettivi.
+- I 294 rilievi sugli assegni corrispondono a 147 assegni che presentano due dati mancanti ciascuno: beneficiario e fattura collegata. Non vengono completati per supposizione.
 
 ## Recovery
 
