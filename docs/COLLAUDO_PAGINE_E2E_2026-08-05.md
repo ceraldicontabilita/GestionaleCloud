@@ -38,7 +38,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 12 | [ ] | Flotta noleggio — `/noleggio` | Veicoli, contratti, driver storico e costi ricavati dalle fatture. | TENERE |
 | 13 | [ ] IN CORREZIONE | Verbali noleggio — `/noleggio/verbali` | Verbali da email/documenti, targa, driver alla data, fattura, PagoPA e pagamento. | TENERE |
 | 14 | [ ] | Costi noleggio — `/noleggio/costi` | Riepiloga canoni, verbali, bollo, pedaggi e altri costi per veicolo. | TENERE |
-| 15 | [ ] IN CORREZIONE | Dettaglio verbale — `/verbali-noleggio/:identificativo` | Mostra la singola catena Verbale -> veicolo -> driver -> fattura -> pagamento. | TENERE |
+| 15 | [x] VERIFICATA | Dettaglio verbale — `/verbali-noleggio/:identificativo` | Mostra la singola catena Verbale -> veicolo -> driver -> fattura -> pagamento. | TENERE |
 | 16 | [x] VERIFICATA | Piano dei Conti — `/contabilita` | Mostra un solo conto per codice e i saldi derivati dalle fonti contabili. | TENERE |
 | 17 | [ ] | Bilancio — `/contabilita/bilancio` | Stato patrimoniale e conto economico per periodo. | TENERE |
 | 18 | [ ] | Verifica Bilancio — `/contabilita/verifica` | Controlla quadrature e incoerenze del bilancio. | TENERE |
@@ -142,3 +142,5 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 - Causa: gli endpoint dettaglio/PDF leggevano soltanto i vecchi campi binari incorporati nel verbale e ignoravano la relazione `document_ids` / `source_document_id` creata dal nuovo import Gmail.
 - Correzione in corso: vista PDF unica per formati storici e `documents_inbox`, metadati leggeri nel dettaglio e download per indice anche per numeri verbale contenenti `/`.
 - Test locali dopo la correzione: 1101 backend superati, 2 saltati; 79 frontend superati. La pagina resta aperta fino al collaudo post-deploy con il PDF reale.
+- Correzione pubblicata su `main` con merge `3cc02983ccf066ebf4cb6dbdabcdac89e458fea9`; deploy Render `dep-d9ppolrbc2fs73apc590` concluso con stato live.
+- Collaudo post-deploy sul verbale reale `VV/24990121765`: `PDF disponibili: 1`, nome del documento ASIA corretto, visualizzatore interno aperto con successo e 0 errori console. Pagina 15 chiusa.
