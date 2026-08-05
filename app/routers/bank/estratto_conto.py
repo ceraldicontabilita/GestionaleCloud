@@ -807,7 +807,9 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     try:
         from app.routers.bank.assegni import sync_assegni_da_estratto_conto
         assegni_sync = (
-            await sync_assegni_da_estratto_conto()
+            await sync_assegni_da_estratto_conto(
+                movimento_ids=ids_da_riconciliare,
+            )
             if fonte_ufficiale and (has_material_changes or not skip_duplicate_repairs)
             else {
                 "skipped": True,
