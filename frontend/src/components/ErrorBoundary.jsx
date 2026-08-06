@@ -62,6 +62,7 @@ class ErrorBoundary extends React.Component {
 
       return (
         <div
+          data-testid="error-boundary"
           style={{
             padding: 40,
             textAlign: 'center',

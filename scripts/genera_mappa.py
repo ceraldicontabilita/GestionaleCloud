@@ -141,8 +141,11 @@ def main():
         out.append("")
     open("memoria/MAPPA_ENDPOINT_COMPLETA.md", "w", encoding="utf-8").write("\n".join(out) + "\n")
 
-    print(f"OK — {len(routes)} endpoint, {len(by_prefix)} prefissi, {len(by_tag)} tag")
-    print(f"FE ✓={n_fe}  ext={n_ext}  —={n_no}")
+    # Solo ASCII: su Windows la console cp1252 puo non rappresentare i simboli
+    # usati nel report Markdown e il generatore terminava con UnicodeEncodeError
+    # dopo avere gia scritto i file.
+    print(f"OK - {len(routes)} endpoint, {len(by_prefix)} prefissi, {len(by_tag)} tag")
+    print(f"FE used={n_fe}  external={n_ext}  unreferenced={n_no}")
 
 
 if __name__ == "__main__":

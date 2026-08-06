@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1052 · tenere: 697 · verificare: 332 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1052 · tenere: 698 · verificare: 331 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -398,7 +398,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/documenti/drive/sync` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/documenti/elimina-processati` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/documenti/lista` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/documenti/lock-status` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/documenti/lock-status` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/documenti/monitor/start` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/documenti/monitor/status` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/documenti/monitor/stop` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

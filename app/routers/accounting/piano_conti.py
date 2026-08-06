@@ -689,7 +689,13 @@ async def inizializza_regole_base(db) -> List[Dict[str, Any]]:
         regole.append(regola)
     
     if regole:
-        await db[COLLECTION_REGOLE_CATEGORIZZAZIONE].insert_many(regole)
+        # PyMongo/Motor aggiunge ``_id`` agli stessi dizionari passati a
+        # insert_many. Se restituiamo quella lista a FastAPI, l'ObjectId non e
+        # serializzabile e la prima apertura del Piano dei Conti termina in
+        # HTTP 500. Persistiamo copie e manteniamo la risposta JSON pura.
+        await db[COLLECTION_REGOLE_CATEGORIZZAZIONE].insert_many(
+            [regola.copy() for regola in regole]
+        )
     
     return regole
 
