@@ -35,7 +35,12 @@ from app.router_registry import register_all_routers  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DIST = ROOT / "frontend" / "dist"
+# Consente di collaudare un build fresco fuori dal repository. In questo modo
+# l'E2E non sporca ``frontend/dist`` e non rischia di confondere artefatti
+# generati con modifiche sorgente da pubblicare.
+DIST = Path(
+    os.environ.get("E2E_FRONTEND_DIST", str(ROOT / "frontend" / "dist"))
+).resolve()
 
 
 @asynccontextmanager

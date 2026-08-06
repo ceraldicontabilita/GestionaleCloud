@@ -333,10 +333,17 @@ export default function GestioneAssegni() {
     if (!editingId) return;
 
     try {
-      await api.put(`/api/assegni/${editingId}`, {
-        ...editForm,
-        stato: editForm.importo && editForm.beneficiario ? 'compilato' : 'vuoto',
-      });
+      const res = await api.put(`/api/assegni/${editingId}`, editForm);
+      const intento = res.data?.intento_fattura;
+      if (intento?.collegato) {
+        toast.success('Assegno salvato e fattura associata automaticamente');
+      } else if (intento?.motivo === 'ambiguo') {
+        toast.warning('Più fatture compatibili: serve scegliere solo tra le candidate reali');
+      } else if (intento?.registrato) {
+        toast.info('Assegno salvato: la fattura sarà associata automaticamente quando arriva');
+      } else {
+        toast.success('Assegno salvato');
+      }
       setEditingId(null);
       loadData();
     } catch (error) {
@@ -1584,11 +1591,17 @@ export default function GestioneAssegni() {
           <StatCard
             icon="📊"
             label="Salute assegni emessi"
-            value={`${statsAvanzate.health_score}%`}
+            value={
+              Number.isFinite(Number(statsAvanzate.health_score))
+                ? `${Number(statsAvanzate.health_score)}%`
+                : 'Non calcolata'
+            }
             accent={
-              statsAvanzate.health_score >= 90
+              !Number.isFinite(Number(statsAvanzate.health_score))
+                ? 'info'
+                : Number(statsAvanzate.health_score) >= 90
                 ? 'success'
-                : statsAvanzate.health_score >= 70
+                : Number(statsAvanzate.health_score) >= 70
                   ? 'warning'
                   : 'danger'
             }
@@ -1597,7 +1610,12 @@ export default function GestioneAssegni() {
           <StatCard
             icon="✅"
             label="Con Beneficiario"
-            value={`${statsAvanzate.con_beneficiario}/${statsAvanzate.totale_assegni}`}
+            value={
+              Number.isFinite(Number(statsAvanzate.con_beneficiario))
+              && Number.isFinite(Number(statsAvanzate.totale_assegni))
+                ? `${Number(statsAvanzate.con_beneficiario)}/${Number(statsAvanzate.totale_assegni)}`
+                : 'Non calcolato'
+            }
             accent="info"
           />
 
@@ -2351,7 +2369,7 @@ export default function GestioneAssegni() {
               gap: 8,
             }}
           >
-            ⚠️ Assegni Senza Beneficiario
+            ⏳ Assegni in attesa di fattura
             {assegniNonAssociati.totale !== undefined && (
               <Badge variant={assegniNonAssociati.totale > 0 ? 'warning' : 'success'}>
                 {assegniNonAssociati.totale}
@@ -2390,7 +2408,7 @@ export default function GestioneAssegni() {
                   color: COLORS.success,
                 }}
               >
-                ✅ Tutti gli assegni sono stati associati!
+                ✅ Tutti gli assegni hanno un riferimento documentale
               </div>
             ) : (
               <div>
@@ -2589,8 +2607,8 @@ export default function GestioneAssegni() {
                             → {assegno.fornitore_fattura}
                           </span>
                         ) : assegno.stato === 'incassato' ? (
-                          <span style={{ color: COLORS.danger, fontWeight: 700 }}>
-                            Fornitore non collegato
+                          <span style={{ color: COLORS.warning, fontWeight: 700 }}>
+                            Da ricavare dalla fattura
                           </span>
                         ) : (
                           '-'
@@ -2704,8 +2722,8 @@ export default function GestioneAssegni() {
                         )}
                       </span>
                     ) : assegno.stato === 'incassato' ? (
-                      <span style={{ color: COLORS.danger, fontWeight: 700 }}>
-                        Fattura non collegata
+                      <span style={{ color: COLORS.warning, fontWeight: 700 }}>
+                        Attende fattura/XML
                       </span>
                     ) : (
                       '-'
@@ -2741,8 +2759,8 @@ export default function GestioneAssegni() {
                           </div>
                         )}
                         {!assegno.numero_fattura && !assegno.data_fattura && assegno.stato === 'incassato' && (
-                          <div style={{ color: COLORS.danger, fontWeight: 700 }}>
-                            Fattura non collegata
+                          <div style={{ color: COLORS.warning, fontWeight: 700 }}>
+                            Attende fattura/XML
                           </div>
                         )}
                       </div>

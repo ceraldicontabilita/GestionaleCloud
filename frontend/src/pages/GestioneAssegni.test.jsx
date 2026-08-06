@@ -137,9 +137,10 @@ describe('Stati e resa responsive della pagina Assegni', () => {
 
     const lista = await screen.findByTestId('assegni-table');
     await waitFor(() => expect(lista.querySelector('table')).not.toBeNull());
-    expect(screen.getByText('Fornitore non collegato')).toBeInTheDocument();
+    expect(screen.getByText('Da ricavare dalla fattura')).toBeInTheDocument();
     expect(screen.getByText('Data EC mancante')).toBeInTheDocument();
-    expect(screen.getByText('Fattura non collegata')).toBeInTheDocument();
+    expect(screen.getByText('Attende fattura/XML')).toBeInTheDocument();
+    expect(screen.getByText('Non calcolata')).toBeInTheDocument();
   });
 
   it('espone fornitore numero fattura data fattura e data incasso', async () => {

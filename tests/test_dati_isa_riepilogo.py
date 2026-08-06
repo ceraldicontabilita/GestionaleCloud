@@ -25,6 +25,8 @@ def test_riepilogo_dati_isa_usa_dati_annuali_e_quadra_fasce(monkeypatch):
 
     assert result["anno"] == 2025
     assert result["indicatori_acquisti"]["caffe_kg_acquistati"] == 2526
+    assert result["indicatori_disponibili"] is True
+    assert result["energia"]["disponibile"] is True
     assert len(result["energia"]["mensili"]) == 2
     assert result["energia"]["totali"] == {
         "f1_kwh": 14,
@@ -33,3 +35,17 @@ def test_riepilogo_dati_isa_usa_dati_annuali_e_quadra_fasce(monkeypatch):
         "totale_kwh": 75,
     }
     assert sum(result["energia"]["totali"][k] for k in ("f1_kwh", "f2_kwh", "f3_kwh")) == 75
+
+
+def test_riepilogo_dati_isa_distingue_assenza_dati_da_valore_zero(monkeypatch):
+    async def scenario():
+        db = AsyncMongoMockClient()["test_dati_isa_vuoto"]
+        monkeypatch.setattr(dati_isa.Database, "get_db", staticmethod(lambda: db))
+        return await dati_isa.riepilogo_dati_isa(2026)
+
+    result = asyncio.run(scenario())
+
+    assert result["indicatori_acquisti"] == {}
+    assert result["indicatori_disponibili"] is False
+    assert result["energia"]["mensili"] == []
+    assert result["energia"]["disponibile"] is False

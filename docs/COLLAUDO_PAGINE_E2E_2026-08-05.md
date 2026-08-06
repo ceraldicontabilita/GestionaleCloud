@@ -7,7 +7,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 ## Conteggio corrente verificato dal codice
 
 - 31 registrazioni `path:` nel router React principale (famiglie canoniche e wildcard).
-- 62 schermate funzionali distinte.
+- 63 schermate funzionali distinte.
 - 1 pagina tecnica 404, non operativa.
 - 51 redirect legacy esatti e 29 redirect per prefisso: sono compatibilita per vecchi link, non pagine aggiuntive.
 - 0 pagine autorizzate alla rimozione in questa fase: nessuna sara eliminata senza prova di inutilizzo e senza verificare i collegamenti.
@@ -22,7 +22,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 
 ## 2026-08-06 - fondazione del collaudo verificabile
 
-- Aggiunto `page_catalog.json`: fonte macchina numerata delle 62 schermate, con
+- Aggiunto `page_catalog.json`: fonte macchina numerata delle schermate, con
   route, componente React, entrypoint, livello di accesso e stato audit.
 - Il catalogo e il registro Markdown devono coincidere 1:1; sei test bloccano
   id mancanti, route duplicate, componenti assenti, hub non importati e URL
@@ -31,15 +31,16 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
   `delivery_only` e non viene piu presentata come pagina funzionante. Senza
   token, HTTP 401 dimostra soltanto che l'endpoint protetto esiste.
 - Aggiunto un E2E Playwright autenticato contro router reali e MongoDB in
-  memoria. Apre tutte le 62 schermate e fallisce per 404, ErrorBoundary React,
+  memoria. Apre tutte le schermate catalogate e fallisce per 404, ErrorBoundary React,
   errori JavaScript o API iniziali non valide, senza leggere dati aziendali.
 - Primo passaggio: 58/62. Difetti trovati e corretti: serializzazione ObjectId
   nelle regole del Piano dei Conti, URL inesistente nel Controllo mensile,
   lock Documenti chiamato fuori dal router canonico e 404 fixture duplicato.
-- Secondo passaggio completo: **62/62 aperture superate**. Questo certifica
+- Secondo passaggio storico: **62/62 aperture superate**. Questo certificava
   route, montaggio e caricamento iniziale nel sistema isolato; non certifica
   ancora la correttezza contabile dei dati reali. Restano pertanto visibili nel
-  catalogo **5 verificate, 8 in revisione e 49 non ancora verificate nel merito**.
+  il catalogo allora noto, ma non la pagina Dati ISA omessa. Il catalogo corrente
+  registra **6 verificate, 10 in revisione e 47 non ancora verificate nel merito**.
 - Suite completa dopo le correzioni: **1.185 backend passati, 2 saltati** e
   **111 frontend passati**. Build Vite di produzione completata; artefatti
   generati rimossi dal working tree.
@@ -51,7 +52,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 1 | [ ] | Login — `/login` | Autentica l'utente e apre la sessione del gestionale. | TENERE |
 | 2 | [ ] | Gestione riservata — `/gestione-riservata` | Accesso separato alle funzioni riservate previste dall'app. | VERIFICARE UTILIZZO |
 | 3 | [ ] | Dashboard — `/` | KPI reali di ricavi, costi, margine, cassa, banca, IVA e scadenze per anno/mese. | TENERE |
-| 4 | [ ] | Dashboard relazionale — `/dashboard-relazionale` | Mostra alert, partite aperte e stato delle riconciliazioni tra entita. | TENERE |
+| 4 | [~] IN REVISIONE | Dashboard relazionale — `/dashboard-relazionale` | Mostra alert, partite aperte e stato delle riconciliazioni tra entita. | FILTRO ANNO E STATI ERRORE PROVATI; ATTENDE DEPLOY LIVE |
 | 5 | [ ] | Inserimento rapido — `/rapido` | Inserisce operazioni operative guidate (corrispettivo, POS, banca, soci, personale). | TENERE CON GUARDIE ANTI-DUPLICATO |
 | 6 | [ ] | Archivio fatture — `/fatture` | Cerca e consulta fatture ricevute, stato pagamento, XML/PDF e dati fornitore. | TENERE |
 | 7 | [ ] | Corrispettivi — `/fatture/corrispettivi` | Consulta gli XML dei corrispettivi e i totali contanti/POS/IVA. | TENERE |
@@ -86,7 +87,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 36 | [ ] | Riconciliazione stipendi — `/riconciliazione/stipendi` | Confronta bonifici paga, cedolini, acconti e saldi. | TENERE |
 | 37 | [ ] | Riconciliazione documenti — `/riconciliazione/documenti` | Associa documenti non collegati senza creare legami ambigui. | TENERE |
 | 38 | [ ] | Archivio bonifici — `/riconciliazione/archivio-bonifici` | Consulta bonifici e propone associazioni a salari o fatture. | TENERE; BLOCCARE FATTURA SU DIPENDENTE |
-| 39 | [x] VERIFICATA | Assegni — `/riconciliazione/assegni` | Carnet, assegni, incasso e associazione fatture con regola stretta. | TENERE |
+| 39 | [~] IN REVISIONE | Assegni — `/riconciliazione/assegni` | Carnet, assegni, incasso e associazione fatture con regola stretta. | RIAPERTO: COMPLETARE ASSOCIAZIONE AUTOMATICA E DATI INCASSO |
 | 40 | [~] IN REVISIONE | PayPal — `/riconciliazione/paypal` | Transazioni, movimenti banca, documenti e mapping fornitori PayPal. | TENERE |
 | 41 | [ ] | Coerenza POS — `/riconciliazione/coerenza-pos` | Confronta XML corrispettivi, chiusure reali POS e accrediti banca. | TENERE |
 | 42 | [ ] | Import documenti — `/documenti/import` | Unico ingresso per PDF/XML/ZIP con classificazione e deduplica. | TENERE COME INGRESSO UNICO |
@@ -110,6 +111,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 60 | [ ] | Mappa gestionale — `/mappa-gestionale` | Documenta i collegamenti tra aree del gestionale. | VALUTARE RIMOZIONE DAL MENU OPERATIVO |
 | 61 | [ ] | Gestione IVA — `/iva` | Unica pagina IVA: attribuzione fatture, liquidazione mensile, confronto F24 e scadenze. | TENERE COME PAGINA IVA UNICA |
 | 62 | [ ] | Verifica fatture estere — `/fatture-estere-verifica` | Verifica dati fiscali delle fatture estere acquisite da email/documenti. | TENERE |
+| 63 | [~] IN REVISIONE | Dati ISA — `/contabilita/dati-isa` | Raccoglie consumi e indicatori operativi necessari al confronto con i modelli ISA, mantenendo fonti e periodo. | CONTRATTO API E STATI ASSENTI PROVATI; COMPLETARE PROVENIENZA 2026 |
 
 ## Pagina tecnica
 

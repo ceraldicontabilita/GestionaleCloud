@@ -24,7 +24,8 @@ const VERBALE_TEST_ID = (process.env.VERBALE_TEST_ID || '').trim();
 
 // Fonte unica: lo stesso catalogo numerato usato da test, smoke ed E2E.
 // Leggere solo main.jsx produceva appena le route hub e saltava le schermate
-// interne (62 schermate reali contro circa 30 registrazioni React).
+// interne (il numero reale viene letto dal catalogo, non dalle circa 30
+// registrazioni React principali).
 function rotte() {
   const catalog = JSON.parse(
     readFileSync(new URL('../page_catalog.json', import.meta.url), 'utf8')

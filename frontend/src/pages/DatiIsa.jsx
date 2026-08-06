@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Badge, Card, PageHeader, StatCard, Table, TableWrap, Th, Td } from '../components/ds';
+import { Badge, Card, PageHeader, PageLoader, StatCard, Table, TableWrap, Th, Td } from '../components/ds';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { COLORS, formatEuro } from '../lib/utils';
 import api from '../api';
@@ -11,20 +11,43 @@ export default function DatiIsa() {
   const [data, setData] = useState(null);
   const [fasce, setFasce] = useState(null);
   const [errore, setErrore] = useState('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let attivo = true;
+    setLoading(true);
+    setData(null);
+    setFasce(null);
+    setErrore('');
     Promise.all([
       api.get(`/api/dati-isa/riepilogo?anno=${anno}`),
       api.get('/api/dashboard/fascia-energia'),
     ]).then(([d, f]) => {
       if (attivo) { setData(d.data); setFasce(f.data); setErrore(''); }
-    }).catch(e => attivo && setErrore(e.response?.data?.detail || e.message));
+    }).catch(e => {
+      if (!attivo) return;
+      setData(null);
+      setFasce(null);
+      setErrore(e.response?.data?.detail || e.message || 'Dati ISA non disponibili');
+    }).finally(() => {
+      if (attivo) setLoading(false);
+    });
     return () => { attivo = false; };
   }, [anno]);
 
   const indicatori = data?.indicatori_acquisti || {};
   const energia = data?.energia || { mensili: [], totali: {} };
+  const indicatoriDisponibili = Boolean(
+    data?.indicatori_disponibili ?? Object.keys(indicatori).length
+  );
+  const energiaDisponibile = Boolean(
+    energia.disponibile ?? energia.mensili?.length
+  );
+  const euroDocumentato = valore =>
+    indicatoriDisponibili && valore !== null && valore !== undefined
+      ? formatEuro(valore)
+      : 'Non calcolato';
+  const kgCaffe = indicatori.caffe_kg_acquistati ?? indicatori.caffe_kg;
 
   return (
     <div style={{ padding: '0 16px 24px' }}>
@@ -32,15 +55,26 @@ export default function DatiIsa() {
         title="Dati ISA (ex studi di settore)"
         subtitle={`Riepilogo documentale ${anno}: acquisti, energia e dati da verificare con il commercialista`}
       />
-      {errore && <div style={{ padding: 12, color: COLORS.danger }}>Errore: {errore}</div>}
+      {loading && <PageLoader />}
+      {errore && <div role="alert" style={{ padding: 12, color: COLORS.danger }}>Errore: {errore}</div>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 12, marginBottom: 16 }}>
-        <StatCard label="Vino - acquisti netti" value={formatEuro(indicatori.vino_costo_netto)} />
-        <StatCard label="Materie prime pasticceria/gelateria" value={formatEuro(indicatori.materie_prime_costo_netto)} />
-        <StatCard label="Prodotti pronti/semilavorati" value={formatEuro(indicatori.semilavorati_costo_netto)} />
-        <StatCard label="Caffe acquistato" value={`${Number(indicatori.caffe_kg || 0).toLocaleString('it-IT')} kg`} />
-        <StatCard label="Costo netto caffe" value={formatEuro(indicatori.caffe_costo_netto)} />
-        <StatCard label="Energia elettrica" value={`${Number(energia.totali?.totale_kwh || 0).toLocaleString('it-IT')} kWh`} />
+      {!loading && data && <><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 12, marginBottom: 16 }}>
+        <StatCard label="Vino - acquisti netti" value={euroDocumentato(indicatori.vino_costo_netto)} />
+        <StatCard label="Materie prime pasticceria/gelateria" value={euroDocumentato(indicatori.materie_prime_costo_netto)} />
+        <StatCard label="Prodotti pronti/semilavorati" value={euroDocumentato(indicatori.semilavorati_costo_netto)} />
+        <StatCard
+          label="Caffe acquistato"
+          value={indicatoriDisponibili && kgCaffe !== null && kgCaffe !== undefined
+            ? `${Number(kgCaffe).toLocaleString('it-IT')} kg`
+            : 'Non calcolato'}
+        />
+        <StatCard label="Costo netto caffe" value={euroDocumentato(indicatori.caffe_costo_netto)} />
+        <StatCard
+          label="Energia elettrica"
+          value={energiaDisponibile
+            ? `${Number(energia.totali?.totale_kwh || 0).toLocaleString('it-IT')} kWh`
+            : 'Non disponibile'}
+        />
       </div>
 
       <Card title="Consumi elettrici mensili per fascia" style={{ marginBottom: 16 }}>
@@ -84,6 +118,7 @@ export default function DatiIsa() {
           {data?.avvertenze?.map(a => <li key={a} style={{ marginBottom: 6 }}>{a}</li>)}
         </ul>
       </Card>
+      </>}
     </div>
   );
 }

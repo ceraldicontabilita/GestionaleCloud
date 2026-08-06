@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api';
 import ModalFattura from '../components/ModalFattura';
+import { useAnnoGlobale } from '../contexts/AnnoContext';
 import {
   COLORS,
   STYLES,
@@ -37,8 +38,10 @@ import {
 
 export default function DashboardRelazionale() {
   const isMobile = useIsMobile();
+  const { anno } = useAnnoGlobale();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+  const [erroriFonti, setErroriFonti] = useState({});
   const [tabAttiva, setTabAttiva] = useState('panoramica');
   const [alertFilter, setAlertFilter] = useState('tutti');
   const ultimoEstrattoRef = useRef(null);
@@ -49,9 +52,16 @@ export default function DashboardRelazionale() {
     try {
       const [alertRes, partiteRes, matchRes] = await Promise.allSettled([
         api.get('/api/alerts/lista?risolto=false&limit=200').then(r => r.data),
-        api.get('/api/partite-aperte/stats').then(r => r.data),
-        api.get('/api/riconciliazione/stats').then(r => r.data),
+        api.get('/api/partite-aperte/stats', { params: { anno } }).then(r => r.data),
+        api.get('/api/riconciliazione/stats', { params: { anno } }).then(r => r.data),
       ]);
+
+      setErroriFonti({
+        alerts: alertRes.status === 'rejected' ? 'Alert di sistema non disponibili' : null,
+        partite: partiteRes.status === 'rejected' ? `Partite ${anno} non disponibili` : null,
+        riconciliazione:
+          matchRes.status === 'rejected' ? `Riconciliazione ${anno} non disponibile` : null,
+      });
 
       const match = matchRes.status === 'fulfilled' ? matchRes.value : {};
       const estratto = match?.sezioni?.estratto_conto;
@@ -75,9 +85,10 @@ export default function DashboardRelazionale() {
       });
     } catch (e) {
       console.error('Errore caricamento dashboard:', e);
+      setErroriFonti({ dashboard: 'Dashboard temporaneamente non disponibile' });
     }
     if (!silenzioso) setLoading(false);
-  }, []);
+  }, [anno]);
 
   useEffect(() => {
     caricaDati();
@@ -157,6 +168,21 @@ export default function DashboardRelazionale() {
 
       {/* CONTENUTO */}
       <div style={STYLES.pageInner}>
+        {Object.values(erroriFonti).some(Boolean) && (
+          <div
+            role="alert"
+            style={{
+              marginBottom: SPACING.md,
+              padding: '12px 14px',
+              border: `1px solid ${COLORS.danger}`,
+              borderRadius: BORDER_RADIUS.sm,
+              background: COLORS.dangerLight,
+              color: COLORS.danger,
+            }}
+          >
+            {Object.values(erroriFonti).filter(Boolean).join(' · ')}. I valori mancanti non sono zero.
+          </div>
+        )}
         {loading ? (
           <div style={{ textAlign: 'center', padding: 60, color: COLORS.textMuted }}>
             ⏳ Caricamento dashboard...
@@ -170,6 +196,7 @@ export default function DashboardRelazionale() {
             partiteStats={partiteStats}
             matchStats={matchStats}
             alertPerModulo={alertPerModulo}
+            erroriFonti={erroriFonti}
             isMobile={isMobile}
           />
         ) : tabAttiva === 'alert' ? (
@@ -182,12 +209,18 @@ export default function DashboardRelazionale() {
             isMobile={isMobile}
           />
         ) : tabAttiva === 'partite' ? (
-          <TabPartite stats={partiteStats} isMobile={isMobile} />
+          <TabPartite
+            stats={partiteStats}
+            anno={anno}
+            fonteNonDisponibile={Boolean(erroriFonti.partite)}
+            isMobile={isMobile}
+          />
         ) : (
           <TabRiconciliazione
             stats={matchStats}
             dettagli={matchDetails}
             variazione={variazioneRiconciliazione}
+            fonteNonDisponibile={Boolean(erroriFonti.riconciliazione)}
             isMobile={isMobile}
           />
         )}
@@ -207,6 +240,7 @@ function TabPanoramica({
   partiteStats,
   matchStats,
   alertPerModulo,
+  erroriFonti,
   isMobile,
 }) {
   const kpis = [
@@ -236,7 +270,9 @@ function TabPanoramica({
       <div style={RG.col2(isMobile)}>
         {/* Partite Aperte */}
         <Card title="Partite Aperte" icon="📋">
-          {totPartite === 0 ? (
+          {erroriFonti.partite ? (
+            <SourceUnavailable message={erroriFonti.partite} />
+          ) : totPartite === 0 ? (
             <div style={{ color: COLORS.textMuted, fontSize: 13 }}>Nessuna partita aperta</div>
           ) : (
             <div>
@@ -272,7 +308,9 @@ function TabPanoramica({
 
         {/* Riconciliazione */}
         <Card title="Riconciliazione" icon="🔗">
-          {Object.keys(matchStats).length === 0 ? (
+          {erroriFonti.riconciliazione ? (
+            <SourceUnavailable message={erroriFonti.riconciliazione} />
+          ) : Object.keys(matchStats).length === 0 ? (
             <div style={{ color: COLORS.textMuted, fontSize: 13 }}>Nessun dato riconciliazione</div>
           ) : (
             <div>
@@ -420,45 +458,33 @@ function TabAlert({ alerts, alertPerModulo, filter, setFilter, onRefresh, isMobi
 /* ================================================================
    TAB PARTITE APERTE — Dettaglio per tipo
    ================================================================ */
-function TabPartite({ stats, isMobile }) {
+function TabPartite({ stats, anno, fonteNonDisponibile, isMobile }) {
   const [fatturaView, setFatturaView] = useState(null);
-  const [registrando, setRegistrando] = useState(false);
-
-  // registra la partita direttamente in cassa/banca (stesso endpoint del
-  // tab Provvisori della Prima Nota) e ricarica l'elenco
-  const registraPartita = async (p, metodo) => {
-    if (registrando) return;
-    setRegistrando(true);
-    try {
-      await api.post('/api/prima-nota/provvisori/conferma', {
-        fattura_id: p.documento_id,
-        metodo,
-      });
-      caricaPartite(tipoFiltro);
-    } catch (e) {
-      alert('Registrazione non riuscita: ' + (e.response?.data?.detail || e.response?.data?.message || e.message));
-    } finally {
-      setRegistrando(false);
-    }
-  };
-
   const [partite, setPartite] = useState([]);
   const [tipoFiltro, setTipoFiltro] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorePartite, setErrorePartite] = useState(null);
 
   const caricaPartite = useCallback(async tipo => {
     setLoading(true);
+    setErrorePartite(null);
     try {
-      const url = tipo
-        ? `/api/partite-aperte/lista?tipo=${tipo}&stato=aperta&limit=50`
-        : `/api/partite-aperte/lista?stato=aperta&limit=50`;
-      const res = await api.get(url).then(r => r.data);
+      const res = await api.get('/api/partite-aperte/lista', {
+        params: {
+          ...(tipo ? { tipo } : {}),
+          stato: 'aperta',
+          anno,
+          limit: 50,
+        },
+      }).then(r => r.data);
       setPartite(res.partite || res || []);
     } catch (e) {
       console.error(e);
+      setPartite([]);
+      setErrorePartite(`Elenco partite ${anno} non disponibile`);
     }
     setLoading(false);
-  }, []);
+  }, [anno]);
 
   useEffect(() => {
     caricaPartite(tipoFiltro);
@@ -497,7 +523,9 @@ function TabPartite({ stats, isMobile }) {
       </div>
 
       {/* Tabella */}
-      {loading ? (
+      {fonteNonDisponibile || errorePartite ? (
+        <SourceUnavailable message={errorePartite || `Partite ${anno} non disponibili`} />
+      ) : loading ? (
         <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>
           ⏳ Caricamento...
         </div>
@@ -546,23 +574,18 @@ function TabPartite({ stats, isMobile }) {
                     </Badge>
                   </Td>
                   <Td style={{ whiteSpace: 'nowrap' }}>
-                    {/* Azioni (richiesta utente 18/07: "devo poter associare
-                        e spostare, altrimenti non mi occorre") */}
                     {(p.tipo === 'fattura_fornitore' || p.tipo === 'fattura') && p.documento_id ? (
                       <span style={{ display: 'inline-flex', gap: 6 }}>
                         <Button size="sm" variant="info" onClick={() => setFatturaView({ id: p.documento_id })}>
                           👁 Vedi
                         </Button>
-                        {p.stato !== 'chiusa' && (
-                          <>
-                            <Button size="sm" variant="success" onClick={() => registraPartita(p, 'cassa')}>
-                              💵 Cassa
-                            </Button>
-                            <Button size="sm" variant="primary" onClick={() => registraPartita(p, 'banca')}>
-                              🏦 Banca
-                            </Button>
-                          </>
-                        )}
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => { window.location.href = '/prima-nota#sezione=provvisori'; }}
+                        >
+                          Apri Prima Nota
+                        </Button>
                       </span>
                     ) : (
                       '—'
@@ -591,9 +614,12 @@ function TabPartite({ stats, isMobile }) {
 /* ================================================================
    TAB RICONCILIAZIONE — Stato match
    ================================================================ */
-function TabRiconciliazione({ stats, dettagli, variazione, isMobile }) {
+function TabRiconciliazione({ stats, dettagli, variazione, fonteNonDisponibile, isMobile }) {
   const estratto = dettagli?.sezioni?.estratto_conto;
   const quadratura = dettagli?.quadratura;
+  if (fonteNonDisponibile) {
+    return <SourceUnavailable message="Riconciliazione non disponibile" />;
+  }
   return (
     <div>
       <div style={STYLES.kpiGrid}>
@@ -656,6 +682,14 @@ function TabRiconciliazione({ stats, dettagli, variazione, isMobile }) {
 /* ================================================================
    COMPONENTI HELPER
    ================================================================ */
+function SourceUnavailable({ message }) {
+  return (
+    <div role="status" style={{ color: COLORS.danger, fontSize: 13 }}>
+      ⚠️ {message}. Riprova con Aggiorna.
+    </div>
+  );
+}
+
 // Dall'alert al DOCUMENTO (richiesta utente 18/07/2026: "dalla finestra
 // alert se clicco mi deve portare direttamente al documento in questione").
 function _destinazioneAlert(a) {

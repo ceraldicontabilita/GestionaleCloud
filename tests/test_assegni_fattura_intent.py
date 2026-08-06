@@ -7,6 +7,7 @@ from app.services.assegni_fattura_intent import (
     collega_intento_assegno_a_fattura,
     prepara_intento_assegno,
 )
+from app.routers.bank import assegni as assegni_router
 
 
 def _run(coro):
@@ -168,3 +169,125 @@ def test_estratto_arriva_prima_della_fattura_e_xml_completa_tutto_senza_modale()
         assert await db.prima_nota_banca.count_documents({}) == 1
 
     _run(scenario())
+
+
+def test_numero_fattura_e_importo_univoci_collegano_anche_senza_beneficiario():
+    async def scenario():
+        db = AsyncMongoMockClient()["assegno_numero_importo"]
+        await db.assegni.insert_one({
+            "id": "ass-solo-numero",
+            "numero": "0208770650",
+            "importo": 123.45,
+            "numero_fattura": "FPR-77/26",
+            "stato": "vuoto",
+            "anno": 2026,
+        })
+        await db.invoices.insert_one({
+            "id": "fatt-solo-numero",
+            "invoice_number": "FPR-77/26",
+            "invoice_date": "2026-05-10",
+            "supplier_vat": "01111111111",
+            "supplier_name": "FORNITORE DA FATTURA SRL",
+            "total_amount": 123.45,
+            "payment_status": "open",
+            "pagato": False,
+        })
+
+        esito = await prepara_intento_assegno(db, "ass-solo-numero")
+        assegno = await db.assegni.find_one(
+            {"id": "ass-solo-numero"}, {"_id": 0}
+        )
+
+        assert esito["collegato"] is True
+        assert assegno["fattura_id"] == "fatt-solo-numero"
+        assert assegno["beneficiario"] == "FORNITORE DA FATTURA SRL"
+        assert assegno["stato_finanziario"] == "in_attesa_estratto_conto"
+
+    _run(scenario())
+
+
+def test_numero_fattura_e_importo_duplicati_restano_ambigui():
+    async def scenario():
+        db = AsyncMongoMockClient()["assegno_numero_ambiguo"]
+        await db.assegni.insert_one({
+            "id": "ass-ambiguo",
+            "numero": "0208770651",
+            "importo": 90.00,
+            "numero_fattura": "12",
+            "stato": "compilato",
+            "anno": 2026,
+        })
+        await db.invoices.insert_many([
+            {
+                "id": "fatt-a",
+                "invoice_number": "12",
+                "invoice_date": "2026-01-10",
+                "supplier_vat": "01111111111",
+                "supplier_name": "FORNITORE A",
+                "total_amount": 90.00,
+                "pagato": False,
+            },
+            {
+                "id": "fatt-b",
+                "invoice_number": "12",
+                "invoice_date": "2026-02-10",
+                "supplier_vat": "02222222222",
+                "supplier_name": "FORNITORE B",
+                "total_amount": 90.00,
+                "pagato": False,
+            },
+        ])
+
+        esito = await prepara_intento_assegno(db, "ass-ambiguo")
+        assegno = await db.assegni.find_one({"id": "ass-ambiguo"}, {"_id": 0})
+        proposte = await db.proposte_associazione_assegni.find(
+            {"assegno_id": "ass-ambiguo", "stato": "da_confermare"},
+            {"_id": 0},
+        ).to_list(10)
+
+        assert esito == {
+            "registrato": True,
+            "collegato": False,
+            "motivo": "ambiguo",
+            "candidati": 2,
+        }
+        assert assegno.get("fattura_id") is None
+        assert {p["fattura_id"] for p in proposte} == {"fatt-a", "fatt-b"}
+
+    _run(scenario())
+
+
+def test_modifica_anagrafica_non_degrada_un_assegno_incassato(monkeypatch):
+    async def scenario():
+        db = AsyncMongoMockClient()["assegno_incassato_protetto"]
+        await db.assegni.insert_one({
+            "id": "ass-incassato",
+            "numero": "0208770652",
+            "importo": 50.00,
+            "stato": "incassato",
+            "incassato_confermato_banca": True,
+            "movimento_estratto_conto_id": "ec-52",
+        })
+        monkeypatch.setattr(
+            assegni_router.Database,
+            "get_db",
+            staticmethod(lambda: db),
+        )
+        esito = await assegni_router.update_assegno(
+            "0208770652",
+            {
+                "numero_fattura": "F-52",
+                "importo": 50.00,
+                "stato": "vuoto",
+            },
+        )
+        assegno = await db.assegni.find_one(
+            {"id": "ass-incassato"}, {"_id": 0}
+        )
+        return esito, assegno
+
+    esito, assegno = _run(scenario())
+    assert assegno["stato"] == "incassato"
+    assert assegno["numero_fattura"] == "F-52"
+    assert esito["intento_fattura"]["registrato"] is True
+    assert esito["intento_fattura"]["motivo"] == "in_attesa_xml"
