@@ -45,8 +45,8 @@ L'applicazione possiede 63 schermate funzionali distinte e una pagina tecnica 40
 
 Alla data di questa riscrittura il catalogo macchina registra:
 
-- 5 pagine `verified`;
-- 13 pagine `in_review`;
+- 6 pagine `verified`;
+- 12 pagine `in_review`;
 - 45 pagine `unverified`.
 
 Il precedente test isolato aveva aperto 62/62 schermate senza 404, ErrorBoundary o errori API iniziali, ma non includeva Dati ISA. Il catalogo corretto richiede ora 63/63 aperture. Anche un passaggio completo dimostra il montaggio tecnico, non la correttezza contabile.
@@ -518,13 +518,12 @@ Le affermazioni devono avere lo stesso perimetro delle prove. Un test unitario n
 
 L'obiettivo resta verificare tutte le pagine una per una. L'ordine operativo corrente è:
 
-1. pagina 39 — Assegni: carnet, fatture, banca, storni, contatori;
-2. pagina 9 — Prima Nota: Cassa, Banca, Provvisori, Soci e anti-duplicato;
-3. pagine 33-38 — riconciliazione banca, F24, stipendi, documenti e bonifici;
-4. pagine 12-14 e 53 — noleggio, verbali e PagoPA;
-5. pagine 31, 32 e 61 — scadenze, ritenute e IVA unica;
-6. pagine 3-8 — dashboard, fatture, corrispettivi e fornitori;
-7. restanti pagine `unverified` secondo dipendenze e rischio.
+1. pagina 9 — Prima Nota: Cassa, Banca, Provvisori, Soci e anti-duplicato;
+2. pagine 33-38 — riconciliazione banca, F24, stipendi, documenti e bonifici;
+3. pagine 12-14 e 53 — noleggio, verbali e PagoPA;
+4. pagine 31, 32 e 61 — scadenze, ritenute e IVA unica;
+5. pagine 3-8 — dashboard, fatture, corrispettivi e fornitori;
+6. restanti pagine `unverified` secondo dipendenze e rischio.
 
 PayPal resta `in_review` finché fatture, fornitori e movimenti reali non risultano completamente collegati senza ambiguità.
 
