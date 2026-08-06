@@ -7,6 +7,7 @@ import {
   CartaNexi,
   MovimentoModal,
   Provvisori,
+  etichettaTabProvvisori,
   filtraFattureProvvisorie,
   filtraMovimentiPrimaNota,
   nomeFornitoreMovimento,
@@ -169,6 +170,53 @@ describe('Fatture provvisorie in attesa banca', () => {
     );
     expect(await screen.findByRole('status')).toHaveTextContent('pagamenti attesi in banca');
     expect(onRicarica).toHaveBeenCalledTimes(1);
+  });
+
+  it('separa nel contatore le decisioni dai pagamenti gia in attesa banca', () => {
+    expect(etichettaTabProvvisori([{}, {}], [{}, {}, {}])).toBe(
+      '⚠️ Da decidere (2) · 🏦 Attesa banca (3)',
+    );
+  });
+
+  it('registra in Cassa la conferma esplicita della singola fattura', async () => {
+    api.post.mockResolvedValue({ data: { success: true } });
+    const onRicarica = vi.fn().mockResolvedValue(undefined);
+    render(<Provvisori
+      provvisori={[{
+        fattura_id: 'fatt-cassa', fattura_numero: '120', fattura_data: '2026-07-28',
+        fornitore: 'Fornitore Test', importo: 306.15, suggerimento: 'sospesa',
+      }]}
+      attesaBanca={[]}
+      onRicarica={onRicarica}
+    />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Cassa$/i }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/prima-nota/provvisori/conferma',
+      {
+        fattura_id: 'fatt-cassa',
+        metodo: 'cassa',
+        approva_metodo_fattura: true,
+      },
+    ));
+    expect(onRicarica).toHaveBeenCalledTimes(1);
+  });
+
+  it('mostra sulla fattura l errore restituito dal backend', async () => {
+    api.post.mockRejectedValue({ response: { data: { detail: 'Pagamento non registrato' } } });
+    render(<Provvisori
+      provvisori={[{
+        fattura_id: 'fatt-errore', fattura_numero: '121', fattura_data: '2026-07-29',
+        fornitore: 'Fornitore Errore', importo: 100, suggerimento: 'sospesa',
+      }]}
+      attesaBanca={[]}
+      onRicarica={vi.fn()}
+    />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Cassa$/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Pagamento non registrato');
   });
 
   it('non offre piu una registrazione bancaria forzata', () => {

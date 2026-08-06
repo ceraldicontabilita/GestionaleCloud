@@ -606,12 +606,14 @@ export default function GestioneAssegni() {
   const loadAmbigui = async () => {
     setAmbiguiLoading(true);
     try {
-      const res = await api.get('/api/assegni/ambigui');
+      const res = await api.get(`/api/assegni/ambigui?anno=${anno}`);
       setAmbiguiList(res.data?.ambigui || []);
-      // default: prima fattura selezionata per ciascuno
+      // Nessuna preselezione: stesso importo non significa stessa fattura.
+      // La scelta deve essere sempre esplicita, soprattutto per assegni
+      // riscontrati in banca senza numero fattura in causale.
       const def = {};
       (res.data?.ambigui || []).forEach(a => {
-        def[a.assegno_id] = a.candidates?.[0] ? [a.candidates[0].fattura_id] : [];
+        def[a.assegno_id] = [];
       });
       setAmbiguiSelections(def);
     } catch (e) {
@@ -1458,6 +1460,11 @@ export default function GestioneAssegni() {
                       <strong style={{ color: COLORS.text }}>€ {a.importo.toFixed(2)}</strong>
                       {a.data_emissione && <> · Emissione: {formatDateIT(a.data_emissione)}</>}
                     </div>
+                    {a.motivo && (
+                      <div role="note" style={{ fontSize: 12, color: COLORS.warning, marginTop: 6, fontWeight: 600 }}>
+                        {a.motivo}
+                      </div>
+                    )}
                   </div>
                   <Button
                     variant="success"

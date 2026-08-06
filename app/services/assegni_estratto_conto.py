@@ -153,34 +153,44 @@ async def _registra_proposte_ambigue(
 
 
 async def _collega_fattura_univoca(
-    db, assegno: Dict[str, Any], fattura: Dict[str, Any], data_movimento: str, now: str,
+    db,
+    assegno: Dict[str, Any],
+    fattura: Dict[str, Any],
+    data_movimento: str,
+    now: str,
+    quota_override: Optional[float] = None,
+    aggiorna_assegno: bool = True,
 ) -> bool:
     fid = fattura.get("id")
     if not fid:
         return False
-    importo = round(_f(assegno.get("importo")), 2)
+    importo = round(_f(quota_override if quota_override is not None else assegno.get("importo")), 2)
     totale = round(_f(fattura.get("total_amount") or fattura.get("importo_totale")), 2)
     pagato = round(_f(fattura.get("importo_pagato")), 2)
     residuo = round(max(0.0, totale - pagato), 2)
-    gia_collegato = any(
-        isinstance(link, dict) and str(link.get("assegno_id")) == str(assegno["id"])
-        for link in fattura.get("assegni_collegati") or []
-    )
-    pagamento_gia_confermato = bool(assegno.get("incassato_confermato_banca"))
-    if not gia_collegato and importo - residuo > TOLL and not fattura.get("pagato"):
+    link_esistente = next((
+        link for link in (fattura.get("assegni_collegati") or [])
+        if isinstance(link, dict) and str(link.get("assegno_id")) == str(assegno["id"])
+    ), None)
+    pagamento_gia_applicato = bool(link_esistente and link_esistente.get("banca_confermata"))
+    if not pagamento_gia_applicato and importo - residuo > TOLL and not fattura.get("pagato"):
         return False
 
     link = {
         "assegno_id": assegno["id"], "numero": assegno.get("numero"),
         "quota": importo, "data_collegamento": now, "match_auto": True,
-        "match_livello": "EC_UNIVOCO",
+        "match_livello": "EC_UNIVOCO", "banca_confermata": True,
     }
     update_fattura: Dict[str, Any] = {
         "metodo_pagamento_effettivo": "assegno",
         "data_ultimo_incasso_assegno": data_movimento,
         "updated_at": now,
     }
-    if not pagamento_gia_confermato:
+    # Se l'associazione viene scelta dopo che l'addebito e' gia' arrivato in
+    # banca, la quota va applicata adesso. L'idempotenza dipende dal numero/id
+    # dell'assegno gia' presente nei link della fattura, non dal solo stato
+    # "incassato": due assegni distinti dello stesso importo sono due quote.
+    if not pagamento_gia_applicato:
         nuovo_pagato = round(min(totale, pagato + importo), 2)
         update_fattura.update({
             "importo_pagato": nuovo_pagato,
@@ -188,10 +198,14 @@ async def _collega_fattura_univoca(
             "payment_status": "paid" if abs(nuovo_pagato - totale) <= TOLL else "partial",
             "pagato": abs(nuovo_pagato - totale) <= TOLL,
         })
-        update_doc: Dict[str, Any] = {"$set": update_fattura}
-        if not gia_collegato:
-            update_doc["$addToSet"] = {"assegni_collegati": link}
+        update_doc: Dict[str, Any] = {
+            "$set": update_fattura,
+            "$pull": {"assegni_collegati": {"assegno_id": assegno["id"]}},
+        }
         await db["invoices"].update_one({"id": fid}, update_doc)
+        await db["invoices"].update_one(
+            {"id": fid}, {"$addToSet": {"assegni_collegati": link}},
+        )
         from app.services.scadenze_rate_service import applica_quota_scadenze
         await applica_quota_scadenze(
             db, fattura_id=fid, quota=importo,
@@ -201,23 +215,183 @@ async def _collega_fattura_univoca(
     else:
         await db["invoices"].update_one({"id": fid}, {"$set": update_fattura})
 
-    await db["assegni"].update_one(
-        {"id": assegno["id"]},
-        {"$set": {
-            "fattura_collegata": fid, "fattura_id": fid,
-            "fatture_collegate": [{
-                "fattura_id": fid, "quota": importo, "data_collegamento": now,
-                "match_auto": True, "match_livello": "EC_UNIVOCO",
-            }],
+    if aggiorna_assegno:
+        await db["assegni"].update_one(
+            {"id": assegno["id"]},
+            {"$set": {
+                "fattura_collegata": fid, "fattura_id": fid,
+                "fatture_collegate": [{
+                    "fattura_id": fid, "quota": importo, "data_collegamento": now,
+                    "match_auto": True, "match_livello": "EC_UNIVOCO",
+                    "banca_confermata": True,
+                }],
+                "numero_fattura": fattura.get("invoice_number") or fattura.get("numero_fattura"),
+                "fornitore_piva": fattura.get("supplier_vat") or fattura.get("partita_iva"),
+                "fornitore_ragione_sociale": fattura.get("supplier_name") or fattura.get("cedente_denominazione"),
+                "beneficiario": assegno.get("beneficiario") or fattura.get("supplier_name") or fattura.get("cedente_denominazione"),
+                "importo_assegnato": importo, "match_auto": True,
+                "match_livello": "EC_UNIVOCO", "updated_at": now,
+            }},
+        )
+    return not pagamento_gia_applicato
+
+
+async def collega_assegno_riconciliato_a_fattura(
+    db, assegno: Dict[str, Any], fattura: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Completa un collegamento manuale quando l'assegno e' gia' in banca.
+
+    Mantiene distinto ogni assegno tramite ``assegno.id``/``numero`` e
+    aggiorna fattura, Prima Nota e movimento di estratto conto senza creare
+    una seconda riga bancaria.
+    """
+    return await collega_assegno_riconciliato_a_fatture(
+        db,
+        assegno,
+        [{"fattura": fattura, "quota": round(_f(assegno.get("importo")), 2)}],
+    )
+
+
+async def collega_assegno_riconciliato_a_fatture(
+    db,
+    assegno: Dict[str, Any],
+    collegamenti: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Applica uno o piu' collegamenti espliciti a un assegno gia' addebitato.
+
+    La somma delle quote deve coincidere al centesimo con l'assegno; ogni
+    fattura conserva numero e quota, mentre il movimento banca rimane uno.
+    """
+    movimento_id = assegno.get("movimento_estratto_conto_id") or assegno.get("movimento_id")
+    if not movimento_id:
+        raise ValueError("L'assegno non ha un movimento di estratto conto collegato")
+    movimento = await db["estratto_conto_movimenti"].find_one(
+        {"id": movimento_id}, {"_id": 0}
+    )
+    if not movimento:
+        raise ValueError("Movimento di estratto conto dell'assegno non trovato")
+
+    if not collegamenti:
+        raise ValueError("Indicare almeno una fattura")
+    importo_assegno = round(_f(assegno.get("importo")), 2)
+    totale_quote = round(sum(_f(item.get("quota")) for item in collegamenti), 2)
+    if abs(totale_quote - importo_assegno) > TOLL:
+        raise ValueError("La somma delle fatture deve coincidere al centesimo con l'assegno")
+
+    now = datetime.now(timezone.utc).isoformat()
+    data_movimento = _data_iso(movimento.get("data") or assegno.get("data_incasso"))
+    links = []
+    applicate = 0
+    for item in collegamenti:
+        fattura = item.get("fattura") or {}
+        fattura_id = str(fattura.get("id") or "")
+        quota = round(_f(item.get("quota")), 2)
+        if not fattura_id or abs(quota) <= TOLL:
+            raise ValueError("Fattura o quota non valida")
+        if quota > 0:
+            applicata = await _collega_fattura_univoca(
+                db, assegno, fattura, data_movimento, now,
+                quota_override=quota, aggiorna_assegno=False,
+            )
+        else:
+            # La nota di credito netta il debito ma non e' un'ulteriore
+            # uscita bancaria. La si marca applicata allo stesso assegno
+            # senza sommare il valore negativo ai pagamenti monetari.
+            vecchio = next((
+                link for link in (fattura.get("assegni_collegati") or [])
+                if isinstance(link, dict)
+                and str(link.get("assegno_id")) == str(assegno["id"])
+                and link.get("banca_confermata")
+            ), None)
+            applicata = not bool(vecchio)
+            await db["invoices"].update_one(
+                {"id": fattura_id},
+                {"$pull": {"assegni_collegati": {"assegno_id": assegno["id"]}}},
+            )
+            await db["invoices"].update_one(
+                {"id": fattura_id},
+                {"$addToSet": {"assegni_collegati": {
+                    "assegno_id": assegno["id"], "numero": assegno.get("numero"),
+                    "quota": quota, "data_collegamento": now, "match_auto": False,
+                    "match_livello": "MANUAL_EC", "banca_confermata": True,
+                }}},
+            )
+        applicate += int(applicata)
+        links.append({
+            "fattura_id": fattura_id,
+            "quota": quota,
+            "data_collegamento": now,
+            "match_auto": False,
+            "match_livello": "MANUAL_EC",
+            "banca_confermata": True,
             "numero_fattura": fattura.get("invoice_number") or fattura.get("numero_fattura"),
-            "fornitore_piva": fattura.get("supplier_vat") or fattura.get("partita_iva"),
-            "fornitore_ragione_sociale": fattura.get("supplier_name") or fattura.get("cedente_denominazione"),
-            "beneficiario": assegno.get("beneficiario") or fattura.get("supplier_name") or fattura.get("cedente_denominazione"),
-            "importo_assegnato": importo, "match_auto": True,
-            "match_livello": "EC_UNIVOCO", "updated_at": now,
+        })
+
+    fattura_ids = [link["fattura_id"] for link in links]
+    singola_id = fattura_ids[0] if len(fattura_ids) == 1 else None
+    await db["assegni"].update_one({"id": assegno["id"]}, {"$set": {
+        "fatture_collegate": links,
+        "fattura_collegata": singola_id,
+        "fattura_id": singola_id,
+        "numero_fattura": ", ".join(filter(None, (l.get("numero_fattura") for l in links))),
+        "importo_assegnato": totale_quote,
+        "stato": "incassato",
+        "stato_finanziario": "riconciliato",
+        "match_auto": False,
+        "match_livello": "MANUAL_EC",
+        "updated_at": now,
+    }})
+    assegno_aggiornato = await db["assegni"].find_one({"id": assegno["id"]}, {"_id": 0}) or assegno
+    pn_id = await _garantisci_prima_nota(
+        db, assegno_aggiornato, movimento, singola_id, now,
+    )
+    for fattura_id in fattura_ids:
+        await db["invoices"].update_one({"id": fattura_id}, {"$set": {
+            "riconciliato": True,
+            "riconciliato_con_ec": True,
+            "stato_finanziario": "riconciliato",
+            "movimento_bancario_id": movimento_id,
+            "prima_nota_id": pn_id,
+            "prima_nota_banca_id": pn_id,
+            "prima_nota_tipo": "banca",
+            "data_riconciliazione": data_movimento,
+            "updated_at": now,
+        }})
+    if len(fattura_ids) > 1:
+        await db["prima_nota_banca"].update_one({"id": pn_id}, {"$set": {
+            "fattura_ids": fattura_ids,
+            "fatture_collegate": links,
+            "invoice_id": None,
+            "fattura_id": None,
+        }})
+    await db["estratto_conto_movimenti"].update_one({"id": movimento_id}, {"$set": {
+        "riconciliato": True,
+        "riconciliato_con": "assegno",
+        "assegno_id": assegno["id"],
+        "assegno_numero": assegno.get("numero"),
+        "prima_nota_banca_id": pn_id,
+        "fattura_id": singola_id,
+        "fattura_ids": fattura_ids,
+        "riconciliato_at": now,
+    }})
+    await db["proposte_associazione_assegni"].update_many(
+        {"assegno_id": assegno["id"]},
+        {"$set": {
+            "stato": "confermata",
+            "fattura_confermata_id": singola_id,
+            "fatture_confermate_ids": fattura_ids,
+            "confirmed_at": now,
         }},
     )
-    return not pagamento_gia_confermato
+    return {
+        "collegato": bool(applicate),
+        "quote_applicate": applicate,
+        "assegno_id": assegno["id"],
+        "assegno_numero": assegno.get("numero"),
+        "fattura_id": singola_id,
+        "fattura_ids": fattura_ids,
+        "prima_nota_banca_id": pn_id,
+    }
 
 
 async def _garantisci_prima_nota(

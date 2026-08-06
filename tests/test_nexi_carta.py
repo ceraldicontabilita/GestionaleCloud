@@ -65,6 +65,17 @@ class _Coll:
     async def insert_one(self, doc):
         self.docs.append(dict(doc))
 
+    async def find_one(self, q=None, proj=None):
+        def _match(doc, cond):
+            for k, v in (cond or {}).items():
+                if k == "$or":
+                    if not any(_match(doc, item) for item in v):
+                        return False
+                elif doc.get(k) != v:
+                    return False
+            return True
+        return next((d for d in self.docs if _match(d, q)), None)
+
     async def update_one(self, q, update):
         for d in self.docs:
             if all(d.get(k) == v for k, v in q.items()):
@@ -132,6 +143,34 @@ def test_verifica_segnala_estratto_mancante(monkeypatch):
     assert "ESTRATTO_NEXI_MANCANTE" in alert_calls
 
 
+def test_verifica_accorpa_addebiti_nexi_duplicati(monkeypatch):
+    alert_calls = []
+
+    async def fake_genera_alert(codice, entita_id, coll, dettaglio, db, extra=None):
+        alert_calls.append((codice, entita_id))
+        return {"id": "a1"}
+
+    async def fake_risolvi_alert(codice, entita_id, db, resolved_by="sistema"):
+        return 0
+
+    import app.services.alert_engine as alert_engine
+    monkeypatch.setattr(alert_engine, "genera_alert", fake_genera_alert)
+    monkeypatch.setattr(alert_engine, "risolvi_alert", fake_risolvi_alert)
+
+    db = _DB()
+    db["estratto_conto_movimenti"].docs.extend([
+        {"id": "ec-a", "data_contabile": "16/03/2026", "tipo": "uscita",
+         "importo": 2.0, "descrizione_originale": "ADDEBITO DIRETTO NEXI PAYMENTS"},
+        {"id": "ec-b", "data": "2026-03-16", "tipo": "uscita",
+         "importo": 2.0, "descrizione": "ADDEBITO DIRETTO NEXI PAYMENTS"},
+    ])
+    stats = _run(verifica_addebiti_nexi(db, anno=2026))
+    assert stats["addebiti_trovati"] == 1
+    assert stats["estratti_mancanti"] == 1
+    assert stats["duplicati_ignorati"] == 1
+    assert len(alert_calls) == 1
+
+
 def test_verifica_riconcilia_quando_quadra(monkeypatch):
     alert_calls = []
 
@@ -190,6 +229,32 @@ def test_importa_pdf_totale_importo_e_netto(monkeypatch):
     res = _run(importa_estratto_nexi_pdf(db, "estratto.pdf", b"%PDF-fake"))
     assert res["success"] is True
     assert res["totale_importo"] == 80.0
+
+
+def test_importa_pdf_drive_e_idempotente_per_hash(monkeypatch):
+    def fake_parse(pdf_content):
+        return {
+            "success": True,
+            "metadata": {"data_estratto_iso": "2026-01-31"},
+            "transazioni": [
+                {"data": "2026-01-05", "descrizione": "Fornitore", "importo": 10.0},
+            ],
+        }
+
+    monkeypatch.setattr(
+        "app.parsers.estratto_conto_nexi_parser.parse_estratto_conto_nexi", fake_parse
+    )
+    db = _DB()
+    primo = _run(importa_estratto_nexi_pdf(
+        db, "gennaio.pdf", b"%PDF-stesso", source="drive_documenti_nexi", drive_file_id="drive-1"
+    ))
+    secondo = _run(importa_estratto_nexi_pdf(
+        db, "copia-gennaio.pdf", b"%PDF-stesso", source="drive_documenti_nexi", drive_file_id="drive-2"
+    ))
+    assert primo["success"] and not primo["duplicate"]
+    assert secondo["success"] and secondo["duplicate"]
+    assert len(db["estratto_conto_nexi"].docs) == 1
+    assert len(db["estratto_conto_movimenti"].docs) == 1
 
 
 def test_verifica_segnala_non_quadra(monkeypatch):

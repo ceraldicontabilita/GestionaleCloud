@@ -5,6 +5,7 @@ from app.config import settings
 from app.services.drive_estratti_conto_ingest import (
     _discover_work_items,
     _folder_ids,
+    _nexi_folder_ids,
     _work_item_priority,
 )
 
@@ -89,12 +90,33 @@ def test_piu_radici_da_env_e_registro_sono_deduplicate(monkeypatch):
     monkeypatch.setattr(settings, "GOOGLE_DRIVE_ESTRATTI_FOLDER_ID", "root-a")
     monkeypatch.setattr(settings, "DRIVE_FOLDER_ESTRATTI_CONTO_ID", None)
     monkeypatch.setattr(settings, "DRIVE_ESTRATTI_CONTO_FOLDER_ID", None)
+    monkeypatch.setattr(settings, "DRIVE_CARTE_FOLDER_ID", "root-carte")
     monkeypatch.setattr(settings, "DRIVE_FOLDER_REGISTRY_JSON", json.dumps({"folders": [
         {"area": "estratti_conto_bnl", "folder_id": "root-c"},
+        {"area": "nexi", "folder_id": "root-carte-registro"},
         {"area": "fatture", "folder_id": "ignore"},
     ]}))
 
-    assert _folder_ids() == ["root-a", "root-b", "root-c"]
+    assert _folder_ids() == ["root-a", "root-b", "root-c", "root-carte", "root-carte-registro"]
+    assert _nexi_folder_ids() == ["root-carte", "root-carte-registro"]
+
+
+def test_radice_nexi_accetta_pdf_con_nomi_generici():
+    service = _Service({
+        "carte": [
+            _file("n1", "Estratto_Conto gennaio.pdf"),
+            _file("n2", "nexi febbraio.pdf"),
+            _folder("done", "Elaborate"),
+        ],
+        "done": [_file("old", "dicembre.pdf")],
+    })
+
+    items, sources = _discover_work_items(service, "carte", initial_route="nexi")
+
+    assert {(item["id"], item["route"]) for item in items} == {
+        ("n1", "nexi"), ("n2", "nexi"),
+    }
+    assert sources == [{"id": "carte", "path": "Estratti conto"}]
 
 
 def test_crea_ciclo_anche_per_fonte_riconosciuta_senza_file():

@@ -254,6 +254,46 @@ def test_conferma_fattura_provvisoria_fattura_normale_resta_uscita(monkeypatch):
     assert cassa[0]["categoria"] == "Fatture"
 
 
+def test_cassa_senza_metodo_approvato_richiede_conferma_esplicita(monkeypatch):
+    db = _FakeDb()
+    db["invoices"].docs = [_fattura(metodo_pagamento="banca")]
+    _patch_db(monkeypatch, db)
+
+    with pytest.raises(HTTPException) as exc:
+        _run(sync_mod.conferma_fattura_provvisoria({
+            "fattura_id": "fatt-1", "metodo": "cassa",
+        }))
+
+    assert exc.value.status_code == 409
+    assert db["prima_nota_cassa"].docs == []
+
+
+def test_cassa_confermata_sulla_fattura_non_modifica_il_fornitore(monkeypatch):
+    db = _FakeDb()
+    db["invoices"].docs = [_fattura(
+        supplier_vat="01234567890", metodo_pagamento="banca",
+    )]
+    db["suppliers"].docs = [{
+        "id": "forn-1", "partita_iva": "01234567890",
+        "metodo_pagamento_predefinito": "banca",
+    }]
+    _patch_db(monkeypatch, db)
+
+    res = _run(sync_mod.conferma_fattura_provvisoria({
+        "fattura_id": "fatt-1",
+        "metodo": "cassa",
+        "approva_metodo_fattura": True,
+        "performed_by": "test",
+    }))
+
+    assert res["success"] is True
+    assert len(db["prima_nota_cassa"].docs) == 1
+    fattura = db["invoices"].docs[0]
+    assert fattura["metodo_pagamento_previsto"] == "cassa"
+    assert fattura["metodo_pagamento_override_source"] == "operatore_prima_nota"
+    assert db["suppliers"].docs[0]["metodo_pagamento_predefinito"] == "banca"
+
+
 def test_conferma_banca_senza_estratto_conto_resta_provvisoria(monkeypatch):
     db = _FakeDb()
     db["invoices"].docs = [_fattura(metodo_pagamento="banca")]
