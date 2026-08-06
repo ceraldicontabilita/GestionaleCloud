@@ -65,9 +65,13 @@ BACKEND_CHECKS = [
 FRONTEND_PATHS = [page.get("e2e_path", page["path"]) for page in PAGES]
 
 
-def http_request(url: str, method: str = "GET") -> tuple[int, str]:
+def http_request(
+    url: str, method: str = "GET", *, accept: str | None = None
+) -> tuple[int, str]:
     data = b"{}" if method.upper() in {"POST", "PUT", "PATCH"} else None
     headers = {"User-Agent": "ceraldi-smoke-test/1.0"}
+    if accept:
+        headers["Accept"] = accept
     if data is not None:
         headers["Content-Type"] = "application/json"
     if SMOKE_AUTH_TOKEN:
@@ -113,7 +117,7 @@ def run_frontend_check(path: str) -> dict:
     catalogo e il risultato qui e dichiarato esplicitamente ``delivery_only``.
     """
     started = time.time()
-    status, body = http_request(f"{FRONTEND_URL}{path}")
+    status, body = http_request(f"{FRONTEND_URL}{path}", accept="text/html")
     elapsed_ms = int((time.time() - started) * 1000)
     shell_ok = '<div id="root"' in body and bool(
         re.search(r'<script[^>]+src="/assets/[^"]+"', body)
@@ -146,7 +150,7 @@ def main() -> int:
 
     # Almeno un asset JavaScript reale deve essere scaricabile. Senza questo
     # check anche un index.html vecchio o monco risulterebbe consegnato.
-    _, index_body = http_request(f"{FRONTEND_URL}/")
+    _, index_body = http_request(f"{FRONTEND_URL}/", accept="text/html")
     scripts = re.findall(r'<script[^>]+src="([^"]+)"', index_body)
     if scripts:
         asset_path = scripts[0]
