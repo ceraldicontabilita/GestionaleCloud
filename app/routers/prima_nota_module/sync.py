@@ -4,7 +4,7 @@ Sync corrispettivi, fatture, import CSV/batch.
 """
 from fastapi import HTTPException, Query, Body
 from typing import Dict, Any, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 import uuid
 
@@ -283,7 +283,10 @@ async def registra_pagamento_fattura(
     canonico = normalizza_metodo_pagamento(metodo_pagamento)
 
     if canonico == "cassa":
-        mid, dup = await _insert_idempotente(COLLECTION_PRIMA_NOTA_CASSA, importo_totale, descrizione_base)
+        importo_effettivo = importo_cassa if importo_cassa > 0 else importo_totale
+        mid, dup = await _insert_idempotente(
+            COLLECTION_PRIMA_NOTA_CASSA, importo_effettivo, descrizione_base
+        )
         risultato["cassa"] = mid
         risultato["duplicato"] = dup
 
@@ -293,7 +296,10 @@ async def registra_pagamento_fattura(
         ):
             risultato["provvisoria"] = True
             return risultato
-        mid, dup = await _insert_idempotente(COLLECTION_PRIMA_NOTA_BANCA, importo_totale, descrizione_base)
+        importo_effettivo = importo_banca if importo_banca > 0 else importo_totale
+        mid, dup = await _insert_idempotente(
+            COLLECTION_PRIMA_NOTA_BANCA, importo_effettivo, descrizione_base
+        )
         risultato["banca"] = mid
         risultato["duplicato"] = dup
 
@@ -454,10 +460,8 @@ async def _sync_corrispettivi_impl(anno: int = None) -> Dict:
     entrata=POS) e la lettura dei campi pagamento vivono in un solo posto,
     non due copie che potevano divergere.
     """
-    import logging
     from app.routers.invoices.corrispettivi_helpers import _create_prima_nota_movements
     from .common import COLLECTION_PRIMA_NOTA_CASSA
-    logger = logging.getLogger(__name__)
     db = Database.get_db()
 
     query = {}
@@ -538,6 +542,61 @@ async def _sync_corrispettivi_impl(anno: int = None) -> Dict:
         "anno": anno,
         "ok": True
     }
+
+
+CLAIM_PAGAMENTO_TTL_MINUTI = 10
+
+
+async def _acquisisci_claim_pagamento(
+    db, fattura_id: str, operazione: str
+) -> str:
+    """Serializza le decisioni Cassa/Banca sulla stessa fattura.
+
+    Il blocco vive sulla fattura, quindi protegge anche da due richieste che
+    tentano destinazioni diverse. Scade automaticamente dopo dieci minuti per
+    non lasciare il documento bloccato dopo un arresto del processo.
+    """
+    token = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    scaduto_prima = (
+        now - timedelta(minutes=CLAIM_PAGAMENTO_TTL_MINUTI)
+    ).isoformat()
+    claimed = await db["invoices"].find_one_and_update(
+        {
+            "id": fattura_id,
+            "$or": [
+                {"prima_nota_payment_claim": {"$exists": False}},
+                {"prima_nota_payment_claim": None},
+                {"prima_nota_payment_claim": ""},
+                {"prima_nota_payment_claim_at": {"$lt": scaduto_prima}},
+            ],
+        },
+        {"$set": {
+            "prima_nota_payment_claim": token,
+            "prima_nota_payment_claim_at": now.isoformat(),
+            "prima_nota_payment_operation": operazione,
+        }},
+    )
+    if claimed is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "La fattura e' gia' in lavorazione. Attendi il completamento "
+                "e ricarica Prima Nota prima di riprovare."
+            ),
+        )
+    return token
+
+
+async def _rilascia_claim_pagamento(db, fattura_id: str, token: str) -> None:
+    await db["invoices"].update_one(
+        {"id": fattura_id, "prima_nota_payment_claim": token},
+        {"$unset": {
+            "prima_nota_payment_claim": "",
+            "prima_nota_payment_claim_at": "",
+            "prima_nota_payment_operation": "",
+        }},
+    )
 
 
 async def sync_fatture_pagate(anno: int = Query(...)) -> Dict:
@@ -841,7 +900,17 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
 
     provvisori = []
     for f in fatture:
-        importo = float(f.get("total_amount") or f.get("importo_totale") or 0)
+        totale_fattura = float(
+            f.get("total_amount") or f.get("importo_totale") or 0
+        )
+        importo_pagato_confermato = float(
+            f.get("_importo_pagato_confermato") or 0
+        )
+        importo = float(
+            f.get("_importo_residuo")
+            if f.get("_importo_residuo") is not None
+            else totale_fattura
+        )
         metodo_xml = f.get("payment_method", "")
         metodo_code = f.get("payment_method_code", "")
         piva = (f.get("supplier_vat") or f.get("cedente_piva") or "").strip()
@@ -938,6 +1007,9 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             "fornitore": f.get("supplier_name", ""),
             "fornitore_piva": f.get("supplier_vat", ""),
             "importo": importo,
+            "totale_fattura": totale_fattura,
+            "importo_pagato_confermato": importo_pagato_confermato,
+            "importo_residuo": importo,
             "metodo_xml": metodo_xml,
             "metodo_pagamento_previsto": f.get("metodo_pagamento_previsto"),
             "fonte_metodo": fonte_metodo,
@@ -1004,17 +1076,18 @@ async def imposta_fattura_in_attesa_banca(data: Dict = Body(...)) -> Dict:
     if not fattura:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
 
-    ancora_aperta = await fatture_senza_pagamento_contabile_confermato(
+    fatture_aperte = await fatture_senza_pagamento_contabile_confermato(
         db, [fattura]
     )
-    if not ancora_aperta:
+    if not fatture_aperte:
         raise HTTPException(
             status_code=409,
             detail=(
-                "La fattura ha gia' una scrittura contabile confermata: "
-                "verifica la registrazione esistente."
+                "La fattura ha gia' un pagamento contabile completo. "
+                "Ricarica Prima Nota e verifica la scrittura esistente."
             ),
         )
+    fattura = fatture_aperte[0]
 
     now_iso = datetime.now(timezone.utc).isoformat()
     await db["invoices"].update_one(
@@ -1082,6 +1155,32 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
     if not fattura:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
 
+    fatture_aperte = await fatture_senza_pagamento_contabile_confermato(
+        db, [fattura]
+    )
+    if not fatture_aperte:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "La fattura ha gia' un pagamento contabile completo. "
+                "Ricarica Prima Nota e verifica la scrittura esistente."
+            ),
+        )
+    fattura = fatture_aperte[0]
+
+    importo_gia_pagato = round(float(
+        fattura.get("_importo_pagato_confermato") or 0
+    ), 2)
+    if metodo == "cassa" and importo_gia_pagato > 0.01:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "La fattura ha gia' un pagamento parziale confermato. "
+                "Il residuo non puo' essere chiuso riutilizzando la stessa "
+                "scrittura Cassa: attendi e riconcilia il movimento bancario."
+            ),
+        )
+
     piva_fornitore = fattura.get("supplier_vat") or fattura.get("cedente_piva")
     esclusa = bool(fattura.get("esclusa_da_cassa_banca"))
     if piva_fornitore and not esclusa:
@@ -1104,7 +1203,14 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
             ),
         )
     
-    importo = float(fattura.get("total_amount", 0))
+    totale_fattura = abs(float(
+        fattura.get("total_amount") or fattura.get("importo_totale") or 0
+    ))
+    importo = float(
+        fattura.get("_importo_residuo")
+        if fattura.get("_importo_residuo") is not None
+        else totale_fattura
+    )
     fornitore = fattura.get("supplier_name", "")
     data_fatt = fattura.get("invoice_date", "")
     
@@ -1223,46 +1329,147 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
             "match_score": float(movimento_bancario.get("confidenza") or 1.0),
         }
 
-    risultato = await registra_pagamento_fattura(
-        fattura=fattura,
-        metodo_pagamento=metodo,
-        source="conferma_provvisori",
-        movimento_bancario=movimento_bancario,
+    claim_token = await _acquisisci_claim_pagamento(
+        db, fattura_id, f"conferma_{metodo}"
     )
-    pn_id = risultato.get(metodo)
-    if not pn_id:
-        raise HTTPException(
-            status_code=409,
-            detail="Pagamento non registrato: manca l'evidenza prevista dalla regola contabile",
+    try:
+        # La decisione viene ricalcolata dopo il claim. In questo modo un
+        # doppio click o due operatori non possono usare lo stesso residuo.
+        fattura_corrente = await db["invoices"].find_one(
+            {"id": fattura_id}, {"_id": 0}
         )
+        fatture_aperte = await fatture_senza_pagamento_contabile_confermato(
+            db, [fattura_corrente]
+        )
+        if not fatture_aperte:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "La fattura e' gia' stata registrata. Ricarica Prima Nota "
+                    "prima di eseguire altre operazioni."
+                ),
+            )
+        fattura = fatture_aperte[0]
+        importo_gia_pagato = round(float(
+            fattura.get("_importo_pagato_confermato") or 0
+        ), 2)
+        if metodo == "cassa" and importo_gia_pagato > 0.01:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "La fattura ha gia' un pagamento parziale confermato. "
+                    "Il residuo deve essere riconciliato con la relativa "
+                    "evidenza bancaria."
+                ),
+            )
+        totale_fattura = abs(float(
+            fattura.get("total_amount") or fattura.get("importo_totale") or 0
+        ))
+        importo = float(
+            fattura.get("_importo_residuo")
+            if fattura.get("_importo_residuo") is not None
+            else totale_fattura
+        )
+        if importo <= 0:
+            raise HTTPException(status_code=409, detail="Residuo fattura gia' azzerato")
 
-    now_iso = datetime.now(timezone.utc).isoformat()
-    campi_fattura = {
-        "stato_pagamento": "pagata",
-        "stato_finanziario": "pagata_e_riconciliata" if metodo == "banca" else "pagata",
-        "pagato": True,
-        "paid": True,
-        "prima_nota_tipo": metodo,
-        "prima_nota_id": pn_id,
-        f"prima_nota_{metodo}_id": pn_id,
-        "metodo_pagamento_effettivo": metodo,
-        "data_pagamento": now_iso[:10],
-        "updated_at": now_iso,
-    }
-    if metodo == "cassa" and approvazione_cassa_esplicita:
-        campi_fattura.update({
-            "metodo_pagamento_previsto": "cassa",
-            "metodo_pagamento_override_source": "operatore_prima_nota",
-            "metodo_pagamento_override_at": now_iso,
-        })
-    if metodo == "banca":
-        campi_fattura.update({
-            "riconciliato": True,
-            "pagata_e_riconciliata": True,
-            "movimento_banca_id": movimento_bancario.get("id"),
-            "estratto_conto_id": movimento_bancario.get("id"),
-        })
-    await db["invoices"].update_one({"id": fattura_id}, {"$set": campi_fattura})
+        if metodo == "banca":
+            evidenza_id = movimento_bancario.get("id")
+            movimento_bancario = await db["estratto_conto_movimenti"].find_one(
+                {"id": evidenza_id}, {"_id": 0}
+            )
+            if not movimento_bancario:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Movimento di estratto conto non trovato",
+                )
+            collegata_a = (
+                movimento_bancario.get("fattura_id")
+                or movimento_bancario.get("documento_id")
+            )
+            if collegata_a and str(collegata_a) != str(fattura_id):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Il movimento bancario e' gia' collegato a un altro documento",
+                )
+            importo_evidenza = abs(float(
+                movimento_bancario.get("importo")
+                or movimento_bancario.get("amount")
+                or movimento_bancario.get("uscite")
+                or 0
+            ))
+            if abs(importo_evidenza - importo) > 0.01:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Importo estratto conto ({importo_evidenza:.2f}) diverso "
+                        f"dal residuo fattura ({importo:.2f}). Usa la "
+                        "riconciliazione multipla se il movimento paga piu' fatture."
+                    ),
+                )
+            movimento_bancario = {
+                **movimento_bancario,
+                "match_score": float(
+                    movimento_bancario.get("confidenza") or 1.0
+                ),
+            }
+
+        risultato = await registra_pagamento_fattura(
+            fattura=fattura,
+            metodo_pagamento=metodo,
+            importo_cassa=importo if metodo == "cassa" else 0,
+            importo_banca=importo if metodo == "banca" else 0,
+            source="conferma_provvisori",
+            movimento_bancario=movimento_bancario,
+        )
+        pn_id = risultato.get(metodo)
+        if not pn_id:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Pagamento non registrato: manca l'evidenza prevista "
+                    "dalla regola contabile"
+                ),
+            )
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        campi_fattura = {
+            "stato_pagamento": "pagata",
+            "payment_status": "paid",
+            "stato_finanziario": (
+                "pagata_e_riconciliata" if metodo == "banca" else "pagata"
+            ),
+            "pagato": True,
+            "paid": True,
+            "totale_pagato": round(totale_fattura, 2),
+            "importo_pagato": round(totale_fattura, 2),
+            "importo_residuo": 0,
+            "residuo_da_pagare": 0,
+            "prima_nota_tipo": metodo,
+            "prima_nota_id": pn_id,
+            f"prima_nota_{metodo}_id": pn_id,
+            "metodo_pagamento_effettivo": metodo,
+            "data_pagamento": now_iso[:10],
+            "updated_at": now_iso,
+        }
+        if metodo == "cassa" and approvazione_cassa_esplicita:
+            campi_fattura.update({
+                "metodo_pagamento_previsto": "cassa",
+                "metodo_pagamento_override_source": "operatore_prima_nota",
+                "metodo_pagamento_override_at": now_iso,
+            })
+        if metodo == "banca":
+            campi_fattura.update({
+                "riconciliato": True,
+                "pagata_e_riconciliata": True,
+                "movimento_banca_id": movimento_bancario.get("id"),
+                "estratto_conto_id": movimento_bancario.get("id"),
+            })
+        await db["invoices"].update_one(
+            {"id": fattura_id}, {"$set": campi_fattura}
+        )
+    finally:
+        await _rilascia_claim_pagamento(db, fattura_id, claim_token)
 
     try:
         from app.services.audit_logger import log_evento
@@ -1302,8 +1509,9 @@ async def conferma_divisione_provvisoria(data: Dict = Body(...)) -> Dict:
     Body: { fattura_id, importo_cassa, importo_banca, performed_by? }
 
     Regola canonica: la fattura di un fornitore Misto resta in Prima Nota
-    Provvisoria finche' l'utente non conferma come dividere l'importo; solo
-    dopo la conferma nascono i movimenti veri nei due registri.
+    Provvisoria finche' l'utente non conferma come dividere l'importo. La quota
+    Cassa diventa una scrittura reale; la quota Banca resta un residuo atteso e
+    non genera una scrittura finche' manca l'estratto conto.
     La somma cassa+banca deve coincidere col totale fattura (tolleranza 1 cent).
     """
     db = Database.get_db()
@@ -1317,59 +1525,110 @@ async def conferma_divisione_provvisoria(data: Dict = Body(...)) -> Dict:
 
     if not fattura_id:
         raise HTTPException(status_code=400, detail="fattura_id obbligatorio")
-    if importo_cassa < 0 or importo_banca < 0 or (importo_cassa + importo_banca) <= 0:
-        raise HTTPException(status_code=400, detail="Importi non validi")
+    if importo_cassa <= 0 or importo_banca <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Il pagamento parziale richiede una quota Cassa e un residuo "
+                "Banca entrambi maggiori di zero"
+            ),
+        )
 
     fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
     if not fattura:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
 
-    totale = round(float(fattura.get("total_amount") or fattura.get("importo_totale") or 0), 2)
-    if abs((importo_cassa + importo_banca) - totale) > 0.01:
-        raise HTTPException(
-            status_code=400,
-            detail=f"La somma cassa ({importo_cassa}) + banca ({importo_banca}) "
-                   f"deve coincidere col totale fattura ({totale})",
+    claim_token = await _acquisisci_claim_pagamento(
+        db, fattura_id, "conferma_divisione"
+    )
+    try:
+        fattura_corrente = await db["invoices"].find_one(
+            {"id": fattura_id}, {"_id": 0}
         )
+        fatture_aperte = await fatture_senza_pagamento_contabile_confermato(
+            db, [fattura_corrente]
+        )
+        if not fatture_aperte:
+            raise HTTPException(
+                status_code=409,
+                detail="La fattura ha gia' un pagamento contabile completo",
+            )
+        fattura = fatture_aperte[0]
+        gia_pagato = round(float(
+            fattura.get("_importo_pagato_confermato") or 0
+        ), 2)
+        if gia_pagato > 0.01:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "La fattura ha gia' un pagamento parziale. Il residuo deve "
+                    "essere riconciliato con la relativa evidenza bancaria."
+                ),
+            )
 
-    # CLAIM ATOMICO: doppio click rifiutato.
-    claim = await db["invoices"].find_one_and_update(
-        {"id": fattura_id,
-         "$or": [{"prima_nota_id": None}, {"prima_nota_id": ""},
-                 {"prima_nota_id": {"$exists": False}}]},
-        {"$set": {"prima_nota_tipo": "misto", "prima_nota_id": "in_divisione"}},
-    )
-    if claim is None:
-        return {"success": True, "message": "Fattura già registrata in prima nota"}
+        totale = round(abs(float(
+            fattura.get("total_amount") or fattura.get("importo_totale") or 0
+        )), 2)
+        if abs((importo_cassa + importo_banca) - totale) > 0.01:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"La somma cassa ({importo_cassa}) + banca ({importo_banca}) "
+                    f"deve coincidere col totale fattura ({totale})"
+                ),
+            )
 
-    risultato = await registra_pagamento_fattura(
-        fattura=fattura,
-        metodo_pagamento="misto",
-        importo_cassa=importo_cassa,
-        importo_banca=importo_banca,
-    )
+        # La quota Cassa e' confermata dall'operatore. La quota Banca e' solo
+        # un residuo atteso: nessuna riga bancaria nasce senza estratto conto.
+        risultato = await registra_pagamento_fattura(
+            fattura=fattura,
+            metodo_pagamento="misto",
+            importo_cassa=importo_cassa,
+            importo_banca=importo_banca,
+            source="conferma_provvisori_parziale",
+        )
+        if not risultato.get("cassa"):
+            raise HTTPException(
+                status_code=409,
+                detail="Quota Cassa non registrata; nessuno stato e' stato chiuso",
+            )
 
-    pagamento_completo = bool(
-        (risultato.get("cassa") and not importo_banca)
-        or (risultato.get("banca") and not importo_cassa)
-        or (risultato.get("cassa") and risultato.get("banca"))
-    )
-    now_iso = datetime.now(timezone.utc).isoformat()
-    await db["invoices"].update_one(
-        {"id": fattura_id},
-        {"$set": {
-            "stato_pagamento": "pagata" if pagamento_completo else "parzialmente_pagata",
-            "stato_finanziario": "pagato" if pagamento_completo else "in_attesa_estratto_conto",
-            "pagato": pagamento_completo,
-            "prima_nota_id": risultato.get("cassa") or risultato.get("banca") or "",
-            "prima_nota_cassa_id": risultato.get("cassa"),
-            "prima_nota_banca_id": risultato.get("banca"),
-            "prima_nota_tipo": "misto",
-            "divisione_misto": {"cassa": importo_cassa, "banca": importo_banca},
-            "data_pagamento": now_iso[:10] if pagamento_completo else None,
-            "updated_at": now_iso,
-        }}
-    )
+        now_iso = datetime.now(timezone.utc).isoformat()
+        await db["invoices"].update_one(
+            {"id": fattura_id},
+            {
+                "$set": {
+                    "stato_pagamento": "parzialmente_pagata",
+                    "payment_status": "partial",
+                    "stato_finanziario": "aperta_in_attesa_banca",
+                    "pagato": False,
+                    "paid": False,
+                    "totale_pagato": importo_cassa,
+                    "importo_pagato": importo_cassa,
+                    "importo_residuo": importo_banca,
+                    "residuo_da_pagare": importo_banca,
+                    "prima_nota_id": risultato.get("cassa"),
+                    "prima_nota_cassa_id": risultato.get("cassa"),
+                    "prima_nota_tipo": "misto",
+                    "divisione_misto": {
+                        "cassa": importo_cassa,
+                        "banca": importo_banca,
+                    },
+                    "metodo_pagamento_previsto": "banca",
+                    "metodo_pagamento_override_source": "operatore_prima_nota",
+                    "metodo_pagamento_override_at": now_iso,
+                    "updated_at": now_iso,
+                },
+                "$unset": {
+                    "prima_nota_banca_id": "",
+                    "movimento_banca_id": "",
+                    "estratto_conto_id": "",
+                    "data_pagamento": "",
+                },
+            },
+        )
+    finally:
+        await _rilascia_claim_pagamento(db, fattura_id, claim_token)
 
     # Audit: chi ha confermato la divisione e come.
     try:
@@ -1391,10 +1650,15 @@ async def conferma_divisione_provvisoria(data: Dict = Body(...)) -> Dict:
     return {
         "success": True,
         "fattura_id": fattura_id,
+        "stato": "parzialmente_pagata_in_attesa_banca",
         "importo_cassa": importo_cassa,
         "importo_banca": importo_banca,
         "movimento_cassa_id": risultato.get("cassa"),
         "movimento_banca_id": risultato.get("banca"),
+        "message": (
+            "Quota Cassa registrata. Il residuo resta aperto e sara' chiuso "
+            "solo dalla riconciliazione con l'estratto conto."
+        ),
     }
 
 

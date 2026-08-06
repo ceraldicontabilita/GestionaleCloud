@@ -135,10 +135,24 @@ async def fatture_senza_pagamento_contabile_confermato(
     }
     projection = {
         "_id": 0, "id": 1, "fattura_id": 1, "invoice_id": 1,
+        "importo": 1,
         "riferimento": 1, **{campo: 1 for campo in CAMPI_EVIDENZA_BANCA},
     }
-    confermati_pn = set()
-    confermati_fattura = set()
+    # Una fattura puo' essere pagata in piu' passaggi (per esempio una quota
+    # in contanti e il residuo tramite banca). La sola presenza di una riga di
+    # Prima Nota non prova quindi che l'intero documento sia saldato: bisogna
+    # sommare esclusivamente gli importi confermati. Le righe banca prive di
+    # evidenza dell'estratto conto restano, come prima, non confermate.
+    importi_per_fattura: Dict[str, float] = {}
+    importi_per_pn: Dict[str, float] = {}
+    riferimenti_senza_importo = set()
+    pn_senza_importo = set()
+
+    pn_verso_fatture: Dict[str, set[str]] = {}
+    for fattura in fatture:
+        refs = _riferimenti_fattura(fattura)
+        for pn_id in _riferimenti_prima_nota(fattura):
+            pn_verso_fatture.setdefault(pn_id, set()).update(refs)
 
     for collection in COLLEZIONI_PRIMA_NOTA:
         righe = await db[collection].find(filtro, projection).to_list(10000)
@@ -148,14 +162,41 @@ async def fatture_senza_pagamento_contabile_confermato(
                 for campo in CAMPI_EVIDENZA_BANCA
             ):
                 continue
-            if movimento.get("id"):
-                confermati_pn.add(str(movimento["id"]))
+            movimento_id = str(movimento.get("id") or "")
+            riferimenti_movimento = set()
             for campo in ("fattura_id", "invoice_id"):
                 if movimento.get(campo):
-                    confermati_fattura.add(str(movimento[campo]))
+                    riferimenti_movimento.add(str(movimento[campo]))
             riferimento = str(movimento.get("riferimento") or "")
             if riferimento.startswith("FATT-"):
-                confermati_fattura.add(riferimento[5:])
+                riferimenti_movimento.add(riferimento[5:])
+            if movimento_id:
+                riferimenti_movimento.update(pn_verso_fatture.get(movimento_id, set()))
+
+            valore = movimento.get("importo")
+            try:
+                importo = abs(float(valore)) if valore not in (None, "") else None
+            except (TypeError, ValueError):
+                importo = None
+
+            # I record storici talvolta non riportano l'importo sulla riga ma
+            # hanno un collegamento esplicito fattura/PN. Per non riaprire
+            # pagamenti storici validi, quel solo caso conserva il significato
+            # precedente di pagamento completo.
+            if importo is None:
+                riferimenti_senza_importo.update(riferimenti_movimento)
+                if movimento_id:
+                    pn_senza_importo.add(movimento_id)
+                continue
+
+            for ref in riferimenti_movimento:
+                importi_per_fattura[ref] = round(
+                    importi_per_fattura.get(ref, 0.0) + importo, 2
+                )
+            if movimento_id:
+                importi_per_pn[movimento_id] = round(
+                    importi_per_pn.get(movimento_id, 0.0) + importo, 2
+                )
 
     risultato = []
     for fattura in fatture:
@@ -167,9 +208,34 @@ async def fatture_senza_pagamento_contabile_confermato(
             str(fattura.get(campo)) for campo in CAMPI_ID_PRIMA_NOTA
             if fattura.get(campo) not in (None, "")
         }
-        if refs_fattura & confermati_fattura or ids_fattura & confermati_pn:
+        totale = abs(float(
+            fattura.get("total_amount") or fattura.get("importo_totale") or 0
+        ))
+        pagamento_confermato = max(
+            [importi_per_fattura.get(ref, 0.0) for ref in refs_fattura]
+            + [importi_per_pn.get(pn_id, 0.0) for pn_id in ids_fattura]
+            + [0.0]
+        )
+        collegamento_storico_completo = bool(
+            refs_fattura & riferimenti_senza_importo
+            or ids_fattura & pn_senza_importo
+        )
+        if collegamento_storico_completo or (
+            totale > 0 and pagamento_confermato >= totale - 0.01
+        ):
             continue
-        risultato.append(fattura)
+
+        # I campi con prefisso '_' sono derivati di sola lettura. Permettono
+        # alla pagina Provvisori e agli endpoint di registrare solo il residuo,
+        # senza alterare il documento sorgente nel database.
+        fattura_aperta = dict(fattura)
+        fattura_aperta["_importo_pagato_confermato"] = round(
+            pagamento_confermato, 2
+        )
+        fattura_aperta["_importo_residuo"] = round(
+            max(0.0, totale - pagamento_confermato), 2
+        )
+        risultato.append(fattura_aperta)
     return risultato
 
 

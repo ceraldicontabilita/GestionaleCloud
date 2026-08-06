@@ -27,6 +27,8 @@ def _matches(doc, query):
             out = out and (str(doc.get(k, "")) >= v["$gte"])
         elif isinstance(v, dict) and "$lte" in v:
             out = out and (str(doc.get(k, "")) <= v["$lte"])
+        elif isinstance(v, dict) and "$lt" in v:
+            out = out and (str(doc.get(k, "")) < v["$lt"])
         elif isinstance(v, dict) and "$regex" in v:
             out = out and str(v["$regex"]).strip("^") in str(doc.get(k, ""))
         elif isinstance(v, dict) and "$exists" in v:
@@ -398,6 +400,127 @@ def test_conferma_banca_con_riga_reale_marca_riconciliata(monkeypatch):
     assert fattura["stato_finanziario"] == "pagata_e_riconciliata"
     assert fattura["estratto_conto_id"] == "ec-1"
     assert db["estratto_conto_movimenti"].docs[0]["fattura_id"] == "fatt-1"
+
+
+def test_divisione_registra_solo_cassa_e_lascia_residuo_banca(monkeypatch):
+    db = _FakeDb()
+    db["invoices"].docs = [_fattura(total_amount=100.0)]
+    _patch_db(monkeypatch, db)
+
+    res = _run(sync_mod.conferma_divisione_provvisoria({
+        "fattura_id": "fatt-1",
+        "importo_cassa": 40,
+        "importo_banca": 60,
+        "performed_by": "test",
+    }))
+
+    assert res["success"] is True
+    assert res["stato"] == "parzialmente_pagata_in_attesa_banca"
+    assert res["movimento_banca_id"] is None
+    assert len(db["prima_nota_cassa"].docs) == 1
+    assert db["prima_nota_cassa"].docs[0]["importo"] == 40.0
+    assert db["prima_nota_banca"].docs == []
+    fattura = db["invoices"].docs[0]
+    assert fattura["pagato"] is False
+    assert fattura["paid"] is False
+    assert fattura["payment_status"] == "partial"
+    assert fattura["stato_finanziario"] == "aperta_in_attesa_banca"
+    assert fattura["importo_pagato"] == 40.0
+    assert fattura["importo_residuo"] == 60.0
+    assert fattura["metodo_pagamento_previsto"] == "banca"
+    assert fattura.get("prima_nota_banca_id") is None
+    assert fattura.get("data_pagamento") is None
+    assert fattura.get("prima_nota_payment_claim") is None
+
+
+def test_claim_attivo_blocca_il_doppio_invio(monkeypatch):
+    db = _FakeDb()
+    db["invoices"].docs = [_fattura(
+        prima_nota_payment_claim="operazione-in-corso",
+        prima_nota_payment_claim_at="2999-01-01T00:00:00+00:00",
+    )]
+    _patch_db(monkeypatch, db)
+
+    with pytest.raises(HTTPException) as exc:
+        _run(sync_mod.conferma_divisione_provvisoria({
+            "fattura_id": "fatt-1",
+            "importo_cassa": 20,
+            "importo_banca": 38,
+        }))
+
+    assert exc.value.status_code == 409
+    assert db["prima_nota_cassa"].docs == []
+    assert db["prima_nota_banca"].docs == []
+
+
+def test_banca_chiude_esattamente_il_residuo_del_parziale(monkeypatch):
+    db = _FakeDb()
+    db["invoices"].docs = [_fattura(
+        total_amount=100.0,
+        metodo_pagamento="banca",
+        prima_nota_cassa_id="pn-cassa-40",
+        stato_pagamento="parzialmente_pagata",
+    )]
+    db["prima_nota_cassa"].docs = [{
+        "id": "pn-cassa-40",
+        "fattura_id": "fatt-1",
+        "importo": 40.0,
+        "status": "active",
+    }]
+    db["estratto_conto_movimenti"].docs = [{
+        "id": "ec-residuo-60",
+        "data": "2026-06-10",
+        "importo": -60.0,
+        "descrizione": "BONIFICO RESIDUO RONDINELLA",
+        "riconciliato": False,
+    }]
+    _patch_db(monkeypatch, db)
+
+    res = _run(sync_mod.conferma_fattura_provvisoria({
+        "fattura_id": "fatt-1",
+        "metodo": "banca",
+        "movimento_banca_id": "ec-residuo-60",
+    }))
+
+    assert res["success"] is True
+    assert res["importo"] == 60.0
+    assert len(db["prima_nota_banca"].docs) == 1
+    assert db["prima_nota_banca"].docs[0]["importo"] == 60.0
+    fattura = db["invoices"].docs[0]
+    assert fattura["paid"] is True
+    assert fattura["payment_status"] == "paid"
+    assert fattura["importo_pagato"] == 100.0
+    assert fattura["importo_residuo"] == 0
+
+
+def test_cassa_non_puo_chiudere_il_residuo_di_un_parziale_esistente(monkeypatch):
+    db = _FakeDb()
+    db["invoices"].docs = [_fattura(
+        total_amount=100.0,
+        metodo_pagamento="cassa",
+        prima_nota_cassa_id="pn-cassa-40",
+        stato_pagamento="parzialmente_pagata",
+    )]
+    db["prima_nota_cassa"].docs = [{
+        "id": "pn-cassa-40",
+        "fattura_id": "fatt-1",
+        "importo": 40.0,
+        "status": "active",
+    }]
+    _patch_db(monkeypatch, db)
+
+    with pytest.raises(HTTPException) as exc:
+        _run(sync_mod.conferma_fattura_provvisoria({
+            "fattura_id": "fatt-1",
+            "metodo": "cassa",
+        }))
+
+    assert exc.value.status_code == 409
+    assert "pagamento parziale" in exc.value.detail
+    assert len(db["prima_nota_cassa"].docs) == 1
+    fattura = db["invoices"].docs[0]
+    assert fattura.get("paid") is not True
+    assert fattura.get("prima_nota_payment_claim") is None
 
 
 def test_sync_fatture_pagate_nota_credito_entrata(monkeypatch):

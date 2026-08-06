@@ -894,7 +894,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/prima-nota/provvisori/attendi-banca` | prima_nota_module.sync | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota/provvisori/auto-conferma-per-metodo` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/provvisori/conferma` | prima_nota_module.sync | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/prima-nota/provvisori/conferma-divisione` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/prima-nota/provvisori/conferma-divisione` | prima_nota_module.sync | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota/pulizia-pre-anno` | prima_nota_module.manutenzione | — | — | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/prima-nota/recalculate-balances` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/regenerate-from-invoices` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
