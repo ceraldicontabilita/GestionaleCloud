@@ -55,6 +55,44 @@ async def _scenario_carnet_duplicato(monkeypatch):
     assert await db["assegni"].count_documents({}) == 1
 
 
+async def _scenario_carnet_numero_continuo(monkeypatch):
+    db = AsyncMongoMockClient()["test_assegni_carnet_continuo"]
+    monkeypatch.setattr(
+        assegni_router.Database,
+        "get_db",
+        staticmethod(lambda: db),
+    )
+
+    esito = await assegni_router.genera_assegni(
+        numero_primo="0208770985",
+        quantita=3,
+        anno=2026,
+    )
+
+    assert esito["numeri"] == ["0208770985", "0208770986", "0208770987"]
+    assert esito["carnet_id"] == "0208770985"
+    assert await db["assegni"].count_documents({"anno": 2026}) == 3
+
+
+async def _scenario_carnet_formato_non_valido(monkeypatch):
+    db = AsyncMongoMockClient()["test_assegni_carnet_formato_non_valido"]
+    monkeypatch.setattr(
+        assegni_router.Database,
+        "get_db",
+        staticmethod(lambda: db),
+    )
+
+    with pytest.raises(Exception) as exc:
+        await assegni_router.genera_assegni(
+            numero_primo="02087709A5",
+            quantita=3,
+            anno=2026,
+        )
+
+    assert getattr(exc.value, "status_code", None) == 400
+    assert await db["assegni"].count_documents({}) == 0
+
+
 async def _scenario_fatture_disponibili(monkeypatch):
     db = AsyncMongoMockClient()["test_fatture_disponibili_assegno"]
     await db["invoices"].insert_many([
@@ -100,6 +138,14 @@ def test_carnet_salvato_in_blocco_e_visibile_nell_anno(monkeypatch):
 
 def test_carnet_duplicato_non_inserisce_righe_parziali(monkeypatch):
     asyncio.run(_scenario_carnet_duplicato(monkeypatch))
+
+
+def test_carnet_accetta_numero_bancario_continuo(monkeypatch):
+    asyncio.run(_scenario_carnet_numero_continuo(monkeypatch))
+
+
+def test_carnet_rifiuta_formati_ambigui_senza_salvare(monkeypatch):
+    asyncio.run(_scenario_carnet_formato_non_valido(monkeypatch))
 
 
 def test_fatture_disponibili_sono_leggere_aperte_e_deduplicate(monkeypatch):

@@ -282,10 +282,15 @@ export default function GestioneAssegni() {
       toast.warning('Inserisci il numero del primo assegno');
       return;
     }
+    const quantita = Number.parseInt(generateForm.quantita, 10);
+    if (!Number.isInteger(quantita) || quantita < 1 || quantita > 100) {
+      toast.warning('La quantità deve essere compresa tra 1 e 100');
+      return;
+    }
 
     setGenerating(true);
     try {
-      const res = await api.post(`/api/assegni/genera`, { ...generateForm, anno });
+      const res = await api.post(`/api/assegni/genera`, { ...generateForm, quantita, anno });
       const numeri = res.data?.numeri || [];
       setNewlyGeneratedNumbers(new Set(numeri));
       setShowGenerate(false);
@@ -2841,7 +2846,7 @@ export default function GestioneAssegni() {
                 gap: 8,
               }}
             >
-              <h2 style={{ marginTop: 0 }}>Genera 10 Assegni Progressivi</h2>
+              <h2 style={{ marginTop: 0 }}>Genera Carnet Assegni</h2>
               <Button
                 variant="ghost"
                 onClick={() => setShowGenerate(false)}
@@ -2853,7 +2858,8 @@ export default function GestioneAssegni() {
               </Button>
             </div>
             <p style={{ color: COLORS.textMuted, fontSize: 14, marginBottom: 20 }}>
-              Inserisci il numero del primo assegno nel formato PREFISSO-NUMERO
+              Inserisci il primo numero come stampato sull'assegno. Sono validi sia
+              0208770985 sia 0208770000-01.
             </p>
 
             <div style={{ marginBottom: 15 }}>
@@ -2864,9 +2870,25 @@ export default function GestioneAssegni() {
                 type="text"
                 value={generateForm.numero_primo}
                 onChange={e => setGenerateForm({ ...generateForm, numero_primo: e.target.value })}
-                placeholder="0208769182-11"
+                placeholder="0208770985 oppure 0208770000-01"
                 data-testid="numero-primo-input"
                 style={{ padding: 12, fontFamily: 'monospace' }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 15 }}>
+              <label style={{ display: 'block', marginBottom: 5, fontWeight: 'bold' }}>
+                Quantità assegni
+              </label>
+              <Input
+                type="number"
+                min="1"
+                max="100"
+                step="1"
+                value={generateForm.quantita}
+                onChange={e => setGenerateForm({ ...generateForm, quantita: e.target.value })}
+                data-testid="quantita-carnet-input"
+                style={{ padding: 12 }}
               />
             </div>
 

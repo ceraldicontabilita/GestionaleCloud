@@ -143,7 +143,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/assegni/stats` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/assegni/supporto/fatture-disponibili` | bank.assegni | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/assegni/sync-da-estratto-conto` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/assegni/verifica-associazioni` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/assegni/verifica-associazioni` | bank.assegni | sì | — | — | — | sì | tenere | in uso: FE |
 | `DELETE /api/assegni/{assegno_id}` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/assegni/{assegno_id}` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/assegni/{assegno_id}` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
