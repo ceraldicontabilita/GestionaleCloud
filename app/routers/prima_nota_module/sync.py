@@ -870,7 +870,10 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
              {"data": {"$regex": f"^{anno}"}},
              {"data_contabile": {"$regex": f"/{anno}$"}},
          ]},
-        {"_id": 0, "id": 1, "importo": 1, "descrizione": 1, "data": 1, "data_contabile": 1}
+        {
+            "_id": 0, "id": 1, "importo": 1, "descrizione": 1,
+            "descrizione_originale": 1, "data": 1, "data_contabile": 1,
+        }
     ):
         imp = round(abs(float(m.get("importo", 0))), 2)
         if imp not in movimenti_banca:
@@ -963,42 +966,32 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
         
         # Se banca: cerca INTELLIGENTEMENTE nell'estratto conto
         movimento_match = None
-        if suggerimento == "banca" and not assegno_specifico:
+        evidenza_banca = None
+        if suggerimento == "banca":
+            from app.services.riconciliazione_bancaria import (
+                _evidenza_forte_fattura_banca,
+                _evidenza_sdd_fattura_banca,
+            )
+
             candidati = movimenti_banca.get(round(importo, 2), [])
-            nome = (f.get("supplier_name") or "").upper()
-            numero_fatt = (f.get("invoice_number") or "").upper()
-            
+            candidati_forti = []
             for m in candidati:
-                desc = (m.get("descrizione") or "").upper()
-                score = 0
-                
-                # Match per nome fornitore (prime 2 parole)
-                nome_parts = [p for p in nome.split()[:3] if len(p) > 3]
-                for p in nome_parts:
-                    if p in desc:
-                        score += 30
-                
-                # Match per P.IVA
-                if piva and piva in desc:
-                    score += 50
-                
-                # Match per numero fattura
-                if numero_fatt and len(numero_fatt) > 2 and numero_fatt in desc:
-                    score += 40
-                
-                # Keywords bonifico
-                if "VS.DISP" in desc or "BONIFICO" in desc:
-                    score += 10
-                
-                if score >= 30:
-                    movimento_match = m
-                    stato_match = "confermato"
-                    break
-            
-            if not movimento_match and candidati:
-                # Match solo per importo — probabile ma non certo
-                movimento_match = candidati[0]
-                stato_match = "probabile"
+                descrizione = m.get("descrizione_originale") or m.get("descrizione") or ""
+                data_movimento = m.get("data") or m.get("data_contabile") or ""
+                forte = _evidenza_forte_fattura_banca(f, descrizione, importo)
+                sdd = _evidenza_sdd_fattura_banca(
+                    f, descrizione, importo, data_movimento,
+                )
+                if forte.get("auto_ammesso"):
+                    candidati_forti.append((m, "identita_fattura_importo"))
+                elif sdd.get("auto_ammesso"):
+                    candidati_forti.append((m, "sdd_fornitore_importo_data"))
+
+            # Il solo importo non identifica il pagamento. Inoltre, se due
+            # movimenti hanno la stessa evidenza, il caso resta ambiguo.
+            if len(candidati_forti) == 1:
+                movimento_match, evidenza_banca = candidati_forti[0]
+                stato_match = "riscontro_forte_in_elaborazione"
         
         provvisori.append({
             "fattura_id": f.get("id"),
@@ -1018,9 +1011,13 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             ),
             "suggerimento": suggerimento,
             "stato_match": stato_match,
+            "evidenza_banca": evidenza_banca,
             "movimento_banca": {
                 "data": (movimento_match.get("data") or movimento_match.get("data_contabile", "")) if movimento_match else None,
-                "descrizione": (movimento_match.get("descrizione", "")[:80]) if movimento_match else None,
+                "descrizione": (
+                    movimento_match.get("descrizione_originale")
+                    or movimento_match.get("descrizione", "")
+                )[:80] if movimento_match else None,
                 "id": movimento_match.get("id") if movimento_match else None,
             } if movimento_match else None,
         })

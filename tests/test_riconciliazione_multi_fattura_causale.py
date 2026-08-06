@@ -148,6 +148,36 @@ def test_numero_fattura_lungo_con_zeri_viene_riconosciuto_nella_causale():
     )
 
 
+def test_bonifico_non_si_chiude_se_la_causale_cita_una_fattura_non_importata(monkeypatch):
+    async def scenario():
+        db = _prepara_db(monkeypatch, 300.0)
+        await db.invoices.insert_many([
+            _fattura("fatt-301", "FT-301/26", 100.0),
+            _fattura("fatt-302", "FT-302/26", 200.0),
+        ])
+        await db.estratto_conto_movimenti.insert_one({
+            "id": "ec-multi-manca-doc",
+            "data": "2026-03-20",
+            "tipo": "uscita",
+            "importo": -300.0,
+            "descrizione_originale": (
+                "BONIFICO FORNITORE MULTI SRL PAGAMENTO FATTURE "
+                "FT-301/26 FT-302/26 FT-303/26"
+            ),
+            "riconciliato": False,
+        })
+
+        risultato = await mod.riconcilia_movimenti_banca()
+        assert risultato["riconciliati_fatture"] == 0
+        proposta = await db.operazioni_da_confermare.find_one(
+            {"movimento_ec_id": "ec-multi-manca-doc"}, {"_id": 0}
+        )
+        assert proposta["dettagli"]["riferimenti_mancanti"] == ["FT30326"]
+        assert await db.prima_nota_banca.count_documents({}) == 0
+
+    _run(scenario())
+
+
 def test_import_riconcilia_solo_i_nuovi_movimenti_richiesti(monkeypatch):
     async def scenario():
         db = _prepara_db(monkeypatch, 1.0)

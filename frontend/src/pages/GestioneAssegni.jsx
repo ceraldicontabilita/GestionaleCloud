@@ -530,7 +530,8 @@ export default function GestioneAssegni() {
   // Selezione multipla per stampa PDF
   const [selectedAssegni, setSelectedAssegni] = useState(new Set());
 
-  // Assegni non associati (per associazione manuale)
+  // Assegni con dati incompleti. Non sono candidati a un collegamento
+  // manuale: il motore li riprocessa quando arrivano beneficiario, XML o EC.
   const [assegniNonAssociati, setAssegniNonAssociati] = useState([]);
   const [loadingNonAssociati, setLoadingNonAssociati] = useState(false);
   const [showNonAssociati, setShowNonAssociati] = useState(false);
@@ -2394,8 +2395,9 @@ export default function GestioneAssegni() {
             ) : (
               <div>
                 <p style={{ margin: '0 0 12px', fontSize: 13, color: COLORS.textMuted }}>
-                  Questi assegni hanno un importo ma nessun beneficiario. Clicca "Associa" per
-                  collegare manualmente a una fattura.
+                  Questi assegni non hanno ancora prove sufficienti. Completa beneficiario e
+                  importo: l'applicazione li collegherà automaticamente quando trova la fattura
+                  o il movimento nell'estratto conto.
                 </p>
                 <TableWrap>
                   <Table>
@@ -2414,22 +2416,7 @@ export default function GestioneAssegni() {
                               <Td style={{ fontWeight: 600 }}>{importo}</Td>
                               <Td mono>{numero}</Td>
                               <Td align="center">
-                                <Button
-                                  variant="info"
-                                  size="sm"
-                                  onClick={() => {
-                                    const assegnoData = assegni.find(a => a.numero === numero);
-                                    if (assegnoData) {
-                                      openFattureModal(assegnoData);
-                                    } else {
-                                      toast.warning(
-                                        `Assegno ${numero} non trovato nella lista. Prova a rimuovere i filtri.`
-                                      );
-                                    }
-                                  }}
-                                >
-                                  🔗 Associa Fattura
-                                </Button>
+                                <Badge variant="info">Associazione automatica</Badge>
                               </Td>
                             </tr>
                           ))
@@ -2601,6 +2588,10 @@ export default function GestioneAssegni() {
                           >
                             → {assegno.fornitore_fattura}
                           </span>
+                        ) : assegno.stato === 'incassato' ? (
+                          <span style={{ color: COLORS.danger, fontWeight: 700 }}>
+                            Fornitore non collegato
+                          </span>
                         ) : (
                           '-'
                         )}
@@ -2612,6 +2603,29 @@ export default function GestioneAssegni() {
                       )}
                     </div>
                   ),
+              },
+              {
+                key: 'data_incasso',
+                label: 'Incasso / EC',
+                ruoloCard: 'dettaglio',
+                iconaCard: '🏦',
+                tdStyle: tdSelezione,
+                render: assegno => assegno.data_incasso ? (
+                  <div style={{ fontSize: 12 }}>
+                    <div style={{ fontWeight: 700 }}>{formatDateIT(assegno.data_incasso)}</div>
+                    {assegno.evidenza_estratto_conto_id && (
+                      <div style={{ color: COLORS.textMuted, fontSize: 10.5 }} title={assegno.evidenza_estratto_conto_id}>
+                        Estratto conto
+                      </div>
+                    )}
+                  </div>
+                ) : assegno.stato === 'incassato' ? (
+                  <span style={{ color: COLORS.danger, fontSize: 11.5, fontWeight: 700 }}>
+                    Data EC mancante
+                  </span>
+                ) : (
+                  '-'
+                ),
               },
               {
                 key: 'importo',
@@ -2689,6 +2703,10 @@ export default function GestioneAssegni() {
                           </Button>
                         )}
                       </span>
+                    ) : assegno.stato === 'incassato' ? (
+                      <span style={{ color: COLORS.danger, fontWeight: 700 }}>
+                        Fattura non collegata
+                      </span>
                     ) : (
                       '-'
                     )
@@ -2720,6 +2738,11 @@ export default function GestioneAssegni() {
                         {assegno.data_fattura && (
                           <div style={{ color: COLORS.textMuted, fontSize: 11 }}>
                             {formatDateIT(assegno.data_fattura)}
+                          </div>
+                        )}
+                        {!assegno.numero_fattura && !assegno.data_fattura && assegno.stato === 'incassato' && (
+                          <div style={{ color: COLORS.danger, fontWeight: 700 }}>
+                            Fattura non collegata
                           </div>
                         )}
                       </div>
@@ -2772,14 +2795,16 @@ export default function GestioneAssegni() {
                         >
                           ✏️
                         </RowActionButton>
-                        <RowActionButton
-                          variant="neutral"
-                          onClick={() => openFattureModal(assegno)}
-                          data-testid={`fatture-${assegno.id}`}
-                          title="Collega Fatture"
-                        >
-                          📄
-                        </RowActionButton>
+                        {assegno.associazione_ambigua && (
+                          <RowActionButton
+                            variant="neutral"
+                            onClick={() => openFattureModal(assegno)}
+                            data-testid={`fatture-${assegno.id}`}
+                            title="Risolvi associazione ambigua"
+                          >
+                            📄
+                          </RowActionButton>
+                        )}
                         {/* STAMPA singolo assegno: il carnet è il prefisso
                             del numero, come in groupByCarnet */}
                         <RowActionButton

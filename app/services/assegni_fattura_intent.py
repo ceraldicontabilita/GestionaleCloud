@@ -88,6 +88,26 @@ def _score(assegno: Dict[str, Any], invoice: Dict[str, Any]) -> int:
 
 
 async def _collega(db, assegno: Dict[str, Any], invoice: Dict[str, Any], *, session=None) -> Dict[str, Any]:
+    # L'estratto conto puo' essere stato importato prima dell'XML. In quel
+    # caso il movimento bancario e' gia' prova ufficiale: il collegamento
+    # tardivo deve chiudere la fattura e soprattutto non deve degradare
+    # l'assegno da ``incassato`` a ``assegnato``.
+    banca_gia_confermata = bool(
+        assegno.get("incassato_confermato_banca")
+        and (assegno.get("movimento_estratto_conto_id") or assegno.get("movimento_id"))
+    )
+    if banca_gia_confermata and session is None:
+        from app.services.assegni_estratto_conto import (
+            collega_assegno_riconciliato_a_fattura,
+        )
+        return await collega_assegno_riconciliato_a_fattura(
+            db,
+            assegno,
+            invoice,
+            match_auto=True,
+            match_livello="INTENTO_ASSEGNO_XML_EC",
+        )
+
     now = datetime.now(timezone.utc).isoformat()
     fid = str(invoice.get("id"))
     quota = round(_f(assegno.get("importo")), 2)
@@ -118,9 +138,11 @@ async def _collega(db, assegno: Dict[str, Any], invoice: Dict[str, Any], *, sess
             "fornitore_ragione_sociale": nome,
             "beneficiario": assegno.get("beneficiario") or nome,
             "importo_assegnato": quota,
-            "stato": "assegnato",
+            "stato": "incassato" if banca_gia_confermata else "assegnato",
             "metodo_pagamento_previsto": "assegno",
-            "stato_finanziario": "in_attesa_estratto_conto",
+            "stato_finanziario": (
+                "riconciliato" if banca_gia_confermata else "in_attesa_estratto_conto"
+            ),
             "pagamento_specifico_prevale_su_fornitore": True,
             "updated_at": now,
         }},
@@ -146,6 +168,16 @@ async def _collega(db, assegno: Dict[str, Any], invoice: Dict[str, Any], *, sess
     )
     invoice.update(invoice_update)
     invoice.setdefault("assegni_collegati", []).append(link)
+    if banca_gia_confermata:
+        # Il link preliminare impedisce l'instradamento Cassa/Banca generico
+        # dentro la transazione. Il pagamento e le rate vengono completati
+        # subito dopo il commit dal chiamante.
+        return {
+            "collegato": False,
+            "completamento_banca_pendente": True,
+            "assegno_id": assegno.get("id"),
+            "fattura_id": fid,
+        }
     return {"collegato": True, "assegno_id": assegno.get("id"), "fattura_id": fid}
 
 

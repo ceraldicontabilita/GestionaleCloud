@@ -52,6 +52,13 @@ def test_accrediti_separati_diventano_verdi_solo_alla_quadratura():
         assert parziale["riconciliato"] is False
         assert (await db["estratto_conto_movimenti"].find_one({"id": "ec-60"}))["riconciliato"] is False
 
+        # Riesaminare la stessa componente non deve sommarla una seconda
+        # volta: lo scheduler gira periodicamente sulle righe ancora aperte.
+        assert await riconcilia_accredito_pos_ec(
+            db, await db["estratto_conto_movimenti"].find_one({"id": "ec-60"}))
+        ripetuto = await db["prima_nota_banca"].find_one({"id": "trasferimento"})
+        assert ripetuto["accreditato_ec"] == 60.0
+
         assert await riconcilia_accredito_pos_ec(
             db, await db["estratto_conto_movimenti"].find_one({"id": "ec-40"}))
         completo = await db["prima_nota_banca"].find_one({"id": "trasferimento"})

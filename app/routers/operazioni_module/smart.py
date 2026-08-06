@@ -113,115 +113,36 @@ async def riconcilia_automatico(
     tipo: Optional[str] = None,
     limit: int = 100
 ) -> Dict[str, Any]:
-    """Riconciliazione automatica dei movimenti."""
+    """Esegue i motori canonici; i casi ambigui restano aperti."""
     db = Database.get_db()
 
-    query = {**ESCLUDI_CARTA_CREDITO, "riconciliato": {"$ne": True}}
-    if tipo:
-        query["tipo_suggerito"] = tipo
-    
-    movimenti = await db.estratto_conto_movimenti.find(query, {"_id": 0}).limit(limit).to_list(limit)
-    
-    riconciliati = 0
     errori = []
-    
-    for mov in movimenti:
-        try:
-            importo = abs(safe_float(mov.get("importo", 0)))
-            descrizione = (mov.get("descrizione") or mov.get("descrizione_originale") or "").upper()
+    try:
+        from app.services.riconciliazione_bancaria import riconcilia_movimenti_banca
+        banca = await riconcilia_movimenti_banca()
+    except Exception as exc:
+        logger.exception("Errore motore canonico banca")
+        banca = {"totale_riconciliati": 0, "movimenti_analizzati": 0}
+        errori.append({"motore": "banca", "error": str(exc)})
 
-            match_found = False
+    try:
+        from app.routers.paypal_statements import _auto_riconcilia
+        paypal = await _auto_riconcilia(db, applica=True)
+    except Exception as exc:
+        logger.exception("Errore riconciliazione PayPal-banca")
+        paypal = {"riconciliati": 0, "ambigui": 0}
+        errori.append({"motore": "paypal", "error": str(exc)})
 
-            # Un importo/data non prova l'identita' del pagamento. Cerchiamo
-            # soltanto fatture con totale esatto al centesimo e poi applichiamo
-            # lo scorer canonico (uscita + fornitore o numero documento).
-            from app.handlers.estratto_conto import _score_match, SOGLIA_AUTO
-            candidate = await db.invoices.find({
-                **QUERY_FATTURA_NON_PAGATA,
-                "$or": [
-                    {"total_amount": {"$gte": importo - 0.01, "$lte": importo + 0.01}},
-                    {"importo_totale": {"$gte": importo - 0.01, "$lte": importo + 0.01}}
-                ]
-            }, {"_id": 0}).limit(50).to_list(50)
-            forti = [f for f in candidate if _score_match(mov, f) >= SOGLIA_AUTO]
-            fattura = forti[0] if len(forti) == 1 else None
-
-            if fattura:
-                await db.estratto_conto_movimenti.update_one(
-                    {"id": mov["id"]},
-                    {"$set": {
-                        "riconciliato": True,
-                        "fattura_id": fattura["id"],
-                        "tipo_riconciliazione": "auto_identita_importo",
-                        "data_riconciliazione": datetime.now(timezone.utc).isoformat()
-                    }}
-                )
-                pagato_fields = set_fattura_pagata({"movimento_bancario_id": mov["id"]})
-
-                # Crea (idempotente) il movimento in Prima Nota Banca e propaga
-                # FATTURA_PAGATA — senza questo la fattura risulta pagata da
-                # questo motore "smart" ma non compare mai in Prima Nota Banca
-                # né chiude la partita aperta collegata (stesso gap già chiuso
-                # nel motore canonico da _applica_pagamento_banca() in
-                # riconciliazione_bancaria.py, vedi memoria/moduli/RICONCILIAZIONE.md).
-                try:
-                    from app.routers.prima_nota_module.sync import registra_pagamento_fattura
-                    pn = await registra_pagamento_fattura(
-                        fattura, "banca", movimento_bancario=mov,
-                        source="estratto_conto_auto",
-                    )
-                    if pn.get("banca"):
-                        pagato_fields["prima_nota_id"] = pn["banca"]
-                        pagato_fields["prima_nota_tipo"] = "banca"
-                        pagato_fields["prima_nota_banca_id"] = pn["banca"]
-                except Exception:
-                    logger.exception(f"Errore registrazione prima nota banca per fattura {fattura['id']}")
-
-                await db.invoices.update_one(
-                    {"id": fattura["id"]},
-                    {"$set": pagato_fields}
-                )
-
-                try:
-                    from app.services.event_bus import propagate_event, EventTypes
-                    await propagate_event(EventTypes.FATTURA_PAGATA, {
-                        "fattura_id": fattura["id"],
-                        "importo": importo,
-                        "metodo_pagamento": "banca",
-                        "data_pagamento": pagato_fields["data_pagamento"],
-                    }, db, source_module="riconciliazione_smart_auto")
-                except Exception:
-                    logger.exception(f"Errore propagazione FATTURA_PAGATA per {fattura['id']}")
-
-                riconciliati += 1
-                match_found = True
-            
-            if not match_found and "I24" in descrizione:
-                # Match F24
-                f24 = await db["f24_unificato"].find_one({
-                    "importo_totale": {"$gte": importo * 0.99, "$lte": importo * 1.01}
-                }, {"_id": 0, "id": 1})
-                
-                if f24:
-                    await db.estratto_conto_movimenti.update_one(
-                        {"id": mov["id"]},
-                        {"$set": {
-                            "riconciliato": True,
-                            "f24_id": f24["id"],
-                            "tipo_riconciliazione": "auto_f24",
-                            "data_riconciliazione": datetime.now(timezone.utc).isoformat()
-                        }}
-                    )
-                    riconciliati += 1
-                    
-        except Exception as e:
-            errori.append({"movimento_id": mov.get("id"), "error": str(e)})
-    
+    riconciliati_canonici = int(banca.get("totale_riconciliati") or 0) + int(
+        paypal.get("riconciliati") or 0
+    )
     return {
-        "success": True,
-        "riconciliati": riconciliati,
-        "analizzati": len(movimenti),
-        "errori": errori[:10]
+        "success": not errori,
+        "riconciliati": riconciliati_canonici,
+        "analizzati": int(banca.get("movimenti_analizzati") or 0),
+        "banca": banca,
+        "paypal": paypal,
+        "errori": errori[:10],
     }
 
 

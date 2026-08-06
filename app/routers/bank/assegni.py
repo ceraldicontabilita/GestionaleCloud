@@ -242,24 +242,129 @@ async def list_assegni(
     # beneficiario reale, il frontend mostra il fornitore dedotto dalla
     # fattura (richiesta utente: "conoscendo il numero della fattura è anche
     # noto il fornitore"). Non scriviamo nulla sull'assegno: solo risposta.
-    da_arricchire = [a for a in assegni
-                     if not (a.get("beneficiario") or "").strip()
-                     and (a.get("fattura_collegata") or a.get("numero_fattura"))]
-    if da_arricchire:
-        ids = list({a.get("fattura_collegata") for a in da_arricchire if a.get("fattura_collegata")})
-        numeri = list({a.get("numero_fattura") for a in da_arricchire if a.get("numero_fattura")})
+    ids_fatture = set()
+    numeri_fatture = set()
+    ids_movimenti = set()
+    for assegno in assegni:
+        for chiave in ("fattura_collegata", "fattura_id"):
+            if assegno.get(chiave):
+                ids_fatture.add(str(assegno[chiave]))
+        for link in assegno.get("fatture_collegate") or []:
+            if isinstance(link, dict) and link.get("fattura_id"):
+                ids_fatture.add(str(link["fattura_id"]))
+        for numero in str(assegno.get("numero_fattura") or "").split(","):
+            if numero.strip():
+                numeri_fatture.add(numero.strip())
+        movimento_id = (
+            assegno.get("movimento_estratto_conto_id")
+            or assegno.get("movimento_id")
+            or assegno.get("estratto_conto_id")
+        )
+        if movimento_id:
+            ids_movimenti.add(str(movimento_id))
+
+    condizioni_fatture = []
+    if ids_fatture:
+        condizioni_fatture.append({"id": {"$in": list(ids_fatture)}})
+    if numeri_fatture:
+        condizioni_fatture.append({"invoice_number": {"$in": list(numeri_fatture)}})
+    fatture = []
+    if condizioni_fatture:
         fatture = await db["invoices"].find(
-            {"$or": ([{"id": {"$in": ids}}] if ids else []) +
-                    ([{"invoice_number": {"$in": numeri}}] if numeri else [])},
-            {"_id": 0, "id": 1, "invoice_number": 1,
-             "supplier_name": 1, "cedente_denominazione": 1}
-        ).to_list(2000)
-        per_id = {f.get("id"): f for f in fatture}
-        per_numero = {f.get("invoice_number"): f for f in fatture}
-        for a in da_arricchire:
-            f = per_id.get(a.get("fattura_collegata")) or per_numero.get(a.get("numero_fattura"))
-            if f:
-                a["fornitore_fattura"] = f.get("supplier_name") or f.get("cedente_denominazione") or ""
+            {"$or": condizioni_fatture},
+            {
+                "_id": 0, "id": 1, "invoice_number": 1,
+                "numero_fattura": 1, "invoice_date": 1, "data_fattura": 1,
+                "supplier_name": 1, "cedente_denominazione": 1,
+            },
+        ).to_list(5000)
+
+    per_id = {str(f.get("id")): f for f in fatture if f.get("id")}
+    per_numero = {}
+    for fattura in fatture:
+        numero = fattura.get("invoice_number") or fattura.get("numero_fattura")
+        if numero:
+            per_numero.setdefault(str(numero), []).append(fattura)
+
+    movimenti = {}
+    if ids_movimenti:
+        righe_ec = await db["estratto_conto_movimenti"].find(
+            {"id": {"$in": list(ids_movimenti)}},
+            {"_id": 0, "id": 1, "data": 1, "data_contabile": 1},
+        ).to_list(5000)
+        movimenti = {str(m.get("id")): m for m in righe_ec if m.get("id")}
+
+    # Il collegamento manuale e' ammesso soltanto per ambiguita' reali gia'
+    # registrate dal motore (due o piu' candidati senza prova discriminante).
+    # Il frontend non deve aprire il modale per ogni assegno ordinario.
+    ids_assegni = [str(a.get("id")) for a in assegni if a.get("id")]
+    ambigui_ids = set()
+    if ids_assegni:
+        proposte = await db["proposte_associazione_assegni"].find(
+            {"assegno_id": {"$in": ids_assegni}, "stato": "da_confermare"},
+            {"_id": 0, "assegno_id": 1},
+        ).to_list(5000)
+        ambigui_ids = {
+            str(p.get("assegno_id")) for p in proposte if p.get("assegno_id")
+        }
+
+    for assegno in assegni:
+        assegno["associazione_ambigua"] = str(assegno.get("id")) in ambigui_ids
+        collegamenti_ids = []
+        for chiave in ("fattura_collegata", "fattura_id"):
+            if assegno.get(chiave):
+                collegamenti_ids.append(str(assegno[chiave]))
+        for link in assegno.get("fatture_collegate") or []:
+            if isinstance(link, dict) and link.get("fattura_id"):
+                collegamenti_ids.append(str(link["fattura_id"]))
+        collegamenti = [
+            per_id[fid] for fid in dict.fromkeys(collegamenti_ids) if fid in per_id
+        ]
+        if not collegamenti:
+            for numero in str(assegno.get("numero_fattura") or "").split(","):
+                candidate = per_numero.get(numero.strip(), [])
+                if len(candidate) == 1:
+                    collegamenti.append(candidate[0])
+
+        uniche = {str(f.get("id")): f for f in collegamenti if f.get("id")}
+        dettagli = [{
+            "fattura_id": fattura.get("id"),
+            "numero_fattura": fattura.get("invoice_number") or fattura.get("numero_fattura"),
+            "data_fattura": fattura.get("invoice_date") or fattura.get("data_fattura"),
+            "fornitore": fattura.get("supplier_name") or fattura.get("cedente_denominazione") or "",
+        } for fattura in uniche.values()]
+        assegno["fatture_dettaglio"] = dettagli
+        if dettagli:
+            assegno["fornitore_fattura"] = ", ".join(dict.fromkeys(
+                d["fornitore"] for d in dettagli if d.get("fornitore")
+            ))
+            assegno["numero_fattura"] = ", ".join(
+                d["numero_fattura"] for d in dettagli if d.get("numero_fattura")
+            )
+            if len(dettagli) == 1:
+                assegno["data_fattura"] = dettagli[0].get("data_fattura")
+
+        movimento_id = str(
+            assegno.get("movimento_estratto_conto_id")
+            or assegno.get("movimento_id")
+            or assegno.get("estratto_conto_id")
+            or ""
+        )
+        movimento = movimenti.get(movimento_id)
+        if movimento:
+            assegno["data_incasso"] = (
+                assegno.get("data_incasso")
+                or movimento.get("data") or movimento.get("data_contabile")
+            )
+            assegno["evidenza_estratto_conto_id"] = movimento_id
+
+        if assegno.get("stato") == "incassato":
+            mancanti = []
+            if not assegno.get("data_incasso"):
+                mancanti.append("data_incasso")
+            if not dettagli:
+                mancanti.extend(["fornitore", "numero_fattura"])
+            assegno["dati_riconciliazione_mancanti"] = mancanti
 
     return assegni
 

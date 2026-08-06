@@ -571,16 +571,30 @@ async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:
         # l'EC resta non riconciliato e il collaudo lo evidenzierà
         return False
 
-    accreditato = round(float(trasferimento.get("accreditato_ec") or 0) + importo, 2)
+    # Lo scheduler riesamina le righe aperte. Sommare il valore gia'
+    # memorizzato duplicava lo stesso accredito a ogni passaggio. La fonte di
+    # verita' sono gli ID dell'estratto conto: ricalcola sempre il gruppo.
+    estratto_conto_ids = list(dict.fromkeys([
+        *(trasferimento.get("estratto_conto_ids") or []), ec_id,
+    ]))
+    accrediti_collegati = await db["estratto_conto_movimenti"].find(
+        {"id": {"$in": estratto_conto_ids}},
+        {"_id": 0, "id": 1, "importo": 1},
+    ).to_list(len(estratto_conto_ids))
+    importi_per_id = {
+        str(riga.get("id")): abs(float(riga.get("importo") or 0))
+        for riga in accrediti_collegati
+        if riga.get("id")
+    }
+    # Utile anche nei test e negli import transazionali, dove la riga appena
+    # passata potrebbe non essere ancora riletta dalla query.
+    importi_per_id.setdefault(str(ec_id), importo)
+    accreditato = round(sum(importi_per_id.values()), 2)
     atteso = float(trasferimento.get("importo") or 0)
     # In contabilita una differenza non e una riconciliazione. La vecchia
     # tolleranza del 2% (minimo 5 euro) produceva falsi positivi anche per
     # scarti importanti. Ammettiamo solo l'arrotondamento di un centesimo.
     riconciliato = abs(accreditato - atteso) <= 0.01
-    estratto_conto_ids = list(dict.fromkeys([
-        *(trasferimento.get("estratto_conto_ids") or []), ec_id,
-    ]))
-
     await db["prima_nota_banca"].update_one(
         {"id": trasferimento["id"]},
         {"$set": {"accreditato_ec": accreditato,
