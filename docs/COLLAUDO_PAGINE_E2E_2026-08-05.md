@@ -87,7 +87,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 36 | [ ] | Riconciliazione stipendi — `/riconciliazione/stipendi` | Confronta bonifici paga, cedolini, acconti e saldi. | TENERE |
 | 37 | [ ] | Riconciliazione documenti — `/riconciliazione/documenti` | Associa documenti non collegati senza creare legami ambigui. | TENERE |
 | 38 | [ ] | Archivio bonifici — `/riconciliazione/archivio-bonifici` | Consulta bonifici e propone associazioni a salari o fatture. | TENERE; BLOCCARE FATTURA SU DIPENDENTE |
-| 39 | [~] IN REVISIONE | Assegni — `/riconciliazione/assegni` | Carnet, assegni, incasso e associazione fatture con regola stretta. | RIAPERTO: COMPLETARE ASSOCIAZIONE AUTOMATICA E DATI INCASSO |
+| 39 | [x] VERIFICATA | Assegni — `/riconciliazione/assegni` | Carnet, assegni, incasso e associazione fatture con regola stretta. | CHIUSA DOPO AUTO-AGGANCIO E COLLAUDO LIVE |
 | 40 | [~] IN REVISIONE | PayPal — `/riconciliazione/paypal` | Transazioni, movimenti banca, documenti e mapping fornitori PayPal. | TENERE |
 | 41 | [ ] | Coerenza POS — `/riconciliazione/coerenza-pos` | Confronta XML corrispettivi, chiusure reali POS e accrediti banca. | TENERE |
 | 42 | [ ] | Import documenti — `/documenti/import` | Unico ingresso per PDF/XML/ZIP con classificazione e deduplica. | TENERE COME INGRESSO UNICO |
@@ -294,6 +294,10 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 - Test mirati finali: 26 backend Assegni e 11 frontend, inclusi loading, empty, permission denied, desktop e mobile. Suite completa prima della pubblicazione: 1.194 backend superati, 2 saltati e 111 frontend superati; build Vite riuscita e asset generati ripuliti.
 - Correzione pubblicata con PR `#134`, merge `f746a9eaf5fcd89c06f62c93c5062ed578eee92d` e deploy Render `dep-d9q8mlp42hec73c7cqlg` concluso `live`.
 - Verifica produzione: health `healthy`, database `connected`, commit `f746a9ea`, route HTTP 200, API protetta HTTP 401 senza sessione e chunk `GestioneAssegni-DmUNmI4g.js` con nuovo carnet, numero continuo e quantità. Pagina marcata `VERIFICATA`.
+- Revisione finale dopo la riapertura: numero fattura e importo identico al centesimo collegano automaticamente anche senza beneficiario quando la coppia e univoca; con piu documenti compatibili vengono conservate tutte le proposte e non viene scelto nulla. L'arrivo della fattura dopo l'estratto conto completa assegno, fattura, movimento e Prima Nota senza degradare lo stato `incassato`.
+- Suite finale: 1.219 backend superati, 2 saltati; 132 frontend superati; build produzione riuscita; E2E isolato 63/63 pagine senza errori.
+- Pubblicazione finale: PR `#139`, merge `7d42dbcf4b899937b6380250729db822c0f24d93`, deploy Render `dep-d9qc809srm7s73bddv0g` concluso `live`; health `healthy`, database `connected`, commit `7d42dbcf` e chunk `GestioneAssegni-1lGCHrIe.js` servito correttamente.
+- Collaudo autenticato con dati reali in sola lettura: anno 2026, 91 record visualizzati, 10 fogli carnet vuoti, 81 assegni effettivi, 14 con fattura e 67 in attesa documentale. Nelle prime 50 righe: 9 fatture esposte, 31 attese XML, zero comandi di associazione manuale perche non risultano ambiguita, zero vecchie etichette errate e zero errori o avvisi console. I casi `0208770985` e `0208770649` mostrano data e prova EC e restano correttamente `Attende fattura/XML` finche non arriva un riferimento documentale univoco. Nessun dato aziendale e stato modificato.
 
 ### 2026-08-06 — Pagina 40 PayPal, avvio revisione completa
 
