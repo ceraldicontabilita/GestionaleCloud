@@ -91,3 +91,43 @@ def test_un_centesimo_di_differenza_blocca_il_match():
     result = evaluate_paypal_invoice_match(tx, invoice)
     assert result["associabile"] is False
     assert result["scarto"] == "importo_non_coincidente_al_centesimo"
+
+
+def test_stesso_numero_importo_e_fornitore_ma_valuta_diversa_non_si_associano():
+    tx = {
+        "nome_controparte": "OpenAI Ireland Limited",
+        "invoice_id_fornitore": "INV-USD-42",
+        "importo": -100.00,
+        "currency": "USD",
+    }
+    invoice = {
+        "invoice_number": "INV-USD-42",
+        "supplier_name": "OpenAI Ireland Limited",
+        "total_amount": 100.00,
+        "divisa": "EUR",
+    }
+
+    result = evaluate_paypal_invoice_match(tx, invoice)
+
+    assert result["associabile"] is False
+    assert result["scarto"] == "valuta_non_coincidente"
+
+
+def test_valuta_uguale_diventa_evidenza_del_match():
+    tx = {
+        "nome_controparte": "OpenAI Ireland Limited",
+        "invoice_id_fornitore": "INV-USD-42",
+        "importo": -100.00,
+        "currency": "USD",
+    }
+    invoice = {
+        "invoice_number": "INV-USD-42",
+        "supplier_name": "OpenAI Ireland Limited",
+        "total_amount": 100.00,
+        "divisa": "USD",
+    }
+
+    result = evaluate_paypal_invoice_match(tx, invoice)
+
+    assert result["associabile"] is True
+    assert "valuta" in result["evidenze"]

@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1052 · tenere: 698 · verificare: 331 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1052 · tenere: 697 · verificare: 332 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -783,12 +783,12 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/paypal-statements/bank-movements` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/paypal-statements/dashboard` | paypal_statements | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-statements/import-all-local` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/paypal-statements/import-csv` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/paypal-statements/import-csv` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-statements/import-pdf` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-statements/pulisci-match-solo-importo` | paypal_statements | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/paypal-statements/report` | paypal_statements | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-statements/riconcilia-banca` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/paypal-statements/statements` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/paypal-statements/statements` | paypal_statements | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/paypal-statements/transactions` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/paypal-statements/transazione/{transaction_id}/associa` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/paypal-statements/transazione/{transaction_id}/cerca-gmail` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |

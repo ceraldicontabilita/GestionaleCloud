@@ -5,6 +5,7 @@ Import PDF, visualizzazione transazioni, riconciliazione con estratto conto banc
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Body
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
+import calendar
 import os
 import logging
 
@@ -24,6 +25,16 @@ router = APIRouter()
 # Collection PayPal
 COLL_PAYPAL_STATEMENTS = "paypal_statements"
 COLL_PAYPAL_TRANSACTIONS = "paypal_transactions"
+
+SAFE_INVOICE_MATCHES = {
+    "manuale_validato",
+    "fornitore_numero_importo_esatti",
+}
+SUPPLIER_EVIDENCE = {
+    "partita_iva_o_cf",
+    "denominazione_fornitore",
+    "email_fornitore",
+}
 
 UPLOAD_DIR = "/tmp/uploads/msr_statements"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -58,6 +69,28 @@ def _backfill_controparte(transactions: List[Dict[str, Any]]) -> None:
             t["nome_controparte"] = known["nome_controparte"]
         if not t.get("email_controparte") and known.get("email_controparte"):
             t["email_controparte"] = known["email_controparte"]
+
+
+def _stato_collegamento_fattura(transaction: Dict[str, Any]) -> str:
+    """Distingue un collegamento provato da un riferimento storico da rivalidare.
+
+    Le vecchie versioni potevano salvare collegamenti basati su importo o nome
+    approssimativo. Non cancelliamo la traccia in lettura, ma non la esponiamo
+    come fattura riconciliata finche' le evidenze salvate non provano
+    contemporaneamente fornitore, numero fattura e importo al centesimo.
+    """
+    link = transaction.get("fattura_associata") or {}
+    if not link:
+        return "non_associata"
+    evidenze = set(link.get("evidenze") or [])
+    match = str(link.get("match") or "")
+    if (
+        match in SAFE_INVOICE_MATCHES
+        and {"numero_fattura", "importo"}.issubset(evidenze)
+        and bool(evidenze & SUPPLIER_EVIDENCE)
+    ):
+        return "associata_validata"
+    return "da_rivalidare"
 
 
 def _data_documento(doc: Dict[str, Any]) -> Optional[datetime]:
@@ -224,7 +257,12 @@ async def get_paypal_statements(
     anno: Optional[int] = None,
     limit: int = Query(default=100, le=500)
 ):
-    """Restituisce tutti gli estratti conto PayPal importati."""
+    """Restituisce documenti PayPal e periodi API senza confonderne la fonte.
+
+    Un periodo sincronizzato tramite PayPal Reporting API e' una fonte
+    strutturata, ma non e' un PDF/CSV: viene quindi esposto in ``fonti`` senza
+    creare un documento fittizio nella collection degli statement.
+    """
     db = Database.get_db()
     query = {}
     if anno:
@@ -234,7 +272,63 @@ async def get_paypal_statements(
         query, {"_id": 0}
     ).sort("periodo_inizio", -1).limit(limit).to_list(limit)
     
-    return {"statements": statements, "totale": len(statements)}
+    tx_query: Dict[str, Any] = {"source": "paypal_api"}
+    if anno:
+        tx_query["data"] = {"$regex": f"^{anno}"}
+    api_transactions = await db[COLL_PAYPAL_TRANSACTIONS].find(
+        tx_query, {"_id": 0}
+    ).sort("data", -1).limit(10000).to_list(10000)
+
+    raw_per_month: Dict[str, List[Dict[str, Any]]] = {}
+    for tx in api_transactions:
+        date_value = _data_documento(tx)
+        if not date_value:
+            continue
+        key = date_value.strftime("%Y-%m")
+        raw_per_month.setdefault(key, []).append(tx)
+
+    api_sources = []
+    for key, rows in sorted(raw_per_month.items(), reverse=True):
+        year_value, month_value = (int(part) for part in key.split("-"))
+        payments = _pagamenti_paypal_in_euro(rows)
+        api_sources.append({
+            "id": f"paypal-api-{key}",
+            "source_type": "api",
+            "tipo_documento": "API",
+            "periodo_inizio": f"{key}-01",
+            "periodo_fine": (
+                f"{key}-{calendar.monthrange(year_value, month_value)[1]:02d}"
+            ),
+            "totale_transazioni": len(rows),
+            "totale_pagamenti": len(payments),
+            "riepilogo": {
+                "pagamenti_inviati": round(
+                    abs(sum(float(p.get("importo_report_eur") or 0) for p in payments)),
+                    2,
+                ),
+                "depositi_accrediti": None,
+                "saldo_finale": None,
+            },
+            "file_name": None,
+            "source": "paypal_api",
+            "documento_presente": False,
+        })
+
+    document_sources = [
+        {
+            **statement,
+            "source_type": "documento",
+            "documento_presente": True,
+        }
+        for statement in statements
+    ]
+    return {
+        "statements": statements,
+        "fonti": api_sources + document_sources,
+        "totale": len(statements),
+        "totale_fonti": len(api_sources) + len(document_sources),
+        "totale_periodi_api": len(api_sources),
+    }
 
 
 @router.get("/bank-movements")
@@ -386,6 +480,11 @@ async def get_paypal_transactions(
     if solo_pagamenti:
         transactions = [t for t in transactions if not t.get("is_conversione")]
 
+    for transaction in transactions:
+        transaction["stato_collegamento_fattura"] = _stato_collegamento_fattura(
+            transaction
+        )
+
     # Descrizione leggibile: le transazioni da API PayPal non hanno il campo
     # "descrizione" ma trasportano oggetto/nota/numero fattura del fornitore.
     for t in transactions:
@@ -534,7 +633,7 @@ async def paypal_dashboard(
 
 @router.post("/import-pdf")
 async def import_paypal_pdf(file: UploadFile = File(...)):
-    """Importa un singolo PDF PayPal MSR/CSR e riconcilia automaticamente."""
+    """Importa un PDF PayPal e prepara l'anteprima banca senza scritture."""
     from app.services.paypal_statement_import import import_paypal_statement_pdf
     
     if not file.filename.lower().endswith('.pdf'):
@@ -552,8 +651,9 @@ async def import_paypal_pdf(file: UploadFile = File(...)):
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     
-    # AUTO-RICONCILIAZIONE dopo import
-    ric_result = await _auto_riconcilia(db)
+    # Dopo l'import mostriamo soltanto l'anteprima. La conferma esplicita passa
+    # dall'endpoint /riconcilia-banca?conferma=true e dalla relativa UI.
+    ric_result = await _auto_riconcilia(db, applica=False)
     result['riconciliazione'] = ric_result
     
     return result
@@ -561,7 +661,7 @@ async def import_paypal_pdf(file: UploadFile = File(...)):
 
 @router.post("/import-all-local")
 async def import_all_local_pdfs():
-    """Importa tutti i PDF PayPal dalla cartella locale e riconcilia automaticamente."""
+    """Importa PDF locali e prepara l'anteprima banca senza scritture."""
     from app.parsers.paypal_msr_parser import parse_paypal_msr
     
     db = Database.get_db()
@@ -589,8 +689,7 @@ async def import_all_local_pdfs():
         except Exception as e:
             results['errori'].append(f"{fname}: {str(e)}")
     
-    # AUTO-RICONCILIAZIONE dopo import
-    ric_result = await _auto_riconcilia(db)
+    ric_result = await _auto_riconcilia(db, applica=False)
     results['riconciliazione'] = ric_result
     
     return results
@@ -601,8 +700,9 @@ async def import_paypal_csv(file: UploadFile = File(...)):
     """
     Importa un estratto conto PayPal esportato in CSV (formato bulk export,
     più mesi in un unico file) — alternativa a /import-pdf per chi non ha i
-    PDF MSR/CSR ma solo l'export CSV. Stessa persistenza/riconciliazione
-    automatica dei PDF: ogni "File" nel CSV diventa uno statement separato.
+    PDF MSR/CSR ma solo l'export CSV. Ogni "File" nel CSV diventa uno
+    statement separato; la riconciliazione banca resta in anteprima fino alla
+    conferma esplicita dell'utente.
     """
     from app.parsers.paypal_csv_parser import parse_paypal_csv
 
@@ -622,7 +722,7 @@ async def import_paypal_csv(file: UploadFile = File(...)):
         transazioni_inserite += save_result.get('transazioni_inserite', 0)
         transazioni_duplicate += save_result.get('transazioni_duplicate', 0)
 
-    ric_result = await _auto_riconcilia(db)
+    ric_result = await _auto_riconcilia(db, applica=False)
 
     return {
         "success": True,
@@ -962,6 +1062,7 @@ async def dettaglio_transazione_paypal(transaction_id: str) -> Dict[str, Any]:
         "_id": 0, "id": 1, "invoice_number": 1, "numero_fattura": 1,
         "invoice_date": 1, "data_fattura": 1, "data_documento": 1,
         "total_amount": 1, "importo_totale": 1,
+        "divisa": 1, "currency": 1, "valuta": 1,
         "supplier_name": 1, "cedente_denominazione": 1,
         "supplier_vat": 1, "cedente_piva": 1, "piva_cedente": 1,
         "supplier_tax_code": 1, "cedente_codice_fiscale": 1,
@@ -1203,13 +1304,14 @@ async def associa_transazione(transaction_id: str, body: Dict[str, Any] = Body(.
 @router.post("/auto-associa")
 async def auto_associa_transazioni() -> Dict[str, Any]:
     """Associa AUTOMATICAMENTE i pagamenti PayPal alle fatture del gestionale:
-    match per importo esatto (±0,05 €, qualsiasi anno); se più candidate,
-    sceglie quella col nome fornitore compatibile con la controparte.
-    Le transazioni senza match restano da cercare su Gmail (fatture esterne)."""
+    identita' fornitore, numero fattura e importo uguale al centesimo. Quando
+    entrambe le fonti dichiarano la valuta, anche la valuta deve coincidere.
+    Le transazioni senza evidenze sufficienti restano da verificare."""
     db = Database.get_db()
     txs = await db[COLL_PAYPAL_TRANSACTIONS].find(
         {"lordo": {"$lt": 0}, "fattura_associata": {"$exists": False}},
         {"_id": 0, "transaction_id": 1, "importo": 1, "lordo": 1,
+         "currency": 1, "valuta": 1, "divisa": 1,
          "nome_controparte": 1, "email_controparte": 1, "data": 1,
          "initiation_date": 1, "invoice_id_fornitore": 1, "invoice_id": 1,
          "paypal_account_id": 1},
@@ -1236,6 +1338,7 @@ async def auto_associa_transazioni() -> Dict[str, Any]:
                           "supplier_vat": 1, "cedente_piva": 1, "piva_cedente": 1,
                           "supplier_tax_code": 1, "cedente_codice_fiscale": 1,
                           "supplier_email": 1, "cedente_email": 1,
+                          "divisa": 1, "currency": 1, "valuta": 1,
                           "total_amount": 1, "importo_totale": 1}},
             {"$limit": 10},
         ]).to_list(10)
@@ -1316,6 +1419,7 @@ async def pulisci_match_solo_importo(dry_run: bool = Query(True)) -> Dict[str, A
             "payer_name": 1, "email_controparte": 1, "payer_email": 1,
             "invoice_id_fornitore": 1, "invoice_id": 1,
             "importo": 1, "lordo": 1, "amount": 1,
+            "currency": 1, "valuta": 1, "divisa": 1,
             "fattura_associata": 1,
         },
     ).to_list(2000)
@@ -1331,6 +1435,7 @@ async def pulisci_match_solo_importo(dry_run: bool = Query(True)) -> Dict[str, A
                 "cedente_piva": 1, "piva_cedente": 1,
                 "invoice_number": 1, "numero_fattura": 1,
                 "total_amount": 1, "importo_totale": 1,
+                "divisa": 1, "currency": 1, "valuta": 1,
             },
         )
         if not invoice:
