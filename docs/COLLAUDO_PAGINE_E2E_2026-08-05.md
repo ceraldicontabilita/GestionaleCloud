@@ -37,7 +37,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 11 | [ ] | Cedolini e salari — `/salari` | Gestisce cedolini, bonifici, saldo/acconto e riconciliazione paga. | TENERE |
 | 12 | [ ] | Flotta noleggio — `/noleggio` | Veicoli, contratti, driver storico e costi ricavati dalle fatture. | TENERE |
 | 13 | [ ] IN CORREZIONE | Verbali noleggio — `/noleggio/verbali` | Verbali da email/documenti, targa, driver alla data, fattura, PagoPA e pagamento. | TENERE |
-| 14 | [ ] | Costi noleggio — `/noleggio/costi` | Riepiloga canoni, verbali, bollo, pedaggi e altri costi per veicolo. | TENERE |
+| 14 | [ ] IN CORREZIONE | Costi noleggio — `/noleggio/costi` | Riepiloga canoni, verbali, bollo, pedaggi e altri costi per veicolo. | TENERE |
 | 15 | [x] VERIFICATA | Dettaglio verbale — `/verbali-noleggio/:identificativo` | Mostra la singola catena Verbale -> veicolo -> driver -> fattura -> pagamento. | TENERE |
 | 16 | [x] VERIFICATA | Piano dei Conti — `/contabilita` | Mostra un solo conto per codice e i saldi derivati dalle fonti contabili. | TENERE |
 | 17 | [ ] | Bilancio — `/contabilita/bilancio` | Stato patrimoniale e conto economico per periodo. | TENERE |
@@ -144,3 +144,14 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 - Test locali dopo la correzione: 1101 backend superati, 2 saltati; 79 frontend superati. La pagina resta aperta fino al collaudo post-deploy con il PDF reale.
 - Correzione pubblicata su `main` con merge `3cc02983ccf066ebf4cb6dbdabcdac89e458fea9`; deploy Render `dep-d9ppolrbc2fs73apc590` concluso con stato live.
 - Collaudo post-deploy sul verbale reale `VV/24990121765`: `PDF disponibili: 1`, nome del documento ASIA corretto, visualizzatore interno aperto con successo e 0 errori console. Pagina 15 chiusa.
+
+### 2026-08-06 — Pagina 14 Costi noleggio
+
+- Route React verificata: `/noleggio/costi` apre il tab `Riepilogo Costi` di `VeicoliHub` e legge `GET /api/noleggio/veicoli?anno=...`.
+- Difetto reale nel frontend: la colonna/totale `Altro` sommava pedaggi e costi extra ma ometteva `totale_riparazioni`, pur incluse nel totale generale.
+- Difetto architetturale nel backend: `GET /api/noleggio/export-pdf-costi` ricalcolava fatture, veicoli e verbali con una seconda logica distinta da quella della pagina, esponendo il PDF a divergenze e doppi conteggi.
+- Correzione locale: un'unica funzione frontend somma pedaggi, costi extra e riparazioni; il PDF riusa `get_veicoli`, lo stesso aggregatore della pagina e del dettaglio veicolo.
+- Collaudo read-only sul database reale 2026: 4 veicoli, 0 fatture non associate, riparazioni `€ 500,00`; somma delle sei categorie `€ 12.605,21`, identica al totale generale.
+- PDF generato con gli stessi dati reali: MIME `application/pdf`, firma `%PDF` valida e nome `riepilogo_costi_noleggio_2026.pdf`.
+- Test locali: 1102 backend superati, 2 saltati; 81 frontend superati; build di produzione completato e artefatti generati ripuliti.
+- Pagina ancora `IN CORREZIONE` fino a merge, deploy e collaudo visuale post-deploy con dati reali.

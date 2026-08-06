@@ -457,33 +457,12 @@ async def export_pdf_costi(anno: Optional[int] = Query(None)) -> Any:
     if not anno:
         anno = datetime.now().year
     
-    db = Database.get_db()
-    veicoli_data, _ = await scan_fatture_noleggio(anno)
-    
-    # Merge con dati salvati
-    veicoli_salvati = {}
-    async for v in db[COLLECTION].find({}, {"_id": 0}):
-        veicoli_salvati[v["targa"]] = v
-    
-    # Arricchisci con verbali
-    verbali_db = await db["verbali_noleggio"].find(
-        {"targa": {"$nin": [None, ""]}},
-        {"_id": 0, "pdf_data": 0, "quietanza_pdf": 0}
-    ).to_list(500)
-    
-    risultato = []
-    for targa, dati in veicoli_data.items():
-        salvato = veicoli_salvati.get(targa, {})
-        v = {**dati, "driver": salvato.get("driver", ""), "marca": salvato.get("marca", ""), "modello": salvato.get("modello", "")}
-        # Add verbali
-        verb_importo = sum(float(vb.get("importo", 0) or 0) for vb in verbali_db if (vb.get("targa") or "").upper() == targa.upper())
-        v["totale_verbali"] = v.get("totale_verbali", 0) + verb_importo
-        risultato.append(v)
-    
-    for targa, salvato in veicoli_salvati.items():
-        if targa not in veicoli_data:
-            verb_importo = sum(float(vb.get("importo", 0) or 0) for vb in verbali_db if (vb.get("targa") or "").upper() == targa.upper())
-            risultato.append({**salvato, "totale_canoni": 0, "totale_verbali": verb_importo, "totale_bollo": 0, "totale_pedaggio": 0, "totale_costi_extra": 0, "totale_riparazioni": 0})
+    # Il PDF deve essere una rappresentazione della stessa vista mostrata
+    # nella pagina, non un secondo motore contabile. ``get_veicoli`` unisce
+    # gia fatture, anagrafica, verbali da posta/fatture e deduplica per numero.
+    # Riutilizzandolo evitiamo totali divergenti e doppi conteggi dei verbali.
+    dati_aggregati = await get_veicoli(anno=anno)
+    risultato = dati_aggregati["veicoli"]
     
     # Generate PDF
     buffer = io.BytesIO()
