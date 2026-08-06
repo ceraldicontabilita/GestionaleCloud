@@ -92,6 +92,55 @@ def _importo_paypal(tx: Dict[str, Any]) -> float:
     return 0.0
 
 
+def _pagamenti_paypal_in_euro(
+    transactions: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Restituisce una sola riga contabile per ciascun pagamento PayPal.
+
+    Le operazioni in valuta generano un pagamento nella valuta originaria e
+    una o piu' gambe tecniche T02 di conversione. Il report deve usare la
+    gamba EUR collegata come importo del pagamento, senza contare anche la
+    conversione come un secondo acquisto.
+    """
+    _backfill_controparte(transactions)
+    conversioni_per_riferimento: Dict[str, List[Dict[str, Any]]] = {}
+    for tx in transactions:
+        tipo = str(tx.get("tipo") or tx.get("event_code") or "")
+        riferimento = str(tx.get("paypal_reference_id") or "")
+        if riferimento and tipo.startswith("T02"):
+            conversioni_per_riferimento.setdefault(riferimento, []).append(tx)
+
+    pagamenti: List[Dict[str, Any]] = []
+    for tx in transactions:
+        tipo = str(tx.get("tipo") or tx.get("event_code") or "")
+        if tipo.startswith("T02"):
+            continue
+        importo = _importo_paypal(tx)
+        valuta = str(tx.get("currency") or tx.get("valuta") or "EUR").upper()
+        if valuta != "EUR":
+            gambe = conversioni_per_riferimento.get(
+                str(tx.get("transaction_id") or tx.get("id") or ""), []
+            )
+            gamba_eur = next(
+                (
+                    g
+                    for g in gambe
+                    if str(g.get("currency") or g.get("valuta") or "").upper()
+                    == "EUR"
+                    and (_importo_paypal(g) < 0) == (importo < 0)
+                ),
+                None,
+            )
+            if gamba_eur:
+                importo = _importo_paypal(gamba_eur)
+        if importo >= 0:
+            continue
+        pagamento = dict(tx)
+        pagamento["importo_report_eur"] = round(importo, 2)
+        pagamenti.append(pagamento)
+    return pagamenti
+
+
 def _descrizione_banca(mov: Dict[str, Any]) -> str:
     return str(mov.get("descrizione_originale") or mov.get("descrizione") or "")
 
@@ -692,14 +741,15 @@ async def _auto_riconcilia(db, anno: Optional[int] = None) -> Dict:
 async def paypal_report(anno: Optional[int] = None):
     """Report completo PayPal con dettaglio spese per fornitore."""
     db = Database.get_db()
-    
-    tx_query = {"lordo": {"$lt": 0}}
+
+    tx_query: Dict[str, Any] = {}
     if anno:
         tx_query["data"] = {"$regex": f"^{anno}"}
-    
-    pagamenti = await db[COLL_PAYPAL_TRANSACTIONS].find(
+
+    transazioni = await db[COLL_PAYPAL_TRANSACTIONS].find(
         tx_query, {"_id": 0}
     ).sort("data", -1).to_list(5000)
+    pagamenti = _pagamenti_paypal_in_euro(transazioni)
     
     # Raggruppa per fornitore
     fornitori = {}
@@ -713,11 +763,12 @@ async def paypal_report(anno: Optional[int] = None):
                 'count': 0,
                 'transazioni': []
             }
-        fornitori[nome]['totale'] += p['lordo']
+        importo_eur = p['importo_report_eur']
+        fornitori[nome]['totale'] += importo_eur
         fornitori[nome]['count'] += 1
         fornitori[nome]['transazioni'].append({
             'data': p['data'],
-            'importo': p['lordo'],
+            'importo': importo_eur,
             'descrizione': p.get('descrizione', ''),
             'transaction_id': p.get('transaction_id', '')
         })
@@ -728,7 +779,7 @@ async def paypal_report(anno: Optional[int] = None):
         mese_key = p['data'][:7]  # YYYY-MM
         if mese_key not in mesi:
             mesi[mese_key] = {'mese': mese_key, 'totale': 0.0, 'count': 0}
-        mesi[mese_key]['totale'] += p['lordo']
+        mesi[mese_key]['totale'] += p['importo_report_eur']
         mesi[mese_key]['count'] += 1
     
     sorted_fornitori = sorted(fornitori.values(), key=lambda x: x['totale'])
@@ -736,7 +787,7 @@ async def paypal_report(anno: Optional[int] = None):
     
     return {
         "anno": anno,
-        "totale_speso": round(sum(p['lordo'] for p in pagamenti), 2),
+        "totale_speso": round(sum(p['importo_report_eur'] for p in pagamenti), 2),
         "totale_transazioni": len(pagamenti),
         "per_fornitore": sorted_fornitori,
         "per_mese": sorted_mesi
