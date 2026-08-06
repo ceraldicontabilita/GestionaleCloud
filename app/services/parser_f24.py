@@ -8,10 +8,53 @@ import re
 import fitz  # PyMuPDF
 from typing import Dict, Any
 import logging
+from datetime import datetime
 
 from app.utils.numeri_italiani import parse_importo_ita
 
 logger = logging.getLogger(__name__)
+
+
+def _rateazione_e_anno(tokens):
+    """Separa la rateazione (anche ``0101``) dall'anno d'imposta."""
+    rateazione = ""
+    anno = ""
+    for token in tokens:
+        valore = str(token).strip()
+        if re.fullmatch(r"20\d{2}", valore) and not anno:
+            anno = valore
+        elif re.fullmatch(r"\d{4}", valore) and not rateazione:
+            rateazione = valore
+    return rateazione, anno
+
+
+def _data_versamento_da_testo(text: str) -> str:
+    """Estrae la data bancaria anche quando il PDF separa ogni cifra."""
+    patterns = [
+        r'[Ss]cadenza\s*(\d{2})/(\d{2})/(\d{4})',
+        r'data\s*di\s*pagamento[:\s]*(\d{2})[/\s-](\d{2})[/\s-](\d{4})',
+        r'(\d{2})\s+(\d{2})\s+(\d{4})\s*(?:SALDO|codice)',
+        r'giorno\s*mese\s*anno\s*(\d{2})\s*(\d{2})\s*(\d{4})',
+    ]
+    for pattern in patterns:
+        trovato = re.search(pattern, text, re.IGNORECASE)
+        if trovato:
+            gg, mm, yyyy = trovato.groups()
+            try:
+                return datetime(int(yyyy), int(mm), int(gg)).date().isoformat()
+            except ValueError:
+                continue
+
+    candidati = re.findall(
+        r'(?m)^\s*([0-3])\s+(\d)\s+([01])\s+(\d)\s+(2)\s+(0)\s+(\d)\s+(\d)\s*$',
+        text,
+    )
+    for gruppi in reversed(candidati):
+        try:
+            return datetime.strptime("".join(gruppi), "%d%m%Y").date().isoformat()
+        except ValueError:
+            continue
+    return ""
 
 
 def parse_importo(value: str) -> float:
@@ -115,18 +158,9 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
     if ragione_sociale_match:
         result["dati_generali"]["ragione_sociale"] = "CERALDI GROUP S.R.L."
     
-    data_patterns = [
-        r'[Ss]cadenza\s*(\d{2})/(\d{2})/(\d{4})',  # Pattern Zucchetti: "Scadenza 20/08/2025"
-        r'data\s*di\s*pagamento[:\s]*(\d{2})[/\s-](\d{2})[/\s-](\d{4})',
-        r'(\d{2})\s+(\d{2})\s+(\d{4})\s*(?:SALDO|codice)',
-        r'giorno\s*mese\s*anno\s*(\d{2})\s*(\d{2})\s*(\d{4})',
-    ]
-    for pattern in data_patterns:
-        dp_match = re.search(pattern, text, re.IGNORECASE)
-        if dp_match:
-            gg, mm, yyyy = dp_match.group(1), dp_match.group(2), dp_match.group(3)
-            result["dati_generali"]["data_versamento"] = f"{yyyy}-{mm}-{gg}"
-            break
+    data_versamento = _data_versamento_da_testo(text)
+    if data_versamento:
+        result["dati_generali"]["data_versamento"] = data_versamento
     
     if 'SEMPLIFICATO' in text.upper():
         result["dati_generali"]["tipo_f24"] = "F24 Semplificato"
@@ -262,7 +296,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                             nw = row[j]['word']
                             if nw in [',', '+/–']:
                                 continue
-                            if re.match(r'^00\d{2}$', nw) and not rateazione:
+                            if re.match(r'^\d{4}$', nw) and not re.match(r'^20\d{2}$', nw) and not rateazione:
                                 rateazione = nw
                             elif re.match(r'^20\d{2}$', nw) and not anno:
                                 anno = nw

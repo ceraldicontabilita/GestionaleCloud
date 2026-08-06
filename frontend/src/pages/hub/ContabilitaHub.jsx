@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   BarChart3, TrendingUp, BadgeCheck, CalendarCheck, Calendar,
   Building2, Banknote, Lock, ClipboardList, Landmark, Wrench,
-  Target, Package, BookOpen,
+  Target, Package, BookOpen, Gauge,
 } from 'lucide-react';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { HubTabs, PageLoader } from '../../components/ds';
@@ -22,6 +22,7 @@ const MutuiContent = lazy(() => import('../Mutui.jsx'));
 const AvanzataContent = lazy(() => import('../ContabilitaAvanzata.jsx'));
 const UtileObiettivoContent = lazy(() => import('../UtileObiettivo.jsx'));
 const PrevisioniAcquistiContent = lazy(() => import('../PrevisioniAcquisti.jsx'));
+const DatiIsaContent = lazy(() => import('../DatiIsa.jsx'));
 
 // Design system Ceraldi ERP: un solo colore attivo (navy #0f2744), icone
 // Lucide, niente arcobaleno di colori per-tab (era incoerente col resto
@@ -41,6 +42,7 @@ const TABS = [
   { id: 'avanzata', label: 'Contab. Avanzata', Icon: Wrench },
   { id: 'utile', label: 'Utile Obiettivo', Icon: Target },
   { id: 'previsioni-acquisti', label: 'Previsioni Acquisti', Icon: Package },
+  { id: 'dati-isa', label: 'Dati ISA', Icon: Gauge },
 ];
 
 
@@ -65,6 +67,8 @@ const getTabFromPath = pathname => {
     return 'utile';
   if (pathname.includes('/previsioni-acquisti') || pathname.includes('/contabilita/previsioni-acquisti'))
     return 'previsioni-acquisti';
+  if (pathname.includes('/dati-isa') || pathname.includes('/contabilita/dati-isa'))
+    return 'dati-isa';
   if (pathname.includes('/contabilita/')) {
     const m = pathname.match(/\/contabilita\/([\w-]+)/);
     if (m && TABS.find(t => t.id === m[1])) return m[1];
@@ -176,6 +180,7 @@ export default function ContabilitaHub() {
           { id: 'avanzata', C: AvanzataContent },
           { id: 'utile', C: UtileObiettivoContent },
           { id: 'previsioni-acquisti', C: PrevisioniAcquistiContent },
+          { id: 'dati-isa', C: DatiIsaContent },
         ].map(({ id, C }) => (
           <div key={id} style={{ display: activeTab === id ? 'block' : 'none' }}>
             <Suspense fallback={<PageLoader />}>

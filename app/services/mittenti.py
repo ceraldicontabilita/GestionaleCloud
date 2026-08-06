@@ -61,6 +61,16 @@ BUILTIN_MITTENTI = (
         "tipo_documento": "pagopa",
         "descrizione": "Ricevute PagoPA",
     },
+    {
+        "pattern": "noreply.enelenergia@enel.com",
+        "tipo_documento": "bolletta_energia",
+        "descrizione": "Enel Energia - bollette e consumi elettrici",
+    },
+    {
+        "pattern": "rosaria.marotta@email.it",
+        "tipo_documento": "f24",
+        "descrizione": "Studio Marotta - F24 e documenti fiscali",
+    },
 )
 
 

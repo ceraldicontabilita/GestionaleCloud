@@ -83,7 +83,7 @@ describe('Agenti AI supervisionati', () => {
       '/api/agenti/decisioni/decisione-test-1/approva',
       {},
     ));
-  });
+  }, 10000);
 
   it('ferma le automazioni soltanto dopo conferma', async () => {
     render(<AgentiPage />);

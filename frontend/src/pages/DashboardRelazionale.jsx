@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api';
 import ModalFattura from '../components/ModalFattura';
 import {
@@ -41,9 +41,11 @@ export default function DashboardRelazionale() {
   const [data, setData] = useState(null);
   const [tabAttiva, setTabAttiva] = useState('panoramica');
   const [alertFilter, setAlertFilter] = useState('tutti');
+  const ultimoEstrattoRef = useRef(null);
+  const [variazioneRiconciliazione, setVariazioneRiconciliazione] = useState(null);
 
-  const caricaDati = useCallback(async () => {
-    setLoading(true);
+  const caricaDati = useCallback(async ({ silenzioso = false } = {}) => {
+    if (!silenzioso) setLoading(true);
     try {
       const [alertRes, partiteRes, matchRes] = await Promise.allSettled([
         api.get('/api/alerts/lista?risolto=false&limit=200').then(r => r.data),
@@ -51,25 +53,43 @@ export default function DashboardRelazionale() {
         api.get('/api/riconciliazione/stats').then(r => r.data),
       ]);
 
+      const match = matchRes.status === 'fulfilled' ? matchRes.value : {};
+      const estratto = match?.sezioni?.estratto_conto;
+      if (estratto && ultimoEstrattoRef.current) {
+        const prima = ultimoEstrattoRef.current;
+        const variazione = {
+          riconciliati: estratto.riconciliati - prima.riconciliati,
+          daRiconciliare: estratto.da_riconciliare - prima.da_riconciliare,
+          totaleInvariato: estratto.totale === prima.totale,
+        };
+        if (variazione.riconciliati || variazione.daRiconciliare || !variazione.totaleInvariato) {
+          setVariazioneRiconciliazione(variazione);
+        }
+      }
+      if (estratto) ultimoEstrattoRef.current = estratto;
+
       setData({
         alerts: alertRes.status === 'fulfilled' ? alertRes.value : { alerts: [], stats: {} },
         partite: partiteRes.status === 'fulfilled' ? partiteRes.value : {},
-        match: matchRes.status === 'fulfilled' ? matchRes.value : {},
+        match,
       });
     } catch (e) {
       console.error('Errore caricamento dashboard:', e);
     }
-    setLoading(false);
+    if (!silenzioso) setLoading(false);
   }, []);
 
   useEffect(() => {
     caricaDati();
+    const timer = window.setInterval(() => caricaDati({ silenzioso: true }), 60 * 1000);
+    return () => window.clearInterval(timer);
   }, [caricaDati]);
 
   const alerts = data?.alerts?.alerts || [];
   const alertStats = data?.alerts?.stats || {};
   const partiteStats = data?.partite || {};
-  const matchStats = data?.match || {};
+  const matchStats = data?.match?.stati || data?.match || {};
+  const matchDetails = data?.match || {};
 
   // Raggruppamento alert per modulo
   const alertPerModulo = {};
@@ -124,7 +144,7 @@ export default function DashboardRelazionale() {
         subtitle="Stato completo del gestionale — alert, partite, riconciliazione"
         style={{ marginBottom: SPACING.lg }}
         actions={
-          <Button variant="secondary" onClick={caricaDati} disabled={loading}>
+          <Button variant="secondary" onClick={() => caricaDati()} disabled={loading}>
             {loading ? '⏳ Caricamento...' : '🔄 Aggiorna'}
           </Button>
         }
@@ -164,7 +184,12 @@ export default function DashboardRelazionale() {
         ) : tabAttiva === 'partite' ? (
           <TabPartite stats={partiteStats} isMobile={isMobile} />
         ) : (
-          <TabRiconciliazione stats={matchStats} isMobile={isMobile} />
+          <TabRiconciliazione
+            stats={matchStats}
+            dettagli={matchDetails}
+            variazione={variazioneRiconciliazione}
+            isMobile={isMobile}
+          />
         )}
       </div>
     </div>
@@ -566,7 +591,9 @@ function TabPartite({ stats, isMobile }) {
 /* ================================================================
    TAB RICONCILIAZIONE — Stato match
    ================================================================ */
-function TabRiconciliazione({ stats, isMobile }) {
+function TabRiconciliazione({ stats, dettagli, variazione, isMobile }) {
+  const estratto = dettagli?.sezioni?.estratto_conto;
+  const quadratura = dettagli?.quadratura;
   return (
     <div>
       <div style={STYLES.kpiGrid}>
@@ -580,6 +607,41 @@ function TabRiconciliazione({ stats, isMobile }) {
           />
         ))}
       </div>
+
+      {variazione && (
+        <Card
+          style={{
+            marginBottom: SPACING.md,
+            borderLeft: `4px solid ${variazione.totaleInvariato && variazione.riconciliati === -variazione.daRiconciliare ? COLORS.success : COLORS.danger}`,
+          }}
+          data-testid="variazione-riconciliazione"
+        >
+          <strong>Ultimo aggiornamento:</strong>{' '}
+          riconciliati {variazione.riconciliati >= 0 ? '+' : ''}{variazione.riconciliati},
+          da riconciliare {variazione.daRiconciliare >= 0 ? '+' : ''}{variazione.daRiconciliare}.
+          {!variazione.totaleInvariato && ' Attenzione: il totale dei movimenti e cambiato.'}
+        </Card>
+      )}
+
+      {estratto && (
+        <Card title="Quadratura estratto conto" icon="✓" style={{ marginBottom: SPACING.md }}>
+          <div style={RG.col2(isMobile)}>
+            <div>
+              <div>Movimenti totali: <strong>{estratto.totale}</strong></div>
+              <div>Riconciliati: <strong style={{ color: COLORS.success }}>{estratto.riconciliati}</strong></div>
+              <div>Da riconciliare: <strong style={{ color: COLORS.warning }}>{estratto.da_riconciliare}</strong></div>
+            </div>
+            <div>
+              <Badge variant={quadratura?.ok ? 'success' : 'danger'}>
+                {quadratura?.ok ? 'Quadratura corretta' : 'Quadratura incoerente'}
+              </Badge>
+              <div style={{ marginTop: 8, color: COLORS.textMuted, fontSize: 13 }}>
+                {quadratura?.valori}
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {Object.keys(stats).length === 0 && (
         <Card bodyStyle={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>

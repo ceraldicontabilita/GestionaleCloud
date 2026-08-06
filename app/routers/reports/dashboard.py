@@ -12,6 +12,21 @@ router = APIRouter()
 
 
 @router.get(
+    "/fascia-energia",
+    summary="Fascia energia corrente e finestra di produzione consigliata",
+)
+async def get_fascia_energia() -> Dict[str, Any]:
+    """Restituisce la fascia contrattuale corrente in Europe/Rome.
+
+    E' intenzionalmente indipendente dal database: la Dashboard deve poter
+    mostrare il consiglio operativo anche durante un disservizio dati.
+    """
+    from app.services.fasce_energia import riepilogo_fasce
+
+    return riepilogo_fasce()
+
+
+@router.get(
     "/summary",
     summary="Get dashboard summary",
     description="Get summary data for dashboard - no auth required"

@@ -40,6 +40,8 @@ _TIPI_EMAIL_ALIAS = {
     "avviso": "avviso_bonario",
     "verbali": "verbale",
     "fattura_xml": "fattura_xml",
+    "bolletta energia": "bolletta_energia",
+    "utenza energia": "bolletta_energia",
 }
 
 _TIPI_EMAIL_RILEVANTI = {
@@ -47,6 +49,7 @@ _TIPI_EMAIL_RILEVANTI = {
     "busta_paga", "pagopa", "contributi_inps", "inps", "inail", "paypal",
     "satispay", "cartella_esattoriale", "avviso_bonario", "verbale",
     "dichiarazione_iva", "certificazione_unica", "estratto_conto", "bonifico",
+    "bolletta_energia",
 }
 
 
@@ -322,6 +325,30 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
                         )
             except Exception as ex:
                 logger.debug(f"[Gmail] Errore XML {fname}: {ex}")
+
+        elif tipo == "bolletta_energia" and doc.get("pdf_data"):
+            try:
+                from app.services.enel_bolletta_parser import parse_bolletta_enel, salva_consumi_enel
+                parsed = parse_bolletta_enel(doc["pdf_data"])
+                aggiornati = await salva_consumi_enel(
+                    db, parsed, doc.get("file_hash") or "", doc.get("id") or "",
+                )
+                esito = {
+                    "routed": True, "tipo": tipo, "periodi_aggiornati": aggiornati,
+                    "anno": parsed.get("anno"), "annuale": parsed.get("annuale"),
+                }
+            except Exception as ex:
+                logger.warning("[Gmail] Errore lettura bolletta energia %s: %s", doc.get("filename"), ex)
+                esito = {"routed": True, "tipo": tipo, "errore_parser": str(ex)}
+            await db["documents_inbox"].update_one(
+                {"id": doc["id"]},
+                {"$set": {
+                    "xml_processed": True,
+                    **set_tassonomia_documento({}, tipo),
+                    "mittente_pattern": mittente.get("pattern"),
+                    "xml_result": esito,
+                }},
+            )
 
         elif tipo == "fattura_estera_pdf" and doc.get("pdf_data"):
             # ── Fattura ESTERA (PDF, mai XML: lo SDI è solo italiano) ──────

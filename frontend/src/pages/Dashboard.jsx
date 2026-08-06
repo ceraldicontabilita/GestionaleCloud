@@ -19,6 +19,8 @@ import {
   TrendingUp,
   TrendingDown,
   HelpCircle,
+  Zap,
+  Clock3,
 } from 'lucide-react';
 import api from '../api';
 import { useAnnoGlobale, AnnoSelector } from '../contexts/AnnoContext';
@@ -60,6 +62,8 @@ export default function Dashboard() {
   const [iva, setIva] = useState(null);
   const [scadenze, setScadenze] = useState(null);
   const [trend, setTrend] = useState(null);
+  const [energia, setEnergia] = useState(null);
+  const [erroreEnergia, setErroreEnergia] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [erroriApi, setErroriApi] = useState([]);
@@ -67,6 +71,27 @@ export default function Dashboard() {
   const [domanda, setDomanda] = useState(null);
 
   const etichettaPeriodo = mese ? `${MESI[mese - 1]} ${anno}` : `tutto il ${anno}`;
+
+  useEffect(() => {
+    let attivo = true;
+    const aggiorna = async () => {
+      try {
+        const res = await api.get('/api/dashboard/fascia-energia');
+        if (attivo) {
+          setEnergia(res.data);
+          setErroreEnergia(false);
+        }
+      } catch (e) {
+        if (attivo) setErroreEnergia(true);
+      }
+    };
+    aggiorna();
+    const timer = window.setInterval(aggiorna, 60 * 60 * 1000);
+    return () => {
+      attivo = false;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -299,6 +324,8 @@ export default function Dashboard() {
         </div>
       )}
 
+      <FasciaEnergiaCard energia={energia} errore={erroreEnergia} />
+
       {loading ? (
         <div style={STILI.loading}>Caricamento di {etichettaPeriodo}…</div>
       ) : (
@@ -497,9 +524,108 @@ function Nota({ children }) {
   return <div style={STILI.nota}>{children}</div>;
 }
 
+function FasciaEnergiaCard({ energia, errore }) {
+  if (errore) {
+    return (
+      <div style={STILI.avvisoErrori} data-testid="fascia-energia-errore">
+        Fascia energia non disponibile in questo momento. Le altre card restano operative.
+      </div>
+    );
+  }
+  if (!energia) {
+    return <div style={STILI.energiaLoading}>Calcolo della fascia energia in corso...</div>;
+  }
+
+  const colori = { F1: '#2563eb', F2: '#dc2626', F3: '#15803d' };
+  const fascia = energia.fascia_attuale;
+  const prossima = new Date(energia.prossima_f3).toLocaleString('it-IT', {
+    weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+
+  return (
+    <section
+      style={{ ...STILI.energiaCard, borderLeftColor: colori[fascia] || COLORS.primary }}
+      data-testid="fascia-energia-card"
+      aria-live="polite"
+    >
+      <div style={STILI.energiaTestata}>
+        <span style={{ ...STILI.cardIcona, background: colori[fascia] || COLORS.primary }}>
+          <Zap size={17} color="#fff" />
+        </span>
+        <div style={{ flex: 1 }}>
+          <div style={STILI.energiaSopratitolo}>Promemoria produzione - aggiornamento ogni ora</div>
+          <h2 style={STILI.energiaTitolo}>
+            Ora sei in {fascia}: {energia.azione}
+          </h2>
+          <div style={STILI.energiaMotivo}>{energia.motivo}</div>
+        </div>
+        <div style={STILI.energiaPrezzo}>
+          <strong>{Number(energia.tariffa?.euro_kwh || 0).toFixed(4)} euro/kWh</strong>
+          <span>componente energia</span>
+        </div>
+      </div>
+
+      <div style={STILI.energiaDettagli}>
+        <div style={STILI.energiaProssima}>
+          <Clock3 size={16} />
+          {fascia === 'F3' ? 'La fascia piu economica e attiva adesso.' : `Prossima F3: ${prossima}`}
+        </div>
+        <div style={STILI.energiaRegole}>
+          {energia.regole?.map(regola => (
+            <div key={regola.giorni} style={STILI.energiaRegola}>
+              <strong>{regola.giorni}</strong>
+              <span>F1 {regola.F1}</span>
+              <span>F2 {regola.F2}</span>
+              <span>F3 {regola.F3}</span>
+            </div>
+          ))}
+        </div>
+        <div style={STILI.nota}>
+          Nel tuo contratto F3 e la piu economica, F1 e intermedia, F2 e la piu cara.
+          Sabato 07:00-23:00 e F2; domenica e festivi sono F3 tutto il giorno.
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ────────────────────────────── Stili ────────────────────────────── */
 
 const STILI = {
+  energiaLoading: {
+    background: '#fff', border: `1px solid ${COLORS.border}`, borderRadius: 12,
+    padding: 16, marginBottom: 14, color: COLORS.textMuted,
+  },
+  energiaCard: {
+    background: '#fff', border: `1px solid ${COLORS.border}`, borderLeft: '6px solid',
+    borderRadius: 12, padding: 16, marginBottom: 14,
+  },
+  energiaTestata: {
+    display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+  },
+  energiaSopratitolo: {
+    fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.5,
+    color: COLORS.textMuted,
+  },
+  energiaTitolo: { margin: '2px 0', fontSize: 20, color: COLORS.text },
+  energiaMotivo: { fontSize: 13, color: COLORS.textMuted },
+  energiaPrezzo: {
+    marginLeft: 'auto', display: 'flex', flexDirection: 'column', textAlign: 'right',
+    color: COLORS.text, fontSize: 14,
+  },
+  energiaDettagli: { marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 },
+  energiaProssima: {
+    display: 'flex', alignItems: 'center', gap: 7, padding: '8px 10px',
+    background: '#f0fdf4', borderRadius: 8, color: '#166534', fontWeight: 700,
+  },
+  energiaRegole: {
+    display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 8,
+  },
+  energiaRegola: {
+    display: 'flex', flexDirection: 'column', gap: 3, padding: 10,
+    background: COLORS.bgAlt, border: `1px solid ${COLORS.border}`, borderRadius: 8,
+    color: COLORS.text, fontSize: 12,
+  },
   barraFiltri: {
     display: 'flex',
     flexWrap: 'wrap',

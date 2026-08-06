@@ -11,6 +11,7 @@ from io import StringIO
 import logging
 
 from app.utils.numeri_italiani import parse_importo_ita
+from app.services.f24_tributi_saldo import applica_allocazione, proposte_globali_univoche
 
 logger = logging.getLogger(__name__)
 
@@ -234,12 +235,14 @@ def riconcilia_f24_con_estratto(f24_list: List[Dict], movimenti_f24: List[Dict])
     """
     result = {
         "f24_riconciliati": [],
+        "f24_parzialmente_pagati": [],
         "f24_non_pagati": [],
         "movimenti_non_associati": [],
         "stats": {
             "totale_f24": len(f24_list),
             "totale_movimenti_f24": len(movimenti_f24),
             "riconciliati": 0,
+            "parzialmente_pagati": 0,
             "ambigui": 0,
             "non_pagati": 0,
             "non_associati": 0
@@ -320,6 +323,46 @@ def riconcilia_f24_con_estratto(f24_list: List[Dict], movimenti_f24: List[Dict])
             if candidati:
                 result["stats"]["ambigui"] += 1
     
+    # Secondo passaggio: un movimento puo' saldare uno o piu' tributi ma non
+    # l'intero modello. Si associa solo se il match e' univoco sia tra le righe
+    # sia tra tutti gli F24 candidati.
+    proposte = proposte_globali_univoche(result["f24_non_pagati"], movimenti_disponibili)
+    f24_per_id = {str(f.get("id")): f for f in result["f24_non_pagati"]}
+    f24_aggiornati = {}
+    movimenti_usati = set()
+    for proposta in proposte:
+        f24_id = str(proposta.get("f24_id"))
+        f24 = f24_aggiornati.get(f24_id) or f24_per_id.get(f24_id)
+        if not f24:
+            continue
+        patch = applica_allocazione(f24, proposta)
+        aggiornato = {**f24, **patch}
+        f24_aggiornati[f24_id] = aggiornato
+        movimenti_usati.add(str(proposta["movimento_id"]))
+
+    if f24_aggiornati:
+        result["f24_non_pagati"] = [
+            f24 for f24 in result["f24_non_pagati"]
+            if str(f24.get("id")) not in f24_aggiornati
+        ]
+        result["stats"]["non_pagati"] -= len(f24_aggiornati)
+        for aggiornato in f24_aggiornati.values():
+            if aggiornato.get("pagato") is True:
+                result["f24_riconciliati"].append({
+                    **aggiornato,
+                    "riconciliato_per_tributi": True,
+                })
+                result["stats"]["riconciliati"] += 1
+            else:
+                result["f24_parzialmente_pagati"].append(aggiornato)
+                result["stats"]["parzialmente_pagati"] += 1
+
+    if movimenti_usati:
+        movimenti_disponibili = [
+            m for m in movimenti_disponibili
+            if str(m.get("id") or m.get("fingerprint") or "") not in movimenti_usati
+        ]
+
     # Movimenti non associati
     result["movimenti_non_associati"] = movimenti_disponibili
     result["stats"]["non_associati"] = len(movimenti_disponibili)

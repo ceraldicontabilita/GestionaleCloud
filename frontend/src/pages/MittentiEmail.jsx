@@ -18,6 +18,7 @@ const TIPI_DOCUMENTO = [
   { value: 'verbale', label: 'Verbale / sanzione' },
   { value: 'busta_paga', label: 'Cedolino / busta paga' },
   { value: 'f24', label: 'Modello F24' },
+  { value: 'bolletta_energia', label: 'Bolletta energia / consumi' },
 ];
 
 const labelTipo = v => (TIPI_DOCUMENTO.find(t => t.value === v) || {}).label || v;
