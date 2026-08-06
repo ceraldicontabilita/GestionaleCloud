@@ -368,9 +368,24 @@ distinto da uno automatico né controllato per duplicati.
   `chiusure_pos_manuali`, aggiorna l'uscita POS della Prima Nota Cassa e il
   trasferimento atteso della Prima Nota Banca con lo stesso
   `trasferimento_id`. Non modifica mai `corrispettivi.pagato_elettronico`.
+- **Piu' gestori POS (Nexi + SumUp, dal 07/08/2026).** Ogni chiusura porta il
+  campo `gestore`; il **POS reale del giorno e' la somma dei terminali**.
+  Regole che evitano i due errori possibili:
+  - le chiusure gia' registrate **non hanno** il campo `gestore` e valgono
+    come Nexi: una correzione Nexi le aggiorna, non ne affianca una nuova
+    (altrimenti l'incasso del giorno raddoppierebbe);
+  - registrare un gestore **non tocca** la riga degli altri, e una chiusura a
+    **zero** su un terminale non archivia il trasferimento del giorno se un
+    altro terminale ha incassato.
+  Prima Nota e `corrispettivi.pos_reale_serale` ricevono sempre il **totale
+  del giorno**, non l'importo del singolo terminale: il trasferimento
+  Cassa→Banca resta una sola operazione. Chi ha il solo terminale Nexi non
+  vede alcuna differenza.
 - **Importa totali POS** accetta piu' righe `AAAA-MM-GG;importo`: tutte le
   righe vengono validate prima della scrittura e poi passano dallo stesso
-  motore idempotente dell'editor giornaliero.
+  motore idempotente dell'editor giornaliero. L'importazione massiva e'
+  l'export di **un** terminale, quindi il `gestore` vale per tutte le righe
+  (predefinito: Nexi).
 - L'estratto conto resta il terzo controllo: l'accredito della banca deve
   combaciare col trasferimento (invariante del collaudo notturno
   "trasferimento_pos_speculare": uscita cassa POS = entrata banca POS,

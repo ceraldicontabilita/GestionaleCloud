@@ -36,6 +36,7 @@ COLLECTION_CHIUSURE_POS = "chiusure_pos_manuali"
 # La descrizione degli accrediti NUMIA/BPM contiene il giorno di VENDITA:
 # "INC.POS CARTE CREDIT - NUMIA-INTER DEL 02/04/26 PDV ..." → 2026-04-02
 from app.services.scritture_contabili import (
+    GESTORE_POS_DEFAULT,
     ScritturaNonValida,
     registra_chiusura_pos_reale,
 )
@@ -685,14 +686,23 @@ async def upsert_chiusura_giornaliera(
             Database.get_db(),
             payload.get("data"),
             payload.get("importo"),
+            gestore=payload.get("gestore") or GESTORE_POS_DEFAULT,
             note=(payload.get("note") or "").strip(),
             actor=current_user,
         )
     except ScritturaNonValida as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    # Con un solo terminale i due importi coincidono; con Nexi + SumUp il
+    # totale del giorno e' quello che finisce davvero in Prima Nota.
+    totale = result.get("importo_totale_giorno", result["importo"])
+    dettaglio = (
+        "" if abs(totale - result["importo"]) < 0.01
+        else f" Totale POS del giorno (tutti i terminali): EUR {totale:.2f}."
+    )
     result["message"] = (
-        f"POS reale del {result['data']} salvato: EUR {result['importo']:.2f}. "
+        f"POS reale {result['gestore'].upper()} del {result['data']} salvato: "
+        f"EUR {result['importo']:.2f}.{dettaglio} "
         "Prima Nota Cassa e trasferimento atteso in Banca aggiornati."
     )
     return result
@@ -749,6 +759,10 @@ async def upsert_chiusure_giornaliere_batch(
 
     db = Database.get_db()
     note = str(payload.get("note") or "Importazione massiva POS").strip()
+    # Un'importazione massiva e' l'export di UN terminale: il gestore vale per
+    # tutte le righe. Cosi' resta valido anche il vincolo di data unica, che
+    # serializza le scritture sullo stesso giorno.
+    gestore = payload.get("gestore") or GESTORE_POS_DEFAULT
     semaforo = asyncio.Semaphore(8)
 
     async def salva(riga: Dict[str, Any]) -> Dict[str, Any]:
@@ -758,12 +772,14 @@ async def upsert_chiusure_giornaliere_batch(
                     db,
                     riga["data"],
                     riga["importo"],
+                    gestore=gestore,
                     note=note,
                     actor=current_user,
                 )
                 return {
                     "data": riga["data"],
                     "importo": riga["importo"],
+                    "gestore": gestore,
                     "success": True,
                     "action": risultato.get("action"),
                 }

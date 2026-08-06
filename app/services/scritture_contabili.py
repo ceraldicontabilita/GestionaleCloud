@@ -194,6 +194,7 @@ async def registra_chiusura_pos_reale(
     data: str,
     importo: float,
     *,
+    gestore: str = GESTORE_POS_DEFAULT,
     note: str = "",
     actor: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -210,6 +211,11 @@ async def registra_chiusura_pos_reale(
 
     L'importo zero e' esplicito: archivia gli eventuali trasferimenti
     sintetici del giorno e impedisce il fallback al valore XML.
+
+    Con piu' terminali (Nexi, SumUp, ...) ``importo`` e' la chiusura del
+    singolo ``gestore``, mentre Prima Nota e corrispettivo vanno riallineati
+    sul TOTALE del giorno: il trasferimento cassa->banca resta una sola
+    operazione, la somma degli incassi elettronici di tutti i terminali.
     """
     data = str(data or "")[:10]
     try:
@@ -229,8 +235,12 @@ async def registra_chiusura_pos_reale(
     user_email = actor.get("email") or ""
     user_name = actor.get("name") or user_email or user_id
 
+    gestore = normalizza_gestore_pos(gestore)
+    # Solo le righe di QUESTO terminale: senza il filtro, registrare SumUp
+    # sovrascriverebbe la chiusura Nexi dello stesso giorno.
+    filtro_chiusura = {"data": data, **filtro_gestore_pos(gestore)}
     precedente_doc = await db["chiusure_pos_manuali"].find_one(
-        {"data": data}, {"_id": 0, "importo": 1, "totale": 1, "id": 1}
+        filtro_chiusura, {"_id": 0, "importo": 1, "totale": 1, "id": 1}
     )
     importo_precedente = None
     if precedente_doc is not None:
@@ -241,25 +251,33 @@ async def registra_chiusura_pos_reale(
         ), 2)
 
     chiusura_id = (precedente_doc or {}).get("id") or str(uuid.uuid4())
-    await db["chiusure_pos_manuali"].find_one_and_update(
-        {"data": data},
-        {
-            "$set": {
-                "importo": importo,
-                "totale": importo,
-                "source": "inserimento_manuale_terminale",
-                "note": note,
-                "updated_at": now,
-                "updated_by": user_id,
-            },
-            "$setOnInsert": {
-                "id": chiusura_id,
-                "data": data,
-                "created_at": now,
-            },
-        },
-        upsert=True,
-    )
+    campi_chiusura = {
+        "importo": importo,
+        "totale": importo,
+        "gestore": gestore,
+        "source": "inserimento_manuale_terminale",
+        "note": note,
+        "updated_at": now,
+        "updated_by": user_id,
+    }
+    # Niente upsert con ``$or``: Mongo non sa dedurre il documento da creare
+    # da un filtro alternativo. Il ramo viene deciso qui, esplicitamente.
+    if precedente_doc is not None:
+        await db["chiusure_pos_manuali"].update_one(
+            {"id": chiusura_id}, {"$set": campi_chiusura}
+        )
+    else:
+        await db["chiusure_pos_manuali"].insert_one({
+            **campi_chiusura,
+            "id": chiusura_id,
+            "data": data,
+            "created_at": now,
+        })
+
+    # Prima Nota vede una sola uscita POS al giorno: il totale dei terminali.
+    totale_giorno = await chiusura_pos_del_giorno(db, data)
+    if totale_giorno is None:
+        totale_giorno = importo
 
     corr = await db["corrispettivi"].find_one(
         {"data": data}, {"_id": 0, "id": 1, "totale": 1,
@@ -269,7 +287,7 @@ async def registra_chiusura_pos_reale(
     # Non sovrascrivere mai pagato_elettronico: e' il valore fiscale XML.
     await db["corrispettivi"].update_one(
         {"data": data},
-        {"$set": {"pos_reale_serale": importo,
+        {"$set": {"pos_reale_serale": totale_giorno,
                   "pos_reale_fonte": "terminale_manuale",
                   "pos_reale_updated_at": now}},
     )
@@ -303,7 +321,9 @@ async def registra_chiusura_pos_reale(
     cassa_id = (cassa_mov or {}).get("id")
     banca_id = (banca_mov or {}).get("id")
 
-    if importo == 0:
+    # Zero solo se NESSUN terminale ha incassato: se SumUp e' a zero ma Nexi
+    # no, il trasferimento del giorno deve restare in piedi.
+    if totale_giorno == 0:
         motivo = "chiusura_terminale_pos_zero"
         if cassa_mov:
             await db["prima_nota_cassa"].update_one(
@@ -321,8 +341,8 @@ async def registra_chiusura_pos_reale(
             )
     else:
         cassa_fields = {
-            "importo": importo,
-            "amount": importo,
+            "importo": totale_giorno,
+            "amount": totale_giorno,
             "categoria": "POS Verso Banca",
             "category": "POS Verso Banca",
             "descrizione": f"POS {data} -> Banca (chiusura terminale)",
@@ -343,7 +363,7 @@ async def registra_chiusura_pos_reale(
             nuovo_movimento_cassa = {
                 "data": data,
                 "tipo": "uscita",
-                "importo": importo,
+                "importo": totale_giorno,
                 "categoria": "POS Verso Banca",
                 "descrizione": cassa_fields["descrizione"],
                 "source": "corrispettivo_import",
@@ -357,10 +377,10 @@ async def registra_chiusura_pos_reale(
             )
 
         accreditato = round(float((banca_mov or {}).get("accreditato_ec") or 0), 2)
-        quadrato = accreditato > 0 and abs(accreditato - importo) <= 0.01
+        quadrato = accreditato > 0 and abs(accreditato - totale_giorno) <= 0.01
         banca_fields = {
-            "importo": importo,
-            "amount": importo,
+            "importo": totale_giorno,
+            "amount": totale_giorno,
             "categoria": "Corrispettivi POS",
             "category": "Corrispettivi POS",
             "descrizione": f"POS {data} da cassa (chiusura terminale)",
@@ -385,7 +405,7 @@ async def registra_chiusura_pos_reale(
             nuovo_movimento_banca = {
                 "data": data,
                 "tipo": "entrata",
-                "importo": importo,
+                "importo": totale_giorno,
                 "categoria": "Corrispettivi POS",
                 "descrizione": banca_fields["descrizione"],
                 "source": "trasferimento_pos",
@@ -413,10 +433,10 @@ async def registra_chiusura_pos_reale(
         await db["prima_nota_cassa"].update_one(
             {"id": entrata_cassa.get("id")},
             {"$set": {
-                "pagato_elettronico": importo,
-                "pagato_contanti": round(totale - importo, 2),
-                "dettaglio.elettronico": importo,
-                "dettaglio.contanti": round(totale - importo, 2),
+                "pagato_elettronico": totale_giorno,
+                "pagato_contanti": round(totale - totale_giorno, 2),
+                "dettaglio.elettronico": totale_giorno,
+                "dettaglio.contanti": round(totale - totale_giorno, 2),
                 "quota_pos_fonte": "chiusura_manuale",
                 "updated_at": now,
             }},
@@ -431,6 +451,7 @@ async def registra_chiusura_pos_reale(
                 "id": str(uuid.uuid4()),
                 "collection_target": "chiusure_pos_manuali",
                 "data_riferimento": data,
+                "gestore": gestore,
                 "action": action,
                 "importo_precedente": importo_precedente,
                 "importo_nuovo": importo,
@@ -449,12 +470,14 @@ async def registra_chiusura_pos_reale(
         "success": True,
         "action": action,
         "data": data,
+        "gestore": gestore,
         "importo": importo,
         "importo_precedente": importo_precedente,
+        "importo_totale_giorno": totale_giorno,
         "chiusura_id": chiusura_id,
         "prima_nota_cassa_id": cassa_id,
         "prima_nota_banca_id": banca_id,
-        "trasferimento_id": trasferimento_id if importo > 0 else None,
+        "trasferimento_id": trasferimento_id if totale_giorno > 0 else None,
     }
 
 

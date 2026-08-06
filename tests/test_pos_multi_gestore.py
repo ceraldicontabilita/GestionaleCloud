@@ -13,6 +13,7 @@ from app.services.scritture_contabili import (
     chiusura_pos_del_giorno,
     filtro_gestore_pos,
     normalizza_gestore_pos,
+    registra_chiusura_pos_reale,
 )
 
 
@@ -104,3 +105,92 @@ def test_il_comportamento_di_nexi_da_solo_non_cambia():
         _chiusura(950.0),  # correzione manuale, prevale
     ]))
     assert _run(chiusura_pos_del_giorno(db, "2026-08-06")) == 950.0
+
+
+# --- Registrazione (lato scrittura) ----------------------------------------
+
+DATA = "2026-08-06"
+
+
+async def _uscita_pos(db):
+    return await db["prima_nota_cassa"].find_one(
+        {"data": DATA, "categoria": "POS Verso Banca"}
+    )
+
+
+def test_registrare_sumup_non_sovrascrive_la_chiusura_nexi():
+    """Il bug piu' costoso: una find_one sulla sola data prendeva la riga
+    dell'altro terminale e la riscriveva, perdendo un incasso reale."""
+    db = _db()
+    _run(registra_chiusura_pos_reale(db, DATA, 300.0, gestore="nexi"))
+    _run(registra_chiusura_pos_reale(db, DATA, 120.50, gestore="sumup"))
+
+    righe = _run(db.chiusure_pos_manuali.find({"data": DATA}).to_list(10))
+    assert sorted(r["gestore"] for r in righe) == ["nexi", "sumup"]
+    assert sorted(r["importo"] for r in righe) == [120.50, 300.0]
+
+
+def test_la_prima_nota_riceve_il_totale_dei_terminali():
+    """Il trasferimento cassa->banca resta UNO solo, ma vale la somma."""
+    db = _db()
+    _run(registra_chiusura_pos_reale(db, DATA, 300.0, gestore="nexi"))
+    esito = _run(registra_chiusura_pos_reale(db, DATA, 120.50, gestore="sumup"))
+
+    assert esito["importo"] == 120.50          # la chiusura del terminale
+    assert esito["importo_totale_giorno"] == 420.50
+
+    uscite = _run(db.prima_nota_cassa.find(
+        {"data": DATA, "categoria": "POS Verso Banca"}).to_list(10))
+    assert len(uscite) == 1
+    assert uscite[0]["importo"] == 420.50
+
+    banca = _run(db.prima_nota_banca.find(
+        {"data": DATA, "source": "trasferimento_pos"}).to_list(10))
+    assert len(banca) == 1
+    assert banca[0]["importo"] == 420.50
+    # Stessa operazione su due registri: un unico trasferimento_id.
+    assert banca[0]["trasferimento_id"] == uscite[0]["trasferimento_id"]
+
+
+def test_zero_su_un_terminale_non_archivia_il_trasferimento_dell_altro():
+    db = _db()
+    _run(registra_chiusura_pos_reale(db, DATA, 300.0, gestore="nexi"))
+    _run(registra_chiusura_pos_reale(db, DATA, 0, gestore="sumup"))
+
+    uscita = _run(_uscita_pos(db))
+    assert uscita["status"] != "deleted"
+    assert uscita["importo"] == 300.0
+
+
+def test_zero_su_tutti_i_terminali_archivia_il_trasferimento():
+    db = _db()
+    _run(registra_chiusura_pos_reale(db, DATA, 300.0, gestore="nexi"))
+    _run(registra_chiusura_pos_reale(db, DATA, 0, gestore="nexi"))
+
+    uscita = _run(_uscita_pos(db))
+    assert uscita["status"] == "deleted"
+
+
+def test_la_correzione_resta_idempotente_per_gestore():
+    db = _db()
+    _run(registra_chiusura_pos_reale(db, DATA, 120.50, gestore="sumup"))
+    esito = _run(registra_chiusura_pos_reale(db, DATA, 120.50, gestore="sumup"))
+
+    assert esito["action"] == "noop"
+    assert len(_run(db.chiusure_pos_manuali.find({"data": DATA}).to_list(10))) == 1
+
+
+def test_una_chiusura_storica_senza_gestore_viene_corretta_non_duplicata():
+    """Produzione: le righe esistenti non hanno il campo gestore."""
+    db = _db()
+    _run(db.chiusure_pos_manuali.insert_one(
+        {"id": "storica", "data": DATA, "importo": 300.0}
+    ))
+    esito = _run(registra_chiusura_pos_reale(db, DATA, 280.0, gestore="nexi"))
+
+    righe = _run(db.chiusure_pos_manuali.find({"data": DATA}).to_list(10))
+    assert len(righe) == 1
+    assert righe[0]["id"] == "storica"
+    assert righe[0]["gestore"] == "nexi"
+    assert esito["importo_precedente"] == 300.0
+    assert esito["importo_totale_giorno"] == 280.0
