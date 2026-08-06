@@ -1,11 +1,41 @@
-import { describe, expect, it } from 'vitest';
+import React from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import api from '../api';
 
-import {
+import GestioneAssegni, {
   assegnoInteramenteAssociato,
   filtraAssegni,
   normalizzaBeneficiarioAssegno,
   totaleQuoteFatture,
 } from './GestioneAssegni';
+
+vi.mock('../api', () => ({
+  default: {
+    get: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
+  },
+}));
+
+vi.mock('../contexts/AnnoContext', () => ({
+  useAnnoGlobale: () => ({ anno: 2026 }),
+}));
+
+vi.mock('../components/ui/ConfirmDialog', () => ({
+  useConfirm: () => vi.fn(),
+}));
+
+vi.mock('sonner', () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+    warning: vi.fn(),
+    info: vi.fn(),
+  },
+}));
 
 const ASSEGNI = [
   { id: 'a1', numero: '208769333', importo: 1097.47, beneficiario: '-' },
@@ -48,5 +78,77 @@ describe('Copertura assegno con fatture collegate', () => {
     expect(
       assegnoInteramenteAssociato(652.74, [{ quota: 331.04 }, { quota: 321.70 }])
     ).toBe(true);
+  });
+});
+
+const renderPagina = () => render(
+  <MemoryRouter>
+    <GestioneAssegni />
+  </MemoryRouter>
+);
+
+const rispostaPagina = assegni => url => {
+  if (url.includes('/learning/stats-avanzate')) return Promise.resolve({ data: {} });
+  if (url.includes('/stats?')) {
+    return Promise.resolve({ data: { totale: assegni.length, per_stato: {} } });
+  }
+  return Promise.resolve({ data: assegni });
+};
+
+describe('Stati e resa responsive della pagina Assegni', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1280 });
+  });
+
+  it('mostra lo stato di caricamento', () => {
+    api.get.mockImplementation(() => new Promise(() => {}));
+
+    renderPagina();
+
+    expect(screen.getByText('Caricamento...')).toBeInTheDocument();
+  });
+
+  it('mostra un errore esplicito anche quando il backend nega il permesso', async () => {
+    api.get.mockRejectedValue({ response: { data: { detail: 'Non autenticato' } } });
+
+    renderPagina();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Impossibile caricare assegni e statistiche: Non autenticato'
+    );
+  });
+
+  it('mostra lo stato vuoto senza inventare righe', async () => {
+    api.get.mockImplementation(rispostaPagina([]));
+
+    renderPagina();
+
+    expect(await screen.findByText('Nessun assegno presente')).toBeInTheDocument();
+    expect(screen.queryByTestId('assegni-table')).not.toBeInTheDocument();
+  });
+
+  it('usa la tabella su desktop', async () => {
+    api.get.mockImplementation(rispostaPagina([
+      { id: 'a1', numero: '0208770985', stato: 'incassato', importo: 9760 },
+    ]));
+
+    renderPagina();
+
+    const lista = await screen.findByTestId('assegni-table');
+    await waitFor(() => expect(lista.querySelector('table')).not.toBeNull());
+  });
+
+  it('usa card senza tabella su schermo mobile', async () => {
+    window.innerWidth = 375;
+    api.get.mockImplementation(rispostaPagina([
+      { id: 'a1', numero: '0208770985', stato: 'incassato', importo: 9760 },
+    ]));
+
+    renderPagina();
+
+    const lista = await screen.findByTestId('assegni-table');
+    await waitFor(() => expect(lista.querySelector('table')).toBeNull());
+    expect(lista).toHaveStyle({ display: 'flex', flexDirection: 'column' });
   });
 });

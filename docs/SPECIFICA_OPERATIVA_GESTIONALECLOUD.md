@@ -45,9 +45,9 @@ L'applicazione possiede 62 schermate funzionali distinte e una pagina tecnica 40
 
 Alla data di questa riscrittura il catalogo macchina registra:
 
-- 5 pagine `verified`;
+- 6 pagine `verified`;
 - 10 pagine `in_review`;
-- 47 pagine `unverified`.
+- 46 pagine `unverified`.
 
 Il test isolato apre 62/62 schermate senza 404, ErrorBoundary o errori API iniziali. Questo dimostra il montaggio tecnico, non la correttezza contabile.
 
