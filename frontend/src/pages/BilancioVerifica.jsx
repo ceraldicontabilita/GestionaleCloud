@@ -19,8 +19,10 @@ import {
 const TIPO_COLORS = {
   attivo: { variant: 'success', label: 'Attivo' },
   passivo: { variant: 'danger', label: 'Passivo' },
+  patrimonio_netto: { variant: 'neutral', label: 'Patrimonio netto' },
   ricavo: { variant: 'info', label: 'Ricavo' },
   costo: { variant: 'warning', label: 'Costo' },
+  altro: { variant: 'neutral', label: 'Altro' },
 };
 
 const GRUPPI_CONTI = {
@@ -39,7 +41,6 @@ export default function BilancioVerifica() {
   const [dettaglio, setDettaglio] = useState(false);
   const [search, setSearch] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('tutti');
-  const [soloMovimentati, setSoloMovimentati] = useState(true);
   const [expandedConti, setExpandedConti] = useState(new Set());
   const [showSaldi, setShowSaldi] = useState(true); // mostra saldo dare/avere separati
 
@@ -57,6 +58,7 @@ export default function BilancioVerifica() {
       setBvError(false);
     } catch (err) {
       // Errore del servizio ≠ "nessun dato": distinguili nell'interfaccia.
+      setData(null);
       setBvError(true);
     } finally {
       setLoading(false);
@@ -109,15 +111,21 @@ export default function BilancioVerifica() {
 
   const handleExportCSV = () => {
     if (!data?.conti) return;
+    const csvCell = value => {
+      let cell = String(value ?? '');
+      // Impedisce che nomi conto non affidabili diventino formule in Excel.
+      if (/^[=+\-@]/.test(cell)) cell = `'${cell}`;
+      return `"${cell.replaceAll('"', '""')}"`;
+    };
     const rows = [
       ['Codice', 'Conto', 'Tipo', 'Dare', 'Avere', 'Saldo Dare', 'Saldo Avere'].join(';'),
     ];
     for (const c of data.conti) {
       rows.push(
         [
-          c.codice,
-          `"${c.nome}"`,
-          c.tipo,
+          csvCell(c.codice),
+          csvCell(c.nome),
+          csvCell(c.tipo),
           c.dare.toFixed(2),
           c.avere.toFixed(2),
           c.saldo_dare.toFixed(2),
@@ -152,6 +160,12 @@ export default function BilancioVerifica() {
   const SummaryCards = () => {
     if (!data) return null;
     const { totali, quadratura, riepilogo } = data;
+    const qualita = data.qualita_registro || {};
+    const anomalieRegistro =
+      (qualita.scritture_sbilanciate || 0) +
+      (qualita.scritture_senza_righe || 0) +
+      (qualita.righe_non_numeriche || 0) +
+      (qualita.righe_senza_conto || 0);
     return (
       <div
         style={{
@@ -182,7 +196,7 @@ export default function BilancioVerifica() {
         />
         <StatCard
           accent={quadratura ? 'success' : 'danger'}
-          label="QUADRATURA"
+          label="VALIDAZIONE REGISTRO"
           value={
             <span
               style={{
@@ -194,13 +208,18 @@ export default function BilancioVerifica() {
               }}
             >
               {quadratura ? <CheckCircle size={20} /> : <AlertTriangle size={20} />}
-              {quadratura ? 'OK' : formatEuro(totali.sbilancio)}
+              {quadratura
+                ? 'OK'
+                : anomalieRegistro > 0
+                  ? `${anomalieRegistro} anomalie`
+                  : formatEuro(totali.sbilancio)}
             </span>
           }
           subtext={
             <>
-              {riepilogo.n_conti} conti • {riepilogo.n_conti_attivo}A {riepilogo.n_conti_passivo}P{' '}
-              {riepilogo.n_conti_ricavo}R {riepilogo.n_conti_costo}C
+              {riepilogo.n_conti} conti · {riepilogo.n_conti_attivo} A ·{' '}
+              {riepilogo.n_conti_passivo} P · {riepilogo.n_conti_patrimonio_netto || 0} PN ·{' '}
+              {riepilogo.n_conti_ricavo} R · {riepilogo.n_conti_costo} C
             </>
           }
         />
@@ -243,6 +262,34 @@ export default function BilancioVerifica() {
         <>
           <SummaryCards />
 
+          {data.qualita_registro && !data.qualita_registro.registro_valido && (
+            <div
+              role="alert"
+              style={{
+                marginTop: 16,
+                padding: '12px 14px',
+                borderRadius: BORDER_RADIUS.md,
+                border: `1px solid ${COLORS.danger}`,
+                background: COLORS.dangerLight,
+                color: COLORS.text,
+                fontSize: 13,
+                lineHeight: 1.5,
+              }}
+            >
+              <strong>Registro non valido:</strong>{' '}
+              {data.qualita_registro.scritture_sbilanciate || 0} scritture sbilanciate,{' '}
+              {data.qualita_registro.scritture_senza_righe || 0} senza righe,{' '}
+              {data.qualita_registro.righe_non_numeriche || 0} righe non numeriche e{' '}
+              {data.qualita_registro.righe_senza_conto || 0} righe senza conto.
+              {data.qualita_registro.quadratura_totali && (
+                <>
+                  {' '}I totali annuali coincidono solo per compensazione: non correggere
+                  automaticamente le scritture.
+                </>
+              )}
+            </div>
+          )}
+
           <div
             role="status"
             style={{
@@ -258,14 +305,18 @@ export default function BilancioVerifica() {
           >
             <strong>Fonte: libro giornale definitivo.</strong>{' '}
             {data.completezza_registro?.scritture_registrate || 0} scritture registrate.
-            {!data.completezza_registro?.completo && (
+            {(data.completezza_registro?.documenti_da_registrare || 0) > 0 && (
               <>
-                {' '}Il risultato quadra, ma non è ancora completo: restano{' '}
+                {' '}Il registro non è ancora completo: restano{' '}
                 <strong>{data.completezza_registro?.documenti_da_registrare || 0}</strong> documenti
                 ({data.completezza_registro?.fatture_da_registrare || 0} fatture e{' '}
                 {data.completezza_registro?.corrispettivi_da_registrare || 0} corrispettivi).
               </>
             )}
+            {(data.completezza_registro?.documenti_da_registrare || 0) === 0 &&
+              !data.qualita_registro?.registro_valido && (
+                <> Il caricamento documentale è completo, ma il registro contiene anomalie.</>
+              )}
           </div>
 
           {/* Filtri */}
@@ -290,8 +341,10 @@ export default function BilancioVerifica() {
               <option value="tutti">Tutti i tipi</option>
               <option value="attivo">Attivo</option>
               <option value="passivo">Passivo</option>
+              <option value="patrimonio_netto">Patrimonio netto</option>
               <option value="ricavo">Ricavi</option>
               <option value="costo">Costi</option>
+              <option value="altro">Altri conti</option>
             </Select>
             <label
               style={{
@@ -610,6 +663,8 @@ export default function BilancioVerifica() {
                   >
                     {data.quadratura
                       ? '✓ Il bilancio di verifica quadra — Totale Dare = Totale Avere'
+                      : data.qualita_registro && !data.qualita_registro.registro_valido
+                        ? '✗ REGISTRO NON VALIDO — verificare le anomalie prima di usare i saldi'
                       : `✗ SBILANCIO: ${formatEuro(data.totali.sbilancio)} — Verificare le registrazioni`}
                   </td>
                 </tr>
@@ -628,8 +683,9 @@ export default function BilancioVerifica() {
             }}
           >
             <p style={{ margin: 0, fontSize: 12, color: COLORS.textMuted }}>
-              <strong>Fonti dati:</strong> Fatture ricevute, Corrispettivi, Prima Nota (Cassa +
-              Banca + Salari), Cespiti/Ammortamenti. Generato il{' '}
+              <strong>Fonte contabile:</strong> registro definitivo in partita doppia{' '}
+              <code>movimenti_contabili</code>. Fatture e corrispettivi non vengono sommati una
+              seconda volta: servono solo a misurare i documenti ancora da registrare. Generato il{' '}
               {data.data_generazione
                 ? new Date(data.data_generazione).toLocaleString('it-IT')
                 : '-'}

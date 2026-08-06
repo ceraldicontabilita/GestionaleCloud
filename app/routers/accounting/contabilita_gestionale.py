@@ -10,6 +10,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from uuid import uuid4
 from collections import defaultdict
+import math
 import logging
 
 from app.database import Database, Collections
@@ -57,36 +58,46 @@ async def _bilancio_verifica_da_registro(
 ) -> Dict[str, Any]:
     """Aggrega il registro definitivo, senza risommare le fonti operative."""
     anno_str = str(anno)
-    query = {
-        "$and": [
-            {"righe": {"$exists": True, "$ne": []}},
-            {"$or": [
-                {"anno": anno},
-                {"data_documento": {"$regex": f"^{anno_str}"}},
-                {"data": {"$regex": f"^{anno_str}"}},
-            ]},
-        ]
-    }
-    scritture = await db["movimenti_contabili"].find(
-        query, {"_id": 0}
+    periodo_query = {"$or": [
+        {"anno": anno},
+        {"data_documento": {"$regex": f"^{anno_str}"}},
+        {"data": {"$regex": f"^{anno_str}"}},
+    ]}
+    tutte_scritture = await db["movimenti_contabili"].find(
+        periodo_query, {"_id": 0}
     ).sort("data_documento", 1).to_list(100000)
+    scritture = [s for s in tutte_scritture if s.get("righe")]
+    scritture_senza_righe = len(tutte_scritture) - len(scritture)
 
     conti = defaultdict(lambda: {
         "codice": "", "nome": "", "tipo": "", "dare": 0.0,
         "avere": 0.0, "n_movimenti": 0, "movimenti": [],
     })
+    scritture_sbilanciate = []
+    righe_non_numeriche = 0
+    righe_senza_conto = 0
     for scrittura in scritture:
         conti_toccati = set()
+        dare_scrittura = 0.0
+        avere_scrittura = 0.0
         for riga in scrittura.get("righe") or []:
             codice = str(riga.get("conto_codice") or riga.get("conto") or "").strip()
             if not codice:
+                righe_senza_conto += 1
                 continue
             try:
                 dare = float(riga.get("dare") or 0)
                 avere = float(riga.get("avere") or 0)
             except (TypeError, ValueError):
                 logger.warning("Riga non numerica nella scrittura %s", scrittura.get("id"))
+                righe_non_numeriche += 1
                 continue
+            if not math.isfinite(dare) or not math.isfinite(avere):
+                logger.warning("Riga non finita nella scrittura %s", scrittura.get("id"))
+                righe_non_numeriche += 1
+                continue
+            dare_scrittura += dare
+            avere_scrittura += avere
             conto = conti[codice]
             conto["codice"] = codice
             conto["nome"] = riga.get("conto_nome") or conto["nome"] or codice
@@ -103,6 +114,16 @@ async def _bilancio_verifica_da_registro(
                 })
         for codice in conti_toccati:
             conti[codice]["n_movimenti"] += 1
+        differenza_scrittura = round(dare_scrittura - avere_scrittura, 2)
+        if abs(differenza_scrittura) >= 0.01:
+            scritture_sbilanciate.append({
+                "id": str(scrittura.get("id") or scrittura.get("_id") or ""),
+                "numero_registrazione": scrittura.get("numero_registrazione"),
+                "data": scrittura.get("data_documento") or scrittura.get("data") or "",
+                "dare": round(dare_scrittura, 2),
+                "avere": round(avere_scrittura, 2),
+                "differenza": differenza_scrittura,
+            })
 
     risultato = []
     for codice in sorted(conti):
@@ -140,6 +161,13 @@ async def _bilancio_verifica_da_registro(
         "registrato_contabilita": {"$ne": True},
     })
     backlog_totale = backlog_fatture + backlog_corrispettivi
+    quadratura_totali = abs(totale_dare - totale_avere) < 0.01
+    registro_valido = (
+        not scritture_sbilanciate
+        and scritture_senza_righe == 0
+        and righe_non_numeriche == 0
+        and righe_senza_conto == 0
+    )
     return {
         "success": True,
         "anno": anno,
@@ -154,20 +182,33 @@ async def _bilancio_verifica_da_registro(
             "saldo_avere": round(sum(v["saldo_avere"] for v in risultato), 2),
             "sbilancio": round(totale_dare - totale_avere, 2),
         },
-        "quadratura": abs(totale_dare - totale_avere) < 0.01,
+        "quadratura": quadratura_totali and registro_valido,
+        "qualita_registro": {
+            "quadratura_totali": quadratura_totali,
+            "registro_valido": registro_valido,
+            "scritture_sbilanciate": len(scritture_sbilanciate),
+            "dettaglio_scritture_sbilanciate": scritture_sbilanciate[:50],
+            "scritture_senza_righe": scritture_senza_righe,
+            "righe_non_numeriche": righe_non_numeriche,
+            "righe_senza_conto": righe_senza_conto,
+        },
         "completezza_registro": {
             "scritture_registrate": len(scritture),
             "fatture_da_registrare": backlog_fatture,
             "corrispettivi_da_registrare": backlog_corrispettivi,
             "documenti_da_registrare": backlog_totale,
-            "completo": backlog_totale == 0,
+            "completo": backlog_totale == 0 and registro_valido,
         },
         "riepilogo": {
             "n_conti": len(risultato),
             "n_conti_attivo": sum(v["tipo"] == "attivo" for v in risultato),
             "n_conti_passivo": sum(v["tipo"] == "passivo" for v in risultato),
+            "n_conti_patrimonio_netto": sum(
+                v["tipo"] == "patrimonio_netto" for v in risultato
+            ),
             "n_conti_ricavo": sum(v["tipo"] == "ricavo" for v in risultato),
             "n_conti_costo": sum(v["tipo"] == "costo" for v in risultato),
+            "n_conti_altro": sum(v["tipo"] == "altro" for v in risultato),
         },
     }
 
@@ -189,322 +230,6 @@ async def get_bilancio_verifica_completo(
     """
     db = Database.get_db()
     return await _bilancio_verifica_da_registro(db, anno, dettaglio)
-
-    # Implementazione legacy lasciata temporaneamente sotto per agevolare il
-    # confronto storico; non e' piu' raggiungibile e non alimenta la pagina.
-    anno_str = str(anno)
-    
-    # Struttura conti: {codice: {nome, dare, avere, movimenti[]}}
-    conti = defaultdict(lambda: {
-        "codice": "",
-        "nome": "",
-        "tipo": "",  # attivo/passivo/ricavo/costo
-        "dare": 0.0,
-        "avere": 0.0,
-        "n_movimenti": 0,
-        "movimenti": []  # solo se dettaglio=True
-    })
-    
-    # --- FATTURE RICEVUTE (COSTI) ---
-    fatture = await db[Collections.INVOICES].find({
-        "$or": [
-            {"data_documento": {"$regex": f"^{anno_str}"}},
-            {"data_ricezione": {"$regex": f"^{anno_str}"}},
-            {"anno": anno}
-        ]
-    }, {"_id": 0}).to_list(10000)
-    
-    for f in fatture:
-        try:
-            importo = float(f.get("total_amount") or f.get("importo_totale") or 0)
-            imponibile = float(f.get("imponibile") or f.get("total_amount") or importo)
-            iva = float(f.get("importo_iva") or f.get("iva") or 0)
-        except (ValueError, TypeError) as e:
-            logger.warning(f"Errore conversione importi fattura {f.get('_id')}: {e}")
-            continue
-        
-        tipo_doc = f.get("tipo_documento", "TD01")
-        fornitore = f.get("supplier_name", "Fornitore sconosciuto")
-        categoria = f.get("categoria_contabile", "Acquisti generici")
-        is_nc = tipo_doc in ["TD04", "TD08"]
-        
-        # Conto costo (05.xx) - DARE per fatture, AVERE per note credito
-        codice_costo = "05.01.01"
-        if "personale" in categoria.lower() or "stipend" in categoria.lower():
-            codice_costo = "05.03.01"
-        elif "utenz" in categoria.lower() or "energia" in categoria.lower():
-            codice_costo = "05.02.02"
-        elif "affitto" in categoria.lower():
-            codice_costo = "05.02.01"
-        elif "manutenzione" in categoria.lower():
-            codice_costo = "05.02.03"
-        elif "assicuraz" in categoria.lower():
-            codice_costo = "05.02.04"
-        elif "consulenz" in categoria.lower() or "profession" in categoria.lower():
-            codice_costo = "05.04.01"
-        
-        conto = conti[codice_costo]
-        conto["codice"] = codice_costo
-        conto["nome"] = categoria or "Acquisti merci e servizi"
-        conto["tipo"] = "costo"
-        
-        if is_nc:
-            conto["avere"] += imponibile
-        else:
-            conto["dare"] += imponibile
-        conto["n_movimenti"] += 1
-        
-        # Debiti vs fornitori (02.01.01) - AVERE per fatture, DARE per NC
-        conto_deb = conti["02.01.01"]
-        conto_deb["codice"] = "02.01.01"
-        conto_deb["nome"] = "Debiti verso fornitori"
-        conto_deb["tipo"] = "passivo"
-        
-        if is_nc:
-            conto_deb["dare"] += importo
-        else:
-            conto_deb["avere"] += importo
-        conto_deb["n_movimenti"] += 1
-        
-        # IVA credito (01.04.01) - DARE
-        if iva > 0 and not is_nc:
-            conto_iva = conti["01.04.01"]
-            conto_iva["codice"] = "01.04.01"
-            conto_iva["nome"] = "IVA a credito"
-            conto_iva["tipo"] = "attivo"
-            conto_iva["dare"] += iva
-            conto_iva["n_movimenti"] += 1
-        
-        if dettaglio:
-            mov = {
-                "data": f.get("data_documento", ""),
-                "descrizione": f"Fatt. {f.get('invoice_number', '')} - {fornitore}",
-                "dare": imponibile if not is_nc else 0,
-                "avere": imponibile if is_nc else 0
-            }
-            conto["movimenti"].append(mov)
-    
-    # --- CORRISPETTIVI (RICAVI) ---
-    corrispettivi = await db[Collections.CORRISPETTIVI].find({
-        "$or": [
-            {"data": {"$regex": f"^{anno_str}"}},
-            {"anno": anno}
-        ]
-    }, {"_id": 0}).to_list(10000)
-    
-    for c in corrispettivi:
-        totale = float(c.get("totale") or 0)
-        imponibile = float(c.get("totale_imponibile") or c.get("imponibile") or totale)
-        iva = float(c.get("totale_iva") or c.get("iva") or 0)
-        
-        if totale == 0:
-            continue
-        
-        # Ricavi vendita (04.01.01) - AVERE
-        conto_ric = conti["04.01.01"]
-        conto_ric["codice"] = "04.01.01"
-        conto_ric["nome"] = "Ricavi vendite e prestazioni"
-        conto_ric["tipo"] = "ricavo"
-        conto_ric["avere"] += imponibile
-        conto_ric["n_movimenti"] += 1
-        
-        # IVA debito (02.03.01) - AVERE
-        if iva > 0:
-            conto_iva_d = conti["02.03.01"]
-            conto_iva_d["codice"] = "02.03.01"
-            conto_iva_d["nome"] = "IVA a debito"
-            conto_iva_d["tipo"] = "passivo"
-            conto_iva_d["avere"] += iva
-            conto_iva_d["n_movimenti"] += 1
-        
-        # Cassa (01.01.01) - DARE
-        conto_cassa = conti["01.01.01"]
-        conto_cassa["codice"] = "01.01.01"
-        conto_cassa["nome"] = "Cassa contanti"
-        conto_cassa["tipo"] = "attivo"
-        conto_cassa["dare"] += totale
-        conto_cassa["n_movimenti"] += 1
-    
-    # --- PRIMA NOTA CASSA ---
-    pn_cassa = await db[COLLECTION_PRIMA_NOTA_CASSA].find({
-        "data": {"$regex": f"^{anno_str}"}
-    }, {"_id": 0}).to_list(10000)
-    
-    for m in pn_cassa:
-        importo = float(m.get("importo") or 0)
-        tipo = m.get("tipo", "").lower()
-        desc = m.get("descrizione", "")
-        
-        if importo == 0:
-            continue
-        
-        # Skip corrispettivi già contati
-        if m.get("corrispettivo_id") or m.get("source") == "corrispettivo":
-            continue
-        
-        if tipo in ["entrata", "incasso"]:
-            conto_cassa = conti["01.01.01"]
-            conto_cassa["codice"] = "01.01.01"
-            conto_cassa["nome"] = "Cassa contanti"
-            conto_cassa["tipo"] = "attivo"
-            conto_cassa["dare"] += importo
-            conto_cassa["n_movimenti"] += 1
-        elif tipo in ["uscita", "pagamento"]:
-            conto_cassa = conti["01.01.01"]
-            conto_cassa["codice"] = "01.01.01"
-            conto_cassa["nome"] = "Cassa contanti"
-            conto_cassa["tipo"] = "attivo"
-            conto_cassa["avere"] += importo
-            conto_cassa["n_movimenti"] += 1
-        elif tipo == "versamento_banca":
-            # Giroconto: cassa AVERE, banca DARE
-            conti["01.01.01"]["avere"] += importo
-            conti["01.01.01"]["n_movimenti"] += 1
-            conti["01.01.01"]["codice"] = "01.01.01"
-            conti["01.01.01"]["nome"] = "Cassa contanti"
-            conti["01.01.01"]["tipo"] = "attivo"
-            
-            conti["01.02.01"]["dare"] += importo
-            conti["01.02.01"]["n_movimenti"] += 1
-            conti["01.02.01"]["codice"] = "01.02.01"
-            conti["01.02.01"]["nome"] = "Banca c/c"
-            conti["01.02.01"]["tipo"] = "attivo"
-    
-    # --- PRIMA NOTA BANCA ---
-    pn_banca = await db[COLLECTION_PRIMA_NOTA_BANCA].find({
-        "data": {"$regex": f"^{anno_str}"}
-    }, {"_id": 0}).to_list(10000)
-    
-    for m in pn_banca:
-        importo = float(m.get("importo") or 0)
-        tipo = m.get("tipo", "").lower()
-        
-        if importo == 0:
-            continue
-        
-        conto_banca = conti["01.02.01"]
-        conto_banca["codice"] = "01.02.01"
-        conto_banca["nome"] = "Banca c/c"
-        conto_banca["tipo"] = "attivo"
-        
-        if tipo in ["entrata", "incasso", "accredito"]:
-            conto_banca["dare"] += importo
-        elif tipo in ["uscita", "pagamento", "addebito", "bonifico"]:
-            conto_banca["avere"] += importo
-        conto_banca["n_movimenti"] += 1
-    
-    # --- PRIMA NOTA SALARI ---
-    pn_salari = await db[COLLECTION_PRIMA_NOTA_SALARI].find({
-        "data": {"$regex": f"^{anno_str}"}
-    }, {"_id": 0}).to_list(10000)
-    
-    for m in pn_salari:
-        importo = float(m.get("importo") or m.get("netto") or 0)
-        
-        if importo == 0:
-            continue
-        
-        # Costo personale (05.03.01) - DARE
-        conto_sal = conti["05.03.01"]
-        conto_sal["codice"] = "05.03.01"
-        conto_sal["nome"] = "Costi del personale"
-        conto_sal["tipo"] = "costo"
-        conto_sal["dare"] += importo
-        conto_sal["n_movimenti"] += 1
-        
-        # Debiti vs dipendenti (02.02.01) - AVERE
-        conto_dip = conti["02.02.01"]
-        conto_dip["codice"] = "02.02.01"
-        conto_dip["nome"] = "Debiti verso dipendenti"
-        conto_dip["tipo"] = "passivo"
-        conto_dip["avere"] += importo
-        conto_dip["n_movimenti"] += 1
-    
-    # --- CESPITI (ammortamenti) ---
-    cespiti = await db.get_collection("cespiti").find({
-        "anno_acquisto": anno
-    }, {"_id": 0}).to_list(1000)
-    
-    for c in cespiti:
-        valore = float(c.get("valore_acquisto") or 0)
-        ammortamento = float(c.get("ammortamento_annuo") or 0)
-        
-        if valore > 0:
-            # Immobilizzazioni (01.05.01) - DARE
-            conto_imm = conti["01.05.01"]
-            conto_imm["codice"] = "01.05.01"
-            conto_imm["nome"] = "Immobilizzazioni materiali"
-            conto_imm["tipo"] = "attivo"
-            conto_imm["dare"] += valore
-            conto_imm["n_movimenti"] += 1
-        
-        if ammortamento > 0:
-            # Fondo ammortamento (01.05.02) - AVERE
-            conto_fondo = conti["01.05.02"]
-            conto_fondo["codice"] = "01.05.02"
-            conto_fondo["nome"] = "Fondo ammortamento"
-            conto_fondo["tipo"] = "attivo"  # rettifica
-            conto_fondo["avere"] += ammortamento
-            conto_fondo["n_movimenti"] += 1
-            
-            # Costo ammortamento (05.05.01) - DARE
-            conto_amm = conti["05.05.01"]
-            conto_amm["codice"] = "05.05.01"
-            conto_amm["nome"] = "Ammortamenti"
-            conto_amm["tipo"] = "costo"
-            conto_amm["dare"] += ammortamento
-            conto_amm["n_movimenti"] += 1
-    
-    # --- Costruisci risultato ---
-    risultato = []
-    for codice in sorted(conti.keys()):
-        c = conti[codice]
-        if c["dare"] == 0 and c["avere"] == 0:
-            continue
-        
-        saldo = round(c["dare"] - c["avere"], 2)
-        entry = {
-            "codice": c["codice"],
-            "nome": c["nome"],
-            "tipo": c["tipo"],
-            "dare": round(c["dare"], 2),
-            "avere": round(c["avere"], 2),
-            "saldo": saldo,
-            "saldo_dare": round(saldo, 2) if saldo > 0 else 0,
-            "saldo_avere": round(abs(saldo), 2) if saldo < 0 else 0,
-            "n_movimenti": c["n_movimenti"]
-        }
-        if dettaglio and c["movimenti"]:
-            entry["movimenti"] = c["movimenti"][:50]  # max 50 per conto
-        risultato.append(entry)
-    
-    totale_dare = sum(c["dare"] for c in risultato)
-    totale_avere = sum(c["avere"] for c in risultato)
-    totale_saldo_dare = sum(c["saldo_dare"] for c in risultato)
-    totale_saldo_avere = sum(c["saldo_avere"] for c in risultato)
-    
-    return {
-        "success": True,
-        "anno": anno,
-        "data_generazione": datetime.now(timezone.utc).isoformat(),
-        "conti": risultato,
-        "totali": {
-            "dare": round(totale_dare, 2),
-            "avere": round(totale_avere, 2),
-            "saldo_dare": round(totale_saldo_dare, 2),
-            "saldo_avere": round(totale_saldo_avere, 2),
-            "sbilancio": round(totale_dare - totale_avere, 2)
-        },
-        "quadratura": abs(totale_dare - totale_avere) < 0.01,
-        "riepilogo": {
-            "n_conti": len(risultato),
-            "n_conti_attivo": len([c for c in risultato if c["tipo"] == "attivo"]),
-            "n_conti_passivo": len([c for c in risultato if c["tipo"] == "passivo"]),
-            "n_conti_ricavo": len([c for c in risultato if c["tipo"] == "ricavo"]),
-            "n_conti_costo": len([c for c in risultato if c["tipo"] == "costo"])
-        }
-    }
-
 
 # ============================================
 # 2. PARTITARIO CLIENTI/FORNITORI
