@@ -1,21 +1,27 @@
-"""SumUp — secondo gestore POS accanto a Nexi.
+"""SumUp — secondo circuito POS accanto a Nexi/Numia.
 
-Per ora espone solo la verifica della configurazione: dice se la chiave e'
-presente e se SumUp la accetta davvero, senza scaricare nulla e senza
-scrivere in contabilita'. La chiave non viene mai restituita in chiaro.
+Espone la verifica della configurazione (la chiave non viene mai restituita
+in chiaro) e la sincronizzazione delle transazioni, che aggiorna la chiusura
+giornaliera del circuito SumUp passando dal motore unico di scrittura.
 """
-from typing import Any, Dict
+from datetime import date, timedelta
+from typing import Any, Dict, Optional
 
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Body, Depends, HTTPException
 
 from app.config import settings
-from app.utils.dependencies import get_current_admin_user
+from app.database import Database
+from app.services import sumup_sync
+from app.utils.dependencies import get_current_admin_user, get_current_user
 from app.utils.error_handler import handle_errors
 
 router = APIRouter()
 
 TIMEOUT = 20.0
+# Recupero prudente: SumUp puo' consolidare una transazione con qualche ora di
+# ritardo, quindi la sincronizzazione automatica rilegge anche il giorno prima.
+GIORNI_RECUPERO = 1
 
 
 def _mascherata(chiave: str) -> str:
@@ -91,3 +97,57 @@ async def stato_sumup(
     else:
         stato["messaggio"] = f"SumUp ha risposto {risposta.status_code}."
     return stato
+
+
+def _intervallo_predefinito() -> tuple:
+    """Ieri e oggi: copre la giornata in corso e rilegge quella appena chiusa."""
+    oggi = date.today()
+    return (oggi - timedelta(days=GIORNI_RECUPERO)).isoformat(), oggi.isoformat()
+
+
+@router.post("/sincronizza")
+@handle_errors
+async def sincronizza_sumup(
+    payload: Optional[Dict[str, Any]] = Body(None),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Scarica le transazioni SumUp e riallinea le chiusure del circuito.
+
+    E' idempotente: rieseguirla sullo stesso intervallo non duplica ne'
+    transazioni ne' movimenti di Prima Nota. Non crea ricavi — il ricavo e'
+    gia' quello del corrispettivo XML, qui si stabilisce solo quanta parte
+    e' passata dal terminale SumUp.
+    """
+    payload = payload or {}
+    dal_predefinito, al_predefinito = _intervallo_predefinito()
+    dal = str(payload.get("dal") or dal_predefinito)[:10]
+    al = str(payload.get("al") or al_predefinito)[:10]
+    for etichetta, valore in (("dal", dal), ("al", al)):
+        try:
+            date.fromisoformat(valore)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Data '{etichetta}' non valida: {valore!r} (attesa AAAA-MM-GG)",
+            )
+    if dal > al:
+        raise HTTPException(status_code=400, detail="'dal' successivo ad 'al'")
+
+    try:
+        esito = await sumup_sync.sincronizza(
+            Database.get_db(), dal, al, actor=current_user
+        )
+    except sumup_sync.SumUpNonConfigurato as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"SumUp non raggiungibile: {type(exc).__name__}",
+        ) from exc
+
+    giornate = esito.get("giornate") or []
+    esito["message"] = (
+        f"SumUp sincronizzato dal {dal} al {al}: {len(giornate)} giornate, "
+        f"EUR {esito.get('totale_netto', 0):.2f} netti."
+    )
+    return esito
