@@ -204,3 +204,68 @@ def test_match_banca_accetta_uscita_canonica_positiva_solo_al_centesimo():
     }
     assert mod._score_match_banca(tx, movimento)["score"] >= 85
     assert mod._score_match_banca(tx, {**movimento, "importo": 42.63}) is None
+
+
+def test_match_banca_usa_la_gamba_eur_per_un_pagamento_in_valuta():
+    tx = {
+        "transaction_id": "PAY-USD",
+        "data": "2026-07-15",
+        "lordo": -120.0,
+        "currency": "USD",
+        "importo_report_eur": -100.0,
+    }
+    movimento = {
+        "data": "2026-07-17", "importo": -100.0,
+        "descrizione": "ADDEBITO PAYPAL EUROPE",
+    }
+
+    assert mod._score_match_banca(tx, movimento)["score"] >= 85
+    assert mod._score_match_banca(tx, {**movimento, "importo": -120.0}) is None
+
+
+def test_proposte_banca_accetta_solo_match_biunivoco():
+    txs = [
+        {"transaction_id": "PAY-A", "data": "2026-07-15", "lordo": -42.62},
+        {"transaction_id": "PAY-B", "data": "2026-07-20", "lordo": -20.99},
+    ]
+    movimenti = [
+        {"id": "EC-A", "data": "2026-07-17", "importo": -42.62,
+         "descrizione": "ADDEBITO PAYPAL EUROPE"},
+        {"id": "EC-B", "data": "2026-07-22", "importo": -20.99,
+         "descrizione": "ADDEBITO PAYPAL EUROPE"},
+    ]
+
+    result = mod._proposte_riconciliazione_banca(txs, movimenti)
+
+    assert result["ambigui"] == 0
+    assert {(p["movimento_id"], p["transaction_id"]) for p in result["proposte"]} == {
+        ("EC-A", "PAY-A"), ("EC-B", "PAY-B"),
+    }
+
+
+def test_proposte_banca_lascia_sospeso_un_pareggio():
+    txs = [
+        {"transaction_id": "PAY-A", "data": "2026-07-15", "lordo": -42.62},
+        {"transaction_id": "PAY-B", "data": "2026-07-15", "lordo": -42.62},
+    ]
+    movimenti = [{
+        "id": "EC-A", "data": "2026-07-17", "importo": -42.62,
+        "descrizione": "ADDEBITO PAYPAL EUROPE",
+    }]
+
+    result = mod._proposte_riconciliazione_banca(txs, movimenti)
+
+    assert result["proposte"] == []
+    assert result["ambigui"] == 1
+
+
+def test_proposte_banca_non_riusa_movimento_gia_riconciliato():
+    txs = [{"transaction_id": "PAY-A", "data": "2026-07-15", "lordo": -42.62}]
+    movimenti = [{
+        "id": "EC-A", "data": "2026-07-17", "importo": -42.62,
+        "descrizione": "ADDEBITO PAYPAL EUROPE", "riconciliato": True,
+    }]
+
+    result = mod._proposte_riconciliazione_banca(txs, movimenti)
+
+    assert result["proposte"] == []
