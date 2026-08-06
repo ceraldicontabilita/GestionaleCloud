@@ -179,9 +179,9 @@ def main() -> int:
             for status in ("verified", "in_review", "unverified")
         },
         "scope": (
-            "API applicative + consegna delle 62 route catalogate"
+            f"API applicative + consegna delle {len(PAGES)} route catalogate"
             if HAS_AUTH
-            else "health/auth-boundary + consegna SPA; NON equivale a 62 pagine funzionanti"
+            else f"health/auth-boundary + consegna SPA; NON equivale a {len(PAGES)} pagine funzionanti"
         ),
         "auth_note": (
             "Token presente: gli endpoint campione devono rispondere con esito applicativo."

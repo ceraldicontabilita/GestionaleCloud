@@ -25,10 +25,16 @@ async def riepilogo_dati_isa(anno: int = Query(..., ge=2000, le=2100)) -> Dict[s
         "f3_kwh": sum(int(r.get("f3_kwh") or 0) for r in energia),
         "totale_kwh": sum(int(r.get("totale_kwh") or 0) for r in energia),
     }
+    indicatori = snapshot.get("indicatori_acquisti", {})
     return {
         "anno": anno,
-        "indicatori_acquisti": snapshot.get("indicatori_acquisti", {}),
-        "energia": {"mensili": energia, "totali": totali_energia},
+        "indicatori_acquisti": indicatori,
+        "indicatori_disponibili": bool(indicatori),
+        "energia": {
+            "mensili": energia,
+            "totali": totali_energia,
+            "disponibile": bool(energia),
+        },
         "provenienza": snapshot.get("provenienza", {}),
         "avvertenze": [
             "Gli importi derivano dalle fatture presenti nel gestionale.",

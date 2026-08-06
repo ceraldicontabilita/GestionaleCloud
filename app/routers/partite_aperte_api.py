@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import logging
 
 from app.database import Database
+from app.utils.mongo_year import combina_filtri, filtro_anno_mongo
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/partite-aperte", tags=["Partite Aperte"])
@@ -18,12 +19,21 @@ COLL = "partite_aperte"
 
 
 @router.get("/stats")
-async def stats_partite() -> Dict[str, Any]:
+async def stats_partite(
+    anno: Optional[int] = Query(None, ge=2000, le=2100),
+) -> Dict[str, Any]:
     """Totali partite aperte raggruppati per tipo."""
     db = Database.get_db()
 
+    filtro_anno = filtro_anno_mongo(
+        anno,
+        ("data_documento", "data_scadenza", "data"),
+    )
     pipeline = [
-        {"$match": {"stato": {"$in": ["aperta", "parziale"]}}},
+        {"$match": combina_filtri(
+            {"stato": {"$in": ["aperta", "parziale"]}},
+            filtro_anno,
+        )},
         {"$group": {
             "_id": "$tipo",
             "count": {"$sum": 1},
@@ -47,7 +57,8 @@ async def lista_partite(
     tipo: Optional[str] = Query(None),
     stato: Optional[str] = Query(None),
     controparte_id: Optional[str] = Query(None),
-    limit: int = Query(50, ge=1, le=200)
+    limit: int = Query(50, ge=1, le=200),
+    anno: Optional[int] = Query(None, ge=2000, le=2100),
 ) -> Dict[str, Any]:
     """Lista partite aperte con filtri."""
     db = Database.get_db()
@@ -61,6 +72,13 @@ async def lista_partite(
         query["stato"] = {"$in": ["aperta", "parziale"]}
     if controparte_id:
         query["controparte_id"] = controparte_id
+    query = combina_filtri(
+        query,
+        filtro_anno_mongo(
+            anno,
+            ("data_documento", "data_scadenza", "data"),
+        ),
+    )
 
     partite = await db[COLL].find(
         query, {"_id": 0}
@@ -71,7 +89,8 @@ async def lista_partite(
 
 @router.get("/scadute")
 async def partite_scadute(
-    giorni_soglia: int = Query(0, description="Giorni oltre scadenza (0 = oggi)")
+    giorni_soglia: int = Query(0, description="Giorni oltre scadenza (0 = oggi)"),
+    anno: Optional[int] = Query(None, ge=2000, le=2100),
 ) -> Dict[str, Any]:
     """Partite aperte con scadenza superata."""
     db = Database.get_db()
@@ -79,11 +98,18 @@ async def partite_scadute(
 
     data_limite = (datetime.now() - timedelta(days=giorni_soglia)).strftime("%Y-%m-%d")
 
-    partite = await db[COLL].find(
+    query = combina_filtri(
         {
             "stato": {"$in": ["aperta", "parziale"]},
             "data_scadenza": {"$lt": data_limite, "$nin": [None, ""]}
         },
+        filtro_anno_mongo(
+            anno,
+            ("data_documento", "data_scadenza", "data"),
+        ),
+    )
+    partite = await db[COLL].find(
+        query,
         {"_id": 0}
     ).sort("data_scadenza", 1).to_list(100)
 

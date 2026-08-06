@@ -76,14 +76,18 @@ def _score(assegno: Dict[str, Any], invoice: Dict[str, Any]) -> int:
     nome_ok = bool(nome_a and nome_i and (nome_a == nome_i or nome_a in nome_i or nome_i in nome_a))
     numero_ok = bool(numero_a and numero_i and numero_a == numero_i)
 
-    # L'importo da solo non basta mai. Numero+identita o P.IVA+nome sono
-    # prove forti; senza numero l'identita deve essere univoca nel dataset.
+    # L'importo da solo non basta mai. Numero fattura + importo al centesimo
+    # e' una prova utilizzabile anche se il beneficiario non e' stato ancora
+    # compilato: il chiamante collega solo quando la coppia individua un solo
+    # assegno/fattura, altrimenti registra l'ambiguita'.
     if numero_ok and (piva_ok or nome_ok):
         return 100
     if piva_ok and nome_ok:
         return 90
     if numero_ok and piva_ok:
         return 95
+    if numero_ok:
+        return 80
     return 0
 
 
@@ -242,24 +246,33 @@ async def prepara_intento_assegno(db, assegno_id: str) -> Dict[str, Any]:
     assegno resta la fonte che verra' riscontrata al successivo import XML.
     """
     assegno = await db["assegni"].find_one({"id": assegno_id}, {"_id": 0})
-    if not assegno or _f(assegno.get("importo")) <= 0 or not assegno.get("beneficiario"):
+    riferimento_presente = bool(
+        assegno
+        and (
+            assegno.get("beneficiario")
+            or assegno.get("fornitore_piva")
+            or assegno.get("numero_fattura")
+        )
+    )
+    if not assegno or _f(assegno.get("importo")) <= 0 or not riferimento_presente:
         return {"registrato": False}
 
     now = datetime.now(timezone.utc).isoformat()
     if not assegno.get("fornitore_piva"):
         nome_a = _norm_nome(assegno.get("beneficiario"))
-        fornitori = await db["fornitori"].find({}, {
-            "_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1,
-            "ragione_sociale": 1, "denominazione": 1, "nome": 1,
-        }).to_list(10000)
-        identici = [f for f in fornitori if _norm_nome(
-            f.get("ragione_sociale") or f.get("denominazione") or f.get("nome")
-        ) == nome_a]
-        if len(identici) == 1:
-            assegno["fornitore_piva"] = (
-                identici[0].get("partita_iva") or identici[0].get("piva")
-                or identici[0].get("vat_number")
-            )
+        if nome_a:
+            fornitori = await db["fornitori"].find({}, {
+                "_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1,
+                "ragione_sociale": 1, "denominazione": 1, "nome": 1,
+            }).to_list(10000)
+            identici = [f for f in fornitori if _norm_nome(
+                f.get("ragione_sociale") or f.get("denominazione") or f.get("nome")
+            ) == nome_a]
+            if len(identici) == 1:
+                assegno["fornitore_piva"] = (
+                    identici[0].get("partita_iva") or identici[0].get("piva")
+                    or identici[0].get("vat_number")
+                )
 
     intent_fields = {
         "fornitore_piva": assegno.get("fornitore_piva"),
@@ -288,6 +301,12 @@ async def prepara_intento_assegno(db, assegno_id: str) -> Dict[str, Any]:
         migliori = [inv for inv, score in compatibili if score == best]
         if len(migliori) == 1:
             return {"registrato": True, **(await _collega(db, assegno, migliori[0]))}
-        await _registra_ambigui(db, migliori[0], [assegno])
-        return {"registrato": True, "collegato": False, "motivo": "ambiguo"}
+        for invoice in migliori:
+            await _registra_ambigui(db, invoice, [assegno])
+        return {
+            "registrato": True,
+            "collegato": False,
+            "motivo": "ambiguo",
+            "candidati": len(migliori),
+        }
     return {"registrato": True, "collegato": False, "motivo": "in_attesa_xml"}

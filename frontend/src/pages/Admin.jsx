@@ -375,21 +375,6 @@ export default function Admin() {
     setSyncLoading(false);
   }
 
-  async function impostaFattureBanca() {
-    setSyncLoading(true);
-    try {
-      const r = await api.post('/api/admin/fatture-set-metodo-pagamento', {
-        metodo_pagamento: 'Bonifico',
-      });
-      toast.success(`Aggiornate ${r?.data?.updated || r.data.modified_count || 0} fatture`);
-      await loadSyncStatus();
-    } catch (e) {
-      console.error('Error:', e);
-      toast.error('Errore');
-    }
-    setSyncLoading(false);
-  }
-
   async function matchFattureBanca() {
     setSyncLoading(true);
     try {

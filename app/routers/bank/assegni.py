@@ -1227,11 +1227,17 @@ async def get_assegno(assegno_id: str) -> Dict[str, Any]:
 async def update_assegno(
     assegno_id: str,
     data: Dict[str, Any] = Body(...)
-) -> Dict[str, str]:
+) -> Dict[str, Any]:
     """
     Aggiorna assegno (compila dati, cambia stato, etc.).
     """
     db = Database.get_db()
+    assegno_esistente = await db[COLLECTION_ASSEGNI].find_one(
+        {"$or": [{"id": assegno_id}, {"numero": assegno_id}]},
+        {"_id": 0},
+    )
+    if not assegno_esistente:
+        raise HTTPException(status_code=404, detail="Assegno non trovato")
     
     # Rimuovi campi non modificabili
     data.pop("id", None)
@@ -1241,13 +1247,23 @@ async def update_assegno(
     # Valida stato se fornito
     if "stato" in data and data["stato"] not in ASSEGNO_STATI:
         raise HTTPException(status_code=400, detail=f"Stato non valido. Valori ammessi: {list(ASSEGNO_STATI.keys())}")
+    if (
+        assegno_esistente.get("incassato_confermato_banca")
+        and data.get("stato") not in (None, "incassato", "annullato")
+    ):
+        # Una modifica anagrafica non puo' cancellare l'evidenza gia' letta
+        # dall'estratto conto.
+        data.pop("stato", None)
     
     # Se si compila un assegno vuoto, cambia stato automaticamente
-    if data.get("importo") and data.get("beneficiario"):
-        assegno = await db[COLLECTION_ASSEGNI].find_one(
-            {"$or": [{"id": assegno_id}, {"numero": assegno_id}]}
-        )
-        if assegno and assegno.get("stato") == "vuoto":
+    importo_effettivo = data.get("importo", assegno_esistente.get("importo"))
+    riferimento_effettivo = (
+        data.get("beneficiario", assegno_esistente.get("beneficiario"))
+        or data.get("fornitore_piva", assegno_esistente.get("fornitore_piva"))
+        or data.get("numero_fattura", assegno_esistente.get("numero_fattura"))
+    )
+    if importo_effettivo and riferimento_effettivo:
+        if assegno_esistente.get("stato") == "vuoto":
             data["stato"] = "compilato"
     
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -1261,9 +1277,12 @@ async def update_assegno(
         raise HTTPException(status_code=404, detail="Assegno non trovato")
 
     from app.services.assegni_fattura_intent import prepara_intento_assegno
-    await prepara_intento_assegno(db, assegno_id)
+    intento = await prepara_intento_assegno(db, str(assegno_esistente["id"]))
     
-    return {"message": "Assegno aggiornato con successo"}
+    return {
+        "message": "Assegno aggiornato con successo",
+        "intento_fattura": intento,
+    }
 
 
 class FatturaQuotaIn(BaseModel):

@@ -17,9 +17,9 @@ PAGES = CATALOG["pages"]
 MAIN = (ROOT / "frontend/src/main.jsx").read_text(encoding="utf-8")
 
 
-def test_catalogo_contiene_esattamente_le_62_schermate_numerate():
-    assert [page["id"] for page in PAGES] == list(range(1, 63))
-    assert len({page["path"] for page in PAGES}) == 62
+def test_catalogo_contiene_esattamente_le_63_schermate_numerate():
+    assert [page["id"] for page in PAGES] == list(range(1, 64))
+    assert len({page["path"] for page in PAGES}) == 63
     assert all(page["audit_status"] in {"unverified", "in_review", "verified"} for page in PAGES)
 
 
@@ -47,6 +47,30 @@ def test_ogni_hub_del_catalogo_e_importato_dal_router_principale():
         assert entry.name in MAIN, (
             f"Pagina {page['id']} {page['path']}: hub {entry.name} non importato da main.jsx"
         )
+
+
+def test_ogni_componente_lazy_degli_hub_e_nel_catalogo():
+    """Impedisce che una nuova sottopagina resti fuori dal collaudo globale.
+
+    Le route principali sono famiglie wildcard: il solo ``main.jsx`` non vede
+    le schermate caricate dagli hub. E proprio cosi che Dati ISA era rimasta
+    esclusa dal precedente catalogo di 62 pagine.
+    """
+    componenti_catalogati = {
+        (ROOT / page["component"]).resolve()
+        for page in PAGES
+    }
+    hubs = sorted((ROOT / "frontend/src/pages/hub").glob("*Hub.jsx"))
+    for hub in hubs:
+        source = hub.read_text(encoding="utf-8")
+        for relative in re.findall(
+            r"lazy\(\(\)\s*=>\s*import\(['\"]([^'\"]+)['\"]\)\)", source
+        ):
+            component = (hub.parent / relative).resolve()
+            assert component in componenti_catalogati, (
+                f"{component.relative_to(ROOT)} e caricata da {hub.relative_to(ROOT)} "
+                "ma manca da page_catalog.json"
+            )
 
 
 def test_tutte_le_route_del_catalogo_sono_coperte_da_una_route_react_reale():
@@ -82,5 +106,5 @@ def test_il_registro_markdown_e_il_catalogo_macchina_non_divergono():
     report = (ROOT / "docs/COLLAUDO_PAGINE_E2E_2026-08-05.md").read_text(encoding="utf-8")
     rows = re.findall(r"^\|\s*(\d+)\s*\|.*?—\s*`([^`]+)`\s*\|", report, flags=re.MULTILINE)
     documented = {int(identifier): path for identifier, path in rows}
-    assert len(documented) == 62
+    assert len(documented) == 63
     assert documented == {page["id"]: page["path"] for page in PAGES}
