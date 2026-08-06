@@ -1,63 +1,29 @@
-# Render Blueprint — documentazione versionata della configurazione di deploy
-# (audit 19/07/2026: prima build/start command esistevano SOLO nella
-# dashboard Render, non nel repo — impossibile ricostruire il deploy dal
-# solo codice sorgente, nessun disaster recovery documentato).
+# Render Blueprint: contratto versionato del servizio di produzione.
 #
-# QUESTO FILE NON SI APPLICA DA SOLO: aggiungerlo al repo non modifica i
-# servizi Render già esistenti finché non li si collega esplicitamente a
-# questo Blueprint dal pannello Render ("New > Blueprint"), oppure lo si
-# usa come riferimento per verificare/correggere a mano le impostazioni
-# attuali di ciascun servizio. Le variabili d'ambiente reali restano
-# impostate solo nella dashboard Render (mai in questo file, mai nel repo).
+# Stato verificato via Render API il 06/08/2026:
+# - un solo web service Python serve FastAPI e frontend/dist dallo stesso host;
+# - il frontend deve essere compilato durante ogni deploy;
+# - le variabili reali restano esclusivamente nella dashboard Render.
 #
-# Servizi noti (da PR #61/#62 e verifica-produzione.yml):
-# - static site "ceraldi-gestione": Publish Directory = frontend/dist,
-#   Build Command VUOTO di proposito (il build compilato viene committato
-#   in frontend/dist, non ricompilato da Render — vedi .gitignore).
-# - web service backend: FastAPI (app/main.py) esposto da backend/server.py.
+# Il file non modifica automaticamente un servizio gia esistente se questo non
+# e collegato a un Blueprint. Rimane comunque la fonte versionata da usare per
+# controllare e ricostruire la configurazione senza dipendere dalla dashboard.
 
 services:
   - type: web
-    name: ceraldi-gestionale-backend
+    name: GestionaleCloud
     runtime: python
-    plan: starter  # verificare/allineare al piano reale in uso su Render
-    buildCommand: "pip install -r backend/requirements.txt"
-    startCommand: "uvicorn backend.server:app --host 0.0.0.0 --port $PORT"
-    healthCheckPath: /api/health
+    plan: standard
+    branch: main
     autoDeploy: true
-    # Variabili reali impostate SOLO nella dashboard Render (MONGO_URL,
-    # DB_NAME, SECRET_KEY, ANTHROPIC_API_KEY, credenziali email/PEC/PayPal/
-    # PagoPA/Google Drive, ecc. — oltre 55, vedi audit sicurezza 19/07/2026).
+    buildCommand: >-
+      pip install -r backend/requirements.txt &&
+      npm --prefix frontend install --include=dev --legacy-peer-deps &&
+      npm --prefix frontend run build
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
     envVars:
       - key: PYTHONUTF8
         value: "1"
-
-  - type: web
-    name: ceraldi-gestione
-    runtime: static
-    buildCommand: "cd frontend && npm install --legacy-peer-deps && npm run build"
-    staticPublishPath: frontend/dist
-    envVars:
-      - key: REACT_APP_BACKEND_URL
-        sync: false
-      - key: VITE_BACKEND_URL
-        sync: false
-    # frontend/src/api.js usa baseURL: '' (stesso host della pagina): senza
-    # questa regola /api/* verrebbe cercato sul static site invece che sul
-    # backend e login/dati non funzionerebbero (review Codex su PR #65).
-    # ATTENZIONE: sostituire l'URL con quello reale del servizio backend
-    # dal pannello Render prima di usare questo Blueprint per ricreare i
-    # servizi — non verificabile da qui, nessun accesso alla dashboard.
-    # Ordine rilevante: /api/* deve precedere il fallback SPA, altrimenti
-    # verrebbe intercettata prima lei. Senza il fallback, ricaricare/aprire
-    # direttamente una rotta client-side (es. /prima-nota, /fornitori) non
-    # troverebbe nulla sul server statico — React Router gestisce le rotte
-    # solo lato client dopo che index.html è stato caricato (review Codex
-    # su PR #65).
-    routes:
-      - type: rewrite
-        source: /api/*
-        destination: https://ceraldi-gestionale-backend.onrender.com/api/*
-      - type: rewrite
-        source: /*
-        destination: /index.html
+      # Credenziali, database e integrazioni sono configurati nella dashboard.
+      # Non aggiungere valori sensibili al repository.
