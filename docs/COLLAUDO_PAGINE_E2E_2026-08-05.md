@@ -46,7 +46,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 20 | [ ] IN CORREZIONE | Controllo mensile — `/contabilita/controllo` | Incrocia mensilmente fatture, corrispettivi, banca e Prima Nota. | TENERE |
 | 21 | [ ] IN CORREZIONE | Calendario fiscale — `/contabilita/calendario` | Scadenze fiscali operative con fonte, applicabilita ed evidenza del completamento. | TENERE |
 | 22 | [ ] IN CORREZIONE | Cespiti — `/contabilita/cespiti` | Beni strumentali, ammortamenti e verifiche collegate. | TENERE |
-| 23 | [ ] | Finanziaria — `/contabilita/finanziaria` | Riepilogo finanziario e disponibilita per anno. | TENERE |
+| 23 | [x] VERIFICATA | Finanziaria — `/contabilita/finanziaria` | Distingue flussi annuali, riporti e disponibilita contabile; IVA solo come stima documentale. | TENERE |
 | 24 | [ ] | Chiusura esercizio — `/contabilita/chiusura` | Verifiche preliminari e procedura controllata di chiusura. | TENERE CON CONFERMA FORTE |
 | 25 | [ ] | Budget — `/contabilita/budget` | Budget annuale e confronto con consuntivo. | TENERE |
 | 26 | [ ] | Mutui — `/contabilita/mutui` | Piano mutui, rate e riconciliazione. | TENERE SE DATI PRESENTI |
