@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1047 endpoint** in **109 gruppi**.
+> Totale **1048 endpoint** in **109 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 657 · ext esterni = 90 · — da verificare = 300
+**Riepilogo uso:** ✓ frontend = 658 · ext esterni = 90 · — da verificare = 300
 
 ## AI Parser  (11)
 
@@ -866,7 +866,7 @@
 | POST | `/api/finanziaria/costo` | — | finanziaria |
 | GET | `/api/finanziaria/summary` | ✓ | finanziaria |
 
-## Fiscalità Italiana  (10)
+## Fiscalità Italiana  (11)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -874,6 +874,7 @@
 | POST | `/api/fiscalita/agevolazioni/simula` | — | fiscalita_italiana |
 | GET | `/api/fiscalita/agevolazioni/{agevolazione_id}` | — | fiscalita_italiana |
 | POST | `/api/fiscalita/calendario/completa/{scadenza_id}` | ✓ | fiscalita_italiana |
+| POST | `/api/fiscalita/calendario/riapri/{scadenza_id}` | ✓ | fiscalita_italiana |
 | GET | `/api/fiscalita/calendario/scadenze-imminenti` | — | fiscalita_italiana |
 | GET | `/api/fiscalita/calendario/{anno}` | ✓ | fiscalita_italiana |
 | POST | `/api/fiscalita/f24/registra` | — | fiscalita_italiana |
