@@ -1251,6 +1251,11 @@ export default function RiconciliazionePaypal() {
               <span>Totale banca: <b>{bankSummary?.totale_banca_paypal || 0}</b></span>
               <span>Riconciliati: <b>{bankSummary?.riconciliati || 0}</b></span>
               <span>Da associare: <b>{bankSummary?.da_associare || 0}</b></span>
+              {(bankSummary?.duplicati_unificati || 0) > 0 && (
+                <span>
+                  Fonti duplicate unificate: <b>{bankSummary.duplicati_unificati}</b>
+                </span>
+              )}
               <span>Importo e data da soli non confermano casi ambigui.</span>
             </div>
             {isMobile ? (

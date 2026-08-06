@@ -8,6 +8,7 @@ from app.services.paypal_reconciliation_links import (
     finalizza_transazione_paypal_se_completa,
     riprocessa_collegamenti_paypal,
 )
+from app.routers.paypal_statements import _auto_riconcilia
 
 
 def _run(coro):
@@ -208,5 +209,42 @@ def test_fattura_gia_pagata_da_altra_evidenza_non_viene_riutilizzata():
         assert result["motivo"] == "fattura_gia_collegata_ad_altra_transazione"
         stored = await db.paypal_transactions.find_one({"transaction_id": "PAY-TX-1"})
         assert "fattura_associata" not in stored
+
+    _run(scenario())
+
+
+def test_riconciliazione_banca_unifica_due_importazioni_della_stessa_riga():
+    async def scenario():
+        db = AsyncMongoMockClient().db
+        await db.paypal_transactions.insert_one({
+            **_transaction(), "importo": -42.62, "data": "2026-07-15",
+            "invoice_id_fornitore": "FT-NON-PRESENTE",
+        })
+        await db.estratto_conto_movimenti.insert_many([
+            {
+                "id": "EC-PAYPAL-SHORT", "data": "2026-07-17",
+                "tipo": "uscita", "importo": 42.62,
+                "descrizione": "SDD CORE: 49RJ2252ASLM4 PAYPAL EUROPE S.A.R.L.",
+                "created_at": "2026-08-03T10:00:00+00:00",
+            },
+            {
+                "id": "EC-PAYPAL-FULL", "data": "2026-07-17",
+                "tipo": "uscita", "importo": 42.62, "rapporto": "conto-bancario",
+                "descrizione": (
+                    "ADDEBITO DIRETTO SDD - SDD CORE: 49RJ2252ASLM4 "
+                    "PayPal Europe S.a.r.l."
+                ),
+                "created_at": "2026-08-04T10:00:00+00:00",
+            },
+        ])
+
+        result = await _auto_riconcilia(db, anno=2026, applica=True)
+
+        assert result["totale_banca_raw"] == 2
+        assert result["duplicati_banca_unificati"] == 1
+        assert result["totale_banca"] == 1
+        assert result["riconciliati"] == 1
+        transaction = await db.paypal_transactions.find_one({"transaction_id": "PAY-TX-1"})
+        assert transaction["movimento_banca_id"] == "EC-PAYPAL-FULL"
 
     _run(scenario())
