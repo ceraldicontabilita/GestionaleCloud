@@ -56,6 +56,35 @@ CIRCUITI: Dict[str, Dict[str, str]] = {
 
 COMMISSIONI_ALTRO = "75.01.07.04"
 
+# Sigla con cui il circuito compare in Prima Nota. Nexi accredita tramite
+# Numia, ed e' "NUMIA" che l'utente legge sull'estratto conto: chiamarla cosi'
+# rende la riga riconoscibile senza tradurre.
+SIGLE = {NEXI: "NUMIA", SUMUP: "SUMUP", PAYPAL: "PAYPAL"}
+
+CATEGORIA_USCITA_STORICA = "POS Verso Banca"
+
+
+def sigla(circuito: Any) -> str:
+    return SIGLE.get(normalizza(circuito), normalizza(circuito).upper())
+
+
+def categoria_uscita_pos(circuito: Any) -> str:
+    """Categoria dell'uscita di cassa verso il circuito.
+
+    I circuiti non si fondono: ognuno ha la sua categoria, cosi' in Prima Nota
+    si distingue a colpo d'occhio il POS Numia (inserito a mano) da quello
+    SumUp (scritto dall'API).
+    """
+    return f"POS {sigla(circuito)} Verso Banca"
+
+
+# Le righe scritte prima del 07/08/2026 hanno la categoria indistinta: le
+# query devono continuare a trovarle, altrimenti se ne creerebbero di nuove
+# in parallelo e l'uscita POS del giorno risulterebbe doppia.
+CATEGORIE_USCITA_POS = [CATEGORIA_USCITA_STORICA] + [
+    f"POS {s} Verso Banca" for s in sorted(set(SIGLE.values()))
+]
+
 # Tutti i conti di credito verso gestori: sono cio' che va tenuto FUORI dai
 # saldi bancari reali.
 CONTI_CREDITO = tuple(sorted(c["credito"] for c in CIRCUITI.values()))
@@ -131,3 +160,19 @@ def circuito_di_conto(codice: Any) -> Optional[str]:
         if codice in (voci.get("credito"), voci.get("commissioni")):
             return circuito
     return None
+
+
+def data_italiana(iso: Any) -> str:
+    """Data in formato italiano gg/mm/aaaa per i testi letti dall'utente.
+
+    A database le date restano ISO (AAAA-MM-GG): e' l'unico formato che si
+    ordina e si confronta correttamente. Ma ogni descrizione che finisce in
+    Prima Nota viene letta da una persona, e va scritta come la scriverebbe
+    lei — regola dell'utente, valida in tutto il gestionale.
+    """
+    testo = str(iso or "").strip()[:10]
+    parti = testo.split("-")
+    if len(parti) == 3 and len(parti[0]) == 4:
+        anno, mese, giorno = parti
+        return f"{giorno}/{mese}/{anno}"
+    return testo

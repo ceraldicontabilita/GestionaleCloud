@@ -217,7 +217,8 @@ async def _scrittura_di_accredito(db, payout: Dict[str, Any],
     """
     payout_id = payout["payout_id"]
     settlement_id = f"sumup:{payout_id}"
-    giorni = ", ".join(componenti["giorni"])
+    giorni = ", ".join(conti_pos.data_italiana(g)
+                       for g in componenti["giorni"])
     credito_chiuso = round(componenti["vendite"] - componenti["rimborsi"]
                            - componenti["chargeback"], 2)
 

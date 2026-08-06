@@ -178,7 +178,7 @@ def test_risincronizzare_non_duplica_nulla():
     assert chiusure[0]["gestore"] == "sumup"
 
     uscite = _run(db.prima_nota_cassa.find(
-        {"categoria": "POS Verso Banca"}).to_list(50))
+        {"source": "corrispettivo_import"}).to_list(50))
     assert len(uscite) == 1
     assert uscite[0]["importo"] == 100.0
 
@@ -207,7 +207,7 @@ def test_l_api_sostituisce_la_chiusura_manuale_senza_secondo_movimento():
     assert chiusure[0]["importo"] == 100.0
 
     uscite = _run(db.prima_nota_cassa.find(
-        {"categoria": "POS Verso Banca"}).to_list(50))
+        {"source": "corrispettivo_import"}).to_list(50))
     assert len(uscite) == 1
     assert uscite[0]["importo"] == 100.0
 
@@ -224,7 +224,7 @@ def test_nexi_e_sumup_nello_stesso_giorno_restano_distinti():
 
     assert _run(chiusura_pos_del_giorno(db, "2026-08-06")) == 600.0
     uscite = _run(db.prima_nota_cassa.find(
-        {"categoria": "POS Verso Banca"}).to_list(50))
+        {"source": "corrispettivo_import"}).to_list(50))
     assert {u["circuito"]: u["importo"] for u in uscite} == {
         "NEXI": 500.0, "SUMUP": 100.0}
 

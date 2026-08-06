@@ -134,13 +134,24 @@ class _Coll:
         return None
 
     def find(self, *a, **k):
+        docs = list(self.docs)
+
         class _C:
+            def __init__(self):
+                self._i = iter(docs)
+
             def __aiter__(self):
                 return self
 
             async def __anext__(self):
-                raise StopAsyncIteration
+                try:
+                    return dict(next(self._i))
+                except StopIteration:
+                    raise StopAsyncIteration
         return _C()
+
+    async def update_one(self, query, update, *a, **k):
+        return None
 
     async def insert_one(self, doc):
         self.docs.append(doc)
@@ -158,26 +169,62 @@ class _Db(dict):
         return self.setdefault(k, _Coll())
 
 
-def test_registra_corrispettivo_trasferimento_speculare():
-    """REGOLA CANONICA: uscita cassa POS = entrata banca POS = stessa
-    operazione (trasferimento), stesso importo, stesso trasferimento_id."""
+def _corrispettivo():
+    return {"id": "C1", "data": "2026-07-01", "totale": 1000.0,
+            "pagato_contanti": 400.0, "pagato_elettronico": 600.0,
+            "matricola_rt": "RT1"}
+
+
+def test_senza_pos_reale_l_uscita_non_si_inventa():
+    """Divieto di fallback XML (utente 07/08/2026).
+
+    L'XML dice che 600 sono elettronici, ma non dice quanti da Numia e
+    quanti da SumUp. Scrivere un'uscita indistinta da 600 creava un
+    trasferimento che nessun accredito avrebbe potuto riconciliare.
+    """
     db = _Db()
-    esito = _run(registra_corrispettivo(db, {
-        "id": "C1", "data": "2026-07-01", "totale": 1000.0,
-        "pagato_contanti": 400.0, "pagato_elettronico": 600.0,
-        "matricola_rt": "RT1",
-    }))
-    assert esito["prima_nota_cassa_id"]
-    assert esito["prima_nota_cassa_uscita_pos_id"]
-    assert esito["prima_nota_banca_id"]
-    assert len(db["prima_nota_cassa"].docs) == 2
-    assert len(db["prima_nota_banca"].docs) == 1
-    uscita = db["prima_nota_cassa"].docs[1]
-    banca = db["prima_nota_banca"].docs[0]
-    assert uscita["categoria"] == "POS Verso Banca"
-    assert uscita["importo"] == 600.0  # fallback XML: nessuna chiusura manuale
-    assert uscita["quota_pos_fonte"] == "xml"
-    assert banca["source"] == "trasferimento_pos"
-    assert banca["importo"] == 600.0
-    assert banca["trasferimento_id"] == uscita["trasferimento_id"]
-    assert banca["riconciliato"] is False
+    esito = _run(registra_corrispettivo(db, _corrispettivo()))
+
+    assert esito["prima_nota_cassa_id"]          # l'entrata XML si scrive
+    assert esito["pos_stato"] == "attende_chiusura_pos_reale"
+    assert not esito.get("prima_nota_cassa_uscita_pos_id")
+    assert not esito.get("prima_nota_banca_id")
+    assert len(db["prima_nota_cassa"].docs) == 1  # solo l'entrata
+    assert db["prima_nota_banca"].docs == []
+
+
+def test_ogni_circuito_reale_ha_il_suo_trasferimento():
+    """Uscita cassa e credito banca sono la stessa operazione, per circuito."""
+    db = _Db()
+    db["chiusure_pos_manuali"].docs = [
+        {"data": "2026-07-01", "gestore": "nexi", "importo": 500.0,
+         "source": "inserimento_manuale_terminale"},
+        {"data": "2026-07-01", "gestore": "sumup", "importo": 100.0,
+         "source": "api_sumup"},
+    ]
+    esito = _run(registra_corrispettivo(db, _corrispettivo()))
+
+    assert esito["pos_stato"] == "pos_reale_disponibile"
+    assert esito["pos_reale"] == {"nexi": 500.0, "sumup": 100.0}
+    # entrata XML + una uscita per circuito
+    assert len(db["prima_nota_cassa"].docs) == 3
+    assert len(db["prima_nota_banca"].docs) == 2
+
+    uscite = {d["categoria"]: d for d in db["prima_nota_cassa"].docs[1:]}
+    assert uscite["POS NUMIA Verso Banca"]["importo"] == 500.0
+    assert uscite["POS SUMUP Verso Banca"]["importo"] == 100.0
+    assert all(d["quota_pos_fonte"] == "terminale_reale" for d in uscite.values())
+
+    crediti = {d["gestore"]: d for d in db["prima_nota_banca"].docs}
+    assert crediti["nexi"]["conto_contabile"] == "15.07.01"
+    assert crediti["sumup"]["conto_contabile"] == "15.07.02"
+    for circuito, credito in crediti.items():
+        assert credito["source"] == "trasferimento_pos"
+        assert credito["riconciliato"] is False
+        assert credito["in_transito"] is True
+        # Stessa operazione su due registri, mai incrociata fra circuiti.
+        controparte = next(d for d in db["prima_nota_cassa"].docs[1:]
+                           if d["gestore"] == circuito)
+        assert credito["trasferimento_id"] == controparte["trasferimento_id"]
+    assert (crediti["nexi"]["trasferimento_id"]
+            != crediti["sumup"]["trasferimento_id"])

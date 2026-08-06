@@ -114,7 +114,7 @@ DATA = "2026-08-06"
 
 async def _uscita_pos(db):
     return await db["prima_nota_cassa"].find_one(
-        {"data": DATA, "categoria": "POS Verso Banca"}
+        {"data": DATA, "source": "corrispettivo_import"}
     )
 
 
@@ -146,7 +146,7 @@ def test_ogni_circuito_ha_la_sua_coppia_di_trasferimento():
     assert esito["importo"] == 100.0             # la chiusura del circuito
     assert esito["importo_totale_giorno"] == 600.0
 
-    uscite = _righe_pos(db, "prima_nota_cassa", categoria="POS Verso Banca")
+    uscite = _righe_pos(db, "prima_nota_cassa", source="corrispettivo_import")
     assert {u["circuito"]: u["importo"] for u in uscite} == {
         "NEXI": 500.0, "SUMUP": 100.0}
 
@@ -180,7 +180,7 @@ def test_zero_su_un_terminale_non_archivia_il_trasferimento_dell_altro():
     _run(registra_chiusura_pos_reale(db, DATA, 0, gestore="sumup"))
 
     uscite = {u["circuito"]: u for u in
-              _righe_pos(db, "prima_nota_cassa", categoria="POS Verso Banca")}
+              _righe_pos(db, "prima_nota_cassa", source="corrispettivo_import")}
     assert uscite["NEXI"].get("status") != "deleted"
     assert uscite["NEXI"]["importo"] == 500.0
     assert uscite["SUMUP"]["status"] == "deleted"

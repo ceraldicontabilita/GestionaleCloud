@@ -10,12 +10,18 @@ di nuovi altrove.
 
 REGOLA CANONICA POS (utente, 18/07/2026 — confermata a voce e definitiva):
 - CASSA entrata  = totale corrispettivo del giorno (contanti + POS, da XML);
-- CASSA uscita "POS Verso Banca" = il POS REALE della CHIUSURA MANUALE
-  serale del terminale ("quello che esce dal terminale è il vero incasso
-  POS"); fallback: elettronico XML solo se la chiusura non è trascritta;
-- BANCA entrata  = la STESSA cifra, come puro TRASFERIMENTO cassa→banca
-  (contropartita speculare, stessa operazione su due registri, source
-  "trasferimento_pos"). MAI una seconda registrazione indipendente.
+- CASSA uscita "POS <CIRCUITO> Verso Banca" = il POS REALE del terminale,
+  UNA RIGA PER CIRCUITO (POS NUMIA inserito a mano, POS SUMUP scritto
+  dall'API). I circuiti non si fondono mai in un'unica riga.
+- NIENTE FALLBACK XML (decisione utente 07/08/2026, che SUPERA la regola
+  del 18/07/2026): senza dati reali dei terminali l'uscita POS non si
+  scrive affatto e la giornata resta "attende_chiusura_pos_reale". L'XML è
+  la fonte fiscale del corrispettivo e non sa quanta parte sia passata da
+  Numia e quanta da SumUp: usarlo produceva un trasferimento indistinto
+  che nessun accredito poteva riconciliare.
+- BANCA entrata  = la STESSA cifra del suo circuito, come CREDITO verso il
+  gestore (source "trasferimento_pos", conto 15.07.xx), non come denaro già
+  sul conto. MAI una seconda registrazione indipendente.
 - L'ACCREDITO dell'estratto conto NON crea mai un'entrata: RICONCILIA il
   trasferimento del suo giorno di vendita (causale NUMIA "DEL gg/mm/aa").
 - L'elettronico XML resta il confronto FISCALE: la differenza col POS
@@ -146,15 +152,26 @@ def filtro_gestore_pos(gestore: str) -> Dict[str, Any]:
     return {"gestore": gestore}
 
 
-async def chiusura_pos_del_giorno(db, data: str) -> Optional[float]:
-    """POS reale del giorno: somma dei terminali (Nexi, SumUp, ...).
+async def pos_reale_del_giorno(db, data: str) -> Dict[str, Any]:
+    """POS reale del giorno, scomposto per circuito.
 
-    Con piu' gestori il totale e' la somma dei loro totali. L'inserimento
-    manuale prevale sui componenti storici *dello stesso gestore*, mai su
-    quelli degli altri: diversamente una correzione su un terminale
-    cancellerebbe l'incasso dell'altro.
+    Si costruisce ESCLUSIVAMENTE da fonti reali — chiusure dei terminali,
+    API ufficiali, statement dei provider. Mai dall'elettronico XML: l'XML e'
+    la fonte fiscale dei corrispettivi e non sa dire quanto sia passato da
+    Nexi e quanto da SumUp (decisione utente 07/08/2026).
+
+    Ritorna sempre la scomposizione, cosi' chi la usa non puo' confondere
+    "600 in tutto" con "500 Nexi + 100 SumUp"::
+
+        {"per_circuito": {"nexi": 500.0, "sumup": 100.0},
+         "nexi": 500.0, "sumup": 100.0, "altri": 0.0,
+         "totale_pos_reale": 600.0, "disponibile": True}
+
+    ``disponibile`` e' False quando nessun terminale ha ancora risposto: in
+    quel caso ``totale_pos_reale`` e' None e la giornata resta in attesa,
+    perche' un dato mancante non e' uno zero.
     """
-    tot = 0.0
+    per_circuito: Dict[str, float] = {}
     trovata = False
     try:
         righe = await _leggi_tutti(db["chiusure_pos_manuali"].find(
@@ -166,7 +183,7 @@ async def chiusura_pos_del_giorno(db, data: str) -> Optional[float]:
             per_gestore.setdefault(
                 normalizza_gestore_pos(riga.get("gestore")), []
             ).append(riga)
-        for componenti in per_gestore.values():
+        for circuito, componenti in per_gestore.items():
             trovata = True
             # Un inserimento/correzione dalla UI e' un totale giornaliero e
             # prevale sugli eventuali componenti storici importati da CSV.
@@ -174,26 +191,51 @@ async def chiusura_pos_del_giorno(db, data: str) -> Optional[float]:
                              if c.get("source") == "inserimento_manuale_terminale"), None)
             if override is not None:
                 valore = override.get("importo")
-                tot += float(valore if valore is not None
-                             else override.get("totale") or 0)
-                continue
-            for c in componenti:
-                tot += float(c.get("importo") or c.get("totale") or 0)
+                parziale = float(valore if valore is not None
+                                 else override.get("totale") or 0)
+            else:
+                parziale = sum(float(c.get("importo") or c.get("totale") or 0)
+                               for c in componenti)
+            per_circuito[circuito] = round(
+                per_circuito.get(circuito, 0.0) + parziale, 2)
         if not trovata:
-            # fallback storico: chiusure importate in prima_nota_banca con
-            # source import_manuale_pos (vecchio flusso pos.xlsx)
+            # Chiusure importate in prima_nota_banca con source
+            # import_manuale_pos (vecchio flusso pos.xlsx). E' comunque una
+            # fonte REALE — l'export del terminale — non l'XML.
             for c in await _leggi_tutti(db["prima_nota_banca"].find(
                     {"data": data, "source": "import_manuale_pos"},
                     {"_id": 0, "importo": 1})):
                 trovata = True
-                tot += float(c.get("importo") or 0)
+                per_circuito[GESTORE_POS_DEFAULT] = round(
+                    per_circuito.get(GESTORE_POS_DEFAULT, 0.0)
+                    + float(c.get("importo") or 0), 2)
     except AttributeError:
-        return None  # backend/fake senza le collezioni delle chiusure
-    # Zero e' un valore manuale valido: significa che il terminale non ha
-    # registrato pagamenti elettronici. Non deve far scattare il fallback al
-    # valore XML, altrimenti Prima Nota tornerebbe a usare proprio il dato
-    # fiscale che l'operatore ha corretto.
-    return round(tot, 2) if trovata else None
+        # backend/fake senza le collezioni delle chiusure
+        return {"per_circuito": {}, "totale_pos_reale": None,
+                "disponibile": False, "nexi": None, "sumup": None, "altri": 0.0}
+
+    noti = set(conti_pos.circuiti_attivi())
+    esito: Dict[str, Any] = {
+        "per_circuito": dict(per_circuito),
+        # Zero e' un valore valido: significa che quel terminale non ha
+        # incassato. Solo l'assenza totale di fonti lascia il dato indefinito.
+        "totale_pos_reale": round(sum(per_circuito.values()), 2) if trovata else None,
+        "disponibile": trovata,
+        "altri": round(sum(v for c, v in per_circuito.items() if c not in noti), 2),
+    }
+    for circuito in noti:
+        esito[circuito] = per_circuito.get(circuito)
+    return esito
+
+
+async def chiusura_pos_del_giorno(db, data: str) -> Optional[float]:
+    """Solo il TOTALE del POS reale del giorno, o None se nessuna fonte.
+
+    Comodita' per chi deve confrontare un unico numero. Chi deve scrivere in
+    contabilita' usa ``pos_reale_del_giorno``: i circuiti non condividono mai
+    un trasferimento, quindi servono gli importi separati.
+    """
+    return (await pos_reale_del_giorno(db, data))["totale_pos_reale"]
 
 
 async def registra_chiusura_pos_reale(
@@ -316,8 +358,8 @@ async def registra_chiusura_pos_reale(
         "data": data,
         "tipo": "uscita",
         "$and": and_gestore + [{"$or": [
-            {"categoria": "POS Verso Banca"},
-            {"category": "POS Verso Banca"},
+            {"categoria": {"$in": conti_pos.CATEGORIE_USCITA_POS}},
+            {"category": {"$in": conti_pos.CATEGORIE_USCITA_POS}},
             {"source": {"$in": ["corrispettivo_import",
                                   "conferma_corrispettivo_manuale"]}},
         ]}],
@@ -361,12 +403,14 @@ async def registra_chiusura_pos_reale(
                           "updated_at": now}},
             )
     else:
-        descrizione_cassa = f"POS {circuito} {data} -> Banca (chiusura terminale)"
+        descrizione_cassa = (
+            f"POS {conti_pos.sigla(gestore)} {conti_pos.data_italiana(data)}"
+            " -> Banca (chiusura terminale)")
         cassa_fields = {
             "importo": importo,
             "amount": importo,
-            "categoria": "POS Verso Banca",
-            "category": "POS Verso Banca",
+            "categoria": conti_pos.categoria_uscita_pos(gestore),
+            "category": conti_pos.categoria_uscita_pos(gestore),
             "descrizione": descrizione_cassa,
             "description": descrizione_cassa,
             "gestore": gestore,
@@ -388,7 +432,7 @@ async def registra_chiusura_pos_reale(
                 "data": data,
                 "tipo": "uscita",
                 "importo": importo,
-                "categoria": "POS Verso Banca",
+                "categoria": conti_pos.categoria_uscita_pos(gestore),
                 "descrizione": cassa_fields["descrizione"],
                 "source": "corrispettivo_import",
                 "gestore": gestore,
@@ -408,7 +452,8 @@ async def registra_chiusura_pos_reale(
         # e un saldo propri. Diventera' liquidita' solo quando il gestore
         # versera' davvero — su BPM per Nexi, sulla Mastercard per SumUp.
         etichetta_circuito = conti_pos.etichetta(gestore)
-        descrizione_banca = f"Credito verso {etichetta_circuito} — POS {data}"
+        descrizione_banca = (f"Credito verso {etichetta_circuito} — POS "
+                             f"{conti_pos.data_italiana(data)}")
         banca_fields = {
             "importo": importo,
             "amount": importo,
@@ -595,23 +640,50 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
     if gia_esistente:
         esito["gia_esistente"] = True
 
-    # USCITA POS: la chiusura manuale serale è il dato operativo vero;
-    # l'elettronico XML è solo il fallback quando non è stata trascritta.
-    chiusura = await chiusura_pos_del_giorno(db, data)
-    quota_pos = chiusura if chiusura is not None else elettronico
-    fonte_quota = "chiusura_manuale" if chiusura is not None else "xml"
-    if quota_pos > 0:
-        filtro_attivo = {
-            "status": {"$nin": ["deleted", "archived"]},
-            "entity_status": {"$ne": "deleted"},
-        }
+    # USCITA POS: si costruisce SOLO dai terminali reali, mai dall'XML.
+    #
+    # Fino al 07/08/2026 qui c'era `quota_pos = chiusura or elettronico`: in
+    # assenza di chiusura si usava l'elettronico XML. Vietato dall'utente, e a
+    # ragione: l'XML e' la fonte fiscale del corrispettivo e non sa quanta
+    # parte sia passata da Nexi e quanta da SumUp. Usarlo produceva un
+    # trasferimento unico e indistinto, che nessun accredito avrebbe potuto
+    # riconciliare. Senza dati reali non si inventa l'uscita: la giornata
+    # resta in attesa e viene riprocessata quando i terminali rispondono.
+    reale = await pos_reale_del_giorno(db, data)
+    if not reale["disponibile"]:
+        esito["pos_stato"] = "attende_chiusura_pos_reale"
+        esito["pos_reale"] = None
+        await db["corrispettivi"].update_one(
+            {"data": data},
+            {"$set": {"pos_stato": "attende_chiusura_pos_reale"}},
+        )
+        return esito
+
+    esito["pos_stato"] = "pos_reale_disponibile"
+    esito["pos_reale"] = reale["per_circuito"]
+    await db["corrispettivi"].update_one(
+        {"data": data}, {"$set": {"pos_stato": "pos_reale_disponibile"}},
+    )
+
+    filtro_attivo = {
+        "status": {"$nin": ["deleted", "archived"]},
+        "entity_status": {"$ne": "deleted"},
+    }
+    scritti = {}
+    for circuito, importo in sorted(reale["per_circuito"].items()):
+        if importo <= 0:
+            continue
+        # Ogni circuito ha il SUO trasferimento: Nexi e SumUp non ne
+        # condividono mai uno, perche' li accreditano conti diversi.
+        gestore_filtro = filtro_gestore_pos(circuito)
         cassa_query = {
-            "data": data, "tipo": "uscita", "categoria": "POS Verso Banca",
-            **filtro_attivo,
+            "data": data, "tipo": "uscita",
+            "categoria": {"$in": conti_pos.CATEGORIE_USCITA_POS},
+            "$and": [gestore_filtro], **filtro_attivo,
         }
         banca_query = {
             "data": data, "tipo": "entrata", "categoria": "Corrispettivi POS",
-            **filtro_attivo,
+            "$and": [gestore_filtro], **filtro_attivo,
         }
         cassa_esistente = await db["prima_nota_cassa"].find_one(cassa_query)
         banca_esistente = await db["prima_nota_banca"].find_one(banca_query)
@@ -620,34 +692,42 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
             or (banca_esistente or {}).get("trasferimento_id")
             or str(uuid.uuid4())
         )
-        cassa_pos_id, _ = await _scrivi_se_assente(db, "cassa", cassa_query, {
+        etichetta_circuito = conti_pos.etichetta(circuito)
+        comune = {
             "corrispettivo_id": corr_doc.get("id"),
-            "data": data, "tipo": "uscita", "importo": quota_pos,
-            "descrizione": (f"POS {data} → Banca"
-                            + (" (chiusura terminale)" if fonte_quota == "chiusura_manuale"
-                               else " (da XML)")),
-            "categoria": "POS Verso Banca", "source": "corrispettivo_import",
-            "quota_pos_fonte": fonte_quota,
+            "data": data, "importo": importo,
+            "quota_pos_fonte": "terminale_reale",
+            "gestore": circuito, "circuito": circuito.upper(),
             "trasferimento_id": trasferimento_id,
             "anno": anno, "mese": mese,
+        }
+        cassa_pos_id, _ = await _scrivi_se_assente(db, "cassa", cassa_query, {
+            **comune, "tipo": "uscita",
+            "descrizione": (f"POS {conti_pos.sigla(circuito)} "
+                            f"{conti_pos.data_italiana(data)} → Banca"),
+            "categoria": conti_pos.categoria_uscita_pos(circuito),
+            "source": "corrispettivo_import",
         })
-        esito["prima_nota_cassa_uscita_pos_id"] = cassa_pos_id
-        # REGOLA CANONICA: contropartita speculare in banca — stessa
-        # operazione, secondo registro. L'accredito EC la riconcilierà.
+        # Contropartita speculare: stessa operazione, secondo registro. Non e'
+        # denaro in banca ma un credito verso il gestore, che l'accredito
+        # reale chiudera'.
         banca_pos_id, _ = await _scrivi_se_assente(db, "banca", banca_query, {
-            "corrispettivo_id": corr_doc.get("id"),
-            "data": data, "tipo": "entrata", "importo": quota_pos,
-            "descrizione": (f"POS {data} da cassa"
-                            + (" (chiusura terminale)" if fonte_quota == "chiusura_manuale"
-                               else " (da XML)")),
+            **comune, "tipo": "entrata",
+            "descrizione": (f"Credito verso {etichetta_circuito} — POS "
+                            f"{conti_pos.data_italiana(data)}"),
             "categoria": "Corrispettivi POS", "source": "trasferimento_pos",
-            "quota_pos_fonte": fonte_quota,
-            "trasferimento_id": trasferimento_id,
+            "natura": NATURA_CREDITO_POS,
+            "conto_contabile": conti_pos.conto_credito(circuito),
+            "conto_nome": conti_pos.descrizione_conto(
+                conti_pos.conto_credito(circuito)),
             "giorno_vendita": data,
             "riconciliato": False,
-            "anno": anno, "mese": mese,
+            "in_transito": True,
         })
+        scritti[circuito] = {"cassa": cassa_pos_id, "banca": banca_pos_id}
+        esito["prima_nota_cassa_uscita_pos_id"] = cassa_pos_id
         esito["prima_nota_banca_id"] = banca_pos_id
+    esito["trasferimenti_pos"] = scritti
     return esito
 
 
