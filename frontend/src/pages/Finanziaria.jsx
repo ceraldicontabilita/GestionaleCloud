@@ -15,7 +15,6 @@ import {
   TrendingDown,
   Wallet,
   Building2,
-  Users,
   Receipt,
   AlertCircle,
   Info,
@@ -118,26 +117,34 @@ export default function Finanziaria() {
       )}
 
       {/* KPI Principali */}
-      <PageGrid cols={3} gap={16}>
+      <PageGrid cols={4} gap={16}>
         <StatCard
           icon={<TrendingUp size={18} />}
-          label="Entrate Totali"
+          label="Entrate finanziarie dell'anno"
           value={formatEuro(summary?.total_income)}
           subtext={`Cassa: ${formatEuro(summary?.cassa?.entrate)} | Banca: ${formatEuro(summary?.banca?.entrate)}`}
           accent="success"
         />
         <StatCard
           icon={<TrendingDown size={18} />}
-          label="Uscite Totali"
+          label="Uscite finanziarie dell'anno"
           value={formatEuro(summary?.total_expenses)}
           subtext={`Cassa: ${formatEuro(summary?.cassa?.uscite)} | Banca: ${formatEuro(summary?.banca?.uscite)}`}
           accent="danger"
         />
         <StatCard
           icon={<Wallet size={18} />}
-          label="Saldo"
-          value={formatEuro(summary?.balance)}
-          accent={summary?.balance >= 0 ? 'primary' : 'danger'}
+          label="Variazione finanziaria dell'anno"
+          value={formatEuro(summary?.flow_balance ?? summary?.balance)}
+          subtext="Entrate meno uscite, senza trasferimenti interni"
+          accent={(summary?.flow_balance ?? summary?.balance) >= 0 ? 'primary' : 'danger'}
+        />
+        <StatCard
+          icon={<Building2 size={18} />}
+          label="Disponibilità contabile"
+          value={formatEuro(summary?.available_balance ?? summary?.saldo_totale)}
+          subtext={`Include riporti iniziali: ${formatEuro(summary?.opening_balance)}`}
+          accent={(summary?.available_balance ?? summary?.saldo_totale) >= 0 ? 'success' : 'danger'}
         />
       </PageGrid>
 
@@ -192,9 +199,10 @@ export default function Finanziaria() {
             <thead>
               <tr>
                 <Th align="left">Conto</Th>
+                <Th align="right">Riporto iniziale</Th>
                 <Th align="right">Entrate</Th>
                 <Th align="right">Uscite</Th>
-                <Th align="right">Saldo</Th>
+                <Th align="right">Saldo contabile</Th>
               </tr>
             </thead>
             <tbody>
@@ -204,6 +212,7 @@ export default function Finanziaria() {
                     <Wallet size={16} color={COLORS.textMuted} /> Cassa
                   </span>
                 </Td>
+                <Td align="right" mono>{formatEuro(summary?.cassa?.riporto)}</Td>
                 <Td align="right" mono style={{ color: COLORS.success, fontWeight: 500 }}>
                   {formatEuro(summary?.cassa?.entrate)}
                 </Td>
@@ -220,6 +229,7 @@ export default function Finanziaria() {
                     <Building2 size={16} color={COLORS.textMuted} /> Banca
                   </span>
                 </Td>
+                <Td align="right" mono>{formatEuro(summary?.banca?.riporto)}</Td>
                 <Td align="right" mono style={{ color: COLORS.success, fontWeight: 500 }}>
                   {formatEuro(summary?.banca?.entrate)}
                 </Td>
@@ -230,24 +240,13 @@ export default function Finanziaria() {
                   {formatEuro(summary?.banca?.saldo)}
                 </Td>
               </tr>
-              <tr>
-                <Td>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Users size={16} color={COLORS.textMuted} /> Salari
-                  </span>
-                </Td>
-                <Td align="right">-</Td>
-                <Td align="right" mono style={{ color: COLORS.danger, fontWeight: 500 }}>
-                  {formatEuro(summary?.salari?.totale)}
-                </Td>
-                <Td align="right" mono style={{ fontWeight: 600, color: COLORS.danger }}>
-                  -{formatEuro(summary?.salari?.totale)}
-                </Td>
-              </tr>
             </tbody>
             <tfoot>
               <tr style={{ background: COLORS.bgAlt, fontWeight: 600 }}>
                 <Td style={{ fontWeight: 600 }}>TOTALE</Td>
+                <Td align="right" mono style={{ fontWeight: 600 }}>
+                  {formatEuro(summary?.opening_balance)}
+                </Td>
                 <Td align="right" mono style={{ fontWeight: 600, color: COLORS.success }}>
                   {formatEuro(summary?.total_income)}
                 </Td>
@@ -255,19 +254,24 @@ export default function Finanziaria() {
                   {formatEuro(summary?.total_expenses)}
                 </Td>
                 <Td
+                  data-testid="saldo-contabile-totale"
                   align="right"
                   mono
                   style={{
                     fontWeight: 600,
-                    color: summary?.balance >= 0 ? COLORS.success : COLORS.danger,
+                    color: summary?.saldo_totale >= 0 ? COLORS.success : COLORS.danger,
                   }}
                 >
-                  {formatEuro(summary?.balance)}
+                  {formatEuro(summary?.saldo_totale)}
                 </Td>
               </tr>
             </tfoot>
           </Table>
         </TableWrap>
+        <p style={{ color: COLORS.textMuted, fontSize: 13, margin: '12px 0 0' }}>
+          {summary?.financial_note} I pagamenti di salari e F24 sono già compresi nelle uscite
+          bancarie e non vengono sommati una seconda volta.
+        </p>
       </PageSection>
 
       {/* Situazione Debiti/Crediti */}
@@ -305,9 +309,18 @@ export default function Finanziaria() {
               <Receipt size={16} color={COLORS.success} />
               Fatture da incassare (crediti vs clienti)
             </span>
-            <span style={{ fontWeight: 700, color: COLORS.success, fontFamily: FONT.mono }}>
-              {formatEuro(summary?.receivables)}
-            </span>
+            {summary?.receivables_available === false ? (
+              <span style={{ fontWeight: 600, color: COLORS.textMuted, textAlign: 'right' }}>
+                Non disponibile
+                <small style={{ display: 'block', fontWeight: 400 }}>
+                  {summary?.receivables_note}
+                </small>
+              </span>
+            ) : (
+              <span style={{ fontWeight: 700, color: COLORS.success, fontFamily: FONT.mono }}>
+                {formatEuro(summary?.receivables)}
+              </span>
+            )}
           </div>
           <div
             style={{
@@ -319,7 +332,7 @@ export default function Finanziaria() {
               borderRadius: 8,
             }}
           >
-            <span>🧾 IVA {summary?.vat_balance > 0 ? 'da versare' : 'a credito'}</span>
+            <span>🧾 Stima documentale IVA {summary?.vat_balance > 0 ? 'a debito' : 'a credito'}</span>
             <span
               style={{
                 fontWeight: 700,
@@ -341,7 +354,12 @@ export default function Finanziaria() {
       >
         <ul style={{ paddingLeft: 20, lineHeight: 2, margin: 0, color: COLORS.gray[600], fontSize: 13 }}>
           <li>
-            <strong>Entrate/Uscite:</strong> Somma movimenti Prima Nota Cassa + Banca
+            <strong>Entrate/Uscite:</strong> somma dei movimenti Prima Nota Cassa + Banca,
+            esclusi i trasferimenti interni
+          </li>
+          <li>
+            <strong>Disponibilità contabile:</strong> saldo Cassa + saldo Banca, inclusi i riporti
+            iniziali; non coincide necessariamente con la variazione dell'anno
           </li>
           <li>
             <strong>IVA Debito:</strong> Estratta dai file XML dei Corrispettivi giornalieri
@@ -351,10 +369,15 @@ export default function Finanziaria() {
             <strong>IVA Credito:</strong> Estratta dai file XML delle Fatture (acquisti fornitori)
           </li>
           <li>
-            <strong>Saldo IVA:</strong> IVA Debito - IVA Credito = importo da versare o a credito
+            <strong>Stima IVA:</strong> IVA a debito - IVA detraibile classificata. Non certifica
+            la liquidazione del commercialista né il pagamento F24
           </li>
           <li>
             <strong>Fatture da pagare:</strong> Fatture con stato diverso da "Pagata"
+          </li>
+          <li>
+            <strong>Crediti clienti:</strong> non sono esposti finché non esiste una fonte canonica
+            delle fatture attive
           </li>
         </ul>
       </PageSection>
