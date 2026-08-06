@@ -45,7 +45,15 @@ def _get(doc, dotted):
 
 
 def _match(doc, cond):
+    if "$and" in (cond or {}):
+        if not all(_match(doc, item) for item in cond["$and"]):
+            return False
+    if "$or" in (cond or {}):
+        if not any(_match(doc, item) for item in cond["$or"]):
+            return False
     for k, v in (cond or {}).items():
+        if k in {"$and", "$or"}:
+            continue
         if isinstance(v, dict) and "$exists" in v:
             if _has(doc, k) != v["$exists"]:
                 return False
@@ -53,6 +61,17 @@ def _match(doc, cond):
         if isinstance(v, dict) and "$lt" in v:
             val = _get(doc, k)
             if not (val is not None and val < v["$lt"]):
+                return False
+            continue
+        if isinstance(v, dict) and "$gte" in v:
+            val = _get(doc, k)
+            if not (val is not None and val >= v["$gte"]):
+                return False
+            if "$lte" in v and val > v["$lte"]:
+                return False
+            continue
+        if isinstance(v, dict) and "$ne" in v:
+            if _get(doc, k) == v["$ne"]:
                 return False
             continue
         if isinstance(v, dict) and "$in" in v:
@@ -117,9 +136,14 @@ class _Coll:
 
     async def update_one(self, q, update):
         for d in self.docs:
-            if d.get("transaction_id") == q.get("transaction_id"):
+            if _match(d, q):
                 if "$set" in update:
                     d.update(update["$set"])
+                for key, value in update.get("$addToSet", {}).items():
+                    values = d.setdefault(key, [])
+                    if value not in values:
+                        values.append(value)
+                return
 
     async def update_many(self, q, update):
         n = 0

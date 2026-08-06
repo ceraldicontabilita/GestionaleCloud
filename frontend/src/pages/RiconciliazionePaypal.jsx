@@ -500,6 +500,41 @@ export default function RiconciliazionePaypal() {
             >
               Importa documenti
             </Button>
+            <Button
+              data-testid="reprocess-paypal-btn"
+              variant="secondary"
+              size="sm"
+              disabled={syncing}
+              iconLeft={<RefreshCw size={14} />}
+              onClick={async () => {
+                setSyncing(true);
+                try {
+                  const res = await api.post(`/api/paypal-statements/riprocessa?anno=${annoFiltro}`);
+                  const r = res.data || {};
+                  const linked = r.collegamenti_prima?.associate || 0;
+                  const bank = r.banca?.riconciliati || 0;
+                  const finalized = r.collegamenti_dopo?.finalizzate || 0;
+                  toast.success(
+                    `Riprocessamento completato — ${linked} fatture collegate, ${bank} movimenti banca, ${finalized} chiusure`
+                  );
+                  loadDashboard();
+                  loadTransactions();
+                  loadBankMovements();
+                } catch (e) {
+                  toast.error('Errore riprocessamento: ' + (e.response?.data?.detail || e.message));
+                } finally {
+                  setSyncing(false);
+                }
+              }}
+              style={{
+                background: 'rgba(255,255,255,0.2)',
+                color: 'white',
+                borderColor: 'rgba(255,255,255,0.3)',
+              }}
+              title="Riesamina transazioni, fatture ed estratto conto gia importati"
+            >
+              Riprocessa storico
+            </Button>
             <Select
               value={syncMesi}
               onChange={e => setSyncMesi(parseInt(e.target.value))}
@@ -541,27 +576,14 @@ export default function RiconciliazionePaypal() {
                     end_date: end,
                   });
                   const r = res.data || {};
+                  const linked = r.collegamenti?.associate || 0;
+                  const bank = r.banca?.riconciliati || 0;
                   toast.success(
-                    `Sync OK — ${r.total || 0} transazioni (${r.enriched || 0} arricchite), riconciliazione in corso…`
+                    `Sync e riconciliazione OK — ${r.total || 0} transazioni, ${linked} fatture, ${bank} movimenti banca`
                   );
-                  // Dopo la sync, riconcilia subito con fatture/banca — senza
-                  // questo passaggio le transazioni restavano senza riferimento
-                  // a fattura/controparte finché qualcuno non lo lanciava a mano.
-                  try {
-                    const ric = await api.post('/api/paypal-api/riconcilia', {
-                      start_date: start,
-                      end_date: end,
-                    });
-                    const fatt = ric.data?.fatture?.riconciliati ?? 0;
-                    toast.success(`Riconciliazione OK — ${fatt} transazioni associate a fatture`);
-                  } catch (ricErr) {
-                    toast.error(
-                      'Sync OK ma riconciliazione fallita: ' +
-                        (ricErr.response?.data?.detail || ricErr.message)
-                    );
-                  }
                   loadDashboard();
                   loadTransactions();
+                  loadBankMovements();
                 } catch (e) {
                   toast.error('Errore sync: ' + (e.response?.data?.detail || e.message));
                 } finally {

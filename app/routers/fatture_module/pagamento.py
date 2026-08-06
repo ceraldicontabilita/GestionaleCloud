@@ -653,19 +653,20 @@ async def backfill_autoroute_da_metodo_fornitore(_admin: Dict[str, Any] = Depend
 
 
 async def riconcilia_fatture_paypal() -> Dict[str, Any]:
-    """
-    Riconcilia le fatture ricevute con i pagamenti PayPal estratti dai PDF.
-    
-    Utilizza i dati estratti dagli estratti conto PayPal 2024 e Q4 2025
-    forniti dall'utente per trovare corrispondenze con le fatture nel sistema.
-    """
-    from app.services.paypal_riconciliazione import esegui_riconciliazione_completa
-    
+    """Alias storico del motore PayPal canonico e idempotente."""
+    from app.services.paypal_reconciliation_links import riprocessa_collegamenti_paypal
+    from app.routers.paypal_statements import _auto_riconcilia
     db = Database.get_db()
-    
     try:
-        risultato = await esegui_riconciliazione_completa(db)
-        return risultato
+        collegamenti_prima = await riprocessa_collegamenti_paypal(db)
+        banca = await _auto_riconcilia(db, applica=True)
+        collegamenti_dopo = await riprocessa_collegamenti_paypal(db)
+        return {
+            "success": True,
+            "collegamenti_prima": collegamenti_prima,
+            "banca": banca,
+            "collegamenti_dopo": collegamenti_dopo,
+        }
     except Exception as e:
         logger.error(f"Errore riconciliazione PayPal: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -725,72 +726,17 @@ async def lista_fatture_paypal() -> Dict[str, Any]:
 
 
 async def import_paypal_file(file: UploadFile = File(...)) -> Dict[str, Any]:
-    """
-    Importa un estratto conto PayPal (CSV o PDF) e riconcilia le fatture.
-    """
-    from app.services.paypal_riconciliazione import riconcilia_pagamenti_paypal
-    import csv
-    import io
-    
-    db = Database.get_db()
-    
+    """Alias compatibile verso l'unica pipeline di import PayPal."""
+    from app.routers.paypal_statements import import_paypal_csv, import_paypal_pdf
     try:
         filename = file.filename.lower()
-        content = await file.read()
-        pagamenti = []
-        
         if filename.endswith('.csv'):
-            # Parse CSV PayPal
-            try:
-                text_content = content.decode('utf-8-sig')
-            except Exception:
-                text_content = content.decode('latin-1')
-            
-            reader = csv.DictReader(io.StringIO(text_content))
-            for row in reader:
-                # Formato PayPal CSV
-                data = row.get('Data', row.get('Date', ''))
-                desc = row.get('Descrizione', row.get('Description', row.get('Nome', '')))
-                lordo = row.get('Lordo', row.get('Gross', row.get('Importo', '0')))
-                
-                # Pulisci importo
-                try:
-                    importo = float(lordo.replace('€', '').replace(',', '.').replace(' ', '').strip())
-                except Exception:
-                    continue
-                
-                if importo < 0:  # Solo uscite
-                    pagamenti.append({
-                        "data": data,
-                        "beneficiario": desc,
-                        "importo": importo,
-                        "codice_transazione": row.get('ID transazione', row.get('Transaction ID', ''))
-                    })
-        
+            return await import_paypal_csv(file)
         elif filename.endswith('.pdf'):
-            # Per i PDF, usa i dati già estratti nella sessione precedente
-            # In produzione si userebbe un parser PDF
-            from app.services.paypal_riconciliazione import PAGAMENTI_PAYPAL_2024, PAGAMENTI_PAYPAL_2025_Q4
-            pagamenti = PAGAMENTI_PAYPAL_2024 + PAGAMENTI_PAYPAL_2025_Q4
-        
-        else:
-            return {"error": "Formato file non supportato. Usa CSV o PDF."}
-        
-        # Esegui riconciliazione
-        if pagamenti:
-            risultato = await riconcilia_pagamenti_paypal(db, pagamenti)
-            return {
-                "success": True,
-                "filename": file.filename,
-                "pagamenti_trovati": len(pagamenti),
-                **risultato
-            }
-        else:
-            return {
-                "success": False,
-                "error": "Nessun pagamento trovato nel file"
-            }
-            
+            return await import_paypal_pdf(file)
+        raise HTTPException(status_code=400, detail="Formato file non supportato. Usa CSV o PDF.")
     except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
         logger.error(f"Errore import PayPal: {e}")
-        return {"success": False, "error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
