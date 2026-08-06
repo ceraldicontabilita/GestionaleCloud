@@ -12,14 +12,14 @@ const MONO = FONT.mono;
  * CONTROLLO MENSILE - DOCUMENTAZIONE LOGICA
  * =====================================================================
  *
- * SCOPO: Confrontare i dati automatici (da XML) con quelli manuali (da Excel/Prima Nota)
+ * SCOPO: Confrontare XML RT, chiusura POS reale, accrediti bancari e Prima Nota.
  *
  * FONTI DATI:
  * -----------
- * 1. CORRISPETTIVI XML (collection: corrispettivi)
- *    - pagato_elettronico = POS Chiusura Serale RT (cosa dice la macchina)
- *    - totale = Corrispettivi Auto (incasso totale giornaliero)
- *    - pagato_contanti = Contanti (per calcolo saldo cassa)
+ * 1. MOTORE POS A DUE FASI (/api/pos-corrispettivi/controllo-due-fasi)
+ *    - XML RT = pagamento elettronico fiscale
+ *    - POS reale = chiusura serale manuale
+ *    - POS banca = accrediti reali associati al giorno vendita dalla causale
  *
  * 2. PRIMA NOTA CASSA (collection: prima_nota_cassa)
  *    - categoria "POS" = POS Manuale Reale (inserito da te la sera)
@@ -27,8 +27,8 @@ const MONO = FONT.mono;
  *    - categoria "Versamento" con tipo "uscita" = Versamenti in banca
  *    - Saldo Cassa = Σ entrate - Σ uscite
  *
- * 3. PRIMA NOTA BANCA (collection: prima_nota_banca)
- *    - Usata per verifiche incrociate sui versamenti
+ * 3. CORRISPETTIVI XML e REGISTRO DEFINITIVO
+ *    - totali, documenti, annulli e documenti ancora da registrare
  *
  * COLONNE TABELLA:
  * ----------------
@@ -36,9 +36,7 @@ const MONO = FONT.mono;
  *
  * CALCOLI:
  * --------
- * - POS RT = Σ corrispettivi.pagato_elettronico (da XML chiusura serale)
- * - POS Reale = Σ prima_nota_cassa WHERE categoria = "POS" (inserito manualmente da te)
- * - Diff. POS = POS RT (XML) - POS Reale (Tuo)
+ * - POS RT / POS Reale / POS Banca e relativi stati arrivano dal motore canonico
  * - Corrisp. Auto = Σ corrispettivi.totale (da XML)
  * - Corrisp. Man. = Σ prima_nota_cassa WHERE categoria = "Corrispettivi" AND tipo = "entrata"
  * - Diff. Corr. = Corrisp. Auto - Corrisp. Man.
@@ -47,16 +45,14 @@ const MONO = FONT.mono;
  *
  * NOTA IMPORTANTE:
  * ----------------
- * - Il POS in Prima Nota può essere sia "entrata" che "uscita" a seconda di come è stato registrato
- * - Il dato più affidabile per il POS è quello dai corrispettivi XML (pagato_elettronico)
- * - Se i dati XML sono diversi da quelli manuali, i dati XML hanno priorità
+ * - Una differenza non viene risolta né confermata dal frontend.
+ * - XML, chiusura reale e banca restano tre evidenze distinte e tracciabili.
  * =====================================================================
  */
 
 export default function ControlloMensile() {
   const [loading, setLoading] = useState(true);
   const [fontiErrore, setFontiErrore] = useState([]);
-  const currentYear = new Date().getFullYear();
   const { anno } = useAnnoGlobale(); // Anno dal contesto globale
   const [viewMode, setViewMode] = useState('anno'); // 'anno' or 'mese'
   const [meseSelezionato, setMeseSelezionato] = useState(null);
@@ -67,7 +63,6 @@ export default function ControlloMensile() {
     posAuto: 0,
     posManual: 0,
     posBanca: 0,
-    posBancaCommissioni: 0,
     corrispettiviAuto: 0,
     corrispettiviManual: 0,
     versamenti: 0,
@@ -86,6 +81,13 @@ export default function ControlloMensile() {
   // Dettaglio versamenti per il mese
   const [versamentiDettaglio, setVersamentiDettaglio] = useState([]);
   const [showVersamentiModal, setShowVersamentiModal] = useState(false);
+  const [completezzaRegistro, setCompletezzaRegistro] = useState({
+    scritture_registrate: 0,
+    fatture_da_registrare: 0,
+    corrispettivi_da_registrare: 0,
+    documenti_da_registrare: 0,
+    completo: false,
+  });
 
   const monthNames = [
     'Gennaio',
@@ -127,20 +129,23 @@ export default function ControlloMensile() {
         data_a: endDate,
       });
 
-      // Carica dati in parallelo da TUTTE le fonti (Cassa, Corrispettivi, Estratto Conto Banca).
+      // Il motore POS a due fasi è la fonte canonica per XML, chiusura
+      // serale e accrediti banca. Non replichiamo qui le sue regole.
       // Con allSettled si distingue quale fonte è caduta: un errore del servizio
       // non deve sparire dietro a un mese "senza dati".
       const fonti = [
         { nome: 'Cassa', vuoto: { data: { movimenti: [] } },
-          req: api.get(`/api/prima-nota/cassa?${params}&limit=5000`) },
+          req: api.get(`/api/prima-nota/cassa?${params}&limit=10000`) },
         { nome: 'Corrispettivi', vuoto: { data: [] },
-          req: api.get(`/api/corrispettivi?data_da=${startDate}&data_a=${endDate}&limit=500`) },
-        { nome: 'Estratto conto', vuoto: { data: { movements: [] } },
-          req: api.get(`/api/bank-statement/movements?data_da=${startDate}&data_a=${endDate}&limit=5000`) },
+          req: api.get(`/api/corrispettivi?data_da=${startDate}&data_a=${endDate}&limit=10000`) },
+        { nome: 'Controllo POS-banca', vuoto: { data: { giorni: [] } },
+          req: api.get(`/api/pos-corrispettivi/controllo-due-fasi?anno=${anno}`) },
+        { nome: 'Registro contabile', vuoto: { data: { completezza_registro: null } },
+          req: api.get(`/api/contabilita-gestionale/bilancio/verifica?anno=${anno}`) },
       ];
       const esiti = await Promise.allSettled(fonti.map(f => f.req));
       const falliteNomi = [];
-      const [cassaRes, corrispRes, estrattoRes] = esiti.map((e, i) => {
+      const [cassaRes, corrispRes, controlloPosRes, registroRes] = esiti.map((e, i) => {
         if (e.status === 'fulfilled') return e.value;
         falliteNomi.push(fonti[i].nome);
         return fonti[i].vuoto;
@@ -151,9 +156,18 @@ export default function ControlloMensile() {
       const corrispettivi = Array.isArray(corrispRes.data)
         ? corrispRes.data
         : corrispRes.data.corrispettivi || [];
-      const estrattoConto = estrattoRes.data.movements || [];
+      const controlloPos = controlloPosRes.data.giorni || [];
+      setCompletezzaRegistro(
+        registroRes.data.completezza_registro || {
+          scritture_registrate: 0,
+          fatture_da_registrare: 0,
+          corrispettivi_da_registrare: 0,
+          documenti_da_registrare: 0,
+          completo: false,
+        }
+      );
 
-      processYearData(cassa, corrispettivi, estrattoConto);
+      processYearData(cassa, corrispettivi, controlloPos);
     } catch (error) {
       console.error('Error loading year data:', error);
     } finally {
@@ -166,12 +180,11 @@ export default function ControlloMensile() {
    * Aggrega i dati per mese calcolando tutti i totali
    * Include: POS RT (XML), POS Reale (Tuo), POS Banca (da Estratto Conto Bancario)
    */
-  const processYearData = (cassa, corrispettivi, estrattoConto = []) => {
+  const processYearData = (cassa, corrispettivi, controlloPos = []) => {
     const monthly = [];
     let yearPosAuto = 0,
       yearPosManual = 0,
-      yearPosBanca = 0,
-      yearPosBancaCommissioni = 0;
+      yearPosBanca = 0;
     let yearCorrispAuto = 0,
       yearCorrispManual = 0;
     let yearVersamenti = 0,
@@ -190,12 +203,19 @@ export default function ControlloMensile() {
       // Filtra dati per questo mese
       const monthCassa = cassa.filter(m => m.data?.startsWith(monthPrefix));
       const monthCorrisp = corrispettivi.filter(c => c.data?.startsWith(monthPrefix));
-      const monthEstratto = estrattoConto.filter(m => m.data?.startsWith(monthPrefix));
+      const monthPos = controlloPos.filter(g => g.data?.startsWith(monthPrefix));
 
-      // ============ POS AUTO (da Corrispettivi XML) ============
-      // Il POS automatico è il campo pagato_elettronico estratto dagli XML
-      const posAuto = monthCorrisp.reduce(
-        (sum, c) => sum + (parseFloat(c.pagato_elettronico) || 0),
+      // Valori già controllati dal motore canonico a due fasi.
+      const posAuto = monthPos.reduce(
+        (sum, g) => sum + (parseFloat(g.xml_elettronico) || 0),
+        0
+      );
+      const posManual = monthPos.reduce(
+        (sum, g) => sum + (parseFloat(g.pos_manuale) || 0),
+        0
+      );
+      const posBanca = monthPos.reduce(
+        (sum, g) => sum + (parseFloat(g.accredito_banca) || 0),
         0
       );
 
@@ -229,88 +249,6 @@ export default function ControlloMensile() {
         0
       );
       const ammontareAnnulliCount = corrispAnnulli.length;
-
-      // ============ POS MANUALE (da Prima Nota Cassa) ============
-      // Il POS manuale è registrato con categoria "POS" in Prima Nota Cassa
-      const posManual = monthCassa
-        .filter(m => m.categoria?.toUpperCase() === 'POS' || m.source === 'excel_pos')
-        .reduce((sum, m) => sum + Math.abs(parseFloat(m.importo) || 0), 0);
-
-      // ============ POS BANCA (da Estratto Conto Bancario) ============
-      // Logica: cercare "PDV 3757283" o "PDV: 3757283" nella descrizione
-      // - Importi positivi (tipo=entrata) = Accrediti POS
-      // - Importi negativi (tipo=uscita) = Commissioni/Spese POS
-      //
-      // SFASAMENTO ACCREDITI: Gli accrediti bancari avvengono il giorno lavorativo successivo
-      // - Lun→Mar, Mar→Mer, Mer→Gio, Gio→Ven, Ven/Sab/Dom→Lun
-      // - Se festivo → giorno lavorativo successivo
-
-      // Filtra movimenti POS per codice PDV 3757283
-      const posBancaMovimenti = estrattoConto.filter(m => {
-        const desc = (m.descrizione || '').toUpperCase();
-        return desc.includes('PDV 3757283') || desc.includes('PDV: 3757283');
-      });
-
-      // Calcola data accredito attesa in base alla regola di sfasamento
-      const _getDataAccreditoAttesa = dataOperazione => {
-        const date = new Date(dataOperazione);
-        const dayOfWeek = date.getDay(); // 0=Dom, 1=Lun, 2=Mar, 3=Mer, 4=Gio, 5=Ven, 6=Sab
-
-        // Sfasamento: +1 giorno lavorativo
-        // Ven/Sab/Dom → Lunedì
-        if (dayOfWeek === 5) {
-          // Venerdì
-          date.setDate(date.getDate() + 3); // +3 = Lunedì
-        } else if (dayOfWeek === 6) {
-          // Sabato
-          date.setDate(date.getDate() + 2); // +2 = Lunedì
-        } else if (dayOfWeek === 0) {
-          // Domenica
-          date.setDate(date.getDate() + 1); // +1 = Lunedì
-        } else {
-          date.setDate(date.getDate() + 1); // +1 giorno
-        }
-
-        // Festivi italiani (approssimazione - principali festività)
-        const festiviItaliani = [
-          '01-01', // Capodanno
-          '01-06', // Epifania
-          '04-25', // Liberazione
-          '05-01', // Festa del Lavoro
-          '06-02', // Festa della Repubblica
-          '08-15', // Ferragosto
-          '11-01', // Tutti i Santi
-          '12-08', // Immacolata
-          '12-25', // Natale
-          '12-26', // Santo Stefano
-        ];
-
-        // Controllo festivi (loop max 5 giorni per sicurezza)
-        for (let i = 0; i < 5; i++) {
-          const mmdd = date.toISOString().slice(5, 10);
-          const dow = date.getDay();
-          if (festiviItaliani.includes(mmdd) || dow === 0 || dow === 6) {
-            date.setDate(date.getDate() + 1);
-          } else {
-            break;
-          }
-        }
-
-        return date.toISOString().slice(0, 10);
-      };
-
-      // Raggruppa per mese di ACCREDITO (non di operazione)
-      // La data nell'estratto conto è già la data accredito effettivo
-      const posBancaAccrediti = posBancaMovimenti
-        .filter(m => m.tipo === 'entrata' && m.data?.startsWith(monthPrefix))
-        .reduce((sum, m) => sum + (parseFloat(m.importo) || 0), 0);
-
-      const posBancaCommissioni = posBancaMovimenti
-        .filter(m => m.tipo === 'uscita' && m.data?.startsWith(monthPrefix))
-        .reduce((sum, m) => sum + (parseFloat(m.importo) || 0), 0);
-
-      // POS Banca = Accrediti (il valore principale da mostrare)
-      const posBanca = posBancaAccrediti;
 
       // ============ CORRISPETTIVI AUTO (da XML) ============
       // Totale incassi giornalieri dai corrispettivi XML
@@ -351,6 +289,12 @@ export default function ControlloMensile() {
       // RICONCILIAZIONE BANCARIA: POS arrivato in banca vs POS Manuale (tuo incasso reale)
       const posBancaDiff = posBanca - posManual; // Banca vs TUO dato reale
       const corrispDiff = corrispAuto - corrispManual;
+      const posFiscalIssue = monthPos.some(g =>
+        ['differenza_in_piu_da_registrare', 'in_attesa_xml'].includes(g.stato_serale)
+      );
+      const posBankIssue = monthPos.some(g =>
+        ['mancante', 'differenza', 'extra'].includes(g.stato_accredito)
+      );
 
       const hasData =
         posAuto > 0 ||
@@ -359,8 +303,7 @@ export default function ControlloMensile() {
         corrispAuto > 0 ||
         corrispManual > 0 ||
         versamenti > 0;
-      const hasDiscrepancy =
-        Math.abs(posDiff) > 1 || Math.abs(corrispDiff) > 1 || Math.abs(posBancaDiff) > 1;
+      const hasDiscrepancy = posFiscalIssue || posBankIssue || Math.abs(corrispDiff) > 1;
 
       monthly.push({
         month,
@@ -368,9 +311,10 @@ export default function ControlloMensile() {
         posAuto,
         posManual,
         posBanca,
-        posBancaCommissioni,
         posDiff,
         posBancaDiff,
+        posFiscalIssue,
+        posBankIssue,
         corrispAuto,
         corrispManual,
         corrispDiff,
@@ -387,7 +331,7 @@ export default function ControlloMensile() {
         // Debug info
         _debug: {
           cassaCount: monthCassa.length,
-          estrattoCount: monthEstratto.length,
+          controlloPosCount: monthPos.length,
           corrispCount: monthCorrisp.length,
         },
       });
@@ -395,7 +339,6 @@ export default function ControlloMensile() {
       yearPosAuto += posAuto;
       yearPosManual += posManual;
       yearPosBanca += posBanca;
-      yearPosBancaCommissioni += posBancaCommissioni;
       yearCorrispAuto += corrispAuto;
       yearCorrispManual += corrispManual;
       yearVersamenti += versamenti;
@@ -413,7 +356,6 @@ export default function ControlloMensile() {
       posAuto: yearPosAuto,
       posManual: yearPosManual,
       posBanca: yearPosBanca,
-      posBancaCommissioni: yearPosBancaCommissioni,
       corrispettiviAuto: yearCorrispAuto,
       corrispettiviManual: yearCorrispManual,
       versamenti: yearVersamenti,
@@ -448,11 +390,15 @@ export default function ControlloMensile() {
         { nome: 'Cassa', vuoto: { data: { movimenti: [] } },
           req: api.get(`/api/prima-nota/cassa?${params}&limit=10000`) },
         { nome: 'Corrispettivi', vuoto: { data: [] },
-          req: api.get(`/api/corrispettivi?data_da=${startDate}&data_a=${endDate}&limit=500`) },
+          req: api.get(`/api/corrispettivi?data_da=${startDate}&data_a=${endDate}&limit=10000`) },
+        { nome: 'Controllo POS-banca', vuoto: { data: { giorni: [] } },
+          req: api.get(
+            `/api/pos-corrispettivi/controllo-due-fasi?data_da=${startDate}&data_a=${endDate}`
+          ) },
       ];
       const esiti = await Promise.allSettled(fonti.map(f => f.req));
       const falliteNomi = [];
-      const [cassaRes, corrispRes] = esiti.map((e, i) => {
+      const [cassaRes, corrispRes, controlloPosRes] = esiti.map((e, i) => {
         if (e.status === 'fulfilled') return e.value;
         falliteNomi.push(fonti[i].nome);
         return fonti[i].vuoto;
@@ -463,8 +409,9 @@ export default function ControlloMensile() {
       const corrispettivi = Array.isArray(corrispRes.data)
         ? corrispRes.data
         : corrispRes.data.corrispettivi || [];
+      const controlloPos = controlloPosRes.data.giorni || [];
 
-      processDailyData(cassa, corrispettivi, month);
+      processDailyData(cassa, corrispettivi, controlloPos, month);
 
       // Estrai dettaglio versamenti del mese
       const versamentiMese = cassa.filter(m => {
@@ -486,7 +433,7 @@ export default function ControlloMensile() {
    * PROCESSA DATI GIORNALIERI
    * Crea una riga per ogni giorno del mese con tutti i totali
    */
-  const processDailyData = (cassa, corrispettivi, month) => {
+  const processDailyData = (cassa, corrispettivi, controlloPos, month) => {
     const daysInMonth = new Date(anno, month, 0).getDate();
     const comparison = [];
     const monthStr = String(month).padStart(2, '0');
@@ -498,23 +445,22 @@ export default function ControlloMensile() {
       // Filtra movimenti del giorno
       const dayCassa = cassa.filter(m => m.data === dateStr);
       const dayCorrisp = corrispettivi.filter(c => c.data === dateStr);
+      const dayPos = controlloPos.find(g => g.data === dateStr);
 
-      // ============ POS AUTO (da Corrispettivi XML) ============
-      dayData.posAuto = dayCorrisp.reduce(
-        (sum, c) => sum + (parseFloat(c.pagato_elettronico) || 0),
-        0
-      );
+      // Valori già verificati dal motore canonico POS/XML/banca.
+      dayData.posAuto = parseFloat(dayPos?.xml_elettronico) || 0;
+      dayData.posManual = parseFloat(dayPos?.pos_manuale) || 0;
+      dayData.posBanca = parseFloat(dayPos?.accredito_banca) || 0;
+      dayData.posDiff = parseFloat(dayPos?.diff_serale) || 0;
+      dayData.posBancaDiff = parseFloat(dayPos?.diff_accredito) || 0;
+      dayData.statoSerale = dayPos?.stato_serale || 'no_dati';
+      dayData.statoBanca = dayPos?.stato_accredito || 'no_pos_manuale';
 
       // ============ DOCUMENTI COMMERCIALI (da Corrispettivi XML) ============
       dayData.documentiCommerciali = dayCorrisp.reduce(
         (sum, c) => sum + (parseInt(c.numero_documenti) || 0),
         0
       );
-
-      // ============ POS MANUALE (da Prima Nota) ============
-      dayData.posManual = dayCassa
-        .filter(m => m.categoria?.toUpperCase() === 'POS' || m.source === 'excel_pos')
-        .reduce((sum, m) => sum + Math.abs(parseFloat(m.importo) || 0), 0);
 
       // ============ CORRISPETTIVI AUTO (da XML) ============
       dayData.corrispettivoAuto = dayCorrisp.reduce(
@@ -549,19 +495,21 @@ export default function ControlloMensile() {
       dayData.saldoCassa = entrateGiorno - usciteGiorno;
 
       // Differenze
-      dayData.posDiff = dayData.posAuto - dayData.posManual;
       dayData.corrispettivoDiff = dayData.corrispettivoAuto - dayData.corrispettivoManual;
 
       dayData.hasData =
         dayData.posAuto > 0 ||
         dayData.posManual > 0 ||
+        dayData.posBanca > 0 ||
         dayData.corrispettivoAuto > 0 ||
         dayData.corrispettivoManual > 0 ||
         dayData.versamento > 0 ||
         entrateGiorno > 0 ||
         usciteGiorno > 0;
       dayData.hasDiscrepancy =
-        Math.abs(dayData.posDiff) > 1 || Math.abs(dayData.corrispettivoDiff) > 1;
+        ['differenza_in_piu_da_registrare', 'in_attesa_xml'].includes(dayData.statoSerale) ||
+        ['mancante', 'differenza', 'extra'].includes(dayData.statoBanca) ||
+        Math.abs(dayData.corrispettivoDiff) > 1;
 
       // Debug info
       dayData._debug = {
@@ -591,12 +539,6 @@ export default function ControlloMensile() {
     setViewMode('anno');
     setMeseSelezionato(null);
   };
-
-  // Generate year options (last 5 years)
-  const yearOptions = [];
-  for (let y = currentYear; y >= currentYear - 4; y--) {
-    yearOptions.push(y);
-  }
 
   // Modal Versamenti
   const VersamentiModal = () => {
@@ -851,10 +793,6 @@ export default function ControlloMensile() {
             icon: '🏦',
             label: 'POS Banca (PDV)',
             value: formatEuro(yearTotals.posBanca || 0),
-            subtext:
-              yearTotals.posBancaCommissioni > 0
-                ? `Comm.: -${formatEuro(yearTotals.posBancaCommissioni)}`
-                : null,
             accent: 'primary',
           },
           {
@@ -903,6 +841,20 @@ export default function ControlloMensile() {
             subtext: `${yearTotals.ammontareAnnulliCount || 0} occorrenze`,
             accent: (yearTotals.ammontareAnnulli || 0) > 0 ? 'danger' : 'primary',
           },
+          {
+            icon: '📄',
+            label: 'Fatture da registrare',
+            value: (completezzaRegistro.fatture_da_registrare || 0).toLocaleString('it-IT'),
+            subtext: `${completezzaRegistro.scritture_registrate || 0} scritture definitive`,
+            accent: completezzaRegistro.fatture_da_registrare > 0 ? 'warning' : 'success',
+          },
+          {
+            icon: '🧾',
+            label: 'Corrisp. da registrare',
+            value: (completezzaRegistro.corrispettivi_da_registrare || 0).toLocaleString('it-IT'),
+            subtext: completezzaRegistro.completo ? 'Registro completo' : 'Registro incompleto',
+            accent: completezzaRegistro.corrispettivi_da_registrare > 0 ? 'warning' : 'success',
+          },
         ].map(card => (
           <StatCard
             key={card.label}
@@ -933,12 +885,14 @@ export default function ControlloMensile() {
           <strong>Fonti dati:</strong>
           <br />• <strong>POS RT (chiusura)</strong> = pagato_elettronico da XML corrispettivi
           (chiusura serale RT)
-          <br />• <strong>POS Reale (Tuo)</strong> = Prima Nota Cassa con categoria &quot;POS&quot;
-          (inserito manualmente da te)
-          <br />• <strong>🏦 POS Banca</strong> = Accrediti PDV 3757283 dall&apos;estratto conto
-          bancario
+          <br />• <strong>POS Reale (Tuo)</strong> = chiusura serale manuale dalla fonte POS
+          canonica, con fallback storico già controllato dal backend
+          <br />• <strong>🏦 POS Banca</strong> = accrediti reali dell&apos;estratto conto,
+          associati al giorno di vendita letto dalla causale e sommati per tutti i circuiti
           <br />• <strong>Diff. POS</strong> = POS RT - POS Reale (discrepanze giornaliere)
           <br />• <strong>Diff. Banca</strong> = POS Banca - POS Reale (riconciliazione bancaria)
+          <br />• <strong>Registro</strong> = fatture e corrispettivi non ancora trasformati in
+          scritture definitive; non vengono conteggiati come già contabilizzati
           <br />• <strong>Pagato Non Riscosso</strong> = (Ammontare + ImportoParziale) - (Contanti +
           Elettronico)
           <br />• <strong>🗑️ Ammontare Annulli</strong> = TotaleAmmontareAnnulli da XML
@@ -988,7 +942,8 @@ export default function ControlloMensile() {
                 <Th align="right">POS RT (XML)</Th>
                 <Th align="right">POS Reale (Tuo)</Th>
                 <Th align="right">🏦 POS Banca</Th>
-                <Th align="right">Diff.</Th>
+                <Th align="right">Diff. RT</Th>
+                <Th align="right">Diff. Banca</Th>
                 <Th align="right">Corr. Auto</Th>
                 <Th align="right">Corr. Man.</Th>
                 <Th align="right">Diff.</Th>
@@ -1000,7 +955,7 @@ export default function ControlloMensile() {
             <tbody>
               {loading ? (
                 <tr>
-                  <Td colSpan="11" align="center" style={{ padding: 40 }}>
+                  <Td colSpan="12" align="center" style={{ padding: 40 }}>
                     ⏳ Caricamento dati...
                   </Td>
                 </tr>
@@ -1046,6 +1001,24 @@ export default function ControlloMensile() {
                         <span title="POS RT (XML) - POS Chiusura">
                           {row.posDiff > 0 ? '+' : ''}
                           {formatEuro(row.posDiff)}
+                        </span>
+                      ) : (
+                        '-'
+                      )}
+                    </Td>
+                    <Td
+                      align="right"
+                      mono
+                      style={{
+                        fontWeight: row.posBankIssue ? 'bold' : 'normal',
+                        color: row.posBankIssue ? COLORS.danger : COLORS.textMuted,
+                        fontSize: 12,
+                      }}
+                    >
+                      {Math.abs(row.posBancaDiff) > 0.01 ? (
+                        <span title="POS banca - POS reale">
+                          {row.posBancaDiff > 0 ? '+' : ''}
+                          {formatEuro(row.posBancaDiff)}
                         </span>
                       ) : (
                         '-'
@@ -1138,6 +1111,19 @@ export default function ControlloMensile() {
                 >
                   {formatEuro(yearTotals.posAuto - yearTotals.posManual)}
                 </td>
+                <td
+                  style={{
+                    padding: 10,
+                    textAlign: 'right',
+                    fontFamily: MONO,
+                    color:
+                      Math.abs(yearTotals.posBanca - yearTotals.posManual) > 1
+                        ? COLORS.accentLight
+                        : COLORS.success,
+                  }}
+                >
+                  {formatEuro(yearTotals.posBanca - yearTotals.posManual)}
+                </td>
                 <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>
                   {formatEuro(yearTotals.corrispettiviAuto)}
                 </td>
@@ -1193,7 +1179,13 @@ export default function ControlloMensile() {
                   POS Reale (Tuo)
                 </Th>
                 <Th align="right" style={{ padding: 12 }}>
-                  Diff. POS
+                  POS Banca
+                </Th>
+                <Th align="right" style={{ padding: 12 }}>
+                  Diff. RT
+                </Th>
+                <Th align="right" style={{ padding: 12 }}>
+                  Diff. Banca
                 </Th>
                 <Th align="right" style={{ padding: 12 }}>
                   Corrisp. Auto
@@ -1215,7 +1207,7 @@ export default function ControlloMensile() {
             <tbody>
               {loading ? (
                 <tr>
-                  <Td colSpan="9" align="center" style={{ padding: 40 }}>
+                  <Td colSpan="11" align="center" style={{ padding: 40 }}>
                     ⏳ Caricamento dati...
                   </Td>
                 </tr>
@@ -1240,6 +1232,9 @@ export default function ControlloMensile() {
                     <Td align="right" mono>
                       {row.posManual > 0 ? formatEuro(row.posManual) : '-'}
                     </Td>
+                    <Td align="right" mono>
+                      {row.posBanca > 0 ? formatEuro(row.posBanca) : '-'}
+                    </Td>
                     <Td
                       align="right"
                       mono
@@ -1257,6 +1252,27 @@ export default function ControlloMensile() {
                         <span>
                           {row.posDiff > 0 ? '+' : ''}
                           {formatEuro(row.posDiff)}
+                        </span>
+                      ) : (
+                        '-'
+                      )}
+                    </Td>
+                    <Td
+                      align="right"
+                      mono
+                      style={{
+                        fontWeight: ['mancante', 'differenza', 'extra'].includes(row.statoBanca)
+                          ? 'bold'
+                          : 'normal',
+                        color: ['mancante', 'differenza', 'extra'].includes(row.statoBanca)
+                          ? COLORS.danger
+                          : COLORS.textMuted,
+                      }}
+                    >
+                      {Math.abs(row.posBancaDiff) > 0.01 ? (
+                        <span>
+                          {row.posBancaDiff > 0 ? '+' : ''}
+                          {formatEuro(row.posBancaDiff)}
                         </span>
                       ) : (
                         '-'
@@ -1319,7 +1335,13 @@ export default function ControlloMensile() {
                   {formatEuro(dailyComparison.reduce((s, d) => s + d.posManual, 0))}
                 </td>
                 <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
+                  {formatEuro(dailyComparison.reduce((s, d) => s + d.posBanca, 0))}
+                </td>
+                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
                   {formatEuro(dailyComparison.reduce((s, d) => s + d.posDiff, 0))}
+                </td>
+                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
+                  {formatEuro(dailyComparison.reduce((s, d) => s + d.posBancaDiff, 0))}
                 </td>
                 <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
                   {formatEuro(dailyComparison.reduce((s, d) => s + d.corrispettivoAuto, 0))}
@@ -1366,8 +1388,12 @@ export default function ControlloMensile() {
             corrispettivi.pagato_elettronico (da XML)
           </div>
           <div>
-            <strong style={{ color: COLORS.primary }}>POS Reale (Tuo)</strong> = Σ prima_nota_cassa
-            WHERE categoria="POS"
+            <strong style={{ color: COLORS.primary }}>POS Reale (Tuo)</strong> = chiusura serale
+            dal motore POS canonico
+          </div>
+          <div>
+            <strong style={{ color: COLORS.primary }}>POS Banca</strong> = accrediti reali associati
+            al giorno di vendita indicato nella causale
           </div>
           <div>
             <strong style={{ color: COLORS.warning }}>Corrisp. Auto</strong> = Σ corrispettivi.totale

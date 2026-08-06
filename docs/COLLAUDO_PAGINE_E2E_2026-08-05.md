@@ -43,7 +43,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 17 | [ ] IN CORREZIONE | Bilancio — `/contabilita/bilancio` | Stato patrimoniale e conto economico per periodo. | TENERE |
 | 18 | [ ] IN CORREZIONE | Verifica Bilancio — `/contabilita/verifica` | Controlla quadrature e incoerenze del bilancio. | TENERE |
 | 19 | [ ] IN CORREZIONE | Libro Giornale — `/contabilita/giornale` | Elenca le scritture contabili cronologiche e i mastri. | TENERE |
-| 20 | [ ] | Controllo mensile — `/contabilita/controllo` | Incrocia mensilmente fatture, corrispettivi, banca e Prima Nota. | TENERE |
+| 20 | [ ] IN CORREZIONE | Controllo mensile — `/contabilita/controllo` | Incrocia mensilmente fatture, corrispettivi, banca e Prima Nota. | TENERE |
 | 21 | [ ] | Calendario fiscale — `/contabilita/calendario` | Scadenze fiscali operative e loro completamento. | TENERE |
 | 22 | [ ] | Cespiti — `/contabilita/cespiti` | Beni strumentali, ammortamenti e verifiche collegate. | TENERE |
 | 23 | [ ] | Finanziaria — `/contabilita/finanziaria` | Riepilogo finanziario e disponibilita per anno. | TENERE |
@@ -195,3 +195,16 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 - Il controllo accessorio dei 60 giorni non blocca piu Giornale e Mastro se fallisce; gli errori principali azzerano i dati precedenti e mostrano `Riprova`.
 - Collaudo read-only reale 2026: 1 scrittura, 2 mastrini, Dare e Avere entrambi `€ 84,00`; Giornale, Mastro ed export hanno conteggi/totali identici e registro valido. Nessun dato scritto e nessun reimport eseguito sul database aziendale.
 - Test mirati: 9 backend e 7 frontend superati. Suite completa: 1117 backend superati, 2 saltati e 91 frontend superati. Audit del grafo frontend: 162 file analizzati e nessun orfano eliminabile. Build di produzione completata fuori dal repository con chunk `LibroGiornale-DEfAeXrH.js`; `frontend/dist` e rimasta pulita. Pagina ancora `IN CORREZIONE` fino a PR, deploy e collaudo live.
+- Correzione pubblicata con PR `#118`, merge `5115404ac4d7c9852cb99d1725f3ea1ae3029ebb` e deploy Render `dep-d9q0s5gae00c73a1q940` concluso `live`.
+- Verifica tecnica diretta su entrambi i domini: health `healthy`, database `connected`, route HTTP 200, endpoint protetto HTTP 401 senza sessione e chunk `LibroGiornale-B7UwiwBl.js` con avvisi di integrita, troncamento e riprova. Resta solo il collaudo visuale autenticato.
+
+### 2026-08-06 — Pagina 20 Controllo mensile
+
+- Route React verificata: `/contabilita/controllo` monta `ControlloMensile` nel tab Contabilita.
+- Difetto riprodotto nel codice: la pagina ricostruiva nel browser la logica POS cercando solo `PDV 3757283`, leggeva al massimo 500 corrispettivi e non mostrava banca/differenza nel dettaglio giornaliero, pur esistendo il motore backend canonico a due fasi.
+- La pagina usa ora `/api/pos-corrispettivi/controllo-due-fasi`: XML RT, chiusura POS reale e accredito banca restano evidenze distinte; il giorno vendita viene letto dalla causale e i circuiti dello stesso giorno sono sommati dal backend.
+- Rimosse la regola PDV duplicata, il calendario festivi approssimato nel frontend e la derivazione POS dalla categoria Cassa. I limiti di Cassa/Corrispettivi sono portati al massimo supportato e ogni fonte fallita resta visibile come errore, non come periodo a zero.
+- Aggiunte `Diff. RT` e `Diff. Banca` sia nel riepilogo mensile sia nel dettaglio giornaliero. Le anomalie seguono gli stati del motore canonico: un XML maggiore del POS reale non viene marcato erroneamente come difetto.
+- Collegata la completezza del registro definitivo: la pagina espone separatamente fatture e corrispettivi ancora da registrare, senza considerarli gia contabilizzati.
+- Collaudo read-only reale 2026: 171 corrispettivi, 421 movimenti Cassa, 3505 movimenti di estratto conto e 272 fatture. Motore canonico: 172 giorni, 141 controlli RT/POS corretti, 30 differenze da verificare; banca 128 corretti, 15 mancanti, 2 differenze e 23 extra. Totale POS reale `EUR 328.726,07`, accrediti rilevati `EUR 306.147,49`. Nessun dato scritto.
+- Test mirati: 18 backend POS/XML/banca e 4 frontend superati. Suite completa: 1117 backend superati, 2 saltati e 95 frontend superati. Audit del grafo frontend: 163 file analizzati e nessun orfano eliminabile. Build di produzione completata fuori dal repository con chunk `ControlloMensile-DqhiJOYy.js`; `frontend/dist` e rimasta pulita. Pagina ancora `IN CORREZIONE` fino a PR, deploy e collaudo live.
