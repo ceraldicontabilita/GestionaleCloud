@@ -20,7 +20,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
 
-from app.services.scritture_contabili import _scrivi_se_assente
+from app.services import conti_pos
+from app.services.scritture_contabili import NATURA_CREDITO_POS, _scrivi_se_assente
 from app.services.sumup_sync import (
     GESTORE,
     TIPO_CHARGEBACK,
@@ -35,10 +36,8 @@ logger = logging.getLogger(__name__)
 
 COLL_PAYOUT = "sumup_payouts"
 
-# Piano dei conti CEE ufficiale (regola vincolante utente).
-CONTO_COMMISSIONI = "75.01.07"
+# I codici del piano ufficiale stanno tutti in conti_pos: qui solo l'etichetta.
 CATEGORIA_COMMISSIONI = "Commissioni e spese bancarie"
-CONTO_SUMUP = "SUMUP"
 
 # Sotto questa soglia la differenza e' arrotondamento, non commissione.
 TOLLERANZA = 0.01
@@ -167,7 +166,7 @@ async def registra_payout(db, grezzo: Dict[str, Any], *,
         "commissione": commissione,
         "stato_riconciliazione": stato,
         "gestore": GESTORE,
-        "conto": CONTO_SUMUP,
+        "conto_contabile": conti_pos.conto_accredito(GESTORE),
         "updated_at": now,
     }
     await db[COLL_PAYOUT].update_one(
@@ -176,32 +175,10 @@ async def registra_payout(db, grezzo: Dict[str, Any], *,
         upsert=True,
     )
 
-    movimento_commissioni = None
-    if stato == "riconciliato" and commissione > TOLLERANZA:
-        descrizione = (
-            f"Commissioni POS SUMUP payout {payout_id} "
-            f"({', '.join(componenti['giorni'])})"
-        )
-        movimento_commissioni, _ = await _scrivi_se_assente(
-            db, "banca",
-            # Idempotenza: un payout produce una sola scrittura di costo,
-            # anche se la sincronizzazione viene rilanciata.
-            {"source": "commissioni_sumup", "payout_id": payout_id},
-            {
-                "data": payout["data"],
-                "tipo": "uscita",
-                "importo": commissione,
-                "categoria": CATEGORIA_COMMISSIONI,
-                "conto_contabile": CONTO_COMMISSIONI,
-                "descrizione": descrizione,
-                "source": "commissioni_sumup",
-                "gestore": GESTORE,
-                "circuito": "SUMUP",
-                "conto": CONTO_SUMUP,
-                "payout_id": payout_id,
-                "giorni_coperti": componenti["giorni"],
-            },
-        )
+    scrittura = {}
+    if stato == "riconciliato":
+        scrittura = await _scrittura_di_accredito(
+            db, payout, componenti, commissione)
 
     aggiornati = await _chiudi_crediti(db, payout_id, componenti["giorni"],
                                        coperto=coperto, now=now)
@@ -214,7 +191,7 @@ async def registra_payout(db, grezzo: Dict[str, Any], *,
         **componenti,
         "commissione": commissione,
         "stato_riconciliazione": stato,
-        "movimento_commissioni_id": movimento_commissioni,
+        "scrittura": scrittura,
         "crediti_chiusi": aggiornati,
         # Prova di quadratura richiesta: lordo = accredito + commissioni +
         # rimborsi/rettifiche.
@@ -223,6 +200,98 @@ async def registra_payout(db, grezzo: Dict[str, Any], *,
             - componenti["chargeback"] - payout["netto"] - commissione
         ) <= TOLLERANZA,
     }
+
+
+async def _scrittura_di_accredito(db, payout: Dict[str, Any],
+                                  componenti: Dict[str, Any],
+                                  commissione: float) -> Dict[str, Any]:
+    """Operazione composta: chiude il credito, accredita, imputa il costo.
+
+    Tre righe legate dallo stesso ``settlement_id``, che devono quadrare fra
+    loro::
+
+        credito SumUp chiuso = accredito Mastercard + costi commissioni
+
+    Nessun ricavo: il ricavo e' gia' nel corrispettivo XML. E nessun movimento
+    su BPM: SumUp versa sulla Mastercard, che e' un conto a se'.
+    """
+    payout_id = payout["payout_id"]
+    settlement_id = f"sumup:{payout_id}"
+    giorni = ", ".join(componenti["giorni"])
+    credito_chiuso = round(componenti["vendite"] - componenti["rimborsi"]
+                           - componenti["chargeback"], 2)
+
+    comune = {
+        "data": payout["data"],
+        "settlement_id": settlement_id,
+        "payout_id": payout_id,
+        "gestore": GESTORE,
+        "circuito": "SUMUP",
+        "giorni_coperti": componenti["giorni"],
+    }
+    righe = []
+
+    if credito_chiuso > TOLLERANZA:
+        righe.append(("credito", {
+            **comune,
+            "tipo": "uscita",
+            "importo": credito_chiuso,
+            "categoria": "Crediti verso gestori incassi",
+            "descrizione": f"Chiusura credito SumUp — payout {payout_id} ({giorni})",
+            "source": "chiusura_credito_pos",
+            # Stessa natura della riga di apertura: cosi' il saldo del
+            # credito si azzera da solo invece di restare aperto per sempre.
+            "natura": NATURA_CREDITO_POS,
+            "conto_contabile": conti_pos.conto_credito(GESTORE),
+            "conto_nome": conti_pos.descrizione_conto(
+                conti_pos.conto_credito(GESTORE)),
+        }))
+
+    if payout["netto"] > TOLLERANZA:
+        righe.append(("accredito", {
+            **comune,
+            "tipo": "entrata",
+            "importo": payout["netto"],
+            "categoria": "Accrediti POS",
+            "descrizione": f"Payout SumUp {payout_id}",
+            "source": "accredito_payout",
+            "natura": "liquidita",
+            "conto_contabile": conti_pos.conto_accredito(GESTORE),
+            "conto_nome": conti_pos.descrizione_conto(
+                conti_pos.conto_accredito(GESTORE)),
+        }))
+
+    if commissione > TOLLERANZA:
+        righe.append(("commissioni", {
+            **comune,
+            "tipo": "uscita",
+            "importo": commissione,
+            "categoria": CATEGORIA_COMMISSIONI,
+            "descrizione": f"Commissioni SumUp — payout {payout_id} ({giorni})",
+            "source": "commissioni_sumup",
+            # Costo di conto economico, non un prelievo dalla Mastercard: la
+            # trattenuta non e' mai transitata sul conto. Non appartiene
+            # quindi a nessuna scheda di tesoreria.
+            "natura": "costo",
+            "conto_contabile": conti_pos.conto_commissioni(GESTORE),
+            "conto_nome": conti_pos.descrizione_conto(
+                conti_pos.conto_commissioni(GESTORE)),
+        }))
+
+    scritte: Dict[str, Any] = {"settlement_id": settlement_id}
+    for ruolo, movimento in righe:
+        # Idempotenza per ruolo: rilanciare la sincronizzazione non raddoppia
+        # ne' l'accredito ne' il costo.
+        identificativo, _ = await _scrivi_se_assente(
+            db, "banca",
+            {"settlement_id": settlement_id, "source": movimento["source"]},
+            movimento,
+        )
+        scritte[ruolo] = identificativo
+
+    scritte["quadra"] = abs(
+        credito_chiuso - payout["netto"] - commissione) <= TOLLERANZA
+    return scritte
 
 
 async def _chiudi_crediti(db, payout_id: str, giorni: List[str], *,

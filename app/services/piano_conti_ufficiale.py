@@ -77,9 +77,19 @@ CONTI_UFFICIALI = {
     "15.05": 'CREDITI VARI V/TERZI',
     "15.05.01": 'Depositi cauzionali per utenze',
     "15.05.03": 'Depositi cauzionali vari',
+    # Incassi elettronici gia' avvenuti ma non ancora sul conto: sono crediti
+    # verso il gestore, non denaro in banca. Restano fuori dai saldi bancari
+    # reali e hanno un saldo proprio finche' l'accredito non li chiude.
+    "15.07": 'CREDITI VERSO GESTORI INCASSI',
+    "15.07.01": 'Crediti verso Nexi/Numia',
+    "15.07.02": 'Crediti verso SumUp',
+    "15.07.03": 'Crediti verso PayPal',
     "19": "DISPONIBILITA' LIQUIDE",
     "19.01": 'BANCHE C/C E POSTA C/C',
     "19.01.01": 'Banca c/c',
+    # Conto aziendale SumUp (Mastercard): i payout SumUp arrivano qui, non su
+    # Banco BPM. E' un conto reale a tutti gli effetti, letto via API.
+    "19.01.05": 'Mastercard SumUp',
     "19.03": 'CASSA',
     "19.03.03": 'Cassa contanti',
     "23": 'CAPITALE E RISERVE',
@@ -262,7 +272,16 @@ CONTI_UFFICIALI = {
     "71.03.17": 'Arrotondamenti passivi diversi',
     "75": 'ONERI FINANZIARI',
     "75.01": 'ONERI FINANZIARI VERSO BANCHE',
+    # Il conto esiste gia' nel piano ufficiale e corrisponde davvero a
+    # "commissioni bancarie e POS": si articola, non se ne inventa uno nuovo.
+    # sezione_di() legge le prime due cifre, quindi i sottoconti confluiscono
+    # da soli nel totale COSTI del conto economico; restano distinti solo
+    # nella riconciliazione, per circuito e per payout.
     "75.01.07": 'Commissioni e spese bancarie',
+    "75.01.07.01": 'Costi commissioni Nexi/Numia',
+    "75.01.07.02": 'Costi commissioni SumUp',
+    "75.01.07.03": 'Costi commissioni PayPal',
+    "75.01.07.04": 'Altri costi bancari/POS',
     "75.03": 'ONERI FINANZIARI DIVERSI',
     "75.03.05": 'Interessi passivi su mutui',
     "75.03.29": 'Inter.pass.per dilaz. pagamento imposte',

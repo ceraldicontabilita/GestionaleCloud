@@ -90,7 +90,8 @@ def _scenario_utente(db):
     _run(registra_chiusura_pos_reale(db, "2026-08-06", 100.0, gestore="sumup"))
 
 
-def test_l_accredito_chiude_il_credito_e_registra_solo_la_commissione():
+def test_l_accredito_e_una_scrittura_composta_che_quadra():
+    """100 di credito chiuso = 98 sulla Mastercard + 2 di commissioni."""
     db = _db()
     _scenario_utente(db)
     esito = _run(sumup_payout.registra_payout(db, _payout(98.0)))
@@ -98,26 +99,55 @@ def test_l_accredito_chiude_il_credito_e_registra_solo_la_commissione():
     assert esito["quadra"] is True
     assert esito["commissione"] == 2.0
     assert esito["stato_riconciliazione"] == "riconciliato"
+    assert esito["scrittura"]["quadra"] is True
 
-    banca = _run(db.prima_nota_banca.find({}).to_list(50))
-    # Due righe: il credito POS da 100 e il costo commissioni da 2.
-    # Nessuna entrata da 98: sarebbe un ricavo duplicato.
-    assert sorted((r["tipo"], r["importo"]) for r in banca) == [
-        ("entrata", 100.0), ("uscita", 2.0)]
-    assert not [r for r in banca if r["importo"] == 98.0]
+    per_source = {r["source"]: r for r in
+                  _run(db.prima_nota_banca.find({}).to_list(50))}
+
+    apertura = per_source["trasferimento_pos"]
+    chiusura = per_source["chiusura_credito_pos"]
+    accredito = per_source["accredito_payout"]
+    commissioni = per_source["commissioni_sumup"]
+
+    assert (apertura["tipo"], apertura["importo"]) == ("entrata", 100.0)
+    assert (chiusura["tipo"], chiusura["importo"]) == ("uscita", 100.0)
+    assert (accredito["tipo"], accredito["importo"]) == ("entrata", 98.0)
+    assert (commissioni["tipo"], commissioni["importo"]) == ("uscita", 2.0)
+
+    # Le tre righe dell'operazione condividono il settlement_id.
+    settlement = esito["scrittura"]["settlement_id"]
+    assert {chiusura["settlement_id"], accredito["settlement_id"],
+            commissioni["settlement_id"]} == {settlement}
+
+    # Il credito si azzera da solo: apertura + chiusura = 0.
+    assert apertura["importo"] - chiusura["importo"] == 0.0
 
 
-def test_la_commissione_va_sul_conto_ufficiale_75_01_07():
+def test_il_payout_non_tocca_bpm_ma_la_mastercard():
+    db = _db()
+    _scenario_utente(db)
+    _run(sumup_payout.registra_payout(db, _payout(98.0)))
+
+    accredito = _run(db.prima_nota_banca.find_one({"source": "accredito_payout"}))
+    assert accredito["conto_contabile"] == "19.01.05"      # Mastercard SumUp
+    assert accredito["conto_nome"] == "Mastercard SumUp"
+    assert accredito["conto_contabile"] != "19.01.01"      # mai BPM
+
+
+def test_la_commissione_va_sul_sottoconto_del_circuito():
     db = _db()
     _scenario_utente(db)
     _run(sumup_payout.registra_payout(db, _payout(98.0)))
 
     costo = _run(db.prima_nota_banca.find_one({"source": "commissioni_sumup"}))
-    assert costo["conto_contabile"] == "75.01.07"
+    assert costo["conto_contabile"] == "75.01.07.02"
+    assert costo["conto_nome"] == "Costi commissioni SumUp"
     assert costo["categoria"] == "Commissioni e spese bancarie"
     assert costo["circuito"] == "SUMUP"
     assert costo["payout_id"] == PAYOUT
     assert costo["giorni_coperti"] == ["2026-08-06"]
+    # Non e' un prelievo dalla Mastercard: la trattenuta non ci e' mai passata.
+    assert costo["natura"] == "costo"
 
 
 def test_il_credito_smette_di_essere_in_transito():

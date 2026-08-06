@@ -27,9 +27,16 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from app.services import conti_pos
+
 logger = logging.getLogger(__name__)
 
 REGISTRI = {"cassa": "prima_nota_cassa", "banca": "prima_nota_banca"}
+
+# Marca le righe che sono CREDITI verso un gestore di incassi e non denaro
+# gia' sul conto. Serve a tenerle fuori dai saldi bancari reali senza doverle
+# riconoscere dal codice di conto, che puo' cambiare.
+NATURA_CREDITO_POS = "credito_pos"
 
 
 class ScritturaNonValida(ValueError):
@@ -397,7 +404,11 @@ async def registra_chiusura_pos_reale(
 
         accreditato = round(float((banca_mov or {}).get("accreditato_ec") or 0), 2)
         quadrato = accreditato > 0 and abs(accreditato - importo) <= 0.01
-        descrizione_banca = f"POS {circuito} {data} da cassa (chiusura terminale)"
+        # Non e' denaro in banca: e' un credito verso il gestore, con un conto
+        # e un saldo propri. Diventera' liquidita' solo quando il gestore
+        # versera' davvero — su BPM per Nexi, sulla Mastercard per SumUp.
+        etichetta_circuito = conti_pos.etichetta(gestore)
+        descrizione_banca = f"Credito verso {etichetta_circuito} — POS {data}"
         banca_fields = {
             "importo": importo,
             "amount": importo,
@@ -406,6 +417,10 @@ async def registra_chiusura_pos_reale(
             "descrizione": descrizione_banca,
             "description": descrizione_banca,
             "source": "trasferimento_pos",
+            "natura": NATURA_CREDITO_POS,
+            "conto_contabile": conti_pos.conto_credito(gestore),
+            "conto_nome": conti_pos.descrizione_conto(
+                conti_pos.conto_credito(gestore)),
             "gestore": gestore,
             "circuito": circuito,
             "quota_pos_fonte": "chiusura_manuale",
@@ -435,6 +450,10 @@ async def registra_chiusura_pos_reale(
                 "categoria": "Corrispettivi POS",
                 "descrizione": banca_fields["descrizione"],
                 "source": "trasferimento_pos",
+                "natura": NATURA_CREDITO_POS,
+                "conto_contabile": conti_pos.conto_credito(gestore),
+                "conto_nome": conti_pos.descrizione_conto(
+                    conti_pos.conto_credito(gestore)),
                 "gestore": gestore,
                 "circuito": circuito,
                 "quota_pos_fonte": "chiusura_manuale",

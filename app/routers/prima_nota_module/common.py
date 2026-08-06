@@ -81,6 +81,32 @@ ESCLUSIONI_PRIMA_NOTA = {
     "source": {"$nin": SOURCES_ESCLUSE},
 }
 
+# Decisione utente 07/08/2026: i crediti POS restano FUORI dal saldo bancario
+# reale. Il saldo di un conto deve contenere solo cio' che e' davvero
+# transitato: l'incasso elettronico del giorno e' un credito verso il gestore
+# finche' non viene versato (su BPM per Nexi, sulla Mastercard per SumUp).
+#
+# ATTENZIONE — questo e' lo STESSO meccanismo del bug del 16/07/2026, quando
+# escludere il trasferimento POS fece sparire ~204.000 EUR dai saldi. La
+# differenza, e la ragione per cui adesso e' corretto, e' che quel denaro non
+# scompare: confluisce nei saldi dedicati "Crediti POS", esposti accanto ai
+# conti reali da saldi_finanziari(). Se un giorno si togliesse quella
+# esposizione, si ricreerebbe il bug.
+SOURCES_CREDITO_POS = ["trasferimento_pos", "corrispettivo_pos", "corrispettivi_sync"]
+NATURA_CREDITO_POS = "credito_pos"
+
+# Righe che NON sono liquidita' su un conto reale.
+FILTRO_CREDITO_POS = {"$or": [
+    {"natura": NATURA_CREDITO_POS},
+    {"source": {"$in": SOURCES_CREDITO_POS}},
+]}
+
+# Da unire con ** alle query dei saldi bancari reali.
+ESCLUSIONI_SALDO_REALE = {
+    "natura": {"$ne": NATURA_CREDITO_POS},
+    "source": {"$nin": SOURCES_ESCLUSE + SOURCES_CREDITO_POS},
+}
+
 
 def clean_mongo_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
     """Rimuove _id da documento MongoDB."""
@@ -217,6 +243,95 @@ async def aggrega_saldo_prima_nota(db, collection: str, query: Dict[str, Any],
         "saldo_precedente": round(saldo_precedente, 2),
         "saldo_iniziale_manuale": saldo_manuale is not None,
         "saldo": round(saldo_finale, 2),
+    }
+
+
+async def saldi_finanziari(db, anno: int = None) -> Dict[str, Any]:
+    """Schede finanziarie separate, mai sommate in un unico numero.
+
+    Restituisce un conto reale per ogni luogo dove il denaro sta davvero
+    (Banca BPM, Mastercard SumUp) e un credito per ogni gestore che deve
+    ancora versare. Il totale delle disponibilita' liquide comprende solo i
+    conti reali: un credito non e' liquidita' finche' non e' accreditato.
+    """
+    from app.services import conti_pos
+
+    base: Dict[str, Any] = {
+        "status": {"$nin": ["deleted", "archived"]},
+        "categoria": {"$nin": CATEGORIE_ESCLUSE},
+    }
+    if anno:
+        base["data"] = {"$regex": f"^{int(anno)}-"}
+
+    async def _saldo(query: Dict[str, Any]) -> float:
+        # Somma in Python invece che in aggregate: sono le righe di una
+        # singola scheda di tesoreria, non l'intero registro, e cosi' il
+        # calcolo non dipende da $convert (assente in mongomock, quindi
+        # altrimenti non verificabile nei test).
+        cursore = db["prima_nota_banca"].find(
+            {**base, **query}, {"_id": 0, "tipo": 1, "importo": 1})
+        righe = (await cursore.to_list(100000) if hasattr(cursore, "to_list")
+                 else [r async for r in cursore])
+        totale = 0.0
+        for riga in righe:
+            try:
+                importo = float(riga.get("importo") or 0)
+            except (TypeError, ValueError):
+                continue
+            totale += importo if riga.get("tipo") == "entrata" else -importo
+        return round(totale, 2)
+
+    conti_reali = []
+    for codice, nome in ((conti_pos.CONTO_BPM, "Banca BPM"),
+                         (conti_pos.CONTO_SUMUP_MASTERCARD, "Mastercard SumUp")):
+        if codice == conti_pos.CONTO_BPM:
+            # Le righe storiche non hanno conto_contabile: sono tutte BPM,
+            # unico conto esistito finora.
+            appartenenza = {"$or": [
+                {"conto_contabile": codice},
+                {"conto_contabile": {"$in": [None, ""]}},
+                {"conto_contabile": {"$exists": False}},
+            ]}
+        else:
+            appartenenza = {"conto_contabile": codice}
+        conti_reali.append({
+            "codice": codice,
+            "nome": nome,
+            "tipo": "conto_reale",
+            "saldo": await _saldo({**ESCLUSIONI_SALDO_REALE, **appartenenza}),
+        })
+
+    crediti = []
+    for circuito in conti_pos.circuiti_attivi():
+        codice = conti_pos.conto_credito(circuito)
+        # Saldo algebrico: l'apertura del credito e' un'entrata, la chiusura
+        # (quando il gestore versa) e' un'uscita di pari importo. Il saldo
+        # residuo e' quindi, per costruzione, quanto il gestore deve ancora.
+        if circuito == conti_pos.NEXI:
+            # Storico senza campo gestore: e' Nexi, unico circuito finora.
+            appartenenza = {"$and": [{"$or": [
+                {"gestore": circuito},
+                {"gestore": {"$in": [None, ""]}},
+                {"gestore": {"$exists": False}},
+            ]}]}
+        else:
+            appartenenza = {"gestore": circuito}
+        aperti = {**FILTRO_CREDITO_POS, **appartenenza}
+        crediti.append({
+            "codice": codice,
+            "nome": conti_pos.descrizione_conto(codice),
+            "tipo": "credito_pos",
+            "circuito": circuito,
+            "saldo": await _saldo(aperti),
+        })
+
+    return {
+        "anno": anno,
+        "conti_reali": conti_reali,
+        "crediti_pos": crediti,
+        "disponibilita_liquide": round(
+            sum(c["saldo"] for c in conti_reali), 2),
+        "crediti_pos_aperti": round(sum(c["saldo"] for c in crediti), 2),
     }
 
 

@@ -13,8 +13,20 @@ from app.database import Database
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA,
     COLLECTION_SALDI_INIZIALI,
-    CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA, aggrega_saldo_prima_nota
+    CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA, aggrega_saldo_prima_nota,
+    saldi_finanziari,
 )
+
+
+async def get_saldi_finanziari(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
+    """Schede finanziarie separate, mai fuse in un unico numero.
+
+    Un conto reale per ogni luogo dove il denaro sta davvero (Banca BPM,
+    Mastercard SumUp) e un credito per ogni gestore che deve ancora versare.
+    I crediti POS non concorrono alle disponibilita' liquide: sono incassi
+    gia' avvenuti ma non ancora accreditati.
+    """
+    return await saldi_finanziari(Database.get_db(), anno)
 
 
 async def get_saldi_iniziali(anno: int = Query(...)) -> Dict[str, Any]:
