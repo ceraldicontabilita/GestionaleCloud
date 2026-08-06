@@ -338,7 +338,7 @@ export default function GestioneAssegni() {
       if (intento?.collegato) {
         toast.success('Assegno salvato e fattura associata automaticamente');
       } else if (intento?.motivo === 'ambiguo') {
-        toast.warning('Più fatture compatibili: serve scegliere solo tra le candidate reali');
+        toast.warning('Più fatture compatibili: il caso resta sospeso finché arrivano dati univoci');
       } else if (intento?.registrato) {
         toast.info('Assegno salvato: la fattura sarà associata automaticamente quando arriva');
       } else {
@@ -562,11 +562,20 @@ export default function GestioneAssegni() {
     setAutoAssociating(true);
     setAutoAssocResult(null);
     try {
-      const res = await api.post('/api/assegni/auto-associa');
-      setAutoAssocResult(res.data);
-      loadData();
+      const res = await api.post(`/api/assegni/riprocessa-collegamenti?anno=${anno}`);
+      setAutoAssocResult({ ...res.data, _modalita_riprocessamento: true });
+      const collegati = res.data?.fatture?.collegati ?? 0;
+      const ambigui = res.data?.fatture?.ambigui ?? 0;
+      if (collegati > 0) {
+        toast.success(`${collegati} assegni collegati automaticamente alle fatture`);
+      } else if (ambigui > 0) {
+        toast.info(`${ambigui} casi restano in attesa di dati univoci`);
+      } else {
+        toast.info('Riprocessamento completato: nessun nuovo collegamento certo');
+      }
+      await loadData();
     } catch (error) {
-      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore riprocessamento: ' + (error.response?.data?.detail || error.message));
     } finally {
       setAutoAssociating(false);
     }
@@ -1199,13 +1208,13 @@ export default function GestioneAssegni() {
         <Button
           variant="success"
           size="lg"
-          onClick={() => handleAutoMatch()}
+          onClick={handleAutoAssocia}
           disabled={autoAssociating}
-          data-testid="auto-match-btn"
-          title="Auto-match rigoroso: 4 livelli (L1 1→1, L2 N uguali→1, L3 N diversi→1, L4 1→N) con tolleranza ±0,005€"
+          data-testid="riprocessa-collegamenti-btn"
+          title="Rilegge l'estratto conto e collega automaticamente solo fatture univoche al centesimo"
           style={{ boxShadow: SHADOWS.sm }}
         >
-          {autoAssociating ? '🤖 …' : '🤖 Trova proposte'}
+          {autoAssociating ? 'Riprocessamento…' : '↻ Riprocessa collegamenti'}
         </Button>
 
         <Button
@@ -1262,7 +1271,7 @@ export default function GestioneAssegni() {
                 data-testid="auto-associa-btn"
                 style={menuItemStyle}
               >
-                🔁 {autoAssociating ? 'Associando...' : 'Auto-Associa'}
+                ↻ {autoAssociating ? 'Riprocessamento…' : 'Riprocessa storico'}
               </Button>
               <Button
                 variant="ghost"
@@ -1276,17 +1285,6 @@ export default function GestioneAssegni() {
                 style={menuItemStyle}
               >
                 👁️ Anteprima auto-match
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setShowAltroMenu(false);
-                  toggleAmbiguiSection();
-                }}
-                data-testid="ambigui-toggle-btn"
-                style={menuItemStyle}
-              >
-                ⚠️ {ambiguiOpen ? 'Nascondi ambigui' : 'Risolvi ambigui'}
               </Button>
               <Button
                 variant="ghost"
@@ -1902,6 +1900,35 @@ export default function GestioneAssegni() {
             <div style={{ marginTop: 12, fontSize: 13, color: COLORS.primaryLight }}>
               <strong>Risultati:</strong> {filteredAssegni.length} assegni trovati su{' '}
               {assegni.length} totali
+            </div>
+          )}
+        </div>
+      )}
+
+      {autoAssocResult?._modalita_riprocessamento && (
+        <div
+          role="status"
+          data-testid="riprocessamento-result"
+          style={{
+            marginBottom: 20,
+            padding: 15,
+            background: COLORS.successLight,
+            borderRadius: BORDER_RADIUS.md,
+            border: `1px solid ${COLORS.success}`,
+            fontSize: 13,
+          }}
+        >
+          <strong style={{ color: COLORS.success }}>Riprocessamento automatico completato</strong>
+          <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 14 }}>
+            <span>EC analizzato: <strong>{autoAssocResult.estratto_conto?.movimenti_analizzati ?? 0}</strong></span>
+            <span>Assegni riesaminati: <strong>{autoAssocResult.fatture?.analizzati ?? 0}</strong></span>
+            <span>Collegati: <strong>{autoAssocResult.fatture?.collegati ?? 0}</strong></span>
+            <span>In attesa fattura: <strong>{autoAssocResult.fatture?.in_attesa_fattura ?? 0}</strong></span>
+            <span>Ambigui non collegati: <strong>{autoAssocResult.fatture?.ambigui ?? 0}</strong></span>
+          </div>
+          {(autoAssocResult.fatture?.ambigui ?? 0) > 0 && (
+            <div style={{ marginTop: 8, color: COLORS.warning, fontWeight: 600 }}>
+              I casi ambigui restano sospesi: l'app li riproverà quando arriveranno nuove evidenze.
             </div>
           )}
         </div>
@@ -2956,8 +2983,10 @@ export default function GestioneAssegni() {
         </div>
       )}
 
-      {/* Modal Collega Fatture - DRAGGABLE */}
-      {showFattureModal && (
+      {/* Modale legacy disattivato: il collegamento operativo e' automatico.
+          Il codice resta temporaneamente solo per leggere vecchi collegamenti
+          durante la migrazione, ma non viene mai esposto all'utente. */}
+      {false && showFattureModal && (
         <div
           style={{
             position: 'fixed',

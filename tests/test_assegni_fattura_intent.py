@@ -11,6 +11,7 @@ from app.services.assegni_estratto_conto import (
 from app.services.assegni_fattura_intent import (
     collega_intento_assegno_a_fattura,
     prepara_intento_assegno,
+    riprocessa_intenti_assegni,
 )
 from app.routers.bank import assegni as assegni_router
 
@@ -425,3 +426,70 @@ def test_endpoint_legacy_non_puo_sovrascrivere_una_fattura_gia_attribuita(monkey
     assert "gia attribuita" in errore.detail
     assert len(salvata["assegni_collegati"]) == 1
     assert salvata["assegni_collegati"][0]["assegno_id"] == "ass-vecchio"
+
+
+def test_riprocessamento_storico_collega_assegno_incassato_alla_fattura_univoca():
+    async def scenario():
+        db = AsyncMongoMockClient()["assegno_riprocessamento_storico"]
+        await db.assegni.insert_one({
+            "id": "ass-storico", "numero": "0208770649", "anno": 2026,
+            "importo": 977.38, "beneficiario": "FORNITORE AUTOMATICO SRL",
+            "fornitore_piva": "09999999999", "numero_fattura": "FA-649",
+            "stato": "incassato", "incassato_confermato_banca": True,
+            "movimento_estratto_conto_id": "ec-storico",
+            "data_incasso": "2026-04-10",
+        })
+        await db.estratto_conto_movimenti.insert_one({
+            "id": "ec-storico", "data": "2026-04-10", "importo": 977.38,
+            "tipo": "uscita", "descrizione": "ASSEGNO N. 0208770649",
+            "riconciliato": True, "assegno_id": "ass-storico",
+        })
+        await db.invoices.insert_one({
+            "id": "fatt-storica", "invoice_number": "FA-649", "anno": 2026,
+            "invoice_date": "2026-03-31", "supplier_vat": "09999999999",
+            "supplier_name": "FORNITORE AUTOMATICO SRL", "total_amount": 977.38,
+            "importo_pagato": 0.0, "importo_residuo": 977.38,
+            "payment_status": "open", "pagato": False,
+        })
+
+        esito = await riprocessa_intenti_assegni(db, anno=2026)
+        assegno = await db.assegni.find_one({"id": "ass-storico"}, {"_id": 0})
+        fattura = await db.invoices.find_one({"id": "fatt-storica"}, {"_id": 0})
+        return esito, assegno, fattura
+
+    esito, assegno, fattura = _run(scenario())
+    assert esito["analizzati"] == 1
+    assert esito["collegati"] == 1
+    assert esito["ambigui"] == 0
+    assert assegno["fattura_id"] == "fatt-storica"
+    assert assegno["stato"] == "incassato"
+    assert fattura["pagato"] is True
+    assert fattura["riconciliato_con_ec"] is True
+
+
+def test_riprocessamento_non_indovina_tra_due_fatture_identiche():
+    async def scenario():
+        db = AsyncMongoMockClient()["assegno_riprocessamento_ambiguo"]
+        await db.assegni.insert_one({
+            "id": "ass-ambiguo", "numero": "0208770650", "anno": 2026,
+            "importo": 200.0, "beneficiario": "FORNITORE DOPPIO SRL",
+            "fornitore_piva": "08888888888", "stato": "compilato",
+        })
+        for invoice_id, numero in (("fatt-a", "A-1"), ("fatt-b", "B-1")):
+            await db.invoices.insert_one({
+                "id": invoice_id, "invoice_number": numero, "anno": 2026,
+                "invoice_date": "2026-03-31", "supplier_vat": "08888888888",
+                "supplier_name": "FORNITORE DOPPIO SRL", "total_amount": 200.0,
+                "pagato": False,
+            })
+
+        esito = await riprocessa_intenti_assegni(db, anno=2026)
+        assegno = await db.assegni.find_one({"id": "ass-ambiguo"}, {"_id": 0})
+        return esito, assegno
+
+    esito, assegno = _run(scenario())
+    assert esito["analizzati"] == 1
+    assert esito["collegati"] == 0
+    assert esito["ambigui"] == 1
+    assert not assegno.get("fattura_id")
+    assert not assegno.get("fattura_collegata")

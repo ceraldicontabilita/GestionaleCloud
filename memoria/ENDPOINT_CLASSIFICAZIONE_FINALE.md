@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1052 · tenere: 697 · verificare: 332 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1053 · tenere: 698 · verificare: 332 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -138,6 +138,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/assegni/pulisci-beneficiari-fittizi` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/assegni/ricostruisci-dati` | bank.assegni | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/assegni/rifiuta-proposta/{proposta_id}` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/assegni/riprocessa-collegamenti` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/assegni/senza-associazione` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/assegni/stati` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/assegni/stats` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
@@ -146,10 +147,10 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/assegni/verifica-associazioni` | bank.assegni | sì | — | — | — | sì | tenere | in uso: FE |
 | `DELETE /api/assegni/{assegno_id}` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/assegni/{assegno_id}` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/assegni/{assegno_id}` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
+| `PUT /api/assegni/{assegno_id}` | bank.assegni | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/assegni/{assegno_id}/annulla` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/assegni/{assegno_id}/emetti` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/assegni/{assegno_id}/fatture-collegate` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
+| `PUT /api/assegni/{assegno_id}/fatture-collegate` | bank.assegni | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/assegni/{assegno_id}/incassa` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/assegni/{assegno_id}/risolvi-ambiguo` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/auth/login` | auth | sì | — | — | — | sì | tenere | in uso: FE |
@@ -764,9 +765,9 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/pagopa/ricevute/upload` | pagopa | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/pagopa/ricevute/{ricevuta_id}/pdf` | pagopa | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/pagopa/stats` | pagopa | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/partite-aperte/lista` | partite_aperte_api | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/partite-aperte/lista` | partite_aperte_api | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/partite-aperte/scadute` | partite_aperte_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/partite-aperte/stats` | partite_aperte_api | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/partite-aperte/stats` | partite_aperte_api | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/paypal-api/account-ids-non-mappati` | paypal_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-api/account/{paypal_account_id}/cerca-fattura-email` | paypal_api | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/paypal-api/crea-fornitore-e-mappa` | paypal_api | sì | — | — | — | — | tenere | in uso: FE |
