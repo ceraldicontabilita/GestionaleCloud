@@ -8,6 +8,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import uuid
 import logging
+import re
 
 from app.database import Database
 from app.models.stati import STATI_PAGATI
@@ -23,6 +24,55 @@ router = APIRouter()
 
 # Collection name
 COLLECTION_ASSEGNI = "assegni"
+
+
+def _genera_sequenza_carnet(numero_primo: str, quantita: int) -> tuple[List[str], str]:
+    """Genera numeri progressivi preservando zeri e formato bancario.
+
+    Sono supportati sia i numeri continui presenti sugli assegni reali
+    (``0208770985``), sia il formato storico ``PREFISSO-SUFFISSO``
+    (``0208770000-01``). La larghezza non puo' cambiare durante il carnet:
+    un overflow richiede un nuovo carnet e non viene salvato in parte.
+    """
+    valore = str(numero_primo or "").strip()
+    if not valore:
+        raise ValueError("Inserisci il numero del primo assegno")
+
+    continuo = re.fullmatch(r"\d+", valore)
+    if continuo:
+        larghezza = len(valore)
+        iniziale = int(valore)
+        finale = iniziale + quantita - 1
+        if len(str(finale)) > larghezza:
+            raise ValueError("La progressione supera la lunghezza del numero iniziale")
+        numeri = [f"{iniziale + indice:0{larghezza}d}" for indice in range(quantita)]
+        return numeri, valore
+
+    separato = re.fullmatch(r"(\d+)-(\d+)", valore)
+    if separato:
+        prefisso, suffisso = separato.groups()
+        larghezza = len(suffisso)
+        iniziale = int(suffisso)
+        finale = iniziale + quantita - 1
+        if len(str(finale)) > larghezza:
+            raise ValueError("La progressione supera la lunghezza del suffisso iniziale")
+        numeri = [
+            f"{prefisso}-{iniziale + indice:0{larghezza}d}"
+            for indice in range(quantita)
+        ]
+        return numeri, prefisso
+
+    raise ValueError(
+        "Formato non valido: usa un numero continuo (es. 0208770985) "
+        "oppure PREFISSO-SUFFISSO (es. 0208770000-01)"
+    )
+
+
+def _assegno_riferisce_fattura(assegno: Dict[str, Any], fattura: Dict[str, Any]) -> bool:
+    """Vero solo se il numero fattura dichiarato sull'assegno coincide."""
+    numero_assegno = assegno.get("numero_fattura") or assegno.get("fattura_numero")
+    numero_fattura = fattura.get("invoice_number") or fattura.get("numero_documento")
+    return invoice_reference_equals(numero_assegno, numero_fattura)
 
 # Stati assegno.
 # "assegnato"/"parzialmente_assegnato" sono scritti dal collegamento a fatture
@@ -49,38 +99,32 @@ async def get_assegno_stati() -> Dict[str, Any]:
 
 @router.post("/genera")
 async def genera_assegni(
-    numero_primo: str = Body(..., description="Numero del primo assegno (es. 0208769182-11)"),
+    numero_primo: str = Body(
+        ...,
+        description=(
+            "Numero del primo assegno, continuo o con trattino "
+            "(es. 0208770985 oppure 0208769182-11)"
+        ),
+    ),
     quantita: int = Body(10, ge=1, le=100, description="Numero di assegni da generare"),
     anno: Optional[int] = Body(None, ge=2000, le=2100, description="Anno globale del carnet"),
 ) -> Dict[str, Any]:
     """
     Genera N assegni progressivi a partire dal numero fornito.
     
-    Formato numero: PREFISSO-NUMERO (es. 0208769182-11)
-    Genera: 0208769182-11, 0208769182-12, 0208769182-13, etc.
+    Accetta il formato bancario continuo e il formato storico con trattino,
+    preservando sempre gli zeri iniziali.
     """
     db = Database.get_db()
     
-    # Parse del numero
-    if "-" not in numero_primo:
-        raise HTTPException(status_code=400, detail="Formato numero non valido. Usa formato: PREFISSO-NUMERO (es. 0208769182-11)")
-    
-    parts = numero_primo.rsplit("-", 1)
-    prefix = parts[0]
-    suffix_width = len(parts[1])
-    
     try:
-        start_num = int(parts[1])
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Il numero dopo il trattino deve essere numerico")
+        numeri_richiesti, carnet_id = _genera_sequenza_carnet(numero_primo, quantita)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     
     # Verifica se alcuni numeri esistono già
     # Una sola query per tutto il carnet. Il vecchio ciclo eseguiva fino a
     # 100 round-trip Atlas prima ancora di salvare.
-    numeri_richiesti = [
-        f"{prefix}-{start_num + i:0{suffix_width}d}"
-        for i in range(quantita)
-    ]
     esistenti = await db[COLLECTION_ASSEGNI].find(
         {"numero": {"$in": numeri_richiesti}},
         {"_id": 0, "numero": 1},
@@ -98,8 +142,6 @@ async def genera_assegni(
     nuovi_assegni = []
     now = datetime.now(timezone.utc).isoformat()
     anno_carnet = anno or datetime.now(timezone.utc).year
-    carnet_id = prefix
-    
     for numero in numeri_richiesti:
         assegno = {
             "id": str(uuid.uuid4()),
@@ -498,14 +540,15 @@ async def verifica_associazioni_assegni(
     Analizza tutte le associazioni assegno-fattura e identifica quelle problematiche.
     
     PROBLEMI IDENTIFICATI:
-    1. Importo assegno diverso da importo fattura (oltre tolleranza ±5€)
+    1. Importo assegno diverso da importo fattura anche di un centesimo
     2. Beneficiario assegno diverso da fornitore fattura
     3. Fattura associata non esistente nel database
     4. Fattura associata già pagata
     5. Data assegno molto diversa da data fattura (>180 giorni)
     
     Returns:
-        Lista di associazioni problematiche con suggerimenti di correzione
+        Lista di associazioni problematiche. Le alternative sono suggerite
+        solo quando coincidono numero fattura dichiarato e importo al centesimo.
     """
     from thefuzz import fuzz
     
@@ -576,10 +619,14 @@ async def verifica_associazioni_assegni(
             problema["problemi"].append("Fattura associata non trovata nel database")
             statistiche["problemi_fattura_mancante"] += 1
             
-            # Suggerisci fatture con importo simile (mai fornitori non pagabili con assegno)
+            # Suggerisci solo riferimenti dichiarati con importo identico al centesimo.
             fatture_simili = [
                 f for f in fatture_cursor
-                if abs(float(f.get("total_amount", 0) or 0) - importo_assegno) < 5
+                if amounts_equal_to_cent(
+                    f.get("total_amount") or f.get("importo_totale"),
+                    importo_assegno,
+                )
+                and _assegno_riferisce_fattura(assegno, f)
                 and not fornitore_esclude_assegno(f.get("supplier_name") or "")
             ]
             if fatture_simili:
@@ -589,7 +636,7 @@ async def verifica_associazioni_assegni(
                         "numero": f.get("invoice_number"),
                         "fornitore": (f.get("supplier_name") or "")[:40],
                         "importo": f.get("total_amount"),
-                        "match_type": "importo_simile"
+                        "match_type": "numero_fattura_e_importo_esatti"
                     }
                     for f in fatture_simili[:5]
                 ]
@@ -610,9 +657,9 @@ async def verifica_associazioni_assegni(
         
         ha_problemi = False
         
-        # PROBLEMA 2: Importo diverso (tolleranza ±5€)
+        # PROBLEMA 2: importo diverso anche di un solo centesimo.
         differenza_importo = abs(importo_assegno - importo_fattura)
-        if differenza_importo > 5:
+        if not amounts_equal_to_cent(importo_assegno, importo_fattura):
             problema["problemi"].append(f"Importo differisce di €{differenza_importo:.2f}")
             problema["differenza_importo"] = differenza_importo
             statistiche["problemi_importo"] += 1
@@ -668,8 +715,11 @@ async def verifica_associazioni_assegni(
                 if fornitore_esclude_assegno(f_fornitore):
                     continue
 
-                # Match per importo esatto o quasi
-                if abs(f_importo - importo_assegno) < 2:
+                # Numero fattura dichiarato e importo esatto sono entrambi obbligatori.
+                if (
+                    amounts_equal_to_cent(f_importo, importo_assegno)
+                    and _assegno_riferisce_fattura(assegno, f)
+                ):
                     similarity = fuzz.token_set_ratio(beneficiario.upper(), f_fornitore.upper()) if beneficiario else 0
                     suggerimenti.append({
                         "fattura_id": f.get("id"),
@@ -677,7 +727,7 @@ async def verifica_associazioni_assegni(
                         "fornitore": f_fornitore[:40],
                         "importo": f_importo,
                         "similarity": similarity,
-                        "match_type": "importo_esatto" if abs(f_importo - importo_assegno) < 0.5 else "importo_simile"
+                        "match_type": "numero_fattura_e_importo_esatti"
                     })
             
             suggerimenti.sort(key=lambda x: x.get("similarity", 0), reverse=True)
