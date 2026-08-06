@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1052 endpoint** in **110 gruppi**.
+> Totale **1053 endpoint** in **110 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 662 · ext esterni = 90 · — da verificare = 300
+**Riepilogo uso:** ✓ frontend = 664 · ext esterni = 90 · — da verificare = 299
 
 ## AI Parser  (11)
 
@@ -118,7 +118,7 @@
 | PUT | `/api/archivio-bonifici/transfers/{transfer_id}` | ✓ | bonifici_module.transfers |
 | GET | `/api/archivio-bonifici/transfers/{transfer_id}/pdf` | ✓ | bonifici_module.transfers |
 
-## Assegni  (32)
+## Assegni  (33)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -140,6 +140,7 @@
 | POST | `/api/assegni/pulisci-beneficiari-fittizi` | ✓ | bank.assegni |
 | POST | `/api/assegni/ricostruisci-dati` | ✓ | bank.assegni |
 | POST | `/api/assegni/rifiuta-proposta/{proposta_id}` | ✓ | bank.assegni |
+| POST | `/api/assegni/riprocessa-collegamenti` | ✓ | bank.assegni |
 | GET | `/api/assegni/senza-associazione` | ✓ | bank.assegni |
 | GET | `/api/assegni/stati` | ✓ | bank.assegni |
 | GET | `/api/assegni/stats` | ✓ | bank.assegni |
@@ -1127,7 +1128,7 @@
 | POST | `/api/operazioni-da-confermare/smart/conferma-f24` | ✓ | operazioni_module.smart |
 | POST | `/api/operazioni-da-confermare/smart/ignora` | ✓ | operazioni_module |
 | GET | `/api/operazioni-da-confermare/smart/movimento/{movimento_id}` | — | operazioni_module.smart |
-| POST | `/api/operazioni-da-confermare/smart/riconcilia-auto` | — | operazioni_module.smart |
+| POST | `/api/operazioni-da-confermare/smart/riconcilia-auto` | ✓ | operazioni_module.smart |
 | POST | `/api/operazioni-da-confermare/smart/riconcilia-manuale` | ✓ | operazioni_module.smart |
 | POST | `/api/operazioni-da-confermare/smart/riconcilia-stipendio` | ✓ | operazioni_module |
 

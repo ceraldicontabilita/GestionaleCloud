@@ -1,6 +1,6 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import api from '../api';
 
@@ -174,7 +174,34 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     await screen.findByTestId('assegni-table');
     expect(screen.queryByTestId('fatture-auto')).not.toBeInTheDocument();
     expect(screen.queryByTestId('fatture-ambiguo')).not.toBeInTheDocument();
+    expect(screen.queryByText("Collega Fatture all'Assegno")).not.toBeInTheDocument();
     expect(screen.getByText('Attende dati univoci')).toBeInTheDocument();
+  });
+
+  it('riprocessa estratto conto e fatture senza aprire una scelta manuale', async () => {
+    api.get.mockImplementation(rispostaPagina([
+      { id: 'a1', numero: '0208770649', stato: 'incassato', importo: 977.38 },
+    ]));
+    api.post.mockResolvedValue({
+      data: {
+        success: true,
+        estratto_conto: { movimenti_analizzati: 1 },
+        fatture: {
+          analizzati: 1, collegati: 1, in_attesa_fattura: 0, ambigui: 0,
+        },
+      },
+    });
+
+    renderPagina();
+    fireEvent.click(await screen.findByTestId('riprocessa-collegamenti-btn'));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/assegni/riprocessa-collegamenti?anno=2026'
+    ));
+    expect(await screen.findByTestId('riprocessamento-result')).toHaveTextContent(
+      'Collegati: 1'
+    );
+    expect(screen.queryByText("Collega Fatture all'Assegno")).not.toBeInTheDocument();
   });
 
   it('segnala i collegamenti storici che superano il totale fattura', async () => {

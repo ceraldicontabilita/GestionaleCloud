@@ -354,3 +354,97 @@ async def prepara_intento_assegno(db, assegno_id: str) -> Dict[str, Any]:
             "candidati": len(migliori),
         }
     return {"registrato": True, "collegato": False, "motivo": "in_attesa_xml"}
+
+
+async def riprocessa_intenti_assegni(
+    db,
+    *,
+    anno: Optional[int] = None,
+    limit: int = 10000,
+) -> Dict[str, Any]:
+    """Riesamina gli assegni compilati che non hanno ancora una fattura.
+
+    E' il recupero idempotente per i casi in cui estratto conto, assegno e XML
+    arrivano in un ordine diverso. Riusa deliberatamente
+    :func:`prepara_intento_assegno`: importo da solo non basta, un pareggio non
+    viene sciolto e una fattura gia' impegnata non puo' essere sovrapagata.
+    """
+    limit = max(1, min(int(limit or 10000), 50000))
+    condizioni: List[Dict[str, Any]] = [
+        {"importo": {"$gt": 0}},
+        {"stato": {"$nin": ["annullato", "stornato", "vuoto"]}},
+        {"entity_status": {"$ne": "deleted"}},
+        {"$or": [
+            {"fattura_collegata": {"$in": [None, ""]}},
+            {"fattura_collegata": {"$exists": False}},
+        ]},
+        {"$or": [
+            {"fatture_collegate": {"$in": [None, []]}},
+            {"fatture_collegate": {"$exists": False}},
+        ]},
+        {"$or": [
+            {"beneficiario": {"$nin": [None, "", "-", "N/A"]}},
+            {"fornitore_piva": {"$nin": [None, ""]}},
+            {"numero_fattura": {"$nin": [None, ""]}},
+        ]},
+    ]
+    if anno:
+        anno_s = str(int(anno))
+        condizioni.append({"$or": [
+            {"anno": int(anno)},
+            {"data_emissione": {"$regex": f"^{anno_s}"}},
+            {"data": {"$regex": f"^{anno_s}"}},
+            {"data_incasso": {"$regex": f"^{anno_s}"}},
+        ]})
+
+    assegni = await db["assegni"].find(
+        {"$and": condizioni},
+        {"_id": 0, "id": 1, "numero": 1},
+    ).limit(limit).to_list(limit)
+
+    esito: Dict[str, Any] = {
+        "analizzati": len(assegni),
+        "collegati": 0,
+        "in_attesa_fattura": 0,
+        "ambigui": 0,
+        "gia_attribuite": 0,
+        "non_compatibili": 0,
+        "errori": [],
+        "dettagli": [],
+    }
+    for assegno in assegni:
+        try:
+            risultato = await prepara_intento_assegno(db, str(assegno["id"]))
+        except Exception as exc:  # un record anomalo non blocca l'intero batch
+            esito["errori"].append({
+                "assegno_id": assegno.get("id"),
+                "numero": assegno.get("numero"),
+                "errore": str(exc),
+            })
+            continue
+
+        motivo = risultato.get("motivo")
+        if risultato.get("collegato") or risultato.get("riconciliato"):
+            esito["collegati"] += 1
+        elif motivo == "ambiguo":
+            esito["ambigui"] += 1
+        elif motivo == "fattura_gia_attribuita":
+            esito["gia_attribuite"] += 1
+        elif motivo == "in_attesa_xml":
+            esito["in_attesa_fattura"] += 1
+        else:
+            esito["non_compatibili"] += 1
+
+        if len(esito["dettagli"]) < 100:
+            esito["dettagli"].append({
+                "assegno_id": assegno.get("id"),
+                "numero": assegno.get("numero"),
+                "collegato": bool(
+                    risultato.get("collegato") or risultato.get("riconciliato")
+                ),
+                "fattura_id": risultato.get("fattura_id"),
+                "motivo": motivo,
+            })
+
+    esito["success"] = not esito["errori"]
+    return esito

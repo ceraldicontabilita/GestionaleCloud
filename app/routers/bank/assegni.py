@@ -2289,9 +2289,19 @@ async def sync_assegni_da_estratto_conto(
     # Il vecchio codice qui sotto resta temporaneamente come riferimento di
     # migrazione ma non viene piu eseguito.
     from app.services.assegni_estratto_conto import sincronizza_assegni_da_estratto_conto
-    return await sincronizza_assegni_da_estratto_conto(
-        Database.get_db(), movimento_ids=movimento_ids,
+    from app.services.assegni_fattura_intent import riprocessa_intenti_assegni
+
+    db = Database.get_db()
+    risultato = await sincronizza_assegni_da_estratto_conto(
+        db, movimento_ids=movimento_ids,
     )
+    # L'EC puo' arrivare prima o dopo l'XML. Subito dopo il riscontro bancario
+    # riesaminiamo gli assegni compilati ancora aperti: se numero/fornitore e
+    # importo al centesimo identificano una sola fattura, completiamo l'intera
+    # catena senza chiedere all'utente di selezionarla.
+    risultato["riprocessamento_fatture"] = await riprocessa_intenti_assegni(db)
+    return risultato
+
 
     import re
     db = Database.get_db()
@@ -2446,6 +2456,35 @@ async def sync_assegni_da_estratto_conto(
             risultati["errori"].append(f"Errore creazione assegno {numero_assegno}: {str(e)}")
     
     return risultati
+
+
+@router.post("/riprocessa-collegamenti")
+async def riprocessa_collegamenti_assegni(
+    anno: Optional[int] = Query(None),
+    limit: int = Query(10000, ge=1, le=50000),
+) -> Dict[str, Any]:
+    """Riprocessa in modo sicuro lo storico assegni -> EC -> fatture.
+
+    Non espone una scelta manuale: applica soltanto collegamenti univoci e
+    lascia gli ambigui in attesa di nuove evidenze (XML, beneficiario o numero
+    fattura). E' idempotente e puo' essere richiamato dopo ogni nuovo import.
+    """
+    from app.services.assegni_estratto_conto import sincronizza_assegni_da_estratto_conto
+    from app.services.assegni_fattura_intent import riprocessa_intenti_assegni
+
+    db = Database.get_db()
+    estratto = await sincronizza_assegni_da_estratto_conto(db)
+    fatture = await riprocessa_intenti_assegni(db, anno=anno, limit=limit)
+    return {
+        "success": bool(fatture.get("success", True)) and not estratto.get("errori"),
+        "estratto_conto": estratto,
+        "fatture": fatture,
+        "message": (
+            f"Riprocessati {fatture['analizzati']} assegni: "
+            f"{fatture['collegati']} collegati automaticamente, "
+            f"{fatture['ambigui']} ambigui lasciati in attesa"
+        ),
+    }
 
 
 @router.post("/ricostruisci-dati")
