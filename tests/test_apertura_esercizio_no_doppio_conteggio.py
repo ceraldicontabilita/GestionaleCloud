@@ -93,7 +93,15 @@ def test_apertura_esercizio_non_crea_movimenti_riporto(monkeypatch):
     n_cassa_prima = len(db["prima_nota_cassa"].docs)
     n_banca_prima = len(db["prima_nota_banca"].docs)
 
-    esito = _run(mod.apertura_nuovo_esercizio(2026))
+    async def saldo_canonico(db_arg, collection, query, anno=None, **kwargs):
+        assert anno == 2025
+        assert query["data"] == {"$gte": "2025-01-01", "$lte": "2025-12-31"}
+        return {"saldo": 3000.0 if collection == "prima_nota_cassa" else 7000.0}
+
+    monkeypatch.setattr(mod, "aggrega_saldo_prima_nota", saldo_canonico)
+    esito = _run(mod.apertura_nuovo_esercizio(mod.AperturaEsercizioInput(
+        anno_nuovo=2026, conferma_testo="APRI 2026"
+    )))
 
     assert esito["saldi_riportati"]["saldo_cassa"] == 3000.0
     assert esito["saldi_riportati"]["saldo_banca"] == 7000.0
@@ -127,7 +135,13 @@ def test_apertura_esercizio_somma_tfr_di_entrambi_i_canali(monkeypatch):
         {"quota_annuale": 823.5},  # import manuale Libro Unico
     ])
 
-    esito = _run(mod.apertura_nuovo_esercizio(2026))
+    async def saldo_zero(*args, **kwargs):
+        return {"saldo": 0.0}
+
+    monkeypatch.setattr(mod, "aggrega_saldo_prima_nota", saldo_zero)
+    esito = _run(mod.apertura_nuovo_esercizio(mod.AperturaEsercizioInput(
+        anno_nuovo=2026, conferma_testo="APRI 2026"
+    )))
 
     assert esito["saldi_riportati"]["tfr_accantonato"] == 960.5
 
@@ -143,3 +157,17 @@ def test_saldi_iniziali_letti_da_aperture_esercizio_non_da_prima_nota(monkeypatc
     esito = _run(mod.get_saldi_iniziali(2026))
 
     assert esito["saldi"]["saldo_cassa"] == 3000.0
+
+
+def test_apertura_esercizio_non_puo_essere_duplicata(monkeypatch):
+    db = _FakeDb()
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    db["aperture_esercizio"].docs = [{"id": "ap-1", "anno": 2026}]
+
+    try:
+        _run(mod.apertura_nuovo_esercizio(mod.AperturaEsercizioInput(
+            anno_nuovo=2026, conferma_testo="APRI 2026"
+        )))
+        assert False, "L'apertura duplicata doveva essere bloccata"
+    except Exception as exc:
+        assert getattr(exc, "status_code", None) == 409

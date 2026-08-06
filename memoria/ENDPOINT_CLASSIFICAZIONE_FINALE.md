@@ -216,7 +216,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/chat/health` | chat_router | — | — | sì | — | — | tenere | in uso: chat |
 | `GET /api/chat/history` | chat_router | — | — | sì | — | — | tenere | in uso: chat |
 | `POST /api/chiusura-esercizio/apertura-nuovo-esercizio` | chiusura_esercizio | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/chiusura-esercizio/bilancino-verifica/{anno}` | chiusura_esercizio | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/chiusura-esercizio/bilancino-verifica/{anno}` | chiusura_esercizio | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/chiusura-esercizio/esegui-chiusura` | chiusura_esercizio | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/chiusura-esercizio/saldi-iniziali/{anno}` | chiusura_esercizio | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/chiusura-esercizio/stato/{anno}` | chiusura_esercizio | sì | — | — | — | — | tenere | in uso: FE |

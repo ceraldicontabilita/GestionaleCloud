@@ -41,6 +41,8 @@ export default function ChiusuraEsercizio() {
   const [activeStep, setActiveStep] = useState(1);
   const [executing, setExecuting] = useState(false);
   const [note, setNote] = useState('');
+  const [confirmationText, setConfirmationText] = useState('');
+  const [openingConfirmationText, setOpeningConfirmationText] = useState('');
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
@@ -96,9 +98,11 @@ export default function ChiusuraEsercizio() {
     setSuccess(null);
 
     try {
-      const response = await api.post('/api/chiusura-esercizio/esegui-chiusura', {
+      await api.post('/api/chiusura-esercizio/esegui-chiusura', {
         anno,
         conferma_scritture: true,
+        conferma_quadrature: true,
+        conferma_testo: confirmationText,
         note: note || null,
       });
 
@@ -127,9 +131,10 @@ export default function ChiusuraEsercizio() {
     setSuccess(null);
 
     try {
-      const response = await api.post(
-        `/api/chiusura-esercizio/apertura-nuovo-esercizio?anno_nuovo=${nuovoAnno}`
-      );
+      await api.post('/api/chiusura-esercizio/apertura-nuovo-esercizio', {
+        anno_nuovo: nuovoAnno,
+        conferma_testo: openingConfirmationText,
+      });
       setSuccess(`Esercizio ${nuovoAnno} aperto con successo!`);
       // Recarica dati con il nuovo anno
       await loadData();
@@ -140,9 +145,6 @@ export default function ChiusuraEsercizio() {
       setExecuting(false);
     }
   };
-
-  // currentYear dalla data corrente per confronti
-  const currentYear = new Date().getFullYear();
 
   const StepIndicator = ({ number, title, active, completed }) => (
     <div
@@ -556,7 +558,7 @@ export default function ChiusuraEsercizio() {
                 Bilancino di Verifica {anno}
               </h3>
 
-              {bilancino?.bilancino && (
+              {bilancino?.disponibile && bilancino?.bilancino ? (
                 <>
                   {/* Ricavi */}
                   <div
@@ -573,8 +575,8 @@ export default function ChiusuraEsercizio() {
                     <div
                       style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}
                     >
-                      <span style={{ color: COLORS.textMuted }}>Corrispettivi</span>
-                      <span style={{ fontFamily: MONO }}>{formatEuro(bilancino.bilancino.ricavi.corrispettivi)}</span>
+                      <span style={{ color: COLORS.textMuted }}>Conti ricavo inclusi</span>
+                      <span style={{ fontFamily: MONO }}>{bilancino.bilancino.ricavi.conti?.length || 0}</span>
                     </div>
                     <div
                       style={{
@@ -605,26 +607,30 @@ export default function ChiusuraEsercizio() {
                     <div
                       style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}
                     >
-                      <span style={{ color: COLORS.textMuted }}>Acquisti Merce</span>
-                      <span style={{ fontFamily: MONO }}>{formatEuro(bilancino.bilancino.costi.acquisti_merce)}</span>
+                      <span style={{ color: COLORS.textMuted }}>Conti costo inclusi</span>
+                      <span style={{ fontFamily: MONO }}>{bilancino.bilancino.costi.conti?.length || 0}</span>
                     </div>
                     <div
                       style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}
                     >
-                      <span style={{ color: COLORS.textMuted }}>Personale</span>
-                      <span style={{ fontFamily: MONO }}>{formatEuro(bilancino.bilancino.costi.personale)}</span>
+                      <span style={{ color: COLORS.textMuted }}>Scritture registrate</span>
+                      <span style={{ fontFamily: MONO }}>
+                        {bilancino.registro?.completezza?.scritture_registrate || 0}
+                      </span>
                     </div>
                     <div
                       style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}
                     >
-                      <span style={{ color: COLORS.textMuted }}>Ammortamenti</span>
-                      <span style={{ fontFamily: MONO }}>{formatEuro(bilancino.bilancino.costi.ammortamenti)}</span>
+                      <span style={{ color: COLORS.textMuted }}>Documenti da registrare</span>
+                      <span style={{ fontFamily: MONO }}>
+                        {bilancino.registro?.completezza?.documenti_da_registrare || 0}
+                      </span>
                     </div>
                     <div
                       style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}
                     >
-                      <span style={{ color: COLORS.textMuted }}>TFR</span>
-                      <span style={{ fontFamily: MONO }}>{formatEuro(bilancino.bilancino.costi.tfr)}</span>
+                      <span style={{ color: COLORS.textMuted }}>Fonte</span>
+                      <span style={{ fontFamily: MONO }}>Registro definitivo</span>
                     </div>
                     <div
                       style={{
@@ -680,11 +686,41 @@ export default function ChiusuraEsercizio() {
                         marginTop: 8,
                       }}
                     >
-                      {bilancino.bilancino.risultato.tipo.toUpperCase()} • Margine:{' '}
-                      {bilancino.bilancino.risultato.margine_percentuale}%
+                      {bilancino.bilancino.risultato.tipo.toUpperCase()}
+                      {bilancino.bilancino.risultato.margine_percentuale !== null && (
+                        <> • Margine: {bilancino.bilancino.risultato.margine_percentuale}%</>
+                      )}
                     </div>
                   </div>
                 </>
+              ) : (
+                <div
+                  style={{
+                    background: COLORS.warningLight,
+                    border: `1px solid ${COLORS.warning}`,
+                    borderRadius: BORDER_RADIUS.md,
+                    padding: 20,
+                  }}
+                  data-testid="bilancino-non-disponibile"
+                >
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <AlertTriangle size={22} color={COLORS.warning} />
+                    <div>
+                      <div style={{ fontWeight: 700, color: COLORS.warning, marginBottom: 6 }}>
+                        Bilancino non disponibile
+                      </div>
+                      <div style={{ color: COLORS.text, lineHeight: 1.5 }}>
+                        {bilancino?.motivo || 'Il registro contabile non è ancora pronto per la chiusura.'}
+                      </div>
+                      <div style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 10 }}>
+                        Scritture: {bilancino?.registro?.completezza?.scritture_registrate || 0} ·{' '}
+                        Documenti da registrare:{' '}
+                        {bilancino?.registro?.completezza?.documenti_da_registrare || 0} ·{' '}
+                        Quadratura: {bilancino?.registro?.quadratura ? 'sì' : 'no'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
 
@@ -725,11 +761,48 @@ export default function ChiusuraEsercizio() {
                   />
                 </div>
 
+                <div
+                  style={{
+                    background: COLORS.dangerLight,
+                    border: `1px solid ${COLORS.danger}`,
+                    borderRadius: BORDER_RADIUS.md,
+                    padding: 16,
+                    marginBottom: 16,
+                  }}
+                >
+                  <label
+                    htmlFor="conferma-chiusura"
+                    style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}
+                  >
+                    Per confermare le quadrature, digita <strong>CHIUDI {anno}</strong>
+                  </label>
+                  <input
+                    id="conferma-chiusura"
+                    value={confirmationText}
+                    onChange={event => setConfirmationText(event.target.value)}
+                    autoComplete="off"
+                    placeholder={`CHIUDI ${anno}`}
+                    style={{
+                      width: '100%',
+                      padding: 12,
+                      borderRadius: BORDER_RADIUS.sm,
+                      border: `1px solid ${COLORS.danger}`,
+                      fontFamily: MONO,
+                    }}
+                    data-testid="conferma-chiusura-input"
+                  />
+                </div>
+
                 <Button
                   variant="primary"
                   size="lg"
                   onClick={eseguiChiusura}
-                  disabled={!verifica?.pronto_per_chiusura || executing}
+                  disabled={
+                    !verifica?.pronto_per_chiusura ||
+                    !bilancino?.disponibile ||
+                    confirmationText !== `CHIUDI ${anno}` ||
+                    executing
+                  }
                   iconLeft={
                     executing ? (
                       <RefreshCw size={20} style={{ animation: 'spin 1s linear infinite' }} />
@@ -776,14 +849,37 @@ export default function ChiusuraEsercizio() {
 
                 <p style={{ color: COLORS.textMuted, marginBottom: 16 }}>
                   L'esercizio {anno} è stato chiuso. Puoi ora aprire l'esercizio {anno + 1}
-                  riportando automaticamente i saldi.
+                  salvando uno snapshot dei saldi canonici, senza duplicare righe in Prima Nota.
                 </p>
+
+                <label
+                  htmlFor="conferma-apertura"
+                  style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 8 }}
+                >
+                  Digita <strong>APRI {anno + 1}</strong>
+                </label>
+                <input
+                  id="conferma-apertura"
+                  value={openingConfirmationText}
+                  onChange={event => setOpeningConfirmationText(event.target.value)}
+                  autoComplete="off"
+                  placeholder={`APRI ${anno + 1}`}
+                  style={{
+                    width: '100%',
+                    padding: 12,
+                    borderRadius: BORDER_RADIUS.sm,
+                    border: `1px solid ${COLORS.border}`,
+                    fontFamily: MONO,
+                    marginBottom: 16,
+                  }}
+                  data-testid="conferma-apertura-input"
+                />
 
                 <Button
                   variant="primary"
                   size="lg"
                   onClick={apriNuovoEsercizio}
-                  disabled={executing}
+                  disabled={openingConfirmationText !== `APRI ${anno + 1}` || executing}
                   iconLeft={
                     executing ? (
                       <RefreshCw size={20} style={{ animation: 'spin 1s linear infinite' }} />

@@ -78,6 +78,10 @@ def _run(c):
         loop.close()
 
 
+async def _async_value(value):
+    return value
+
+
 def _patch_db(monkeypatch, module, colls):
     db = _Db(colls)
     monkeypatch.setattr(module.Database, "get_db", staticmethod(lambda: db))
@@ -196,6 +200,29 @@ class _CollCount(_Coll):
         return self.count_map.get(chiave, self.default)
 
 
+def _registro(*, fatture=0, corrispettivi=0, scritture=10, quadratura=True):
+    return {
+        "fonte": "movimenti_contabili",
+        "quadratura": quadratura,
+        "totali": {"dare": 100.0, "avere": 100.0, "sbilancio": 0.0},
+        "qualita_registro": {
+            "registro_valido": quadratura,
+            "scritture_sbilanciate": 0 if quadratura else 1,
+            "scritture_senza_righe": 0,
+            "righe_non_numeriche": 0,
+            "righe_senza_conto": 0,
+        },
+        "completezza_registro": {
+            "scritture_registrate": scritture,
+            "fatture_da_registrare": fatture,
+            "corrispettivi_da_registrare": corrispettivi,
+            "documenti_da_registrare": fatture + corrispettivi,
+            "completo": fatture == 0 and corrispettivi == 0 and quadratura,
+        },
+        "conti": [],
+    }
+
+
 def test_verifica_preliminare_fatture_non_contabilizzate_bloccano(monkeypatch):
     colls = {
         "invoices": _CollCount(default=3),   # 3 fatture non contabilizzate
@@ -207,7 +234,11 @@ def test_verifica_preliminare_fatture_non_contabilizzate_bloccano(monkeypatch):
         "estratto_conto_movimenti": _CollCount(default=10),
     }
     _patch_db(monkeypatch, chiusura_mod, colls)
-    r = _run(chiusura_mod.verifica_preliminare_chiusura(2026))
+    monkeypatch.setattr(
+        chiusura_mod, "_bilancio_verifica_da_registro",
+        lambda db, anno, dettaglio: _async_value(_registro(fatture=3)),
+    )
+    r = _run(chiusura_mod.verifica_preliminare_chiusura(2025))
     assert r["pronto_per_chiusura"] is False
     assert any(p["tipo"] == "fatture_non_contabilizzate" for p in r["problemi_bloccanti"])
     assert r["step_successivo"] == "risolvere_problemi"
@@ -220,12 +251,19 @@ def test_verifica_preliminare_tutto_ok(monkeypatch):
         "corrispettivi": _Coll(corrisp),
         "cedolini": _CollCount(default=12),
         "prima_nota_salari": _CollCount(default=12),
-        "tfr_accantonamenti": _Coll([{"anno": 2026}]),
+        "tfr_accantonamenti": _Coll([{"anno": 2025}]),
         "cespiti": _CollCount(default=0),
-        "estratto_conto_movimenti": _CollCount(default=100),
+        "estratto_conto_movimenti": _CollCount(count_map={
+            ("data", "status"): 100,
+            ("data", "riconciliato", "status"): 0,
+        }),
     }
     _patch_db(monkeypatch, chiusura_mod, colls)
-    r = _run(chiusura_mod.verifica_preliminare_chiusura(2026))
+    monkeypatch.setattr(
+        chiusura_mod, "_bilancio_verifica_da_registro",
+        lambda db, anno, dettaglio: _async_value(_registro()),
+    )
+    r = _run(chiusura_mod.verifica_preliminare_chiusura(2025))
     assert r["pronto_per_chiusura"] is True
     assert r["problemi_bloccanti"] == []
     assert r["step_successivo"] == "bilancino_verifica"
@@ -248,6 +286,94 @@ def test_esegui_chiusura_guardia_doppia_chiusura(monkeypatch):
     _patch_db(monkeypatch, chiusura_mod, colls)
     with pytest.raises(HTTPException) as exc:
         _run(chiusura_mod.esegui_chiusura_esercizio(
-            chiusura_mod.ChiusuraEsercizioInput(anno=2026, conferma_scritture=True)))
+            chiusura_mod.ChiusuraEsercizioInput(
+                anno=2026,
+                conferma_scritture=True,
+                conferma_quadrature=True,
+                conferma_testo="CHIUDI 2026",
+            )))
     assert exc.value.status_code == 409
     assert "già chiuso" in exc.value.detail
+
+
+def test_bilancino_non_inventa_risultato_con_registro_incompleto(monkeypatch):
+    _patch_db(monkeypatch, chiusura_mod, {})
+    monkeypatch.setattr(
+        chiusura_mod, "_bilancio_verifica_da_registro",
+        lambda db, anno, dettaglio: _async_value(_registro(fatture=12)),
+    )
+
+    r = _run(chiusura_mod.get_bilancino_verifica(2025))
+
+    assert r["disponibile"] is False
+    assert r["bilancino"] is None
+    assert r["registro"]["completezza"]["fatture_da_registrare"] == 12
+
+
+def test_bilancino_deriva_solo_dai_conti_economici_del_registro(monkeypatch):
+    _patch_db(monkeypatch, chiusura_mod, {})
+    registro = _registro()
+    registro["conti"] = [
+        {"codice": "04.01.02", "nome": "Ricavi", "tipo": "ricavo", "dare": 10, "avere": 1010},
+        {"codice": "05.01.01", "nome": "Acquisti", "tipo": "costo", "dare": 600, "avere": 25},
+        {"codice": "01.01.02", "nome": "Banca", "tipo": "attivo", "dare": 400, "avere": 0},
+    ]
+    monkeypatch.setattr(
+        chiusura_mod, "_bilancio_verifica_da_registro",
+        lambda db, anno, dettaglio: _async_value(registro),
+    )
+
+    r = _run(chiusura_mod.get_bilancino_verifica(2025))
+
+    assert r["disponibile"] is True
+    assert r["bilancino"]["ricavi"]["totale"] == 1000
+    assert r["bilancino"]["costi"]["totale"] == 575
+    assert r["bilancino"]["risultato"]["utile_perdita"] == 425
+
+
+def test_scrittura_chiusura_generata_e_quadrata(monkeypatch):
+    colls = {"chiusure_esercizio": _Coll([])}
+    _patch_db(monkeypatch, chiusura_mod, colls)
+    monkeypatch.setattr(
+        chiusura_mod, "verifica_preliminare_chiusura",
+        lambda anno: _async_value({"pronto_per_chiusura": True, "problemi_bloccanti": []}),
+    )
+    bilancino = {
+        "disponibile": True,
+        "fonte": "movimenti_contabili",
+        "registro": {"quadratura": True},
+        "bilancino": {
+            "ricavi": {"totale": 1000, "conti": [
+                {"codice": "04.01.02", "nome": "Ricavi", "tipo": "ricavo", "dare": 0, "avere": 1000},
+            ]},
+            "costi": {"totale": 600, "conti": [
+                {"codice": "05.01.01", "nome": "Acquisti", "tipo": "costo", "dare": 600, "avere": 0},
+            ]},
+            "risultato": {"utile_perdita": 400, "tipo": "utile", "margine_percentuale": 40},
+        },
+    }
+    monkeypatch.setattr(
+        chiusura_mod, "get_bilancino_verifica",
+        lambda anno: _async_value(bilancino),
+    )
+    cattura = {}
+
+    async def registra(db, movimento, righe, chiave):
+        cattura["righe"] = righe
+        cattura["chiave"] = chiave
+        return {"id": "mov-chiusura", "gia_presente": False}
+
+    monkeypatch.setattr(chiusura_mod, "registra_scrittura_semplice", registra)
+    r = _run(chiusura_mod.esegui_chiusura_esercizio(
+        chiusura_mod.ChiusuraEsercizioInput(
+            anno=2025,
+            conferma_scritture=True,
+            conferma_quadrature=True,
+            conferma_testo="CHIUDI 2025",
+        )
+    ))
+
+    assert r["movimento_contabile_id"] == "mov-chiusura"
+    assert sum(x["dare"] for x in cattura["righe"]) == sum(x["avere"] for x in cattura["righe"])
+    assert cattura["chiave"] == {"tipo": "chiusura_esercizio", "anno": 2025}
+    assert any(x["conto_codice"] == "03.03.01" and x["avere"] == 400 for x in cattura["righe"])
