@@ -69,7 +69,8 @@ const mockSuccessfulRequests = () => {
       statements: [], fonti: [source], totale: 0, totale_periodi_api: 1,
     } });
     if (url.includes('/bank-movements')) return Promise.resolve({ data: {
-      movimenti: [bankMovement], totale_banca_paypal: 1, riconciliati: 1, da_associare: 0,
+      movimenti: [bankMovement], totale_banca_paypal: 1, totale_banca_paypal_raw: 16,
+      duplicati_unificati: 15, riconciliati: 1, da_associare: 0,
     } });
     if (url.includes('/paypal-api/status')) return Promise.resolve({ data: { api_configurata: true } });
     return Promise.resolve({ data: {} });
@@ -147,6 +148,8 @@ describe('Pagina PayPal: fonti, stati e filtri', () => {
     expect(await screen.findByTestId('paypal-bank-cards')).toBeInTheDocument();
     expect(screen.queryByTestId('paypal-bank-table')).not.toBeInTheDocument();
     expect(screen.getByText('ADDEBITO PAYPAL EUROPE')).toBeInTheDocument();
+    expect(screen.getByText('Fonti duplicate unificate:')).toBeInTheDocument();
+    expect(screen.getByText('15')).toBeInTheDocument();
     unmount();
 
     renderPage('/riconciliazione/paypal?tab=documenti');

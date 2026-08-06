@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import calendar
 import os
 import logging
+import re
 
 from app.database import Database
 from app.db_collections import (
@@ -187,6 +188,107 @@ def _descrizione_banca(mov: Dict[str, Any]) -> str:
     return str(mov.get("descrizione_originale") or mov.get("descrizione") or "")
 
 
+def _direzione_movimento_banca(mov: Dict[str, Any]) -> str:
+    """Normalizza la direzione senza dedurla dal solo segno dell'importo.
+
+    Gli import Banco BPM e Nexi conservano spesso gli addebiti come importi
+    positivi e affidano la direzione al campo ``tipo``. La causale e' usata
+    solo come fallback per vecchi record che non hanno quel campo.
+    """
+    tipo = str(mov.get("tipo") or "").strip().lower()
+    if tipo in {"uscita", "addebito", "carta_credito", "pagamento"}:
+        return "uscita"
+    if tipo in {"entrata", "accredito", "incasso"}:
+        return "entrata"
+    descrizione = _descrizione_banca(mov).lower()
+    if re.search(r"\b(addebito|sdd|pagamento|paypalpag)\b", descrizione):
+        return "uscita"
+    if re.search(r"\b(bon\.da|bonif(?:ico)?\.?\s+vs\.?\s+favore|accredito)\b", descrizione):
+        return "entrata"
+    try:
+        return "uscita" if float(mov.get("importo") or 0) < 0 else "entrata"
+    except (TypeError, ValueError):
+        return "entrata"
+
+
+def _descrizione_paypal_canonica(mov: Dict[str, Any]) -> str:
+    """Riduce le varianti dello stesso testo bancario a una chiave stabile."""
+    text = _descrizione_banca(mov).lower().strip()
+    text = re.sub(r"^addebito\s+diretto\s+sdd\s*-\s*", "", text)
+    text = re.sub(r"^bonif\.?\s+vs\.?\s+favore\s*-\s*", "", text)
+    return re.sub(r"[^a-z0-9]+", "", text)
+
+
+def _chiave_movimento_paypal(mov: Dict[str, Any]) -> tuple:
+    try:
+        cents = int(round(abs(float(mov.get("importo") or 0)) * 100))
+    except (TypeError, ValueError):
+        cents = 0
+    return (
+        str(mov.get("data") or mov.get("data_contabile") or "")[:10],
+        cents,
+        _direzione_movimento_banca(mov),
+        _descrizione_paypal_canonica(mov),
+    )
+
+
+def _rappresentazione_movimento_paypal(mov: Dict[str, Any]) -> tuple:
+    return (
+        re.sub(r"[^a-z0-9]+", "", _descrizione_banca(mov).lower()),
+        str(mov.get("tipo") or "").strip().lower(),
+        re.sub(r"[^a-z0-9]+", "", str(mov.get("banca") or "").lower()),
+    )
+
+
+def _deduplica_movimenti_banca_paypal(
+    movimenti: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Unifica fonti equivalenti senza cancellare alcuna prova.
+
+    Se la stessa operazione e' presente in piu' formati (per esempio Banco
+    BPM e Nexi), conserva la massima molteplicita' osservata in una singola
+    rappresentazione. In questo modo due pagamenti realmente identici nello
+    stesso giorno restano due, mentre la loro seconda importazione non li
+    raddoppia.
+    """
+    groups: Dict[tuple, List[Dict[str, Any]]] = {}
+    for movimento in movimenti:
+        groups.setdefault(_chiave_movimento_paypal(movimento), []).append(movimento)
+
+    canonical: List[Dict[str, Any]] = []
+    for rows in groups.values():
+        representation_counts: Dict[tuple, int] = {}
+        for row in rows:
+            representation = _rappresentazione_movimento_paypal(row)
+            representation_counts[representation] = representation_counts.get(representation, 0) + 1
+        keep_count = max(representation_counts.values(), default=1)
+
+        def rank(row: Dict[str, Any]) -> tuple:
+            linked = bool(row.get("paypal_transaction_id") or row.get("riconciliato"))
+            bank_type = str(row.get("tipo") or "").lower() in {"uscita", "entrata"}
+            return (
+                int(linked),
+                int(bool(row.get("rapporto"))),
+                int(bank_type),
+                len(_descrizione_banca(row)),
+                str(row.get("updated_at") or row.get("created_at") or ""),
+            )
+
+        selected = sorted(rows, key=rank, reverse=True)[:keep_count]
+        source_ids = [_id_movimento(row) for row in rows if _id_movimento(row)]
+        for row in selected:
+            item = dict(row)
+            item["paypal_duplicate_source_ids"] = source_ids
+            item["paypal_duplicate_sources_unified"] = len(rows) - keep_count
+            canonical.append(item)
+
+    canonical.sort(
+        key=lambda row: str(row.get("data") or row.get("data_contabile") or ""),
+        reverse=True,
+    )
+    return canonical
+
+
 def _id_movimento(mov: Dict[str, Any]) -> str:
     return str(mov.get("id") or mov.get("_id") or "")
 
@@ -212,7 +314,7 @@ def _score_match_banca(tx: Dict[str, Any], mov: Dict[str, Any]) -> Optional[Dict
         mov_amount = float(mov.get("importo") or 0)
     except (TypeError, ValueError):
         return None
-    movimento_uscita = mov.get("tipo") == "uscita" or mov_amount < 0
+    movimento_uscita = _direzione_movimento_banca(mov) == "uscita"
     transazione_uscita = tx_amount < 0
     if not tx_amount or not mov_amount or movimento_uscita != transazione_uscita:
         return None
@@ -361,8 +463,8 @@ async def get_paypal_bank_movements(
             {"data_contabile": {"$regex": f"^{anno}"}},
         ]}]}
 
-    movimenti = await db[COLL_ESTRATTO_CONTO].find(query, {"_id": 0}).sort("data", -1).to_list(limit)
-    ids = {_id_movimento(m) for m in movimenti} - {""}
+    movimenti_raw = await db[COLL_ESTRATTO_CONTO].find(query, {"_id": 0}).sort("data", -1).to_list(limit)
+    ids = {_id_movimento(m) for m in movimenti_raw} - {""}
     tx_collegate = await db[COLL_PAYPAL_TRANSACTIONS].find(
         {"$or": [
             {"movimento_banca_id": {"$in": list(ids)}},
@@ -377,6 +479,17 @@ async def get_paypal_bank_movements(
         if mid:
             tx_per_movimento[mid] = str(tx.get("transaction_id") or "")
 
+    # Annota i link prima della deduplica, cosi una prova gia riconciliata
+    # prevale sulla sua copia importata da un'altra fonte.
+    movimenti_annotati = []
+    for movimento in movimenti_raw:
+        item = dict(movimento)
+        mid = _id_movimento(item)
+        if not item.get("paypal_transaction_id") and tx_per_movimento.get(mid):
+            item["paypal_transaction_id"] = tx_per_movimento[mid]
+        movimenti_annotati.append(item)
+    movimenti = _deduplica_movimenti_banca_paypal(movimenti_annotati)
+
     output = []
     riconciliati_totali = 0
     search_norm = (search or "").strip().lower()
@@ -387,9 +500,11 @@ async def get_paypal_bank_movements(
         if riconciliato:
             riconciliati_totali += 1
         try:
-            amount = float(mov.get("importo") or 0)
+            amount_abs = abs(float(mov.get("importo") or 0))
         except (TypeError, ValueError):
-            amount = 0.0
+            amount_abs = 0.0
+        movimento_direzione = _direzione_movimento_banca(mov)
+        amount = -amount_abs if movimento_direzione == "uscita" else amount_abs
         if stato == "riconciliati" and not riconciliato:
             continue
         if stato == "da_associare" and riconciliato:
@@ -406,18 +521,23 @@ async def get_paypal_bank_movements(
             "data": str(mov.get("data") or mov.get("data_contabile") or "")[:10],
             "descrizione": descrizione,
             "importo": amount,
-            "direzione": "uscita" if amount < 0 else "entrata",
+            "direzione": movimento_direzione,
             "riconciliato_paypal": riconciliato,
             "paypal_transaction_id": tx_id or None,
             "tipo_riconciliazione": mov.get("tipo_riconciliazione"),
             "riconciliazione_evidenze": mov.get("riconciliazione_evidenze") or [],
+            "duplicati_unificati": int(mov.get("paypal_duplicate_sources_unified") or 0),
+            "fonti_movimento_ids": mov.get("paypal_duplicate_source_ids") or [mov_id],
         })
 
+    duplicati_unificati = len(movimenti_raw) - len(movimenti)
     return {
         "anno": anno,
         "movimenti": output,
         "totale": len(output),
         "totale_banca_paypal": len(movimenti),
+        "totale_banca_paypal_raw": len(movimenti_raw),
+        "duplicati_unificati": duplicati_unificati,
         "riconciliati": riconciliati_totali,
         "da_associare": len(movimenti) - riconciliati_totali,
     }
@@ -622,8 +742,14 @@ async def paypal_dashboard(
         {"descrizione_originale": {"$regex": "paypal", "$options": "i"}},
     ]}
     if anno:
-        ec_query = {"$and": [ec_query, {"data": {"$regex": f"^{anno}"}}]}
-    ec_paypal = await db[COLL_ESTRATTO_CONTO].count_documents(ec_query)
+        ec_query = {"$and": [ec_query, {"$or": [
+            {"data": {"$regex": f"^{anno}"}},
+            {"data_contabile": {"$regex": f"^{anno}"}},
+        ]}]}
+    ec_paypal_raw = await db[COLL_ESTRATTO_CONTO].find(
+        ec_query, {"_id": 0}
+    ).to_list(5000)
+    ec_paypal = len(_deduplica_movimenti_banca_paypal(ec_paypal_raw))
     
     return {
         "total_statements": total_statements,
@@ -634,6 +760,8 @@ async def paypal_dashboard(
         "per_tipo": list(tipo_map.values()),
         "riconciliati_banca": riconciliati,
         "movimenti_banca_paypal": ec_paypal,
+        "movimenti_banca_paypal_raw": len(ec_paypal_raw),
+        "duplicati_banca_paypal_unificati": len(ec_paypal_raw) - ec_paypal,
         "anomalia_fonti_mancanti": total_transactions == 0 and ec_paypal > 0,
         "movimenti_banca_senza_sorgente_paypal": ec_paypal if total_transactions == 0 else 0,
         "anno_filtro": anno
@@ -849,8 +977,6 @@ async def _auto_riconcilia(
     
     # Cerca su descrizione_originale E descrizione (entrambi i campi)
     banca_query: Dict[str, Any] = {"$and": [
-        {"riconciliato": {"$ne": True}},
-        {"paypal_transaction_id": {"$in": [None, ""]}},
         {"$or": [
             {"descrizione": {"$regex": "paypal", "$options": "i"}},
             {"descrizione_originale": {"$regex": "paypal", "$options": "i"}},
@@ -861,10 +987,15 @@ async def _auto_riconcilia(
             {"data": {"$regex": f"^{anno}"}},
             {"data_contabile": {"$regex": f"^{anno}"}},
         ]})
-    banca_paypal = await db[COLL_ESTRATTO_CONTO].find(
+    banca_paypal_raw = await db[COLL_ESTRATTO_CONTO].find(
         banca_query,
         {"_id": 0}
     ).to_list(5000)
+    banca_paypal_canonici = _deduplica_movimenti_banca_paypal(banca_paypal_raw)
+    banca_paypal = [
+        movimento for movimento in banca_paypal_canonici
+        if not movimento.get("riconciliato") and not movimento.get("paypal_transaction_id")
+    ]
     
     anteprima = _proposte_riconciliazione_banca(paypal_txs, banca_paypal)
     riconciliati = 0
@@ -907,6 +1038,8 @@ async def _auto_riconcilia(
     return {
         "totale_paypal": len(paypal_txs),
         "totale_banca": len(banca_paypal),
+        "totale_banca_raw": len(banca_paypal_raw),
+        "duplicati_banca_unificati": len(banca_paypal_raw) - len(banca_paypal_canonici),
         "modalita": "applicata" if applica else "anteprima",
         "proposte": len(anteprima["proposte"]),
         "importo_proposto": round(sum(p["importo_movimento"] for p in anteprima["proposte"]), 2),

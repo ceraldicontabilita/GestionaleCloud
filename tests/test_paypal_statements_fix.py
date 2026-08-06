@@ -237,7 +237,10 @@ def test_match_banca_paypal_richiede_importo_segno_e_data_non_solo_importo():
         "descrizione": "ADDEBITO DIRETTO PAYPAL EUROPE",
     }
     lontano = {**corretto, "data": "2026-06-01"}
-    segno_errato = {**corretto, "importo": 42.62}
+    segno_errato = {
+        **corretto, "importo": 42.62, "tipo": "entrata",
+        "descrizione": "ACCREDITO PAYPAL EUROPE",
+    }
     assert mod._score_match_banca(tx, corretto)["score"] >= 85
     assert mod._score_match_banca(tx, lontano) is None
     assert mod._score_match_banca(tx, segno_errato) is None
@@ -260,6 +263,53 @@ def test_match_banca_accetta_uscita_canonica_positiva_solo_al_centesimo():
     }
     assert mod._score_match_banca(tx, movimento)["score"] >= 85
     assert mod._score_match_banca(tx, {**movimento, "importo": 42.63}) is None
+
+
+def test_direzione_usa_tipo_bancario_prima_del_segno_positivo():
+    movimento = {
+        "tipo": "uscita", "importo": 42.62,
+        "descrizione": "ADDEBITO DIRETTO SDD - PAYPAL EUROPE",
+    }
+    assert mod._direzione_movimento_banca(movimento) == "uscita"
+
+
+def test_deduplica_due_formati_della_stessa_operazione_senza_perdere_prove():
+    movimenti = [
+        {
+            "id": "EC-OLD", "data": "2026-03-13", "tipo": "uscita",
+            "importo": 20.99,
+            "descrizione": "SDD CORE: 49RJ2252ASLM4 PAYPAL EUROPE S.A.R.L.",
+            "created_at": "2026-08-03T10:00:00+00:00",
+        },
+        {
+            "id": "EC-FULL", "data": "2026-03-13", "tipo": "uscita",
+            "importo": 20.99, "rapporto": "conto-bancario",
+            "descrizione": (
+                "ADDEBITO DIRETTO SDD - SDD CORE: 49RJ2252ASLM4 "
+                "PayPal Europe S.a.r.l."
+            ),
+            "created_at": "2026-08-04T10:00:00+00:00",
+        },
+    ]
+
+    result = mod._deduplica_movimenti_banca_paypal(movimenti)
+
+    assert len(result) == 1
+    assert result[0]["id"] == "EC-FULL"
+    assert set(result[0]["paypal_duplicate_source_ids"]) == {"EC-OLD", "EC-FULL"}
+    assert result[0]["paypal_duplicate_sources_unified"] == 1
+
+
+def test_deduplica_conserva_due_operazioni_reali_identiche_nella_stessa_fonte():
+    base = {
+        "data": "2026-03-13", "tipo": "uscita", "importo": 20.99,
+        "descrizione": "ADDEBITO DIRETTO SDD - PAYPAL EUROPE",
+        "banca": "Banco BPM",
+    }
+    result = mod._deduplica_movimenti_banca_paypal([
+        {**base, "id": "EC-1"}, {**base, "id": "EC-2"},
+    ])
+    assert {row["id"] for row in result} == {"EC-1", "EC-2"}
 
 
 def test_match_banca_usa_la_gamba_eur_per_un_pagamento_in_valuta():
