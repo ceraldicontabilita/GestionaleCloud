@@ -14,6 +14,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from app.routers.bank.assegni_auto_match import TOLL, _f, _load_open_invoices_by_piva
 from app.services.scritture_contabili import scrivi_movimento
+from app.services.assegni_fattura_intent import capienza_assegno_fattura
 
 
 _PATTERN_NUMERO = (
@@ -200,14 +201,17 @@ async def _collega_fattura_univoca(
     importo = round(_f(quota_override if quota_override is not None else assegno.get("importo")), 2)
     totale = round(_f(fattura.get("total_amount") or fattura.get("importo_totale")), 2)
     pagato = round(_f(fattura.get("importo_pagato")), 2)
-    residuo = round(max(0.0, totale - pagato), 2)
     link_esistente = next((
         link for link in (fattura.get("assegni_collegati") or [])
         if isinstance(link, dict) and str(link.get("assegno_id")) == str(assegno["id"])
     ), None)
     pagamento_gia_applicato = bool(link_esistente and link_esistente.get("banca_confermata"))
-    if not pagamento_gia_applicato and importo - residuo > TOLL and not fattura.get("pagato"):
-        return False
+    if not pagamento_gia_applicato:
+        disponibile, _, _ = capienza_assegno_fattura(
+            fattura, assegno.get("id"), importo,
+        )
+        if not disponibile:
+            return False
 
     link = {
         "assegno_id": assegno["id"], "numero": assegno.get("numero"),

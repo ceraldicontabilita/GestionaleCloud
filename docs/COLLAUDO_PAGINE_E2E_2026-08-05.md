@@ -87,7 +87,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 36 | [ ] | Riconciliazione stipendi — `/riconciliazione/stipendi` | Confronta bonifici paga, cedolini, acconti e saldi. | TENERE |
 | 37 | [ ] | Riconciliazione documenti — `/riconciliazione/documenti` | Associa documenti non collegati senza creare legami ambigui. | TENERE |
 | 38 | [ ] | Archivio bonifici — `/riconciliazione/archivio-bonifici` | Consulta bonifici e propone associazioni a salari o fatture. | TENERE; BLOCCARE FATTURA SU DIPENDENTE |
-| 39 | [x] VERIFICATA | Assegni — `/riconciliazione/assegni` | Carnet, assegni, incasso e associazione fatture con regola stretta. | CHIUSA DOPO AUTO-AGGANCIO E COLLAUDO LIVE |
+| 39 | [~] IN REVISIONE | Assegni — `/riconciliazione/assegni` | Carnet, assegni, incasso e associazione automatica fatture. | RIAPERTA: CONFLITTI STORICI DI SOVRA-ATTRIBUZIONE |
 | 40 | [~] IN REVISIONE | PayPal — `/riconciliazione/paypal` | Transazioni, movimenti banca, documenti e mapping fornitori PayPal. | TENERE |
 | 41 | [ ] | Coerenza POS — `/riconciliazione/coerenza-pos` | Confronta XML corrispettivi, chiusure reali POS e accrediti banca. | TENERE |
 | 42 | [ ] | Import documenti — `/documenti/import` | Unico ingresso per PDF/XML/ZIP con classificazione e deduplica. | TENERE COME INGRESSO UNICO |
@@ -298,6 +298,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 - Suite finale: 1.219 backend superati, 2 saltati; 132 frontend superati; build produzione riuscita; E2E isolato 63/63 pagine senza errori.
 - Pubblicazione finale: PR `#139`, merge `7d42dbcf4b899937b6380250729db822c0f24d93`, deploy Render `dep-d9qc809srm7s73bddv0g` concluso `live`; health `healthy`, database `connected`, commit `7d42dbcf` e chunk `GestioneAssegni-1lGCHrIe.js` servito correttamente.
 - Collaudo autenticato con dati reali in sola lettura: anno 2026, 91 record visualizzati, 10 fogli carnet vuoti, 81 assegni effettivi, 14 con fattura e 67 in attesa documentale. Nelle prime 50 righe: 9 fatture esposte, 31 attese XML, zero comandi di associazione manuale perche non risultano ambiguita, zero vecchie etichette errate e zero errori o avvisi console. I casi `0208770985` e `0208770649` mostrano data e prova EC e restano correttamente `Attende fattura/XML` finche non arriva un riferimento documentale univoco. Nessun dato aziendale e stato modificato.
+- Riapertura critica: il collaudo reale ha individuato la fattura `56/D` da `EUR 646,72` collegata a piu assegni distinti. La causa era un controllo che permetteva un secondo collegamento quando la fattura risultava gia `pagato`. La pagina torna `IN REVISIONE`: i nuovi collegamenti devono rispettare la capienza complessiva della fattura e i conflitti storici vanno mostrati senza cancellare prove o inventare correzioni.
 
 ### 2026-08-06 — Pagina 40 PayPal, avvio revisione completa
 

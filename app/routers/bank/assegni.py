@@ -18,6 +18,7 @@ from app.services.payment_invoice_matching import (
     amounts_equal_to_cent,
     invoice_reference_equals,
 )
+from app.services.assegni_fattura_intent import capienza_assegno_fattura
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -276,8 +277,69 @@ async def list_assegni(
                 "_id": 0, "id": 1, "invoice_number": 1,
                 "numero_fattura": 1, "invoice_date": 1, "data_fattura": 1,
                 "supplier_name": 1, "cedente_denominazione": 1,
+                "total_amount": 1, "importo_totale": 1,
+                "importo_pagato": 1, "assegni_collegati": 1,
             },
         ).to_list(5000)
+
+    # Una fattura puo essere rateizzata su piu assegni, ma la somma delle
+    # quote non puo superare il totale documento. Cerchiamo i riferimenti
+    # anche fuori dalla pagina corrente per esporre i conflitti storici senza
+    # modificare o cancellare alcuna prova contabile.
+    conflitti_per_fattura: Dict[str, Dict[str, Any]] = {}
+    if ids_fatture:
+        assegni_collegati = await db[COLLECTION_ASSEGNI].find(
+            {
+                "entity_status": {"$ne": "deleted"},
+                "$or": [
+                    {"fattura_collegata": {"$in": list(ids_fatture)}},
+                    {"fattura_id": {"$in": list(ids_fatture)}},
+                    {"fatture_collegate.fattura_id": {"$in": list(ids_fatture)}},
+                ],
+            },
+            {
+                "_id": 0, "id": 1, "numero": 1, "importo": 1,
+                "fattura_collegata": 1, "fattura_id": 1,
+                "fatture_collegate": 1,
+            },
+        ).to_list(10000)
+        invoice_by_id = {str(f.get("id")): f for f in fatture if f.get("id")}
+        for fid in ids_fatture:
+            quote_per_assegno: Dict[str, float] = {}
+            numeri_per_assegno: Dict[str, str] = {}
+            for altro in assegni_collegati:
+                aid = str(altro.get("id") or altro.get("numero") or "")
+                if not aid:
+                    continue
+                quote = [
+                    _f(link.get("quota"))
+                    for link in (altro.get("fatture_collegate") or [])
+                    if isinstance(link, dict)
+                    and str(link.get("fattura_id") or "") == str(fid)
+                    and _f(link.get("quota")) > 0
+                ]
+                legacy = (
+                    str(altro.get("fattura_collegata") or "") == str(fid)
+                    or str(altro.get("fattura_id") or "") == str(fid)
+                )
+                if quote:
+                    quote_per_assegno[aid] = round(sum(quote), 2)
+                elif legacy and _f(altro.get("importo")) > 0:
+                    quote_per_assegno[aid] = round(_f(altro.get("importo")), 2)
+                if aid in quote_per_assegno:
+                    numeri_per_assegno[aid] = str(altro.get("numero") or aid)
+
+            inv = invoice_by_id.get(str(fid))
+            totale = round(_f((inv or {}).get("total_amount") or (inv or {}).get("importo_totale")), 2)
+            attribuito = round(sum(quote_per_assegno.values()), 2)
+            if totale > 0 and attribuito > totale + TOLL:
+                conflitti_per_fattura[str(fid)] = {
+                    "fattura_id": str(fid),
+                    "numero_fattura": (inv or {}).get("invoice_number") or (inv or {}).get("numero_fattura"),
+                    "importo_fattura": totale,
+                    "importo_attribuito": attribuito,
+                    "assegni": list(numeri_per_assegno.values()),
+                }
 
     per_id = {str(f.get("id")): f for f in fatture if f.get("id")}
     per_numero = {}
@@ -327,6 +389,13 @@ async def list_assegni(
                     collegamenti.append(candidate[0])
 
         uniche = {str(f.get("id")): f for f in collegamenti if f.get("id")}
+        conflitti = [
+            conflitti_per_fattura[fid]
+            for fid in dict.fromkeys(collegamenti_ids)
+            if fid in conflitti_per_fattura
+        ]
+        assegno["associazione_conflittuale"] = bool(conflitti)
+        assegno["fatture_conflittuali"] = conflitti
         dettagli = [{
             "fattura_id": fattura.get("id"),
             "numero_fattura": fattura.get("invoice_number") or fattura.get("numero_fattura"),
@@ -1389,6 +1458,19 @@ async def collega_fatture_assegno(assegno_id: str, body: FattureCollegateIn) -> 
 
     for quota_input in body.fatture:
         inv = fatture_map[quota_input.fattura_id]
+        if quota_input.quota > 0:
+            disponibile, impegnato, totale_documento = capienza_assegno_fattura(
+                inv, assegno.get("id"), quota_input.quota,
+            )
+            if not disponibile:
+                numero = inv.get("invoice_number") or inv.get("numero_fattura") or quota_input.fattura_id
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Fattura {numero} gia attribuita per EUR {impegnato:.2f}: "
+                        f"la nuova quota supererebbe il totale di EUR {totale_documento:.2f}"
+                    ),
+                )
         totale = _f(inv.get("importo_residuo") if inv.get("importo_residuo") is not None
                     else inv.get("total_amount") or inv.get("importo_totale"))
         if not amounts_equal_to_cent(quota_input.quota, totale):
