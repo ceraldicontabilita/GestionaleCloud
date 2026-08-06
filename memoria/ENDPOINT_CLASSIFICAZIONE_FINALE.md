@@ -261,8 +261,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `DELETE /api/contabilita-gestionale/budget/{anno}/{voce}` | accounting.contabilita_gestionale | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/contabilita-gestionale/libro-giornale` | accounting.contabilita_gestionale | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/contabilita-gestionale/libro-giornale/controllo-60-giorni` | accounting.contabilita_gestionale | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/contabilita-gestionale/libro-giornale/export` | accounting.contabilita_gestionale | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/contabilita-gestionale/libro-giornale/import` | accounting.contabilita_gestionale | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/contabilita-gestionale/libro-giornale/export` | accounting.contabilita_gestionale | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/contabilita-gestionale/libro-giornale/import` | accounting.contabilita_gestionale | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/contabilita-gestionale/libro-mastro` | accounting.contabilita_gestionale | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/contabilita-gestionale/partitario/clienti` | accounting.contabilita_gestionale | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/contabilita-gestionale/partitario/fornitori` | accounting.contabilita_gestionale | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
