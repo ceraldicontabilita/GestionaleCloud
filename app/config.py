@@ -191,6 +191,12 @@ class Settings(BaseSettings):
     # PayPal Reporting API
     PAYPAL_CLIENT_ID: str = ""
     PAYPAL_CLIENT_SECRET: str = ""
+
+    # SumUp — secondo gestore POS accanto a Nexi.
+    # Chiave statica del nostro stesso conto commerciante: niente OAuth.
+    SUMUP_API_KEY: str = ""
+    SUMUP_MERCHANT_CODE: str = ""
+    SUMUP_API_BASE: str = "https://api.sumup.com"
     
     # OpenAPI.it
     OPENAPI_IT_KEY: Optional[str] = None
