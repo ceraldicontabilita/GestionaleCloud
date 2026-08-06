@@ -41,7 +41,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 15 | [x] VERIFICATA | Dettaglio verbale — `/verbali-noleggio/:identificativo` | Mostra la singola catena Verbale -> veicolo -> driver -> fattura -> pagamento. | TENERE |
 | 16 | [x] VERIFICATA | Piano dei Conti — `/contabilita` | Mostra un solo conto per codice e i saldi derivati dalle fonti contabili. | TENERE |
 | 17 | [ ] IN CORREZIONE | Bilancio — `/contabilita/bilancio` | Stato patrimoniale e conto economico per periodo. | TENERE |
-| 18 | [ ] | Verifica Bilancio — `/contabilita/verifica` | Controlla quadrature e incoerenze del bilancio. | TENERE |
+| 18 | [ ] IN CORREZIONE | Verifica Bilancio — `/contabilita/verifica` | Controlla quadrature e incoerenze del bilancio. | TENERE |
 | 19 | [ ] | Libro Giornale — `/contabilita/giornale` | Elenca le scritture contabili cronologiche e i mastri. | TENERE |
 | 20 | [ ] | Controllo mensile — `/contabilita/controllo` | Incrocia mensilmente fatture, corrispettivi, banca e Prima Nota. | TENERE |
 | 21 | [ ] | Calendario fiscale — `/contabilita/calendario` | Scadenze fiscali operative e loro completamento. | TENERE |
@@ -171,3 +171,13 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 - Difetto infrastrutturale emerso al collaudo: il servizio Render installava solo le dipendenze Python e continuava a servire il vecchio `frontend/dist`, quindi una correzione React poteva risultare mergiata ma non pubblicata. Il comando di build e stato riallineato per installare anche le dipendenze frontend, incluse quelle di sviluppo, ed eseguire `vite build` a ogni deploy.
 - Deploy Render `dep-d9q03adbedkc73ar10bg` concluso con stato `live`. Verifica diretta su `impresasemplice.online` e sul sottodominio Render: health `healthy`, database `connected`, commit `25b8ba84`, nuovo entry bundle `index-DY8uKrWk.js` e chunk Bilancio `Bilancio-BukqaKPG.js` contenente gestione errore, conferma eliminazione ed export PDF; API protetta HTTP 401 senza sessione.
 - Pagina ancora `IN CORREZIONE` solo fino al collaudo visuale autenticato con dati reali; codice, dati read-only, test, build e deploy tecnico sono completati.
+
+### 2026-08-06 — Pagina 18 Verifica Bilancio
+
+- Route React verificata: `/contabilita/verifica` carica `/api/contabilita-gestionale/bilancio-verifica` con anno globale e dettaglio opzionale; il router e registrato sotto `/api/contabilita-gestionale`.
+- Difetto contabile corretto: la vecchia verifica controllava solo `Totale Dare = Totale Avere` sull'intero anno. Due scritture individualmente sbilanciate ma opposte potevano compensarsi e produrre falsamente `Quadratura OK`. Ora ogni scrittura e verificata separatamente e sono contate anche righe non numeriche, righe senza conto e scritture senza righe.
+- Completezza separata dalla quadratura: fatture e corrispettivi non vengono risommati nel bilancio; sono usati soltanto per misurare il backlog non ancora registrato. Il testo UI ora dichiara come fonte unica il registro definitivo `movimenti_contabili`.
+- Patrimonio netto aggiunto a classificazione, filtro e riepilogo. Rimossi stato frontend inutilizzato e circa 316 righe del vecchio aggregatore duplicato e irraggiungibile.
+- Export CSV protetto dall'esecuzione di formule provenienti dai nomi conto e corretta la gestione errori per non mostrare dati dell'anno precedente dopo un caricamento fallito.
+- Collaudo read-only sul database reale 2026: 1 scrittura definitiva, `Dare € 84,00`, `Avere € 84,00`, nessuna anomalia strutturale; registro non completo per 443 documenti ancora da registrare, di cui 272 fatture e 171 corrispettivi. Nessun dato scritto.
+- Test mirati: 7 backend e 6 frontend superati. Suite completa: 1111 backend superati, 2 saltati e 87 frontend superati. Build di produzione completato fuori dal repository con chunk `BilancioVerifica-BdHljtvz.js`; `frontend/dist` e rimasta pulita. Pagina ancora `IN CORREZIONE` fino a PR, deploy e collaudo live tecnico/visuale.
