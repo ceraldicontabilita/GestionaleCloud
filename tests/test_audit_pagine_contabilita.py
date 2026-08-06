@@ -2,6 +2,9 @@
 
 import asyncio
 
+import pytest
+from mongomock_motor import AsyncMongoMockClient
+
 from app.routers.accounting import contabilita_gestionale as cg
 from app.routers.accounting import centri_costo
 from app.routers import fiscalita_italiana
@@ -80,6 +83,107 @@ def test_calendario_periodico_usa_mese_successivo_e_agosto_20():
     # L'azienda usa solo la liquidazione mensile: nessuna seconda logica
     # trimestrale deve comparire nel calendario operativo.
     assert not any(key.startswith("iva_trim_") for key in per_id)
+
+
+def test_calendario_get_e_sola_lettura_e_preserva_evidenza(monkeypatch):
+    db = _Db()
+    db["calendario_fiscale"].docs = [
+        {
+            "id": "iva_liq_2026_01",
+            "anno": 2026,
+            "completato": False,
+            "created_at": "2026-01-01T00:00:00+00:00",
+        },
+        {
+            "id": "iva_liq_2026_01",
+            "anno": 2026,
+            "completato": True,
+            "completato_da": "quietanza_f24",
+            "quietanza_id": "Q-1",
+            "created_at": "2026-02-16T00:00:00+00:00",
+        },
+    ]
+    monkeypatch.setattr(
+        fiscalita_italiana.Database,
+        "get_db",
+        staticmethod(lambda: db),
+    )
+
+    result = _run(fiscalita_italiana.calendario_fiscale(2026))
+    iva_gennaio = next(s for s in result["scadenze"] if s["id"] == "iva_liq_2026_01")
+
+    assert result["modalita_lettura"] == "sola_lettura"
+    assert result["scritture_eseguite"] == 0
+    assert len([s for s in result["scadenze"] if s["id"] == "iva_liq_2026_01"]) == 1
+    assert iva_gennaio["completato"] is True
+    assert iva_gennaio["provenienza_stato"] == "quietanza_f24"
+    assert iva_gennaio["livello_evidenza"] == "documentale"
+    # _Collection non implementa update/insert: il test fallirebbe se il GET
+    # tentasse ancora gli upsert che prima avvenivano ad ogni apertura pagina.
+
+
+def test_calendario_sposta_weekend_e_dichiara_fonte_ufficiale():
+    scadenze = {s["id"]: s for s in fiscalita_italiana.genera_scadenze_anno(2026)}
+
+    assert scadenze["lipe_2026_1"]["data"] == "2026-06-01"
+    assert scadenze["lipe_2026_1"]["fonte_ufficiale"].startswith("https://")
+    assert scadenze["intrastat_2026_01"]["applicabilita"] == "da_verificare"
+
+
+def test_calendario_conferma_e_riapertura_sono_tracciate(monkeypatch):
+    db = AsyncMongoMockClient()["test_calendario"]
+    monkeypatch.setattr(
+        fiscalita_italiana.Database,
+        "get_db",
+        staticmethod(lambda: db),
+    )
+
+    conferma = _run(fiscalita_italiana.completa_scadenza(
+        "iva_liq_2026_01", anno=2026, note="prova verificata"
+    ))
+    record = _run(db["calendario_fiscale"].find_one(
+        {"anno": 2026, "id": "iva_liq_2026_01"}, {"_id": 0}
+    ))
+    audit_conferma = _run(db["audit_log"].count_documents(
+        {"entita_id": "iva_liq_2026_01", "azione": "scadenza_confermata_manualmente"}
+    ))
+
+    assert conferma["success"] is True
+    assert record["completato"] is True
+    assert record["completato_da"] == "conferma_manuale"
+    assert audit_conferma == 1
+
+    riaperta = _run(fiscalita_italiana.riapri_scadenza(
+        "iva_liq_2026_01", anno=2026, motivo="rettifica stato"
+    ))
+    record = _run(db["calendario_fiscale"].find_one(
+        {"anno": 2026, "id": "iva_liq_2026_01"}, {"_id": 0}
+    ))
+    assert riaperta["success"] is True
+    assert record["completato"] is False
+    assert "completato_da" not in record
+
+
+def test_calendario_non_riapre_evidenza_f24(monkeypatch):
+    db = AsyncMongoMockClient()["test_calendario_f24"]
+    _run(db["calendario_fiscale"].insert_one({
+        "anno": 2026,
+        "id": "ritenute_2026_01",
+        "completato": True,
+        "completato_da": "quietanza_f24",
+        "quietanza_id": "Q1",
+    }))
+    monkeypatch.setattr(
+        fiscalita_italiana.Database,
+        "get_db",
+        staticmethod(lambda: db),
+    )
+
+    with pytest.raises(fiscalita_italiana.HTTPException) as exc:
+        _run(fiscalita_italiana.riapri_scadenza(
+            "ritenute_2026_01", anno=2026, motivo="tentativo manuale"
+        ))
+    assert exc.value.status_code == 409
 
 
 def test_percentuale_target_annuo_non_usa_target_prorata(monkeypatch):

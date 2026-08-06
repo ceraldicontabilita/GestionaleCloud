@@ -44,7 +44,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 18 | [ ] IN CORREZIONE | Verifica Bilancio — `/contabilita/verifica` | Controlla quadrature e incoerenze del bilancio. | TENERE |
 | 19 | [ ] IN CORREZIONE | Libro Giornale — `/contabilita/giornale` | Elenca le scritture contabili cronologiche e i mastri. | TENERE |
 | 20 | [ ] IN CORREZIONE | Controllo mensile — `/contabilita/controllo` | Incrocia mensilmente fatture, corrispettivi, banca e Prima Nota. | TENERE |
-| 21 | [ ] | Calendario fiscale — `/contabilita/calendario` | Scadenze fiscali operative e loro completamento. | TENERE |
+| 21 | [ ] IN CORREZIONE | Calendario fiscale — `/contabilita/calendario` | Scadenze fiscali operative con fonte, applicabilita ed evidenza del completamento. | TENERE |
 | 22 | [ ] | Cespiti — `/contabilita/cespiti` | Beni strumentali, ammortamenti e verifiche collegate. | TENERE |
 | 23 | [ ] | Finanziaria — `/contabilita/finanziaria` | Riepilogo finanziario e disponibilita per anno. | TENERE |
 | 24 | [ ] | Chiusura esercizio — `/contabilita/chiusura` | Verifiche preliminari e procedura controllata di chiusura. | TENERE CON CONFERMA FORTE |
@@ -208,3 +208,17 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 - Collegata la completezza del registro definitivo: la pagina espone separatamente fatture e corrispettivi ancora da registrare, senza considerarli gia contabilizzati.
 - Collaudo read-only reale 2026: 171 corrispettivi, 421 movimenti Cassa, 3505 movimenti di estratto conto e 272 fatture. Motore canonico: 172 giorni, 141 controlli RT/POS corretti, 30 differenze da verificare; banca 128 corretti, 15 mancanti, 2 differenze e 23 extra. Totale POS reale `EUR 328.726,07`, accrediti rilevati `EUR 306.147,49`. Nessun dato scritto.
 - Test mirati: 18 backend POS/XML/banca e 4 frontend superati. Suite completa: 1117 backend superati, 2 saltati e 95 frontend superati. Audit del grafo frontend: 163 file analizzati e nessun orfano eliminabile. Build di produzione completata fuori dal repository con chunk `ControlloMensile-DqhiJOYy.js`; `frontend/dist` e rimasta pulita. Pagina ancora `IN CORREZIONE` fino a PR, deploy e collaudo live.
+- Correzione pubblicata con PR `#119`, merge `0920f2c4bc236626eb210d28ef7a9b5d8a55b4dd` e deploy Render `dep-d9q16frncjis73fa7f00` concluso `live`.
+- Verifica tecnica diretta su entrambi i domini: health `healthy`, database `connected`, route HTTP 200, endpoint protetto HTTP 401 senza sessione e chunk `ControlloMensile-DzfEppp5.js` con motore canonico, differenza banca e backlog del registro; la vecchia regola `PDV 3757283` non e presente. Resta solo il collaudo visuale autenticato.
+
+### 2026-08-06 — Pagina 21 Calendario fiscale
+
+- Route React verificata: `/contabilita/calendario` monta `CalendarioFiscale` nel tab Contabilita e usa gli endpoint sotto `/api/fiscalita`.
+- Difetto strutturale riprodotto: il `GET /api/fiscalita/calendario/{anno}` eseguiva un upsert per ogni scadenza a ogni apertura della pagina. La lettura e ora pura: compone i template fiscali con i soli stati persistiti e dichiara `scritture_eseguite: 0`.
+- Duplicati legacy neutralizzati in lettura scegliendo un solo stato per id e privilegiando quietanza F24, evidenza documentale e stato completato. I promemoria personalizzati restano visibili senza gonfiare le scadenze generate.
+- Provenienza esplicita: `quietanza_f24`, `conferma_manuale`, `manuale_legacy_non_tracciata` o nessuna evidenza. La UI non presenta piu un semplice flag come prova documentale.
+- Conferma manuale resa esplicita, idempotente e registrata nell'audit; aggiunta riapertura tracciata. Una scadenza protetta da quietanza F24 non puo essere riaperta manualmente.
+- Il calendario resta disponibile se fallisce soltanto il servizio notifiche. Il KPI `Prossime 7 gg` usa ora una finestra reale di sette giorni, non le prime cinque scadenze future.
+- Le date che cadono nel fine settimana sono spostate al primo giorno lavorativo; ogni riga espone lo scadenzario ufficiale e segnala gli adempimenti condizionali da verificare. La pagina collega la Gestione IVA unica invece di ricostruire attribuzione, confronto F24 e scadenze IVA.
+- Collaudo read-only reale 2026 prima della correzione: 74 record e 74 id unici, 73 aperti e 1 completato manualmente senza provenienza storica; 48 F24 e 130 quietanze complessive, delle quali 2 associate, 39 non corrispondenti e 89 senza F24. Nessun dato scritto.
+- Test mirati: 14 backend e 3 frontend superati. Suite completa: 1121 backend superati, 2 saltati e 98 frontend superati. Le mappe sono state riallineate ai 1048 endpoint reali. Audit del grafo frontend: 164 file analizzati e nessun orfano eliminabile. Build di produzione completata fuori dal repository con chunk `CalendarioFiscale-CyJhaslA.js`; il build tracciato del repository e rimasto invariato. Pagina ancora `IN CORREZIONE` fino a PR, deploy e collaudo live.

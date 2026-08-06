@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1047 · tenere: 692 · verificare: 332 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1048 · tenere: 693 · verificare: 332 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -610,6 +610,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/fiscalita/agevolazioni/simula` | fiscalita_italiana | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/fiscalita/agevolazioni/{agevolazione_id}` | fiscalita_italiana | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/fiscalita/calendario/completa/{scadenza_id}` | fiscalita_italiana | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/fiscalita/calendario/riapri/{scadenza_id}` | fiscalita_italiana | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/fiscalita/calendario/scadenze-imminenti` | fiscalita_italiana | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/fiscalita/calendario/{anno}` | fiscalita_italiana | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/fiscalita/f24/registra` | fiscalita_italiana | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

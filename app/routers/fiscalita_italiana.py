@@ -566,6 +566,27 @@ def genera_scadenze_anno(anno: int) -> List[Dict]:
         "categoria": "versamento"
     })
     
+    # Le scadenze annuali possono essere prorogate o dipendere dalla posizione
+    # concreta dell'azienda. Il calendario e' quindi un promemoria operativo,
+    # non una prova di adempimento. Ogni riga espone la fonte e segnala quando
+    # l'applicabilita' deve essere confermata con il commercialista.
+    tipi_condizionali = {
+        "IMU", "INTRASTAT", "CCIAA", "LIBRI_SOCIALI", "INVENTARI",
+        "CONSERVAZIONE",
+    }
+    regole_periodiche = {"IVA", "RITENUTE", "INPS"}
+    for scadenza in scadenze:
+        scadenza["data"] = _sposta_da_weekend(scadenza["data"])
+        scadenza.setdefault("fonte_ufficiale", FONTE_SCADENZARIO_AE)
+        scadenza["applicabilita"] = (
+            "da_verificare" if scadenza.get("tipo") in tipi_condizionali else "ordinaria"
+        )
+        scadenza["stato_data"] = (
+            "regola_periodica"
+            if scadenza.get("tipo") in regole_periodiche
+            else "verificare_su_scadenzario"
+        )
+
     return scadenze
 
 
@@ -727,19 +748,128 @@ async def simula_agevolazione(
 # ENDPOINTS CALENDARIO FISCALE
 # ============================================
 
+_CAMPI_STATO_CALENDARIO = {
+    "completato",
+    "data_completamento",
+    "note_completamento",
+    "completato_da",
+    "quietanza_id",
+    "f24_id",
+    "created_at",
+    "updated_at",
+}
+
+
+def _scegli_stato_persistito(record: Dict[str, Any]) -> tuple:
+    """Ordina i duplicati legacy preferendo evidenza e stato completato."""
+    fonte = str(record.get("completato_da") or "")
+    return (
+        bool(record.get("completato")),
+        fonte == "quietanza_f24",
+        bool(record.get("quietanza_id") or record.get("f24_id")),
+        str(record.get("updated_at") or record.get("data_completamento") or ""),
+    )
+
+
+def _arricchisci_stato_scadenza(scadenza: Dict[str, Any]) -> Dict[str, Any]:
+    completata = bool(scadenza.get("completato"))
+    fonte = str(scadenza.get("completato_da") or "")
+    if not completata:
+        provenienza = "nessuna_evidenza"
+        evidenza = "nessuna"
+    elif fonte == "quietanza_f24":
+        provenienza = "quietanza_f24"
+        evidenza = "documentale"
+    elif fonte == "conferma_manuale":
+        provenienza = "conferma_manuale"
+        evidenza = "manuale"
+    else:
+        provenienza = "manuale_legacy_non_tracciata"
+        evidenza = "da_verificare"
+    return {
+        **scadenza,
+        "completato": completata,
+        "provenienza_stato": provenienza,
+        "livello_evidenza": evidenza,
+    }
+
+
+async def _leggi_calendario_anno(db, anno: int) -> List[Dict[str, Any]]:
+    """Compone template e stati persistiti senza scrivere nel database."""
+    generate = genera_scadenze_anno(anno)
+    persistite = await db["calendario_fiscale"].find(
+        {"anno": anno}, {"_id": 0}
+    ).to_list(1000)
+
+    per_id: Dict[str, Dict[str, Any]] = {}
+    extra_legacy: List[Dict[str, Any]] = []
+    for record in persistite:
+        sid = str(record.get("id") or "")
+        if not sid:
+            extra_legacy.append(record)
+            continue
+        precedente = per_id.get(sid)
+        if precedente is None or _scegli_stato_persistito(record) > _scegli_stato_persistito(precedente):
+            per_id[sid] = record
+
+    risultato: List[Dict[str, Any]] = []
+    ids_generati = set()
+    for template in generate:
+        sid = template["id"]
+        ids_generati.add(sid)
+        stato = per_id.get(sid, {})
+        campi_stato = {k: stato[k] for k in _CAMPI_STATO_CALENDARIO if k in stato}
+        risultato.append(_arricchisci_stato_scadenza({
+            **template,
+            "anno": anno,
+            **campi_stato,
+            "origine_regola": "template_gestionale",
+        }))
+
+    # I promemoria personalizzati/legacy restano visibili, ma non duplicano
+    # le righe generate con lo stesso id.
+    for sid, record in per_id.items():
+        if sid not in ids_generati:
+            risultato.append(_arricchisci_stato_scadenza({
+                **record,
+                "anno": anno,
+                "origine_regola": "record_personalizzato",
+                "applicabilita": record.get("applicabilita", "da_verificare"),
+                "stato_data": record.get("stato_data", "da_verificare"),
+            }))
+    for record in extra_legacy:
+        risultato.append(_arricchisci_stato_scadenza({
+            **record,
+            "anno": anno,
+            "origine_regola": "record_legacy_senza_id",
+            "applicabilita": "da_verificare",
+            "stato_data": "da_verificare",
+        }))
+
+    return risultato
+
 @router.get("/calendario/scadenze-imminenti")
-async def scadenze_imminenti(giorni: int = Query(30)) -> Dict[str, Any]:
+async def scadenze_imminenti(
+    giorni: int = Query(30, ge=1, le=366),
+    anno: int = Query(None),
+) -> Dict[str, Any]:
     """Scadenze nei prossimi N giorni"""
     try:
         from datetime import datetime, timedelta
         db = Database.get_db()
         oggi = datetime.now()
+        anno = anno or oggi.year
         oggi_str = oggi.strftime("%Y-%m-%d")
         limite = (oggi + timedelta(days=giorni)).strftime("%Y-%m-%d")
-        scadenze = await db["calendario_fiscale"].find(
-            {"data": {"$gte": oggi_str, "$lte": limite}, "completato": {"$ne": True}},
-            {"_id": 0}
-        ).sort("data", 1).to_list(100)
+        tutte = await _leggi_calendario_anno(db, anno)
+        scadenze = sorted(
+            [
+                s for s in tutte
+                if oggi_str <= str(s.get("data") or "") <= limite
+                and not s.get("completato")
+            ],
+            key=lambda s: str(s.get("data") or ""),
+        )
         urgenti, prossime, future = [], [], []
         for s in scadenze:
             try:
@@ -759,63 +889,9 @@ async def scadenze_imminenti(giorni: int = Query(30)) -> Dict[str, Any]:
 
 @router.get("/calendario/{anno}")
 async def calendario_fiscale(anno: int) -> Dict[str, Any]:
-    """Genera calendario fiscale completo per l'anno"""
+    """Legge il calendario fiscale senza modificare il database."""
     db = Database.get_db()
-
-    # Upsert ad ogni lettura: corregge date/periodi generati da versioni
-    # precedenti senza perdere completamento, quietanza o note dell'utente.
-    now = datetime.now(timezone.utc).isoformat()
-    scadenze_generate = genera_scadenze_anno(anno)
-    for scadenza in scadenze_generate:
-        template = {**scadenza, "anno": anno, "updated_at": now}
-        await db["calendario_fiscale"].update_one(
-            {"anno": anno, "id": scadenza["id"]},
-            {
-                "$set": template,
-                "$setOnInsert": {"completato": False, "created_at": now},
-            },
-            upsert=True,
-        )
-    
-    # Verifica se già generato
-    existing = await db["calendario_fiscale"].find(
-        {"anno": anno},
-        {"_id": 0}
-    ).to_list(500)
-    
-    if not existing:
-        # Genera e salva
-        scadenze = genera_scadenze_anno(anno)
-        for s in scadenze:
-            s_copy = dict(s)  # Copia per evitare mutazione con _id
-            s_copy["anno"] = anno
-            s_copy["completato"] = False
-            s_copy["created_at"] = datetime.now(timezone.utc).isoformat()
-            await db["calendario_fiscale"].insert_one(s_copy)
-        # Ricarica senza _id
-        existing = await db["calendario_fiscale"].find({"anno": anno}, {"_id": 0}).to_list(500)
-    
-    # Difesa di lettura sui dati legacy: una sola scadenza per chiave. Non
-    # elimina documenti; evita che copie storiche gonfino KPI e calendario.
-    per_id = {}
-    for scadenza in sorted(
-        existing,
-        key=lambda s: (
-            str(s.get("id") or ""),
-            not bool(s.get("completato")),
-            str(s.get("created_at") or ""),
-        ),
-    ):
-        chiave = scadenza.get("id") or (
-            f"legacy:{scadenza.get('tipo')}:{scadenza.get('data')}:"
-            f"{scadenza.get('descrizione')}"
-        )
-        per_id.setdefault(chiave, scadenza)
-    generate_per_id = {s["id"]: s for s in scadenze_generate}
-    existing = [
-        {**scadenza, **generate_per_id.get(chiave, {}), "anno": anno}
-        for chiave, scadenza in per_id.items()
-    ]
+    existing = await _leggi_calendario_anno(db, anno)
 
     # Raggruppa per mese
     per_mese = {}
@@ -833,6 +909,8 @@ async def calendario_fiscale(anno: int) -> Dict[str, Any]:
     oggi = datetime.now().strftime("%Y-%m-%d")
     prossime = [s for s in existing if s.get("data", "") >= oggi and not s.get("completato")]
     prossime.sort(key=lambda x: x.get("data", ""))
+    limite_7 = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+    imminenti_7 = [s for s in prossime if s.get("data", "") <= limite_7]
     
     return {
         "success": True,
@@ -841,28 +919,139 @@ async def calendario_fiscale(anno: int) -> Dict[str, Any]:
         "completate": len([s for s in existing if s.get("completato")]),
         "scadenze_per_mese": per_mese,
         "prossime_5": prossime[:5],
-        "scadenze": existing  # Aggiungi lista completa
+        "imminenti_7_giorni": imminenti_7,
+        "scadenze": existing,
+        "modalita_lettura": "sola_lettura",
+        "scritture_eseguite": 0,
+        "fonte_scadenze": FONTE_SCADENZARIO_AE,
+        "avvertenza": (
+            "Le date sono promemoria operativi: verificare applicabilita' e "
+            "proroghe sullo scadenzario ufficiale e con il commercialista."
+        ),
     }
 
 
 @router.post("/calendario/completa/{scadenza_id}")
-async def completa_scadenza(scadenza_id: str, note: str = Query(None)) -> Dict[str, Any]:
-    """Marca una scadenza come completata"""
+async def completa_scadenza(
+    scadenza_id: str,
+    anno: int = Query(None),
+    note: str = Query(None, max_length=500),
+) -> Dict[str, Any]:
+    """Conferma manuale esplicita, tracciata e idempotente."""
     db = Database.get_db()
-    
-    result = await db["calendario_fiscale"].update_one(
-        {"id": scadenza_id},
-        {"$set": {
-            "completato": True,
-            "data_completamento": datetime.now(timezone.utc).isoformat(),
-            "note_completamento": note
-        }}
+
+    esistente = await db["calendario_fiscale"].find_one(
+        {"id": scadenza_id, **({"anno": anno} if anno else {})}, {"_id": 0}
     )
-    
-    if result.modified_count == 0:
+    if anno is None:
+        if not esistente:
+            raise HTTPException(
+                status_code=400,
+                detail="Specificare l'anno per confermare una scadenza non ancora persistita",
+            )
+        anno = int(esistente.get("anno"))
+
+    template = next(
+        (s for s in genera_scadenze_anno(anno) if s.get("id") == scadenza_id),
+        None,
+    )
+    if not template and not esistente:
         raise HTTPException(status_code=404, detail="Scadenza non trovata")
-    
-    return {"success": True, "message": "Scadenza completata"}
+    if esistente and esistente.get("completato"):
+        return {"success": True, "message": "Scadenza gia' completata", "idempotente": True}
+
+    now = datetime.now(timezone.utc).isoformat()
+    result = await db["calendario_fiscale"].update_one(
+        {"anno": anno, "id": scadenza_id},
+        {
+            "$setOnInsert": {
+                **(template or {}),
+                "anno": anno,
+                "id": scadenza_id,
+                "created_at": now,
+            },
+            "$set": {
+                "completato": True,
+                "data_completamento": now,
+                "note_completamento": note,
+                "completato_da": "conferma_manuale",
+                "updated_at": now,
+            },
+        },
+        upsert=True,
+    )
+
+    from app.services.audit_logger import log_evento
+    await log_evento(
+        modulo="calendario_fiscale",
+        azione="scadenza_confermata_manualmente",
+        entita_id=scadenza_id,
+        entita_collection="calendario_fiscale",
+        vecchio_stato={"completato": False},
+        nuovo_stato={"completato": True, "anno": anno, "note": note},
+        fonte="pagina_calendario_fiscale",
+        utente="utente_autenticato",
+        db=db,
+    )
+    return {
+        "success": True,
+        "message": "Scadenza confermata manualmente",
+        "modificati": result.modified_count,
+    }
+
+
+@router.post("/calendario/riapri/{scadenza_id}")
+async def riapri_scadenza(
+    scadenza_id: str,
+    anno: int = Query(...),
+    motivo: str = Query(..., min_length=3, max_length=500),
+) -> Dict[str, Any]:
+    """Annulla una conferma manuale; le evidenze F24 restano protette."""
+    db = Database.get_db()
+    esistente = await db["calendario_fiscale"].find_one(
+        {"anno": anno, "id": scadenza_id}, {"_id": 0}
+    )
+    if not esistente:
+        raise HTTPException(status_code=404, detail="Scadenza non trovata")
+    if esistente.get("completato_da") == "quietanza_f24":
+        raise HTTPException(
+            status_code=409,
+            detail="La scadenza deriva da una quietanza F24 e non puo' essere riaperta manualmente",
+        )
+    if not esistente.get("completato"):
+        return {"success": True, "message": "Scadenza gia' aperta", "idempotente": True}
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db["calendario_fiscale"].update_one(
+        {"anno": anno, "id": scadenza_id},
+        {
+            "$set": {
+                "completato": False,
+                "riaperta_il": now,
+                "riaperta_da": "conferma_manuale",
+                "motivo_riapertura": motivo,
+                "updated_at": now,
+            },
+            "$unset": {
+                "data_completamento": "",
+                "note_completamento": "",
+                "completato_da": "",
+            },
+        },
+    )
+    from app.services.audit_logger import log_evento
+    await log_evento(
+        modulo="calendario_fiscale",
+        azione="scadenza_riaperta",
+        entita_id=scadenza_id,
+        entita_collection="calendario_fiscale",
+        vecchio_stato={"completato": True, "fonte": esistente.get("completato_da")},
+        nuovo_stato={"completato": False, "anno": anno, "motivo": motivo},
+        fonte="pagina_calendario_fiscale",
+        utente="utente_autenticato",
+        db=db,
+    )
+    return {"success": True, "message": "Scadenza riaperta"}
 
 
 @router.get("/notifiche-scadenze")
@@ -878,11 +1067,15 @@ async def get_notifiche_scadenze_imminenti(
         oggi = datetime.now()
         oggi_str = oggi.strftime("%Y-%m-%d")
         limite_str = (oggi + timedelta(days=giorni)).strftime("%Y-%m-%d")
-        scadenze = await db["calendario_fiscale"].find(
-            {"anno": anno, "completato": {"$ne": True},
-             "data": {"$gte": oggi_str, "$lte": limite_str}},
-            {"_id": 0}
-        ).sort("data", 1).to_list(50)
+        tutte = await _leggi_calendario_anno(db, anno)
+        scadenze = sorted(
+            [
+                s for s in tutte
+                if oggi_str <= str(s.get("data") or "") <= limite_str
+                and not s.get("completato")
+            ],
+            key=lambda s: str(s.get("data") or ""),
+        )[:50]
         urgenti, prossime, normali = [], [], []
         for s in scadenze:
             try:
@@ -904,7 +1097,8 @@ async def get_notifiche_scadenze_imminenti(
 @router.post("/notifiche-scadenze/invia")
 async def invia_notifica_scadenza(
     scadenza_id: str = Query(...),
-    tipo_notifica: str = Query("dashboard", enum=["dashboard", "email"])
+    tipo_notifica: str = Query("dashboard", enum=["dashboard", "email"]),
+    anno: int = Query(None),
 ) -> Dict[str, Any]:
     """
     Crea una notifica per una scadenza specifica.
@@ -916,7 +1110,14 @@ async def invia_notifica_scadenza(
     db = Database.get_db()
     
     # Recupera scadenza
-    scadenza = await db["calendario_fiscale"].find_one({"id": scadenza_id}, {"_id": 0})
+    scadenza = await db["calendario_fiscale"].find_one(
+        {"id": scadenza_id, **({"anno": anno} if anno else {})}, {"_id": 0}
+    )
+    if not scadenza and anno:
+        scadenza = next(
+            (s for s in genera_scadenze_anno(anno) if s.get("id") == scadenza_id),
+            None,
+        )
     if not scadenza:
         raise HTTPException(status_code=404, detail="Scadenza non trovata")
     

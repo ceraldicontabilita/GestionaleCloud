@@ -3,7 +3,7 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 163
+**Totale file analizzati:** 164
 
 | Classificazione | File |
 |---|---:|
@@ -12,7 +12,7 @@
 | COMPONENTE_USATO | 84 |
 | MODALE_USATO | 4 |
 | HOOK_USATO | 3 |
-| TEST_ONLY | 19 |
+| TEST_ONLY | 20 |
 | DINAMICO_DA_VERIFICARE | 23 |
 | ORFANO_ELIMINABILE | 0 |
 
@@ -57,7 +57,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | File | Classificazione | Importato da (n. file) |
 |---|---|---:|
 | `frontend/src/App.jsx` | ENTRYPOINT | 1 |
-| `frontend/src/api.js` | COMPONENTE_USATO | 86 |
+| `frontend/src/api.js` | COMPONENTE_USATO | 87 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ChatIntelligente.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/CopyLinkButton.jsx` | COMPONENTE_USATO | 5 |
@@ -88,7 +88,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ds/Tabs.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ds/index.js` | COMPONENTE_USATO | 58 |
 | `frontend/src/components/layout/TopNav.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/components/ui/ConfirmDialog.jsx` | MODALE_USATO | 24 |
+| `frontend/src/components/ui/ConfirmDialog.jsx` | MODALE_USATO | 25 |
 | `frontend/src/components/ui/alert.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ui/avatar.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ui/badge.jsx` | COMPONENTE_USATO | 1 |
@@ -141,7 +141,8 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/BilancioVerifica.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/pages/BilancioVerifica.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/BudgetPrevisionale.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/pages/CalendarioFiscale.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/pages/CalendarioFiscale.jsx` | COMPONENTE_USATO | 2 |
+| `frontend/src/pages/CalendarioFiscale.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/CedoliniSalari.jsx` | ROUTE_ATTIVA | 2 |
 | `frontend/src/pages/CedoliniSalari.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/ChiusuraEsercizio.jsx` | COMPONENTE_USATO | 1 |

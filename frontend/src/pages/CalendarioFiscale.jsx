@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import {
   PageLayout,
@@ -8,7 +9,7 @@ import {
   PageLoading,
   PageError,
 } from '../components/PageLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import {
   Calendar,
@@ -16,19 +17,21 @@ import {
   Clock,
   AlertTriangle,
   Bell,
-  Filter,
   RefreshCw,
-  Mail,
 } from 'lucide-react';
 import api from '../api';
 import { toast } from 'sonner';
+import { useConfirm } from '../components/ui/ConfirmDialog';
+import './CalendarioFiscale.css';
 
 export default function CalendarioFiscale() {
   const { anno: selectedYear } = useAnnoGlobale();
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [calendario, setCalendario] = useState(null);
   const [notifiche, setNotifiche] = useState(null);
+  const [notificheError, setNotificheError] = useState(null);
   const [filtroMese, setFiltroMese] = useState('tutti');
   const [filtroStato, setFiltroStato] = useState('tutti');
   const [completando, setCompletando] = useState(null);
@@ -53,20 +56,33 @@ export default function CalendarioFiscale() {
   const loadCalendario = async () => {
     setLoading(true);
     setError(null);
+    setNotificheError(null);
     try {
-      const [calRes, notRes] = await Promise.all([
+      const [calRes, notRes] = await Promise.allSettled([
         api.get(`/api/fiscalita/calendario/${selectedYear}`),
         api.get(`/api/fiscalita/notifiche-scadenze?anno=${selectedYear}&giorni=30`),
       ]);
 
-      if (calRes.data?.success) {
-        setCalendario(calRes.data);
+      if (calRes.status === 'fulfilled' && calRes.value.data?.success) {
+        setCalendario(calRes.value.data);
       } else {
-        setError('Impossibile caricare il calendario');
+        setCalendario(null);
+        setError(
+          calRes.status === 'rejected'
+            ? calRes.reason?.response?.data?.detail || calRes.reason?.message || 'Impossibile caricare il calendario'
+            : 'Impossibile caricare il calendario'
+        );
       }
 
-      if (notRes.data?.success) {
-        setNotifiche(notRes.data);
+      if (notRes.status === 'fulfilled' && notRes.value.data?.success) {
+        setNotifiche(notRes.value.data);
+      } else {
+        setNotifiche(null);
+        setNotificheError(
+          notRes.status === 'rejected'
+            ? notRes.reason?.response?.data?.detail || notRes.reason?.message || 'Notifiche non disponibili'
+            : 'Notifiche non disponibili'
+        );
       }
     } catch (err) {
       console.error('Errore caricamento calendario:', err);
@@ -81,11 +97,26 @@ export default function CalendarioFiscale() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedYear]);
 
-  const completaScadenza = async scadenzaId => {
+  const completaScadenza = async scadenza => {
+    const ok = await confirm({
+      title: 'Conferma manuale della scadenza',
+      message:
+        `Conferma "${scadenza.descrizione}" solo se possiedi una prova verificabile. ` +
+        'Il sistema registrera la provenienza manuale nell\'audit; un semplice aggiornamento della pagina non modifica dati.',
+      confirmText: 'Conferma con prova',
+      cancelText: 'Annulla',
+      variant: 'warning',
+    });
+    if (!ok) return;
+
+    const scadenzaId = scadenza.id;
     setCompletando(scadenzaId);
     try {
-      await api.post(`/api/fiscalita/calendario/completa/${scadenzaId}`);
-      toast.success('Scadenza completata');
+      const note = encodeURIComponent('Conferma manuale dalla pagina Calendario Fiscale');
+      await api.post(
+        `/api/fiscalita/calendario/completa/${scadenzaId}?anno=${selectedYear}&note=${note}`
+      );
+      toast.success('Scadenza confermata manualmente e registrata nell\'audit');
       await loadCalendario();
     } catch (err) {
       console.error('Errore completamento:', err);
@@ -95,11 +126,37 @@ export default function CalendarioFiscale() {
     }
   };
 
+  const riapriScadenza = async scadenza => {
+    const ok = await confirm({
+      title: 'Riapri scadenza',
+      message: `Annullare la conferma manuale di "${scadenza.descrizione}"? L'operazione sara registrata nell'audit.`,
+      confirmText: 'Riapri',
+      cancelText: 'Annulla',
+      variant: 'warning',
+    });
+    if (!ok) return;
+
+    setCompletando(scadenza.id);
+    try {
+      const motivo = encodeURIComponent('Correzione manuale dalla pagina Calendario Fiscale');
+      await api.post(
+        `/api/fiscalita/calendario/riapri/${scadenza.id}?anno=${selectedYear}&motivo=${motivo}`
+      );
+      toast.success('Scadenza riaperta e operazione registrata nell\'audit');
+      await loadCalendario();
+    } catch (err) {
+      console.error('Errore riapertura:', err);
+      toast.error(err.response?.data?.detail || 'Errore nella riapertura');
+    } finally {
+      setCompletando(null);
+    }
+  };
+
   const inviaNotifica = async (scadenzaId, tipo = 'dashboard') => {
     setInviandoNotifica(scadenzaId);
     try {
       const res = await api.post(
-        `/api/fiscalita/notifiche-scadenze/invia?scadenza_id=${scadenzaId}&tipo_notifica=${tipo}`
+        `/api/fiscalita/notifiche-scadenze/invia?scadenza_id=${scadenzaId}&tipo_notifica=${tipo}&anno=${selectedYear}`
       );
       if (res.data?.success) {
         if (tipo === 'dashboard') {
@@ -146,6 +203,13 @@ export default function CalendarioFiscale() {
     return colors[tipo] || colors.default;
   };
 
+  const getProvenienzaLabel = scadenza => {
+    if (!scadenza.completato) return 'Nessuna evidenza';
+    if (scadenza.provenienza_stato === 'quietanza_f24') return 'Quietanza F24';
+    if (scadenza.provenienza_stato === 'conferma_manuale') return 'Conferma manuale';
+    return 'Legacy da verificare';
+  };
+
   const formatDate = dateStr => {
     if (!dateStr) return '-';
     const [y, m, d] = dateStr.split('-');
@@ -154,20 +218,23 @@ export default function CalendarioFiscale() {
 
   const isScaduta = dateStr => {
     if (!dateStr) return false;
-    const oggi = new Date().toISOString().substring(0, 10);
+    const now = new Date();
+    const oggi = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     return dateStr < oggi;
   };
 
   const isImminente = dateStr => {
     if (!dateStr) return false;
     const oggi = new Date();
-    const scadenza = new Date(dateStr);
+    oggi.setHours(12, 0, 0, 0);
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const scadenza = new Date(y, m - 1, d, 12, 0, 0, 0);
     const diffDays = Math.ceil((scadenza - oggi) / (1000 * 60 * 60 * 24));
     return diffDays >= 0 && diffDays <= 7;
   };
 
   const scadenzeFiltrate = getScadenzeFiltrate();
-  const scadenzeImminenti = calendario?.prossime_5 || [];
+  const scadenzeImminenti = calendario?.imminenti_7_giorni || [];
 
   return (
     <PageLayout
@@ -191,6 +258,25 @@ export default function CalendarioFiscale() {
         <PageError message={error} onRetry={loadCalendario} />
       ) : (
         <>
+          <div className="calendario-info" role="note">
+            <div>
+              <strong>Lettura sicura:</strong> aprire o aggiornare questa pagina non crea e non modifica
+              record. Lo stato completato indica una quietanza F24 tracciata oppure una conferma manuale
+              esplicita; non viene dedotto dal solo importo.
+            </div>
+            <div>
+              Le scadenze IVA, il confronto con l'F24 del commercialista e l'attribuzione delle fatture
+              sono riuniti nella <Link to="/iva">Gestione IVA</Link>. Le date condizionali vanno verificate
+              nello <a href={calendario?.fonte_scadenze} target="_blank" rel="noreferrer">scadenzario ufficiale</a>.
+            </div>
+          </div>
+
+          {notificheError && (
+            <div className="calendario-warning" role="alert">
+              Calendario disponibile, ma il riepilogo notifiche non e stato caricato: {notificheError}
+            </div>
+          )}
+
           {/* Alert Scadenze Critiche */}
           {notifiche?.riepilogo?.critiche > 0 && (
             <div
@@ -326,28 +412,30 @@ export default function CalendarioFiscale() {
                         </div>
                       </div>
                     </div>
-                    {isScaduta(scad.data) ? (
-                      <span
-                        style={{
-                          padding: '4px 12px',
-                          background: '#dc2626',
-                          color: '#fff',
-                          borderRadius: 6,
-                          fontSize: 12,
-                          fontWeight: 600,
-                        }}
-                      >
-                        SCADUTA
-                      </span>
-                    ) : (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      {isScaduta(scad.data) && (
+                        <span
+                          style={{
+                            padding: '4px 12px',
+                            background: '#dc2626',
+                            color: '#fff',
+                            borderRadius: 6,
+                            fontSize: 12,
+                            fontWeight: 600,
+                          }}
+                        >
+                          SCADUTA
+                        </span>
+                      )}
                       <Button
                         size="sm"
-                        onClick={() => completaScadenza(scad.id)}
+                        variant="outline"
+                        onClick={() => completaScadenza(scad)}
                         disabled={completando === scad.id}
                       >
-                        {completando === scad.id ? 'Salvo...' : 'Completa'}
+                        {completando === scad.id ? 'Salvo...' : 'Conferma con prova'}
                       </Button>
-                    )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -412,7 +500,7 @@ export default function CalendarioFiscale() {
                 <PageEmpty icon="📅" message="Nessuna scadenza per i filtri selezionati" />
               ) : (
                 <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <table className="calendario-responsive-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
                     <tr
                       style={{
@@ -427,6 +515,7 @@ export default function CalendarioFiscale() {
                       <th style={{ padding: '12px 16px', textAlign: 'left' }}>Descrizione</th>
                       <th style={{ padding: '12px 16px', textAlign: 'center' }}>Tipo</th>
                       <th style={{ padding: '12px 16px', textAlign: 'center' }}>Stato</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'center' }}>Evidenza</th>
                       <th style={{ padding: '12px 16px', textAlign: 'center' }}>Azioni</th>
                     </tr>
                   </thead>
@@ -445,18 +534,23 @@ export default function CalendarioFiscale() {
                                 : 'white',
                         }}
                       >
-                        <td style={{ padding: '12px 16px' }}>
+                        <td data-label="Data" style={{ padding: '12px 16px' }}>
                           <div style={{ fontWeight: 600 }}>{formatDate(scad.data)}</div>
                         </td>
-                        <td style={{ padding: '12px 16px' }}>
+                        <td data-label="Descrizione" style={{ padding: '12px 16px' }}>
                           <div style={{ fontWeight: 500 }}>{scad.descrizione}</div>
                           {scad.note && (
                             <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
                               {scad.note}
                             </div>
                           )}
+                          {scad.applicabilita === 'da_verificare' && (
+                            <div style={{ fontSize: 11, color: '#b45309', marginTop: 4 }}>
+                              Applicabilita da verificare
+                            </div>
+                          )}
                         </td>
-                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                        <td data-label="Tipo" style={{ padding: '12px 16px', textAlign: 'center' }}>
                           <span
                             style={{
                               padding: '4px 10px',
@@ -470,7 +564,7 @@ export default function CalendarioFiscale() {
                             {scad.tipo?.toUpperCase() || 'ALTRO'}
                           </span>
                         </td>
-                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                        <td data-label="Stato" style={{ padding: '12px 16px', textAlign: 'center' }}>
                           {scad.completato ? (
                             <span
                               style={{
@@ -512,16 +606,32 @@ export default function CalendarioFiscale() {
                             </span>
                           )}
                         </td>
-                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                          {!scad.completato && (
+                        <td data-label="Evidenza" style={{ padding: '12px 16px', textAlign: 'center' }}>
+                          <span style={{ color: scad.livello_evidenza === 'documentale' ? '#15803d' : scad.livello_evidenza === 'da_verificare' ? '#b45309' : '#64748b' }}>
+                            {getProvenienzaLabel(scad)}
+                          </span>
+                        </td>
+                        <td data-label="Azioni" style={{ padding: '12px 16px', textAlign: 'center' }}>
+                          {!scad.completato ? (
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => completaScadenza(scad.id)}
+                              onClick={() => completaScadenza(scad)}
                               disabled={completando === scad.id}
                             >
-                              {completando === scad.id ? '...' : 'Completa'}
+                              {completando === scad.id ? '...' : 'Conferma con prova'}
                             </Button>
+                          ) : scad.provenienza_stato !== 'quietanza_f24' ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => riapriScadenza(scad)}
+                              disabled={completando === scad.id}
+                            >
+                              {completando === scad.id ? '...' : 'Riapri'}
+                            </Button>
+                          ) : (
+                            <span style={{ fontSize: 12, color: '#64748b' }}>Protetta da F24</span>
                           )}
                         </td>
                       </tr>
