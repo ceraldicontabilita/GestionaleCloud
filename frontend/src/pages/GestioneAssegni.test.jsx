@@ -160,7 +160,7 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     expect(screen.getByText('Estratto conto')).toBeInTheDocument();
   });
 
-  it('non propone il modale manuale salvo associazione realmente ambigua', async () => {
+  it('non propone scelte manuali e attende dati univoci nei casi ambigui', async () => {
     api.get.mockImplementation(rispostaPagina([
       { id: 'auto', numero: '0208770649', stato: 'incassato', importo: 977.38 },
       {
@@ -173,8 +173,20 @@ describe('Stati e resa responsive della pagina Assegni', () => {
 
     await screen.findByTestId('assegni-table');
     expect(screen.queryByTestId('fatture-auto')).not.toBeInTheDocument();
-    expect(screen.getByTestId('fatture-ambiguo')).toHaveAttribute(
-      'title', 'Risolvi associazione ambigua'
+    expect(screen.queryByTestId('fatture-ambiguo')).not.toBeInTheDocument();
+    expect(screen.getByText('Attende dati univoci')).toBeInTheDocument();
+  });
+
+  it('segnala i collegamenti storici che superano il totale fattura', async () => {
+    api.get.mockImplementation(rispostaPagina([{
+      id: 'conflitto', numero: '0208770988', stato: 'incassato', importo: 646.72,
+      numero_fattura: '56/D', associazione_conflittuale: true,
+    }]));
+
+    renderPagina();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Collegamento storico da verificare'
     );
   });
 

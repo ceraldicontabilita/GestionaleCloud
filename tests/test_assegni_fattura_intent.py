@@ -1,8 +1,13 @@
 import asyncio
 
+import pytest
+from fastapi import HTTPException
 from mongomock_motor import AsyncMongoMockClient
 
-from app.services.assegni_estratto_conto import sincronizza_assegni_da_estratto_conto
+from app.services.assegni_estratto_conto import (
+    _collega_fattura_univoca,
+    sincronizza_assegni_da_estratto_conto,
+)
 from app.services.assegni_fattura_intent import (
     collega_intento_assegno_a_fattura,
     prepara_intento_assegno,
@@ -291,3 +296,132 @@ def test_modifica_anagrafica_non_degrada_un_assegno_incassato(monkeypatch):
     assert assegno["numero_fattura"] == "F-52"
     assert esito["intento_fattura"]["registrato"] is True
     assert esito["intento_fattura"]["motivo"] == "in_attesa_xml"
+
+
+def test_due_assegni_distinti_non_possono_saldare_due_volte_la_stessa_fattura():
+    async def scenario():
+        db = AsyncMongoMockClient()["assegno_no_doppio_pagamento"]
+        invoice = {
+            "id": "fatt-unica", "invoice_number": "56/D",
+            "total_amount": 646.72, "importo_pagato": 0.0,
+            "payment_status": "open", "pagato": False,
+        }
+        await db.invoices.insert_one(dict(invoice))
+        primo = {"id": "ass-1", "numero": "0208770988", "importo": 646.72}
+        secondo = {"id": "ass-2", "numero": "0208770864", "importo": 646.72}
+
+        assert await _collega_fattura_univoca(
+            db, primo, invoice, "2026-05-15", "2026-08-06T10:00:00+00:00"
+        ) is True
+        aggiornata = await db.invoices.find_one({"id": "fatt-unica"}, {"_id": 0})
+        assert await _collega_fattura_univoca(
+            db, secondo, aggiornata, "2026-04-27", "2026-08-06T10:01:00+00:00"
+        ) is False
+
+        finale = await db.invoices.find_one({"id": "fatt-unica"}, {"_id": 0})
+        assert finale["importo_pagato"] == 646.72
+        assert len(finale["assegni_collegati"]) == 1
+        assert finale["assegni_collegati"][0]["assegno_id"] == "ass-1"
+
+    _run(scenario())
+
+
+def test_due_rate_con_assegni_diversi_sono_ammesse_entro_totale():
+    async def scenario():
+        db = AsyncMongoMockClient()["assegno_rate_valide"]
+        invoice = {
+            "id": "fatt-rate", "invoice_number": "R-200",
+            "total_amount": 200.0, "importo_pagato": 0.0,
+            "payment_status": "open", "pagato": False,
+        }
+        await db.invoices.insert_one(dict(invoice))
+        primo = {"id": "ass-r1", "numero": "0208770101", "importo": 100.0}
+        secondo = {"id": "ass-r2", "numero": "0208770102", "importo": 100.0}
+
+        assert await _collega_fattura_univoca(
+            db, primo, invoice, "2026-06-01", "2026-08-06T10:00:00+00:00"
+        ) is True
+        aggiornata = await db.invoices.find_one({"id": "fatt-rate"}, {"_id": 0})
+        assert await _collega_fattura_univoca(
+            db, secondo, aggiornata, "2026-07-01", "2026-08-06T10:01:00+00:00"
+        ) is True
+
+        finale = await db.invoices.find_one({"id": "fatt-rate"}, {"_id": 0})
+        assert finale["importo_pagato"] == 200.0
+        assert finale["pagato"] is True
+        assert {l["assegno_id"] for l in finale["assegni_collegati"]} == {"ass-r1", "ass-r2"}
+
+    _run(scenario())
+
+
+def test_lista_segnala_sovra_attribuzione_storica_senza_modificare_dati(monkeypatch):
+    async def scenario():
+        db = AsyncMongoMockClient()["assegno_conflitto_storico"]
+        await db.invoices.insert_one({
+            "id": "fatt-conflitto", "invoice_number": "56/D",
+            "supplier_name": "EUREKA ONLUS", "invoice_date": "2026-07-07",
+            "total_amount": 646.72,
+            "assegni_collegati": [
+                {"assegno_id": "ass-a", "quota": 646.72, "banca_confermata": True},
+                {"assegno_id": "ass-b", "quota": 646.72, "banca_confermata": True},
+            ],
+        })
+        for aid, numero in (("ass-a", "0208770988"), ("ass-b", "0208770864")):
+            await db.assegni.insert_one({
+                "id": aid, "numero": numero, "anno": 2026,
+                "data_incasso": "2026-05-15", "importo": 646.72,
+                "stato": "incassato", "fattura_id": "fatt-conflitto",
+                "fattura_collegata": "fatt-conflitto",
+                "fatture_collegate": [{"fattura_id": "fatt-conflitto", "quota": 646.72}],
+            })
+        monkeypatch.setattr(assegni_router.Database, "get_db", staticmethod(lambda: db))
+
+        righe = await assegni_router.list_assegni(
+            skip=0, limit=1000, stato=None, fornitore_piva=None,
+            search=None, anno=2026,
+        )
+        salvata = await db.invoices.find_one({"id": "fatt-conflitto"}, {"_id": 0})
+        return righe, salvata
+
+    righe, salvata = _run(scenario())
+    assert len(righe) == 2
+    assert all(r["associazione_conflittuale"] is True for r in righe)
+    assert all(r["fatture_conflittuali"][0]["importo_attribuito"] == 1293.44 for r in righe)
+    assert len(salvata["assegni_collegati"]) == 2
+
+
+def test_endpoint_legacy_non_puo_sovrascrivere_una_fattura_gia_attribuita(monkeypatch):
+    async def scenario():
+        db = AsyncMongoMockClient()["assegno_endpoint_protetto"]
+        await db.assegni.insert_one({
+            "id": "ass-nuovo", "numero": "0208770990", "importo": 120.0,
+            "stato": "incassato", "incassato_confermato_banca": True,
+        })
+        await db.invoices.insert_one({
+            "id": "fatt-protetta", "invoice_number": "F-120",
+            "total_amount": 120.0, "importo_residuo": 0.0,
+            "importo_pagato": 120.0, "pagato": True,
+            "assegni_collegati": [{
+                "assegno_id": "ass-vecchio", "quota": 120.0,
+                "banca_confermata": True,
+            }],
+        })
+        monkeypatch.setattr(assegni_router.Database, "get_db", staticmethod(lambda: db))
+
+        with pytest.raises(HTTPException) as errore:
+            await assegni_router.collega_fatture_assegno(
+                "ass-nuovo",
+                assegni_router.FattureCollegateIn(fatture=[
+                    assegni_router.FatturaQuotaIn(
+                        fattura_id="fatt-protetta", quota=120.0,
+                    )
+                ]),
+            )
+        salvata = await db.invoices.find_one({"id": "fatt-protetta"}, {"_id": 0})
+        return errore.value, salvata
+
+    errore, salvata = _run(scenario())
+    assert errore.status_code == 409
+    assert "gia attribuita" in errore.detail
+    assert len(salvata["assegni_collegati"]) == 1
+    assert salvata["assegni_collegati"][0]["assegno_id"] == "ass-vecchio"

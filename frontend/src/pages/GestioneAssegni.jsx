@@ -2763,6 +2763,20 @@ export default function GestioneAssegni() {
                             Attende fattura/XML
                           </div>
                         )}
+                        {assegno.associazione_ambigua && (
+                          <div style={{ color: COLORS.warning, fontWeight: 700 }}>
+                            Attende dati univoci
+                          </div>
+                        )}
+                        {assegno.associazione_conflittuale && (
+                          <div
+                            role="alert"
+                            style={{ color: COLORS.danger, fontWeight: 700 }}
+                            title="La stessa fattura risulta attribuita oltre il proprio importo"
+                          >
+                            Collegamento storico da verificare
+                          </div>
+                        )}
                       </div>
                     </div>
                   ),
@@ -2813,16 +2827,6 @@ export default function GestioneAssegni() {
                         >
                           ✏️
                         </RowActionButton>
-                        {assegno.associazione_ambigua && (
-                          <RowActionButton
-                            variant="neutral"
-                            onClick={() => openFattureModal(assegno)}
-                            data-testid={`fatture-${assegno.id}`}
-                            title="Risolvi associazione ambigua"
-                          >
-                            📄
-                          </RowActionButton>
-                        )}
                         {/* STAMPA singolo assegno: il carnet è il prefisso
                             del numero, come in groupByCarnet */}
                         <RowActionButton
