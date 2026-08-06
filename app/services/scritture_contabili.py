@@ -25,7 +25,7 @@ REGOLA CANONICA POS (utente, 18/07/2026 — confermata a voce e definitiva):
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -113,26 +113,65 @@ async def _leggi_tutti(cursor, n: int = 100):
     return [c async for c in cursor]
 
 
+GESTORE_POS_DEFAULT = "nexi"
+
+
+def normalizza_gestore_pos(valore: Any) -> str:
+    """Normalizza il gestore POS. Le righe storiche senza campo sono Nexi."""
+    return str(valore or "").strip().lower() or GESTORE_POS_DEFAULT
+
+
+def filtro_gestore_pos(gestore: str) -> Dict[str, Any]:
+    """Filtro Mongo per gestore.
+
+    Le chiusure gia' registrate non hanno il campo ``gestore``: appartengono
+    tutte a Nexi, unico terminale fino ad ora. Vanno quindi intercettate dal
+    filtro del gestore predefinito, altrimenti un secondo inserimento
+    creerebbe una riga parallela e raddoppierebbe il POS del giorno.
+    """
+    gestore = normalizza_gestore_pos(gestore)
+    if gestore == GESTORE_POS_DEFAULT:
+        return {"$or": [
+            {"gestore": gestore},
+            {"gestore": {"$in": [None, ""]}},
+            {"gestore": {"$exists": False}},
+        ]}
+    return {"gestore": gestore}
+
+
 async def chiusura_pos_del_giorno(db, data: str) -> Optional[float]:
-    """Chiusura manuale serale del terminale POS per il giorno (se trascritta)."""
+    """POS reale del giorno: somma dei terminali (Nexi, SumUp, ...).
+
+    Con piu' gestori il totale e' la somma dei loro totali. L'inserimento
+    manuale prevale sui componenti storici *dello stesso gestore*, mai su
+    quelli degli altri: diversamente una correzione su un terminale
+    cancellerebbe l'incasso dell'altro.
+    """
     tot = 0.0
     trovata = False
     try:
         righe = await _leggi_tutti(db["chiusure_pos_manuali"].find(
             {"data": data},
-            {"_id": 0, "importo": 1, "totale": 1, "source": 1},
+            {"_id": 0, "importo": 1, "totale": 1, "source": 1, "gestore": 1},
         ))
-        # Un inserimento/correzione dalla UI e' un totale giornaliero e
-        # prevale sugli eventuali componenti storici importati da CSV.
-        override = next((c for c in reversed(righe)
-                         if c.get("source") == "inserimento_manuale_terminale"), None)
-        if override is not None:
-            valore = override.get("importo")
-            return round(float(valore if valore is not None
-                               else override.get("totale") or 0), 2)
-        for c in righe:
+        per_gestore: Dict[str, List[Dict[str, Any]]] = {}
+        for riga in righe:
+            per_gestore.setdefault(
+                normalizza_gestore_pos(riga.get("gestore")), []
+            ).append(riga)
+        for componenti in per_gestore.values():
             trovata = True
-            tot += float(c.get("importo") or c.get("totale") or 0)
+            # Un inserimento/correzione dalla UI e' un totale giornaliero e
+            # prevale sugli eventuali componenti storici importati da CSV.
+            override = next((c for c in reversed(componenti)
+                             if c.get("source") == "inserimento_manuale_terminale"), None)
+            if override is not None:
+                valore = override.get("importo")
+                tot += float(valore if valore is not None
+                             else override.get("totale") or 0)
+                continue
+            for c in componenti:
+                tot += float(c.get("importo") or c.get("totale") or 0)
         if not trovata:
             # fallback storico: chiusure importate in prima_nota_banca con
             # source import_manuale_pos (vecchio flusso pos.xlsx)
