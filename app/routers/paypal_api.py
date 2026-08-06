@@ -166,8 +166,8 @@ async def riconcilia_da_collection(
     from app.services.paypal_riconciliazione import (
         riconcilia_pagamenti_paypal,
         riconcilia_multe_pagopa,
-        collega_a_estratto_conto,
     )
+    from app.routers.paypal_statements import _auto_riconcilia
     from app.services.paypal_email_recovery import recupera_fatture_mancanti_email
 
     db = Database.get_db()
@@ -194,7 +194,16 @@ async def riconcilia_da_collection(
         }
         for t in fatture
     ])
-    r_banca = await collega_a_estratto_conto(db)
+    # Un solo motore banca: il precedente percorso legacy usava un mandato
+    # fisso e non proteggeva dai pareggi. Il motore canonico richiede invece
+    # un match biunivoco e non riutilizza movimenti gia' riconciliati.
+    anno_banca = None
+    if body.get("start_date"):
+        try:
+            anno_banca = int(str(body["start_date"])[:4])
+        except (TypeError, ValueError):
+            anno_banca = None
+    r_banca = await _auto_riconcilia(db, anno=anno_banca, applica=True)
 
     if body.get("recupera_email", True):
         background_tasks.add_task(recupera_fatture_mancanti_email, db)
@@ -310,6 +319,7 @@ async def account_ids_non_mappati(anno: Optional[int] = None):
         query_text = " ".join(subjects[:3])
         candidati = []
         suggested_forn_id = None  # pre-selezione UI se match certo
+        exact_name_candidate_ids = []
 
         # STRATEGIA 1 (match certo): cerca fornitore con ragione_sociale che matcha nome_controparte
         if nome_controparte:
@@ -352,9 +362,14 @@ async def account_ids_non_mappati(anno: Optional[int] = None):
                         "source": f"nome_paypal_{match_type}",
                     }
                     candidati.append(candidato)
-                    # Primo match esatto → lo suggeriamo per pre-selezione
-                    if match_type == "exact" and not suggested_forn_id:
-                        suggested_forn_id = forn.get("id")
+                    if match_type == "exact" and forn.get("id"):
+                        exact_name_candidate_ids.append(forn["id"])
+
+        # La stessa denominazione puo' esistere piu' volte in anagrafica:
+        # in quel caso non esiste alcuna proposta univoca da pre-selezionare.
+        exact_name_candidate_ids = list(dict.fromkeys(exact_name_candidate_ids))
+        if len(exact_name_candidate_ids) == 1:
+            suggested_forn_id = exact_name_candidate_ids[0]
 
         # STRATEGIA 2: fornitori con fatture di importo simile (fallback)
         min_imp = importo_medio * 0.6
@@ -497,12 +512,29 @@ async def cerca_fattura_email_per_account(paypal_account_id: str) -> Dict[str, A
     # spesso da un indirizzo di sistema automatico diverso dalla persona di
     # contatto salvata su PayPal (es. MongoDB fattura da "MongoDB Cloud", non
     # dall'email del commerciale), quindi non trovava mai nulla.
-    risultato = await download_documents_from_email(
-        db, user, pwd,
-        since_days=365,
-        search_keywords=[parola_chiave] if parola_chiave else None,
-        ignore_dict=True,
-    )
+    try:
+        risultato = await download_documents_from_email(
+            db, user, pwd,
+            since_days=365,
+            search_keywords=[parola_chiave] if parola_chiave else None,
+            ignore_dict=True,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Ricerca fattura PayPal in email fallita per account %s",
+            paypal_account_id,
+        )
+        return {
+            "ok": False,
+            "paypal_account_id": paypal_account_id,
+            "nome_controparte": nome_controparte,
+            "cercato_per": parola_chiave or email_controparte,
+            "errore": "Ricerca email non completata",
+            "azione": "Verifica account e App Password in Admin → Email, poi riprova",
+            "dettaglio_tecnico": type(exc).__name__,
+            "documents": [],
+            "stats": {"emails_found": 0, "new_documents": 0},
+        }
 
     from app.services.paypal_email_recovery import _aggancia_documenti_trovati
     aggancio = {"agganciati": 0}

@@ -156,7 +156,16 @@ def _score_match_banca(tx: Dict[str, Any], mov: Dict[str, Any]) -> Optional[Dict
     PayPal presente nella causale e' una prova ancora piu' forte. A parita'
     di score il chiamante lascia il movimento non riconciliato.
     """
-    tx_amount = _importo_paypal(tx)
+    # Per pagamenti in valuta estera il movimento bancario e' in EUR: il
+    # report canonico espone la gamba EUR della conversione in questo campo.
+    # Senza questa precedenza una spesa USD non potrebbe mai combaciare con
+    # il relativo addebito bancario in euro.
+    try:
+        tx_amount = float(tx.get("importo_report_eur") or 0)
+    except (TypeError, ValueError):
+        tx_amount = 0
+    if not tx_amount:
+        tx_amount = _importo_paypal(tx)
     try:
         mov_amount = float(mov.get("importo") or 0)
     except (TypeError, ValueError):
@@ -627,14 +636,86 @@ async def import_paypal_csv(file: UploadFile = File(...)):
 
 
 @router.post("/riconcilia-banca")
-async def riconcilia_con_banca(anno: Optional[int] = None):
-    """Riconcilia manualmente (normalmente è automatico dopo import)."""
+async def riconcilia_con_banca(
+    anno: Optional[int] = None,
+    conferma: bool = Query(
+        False,
+        description="False genera solo l'anteprima; True applica i match univoci",
+    ),
+):
+    """Prepara o applica la riconciliazione PayPal-banca.
+
+    Il primo passaggio e' sempre leggibile come anteprima. La scrittura viene
+    eseguita soltanto con ``conferma=true`` e soltanto per abbinamenti
+    biunivoci; importo e data da soli non possono risolvere una parita'.
+    """
     db = Database.get_db()
-    result = await _auto_riconcilia(db, anno=anno)
-    return result
+    return await _auto_riconcilia(db, anno=anno, applica=conferma)
 
 
-async def _auto_riconcilia(db, anno: Optional[int] = None) -> Dict:
+def _proposte_riconciliazione_banca(
+    paypal_txs: List[Dict[str, Any]],
+    banca_paypal: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Costruisce match biunivoci senza modificare alcun dato."""
+    archi_per_movimento: Dict[str, List[Dict[str, Any]]] = {}
+    archi_per_transazione: Dict[str, List[Dict[str, Any]]] = {}
+
+    for mov in banca_paypal:
+        mov_id = _id_movimento(mov)
+        if not mov_id or mov.get("riconciliato") is True or mov.get("paypal_transaction_id"):
+            continue
+        for tx in paypal_txs:
+            tx_id = str(tx.get("transaction_id") or tx.get("id") or "")
+            if not tx_id:
+                continue
+            match = _score_match_banca(tx, mov)
+            if not match or match["score"] < 85:
+                continue
+            arco = {
+                "movimento_id": mov_id,
+                "transaction_id": tx_id,
+                "score": match["score"],
+                "evidenze": match["evidenze"],
+                "delta_giorni": match["delta_giorni"],
+                "data_movimento": str(mov.get("data") or mov.get("data_contabile") or "")[:10],
+                "importo_movimento": round(abs(float(mov.get("importo") or 0)), 2),
+            }
+            archi_per_movimento.setdefault(mov_id, []).append(arco)
+            archi_per_transazione.setdefault(tx_id, []).append(arco)
+
+    proposte: List[Dict[str, Any]] = []
+    ambigui = set()
+    for mov_id, archi in archi_per_movimento.items():
+        archi.sort(key=lambda item: item["score"], reverse=True)
+        migliori_mov = [a for a in archi if a["score"] == archi[0]["score"]]
+        if len(migliori_mov) != 1:
+            ambigui.add(mov_id)
+            continue
+        candidato = migliori_mov[0]
+        archi_tx = sorted(
+            archi_per_transazione[candidato["transaction_id"]],
+            key=lambda item: item["score"],
+            reverse=True,
+        )
+        migliori_tx = [a for a in archi_tx if a["score"] == archi_tx[0]["score"]]
+        if len(migliori_tx) != 1 or migliori_tx[0]["movimento_id"] != mov_id:
+            ambigui.add(mov_id)
+            continue
+        proposte.append(candidato)
+
+    return {
+        "proposte": proposte,
+        "ambigui": len(ambigui),
+        "movimenti_con_candidati": len(archi_per_movimento),
+    }
+
+
+async def _auto_riconcilia(
+    db,
+    anno: Optional[int] = None,
+    applica: bool = True,
+) -> Dict:
     """Riconcilia transazioni PayPal con movimenti estratto conto bancario.
     Matching univoco per segno + importo + data, oppure riferimento PayPal
     esplicito in causale. L'importo da solo non produce mai un'associazione.
@@ -647,81 +728,61 @@ async def _auto_riconcilia(db, anno: Optional[int] = None) -> Dict:
         {"_id": 0}
     ).to_list(5000)
     paypal_txs = [
-        tx for tx in paypal_txs
-        if _importo_paypal(tx)
-        and not str(tx.get("tipo") or tx.get("event_code") or "").startswith("T02")
-        and (not anno or (_data_documento(tx) and _data_documento(tx).year == anno))
+        tx for tx in _pagamenti_paypal_in_euro(paypal_txs)
+        if not anno or (_data_documento(tx) and _data_documento(tx).year == anno)
     ]
     
     # Cerca su descrizione_originale E descrizione (entrambi i campi)
-    banca_query: Dict[str, Any] = {"$or": [
+    banca_query: Dict[str, Any] = {"$and": [
+        {"riconciliato": {"$ne": True}},
+        {"paypal_transaction_id": {"$in": [None, ""]}},
+        {"$or": [
             {"descrizione": {"$regex": "paypal", "$options": "i"}},
-            {"descrizione_originale": {"$regex": "paypal", "$options": "i"}}
-        ]}
+            {"descrizione_originale": {"$regex": "paypal", "$options": "i"}},
+        ]},
+    ]}
     if anno:
-        banca_query = {"$and": [banca_query, {"$or": [
+        banca_query["$and"].append({"$or": [
             {"data": {"$regex": f"^{anno}"}},
             {"data_contabile": {"$regex": f"^{anno}"}},
-        ]}]}
+        ]})
     banca_paypal = await db[COLL_ESTRATTO_CONTO].find(
         banca_query,
         {"_id": 0}
     ).to_list(5000)
     
-    # Index banca per importo per velocizzare matching
-    banca_usati = {
-        _id_movimento(m) for m in banca_paypal
-        if m.get("paypal_transaction_id")
-    }
-    tx_usate = set()
+    anteprima = _proposte_riconciliazione_banca(paypal_txs, banca_paypal)
     riconciliati = 0
-    ambigui = 0
-
-    for mov in banca_paypal:
-        mov_id = _id_movimento(mov)
-        if not mov_id or mov_id in banca_usati:
-            continue
-        candidati = []
-        for tx in paypal_txs:
-            tx_id = str(tx.get("transaction_id") or tx.get("id") or "")
-            if not tx_id or tx_id in tx_usate:
-                continue
-            match = _score_match_banca(tx, mov)
-            if match and match["score"] >= 85:
-                candidati.append((match["score"], tx_id, tx, match))
-        candidati.sort(key=lambda item: item[0], reverse=True)
-        if not candidati:
-            continue
-        if len(candidati) > 1 and candidati[0][0] == candidati[1][0]:
-            ambigui += 1
-            continue
-
-        _, tx_id, tx, match = candidati[0]
-        tx_usate.add(tx_id)
-        banca_usati.add(mov_id)
+    for proposta in anteprima["proposte"] if applica else []:
+        mov_id = proposta["movimento_id"]
+        tx_id = proposta["transaction_id"]
         now = datetime.now(timezone.utc).isoformat()
-        mov_date = str(mov.get("data") or mov.get("data_contabile") or "")[:10]
+        mov_date = proposta["data_movimento"]
         await db[COLL_PAYPAL_TRANSACTIONS].update_one(
-            {"transaction_id": tx_id},
+            {
+                "transaction_id": tx_id,
+                "riconciliato_banca": {"$ne": True},
+                "riconciliato_con_estratto_banca": {"$ne": True},
+            },
             {"$set": {
                 "riconciliato_banca": True,
                 "riconciliato_con_estratto_banca": True,
                 "movimento_banca_id": mov_id,
                 "estratto_conto_movimento_id": mov_id,
                 "data_banca": mov_date,
-                "riconciliazione_banca_score": match["score"],
-                "riconciliazione_banca_evidenze": match["evidenze"],
+                "riconciliazione_banca_score": proposta["score"],
+                "riconciliazione_banca_evidenze": proposta["evidenze"],
                 "riconciliato_il": now,
             }}
         )
         await db[COLL_ESTRATTO_CONTO].update_one(
-            {"id": mov_id},
+            {"id": mov_id, "riconciliato": {"$ne": True}},
             {"$set": {
                 "riconciliato": True,
                 "tipo_riconciliazione": "paypal_evidenze_univoche",
                 "paypal_transaction_id": tx_id,
-                "riconciliazione_evidenze": match["evidenze"],
-                "riconciliazione_score": match["score"],
+                "riconciliazione_evidenze": proposta["evidenze"],
+                "riconciliazione_score": proposta["score"],
                 "data_riconciliazione": now,
             }}
         )
@@ -730,10 +791,14 @@ async def _auto_riconcilia(db, anno: Optional[int] = None) -> Dict:
     return {
         "totale_paypal": len(paypal_txs),
         "totale_banca": len(banca_paypal),
+        "modalita": "applicata" if applica else "anteprima",
+        "proposte": len(anteprima["proposte"]),
+        "importo_proposto": round(sum(p["importo_movimento"] for p in anteprima["proposte"]), 2),
+        "dettaglio_proposte": anteprima["proposte"][:100],
         "riconciliati": riconciliati,
         "non_riconciliati": len(paypal_txs) - riconciliati,
-        "ambigui": ambigui,
-        "criterio": "riferimento oppure importo+segno+data; parita non confermate",
+        "ambigui": anteprima["ambigui"],
+        "criterio": "match biunivoco: riferimento oppure importo+segno+data; parita non confermate",
     }
 
 

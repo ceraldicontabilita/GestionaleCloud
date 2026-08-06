@@ -243,7 +243,8 @@ export default function RiconciliazionePaypal() {
       const params = annoFiltro ? `?anno=${annoFiltro}` : '';
       const res = await api.get(`/api/paypal-api/account-ids-non-mappati${params}`);
       setMappingData(res.data);
-      // Pre-seleziona automaticamente i fornitori con match certo (nome_controparte == ragione_sociale)
+      // Pre-seleziona solo una denominazione esatta e univoca. La conferma
+      // resta comunque esplicita: il nome non sostituisce P.IVA/CF.
       const autoSelect = {};
       for (const item of res.data.items || []) {
         if (item.suggested_fornitore_id) {
@@ -1139,8 +1140,26 @@ export default function RiconciliazionePaypal() {
                 onClick={async () => {
                   setReconcilingBank(true);
                   try {
+                    const previewRes = await api.post(
+                      `/api/paypal-statements/riconcilia-banca?anno=${annoFiltro}&conferma=false`
+                    );
+                    const preview = previewRes.data || {};
+                    if ((preview.proposte || 0) === 0) {
+                      toast.info(
+                        `Nessun match univoco da applicare; ${preview.ambigui || 0} casi restano da verificare`
+                      );
+                      return;
+                    }
+                    const ok = await confirm({
+                      title: 'Conferma riconciliazione PayPal',
+                      message:
+                        `${preview.proposte} abbinamenti biunivoci per ${formatEuro(preview.importo_proposto)}. ` +
+                        `${preview.ambigui || 0} casi ambigui resteranno sospesi. Applicare?`,
+                      confirmText: 'Applica abbinamenti',
+                    });
+                    if (!ok) return;
                     const res = await api.post(
-                      `/api/paypal-statements/riconcilia-banca?anno=${annoFiltro}`
+                      `/api/paypal-statements/riconcilia-banca?anno=${annoFiltro}&conferma=true`
                     );
                     const r = res.data || {};
                     toast.success(
@@ -1158,7 +1177,7 @@ export default function RiconciliazionePaypal() {
                   }
                 }}
               >
-                {reconcilingBank ? 'Riconciliazione…' : 'Riconcilia con PayPal'}
+                {reconcilingBank ? 'Verifica abbinamenti…' : 'Verifica e riconcilia'}
               </Button>
             </div>
             <div
@@ -1355,14 +1374,14 @@ export default function RiconciliazionePaypal() {
                 }}
               >
                 <div style={{ fontSize: 13, color: COLORS.success }}>
-                  Match certi{' '}
+                  Proposte da confermare{' '}
                   <strong>
-                    {mappingData.items.filter(i => i.suggested_fornitore_id).length} match certi
+                    {mappingData.items.filter(i => i.suggested_fornitore_id).length} denominazioni esatte e univoche
                   </strong>{' '}
-                  trovati tramite nome PayPal. Puoi mapparli tutti con un click.
+                  trovate tramite il nome PayPal.
                 </div>
                 <Button data-testid="mappa-tutti-certi-btn" onClick={mappaTuttiCerti} variant="primary">
-                  Mappa tutti i certi
+                  Verifica e collega
                 </Button>
               </div>
             )}
@@ -1442,7 +1461,7 @@ export default function RiconciliazionePaypal() {
                   <div>
                     {item.suggested_fornitore_id && (
                       <Badge variant="success" style={{ marginBottom: 4 }}>
-                        Match certo da nome PayPal
+                        Denominazione PayPal coincidente — da confermare
                       </Badge>
                     )}
                     <Select
@@ -1464,11 +1483,22 @@ export default function RiconciliazionePaypal() {
                       }}
                     >
                       <option value="">— Seleziona fornitore —</option>
-                      {item.candidati?.filter(c => c.source?.startsWith('nome_paypal')).length >
+                      {item.candidati?.filter(c => c.source === 'nome_paypal_exact').length >
                         0 && (
-                        <optgroup label="Match certo (nome PayPal)">
+                        <optgroup label="Denominazione esatta">
                           {item.candidati
-                            .filter(c => c.source?.startsWith('nome_paypal'))
+                            .filter(c => c.source === 'nome_paypal_exact')
+                            .map(c => (
+                              <option key={c.fornitore_id} value={c.fornitore_id}>
+                                {c.nome} — P.IVA {c.piva} — score {c.score}
+                              </option>
+                            ))}
+                        </optgroup>
+                      )}
+                      {item.candidati?.filter(c => ['nome_paypal_partial', 'nome_paypal_fuzzy'].includes(c.source)).length > 0 && (
+                        <optgroup label="Nomi simili — verifica necessaria">
+                          {item.candidati
+                            .filter(c => ['nome_paypal_partial', 'nome_paypal_fuzzy'].includes(c.source))
                             .map(c => (
                               <option key={c.fornitore_id} value={c.fornitore_id}>
                                 {c.nome} — P.IVA {c.piva} — score {c.score}
