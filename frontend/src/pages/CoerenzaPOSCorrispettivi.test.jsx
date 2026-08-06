@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../api';
 import {
+  default as CoerenzaPOSCorrispettivi,
   BadgeRiconciliatoBanca,
   EditorPosReale,
   ModalImportTotaliPos,
@@ -13,7 +14,11 @@ import {
 } from './CoerenzaPOSCorrispettivi';
 
 vi.mock('../api', () => ({
-  default: { put: vi.fn(), post: vi.fn() },
+  default: { get: vi.fn(), put: vi.fn(), post: vi.fn() },
+}));
+
+vi.mock('../contexts/AnnoContext', () => ({
+  useAnnoGlobale: () => ({ anno: 2026 }),
 }));
 
 vi.mock('sonner', () => ({
@@ -159,5 +164,53 @@ describe('Editor POS reale del terminale', () => {
       '/api/pos-corrispettivi/chiusura-giornaliera',
       expect.objectContaining({ data: '2026-07-06', importo: 0 }),
     ));
+  });
+});
+
+describe('Vista canonica POS e banca', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.get.mockImplementation(url => {
+      if (url.includes('/verifica-coerenza')) {
+        return Promise.resolve({ data: {
+          riepilogo: {}, riepilogo_giornaliero: [], anomalie: [], anomalie_count: 0,
+        } });
+      }
+      if (url.includes('/riepilogo-mensile')) {
+        return Promise.resolve({ data: {
+          mesi: [{
+            mese: 7, nome: 'Lug', totale_corrispettivi: 150,
+            contanti: 45, elettronico_xml: 105, pos_terminale: 100,
+            differenza_xml_pos: 5, pos_accreditato: 100,
+            differenza_pos_banca: 0, stato: 'ok',
+          }],
+          totali: {
+            elettronico_xml: 105, pos_terminale: 100,
+            differenza_xml_pos: 5, pos_accreditato: 100,
+            differenza_pos_banca: 0,
+          },
+        } });
+      }
+      return Promise.resolve({ data: {
+        statistiche: {
+          fase2_ok: 1, fase2_pos_totale: 100, fase2_accrediti_totale: 100,
+          fase2_saldo_finale: 0, fase2_movimenti_banca: 1,
+          fase2_movimenti_banca_raw: 3, fase2_duplicati_banca_unificati: 2,
+        },
+        giorni: [], riepilogo_settimanale: [],
+      } });
+    });
+  });
+
+  it('espone le fonti duplicate unificate e le due differenze mensili', async () => {
+    render(<CoerenzaPOSCorrispettivi />);
+
+    expect(await screen.findByText(/Fonti bancarie duplicate unificate:/)).toHaveTextContent('2');
+    fireEvent.click(screen.getByRole('button', { name: 'Mensile' }));
+
+    expect(screen.getByText('POS TERMINALE')).toBeInTheDocument();
+    expect(screen.getByText('DIFF. XML−POS')).toBeInTheDocument();
+    expect(screen.getByText('ACCREDITO BANCA')).toBeInTheDocument();
+    expect(screen.getByText('DIFF. BANCA−POS')).toBeInTheDocument();
   });
 });

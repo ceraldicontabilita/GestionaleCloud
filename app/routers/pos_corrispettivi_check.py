@@ -21,6 +21,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta, timezone
 import asyncio
 import logging
+import re
 
 from app.database import Database
 from app.utils.error_handler import handle_errors
@@ -89,6 +90,72 @@ def _e_corrispettivo_xml(corrispettivo: Dict[str, Any]) -> bool:
         return True
     filename = str(corrispettivo.get("filename") or "").strip().lower()
     return bool(corrispettivo.get("content_hash") and filename.endswith(".xml"))
+
+
+def _id_movimento_pos(movimento: Dict[str, Any]) -> str:
+    return str(movimento.get("id") or movimento.get("_id") or "")
+
+
+def _chiave_evidenza_pos_banca(movimento: Dict[str, Any]) -> tuple:
+    """Identifica una singola liquidazione POS gia registrata dalla banca.
+
+    NUMIA produce al massimo una liquidazione per circuito, terminale e giorno
+    vendita. La stessa riga puo pero essere importata piu volte da estratti
+    sovrapposti. Data contabile, giorno vendita, centesimi, causale e rapporto
+    permettono di unificare soltanto quelle copie, senza fondere circuiti o
+    accrediti realmente distinti.
+    """
+    descrizione = str(
+        movimento.get("descrizione_originale") or movimento.get("descrizione") or ""
+    )
+    try:
+        centesimi = int(round(abs(float(
+            movimento.get("importo") or movimento.get("amount") or 0
+        )) * 100))
+    except (TypeError, ValueError):
+        centesimi = 0
+    return (
+        str(movimento.get("data") or movimento.get("data_contabile") or "")[:10],
+        _giorno_operazione_pos(descrizione, ""),
+        centesimi,
+        re.sub(r"[^a-z0-9]+", "", descrizione.lower()),
+        re.sub(r"[^a-z0-9]+", "", str(movimento.get("rapporto") or "").lower()),
+    )
+
+
+def _deduplica_evidenze_pos_banca(
+    movimenti: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Restituisce una vista canonica mantenendo gli ID di tutte le fonti.
+
+    Nessun record viene cancellato. Per ogni chiave bancaria deterministica
+    viene scelta la rappresentazione piu completa e vengono esposti conteggio
+    e identificativi delle copie, utili per audit e pulizie successive.
+    """
+    gruppi: Dict[tuple, List[Dict[str, Any]]] = {}
+    for movimento in movimenti:
+        gruppi.setdefault(_chiave_evidenza_pos_banca(movimento), []).append(movimento)
+
+    canonici: List[Dict[str, Any]] = []
+    for righe in gruppi.values():
+        def rango(riga: Dict[str, Any]) -> tuple:
+            return (
+                int(bool(riga.get("rapporto"))),
+                len(str(riga.get("descrizione_originale") or riga.get("descrizione") or "")),
+                str(riga.get("updated_at") or riga.get("created_at") or ""),
+            )
+
+        scelta = max(righe, key=rango)
+        item = dict(scelta)
+        ids = [_id_movimento_pos(riga) for riga in righe if _id_movimento_pos(riga)]
+        item["pos_duplicate_source_ids"] = ids
+        item["pos_duplicate_sources_unified"] = len(righe) - 1
+        canonici.append(item)
+
+    canonici.sort(
+        key=lambda riga: str(riga.get("data") or riga.get("data_contabile") or "")
+    )
+    return canonici
 
 
 @router.get("/verifica-coerenza")
@@ -166,7 +233,9 @@ async def verifica_coerenza_pos_corrispettivi(
                 {"descrizione_originale": {"$regex": "NUMIA|INCAS\\. TRAMITE P\\.O\\.S|INC\\.POS", "$options": "i"}},
             ],
         },
-        {"_id": 0, "data": 1, "importo": 1, "descrizione": 1, "descrizione_originale": 1, "categoria": 1}
+        {"_id": 0, "id": 1, "data": 1, "data_contabile": 1,
+         "importo": 1, "descrizione": 1, "descrizione_originale": 1,
+         "categoria": 1, "rapporto": 1, "created_at": 1, "updated_at": 1}
     ).sort("data", 1).to_list(20000)
     
     # 3. Carica anche chiusure POS manuali per riferimento (opzionale)
@@ -214,7 +283,8 @@ async def verifica_coerenza_pos_corrispettivi(
             corrispettivi_by_date[data]["matricole"].add(c.get("matricola_rt"))
     
     pos_by_date = {}
-    for p in accrediti_pos:
+    accrediti_pos_canonici = _deduplica_evidenze_pos_banca(accrediti_pos)
+    for p in accrediti_pos_canonici:
         descr = p.get("descrizione_originale") or p.get("descrizione") or ""
         if not _e_accredito_pos_numia_con_giorno(descr):
             continue
@@ -346,7 +416,10 @@ async def verifica_coerenza_pos_corrispettivi(
             "giorni_analizzati": len(tutte_le_date),
             "giorni_ok": giorni_ok,
             "giorni_anomalia": giorni_anomalia,
-            "percentuale_coerenza": round((giorni_ok / max(len(tutte_le_date), 1)) * 100, 1)
+            "percentuale_coerenza": round((giorni_ok / max(len(tutte_le_date), 1)) * 100, 1),
+            "movimenti_banca": len(accrediti_pos_canonici),
+            "movimenti_banca_raw": len(accrediti_pos),
+            "duplicati_banca_unificati": len(accrediti_pos) - len(accrediti_pos_canonici),
         },
         "anomalie": anomalie[:100],  # Limita a 100
         "anomalie_count": len(anomalie),
@@ -364,10 +437,22 @@ async def riepilogo_mensile_pos_corrispettivi(
     Riepilogo mensile della coerenza POS/Corrispettivi per un anno.
     """
     db = Database.get_db()
-    
+
+    # Un solo motore per giornaliero, mensile e controllo a due fasi. Il
+    # precedente aggregate mensile usava la data contabile, sommava le copie
+    # degli estratti sovrapposti e confrontava direttamente XML con banca.
+    accrediti_anno = await _carica_accrediti_banca_pos(
+        db, f"{anno}-01-01", f"{anno}-12-31"
+    )
+    pos_manuali = await _carica_pos_manuale_per_data(db)
+
     mesi = []
     totale_anno_elettronico = 0
+    totale_anno_pos_terminale = 0
     totale_anno_pos = 0
+    totale_movimenti_banca = 0
+    totale_movimenti_banca_raw = 0
+    totale_duplicati_unificati = 0
     
     for mese in range(1, 13):
         data_da = f"{anno}-{mese:02d}-01"
@@ -397,45 +482,29 @@ async def riepilogo_mensile_pos_corrispettivi(
         
         corr_result = await db["corrispettivi"].aggregate(pipeline_corr).to_list(1)
         
-        # POS BANCARI REALI del mese: stessa fonte e stessa logica della
-        # verifica giornaliera (verifica_coerenza_pos_corrispettivi sopra) —
-        # ESTRATTO CONTO, non prima_nota_banca. FIX 18/07/2026: questa
-        # funzione non era stata migrata insieme alle altre e usava ancora
-        # prima_nota_banca con una whitelist categorie senza "Corrispettivi
-        # POS" (categoria scritta dal motore unico): il totale POS annuo
-        # risultava gonfiato/svuotato in modo incoerente con la vista
-        # giornaliera, che invece torna corretta — segnalato dall'utente
-        # ("riepilogo mensile non usabile").
-        CATEGORIE_POS_ACCREDITATI = [
-            "Ricavi - Incasso tramite POS-Carte di credito",
-            "Ricavi - Incasso tramite POS",
-            "Incasso POS",
-            "Accredito POS",
-        ]
-        pipeline_pos = [
-            {"$match": {
-                "data": {"$gte": data_da, "$lte": data_a},
-                "tipo": {"$ne": "uscita"},
-                "$or": [
-                    {"categoria": {"$in": CATEGORIE_POS_ACCREDITATI}},
-                    {"descrizione_originale": {"$regex": "NUMIA|INCAS\\. TRAMITE P\\.O\\.S|INC\\.POS", "$options": "i"}},
-                ],
-            }},
-            {"$group": {
-                "_id": None,
-                "totale": {"$sum": {"$abs": "$importo"}},
-                "count": {"$sum": 1}
-            }}
-        ]
-
-        pos_result = await db["estratto_conto_movimenti"].aggregate(pipeline_pos).to_list(1)
-        
         elettronico = corr_result[0]["elettronico"] if corr_result else 0
-        pos = pos_result[0]["totale"] if pos_result else 0
-        differenza = elettronico - pos
+        pos_terminale = round(sum(
+            float(importo or 0)
+            for data, importo in pos_manuali.items()
+            if data_da <= data <= data_a
+        ), 2)
+        evidenze_mese = [
+            evidenza for data, evidenza in accrediti_anno.items()
+            if data_da <= data <= data_a
+        ]
+        pos = round(sum(float(e.get("totale") or 0) for e in evidenze_mese), 2)
+        movimenti_banca = sum(int(e.get("numero_movimenti") or 0) for e in evidenze_mese)
+        movimenti_banca_raw = sum(int(e.get("numero_movimenti_raw") or 0) for e in evidenze_mese)
+        duplicati_unificati = sum(int(e.get("duplicati_unificati") or 0) for e in evidenze_mese)
+        differenza_xml_pos = round(elettronico - pos_terminale, 2)
+        differenza_pos_banca = round(pos - pos_terminale, 2)
         
         totale_anno_elettronico += elettronico
+        totale_anno_pos_terminale += pos_terminale
         totale_anno_pos += pos
+        totale_movimenti_banca += movimenti_banca
+        totale_movimenti_banca_raw += movimenti_banca_raw
+        totale_duplicati_unificati += duplicati_unificati
         
         nome_mese = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", 
                      "Lug", "Ago", "Set", "Ott", "Nov", "Dic"][mese-1]
@@ -446,11 +515,22 @@ async def riepilogo_mensile_pos_corrispettivi(
             "totale_corrispettivi": round(corr_result[0]["totale"] if corr_result else 0, 2),
             "contanti": round(corr_result[0]["contanti"] if corr_result else 0, 2),
             "elettronico_xml": round(elettronico, 2),
+            "pos_terminale": pos_terminale,
             "pos_accreditato": round(pos, 2),
-            "differenza": round(differenza, 2),
-            "stato": "ok" if abs(differenza) < 50 else ("warning" if abs(differenza) < 200 else "error"),
+            "differenza_xml_pos": differenza_xml_pos,
+            "differenza_pos_banca": differenza_pos_banca,
+            # Alias retrocompatibile: la quadratura operativa e' banca - POS.
+            "differenza": differenza_pos_banca,
+            "stato": (
+                "vuoto" if not corr_result and not pos_terminale and not pos
+                else "ok" if differenza_xml_pos >= -0.5 and abs(differenza_pos_banca) <= 0.5
+                else "warning" if differenza_xml_pos >= -5 and abs(differenza_pos_banca) <= 5
+                else "error"
+            ),
             "corrispettivi_count": corr_result[0]["count"] if corr_result else 0,
-            "pos_count": pos_result[0]["count"] if pos_result else 0
+            "pos_count": movimenti_banca,
+            "pos_count_raw": movimenti_banca_raw,
+            "duplicati_banca_unificati": duplicati_unificati,
         })
     
     return {
@@ -458,8 +538,18 @@ async def riepilogo_mensile_pos_corrispettivi(
         "mesi": mesi,
         "totali": {
             "elettronico_xml": round(totale_anno_elettronico, 2),
+            "pos_terminale": round(totale_anno_pos_terminale, 2),
             "pos_accreditato": round(totale_anno_pos, 2),
-            "differenza": round(totale_anno_elettronico - totale_anno_pos, 2)
+            "differenza_xml_pos": round(
+                totale_anno_elettronico - totale_anno_pos_terminale, 2
+            ),
+            "differenza_pos_banca": round(
+                totale_anno_pos - totale_anno_pos_terminale, 2
+            ),
+            "differenza": round(totale_anno_pos - totale_anno_pos_terminale, 2),
+            "movimenti_banca": totale_movimenti_banca,
+            "movimenti_banca_raw": totale_movimenti_banca_raw,
+            "duplicati_banca_unificati": totale_duplicati_unificati,
         }
     }
 
@@ -837,9 +927,12 @@ async def _carica_accrediti_banca_pos(
     }
 
     projection = {
-        "_id": 0, "data": 1, "importo": 1, "amount": 1,
+        "_id": 0, "id": 1, "data": 1, "data_contabile": 1,
+        "importo": 1, "amount": 1,
         "descrizione": 1, "descrizione_originale": 1,
+        "rapporto": 1, "created_at": 1, "updated_at": 1,
     }
+    movimenti_raw: List[Dict[str, Any]] = []
     async for m in db["estratto_conto_movimenti"].find(query, projection):
         descrizione = m.get("descrizione_originale") or m.get("descrizione") or ""
         if not _e_accredito_pos_numia_con_giorno(descrizione):
@@ -847,15 +940,29 @@ async def _carica_accrediti_banca_pos(
         giorno_operazione = _giorno_operazione_pos(descrizione, "")
         if not (data_da <= giorno_operazione <= data_a):
             continue
+        movimenti_raw.append(m)
+
+    for m in _deduplica_evidenze_pos_banca(movimenti_raw):
+        descrizione = m.get("descrizione_originale") or m.get("descrizione") or ""
+        giorno_operazione = _giorno_operazione_pos(descrizione, "")
         imp = float(m.get("importo") or m.get("amount") or 0)
         evidenza = out.setdefault(giorno_operazione, {
             "totale": 0.0,
             "numero_movimenti": 0,
+            "numero_movimenti_raw": 0,
+            "duplicati_unificati": 0,
             "date_contabili": [],
+            "fonti_movimento_ids": [],
             "origine": "estratto_conto_movimenti",
         })
         evidenza["totale"] += imp
         evidenza["numero_movimenti"] += 1
+        duplicati = int(m.get("pos_duplicate_sources_unified") or 0)
+        evidenza["numero_movimenti_raw"] += 1 + duplicati
+        evidenza["duplicati_unificati"] += duplicati
+        for movimento_id in m.get("pos_duplicate_source_ids") or []:
+            if movimento_id not in evidenza["fonti_movimento_ids"]:
+                evidenza["fonti_movimento_ids"].append(movimento_id)
         data_contabile = str(m.get("data") or "")[:10]
         if data_contabile and data_contabile not in evidenza["date_contabili"]:
             evidenza["date_contabili"].append(data_contabile)
@@ -863,6 +970,7 @@ async def _carica_accrediti_banca_pos(
     for evidenza in out.values():
         evidenza["totale"] = round(evidenza["totale"], 2)
         evidenza["date_contabili"].sort()
+        evidenza["fonti_movimento_ids"].sort()
 
     return out
 
@@ -980,6 +1088,15 @@ async def controllo_incassi_due_fasi(
         "importo_tot_da_compensare_piu": 0.0,
         "importo_tot_da_compensare_meno": 0.0,
         "importo_tot_mancante_banca": 0.0,
+        "fase2_movimenti_banca": sum(
+            int(evidenza.get("numero_movimenti") or 0) for evidenza in accrediti.values()
+        ),
+        "fase2_movimenti_banca_raw": sum(
+            int(evidenza.get("numero_movimenti_raw") or 0) for evidenza in accrediti.values()
+        ),
+        "fase2_duplicati_banca_unificati": sum(
+            int(evidenza.get("duplicati_unificati") or 0) for evidenza in accrediti.values()
+        ),
     }
 
     # Gli alert di compensazione si attivano il giorno DOPO quello della differenza.
@@ -1130,6 +1247,9 @@ async def controllo_incassi_due_fasi(
 
         dettaglio_gruppo = None
         numero_movimenti_banca = 0
+        numero_movimenti_banca_raw = 0
+        duplicati_banca_unificati = 0
+        fonti_movimento_ids: List[str] = []
         origine_accredito = None
         date_contabili_banca: List[str] = []
         riconciliato_banca_reale = False
@@ -1142,6 +1262,14 @@ async def controllo_incassi_due_fasi(
             diff_accr = gruppo["diff"]
             accredito = gruppo["accredito"]
             numero_movimenti_banca = gruppo.get("numero_movimenti_banca", 0)
+            evidenza_giorno = accrediti.get(d) or {}
+            numero_movimenti_banca_raw = int(
+                evidenza_giorno.get("numero_movimenti_raw") or numero_movimenti_banca
+            )
+            duplicati_banca_unificati = int(
+                evidenza_giorno.get("duplicati_unificati") or 0
+            )
+            fonti_movimento_ids = list(evidenza_giorno.get("fonti_movimento_ids") or [])
             origine_accredito = gruppo.get("origine_accredito")
             date_contabili_banca = gruppo.get("date_contabili_banca", [])
             riconciliato_banca_reale = bool(gruppo.get("riconciliato_banca_reale"))
@@ -1187,6 +1315,9 @@ async def controllo_incassi_due_fasi(
             "stato_accredito": stato_accr,
             "riconciliato_banca_reale": riconciliato_banca_reale,
             "numero_movimenti_banca": numero_movimenti_banca,
+            "numero_movimenti_banca_raw": numero_movimenti_banca_raw,
+            "duplicati_banca_unificati": duplicati_banca_unificati,
+            "fonti_movimento_ids": fonti_movimento_ids,
             "origine_accredito": origine_accredito,
             "date_contabili_banca": date_contabili_banca,
             "capogruppo": capogruppo,

@@ -40,7 +40,10 @@ def test_somma_circuiti_sul_giorno_del_riferimento_non_sulla_data_contabile():
             "2026-07-06": {
                 "totale": 1353.70,
                 "numero_movimenti": 3,
+                "numero_movimenti_raw": 3,
+                "duplicati_unificati": 0,
                 "date_contabili": ["2026-07-07", "2026-07-08"],
+                "fonti_movimento_ids": [],
                 "origine": "estratto_conto_movimenti",
             }
         }
@@ -84,6 +87,92 @@ def test_riferimento_operazione_fuori_periodo_non_viene_contato():
         out = await pc._carica_accrediti_banca_pos(db, "2026-07-01", "2026-07-31")
 
         assert out == {}
+
+    _run(scenario())
+
+
+def test_unifica_copie_stessa_liquidazione_ma_non_due_date_contabili_distinte():
+    async def scenario():
+        db = AsyncMongoMockClient()["test_dedup_accrediti_pos"]
+        causale = (
+            "INC.POS CARTE CREDIT - NUMIA-AMEX DEL 14/07/26 "
+            "PDV 3757283/00012 CERALDI CAFFE' NA"
+        )
+        await db["estratto_conto_movimenti"].insert_many([
+            {
+                "id": "EC-15-A", "data": "2026-07-15", "importo": 2.00,
+                "rapporto": "CONTO-1", "descrizione_originale": causale,
+                "created_at": "2026-08-04T12:01:00+00:00",
+            },
+            {
+                "id": "EC-15-B", "data": "2026-07-15", "importo": 2.00,
+                "rapporto": "CONTO-1", "descrizione_originale": causale,
+                "created_at": "2026-08-04T12:04:00+00:00",
+            },
+            {
+                "id": "EC-15-C", "data": "2026-07-15", "importo": 2.00,
+                "rapporto": "CONTO-1", "descrizione_originale": causale,
+                "created_at": "2026-08-04T12:09:00+00:00",
+            },
+            {
+                "id": "EC-16", "data": "2026-07-16", "importo": 2.00,
+                "rapporto": "CONTO-1", "descrizione_originale": causale,
+            },
+        ])
+
+        out = await pc._carica_accrediti_banca_pos(db, "2026-07-01", "2026-07-31")
+        evidenza = out["2026-07-14"]
+
+        assert evidenza["totale"] == 4.00
+        assert evidenza["numero_movimenti"] == 2
+        assert evidenza["numero_movimenti_raw"] == 4
+        assert evidenza["duplicati_unificati"] == 2
+        assert evidenza["date_contabili"] == ["2026-07-15", "2026-07-16"]
+        assert set(evidenza["fonti_movimento_ids"]) == {
+            "EC-15-A", "EC-15-B", "EC-15-C", "EC-16",
+        }
+
+    _run(scenario())
+
+
+def test_riepilogo_mensile_usa_pos_reale_giorno_vendita_e_deduplica(monkeypatch):
+    async def scenario():
+        db = AsyncMongoMockClient()["test_riepilogo_mensile_canonico"]
+        await db["corrispettivi"].insert_one({
+            "data": "2026-07-14", "totale": 150.00,
+            "pagato_contanti": 45.00, "pagato_elettronico": 105.00,
+            "stato": "definitivo_xml", "entity_status": "active",
+        })
+        await db["chiusure_pos_manuali"].insert_one({
+            "data": "2026-07-14", "importo": 100.00,
+            "source": "inserimento_manuale_terminale",
+        })
+        causale = (
+            "INCAS. TRAMITE P.O.S - NUMIA-BNCMT DEL 14/07/26 "
+            "PDV 3757283/00012"
+        )
+        await db["estratto_conto_movimenti"].insert_many([
+            {"id": "EC-A", "data": "2026-07-15", "importo": 100.00,
+             "rapporto": "CONTO-1", "descrizione_originale": causale},
+            {"id": "EC-B", "data": "2026-07-15", "importo": 100.00,
+             "rapporto": "CONTO-1", "descrizione_originale": causale},
+            {"id": "EC-C", "data": "2026-07-15", "importo": 100.00,
+             "rapporto": "CONTO-1", "descrizione_originale": causale},
+        ])
+        monkeypatch.setattr(pc.Database, "get_db", staticmethod(lambda: db))
+
+        result = await pc.riepilogo_mensile_pos_corrispettivi(anno=2026)
+        luglio = result["mesi"][6]
+
+        assert luglio["elettronico_xml"] == 105.00
+        assert luglio["pos_terminale"] == 100.00
+        assert luglio["pos_accreditato"] == 100.00
+        assert luglio["differenza_xml_pos"] == 5.00
+        assert luglio["differenza_pos_banca"] == 0.00
+        assert luglio["pos_count"] == 1
+        assert luglio["pos_count_raw"] == 3
+        assert luglio["duplicati_banca_unificati"] == 2
+        assert result["totali"]["duplicati_banca_unificati"] == 2
 
     _run(scenario())
 
