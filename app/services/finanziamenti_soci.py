@@ -19,6 +19,7 @@ scrittura in prima_nota_cassa/banca: è un registro analitico separato.
 import logging
 import re
 import uuid
+from difflib import SequenceMatcher
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -86,6 +87,68 @@ def _id_ec(doc: Dict[str, Any]) -> str:
     return str(doc.get("id") or doc.get("_id") or "")
 
 
+_PAROLE_BANCA = {
+    "a", "al", "alla", "da", "di", "del", "della", "favore", "bon",
+    "bonif", "bonifico", "vs", "srl", "spa", "societa", "group",
+}
+
+
+def _descrizione_semantica(testo: str) -> str:
+    """Riduce le varianti testuali prodotte dai diversi import bancari.
+
+    Lo stesso bonifico puo' comparire una volta con la causale estesa e una
+    seconda volta con il prefisso abbreviato della banca. Le prove sorgente
+    restano intatte; questa forma serve soltanto per evitare il doppio
+    conteggio nel registro analitico soci.
+    """
+    parole = re.findall(r"[a-z0-9]+", (testo or "").lower())
+    return " ".join(p for p in parole if len(p) > 1 and p not in _PAROLE_BANCA)
+
+
+def _stessa_operazione_semantica(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
+    if a.get("source") == "manuale" or b.get("source") == "manuale":
+        return False
+    campi = ("socio_id", "tipo", "data")
+    if any(a.get(c) != b.get(c) for c in campi):
+        return False
+    if round(float(a.get("importo") or 0), 2) != round(float(b.get("importo") or 0), 2):
+        return False
+    if a.get("estratto_conto_id") and a.get("estratto_conto_id") == b.get("estratto_conto_id"):
+        return True
+    da = _descrizione_semantica(a.get("descrizione") or "")
+    db = _descrizione_semantica(b.get("descrizione") or "")
+    if not da or not db:
+        return False
+    ta, tb = set(da.split()), set(db.split())
+    unione = ta | tb
+    jaccard = len(ta & tb) / len(unione) if unione else 0
+    return jaccard >= 0.60 or SequenceMatcher(None, da, db).ratio() >= 0.72
+
+
+def _accorpa_duplicati_semantici(movimenti: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], int]:
+    """Accorpa soltanto copie automatiche altamente compatibili.
+
+    Non elimina nulla dal database e non accorpa mai movimenti manuali. Il
+    record restituito conserva gli ID delle prove sorgente per l'audit.
+    """
+    unici: List[Dict[str, Any]] = []
+    duplicati = 0
+    for movimento in movimenti:
+        esistente = next((m for m in unici if _stessa_operazione_semantica(m, movimento)), None)
+        if not esistente:
+            copia = dict(movimento)
+            copia["fonti_estratto_conto"] = [movimento.get("estratto_conto_id")] if movimento.get("estratto_conto_id") else []
+            copia["duplicati_accorpati"] = 0
+            unici.append(copia)
+            continue
+        duplicati += 1
+        esistente["duplicati_accorpati"] += 1
+        fonte = movimento.get("estratto_conto_id")
+        if fonte and fonte not in esistente["fonti_estratto_conto"]:
+            esistente["fonti_estratto_conto"].append(fonte)
+    return unici, duplicati
+
+
 async def scan_finanziamenti_da_ec(db, anno: Optional[int] = None) -> Dict[str, Any]:
     """Estrae apporti e rimborsi soci dall'estratto conto (idempotente)."""
     stats = {
@@ -94,6 +157,7 @@ async def scan_finanziamenti_da_ec(db, anno: Optional[int] = None) -> Dict[str, 
         "rimborsi_nuovi": 0,
         "gia_presenti": 0,
         "uscite_ignorate_causale": 0,
+        "duplicati_semantici_ignorati": 0,
         "per_socio": {s["id"]: 0 for s in SOCI},
     }
 
@@ -102,7 +166,9 @@ async def scan_finanziamenti_da_ec(db, anno: Optional[int] = None) -> Dict[str, 
     # ISO — un range string $gte/$lte sul grezzo escluderebbe le prime
     # silenziosamente. Si filtra dopo, sulla data normalizzata.
     gia_importati = set()
-    async for m in db[COLLECTION].find({}, {"estratto_conto_id": 1, "_id": 0}):
+    movimenti_esistenti: List[Dict[str, Any]] = []
+    async for m in db[COLLECTION].find({}, {"_id": 0}):
+        movimenti_esistenti.append(m)
         if m.get("estratto_conto_id"):
             gia_importati.add(m["estratto_conto_id"])
 
@@ -144,7 +210,11 @@ async def scan_finanziamenti_da_ec(db, anno: Optional[int] = None) -> Dict[str, 
         }
         if movimento["importo"] <= 0 or not movimento["data"]:
             continue
+        if any(_stessa_operazione_semantica(esistente, movimento) for esistente in movimenti_esistenti):
+            stats["duplicati_semantici_ignorati"] += 1
+            continue
         await db[COLLECTION].insert_one(movimento)
+        movimenti_esistenti.append(movimento)
         gia_importati.add(ec_id)
         stats["per_socio"][socio["id"]] += 1
         stats["apporti_nuovi" if tipo_mov == "apporto" else "rimborsi_nuovi"] += 1
@@ -163,9 +233,12 @@ async def schede_soci(db, anno: Optional[int] = None) -> Dict[str, Any]:
         per_socio.setdefault(m.get("socio_id", ""), []).append(m)
 
     schede = []
+    duplicati_accorpati_totale = 0
     tot_apporti = tot_rimborsi = 0.0
     for s in SOCI:
-        movs = sorted(per_socio.get(s["id"], []), key=lambda m: m.get("data", ""), reverse=True)
+        movs_raw = sorted(per_socio.get(s["id"], []), key=lambda m: m.get("data", ""), reverse=True)
+        movs, duplicati_accorpati = _accorpa_duplicati_semantici(movs_raw)
+        duplicati_accorpati_totale += duplicati_accorpati
         apporti = round(sum(m["importo"] for m in movs if m["tipo"] == "apporto"), 2)
         rimborsi = round(sum(m["importo"] for m in movs if m["tipo"] == "rimborso"), 2)
         tot_apporti += apporti
@@ -177,6 +250,7 @@ async def schede_soci(db, anno: Optional[int] = None) -> Dict[str, Any]:
             "rimborsi": rimborsi,
             "saldo": round(apporti - rimborsi, 2),
             "movimenti": movs,
+            "duplicati_accorpati": duplicati_accorpati,
         })
 
     return {
@@ -187,4 +261,5 @@ async def schede_soci(db, anno: Optional[int] = None) -> Dict[str, Any]:
             "rimborsi": round(tot_rimborsi, 2),
             "saldo": round(tot_apporti - tot_rimborsi, 2),
         },
+        "duplicati_accorpati": duplicati_accorpati_totale,
     }

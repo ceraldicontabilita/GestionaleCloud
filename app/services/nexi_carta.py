@@ -23,6 +23,7 @@ quando l'email non è arrivata) più il controllo di quadratura.
 import logging
 import re
 import uuid
+import hashlib
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -88,6 +89,22 @@ def _periodo_addebito(data_addebito: str) -> str:
     return f"{anno}-{mese - 1:02d}"
 
 
+def _chiave_addebito(doc: Dict[str, Any]) -> tuple:
+    """Identita' prudente dell'addebito mensile.
+
+    Gli import legacy possono aver copiato la stessa riga con ID tecnici
+    diversi. Data, importo, conto/carta e periodo restano invece uguali. Un
+    conto o carta differenti impediscono l'accorpamento.
+    """
+    data = _data(doc)
+    importo = round(abs(float(doc.get("importo") or 0)), 2)
+    rapporto = str(
+        doc.get("conto") or doc.get("iban") or doc.get("rapporto")
+        or doc.get("numero_carta_ultime4") or doc.get("carta") or ""
+    ).strip().upper()
+    return (_periodo_addebito(data), data, importo, rapporto)
+
+
 async def verifica_addebiti_nexi(db, anno: Optional[int] = None) -> Dict[str, Any]:
     """Trova gli addebiti Nexi in EC bancario e verifica statement carta + quadratura.
 
@@ -103,8 +120,10 @@ async def verifica_addebiti_nexi(db, anno: Optional[int] = None) -> Dict[str, An
         "estratti_mancanti": 0,
         "riconciliati": 0,
         "non_quadrano": 0,
+        "duplicati_ignorati": 0,
         "dettagli": [],
     }
+    addebiti_visti = set()
 
     # Nessun filtro anno lato query Mongo: estratto_conto_movimenti ha righe
     # più vecchie con data in formato italiano GG/MM/AAAA accanto a quelle
@@ -117,10 +136,22 @@ async def verifica_addebiti_nexi(db, anno: Optional[int] = None) -> Dict[str, An
         data_add = _data(doc)
         if anno and not data_add.startswith(f"{anno}-"):
             continue
+        identita_addebito = _chiave_addebito(doc)
+        if identita_addebito in addebiti_visti:
+            stats["duplicati_ignorati"] += 1
+            continue
+        addebiti_visti.add(identita_addebito)
         stats["addebiti_trovati"] += 1
         importo = round(abs(float(doc.get("importo") or 0)), 2)
         periodo = _periodo_addebito(data_add)
-        chiave = f"nexi_{periodo}"
+        suffisso_conto = hashlib.sha1(str(identita_addebito[-1]).encode("utf-8")).hexdigest()[:8]
+        chiave = f"nexi_{periodo}_{suffisso_conto}"
+        chiave_legacy = f"nexi_{periodo}"
+        # Le versioni precedenti usavano una chiave solo per periodo e hanno
+        # lasciato alert ripetuti/obsoleti. Li chiudiamo prima di applicare la
+        # chiave per conto, cosi' il widget mostra una sola segnalazione viva.
+        await risolvi_alert("ESTRATTO_NEXI_MANCANTE", chiave_legacy, db)
+        await risolvi_alert("NEXI_ADDEBITO_NON_QUADRA", chiave_legacy, db)
         dettaglio_row = {
             "data_addebito": data_add,
             "importo": importo,
@@ -152,8 +183,9 @@ async def verifica_addebiti_nexi(db, anno: Optional[int] = None) -> Dict[str, An
             await genera_alert(
                 "ESTRATTO_NEXI_MANCANTE", chiave, COLL_ESTRATTI,
                 f"Addebito Nexi di {importo:.2f}€ del {data_add}: manca lo "
-                f"statement carta Nexi del periodo {periodo}. Allegalo "
-                f"(Prima Nota → Banca → Allega estratto Nexi) per riconciliare "
+                f"statement carta Nexi del periodo {periodo}. Il gestionale lo "
+                f"cerca automaticamente nell'area Documenti/Drive Carte; usa "
+                f"l'allegato manuale soltanto se il file non e' presente, per riconciliare "
                 f"le operazioni della carta.",
                 db,
                 extra={"data_addebito": data_add, "importo": importo, "periodo": periodo},
@@ -188,12 +220,34 @@ async def verifica_addebiti_nexi(db, anno: Optional[int] = None) -> Dict[str, An
     return stats
 
 
-async def importa_estratto_nexi_pdf(db, filename: str, pdf_content: bytes) -> Dict[str, Any]:
+async def importa_estratto_nexi_pdf(
+    db,
+    filename: str,
+    pdf_content: bytes,
+    *,
+    source: str = "upload_manuale_prima_nota",
+    drive_file_id: Optional[str] = None,
+    source_path: Optional[str] = None,
+) -> Dict[str, Any]:
     """Allega manualmente uno statement carta Nexi (PDF) da Prima Nota,
     stessa pipeline/schema del download automatico via email."""
     import base64
 
     from app.parsers.estratto_conto_nexi_parser import parse_estratto_conto_nexi
+
+    content_sha256 = hashlib.sha256(pdf_content).hexdigest()
+    condizioni = [{"content_sha256": content_sha256}]
+    if drive_file_id:
+        condizioni.append({"drive_file_id": drive_file_id})
+    existing = await db[COLL_ESTRATTI].find_one({"$or": condizioni}, {"_id": 0, "id": 1})
+    if existing:
+        return {
+            "success": True,
+            "duplicate": True,
+            "estratto_id": existing.get("id"),
+            "operazioni": 0,
+            "totale_importo": 0,
+        }
 
     result = parse_estratto_conto_nexi(pdf_content)
     if not result.get("success"):
@@ -212,7 +266,10 @@ async def importa_estratto_nexi_pdf(db, filename: str, pdf_content: bytes) -> Di
         "metadata": result.get("metadata", {}),
         "totale_transazioni": len(transazioni),
         "import_date": datetime.now(timezone.utc).isoformat(),
-        "source": "upload_manuale_prima_nota",
+        "source": source,
+        "drive_file_id": drive_file_id,
+        "source_path": source_path,
+        "content_sha256": content_sha256,
     })
     for idx, t in enumerate(transazioni):
         await db[COLL_MOVIMENTI].insert_one({
@@ -232,6 +289,7 @@ async def importa_estratto_nexi_pdf(db, filename: str, pdf_content: bytes) -> Di
     verifica = await verifica_addebiti_nexi(db)
     return {
         "success": True,
+        "duplicate": False,
         "estratto_id": estratto_id,
         "operazioni": len(transazioni),
         "totale_importo": round(sum(t.get("importo") or 0 for t in transazioni), 2),

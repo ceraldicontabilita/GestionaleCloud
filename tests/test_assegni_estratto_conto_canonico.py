@@ -3,6 +3,8 @@ import asyncio
 from mongomock_motor import AsyncMongoMockClient
 
 from app.services.assegni_estratto_conto import (
+    collega_assegno_riconciliato_a_fattura,
+    collega_assegno_riconciliato_a_fatture,
     estrai_numero_assegno,
     sincronizza_assegni_da_estratto_conto,
 )
@@ -185,5 +187,90 @@ def test_assegno_gia_presente_viene_riscontrato_invece_di_essere_saltato():
         assert esito["assegni_creati"] == 0
         assert assegno["stato"] == "incassato"
         assert assegno["movimento_estratto_conto_id"] == "ec-1"
+
+    _run(scenario())
+
+
+def test_due_assegni_uguali_restano_distinti_e_chiudono_due_rate():
+    async def scenario():
+        db = AsyncMongoMockClient().db
+        await db.invoices.insert_one({
+            "id": "fatt-due-rate", "invoice_number": "F-9760",
+            "invoice_date": "2026-05-15", "supplier_vat": "00000000001",
+            "supplier_name": "FORNITORE DUE RATE", "total_amount": 19520.0,
+            "importo_pagato": 0.0, "importo_residuo": 19520.0,
+            "payment_status": "open", "pagato": False,
+            "pagamento_rate": [
+                {"importo": "9760.00", "data_scadenza": "2026-06-30"},
+                {"importo": "9760.00", "data_scadenza": "2026-07-31"},
+            ],
+        })
+        await db.estratto_conto_movimenti.insert_many([
+            _mov(numero="0208770985", importo=9760.0, idx=85),
+            _mov(numero="0208770986", importo=9760.0, idx=86),
+        ])
+
+        esito = await sincronizza_assegni_da_estratto_conto(db)
+        assert esito["fatture_associate"] == 0
+        assert esito["proposte_ambigue"] == 2
+
+        for numero in ("0208770985", "0208770986"):
+            assegno = await db.assegni.find_one({"numero": numero}, {"_id": 0})
+            fattura = await db.invoices.find_one({"id": "fatt-due-rate"}, {"_id": 0})
+            await collega_assegno_riconciliato_a_fattura(db, assegno, fattura)
+
+        fattura = await db.invoices.find_one({"id": "fatt-due-rate"}, {"_id": 0})
+        assert fattura["importo_pagato"] == 19520.0
+        assert fattura["importo_residuo"] == 0.0
+        assert fattura["payment_status"] == "paid"
+        assert {link["numero"] for link in fattura["assegni_collegati"]} == {
+            "0208770985", "0208770986",
+        }
+        assert await db.prima_nota_banca.count_documents({}) == 2
+        assert await db.proposte_associazione_assegni.count_documents({"stato": "confermata"}) == 2
+
+    _run(scenario())
+
+
+def test_assegno_gia_in_banca_puo_chiudere_due_fatture_senza_due_righe_banca():
+    async def scenario():
+        db = AsyncMongoMockClient().db
+        assegno = {
+            "id": "ass-multi", "numero": "0208770985", "importo": 9760.0,
+            "incassato_confermato_banca": True,
+            "movimento_estratto_conto_id": "ec-multi", "stato": "incassato",
+        }
+        await db.assegni.insert_one(assegno)
+        await db.estratto_conto_movimenti.insert_one(
+            _mov(numero="0208770985", importo=9760.0, idx="multi")
+        )
+        await db.estratto_conto_movimenti.update_one(
+            {"id": "ec-multi"}, {"$set": {"id": "ec-multi"}}, upsert=True,
+        )
+        fatture = [
+            {"id": "fatt-a", "invoice_number": "A-1", "supplier_vat": "00000000001",
+             "supplier_name": "FORNITORE TEST", "total_amount": 4000.0,
+             "importo_pagato": 0.0, "pagato": False,
+             "assegni_collegati": [{"assegno_id": "ass-multi", "quota": 4000.0, "banca_confermata": False}]},
+            {"id": "fatt-b", "invoice_number": "B-2", "supplier_vat": "00000000001",
+             "supplier_name": "FORNITORE TEST", "total_amount": 5760.0,
+             "importo_pagato": 0.0, "pagato": False,
+             "assegni_collegati": [{"assegno_id": "ass-multi", "quota": 5760.0, "banca_confermata": False}]},
+        ]
+        await db.invoices.insert_many(fatture)
+
+        esito = await collega_assegno_riconciliato_a_fatture(db, assegno, [
+            {"fattura": fatture[0], "quota": 4000.0},
+            {"fattura": fatture[1], "quota": 5760.0},
+        ])
+
+        assert esito["quote_applicate"] == 2
+        assert esito["fattura_id"] is None
+        assert esito["fattura_ids"] == ["fatt-a", "fatt-b"]
+        assert await db.prima_nota_banca.count_documents({}) == 1
+        riga = await db.prima_nota_banca.find_one({}, {"_id": 0})
+        assert riga["fattura_ids"] == ["fatt-a", "fatt-b"]
+        assert (await db.invoices.find_one({"id": "fatt-a"}))["pagato"] is True
+        assert (await db.invoices.find_one({"id": "fatt-b"}))["pagato"] is True
 
     _run(scenario())

@@ -111,7 +111,14 @@ export default function FinanziamentoSoci() {
         <div style={{ fontSize: 12.5, color: '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 9, padding: '7px 11px', marginBottom: 10 }}>
           Scansione: {scan.righe_esaminate} righe EC esaminate — {scan.apporti_nuovi} apporti
           e {scan.rimborsi_nuovi} rimborsi nuovi, {scan.uscite_ignorate_causale} uscite ignorate
-          (causale non di rimborso, es. stipendi).
+          (causale non di rimborso, es. stipendi)
+          {scan.duplicati_semantici_ignorati > 0 ? ` — ${scan.duplicati_semantici_ignorati} copie bancarie ignorate` : ''}.
+        </div>
+      )}
+
+      {dati?.duplicati_accorpati > 0 && (
+        <div style={{ fontSize: 12.5, color: '#7c2d12', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 9, padding: '7px 11px', marginBottom: 10 }}>
+          {dati.duplicati_accorpati} copie dello stesso movimento bancario sono state accorpate nel totale. Le prove sorgente restano conservate per l'audit.
         </div>
       )}
 

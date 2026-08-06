@@ -77,6 +77,34 @@ def _registry_folder_ids() -> List[str]:
     return result
 
 
+def _registry_nexi_folder_ids() -> List[str]:
+    raw = str(settings.DRIVE_FOLDER_REGISTRY_JSON or "").strip()
+    if not raw:
+        return []
+    try:
+        payload = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    entries = payload.get("folders", []) if isinstance(payload, dict) else payload
+    if not isinstance(entries, list):
+        return []
+    result: List[str] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        area = re.sub(r"[^a-z0-9]+", "_", str(entry.get("area") or "").lower()).strip("_")
+        if area in {"carte", "nexi", "carta_nexi", "estratti_conto_carte"}:
+            folder_id = str(entry.get("folder_id") or "").strip()
+            if folder_id:
+                result.append(folder_id)
+    return result
+
+
+def _nexi_folder_ids() -> List[str]:
+    values = [settings.DRIVE_CARTE_FOLDER_ID, *_registry_nexi_folder_ids()]
+    return list(dict.fromkeys(str(value).strip() for value in values if str(value or "").strip()))
+
+
 def _folder_ids() -> List[str]:
     values: List[str] = []
     for raw in (
@@ -91,6 +119,7 @@ def _folder_ids() -> List[str]:
         settings.DRIVE_ESTRATTI_CONTO_FOLDER_ID,
     )))
     values.extend(_registry_folder_ids())
+    values.extend(_nexi_folder_ids())
     return list(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))
 
 
@@ -148,6 +177,8 @@ def _route_for_path(path: str, filename: str = "") -> Optional[str]:
     source = f"{path}/{filename}".lower()
     if "paypal" in source:
         return "paypal"
+    if "nexi" in source or "carta nexi" in source:
+        return "nexi"
     if "mutuo acquisto" in source:
         return "mutuo"
     if "pos bpm" in source or "pos bnl" in source:
@@ -183,6 +214,8 @@ def _supported_file(route: Optional[str], filename: str) -> bool:
         return lower.endswith(".pdf")
     if route == "paypal":
         return lower.endswith(".pdf")
+    if route == "nexi":
+        return lower.endswith(".pdf")
     return False
 
 
@@ -205,6 +238,7 @@ def _work_item_priority(item: Dict[str, Any]) -> Tuple[int, str, str]:
 def _discover_work_items(
     service,
     root_id: str,
+    initial_route: Optional[str] = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, str]]]:
     """Scansiona le fonti supportate senza entrare negli archivi.
 
@@ -270,7 +304,7 @@ def _discover_work_items(
                 child_lifecycle = folder["id"]
             walk(folder["id"], child_path, child_route, child_lifecycle)
 
-    walk(root_id, "", None, None)
+    walk(root_id, "", initial_route, root_id if initial_route else None)
     return items, list(sources.values())
 
 
@@ -309,12 +343,18 @@ async def sync(db) -> Dict[str, Any]:
             "mutuo_files": 0, "mutuo_duplicates": 0,
             "paypal_files": 0, "paypal_statements": 0,
             "paypal_transactions": 0, "paypal_transactions_linked": 0,
+            "nexi_files": 0, "nexi_duplicates": 0,
+            "nexi_transactions": 0,
             "sources": [], "errors": [],
         }
         files_by_id: Dict[str, Dict[str, Any]] = {}
         sources_by_id: Dict[str, Dict[str, str]] = {}
         for root_id in _folder_ids():
-            root_files, root_sources = _discover_work_items(service, root_id)
+            root_files, root_sources = _discover_work_items(
+                service,
+                root_id,
+                initial_route="nexi" if root_id in _nexi_folder_ids() else None,
+            )
             for item in root_files:
                 files_by_id.setdefault(item["id"], item)
             for source in root_sources:
@@ -370,6 +410,22 @@ async def sync(db) -> Dict[str, Any]:
                     result["paypal_statements"] += 1
                     result["paypal_transactions"] += int(esito.get("transazioni_inserite") or 0)
                     result["paypal_transactions_linked"] += int(esito.get("transazioni_ricollegate") or 0)
+                elif item["route"] == "nexi":
+                    from app.services.nexi_carta import importa_estratto_nexi_pdf
+
+                    esito = await importa_estratto_nexi_pdf(
+                        db,
+                        item["name"],
+                        content,
+                        source="drive_documenti_nexi",
+                        drive_file_id=item["id"],
+                        source_path=item.get("source_path"),
+                    )
+                    if not esito.get("success"):
+                        raise ValueError(esito.get("message") or "Parsing Nexi fallito")
+                    result["nexi_files"] += 1
+                    result["nexi_duplicates"] += int(bool(esito.get("duplicate")))
+                    result["nexi_transactions"] += int(esito.get("operazioni") or 0)
                 else:
                     esito = await import_estratto_conto(_UploadDrive(item["name"], content))
                     if isinstance(esito, dict) and (esito.get("error") or esito.get("detail")):

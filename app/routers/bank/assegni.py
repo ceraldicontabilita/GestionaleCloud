@@ -863,11 +863,13 @@ async def conferma_auto_match(payload: Dict[str, Any] = Body(...)) -> Dict[str, 
 
 
 @router.get("/ambigui")
-async def lista_ambigui() -> Dict[str, Any]:
+async def lista_ambigui(
+    anno: Optional[int] = Query(None, ge=2000, le=2100),
+) -> Dict[str, Any]:
     """Elenca gli assegni ambigui (più fatture candidate dell'auto-matcher)."""
     from app.routers.bank.assegni_auto_match import run_auto_match
     db = Database.get_db()
-    report = await run_auto_match(db, dry_run=True)
+    report = await run_auto_match(db, dry_run=True, anno=anno)
 
     ambigui_dettaglio = []
     for amb in report.get("ambigui", []):
@@ -903,6 +905,67 @@ async def lista_ambigui() -> Dict[str, Any]:
             "candidates": cands,
         })
 
+    # Il riscontro dell'estratto conto genera proposte conservative quando
+    # conosce numero assegno e importo ma non il numero fattura. Queste
+    # proposte prima rimanevano nel DB e non venivano mostrate dalla pagina.
+    proposte_ec = await db["proposte_associazione_assegni"].find(
+        {"stato": "da_confermare", "source": "estratto_conto"}, {"_id": 0}
+    ).sort("created_at", -1).to_list(2000)
+    per_assegno = {a["assegno_id"]: a for a in ambigui_dettaglio}
+    for proposta in proposte_ec:
+        assegno_id = proposta.get("assegno_id")
+        fattura_id = proposta.get("fattura_id")
+        if not assegno_id or not fattura_id:
+            continue
+        ass = await db["assegni"].find_one({"id": assegno_id}, {"_id": 0})
+        if not ass or ass.get("fatture_collegate"):
+            continue
+        data_assegno = str(
+            ass.get("data_incasso") or ass.get("data_emissione") or ass.get("data") or ""
+        )
+        if anno and data_assegno[:4].isdigit() and int(data_assegno[:4]) != anno:
+            continue
+        inv = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
+        if not inv or inv.get("pagato") is True:
+            continue
+        total = float(inv.get("total_amount") or inv.get("importo_totale") or 0)
+        paid = float(inv.get("importo_pagato") or 0)
+        voce = per_assegno.setdefault(assegno_id, {
+            "livello": "EC",
+            "origine": "estratto_conto",
+            "motivo": (
+                "Importo o rata compatibile, ma manca il numero fattura sul pagamento: "
+                "selezione manuale obbligatoria"
+            ),
+            "assegno_id": ass.get("id"),
+            "assegno_numero": ass.get("numero"),
+            "importo": float(ass.get("importo") or 0),
+            "data_emissione": ass.get("data_emissione") or ass.get("data_incasso") or ass.get("data"),
+            "fornitore_piva": ass.get("fornitore_piva"),
+            "fornitore_ragione_sociale": ass.get("fornitore_ragione_sociale") or ass.get("beneficiario"),
+            "numero_fattura_dichiarato": ass.get("numero_fattura"),
+            "carnet_id": ass.get("carnet_id"),
+            "candidates": [],
+        })
+        if any(c["fattura_id"] == fattura_id for c in voce["candidates"]):
+            continue
+        voce["candidates"].append({
+            "fattura_id": fattura_id,
+            "numero": inv.get("invoice_number") or inv.get("numero_fattura"),
+            "data": inv.get("invoice_date") or inv.get("data_fattura"),
+            "importo_totale": total,
+            "importo_pagato": paid,
+            "importo_residuo": round(total - paid, 2),
+            "fornitore": inv.get("supplier_name") or inv.get("cedente_denominazione"),
+            "fornitore_piva": inv.get("supplier_vat") or inv.get("cedente_piva"),
+            "payment_status": inv.get("payment_status"),
+        })
+
+    ambigui_dettaglio = [v for v in per_assegno.values() if v.get("candidates")]
+    ambigui_dettaglio.sort(
+        key=lambda x: (str(x.get("data_emissione") or ""), x.get("assegno_numero") or ""),
+        reverse=True,
+    )
     return {"success": True, "count": len(ambigui_dettaglio), "ambigui": ambigui_dettaglio}
 
 
@@ -931,6 +994,41 @@ async def risolvi_ambiguo(
         paid = float(inv.get("importo_pagato") or 0)
         inv["_residuo"] = round(total - paid, 2)
         fatture.append(inv)
+    importo_assegno = round(float(ass.get("importo") or 0), 2)
+    if len(fatture) == 1:
+        inv = fatture[0]
+        rate = [
+            round(float(r.get("importo") or 0), 2)
+            for r in (inv.get("pagamento_rate") or [])
+            if isinstance(r, dict)
+        ]
+        importo_valido = (
+            amounts_equal_to_cent(importo_assegno, inv["_residuo"])
+            or any(amounts_equal_to_cent(importo_assegno, rata) for rata in rate)
+        )
+    else:
+        importo_valido = amounts_equal_to_cent(
+            importo_assegno, sum(f["_residuo"] for f in fatture)
+        )
+    if not importo_valido:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "L'importo dell'assegno deve coincidere al centesimo con la "
+                "fattura, una rata XML o la somma delle fatture selezionate"
+            ),
+        )
+
+    # Se l'assegno e' gia' stato riscontrato in banca, la scelta manuale deve
+    # completare anche fattura, estratto conto e Prima Nota esistente. Il
+    # percorso generico _apply_match registra invece solo un intento futuro.
+    if len(fatture) == 1 and ass.get("incassato_confermato_banca"):
+        from app.services.assegni_estratto_conto import collega_assegno_riconciliato_a_fattura
+        try:
+            res = await collega_assegno_riconciliato_a_fattura(db, ass, fatture[0])
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"success": True, **res}
     res = await _apply_match(db, [ass], fatture, livello="MANUAL", dry_run=False)
     return {"success": True, **res}
 
@@ -1209,12 +1307,28 @@ async def collega_fatture_assegno(assegno_id: str, body: FattureCollegateIn) -> 
         }}
     )
 
+    riconciliazione = None
+    if fatture_collegate and assegno.get("incassato_confermato_banca"):
+        from app.services.assegni_estratto_conto import collega_assegno_riconciliato_a_fatture
+        try:
+            riconciliazione = await collega_assegno_riconciliato_a_fatture(
+                db,
+                {**assegno, "fatture_collegate": fatture_collegate},
+                [
+                    {"fattura": fatture_map[item.fattura_id], "quota": item.quota}
+                    for item in body.fatture
+                ],
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     return {
         "success": True,
         "assegno_id": assegno["id"],
         "fatture_collegate": fatture_collegate,
         "importo_assegnato": somma_quote,
         "stato": nuovo_stato,
+        "riconciliazione_banca": riconciliazione,
     }
 
 

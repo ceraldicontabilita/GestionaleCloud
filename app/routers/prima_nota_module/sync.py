@@ -1139,8 +1139,9 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
         raise HTTPException(status_code=400, detail="Metodo non valido")
 
     # La conferma non cambia di nascosto il metodo configurato. Per la Cassa
-    # occorre una regola gia' approvata nella scheda fornitore o fattura;
-    # il metodo letto dall'XML resta soltanto una proposta.
+    # e' valida una regola gia' approvata nella scheda fornitore/fattura oppure
+    # la conferma esplicita dell'operatore per questa singola fattura. Questo
+    # override resta sulla fattura e non modifica il metodo del fornitore.
     metodo_previsto = (
         fattura.get("metodo_pagamento_effettivo")
         or fattura.get("metodo_pagamento_fornitore")
@@ -1163,13 +1164,18 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
                 or metodo_previsto
             )
 
-    if metodo == "cassa" and normalizza_metodo_pagamento(metodo_previsto) != "cassa":
+    approvazione_cassa_esplicita = data.get("approva_metodo_fattura") is True
+    if (
+        metodo == "cassa"
+        and normalizza_metodo_pagamento(metodo_previsto) != "cassa"
+        and not approvazione_cassa_esplicita
+    ):
         raise HTTPException(
             status_code=409,
             detail=(
                 "La fattura puo' essere registrata in Cassa solo se il metodo "
-                "approvato del fornitore/fattura e' Cassa. Modifica prima la "
-                "scheda fornitore con audit."
+                "approvato del fornitore/fattura e' Cassa oppure se confermi "
+                "esplicitamente il pagamento in contanti per questa fattura."
             ),
         )
 
@@ -1243,6 +1249,12 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
         "data_pagamento": now_iso[:10],
         "updated_at": now_iso,
     }
+    if metodo == "cassa" and approvazione_cassa_esplicita:
+        campi_fattura.update({
+            "metodo_pagamento_previsto": "cassa",
+            "metodo_pagamento_override_source": "operatore_prima_nota",
+            "metodo_pagamento_override_at": now_iso,
+        })
     if metodo == "banca":
         campi_fattura.update({
             "riconciliato": True,
@@ -1265,6 +1277,9 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
                 "importo": importo,
                 "movimento_id": pn_id,
                 "estratto_conto_id": movimento_bancario.get("id") if movimento_bancario else None,
+                "approvazione_metodo_fattura": (
+                    approvazione_cassa_esplicita if metodo == "cassa" else False
+                ),
             },
             fonte="provvisori_conferma",
             utente=str(data.get("performed_by") or "operatore"),

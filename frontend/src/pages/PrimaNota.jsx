@@ -6,6 +6,7 @@ import { useHashState } from '../hooks/useHashState';
 import ModalFattura from '../components/ModalFattura';
 import DocumentViewerModal from '../components/DocumentViewerModal';
 import FinanziamentoSoci from './FinanziamentoSoci';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import {
   Banknote,
   CreditCard,
@@ -57,6 +58,10 @@ function parseImportoIT(input) {
 }
 
 const testoRicerca = valore => String(valore ?? '').trim().toLocaleLowerCase('it-IT');
+
+export function etichettaTabProvvisori(provvisori = [], attesaBanca = []) {
+  return `\u26a0\ufe0f Da decidere (${provvisori.length}) \u00b7 \ud83c\udfe6 Attesa banca (${attesaBanca.length})`;
+}
 
 export function numeroFatturaMovimento(movimento = {}) {
   return movimento.numero_fattura || movimento.fattura_numero || movimento.invoice_number || '';
@@ -1046,10 +1051,12 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
 
 /* ------------------------------ provvisori ------------------------------ */
 export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(null);
   const [parziale, setParziale] = useState(null);
   const [importoCassa, setImportoCassa] = useState('');
   const [errore, setErrore] = useState('');
+  const [erroreRiga, setErroreRiga] = useState(null);
   const [esito, setEsito] = useState('');
   const [fNumeroFattura, setFNumeroFattura] = useState('');
   const [fDataFattura, setFDataFattura] = useState('');
@@ -1083,23 +1090,46 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
     </button>
   );
 
-  const conferma = async (p, metodo) => {
+  const conferma = async (p, metodo, opzioni = {}) => {
     setBusy(p.fattura_id);
     setErrore('');
+    setErroreRiga(null);
     setEsito('');
     try {
-      await api.post('/api/prima-nota/provvisori/conferma', { fattura_id: p.fattura_id, metodo });
+      await api.post('/api/prima-nota/provvisori/conferma', {
+        fattura_id: p.fattura_id,
+        metodo,
+        ...opzioni,
+      });
       await onRicarica();
     } catch (e) {
-      setErrore(e.response?.data?.detail || e.response?.data?.message || e.message);
+      setErroreRiga({
+        fatturaId: p.fattura_id,
+        messaggio: e.response?.data?.detail || e.response?.data?.message || e.message,
+      });
     } finally {
       setBusy(null);
     }
   };
 
+  const confermaCassa = async p => {
+    const numero = p.fattura_numero || p.numero_fattura || p.invoice_number || 'senza numero';
+    const fornitore = p.fornitore || p.supplier_name || 'Fornitore';
+    const approvato = await confirm({
+      title: 'Conferma pagamento in contanti',
+      message: `Confermi che la fattura ${numero} di ${fornitore}, per ${eur(p.importo)}, e' stata pagata in contanti?\n\nVerra' registrata in Prima Nota Cassa. Il metodo predefinito del fornitore non verra' modificato.`,
+      confirmText: 'Registra in Cassa',
+      cancelText: 'Annulla',
+      variant: 'warning',
+    });
+    if (!approvato) return;
+    await conferma(p, 'cassa', { approva_metodo_fattura: true });
+  };
+
   const attendiBanca = async p => {
     setBusy(p.fattura_id);
     setErrore('');
+    setErroreRiga(null);
     setEsito('');
     try {
       const response = await api.post('/api/prima-nota/provvisori/attendi-banca', {
@@ -1108,7 +1138,10 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
       setEsito(response.data?.message || 'Fattura spostata tra i pagamenti attesi in banca.');
       await onRicarica();
     } catch (e) {
-      setErrore(e.response?.data?.detail || e.response?.data?.message || e.message);
+      setErroreRiga({
+        fatturaId: p.fattura_id,
+        messaggio: e.response?.data?.detail || e.response?.data?.message || e.message,
+      });
     } finally {
       setBusy(null);
     }
@@ -1176,7 +1209,7 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
           <div style={{ display: 'flex', gap: 6, marginTop: 9, flexWrap: 'wrap' }}>
             {bottoneVedi(p)}
             <button
-              onClick={() => conferma(p, 'cassa')} disabled={busy === p.fattura_id}
+              onClick={() => confermaCassa(p)} disabled={busy === p.fattura_id}
               style={{ background: VERDE, color: 'white', border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: busy === p.fattura_id ? 0.5 : 1 }}
             >
               💵 Cassa
@@ -1203,6 +1236,11 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
               </button>
             )}
           </div>
+          {erroreRiga?.fatturaId === p.fattura_id && (
+            <div role="alert" style={{ color: '#991b1b', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 10px', marginTop: 8, fontSize: 12.5 }}>
+              {erroreRiga.messaggio}
+            </div>
+          )}
         </div>
       ))}
 
@@ -1385,7 +1423,7 @@ export default function PrimaNota() {
         {tab('cassa', `💵 Cassa ${anno}`)}
         {tab('banca', `🏦 Banca ${anno}`)}
         {tab('soci', '👥 Soci')}
-        {tab('provvisori', `⚠️ Provvisori (${provvisori.length + attesaBanca.length})`)}
+        {tab('provvisori', etichettaTabProvvisori(provvisori, attesaBanca))}
       </div>
 
       {loading && sezione !== 'soci' && (
