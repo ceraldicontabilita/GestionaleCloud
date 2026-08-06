@@ -384,7 +384,14 @@ class Database:
                           name="idx_scad_forn_scadenza_key")
         # Cespiti: query per anno e per categoria.
         await _safe_index("cespiti", [("anno", 1)], name="idx_cespiti_anno")
+        await _safe_index("cespiti", [("anno_acquisto", 1)], name="idx_cespiti_anno_acquisto")
+        await _safe_index("cespiti", [("anno_entrata_funzione", 1)], sparse=True,
+                          name="idx_cespiti_anno_entrata_funzione")
         await _safe_index("cespiti", "categoria", sparse=True, name="idx_cespiti_categoria")
+        await _safe_index("cespiti", "source_key", unique=True, sparse=True,
+                          name="idx_cespiti_source_key")
+        await _safe_index("movimenti_contabili", "dismissione_key", unique=True, sparse=True,
+                          name="idx_movimenti_dismissione_key")
         # Quietanze F24: chiave di collegamento quietanza↔F24 (SPECIFICA §22).
         await _safe_index("quietanze_f24",
                           [("codice_fiscale", 1), ("periodo", 1), ("saldo_delega", 1), ("data_versamento", 1)],

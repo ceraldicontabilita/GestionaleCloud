@@ -53,6 +53,7 @@ def test_rateo_a_giugno_e_meta_della_quota_annuale(monkeypatch):
             "stato": "attivo", "ammortamento_completato": False,
             "valore_acquisto": 12000.0, "coefficiente_ammortamento": 12,
             "fondo_ammortamento": 0, "anno_acquisto": 2024,
+            "data_entrata_funzione": "2024-01-01",
             "piano_ammortamento": [],
         },
     ]
@@ -73,6 +74,7 @@ def test_rateo_anno_di_acquisto_usa_quota_dimezzata(monkeypatch):
             "stato": "attivo", "ammortamento_completato": False,
             "valore_acquisto": 6000.0, "coefficiente_ammortamento": 12,
             "fondo_ammortamento": 0, "anno_acquisto": 2026,
+            "data_entrata_funzione": "2026-02-01",
             "piano_ammortamento": [],
         },
     ]
@@ -94,6 +96,7 @@ def test_cespite_gia_ammortizzato_definitivamente_escluso(monkeypatch):
             "stato": "attivo", "ammortamento_completato": False,
             "valore_acquisto": 3000.0, "coefficiente_ammortamento": 15,
             "fondo_ammortamento": 450, "anno_acquisto": 2025,
+            "data_entrata_funzione": "2025-01-01",
             "piano_ammortamento": [{"anno": 2026, "quota_anno": 450}],
         },
     ]
@@ -113,6 +116,7 @@ def test_cespite_acquistato_dopo_l_anno_richiesto_escluso(monkeypatch):
             "stato": "attivo", "ammortamento_completato": False,
             "valore_acquisto": 2000.0, "coefficiente_ammortamento": 20,
             "fondo_ammortamento": 0, "anno_acquisto": 2027,
+            "data_entrata_funzione": "2027-01-01",
             "piano_ammortamento": [],
         },
     ]

@@ -3,7 +3,6 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
 import { toast } from 'sonner';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { PageLayout } from '../components/PageLayout';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -30,7 +29,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
-import { STYLES, COLORS, button, badge, formatEuro, formatDateIT, useIsMobile } from '../lib/utils';
+import { formatEuro, formatDateIT, useIsMobile } from '../lib/utils';
 
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 
@@ -177,12 +176,15 @@ export default function GestioneCespiti() {
   const [loading, setLoading] = useState(false);
   const [cespiti, setCespiti] = useState([]);
   const [riepilogoCespiti, setRiepilogoCespiti] = useState(null);
+  const [verificaAmmortamenti, setVerificaAmmortamenti] = useState(null);
+  const [errorePagina, setErrorePagina] = useState('');
   const [categorie, setCategorie] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [nuovoCespite, setNuovoCespite] = useState({
     descrizione: '',
     categoria: '',
     data_acquisto: '',
+    data_entrata_funzione: '',
     valore_acquisto: '',
     fornitore: '',
   });
@@ -196,48 +198,62 @@ export default function GestioneCespiti() {
   const [editData, setEditData] = useState({});
 
   useEffect(() => {
+    const controller = new AbortController();
     if (activeTab === 'cespiti') {
-      loadCespiti();
-      loadCategorie();
+      loadCespiti(controller.signal);
+      loadCategorie(controller.signal);
     } else if (activeTab === 'tfr') {
-      loadTFR();
+      loadTFR(controller.signal);
     } else if (activeTab === 'scadenzario') {
-      loadScadenzario();
+      loadScadenzario(controller.signal);
     }
+    return () => controller.abort();
   }, [activeTab, anno]);
 
-  const loadCespiti = async () => {
+  const richiestaGet = (url, signal) => (signal ? api.get(url, { signal }) : api.get(url));
+
+  const loadCespiti = async signal => {
     try {
       setLoading(true);
-      const [c, r] = await Promise.all([
-        api.get('/api/cespiti/?attivi=true'),
-        api.get('/api/cespiti/riepilogo'),
+      setErrorePagina('');
+      const [c, r, v] = await Promise.all([
+        richiestaGet('/api/cespiti/?attivi=true', signal),
+        richiestaGet('/api/cespiti/riepilogo', signal),
+        richiestaGet(`/api/cespiti/verifica/${anno}`, signal),
       ]);
       setCespiti(c.data);
       setRiepilogoCespiti(r.data);
+      setVerificaAmmortamenti(v.data);
     } catch (e) {
+      if (signal?.aborted) return;
       console.error(e);
+      setErrorePagina(e.response?.data?.detail || e.message || 'Errore caricamento cespiti');
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   };
-  const loadCategorie = async () => {
+  const loadCategorie = async signal => {
     try {
-      const r = await api.get('/api/cespiti/categorie');
+      const r = await richiestaGet('/api/cespiti/categorie', signal);
       setCategorie(r.data.categorie);
     } catch (e) {
+      if (signal?.aborted) return;
       console.error(e);
+      setErrorePagina(e.response?.data?.detail || e.message || 'Errore caricamento categorie');
     }
   };
-  const loadTFR = async () => {
+  const loadTFR = async signal => {
     try {
       setLoading(true);
-      const r = await api.get(`/api/tfr/riepilogo-aziendale?anno=${anno}`);
+      setErrorePagina('');
+      const r = await richiestaGet(`/api/tfr/riepilogo-aziendale?anno=${anno}`, signal);
       setRiepilogoTFR(r.data);
     } catch (e) {
+      if (signal?.aborted) return;
       console.error(e);
+      setErrorePagina(e.response?.data?.detail || e.message || 'Errore caricamento TFR');
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   };
   const toggleRegistroTFR = async dipendenteId => {
@@ -259,24 +275,33 @@ export default function GestioneCespiti() {
     }
   };
 
-  const loadScadenzario = async () => {
+  const loadScadenzario = async signal => {
     try {
       setLoading(true);
+      setErrorePagina('');
       const [s, u] = await Promise.all([
-        api.get(`/api/scadenzario-fornitori/?anno=${anno}`),
-        api.get('/api/scadenzario-fornitori/urgenti'),
+        richiestaGet(`/api/scadenzario-fornitori/?anno=${anno}`, signal),
+        richiestaGet('/api/scadenzario-fornitori/urgenti', signal),
       ]);
       setScadenzario(s.data);
       setUrgenti(u.data);
     } catch (e) {
+      if (signal?.aborted) return;
       console.error(e);
+      setErrorePagina(e.response?.data?.detail || e.message || 'Errore caricamento scadenzario');
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   };
 
   const handleCreaCespite = async () => {
-    if (!nuovoCespite.descrizione || !nuovoCespite.categoria || !nuovoCespite.valore_acquisto)
+    if (
+      !nuovoCespite.descrizione ||
+      !nuovoCespite.categoria ||
+      !nuovoCespite.data_acquisto ||
+      !nuovoCespite.data_entrata_funzione ||
+      !nuovoCespite.valore_acquisto
+    )
       return toast.warning('Campi obbligatori');
     try {
       await api.post('/api/cespiti/', {
@@ -288,6 +313,7 @@ export default function GestioneCespiti() {
         descrizione: '',
         categoria: '',
         data_acquisto: '',
+        data_entrata_funzione: '',
         valore_acquisto: '',
         fornitore: '',
       });
@@ -299,17 +325,55 @@ export default function GestioneCespiti() {
 
   const handleCalcolaAmm = async () => {
     try {
-      const r = await api.post(`/api/cespiti/registra/${anno}`);
+      setLoading(true);
+      const preview = await api.get(`/api/cespiti/calcolo/${anno}`);
+      if (preview.data.num_da_verificare > 0) {
+        toast.error(
+          `${preview.data.num_da_verificare} cespiti senza entrata in funzione confermata`
+        );
+        return;
+      }
+      if (preview.data.num_cespiti === 0) {
+        toast.info('Nessuna quota da registrare.');
+        return;
+      }
+      const oggi = new Date();
+      const fineEsercizio = new Date(Number(anno), 11, 31, 0, 0, 0);
+      if (oggi < fineEsercizio) {
+        toast.info(
+          `Anteprima ${anno}: ${preview.data.num_cespiti} cespiti, ${formatEuro(preview.data.totale_ammortamenti)}. Registrazione definitiva dal 31/12/${anno}.`
+        );
+        return;
+      }
+      const ok = await confirm({
+        title: `Registra ammortamenti ${anno}`,
+        message: `Registrare definitivamente ${preview.data.num_cespiti} quote per ${formatEuro(preview.data.totale_ammortamenti)}?`,
+        variant: 'danger',
+      });
+      if (!ok) return;
+      const r = await api.post(`/api/cespiti/registra/${anno}?conferma=true`);
       toast.success(r?.data?.messaggio);
       loadCespiti();
     } catch (e) {
-      toast.error('Errore');
+      toast.error('Errore: ' + (e.response?.data?.detail || e.message));
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleScanFatture = async () => {
     try {
       setLoading(true);
+      const preview = await api.post('/api/cespiti/scan-fatture?soglia_valore=200&dry_run=true');
+      if (preview.data.num_potenziali_cespiti === 0) {
+        toast.info('Nessun nuovo cespite trovato nelle fatture XML.');
+        return;
+      }
+      const ok = await confirm({
+        title: 'Importa proposte da fatture XML',
+        message: `${preview.data.num_potenziali_cespiti} proposte per ${formatEuro(preview.data.valore_totale)}. Saranno inserite come da verificare, senza ammortamento automatico.`,
+      });
+      if (!ok) return;
       const r = await api.post('/api/cespiti/scan-fatture?soglia_valore=200&dry_run=false');
       if (r.data.cespiti_creati > 0) {
         toast.success(r?.data?.messaggio, {
@@ -334,12 +398,24 @@ export default function GestioneCespiti() {
       note: cespite.note || '',
       valore_acquisto: cespite.valore_acquisto,
       data_acquisto: cespite.data_acquisto,
+      data_entrata_funzione: cespite.data_entrata_funzione || '',
     });
   };
 
   const handleSaveEdit = async () => {
     try {
-      await api.put(`/api/cespiti/${editingCespite}`, editData);
+      const originale = cespiti.find(c => c.id === editingCespite);
+      const payload = {
+        descrizione: editData.descrizione,
+        fornitore: editData.fornitore,
+        note: editData.note,
+        data_entrata_funzione: editData.data_entrata_funzione,
+      };
+      if (!originale?.piano_ammortamento?.length) {
+        payload.valore_acquisto = editData.valore_acquisto;
+        payload.data_acquisto = editData.data_acquisto;
+      }
+      await api.put(`/api/cespiti/${editingCespite}`, payload);
       setEditingCespite(null);
       setEditData({});
       loadCespiti();
@@ -355,8 +431,8 @@ export default function GestioneCespiti() {
 
   const handleDeleteCespite = async cespite => {
     const ok = await confirm({
-      title: 'Elimina cespite',
-      message: `Eliminare il cespite "${cespite.descrizione || cespite.nome || ''}"? L'operazione non è reversibile.`,
+      title: 'Archivia cespite',
+      message: `Archiviare il cespite "${cespite.descrizione || cespite.nome || ''}"? Il record resterà nello storico di audit.`,
       variant: 'danger',
     });
     if (!ok) return;
@@ -373,12 +449,18 @@ export default function GestioneCespiti() {
       ? new Intl.NumberFormat('it-IT', {
           style: 'currency',
           currency: 'EUR',
-          maximumFractionDigits: 0,
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
         }).format(v)
       : '-';
 
   return (
     <PageLayout>
+      {errorePagina && (
+        <div role="alert" style={{ ...styles.urgentBox, color: '#991b1b' }}>
+          <strong>Errore di caricamento:</strong> {errorePagina}
+        </div>
+      )}
       {/* handleTabChange (non setActiveTab): il cambio tab deve aggiornare
           anche l'URL (/cespiti/{tab}), altrimenti deep-link e tasto indietro
           non riflettono mai la tab attiva. */}
@@ -400,6 +482,38 @@ export default function GestioneCespiti() {
 
         {/* CESPITI */}
         <TabsContent value="cespiti" style={{ marginTop: 8 }}>
+          {verificaAmmortamenti && verificaAmmortamenti.stato !== 'coerente' && (
+            <div role="alert" data-testid="verifica-ammortamenti" style={styles.urgentBox}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <AlertTriangle style={{ ...styles.iconMd, color: '#b91c1c', flexShrink: 0 }} />
+                <div style={{ fontSize: 12, color: '#7f1d1d' }}>
+                  <strong>Verifica ammortamenti {anno}:</strong>{' '}
+                  {verificaAmmortamenti.cespiti_ammortizzati}/{verificaAmmortamenti.cespiti_attivi}{' '}
+                  cespiti con quota registrata.
+                  {verificaAmmortamenti.entrata_funzione_da_verificare > 0 && (
+                    <span>
+                      {' '}
+                      {verificaAmmortamenti.entrata_funzione_da_verificare} beni richiedono la
+                      conferma della data di entrata in funzione.
+                    </span>
+                  )}
+                  {verificaAmmortamenti.critiche?.length > 0 && (
+                    <span> Differenza contabile: {fmt(verificaAmmortamenti.differenza)}.</span>
+                  )}
+                  {verificaAmmortamenti.coefficienti_oltre_massimo > 0 && (
+                    <span>
+                      {' '}
+                      {verificaAmmortamenti.coefficienti_oltre_massimo} beni hanno un coefficiente
+                      superiore al massimo fiscale; richiedono rettifica controllata.
+                    </span>
+                  )}
+                  <div style={{ marginTop: 4, color: '#64748b' }}>
+                    Controllo in sola lettura: nessuna scrittura viene generata aprendo la pagina.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           {riepilogoCespiti && (
             <div style={{ ...styles.grid4, marginBottom: 12 }}>
               <div style={styles.statBox('#eff6ff')}>
@@ -424,6 +538,12 @@ export default function GestioneCespiti() {
                   {fmt(riepilogoCespiti.totali.valore_netto_contabile)}
                 </p>
               </div>
+              <div style={styles.statBox('#fef2f2')}>
+                <p style={styles.statLabel('#dc2626')}>Da verificare</p>
+                <p style={styles.statValue('#b91c1c')}>
+                  {riepilogoCespiti.totali.entrata_funzione_da_verificare || 0}
+                </p>
+              </div>
             </div>
           )}
           <div style={{ ...styles.row, marginBottom: 8 }}>
@@ -433,7 +553,7 @@ export default function GestioneCespiti() {
             </Button>
             <Button onClick={handleCalcolaAmm} variant="outline" size="sm" style={styles.btn}>
               <Calculator style={styles.icon} />
-              Ammort. {anno}
+              Verifica Ammort. {anno}
             </Button>
             <Button
               onClick={handleScanFatture}
@@ -444,6 +564,11 @@ export default function GestioneCespiti() {
             >
               Scan Fatture XML
             </Button>
+          </div>
+          <div style={{ ...styles.small, marginBottom: 8 }}>
+            Coefficienti massimi: DM 31/12/1988, Gruppo XIX. L'ammortamento parte dall'entrata in
+            funzione (art. 102 TUIR); software e diritti seguono l'art. 103. Le proposte da XML non
+            vengono ammortizzate finché la data non è confermata.
           </div>
           {showForm && (
             <div style={styles.formCard}>
@@ -496,6 +621,18 @@ export default function GestioneCespiti() {
                   />
                 </div>
                 <div>
+                  <label style={styles.label}>Entrata in funzione*</label>
+                  <Input
+                    type="date"
+                    value={nuovoCespite.data_entrata_funzione}
+                    min={nuovoCespite.data_acquisto || undefined}
+                    onChange={e =>
+                      setNuovoCespite({ ...nuovoCespite, data_entrata_funzione: e.target.value })
+                    }
+                    style={styles.input}
+                  />
+                </div>
+                <div>
                   <label style={styles.label}>Valore*</label>
                   <Input
                     type="number"
@@ -533,117 +670,233 @@ export default function GestioneCespiti() {
                 <div style={{ textAlign: 'center', padding: 8, ...styles.small }}>
                   Nessun cespite
                 </div>
+              ) : isMobile ? (
+                <div data-testid="cespiti-mobile-cards" style={{ display: 'grid', gap: 8 }}>
+                  {cespiti.map(c => (
+                    <div
+                      key={c.id}
+                      style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}
+                    >
+                      {editingCespite === c.id ? (
+                        <div style={{ display: 'grid', gap: 8 }}>
+                          <Input
+                            aria-label="Descrizione cespite"
+                            value={editData.descrizione}
+                            onChange={e =>
+                              setEditData({ ...editData, descrizione: e.target.value })
+                            }
+                          />
+                          <Input
+                            aria-label="Data entrata in funzione"
+                            type="date"
+                            min={editData.data_acquisto || undefined}
+                            value={editData.data_entrata_funzione}
+                            onChange={e =>
+                              setEditData({ ...editData, data_entrata_funzione: e.target.value })
+                            }
+                          />
+                          <div style={styles.row}>
+                            <Button size="sm" onClick={handleSaveEdit}>
+                              Salva
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={handleCancelEdit}>
+                              Annulla
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ fontWeight: 700 }}>{c.descrizione}</div>
+                          <div style={{ ...styles.small, marginTop: 2 }}>{c.categoria}</div>
+                          <div style={{ ...styles.grid2, marginTop: 8 }}>
+                            <div>
+                              <span style={styles.small}>Valore</span>
+                              <br />
+                              {fmt(c.valore_acquisto)}
+                            </div>
+                            <div>
+                              <span style={styles.small}>Residuo</span>
+                              <br />
+                              {fmt(c.valore_residuo)}
+                            </div>
+                            <div>
+                              <span style={styles.small}>Entrata funzione</span>
+                              <br />
+                              {c.data_entrata_funzione ? (
+                                formatDateIT(c.data_entrata_funzione)
+                              ) : (
+                                <strong style={{ color: '#b91c1c' }}>Da verificare</strong>
+                              )}
+                            </div>
+                            <div>
+                              <span style={styles.small}>Max fiscale</span>
+                              <br />
+                              {c.coefficiente_ammortamento}%
+                            </div>
+                          </div>
+                          <div style={{ ...styles.row, marginTop: 8 }}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleEditCespite(c)}
+                            >
+                              <Pencil style={styles.icon} /> Modifica
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDeleteCespite(c)}
+                              disabled={c.piano_ammortamento?.length > 0}
+                            >
+                              Archivia
+                            </Button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
               ) : (
                 <div style={{ overflowX: 'auto' }}>
-                <table style={styles.table}>
-                  <thead>
-                    <tr>
-                      <th style={styles.th}>Descrizione</th>
-                      <th style={styles.th}>Categoria</th>
-                      <th style={styles.thCenter}>%</th>
-                      <th style={styles.thRight}>Valore</th>
-                      <th style={styles.thRight}>Fondo</th>
-                      <th style={styles.thRight}>Residuo</th>
-                      <th style={{ ...styles.thCenter, width: 80 }}>Azioni</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cespiti.map((c, i) => (
-                      <tr key={i}>
-                        {editingCespite === c.id ? (
-                          <>
-                            <td style={styles.td}>
-                              <Input
-                                value={editData.descrizione}
-                                onChange={e =>
-                                  setEditData({ ...editData, descrizione: e.target.value })
-                                }
-                                style={{ height: 24, fontSize: 11 }}
-                              />
-                            </td>
-                            <td style={{ ...styles.td, color: '#475569' }}>{c.categoria}</td>
-                            <td style={styles.tdCenter}>{c.coefficiente_ammortamento}%</td>
-                            <td style={styles.tdRight}>
-                              <Input
-                                type="number"
-                                value={editData.valore_acquisto}
-                                onChange={e =>
-                                  setEditData({
-                                    ...editData,
-                                    valore_acquisto: parseFloat(e.target.value),
-                                  })
-                                }
-                                style={{ height: 24, fontSize: 11, width: 80, textAlign: 'right' }}
-                              />
-                            </td>
-                            <td style={{ ...styles.tdRight, color: '#d97706' }}>
-                              {fmt(c.fondo_ammortamento)}
-                            </td>
-                            <td style={{ ...styles.tdRight, fontWeight: '600' }}>
-                              {fmt(c.valore_residuo)}
-                            </td>
-                            <td style={styles.tdCenter}>
-                              <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  style={{ height: 24, width: 24, padding: 0 }}
-                                  onClick={handleSaveEdit}
-                                >
-                                  <Check style={{ width: 12, height: 12, color: '#16a34a' }} />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  style={{ height: 24, width: 24, padding: 0 }}
-                                  onClick={handleCancelEdit}
-                                >
-                                  <X style={{ width: 12, height: 12, color: '#64748b' }} />
-                                </Button>
-                              </div>
-                            </td>
-                          </>
-                        ) : (
-                          <>
-                            <td style={{ ...styles.td, fontWeight: '500' }}>{c.descrizione}</td>
-                            <td style={{ ...styles.td, color: '#475569' }}>{c.categoria}</td>
-                            <td style={styles.tdCenter}>{c.coefficiente_ammortamento}%</td>
-                            <td style={styles.tdRight}>{fmt(c.valore_acquisto)}</td>
-                            <td style={{ ...styles.tdRight, color: '#d97706' }}>
-                              {fmt(c.fondo_ammortamento)}
-                            </td>
-                            <td style={{ ...styles.tdRight, fontWeight: '600' }}>
-                              {fmt(c.valore_residuo)}
-                            </td>
-                            <td style={styles.tdCenter}>
-                              <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  style={{ height: 24, width: 24, padding: 0 }}
-                                  onClick={() => handleEditCespite(c)}
-                                  title="Modifica"
-                                >
-                                  <Pencil style={{ width: 12, height: 12, color: '#0f2744' }} />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  style={{ height: 24, width: 24, padding: 0 }}
-                                  onClick={() => handleDeleteCespite(c)}
-                                  title="Elimina"
-                                  disabled={c.piano_ammortamento?.length > 0}
-                                >
-                                  <Trash2 style={{ width: 12, height: 12, color: '#dc2626' }} />
-                                </Button>
-                              </div>
-                            </td>
-                          </>
-                        )}
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        <th style={styles.th}>Descrizione</th>
+                        <th style={styles.th}>Categoria</th>
+                        <th style={styles.th}>Entrata funzione</th>
+                        <th style={styles.thCenter}>Max %</th>
+                        <th style={styles.thRight}>Valore</th>
+                        <th style={styles.thRight}>Fondo</th>
+                        <th style={styles.thRight}>Residuo</th>
+                        <th style={{ ...styles.thCenter, width: 80 }}>Azioni</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {cespiti.map(c => (
+                        <tr key={c.id}>
+                          {editingCespite === c.id ? (
+                            <>
+                              <td style={styles.td}>
+                                <Input
+                                  value={editData.descrizione}
+                                  onChange={e =>
+                                    setEditData({ ...editData, descrizione: e.target.value })
+                                  }
+                                  style={{ height: 24, fontSize: 11 }}
+                                />
+                              </td>
+                              <td style={{ ...styles.td, color: '#475569' }}>{c.categoria}</td>
+                              <td style={styles.td}>
+                                <Input
+                                  type="date"
+                                  value={editData.data_entrata_funzione}
+                                  min={editData.data_acquisto || undefined}
+                                  onChange={e =>
+                                    setEditData({
+                                      ...editData,
+                                      data_entrata_funzione: e.target.value,
+                                    })
+                                  }
+                                  style={{ height: 24, fontSize: 11, width: 132 }}
+                                />
+                              </td>
+                              <td style={styles.tdCenter}>{c.coefficiente_ammortamento}%</td>
+                              <td style={styles.tdRight}>
+                                <Input
+                                  type="number"
+                                  value={editData.valore_acquisto}
+                                  disabled={c.piano_ammortamento?.length > 0}
+                                  onChange={e =>
+                                    setEditData({
+                                      ...editData,
+                                      valore_acquisto: parseFloat(e.target.value),
+                                    })
+                                  }
+                                  style={{
+                                    height: 24,
+                                    fontSize: 11,
+                                    width: 80,
+                                    textAlign: 'right',
+                                  }}
+                                />
+                              </td>
+                              <td style={{ ...styles.tdRight, color: '#d97706' }}>
+                                {fmt(c.fondo_ammortamento)}
+                              </td>
+                              <td style={{ ...styles.tdRight, fontWeight: '600' }}>
+                                {fmt(c.valore_residuo)}
+                              </td>
+                              <td style={styles.tdCenter}>
+                                <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    style={{ height: 24, width: 24, padding: 0 }}
+                                    onClick={handleSaveEdit}
+                                  >
+                                    <Check style={{ width: 12, height: 12, color: '#16a34a' }} />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    style={{ height: 24, width: 24, padding: 0 }}
+                                    onClick={handleCancelEdit}
+                                  >
+                                    <X style={{ width: 12, height: 12, color: '#64748b' }} />
+                                  </Button>
+                                </div>
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td style={{ ...styles.td, fontWeight: '500' }}>{c.descrizione}</td>
+                              <td style={{ ...styles.td, color: '#475569' }}>{c.categoria}</td>
+                              <td style={styles.td}>
+                                {c.data_entrata_funzione ? (
+                                  formatDateIT(c.data_entrata_funzione)
+                                ) : (
+                                  <span style={{ color: '#b91c1c', fontWeight: 600 }}>
+                                    Da verificare
+                                  </span>
+                                )}
+                              </td>
+                              <td style={styles.tdCenter}>{c.coefficiente_ammortamento}%</td>
+                              <td style={styles.tdRight}>{fmt(c.valore_acquisto)}</td>
+                              <td style={{ ...styles.tdRight, color: '#d97706' }}>
+                                {fmt(c.fondo_ammortamento)}
+                              </td>
+                              <td style={{ ...styles.tdRight, fontWeight: '600' }}>
+                                {fmt(c.valore_residuo)}
+                              </td>
+                              <td style={styles.tdCenter}>
+                                <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    style={{ height: 24, width: 24, padding: 0 }}
+                                    onClick={() => handleEditCespite(c)}
+                                    title="Modifica"
+                                  >
+                                    <Pencil style={{ width: 12, height: 12, color: '#0f2744' }} />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    style={{ height: 24, width: 24, padding: 0 }}
+                                    onClick={() => handleDeleteCespite(c)}
+                                    title="Archivia"
+                                    disabled={c.piano_ammortamento?.length > 0}
+                                  >
+                                    <Trash2 style={{ width: 12, height: 12, color: '#dc2626' }} />
+                                  </Button>
+                                </div>
+                              </td>
+                            </>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
@@ -674,7 +927,9 @@ export default function GestioneCespiti() {
               </div>
               <div style={styles.card}>
                 <div style={{ padding: '4px 8px', borderBottom: '1px solid #f1f5f9' }}>
-                  <span style={{ fontSize: 12, fontWeight: '600' }}>Registro TFR per Dipendente</span>
+                  <span style={{ fontSize: 12, fontWeight: '600' }}>
+                    Registro TFR per Dipendente
+                  </span>
                   <span style={{ ...styles.small, marginLeft: 8 }}>
                     (clicca per il dettaglio mese per mese, estratto dai cedolini)
                   </span>
@@ -708,7 +963,9 @@ export default function GestioneCespiti() {
                               )}
                               {d.nome}
                             </span>
-                            <span style={{ fontWeight: 'bold', color: '#0f2744', fontFamily: MONO }}>
+                            <span
+                              style={{ fontWeight: 'bold', color: '#0f2744', fontFamily: MONO }}
+                            >
                               {fmt(d.tfr_accantonato)}
                             </span>
                           </div>
@@ -725,33 +982,37 @@ export default function GestioneCespiti() {
                               {registroTFRLoading ? (
                                 <div style={styles.small}>Caricamento...</div>
                               ) : !registroTFRDettaglio?.accantonamenti?.length ? (
-                                <div style={styles.small}>Nessun accantonamento mensile registrato.</div>
+                                <div style={styles.small}>
+                                  Nessun accantonamento mensile registrato.
+                                </div>
                               ) : (
                                 <div style={{ overflowX: 'auto' }}>
-                                <table style={styles.table}>
-                                  <thead>
-                                    <tr>
-                                      <th style={styles.th}>Periodo</th>
-                                      <th style={styles.thRight}>Quota mese</th>
-                                      <th style={styles.thRight}>Rivalutazione</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {registroTFRDettaglio.accantonamenti.map((a, j) => (
-                                      <tr key={j}>
-                                        <td style={styles.td}>{a.periodo}</td>
-                                        <td style={styles.tdRight}>{fmt(a.quota_mese)}</td>
-                                        <td style={styles.tdRight}>{fmt(a.rivalutazione || 0)}</td>
+                                  <table style={styles.table}>
+                                    <thead>
+                                      <tr>
+                                        <th style={styles.th}>Periodo</th>
+                                        <th style={styles.thRight}>Quota mese</th>
+                                        <th style={styles.thRight}>Rivalutazione</th>
                                       </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
+                                    </thead>
+                                    <tbody>
+                                      {registroTFRDettaglio.accantonamenti.map((a, j) => (
+                                        <tr key={j}>
+                                          <td style={styles.td}>{a.periodo}</td>
+                                          <td style={styles.tdRight}>{fmt(a.quota_mese)}</td>
+                                          <td style={styles.tdRight}>
+                                            {fmt(a.rivalutazione || 0)}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
                                 </div>
                               )}
                               {registroTFRDettaglio?.totale_liquidato > 0 && (
                                 <div style={{ ...styles.small, marginTop: 6 }}>
-                                  Liquidato/anticipato: {fmt(registroTFRDettaglio.totale_liquidato)} —
-                                  disponibile: {fmt(registroTFRDettaglio.tfr_disponibile)}
+                                  Liquidato/anticipato: {fmt(registroTFRDettaglio.totale_liquidato)}{' '}
+                                  — disponibile: {fmt(registroTFRDettaglio.tfr_disponibile)}
                                 </div>
                               )}
                             </div>
@@ -863,7 +1124,9 @@ export default function GestioneCespiti() {
                         >
                           {f.fornitore} <span style={{ color: '#94a3b8' }}>({f.num_fatture})</span>
                         </span>
-                        <span style={{ fontWeight: 'bold', fontFamily: MONO }}>{fmt(f.totale)}</span>
+                        <span style={{ fontWeight: 'bold', fontFamily: MONO }}>
+                          {fmt(f.totale)}
+                        </span>
                       </div>
                     ))}
                   </div>

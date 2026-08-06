@@ -3,7 +3,7 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 164
+**Totale file analizzati:** 165
 
 | Classificazione | File |
 |---|---:|
@@ -12,7 +12,7 @@
 | COMPONENTE_USATO | 84 |
 | MODALE_USATO | 4 |
 | HOOK_USATO | 3 |
-| TEST_ONLY | 20 |
+| TEST_ONLY | 21 |
 | DINAMICO_DA_VERIFICARE | 23 |
 | ORFANO_ELIMINABILE | 0 |
 
@@ -57,7 +57,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | File | Classificazione | Importato da (n. file) |
 |---|---|---:|
 | `frontend/src/App.jsx` | ENTRYPOINT | 1 |
-| `frontend/src/api.js` | COMPONENTE_USATO | 87 |
+| `frontend/src/api.js` | COMPONENTE_USATO | 88 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ChatIntelligente.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/CopyLinkButton.jsx` | COMPONENTE_USATO | 5 |
@@ -93,7 +93,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ui/avatar.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ui/badge.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ui/button.jsx` | COMPONENTE_USATO | 3 |
-| `frontend/src/components/ui/card.jsx` | COMPONENTE_USATO | 3 |
+| `frontend/src/components/ui/card.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/ui/checkbox.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ui/command.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ui/dialog.jsx` | DINAMICO_DA_VERIFICARE | 1 |
@@ -164,7 +164,8 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/Fornitori.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/GestioneAssegni.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/pages/GestioneAssegni.test.jsx` | TEST_ONLY | 0 |
-| `frontend/src/pages/GestioneCespiti.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/pages/GestioneCespiti.jsx` | COMPONENTE_USATO | 2 |
+| `frontend/src/pages/GestioneCespiti.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/GestioneIVA.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/GestionePagoPA.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/GestioneRiservata.jsx` | ROUTE_ATTIVA | 1 |
