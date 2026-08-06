@@ -116,3 +116,55 @@ def test_non_collega_una_fattura_storica_di_un_altro_anno():
         assert await db.invoices.count_documents({"metodo_pagamento_previsto": "assegno"}) == 0
 
     _run(scenario())
+
+
+def test_estratto_arriva_prima_della_fattura_e_xml_completa_tutto_senza_modale():
+    async def scenario():
+        db = AsyncMongoMockClient()["assegno_ec_prima_xml"]
+        await db.assegni.insert_one({
+            "id": "ass-ec-prima", "numero": "0208770649", "importo": 977.38,
+            "beneficiario": "FORNITORE AUTOMATICO SRL",
+            "fornitore_piva": "09999999999", "numero_fattura": "FA-649",
+            "stato": "compilato", "anno": 2026,
+        })
+        await db.estratto_conto_movimenti.insert_one({
+            "id": "ec-prima-xml", "data": "2026-04-10", "importo": 977.38,
+            "tipo": "uscita", "descrizione": "PRELIEVO ASSEGNO NUM: 0208770649",
+            "riconciliato": False,
+        })
+
+        prima = await sincronizza_assegni_da_estratto_conto(db)
+        assegno_in_banca = await db.assegni.find_one(
+            {"id": "ass-ec-prima"}, {"_id": 0}
+        )
+        assert prima["assegni_riconciliati"] == 1
+        assert assegno_in_banca["stato"] == "incassato"
+        assert assegno_in_banca["incassato_confermato_banca"] is True
+        assert assegno_in_banca.get("fattura_id") is None
+
+        invoice = {
+            "id": "fatt-ec-prima", "invoice_number": "FA-649",
+            "invoice_date": "2026-03-31", "supplier_vat": "09999999999",
+            "supplier_name": "FORNITORE AUTOMATICO SRL", "total_amount": 977.38,
+            "importo_pagato": 0.0, "importo_residuo": 977.38,
+            "payment_status": "open", "pagato": False,
+        }
+        await db.invoices.insert_one(dict(invoice))
+        esito = await collega_intento_assegno_a_fattura(db, invoice)
+
+        fattura = await db.invoices.find_one({"id": "fatt-ec-prima"}, {"_id": 0})
+        assegno = await db.assegni.find_one({"id": "ass-ec-prima"}, {"_id": 0})
+        movimento = await db.estratto_conto_movimenti.find_one(
+            {"id": "ec-prima-xml"}, {"_id": 0}
+        )
+        assert esito["collegato"] is True
+        assert fattura["pagato"] is True
+        assert fattura["riconciliato_con_ec"] is True
+        assert assegno["stato"] == "incassato"
+        assert assegno["fattura_id"] == "fatt-ec-prima"
+        assert assegno["match_auto"] is True
+        assert assegno["match_livello"] == "INTENTO_ASSEGNO_XML_EC"
+        assert movimento["fattura_id"] == "fatt-ec-prima"
+        assert await db.prima_nota_banca.count_documents({}) == 1
+
+    _run(scenario())

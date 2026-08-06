@@ -649,6 +649,16 @@ def start_scheduler():
             logger.error(f"[SCHEDULER-PN-RICONCILIA] errore: {e}")
         try:
             from app.database import Database
+            from app.routers.paypal_statements import _auto_riconcilia
+            r = await _auto_riconcilia(Database.get_db(), applica=True)
+            logger.info(
+                f"[SCHEDULER-PAYPAL-BANCA] riconciliati={r.get('riconciliati')} "
+                f"ambigui={r.get('ambigui')}"
+            )
+        except Exception as e:
+            logger.error(f"[SCHEDULER-PAYPAL-BANCA] errore: {e}")
+        try:
+            from app.database import Database
             from app.services.stipendi_bonifici import associa_bonifici_stipendi
             r = await associa_bonifici_stipendi(Database.get_db())
             if r.get("bonifici_associati"):

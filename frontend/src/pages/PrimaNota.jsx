@@ -1174,8 +1174,36 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
     }
   };
 
+  const riprocessaEstratto = async () => {
+    setBusy('riprocessa-estratto');
+    setErrore('');
+    setErroreRiga(null);
+    setEsito('');
+    try {
+      const response = await api.post('/api/operazioni-da-confermare/smart/riconcilia-auto');
+      const riconciliati = Number(response.data?.riconciliati || 0);
+      const analizzati = Number(response.data?.analizzati || 0);
+      setEsito(`Estratto conto riprocessato: ${analizzati} movimenti esaminati, ${riconciliati} riconciliati.`);
+      await onRicarica();
+    } catch (e) {
+      setErrore(e.response?.data?.detail || e.response?.data?.message || e.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          type="button"
+          onClick={riprocessaEstratto}
+          disabled={busy === 'riprocessa-estratto'}
+          style={{ minHeight: 40, background: BLU, color: 'white', border: 0, borderRadius: 8, padding: '8px 13px', fontSize: 12.5, fontWeight: 800, cursor: busy === 'riprocessa-estratto' ? 'wait' : 'pointer' }}
+        >
+          {busy === 'riprocessa-estratto' ? 'Riprocessamento…' : 'Riprocessa estratto conto'}
+        </button>
+      </div>
       <FiltriFattura
         numeroFattura={fNumeroFattura}
         data={fDataFattura}
@@ -1276,7 +1304,9 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
                   </span>
                 )}
                 {p.movimento_banca && (
-                  <span style={{ color: '#2563eb' }}> · possibile addebito {formatDateIT(p.movimento_banca.data)}</span>
+                  <span style={{ color: '#047857', fontWeight: 700 }}>
+                    {' '}· riscontro bancario forte del {formatDateIT(p.movimento_banca.data)}, in elaborazione automatica
+                  </span>
                 )}
                 {(p.importo_pagato_confermato || 0) > 0 && (
                   <span style={{ color: '#475569' }}>
@@ -1294,13 +1324,12 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
                 >
                   <Eye size={18} />
                 </button>
-                <a
-                  href="/riconciliazione/banca"
-                  title="Cerca il movimento reale nell'estratto conto"
-                  style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', background: '#eff6ff', border: '1px solid #93c5fd', color: '#1d4ed8', borderRadius: 7, padding: '4px 10px', fontSize: 11.5, fontWeight: 700, textDecoration: 'none' }}
+                <span
+                  title="Il gestionale riesamina automaticamente l'estratto conto; non devi cercare il movimento a mano"
+                  style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', background: '#eff6ff', border: '1px solid #93c5fd', color: '#1d4ed8', borderRadius: 7, padding: '4px 10px', fontSize: 11.5, fontWeight: 700 }}
                 >
-                  Cerca movimento
-                </a>
+                  Controllo automatico attivo
+                </span>
               </span>
             </div>
           ))}

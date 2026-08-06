@@ -90,6 +90,39 @@ async def _fattura_da_prima_nota(db, numero: str, importo: float) -> Optional[Di
     return await db["invoices"].find_one({"id": ids[0]}, {"_id": 0})
 
 
+async def _fattura_da_numero_assegno_xml(
+    db, numero: str, importo: float, data_movimento: str,
+) -> Optional[Dict[str, Any]]:
+    """Trova la fattura che dichiara lo stesso assegno e la stessa quota.
+
+    E' una prova forte anche quando il registro carnet non esiste ancora:
+    numero assegno nell'XML + importo al centesimo + data compatibile.
+    """
+    per_piva = await _load_open_invoices_by_piva(db)
+    candidate: List[Dict[str, Any]] = []
+    for fatture in per_piva.values():
+        for fattura in fatture:
+            if not _invoice_date_compatibile(fattura, data_movimento):
+                continue
+            metodo = " ".join(str(fattura.get(campo) or "") for campo in (
+                "metodo_pagamento", "payment_method", "modalita_pagamento",
+                "metodo_pagamento_previsto",
+            ))
+            numero_xml = estrai_numero_assegno(metodo)
+            if not numero_xml or not _numero_equivalente(numero_xml, numero):
+                continue
+            residuo_ok = abs(_f(fattura.get("_residuo")) - importo) <= TOLL
+            rata_ok = any(
+                abs(_f(rata.get("importo")) - importo) <= TOLL
+                for rata in (fattura.get("pagamento_rate") or [])
+                if isinstance(rata, dict)
+            )
+            if residuo_ok or rata_ok:
+                candidate.append(fattura)
+    uniche = {str(f.get("id")): f for f in candidate if f.get("id")}
+    return next(iter(uniche.values())) if len(uniche) == 1 else None
+
+
 async def _fatture_aperte_stesso_importo(db, importo: float, data_movimento: str) -> List[Dict[str, Any]]:
     per_piva = await _load_open_invoices_by_piva(db)
     candidate = []
@@ -237,7 +270,12 @@ async def _collega_fattura_univoca(
 
 
 async def collega_assegno_riconciliato_a_fattura(
-    db, assegno: Dict[str, Any], fattura: Dict[str, Any],
+    db,
+    assegno: Dict[str, Any],
+    fattura: Dict[str, Any],
+    *,
+    match_auto: bool = False,
+    match_livello: str = "MANUAL_EC",
 ) -> Dict[str, Any]:
     """Completa un collegamento manuale quando l'assegno e' gia' in banca.
 
@@ -249,6 +287,8 @@ async def collega_assegno_riconciliato_a_fattura(
         db,
         assegno,
         [{"fattura": fattura, "quota": round(_f(assegno.get("importo")), 2)}],
+        match_auto=match_auto,
+        match_livello=match_livello,
     )
 
 
@@ -256,6 +296,9 @@ async def collega_assegno_riconciliato_a_fatture(
     db,
     assegno: Dict[str, Any],
     collegamenti: List[Dict[str, Any]],
+    *,
+    match_auto: bool = False,
+    match_livello: str = "MANUAL_EC",
 ) -> Dict[str, Any]:
     """Applica uno o piu' collegamenti espliciti a un assegno gia' addebitato.
 
@@ -312,8 +355,8 @@ async def collega_assegno_riconciliato_a_fatture(
                 {"id": fattura_id},
                 {"$addToSet": {"assegni_collegati": {
                     "assegno_id": assegno["id"], "numero": assegno.get("numero"),
-                    "quota": quota, "data_collegamento": now, "match_auto": False,
-                    "match_livello": "MANUAL_EC", "banca_confermata": True,
+                    "quota": quota, "data_collegamento": now, "match_auto": match_auto,
+                    "match_livello": match_livello, "banca_confermata": True,
                 }}},
             )
         applicate += int(applicata)
@@ -321,8 +364,8 @@ async def collega_assegno_riconciliato_a_fatture(
             "fattura_id": fattura_id,
             "quota": quota,
             "data_collegamento": now,
-            "match_auto": False,
-            "match_livello": "MANUAL_EC",
+            "match_auto": match_auto,
+            "match_livello": match_livello,
             "banca_confermata": True,
             "numero_fattura": fattura.get("invoice_number") or fattura.get("numero_fattura"),
         })
@@ -337,8 +380,8 @@ async def collega_assegno_riconciliato_a_fatture(
         "importo_assegnato": totale_quote,
         "stato": "incassato",
         "stato_finanziario": "riconciliato",
-        "match_auto": False,
-        "match_livello": "MANUAL_EC",
+        "match_auto": match_auto,
+        "match_livello": match_livello,
         "updated_at": now,
     }})
     assegno_aggiornato = await db["assegni"].find_one({"id": assegno["id"]}, {"_id": 0}) or assegno
@@ -508,6 +551,10 @@ async def sincronizza_assegni_da_estratto_conto(
                 fattura = await db["invoices"].find_one({"id": fattura_ids[0]}, {"_id": 0})
             if not fattura:
                 fattura = await _fattura_da_prima_nota(db, numero, importo)
+            if not fattura:
+                fattura = await _fattura_da_numero_assegno_xml(
+                    db, numero, importo, data_movimento,
+                )
             if not fattura:
                 candidate = await _fatture_aperte_stesso_importo(db, importo, data_movimento)
                 # L'importo, anche se individua una sola fattura aperta, non e'

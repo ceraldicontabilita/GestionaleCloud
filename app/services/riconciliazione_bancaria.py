@@ -601,6 +601,26 @@ def _numero_fattura_citato_esplicitamente(numero_fattura: str, descrizione: str)
     return False
 
 
+def _riferimenti_fattura_dichiarati(descrizione: str) -> List[str]:
+    """Estrae l'elenco dichiarato dopo FATTURE/INVOICE in una causale.
+
+    Serve a distinguere una ripartizione completa da una causale che cita
+    documenti non ancora importati nel gestionale.
+    """
+    match = re.search(
+        r"\b(?:FATTURE?|FATT|FAT|FT|INVOICES?|INV)\b[\s:.-]*(.+)$",
+        str(descrizione or ""), re.IGNORECASE,
+    )
+    if not match:
+        return []
+    riferimenti = []
+    for token in re.findall(r"[A-Z0-9][A-Z0-9./_-]*", match.group(1).upper()):
+        compatto = re.sub(r"[^A-Z0-9]", "", token).lstrip("0")
+        if len(compatto) >= 4 and any(ch.isdigit() for ch in compatto):
+            riferimenti.append(compatto)
+    return list(dict.fromkeys(riferimenti))
+
+
 def _quota_aperta_fattura(fattura: Dict[str, Any]) -> float:
     """Quota ancora aperta da usare nella ripartizione del bonifico."""
     totale = float(fattura.get("importo_totale") or fattura.get("total_amount") or 0)
@@ -668,11 +688,77 @@ def _evidenza_forte_fattura_banca(
     # Il matcher esplicito evita che numeri brevi, date, CRO o ABI/CAB siano
     # interpretati come numero fattura.
     numero_presente = _numero_fattura_citato_esplicitamente(numero, descrizione)
+    numero_assegno_banca = extract_assegno_number(descrizione)
+    metodo_fattura = str(
+        fattura.get("metodo_pagamento")
+        or fattura.get("metodo_pagamento_effettivo") or ""
+    )
+    numero_assegno_fattura = extract_assegno_number(metodo_fattura)
+    assegno_identico = bool(
+        numero_assegno_banca and numero_assegno_fattura
+        and numero_assegno_banca == numero_assegno_fattura
+    )
     return {
         "importo_esatto": importo_esatto,
         "fornitore_presente": fornitore_presente,
         "numero_presente": numero_presente,
-        "auto_ammesso": importo_esatto and fornitore_presente and numero_presente,
+        "assegno_identico": assegno_identico,
+        "auto_ammesso": importo_esatto and (
+            (fornitore_presente and numero_presente) or assegno_identico
+        ),
+    }
+
+
+def _evidenza_sdd_fattura_banca(
+    fattura: Dict[str, Any], descrizione: str, importo_movimento: float,
+    data_movimento: str,
+) -> Dict[str, Any]:
+    """Evidenza forte alternativa per domiciliazioni SDD.
+
+    Una causale SDD normalmente non contiene il numero fattura. In quel caso
+    il mandato/creditore bancario, il fornitore leggibile, l'importo al
+    centesimo e una fattura antecedente entro 62 giorni formano la prova. I
+    collettori PayPal/Nexi/NUMIA sono esclusi: richiedono i propri statement.
+    """
+    testo = str(descrizione or "")
+    testo_upper = testo.upper()
+    sdd = "SDD" in testo_upper
+    collettore = any(nome in testo_upper for nome in ("PAYPAL", "NEXI", "NUMIA"))
+    totale = _quota_aperta_fattura(fattura)
+    importo_esatto = totale > 0 and amounts_equal_to_cent(totale, importo_movimento)
+    fornitore = (
+        fattura.get("cedente_denominazione")
+        or fattura.get("fornitore_ragione_sociale")
+        or fattura.get("supplier_name") or ""
+    )
+    fornitore_presente = match_fornitore_descrizione(fornitore, testo) > 0
+    if not fornitore_presente:
+        # I creditori SDD usano spesso il marchio breve ("Eni Spa") mentre
+        # la fattura contiene la ragione sociale completa ("Eni Plenitude
+        # S.p.A."). Il primo token aziendale, delimitato come parola, e'
+        # comunque identita' del creditore; importo e finestra temporale
+        # restano obbligatori.
+        token_fornitore = next((
+            token for token in re.findall(r"[A-Z0-9]+", str(fornitore).upper())
+            if len(token) >= 3 and token not in {"SRL", "SPA", "SNC", "SAS"}
+        ), "")
+        fornitore_presente = bool(
+            token_fornitore
+            and re.search(rf"(?<![A-Z0-9]){re.escape(token_fornitore)}(?![A-Z0-9])", testo_upper)
+        )
+    data_fattura = fattura.get("data") or fattura.get("invoice_date") or ""
+    giorni = _giorni_pagamento_plausibili(data_movimento, data_fattura)
+    data_coerente = giorni is not None and 0 <= giorni <= 62
+    return {
+        "sdd": sdd,
+        "collettore_escluso": collettore,
+        "importo_esatto": importo_esatto,
+        "fornitore_presente": fornitore_presente,
+        "giorni_da_fattura": giorni,
+        "auto_ammesso": bool(
+            sdd and not collettore and importo_esatto
+            and fornitore_presente and data_coerente
+        ),
     }
 
 
@@ -773,6 +859,27 @@ async def riconcilia_movimenti_banca(
         "errors": []
     }
 
+    # Gli assegni hanno un ciclo proprio (compilazione -> XML -> estratto
+    # conto) e devono essere risolti prima dei match bancari generici. Questo
+    # rende equivalenti tutti gli ordini di arrivo delle tre fonti e impedisce
+    # che il movimento venga consumato da un secondo motore senza aggiornare
+    # l'assegno. La funzione e' idempotente sugli ID EC/assegno.
+    try:
+        from app.services.assegni_estratto_conto import (
+            sincronizza_assegni_da_estratto_conto,
+        )
+        esito_assegni = await sincronizza_assegni_da_estratto_conto(
+            db, movimento_ids=movimento_ids,
+        )
+        results["assegni_sincronizzati"] = esito_assegni
+        results["riconciliati_assegni"] = esito_assegni.get("assegni_riconciliati", 0)
+        results["riconciliati_fatture"] += esito_assegni.get("fatture_associate", 0)
+        results["errors"].extend(esito_assegni.get("errori", []))
+    except Exception as exc:
+        # Un'anomalia circoscritta agli assegni non deve impedire a POS, F24,
+        # bonifici e SDD di essere processati nello stesso estratto conto.
+        results["errors"].append(f"Sincronizzazione assegni: {exc}")
+
     # Carica movimenti EC non riconciliati. Dopo un import il chiamante passa
     # gli ID appena inseriti/promossi: riesaminare ogni volta l'intero storico
     # (fino a 5.000 righe) moltiplicava le query su fatture, F24, POS e cassa e
@@ -801,6 +908,10 @@ async def riconcilia_movimenti_banca(
         {"$and": filtri_movimenti},
         {"_id": 0},
     ).to_list(5000)
+    # Ordine cronologico deterministico senza dipendere dal metodo ``sort``
+    # del cursore: mantiene compatibilita' con adapter/test minimali e con
+    # import legacy che restituiscono gia' una lista materializzata.
+    movimenti_ec.sort(key=lambda movimento: str(movimento.get("data") or ""))
 
     results["movimenti_analizzati"] = len(movimenti_ec)
 
@@ -869,6 +980,7 @@ async def riconcilia_movimenti_banca(
                 or len(riferimenti_strutturati) >= 2
             )
             if tipo == "uscita" and causale_indica_fatture:
+                riferimenti_dichiarati = _riferimenti_fattura_dichiarati(descrizione)
                 fatture_aperte = await db[Collections.INVOICES].find({
                     "pagato": {"$ne": True},
                     "stato_pagamento": {"$nin": ["pagata", "paid", "sospesa"]},
@@ -882,6 +994,23 @@ async def riconcilia_movimenti_banca(
                     "importo_pagato": 1, "importo_residuo": 1,
                     "invoice_date": 1, "data": 1,
                 }).to_list(5000)
+
+                riferimenti_presenti = set()
+                if riferimenti_dichiarati:
+                    tutte_le_fatture_citate = await db[Collections.INVOICES].find(
+                        {}, {"_id": 0, "invoice_number": 1,
+                             "numero_fattura": 1, "numero_documento": 1},
+                    ).to_list(5000)
+                    for fattura in tutte_le_fatture_citate:
+                        numero = (
+                            fattura.get("invoice_number")
+                            or fattura.get("numero_fattura")
+                            or fattura.get("numero_documento") or ""
+                        )
+                        if _numero_fattura_citato_esplicitamente(numero, descrizione):
+                            riferimenti_presenti.add(
+                                re.sub(r"[^A-Z0-9]", "", str(numero).upper()).lstrip("0")
+                            )
 
                 fatture_esplicite = []
                 ids_espliciti = set()
@@ -901,6 +1030,25 @@ async def riconcilia_movimenti_banca(
                         fatture_esplicite.append((fattura, quota))
 
                 if len(fatture_esplicite) >= 2:
+                    riferimenti_trovati = {
+                        re.sub(
+                            r"[^A-Z0-9]", "", str(
+                                fattura.get("invoice_number")
+                                or fattura.get("numero_fattura")
+                                or fattura.get("numero_documento") or ""
+                            ).upper(),
+                        ).lstrip("0")
+                        for fattura, _ in fatture_esplicite
+                    }
+                    riferimenti_mancanti = [
+                        riferimento for riferimento in riferimenti_dichiarati
+                        if riferimento not in riferimenti_presenti
+                    ]
+                    riferimenti_gia_chiusi = [
+                        riferimento for riferimento in riferimenti_dichiarati
+                        if riferimento in riferimenti_presenti
+                        and riferimento not in riferimenti_trovati
+                    ]
                     totale_quote = round(sum(quota for _, quota in fatture_esplicite), 2)
                     chiavi_fornitore = {
                         chiave for chiave in (
@@ -933,7 +1081,8 @@ async def riconcilia_movimenti_banca(
                         "quota": quota,
                     } for fattura, quota in fatture_esplicite]
 
-                    if somma_esatta and stesso_fornitore and fornitore_presente:
+                    elenco_completo = not riferimenti_mancanti and not riferimenti_gia_chiusi
+                    if somma_esatta and stesso_fornitore and fornitore_presente and elenco_completo:
                         metodo_pagamento = "Bonifico"
                         num_assegno_multi = extract_assegno_number(descrizione)
                         if num_assegno_multi:
@@ -954,6 +1103,7 @@ async def riconcilia_movimenti_banca(
                             "importo_ripartito": totale_quote,
                             "numero_fatture": len(dettagli_fatture),
                             "fatture": dettagli_fatture,
+                            "riferimenti_dichiarati": riferimenti_dichiarati,
                             "match_type": "numeri_fattura+somma_residui+fornitore",
                         }
                         results["riconciliati_fatture"] += 1
@@ -969,7 +1119,9 @@ async def riconcilia_movimenti_banca(
                             f"Causale con {len(dettagli_fatture)} fatture esplicite; "
                             f"movimento €{importo:.2f}, somma residui €{totale_quote:.2f}, "
                             f"stesso fornitore: {'si' if stesso_fornitore else 'no'}, "
-                            f"fornitore presente: {'si' if fornitore_presente else 'no'}"
+                            f"fornitore presente: {'si' if fornitore_presente else 'no'}, "
+                            f"riferimenti mancanti: {len(riferimenti_mancanti)}, "
+                            f"gia chiusi/non aperti: {len(riferimenti_gia_chiusi)}"
                         )
                         operazione = {
                             "id": str(uuid.uuid4()),
@@ -988,6 +1140,9 @@ async def riconcilia_movimenti_banca(
                                 "differenza": round(importo - totale_quote, 2),
                                 "stesso_fornitore": stesso_fornitore,
                                 "fornitore_presente": fornitore_presente,
+                                "riferimenti_dichiarati": riferimenti_dichiarati,
+                                "riferimenti_mancanti": riferimenti_mancanti,
+                                "riferimenti_gia_chiusi": riferimenti_gia_chiusi,
                                 "motivo_dubbio": motivo,
                             },
                             "stato": "da_confermare",
@@ -1110,13 +1265,37 @@ async def riconcilia_movimenti_banca(
                 # Filtro duro: il solo importo/data non prova un pagamento.
                 # L'auto-match richiede importo esatto al centesimo e almeno
                 # un'identita' leggibile nella causale (fornitore o numero).
-                fatture_scored = [
-                    (fattura, score)
-                    for fattura, score in fatture_scored
-                    if _evidenza_forte_fattura_banca(
+                evidenze_fatture = {}
+                filtrate = []
+                for fattura, score in fatture_scored:
+                    fid = str(fattura.get("id") or fattura.get("_id"))
+                    forte = _evidenza_forte_fattura_banca(
                         fattura, descrizione, importo
-                    )["auto_ammesso"]
-                ]
+                    )
+                    sdd = _evidenza_sdd_fattura_banca(
+                        fattura, descrizione, importo, data_ec
+                    )
+                    evidenze_fatture[fid] = {"forte": forte, "sdd": sdd}
+                    if forte["auto_ammesso"] or sdd["auto_ammesso"]:
+                        filtrate.append((fattura, score))
+                fatture_scored = filtrate
+
+                # Per canoni/utenze ricorrenti dello stesso importo, abbina la
+                # fattura antecedente piu' vicina. Se due candidate hanno la
+                # stessa distanza il caso resta ambiguo.
+                if len(fatture_scored) > 1 and "SDD" in descrizione.upper():
+                    per_distanza = []
+                    for fattura, score in fatture_scored:
+                        fid = str(fattura.get("id") or fattura.get("_id"))
+                        giorni = evidenze_fatture[fid]["sdd"].get("giorni_da_fattura")
+                        if giorni is not None:
+                            per_distanza.append((giorni, fattura, score))
+                    per_distanza.sort(key=lambda item: item[0])
+                    if per_distanza and (
+                        len(per_distanza) == 1
+                        or per_distanza[0][0] < per_distanza[1][0]
+                    ):
+                        fatture_scored = [(per_distanza[0][1], per_distanza[0][2])]
 
                 # Una sola candidata con importo+identita' e' un match sicuro.
                 if len(fatture_scored) == 1 and fatture_scored[0][1] >= 10:
@@ -1133,7 +1312,7 @@ async def riconcilia_movimenti_banca(
                                 "numero": num_assegno,
                                 "importo": importo,
                                 "data_emissione": data_ec,
-                                "fattura_id": str(fattura.get("_id", fattura.get("id"))),
+                                "fattura_id": str(fattura.get("id") or fattura.get("_id")),
                                 "fornitore": fattura.get("cedente_denominazione") or fattura.get("supplier_name"),
                                 "stato": "incassato",
                                 "updated_at": now
@@ -1149,12 +1328,16 @@ async def riconcilia_movimenti_banca(
                     )
 
                     match_details = {
-                        "fattura_id": str(fattura.get("_id")),
+                        "fattura_id": str(fattura.get("id") or fattura.get("_id")),
                         "numero_fattura": fattura.get("numero_fattura") or fattura.get("invoice_number"),
                         "fornitore": fattura.get("cedente_denominazione") or fattura.get("supplier_name"),
                         "metodo_pagamento": metodo_pagamento,
                         "match_score": fatture_scored[0][1],
-                        "match_type": "importo+fornitore+numero"
+                        "match_type": (
+                            "sdd+fornitore+importo+data"
+                            if "SDD" in descrizione.upper()
+                            else "importo+fornitore+numero"
+                        )
                     }
                     results["riconciliati_fatture"] += 1
                     imp_fatt_match = _importo_atteso_per_movimento(fattura, importo)
@@ -1289,6 +1472,24 @@ async def riconcilia_movimenti_banca(
             # === 3. CERCA POS (per ENTRATE - accrediti) ===
             if tipo == "entrata" and not match_found:
                 desc_upper = descrizione.upper()
+                # NUMIA accredita separatamente bancomat, carte e Amex. La
+                # riconciliazione certa e' la somma delle componenti con il
+                # trasferimento POS del giorno di vendita, non la conferma
+                # manuale di ogni singola riga.
+                from app.services.pos_evidence import _e_accredito_pos_numia_con_giorno
+                if _e_accredito_pos_numia_con_giorno(descrizione):
+                    from app.services.scritture_contabili import riconcilia_accredito_pos_ec
+                    gestito = await riconcilia_accredito_pos_ec(db, mov)
+                    if gestito:
+                        aggiornato = await db[COLLECTION_ESTRATTO_CONTO].find_one(
+                            {"id": mov_id}, {"_id": 0, "riconciliato": 1}
+                        )
+                        if (aggiornato or {}).get("riconciliato") is True:
+                            results["riconciliati_pos"] += 1
+                        # Se il gruppo e' ancora parziale resta aperto, ma e'
+                        # gia' classificato e non deve produrre un alert o una
+                        # richiesta di conferma generica.
+                        continue
                 if any(kw in desc_upper for kw in ['POS', 'NEXI', 'SUMUP', 'CARTE', 'BANCOMAT']):
                     # Logica POS: Lun-Gio +1g, Ven-Dom → Lunedì
                     try:

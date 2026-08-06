@@ -187,6 +187,22 @@ def test_estratto_prima_della_fattura_abbina_solo_uscita_con_identita(monkeypatc
     assert update["riconciliato_con_ec"] is True
 
 
+def test_sdd_importato_prima_della_fattura_si_aggancia_senza_numero_in_causale(monkeypatch):
+    db = _setup(monkeypatch, "banca")
+    db["estratto_conto_movimenti"].docs = [{
+        "id": "ec-sdd", "tipo": "uscita", "importo": -122.0,
+        "data": "2026-06-10",
+        "descrizione_originale": "ADDEBITO DIRETTO SDD DOLCIARIA ACQUAVIVA S.P.A.",
+    }]
+
+    update = _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
+
+    assert update["prima_nota_tipo"] == "banca"
+    assert update["movimento_bancario_id"] == "ec-sdd"
+    assert update["match_tipo"] == "sdd+fornitore+importo+data"
+    assert db["estratto_conto_movimenti"].docs[0]["riconciliato"] is True
+
+
 def test_stesso_importo_accredito_pos_non_paga_fattura(monkeypatch):
     db = _setup(monkeypatch, "banca")
     db["estratto_conto_movimenti"].docs = [{

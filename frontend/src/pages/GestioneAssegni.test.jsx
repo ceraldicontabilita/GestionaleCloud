@@ -137,6 +137,44 @@ describe('Stati e resa responsive della pagina Assegni', () => {
 
     const lista = await screen.findByTestId('assegni-table');
     await waitFor(() => expect(lista.querySelector('table')).not.toBeNull());
+    expect(screen.getByText('Fornitore non collegato')).toBeInTheDocument();
+    expect(screen.getByText('Data EC mancante')).toBeInTheDocument();
+    expect(screen.getByText('Fattura non collegata')).toBeInTheDocument();
+  });
+
+  it('espone fornitore numero fattura data fattura e data incasso', async () => {
+    api.get.mockImplementation(rispostaPagina([{
+      id: 'a2', numero: '0208770986', stato: 'incassato', importo: 562.24,
+      fornitore_fattura: 'Fornitore Verificato S.r.l.', numero_fattura: '120',
+      data_fattura: '2026-06-15', data_incasso: '2026-06-30',
+      evidenza_estratto_conto_id: 'ec-1', fattura_collegata: 'f-1',
+    }]));
+
+    renderPagina();
+
+    expect(await screen.findByText(/Fornitore Verificato/)).toBeInTheDocument();
+    expect(screen.getByText('Fatt. 120')).toBeInTheDocument();
+    expect(screen.getByText('15-06-2026')).toBeInTheDocument();
+    expect(screen.getByText('30-06-2026')).toBeInTheDocument();
+    expect(screen.getByText('Estratto conto')).toBeInTheDocument();
+  });
+
+  it('non propone il modale manuale salvo associazione realmente ambigua', async () => {
+    api.get.mockImplementation(rispostaPagina([
+      { id: 'auto', numero: '0208770649', stato: 'incassato', importo: 977.38 },
+      {
+        id: 'ambiguo', numero: '0208770650', stato: 'incassato', importo: 977.38,
+        associazione_ambigua: true,
+      },
+    ]));
+
+    renderPagina();
+
+    await screen.findByTestId('assegni-table');
+    expect(screen.queryByTestId('fatture-auto')).not.toBeInTheDocument();
+    expect(screen.getByTestId('fatture-ambiguo')).toHaveAttribute(
+      'title', 'Risolvi associazione ambigua'
+    );
   });
 
   it('usa card senza tabella su schermo mobile', async () => {

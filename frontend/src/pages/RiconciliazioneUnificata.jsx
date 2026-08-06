@@ -351,54 +351,26 @@ export default function RiconciliazioneUnificata() {
 
   const handleAutoRiconcilia = async () => {
     setProcessing('auto');
-    let matched = 0;
-    const errori = [];
-
     try {
-      // 1. Auto-conferma POS e commissioni
-      const autoMovs = movimentiBanca.filter(m => m.associazione_automatica);
-      for (const m of autoMovs) {
-        try {
-          await api.post('/api/operazioni-da-confermare/smart/riconcilia-manuale', {
-            movimento_id: m.movimento_id,
-            tipo: m.tipo,
-            associazioni: m.suggerimenti?.slice(0, 1) || [],
-            categoria: m.categoria,
-          });
-          matched++;
-        } catch (e) {
-          console.error('Errore auto-riconcilia:', e);
-          errori.push(e.response?.data?.detail || e.message);
-        }
-      }
-
-      // 2. Auto-conferma assegni con match esatto
-      const assegniExact = assegni.filter(
-        m =>
-          m.suggerimenti?.length > 0 &&
-          Math.abs(Math.abs(m.importo) - Math.abs(m.suggerimenti[0]?.importo || 0)) < 0.01
+      // Le regole contabili appartengono al backend: numeri fattura
+      // espliciti, quadratura aggregata POS e PayPal biunivoco. La UI non
+      // conferma piu' in ciclo suggerimenti parziali o basati sull'importo.
+      const res = await api.post(
+        `/api/operazioni-da-confermare/smart/riconcilia-auto?limit=${currentLimit}`
       );
-      for (const m of assegniExact) {
-        try {
-          await api.post('/api/operazioni-da-confermare/smart/riconcilia-manuale', {
-            movimento_id: m.movimento_id,
-            tipo: m.tipo,
-            associazioni: m.suggerimenti?.slice(0, 1) || [],
-            categoria: m.categoria,
-          });
-          matched++;
-        } catch (e) {
-          console.error('Errore auto-riconcilia assegno:', e);
-          errori.push(e.response?.data?.detail || e.message);
-        }
-      }
-
+      const matched = res.data?.riconciliati || 0;
+      const errori = res.data?.errori || [];
       setAutoMatchStats({ matched, pending: stats.totale - matched });
       toast.success(`Auto-riconciliati ${matched} movimenti`, {
         description:
-          errori.length > 0 ? `${errori.length} falliti: ${errori.slice(0, 3).join('; ')}` : undefined,
+          errori.length > 0
+            ? `${errori.length} motori in errore: ${errori
+                .slice(0, 3)
+                .map(e => e.error || String(e))
+                .join('; ')}`
+            : undefined,
       });
-      loadAllData();
+      await loadAllData();
     } catch (e) {
       toast.error('Auto-riconciliazione non completata', {
         description: e.message,

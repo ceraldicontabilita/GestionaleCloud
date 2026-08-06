@@ -266,8 +266,23 @@ describe('Fatture provvisorie in attesa banca', () => {
     />);
 
     expect(screen.queryByRole('button', { name: /Forza banca/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Cerca movimento' })).toHaveAttribute(
-      'href', '/riconciliazione/banca',
+    expect(screen.queryByRole('link', { name: 'Cerca movimento' })).not.toBeInTheDocument();
+    expect(screen.getByText('Controllo automatico attivo')).toBeInTheDocument();
+  });
+
+  it('riprocessa tutto lo storico aperto senza selezionare movimenti a mano', async () => {
+    api.post.mockResolvedValue({ data: { analizzati: 3542, riconciliati: 17 } });
+    const onRicarica = vi.fn().mockResolvedValue(undefined);
+    render(<Provvisori provvisori={[]} attesaBanca={[]} onRicarica={onRicarica} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Riprocessa estratto conto' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/operazioni-da-confermare/smart/riconcilia-auto',
+    ));
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      '3542 movimenti esaminati, 17 riconciliati',
     );
+    expect(onRicarica).toHaveBeenCalledTimes(1);
   });
 });

@@ -578,23 +578,42 @@ async def find_ec_match_for_invoice(
     candidati = await db["estratto_conto_movimenti"].find(
         conds, {"_id": 0}, session=session
     ).limit(50).to_list(50)
-    tokens = _token_identita_fornitore(supplier_name)
     from app.services.payment_invoice_matching import (
         amounts_equal_to_cent,
-        invoice_reference_in_text,
     )
+    from app.services.riconciliazione_bancaria import (
+        _evidenza_forte_fattura_banca,
+        _evidenza_sdd_fattura_banca,
+    )
+    fattura_match = {
+        "invoice_number": invoice_number,
+        "invoice_date": invoice_date,
+        "supplier_name": supplier_name,
+        "total_amount": importo,
+        "importo_residuo": importo,
+    }
     forti = []
     for mov in candidati:
         testo = " ".join(str(mov.get(k) or "") for k in (
             "descrizione", "descrizione_originale", "causale", "beneficiario"
-        )).upper()
-        match_numero = invoice_reference_in_text(invoice_number, testo)
-        match_nome = any(token in testo for token in tokens)
-        if (amounts_equal_to_cent(mov.get("importo"), importo)
-                and match_numero and match_nome):
+        ))
+        evidenza = _evidenza_forte_fattura_banca(
+            fattura_match, testo, abs(float(mov.get("importo") or 0)),
+        )
+        evidenza_sdd = _evidenza_sdd_fattura_banca(
+            fattura_match, testo, abs(float(mov.get("importo") or 0)),
+            mov.get("data") or mov.get("data_contabile") or "",
+        )
+        if amounts_equal_to_cent(mov.get("importo"), importo) and (
+            evidenza.get("auto_ammesso") or evidenza_sdd.get("auto_ammesso")
+        ):
             mov = dict(mov)
             mov["match_score"] = 1.0
-            mov["match_tipo"] = "numero_fattura+importo_centesimo+fornitore"
+            mov["match_tipo"] = (
+                "sdd+fornitore+importo+data"
+                if evidenza_sdd.get("auto_ammesso")
+                else "numero_fattura+importo_centesimo+fornitore"
+            )
             forti.append(mov)
     return forti[0] if len(forti) == 1 else None
 
@@ -729,6 +748,76 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
             {"id": fattura_id}, {"$set": update}, session=session
         )
     return update
+
+
+async def riprocessa_estratto_dopo_import_fattura(
+    db, invoice: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Riesamina l'EC gia' importato quando arriva dopo la relativa fattura.
+
+    L'ordine di arrivo non deve cambiare l'esito: vengono selezionati i
+    movimenti aperti con importo esatto oppure con il numero fattura nella
+    causale (necessario per bonifici cumulativi) e passati al motore canonico.
+    Il timestamp resta sulla fattura per rendere verificabile l'ultima
+    scansione. Per i fornitori Cassa non viene interrogato l'estratto conto.
+    """
+    fattura_id = invoice.get("id") or invoice.get("invoice_key")
+    metodo = normalizza_metodo_pagamento(invoice.get("metodo_pagamento"))
+    now = datetime.now(timezone.utc).isoformat()
+
+    if metodo != "banca":
+        return {"eseguita": False, "motivo": "metodo_non_banca"}
+
+    importo = abs(float(invoice.get("total_amount") or invoice.get("importo_totale") or 0))
+    numero = str(invoice.get("invoice_number") or invoice.get("numero_fattura") or "").strip()
+    alternative = []
+    if importo > 0:
+        alternative.extend([
+            {"importo": {"$gte": importo - 0.004, "$lte": importo + 0.004}},
+            {"importo": {"$gte": -importo - 0.004, "$lte": -importo + 0.004}},
+        ])
+    if numero:
+        numero_regex = re.escape(numero)
+        alternative.extend([
+            {"descrizione": {"$regex": numero_regex, "$options": "i"}},
+            {"descrizione_originale": {"$regex": numero_regex, "$options": "i"}},
+        ])
+
+    movimento_ids = []
+    if alternative:
+        candidati = await db["estratto_conto_movimenti"].find(
+            {
+                "tipo": "uscita",
+                "riconciliato": {"$ne": True},
+                "$or": alternative,
+            },
+            {"_id": 0, "id": 1},
+        ).limit(500).to_list(500)
+        movimento_ids = [m.get("id") for m in candidati if m.get("id")]
+
+    risultato = {
+        "success": True,
+        "totale_riconciliati": 0,
+        "movimenti_analizzati": 0,
+        "ambito": "nuovi_movimenti",
+    }
+    if movimento_ids:
+        from app.services.riconciliazione_bancaria import riconcilia_movimenti_banca
+        risultato = await riconcilia_movimenti_banca(movimento_ids=movimento_ids)
+
+    audit = {
+        "ultima_scansione_estratto_conto_at": now,
+        "ultima_scansione_estratto_conto_candidati": len(movimento_ids),
+        "ultima_scansione_estratto_conto_riconciliati": int(
+            risultato.get("totale_riconciliati") or 0
+        ),
+    }
+    if fattura_id:
+        await db[Collections.INVOICES].update_one(
+            {"id": fattura_id}, {"$set": audit}
+        )
+    invoice.update(audit)
+    return {"eseguita": True, "movimento_ids": movimento_ids, **risultato}
 
 
 def _normalizza_numero_fattura(numero: str) -> str:
@@ -1032,7 +1121,12 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
         if nc_update:
             invoice.update(nc_update)
 
-        return {"invoice": invoice, "supplier_id": supplier_id, "supplier_result": supplier_result}
+        return {
+            "invoice": invoice,
+            "supplier_id": supplier_id,
+            "supplier_result": supplier_result,
+            "intento_assegno": intento_assegno,
+        }
 
     try:
         session = await db.client.start_session()
@@ -1052,6 +1146,28 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
     invoice = outcome["invoice"]
     supplier_id = outcome["supplier_id"]
     supplier_result = outcome["supplier_result"]
+    intento_assegno = outcome.get("intento_assegno") or {}
+    if intento_assegno.get("completamento_banca_pendente"):
+        from app.services.assegni_estratto_conto import (
+            collega_assegno_riconciliato_a_fattura,
+        )
+        assegno_banca = await db["assegni"].find_one(
+            {"id": intento_assegno.get("assegno_id")}, {"_id": 0},
+        )
+        fattura_salvata = await db[Collections.INVOICES].find_one(
+            {"id": invoice.get("id")}, {"_id": 0},
+        )
+        if assegno_banca and fattura_salvata:
+            await collega_assegno_riconciliato_a_fattura(
+                db,
+                assegno_banca,
+                fattura_salvata,
+                match_auto=True,
+                match_livello="INTENTO_ASSEGNO_XML_EC",
+            )
+            invoice = await db[Collections.INVOICES].find_one(
+                {"id": invoice.get("id")}, {"_id": 0},
+            ) or invoice
     metodo_pagamento = invoice.get("metodo_pagamento")
     data_scadenza = invoice.get("data_scadenza")
 
@@ -1112,6 +1228,14 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
         await _riscontra_anticipo_pendente(db, invoice)
     except Exception:
         logger.exception(f"Riscontro anticipo pendente fallito per {invoice.get('invoice_number')}")
+
+    try:
+        await riprocessa_estratto_dopo_import_fattura(db, invoice)
+    except Exception:
+        logger.exception(
+            "Riprocessamento estratto dopo import fallito per %s",
+            invoice.get("invoice_number"),
+        )
 
     return invoice
 
@@ -1766,6 +1890,14 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         }, db, source_module=f"fatture_upload_{source}")
     except Exception:
         logger.exception(f"Errore propagazione evento fattura.created ({source})")
+
+    try:
+        await riprocessa_estratto_dopo_import_fattura(db, invoice)
+    except Exception:
+        logger.exception(
+            "Riprocessamento estratto dopo import fallito per %s",
+            invoice.get("invoice_number"),
+        )
 
     return {"status": "imported", "filename": filename,
             "invoice_number": parsed.get("invoice_number"),

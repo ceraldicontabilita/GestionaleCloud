@@ -132,6 +132,39 @@ async def _scenario_fatture_disponibili(monkeypatch):
     assert "xml_content" not in righe[0]
 
 
+async def _scenario_incassato_arricchito(monkeypatch):
+    db = AsyncMongoMockClient()["test_assegno_incassato_arricchito"]
+    await db["assegni"].insert_one({
+        "id": "a-incassato", "numero": "0208770985", "stato": "incassato",
+        "importo": 9760.0, "anno": 2026, "fattura_collegata": "f-1",
+        "movimento_estratto_conto_id": "ec-1",
+    })
+    await db["invoices"].insert_one({
+        "id": "f-1", "invoice_number": "120", "invoice_date": "2026-06-15",
+        "supplier_name": "Fornitore Verificato S.r.l.",
+    })
+    await db["estratto_conto_movimenti"].insert_one({
+        "id": "ec-1", "data": "2026-06-30",
+    })
+    monkeypatch.setattr(
+        assegni_router.Database, "get_db", staticmethod(lambda: db),
+    )
+
+    righe = await assegni_router.list_assegni(
+        skip=0, limit=1000, stato=None, fornitore_piva=None,
+        search=None, anno=2026,
+    )
+
+    assert len(righe) == 1
+    assegno = righe[0]
+    assert assegno["fornitore_fattura"] == "Fornitore Verificato S.r.l."
+    assert assegno["numero_fattura"] == "120"
+    assert assegno["data_fattura"] == "2026-06-15"
+    assert assegno["data_incasso"] == "2026-06-30"
+    assert assegno["evidenza_estratto_conto_id"] == "ec-1"
+    assert assegno["dati_riconciliazione_mancanti"] == []
+
+
 def test_carnet_salvato_in_blocco_e_visibile_nell_anno(monkeypatch):
     asyncio.run(_scenario_carnet_salvato(monkeypatch))
 
@@ -150,3 +183,7 @@ def test_carnet_rifiuta_formati_ambigui_senza_salvare(monkeypatch):
 
 def test_fatture_disponibili_sono_leggere_aperte_e_deduplicate(monkeypatch):
     asyncio.run(_scenario_fatture_disponibili(monkeypatch))
+
+
+def test_assegno_incassato_espone_fornitore_fattura_e_data_ec(monkeypatch):
+    asyncio.run(_scenario_incassato_arricchito(monkeypatch))
