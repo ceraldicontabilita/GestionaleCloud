@@ -77,6 +77,19 @@ class _FakeCursor:
     async def to_list(self, n=None):
         return list(self._docs[:n] if n else self._docs)
 
+    def sort(self, *args, **kwargs):
+        return self
+
+    def __aiter__(self):
+        self._iter = iter(self._docs)
+        return self
+
+    async def __anext__(self):
+        try:
+            return next(self._iter)
+        except StopIteration as exc:
+            raise StopAsyncIteration from exc
+
 
 class _FakeDb:
     def __init__(self):
@@ -254,6 +267,72 @@ def test_conferma_banca_senza_estratto_conto_resta_provvisoria(monkeypatch):
     assert exc.value.status_code == 409
     assert db["prima_nota_banca"].docs == []
     assert db["invoices"].docs[0].get("stato_pagamento") != "pagata"
+
+
+def test_attendi_banca_sposta_la_fattura_senza_creare_pagamento(monkeypatch):
+    db = _FakeDb()
+    db["invoices"].docs = [_fattura(metodo_pagamento="cassa")]
+    _patch_db(monkeypatch, db)
+
+    res = _run(sync_mod.imposta_fattura_in_attesa_banca({
+        "fattura_id": "fatt-1", "performed_by": "test",
+    }))
+
+    assert res["success"] is True
+    assert res["stato"] == "in_attesa_banca"
+    assert res["pagato"] is False
+    assert db["prima_nota_banca"].docs == []
+    fattura = db["invoices"].docs[0]
+    assert fattura["metodo_pagamento_previsto"] == "banca"
+    assert fattura["metodo_pagamento_override_source"] == "operatore_prima_nota"
+    assert fattura["stato_finanziario"] == "aperta_in_attesa_banca"
+    assert fattura["pagato"] is False
+
+
+def test_attendi_banca_non_riapre_una_fattura_gia_registrata(monkeypatch):
+    db = _FakeDb()
+    db["invoices"].docs = [_fattura()]
+    db["prima_nota_cassa"].docs = [{
+        "id": "pn-1", "fattura_id": "fatt-1", "status": "active",
+    }]
+    _patch_db(monkeypatch, db)
+
+    with pytest.raises(HTTPException) as exc:
+        _run(sync_mod.imposta_fattura_in_attesa_banca({"fattura_id": "fatt-1"}))
+
+    assert exc.value.status_code == 409
+    assert db["invoices"].docs[0].get("metodo_pagamento_previsto") != "banca"
+
+
+def test_attendi_banca_compare_nella_lista_dedicata(monkeypatch):
+    db = _FakeDb()
+    db["invoices"].docs = [_fattura(
+        supplier_vat="01234567890",
+        metodo_pagamento_previsto="banca",
+        metodo_pagamento_override_source="operatore_prima_nota",
+        stato_pagamento="in_attesa_banca",
+        pagato=False,
+        paid=False,
+    )]
+    _patch_db(monkeypatch, db)
+
+    async def _senza_pagamento(_db, fatture):
+        return fatture
+
+    monkeypatch.setattr(
+        sync_mod,
+        "fatture_senza_pagamento_contabile_confermato",
+        _senza_pagamento,
+    )
+
+    res = _run(sync_mod.get_fatture_provvisorie(anno=2026))
+
+    assert res["provvisori"] == []
+    assert len(res["in_attesa_banca"]) == 1
+    attesa = res["in_attesa_banca"][0]
+    assert attesa["fattura_id"] == "fatt-1"
+    assert attesa["fonte_metodo"] == "operatore_prima_nota"
+    assert attesa["stato_match"] == "in_attesa_estratto_conto"
 
 
 def test_conferma_banca_con_riga_reale_marca_riconciliata(monkeypatch):

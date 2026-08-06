@@ -6,6 +6,7 @@ import api from '../api';
 import {
   CartaNexi,
   MovimentoModal,
+  Provvisori,
   filtraFattureProvvisorie,
   filtraMovimentiPrimaNota,
   nomeFornitoreMovimento,
@@ -132,5 +133,57 @@ describe('Filtri distinti della Prima Nota', () => {
     expect(filtraFattureProvvisorie(provvisori, {
       numeroFattura: 'V1', data: '2026-03-31', fornitore: 'g.i.a.l',
     })).toEqual([provvisori[0]]);
+  });
+});
+
+describe('Fatture provvisorie in attesa banca', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('sposta in attesa banca senza chiamare la conferma di pagamento', async () => {
+    api.post.mockResolvedValue({
+      data: {
+        message: 'Fattura spostata tra i pagamenti attesi in banca.',
+      },
+    });
+    const onRicarica = vi.fn().mockResolvedValue(undefined);
+    render(<Provvisori
+      provvisori={[{
+        fattura_id: 'fatt-1', fattura_numero: '120', fattura_data: '2026-07-28',
+        fornitore: 'Fornitore Test', importo: 306.15, suggerimento: 'sospesa',
+      }]}
+      attesaBanca={[]}
+      onRicarica={onRicarica}
+    />);
+
+    fireEvent.click(screen.getByRole('button', { name: '🏦 Attendi banca' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/prima-nota/provvisori/attendi-banca',
+      { fattura_id: 'fatt-1' },
+    ));
+    expect(api.post).not.toHaveBeenCalledWith(
+      '/api/prima-nota/provvisori/conferma',
+      expect.objectContaining({ metodo: 'banca' }),
+    );
+    expect(await screen.findByRole('status')).toHaveTextContent('pagamenti attesi in banca');
+    expect(onRicarica).toHaveBeenCalledTimes(1);
+  });
+
+  it('non offre piu una registrazione bancaria forzata', () => {
+    render(<Provvisori
+      provvisori={[]}
+      attesaBanca={[{
+        fattura_id: 'fatt-2', fattura_numero: '121', fattura_data: '2026-07-29',
+        fornitore: 'Fornitore Banca', importo: 100, fonte_metodo: 'operatore_prima_nota',
+      }]}
+      onRicarica={vi.fn()}
+    />);
+
+    expect(screen.queryByRole('button', { name: /Forza banca/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Cerca movimento' })).toHaveAttribute(
+      'href', '/riconciliazione/banca',
+    );
   });
 });

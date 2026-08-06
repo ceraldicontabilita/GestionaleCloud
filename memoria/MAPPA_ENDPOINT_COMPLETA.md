@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1051 endpoint** in **110 gruppi**.
+> Totale **1052 endpoint** in **110 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 661 · ext esterni = 90 · — da verificare = 300
+**Riepilogo uso:** ✓ frontend = 662 · ext esterni = 90 · — da verificare = 300
 
 ## AI Parser  (11)
 
@@ -1244,7 +1244,7 @@
 | GET | `/api/previsioni-acquisti/prodotti` | — | previsioni_acquisti |
 | GET | `/api/previsioni-acquisti/statistiche` | ✓ | previsioni_acquisti |
 
-## Prima Nota  (73)
+## Prima Nota  (74)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1296,6 +1296,7 @@
 | POST | `/api/prima-nota/movimento` | — | prima_nota_module.sync |
 | GET | `/api/prima-nota/provvisori` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/annulla-auto-conferma` | ✓ | prima_nota_module.sync |
+| POST | `/api/prima-nota/provvisori/attendi-banca` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/auto-conferma-per-metodo` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/conferma` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/conferma-divisione` | ✓ | prima_nota_module.sync |

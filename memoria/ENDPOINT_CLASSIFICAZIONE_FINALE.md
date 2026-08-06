@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1051 · tenere: 696 · verificare: 332 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1052 · tenere: 697 · verificare: 332 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -889,8 +889,9 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/prima-nota/migrazione-pulisci-bancari-cassa` | prima_nota_module.manutenzione | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `GET /api/prima-nota/movimenti-ec-non-in-prima-nota` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/movimento` | prima_nota_module.sync | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/prima-nota/provvisori` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/prima-nota/provvisori` | prima_nota_module.sync | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota/provvisori/annulla-auto-conferma` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/prima-nota/provvisori/attendi-banca` | prima_nota_module.sync | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota/provvisori/auto-conferma-per-metodo` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/provvisori/conferma` | prima_nota_module.sync | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota/provvisori/conferma-divisione` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
