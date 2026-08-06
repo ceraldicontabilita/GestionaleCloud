@@ -1773,100 +1773,257 @@ async def reimporta_documenti_da_filesystem(
 from fastapi import UploadFile, File
 from app.utils.error_handler import handle_errors
 
-def detect_document_type(filename: str, file_content: bytes) -> str:
-    """
-    Rileva automaticamente il tipo di documento dal nome file e contenuto.
-    
-    Returns: 'estratto_conto', 'f24', 'quietanza_f24', 'cedolino', 'bonifici', 'fattura', 'auto'
-    """
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_INBOX_BYTES = 10 * 1024 * 1024
+MAX_ZIP_FILES = 200
+MAX_ZIP_UNCOMPRESSED_BYTES = 250 * 1024 * 1024
+MAX_ZIP_COMPRESSION_RATIO = 200
+SUPPORTED_UPLOAD_SUFFIXES = {
+    ".pdf", ".xml", ".p7m", ".xlsx", ".xls", ".csv", ".zip",
+}
+
+
+def _pdf_text_for_detection(file_content: bytes, max_pages: int = 3) -> str:
+    """Estrae poco testo senza affidarsi ai byte compressi del PDF."""
+    try:
+        import io
+        from pypdf import PdfReader
+
+        reader = PdfReader(io.BytesIO(file_content))
+        return "\n".join(
+            (page.extract_text() or "")
+            for page in reader.pages[:max_pages]
+        )
+    except Exception:
+        return ""
+
+
+def _spreadsheet_text_for_detection(filename: str, file_content: bytes) -> str:
+    """Legge solo un piccolo campione di intestazioni CSV/XLSX."""
     lower = filename.lower()
-    
-    # Controlla estensione
-    if lower.endswith('.xml') or lower.endswith('.p7m') or lower.endswith('.xml.p7m'):
-        # Estrai XML da P7M se necessario
-        try:
-            content_str = file_content.decode('utf-8', errors='ignore')
-            
-            # Se è P7M, cerca il contenuto XML all'interno del wrapper
-            if lower.endswith('.p7m') and 'FatturaElettronica' not in content_str:
-                # P7M: il contenuto XML può essere embedded — cerca i marker XML
-                xml_start = content_str.find('<?xml')
-                if xml_start == -1:
-                    xml_start = content_str.find('<FatturaElettronica')
-                if xml_start == -1:
-                    xml_start = content_str.find('<DatiRT')
-                if xml_start >= 0:
-                    content_str = content_str[xml_start:]
-            
-            # Corrispettivi telematici COR10 (Registratore Telematico)
-            # Contengono DatiRT, DataOraRilevazione o Trasmissione con CodiceFiscaleEsercente
-            if ('DatiRT' in content_str or 
-                'DataOraRilevazione' in content_str or
-                'CodiceFiscaleEsercente' in content_str or
-                'PIVAEsercente' in content_str or
-                'RegistratoreTelematicoComp' in content_str):
-                return 'corrispettivo'
-            
-            # Fattura elettronica standard
-            if 'FatturaElettronica' in content_str or 'fatturaElettronicaHeader' in content_str.lower():
-                return 'fattura'
-        except Exception as e:
-            logger.warning(f"Errore decodifica XML: {e}")
-        return 'fattura'  # XML generico = fattura
-    
-    # Nomi che indicano tipo
-    if any(kw in lower for kw in ['estratto', 'conto', 'movimenti', 'bpm', 'banco']):
-        return 'estratto_conto'
-    
-    if any(kw in lower for kw in ['quietanza', 'ricevuta', 'pagamento_f24', 'receipt']):
-        return 'quietanza_f24'
-    
-    if 'f24' in lower or 'delega' in lower:
-        return 'f24'
-    
-    if any(kw in lower for kw in ['cedolin', 'busta', 'paga', 'libro_unico', 'lul', 'payslip']):
-        return 'cedolino'
-    
-    if any(kw in lower for kw in ['bonifico', 'bonifici', 'sepa', 'transfer']):
-        return 'bonifici'
-    
-    if any(kw in lower for kw in ['fattura', 'invoice', 'ft_']):
-        return 'fattura'
-    
-    # Analizza contenuto PDF
-    if lower.endswith('.pdf'):
-        try:
-            content_str = file_content[:5000].decode('latin-1', errors='ignore').upper()
-            
-            if 'QUIETANZA' in content_str or 'RICEVUTA DI VERSAMENTO' in content_str:
-                return 'quietanza_f24'
-            
-            if 'DELEGA F24' in content_str or 'MODELLO DI PAGAMENTO' in content_str or 'AGENZIA DELLE ENTRATE' in content_str:
-                return 'f24'
-            
-            if 'CEDOLINO' in content_str or 'BUSTA PAGA' in content_str or 'LIBRO UNICO' in content_str:
-                return 'cedolino'
-            
-            if 'ESTRATTO CONTO' in content_str or 'SALDO INIZIALE' in content_str:
-                return 'estratto_conto'
-                
-        except Exception as e:
-            logger.warning(f"Errore analisi contenuto PDF: {e}")
-    
-    # Analizza contenuto Excel
-    if lower.endswith('.xlsx') or lower.endswith('.xls') or lower.endswith('.csv'):
-        # Verifica se è una distinta stipendi BPM
-        if 'distint' in lower or 'stipend' in lower or 'elenco' in lower:
+    if lower.endswith(".csv"):
+        for encoding in ("utf-8-sig", "utf-8", "latin-1"):
             try:
-                content_str = file_content[:2000].decode('utf-8', errors='ignore')
-                # Verifica intestazioni tipiche distinte BPM
-                if 'Beneficiario' in content_str and ('Importo' in content_str or 'IBAN' in content_str):
-                    return 'distinte_bpm'
-            except Exception:
-                pass
-        return 'estratto_conto'  # CSV/Excel di default è estratto conto
-    
-    return 'auto'  # Non riconosciuto
+                return file_content[:64 * 1024].decode(encoding)
+            except UnicodeDecodeError:
+                continue
+        return ""
+    if not lower.endswith(".xlsx"):
+        return ""
+    try:
+        import io
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(io.BytesIO(file_content), read_only=True, data_only=True)
+        values: List[str] = []
+        for sheet in workbook.worksheets[:3]:
+            for row in sheet.iter_rows(min_row=1, max_row=20, values_only=True):
+                values.extend(str(value) for value in row if value not in (None, ""))
+                if len(values) >= 300:
+                    break
+            if len(values) >= 300:
+                break
+        workbook.close()
+        return " ".join(values)
+    except Exception:
+        return ""
+
+def detect_document_type(filename: str, file_content: bytes) -> str:
+    """Classifica solo con prove documentali sufficienti.
+
+    Un nome generico o un foglio Excel qualsiasi non devono diventare un
+    estratto conto. Allo stesso modo la sola intestazione dell'Agenzia delle
+    Entrate non basta per classificare un PDF come F24.
+    """
+    lower = Path(filename or "documento").name.lower()
+    if lower.endswith(".zip"):
+        return "archivio_zip"
+
+    if lower.endswith((".xml", ".p7m", ".xml.p7m")):
+        detection_content = file_content
+        if lower.endswith(".p7m"):
+            from app.services.xml_invoice_processor import extract_xml_from_p7m
+
+            extracted = extract_xml_from_p7m(file_content)
+            if extracted is None:
+                return "auto"
+            detection_content = extracted
+        try:
+            content_str = detection_content.decode("utf-8", errors="ignore")
+        except Exception:
+            content_str = ""
+        if any(marker in content_str for marker in (
+            "DatiRT", "DataOraRilevazione", "CodiceFiscaleEsercente",
+            "PIVAEsercente", "RegistratoreTelematicoComp",
+        )):
+            return "corrispettivo"
+        if "FatturaElettronica" in content_str or "fatturaelettronicaheader" in content_str.lower():
+            return "fattura"
+        # Un XML non FatturaPA va conservato e classificato, non inviato al
+        # parser fatture con un falso positivo.
+        return "auto"
+
+    # Segnali espliciti nel nome, dal piu specifico al piu generico.
+    if any(keyword in lower for keyword in (
+        "quietanza", "ricevuta_f24", "ricevuta-f24", "pagamento_f24",
+    )):
+        return "quietanza_f24"
+    if re.search(r"(^|[^a-z0-9])f24([^a-z0-9]|$)", lower) or "delega_f24" in lower:
+        return "f24"
+    if any(keyword in lower for keyword in (
+        "cedolin", "busta_paga", "busta paga", "libro_unico", "libro unico", "lul",
+    )):
+        return "cedolino"
+    if any(keyword in lower for keyword in ("bonifico", "bonifici", "sepa", "transfer")):
+        return "bonifici"
+    if any(keyword in lower for keyword in ("fattura", "invoice", "ft_")):
+        return "fattura"
+
+    if lower.endswith(".pdf"):
+        content_str = _pdf_text_for_detection(file_content).upper()
+        if any(marker in content_str for marker in (
+            "QUIETANZA", "RICEVUTA DI VERSAMENTO", "ESITO DEL VERSAMENTO F24",
+        )):
+            return "quietanza_f24"
+        if (
+            re.search(r"\bF\s*24\b", content_str)
+            or "DELEGA IRREVOCABILE A" in content_str
+            or "MODELLO DI PAGAMENTO UNIFICATO" in content_str
+            or ("SEZIONE ERARIO" in content_str and "CODICE TRIBUTO" in content_str)
+        ):
+            return "f24"
+        if any(marker in content_str for marker in ("CEDOLINO", "BUSTA PAGA", "LIBRO UNICO")):
+            return "cedolino"
+        if (
+            "ESTRATTO CONTO" in content_str
+            or ("SALDO INIZIALE" in content_str and "SALDO FINALE" in content_str)
+        ):
+            return "estratto_conto"
+        if "BONIFICO" in content_str and ("IBAN" in content_str or "CRO" in content_str):
+            return "bonifici"
+        return "auto"
+
+    if lower.endswith((".xlsx", ".xls", ".csv")):
+        content_str = _spreadsheet_text_for_detection(lower, file_content).upper()
+        if (
+            any(keyword in lower for keyword in ("distint", "stipend", "elenco"))
+            and "BENEFICIARIO" in content_str
+            and ("IMPORTO" in content_str or "IBAN" in content_str)
+        ):
+            return "distinte_bpm"
+        bank_name = any(keyword in lower for keyword in (
+            "estratto", "movimenti", "bpm", "banco", "bank_statement",
+        ))
+        bank_headers = (
+            ("DATA" in content_str or "VALUTA" in content_str)
+            and ("CAUSALE" in content_str or "DESCRIZIONE" in content_str)
+            and ("IMPORTO" in content_str or "DARE" in content_str or "AVERE" in content_str)
+        )
+        return "estratto_conto" if bank_name or bank_headers else "auto"
+
+    return "auto"
+
+
+async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
+    """Espande un archivio solo dopo controlli anti zip-bomb.
+
+    Non scrive sul filesystem e non accetta ZIP annidati. Ogni documento
+    passa poi dallo stesso endpoint canonico, quindi mantiene deduplica e
+    propagazioni del proprio workflow.
+    """
+    import io
+    import zipfile
+
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(content))
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise HTTPException(status_code=400, detail=f"Archivio ZIP non valido: {exc}") from exc
+
+    with archive:
+        entries = [
+            info for info in archive.infolist()
+            if not info.is_dir() and not info.filename.startswith("__MACOSX/")
+        ]
+        if not entries:
+            raise HTTPException(status_code=400, detail="Archivio ZIP vuoto")
+        if len(entries) > MAX_ZIP_FILES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Archivio con troppi file: {len(entries)} (massimo {MAX_ZIP_FILES})",
+            )
+
+        total_uncompressed = sum(max(0, info.file_size) for info in entries)
+        if total_uncompressed > MAX_ZIP_UNCOMPRESSED_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="Contenuto ZIP non compresso oltre il limite di 250 MB",
+            )
+        for info in entries:
+            if info.file_size > MAX_UPLOAD_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File troppo grande nell'archivio: {Path(info.filename).name}",
+                )
+            if info.file_size and info.compress_size == 0:
+                raise HTTPException(status_code=400, detail="Rapporto di compressione ZIP non valido")
+            if info.compress_size and info.file_size / info.compress_size > MAX_ZIP_COMPRESSION_RATIO:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Compressione ZIP sospetta: {Path(info.filename).name}",
+                )
+
+        dettagli: List[Dict[str, Any]] = []
+        importati = duplicati = errori = scartati = 0
+        for info in entries:
+            clean_name = Path(info.filename).name
+            suffix = Path(clean_name).suffix.lower()
+            if not clean_name or suffix not in SUPPORTED_UPLOAD_SUFFIXES or suffix == ".zip":
+                scartati += 1
+                dettagli.append({
+                    "filename": clean_name or info.filename,
+                    "success": False,
+                    "message": "Formato non supportato o archivio annidato ignorato",
+                })
+                continue
+            payload = archive.read(info)
+            nested_upload = UploadFile(filename=clean_name, file=io.BytesIO(payload))
+            item = await upload_documento_automatico(file=nested_upload)
+            item = item if isinstance(item, dict) else {"success": False, "message": str(item)}
+            duplicate = bool(item.get("duplicate") or item.get("action") == "duplicate")
+            if duplicate:
+                duplicati += 1
+            elif item.get("success") is False:
+                errori += 1
+            else:
+                importati += max(1, int(item.get("imported") or 0))
+            dettagli.append({
+                "filename": clean_name,
+                "tipo_rilevato": item.get("tipo_rilevato"),
+                "success": item.get("success", True),
+                "duplicate": duplicate,
+                "message": item.get("message"),
+            })
+
+    processati = importati + duplicati + errori
+    success = processati > 0 and errori == 0
+    return {
+        "success": success,
+        "partial": bool((errori or scartati) and (importati or duplicati)),
+        "tipo_rilevato": "archivio_zip",
+        "workflow": "ARCHIVIO_ZIP_SICURO",
+        "filename": filename,
+        "imported": importati,
+        "duplicates": duplicati,
+        "errors": errori,
+        "skipped": scartati,
+        "action": "duplicate" if duplicati and not importati and not errori else "processed",
+        "duplicate": bool(duplicati and not importati and not errori),
+        "message": (
+            f"ZIP elaborato: {importati} importati, {duplicati} duplicati, "
+            f"{errori} errori, {scartati} ignorati"
+        ),
+        "details": dettagli,
+    }
 
 
 @router.post("/upload-auto")
@@ -1888,21 +2045,76 @@ async def upload_documento_automatico(
     Se non riconosciuto, salva in documents_inbox per processamento manuale.
     """
     
-    filename = file.filename
+    filename = Path(file.filename or "documento").name
     content = await file.read()
+
+    if not content:
+        raise HTTPException(status_code=400, detail=f"File vuoto: {filename}")
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File oltre il limite di 50 MB: {filename}",
+        )
+    if filename.lower().endswith(".pdf"):
+        from app.utils.upload_validation import verifica_pdf_reale
+
+        verifica_pdf_reale(content, filename)
     
     # Rileva tipo
     tipo_rilevato = detect_document_type(filename, content)
     
     logger.info(f"Upload automatico: {filename} -> tipo rilevato: {tipo_rilevato}")
+
+    if tipo_rilevato == "archivio_zip":
+        return await _process_zip_upload(filename, content)
     
     # Se non riconosciuto, salva in inbox
     if tipo_rilevato == 'auto':
+        # documents_inbox conserva il payload in Base64 dentro MongoDB: oltre
+        # 10 MB il record si avvicina al limite BSON di 16 MB. I documenti
+        # grandi devono passare da un workflow riconosciuto o da Drive.
+        if len(content) > MAX_INBOX_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="Documento non riconosciuto oltre il limite inbox di 10 MB",
+            )
         db = Database.get_db()
         
         # Salva file in cartella temporanea
-        import hashlib
         file_hash = hashlib.md5(content).hexdigest()
+
+        # La stessa prova puo arrivare da upload, Gmail, PEC o Drive. Non si
+        # crea una seconda copia soltanto perche cambia il canale di ingresso.
+        existing = await db["documents_inbox"].find_one(
+            {"file_hash": file_hash}, {"_id": 0, "id": 1, "filename": 1},
+        )
+        if existing:
+            return {
+                "success": False,
+                "duplicate": True,
+                "action": "duplicate",
+                "imported": 0,
+                "tipo_rilevato": "non_riconosciuto",
+                "message": f"Documento duplicato ignorato: {existing.get('filename') or filename}",
+                "doc_id": existing.get("id"),
+                "filename": filename,
+            }
+        try:
+            from app.services.deduplica import esiste_documento_cross_canale
+
+            cross_channel = await esiste_documento_cross_canale(db, file_hash)
+        except Exception:
+            cross_channel = None
+        if cross_channel:
+            return {
+                "success": False,
+                "duplicate": True,
+                "action": "duplicate",
+                "imported": 0,
+                "tipo_rilevato": "non_riconosciuto",
+                "message": "Documento duplicato gia acquisito da un altro canale",
+                "filename": filename,
+            }
         
         doc_id = f"upload_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{file_hash[:8]}"
         
@@ -2011,6 +2223,17 @@ async def upload_documento_automatico(
             from fastapi import HTTPException as _HTTPException
             from app.routers.invoices.fatture_upload import parse_fattura_xml, process_fattura_to_db
 
+            invoice_content = content
+            if filename.lower().endswith('.p7m'):
+                from app.services.xml_invoice_processor import extract_xml_from_p7m
+
+                extracted = extract_xml_from_p7m(content)
+                if extracted is None:
+                    result["success"] = False
+                    result["message"] = "Impossibile estrarre l'XML dalla busta firmata P7M"
+                    return result
+                invoice_content = extracted
+
             # Stesso fallback multi-encoding di process_xml_bytes (mai
             # 'utf-8' con errors='ignore': su un file non-UTF-8, es.
             # ISO-8859-1 con testo accentato in fornitore/righe, quello
@@ -2020,12 +2243,12 @@ async def upload_documento_automatico(
             xml_content = None
             for _enc in ('utf-8', 'utf-8-sig', 'latin-1', 'iso-8859-1'):
                 try:
-                    xml_content = content.decode(_enc)
+                    xml_content = invoice_content.decode(_enc)
                     break
                 except (UnicodeDecodeError, LookupError):
                     continue
             if not xml_content:
-                xml_content = content.decode('utf-8', errors='ignore')
+                xml_content = invoice_content.decode('utf-8', errors='ignore')
             parsed = parse_fattura_xml(xml_content)
 
             if parsed:

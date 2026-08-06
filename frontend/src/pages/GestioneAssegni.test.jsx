@@ -139,7 +139,7 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     await waitFor(() => expect(lista.querySelector('table')).not.toBeNull());
     expect(screen.getByText('Da ricavare dalla fattura')).toBeInTheDocument();
     expect(screen.getByText('Data EC mancante')).toBeInTheDocument();
-    expect(screen.getByText('Attende fattura/XML')).toBeInTheDocument();
+    expect(screen.getByText('Nessuna fattura compatibile')).toBeInTheDocument();
     expect(screen.getByText('Non calcolata')).toBeInTheDocument();
   });
 
