@@ -78,6 +78,27 @@ def _grep_any(needle, texts):
     return any(needle in txt for txt in texts)
 
 
+
+def _tutte_le_route(app):
+    """Endpoint con il percorso FINALE, su ogni versione di FastAPI.
+
+    Dalla 0.121 ``include_router`` non appiattisce piu' le rotte in
+    ``app.routes``: le tiene dentro un ``_IncludedRouter``. Cercare solo le
+    APIRoute di primo livello ne troverebbe ZERO e questo script riscriverebbe
+    la classificazione vuota, senza sollevare errori. I contesti del router
+    incluso portano il percorso gia' prefissato.
+    """
+    trovate = []
+    for r in app.routes:
+        if isinstance(r, APIRoute):
+            trovate.append(r)
+            continue
+        contesti = getattr(r, "effective_route_contexts", None)
+        if callable(contesti):
+            trovate.extend(contesti())
+    return trovate
+
+
 def build():
     app = FastAPI()
     register_all_routers(app)
@@ -96,8 +117,10 @@ def build():
                 chat_txt.append(txt)
 
     rows = []
-    for route in app.routes:
-        if not isinstance(route, APIRoute):
+    for route in _tutte_le_route(app):
+        # Path e metodi devono esserci entrambi: senza il filtro finirebbero
+        # in classificazione righe vuote (docs, openapi.json).
+        if not (getattr(route, "path", None) and getattr(route, "methods", None)):
             continue
         for metodo in sorted(route.methods - {"HEAD", "OPTIONS"}):
             fn = route.endpoint
@@ -141,6 +164,15 @@ def scrivi(rows):
     da_verif = sum(1 for r in rows if r["decisione"] == "verificare")
     da_admin = sum(1 for r in rows if r["decisione"] == "admin-only")
     da_ten = sum(1 for r in rows if r["decisione"] == "tenere")
+
+    if not rows:
+        # Guardia: senza endpoint le mappe verrebbero riscritte VUOTE, e lo
+        # script uscirebbe con successo. E' gia' successo (FastAPI 0.121):
+        # ~2.800 righe di documentazione cancellate in silenzio.
+        raise SystemExit(
+            "Nessun endpoint trovato: mappe NON riscritte. "
+            "Probabile incompatibilita' con questa versione di FastAPI."
+        )
 
     out = []
     out.append("# Classificazione endpoint (§7) — RIGENERABILE\n")

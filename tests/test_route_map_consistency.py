@@ -20,9 +20,31 @@ MEMORIA = os.path.join(os.path.dirname(__file__), "..", "memoria")
 
 
 def _totale_route_reale():
+    """Endpoint realmente montati, su ogni versione di FastAPI.
+
+    Dalla 0.121 ``include_router`` non appiattisce piu' le rotte in
+    ``app.routes``: le tiene dentro un ``_IncludedRouter``. Contando solo le
+    APIRoute di primo livello il totale sarebbe ZERO — e il confronto con le
+    mappe passerebbe proprio nel caso peggiore, cioe' con le mappe svuotate
+    dallo stesso problema nello script che le genera.
+    """
     app = FastAPI()
     register_all_routers(app)
-    return sum(1 for r in app.routes if isinstance(r, APIRoute))
+
+    def _endpoint(contenitore):
+        for r in getattr(contenitore, "routes", []):
+            if isinstance(r, APIRoute):
+                yield r
+                continue
+            contesti = getattr(r, "effective_route_contexts", None)
+            if callable(contesti):
+                for c in contesti():
+                    if getattr(c, "path", None) and getattr(c, "methods", None):
+                        yield c
+
+    totale = sum(1 for _ in _endpoint(app))
+    assert totale, "nessun endpoint montato: enumerazione incompatibile"
+    return totale
 
 
 def _leggi_totale(nome_file, pattern):

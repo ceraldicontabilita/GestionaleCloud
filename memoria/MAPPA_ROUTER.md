@@ -1,7 +1,7 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **1054 endpoint** in **110 prefissi**.
+> Totale **1057 endpoint** in **111 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
@@ -88,7 +88,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/portal` | 1 | ext | public_api |
 | `/api/pos-corrispettivi` | 9 | ✓ | pos_corrispettivi_check |
 | `/api/previsioni-acquisti` | 5 | ✓ | previsioni_acquisti |
-| `/api/prima-nota` | 74 | ✓ | prima_nota_module, prima_nota_module.banca, prima_nota_module.cassa, prima_nota_module.manutenzione, prima_nota_module.salari, prima_nota_module.stats, prima_nota_module.sync |
+| `/api/prima-nota` | 75 | ✓ | prima_nota_module, prima_nota_module.banca, prima_nota_module.cassa, prima_nota_module.manutenzione, prima_nota_module.salari, prima_nota_module.stats, prima_nota_module.sync |
 | `/api/prima-nota-salari` | 18 | ✓ | accounting.prima_nota_salari |
 | `/api/privacy` | 1 | — | legal_pages |
 | `/api/proposte` | 1 | — | dati_provvisori |
@@ -101,6 +101,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/scadenzario-fornitori` | 6 | ✓ | scadenzario_fornitori |
 | `/api/scadenze` | 9 | ✓ | scadenze |
 | `/api/settings` | 12 | ✓ | settings, settings_router |
+| `/api/sumup` | 2 | — | sumup |
 | `/api/suppliers` | 33 | ✓ | public_api, suppliers_module.base, suppliers_module.bulk, suppliers_module.iban, suppliers_module.import_export, suppliers_module.validation |
 | `/api/suppliers-legacy` | 1 | ✓ | public_api |
 | `/api/sync` | 8 | ✓ | sync_relazionale |
