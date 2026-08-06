@@ -18,7 +18,11 @@ from app.services.payment_invoice_matching import (
     amounts_equal_to_cent,
     invoice_reference_equals,
 )
-from app.services.assegni_fattura_intent import capienza_assegno_fattura
+from app.services.assegni_fattura_intent import (
+    capienza_assegno_fattura,
+    fattura_dichiara_assegno,
+    importi_assegno_dichiarati,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -74,6 +78,7 @@ def _assegno_riferisce_fattura(assegno: Dict[str, Any], fattura: Dict[str, Any])
     numero_assegno = assegno.get("numero_fattura") or assegno.get("fattura_numero")
     numero_fattura = fattura.get("invoice_number") or fattura.get("numero_documento")
     return invoice_reference_equals(numero_assegno, numero_fattura)
+
 
 # Stati assegno.
 # "assegnato"/"parzialmente_assegnato" sono scritti dal collegamento a fatture

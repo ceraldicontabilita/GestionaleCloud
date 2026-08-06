@@ -98,6 +98,16 @@ class Database:
         await _safe_index(Collections.INVOICES, [("invoice_date", -1)],
                           name="idx_invoices_invoice_date")
         await _safe_index(Collections.INVOICES, "stato", name="idx_invoices_stato")
+        # Indice dell'export ufficiale Fatture ricevute. Il report e' una
+        # prova di completezza, non sostituisce l'XML canonico.
+        await _safe_index(
+            "fatture_report_ae", "report_key", unique=True,
+            name="idx_fatture_report_ae_key_unique",
+        )
+        await _safe_index(
+            "fatture_report_ae", [("anno", 1), ("modalita_pagamento_xml", 1), ("netto_pagare", 1)],
+            name="idx_fatture_report_ae_assegni",
+        )
         
         # --- Employees ---
         await _safe_index(Collections.EMPLOYEES, "codice_fiscale", unique=True, sparse=True, name="idx_employees_cf_unique")

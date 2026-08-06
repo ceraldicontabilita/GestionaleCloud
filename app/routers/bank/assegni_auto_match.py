@@ -43,6 +43,10 @@ from app.services.payment_invoice_matching import (
     invoice_reference_equals,
     invoice_reference_in_text,
 )
+from app.services.assegni_fattura_intent import (
+    fattura_dichiara_assegno,
+    rate_assegno_dichiarate,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -287,12 +291,37 @@ def _dedup_candidates(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return candidates
 
 
+def _copre_una_rata_assegno(fattura: Dict[str, Any], importo: float) -> bool:
+    """Vero se l'importo coincide con una rata MP02 dichiarata e capiente.
+
+    Una fattura rateizzata con assegni non ha mai il residuo uguale al singolo
+    assegno: senza questo controllo quegli assegni non si aggancerebbero mai.
+    La rata deve restare dentro il residuo, altrimenti sovrapagherebbe.
+    """
+    if importo > fattura["_residuo"] + TOLL:
+        return False
+    return any(
+        abs(rata - importo) <= TOLL
+        for rata in rate_assegno_dichiarate(fattura)
+    )
+
+
 def _try_l1(assegno: Dict[str, Any], fatture: List[Dict[str, Any]]) -> Tuple[str, Optional[List[Dict[str, Any]]]]:
-    """L1: 1 assegno = 1 fattura, importo uguale (±0,005€).
+    """L1: 1 assegno = 1 fattura, importo uguale (±0,005€) o rata MP02 dichiarata.
     Ritorna: ("ok", [fattura]) | ("ambiguous", [candidates]) | ("miss", None)."""
     imp = round(_f(assegno.get("importo")), 2)
-    candidates = [f for f in fatture if abs(f["_residuo"] - imp) <= TOLL]
+    candidates = [
+        f for f in fatture
+        if abs(f["_residuo"] - imp) <= TOLL or _copre_una_rata_assegno(f, imp)
+    ]
     candidates = _dedup_candidates(candidates)
+    if len(candidates) > 1:
+        # MP02 e' l'unica prova documentale dello strumento: se una sola
+        # candidata dichiara l'assegno, le altre non sono piu' equivalenti.
+        # Se nessuna o piu' di una lo dichiarano, resta ambiguo.
+        con_assegno = [f for f in candidates if fattura_dichiara_assegno(f)]
+        if len(con_assegno) == 1:
+            candidates = con_assegno
     if len(candidates) == 1:
         return "ok", candidates
     if len(candidates) > 1:
