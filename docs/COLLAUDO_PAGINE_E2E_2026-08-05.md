@@ -42,7 +42,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 16 | [x] VERIFICATA | Piano dei Conti — `/contabilita` | Mostra un solo conto per codice e i saldi derivati dalle fonti contabili. | TENERE |
 | 17 | [ ] IN CORREZIONE | Bilancio — `/contabilita/bilancio` | Stato patrimoniale e conto economico per periodo. | TENERE |
 | 18 | [ ] IN CORREZIONE | Verifica Bilancio — `/contabilita/verifica` | Controlla quadrature e incoerenze del bilancio. | TENERE |
-| 19 | [ ] | Libro Giornale — `/contabilita/giornale` | Elenca le scritture contabili cronologiche e i mastri. | TENERE |
+| 19 | [ ] IN CORREZIONE | Libro Giornale — `/contabilita/giornale` | Elenca le scritture contabili cronologiche e i mastri. | TENERE |
 | 20 | [ ] | Controllo mensile — `/contabilita/controllo` | Incrocia mensilmente fatture, corrispettivi, banca e Prima Nota. | TENERE |
 | 21 | [ ] | Calendario fiscale — `/contabilita/calendario` | Scadenze fiscali operative e loro completamento. | TENERE |
 | 22 | [ ] | Cespiti — `/contabilita/cespiti` | Beni strumentali, ammortamenti e verifiche collegate. | TENERE |
@@ -181,3 +181,17 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 - Export CSV protetto dall'esecuzione di formule provenienti dai nomi conto e corretta la gestione errori per non mostrare dati dell'anno precedente dopo un caricamento fallito.
 - Collaudo read-only sul database reale 2026: 1 scrittura definitiva, `Dare € 84,00`, `Avere € 84,00`, nessuna anomalia strutturale; registro non completo per 443 documenti ancora da registrare, di cui 272 fatture e 171 corrispettivi. Nessun dato scritto.
 - Test mirati: 7 backend e 6 frontend superati. Suite completa: 1111 backend superati, 2 saltati e 87 frontend superati. Build di produzione completato fuori dal repository con chunk `BilancioVerifica-BdHljtvz.js`; `frontend/dist` e rimasta pulita. Pagina ancora `IN CORREZIONE` fino a PR, deploy e collaudo live tecnico/visuale.
+- Correzione pubblicata con PR `#117`, merge `e8f099b6ea7556bc26d2f78df41176e4964df21c` e deploy Render `dep-d9q0ig4s728c73bf9gtg` concluso `live`.
+- Verifica tecnica diretta: health `healthy`, database `connected`, route HTTP 200, endpoint protetto HTTP 401 senza sessione e chunk `BilancioVerifica-BIobsbCU.js` contenente validazione registro, avviso compensazioni, patrimonio netto e fonte unica. Resta solo il collaudo visuale autenticato.
+
+### 2026-08-06 — Pagina 19 Libro Giornale
+
+- Route React verificata: `/contabilita/giornale` monta `LibroGiornale` nel tab Contabilita e chiama Giornale, Mastro e controllo dei documenti non registrati oltre 60 giorni.
+- Periodo unificato: Giornale, Mastro ed export leggono la stessa fonte `movimenti_contabili` e includono sia `data_documento` sia il campo storico `data`, senza perdere il filtro fattura.
+- Integrita aggiunta per singola scrittura: sbilanci, righe non numeriche, righe senza conto, protocolli mancanti o duplicati. La somma annuale non puo piu nascondere due scritture sbilanciate opposte.
+- Troncamento esplicito: l'endpoint restituisce totale disponibile, limite e stato `troncato`; la UI non presenta una vista parziale come quadratura completa.
+- Mastro ricostruito con lo stesso parser controllato del Giornale, evitando che un importo non numerico faccia fallire l'intera aggregazione Mongo.
+- Reimport Admin validato integralmente prima di qualsiasi scrittura: tipo/versione, massimo 100000 scritture, righe, conti, importi, quadratura e unicita protocolli. Un file corrotto produce HTTP 422 e zero inserimenti; la UI richiede conferma esplicita e limita il file a 25 MB.
+- Il controllo accessorio dei 60 giorni non blocca piu Giornale e Mastro se fallisce; gli errori principali azzerano i dati precedenti e mostrano `Riprova`.
+- Collaudo read-only reale 2026: 1 scrittura, 2 mastrini, Dare e Avere entrambi `€ 84,00`; Giornale, Mastro ed export hanno conteggi/totali identici e registro valido. Nessun dato scritto e nessun reimport eseguito sul database aziendale.
+- Test mirati: 9 backend e 7 frontend superati. Suite completa: 1117 backend superati, 2 saltati e 91 frontend superati. Audit del grafo frontend: 162 file analizzati e nessun orfano eliminabile. Build di produzione completata fuori dal repository con chunk `LibroGiornale-DEfAeXrH.js`; `frontend/dist` e rimasta pulita. Pagina ancora `IN CORREZIONE` fino a PR, deploy e collaudo live.

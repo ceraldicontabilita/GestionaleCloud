@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query, HTTPException, Depends
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from uuid import uuid4
-from collections import defaultdict
+from collections import Counter, defaultdict
 import math
 import logging
 
@@ -886,12 +886,142 @@ async def duplica_budget(
 #    Vedi memoria/LOGICA_LIBRO_MASTRO.md
 # ============================================
 
+def _query_periodo_giornale(
+    data_da: Optional[str] = None,
+    data_a: Optional[str] = None,
+    invoice_key: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Filtro unico per Giornale, Mastro ed export.
+
+    Le scritture storiche possono avere la data in ``data_documento`` oppure
+    in ``data``: tutte le viste devono includere gli stessi documenti.
+    """
+    # Quando le funzioni dei router vengono invocate direttamente nei test o
+    # da altri servizi, FastAPI non sostituisce i valori predefiniti Query().
+    # Accettiamo solo i valori stringa realmente forniti dal chiamante.
+    data_da = data_da if isinstance(data_da, str) and data_da else None
+    data_a = data_a if isinstance(data_a, str) and data_a else None
+    invoice_key = invoice_key if isinstance(invoice_key, str) and invoice_key else None
+    condizioni: List[Dict[str, Any]] = [{"righe": {"$exists": True, "$ne": []}}]
+    if invoice_key:
+        condizioni.append({"$or": [
+            {"invoice_key": invoice_key},
+            {"fattura_id": invoice_key},
+            {"fonte_documento.id": invoice_key},
+        ]})
+    if data_da or data_a:
+        intervallo: Dict[str, str] = {}
+        if data_da:
+            intervallo["$gte"] = data_da
+        if data_a:
+            intervallo["$lte"] = data_a
+        condizioni.append({"$or": [
+            {"data_documento": intervallo},
+            {"data": intervallo},
+        ]})
+    return condizioni[0] if len(condizioni) == 1 else {"$and": condizioni}
+
+
+async def _conta_documenti_giornale(
+    collection: Any,
+    match: Dict[str, Any],
+    fallback: int,
+) -> int:
+    """Conta esattamente in Mongo e resta compatibile con repository fittizi.
+
+    I doppi di test storici espongono soltanto ``find``/``aggregate``. In
+    produzione Motor fornisce ``count_documents`` e quindi il dato di
+    troncamento resta esatto; nei doppi minimali il numero dei record già
+    letti è il fallback più fedele disponibile.
+    """
+    count_documents = getattr(collection, "count_documents", None)
+    if callable(count_documents):
+        return int(await count_documents(match))
+    return fallback
+
+
+def _qualita_scritture_giornale(scritture: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Controlli strutturali senza correggere o riscrivere il registro."""
+    totale_dare = 0.0
+    totale_avere = 0.0
+    righe_non_numeriche = 0
+    righe_senza_conto = 0
+    scritture_senza_righe = 0
+    scritture_senza_protocollo = 0
+    scritture_sbilanciate = []
+    protocolli = []
+
+    for scrittura in scritture:
+        if not scrittura.get("righe"):
+            scritture_senza_righe += 1
+        protocollo = scrittura.get("numero_registrazione")
+        if protocollo in (None, ""):
+            scritture_senza_protocollo += 1
+        else:
+            protocolli.append((scrittura.get("anno"), str(protocollo)))
+
+        dare_scrittura = 0.0
+        avere_scrittura = 0.0
+        for riga in scrittura.get("righe") or []:
+            if not str(riga.get("conto_codice") or riga.get("conto") or "").strip():
+                righe_senza_conto += 1
+            try:
+                dare = float(riga.get("dare") or 0)
+                avere = float(riga.get("avere") or 0)
+                if not math.isfinite(dare) or not math.isfinite(avere):
+                    raise ValueError("importo non finito")
+            except (TypeError, ValueError):
+                righe_non_numeriche += 1
+                continue
+            dare_scrittura += dare
+            avere_scrittura += avere
+            totale_dare += dare
+            totale_avere += avere
+
+        differenza = round(dare_scrittura - avere_scrittura, 2)
+        if abs(differenza) >= 0.01:
+            scritture_sbilanciate.append({
+                "id": str(scrittura.get("id") or ""),
+                "numero_registrazione": protocollo,
+                "data": scrittura.get("data_documento") or scrittura.get("data") or "",
+                "differenza": differenza,
+            })
+
+    conteggi_protocollo = Counter(protocolli)
+    protocolli_duplicati = [
+        {"anno": anno, "numero_registrazione": protocollo, "occorrenze": occorrenze}
+        for (anno, protocollo), occorrenze in conteggi_protocollo.items()
+        if occorrenze > 1
+    ]
+    valido = (
+        not scritture_sbilanciate
+        and scritture_senza_righe == 0
+        and righe_non_numeriche == 0
+        and righe_senza_conto == 0
+        and scritture_senza_protocollo == 0
+        and not protocolli_duplicati
+    )
+    return {
+        "registro_valido": valido,
+        "totale_dare": round(totale_dare, 2),
+        "totale_avere": round(totale_avere, 2),
+        "scritture_sbilanciate": len(scritture_sbilanciate),
+        "dettaglio_scritture_sbilanciate": scritture_sbilanciate[:50],
+        "scritture_senza_righe": scritture_senza_righe,
+        "righe_non_numeriche": righe_non_numeriche,
+        "righe_senza_conto": righe_senza_conto,
+        "scritture_senza_protocollo": scritture_senza_protocollo,
+        "protocolli_duplicati": len(protocolli_duplicati),
+        "dettaglio_protocolli_duplicati": protocolli_duplicati[:50],
+    }
+
+
 @router.get("/libro-giornale")
 async def get_libro_giornale(
     data_da: Optional[str] = Query(None, description="Data inizio (YYYY-MM-DD)"),
     data_a: Optional[str] = Query(None, description="Data fine (YYYY-MM-DD)"),
     invoice_key: Optional[str] = Query(None, description="Filtra per chiave fattura"),
-    limit: int = Query(500, description="Max scritture da restituire"),
+    limit: int = Query(500, ge=1, le=10000, description="Max scritture da restituire"),
 ) -> Dict[str, Any]:
     """Libro giornale: elenco cronologico delle scritture in partita doppia.
 
@@ -900,25 +1030,17 @@ async def get_libro_giornale(
     ammortamenti), non più il registro parallelo `scritture_contabili`
     (rimasto come archivio storico)."""
     db = Database.get_db()
-    match: Dict[str, Any] = {"righe": {"$exists": True, "$ne": []}}
-    if invoice_key:
-        match["$or"] = [{"invoice_key": invoice_key}, {"fattura_id": invoice_key},
-                        {"fonte_documento.id": invoice_key}]
-    if data_da or data_a:
-        match["data_documento"] = {}
-        if data_da:
-            match["data_documento"]["$gte"] = data_da
-        if data_a:
-            match["data_documento"]["$lte"] = data_a
-    scritture = await db["movimenti_contabili"].find(
+    match = _query_periodo_giornale(data_da, data_a, invoice_key)
+    collection = db["movimenti_contabili"]
+    scritture = await collection.find(
         match, {"_id": 0}
-    ).sort("data_documento", 1).to_list(limit)
-    tot_dare = 0.0
-    tot_avere = 0.0
+    ).sort([("data_documento", 1), ("data", 1), ("numero_registrazione", 1)]).to_list(limit)
+    totale_disponibile = await _conta_documenti_giornale(
+        collection, match, len(scritture)
+    )
+    qualita = _qualita_scritture_giornale(scritture)
     for s in scritture:
         for r in (s.get("righe") or []):
-            tot_dare += float(r.get("dare") or 0)
-            tot_avere += float(r.get("avere") or 0)
             # Regola vincolante (CLAUDE.md): il piano dei conti ufficiale è
             # SOLO il CEE. Il codice operativo interno (conto_codice, es.
             # "05.01.01") resta per la ricostruibilità pari-pari richiesta
@@ -933,9 +1055,13 @@ async def get_libro_giornale(
         "success": True,
         "scritture": scritture,
         "totale": len(scritture),
-        "totale_dare": round(tot_dare, 2),
-        "totale_avere": round(tot_avere, 2),
-        "quadratura": abs(round(tot_dare - tot_avere, 2)) < 0.01,
+        "totale_disponibile": totale_disponibile,
+        "troncato": totale_disponibile > len(scritture),
+        "limite": limit,
+        "totale_dare": qualita["totale_dare"],
+        "totale_avere": qualita["totale_avere"],
+        "quadratura": qualita["registro_valido"] and totale_disponibile == len(scritture),
+        "qualita_registro": qualita,
     }
 
 
@@ -951,34 +1077,46 @@ async def get_libro_mastro(
     §6.1); gestisce sia `righe.conto_codice` (motore) sia `righe.conto`
     (schema storico)."""
     db = Database.get_db()
-    match: Dict[str, Any] = {"righe": {"$exists": True, "$ne": []}}
-    if data_da or data_a:
-        match["data_documento"] = {}
-        if data_da:
-            match["data_documento"]["$gte"] = data_da
-        if data_a:
-            match["data_documento"]["$lte"] = data_a
-    pipeline = [
-        {"$match": match},
-        {"$unwind": "$righe"},
-        {"$group": {
-            "_id": {"$ifNull": ["$righe.conto_codice", "$righe.conto"]},
-            "conto_nome": {"$last": "$righe.conto_nome"},
-            "dare": {"$sum": {"$toDouble": {"$ifNull": ["$righe.dare", 0]}}},
-            "avere": {"$sum": {"$toDouble": {"$ifNull": ["$righe.avere", 0]}}},
-            "righe": {"$sum": 1},
-        }},
-        {"$sort": {"_id": 1}},
-    ]
+    match = _query_periodo_giornale(data_da, data_a)
+    collection = db["movimenti_contabili"]
+    scritture = await collection.find(
+        match, {"_id": 0}
+    ).sort([("data_documento", 1), ("data", 1)]).to_list(100000)
+    totale_scritture = await _conta_documenti_giornale(
+        collection, match, len(scritture)
+    )
+    qualita = _qualita_scritture_giornale(scritture)
+    aggregati = defaultdict(lambda: {
+        "conto_nome": "", "dare": 0.0, "avere": 0.0, "righe": 0,
+    })
+    for scrittura in scritture:
+        for riga in scrittura.get("righe") or []:
+            conto = str(riga.get("conto_codice") or riga.get("conto") or "").strip()
+            if not conto:
+                continue
+            try:
+                dare = float(riga.get("dare") or 0)
+                avere = float(riga.get("avere") or 0)
+                if not math.isfinite(dare) or not math.isfinite(avere):
+                    continue
+            except (TypeError, ValueError):
+                continue
+            voce = aggregati[conto]
+            voce["conto_nome"] = riga.get("conto_nome") or voce["conto_nome"] or conto
+            voce["dare"] += dare
+            voce["avere"] += avere
+            voce["righe"] += 1
+
     mastrini = []
-    async for m in db["movimenti_contabili"].aggregate(pipeline):
-        dare = round(m.get("dare", 0), 2)
-        avere = round(m.get("avere", 0), 2)
-        # Stessa regola vincinante del libro giornale: aggiunge il conto
+    for codice in sorted(aggregati):
+        m = aggregati[codice]
+        dare = round(m["dare"], 2)
+        avere = round(m["avere"], 2)
+        # Stessa regola vincolante del libro giornale: aggiunge il conto
         # ufficiale CEE accanto al codice operativo interno, senza sostituirlo.
-        cod_uff = operativo_a_ufficiale(m["_id"]) if m["_id"] else None
+        cod_uff = operativo_a_ufficiale(codice)
         mastrini.append({
-            "conto": m["_id"],
+            "conto": codice,
             "conto_nome": m.get("conto_nome"),
             "conto_ufficiale": cod_uff,
             "conto_ufficiale_nome": descrizione_ufficiale(cod_uff) if cod_uff else None,
@@ -992,10 +1130,14 @@ async def get_libro_mastro(
     return {
         "success": True,
         "mastrini": mastrini,
+        "scritture_aggregate": len(scritture),
+        "totale_scritture": totale_scritture,
+        "troncato": totale_scritture > len(scritture),
         "totale_conti": len(mastrini),
         "totale_dare": tot_dare,
         "totale_avere": tot_avere,
-        "quadratura": abs(round(tot_dare - tot_avere, 2)) < 0.01,
+        "quadratura": qualita["registro_valido"] and totale_scritture == len(scritture),
+        "qualita_registro": qualita,
     }
 
 
@@ -1018,20 +1160,35 @@ async def export_libro_giornale(
     fonte documento e date originali.
     """
     db = Database.get_db()
-    match: Dict[str, Any] = {"righe": {"$exists": True, "$ne": []}}
-    if anno:
-        match["anno"] = anno
-    movimenti = await db["movimenti_contabili"].find(
+    anno = anno if isinstance(anno, int) else None
+    match = _query_periodo_giornale(
+        f"{anno}-01-01" if anno else None,
+        f"{anno}-12-31" if anno else None,
+    )
+    collection = db["movimenti_contabili"]
+    totale_disponibile = await _conta_documenti_giornale(
+        collection, match, 0
+    )
+    if totale_disponibile > 100000:
+        raise HTTPException(
+            status_code=413,
+            detail="Export oltre 100000 scritture: restringere il periodo prima di esportare",
+        )
+    movimenti = await collection.find(
         match, {"_id": 0}
     ).sort("numero_registrazione", 1).to_list(100000)
-    if len(movimenti) >= 100000:
-        logger.warning("libro_giornale: raggiunto il tetto di 100000 documenti, possibile troncamento")
+    if not callable(getattr(collection, "count_documents", None)):
+        totale_disponibile = len(movimenti)
+    qualita = _qualita_scritture_giornale(movimenti)
     return {
         "tipo": "libro_giornale_gestionalecloud",
         "versione": 1,
         "generato_il": datetime.now(timezone.utc).isoformat(),
         "anno": anno,
         "numero_scritture": len(movimenti),
+        "totale_disponibile": totale_disponibile,
+        "qualita_registro": qualita,
+        "registro_valido": qualita["registro_valido"],
         "scritture": movimenti,
     }
 
@@ -1051,12 +1208,27 @@ async def import_libro_giornale(
     if dump.get("tipo") != "libro_giornale_gestionalecloud":
         raise HTTPException(status_code=400,
                             detail="File non riconosciuto: usare un export del libro giornale")
+    if dump.get("versione") != 1:
+        raise HTTPException(status_code=400, detail="Versione export non supportata")
+    scritture_dump = dump.get("scritture")
+    if not isinstance(scritture_dump, list) or not all(
+        isinstance(scrittura, dict) for scrittura in scritture_dump
+    ):
+        raise HTTPException(status_code=400, detail="Elenco scritture non valido")
+    if len(scritture_dump) > 100000:
+        raise HTTPException(status_code=413, detail="Export oltre il limite di 100000 scritture")
+    qualita_dump = _qualita_scritture_giornale(scritture_dump)
+    if not qualita_dump["registro_valido"]:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "messaggio": "Reimport annullato: il file contiene scritture non valide",
+                "qualita_registro": qualita_dump,
+            },
+        )
     db = Database.get_db()
-    ricreate, gia_presenti, scartate = 0, 0, 0
-    for scrittura in dump.get("scritture", []):
-        if not scrittura.get("righe") or not scrittura.get("numero_registrazione"):
-            scartate += 1
-            continue
+    ricreate, gia_presenti = 0, 0
+    for scrittura in scritture_dump:
         esiste = None
         if scrittura.get("id"):
             esiste = await db["movimenti_contabili"].find_one(
@@ -1068,14 +1240,17 @@ async def import_libro_giornale(
         if esiste:
             gia_presenti += 1
             continue
-        await db["movimenti_contabili"].insert_one(dict(scrittura))
+        documento = dict(scrittura)
+        documento.pop("_id", None)
+        await db["movimenti_contabili"].insert_one(documento)
         ricreate += 1
     return {
         "success": True,
-        "scritture_nel_file": len(dump.get("scritture", [])),
+        "scritture_nel_file": len(scritture_dump),
         "ricreate": ricreate,
         "gia_presenti": gia_presenti,
-        "scartate_senza_righe_o_protocollo": scartate,
+        "scartate_senza_righe_o_protocollo": 0,
+        "qualita_registro": qualita_dump,
     }
 
 
