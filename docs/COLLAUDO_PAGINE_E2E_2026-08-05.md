@@ -40,7 +40,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 14 | [ ] IN CORREZIONE | Costi noleggio — `/noleggio/costi` | Riepiloga canoni, verbali, bollo, pedaggi e altri costi per veicolo. | TENERE |
 | 15 | [x] VERIFICATA | Dettaglio verbale — `/verbali-noleggio/:identificativo` | Mostra la singola catena Verbale -> veicolo -> driver -> fattura -> pagamento. | TENERE |
 | 16 | [x] VERIFICATA | Piano dei Conti — `/contabilita` | Mostra un solo conto per codice e i saldi derivati dalle fonti contabili. | TENERE |
-| 17 | [ ] | Bilancio — `/contabilita/bilancio` | Stato patrimoniale e conto economico per periodo. | TENERE |
+| 17 | [ ] IN CORREZIONE | Bilancio — `/contabilita/bilancio` | Stato patrimoniale e conto economico per periodo. | TENERE |
 | 18 | [ ] | Verifica Bilancio — `/contabilita/verifica` | Controlla quadrature e incoerenze del bilancio. | TENERE |
 | 19 | [ ] | Libro Giornale — `/contabilita/giornale` | Elenca le scritture contabili cronologiche e i mastri. | TENERE |
 | 20 | [ ] | Controllo mensile — `/contabilita/controllo` | Incrocia mensilmente fatture, corrispettivi, banca e Prima Nota. | TENERE |
@@ -154,4 +154,17 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 - Collaudo read-only sul database reale 2026: 4 veicoli, 0 fatture non associate, riparazioni `€ 500,00`; somma delle sei categorie `€ 12.605,21`, identica al totale generale.
 - PDF generato con gli stessi dati reali: MIME `application/pdf`, firma `%PDF` valida e nome `riepilogo_costi_noleggio_2026.pdf`.
 - Test locali: 1102 backend superati, 2 saltati; 81 frontend superati; build di produzione completato e artefatti generati ripuliti.
-- Pagina ancora `IN CORREZIONE` fino a merge, deploy e collaudo visuale post-deploy con dati reali.
+- Correzione pubblicata su `main` con merge `64e4361302695fa90738a313d34d9570b218d22a`; deploy Render `dep-d9pvj6142hec73c05400` concluso con stato `live` e health check sul commit `64e43613`.
+- Verifica tecnica post-deploy: route pubblica HTTP 200, API protetta HTTP 401 senza sessione e chunk `VeicoliHub` pubblicato con `totale_riparazioni` ed export PDF. Pagina ancora `IN CORREZIONE` fino al collaudo visuale autenticato.
+
+### 2026-08-06 — Pagina 17 Bilancio
+
+- Route React verificata: `/contabilita/bilancio` carica Stato Patrimoniale e Conto Economico dagli endpoint canonici `/api/bilancio/stato-patrimoniale` e `/api/bilancio/conto-economico`.
+- Difetto reale riprodotto: export PDF e confronto annuale usavano due aggregazioni storiche distinte dalla pagina. Sui dati reali 2026 la pagina calcolava totale attivo `€ 334.954,45`, crediti `€ 0,00` e debiti `€ 605.885,88`; il vecchio percorso PDF calcolava invece totale attivo `€ 934.620,31`, crediti `€ 652.033,45` e debiti `€ 31.358,96`, omettendo immobilizzazioni e Fondo TFR.
+- Difetto fiscale rimosso: il confronto applicava automaticamente una stima IRES/IRAP del 28% e la presentava come `utile netto`, senza una liquidazione fiscale confermata.
+- Correzione locale: pagina, PDF annuale/mensile e confronto usano gli stessi due calcolatori canonici; confronto e PDF includono immobilizzazioni e Fondo TFR e mostrano il risultato gestionale prima delle imposte senza inventare un utile netto.
+- Sicurezza UI: errore di caricamento esplicito con pulsante `Riprova`; l'eliminazione di una voce manuale richiede conferma perché modifica i totali dell'anno.
+- Collaudo read-only sul database reale 2026 dopo la correzione: output pagina/export identici; totale attivo e totale passivo entrambi `€ 334.954,45`; immobilizzazioni `€ 52.367,59`; Fondo TFR `€ 95.931,60`; ricavi `€ 17.787,15`; costi `€ 111.960,60`; risultato `-€ 94.173,45`.
+- PDF annuale e PDF comparativo generati in memoria con firma `%PDF` valida; nessun dato scritto. Test mirati: 15 backend e 3 frontend superati.
+- Suite completa: 1106 test backend superati, 2 saltati; 84 test frontend superati; build di produzione completato e artefatti generati ripuliti dal working tree.
+- Pagina ancora `IN CORREZIONE` fino a PR, deploy e collaudo visuale post-deploy con dati reali.

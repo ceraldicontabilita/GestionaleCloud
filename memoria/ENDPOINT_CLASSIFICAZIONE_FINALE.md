@@ -172,10 +172,10 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/bank-statement/stats` | bank.bank_statement_import | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/bank/statements` | public_api | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/bank/statements` | public_api | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/bilancio/confronto-annuale` | accounting.bilancio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/bilancio/confronto-annuale` | accounting.bilancio | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/bilancio/conto-economico` | accounting.bilancio | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/bilancio/conto-economico-dettagliato` | accounting.bilancio | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/bilancio/export-pdf` | accounting.bilancio | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/bilancio/export-pdf` | accounting.bilancio | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/bilancio/export/pdf/confronto` | accounting.bilancio | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/bilancio/riepilogo` | accounting.bilancio | — | — | sì | — | — | tenere | in uso: chat |
 | `GET /api/bilancio/stato-patrimoniale` | accounting.bilancio | sì | — | — | — | sì | tenere | in uso: FE |
@@ -309,7 +309,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `DELETE /api/corrispettivi/{corrispettivo_id}` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/corrispettivi/{corrispettivo_id}/view` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/dashboard/bilancio-istantaneo` | reports.dashboard | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/dashboard/confronto-annuale` | reports.dashboard | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/dashboard/confronto-annuale` | reports.dashboard | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/dashboard/kpi` | reports.dashboard | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/dashboard/spese-per-categoria` | reports.dashboard | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/dashboard/stato-riconciliazione` | reports.dashboard | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
