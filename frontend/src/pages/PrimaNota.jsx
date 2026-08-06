@@ -1045,11 +1045,12 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
 }
 
 /* ------------------------------ provvisori ------------------------------ */
-function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
+export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
   const [busy, setBusy] = useState(null);
   const [parziale, setParziale] = useState(null);
   const [importoCassa, setImportoCassa] = useState('');
   const [errore, setErrore] = useState('');
+  const [esito, setEsito] = useState('');
   const [fNumeroFattura, setFNumeroFattura] = useState('');
   const [fDataFattura, setFDataFattura] = useState('');
   const [fFornitore, setFFornitore] = useState('');
@@ -1085,11 +1086,29 @@ function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
   const conferma = async (p, metodo) => {
     setBusy(p.fattura_id);
     setErrore('');
+    setEsito('');
     try {
       await api.post('/api/prima-nota/provvisori/conferma', { fattura_id: p.fattura_id, metodo });
-      onRicarica();
+      await onRicarica();
     } catch (e) {
-      setErrore(e.response?.data?.message || e.message);
+      setErrore(e.response?.data?.detail || e.response?.data?.message || e.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const attendiBanca = async p => {
+    setBusy(p.fattura_id);
+    setErrore('');
+    setEsito('');
+    try {
+      const response = await api.post('/api/prima-nota/provvisori/attendi-banca', {
+        fattura_id: p.fattura_id,
+      });
+      setEsito(response.data?.message || 'Fattura spostata tra i pagamenti attesi in banca.');
+      await onRicarica();
+    } catch (e) {
+      setErrore(e.response?.data?.detail || e.response?.data?.message || e.message);
     } finally {
       setBusy(null);
     }
@@ -1110,7 +1129,7 @@ function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
       setParziale(null);
       onRicarica();
     } catch (e) {
-      setErrore(e.response?.data?.message || e.message);
+      setErrore(e.response?.data?.detail || e.response?.data?.message || e.message);
     } finally {
       setBusy(null);
     }
@@ -1127,6 +1146,11 @@ function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
         onFornitore={setFFornitore}
       />
       {errore && <div style={{ color: ROSSO, fontSize: 13 }}>{errore}</div>}
+      {esito && (
+        <div role="status" style={{ color: '#166534', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '9px 11px', fontSize: 13 }}>
+          {esito}
+        </div>
+      )}
       {provvisoriVisibili.length === 0 && (
         <div style={{ padding: 26, textAlign: 'center', color: '#6b7280', background: 'white', borderRadius: 12, border: '1px solid #e2e8f0' }}>
           {provvisori.length === 0
@@ -1151,14 +1175,19 @@ function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
           </div>
           <div style={{ display: 'flex', gap: 6, marginTop: 9, flexWrap: 'wrap' }}>
             {bottoneVedi(p)}
-            {[['cassa', '💵 Cassa', VERDE], ['banca', '🏦 Banca', BLU]].map(([m, label, col]) => (
-              <button
-                key={m} onClick={() => conferma(p, m)} disabled={busy === p.fattura_id}
-                style={{ background: col, color: 'white', border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: busy === p.fattura_id ? 0.5 : 1 }}
-              >
-                {label}
-              </button>
-            ))}
+            <button
+              onClick={() => conferma(p, 'cassa')} disabled={busy === p.fattura_id}
+              style={{ background: VERDE, color: 'white', border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: busy === p.fattura_id ? 0.5 : 1 }}
+            >
+              💵 Cassa
+            </button>
+            <button
+              onClick={() => attendiBanca(p)} disabled={busy === p.fattura_id}
+              title="Sposta tra i pagamenti attesi; non registra un pagamento senza estratto conto"
+              style={{ background: BLU, color: 'white', border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: busy === p.fattura_id ? 0.5 : 1 }}
+            >
+              🏦 Attendi banca
+            </button>
             <button
               onClick={() => { setParziale(p); setImportoCassa(''); setErrore(''); }}
               style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
@@ -1209,15 +1238,13 @@ function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
                 >
                   <Eye size={18} />
                 </button>
-                {p.fonte_metodo !== 'assegno_compilato' && (
-                  <button
-                    onClick={() => conferma(p, 'banca')} disabled={busy === p.fattura_id}
-                    title="Registra subito in banca senza aspettare la riconciliazione"
-                    style={{ background: '#eff6ff', border: '1px solid #93c5fd', color: '#1d4ed8', borderRadius: 7, padding: '4px 10px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}
-                  >
-                    Forza banca
-                  </button>
-                )}
+                <a
+                  href="/riconciliazione/banca"
+                  title="Cerca il movimento reale nell'estratto conto"
+                  style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', background: '#eff6ff', border: '1px solid #93c5fd', color: '#1d4ed8', borderRadius: 7, padding: '4px 10px', fontSize: 11.5, fontWeight: 700, textDecoration: 'none' }}
+                >
+                  Cerca movimento
+                </a>
               </span>
             </div>
           ))}
@@ -1276,15 +1303,17 @@ export default function PrimaNota() {
   const [provvisori, setProvvisori] = useState([]);
   const [attesaBanca, setAttesaBanca] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   const carica = async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const params = `anno=${anno}&limit=10000`;
       const [c, b, p] = await Promise.all([
         api.get(`/api/prima-nota/cassa?${params}`),
         api.get(`/api/prima-nota/banca?${params}`),
-        api.get(`/api/prima-nota/provvisori?anno=${anno}`).catch(() => ({ data: {} })),
+        api.get(`/api/prima-nota/provvisori?anno=${anno}`),
       ]);
       setCassa(c.data || { movimenti: [] });
       setBanca(b.data || { movimenti: [] });
@@ -1292,6 +1321,7 @@ export default function PrimaNota() {
       setAttesaBanca(p.data?.in_attesa_banca || []);
     } catch (e) {
       console.error('Prima nota:', e);
+      setLoadError(e.response?.data?.detail || e.response?.data?.message || e.message || 'Caricamento non riuscito');
     } finally {
       setLoading(false);
     }
@@ -1362,13 +1392,22 @@ export default function PrimaNota() {
         <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>⏳ Caricamento…</div>
       )}
 
-      {!loading && sezione === 'provvisori' && (
+      {!loading && loadError && sezione !== 'soci' && (
+        <div role="alert" style={{ padding: 14, marginBottom: 12, color: '#991b1b', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10 }}>
+          <b>Prima Nota non caricata.</b> {loadError}{' '}
+          <button onClick={carica} style={{ marginLeft: 8, border: '1px solid #991b1b', borderRadius: 6, background: 'white', color: '#991b1b', padding: '5px 9px', fontWeight: 700, cursor: 'pointer' }}>
+            Riprova
+          </button>
+        </div>
+      )}
+
+      {!loading && !loadError && sezione === 'provvisori' && (
         <Provvisori provvisori={provvisori} attesaBanca={attesaBanca} onRicarica={carica} />
       )}
 
       {sezione === 'soci' && <FinanziamentoSoci />}
 
-      {!loading && sezione !== 'provvisori' && sezione !== 'soci' && (
+      {!loading && !loadError && sezione !== 'provvisori' && sezione !== 'soci' && (
         <>
           {/* 4 numeri, nessuna card doppia */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>

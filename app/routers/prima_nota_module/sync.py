@@ -858,6 +858,9 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             or f.get("metodo_pagamento_override_source") == "assegno_compilato"
             or bool(assegni_collegati)
         )
+        metodo_previsto_fattura = normalizza_metodo_pagamento(
+            f.get("metodo_pagamento_previsto")
+        )
         fonte_metodo = "fornitore"
         stato_pag = f.get("stato_pagamento", "")
 
@@ -867,6 +870,17 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             suggerimento = "banca"
             stato_match = "in_attesa_estratto_conto"
             fonte_metodo = "assegno_compilato"
+        # Una scelta esplicita dell'operatore sulla singola fattura stabilisce
+        # soltanto il canale ATTESO. Non prova il pagamento e non crea una riga
+        # in Prima Nota Banca: quella nascera' esclusivamente dalla
+        # riconciliazione con un movimento reale dell'estratto conto.
+        elif (
+            metodo_previsto_fattura == "banca"
+            and f.get("metodo_pagamento_override_source") == "operatore_prima_nota"
+        ):
+            suggerimento = "banca"
+            stato_match = "in_attesa_estratto_conto"
+            fonte_metodo = "operatore_prima_nota"
         # PRIORITÀ 1: Se la fattura è stata marcata come sospesa dall'utente
         elif stato_pag == "sospesa":
             suggerimento = "sospesa"
@@ -971,6 +985,86 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
         "probabili": sum(1 for p in provvisori_finali if p["stato_match"] == "probabile"),
         "in_attesa": sum(1 for p in provvisori_finali if p["stato_match"] == "in_attesa"),
         "auto_confermati_banca": auto_confermati,
+    }
+
+
+async def imposta_fattura_in_attesa_banca(data: Dict = Body(...)) -> Dict:
+    """Imposta il canale bancario previsto senza registrare un pagamento.
+
+    Body: {fattura_id, performed_by?}. La fattura resta aperta e viene mostrata
+    tra i pagamenti in attesa banca. Solo una successiva riconciliazione con
+    una riga reale dell'estratto conto potra' creare la scrittura bancaria.
+    """
+    db = Database.get_db()
+    fattura_id = data.get("fattura_id")
+    if not fattura_id:
+        raise HTTPException(status_code=400, detail="Fattura obbligatoria")
+
+    fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
+    if not fattura:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+
+    ancora_aperta = await fatture_senza_pagamento_contabile_confermato(
+        db, [fattura]
+    )
+    if not ancora_aperta:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "La fattura ha gia' una scrittura contabile confermata: "
+                "verifica la registrazione esistente."
+            ),
+        )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db["invoices"].update_one(
+        {"id": fattura_id},
+        {
+            "$set": {
+                "metodo_pagamento_previsto": "banca",
+                "metodo_pagamento_override_source": "operatore_prima_nota",
+                "stato_pagamento": "in_attesa_banca",
+                "stato_finanziario": "aperta_in_attesa_banca",
+                "pagato": False,
+                "paid": False,
+                "updated_at": now_iso,
+            },
+            "$unset": {
+                "prima_nota_id": "",
+                "prima_nota_banca_id": "",
+                "data_pagamento": "",
+            },
+        },
+    )
+
+    try:
+        from app.services.audit_logger import log_evento
+        await log_evento(
+            modulo="prima_nota",
+            azione="imposta_attesa_banca",
+            entita_id=fattura_id,
+            entita_collection="invoices",
+            db=db,
+            nuovo_stato={
+                "metodo_pagamento_previsto": "banca",
+                "stato_finanziario": "aperta_in_attesa_banca",
+                "pagato": False,
+            },
+            fonte="prima_nota_provvisori",
+            utente=str(data.get("performed_by") or "operatore"),
+        )
+    except Exception:
+        logger.exception("Audit impostazione attesa banca fallito")
+
+    return {
+        "success": True,
+        "fattura_id": fattura_id,
+        "stato": "in_attesa_banca",
+        "pagato": False,
+        "message": (
+            "Fattura spostata tra i pagamenti attesi in banca. "
+            "La Prima Nota Banca sara' aggiornata solo dopo la riconciliazione."
+        ),
     }
 
 
