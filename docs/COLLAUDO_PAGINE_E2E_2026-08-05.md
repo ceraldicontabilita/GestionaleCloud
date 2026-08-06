@@ -56,7 +56,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 6 | [ ] | Archivio fatture — `/fatture` | Cerca e consulta fatture ricevute, stato pagamento, XML/PDF e dati fornitore. | TENERE |
 | 7 | [ ] | Corrispettivi — `/fatture/corrispettivi` | Consulta gli XML dei corrispettivi e i totali contanti/POS/IVA. | TENERE |
 | 8 | [ ] | Fornitori — `/fornitori` | Anagrafica fornitori, P.IVA, metodi di pagamento e documenti collegati. | TENERE |
-| 9 | [ ] | Prima Nota — `/prima-nota` | Espone Cassa, Banca, Provvisori e finanziamenti soci senza duplicare le fonti. | TENERE |
+| 9 | [~] IN REVISIONE | Prima Nota — `/prima-nota` | Espone Cassa, Banca, Provvisori e finanziamenti soci senza duplicare le fonti. | TENERE |
 | 10 | [ ] | Pulizia Prima Nota — `/prima-nota/pulizia` | Diagnostica e propone deduplica/quadratura controllata della Prima Nota. | TENERE COME STRUMENTO AMMINISTRATIVO |
 | 11 | [ ] | Cedolini e salari — `/salari` | Gestisce cedolini, bonifici, saldo/acconto e riconciliazione paga. | TENERE |
 | 12 | [ ] | Flotta noleggio — `/noleggio` | Veicoli, contratti, driver storico e costi ricavati dalle fatture. | TENERE |
@@ -87,7 +87,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 37 | [ ] | Riconciliazione documenti — `/riconciliazione/documenti` | Associa documenti non collegati senza creare legami ambigui. | TENERE |
 | 38 | [ ] | Archivio bonifici — `/riconciliazione/archivio-bonifici` | Consulta bonifici e propone associazioni a salari o fatture. | TENERE; BLOCCARE FATTURA SU DIPENDENTE |
 | 39 | [ ] | Assegni — `/riconciliazione/assegni` | Carnet, assegni, incasso e associazione fatture con regola stretta. | TENERE |
-| 40 | [ ] | PayPal — `/riconciliazione/paypal` | Transazioni, movimenti banca, documenti e mapping fornitori PayPal. | TENERE |
+| 40 | [~] IN REVISIONE | PayPal — `/riconciliazione/paypal` | Transazioni, movimenti banca, documenti e mapping fornitori PayPal. | TENERE |
 | 41 | [ ] | Coerenza POS — `/riconciliazione/coerenza-pos` | Confronta XML corrispettivi, chiusure reali POS e accrediti banca. | TENERE |
 | 42 | [ ] | Import documenti — `/documenti/import` | Unico ingresso per PDF/XML/ZIP con classificazione e deduplica. | TENERE COME INGRESSO UNICO |
 | 43 | [ ] | Archivio documenti — `/documenti/archivio` | Consulta file, esiti, anomalie, provenienza e collegamenti. | TENERE |
@@ -275,3 +275,16 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 - Correzione pubblicata con PR `#125`, merge `20fa8279226ce6b5bd99799758f037beebede21a` e deploy Render `dep-d9q4ccp42hec73c3fdu0` concluso `live`. Health: `healthy`, database `connected`, commit `20fa8279`.
 - Collaudo live autenticato esclusivamente con GET e ruolo `sola_lettura`: 2025 aperto e non chiudibile per registro vuoto, 1.176 fatture e 347 corrispettivi non contabilizzati, 16 cespiti senza ammortamento e 2.359 movimenti bancari non riconciliati; 2026 aperto e non chiudibile perché in corso, con 272 fatture, 171 corrispettivi e 1.668 movimenti bancari non riconciliati. In entrambi gli anni il bilancino è `disponibile: false` e `bilancino: null`; nessun dato è stato scritto.
 - Frontend pubblicato verificato nel chunk `ChiusuraEsercizio-CgUQWVlm.js`: presenti lo stato `Bilancino non disponibile`, le conferme `CHIUDI`/`APRI`, `conferma_testo` e `anno_nuovo`. Pagina marcata `VERIFICATA`.
+
+### 2026-08-06 — Pagina 9 Prima Nota, avvio revisione completa
+
+- La pagina apre correttamente Cassa, Banca, Provvisori e Soci, ma resta `IN REVISIONE`: l'apertura E2E non certifica ancora spostamenti, conteggi e quadrature di tutte le sezioni.
+- Verifica read-only reale sui finanziamenti soci 2026: 6 righe sorgente corrispondono a 3 operazioni; la deduplica conservativa restituisce 3 movimenti, `EUR 44.000,00` di apporti e 3 copie accorpate senza cancellare le prove bancarie. Il precedente totale visualizzato di `EUR 88.000,00` era raddoppiato.
+- Nessun record aziendale è stato modificato. La pagina potrà diventare `VERIFICATA` soltanto dopo i test reali separati di Cassa, Banca, Provvisori e dei relativi contatori.
+
+### 2026-08-06 — Pagina 40 PayPal, avvio revisione completa
+
+- Verifica read-only reale 2026: 27 transazioni, 17 pagamenti contabili effettivi, 0 statement, 44 movimenti bancari PayPal, 0 riconciliati; 6 movimenti hanno un candidato univoco con importo al centesimo, segno e data entro tre giorni. Non è stata eseguita alcuna riconciliazione sul database aziendale.
+- Errore riprodotto: Dashboard e lista calcolavano `EUR 2.136,56` su 17 pagamenti, mentre Report spese calcolava `EUR 2.725,43` su 21 righe perché sommava anche le gambe tecniche T02 delle conversioni valuta.
+- Il Report usa ora una sola riga contabile per pagamento e l'importo EUR della conversione collegata. Sul dataset reale in sola lettura Dashboard, lista e Report coincidono: 17 pagamenti e `EUR 2.136,56`.
+- Restano da chiudere mapping fornitori, associazione fattura e riconciliazione banca; per questo la pagina resta `IN REVISIONE`.

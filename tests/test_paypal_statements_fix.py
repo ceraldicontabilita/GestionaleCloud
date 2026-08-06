@@ -149,6 +149,31 @@ def test_dashboard_non_somma_due_volte_conversione_valuta(monkeypatch):
     assert res["totale_speso"] == -100.0
 
 
+def test_report_non_somma_due_volte_conversione_valuta(monkeypatch):
+    db = _FakeDb()
+    db["paypal_transactions"].docs = [
+        {"transaction_id": "PAY-USD", "data": "2026-07-15", "lordo": -120.0,
+         "currency": "USD", "tipo": "pagamento_web",
+         "nome_controparte": "Fornitore USA"},
+        {"transaction_id": "CONV-EUR", "paypal_reference_id": "PAY-USD",
+         "data": "2026-07-15", "lordo": -100.0, "currency": "EUR", "tipo": "T0200"},
+        {"transaction_id": "CONV-USD", "paypal_reference_id": "PAY-USD",
+         "data": "2026-07-15", "lordo": 120.0, "currency": "USD", "tipo": "T0200"},
+        {"transaction_id": "PAY-EUR", "data": "2026-07-16", "lordo": -30.0,
+         "currency": "EUR", "tipo": "pagamento_web",
+         "nome_controparte": "Fornitore Italia"},
+    ]
+    _patch_db(monkeypatch, db)
+
+    res = _run(mod.paypal_report(anno=None))
+
+    assert res["totale_transazioni"] == 2
+    assert res["totale_speso"] == -130.0
+    assert {row["nome"] for row in res["per_fornitore"]} == {
+        "Fornitore USA", "Fornitore Italia",
+    }
+
+
 def test_match_banca_paypal_richiede_importo_segno_e_data_non_solo_importo():
     tx = {"transaction_id": "PAY-12345678", "data": "2026-07-15", "lordo": -42.62}
     corretto = {
