@@ -50,6 +50,77 @@ def _identita_fattura(invoice: Dict[str, Any]) -> Tuple[str, str, str, float]:
     )
 
 
+# FatturaPA: MP02 = assegno. E' l'unica prova documentale dello strumento.
+MODALITA_ASSEGNO = {"MP02"}
+
+
+def _modalita_dichiarate(fattura: Dict[str, Any]) -> set:
+    """Modalita' FatturaPA dichiarate, da rate e da riepilogo.
+
+    Il campo ``modalita_pagamento_xml`` e' una lista nelle fatture canoniche ma
+    una stringa singola nell'indice del report Fatture ricevute: iterare alla
+    cieca su una stringa produrrebbe i singoli caratteri e non troverebbe mai
+    MP02.
+    """
+    grezzo = fattura.get("modalita_pagamento_xml")
+    valori = [grezzo] if isinstance(grezzo, str) else list(grezzo or [])
+    modalita = {str(valore or "").strip().upper() for valore in valori}
+    modalita.update(
+        str(rata.get("modalita") or "").strip().upper()
+        for rata in (fattura.get("pagamento_rate") or [])
+        if isinstance(rata, dict)
+    )
+    modalita.discard("")
+    return modalita
+
+
+def fattura_dichiara_assegno(fattura: Dict[str, Any]) -> bool:
+    """Riconosce MP02 come strumento, senza confonderlo con la destinazione.
+
+    ``metodo_pagamento`` e' la destinazione contabile predefinita del fornitore
+    (cassa/banca/misto); la prova dello strumento assegno resta invece nei dati
+    originali FatturaPA.
+    """
+    metodo = str(
+        fattura.get("metodo_pagamento_previsto")
+        or fattura.get("metodo_pagamento_effettivo")
+        or ""
+    ).lower()
+    return bool(_modalita_dichiarate(fattura) & MODALITA_ASSEGNO) or "assegn" in metodo
+
+
+def rate_assegno_dichiarate(fattura: Dict[str, Any]) -> List[float]:
+    """Solo le rate MP02 realmente dichiarate nell'XML, senza fallback.
+
+    Serve al matching: una fattura rateizzata non ha mai il residuo uguale al
+    singolo assegno, ma la rata dichiarata si', ed e' una prova. Il fallback al
+    totale non va usato qui, perche' su una fattura gia' pagata in parte
+    porterebbe ad agganciare un assegno piu' grande del residuo.
+    """
+    rate = [
+        round(_f(rata.get("importo")), 2)
+        for rata in (fattura.get("pagamento_rate") or [])
+        if isinstance(rata, dict)
+        and str(rata.get("modalita") or "").strip().upper() in MODALITA_ASSEGNO
+        and _f(rata.get("importo")) > 0
+    ]
+    return list(dict.fromkeys(rate))
+
+
+def importi_assegno_dichiarati(fattura: Dict[str, Any]) -> List[float]:
+    """Importi delle rate MP02, con fallback prudente al netto/totale."""
+    rate = rate_assegno_dichiarate(fattura)
+    if rate:
+        return rate
+    totale = round(_f(
+        fattura.get("netto_pagare")
+        or fattura.get("total_amount")
+        or fattura.get("importo_totale")
+        or fattura.get("totale_documento")
+    ), 2)
+    return [totale] if totale > 0 else []
+
+
 def capienza_assegno_fattura(
     invoice: Dict[str, Any], assegno_id: Any, quota: Any,
 ) -> Tuple[bool, float, float]:

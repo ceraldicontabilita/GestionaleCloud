@@ -1808,23 +1808,22 @@ def _spreadsheet_text_for_detection(filename: str, file_content: bytes) -> str:
             except UnicodeDecodeError:
                 continue
         return ""
-    if not lower.endswith(".xlsx"):
+    if not lower.endswith((".xlsx", ".xls")):
         return ""
     try:
         import io
-        from openpyxl import load_workbook
+        import pandas as pd
 
-        workbook = load_workbook(io.BytesIO(file_content), read_only=True, data_only=True)
-        values: List[str] = []
-        for sheet in workbook.worksheets[:3]:
-            for row in sheet.iter_rows(min_row=1, max_row=20, values_only=True):
-                values.extend(str(value) for value in row if value not in (None, ""))
-                if len(values) >= 300:
-                    break
+        engine = "xlrd" if lower.endswith(".xls") else "openpyxl"
+        frame = pd.read_excel(
+            io.BytesIO(file_content), engine=engine, nrows=20, dtype=object,
+        )
+        values: List[str] = [str(column) for column in frame.columns]
+        for row in frame.itertuples(index=False, name=None):
+            values.extend(str(value) for value in row if value not in (None, ""))
             if len(values) >= 300:
                 break
-        workbook.close()
-        return " ".join(values)
+        return " ".join(values[:300])
     except Exception:
         return ""
 
@@ -1905,6 +1904,11 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
 
     if lower.endswith((".xlsx", ".xls", ".csv")):
         content_str = _spreadsheet_text_for_detection(lower, file_content).upper()
+        if all(marker in content_str for marker in (
+            "ID SDI", "METODO DI PAGAMENTO", "TOTALE DOCUMENTO",
+            "NETTO A PAGARE", "FORNITORE",
+        )):
+            return "report_fatture_ricevute"
         if (
             any(keyword in lower for keyword in ("distint", "stipend", "elenco"))
             and "BENEFICIARIO" in content_str
@@ -2369,7 +2373,19 @@ async def upload_documento_automatico(
             except Exception as e:
                 result["success"] = False
                 result["message"] = f"Errore import distinte: {str(e)}"
-                
+
+        elif tipo_rilevato == 'report_fatture_ricevute':
+            # L'export del portale fiscale e' un indice ufficiale, non contiene
+            # gli XML. Lo conserviamo separato dalle fatture canoniche e lo
+            # usiamo per rendere visibili gli XML realmente mancanti.
+            from app.services.fatture_report_ae import importa_report_fatture_ricevute
+
+            report_result = await importa_report_fatture_ricevute(
+                db, content, filename,
+            )
+            result.update(report_result)
+            result["tipo_rilevato"] = "report_fatture_ricevute"
+
         elif tipo_rilevato == 'estratto_conto':
             # Import diretto estratto conto CSV Banco BPM → estratto_conto_movimenti
             from app.routers.bank.estratto_conto import import_estratto_conto
