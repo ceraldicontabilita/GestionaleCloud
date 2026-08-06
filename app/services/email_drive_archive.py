@@ -36,6 +36,7 @@ _ROUTES: dict[str, tuple[str, str]] = {
     "certificazione_unica": ("certificazioni_uniche", "Certificazioni uniche"),
     "paypal": ("paypal", "PayPal"),
     "satispay": ("satispay", "Satispay"),
+    "bolletta_energia": ("utenze_energia", "Bollette energia"),
 }
 
 

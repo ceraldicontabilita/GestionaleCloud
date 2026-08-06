@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional
 
 
 STATO_PAGATO_BANCA = "PAGATO_BANCA"
+STATO_PARZIALMENTE_PAGATO_BANCA = "PARZIALMENTE_PAGATO_BANCA"
 STATO_QUIETANZA_DA_VERIFICARE = "QUIETANZA_PRESENTE_DA_VERIFICARE_BANCA"
 STATO_DICHIARATO_DA_VERIFICARE = "DICHIARATO_PAGATO_DA_VERIFICARE_BANCA"
 STATO_DA_PAGARE = "DA_PAGARE"
@@ -72,6 +73,19 @@ def ha_quietanza(f24: Dict[str, Any]) -> bool:
 
 def stato_evidenza_pagamento(f24: Dict[str, Any]) -> Dict[str, Any]:
     """Classifica la prova di pagamento senza fidarsi dei flag legacy."""
+    if f24.get("allocazioni_banca") and float(f24.get("importo_residuo") or 0) > 0:
+        return {
+            "stato": STATO_PARZIALMENTE_PAGATO_BANCA,
+            "pagato": False,
+            "verificato_banca": True,
+            "data_pagamento": None,
+            "movimento_bancario_id": None,
+            "quietanza_presente": ha_quietanza(f24),
+            "importo_residuo": float(f24.get("importo_residuo") or 0),
+            "tributi_aperti": [
+                r.get("codice") for r in (f24.get("saldo_tributi") or {}).get("righe_aperte", [])
+            ],
+        }
     if ha_evidenza_bancaria(f24):
         return {
             "stato": STATO_PAGATO_BANCA,

@@ -246,6 +246,21 @@ async def riconcilia_f24_con_banca():
         
         # Aggiorna stato F24 nel database
         for f24_pagato in result["f24_riconciliati"]:
+            if f24_pagato.get("riconciliato_per_tributi"):
+                await db[COLL_F24_COMMERCIALISTA].update_one(
+                    {"id": f24_pagato.get("id")},
+                    {"$set": {
+                        "allocazioni_banca": f24_pagato.get("allocazioni_banca", []),
+                        "saldo_tributi": f24_pagato.get("saldo_tributi", {}),
+                        "importo_residuo": 0,
+                        "status": "pagato",
+                        "stato_pagamento": "PAGATO_BANCA",
+                        "pagato": True,
+                        "pagamento_verificato_banca": True,
+                        "fonte_prova_pagamento": "estratto_conto",
+                    }},
+                )
+                continue
             movimento = f24_pagato.get("movimento_bancario") or {}
             movimento_id = movimento.get("id") or movimento.get("fingerprint")
             if not movimento_id:
@@ -266,9 +281,31 @@ async def riconcilia_f24_con_banca():
                     ),
                 }}
             )
+
+        # Un pagamento di una sola riga (es. codice 2001) non chiude l'intero
+        # F24: persistiamo allocazioni, residuo e tributi ancora aperti.
+        for f24_parziale in result.get("f24_parzialmente_pagati", []):
+            await db[COLL_F24_COMMERCIALISTA].update_one(
+                {"id": f24_parziale.get("id")},
+                {"$set": {
+                    "allocazioni_banca": f24_parziale.get("allocazioni_banca", []),
+                    "saldo_tributi": f24_parziale.get("saldo_tributi", {}),
+                    "importo_residuo": f24_parziale.get("importo_residuo", 0),
+                    "status": "parzialmente_pagato",
+                    "stato_pagamento": "PARZIALMENTE_PAGATO_BANCA",
+                    "pagato": False,
+                    "pagamento_verificato_banca": True,
+                    "fonte_prova_pagamento": "estratto_conto",
+                }},
+            )
         
+        ids_parziali = {
+            str(f.get("id")) for f in result.get("f24_parzialmente_pagati", [])
+        }
         for f24_non_pagato in result["f24_non_pagati"]:
             f24_id = f24_non_pagato.get("id")
+            if str(f24_id) in ids_parziali:
+                continue
             esistente = await db[COLL_F24_COMMERCIALISTA].find_one(
                 {"id": f24_id}, {"_id": 0, "pdf_data": 0}
             )
@@ -323,6 +360,15 @@ async def riconcilia_f24_con_banca():
                 "data_pagamento": f.get("data_pagamento_effettivo"),
                 "stato": "PAGATO"
             } for f in result["f24_riconciliati"]],
+            "f24_parzialmente_pagati": [{
+                "id": f.get("id"),
+                "file_name": f.get("file_name"),
+                "importo_residuo": f.get("importo_residuo"),
+                "tributi_aperti": [
+                    r.get("codice") for r in (f.get("saldo_tributi") or {}).get("righe_aperte", [])
+                ],
+                "stato": "PARZIALMENTE_PAGATO_BANCA",
+            } for f in result.get("f24_parzialmente_pagati", [])],
             "f24_non_pagati": [{
                 "id": f.get("id"),
                 "file_name": f.get("file_name"),

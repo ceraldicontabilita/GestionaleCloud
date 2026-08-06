@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1049 · tenere: 694 · verificare: 332 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1051 · tenere: 696 · verificare: 332 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -311,6 +311,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/corrispettivi/{corrispettivo_id}/view` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/dashboard/bilancio-istantaneo` | reports.dashboard | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/dashboard/confronto-annuale` | reports.dashboard | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/dashboard/fascia-energia` | reports.dashboard | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/dashboard/kpi` | reports.dashboard | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/dashboard/spese-per-categoria` | reports.dashboard | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/dashboard/stato-riconciliazione` | reports.dashboard | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -319,6 +320,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/dashboard/summary` | reports.dashboard | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/dashboard/trend-mensile` | reports.dashboard | sì | — | sì | — | — | tenere | in uso: FE, chat |
 | `GET /api/data-deletion` | legal_pages | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/dati-isa/riepilogo` | dati_isa | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/dipendenti` | employees.dipendenti | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/dipendenti` | employees.dipendenti | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/dipendenti/bulk-upsert` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
@@ -932,7 +934,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/regole/fornitore` | accounting.regole_categorizzazione | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/regole/upload-regole` | accounting.regole_categorizzazione | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/ricerca-globale` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/riconciliazione/stats` | riconciliazione_stats_api | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/riconciliazione/stats` | riconciliazione_stats_api | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/rifiuta/{proposta_id}` | dati_provvisori | — | sì | — | — | sì | tenere | in uso: scheduler |
 | `GET /api/ritenute` | ritenute | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/ritenute/codici-ravvedimento` | ritenute | sì | — | — | — | — | tenere | in uso: FE |

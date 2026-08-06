@@ -90,7 +90,7 @@ export default function PrevisioniAcquisti() {
             <Badge variant="primary">{annoGlobale}</Badge>
           </div>
           <p style={{ margin: 0, color: COLORS.textMuted, fontSize: 13 }}>
-            Analisi storico acquisti e previsioni basate sui consumi
+            Analisi degli acquisti documentati e previsioni basate sullo storico fatture
           </p>
         </div>
 
@@ -175,7 +175,7 @@ export default function PrevisioniAcquisti() {
           title={
             activeTab === 'statistiche' ? (
               <>
-                📊 Consumi {annoGlobale} vs {annoGlobale - 1}
+                📊 Acquisti documentati {annoGlobale} vs {annoGlobale - 1}
               </>
             ) : (
               <>📦 Acquisti Previsti ({filteredData.length} prodotti)</>
@@ -382,7 +382,7 @@ export default function PrevisioniAcquisti() {
           📊 <strong>Statistiche:</strong> Mostra consumi dell&apos;anno corrente vs anno
           precedente.
           <br />
-          🔮 <strong>Previsioni:</strong> Propone quantità da ordinare basate sui consumi storici.
+          🔮 <strong>Previsioni:</strong> Propone quantità da ordinare basate sugli acquisti storici; non presume il consumo senza giacenze.
         </div>
       </div>
     </PageLayout>

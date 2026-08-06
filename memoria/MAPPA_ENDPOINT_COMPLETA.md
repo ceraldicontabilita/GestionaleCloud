@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1049 endpoint** in **109 gruppi**.
+> Totale **1051 endpoint** in **110 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 659 · ext esterni = 90 · — da verificare = 300
+**Riepilogo uso:** ✓ frontend = 661 · ext esterni = 90 · — da verificare = 300
 
 ## AI Parser  (11)
 
@@ -450,18 +450,25 @@
 | GET | `/api/corrispettivi/drive/status` | ✓ | drive_corrispettivi |
 | POST | `/api/corrispettivi/drive/sync` | ✓ | drive_corrispettivi |
 
-## Dashboard  (8)
+## Dashboard  (9)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/dashboard/bilancio-istantaneo` | — | reports.dashboard |
 | GET | `/api/dashboard/confronto-annuale` | — | reports.dashboard |
+| GET | `/api/dashboard/fascia-energia` | ✓ | reports.dashboard |
 | GET | `/api/dashboard/kpi` | — | reports.dashboard |
 | GET | `/api/dashboard/spese-per-categoria` | — | reports.dashboard |
 | GET | `/api/dashboard/stato-riconciliazione` | — | reports.dashboard |
 | GET | `/api/dashboard/stats` | — | reports.dashboard |
 | GET | `/api/dashboard/summary` | ✓ | reports.dashboard |
 | GET | `/api/dashboard/trend-mensile` | ✓ | reports.dashboard |
+
+## Dati ISA  (1)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/dati-isa/riepilogo` | ✓ | dati_isa |
 
 ## Dati Provvisori  (6)
 

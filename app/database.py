@@ -409,6 +409,20 @@ class Database:
         # Mittenti attendibili unificati: accessor per tipo/canale/attivo.
         await _safe_index("mittenti_email", [("tipo_documento", 1), ("canale", 1), ("attivo", 1)],
                           name="idx_mittenti_tipo_canale")
+        # Consuntivi energia e fotografia ISA: i monitor possono rileggere lo
+        # stesso allegato, ma ogni periodo deve restare univoco.
+        await _safe_index(
+            "consumi_energia",
+            [("fornitore", 1), ("anno", 1), ("mese", 1)],
+            unique=True,
+            name="idx_consumi_energia_fornitore_periodo_unique",
+        )
+        await _safe_index(
+            "dati_isa_snapshot",
+            "anno",
+            unique=True,
+            name="idx_dati_isa_snapshot_anno_unique",
+        )
         # Dedup cross-canale documents_inbox per impronta md5.
         await _safe_index("documents_inbox", "file_hash", sparse=True, name="idx_docs_inbox_hash")
 
