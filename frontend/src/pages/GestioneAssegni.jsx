@@ -2749,8 +2749,11 @@ export default function GestioneAssegni() {
                         )}
                       </span>
                     ) : assegno.stato === 'incassato' ? (
-                      <span style={{ color: COLORS.warning, fontWeight: 700 }}>
-                        Attende fattura/XML
+                      <span
+                        style={{ color: COLORS.warning, fontWeight: 700 }}
+                        title="Nessuna fattura con numero/importo compatibili; il controllo viene ripetuto a ogni nuovo XML"
+                      >
+                        Nessuna fattura compatibile
                       </span>
                     ) : (
                       '-'
@@ -2786,8 +2789,11 @@ export default function GestioneAssegni() {
                           </div>
                         )}
                         {!assegno.numero_fattura && !assegno.data_fattura && assegno.stato === 'incassato' && (
-                          <div style={{ color: COLORS.warning, fontWeight: 700 }}>
-                            Attende fattura/XML
+                          <div
+                            style={{ color: COLORS.warning, fontWeight: 700 }}
+                            title="Nessuna fattura con numero/importo compatibili; il controllo viene ripetuto a ogni nuovo XML"
+                          >
+                            Nessuna fattura compatibile
                           </div>
                         )}
                         {assegno.associazione_ambigua && (

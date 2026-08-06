@@ -20,10 +20,18 @@ export function classificaEsitoUpload(data = {}) {
     data?.action === 'duplicate' ||
     data?.duplicate === true ||
     (data?.imported === 0 && /duplicat/i.test(message));
+  const partial = data?.partial === true;
+  const failed = data?.success === false && !duplicate && !partial;
 
   return {
-    status: duplicate ? 'duplicate' : 'success',
-    message: duplicate ? message || 'Documento duplicato ignorato' : message || 'Importato',
+    status: duplicate ? 'duplicate' : partial ? 'partial' : failed ? 'error' : 'success',
+    message: duplicate
+      ? message || 'Documento duplicato ignorato'
+      : failed
+        ? message || 'Import non riuscito'
+        : partial
+          ? message || 'Import parziale: controllare gli errori'
+          : message || 'Importato',
   };
 }
 
@@ -48,47 +56,6 @@ export default function ImportDocumenti() {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
   const zipInputRef = useRef(null);
-
-  // Estrazione da ZIP
-  const extractFromZip = async file => {
-    try {
-      const JSZip = (await import('jszip')).default;
-      const zip = await JSZip.loadAsync(file);
-      const extractedFiles = [];
-
-      for (const [filename, zipEntry] of Object.entries(zip.files)) {
-        if (zipEntry.dir) continue;
-        const lowerName = filename.toLowerCase();
-
-        // Skip nested zip/rar - extract them too
-        if (lowerName.endsWith('.zip')) {
-          const nestedContent = await zipEntry.async('blob');
-          const nestedFile = new File([nestedContent], filename, { type: 'application/zip' });
-          const nestedFiles = await extractFromZip(nestedFile);
-          extractedFiles.push(...nestedFiles);
-          continue;
-        }
-
-        // Get content
-        const content = await zipEntry.async('blob');
-        const mimeType = lowerName.endsWith('.xml')
-          ? 'application/xml'
-          : lowerName.endsWith('.pdf')
-            ? 'application/pdf'
-            : lowerName.endsWith('.csv')
-              ? 'text/csv'
-              : lowerName.endsWith('.xlsx')
-                ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                : 'application/octet-stream';
-        const cleanName = filename.split('/').pop();
-        extractedFiles.push(new File([content], cleanName, { type: mimeType }));
-      }
-      return extractedFiles;
-    } catch (e) {
-      console.error('Errore estrazione ZIP:', e);
-      return [file];
-    }
-  };
 
   const handleDragOver = useCallback(e => {
     e.preventDefault();
@@ -116,19 +83,9 @@ export default function ImportDocumenti() {
   };
 
   const processIncomingFiles = async incomingFiles => {
-    let allFiles = [];
-
-    for (const file of incomingFiles) {
-      const lowerName = file.name.toLowerCase();
-      if (lowerName.endsWith('.zip')) {
-        const extracted = await extractFromZip(file);
-        allFiles.push(...extracted);
-      } else {
-        allFiles.push(file);
-      }
-    }
-
-    const filesWithInfo = allFiles.map(file => ({
+    // Gli ZIP vengono inviati interi al backend: soltanto il server puo
+    // applicare limiti affidabili anti zip-bomb e di dimensione non compressa.
+    const filesWithInfo = incomingFiles.map(file => ({
       file,
       name: file.name,
       size: file.size,
@@ -179,10 +136,12 @@ export default function ImportDocumenti() {
           )
         );
       } catch (e) {
-        const errMsg = e.response?.data?.detail || e.response?.data?.message || e.message;
+        const rawError = e.response?.data?.detail || e.response?.data?.message || e.message;
+        const errMsg = typeof rawError === 'string' ? rawError : JSON.stringify(rawError);
+        const normalizedError = errMsg.toLowerCase();
         const isDuplicate =
-          errMsg.toLowerCase().includes('duplicat') ||
-          errMsg.toLowerCase().includes('esiste già') ||
+          normalizedError.includes('duplicat') ||
+          normalizedError.includes('esiste già') ||
           e.response?.status === 409;
         uploadResults.push({
           file: fileInfo.name,
@@ -212,6 +171,7 @@ export default function ImportDocumenti() {
   const successCount = results.filter(r => r.status === 'success').length;
   const duplicateCount = results.filter(r => r.status === 'duplicate').length;
   const errorCount = results.filter(r => r.status === 'error').length;
+  const partialCount = results.filter(r => r.status === 'partial').length;
 
   // Variante Badge per tipo rilevato (mappata sui token del design system)
   const getTipoVariant = tipo => {
@@ -225,6 +185,7 @@ export default function ImportDocumenti() {
       quietanza_f24: 'warning',
       corrispettivi: 'success',
       pos: 'accent',
+      archivio_zip: 'warning',
     };
     return variants[tipo] || 'neutral';
   };
@@ -240,6 +201,7 @@ export default function ImportDocumenti() {
       quietanza_f24: 'Quietanza F24',
       corrispettivi: 'Corrispettivi',
       pos: 'POS',
+      archivio_zip: 'Archivio ZIP',
       non_riconosciuto: 'Da classificare',
     };
     return labels[tipo] || tipo;
@@ -254,6 +216,7 @@ export default function ImportDocumenti() {
     { label: 'Bonifici', variant: 'info' },
     { label: 'Corrispettivi', variant: 'success' },
     { label: 'POS', variant: 'accent' },
+    { label: 'Archivi ZIP', variant: 'warning' },
   ];
 
   return (
@@ -356,7 +319,7 @@ export default function ImportDocumenti() {
             Carica ZIP
           </Button>
           <span style={{ fontSize: 12, color: COLORS.textMuted }}>
-            Supporta ZIP annidati con estrazione automatica
+            ZIP controllati lato server (dimensioni, numero file e duplicati)
           </span>
 
           {/* Auto-classify documenti Gmail/PEC */}
@@ -528,7 +491,7 @@ export default function ImportDocumenti() {
                     background:
                       f.status === 'success'
                         ? COLORS.successLight
-                        : f.status === 'duplicate'
+                        : f.status === 'duplicate' || f.status === 'partial'
                           ? COLORS.warningLight
                           : f.status === 'error'
                             ? COLORS.dangerLight
@@ -543,7 +506,7 @@ export default function ImportDocumenti() {
                       background:
                         f.status === 'success'
                           ? COLORS.successLight
-                          : f.status === 'duplicate'
+                          : f.status === 'duplicate' || f.status === 'partial'
                             ? COLORS.warningLight
                             : f.status === 'error'
                               ? COLORS.dangerLight
@@ -562,7 +525,7 @@ export default function ImportDocumenti() {
                       />
                     ) : f.status === 'success' ? (
                       <CheckCircle size={16} color={COLORS.success} />
-                    ) : f.status === 'duplicate' ? (
+                    ) : f.status === 'duplicate' || f.status === 'partial' ? (
                       <AlertCircle size={16} color={COLORS.warning} />
                     ) : f.status === 'error' ? (
                       <AlertCircle size={16} color={COLORS.danger} />
@@ -630,7 +593,9 @@ export default function ImportDocumenti() {
               }}
             >
               <div style={{ fontWeight: 700, fontSize: 15, color: COLORS.gray[700] }}>
-                {duplicateCount === results.length
+                {partialCount > 0
+                  ? 'Import parziale: controllare i dettagli'
+                  : duplicateCount === results.length
                   ? 'Nessun nuovo documento: duplicati ignorati'
                   : errorCount === 0 && duplicateCount === 0
                     ? 'Import completato!'
@@ -642,7 +607,7 @@ export default function ImportDocumenti() {
               </div>
               <div style={{ display: 'flex', gap: 12, fontSize: 13 }}>
                 <span style={{ color: COLORS.success }}>✓ {successCount}</span>
-                <span style={{ color: COLORS.warning }}>⚠ {duplicateCount}</span>
+                <span style={{ color: COLORS.warning }}>⚠ {duplicateCount + partialCount}</span>
                 <span style={{ color: COLORS.danger }}>✕ {errorCount}</span>
               </div>
             </div>
@@ -655,7 +620,7 @@ export default function ImportDocumenti() {
                     background:
                       r.status === 'success'
                         ? COLORS.successLight
-                        : r.status === 'duplicate'
+                        : r.status === 'duplicate' || r.status === 'partial'
                           ? COLORS.warningLight
                           : COLORS.dangerLight,
                     borderRadius: BORDER_RADIUS.md,
@@ -667,7 +632,7 @@ export default function ImportDocumenti() {
                 >
                   {r.status === 'success' ? (
                     <CheckCircle size={18} color={COLORS.success} />
-                  ) : r.status === 'duplicate' ? (
+                  ) : r.status === 'duplicate' || r.status === 'partial' ? (
                     <AlertCircle size={18} color={COLORS.warning} />
                   ) : (
                     <AlertCircle size={18} color={COLORS.danger} />
@@ -694,7 +659,7 @@ export default function ImportDocumenti() {
                         color:
                           r.status === 'success'
                             ? COLORS.success
-                            : r.status === 'duplicate'
+                            : r.status === 'duplicate' || r.status === 'partial'
                               ? COLORS.warning
                               : COLORS.danger,
                       }}
