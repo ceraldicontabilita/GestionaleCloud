@@ -25,6 +25,11 @@ def _match(doc, query):
         if k == "$or":
             if not any(_match(doc, sub) for sub in v):
                 return False
+        elif k == "$and":
+            # Usato dal filtro per circuito: senza, la guardia di idempotenza
+            # non trova mai la riga esistente e l'uscita POS si duplica.
+            if not all(_match(doc, sub) for sub in v):
+                return False
         elif isinstance(v, dict):
             if "$in" in v and doc.get(k) not in v["$in"]:
                 return False
@@ -91,6 +96,12 @@ CORR = {"data": "2026-04-06", "totale": 3787.29,
 
 def test_writer_non_crea_mai_due_entrate_stessa_giornata():
     db = _Db()
+    # Chiusura REALE del terminale: dal 07/08/2026 l'uscita POS non si ricava
+    # piu' dall'elettronico XML, che non sa distinguere i circuiti.
+    db["chiusure_pos_manuali"].docs = [{
+        "data": "2026-04-06", "gestore": "nexi", "importo": 2787.29,
+        "source": "inserimento_manuale_terminale",
+    }]
 
     r1 = _run(mod_helpers._create_prima_nota_movements(db, dict(CORR)))
     r2 = _run(mod_helpers._create_prima_nota_movements(db, dict(CORR)))

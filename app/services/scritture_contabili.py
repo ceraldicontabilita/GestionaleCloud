@@ -653,17 +653,12 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
     if not reale["disponibile"]:
         esito["pos_stato"] = "attende_chiusura_pos_reale"
         esito["pos_reale"] = None
-        await db["corrispettivi"].update_one(
-            {"data": data},
-            {"$set": {"pos_stato": "attende_chiusura_pos_reale"}},
-        )
+        await _marca_stato_pos(db, data, "attende_chiusura_pos_reale")
         return esito
 
     esito["pos_stato"] = "pos_reale_disponibile"
     esito["pos_reale"] = reale["per_circuito"]
-    await db["corrispettivi"].update_one(
-        {"data": data}, {"$set": {"pos_stato": "pos_reale_disponibile"}},
-    )
+    await _marca_stato_pos(db, data, "pos_reale_disponibile")
 
     filtro_attivo = {
         "status": {"$nin": ["deleted", "archived"]},
@@ -729,6 +724,21 @@ async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Opti
         esito["prima_nota_banca_id"] = banca_pos_id
     esito["trasferimenti_pos"] = scritti
     return esito
+
+
+async def _marca_stato_pos(db, data: str, stato: str) -> None:
+    """Annota sul corrispettivo se il POS reale e' arrivato o si attende.
+
+    E' un'informazione di servizio per la Coerenza POS e il riprocessamento:
+    se non si riesce a scriverla, la registrazione contabile deve comunque
+    andare a buon fine. Un'annotazione non puo' far fallire una scrittura.
+    """
+    try:
+        await db["corrispettivi"].update_one(
+            {"data": data}, {"$set": {"pos_stato": stato}},
+        )
+    except Exception:
+        logger.debug("Stato POS non annotato per %s", data, exc_info=True)
 
 
 async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:

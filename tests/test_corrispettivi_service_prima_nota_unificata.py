@@ -102,6 +102,17 @@ class _MotorLikeDb(_FakeDb):
         )
 
 
+def _con_pos_reale(db, importo, data, gestore="nexi"):
+    """Chiusura REALE del terminale: dal 07/08/2026 l'uscita POS non si
+    ricava piu' dall'elettronico XML, che non sa distinguere i circuiti."""
+    db["chiusure_pos_manuali"].docs.append({
+        "data": data, "gestore": gestore, "importo": importo,
+        "source": "inserimento_manuale_terminale",
+    })
+    return db
+
+
+
 def test_costruttore_non_valuta_database_motor_come_booleano():
     db = _MotorLikeDb()
 
@@ -179,7 +190,7 @@ def _run(c):
 
 
 def test_create_prima_nota_entry_trasferimento_speculare():
-    db = _FakeDb()
+    db = _con_pos_reale(_FakeDb(), 400.0, "2026-07-14")
     svc = CorrispettiviService(db=db)
     corr = {
         "id": "corr-1", "data": "2026-07-14",
@@ -205,7 +216,7 @@ def test_create_prima_nota_entry_legge_pagato_pos_come_fallback():
     # I corrispettivi da CorrispettiviService.process_xml storicamente
     # salvano "pagato_pos" (non pagato_elettronico): deve continuare a
     # funzionare come fallback, non solo con il nome campo nuovo.
-    db = _FakeDb()
+    db = _con_pos_reale(_FakeDb(), 200.0, "2026-07-14")
     svc = CorrispettiviService(db=db)
     corr = {"id": "corr-2", "data": "2026-07-14", "totale": 500.0,
             "pagato_contanti": 300.0, "pagato_pos": 200.0}
@@ -241,7 +252,7 @@ def test_process_xml_filtro_anno_archivia_corrispettivo_storico():
 
 
 def test_process_xml_filtro_anno_corrente_va_al_flusso_attivo():
-    db = _FakeDb()
+    db = _con_pos_reale(_FakeDb(), 300.0, "2026-05-10")
     db["sistema_stato"].docs = [{"chiave": "config_import_anno_attivo", "anno": 2026}]
     svc = CorrispettiviService(db=db)
     svc._parse_corrispettivo_xml = lambda xml_content: {
@@ -258,6 +269,10 @@ def test_process_xml_filtro_anno_corrente_va_al_flusso_attivo():
 
 def test_reimport_duplicato_ripara_prima_nota_mancante_senza_duplicare():
     db = AsyncMongoMockClient()["corrispettivi_retry_test"]
+    _run(db["chiusure_pos_manuali"].insert_one({
+        "data": "2026-08-03", "gestore": "nexi", "importo": 40.0,
+        "source": "inserimento_manuale_terminale",
+    }))
     svc = CorrispettiviService(db=db)
     xml = b"<corrispettivo />"
     parsed = {
