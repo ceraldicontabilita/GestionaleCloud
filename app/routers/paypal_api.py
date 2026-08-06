@@ -12,9 +12,40 @@ from app.services.paypal_api_sync import sync_paypal_period
 from app.services.paypal_api_client import paypal_client
 from app.services.paypal_riconciliazione import match_fornitore, normalize_string
 from app.services.paypal_invoice_matching import business_name_matches
+from app.services.paypal_reconciliation_links import riprocessa_collegamenti_paypal
 
 router = APIRouter(tags=["PayPal API"])
 logger = logging.getLogger(__name__)
+
+
+async def _riconcilia_intervallo_paypal(db, start: datetime, end: datetime) -> Dict[str, Any]:
+    """Riprocessa fatture e banca per tutti gli anni toccati dall'intervallo."""
+    links = await riprocessa_collegamenti_paypal(
+        db, start_date=start.date().isoformat(), end_date=end.date().isoformat(),
+    )
+    from app.routers.paypal_statements import _auto_riconcilia
+
+    per_anno: Dict[str, Any] = {}
+    for anno in range(start.year, end.year + 1):
+        per_anno[str(anno)] = await _auto_riconcilia(db, anno=anno, applica=True)
+    await riprocessa_collegamenti_paypal(
+        db, start_date=start.date().isoformat(), end_date=end.date().isoformat(),
+    )
+    return {
+        "collegamenti": links,
+        "banca": {
+            "per_anno": per_anno,
+            "riconciliati": sum(
+                int(esito.get("riconciliati") or 0) for esito in per_anno.values()
+            ),
+            "proposte": sum(
+                int(esito.get("proposte") or 0) for esito in per_anno.values()
+            ),
+            "ambigui": sum(
+                int(esito.get("ambigui") or 0) for esito in per_anno.values()
+            ),
+        },
+    }
 
 # Popolato al momento della creazione del webhook su developer.paypal.com
 # (Applicazioni e credenziali > Webhook in tempo reale > Aggiungi Webhook,
@@ -96,11 +127,15 @@ async def ricevi_webhook(request: Request):
     end = (evento_dt + timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=0)
 
     result = await sync_paypal_period(db, start, end)
+    reconciliation = await _riconcilia_intervallo_paypal(db, start, end)
     await db["paypal_webhook_events"].update_one(
         {"event_id": event_id},
-        {"$set": {"processed": True, "sync_result": result}},
+        {"$set": {"processed": True, "sync_result": result,
+                  "link_result": reconciliation["collegamenti"],
+                  "bank_result": reconciliation["banca"]}},
     )
-    return {"success": True, "processato": True, "sync": result}
+    return {"success": True, "processato": True, "sync": result,
+            **reconciliation}
 
 
 @router.post("/sync")
@@ -113,7 +148,8 @@ async def sync_period(body: Dict[str, Any] = Body(...)):
 
     db = Database.get_db()
     result = await sync_paypal_period(db, start, end)
-    return result
+    reconciliation = await _riconcilia_intervallo_paypal(db, start, end)
+    return {**result, **reconciliation}
 
 
 @router.post("/sync/month")
@@ -125,7 +161,9 @@ async def sync_current_month():
     end = now.replace(day=last_day, hour=23, minute=59, second=59)
 
     db = Database.get_db()
-    return await sync_paypal_period(db, start, end)
+    result = await sync_paypal_period(db, start, end)
+    reconciliation = await _riconcilia_intervallo_paypal(db, start, end)
+    return {**result, **reconciliation}
 
 
 @router.get("/status")
@@ -164,14 +202,17 @@ async def riconcilia_da_collection(
        vedi app/services/paypal_email_recovery.py
     """
     from app.services.paypal_riconciliazione import (
-        riconcilia_pagamenti_paypal,
         riconcilia_multe_pagopa,
     )
     from app.routers.paypal_statements import _auto_riconcilia
     from app.services.paypal_email_recovery import recupera_fatture_mancanti_email
 
     db = Database.get_db()
-    q: Dict[str, Any] = {"importo": {"$lt": 0}}
+    q: Dict[str, Any] = {"$or": [
+        {"importo": {"$lt": 0}},
+        {"lordo": {"$lt": 0}},
+        {"amount": {"$lt": 0}},
+    ]}
     if body.get("start_date"):
         q["initiation_date"] = {"$gte": body["start_date"]}
     if body.get("end_date"):
@@ -179,21 +220,12 @@ async def riconcilia_da_collection(
 
     txs = await db["paypal_transactions"].find(q, {"_id": 0}).to_list(5000)
     multe = [t for t in txs if t.get("is_pagopa")]
-    fatture = [t for t in txs if not t.get("is_pagopa")]
-
     r_multe = await riconcilia_multe_pagopa(db, multe)
-    r_fatt = await riconcilia_pagamenti_paypal(db, [
-        {
-            "data": (t.get("initiation_date") or "")[:10],
-            "beneficiario": t.get("nome_controparte") or t.get("transaction_subject", ""),
-            "email_controparte": t.get("email_controparte"),
-            "invoice_id_fornitore": t.get("invoice_id_fornitore"),
-            "paypal_account_id": t.get("paypal_account_id"),
-            "importo": t.get("importo", 0),
-            "codice_transazione": t.get("transaction_id"),
-        }
-        for t in fatture
-    ])
+    r_fatt = await riprocessa_collegamenti_paypal(
+        db,
+        start_date=body.get("start_date"),
+        end_date=body.get("end_date"),
+    )
     # Un solo motore banca: il precedente percorso legacy usava un mandato
     # fisso e non proteggeva dai pareggi. Il motore canonico richiede invece
     # un match biunivoco e non riutilizza movimenti gia' riconciliati.

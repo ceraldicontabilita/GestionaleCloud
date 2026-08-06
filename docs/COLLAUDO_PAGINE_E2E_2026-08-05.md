@@ -88,7 +88,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 37 | [ ] | Riconciliazione documenti — `/riconciliazione/documenti` | Associa documenti non collegati senza creare legami ambigui. | TENERE |
 | 38 | [ ] | Archivio bonifici — `/riconciliazione/archivio-bonifici` | Consulta bonifici e propone associazioni a salari o fatture. | TENERE; BLOCCARE FATTURA SU DIPENDENTE |
 | 39 | [~] IN REVISIONE | Assegni — `/riconciliazione/assegni` | Carnet, assegni, incasso e associazione automatica fatture. | RIAPERTA: CONFLITTI STORICI DI SOVRA-ATTRIBUZIONE |
-| 40 | [~] IN REVISIONE | PayPal — `/riconciliazione/paypal` | Transazioni, movimenti banca, documenti e mapping fornitori PayPal. | TENERE |
+| 40 | [~] IN REVISIONE | PayPal — `/riconciliazione/paypal` | Transazioni, movimenti banca, documenti e mapping fornitori PayPal. | CORRETTA IN CODICE; ATTENDE SUITE, DEPLOY E COLLAUDO LIVE |
 | 41 | [ ] | Coerenza POS — `/riconciliazione/coerenza-pos` | Confronta XML corrispettivi, chiusure reali POS e accrediti banca. | TENERE |
 | 42 | [ ] | Import documenti — `/documenti/import` | Unico ingresso per PDF/XML/ZIP con classificazione e deduplica. | TENERE COME INGRESSO UNICO |
 | 43 | [ ] | Archivio documenti — `/documenti/archivio` | Consulta file, esiti, anomalie, provenienza e collegamenti. | TENERE |
@@ -305,4 +305,8 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 - Verifica read-only reale 2026: 27 transazioni, 17 pagamenti contabili effettivi, 0 statement, 44 movimenti bancari PayPal, 0 riconciliati; 6 movimenti hanno un candidato univoco con importo al centesimo, segno e data entro tre giorni. Non è stata eseguita alcuna riconciliazione sul database aziendale.
 - Errore riprodotto: Dashboard e lista calcolavano `EUR 2.136,56` su 17 pagamenti, mentre Report spese calcolava `EUR 2.725,43` su 21 righe perché sommava anche le gambe tecniche T02 delle conversioni valuta.
 - Il Report usa ora una sola riga contabile per pagamento e l'importo EUR della conversione collegata. Sul dataset reale in sola lettura Dashboard, lista e Report coincidono: 17 pagamenti e `EUR 2.136,56`.
-- Restano da chiudere mapping fornitori, associazione fattura e riconciliazione banca; per questo la pagina resta `IN REVISIONE`.
+- Implementata una sola catena bidirezionale PayPal -> fattura -> movimento banca -> Prima Nota. La fattura resta `in_attesa_estratto_conto` finche il movimento bancario non conferma la stessa transazione; l'ordine di arrivo banca/fattura non cambia l'esito e il riprocessamento storico e idempotente.
+- L'associazione automatica richiede fornitore identificato, numero fattura esatto, importo identico al centesimo e valuta compatibile. Pareggi, fatture gia pagate o gia assegnate ad altra transazione restano sospesi e non vengono forzati.
+- Import PDF/CSV, sync API, webhook e arrivo tardivo della fattura richiamano lo stesso motore. Le sincronizzazioni che attraversano due anni riconciliano entrambi gli anni; le righe PayPal pending, denied, reversed, tecniche T02 o non `balance_affecting` vengono escluse.
+- Rimossi il matcher legacy che marcava pagata una fattura senza prova bancaria, i dati PayPal hardcoded e il falso percorso PDF. La UI espone `Riprocessa storico` e non esegue piu due riconciliazioni duplicate dopo il sync.
+- Test mirati correnti: 46 backend PayPal e 7 frontend superati. Suite completa: 1.234 backend superati, 2 saltati e 135 frontend superati; build Vite di produzione riuscita e asset generati ripuliti. La pagina resta `IN REVISIONE` finche non terminano deploy e collaudo live in sola lettura.

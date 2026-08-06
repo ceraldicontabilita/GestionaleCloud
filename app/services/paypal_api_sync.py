@@ -56,6 +56,10 @@ def extract_enriched_fields(tx: Dict[str, Any]) -> Dict[str, Any]:
         "paypal_reference_id": info.get("paypal_reference_id"),
         "reference_id_type": info.get("paypal_reference_id_type"),
         "event_code": info.get("transaction_event_code"),
+        "transaction_event_code": info.get("transaction_event_code"),
+        "transaction_status": info.get("transaction_status"),
+        "bank_reference_id": info.get("bank_reference_id"),
+        "balance_affecting": info.get("balance_affecting"),
         # Campi usati dai listing:
         "data": data_iso,
         "data_operazione": init_date,
@@ -92,6 +96,21 @@ async def sync_paypal_period(
         doc = extract_enriched_fields(tx)
         if not doc.get("transaction_id"):
             continue
+        # PayPal puo' restituire per lo stesso transaction_id una riga che
+        # incide sul saldo e una riga solo informativa. Il database operativo
+        # conserva esclusivamente quella balance-affecting: evita duplicati e
+        # mantiene transaction_id come chiave stabile usata da link e UI.
+        balance_affecting = doc.get("balance_affecting")
+        if balance_affecting is False or str(balance_affecting or "").upper() in {
+            "N", "NO", "FALSE",
+        }:
+            continue
+        reporting_key = "|".join(str(doc.get(key) or "") for key in (
+            "transaction_id", "transaction_event_code", "transaction_status",
+            "importo", "currency", "initiation_date", "paypal_reference_id",
+            "balance_affecting",
+        ))
+        doc["paypal_reporting_key"] = reporting_key
         res = await db[COLL].update_one(
             {"transaction_id": doc["transaction_id"]},
             {"$set": doc},

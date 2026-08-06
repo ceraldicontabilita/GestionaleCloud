@@ -18,6 +18,13 @@ from app.db_collections import (
 )
 from app.services.paypal_invoice_matching import evaluate_paypal_invoice_match
 from app.services.payment_invoice_matching import amounts_equal_to_cent
+from app.services.paypal_reconciliation_links import (
+    associa_transazione_univoca,
+    finalizza_transazione_paypal_se_completa,
+    is_successful_paypal_payment,
+    riprocessa_collegamenti_paypal,
+    supplier_mapping_for_transaction,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -145,6 +152,8 @@ def _pagamenti_paypal_in_euro(
 
     pagamenti: List[Dict[str, Any]] = []
     for tx in transactions:
+        if not is_successful_paypal_payment(tx):
+            continue
         tipo = str(tx.get("tipo") or tx.get("event_code") or "")
         if tipo.startswith("T02"):
             continue
@@ -633,7 +642,7 @@ async def paypal_dashboard(
 
 @router.post("/import-pdf")
 async def import_paypal_pdf(file: UploadFile = File(...)):
-    """Importa un PDF PayPal e prepara l'anteprima banca senza scritture."""
+    """Importa un PDF PayPal e applica soltanto i match univoci end-to-end."""
     from app.services.paypal_statement_import import import_paypal_statement_pdf
     
     if not file.filename.lower().endswith('.pdf'):
@@ -651,17 +660,17 @@ async def import_paypal_pdf(file: UploadFile = File(...)):
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     
-    # Dopo l'import mostriamo soltanto l'anteprima. La conferma esplicita passa
-    # dall'endpoint /riconcilia-banca?conferma=true e dalla relativa UI.
-    ric_result = await _auto_riconcilia(db, applica=False)
+    result['collegamenti_prima'] = await riprocessa_collegamenti_paypal(db)
+    ric_result = await _auto_riconcilia(db, applica=True)
     result['riconciliazione'] = ric_result
+    result['collegamenti_dopo'] = await riprocessa_collegamenti_paypal(db)
     
     return result
 
 
 @router.post("/import-all-local")
 async def import_all_local_pdfs():
-    """Importa PDF locali e prepara l'anteprima banca senza scritture."""
+    """Importa PDF locali e applica soltanto i match univoci end-to-end."""
     from app.parsers.paypal_msr_parser import parse_paypal_msr
     
     db = Database.get_db()
@@ -689,8 +698,10 @@ async def import_all_local_pdfs():
         except Exception as e:
             results['errori'].append(f"{fname}: {str(e)}")
     
-    ric_result = await _auto_riconcilia(db, applica=False)
+    results['collegamenti_prima'] = await riprocessa_collegamenti_paypal(db)
+    ric_result = await _auto_riconcilia(db, applica=True)
     results['riconciliazione'] = ric_result
+    results['collegamenti_dopo'] = await riprocessa_collegamenti_paypal(db)
     
     return results
 
@@ -701,8 +712,8 @@ async def import_paypal_csv(file: UploadFile = File(...)):
     Importa un estratto conto PayPal esportato in CSV (formato bulk export,
     più mesi in un unico file) — alternativa a /import-pdf per chi non ha i
     PDF MSR/CSR ma solo l'export CSV. Ogni "File" nel CSV diventa uno
-    statement separato; la riconciliazione banca resta in anteprima fino alla
-    conferma esplicita dell'utente.
+    statement separato; i match bancari univoci vengono applicati subito,
+    mentre parita' e ambiguita' restano sospese.
     """
     from app.parsers.paypal_csv_parser import parse_paypal_csv
 
@@ -722,7 +733,9 @@ async def import_paypal_csv(file: UploadFile = File(...)):
         transazioni_inserite += save_result.get('transazioni_inserite', 0)
         transazioni_duplicate += save_result.get('transazioni_duplicate', 0)
 
-    ric_result = await _auto_riconcilia(db, applica=False)
+    collegamenti_prima = await riprocessa_collegamenti_paypal(db)
+    ric_result = await _auto_riconcilia(db, applica=True)
+    collegamenti_dopo = await riprocessa_collegamenti_paypal(db)
 
     return {
         "success": True,
@@ -731,7 +744,9 @@ async def import_paypal_csv(file: UploadFile = File(...)):
         "righe_scartate": parsed['righe_scartate'],
         "transazioni_inserite": transazioni_inserite,
         "transazioni_duplicate": transazioni_duplicate,
+        "collegamenti_prima": collegamenti_prima,
         "riconciliazione": ric_result,
+        "collegamenti_dopo": collegamenti_dopo,
     }
 
 
@@ -886,6 +901,7 @@ async def _auto_riconcilia(
                 "data_riconciliazione": now,
             }}
         )
+        await finalizza_transazione_paypal_se_completa(db, tx_id)
         riconciliati += 1
     
     return {
@@ -1245,45 +1261,18 @@ async def associa_transazione(transaction_id: str, body: Dict[str, Any] = Body(.
 
     set_data: Dict[str, Any] = {}
     if body.get("fattura_id"):
-        fatt = await db[COLL_INVOICES].find_one(
-            {"id": body["fattura_id"]},
-            {"_id": 0})
-        if not fatt:
-            raise HTTPException(status_code=404, detail="Fattura non trovata")
-        mapping = None
-        paypal_account_id = tx.get("paypal_account_id") or tx.get("account_id")
-        if paypal_account_id:
-            forn = await db["fornitori"].find_one(
-                {"paypal_account_id": paypal_account_id}, {"_id": 0}
-            )
-            if forn:
-                mapping = {
-                    "fornitore_piva": forn.get("piva") or forn.get("partita_iva"),
-                    "codice_fiscale": forn.get("codice_fiscale"),
-                    "fornitore_nome": forn.get("nome"),
-                    "fornitore_ragione_sociale": forn.get("ragione_sociale"),
-                }
-        valutazione = evaluate_paypal_invoice_match(tx, fatt, mapping)
-        if not valutazione["associabile"]:
+        risultato = await associa_transazione_univoca(
+            db, tx, invoice_id=body["fattura_id"], automatic=False,
+        )
+        if not risultato.get("collegata"):
             raise HTTPException(
                 status_code=409,
                 detail={
                     "messaggio": "Associazione rifiutata: fattura e transazione non hanno evidenze sufficienti",
-                    "motivo": valutazione["scarto"],
-                    "evidenze": valutazione["evidenze"],
+                    "motivo": risultato.get("motivo"),
                 },
             )
-        set_data["fattura_associata"] = {
-            "fattura_id": fatt["id"],
-            "numero": fatt.get("invoice_number") or fatt.get("numero_fattura"),
-            "data": fatt.get("invoice_date") or fatt.get("data_fattura"),
-            "fornitore": fatt.get("supplier_name") or fatt.get("cedente_denominazione"),
-            "importo": fatt.get("total_amount") or fatt.get("importo_totale"),
-            "view_url": f"/api/fatture-ricevute/fattura/{fatt['id']}/view-assoinvoice",
-            "auto": False,
-            "match": "manuale_validato",
-            "evidenze": valutazione["evidenze"],
-        }
+        return {"success": True, **risultato}
     elif body.get("gmail"):
         g = body["gmail"]
         set_data["gmail_associata"] = {
@@ -1308,96 +1297,30 @@ async def auto_associa_transazioni() -> Dict[str, Any]:
     entrambe le fonti dichiarano la valuta, anche la valuta deve coincidere.
     Le transazioni senza evidenze sufficienti restano da verificare."""
     db = Database.get_db()
-    txs = await db[COLL_PAYPAL_TRANSACTIONS].find(
-        {"lordo": {"$lt": 0}, "fattura_associata": {"$exists": False}},
-        {"_id": 0, "transaction_id": 1, "importo": 1, "lordo": 1,
-         "currency": 1, "valuta": 1, "divisa": 1,
-         "nome_controparte": 1, "email_controparte": 1, "data": 1,
-         "initiation_date": 1, "invoice_id_fornitore": 1, "invoice_id": 1,
-         "paypal_account_id": 1},
-    ).to_list(2000)
+    return {"success": True, **(await riprocessa_collegamenti_paypal(db))}
 
-    associate = 0
-    for tx in txs:
-        importo = abs(float(tx.get("importo") or tx.get("lordo") or 0))
-        if importo <= 0 or not tx.get("transaction_id"):
-            continue
-        # Confronto su un IMPORTO UNICO per fattura (coalesce total_amount/importo_totale)
-        # invece di un $or sui due campi separatamente: con un $or, un documento con
-        # total_amount e importo_totale disallineati (schema legacy vs nuovo) può
-        # comparire come candidato per DUE transazioni di importo diverso, causando
-        # match incrociati errati (es. due pagamenti distinti linkati alla stessa fattura).
-        cands = await db[COLL_INVOICES].aggregate([
-            {"$addFields": {"_importo_coalesced": {
-                "$ifNull": ["$total_amount", "$importo_totale"]
-            }}},
-            {"$match": {"_importo_coalesced": {"$gte": importo - 0.004, "$lte": importo + 0.004}}},
-            {"$project": {"_id": 0, "id": 1, "invoice_number": 1, "numero_fattura": 1,
-                          "invoice_date": 1, "data_fattura": 1,
-                          "supplier_name": 1, "cedente_denominazione": 1,
-                          "supplier_vat": 1, "cedente_piva": 1, "piva_cedente": 1,
-                          "supplier_tax_code": 1, "cedente_codice_fiscale": 1,
-                          "supplier_email": 1, "cedente_email": 1,
-                          "divisa": 1, "currency": 1, "valuta": 1,
-                          "total_amount": 1, "importo_totale": 1}},
-            {"$limit": 10},
-        ]).to_list(10)
-        if not cands:
-            continue
-        mapping = None
-        if tx.get("paypal_account_id"):
-            forn = await db["fornitori"].find_one(
-                {"paypal_account_id": tx["paypal_account_id"]}, {"_id": 0}
-            )
-            if forn:
-                mapping = {
-                    "fornitore_piva": forn.get("piva") or forn.get("partita_iva"),
-                    "codice_fiscale": forn.get("codice_fiscale"),
-                    "fornitore_nome": forn.get("nome"),
-                    "fornitore_ragione_sociale": forn.get("ragione_sociale"),
-                }
-        validi = []
-        for candidato in cands:
-            valutazione = evaluate_paypal_invoice_match(tx, candidato, mapping)
-            if valutazione["associabile"]:
-                validi.append((valutazione, candidato))
-        validi.sort(key=lambda item: item[0]["score"], reverse=True)
-        scelta = validi[0][1] if validi else None
-        valutazione_scelta = validi[0][0] if validi else None
-        # Due fatture con lo stesso punteggio sono ambigue: nessuna scrittura.
-        if len(validi) > 1 and validi[0][0]["score"] == validi[1][0]["score"]:
-            scelta = None
-            valutazione_scelta = None
-        # FIX 18/07/2026 (segnalato dall'utente: un pagamento Spotify era
-        # collegato alla fattura di "Ricambi Manzo sas", un altro puntava a
-        # una fattura ormai cancellata — "Fattura non trovata"): un solo
-        # candidato con lo stesso importo, SENZA alcun riscontro sul nome
-        # del fornitore, non è una prova — è una coincidenza. Specialmente
-        # per le controparti PayPal-native/estere (Spotify, OpenAI, ecc.)
-        # che non hanno MAI una fattura italiana nel gestionale, questo
-        # produceva collegamenti a fatture completamente estranee scritti
-        # come se fossero certi. Niente più scritture "a indovinare": senza
-        # corroborazione sul nome, la transazione resta non associata (la
-        # si troverà con "Cerca fattura via email" o a mano).
-        if scelta is None:
-            continue
-        await db[COLL_PAYPAL_TRANSACTIONS].update_one(
-            {"transaction_id": tx["transaction_id"]},
-            {"$set": {"fattura_associata": {
-                "fattura_id": scelta["id"],
-                "numero": scelta.get("invoice_number"),
-                "data": scelta.get("invoice_date"),
-                "fornitore": scelta.get("supplier_name") or scelta.get("cedente_denominazione"),
-                "importo": scelta.get("total_amount"),
-                "view_url": f"/api/fatture-ricevute/fattura/{scelta['id']}/view-assoinvoice",
-                "auto": True,
-                "match": "fornitore_numero_importo_esatti",
-                "evidenze": valutazione_scelta["evidenze"],
-            }}},
-        )
-        associate += 1
 
-    return {"success": True, "analizzate": len(txs), "associate": associate}
+@router.post("/riprocessa")
+async def riprocessa_paypal_end_to_end(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
+    """Riesegue l'intera catena senza creare duplicati.
+
+    Serve anche come recupero per il caso in cui estratto conto, transazione
+    e fattura siano arrivati in un ordine diverso. Le associazioni ambigue
+    restano sospese e non vengono confermate.
+    """
+    db = Database.get_db()
+    start_date = f"{anno}-01-01" if anno else None
+    end_date = f"{anno}-12-31" if anno else None
+    prima = await riprocessa_collegamenti_paypal(
+        db, start_date=start_date, end_date=end_date,
+    )
+    banca = await _auto_riconcilia(db, anno=anno, applica=True)
+    dopo = await riprocessa_collegamenti_paypal(
+        db, start_date=start_date, end_date=end_date,
+    )
+    return {"success": True, "collegamenti_prima": prima, "banca": banca,
+            "collegamenti_dopo": dopo}
+
 
 
 @router.post("/pulisci-match-solo-importo")
@@ -1441,7 +1364,8 @@ async def pulisci_match_solo_importo(dry_run: bool = Query(True)) -> Dict[str, A
         if not invoice:
             da_rimuovere.append({**t, "_motivo": "fattura_non_trovata"})
             continue
-        valutazione = evaluate_paypal_invoice_match(t, invoice)
+        mapping = await supplier_mapping_for_transaction(db, t)
+        valutazione = evaluate_paypal_invoice_match(t, invoice, mapping)
         if not valutazione["associabile"]:
             da_rimuovere.append({**t, "_motivo": valutazione["scarto"]})
 

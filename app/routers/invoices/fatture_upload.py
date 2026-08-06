@@ -1237,6 +1237,15 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             invoice.get("invoice_number"),
         )
 
+    try:
+        from app.services.paypal_reconciliation_links import collega_fattura_paypal_appena_importata
+        await collega_fattura_paypal_appena_importata(db, invoice)
+    except Exception:
+        logger.exception(
+            "Riprocessamento PayPal dopo import fallito per %s",
+            invoice.get("invoice_number"),
+        )
+
     return invoice
 
 
@@ -1896,6 +1905,15 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
     except Exception:
         logger.exception(
             "Riprocessamento estratto dopo import fallito per %s",
+            invoice.get("invoice_number"),
+        )
+
+    try:
+        from app.services.paypal_reconciliation_links import collega_fattura_paypal_appena_importata
+        await collega_fattura_paypal_appena_importata(db, invoice)
+    except Exception:
+        logger.exception(
+            "Riprocessamento PayPal dopo import fallito per %s",
             invoice.get("invoice_number"),
         )
 

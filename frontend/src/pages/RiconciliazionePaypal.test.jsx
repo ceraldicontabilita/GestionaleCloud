@@ -154,4 +154,21 @@ describe('Pagina PayPal: fonti, stati e filtri', () => {
     expect(screen.queryByTestId('paypal-source-table')).not.toBeInTheDocument();
     expect(screen.getByText('Nessun file: fonte API')).toBeInTheDocument();
   });
+
+  it('riprocessa automaticamente storico, banca e fatture per l anno globale', async () => {
+    mockSuccessfulRequests();
+    api.post.mockResolvedValue({ data: {
+      collegamenti_prima: { associate: 1 },
+      banca: { riconciliati: 1 },
+      collegamenti_dopo: { finalizzate: 1 },
+    } });
+    renderPage();
+
+    const button = await screen.findByTestId('reprocess-paypal-btn');
+    fireEvent.click(button);
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/paypal-statements/riprocessa?anno=2026'
+    ));
+  });
 });
