@@ -94,16 +94,6 @@ export default function CoerenzaPOSCorrispettivi() {
     }
   };
 
-  const handleRiconcilia = async data => {
-    try {
-      const res = await api.post(`/api/pos-corrispettivi/riconcilia-pos-giorno?data=${data}`);
-      toast.success(res.data.message);
-      loadDati();
-    } catch (e) {
-      toast.error('Errore: ' + (e.response?.data?.detail || e.message));
-    }
-  };
-
   const getStatoIcon = stato => {
     switch (stato) {
       case 'ok':
@@ -201,6 +191,22 @@ export default function CoerenzaPOSCorrispettivi() {
             value={formatEuro(statsPos.fase2_saldo_finale || 0)}
             accent={Math.abs(statsPos.fase2_saldo_finale || 0) > 0.01 ? 'danger' : 'success'}
           />
+        </div>
+      )}
+      {(statsPos.fase2_duplicati_banca_unificati || 0) > 0 && (
+        <div
+          style={{
+            marginTop: -8,
+            marginBottom: 16,
+            padding: '10px 12px',
+            background: COLORS.infoLight,
+            borderRadius: BORDER_RADIUS.md,
+            color: COLORS.info,
+            fontSize: 13,
+          }}
+        >
+          Fonti bancarie duplicate unificate: <strong>{statsPos.fase2_duplicati_banca_unificati}</strong>
+          {' '}su {statsPos.fase2_movimenti_banca_raw || 0} righe sorgente. Le prove originali restano conservate.
         </div>
       )}
 
@@ -314,8 +320,10 @@ export default function CoerenzaPOSCorrispettivi() {
                 <Th align="right">CORRISPETTIVI</Th>
                 <Th align="right">CONTANTI</Th>
                 <Th align="right">ELETTR. XML</Th>
-                <Th align="right">POS BANCA</Th>
-                <Th align="right">DIFF.</Th>
+                <Th align="right">POS TERMINALE</Th>
+                <Th align="right">DIFF. XML−POS</Th>
+                <Th align="right">ACCREDITO BANCA</Th>
+                <Th align="right">DIFF. BANCA−POS</Th>
                 <Th align="center">STATO</Th>
               </tr>
             </thead>
@@ -332,6 +340,10 @@ export default function CoerenzaPOSCorrispettivi() {
                   <Td align="right" style={{ color: COLORS.info }}>
                     {formatEuro(m.elettronico_xml)}
                   </Td>
+                  <Td align="right">{formatEuro(m.pos_terminale)}</Td>
+                  <Td align="right" style={{ color: COLORS.purple }}>
+                    {formatEuroConSegno(m.differenza_xml_pos)}
+                  </Td>
                   <Td align="right" style={{ color: COLORS.purple }}>
                     {formatEuro(m.pos_accreditato)}
                   </Td>
@@ -339,11 +351,10 @@ export default function CoerenzaPOSCorrispettivi() {
                     align="right"
                     style={{
                       fontWeight: 600,
-                      color: Math.abs(m.differenza) > 50 ? COLORS.danger : COLORS.success,
+                      color: Math.abs(m.differenza_pos_banca) > 0.5 ? COLORS.danger : COLORS.success,
                     }}
                   >
-                    {m.differenza > 0 ? '+' : ''}
-                    {formatEuro(m.differenza)}
+                    {formatEuroConSegno(m.differenza_pos_banca)}
                   </Td>
                   <Td align="center">
                     <Badge variant={statoBadgeVariant(m.stato)}>{m.stato}</Badge>
@@ -358,6 +369,12 @@ export default function CoerenzaPOSCorrispettivi() {
                 <Td align="right" style={{ color: COLORS.info, fontWeight: 700 }}>
                   {formatEuro(riepilogoMensile.totali.elettronico_xml)}
                 </Td>
+                <Td align="right" style={{ fontWeight: 700 }}>
+                  {formatEuro(riepilogoMensile.totali.pos_terminale)}
+                </Td>
+                <Td align="right" style={{ fontWeight: 700 }}>
+                  {formatEuroConSegno(riepilogoMensile.totali.differenza_xml_pos)}
+                </Td>
                 <Td align="right" style={{ color: COLORS.purple, fontWeight: 700 }}>
                   {formatEuro(riepilogoMensile.totali.pos_accreditato)}
                 </Td>
@@ -366,11 +383,10 @@ export default function CoerenzaPOSCorrispettivi() {
                   style={{
                     fontWeight: 700,
                     color:
-                      Math.abs(riepilogoMensile.totali.differenza) > 100 ? COLORS.danger : COLORS.success,
+                      Math.abs(riepilogoMensile.totali.differenza_pos_banca) > 0.5 ? COLORS.danger : COLORS.success,
                   }}
                 >
-                  {riepilogoMensile.totali.differenza > 0 ? '+' : ''}
-                  {formatEuro(riepilogoMensile.totali.differenza)}
+                  {formatEuroConSegno(riepilogoMensile.totali.differenza_pos_banca)}
                 </Td>
                 <Td />
               </tr>
@@ -450,9 +466,9 @@ export default function CoerenzaPOSCorrispettivi() {
                     >
                       {formatEuro(a.differenza)}
                     </div>
-                    <Button variant="info" size="sm" onClick={() => handleRiconcilia(a.data)}>
-                      Riconcilia
-                    </Button>
+                    <div style={{ fontSize: 11, color: COLORS.textMuted }}>
+                      Verifica automatica su estratto conto
+                    </div>
                   </div>
                 </div>
               ))}

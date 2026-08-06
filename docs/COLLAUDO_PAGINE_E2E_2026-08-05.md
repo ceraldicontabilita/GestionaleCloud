@@ -89,7 +89,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 38 | [ ] | Archivio bonifici — `/riconciliazione/archivio-bonifici` | Consulta bonifici e propone associazioni a salari o fatture. | TENERE; BLOCCARE FATTURA SU DIPENDENTE |
 | 39 | [~] IN REVISIONE | Assegni — `/riconciliazione/assegni` | Carnet, assegni, incasso e associazione automatica fatture. | RIAPERTA: CONFLITTI STORICI DI SOVRA-ATTRIBUZIONE |
 | 40 | [x] VERIFICATA | PayPal — `/riconciliazione/paypal` | Transazioni, movimenti banca, documenti e mapping fornitori PayPal. | TENERE; CATENA E DEDUPLICA BANCARIA COLLAUDATE LIVE |
-| 41 | [ ] | Coerenza POS — `/riconciliazione/coerenza-pos` | Confronta XML corrispettivi, chiusure reali POS e accrediti banca. | TENERE |
+| 41 | [~] IN REVISIONE | Coerenza POS — `/riconciliazione/coerenza-pos` | Confronta XML corrispettivi, chiusure reali POS e accrediti banca. | CORRETTA IN CODICE; ATTENDE DEPLOY E COLLAUDO LIVE |
 | 42 | [ ] | Import documenti — `/documenti/import` | Unico ingresso per PDF/XML/ZIP con classificazione e deduplica. | TENERE COME INGRESSO UNICO |
 | 43 | [ ] | Archivio documenti — `/documenti/archivio` | Consulta file, esiti, anomalie, provenienza e collegamenti. | TENERE |
 | 44 | [ ] | Verifica coerenza — `/strumenti` | Controlli incrociati in sola lettura; non esegue correzioni automatiche. | TENERE |
@@ -318,3 +318,12 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 - Seconda suite: 50 test backend PayPal e 7 frontend superati; suite completa 1.238 backend superati, 2 saltati e 135 frontend superati; build Vite di produzione riuscita e asset generati ripuliti. La pagina resta `IN REVISIONE` fino al secondo deploy e al controllo live dei valori 29/15 e delle direzioni.
 - Seconda pubblicazione: PR `#144`, merge `4ccb66fdcd046e1aae3b11d2d5f85fa284f25438`, deploy Render `dep-d9qdm2rl550s73e3p25g` concluso `live`; health `healthy`, database `connected` e commit servito `4ccb66fd`.
 - Collaudo autenticato finale in sola lettura: dashboard 27 transazioni, 17 pagamenti e `EUR 2.136,56`; sezione banca 29 movimenti canonici da 44 fonti, 15 duplicati unificati, 28 uscite SDD negative e 1 entrata positiva; Report spese ancora 17 pagamenti e `EUR 2.136,56`. Nessun comando di sync, import, riprocessamento o riconciliazione e stato eseguito e nessun dato aziendale e stato modificato. Pagina marcata `VERIFICATA`.
+
+### 2026-08-06 — Pagina 41 Coerenza POS, avvio revisione completa
+
+- Catena verificata nel codice: XML corrispettivi e confronto fiscale, chiusura reale del terminale e accredito bancario NUMIA sono tre evidenze distinte. Il giorno di vendita arriva dalla causale bancaria `DEL gg/mm/aa`; la data contabile resta una prova dell'accredito ma non decide il giorno da quadrare.
+- Il collaudo autenticato read-only mostrava 772 righe NUMIA, `EUR 306.147,49` e giorni con 4-9 movimenti. L'analisi delle fonti reali ha trovato tre liquidazioni da `EUR 2,00` importate tre volte ciascuna: 6 copie aggiuntive e `EUR 12,00` sommati due volte.
+- Implementata una vista canonica per data contabile, giorno vendita, importo al centesimo, causale e rapporto bancario. Nessun record viene cancellato: gli ID sorgente restano esposti per audit; circuiti diversi e la stessa somma su date contabili differenti restano operazioni separate.
+- Anteprima read-only reale dopo la correzione: 772 righe sorgente diventano 766 accrediti canonici, con 6 duplicati unificati; totale banca `EUR 306.135,49`. Il 08-07-2026 passa da falso extra `EUR 4,00` a quadrato; il 14-07-2026 passa da falso extra `EUR 10,00` a extra residuo `EUR 2,00`; il 16-07-2026 resta invariato.
+- Giornaliero, controllo a due fasi e mensile usano ora lo stesso motore. Il mensile espone separatamente XML, POS terminale, differenza XML-POS, accredito banca e differenza banca-POS; rimossa dalla UI l'associazione manuale legacy, perche la verifica deve derivare automaticamente dall'estratto conto.
+- Test mirati: 26 backend POS e 12 frontend superati. Suite completa: 1.240 backend superati, 2 saltati e 136 frontend superati; build Vite di produzione riuscita e asset generati ripuliti. La pagina resta `IN REVISIONE` fino a deploy e collaudo live in sola lettura.

@@ -100,9 +100,8 @@ def test_guardia_riepilogo_mensile_pos_non_legge_prima_nota_banca():
     inizio = testo.find("async def riepilogo_mensile_pos_corrispettivi")
     fine = testo.find("\nasync def ", inizio + 10)
     blocco = testo[inizio:fine if fine != -1 else len(testo)]
-    pos_query = blocco[blocco.find("pipeline_pos"):blocco.find("pos_result =") + 200]
-    assert 'db["estratto_conto_movimenti"]' in pos_query
-    assert 'db["prima_nota_banca"]' not in pos_query
+    assert "_carica_accrediti_banca_pos(" in blocco
+    assert 'db["prima_nota_banca"]' not in blocco
 
 
 def _run(c):
