@@ -21,12 +21,28 @@ class _FakeCollection:
 
     async def find_one(self, query, *a, **k):
         for d in self.docs:
-            if all(d.get(k2) == v2 for k2, v2 in query.items()):
+            if all(
+                (k2 not in d if isinstance(v2, dict) and v2.get("$exists") is False else d.get(k2) == v2)
+                for k2, v2 in query.items()
+            ):
                 return dict(d)
         return None
 
     async def insert_one(self, doc, *a, **k):
         self.docs.append(dict(doc))
+
+    async def update_one(self, query, update, upsert=False, *a, **k):
+        class Result:
+            upserted_id = None
+
+        existing = await self.find_one(query)
+        if existing:
+            return Result()
+        if upsert:
+            doc = dict(update.get("$setOnInsert") or {})
+            self.docs.append(doc)
+            Result.upserted_id = doc.get("id")
+        return Result()
 
 
 class _FakeDb:
@@ -56,12 +72,19 @@ def test_crea_cespite_da_riga_fattura_sopra_soglia_con_categoria(monkeypatch):
     assert cespite["valore_acquisto"] == 3500.0
     assert cespite["fattura_id"] == "fatt-1"
     assert cespite["anno_acquisto"] == 2026
+    assert cespite["data_entrata_funzione"] is None
+    assert cespite["source_key"].startswith("fattura_riga:")
 
 
 def test_non_duplica_se_gia_creato_dallo_scan_manuale(monkeypatch):
     db = _FakeDb()
     db["cespiti"].docs = [
-        {"id": "c-esistente", "descrizione": "Forno industriale 6 teglie", "valore_acquisto": 3500.0},
+        {
+            "id": "c-esistente",
+            "fattura_id": "fatt-2",
+            "descrizione": "Forno industriale 6 teglie",
+            "valore_acquisto": 3500.0,
+        },
     ]
 
     esito = _run(mod.handler_auto_cespite_da_fattura({
@@ -74,6 +97,34 @@ def test_non_duplica_se_gia_creato_dallo_scan_manuale(monkeypatch):
 
     assert esito["skipped"] is True
     assert len(db["cespiti"].docs) == 1  # nessun secondo cespite
+
+
+def test_non_confonde_due_acquisti_distinti_stesso_bene_e_importo():
+    db = _FakeDb()
+    primo = {
+        "fattura_id": "fatt-a",
+        "data_documento": "2026-05-01",
+        "righe_linee": [{"descrizione": "Forno industriale", "prezzo_totale": 3500.0}],
+    }
+    secondo = {**primo, "fattura_id": "fatt-b", "data_documento": "2026-06-01"}
+
+    _run(mod.handler_auto_cespite_da_fattura(primo, db))
+    _run(mod.handler_auto_cespite_da_fattura(secondo, db))
+
+    assert len(db["cespiti"].docs) == 2
+    assert len({d["source_key"] for d in db["cespiti"].docs}) == 2
+
+
+def test_non_inventa_data_acquisto_se_manca_nella_fattura():
+    db = _FakeDb()
+    esito = _run(mod.handler_auto_cespite_da_fattura({
+        "fattura_id": "fatt-senza-data",
+        "righe_linee": [{"descrizione": "Forno industriale", "prezzo_totale": 3500.0}],
+    }, db))
+
+    assert esito["skipped"] is True
+    assert "data_documento" in esito["reason"]
+    assert db["cespiti"].docs == []
 
 
 def test_riga_sotto_soglia_non_diventa_cespite(monkeypatch):

@@ -70,7 +70,7 @@ def test_scan_non_duplica_cespite_con_descrizione_oltre_100_caratteri(monkeypatc
     db = _FakeDb()
     monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
     db["cespiti"].docs = [
-        {"descrizione": DESCRIZIONE_LUNGA[:200], "valore_acquisto": 4200.0},
+        {"fattura_id": "fatt-1", "descrizione": DESCRIZIONE_LUNGA[:200], "valore_acquisto": 4200.0},
     ]
     db["invoices"].docs = [
         {

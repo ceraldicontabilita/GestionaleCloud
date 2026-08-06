@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1048 · tenere: 693 · verificare: 332 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1049 · tenere: 694 · verificare: 332 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -204,11 +204,12 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/cespiti/calcolo-rateo/{anno}/{mese}` | cespiti | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/cespiti/calcolo/{anno}` | cespiti | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/cespiti/categorie` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/cespiti/dismissione` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/cespiti/registra/{anno}` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/cespiti/dismissione` | cespiti | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/cespiti/registra/{anno}` | cespiti | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/cespiti/riepilogo` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/cespiti/scan-fatture` | cespiti | sì | — | — | — | sì | tenere | in uso: FE |
-| `DELETE /api/cespiti/{cespite_id}` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/cespiti/verifica/{anno}` | cespiti | sì | — | — | — | sì | tenere | in uso: FE |
+| `DELETE /api/cespiti/{cespite_id}` | cespiti | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/cespiti/{cespite_id}` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/cespiti/{cespite_id}` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/chat/ask` | chat_router | sì | — | sì | — | — | tenere | in uso: FE, chat |

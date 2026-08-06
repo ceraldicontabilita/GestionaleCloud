@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1048 endpoint** in **109 gruppi**.
+> Totale **1049 endpoint** in **109 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 658 · ext esterni = 90 · — da verificare = 300
+**Riepilogo uso:** ✓ frontend = 659 · ext esterni = 90 · — da verificare = 300
 
 ## AI Parser  (11)
 
@@ -277,7 +277,7 @@
 | GET | `/api/centri-costo/utile-obiettivo/per-cdc` | ✓ | accounting.centri_costo |
 | GET | `/api/centri-costo/utile-obiettivo/suggerimenti` | ✓ | accounting.centri_costo |
 
-## Cespiti  (12)
+## Cespiti  (13)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -290,6 +290,7 @@
 | POST | `/api/cespiti/registra/{anno}` | ✓ | cespiti |
 | GET | `/api/cespiti/riepilogo` | ✓ | cespiti |
 | POST | `/api/cespiti/scan-fatture` | ✓ | cespiti |
+| GET | `/api/cespiti/verifica/{anno}` | ✓ | cespiti |
 | GET | `/api/cespiti/{cespite_id}` | ✓ | cespiti |
 | PUT | `/api/cespiti/{cespite_id}` | ✓ | cespiti |
 | DELETE | `/api/cespiti/{cespite_id}` | ✓ | cespiti |

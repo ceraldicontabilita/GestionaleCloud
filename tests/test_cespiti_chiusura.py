@@ -105,14 +105,45 @@ def test_classify_asset_fallback_prezzo():
     assert classify_asset("Merce varia", 9999) is None
 
 
+def test_coefficienti_gruppo_xix_ufficiali():
+    categorie = cespiti_mod.CATEGORIE_CESPITI
+    assert categorie["mobili_arredi"]["coefficiente"] == 10
+    assert categorie["attrezzature"]["coefficiente"] == 25
+    assert categorie["impianti_generici"]["coefficiente"] == 8
+    assert categorie["impianti_cucina"]["coefficiente"] == 12
+    assert categorie["macchine_ufficio"]["coefficiente"] == 20
+
+
+def test_calcolo_non_supera_massimo_fiscale_categoria(monkeypatch):
+    cespite = _cespite(anno_acquisto=2025, coeff=12)
+    cespite["categoria"] = "mobili_arredi"  # massimo ufficiale 10%
+    _patch_db(monkeypatch, cespiti_mod, {"cespiti": _Coll([cespite])})
+
+    result = _run(cespiti_mod.calcola_ammortamenti_anno(2025))
+
+    assert result["ammortamenti"][0]["coefficiente_applicato"] == 10
+    assert result["ammortamenti"][0]["quota_anno"] == 50.0
+
+
+def test_bene_immateriale_non_applica_dimezzamento_articolo_102(monkeypatch):
+    cespite = _cespite(anno_acquisto=2025, valore=3000.0, coeff=33.33)
+    cespite["categoria"] = "software"
+    _patch_db(monkeypatch, cespiti_mod, {"cespiti": _Coll([cespite])})
+
+    result = _run(cespiti_mod.calcola_ammortamenti_anno(2025))
+
+    assert result["ammortamenti"][0]["quota_anno"] == 999.9
+
+
 # ---------- calcolo ammortamenti ----------
 
 def _cespite(anno_acquisto=2025, valore=1000.0, coeff=20, fondo=0.0, piano=None):
     return {
-        "id": "c1", "descrizione": "Forno", "categoria": "forni",
+        "id": "c1", "descrizione": "Computer", "categoria": "macchine_ufficio",
         "stato": "attivo", "ammortamento_completato": False,
         "valore_acquisto": valore, "coefficiente_ammortamento": coeff,
         "fondo_ammortamento": fondo, "anno_acquisto": anno_acquisto,
+        "data_entrata_funzione": f"{anno_acquisto}-01-01",
         "piano_ammortamento": piano or [],
     }
 
