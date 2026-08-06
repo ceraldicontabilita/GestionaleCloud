@@ -46,8 +46,22 @@ def _parsed(data="2026-07-19", matricola="RT001", piva="99999999901",
     }
 
 
+async def _con_pos_reale(db, importo=20.0, data="2026-07-19", gestore="nexi"):
+    """Chiusura REALE del terminale.
+
+    Dal 07/08/2026 l'uscita POS non si ricava piu' dall'elettronico XML: l'XML
+    e' la fonte fiscale del corrispettivo e non sa quanta parte sia passata da
+    Numia e quanta da SumUp.
+    """
+    await db["chiusure_pos_manuali"].insert_one({
+        "data": data, "gestore": gestore, "importo": importo,
+        "source": "inserimento_manuale_terminale",
+    })
+    return db
+
+
 def test_upload_crea_corrispettivo_e_prima_nota():
-    db = _db()
+    db = asyncio.run(_con_pos_reale(_db()))
     esito = asyncio.run(ingest_corrispettivo_parsed(
         db, _parsed(), filename="test.xml", source="xml", update_if_exists=True,
     ))
@@ -62,7 +76,7 @@ def test_upload_crea_corrispettivo_e_prima_nota():
     assert entrate[0]["importo"] == 100.0
 
     uscite_pos = asyncio.run(
-        db["prima_nota_cassa"].find({"tipo": "uscita", "categoria": "POS Verso Banca"}).to_list(10)
+        db["prima_nota_cassa"].find({"tipo": "uscita", "categoria": "POS NUMIA Verso Banca"}).to_list(10)
     )
     trasferimenti = asyncio.run(
         db["prima_nota_banca"].find({"source": "trasferimento_pos"}).to_list(10)
@@ -75,7 +89,7 @@ def test_upload_crea_corrispettivo_e_prima_nota():
 
 
 def test_upload_duplicato_senza_force_non_crea_doppia_scrittura():
-    db = _db()
+    db = asyncio.run(_con_pos_reale(_db()))
     parsed = _parsed()
     asyncio.run(ingest_corrispettivo_parsed(
         db, parsed, filename="a.xml", source="xml", update_if_exists=True,
