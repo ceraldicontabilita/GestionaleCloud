@@ -24,6 +24,12 @@ const getTabFromPath = pathname => {
   return 'flotta';
 };
 
+export const totaleAltriCosti = valori =>
+  ['totale_pedaggio', 'totale_costi_extra', 'totale_riparazioni'].reduce(
+    (totale, chiave) => totale + Number(valori?.[chiave] || 0),
+    0
+  );
+
 function RiepilogoCosti({ anno }) {
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -223,11 +229,7 @@ function RiepilogoCosti({ anno }) {
                       {fmt(v.totale_bollo)}
                     </td>
                     <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                      {fmt(
-                        (v.totale_pedaggio || 0) +
-                          (v.totale_costi_extra || 0) +
-                          (v.totale_riparazioni || 0)
-                      )}
+                      {fmt(totaleAltriCosti(v))}
                     </td>
                     <td
                       style={{
@@ -262,7 +264,7 @@ function RiepilogoCosti({ anno }) {
                   {fmt(stats.totale_bollo)}
                 </td>
                 <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700 }}>
-                  {fmt((stats.totale_pedaggio || 0) + (stats.totale_costi_extra || 0))}
+                  {fmt(totaleAltriCosti(stats))}
                 </td>
                 <td
                   style={{
