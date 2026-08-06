@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuro, COLORS, BORDER_RADIUS, FONT } from '../lib/utils';
-import { PageLayout, PageSection, PageGrid, PageLoading } from '../components/PageLayout';
+import { PageLayout, PageSection, PageGrid, PageLoading, PageError } from '../components/PageLayout';
 import { Button, Select, TableWrap, Table, Th, Td, Input } from '../components/ds';
 import { FileText, Download, TrendingUp, TrendingDown, Scale, Trash2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
@@ -13,6 +13,7 @@ export default function Bilancio() {
   const [statoPatrimoniale, setStatoPatrimoniale] = useState(null);
   const [contoEconomico, setContoEconomico] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [mese, setMese] = useState(null);
   const [vociBilancio, setVociBilancio] = useState(null);
   const [codiciDisponibili, setCodiciDisponibili] = useState([]);
@@ -81,6 +82,7 @@ export default function Bilancio() {
   const loadBilancio = async () => {
     try {
       setLoading(true);
+      setError(null);
       const [spRes, ceRes] = await Promise.all([
         api.get(`/api/bilancio/stato-patrimoniale?anno=${anno}${mese ? `&mese=${mese}` : ''}`),
         api.get(`/api/bilancio/conto-economico?anno=${anno}${mese ? `&mese=${mese}` : ''}`),
@@ -89,6 +91,9 @@ export default function Bilancio() {
       setContoEconomico(ceRes.data);
     } catch (error) {
       console.error('Errore caricamento bilancio:', error);
+      setStatoPatrimoniale(null);
+      setContoEconomico(null);
+      setError('Impossibile caricare il Bilancio. I dati mostrati potrebbero essere incompleti.');
     } finally {
       setLoading(false);
     }
@@ -125,6 +130,9 @@ export default function Bilancio() {
   };
 
   const handleEliminaVoce = async voceId => {
+    if (!window.confirm('Eliminare questa voce manuale di bilancio? L\'operazione modifica i totali dell\'anno selezionato.')) {
+      return;
+    }
     try {
       await api.delete(`/api/voci-bilancio/${voceId}`);
       loadVociBilancio();
@@ -787,6 +795,8 @@ export default function Bilancio() {
 
       {loading ? (
         <PageLoading message="Caricamento bilancio..." />
+      ) : error ? (
+        <PageError message={error} onRetry={loadBilancio} />
       ) : (
         <>
           {activeTab === 'patrimoniale' && <StatoPatrimonialeView />}

@@ -3,7 +3,7 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 159
+**Totale file analizzati:** 160
 
 | Classificazione | File |
 |---|---:|
@@ -12,7 +12,7 @@
 | COMPONENTE_USATO | 84 |
 | MODALE_USATO | 4 |
 | HOOK_USATO | 3 |
-| TEST_ONLY | 15 |
+| TEST_ONLY | 16 |
 | DINAMICO_DA_VERIFICARE | 23 |
 | ORFANO_ELIMINABILE | 0 |
 
@@ -57,7 +57,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | File | Classificazione | Importato da (n. file) |
 |---|---|---:|
 | `frontend/src/App.jsx` | ENTRYPOINT | 1 |
-| `frontend/src/api.js` | COMPONENTE_USATO | 82 |
+| `frontend/src/api.js` | COMPONENTE_USATO | 83 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ChatIntelligente.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/CopyLinkButton.jsx` | COMPONENTE_USATO | 5 |
@@ -136,7 +136,8 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/ArchivioFattureRicevute.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/BatchProcessor.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/BatchReprocessing.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/pages/Bilancio.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/pages/Bilancio.jsx` | COMPONENTE_USATO | 2 |
+| `frontend/src/pages/Bilancio.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/BilancioVerifica.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/BudgetPrevisionale.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/CalendarioFiscale.jsx` | COMPONENTE_USATO | 1 |
