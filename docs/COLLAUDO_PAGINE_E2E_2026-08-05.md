@@ -86,7 +86,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 36 | [ ] | Riconciliazione stipendi — `/riconciliazione/stipendi` | Confronta bonifici paga, cedolini, acconti e saldi. | TENERE |
 | 37 | [ ] | Riconciliazione documenti — `/riconciliazione/documenti` | Associa documenti non collegati senza creare legami ambigui. | TENERE |
 | 38 | [ ] | Archivio bonifici — `/riconciliazione/archivio-bonifici` | Consulta bonifici e propone associazioni a salari o fatture. | TENERE; BLOCCARE FATTURA SU DIPENDENTE |
-| 39 | [ ] | Assegni — `/riconciliazione/assegni` | Carnet, assegni, incasso e associazione fatture con regola stretta. | TENERE |
+| 39 | [x] VERIFICATA | Assegni — `/riconciliazione/assegni` | Carnet, assegni, incasso e associazione fatture con regola stretta. | TENERE |
 | 40 | [~] IN REVISIONE | PayPal — `/riconciliazione/paypal` | Transazioni, movimenti banca, documenti e mapping fornitori PayPal. | TENERE |
 | 41 | [ ] | Coerenza POS — `/riconciliazione/coerenza-pos` | Confronta XML corrispettivi, chiusure reali POS e accrediti banca. | TENERE |
 | 42 | [ ] | Import documenti — `/documenti/import` | Unico ingresso per PDF/XML/ZIP con classificazione e deduplica. | TENERE COME INGRESSO UNICO |
@@ -281,6 +281,17 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 - La pagina apre correttamente Cassa, Banca, Provvisori e Soci, ma resta `IN REVISIONE`: l'apertura E2E non certifica ancora spostamenti, conteggi e quadrature di tutte le sezioni.
 - Verifica read-only reale sui finanziamenti soci 2026: 6 righe sorgente corrispondono a 3 operazioni; la deduplica conservativa restituisce 3 movimenti, `EUR 44.000,00` di apporti e 3 copie accorpate senza cancellare le prove bancarie. Il precedente totale visualizzato di `EUR 88.000,00` era raddoppiato.
 - Nessun record aziendale è stato modificato. La pagina potrà diventare `VERIFICATA` soltanto dopo i test reali separati di Cassa, Banca, Provvisori e dei relativi contatori.
+
+### 2026-08-06 — Pagina 39 Assegni
+
+- Route React verificata: `/riconciliazione/assegni` monta `GestioneAssegni` nel tab Riconciliazione; lista, statistiche, supporto fatture, carnet e riconciliazione sono registrati sotto `/api/assegni`.
+- Carnet corretto: il backend accetta sia il numero bancario continuo (`0208770985`) sia il formato storico con trattino, preserva gli zeri iniziali, genera il blocco con una sola lettura e una sola scrittura e rifiuta duplicati, overflow e formati ambigui prima dell'inserimento. La UI consente una quantità esplicita da 1 a 100.
+- Regola fattura resa stretta in tutti i controlli modificati: nessuna tolleranza legacy da 2 o 5 euro; una proposta richiede numero fattura dichiarato e importo identico al centesimo. L'importo da solo non identifica il documento e i pareggi restano sospesi.
+- Caso reale `0208770985`: assegno di `EUR 9.760,00` del 30 giugno 2026, incassato e collegato bidirezionalmente al movimento banca `EC-2026-06-30-9760.00-0885115d`. Non è stato associato alla sola fattura da `EUR 9.760,00` trovata nel database, perché è del 2022 e mancano beneficiario e riferimento fattura. Nessun dato aziendale è stato scritto.
+- Collaudo read-only reale 2026: 290 assegni attivi, 280 incassati, 10 vuoti e nessun numero duplicato. L'assegno campione ha prova banca certa e collegamento fattura correttamente sospeso.
+- Test mirati finali: 26 backend Assegni e 11 frontend, inclusi loading, empty, permission denied, desktop e mobile. Suite completa prima della pubblicazione: 1.194 backend superati, 2 saltati e 111 frontend superati; build Vite riuscita e asset generati ripuliti.
+- Correzione pubblicata con PR `#134`, merge `f746a9eaf5fcd89c06f62c93c5062ed578eee92d` e deploy Render `dep-d9q8mlp42hec73c7cqlg` concluso `live`.
+- Verifica produzione: health `healthy`, database `connected`, commit `f746a9ea`, route HTTP 200, API protetta HTTP 401 senza sessione e chunk `GestioneAssegni-DmUNmI4g.js` con nuovo carnet, numero continuo e quantità. Pagina marcata `VERIFICATA`.
 
 ### 2026-08-06 — Pagina 40 PayPal, avvio revisione completa
 
