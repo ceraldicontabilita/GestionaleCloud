@@ -66,7 +66,7 @@ function rispostaPerUrl(url) {
   if (url.includes('/api/pos-corrispettivi/controllo-due-fasi')) {
     return Promise.resolve(controlloPos);
   }
-  if (url.includes('/api/contabilita-gestionale/bilancio/verifica')) {
+  if (url.includes('/api/contabilita-gestionale/bilancio-verifica')) {
     return Promise.resolve(registro);
   }
   return Promise.reject(new Error(`URL inatteso: ${url}`));
@@ -87,6 +87,7 @@ describe('ControlloMensile', () => {
 
     const urls = api.get.mock.calls.map(([url]) => url);
     expect(urls).toContain('/api/pos-corrispettivi/controllo-due-fasi?anno=2026');
+    expect(urls).toContain('/api/contabilita-gestionale/bilancio-verifica?anno=2026');
     expect(urls.some(url => url.includes('/api/bank-statement/movements'))).toBe(false);
     expect(urls.some(url => url.includes('limit=500'))).toBe(false);
     expect(screen.getByText('Fatture da registrare')).toBeInTheDocument();

@@ -231,8 +231,8 @@ export default function Documenti() {
   // Controlla lo stato del lock email
   const checkEmailLock = async () => {
     try {
-      const res = await api.get('/api/system/lock-status');
-      setEmailLocked(res.data.email_locked);
+      const res = await api.get('/api/documenti/lock-status');
+      setEmailLocked(res.data.locked);
       setCurrentOperation(res.data.operation);
     } catch (e) {
       console.error('Errore check lock:', e);

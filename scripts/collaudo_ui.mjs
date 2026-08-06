@@ -13,24 +13,31 @@
 import { createRequire } from 'module';
 import { readFileSync, mkdirSync } from 'fs';
 
-const require = createRequire('/opt/node22/lib/node_modules/');
-const { chromium } = require('playwright');
+const require = createRequire(new URL('../frontend/package.json', import.meta.url));
+const { chromium } = require('playwright-core');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:8777';
 const AUTH_TOKEN = process.env.AUTH_TOKEN || '';
 const OUT_DIR = process.env.OUT_DIR || '/tmp/collaudo-ui';
-const EXECUTABLE = process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium';
+const EXECUTABLE = process.env.CHROMIUM_PATH || undefined;
+const VERBALE_TEST_ID = (process.env.VERBALE_TEST_ID || '').trim();
 
-// Rotte statiche lette da main.jsx (salta dinamiche/:param, wildcard e login)
+// Fonte unica: lo stesso catalogo numerato usato da test, smoke ed E2E.
+// Leggere solo main.jsx produceva appena le route hub e saltava le schermate
+// interne (62 schermate reali contro circa 30 registrazioni React).
 function rotte() {
-  const src = readFileSync(new URL('../frontend/src/main.jsx', import.meta.url), 'utf8');
-  const out = new Set();
-  for (const m of src.matchAll(/path: "([^"]+)"/g)) {
-    const p = m[1];
-    if (p.includes(':') || p.includes('*') || p === '/login' || p === '/gestione-riservata') continue;
-    out.add(p.startsWith('/') ? p : `/${p}`);
-  }
-  return [...out].sort();
+  const catalog = JSON.parse(
+    readFileSync(new URL('../page_catalog.json', import.meta.url), 'utf8')
+  );
+  return catalog.pages
+    .map(page => {
+      if (!page.path.includes(':')) return page.path;
+      if (page.id === 15 && VERBALE_TEST_ID) {
+        return `/verbali-noleggio/${encodeURIComponent(VERBALE_TEST_ID)}`;
+      }
+      return null;
+    })
+    .filter(Boolean);
 }
 
 // Rumore noto da ignorare (non sono difetti del gestionale)
@@ -42,7 +49,10 @@ const IGNORA = [
 
 const main = async () => {
   mkdirSync(OUT_DIR, { recursive: true });
-  const browser = await chromium.launch({ executablePath: EXECUTABLE, args: ['--no-sandbox'] });
+  const browser = await chromium.launch({
+    ...(EXECUTABLE ? { executablePath: EXECUTABLE } : {}),
+    args: ['--no-sandbox'],
+  });
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await ctx.addInitScript(token => {
     window.localStorage.setItem('auth_token', token);

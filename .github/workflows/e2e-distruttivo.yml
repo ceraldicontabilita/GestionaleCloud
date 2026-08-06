@@ -9,7 +9,9 @@ on:
       - "frontend/src/**"
       - "frontend/dist/**"
       - "frontend/scripts/audit-destructive-e2e.cjs"
+      - "frontend/scripts/audit-pages-e2e.cjs"
       - "scripts/e2e_distruttivo_server.py"
+      - "page_catalog.json"
       - ".github/workflows/e2e-distruttivo.yml"
 
 jobs:
@@ -40,6 +42,10 @@ jobs:
           yarn install --frozen-lockfile
           npx playwright-core install --with-deps chromium
 
+      - name: Build frontend corrente
+        working-directory: frontend
+        run: yarn build
+
       - name: Avvia ERP isolato
         run: |
           python -m uvicorn scripts.e2e_distruttivo_server:app \
@@ -56,4 +62,7 @@ jobs:
 
       - name: Premi e verifica le operazioni distruttive
         run: node frontend/scripts/audit-destructive-e2e.cjs
+
+      - name: Apri e verifica tutte le schermate catalogate
+        run: node frontend/scripts/audit-pages-e2e.cjs
 

@@ -20,6 +20,30 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 - `[x] VERIFICATA`: test e collaudo live conclusi.
 - `ACCORPARE` / `ELIMINARE`: decisione ammessa solo con prova di sovrapposizione o assenza di chiamanti.
 
+## 2026-08-06 - fondazione del collaudo verificabile
+
+- Aggiunto `page_catalog.json`: fonte macchina numerata delle 62 schermate, con
+  route, componente React, entrypoint, livello di accesso e stato audit.
+- Il catalogo e il registro Markdown devono coincidere 1:1; sei test bloccano
+  id mancanti, route duplicate, componenti assenti, hub non importati e URL
+  storici spacciati per pagine (`/magazzino`, `/dipendenti`, `/cedolini`).
+- Corretto lo smoke runtime: una risposta HTTP 200 della SPA e ora dichiarata
+  `delivery_only` e non viene piu presentata come pagina funzionante. Senza
+  token, HTTP 401 dimostra soltanto che l'endpoint protetto esiste.
+- Aggiunto un E2E Playwright autenticato contro router reali e MongoDB in
+  memoria. Apre tutte le 62 schermate e fallisce per 404, ErrorBoundary React,
+  errori JavaScript o API iniziali non valide, senza leggere dati aziendali.
+- Primo passaggio: 58/62. Difetti trovati e corretti: serializzazione ObjectId
+  nelle regole del Piano dei Conti, URL inesistente nel Controllo mensile,
+  lock Documenti chiamato fuori dal router canonico e 404 fixture duplicato.
+- Secondo passaggio completo: **62/62 aperture superate**. Questo certifica
+  route, montaggio e caricamento iniziale nel sistema isolato; non certifica
+  ancora la correttezza contabile dei dati reali. Restano pertanto visibili nel
+  catalogo **5 verificate, 8 in revisione e 49 non ancora verificate nel merito**.
+- Suite completa dopo le correzioni: **1.185 backend passati, 2 saltati** e
+  **111 frontend passati**. Build Vite di produzione completata; artefatti
+  generati rimossi dal working tree.
+
 ## Pagine, una per una
 
 | N. | Stato | Pagina e percorso canonico | Cosa fa | Decisione preliminare |

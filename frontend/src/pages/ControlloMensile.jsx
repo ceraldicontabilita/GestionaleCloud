@@ -141,7 +141,7 @@ export default function ControlloMensile() {
         { nome: 'Controllo POS-banca', vuoto: { data: { giorni: [] } },
           req: api.get(`/api/pos-corrispettivi/controllo-due-fasi?anno=${anno}`) },
         { nome: 'Registro contabile', vuoto: { data: { completezza_registro: null } },
-          req: api.get(`/api/contabilita-gestionale/bilancio/verifica?anno=${anno}`) },
+          req: api.get(`/api/contabilita-gestionale/bilancio-verifica?anno=${anno}`) },
       ];
       const esiti = await Promise.allSettled(fonti.map(f => f.req));
       const falliteNomi = [];
