@@ -159,48 +159,162 @@ async def telegram_test() -> Dict[str, Any]:
     return result
 
 
+_ARCHIVE_STATUSES = {"nuovo", "processato", "errore"}
+_ARCHIVE_PAYLOAD_FIELDS = {
+    "pdf_data": 0,
+    "file_base64": 0,
+    "xml_content": 0,
+    "raw_content": 0,
+    "content": 0,
+}
+
+
+def _archive_query(
+    *,
+    categoria: Optional[str] = None,
+    status: Optional[str] = None,
+    anno: Optional[int] = None,
+    search: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Costruisce filtri archivio senza interpretare la ricerca come regex.
+
+    Il periodo documentale ha precedenza, ma i documenti legacy possono avere
+    soltanto la data email/importazione. Tutti i campi restano alternative
+    esplicite: non si modifica il record per adattarlo al filtro.
+    """
+    clauses: List[Dict[str, Any]] = []
+    if categoria:
+        clauses.append({"category": categoria})
+    if status:
+        clauses.append({"status": status})
+    if anno:
+        year = str(anno)
+        clauses.append({
+            "$or": [
+                {"anno": anno},
+                {"anno": year},
+                {"periodo": {"$regex": rf"^{year}"}},
+                {"document_date": {"$regex": year}},
+                {"data_documento": {"$regex": year}},
+                {"email_date": {"$regex": year}},
+                {"downloaded_at": {"$regex": rf"^{year}"}},
+                {"created_at": {"$regex": rf"^{year}"}},
+            ]
+        })
+    if search:
+        literal = re.escape(search.strip())
+        if literal:
+            matcher = {"$regex": literal, "$options": "i"}
+            clauses.append({
+                "$or": [
+                    {"filename": matcher},
+                    {"email_subject": matcher},
+                    {"email_from": matcher},
+                    {"category_label": matcher},
+                    {"fonte": matcher},
+                    {"source": matcher},
+                    {"processed_to": matcher},
+                ]
+            })
+    if not clauses:
+        return {}
+    if len(clauses) == 1:
+        return clauses[0]
+    return {"$and": clauses}
+
+
+def _archive_document_metadata(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalizza solo metadati; payload e contenuti non escono nella lista."""
+    item = dict(doc)
+    for field in _ARCHIVE_PAYLOAD_FIELDS:
+        item.pop(field, None)
+
+    item["source_label"] = (
+        item.get("fonte")
+        or item.get("source")
+        or ("email" if item.get("email_from") else None)
+        or "non_indicata"
+    )
+    item["archive_date"] = (
+        item.get("document_date")
+        or item.get("data_documento")
+        or item.get("email_date")
+        or item.get("downloaded_at")
+        or item.get("created_at")
+    )
+    item["size_bytes"] = item.get("size_bytes") or item.get("file_size") or 0
+
+    anomalies: List[str] = []
+    if not item.get("id"):
+        anomalies.append("identificativo_mancante")
+    if item.get("status") == "errore" or item.get("processing_error") or item.get("error"):
+        anomalies.append("errore_elaborazione")
+    if not item.get("category") or item.get("category") in {"auto", "altro"}:
+        anomalies.append("classificazione_da_verificare")
+    if item.get("processed") and not item.get("processed_to"):
+        anomalies.append("collegamento_mancante")
+    if item.get("duplicate") or item.get("is_duplicate"):
+        anomalies.append("duplicato_segnalato")
+    item["anomalies"] = anomalies
+    item["linked_to"] = item.get("processed_to") or item.get("destinazione")
+    return item
+
+
 @router.get("/lista")
 @handle_errors
 async def lista_documenti(
     categoria: Optional[str] = Query(None, description="Filtra per categoria"),
     status: Optional[str] = Query(None, description="Filtra per status: nuovo, processato, errore"),
-    limit: int = Query(100, ge=1, le=500),
-    skip: int = Query(0, ge=0)
+    anno: Optional[int] = Query(None, ge=2018, le=2100),
+    search: Optional[str] = Query(None, max_length=120),
+    limit: int = Query(50, ge=1, le=200),
+    skip: int = Query(0, ge=0),
 ) -> Dict[str, Any]:
-    """Lista documenti scaricati dalle email."""
+    """Archivio paginato dei metadati, senza PDF/XML/Base64 nella risposta."""
+    if categoria and categoria not in CATEGORIES:
+        raise HTTPException(status_code=400, detail="Categoria documento non valida")
+    if status and status not in _ARCHIVE_STATUSES:
+        raise HTTPException(status_code=400, detail="Stato documento non valido")
+
     db = Database.get_db()
-    
-    query = {}
-    if categoria:
-        query["category"] = categoria
-    if status:
-        query["status"] = status
-    
-    documents = await db["documents_inbox"].find(
-        query,
-        {"_id": 0}
-    ).sort("downloaded_at", -1).skip(skip).limit(limit).to_list(limit)
-    
-    # Conta per categoria
-    pipeline = [
-        {"$group": {"_id": "$category", "count": {"$sum": 1}}}
-    ]
-    by_category = {doc["_id"]: doc["count"] async for doc in db["documents_inbox"].aggregate(pipeline)}
-    
-    # Conta per status
-    pipeline_status = [
-        {"$group": {"_id": "$status", "count": {"$sum": 1}}}
-    ]
-    by_status = {doc["_id"]: doc["count"] async for doc in db["documents_inbox"].aggregate(pipeline_status)}
-    
+    query = _archive_query(
+        categoria=categoria,
+        status=status,
+        anno=anno,
+        search=search,
+    )
+    projection = {"_id": 0, **_ARCHIVE_PAYLOAD_FIELDS}
+    documents = await db["documents_inbox"].find(query, projection).sort(
+        [("downloaded_at", -1), ("created_at", -1), ("id", -1)]
+    ).skip(skip).limit(limit).to_list(limit)
+    documents = [_archive_document_metadata(doc) for doc in documents]
+
+    category_pipeline: List[Dict[str, Any]] = []
+    status_pipeline: List[Dict[str, Any]] = []
+    if query:
+        category_pipeline.append({"$match": query})
+        status_pipeline.append({"$match": query})
+    category_pipeline.append({"$group": {"_id": "$category", "count": {"$sum": 1}}})
+    status_pipeline.append({"$group": {"_id": "$status", "count": {"$sum": 1}}})
+    by_category = {
+        (doc.get("_id") or "senza_categoria"): doc["count"]
+        async for doc in db["documents_inbox"].aggregate(category_pipeline)
+    }
+    by_status = {
+        (doc.get("_id") or "senza_stato"): doc["count"]
+        async for doc in db["documents_inbox"].aggregate(status_pipeline)
+    }
     total = await db["documents_inbox"].count_documents(query)
-    
+
     return {
         "documents": documents,
         "total": total,
+        "skip": skip,
+        "limit": limit,
+        "has_more": skip + len(documents) < total,
         "by_category": by_category,
         "by_status": by_status,
-        "categories": CATEGORIES
+        "categories": CATEGORIES,
     }
 
 
@@ -1799,7 +1913,7 @@ def _pdf_text_for_detection(file_content: bytes, max_pages: int = 3) -> str:
 
 
 def _spreadsheet_text_for_detection(filename: str, file_content: bytes) -> str:
-    """Legge solo un piccolo campione di intestazioni CSV/XLSX."""
+    """Legge solo un piccolo campione di intestazioni CSV/XLS/XLSX."""
     lower = filename.lower()
     if lower.endswith(".csv"):
         for encoding in ("utf-8-sig", "utf-8", "latin-1"):
