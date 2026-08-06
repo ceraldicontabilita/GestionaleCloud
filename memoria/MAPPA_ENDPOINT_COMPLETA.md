@@ -4,7 +4,7 @@
 > Totale **1052 endpoint** in **110 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 662 · ext esterni = 90 · — da verificare = 300
+**Riepilogo uso:** ✓ frontend = 663 · ext esterni = 90 · — da verificare = 299
 
 ## AI Parser  (11)
 
@@ -561,7 +561,7 @@
 | POST | `/api/documenti/drive/sync` | ✓ | documenti |
 | POST | `/api/documenti/elimina-processati` | — | documenti |
 | GET | `/api/documenti/lista` | ✓ | documenti |
-| GET | `/api/documenti/lock-status` | — | documenti |
+| GET | `/api/documenti/lock-status` | ✓ | documenti |
 | POST | `/api/documenti/monitor/start` | — | documenti |
 | GET | `/api/documenti/monitor/status` | — | documenti |
 | POST | `/api/documenti/monitor/stop` | — | documenti |
