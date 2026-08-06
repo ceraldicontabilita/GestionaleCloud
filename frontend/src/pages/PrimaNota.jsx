@@ -1155,12 +1155,18 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
       return;
     }
     setBusy(parziale.fattura_id);
+    setErrore('');
+    setEsito('');
     try {
-      await api.post('/api/pagamenti/registra', {
-        fattura_id: parziale.fattura_id, metodo: 'misto', importo_cassa: cassa, importo_banca: totale - cassa,
+      const response = await api.post('/api/prima-nota/provvisori/conferma-divisione', {
+        fattura_id: parziale.fattura_id,
+        importo_cassa: cassa,
+        importo_banca: Number((totale - cassa).toFixed(2)),
       });
       setParziale(null);
-      onRicarica();
+      setImportoCassa('');
+      setEsito(response.data?.message || 'Quota Cassa registrata; residuo in attesa della banca.');
+      await onRicarica();
     } catch (e) {
       setErrore(e.response?.data?.detail || e.response?.data?.message || e.message);
     } finally {
@@ -1204,7 +1210,14 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
                 {p.suggerimento === 'sospesa' && ' — ⏸ sospesa'}
               </div>
             </div>
-            <div style={{ fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace', color: BLU }}>{eur(p.importo)}</div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace', color: BLU }}>{eur(p.importo)}</div>
+              {(p.importo_pagato_confermato || 0) > 0 && (
+                <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>
+                  Totale {eur(p.totale_fattura)} · già pagato {eur(p.importo_pagato_confermato)} · residuo {eur(p.importo_residuo)}
+                </div>
+              )}
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 6, marginTop: 9, flexWrap: 'wrap' }}>
             {bottoneVedi(p)}
@@ -1265,6 +1278,11 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
                 {p.movimento_banca && (
                   <span style={{ color: '#2563eb' }}> · possibile addebito {formatDateIT(p.movimento_banca.data)}</span>
                 )}
+                {(p.importo_pagato_confermato || 0) > 0 && (
+                  <span style={{ color: '#475569' }}>
+                    {' '}· totale {eur(p.totale_fattura)} · già pagato {eur(p.importo_pagato_confermato)} · residuo {eur(p.importo_residuo)}
+                  </span>
+                )}
               </span>
               <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <b style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(p.importo)}</b>
@@ -1300,6 +1318,7 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
               {parziale.fornitore || '—'} — totale <b>{eur(parziale.importo)}</b>
             </div>
             <input
+              aria-label="Quota pagata in contanti"
               placeholder="Quota pagata in CONTANTI (es. 100,00)" inputMode="decimal" value={importoCassa}
               onChange={e => setImportoCassa(e.target.value)}
               style={{ width: '100%', padding: '9px 10px', border: '1px solid #d1d5db', borderRadius: 8, boxSizing: 'border-box', marginBottom: 8 }}
@@ -1309,6 +1328,9 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
                 💵 Cassa {eur(parseImportoIT(importoCassa))} + 🏦 Banca {eur((parziale.importo || 0) - parseImportoIT(importoCassa))}
               </div>
             )}
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>
+              La quota Cassa viene registrata ora. Il residuo Banca resta aperto finché non viene trovato e riconciliato il movimento reale dell'estratto conto.
+            </div>
             {errore && <div style={{ color: ROSSO, fontSize: 13, marginBottom: 8 }}>{errore}</div>}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button onClick={() => setParziale(null)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #d1d5db', background: 'white', cursor: 'pointer' }}>

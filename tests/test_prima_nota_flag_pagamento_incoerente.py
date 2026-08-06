@@ -112,3 +112,52 @@ def test_provvisoria_include_banca_senza_estratto_e_link_cancellato():
         assert {f["id"] for f in risultato} == {"banca-auto", "cancellata"}
 
     asyncio.run(scenario())
+
+
+def test_pagamento_parziale_mantiene_aperto_solo_il_residuo():
+    async def scenario():
+        db = AsyncMongoMockClient()["test_provvisoria_residuo"]
+        fattura = {
+            "id": "fattura-parziale",
+            "total_amount": 100.0,
+            "prima_nota_cassa_id": "pn-cassa-40",
+        }
+        await db["prima_nota_cassa"].insert_one({
+            "id": "pn-cassa-40",
+            "fattura_id": "fattura-parziale",
+            "importo": 40.0,
+            "status": "active",
+        })
+
+        aperte = await fatture_senza_pagamento_contabile_confermato(
+            db, [fattura]
+        )
+        assert len(aperte) == 1
+        assert aperte[0]["_importo_pagato_confermato"] == 40.0
+        assert aperte[0]["_importo_residuo"] == 60.0
+
+        # Una riga Banca senza estratto conto non chiude il residuo.
+        await db["prima_nota_banca"].insert_one({
+            "id": "pn-banca-senza-evidenza",
+            "fattura_id": "fattura-parziale",
+            "importo": 60.0,
+            "status": "active",
+        })
+        ancora_aperte = await fatture_senza_pagamento_contabile_confermato(
+            db, [fattura]
+        )
+        assert ancora_aperte[0]["_importo_residuo"] == 60.0
+
+        await db["prima_nota_banca"].insert_one({
+            "id": "pn-banca-60",
+            "fattura_id": "fattura-parziale",
+            "importo": 60.0,
+            "estratto_conto_id": "ec-60",
+            "status": "active",
+        })
+        saldate = await fatture_senza_pagamento_contabile_confermato(
+            db, [fattura]
+        )
+        assert saldate == []
+
+    asyncio.run(scenario())

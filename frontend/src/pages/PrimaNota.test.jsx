@@ -203,6 +203,42 @@ describe('Fatture provvisorie in attesa banca', () => {
     expect(onRicarica).toHaveBeenCalledTimes(1);
   });
 
+  it('registra la quota Cassa e lascia il residuo alla riconciliazione bancaria', async () => {
+    api.post.mockResolvedValue({
+      data: { message: 'Quota Cassa registrata; residuo in attesa della banca.' },
+    });
+    const onRicarica = vi.fn().mockResolvedValue(undefined);
+    render(<Provvisori
+      provvisori={[{
+        fattura_id: 'fatt-parziale', fattura_numero: '122', fattura_data: '2026-07-30',
+        fornitore: 'Fornitore Parziale', importo: 100, suggerimento: 'sospesa',
+      }]}
+      attesaBanca={[]}
+      onRicarica={onRicarica}
+    />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Parziale/i }));
+    fireEvent.change(screen.getByLabelText('Quota pagata in contanti'), {
+      target: { value: '40,00' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Conferma' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/prima-nota/provvisori/conferma-divisione',
+      {
+        fattura_id: 'fatt-parziale',
+        importo_cassa: 40,
+        importo_banca: 60,
+      },
+    ));
+    expect(api.post).not.toHaveBeenCalledWith(
+      '/api/pagamenti/registra',
+      expect.anything(),
+    );
+    expect(await screen.findByRole('status')).toHaveTextContent('residuo in attesa');
+    expect(onRicarica).toHaveBeenCalledTimes(1);
+  });
+
   it('mostra sulla fattura l errore restituito dal backend', async () => {
     api.post.mockRejectedValue({ response: { data: { detail: 'Pagamento non registrato' } } });
     render(<Provvisori
