@@ -48,8 +48,23 @@ Difetti reali riprodotti sui dati 2026:
 - build produzione: 3.077 moduli trasformati;
 - artefatti `frontend/dist` ripuliti dopo la verifica, non inclusi nella PR.
 
-## Chiusura
+## Chiusura live
 
-Lo stato `[x] VERIFICATA` nel registro pagine verra applicato soltanto dopo
-merge, deploy e ripetizione del controllo autenticato con dati reali in sola
-lettura.
+- PR: `#123`;
+- commit su `main`: `0508ec49d9dacc39a1e76765b66592e3392b6663`;
+- deploy Render: `dep-d9q3q28ae00c73a3s990`, stato `live`;
+- endpoint autenticato 2026: HTTP 200;
+- pagina `/contabilita/finanziaria`: HTTP 200;
+- chunk frontend distribuito: nuovi marcatori e nuove etichette presenti.
+
+Quadrature live in sola lettura:
+
+- variazione finanziaria dell'anno: EUR 581.144,68;
+- riporto iniziale complessivo: EUR -298.557,82;
+- disponibilita contabile: EUR 282.586,86;
+- disponibilita = saldo Cassa + saldo Banca: verificata;
+- riporto complessivo = riporto Cassa + riporto Banca: verificata;
+- crediti clienti senza fonte canonica: esposti come non disponibili;
+- fonte dichiarata: `prima_nota_cassa_banca`.
+
+La pagina 23 e quindi marcata `[x] VERIFICATA` nel registro numerato.
