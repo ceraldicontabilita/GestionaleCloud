@@ -25,8 +25,16 @@ def _match(doc, query):
             if not any(_match(doc, q) for q in atteso):
                 return False
             continue
+        if chiave == "$and":
+            if not all(_match(doc, q) for q in atteso):
+                return False
+            continue
         reale = _valore(doc, chiave)
         if isinstance(atteso, dict):
+            # ``$exists`` serve al filtro per circuito: le righe POS storiche
+            # non hanno il campo ``gestore`` e appartengono tutte a Nexi.
+            if "$exists" in atteso and (reale is not None) != bool(atteso["$exists"]):
+                return False
             if "$in" in atteso and reale not in atteso["$in"]:
                 return False
             if "$nin" in atteso and reale in atteso["$nin"]:

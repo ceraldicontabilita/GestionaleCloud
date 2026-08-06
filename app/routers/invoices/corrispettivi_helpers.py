@@ -158,8 +158,16 @@ async def _create_prima_nota_movements(db, corr_doc: Dict[str, Any]) -> Dict[str
     """MIGRATO AL MOTORE UNICO (18/07/2026, decisione utente): la logica
     vive in app/services/scritture_contabili.registra_corrispettivo.
     MODELLO POS: uscita cassa = CHIUSURA MANUALE serale del terminale
-    (fallback XML); la banca NON riceve più righe sintetiche — l'entrata
-    banca è l'accredito reale dell'estratto conto."""
+    (fallback XML); la banca riceve il TRASFERIMENTO speculare (source
+    trasferimento_pos, stesso trasferimento_id, uno per circuito), che
+    l'accredito reale dell'estratto conto riconcilia senza duplicare.
+
+    NB: fino al 18/07/2026 questa docstring diceva che "la banca NON riceve
+    più righe sintetiche". Era il modello precedente ed è stato superato dalla
+    regola canonica POS: escludere il trasferimento dai saldi banca è
+    esattamente il bug del 16/07/2026 che faceva sparire ~204.000 € di
+    incassi POS. Il trasferimento resta nel saldo contabile ed è marcato
+    ``in_transito`` finché l'accredito non lo conferma."""
     from app.services.scritture_contabili import registra_corrispettivo
     return await registra_corrispettivo(db, corr_doc)
 

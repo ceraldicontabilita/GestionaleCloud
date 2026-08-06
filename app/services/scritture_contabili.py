@@ -212,10 +212,16 @@ async def registra_chiusura_pos_reale(
     L'importo zero e' esplicito: archivia gli eventuali trasferimenti
     sintetici del giorno e impedisce il fallback al valore XML.
 
-    Con piu' terminali (Nexi, SumUp, ...) ``importo`` e' la chiusura del
-    singolo ``gestore``, mentre Prima Nota e corrispettivo vanno riallineati
-    sul TOTALE del giorno: il trasferimento cassa->banca resta una sola
-    operazione, la somma degli incassi elettronici di tutti i terminali.
+    Con piu' circuiti (Nexi/Numia, SumUp, ...) ``importo`` e' la chiusura del
+    singolo ``gestore`` e ogni circuito ha la SUA coppia uscita-cassa /
+    entrata-banca, con un ``trasferimento_id`` proprio: gli accrediti arrivano
+    separati (NUMIA sul conto BPM, payout sul conto SumUp) e una riga unica
+    col totale non sarebbe riconciliabile con nessuno dei due.
+
+    Restano invece sul TOTALE del giorno, perche' descrivono la giornata e non
+    il singolo terminale, il riparto contanti/elettronico dell'entrata Cassa e
+    ``corrispettivi.pos_reale_serale``. L'entrata Cassa resta una sola, quella
+    del corrispettivo XML: nessun circuito genera un secondo ricavo.
     """
     data = str(data or "")[:10]
     try:
@@ -293,21 +299,28 @@ async def registra_chiusura_pos_reale(
     )
 
     filtro_attivo = {"status": {"$nin": ["deleted", "archived"]}}
+    # Ogni circuito ha la SUA coppia uscita-cassa / entrata-banca: gli accrediti
+    # arrivano separati (NUMIA sul conto BPM, payout sul conto SumUp) e una riga
+    # unica col totale non sarebbe riconciliabile con nessuno dei due.
+    # ``and_gestore`` isola le righe di questo circuito; per Nexi comprende
+    # anche quelle storiche prive del campo, che sono sue.
+    and_gestore = [filtro_gestore_pos(gestore)]
     cassa_query = {
         "data": data,
         "tipo": "uscita",
-        "$or": [
+        "$and": and_gestore + [{"$or": [
             {"categoria": "POS Verso Banca"},
             {"category": "POS Verso Banca"},
             {"source": {"$in": ["corrispettivo_import",
                                   "conferma_corrispettivo_manuale"]}},
-        ],
+        ]}],
         **filtro_attivo,
     }
     banca_query = {
         "data": data,
         "source": {"$in": ["trasferimento_pos", "chiusura_pos_mobile",
                              "corrispettivo_pos"]},
+        "$and": and_gestore,
         **filtro_attivo,
     }
     cassa_mov = await db["prima_nota_cassa"].find_one(cassa_query)
@@ -321,9 +334,10 @@ async def registra_chiusura_pos_reale(
     cassa_id = (cassa_mov or {}).get("id")
     banca_id = (banca_mov or {}).get("id")
 
-    # Zero solo se NESSUN terminale ha incassato: se SumUp e' a zero ma Nexi
-    # no, il trasferimento del giorno deve restare in piedi.
-    if totale_giorno == 0:
+    circuito = gestore.upper()
+    # Zero archivia SOLO la coppia di questo circuito: se SumUp e' a zero ma
+    # Nexi no, il trasferimento Nexi del giorno deve restare in piedi.
+    if importo == 0:
         motivo = "chiusura_terminale_pos_zero"
         if cassa_mov:
             await db["prima_nota_cassa"].update_one(
@@ -340,13 +354,16 @@ async def registra_chiusura_pos_reale(
                           "updated_at": now}},
             )
     else:
+        descrizione_cassa = f"POS {circuito} {data} -> Banca (chiusura terminale)"
         cassa_fields = {
-            "importo": totale_giorno,
-            "amount": totale_giorno,
+            "importo": importo,
+            "amount": importo,
             "categoria": "POS Verso Banca",
             "category": "POS Verso Banca",
-            "descrizione": f"POS {data} -> Banca (chiusura terminale)",
-            "description": f"POS {data} -> Banca (chiusura terminale)",
+            "descrizione": descrizione_cassa,
+            "description": descrizione_cassa,
+            "gestore": gestore,
+            "circuito": circuito,
             "quota_pos_fonte": "chiusura_manuale",
             "trasferimento_id": trasferimento_id,
             "updated_at": now,
@@ -363,10 +380,12 @@ async def registra_chiusura_pos_reale(
             nuovo_movimento_cassa = {
                 "data": data,
                 "tipo": "uscita",
-                "importo": totale_giorno,
+                "importo": importo,
                 "categoria": "POS Verso Banca",
                 "descrizione": cassa_fields["descrizione"],
                 "source": "corrispettivo_import",
+                "gestore": gestore,
+                "circuito": circuito,
                 "quota_pos_fonte": "chiusura_manuale",
                 "trasferimento_id": trasferimento_id,
             }
@@ -377,19 +396,26 @@ async def registra_chiusura_pos_reale(
             )
 
         accreditato = round(float((banca_mov or {}).get("accreditato_ec") or 0), 2)
-        quadrato = accreditato > 0 and abs(accreditato - totale_giorno) <= 0.01
+        quadrato = accreditato > 0 and abs(accreditato - importo) <= 0.01
+        descrizione_banca = f"POS {circuito} {data} da cassa (chiusura terminale)"
         banca_fields = {
-            "importo": totale_giorno,
-            "amount": totale_giorno,
+            "importo": importo,
+            "amount": importo,
             "categoria": "Corrispettivi POS",
             "category": "Corrispettivi POS",
-            "descrizione": f"POS {data} da cassa (chiusura terminale)",
-            "description": f"POS {data} da cassa (chiusura terminale)",
+            "descrizione": descrizione_banca,
+            "description": descrizione_banca,
             "source": "trasferimento_pos",
+            "gestore": gestore,
+            "circuito": circuito,
             "quota_pos_fonte": "chiusura_manuale",
             "trasferimento_id": trasferimento_id,
             "giorno_vendita": data,
             "riconciliato": quadrato,
+            # Credito POS atteso finche' l'accredito reale non lo conferma:
+            # il saldo contabile lo comprende, ma resta marcato come non
+            # ancora transitato sul conto.
+            "in_transito": not quadrato,
             "stato_riconciliazione": "riconciliato" if quadrato else "da_verificare",
             "updated_at": now,
             "status": "active",
@@ -405,14 +431,17 @@ async def registra_chiusura_pos_reale(
             nuovo_movimento_banca = {
                 "data": data,
                 "tipo": "entrata",
-                "importo": totale_giorno,
+                "importo": importo,
                 "categoria": "Corrispettivi POS",
                 "descrizione": banca_fields["descrizione"],
                 "source": "trasferimento_pos",
+                "gestore": gestore,
+                "circuito": circuito,
                 "quota_pos_fonte": "chiusura_manuale",
                 "trasferimento_id": trasferimento_id,
                 "giorno_vendita": data,
                 "riconciliato": False,
+                "in_transito": True,
             }
             if corr_id:
                 nuovo_movimento_banca["corrispettivo_id"] = corr_id

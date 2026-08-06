@@ -130,36 +130,61 @@ def test_registrare_sumup_non_sovrascrive_la_chiusura_nexi():
     assert sorted(r["importo"] for r in righe) == [120.50, 300.0]
 
 
-def test_la_prima_nota_riceve_il_totale_dei_terminali():
-    """Il trasferimento cassa->banca resta UNO solo, ma vale la somma."""
+def _righe_pos(db, collection, **extra):
+    query = {"data": DATA, **extra}
+    return _run(db[collection].find(query).to_list(20))
+
+
+def test_ogni_circuito_ha_la_sua_coppia_di_trasferimento():
+    """Esempio dell'utente: corrispettivo 1.000 = 400 contanti + 500 Nexi +
+    100 SumUp. Gli accrediti arrivano separati (NUMIA su BPM, payout su
+    SumUp): una riga unica da 600 non sarebbe riconciliabile con nessuno."""
     db = _db()
-    _run(registra_chiusura_pos_reale(db, DATA, 300.0, gestore="nexi"))
-    esito = _run(registra_chiusura_pos_reale(db, DATA, 120.50, gestore="sumup"))
+    _run(registra_chiusura_pos_reale(db, DATA, 500.0, gestore="nexi"))
+    esito = _run(registra_chiusura_pos_reale(db, DATA, 100.0, gestore="sumup"))
 
-    assert esito["importo"] == 120.50          # la chiusura del terminale
-    assert esito["importo_totale_giorno"] == 420.50
+    assert esito["importo"] == 100.0             # la chiusura del circuito
+    assert esito["importo_totale_giorno"] == 600.0
 
-    uscite = _run(db.prima_nota_cassa.find(
-        {"data": DATA, "categoria": "POS Verso Banca"}).to_list(10))
-    assert len(uscite) == 1
-    assert uscite[0]["importo"] == 420.50
+    uscite = _righe_pos(db, "prima_nota_cassa", categoria="POS Verso Banca")
+    assert {u["circuito"]: u["importo"] for u in uscite} == {
+        "NEXI": 500.0, "SUMUP": 100.0}
 
-    banca = _run(db.prima_nota_banca.find(
-        {"data": DATA, "source": "trasferimento_pos"}).to_list(10))
-    assert len(banca) == 1
-    assert banca[0]["importo"] == 420.50
-    # Stessa operazione su due registri: un unico trasferimento_id.
-    assert banca[0]["trasferimento_id"] == uscite[0]["trasferimento_id"]
+    banca = _righe_pos(db, "prima_nota_banca", source="trasferimento_pos")
+    assert {b["circuito"]: b["importo"] for b in banca} == {
+        "NEXI": 500.0, "SUMUP": 100.0}
+
+    # Ogni circuito e' una sola operazione su due registri: stesso
+    # trasferimento_id fra la sua uscita e la sua entrata, mai incrociato.
+    per_circuito = {u["circuito"]: u["trasferimento_id"] for u in uscite}
+    for riga in banca:
+        assert riga["trasferimento_id"] == per_circuito[riga["circuito"]]
+    assert per_circuito["NEXI"] != per_circuito["SUMUP"]
+
+
+def test_il_credito_pos_nasce_in_transito():
+    """Non e' denaro gia' sul conto finche' l'accredito non lo conferma."""
+    db = _db()
+    _run(registra_chiusura_pos_reale(db, DATA, 100.0, gestore="sumup"))
+    banca = _righe_pos(db, "prima_nota_banca", source="trasferimento_pos")
+    assert banca[0]["in_transito"] is True
+    assert banca[0]["riconciliato"] is False
+    assert banca[0]["giorno_vendita"] == DATA
 
 
 def test_zero_su_un_terminale_non_archivia_il_trasferimento_dell_altro():
     db = _db()
-    _run(registra_chiusura_pos_reale(db, DATA, 300.0, gestore="nexi"))
+    _run(registra_chiusura_pos_reale(db, DATA, 500.0, gestore="nexi"))
+    _run(registra_chiusura_pos_reale(db, DATA, 100.0, gestore="sumup"))
+    # Correzione serale: su SumUp non era passato nulla.
     _run(registra_chiusura_pos_reale(db, DATA, 0, gestore="sumup"))
 
-    uscita = _run(_uscita_pos(db))
-    assert uscita["status"] != "deleted"
-    assert uscita["importo"] == 300.0
+    uscite = {u["circuito"]: u for u in
+              _righe_pos(db, "prima_nota_cassa", categoria="POS Verso Banca")}
+    assert uscite["NEXI"].get("status") != "deleted"
+    assert uscite["NEXI"]["importo"] == 500.0
+    assert uscite["SUMUP"]["status"] == "deleted"
+    assert _run(chiusura_pos_del_giorno(db, DATA)) == 500.0
 
 
 def test_zero_su_tutti_i_terminali_archivia_il_trasferimento():
@@ -169,6 +194,29 @@ def test_zero_su_tutti_i_terminali_archivia_il_trasferimento():
 
     uscita = _run(_uscita_pos(db))
     assert uscita["status"] == "deleted"
+
+
+def test_nessun_circuito_crea_una_seconda_entrata_di_cassa():
+    """Il ricavo e' gia' nel corrispettivo XML: Nexi e SumUp lo dividono."""
+    db = _db()
+    _run(db.corrispettivi.insert_one(
+        {"id": "c1", "data": DATA, "totale": 1000.0, "pagato_elettronico": 600.0}
+    ))
+    _run(db.prima_nota_cassa.insert_one({
+        "id": "entrata", "data": DATA, "tipo": "entrata",
+        "categoria": "Corrispettivi", "importo": 1000.0,
+    }))
+    _run(registra_chiusura_pos_reale(db, DATA, 500.0, gestore="nexi"))
+    _run(registra_chiusura_pos_reale(db, DATA, 100.0, gestore="sumup"))
+
+    entrate = _righe_pos(db, "prima_nota_cassa", tipo="entrata")
+    assert len(entrate) == 1
+    assert entrate[0]["importo"] == 1000.0
+    # saldo contanti = totale XML - Nexi - SumUp
+    assert entrate[0]["pagato_contanti"] == 400.0
+    assert entrate[0]["pagato_elettronico"] == 600.0
+    # Il valore fiscale XML non viene mai toccato.
+    assert _run(db.corrispettivi.find_one({"id": "c1"}))["pagato_elettronico"] == 600.0
 
 
 def test_la_correzione_resta_idempotente_per_gestore():
