@@ -62,6 +62,10 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.js'],
+    // Le pagine ERP montano tabelle e contesti articolati: troppi worker jsdom
+    // saturano la macchina CI e producono timeout casuali su test che, isolati,
+    // passano. Due worker mantengono la suite parallela ma deterministica.
+    maxWorkers: 2,
   },
   build: {
     chunkSizeWarningLimit: 700,

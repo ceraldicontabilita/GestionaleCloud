@@ -93,17 +93,6 @@ async def get_financial_summary(
         riporto_cassa = saldi_cassa["saldo_precedente"]
         riporto_banca = saldi_banca["saldo_precedente"]
         
-        # Get Salari totals
-        salari_pipeline = [
-            {"$match": {"data": date_range}},
-            {"$group": {
-                "_id": None,
-                "total": {"$sum": "$importo"}
-            }}
-        ]
-        salari_result = await db["prima_nota_salari"].aggregate(salari_pipeline).to_list(1)
-        salari_totale = salari_result[0]["total"] if salari_result else 0
-        
         # ============ IVA DAI CORRISPETTIVI (DEBITO) ============
         corr_pipeline = [
             {"$match": {
@@ -209,12 +198,25 @@ async def get_financial_summary(
         # NON sommare salari perché sono già in banca_uscite
         total_expenses = cassa_uscite + banca_uscite
         saldo_iva = iva_debito - iva_credito
+        variazione_finanziaria = round(total_income - total_expenses, 2)
+        saldo_totale = round(saldi_cassa["saldo"] + saldi_banca["saldo"], 2)
+        riporto_totale = round(riporto_cassa + riporto_banca, 2)
         
         return {
             "anno": anno,
             "total_income": round(total_income, 2),
             "total_expenses": round(total_expenses, 2),
-            "balance": round(total_income - total_expenses, 2),
+            # `balance` resta per retrocompatibilita', ma rappresenta la sola
+            # variazione dei flussi dell'anno, non la disponibilita contabile.
+            "balance": variazione_finanziaria,
+            "flow_balance": variazione_finanziaria,
+            "available_balance": saldo_totale,
+            "opening_balance": riporto_totale,
+            "financial_basis": "prima_nota_cassa_banca",
+            "financial_note": (
+                "Entrate e uscite escludono i trasferimenti interni. La disponibilita "
+                "contabile include i riporti iniziali e i movimenti interni di Cassa/Banca."
+            ),
             "cassa": {
                 "entrate": round(cassa_entrate, 2),
                 "uscite": round(cassa_uscite, 2),
@@ -230,8 +232,13 @@ async def get_financial_summary(
                 "nota_flussi": "Entrate/uscite escludono i trasferimenti interni; il saldo li include.",
             },
             "salari": {
-                "totale": round(salari_totale, 2),
-                "nota": "Già inclusi in uscite Banca"
+                "totale": None,
+                "disponibile": False,
+                "nota": (
+                    "Il dettaglio salari ha una grana propria (cedolino, acconto e saldo) "
+                    "e non viene risommato qui; i pagamenti verificati sono gia inclusi "
+                    "nelle uscite Banca."
+                ),
             },
             # IVA Section
             "vat_debit": round(iva_debito, 2),
@@ -258,10 +265,14 @@ async def get_financial_summary(
             # Campi H1 richiesti dalla specifica (con riporto iniziale)
             "saldo_cassa": saldi_cassa["saldo"],
             "saldo_banca": saldi_banca["saldo"],
-            "saldo_totale": round(saldi_cassa["saldo"] + saldi_banca["saldo"], 2),
+            "saldo_totale": saldo_totale,
             # Payables/Receivables
             "payables": round(payables, 2),
-            "receivables": 0  # Non gestiamo fatture attive per ora
+            # Zero sarebbe un dato inventato: non esiste ancora una fonte
+            # canonica delle fatture attive e quindi dei crediti clienti.
+            "receivables": None,
+            "receivables_available": False,
+            "receivables_note": "Fatture attive non gestite da una fonte canonica.",
         }
     except Exception as e:
         logger.exception("Errore financial summary")

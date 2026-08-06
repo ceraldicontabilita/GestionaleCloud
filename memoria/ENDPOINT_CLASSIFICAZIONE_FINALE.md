@@ -608,7 +608,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/finanziaria/cost-categories` | finanziaria | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/finanziaria/costi` | finanziaria | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/finanziaria/costo` | finanziaria | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/finanziaria/summary` | finanziaria | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/finanziaria/summary` | finanziaria | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/fiscalita/agevolazioni` | fiscalita_italiana | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/fiscalita/agevolazioni/simula` | fiscalita_italiana | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/fiscalita/agevolazioni/{agevolazione_id}` | fiscalita_italiana | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
