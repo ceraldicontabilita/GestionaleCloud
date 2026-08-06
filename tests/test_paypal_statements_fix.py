@@ -131,6 +131,62 @@ def test_dashboard_conta_riconciliati_sia_da_statement_che_da_api(monkeypatch):
     assert res["riconciliati_banca"] == 2
 
 
+def test_fonti_paypal_mostrano_periodo_api_senza_inventare_un_documento(monkeypatch):
+    db = _FakeDb()
+    db["paypal_transactions"].docs = [
+        {
+            "transaction_id": "PAY-1", "data": "2026-07-12",
+            "lordo": -20.99, "currency": "EUR", "tipo": "pagamento_web",
+            "source": "paypal_api",
+        },
+        {
+            "transaction_id": "PAY-2", "data": "2026-07-20",
+            "lordo": -42.62, "currency": "EUR", "tipo": "pagamento_web",
+            "source": "paypal_api",
+        },
+    ]
+    _patch_db(monkeypatch, db)
+
+    res = _run(mod.get_paypal_statements(anno=None, limit=100))
+
+    assert res["statements"] == []
+    assert res["totale"] == 0
+    assert res["totale_periodi_api"] == 1
+    assert res["fonti"] == [{
+        "id": "paypal-api-2026-07",
+        "source_type": "api",
+        "tipo_documento": "API",
+        "periodo_inizio": "2026-07-01",
+        "periodo_fine": "2026-07-31",
+        "totale_transazioni": 2,
+        "totale_pagamenti": 2,
+        "riepilogo": {
+            "pagamenti_inviati": 63.61,
+            "depositi_accrediti": None,
+            "saldo_finale": None,
+        },
+        "file_name": None,
+        "source": "paypal_api",
+        "documento_presente": False,
+    }]
+
+
+def test_stato_fattura_non_legittima_un_vecchio_match_solo_importo():
+    assert mod._stato_collegamento_fattura({}) == "non_associata"
+    assert mod._stato_collegamento_fattura({
+        "fattura_associata": {
+            "match": "solo_importo",
+            "evidenze": ["importo"],
+        }
+    }) == "da_rivalidare"
+    assert mod._stato_collegamento_fattura({
+        "fattura_associata": {
+            "match": "fornitore_numero_importo_esatti",
+            "evidenze": ["numero_fattura", "importo", "partita_iva_o_cf"],
+        }
+    }) == "associata_validata"
+
+
 def test_dashboard_non_somma_due_volte_conversione_valuta(monkeypatch):
     db = _FakeDb()
     db["paypal_transactions"].docs = [

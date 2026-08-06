@@ -2,7 +2,7 @@
  * RiconciliazionePaypal.jsx
  * Gestione documenti e transazioni PayPal con riconciliazione dei movimenti bancari.
  */
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
@@ -93,7 +93,7 @@ export default function RiconciliazionePaypal() {
   const [dashboard, setDashboard] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [report, setReport] = useState(null);
-  const [statements, setStatements] = useState([]);
+  const [paypalSources, setPaypalSources] = useState([]);
   const [bankMovements, setBankMovements] = useState([]);
   const [bankSummary, setBankSummary] = useState(null);
   // Deep link ?tab=mapping (usato dal bottone "Mappa fornitore" del modale
@@ -113,14 +113,13 @@ export default function RiconciliazionePaypal() {
   const annoFiltro = anno;
   const [soloPagamenti, setSoloPagamenti] = useState(true);
   const [searchTx, setSearchTx] = useState('');
+  const [invoiceStatus, setInvoiceStatus] = useState('tutti');
   const [modalTxId, setModalTxId] = useState(null); // transaction_id aperto nel modale
   const [fatturaView, setFatturaView] = useState(null);
   const [mappingData, setMappingData] = useState(null);
   const [mappingLoading, setMappingLoading] = useState(false);
   const [selectedForn, setSelectedForn] = useState({}); // {paypal_account_id: fornitore_id}
   const [createModal, setCreateModal] = useState(null); // {paypal_account_id, nome_controparte, ...} | null
-  const [importingCsv, setImportingCsv] = useState(false);
-  const csvInputRef = useRef(null);
   const [syncMesi, setSyncMesi] = useState(3);
   const [syncing, setSyncing] = useState(false);
   const [apiStatus, setApiStatus] = useState(null);
@@ -177,13 +176,15 @@ export default function RiconciliazionePaypal() {
 
   const loadStatements = useCallback(async () => {
     try {
-      const res = await api.get('/api/paypal-statements/statements?limit=50');
-      setStatements(res.data.statements || []);
+      const params = new URLSearchParams({ limit: '50' });
+      if (annoFiltro) params.append('anno', annoFiltro);
+      const res = await api.get(`/api/paypal-statements/statements?${params}`);
+      setPaypalSources(res.data.fonti || res.data.statements || []);
     } catch (e) {
       console.error(e);
       setLoadError(true);
     }
-  }, []);
+  }, [annoFiltro]);
 
   const loadBankMovements = useCallback(async () => {
     try {
@@ -208,30 +209,6 @@ export default function RiconciliazionePaypal() {
     ]);
     setLoading(false);
   }, [loadDashboard, loadTransactions, loadReport, loadStatements, loadBankMovements, loadApiStatus]);
-
-  const handleImportCsv = async e => {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // permette di ricaricare lo stesso file due volte
-    if (!file) return;
-    setImportingCsv(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await api.post('/api/paypal-statements/import-csv', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      const r = res.data || {};
-      toast.success(
-        `CSV importato — ${r.transazioni_inserite} transazioni (${r.transazioni_duplicate} già presenti), ` +
-          `${r.riconciliazione?.riconciliati || 0} riconciliate con la banca`
-      );
-      await loadAll();
-    } catch (err) {
-      toast.error('Errore import CSV: ' + (err.response?.data?.detail || err.message));
-    } finally {
-      setImportingCsv(false);
-    }
-  };
 
   useEffect(() => {
     loadAll();
@@ -354,6 +331,10 @@ export default function RiconciliazionePaypal() {
   }, [activeTab, annoFiltro]);
 
   const filteredTx = transactions.filter(tx => {
+    if (
+      invoiceStatus !== 'tutti' &&
+      tx.stato_collegamento_fattura !== invoiceStatus
+    ) return false;
     if (!searchTx) return true;
     const s = searchTx.toLowerCase();
     return (
@@ -378,8 +359,11 @@ export default function RiconciliazionePaypal() {
   if (loading) {
     return (
       <div
+        role="status"
+        aria-live="polite"
         style={{
           display: 'flex',
+          gap: 10,
           alignItems: 'center',
           justifyContent: 'center',
           minHeight: '60vh',
@@ -388,6 +372,7 @@ export default function RiconciliazionePaypal() {
         <RefreshCw
           style={{ width: 32, height: 32, animation: 'spin 1s linear infinite', color: COLORS.primary }}
         />
+        <span>Caricamento dati PayPal…</span>
       </div>
     );
   }
@@ -409,9 +394,9 @@ export default function RiconciliazionePaypal() {
     },
     {
       id: 'documenti',
-      label: 'Documenti PayPal',
+      label: 'Fonti PayPal',
       icon: <FileText size={16} />,
-      count: statements.length,
+      count: paypalSources.length,
     },
     {
       id: 'mapping',
@@ -426,6 +411,7 @@ export default function RiconciliazionePaypal() {
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
         {loadError && (
           <div
+            role="alert"
             style={{
               background: COLORS.dangerLight, color: COLORS.danger,
               border: `1px solid ${COLORS.danger}`, borderRadius: BORDER_RADIUS.md,
@@ -512,35 +498,7 @@ export default function RiconciliazionePaypal() {
                 borderColor: 'rgba(255,255,255,0.3)',
               }}
             >
-              Importa PDF
-            </Button>
-            <input
-              ref={csvInputRef}
-              type="file"
-              accept=".csv"
-              style={{ display: 'none' }}
-              onChange={handleImportCsv}
-            />
-            <Button
-              variant="secondary"
-              size="sm"
-              iconLeft={
-                importingCsv ? (
-                  <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} />
-                ) : (
-                  <Plus size={14} />
-                )
-              }
-              disabled={importingCsv}
-              onClick={() => csvInputRef.current?.click()}
-              title="Importa estratto conto PayPal esportato in CSV"
-              style={{
-                background: 'rgba(255,255,255,0.2)',
-                color: 'white',
-                borderColor: 'rgba(255,255,255,0.3)',
-              }}
-            >
-              {importingCsv ? 'Importazione…' : 'Importa CSV'}
+              Importa documenti
             </Button>
             <Select
               value={syncMesi}
@@ -736,7 +694,7 @@ export default function RiconciliazionePaypal() {
               ))}
               {(!dashboard.top_fornitori || dashboard.top_fornitori.length === 0) && (
                 <p style={{ color: COLORS.textSubtle, fontSize: 13, textAlign: 'center', padding: 20 }}>
-                  Nessun dato. Importa i PDF prima.
+                  Nessun dato. Importa i documenti da “Documenti” o sincronizza PayPal API.
                 </p>
               )}
             </Card>
@@ -844,6 +802,17 @@ export default function RiconciliazionePaypal() {
                   placeholder="Cerca fornitore, descrizione..."
                 />
               </div>
+              <Select
+                aria-label="Stato collegamento fattura"
+                value={invoiceStatus}
+                onChange={e => setInvoiceStatus(e.target.value)}
+                style={{ minWidth: 190 }}
+              >
+                <option value="tutti">Tutte le fatture</option>
+                <option value="associata_validata">Associate e validate</option>
+                <option value="non_associata">Senza fattura</option>
+                <option value="da_rivalidare">Da rivalidare</option>
+              </Select>
               <label
                 style={{
                   display: 'flex',
@@ -862,7 +831,69 @@ export default function RiconciliazionePaypal() {
               </label>
               <span style={{ fontSize: 12, color: COLORS.textMuted }}>{filteredTx.length} risultati</span>
             </div>
-            <TableWrap style={{ maxHeight: 600, overflowY: 'auto', border: 'none', borderRadius: 0 }}>
+            {isMobile ? (
+              <div
+                data-testid="paypal-transaction-cards"
+                style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12 }}
+              >
+                {filteredTx.map(tx => (
+                  <button
+                    type="button"
+                    key={tx.id || tx.transaction_id || tx.data + tx.importo}
+                    onClick={() => (tx.transaction_id || tx.id) && setModalTxId(tx.transaction_id || tx.id)}
+                    style={{
+                      appearance: 'none',
+                      width: '100%',
+                      textAlign: 'left',
+                      background: COLORS.card,
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.md,
+                      padding: 12,
+                      color: COLORS.text,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                      <strong>{tx.nome_controparte || 'Controparte non indicata'}</strong>
+                      <span style={{ color: tx.lordo < 0 ? COLORS.danger : COLORS.success, fontWeight: 700 }}>
+                        {formatEuro(tx.importo_eur ?? tx.lordo)}
+                      </span>
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 12, color: COLORS.textMuted }}>
+                      {formatDate(tx.data)} · {TIPO_LABELS[tx.tipo] || tx.tipo || 'Operazione'}
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 12 }}>{tx.descrizione || 'Nessuna descrizione'}</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                      <Badge variant={tx.riconciliato_banca ? 'success' : 'neutral'}>
+                        {tx.riconciliato_banca ? 'Banca collegata' : 'Banca da associare'}
+                      </Badge>
+                      <Badge
+                        variant={
+                          tx.stato_collegamento_fattura === 'associata_validata'
+                            ? 'success'
+                            : tx.stato_collegamento_fattura === 'da_rivalidare'
+                              ? 'warning'
+                              : 'neutral'
+                        }
+                      >
+                        {tx.stato_collegamento_fattura === 'associata_validata'
+                          ? 'Fattura validata'
+                          : tx.stato_collegamento_fattura === 'da_rivalidare'
+                            ? 'Fattura da rivalidare'
+                            : 'Fattura mancante'}
+                      </Badge>
+                    </div>
+                  </button>
+                ))}
+                {filteredTx.length === 0 && (
+                  <div style={{ padding: 28, textAlign: 'center', color: COLORS.textSubtle }}>
+                    {dashboard?.total_transactions === 0
+                      ? 'Nessuna transazione. Importa da “Documenti” o sincronizza PayPal API.'
+                      : 'Nessun risultato per il filtro.'}
+                  </div>
+                )}
+              </div>
+            ) : (
+            <TableWrap data-testid="paypal-transactions-table" style={{ maxHeight: 600, overflowY: 'auto', border: 'none', borderRadius: 0 }}>
               <Table>
                 <thead>
                   <tr style={{ position: 'sticky', top: 0 }}>
@@ -940,9 +971,9 @@ export default function RiconciliazionePaypal() {
                         )}
                       </Td>
                       <Td align="center" onClick={e => e.stopPropagation()}>
-                        {tx.fattura_associata ? (
+                        {tx.stato_collegamento_fattura === 'associata_validata' ? (
                           <Badge
-                            variant={tx.fattura_associata.match === 'solo_importo' ? 'warning' : 'info'}
+                            variant="info"
                             onClick={() =>
                               setFatturaView({
                                 id: tx.fattura_associata.fattura_id,
@@ -950,14 +981,17 @@ export default function RiconciliazionePaypal() {
                                   tx.fattura_associata.numero || tx.fattura_associata.fornitore,
                               })
                             }
-                            title={
-                              tx.fattura_associata.match === 'solo_importo'
-                                ? `Match SOLO per importo (da verificare): Fatt. ${tx.fattura_associata.numero || ''} — ${tx.fattura_associata.fornitore || ''} — apri`
-                                : `Fatt. ${tx.fattura_associata.numero || ''} — ${tx.fattura_associata.fornitore || ''} — apri`
-                            }
+                            title={`Fatt. ${tx.fattura_associata.numero || ''} — ${tx.fattura_associata.fornitore || ''} — numero, importo e fornitore validati`}
                             style={{ cursor: 'pointer' }}
                           >
                             Vedi fattura
+                          </Badge>
+                        ) : tx.stato_collegamento_fattura === 'da_rivalidare' ? (
+                          <Badge
+                            variant="warning"
+                            title="Collegamento storico conservato come traccia, ma non valido finché numero fattura, importo al centesimo e fornitore non sono tutti provati"
+                          >
+                            Da rivalidare
                           </Badge>
                         ) : tx.gmail_associata?.gmail_link ? (
                           <a
@@ -997,11 +1031,12 @@ export default function RiconciliazionePaypal() {
               {filteredTx.length === 0 && (
                 <div style={{ padding: 40, textAlign: 'center', color: COLORS.textSubtle }}>
                   {dashboard?.total_transactions === 0
-                    ? 'Nessuna transazione. Importa i PDF PayPal.'
+                    ? 'Nessuna transazione. Importa da “Documenti” o sincronizza PayPal API.'
                     : 'Nessun risultato per il filtro.'}
                 </div>
               )}
             </TableWrap>
+            )}
           </Card>
         )}
 
@@ -1196,7 +1231,60 @@ export default function RiconciliazionePaypal() {
               <span>Da associare: <b>{bankSummary?.da_associare || 0}</b></span>
               <span>Importo e data da soli non confermano casi ambigui.</span>
             </div>
-            <TableWrap style={{ border: 'none', borderRadius: 0 }}>
+            {isMobile ? (
+              <div
+                data-testid="paypal-bank-cards"
+                style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12 }}
+              >
+                {filteredBankMovements.map(mov => (
+                  <article
+                    key={mov.id}
+                    style={{
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.md,
+                      padding: 12,
+                      background: COLORS.card,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                      <strong>{formatDate(mov.data)}</strong>
+                      <span
+                        style={{
+                          color: mov.importo < 0 ? COLORS.danger : COLORS.success,
+                          fontFamily: FONT.mono,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {formatEuro(mov.importo)}
+                      </span>
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 13 }}>{mov.descrizione || '—'}</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+                      <Badge variant={mov.importo < 0 ? 'danger' : 'success'}>
+                        {mov.importo < 0 ? 'Uscita' : 'Entrata'}
+                      </Badge>
+                      <Badge variant={mov.riconciliato_paypal ? 'success' : 'warning'}>
+                        {mov.riconciliato_paypal ? 'Riconciliato' : 'Da associare'}
+                      </Badge>
+                    </div>
+                    {mov.paypal_transaction_id && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        style={{ marginTop: 8 }}
+                        onClick={() => {
+                          setSearchTx(mov.paypal_transaction_id);
+                          setActiveTab('transazioni');
+                        }}
+                      >
+                        Apri transazione {mov.paypal_transaction_id}
+                      </Button>
+                    )}
+                  </article>
+                ))}
+              </div>
+            ) : (
+            <TableWrap data-testid="paypal-bank-table" style={{ border: 'none', borderRadius: 0 }}>
               <Table>
                 <thead>
                   <tr>
@@ -1249,6 +1337,7 @@ export default function RiconciliazionePaypal() {
                 </tbody>
               </Table>
             </TableWrap>
+            )}
             {filteredBankMovements.length === 0 && (
               <div style={{ padding: 40, textAlign: 'center', color: COLORS.textSubtle }}>
                 Nessun movimento bancario PayPal con i filtri selezionati.
@@ -1257,50 +1346,128 @@ export default function RiconciliazionePaypal() {
           </Card>
         )}
 
-        {/* Documenti PayPal importati */}
+        {/* Fonti PayPal: API e documenti restano distinti */}
         {activeTab === 'documenti' && (
-          <Card title={`Documenti PayPal importati (${statements.length})`} bodyStyle={{ padding: 0 }}>
-            <TableWrap style={{ border: 'none', borderRadius: 0 }}>
+          <Card title={`Fonti PayPal (${paypalSources.length})`} bodyStyle={{ padding: 0 }}>
+            <div
+              style={{
+                padding: '12px 16px',
+                color: COLORS.textMuted,
+                fontSize: 12,
+                borderBottom: `1px solid ${COLORS.border}`,
+              }}
+            >
+              I periodi sincronizzati via API sono dati strutturati, non PDF. I documenti
+              importati restano indicati separatamente con il relativo nome file.
+            </div>
+            {isMobile ? (
+              <div
+                data-testid="paypal-source-cards"
+                style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12 }}
+              >
+                {paypalSources.map(s => (
+                  <article
+                    key={s.id || s.statement_id}
+                    style={{
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.md,
+                      padding: 12,
+                      background: COLORS.card,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                      <Badge
+                        variant={
+                          s.source_type === 'api'
+                            ? 'success'
+                            : s.tipo_documento === 'CSR'
+                              ? 'warning'
+                              : 'info'
+                        }
+                      >
+                        {s.source_type === 'api' ? 'PayPal API' : s.tipo_documento}
+                      </Badge>
+                      <strong>
+                        {s.riepilogo?.pagamenti_inviati == null
+                          ? '—'
+                          : formatEuro(s.riepilogo.pagamenti_inviati)}
+                      </strong>
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 13 }}>
+                      {formatDate(s.periodo_inizio)} — {formatDate(s.periodo_fine)}
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 12, color: COLORS.textMuted }}>
+                      {s.totale_transazioni || 0} operazioni · {s.totale_pagamenti ?? '—'} pagamenti
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 12, color: COLORS.textSubtle }}>
+                      {s.documento_presente ? s.file_name : 'Nessun file: fonte API'}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+            <TableWrap data-testid="paypal-source-table" style={{ border: 'none', borderRadius: 0 }}>
               <Table>
                 <thead>
                   <tr>
-                    <Th>Tipo</Th>
+                    <Th>Fonte</Th>
                     <Th>Periodo</Th>
-                    <Th align="center">Transazioni</Th>
+                    <Th align="center">Operazioni</Th>
+                    <Th align="center">Pagamenti</Th>
                     <Th align="right">Pag. inviati</Th>
                     <Th align="right">Depositi</Th>
                     <Th align="right">Saldo finale</Th>
-                    <Th>File</Th>
+                    <Th>Documento</Th>
                   </tr>
                 </thead>
                 <tbody>
-                  {statements.map(s => (
+                  {paypalSources.map(s => (
                     <tr key={s.id || s.statement_id}>
                       <Td>
-                        <Badge variant={s.tipo_documento === 'CSR' ? 'warning' : 'info'}>
-                          {s.tipo_documento}
+                        <Badge
+                          variant={
+                            s.source_type === 'api'
+                              ? 'success'
+                              : s.tipo_documento === 'CSR'
+                                ? 'warning'
+                                : 'info'
+                          }
+                        >
+                          {s.source_type === 'api' ? 'PayPal API' : s.tipo_documento}
                         </Badge>
                       </Td>
                       <Td style={{ fontWeight: 500 }}>
                         {formatDate(s.periodo_inizio)} — {formatDate(s.periodo_fine)}
                       </Td>
                       <Td align="center">{s.totale_transazioni}</Td>
+                      <Td align="center">{s.totale_pagamenti ?? '—'}</Td>
                       <Td align="right" mono style={{ color: COLORS.danger }}>
-                        {formatEuro(s.riepilogo?.pagamenti_inviati)}
+                        {s.riepilogo?.pagamenti_inviati == null
+                          ? '—'
+                          : formatEuro(s.riepilogo.pagamenti_inviati)}
                       </Td>
                       <Td align="right" mono style={{ color: COLORS.success }}>
-                        {formatEuro(s.riepilogo?.depositi_accrediti)}
+                        {s.riepilogo?.depositi_accrediti == null
+                          ? '—'
+                          : formatEuro(s.riepilogo.depositi_accrediti)}
                       </Td>
-                      <Td align="right" mono>{formatEuro(s.riepilogo?.saldo_finale)}</Td>
-                      <Td style={{ fontSize: 11, color: COLORS.textSubtle }}>{s.file_name}</Td>
+                      <Td align="right" mono>
+                        {s.riepilogo?.saldo_finale == null
+                          ? '—'
+                          : formatEuro(s.riepilogo.saldo_finale)}
+                      </Td>
+                      <Td style={{ fontSize: 11, color: COLORS.textSubtle }}>
+                        {s.documento_presente ? s.file_name : 'Nessun file: fonte API'}
+                      </Td>
                     </tr>
                   ))}
                 </tbody>
               </Table>
             </TableWrap>
-            {statements.length === 0 && (
+            )}
+            {paypalSources.length === 0 && (
               <div style={{ padding: 40, textAlign: 'center', color: COLORS.textSubtle }}>
-                Nessun documento PayPal importato.
+                Nessuna fonte PayPal disponibile per l'anno selezionato.
               </div>
             )}
           </Card>

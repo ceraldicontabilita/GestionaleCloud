@@ -79,6 +79,27 @@ def invoice_amount(invoice: Dict[str, Any]) -> float:
         return 0.0
 
 
+def normalize_currency(value: Any) -> str:
+    """Normalizza il codice ISO della valuta, lasciando vuoto se assente."""
+    return str(value or "").strip().upper()
+
+
+def invoice_currency(invoice: Dict[str, Any]) -> str:
+    return normalize_currency(
+        invoice.get("divisa")
+        or invoice.get("currency")
+        or invoice.get("valuta")
+    )
+
+
+def transaction_currency(transaction: Dict[str, Any]) -> str:
+    return normalize_currency(
+        transaction.get("currency")
+        or transaction.get("valuta")
+        or transaction.get("divisa")
+    )
+
+
 def transaction_amount(transaction: Dict[str, Any]) -> float:
     try:
         return abs(float(transaction.get("importo") or transaction.get("lordo") or transaction.get("amount") or 0))
@@ -152,6 +173,12 @@ def evaluate_paypal_invoice_match(
     if amount_match:
         evidenze.append("importo")
 
+    tx_currency = transaction_currency(transaction)
+    inv_currency = invoice_currency(invoice)
+    currency_match = not (tx_currency and inv_currency) or tx_currency == inv_currency
+    if tx_currency and inv_currency and currency_match:
+        evidenze.append("valuta")
+
     tx_date = _parse_date(transaction.get("data") or transaction.get("initiation_date") or transaction.get("date"))
     inv_date = _parse_date(invoice.get("invoice_date") or invoice.get("data_fattura") or invoice.get("data_documento"))
     days = abs((tx_date - inv_date).days) if tx_date and inv_date else None
@@ -160,13 +187,14 @@ def evaluate_paypal_invoice_match(
         evidenze.append("data_entro_120_giorni")
 
     supplier_identity = tax_match or name_match or email_match
-    associabile = supplier_identity and reference_match and amount_match
+    associabile = supplier_identity and reference_match and amount_match and currency_match
     score = (
         (60 if tax_match else 0)
         + (45 if name_match else 0)
         + (50 if email_match else 0)
         + (30 if reference_match else 0)
         + (20 if amount_match else 0)
+        + (5 if tx_currency and inv_currency and currency_match else 0)
         + (5 if date_match else 0)
     )
     return {
@@ -177,6 +205,7 @@ def evaluate_paypal_invoice_match(
         "scarto": None if associabile else (
             "identita_fornitore_non_verificata" if not supplier_identity
             else "numero_fattura_mancante_o_non_coincidente" if not reference_match
-            else "importo_non_coincidente_al_centesimo"
+            else "importo_non_coincidente_al_centesimo" if not amount_match
+            else "valuta_non_coincidente"
         ),
     }
