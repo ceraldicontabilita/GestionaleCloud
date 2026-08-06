@@ -3,7 +3,7 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 161
+**Totale file analizzati:** 162
 
 | Classificazione | File |
 |---|---:|
@@ -12,7 +12,7 @@
 | COMPONENTE_USATO | 84 |
 | MODALE_USATO | 4 |
 | HOOK_USATO | 3 |
-| TEST_ONLY | 17 |
+| TEST_ONLY | 18 |
 | DINAMICO_DA_VERIFICARE | 23 |
 | ORFANO_ELIMINABILE | 0 |
 
@@ -57,7 +57,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | File | Classificazione | Importato da (n. file) |
 |---|---|---:|
 | `frontend/src/App.jsx` | ENTRYPOINT | 1 |
-| `frontend/src/api.js` | COMPONENTE_USATO | 84 |
+| `frontend/src/api.js` | COMPONENTE_USATO | 85 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ChatIntelligente.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/CopyLinkButton.jsx` | COMPONENTE_USATO | 5 |
@@ -175,7 +175,8 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/LearningMachine.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/LearningMachineUniversale.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/LegacyRouteResolver.jsx` | ROUTE_ATTIVA | 1 |
-| `frontend/src/pages/LibroGiornale.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/pages/LibroGiornale.jsx` | COMPONENTE_USATO | 2 |
+| `frontend/src/pages/LibroGiornale.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/Login.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/MFAAdmin.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/pages/MFAAdmin.test.jsx` | TEST_ONLY | 0 |

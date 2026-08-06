@@ -26,23 +26,37 @@ export default function LibroGiornale() {
   const [giornale, setGiornale] = useState(null);
   const [mastro, setMastro] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [registerError, setRegisterError] = useState(null);
   const [espansa, setEspansa] = useState(null); // id scrittura espansa
   const [controllo60, setControllo60] = useState(null);
   const fileInputRef = useRef(null);
 
   const carica = useCallback(async () => {
     setLoading(true);
+    setRegisterError(null);
+    setGiornale(null);
+    setMastro(null);
     try {
       const range = `data_da=${anno}-01-01&data_a=${anno}-12-31`;
+      const controlloPromise = api
+        .get('/api/contabilita-gestionale/libro-giornale/controllo-60-giorni')
+        .catch(e => {
+          setControllo60(null);
+          toast.warning('Controllo 60 giorni non disponibile', {
+            description: e.response?.data?.detail || e.message,
+          });
+          return null;
+        });
       const [g, m, c60] = await Promise.all([
         api.get(`/api/contabilita-gestionale/libro-giornale?${range}&limit=2000`),
         api.get(`/api/contabilita-gestionale/libro-mastro?${range}`),
-        api.get('/api/contabilita-gestionale/libro-giornale/controllo-60-giorni'),
+        controlloPromise,
       ]);
       setGiornale(g.data);
       setMastro(m.data);
-      setControllo60(c60.data);
+      if (c60) setControllo60(c60.data);
     } catch (e) {
+      setRegisterError(e.response?.data?.detail || e.message || 'Servizio non disponibile');
       toast.error('Errore caricamento registro', {
         description: e.response?.data?.detail || e.message,
       });
@@ -75,8 +89,24 @@ export default function LibroGiornale() {
 
   const importa = async file => {
     try {
+      if (file.size > 25 * 1024 * 1024) {
+        throw new Error('File troppo grande: limite 25 MB');
+      }
       const testo = await file.text();
       const dump = JSON.parse(testo);
+      if (
+        dump?.tipo !== 'libro_giornale_gestionalecloud' ||
+        dump?.versione !== 1 ||
+        !Array.isArray(dump?.scritture)
+      ) {
+        throw new Error('File non riconosciuto: selezionare un export del Libro Giornale');
+      }
+      const conferma = window.confirm(
+        `Reimportare ${dump.scritture.length} scritture dal file ${file.name}?\n\n` +
+        'Saranno aggiunte soltanto quelle mancanti. Il server annullerà tutto se trova ' +
+        'scritture sbilanciate, protocolli duplicati o righe invalide.'
+      );
+      if (!conferma) return;
       const res = await api.post('/api/contabilita-gestionale/libro-giornale/import', dump);
       toast.success('Registro reimportato', {
         description: `${res.data.ricreate} scritture ricreate, ${res.data.gia_presenti} già presenti`,
@@ -84,7 +114,8 @@ export default function LibroGiornale() {
       carica();
     } catch (e) {
       toast.error('Errore reimport', {
-        description: e.response?.data?.detail || e.message,
+        description:
+          e.response?.data?.detail?.messaggio || e.response?.data?.detail || e.message,
       });
     }
   };
@@ -117,11 +148,13 @@ export default function LibroGiornale() {
           </button>
         ))}
         <div style={{ flex: 1 }} />
-        <button onClick={esporta} data-testid="export-giornale" style={btnGhost}>
+        <button onClick={esporta} data-testid="export-giornale" style={btnGhost}
+          disabled={loading || !giornale}>
           📥 Esporta registro {anno}
         </button>
         <button onClick={() => fileInputRef.current?.click()} data-testid="import-giornale"
-          style={btnGhost} title="Ricostruzione da export precedente (solo Admin)">
+          style={btnGhost} title="Ricostruzione da export precedente (solo Admin)"
+          disabled={loading}>
           ♻️ Reimporta
         </button>
         <input ref={fileInputRef} type="file" accept="application/json" hidden
@@ -148,8 +181,44 @@ export default function LibroGiornale() {
         </div>
       )}
 
+      {!loading && giornale?.troncato && (
+        <div role="alert" style={{
+          padding: '10px 14px', background: '#fffbeb', border: '1px solid #fcd34d',
+          borderRadius: 8, color: '#92400e', fontSize: 13, marginBottom: 14,
+        }}>
+          <strong>Vista parziale:</strong> mostrate {giornale.totale} scritture su{' '}
+          {giornale.totale_disponibile}. Totali e quadratura non rappresentano l'intero periodo.
+        </div>
+      )}
+
+      {!loading && giornale?.qualita_registro && !giornale.qualita_registro.registro_valido && (
+        <div role="alert" data-testid="alert-qualita-giornale" style={{
+          padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca',
+          borderRadius: 8, color: '#991b1b', fontSize: 13, marginBottom: 14,
+        }}>
+          <strong>Registro non valido:</strong>{' '}
+          {giornale.qualita_registro.scritture_sbilanciate || 0} scritture sbilanciate,{' '}
+          {giornale.qualita_registro.protocolli_duplicati || 0} protocolli duplicati,{' '}
+          {giornale.qualita_registro.scritture_senza_protocollo || 0} senza protocollo,{' '}
+          {giornale.qualita_registro.righe_non_numeriche || 0} righe non numeriche e{' '}
+          {giornale.qualita_registro.righe_senza_conto || 0} righe senza conto. Nessuna
+          correzione automatica è stata eseguita.
+        </div>
+      )}
+
       {loading ? (
         <div style={{ color: COLORS.textMuted, padding: 24 }}>Caricamento registro…</div>
+      ) : registerError ? (
+        <div role="alert" style={{
+          color: '#991b1b', background: '#fef2f2', border: '1px solid #fecaca',
+          borderRadius: 8, padding: 18,
+        }}>
+          <strong>Impossibile caricare Libro Giornale e Libro Mastro.</strong>
+          <div style={{ marginTop: 4, fontSize: 13 }}>{String(registerError)}</div>
+          <button type="button" onClick={carica} style={{ ...btnGhost, marginTop: 12 }}>
+            Riprova
+          </button>
+        </div>
       ) : vista === 'giornale' ? (
         <>
           <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
