@@ -57,5 +57,20 @@ viene stimato: viene mostrato come **non disponibile** e la chiusura resta blocc
 
 La pagina non può sostituire l'attività del commercialista. Consente la chiusura solo dopo che
 il registro definitivo è completo e quadrato; l'operazione reale resta volontaria, esplicita e
-tracciata. Il collaudo live finale deve restare in sola lettura: non verrà premuto il comando di
-chiusura su dati reali.
+tracciata.
+
+## Pubblicazione e collaudo live
+
+- PR `#125`, merge `20fa8279226ce6b5bd99799758f037beebede21a`.
+- Deploy Render `dep-d9q4ccp42hec73c3fdu0` in stato `live`; health `healthy`, database
+  `connected`, commit pubblicato `20fa8279`.
+- Collaudo autenticato eseguito con ruolo `sola_lettura` e sole richieste GET. Nessuna chiusura,
+  apertura o altra scrittura è stata eseguita.
+- 2025: chiusura bloccata per registro vuoto, 1.176 fatture e 347 corrispettivi da registrare,
+  16 cespiti senza ammortamento e 2.359 movimenti bancari non riconciliati.
+- 2026: chiusura bloccata perché l'esercizio è ancora in corso, oltre a 272 fatture, 171
+  corrispettivi e 1.668 movimenti bancari non riconciliati.
+- Per entrambi gli esercizi l'API restituisce `disponibile: false` e `bilancino: null`, evitando
+  risultati stimati o zeri fittizi.
+- Il bundle pubblicato `ChiusuraEsercizio-CgUQWVlm.js` contiene lo stato `Bilancino non
+  disponibile` e le conferme forti `CHIUDI` e `APRI`.
