@@ -586,6 +586,23 @@ def _numero_fattura_citato_esplicitamente(numero_fattura: str, descrizione: str)
     if len(senza_zeri) >= 4 and senza_zeri in descrizione_compatta:
         return True
 
+    # Alcuni fornitori espongono nell'XML un numero composito con serie e
+    # anno (es. V1-2026-007590), mentre nel bonifico scrivono esplicitamente
+    # soltanto il progressivo finale ("fattura 7590"). E' ammesso solo
+    # l'ultimo segmento numerico, con almeno quattro cifre, e soltanto dopo
+    # una parola documentale: non e' quindi un fuzzy match su CRO/date.
+    segmenti_numerici = re.findall(r'\d+', numero)
+    if segmenti_numerici:
+        progressivo = segmenti_numerici[-1].lstrip('0')
+        if len(progressivo) >= 4:
+            pattern_progressivo = (
+                r'(?:FATTURA|FATT|FAT|FT|INV|DOCUMENTO|DOC)\s*'
+                r'(?:N[.°º]?\s*)?0*' + re.escape(progressivo)
+                + r'(?![0-9])'
+            )
+            if re.search(pattern_progressivo, str(descrizione).upper()):
+                return True
+
     # Numeri corti alfanumerici (es. 25/D) sono ammessi soltanto nella forma
     # originale, delimitata da caratteri non alfanumerici. I numeri di una o
     # due cifre (es. fattura 56) richiedono anche la parola FATTURA/FT/INV:

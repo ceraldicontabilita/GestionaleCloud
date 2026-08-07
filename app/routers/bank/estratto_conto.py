@@ -243,6 +243,8 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     # canale non ripete le riparazioni globali per ogni file interamente
     # duplicato; upload manuali conservano invece il comportamento storico.
     skip_duplicate_repairs = bool(getattr(file, "skip_duplicate_repairs", False))
+    drive_file_id = getattr(file, "drive_file_id", None)
+    drive_source_path = getattr(file, "source_path", None)
     
     filename_originale = file.filename or "estratto-conto"
     filename = filename_originale.lower()
@@ -661,6 +663,8 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             "fingerprint": fingerprint,
             "riconciliato": False,
             "source_filename": filename_originale,
+            "drive_file_id": drive_file_id,
+            "drive_source_path": drive_source_path,
             **evidenza,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
@@ -672,6 +676,8 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             {"$set": {
                 **evidenza,
                 "source_filename_ufficiale": filename_originale,
+                "drive_file_id": drive_file_id,
+                "drive_source_path": drive_source_path,
                 "riconciliato": False,
                 "promosso_a_ufficiale_at": datetime.now(timezone.utc).isoformat(),
             }, "$unset": {

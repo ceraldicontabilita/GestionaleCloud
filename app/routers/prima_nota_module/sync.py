@@ -5,7 +5,9 @@ Sync corrispettivi, fatture, import CSV/batch.
 from fastapi import HTTPException, Query, Body
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta, timezone
+from itertools import combinations
 import logging
+import re
 import uuid
 
 from app.database import Database, Collections
@@ -827,6 +829,80 @@ async def sync_estratto_conto_to_banca(anno: int = Query(...)) -> Dict:
 
 
 
+def _movimento_non_consumato_da_altra_fattura(
+    movimento: Dict[str, Any], fattura_id: str,
+) -> bool:
+    """Un flag ``riconciliato`` non basta a escludere l'evidenza.
+
+    Gli assegni vengono marcati riconciliati appena compaiono in banca, anche
+    se non hanno ancora una fattura. Si esclude il movimento soltanto quando
+    porta davvero l'id di una fattura diversa.
+    """
+    assegnate = {
+        str(value) for value in (
+            [movimento.get("fattura_id"), movimento.get("invoice_id")]
+            + list(movimento.get("fattura_ids") or [])
+        ) if value
+    }
+    return not assegnate or str(fattura_id) in assegnate
+
+
+def _rimborso_duplica_pagamento(
+    fattura: Dict[str, Any],
+    candidati_forti: list,
+    movimenti_anno: list,
+    importo: float,
+):
+    """Riduce due pagamenti + un rimborso a un pagamento netto certo.
+
+    Non sceglie quale CRO sia stato materialmente stornato (sono equivalenti),
+    ma conserva tutti gli id come prova. Il risultato contabile netto e'
+    invece univoco: una sola uscita resta a saldo della fattura.
+    """
+    if len(candidati_forti) < 2:
+        return None
+    from app.services.riconciliazione_bancaria import match_fornitore_descrizione
+
+    fornitore = (
+        fattura.get("supplier_name") or fattura.get("cedente_denominazione") or ""
+    )
+    date_uscite = {
+        str(movimento.get("data") or movimento.get("data_contabile") or "")[:10]
+        for movimento, _evidenza in candidati_forti
+    }
+    rimborsi = []
+    for movimento in movimenti_anno:
+        tipo = str(movimento.get("tipo") or movimento.get("type") or "").lower()
+        descrizione = (
+            movimento.get("descrizione_originale")
+            or movimento.get("descrizione") or ""
+        )
+        testo = descrizione.upper()
+        if tipo != "entrata" or not any(
+            token in testo for token in ("RIMBORS", "RESTITUZ", "STORNO")
+        ):
+            continue
+        if round(abs(float(movimento.get("importo") or 0)), 2) != round(importo, 2):
+            continue
+        data = str(movimento.get("data") or movimento.get("data_contabile") or "")[:10]
+        if data not in date_uscite:
+            continue
+        if match_fornitore_descrizione(fornitore, descrizione) <= 0:
+            continue
+        rimborsi.append(movimento)
+    if len(candidati_forti) - len(rimborsi) != 1:
+        return None
+    movimento = sorted(
+        (item[0] for item in candidati_forti),
+        key=lambda item: str(item.get("id") or ""),
+    )[0]
+    return movimento, {
+        "tipo": "pagamento_netto_dopo_rimborso_duplicato",
+        "uscite_ids": [item[0].get("id") for item in candidati_forti],
+        "rimborsi_ids": [item.get("id") for item in rimborsi],
+    }
+
+
 async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
     """
     Lista fatture NON ancora registrate in Prima Nota.
@@ -884,18 +960,24 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
     # per importo ASSOLUTO arrotondato (la collection ha sia importi assoluti
     # sia con segno negativo).
     movimenti_banca = {}
+    movimenti_anno = []
     async for m in db["estratto_conto_movimenti"].find(
-        {"tipo": "uscita",
-         "riconciliato": {"$ne": True},
-         "$or": [
+        {"$or": [
              {"data": {"$regex": f"^{anno}"}},
              {"data_contabile": {"$regex": f"/{anno}$"}},
          ]},
         {
             "_id": 0, "id": 1, "importo": 1, "descrizione": 1,
             "descrizione_originale": 1, "data": 1, "data_contabile": 1,
+            "tipo": 1, "type": 1, "riconciliato": 1,
+            "fattura_id": 1, "invoice_id": 1, "fattura_ids": 1,
+            "assegno_id": 1, "assegno_numero": 1,
         }
     ):
+        movimenti_anno.append(m)
+        tipo = str(m.get("tipo") or m.get("type") or "").lower()
+        if tipo != "uscita":
+            continue
         imp = round(abs(float(m.get("importo", 0))), 2)
         if imp not in movimenti_banca:
             movimenti_banca[imp] = []
@@ -1001,7 +1083,13 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
                 _evidenza_sdd_fattura_banca,
             )
 
-            candidati = movimenti_banca.get(round(importo, 2), [])
+            candidati = [
+                movimento
+                for movimento in movimenti_banca.get(round(importo, 2), [])
+                if _movimento_non_consumato_da_altra_fattura(
+                    movimento, str(f.get("id") or ""),
+                )
+            ]
             candidati_forti = []
             for m in candidati:
                 descrizione = m.get("descrizione_originale") or m.get("descrizione") or ""
@@ -1020,6 +1108,13 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             if len(candidati_forti) == 1:
                 movimento_match, evidenza_banca = candidati_forti[0]
                 stato_match = "riscontro_forte_in_elaborazione"
+            elif len(candidati_forti) > 1:
+                netto = _rimborso_duplica_pagamento(
+                    f, candidati_forti, movimenti_anno, importo,
+                )
+                if netto:
+                    movimento_match, evidenza_banca = netto
+                    stato_match = "riscontro_forte_in_elaborazione"
         
         provvisori.append({
             "fattura_id": f.get("id"),
@@ -1051,6 +1146,150 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
                 "id": movimento_match.get("id") if movimento_match else None,
             } if movimento_match else None,
         })
+
+    # Un assegno puo' saldare piu' fatture dello stesso fornitore. La prova
+    # viene mostrata soltanto quando esiste una sola combinazione globale di
+    # 2..4 fatture dello stesso lotto (fornitore + data documento) la cui
+    # somma coincide al centesimo con un assegno ancora privo di fatture.
+    # In questo modo il caso SIRO 12/06 (tre fatture = EUR 1.082,52) emerge,
+    # mentre due assegni uguali e due fatture uguali restano ambigui.
+    gruppi = {}
+    for item in provvisori:
+        if item.get("suggerimento") != "banca" or item.get("movimento_banca"):
+            continue
+        chiave_fornitore = (
+            str(item.get("fornitore_piva") or "").strip()
+            or re.sub(r"\W", "", str(item.get("fornitore") or "").upper())
+        )
+        chiave = (chiave_fornitore, str(item.get("fattura_data") or "")[:10])
+        if chiave_fornitore and chiave[1]:
+            gruppi.setdefault(chiave, []).append(item)
+
+    for movimento in (
+        m for m in movimenti_anno
+        if str(m.get("tipo") or m.get("type") or "").lower() == "uscita"
+        and not (m.get("fattura_id") or m.get("invoice_id") or m.get("fattura_ids"))
+        and re.search(
+            r"(?:PRELIEVO|VOSTRO).*ASSEGNO",
+            str(m.get("descrizione") or m.get("descrizione_originale") or ""),
+            re.IGNORECASE,
+        )
+    ):
+        importo_movimento = round(abs(float(movimento.get("importo") or 0)), 2)
+        try:
+            data_movimento_dt = datetime.fromisoformat(
+                str(movimento.get("data") or movimento.get("data_contabile") or "")[:10]
+            )
+        except ValueError:
+            continue
+        combinazioni_trovate = []
+        for (_fornitore, data_lotto), righe in gruppi.items():
+            try:
+                data_lotto_dt = datetime.fromisoformat(data_lotto)
+            except ValueError:
+                continue
+            giorni = (data_movimento_dt - data_lotto_dt).days
+            if giorni < -7 or giorni > 90:
+                continue
+            for numero_righe in range(2, min(4, len(righe)) + 1):
+                for combo in combinations(righe, numero_righe):
+                    if round(sum(float(riga.get("importo") or 0) for riga in combo), 2) == importo_movimento:
+                        combinazioni_trovate.append(combo)
+        if len(combinazioni_trovate) != 1:
+            continue
+        combo = combinazioni_trovate[0]
+        evidenza = {
+            "tipo": "assegno_cumulativo_lotto_fatture",
+            "fatture_ids": [riga["fattura_id"] for riga in combo],
+            "somma": importo_movimento,
+        }
+        for riga in combo:
+            riga["stato_match"] = "riscontro_forte_in_elaborazione"
+            riga["evidenza_banca"] = evidenza
+            riga["movimento_banca"] = {
+                "data": movimento.get("data") or movimento.get("data_contabile"),
+                "descrizione": (
+                    movimento.get("descrizione_originale")
+                    or movimento.get("descrizione") or ""
+                )[:80],
+                "id": movimento.get("id"),
+            }
+
+    # Sequenza 1:1 per assegni senza beneficiario: se per uno stesso importo
+    # esistono N assegni bancari liberi e N sole fatture aperte, tutte dello
+    # stesso fornitore, l'ordine cronologico rende l'abbinamento determinato.
+    # Esempio reale: due fatture KIMBO da EUR 1.498,96 e due assegni successivi
+    # dello stesso importo. Una cardinalita' diversa o un secondo fornitore
+    # lascia invece il caso in attesa.
+    assegni_liberi_per_importo = {}
+    for movimento in movimenti_anno:
+        descrizione = str(
+            movimento.get("descrizione") or movimento.get("descrizione_originale") or ""
+        )
+        if (
+            str(movimento.get("tipo") or movimento.get("type") or "").lower() != "uscita"
+            or movimento.get("fattura_id") or movimento.get("invoice_id")
+            or movimento.get("fattura_ids")
+            or not re.search(r"(?:PRELIEVO|VOSTRO).*ASSEGNO", descrizione, re.IGNORECASE)
+        ):
+            continue
+        assegni_liberi_per_importo.setdefault(
+            round(abs(float(movimento.get("importo") or 0)), 2), []
+        ).append(movimento)
+
+    fatture_libere_per_importo = {}
+    for riga in provvisori:
+        if riga.get("suggerimento") == "banca" and not riga.get("movimento_banca"):
+            fatture_libere_per_importo.setdefault(
+                round(float(riga.get("importo") or 0), 2), []
+            ).append(riga)
+
+    for importo, righe in fatture_libere_per_importo.items():
+        movimenti = assegni_liberi_per_importo.get(importo, [])
+        if len(righe) < 2 or len(movimenti) != len(righe):
+            continue
+        fornitori = {
+            str(riga.get("fornitore_piva") or "").strip()
+            or re.sub(r"\W", "", str(riga.get("fornitore") or "").upper())
+            for riga in righe
+        }
+        if len(fornitori) != 1 or not next(iter(fornitori), ""):
+            continue
+        righe_ordinate = sorted(righe, key=lambda r: (str(r.get("fattura_data") or ""), r["fattura_id"]))
+        movimenti_ordinati = sorted(
+            movimenti,
+            key=lambda m: (str(m.get("data") or m.get("data_contabile") or ""), str(m.get("id") or "")),
+        )
+        coppie = []
+        for riga, movimento in zip(righe_ordinate, movimenti_ordinati):
+            try:
+                data_fattura = datetime.fromisoformat(str(riga.get("fattura_data") or "")[:10])
+                data_movimento = datetime.fromisoformat(
+                    str(movimento.get("data") or movimento.get("data_contabile") or "")[:10]
+                )
+            except ValueError:
+                coppie = []
+                break
+            if not -7 <= (data_movimento - data_fattura).days <= 90:
+                coppie = []
+                break
+            coppie.append((riga, movimento))
+        if len(coppie) != len(righe):
+            continue
+        for riga, movimento in coppie:
+            riga["stato_match"] = "riscontro_forte_in_elaborazione"
+            riga["evidenza_banca"] = {
+                "tipo": "sequenza_assegni_fatture_stesso_fornitore_importo",
+                "cardinalita": len(coppie),
+            }
+            riga["movimento_banca"] = {
+                "data": movimento.get("data") or movimento.get("data_contabile"),
+                "descrizione": (
+                    movimento.get("descrizione_originale")
+                    or movimento.get("descrizione") or ""
+                )[:80],
+                "id": movimento.get("id"),
+            }
     
     # Nessuna auto-conferma automatica: il "pagamento certo" è stato rimosso
     # perché il sistema non può sapere con certezza dove imputare il

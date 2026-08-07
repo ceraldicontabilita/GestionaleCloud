@@ -1452,7 +1452,17 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
                 )}
                 {p.movimento_banca && (
                   <span style={{ color: '#047857', fontWeight: 700 }}>
-                    {' '}· riscontro univoco del {formatDateIT(p.movimento_banca.data)} ({p.evidenza_banca === 'sdd_fornitore_importo_data' ? 'SDD + fornitore + importo + data' : 'fornitore + numero fattura + importo'}), in elaborazione
+                    {' '}· riscontro univoco del {formatDateIT(p.movimento_banca.data)} ({
+                      p.evidenza_banca === 'sdd_fornitore_importo_data'
+                        ? 'SDD + fornitore + importo + data'
+                        : p.evidenza_banca?.tipo === 'pagamento_netto_dopo_rimborso_duplicato'
+                          ? 'fattura esplicita + doppio pagamento neutralizzato dal rimborso'
+                          : p.evidenza_banca?.tipo === 'assegno_cumulativo_lotto_fatture'
+                            ? `assegno cumulativo = ${p.evidenza_banca.fatture_ids?.length || 0} fatture dello stesso lotto`
+                            : p.evidenza_banca?.tipo === 'sequenza_assegni_fatture_stesso_fornitore_importo'
+                              ? `sequenza univoca di ${p.evidenza_banca.cardinalita || 0} assegni e fatture dello stesso fornitore`
+                            : 'fornitore + numero fattura + importo'
+                    }), in elaborazione
                   </span>
                 )}
                 {(p.ritenuta_non_pagabile_fornitore || 0) > 0 && (

@@ -29,6 +29,7 @@ from app.services.drive_invoice_ingest import (
 
 logger = logging.getLogger(__name__)
 _STATO_KEY = "drive_estratti_conto_last_sync"
+_IMPORT_REGISTRY = "drive_estratti_conto_imports"
 _sync_lock = asyncio.Lock()
 _FOLDER_MIME = "application/vnd.google-apps.folder"
 _LIFECYCLE_NAMES = {"da elaborare", "elaborate", "errori", "duplicati"}
@@ -261,8 +262,10 @@ def _discover_work_items(
     service,
     root_id: str,
     initial_route: Optional[str] = None,
+    *,
+    include_elaborate: bool = False,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, str]], List[str]]:
-    """Scansiona le fonti supportate senza entrare negli archivi.
+    """Scansiona le fonti supportate e, su richiesta, recupera gli archivi.
 
     Compatibilita' con la struttura esistente: durante la transizione legge
     sia i file storicamente messi direttamente nella cartella fonte, sia i
@@ -314,7 +317,9 @@ def _discover_work_items(
                 # sono il nome del file e poi il suo contenuto. Prima serviva
                 # una cartella per fonte, quindi con tutto in un posto solo
                 # non veniva letto nulla.
-                if lower == "da elaborare":
+                if lower == "da elaborare" or (
+                    include_elaborate and lower == "elaborate"
+                ):
                     for item in _list_children(service, folder["id"]):
                         if item.get("mimeType") == _FOLDER_MIME:
                             continue
@@ -332,7 +337,12 @@ def _discover_work_items(
                             "route": route,
                             "source_parent_id": folder["id"],
                             "lifecycle_parent_id": target_parent,
-                            "source_path": "/".join(part for part in (path, "Da elaborare", nome) if part),
+                            "source_path": "/".join(part for part in (
+                                path,
+                                "Elaborate" if lower == "elaborate" else "Da elaborare",
+                                nome,
+                            ) if part),
+                            "archive_recovery": lower == "elaborate",
                         })
                 continue
             child_path = "/".join(part for part in (path, name) if part)
@@ -349,9 +359,14 @@ def _discover_work_items(
 class _UploadDrive:
     skip_duplicate_repairs = True
 
-    def __init__(self, name: str, content: bytes):
+    def __init__(
+        self, name: str, content: bytes, *, drive_file_id: Optional[str] = None,
+        source_path: Optional[str] = None,
+    ):
         self.filename = name
         self._content = content
+        self.drive_file_id = drive_file_id
+        self.source_path = source_path
 
     async def read(self) -> bytes:
         return self._content
@@ -393,6 +408,7 @@ async def sync(db) -> Dict[str, Any]:
                 service,
                 root_id,
                 initial_route="nexi" if root_id in _nexi_folder_ids() else None,
+                include_elaborate=True,
             )
             for item in root_files:
                 files_by_id.setdefault(item["id"], item)
@@ -412,6 +428,8 @@ async def sync(db) -> Dict[str, Any]:
         sources = list(sources_by_id.values())
         result["sources"] = [source["path"] for source in sources]
         result["total"] = len(files)
+        result["archive_recovered"] = 0
+        result["archive_already_indexed"] = 0
         lifecycle: Dict[str, Dict[str, Optional[str]]] = {}
         for source in sources:
             source_id = source["id"]
@@ -422,8 +440,15 @@ async def sync(db) -> Dict[str, Any]:
             }
         for item in files:
             source_id = item["source_parent_id"]
-            target = lifecycle[item["lifecycle_parent_id"]]
+            archive_recovery = bool(item.get("archive_recovery"))
+            target = lifecycle.get(item["lifecycle_parent_id"], {})
             try:
+                if archive_recovery and await db[_IMPORT_REGISTRY].find_one(
+                    {"drive_file_id": item["id"], "status": "processed"},
+                    {"_id": 0, "drive_file_id": 1},
+                ):
+                    result["archive_already_indexed"] += 1
+                    continue
                 content = _download_bytes(service, item["id"])
                 if not content:
                     raise ValueError("file vuoto")
@@ -487,7 +512,11 @@ async def sync(db) -> Dict[str, Any]:
                     result["nexi_duplicates"] += int(bool(esito.get("duplicate")))
                     result["nexi_transactions"] += int(esito.get("operazioni") or 0)
                 else:
-                    esito = await import_estratto_conto(_UploadDrive(item["name"], content))
+                    esito = await import_estratto_conto(_UploadDrive(
+                        item["name"], content,
+                        drive_file_id=item["id"],
+                        source_path=item.get("source_path"),
+                    ))
                     if isinstance(esito, dict) and (esito.get("error") or esito.get("detail")):
                         raise ValueError(esito.get("error") or esito.get("detail"))
                     stats = (esito or {}).get("stats") or {}
@@ -496,13 +525,29 @@ async def sync(db) -> Dict[str, Any]:
                     sync_assegni = (esito or {}).get("assegni_sync") or {}
                     result["cheques"] += int(sync_assegni.get("assegni_creati") or 0)
                 result["processed"] += 1
-                if target["elaborate"]:
+                now_file = datetime.now(timezone.utc).isoformat()
+                await db[_IMPORT_REGISTRY].update_one(
+                    {"drive_file_id": item["id"]},
+                    {"$set": {
+                        "drive_file_id": item["id"],
+                        "filename": item.get("name"),
+                        "source_path": item.get("source_path"),
+                        "route": item.get("route"),
+                        "status": "processed",
+                        "archive_recovery": archive_recovery,
+                        "processed_at": now_file,
+                    }},
+                    upsert=True,
+                )
+                if archive_recovery:
+                    result["archive_recovered"] += 1
+                elif target.get("elaborate"):
                     _move_to_elaborate(service, item["id"], source_id, target["elaborate"])
                     result["moved"] += 1
             except Exception as exc:
                 logger.exception("Drive estratti conto: errore su %s", item.get("source_path"))
                 result["errors"].append({"file": item.get("source_path"), "error": str(exc)})
-                if target["error"]:
+                if not archive_recovery and target.get("error"):
                     try:
                         _move_to_folder(service, item["id"], source_id, target["error"])
                     except Exception:
