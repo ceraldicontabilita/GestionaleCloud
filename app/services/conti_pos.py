@@ -23,16 +23,29 @@ from typing import Any, Dict, List, Optional
 
 from app.services.piano_conti_ufficiale import CONTI_UFFICIALI
 
-NEXI = "nexi"
+# NUMIA e' il provider POS che gestisce i terminali e accredita su BPM.
+# NEXI e' cosa diversa: la carta aziendale usata per le spese, e il fornitore
+# che emette la fattura delle commissioni del servizio Numia. Confonderli
+# significherebbe far entrare delle SPESE nel venduto POS.
+NUMIA = "numia"
 SUMUP = "sumup"
 PAYPAL = "paypal"
+
+# Fino al 07/08/2026 il provider si chiamava "nexi": i dati gia' scritti lo
+# usano. L'alias li riporta al nome canonico in lettura, cosi' la
+# separazione non richiede di riscrivere la contabilita' esistente.
+ALIAS_CIRCUITO = {"nexi": NUMIA, "numia": NUMIA, "sumup": SUMUP,
+                  "paypal": PAYPAL}
+
+# Retrocompatibilita' per il codice che importa ancora conti_pos.NEXI.
+NEXI = NUMIA
 
 # Conto reale su cui il circuito accredita davvero.
 CONTO_BPM = "19.01.01"
 CONTO_SUMUP_MASTERCARD = "19.01.05"
 
 CIRCUITI: Dict[str, Dict[str, str]] = {
-    NEXI: {
+    NUMIA: {
         "etichetta": "Nexi/Numia",
         "credito": "15.07.01",
         "commissioni": "75.01.07.01",
@@ -59,7 +72,7 @@ COMMISSIONI_ALTRO = "75.01.07.04"
 # Sigla con cui il circuito compare in Prima Nota. Nexi accredita tramite
 # Numia, ed e' "NUMIA" che l'utente legge sull'estratto conto: chiamarla cosi'
 # rende la riga riconoscibile senza tradurre.
-SIGLE = {NEXI: "NUMIA", SUMUP: "SUMUP", PAYPAL: "PAYPAL"}
+SIGLE = {NUMIA: "NUMIA", SUMUP: "SUMUP", PAYPAL: "PAYPAL"}
 
 CATEGORIA_USCITA_STORICA = "POS Verso Banca"
 
@@ -110,7 +123,11 @@ _verifica_piano()
 
 
 def normalizza(circuito: Any) -> str:
-    return str(circuito or "").strip().lower() or NEXI
+    """Nome canonico del circuito, risolvendo gli alias storici."""
+    grezzo = str(circuito or "").strip().lower()
+    if not grezzo:
+        return NUMIA
+    return ALIAS_CIRCUITO.get(grezzo, grezzo)
 
 
 def _voce(circuito: str, chiave: str, predefinito: str = "") -> str:
@@ -150,7 +167,7 @@ def circuiti_attivi() -> List[str]:
     PayPal ha conti propri ma non passa dal registratore di cassa: non entra
     nel confronto XML-POS, quindi non e' un circuito 'attivo' in quel senso.
     """
-    return [NEXI, SUMUP]
+    return [NUMIA, SUMUP]
 
 
 def circuito_di_conto(codice: Any) -> Optional[str]:

@@ -45,7 +45,8 @@ def test_il_filtro_nexi_intercetta_anche_le_righe_senza_campo():
     filtro = filtro_gestore_pos("nexi")
     alternative = filtro["$or"]
     assert {"gestore": {"$exists": False}} in alternative
-    assert {"gestore": "nexi"} in alternative
+    # Comprende il nome storico "nexi": e' lo stesso terminale.
+    assert {"gestore": {"$in": ["numia", "nexi", None, ""]}} in alternative
     # Per gli altri gestori il filtro resta secco.
     assert filtro_gestore_pos("sumup") == {"gestore": "sumup"}
 
@@ -126,7 +127,7 @@ def test_registrare_sumup_non_sovrascrive_la_chiusura_nexi():
     _run(registra_chiusura_pos_reale(db, DATA, 120.50, gestore="sumup"))
 
     righe = _run(db.chiusure_pos_manuali.find({"data": DATA}).to_list(10))
-    assert sorted(r["gestore"] for r in righe) == ["nexi", "sumup"]
+    assert sorted(r["gestore"] for r in righe) == ["numia", "sumup"]
     assert sorted(r["importo"] for r in righe) == [120.50, 300.0]
 
 
@@ -148,18 +149,18 @@ def test_ogni_circuito_ha_la_sua_coppia_di_trasferimento():
 
     uscite = _righe_pos(db, "prima_nota_cassa", source="corrispettivo_import")
     assert {u["circuito"]: u["importo"] for u in uscite} == {
-        "NEXI": 500.0, "SUMUP": 100.0}
+        "NUMIA": 500.0, "SUMUP": 100.0}
 
     banca = _righe_pos(db, "prima_nota_banca", source="trasferimento_pos")
     assert {b["circuito"]: b["importo"] for b in banca} == {
-        "NEXI": 500.0, "SUMUP": 100.0}
+        "NUMIA": 500.0, "SUMUP": 100.0}
 
     # Ogni circuito e' una sola operazione su due registri: stesso
     # trasferimento_id fra la sua uscita e la sua entrata, mai incrociato.
     per_circuito = {u["circuito"]: u["trasferimento_id"] for u in uscite}
     for riga in banca:
         assert riga["trasferimento_id"] == per_circuito[riga["circuito"]]
-    assert per_circuito["NEXI"] != per_circuito["SUMUP"]
+    assert per_circuito["NUMIA"] != per_circuito["SUMUP"]
 
 
 def test_il_credito_pos_nasce_in_transito():
@@ -181,8 +182,8 @@ def test_zero_su_un_terminale_non_archivia_il_trasferimento_dell_altro():
 
     uscite = {u["circuito"]: u for u in
               _righe_pos(db, "prima_nota_cassa", source="corrispettivo_import")}
-    assert uscite["NEXI"].get("status") != "deleted"
-    assert uscite["NEXI"]["importo"] == 500.0
+    assert uscite["NUMIA"].get("status") != "deleted"
+    assert uscite["NUMIA"]["importo"] == 500.0
     assert uscite["SUMUP"]["status"] == "deleted"
     assert _run(chiusura_pos_del_giorno(db, DATA)) == 500.0
 
@@ -239,6 +240,6 @@ def test_una_chiusura_storica_senza_gestore_viene_corretta_non_duplicata():
     righe = _run(db.chiusure_pos_manuali.find({"data": DATA}).to_list(10))
     assert len(righe) == 1
     assert righe[0]["id"] == "storica"
-    assert righe[0]["gestore"] == "nexi"
+    assert righe[0]["gestore"] == "numia"
     assert esito["importo_precedente"] == 300.0
     assert esito["importo_totale_giorno"] == 280.0

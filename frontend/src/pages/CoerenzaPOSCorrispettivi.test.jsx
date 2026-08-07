@@ -11,6 +11,7 @@ import {
   calcolaSaldoXmlPos,
   formatEuroConSegno,
   parseTotaliPosTesto,
+  CellaCircuito,
 } from './CoerenzaPOSCorrispettivi';
 
 vi.mock('../api', () => ({
@@ -212,5 +213,40 @@ describe('Vista canonica POS e banca', () => {
     expect(screen.getByText('DIFF. XML−POS')).toBeInTheDocument();
     expect(screen.getByText('ACCREDITO BANCA')).toBeInTheDocument();
     expect(screen.getByText('DIFF. BANCA−POS')).toBeInTheDocument();
+  });
+});
+
+describe('CellaCircuito', () => {
+  // Un circuito che non ha risposto non vale zero: mostrarlo come 0,00
+  // affermerebbe che quel terminale non ha incassato, che e' un'altra cosa.
+  const rendi = (posPerCircuito, circuito) =>
+    render(
+      <table><tbody><tr>
+        <CellaCircuito g={{ pos_per_circuito: posPerCircuito }} circuito={circuito} />
+      </tr></tbody></table>
+    );
+
+  it('mostra l\'importo del circuito quando il dato c\'e\'', () => {
+    rendi({ nexi: 500, sumup: 100 }, 'sumup');
+    expect(screen.getByText(/100/)).toBeInTheDocument();
+  });
+
+  it('distingue lo zero dichiarato dal dato mancante', () => {
+    const { unmount } = rendi({ nexi: 500, sumup: 0 }, 'sumup');
+    expect(screen.getByText(/0,00/)).toBeInTheDocument();
+    expect(screen.queryByText('in attesa')).toBeNull();
+    unmount();
+
+    rendi({ nexi: 500, sumup: null }, 'sumup');
+    expect(screen.getByText('in attesa')).toBeInTheDocument();
+  });
+
+  it('non esplode se il dettaglio per circuito non arriva', () => {
+    render(
+      <table><tbody><tr>
+        <CellaCircuito g={{}} circuito="nexi" />
+      </tr></tbody></table>
+    );
+    expect(screen.getByText('in attesa')).toBeInTheDocument();
   });
 });

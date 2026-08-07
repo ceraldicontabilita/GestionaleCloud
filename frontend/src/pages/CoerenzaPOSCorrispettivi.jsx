@@ -695,7 +695,7 @@ function ControlloDueFasi({ dati, isMobile, onReload }) {
               <Th align="center" style={{ color: '#fff', background: 'transparent', borderLeft: '2px solid #fff' }}>
                 Stato
               </Th>
-              <Th colSpan={3} align="center" style={{ color: '#fff', background: 'transparent', borderLeft: '2px solid #fff', borderRight: '2px solid #fff' }}>
+              <Th colSpan={5} align="center" style={{ color: '#fff', background: 'transparent', borderLeft: '2px solid #fff', borderRight: '2px solid #fff' }}>
                 FASE 1: RT vs POS reale
               </Th>
               <Th colSpan={3} align="center" style={{ color: '#fff', background: 'transparent' }}>
@@ -706,7 +706,9 @@ function ControlloDueFasi({ dati, isMobile, onReload }) {
               <Th style={{ color: '#fff', background: 'transparent' }} />
               <Th align="center" style={{ color: '#fff', background: 'transparent', fontSize: 11, borderLeft: '2px solid #fff' }}>Corrisp.</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>XML elettr. (confronto)</Th>
-              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS terminale (modifica)</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS NUMIA</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS SUMUP</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS totale (modifica)</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11, borderRight: '2px solid #fff' }}>Diff. XML − POS</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS terminale</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Accredito banca</Th>
@@ -812,6 +814,26 @@ function TabellaSettimanale({ settimane }) {
         </tbody>
       </Table>
     </TableWrap>
+  );
+}
+
+/**
+ * Importo di un singolo circuito POS.
+ *
+ * Un circuito che non ha ancora risposto NON vale zero: mostrarlo come 0,00
+ * farebbe credere che quel terminale non abbia incassato, che e'
+ * un'affermazione diversa e potenzialmente falsa. Resta quindi "in attesa".
+ */
+export function CellaCircuito({ g, circuito }) {
+  const valore = (g.pos_per_circuito || {})[circuito];
+  const assente = valore === null || valore === undefined;
+
+  return (
+    <Td align="right" style={{ fontSize: 12 }}>
+      {assente
+        ? <em style={{ color: COLORS.textSubtle, fontSize: 11 }}>in attesa</em>
+        : formatEuro(valore)}
+    </Td>
   );
 }
 
@@ -940,6 +962,8 @@ function RigaGiornaliera({ g, even, onReload }) {
       <Td align="right" style={{ borderLeft: `2px solid ${COLORS.border}` }}>
         {g.xml_elettronico > 0 ? formatEuro(g.xml_elettronico) : (statoCorr !== 'definitivo_xml' ? <em style={{ color: COLORS.textSubtle, fontSize: 11 }}>attendo XML</em> : '—')}
       </Td>
+      <CellaCircuito g={g} circuito="nexi" />
+      <CellaCircuito g={g} circuito="sumup" />
       <Td align="right">
         <EditorPosReale g={g} onSaved={onReload} />
       </Td>

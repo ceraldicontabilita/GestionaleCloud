@@ -296,3 +296,26 @@ def test_helper_preferisce_campo_elettronico_canonico_all_alias_storico():
         "pagato_elettronico": 321.45,
         "pagato_pos": 999.99,
     }) == 321.45
+
+
+# --- NUMIA e NEXI sono lo stesso circuito ----------------------------------
+
+def test_l_accredito_e_riconosciuto_con_entrambi_i_marchi():
+    """In estratto conto compaiono sia NUMIA (chi accredita) sia NEXI (chi
+    gestisce il terminale). Pretendere solo NUMIA lasciava i trasferimenti
+    etichettati NEXI eternamente non riconciliati."""
+    from app.services.pos_evidence import _e_accredito_pos_numia_con_giorno as riconosce
+
+    assert riconosce("NUMIA INCAS. TRAMITE P.O.S. DEL 06/08/26") is True
+    assert riconosce("NEXI INC. POS CARTE CREDIT DEL 06/08/26") is True
+
+
+def test_le_righe_che_non_sono_accrediti_restano_escluse():
+    """Allargare il marchio non deve far entrare commissioni e fatture."""
+    from app.services.pos_evidence import _e_accredito_pos_numia_con_giorno as riconosce
+
+    assert riconosce("NEXI PAGAMENTO COMMISSIONI DEL 06/08/26") is False
+    assert riconosce("FATTURA NUMIA INCAS. TRAMITE P.O.S. DEL 06/08/26") is False
+    assert riconosce("BONIFICO DA CLIENTE DEL 06/08/26") is False
+    # Senza giorno operativo non si sa quale trasferimento chiuderebbe.
+    assert riconosce("NEXI INCAS. TRAMITE P.O.S. senza giorno") is False

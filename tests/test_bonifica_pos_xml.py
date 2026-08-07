@@ -147,8 +147,8 @@ def test_la_chiusura_reale_successiva_corregge_l_importo():
     _run(bonifica_pos_xml.applica(db))
     _run(registra_chiusura_pos_reale(db, "2026-08-03", 1500.0, gestore="nexi"))
 
-    # La riga storica senza gestore appartiene a Nexi: viene corretta,
-    # non affiancata da una seconda.
+    # La riga provvisoria viene CORRETTA sul posto, non affiancata da una
+    # seconda: la giornata ha sempre una sola uscita POS.
     uscite = _run(db.prima_nota_cassa.find({"data": "2026-08-03"}).to_list(10))
     assert len(uscite) == 1
     assert uscite[0]["importo"] == 1500.0
@@ -160,5 +160,96 @@ def test_rieseguire_la_bonifica_e_idempotente():
     primo = _run(bonifica_pos_xml.applica(db))
     secondo = _run(bonifica_pos_xml.applica(db))
 
+    assert primo["righe_provvisorie"] == 2
+    # Alla seconda passata non c'e' nulla da cambiare: erano gia' provvisorie.
+    assert secondo["righe_provvisorie"] == 0
     assert primo["righe_cassa"] == secondo["righe_cassa"] == 1
-    assert len(_run(db.prima_nota_cassa.find({}).to_list(10))) == 1
+
+    righe = _run(db.prima_nota_cassa.find({}).to_list(10))
+    assert len(righe) == 1                       # nessun duplicato
+    assert righe[0]["importo_provvisorio"] is True
+
+
+# --- Normalizzazione delle descrizioni storiche ----------------------------
+
+def test_la_data_nella_descrizione_diventa_italiana():
+    from app.services.bonifica_pos_xml import descrizione_normalizzata as d
+
+    assert d("POS 2026-08-03 → Banca (da XML)") == "POS 03/08/2026 → Banca (da XML)"
+    # Due percorsi diversi scrivevano frecce diverse: si uniformano.
+    assert d("POS 2026-07-31 -> Banca (chiusura terminale)") == (
+        "POS 31/07/2026 → Banca (chiusura terminale)")
+
+
+def test_una_descrizione_gia_corretta_resta_intatta():
+    from app.services.bonifica_pos_xml import descrizione_normalizzata as d
+
+    testo = "POS NUMIA 03/08/2026 → Banca (chiusura terminale)"
+    assert d(testo) == testo
+
+
+def test_l_anteprima_non_scrive_nulla():
+    db = _riga_da_xml(_db())
+    esito = _run(bonifica_pos_xml.normalizza_descrizioni(db))
+
+    assert esito["descrizioni_da_correggere"] == 1
+    assert esito["esempi"][0]["dopo"] == "POS 03/08/2026 → Banca (da XML)"
+    riga = _run(db.prima_nota_cassa.find_one({"id": "c-2026-08-03"}))
+    assert riga["descrizione"] == "POS 2026-08-03 → Banca (da XML)"
+
+
+def test_l_applicazione_cambia_solo_il_testo():
+    db = _riga_da_xml(_db())
+    _run(bonifica_pos_xml.normalizza_descrizioni(db, applica=True))
+
+    riga = _run(db.prima_nota_cassa.find_one({"id": "c-2026-08-03"}))
+    assert riga["descrizione"] == "POS 03/08/2026 → Banca (da XML)"
+    # Nessun campo contabile toccato: e' una correzione di forma.
+    assert riga["importo"] == 1629.50
+    assert riga["data"] == "2026-08-03"      # a database la data resta ISO
+    assert riga["quota_pos_fonte"] == "xml"
+
+
+# --- In Prima Nota solo il valore reale ------------------------------------
+
+def test_la_riga_resta_sempre_in_prima_nota_ma_dichiarata_provvisoria():
+    """Il valore puo' mancare per ragioni ordinarie — negozio chiuso, chiusura
+    saltata, terminale in ritardo. Far sparire la riga nasconderebbe proprio
+    la giornata da controllare."""
+    db = _riga_da_xml(_db())
+    esito = _run(bonifica_pos_xml.applica(db))
+
+    assert esito["righe_archiviate"] == 0
+    assert esito["righe_provvisorie"] == 2
+    for registro, chiave in (("prima_nota_cassa", "c-2026-08-03"),
+                             ("prima_nota_banca", "b-2026-08-03")):
+        riga = _run(db[registro].find_one({"id": chiave}))
+        assert riga.get("status") != "archived"     # c'e' ancora
+        assert riga["importo_provvisorio"] is True
+        assert riga["pos_stato"] == "attende_chiusura_pos_reale"
+        assert riga["importo"] == 1629.50
+
+
+def test_la_giornata_col_pos_reale_non_viene_dichiarata_provvisoria():
+    """Li' il dato vero c'e': la riga va corretta dal riallineamento."""
+    db = _riga_da_xml(_db(), data="2026-08-04", importo=900.0)
+    _run(registra_chiusura_pos_reale(db, "2026-08-04", 880.0, gestore="sumup"))
+
+    esito = _run(bonifica_pos_xml.applica(db))
+    assert esito["righe_provvisorie"] == 0
+    riga = _run(db.prima_nota_cassa.find_one({"id": "c-2026-08-04"}))
+    assert not riga.get("importo_provvisorio")
+
+
+def test_l_entrata_del_corrispettivo_non_viene_mai_toccata():
+    """Il ricavo XML e' un dato reale: solo la QUOTA POS era inventata."""
+    db = _riga_da_xml(_db())
+    _run(db.prima_nota_cassa.insert_one({
+        "id": "entrata", "data": "2026-08-03", "tipo": "entrata",
+        "importo": 2181.40, "categoria": "Corrispettivi",
+    }))
+    _run(bonifica_pos_xml.applica(db))
+
+    entrata = _run(db.prima_nota_cassa.find_one({"id": "entrata"}))
+    assert entrata.get("status") != "archived"
+    assert entrata["importo"] == 2181.40

@@ -11,9 +11,11 @@ Banco BPM e SumUp sulla Mastercard. Restano aperte per sempre.
 
 Cosa fa questa bonifica, e cosa NON fa:
 
-- **non cancella nulla.** Sono scritture reali gia' esistenti in Prima Nota:
-  vanno riclassificate, non eliminate. Le marca come fonte non attendibile e
-  riporta la giornata in attesa del dato vero;
+- **non cancella e non fa sparire nulla.** La giornata deve comparire sempre
+  in Prima Nota: un valore mancante ha spesso ragioni ordinarie (negozio
+  chiuso, chiusura serale saltata, terminale che consolida in ritardo secondo
+  il calendario di accredito), e togliere la riga nasconderebbe proprio la
+  giornata da controllare. La riga resta, dichiarata PROVVISORIA;
 - **non inventa il dato mancante.** Se il POS reale non c'e', la giornata
   resta segnalata: sara' la chiusura del terminale (o l'API SumUp) a
   correggere l'importo, passando dal motore unico;
@@ -25,6 +27,7 @@ L'analisi e' sempre in sola lettura: l'applicazione va chiesta esplicitamente.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -134,9 +137,85 @@ async def applica(db, anno: Optional[int] = None,
                       "pos_bonifica_at": now}},
         )
 
+    # La riga NON viene mai tolta: la giornata deve comparire sempre in Prima
+    # Nota, anche quando il valore reale manca. Il dato puo' mancare per
+    # ragioni ordinarie — negozio chiuso, chiusura serale saltata, terminale
+    # che consolida in ritardo secondo il calendario di accredito — e far
+    # sparire la riga nasconderebbe proprio la giornata da controllare.
+    # Resta quindi visibile e dichiarata PROVVISORIA, con l'importo XML come
+    # valore di lavoro e non come verita' operativa.
+    provvisorie = 0
+    if giorni_scoperti:
+        for registro in ("prima_nota_cassa", "prima_nota_banca"):
+            risultato = await db[registro].update_many(
+                {**_query(anno), "data": {"$in": giorni_scoperti}},
+                {"$set": {"pos_stato": "attende_chiusura_pos_reale",
+                          "importo_provvisorio": True}},
+            )
+            provvisorie += getattr(risultato, "modified_count", 0) or 0
+
     return {
         **esito,
         "righe_marcate": aggiornate,
+        "righe_provvisorie": provvisorie,
+        "righe_archiviate": 0,   # per contratto: la riga resta sempre
         "giornate_riportate_in_attesa": len(giorni_scoperti),
-        "cancellazioni": 0,   # per contratto: questa bonifica non cancella
+        "cancellazioni": 0,   # per contratto: archivia, non elimina
+    }
+
+
+# --------------------------------------------------------------------------
+# Normalizzazione delle descrizioni storiche
+# --------------------------------------------------------------------------
+
+# Le righe scritte prima del 07/08/2026 hanno la data ISO nella descrizione
+# ("POS 2026-08-03 -> Banca") e due frecce diverse a seconda del percorso che
+# le ha create. Sono testi letti da una persona: vanno in formato italiano.
+_RE_DATA_ISO = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
+
+
+def descrizione_normalizzata(testo: Any) -> str:
+    """Data italiana e freccia unica nelle descrizioni lette dall'utente."""
+    normalizzato = _RE_DATA_ISO.sub(
+        lambda m: f"{m.group(3)}/{m.group(2)}/{m.group(1)}", str(testo or ""))
+    return normalizzato.replace("->", "→")
+
+
+async def normalizza_descrizioni(db, anno: Optional[int] = None,
+                                 applica: bool = False) -> Dict[str, Any]:
+    """Riscrive le sole DESCRIZIONI storiche, senza toccare importi o date.
+
+    E' una correzione di forma: nessun campo contabile viene modificato, solo
+    il testo che compare in Prima Nota. Con ``applica=False`` (predefinito)
+    non scrive nulla e restituisce un campione di cosa cambierebbe.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    query: Dict[str, Any] = {"descrizione": {"$regex": r"\d{4}-\d{2}-\d{2}|->"}}
+    if anno:
+        query["data"] = {"$regex": f"^{int(anno)}-"}
+
+    cambiate = 0
+    esempi: List[Dict[str, str]] = []
+    for registro in ("prima_nota_cassa", "prima_nota_banca"):
+        for riga in await _leggi(db[registro].find(
+                query, {"_id": 0, "id": 1, "descrizione": 1})):
+            prima = str(riga.get("descrizione") or "")
+            dopo = descrizione_normalizzata(prima)
+            if dopo == prima:
+                continue
+            cambiate += 1
+            if len(esempi) < 5:
+                esempi.append({"prima": prima, "dopo": dopo})
+            if applica:
+                await db[registro].update_one(
+                    {"id": riga.get("id")},
+                    {"$set": {"descrizione": dopo, "description": dopo,
+                              "descrizione_normalizzata_at": now}},
+                )
+
+    return {
+        "anno": anno,
+        "applicata": applica,
+        "descrizioni_da_correggere" if not applica else "descrizioni_corrette": cambiate,
+        "esempi": esempi,
     }
