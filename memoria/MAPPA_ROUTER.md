@@ -1,7 +1,7 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **1063 endpoint** in **111 prefissi**.
+> Totale **1064 endpoint** in **111 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
@@ -18,7 +18,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/auth` | 11 | ext | auth, mfa, pin_login |
 | `/api/auto-repair` | 1 | ✓ | auto_repair |
 | `/api/bank` | 2 | ✓ | public_api |
-| `/api/bank-statement` | 6 | ✓ | bank.bank_statement_import |
+| `/api/bank-statement` | 7 | ✓ | bank.bank_statement_import |
 | `/api/batch-reprocess` | 5 | ✓ | batch_reprocessing |
 | `/api/bilancio` | 7 | ✓ | accounting.bilancio |
 | `/api/cash` | 10 | ✓ | cash, public_api |

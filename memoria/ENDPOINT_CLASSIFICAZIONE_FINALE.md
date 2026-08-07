@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1063 · tenere: 701 · verificare: 339 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1064 · tenere: 701 · verificare: 339 · admin-only (migrazione/manutenzione): 24
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -166,6 +166,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/auth/verify` | auth | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/auto-repair/collega-targa-driver` | auto_repair | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/bank-statement/cleanup-duplicati` | bank.bank_statement_import | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
+| `POST /api/bank-statement/cleanup-duplicati-causale` | bank.bank_statement_import | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `GET /api/bank-statement/formati-supportati` | bank.bank_statement_import | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/bank-statement/import` | bank.bank_statement_import | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/bank-statement/movements` | bank.bank_statement_import | sì | — | — | — | — | tenere | in uso: FE |

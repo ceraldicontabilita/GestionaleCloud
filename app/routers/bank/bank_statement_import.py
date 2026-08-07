@@ -3,7 +3,7 @@ Bank Statement Import Router - Import estratto conto bancario.
 Parsa PDF/Excel/CSV estratto conto e riconcilia con Prima Nota Banca.
 Supporta formati: Intesa Sanpaolo, UniCredit, BNL, Banca Sella, generico.
 """
-from fastapi import APIRouter, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File, Query
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import uuid
@@ -13,6 +13,7 @@ import re
 
 from app.database import Database
 from app.utils.error_handler import handle_errors
+from app.utils.dependencies import get_current_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -1073,3 +1074,21 @@ async def get_supported_formats() -> Dict[str, Any]:
             "encoding": ["UTF-8", "Latin-1", "CP1252"]
         }
     }
+
+
+@router.post("/cleanup-duplicati-causale")
+@handle_errors
+async def cleanup_duplicati_causale(
+    payload: Optional[Dict[str, Any]] = Body(None),
+    admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Doppioni EC da causali con prefisso diverso (SDD CORE vs ADDEBITO
+    DIRETTO SDD - SDD CORE). Senza ``{"conferma": true}`` restituisce solo
+    la fotografia; con la conferma marca i doppioni come riconciliati
+    (duplicato_causale), senza cancellare niente."""
+    from app.services import dedup_causali_ec
+
+    db = Database.get_db()
+    if (payload or {}).get("conferma") is not True:
+        return await dedup_causali_ec.analizza(db)
+    return await dedup_causali_ec.applica(db, actor=admin)
