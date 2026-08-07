@@ -938,7 +938,14 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
 
         # PRIORITÀ 0: la scelta esplicita sulla singola fattura prevale sul
         # metodo abituale del fornitore, anche se cassa o misto.
-        if assegno_specifico:
+        if (
+            str(f.get("metodo_pagamento_previsto") or "").lower() == "da_decidere"
+            and f.get("metodo_pagamento_override_source") == "operatore_prima_nota"
+        ):
+            suggerimento = "sospesa"
+            stato_match = "in_attesa"
+            fonte_metodo = "operatore_prima_nota"
+        elif assegno_specifico:
             suggerimento = "banca"
             stato_match = "in_attesa_estratto_conto"
             fonte_metodo = "assegno_compilato"
@@ -1135,6 +1142,49 @@ async def imposta_fattura_in_attesa_banca(data: Dict = Body(...)) -> Dict:
             "Fattura spostata tra i pagamenti attesi in banca. "
             "La Prima Nota Banca sara' aggiornata solo dopo la riconciliazione."
         ),
+    }
+
+
+async def riporta_fattura_da_decidere(data: Dict = Body(...)) -> Dict:
+    """Corregge una classificazione automatica senza inventare pagamenti."""
+    db = Database.get_db()
+    fattura_id = data.get("fattura_id")
+    if not fattura_id:
+        raise HTTPException(status_code=400, detail="Fattura obbligatoria")
+    fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
+    if not fattura:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    fatture_aperte = await fatture_senza_pagamento_contabile_confermato(
+        db, [fattura]
+    )
+    if not fatture_aperte:
+        raise HTTPException(
+            status_code=409,
+            detail="La fattura ha gia' un pagamento contabile completo.",
+        )
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db["invoices"].update_one(
+        {"id": fattura_id},
+        {"$set": {
+            "metodo_pagamento_previsto": "da_decidere",
+            "metodo_pagamento_override_source": "operatore_prima_nota",
+            "stato_pagamento": "da_decidere",
+            "stato_finanziario": "aperta_da_decidere",
+            "pagato": False,
+            "paid": False,
+            "updated_at": now_iso,
+        }, "$unset": {
+            "prima_nota_id": "",
+            "prima_nota_banca_id": "",
+            "data_pagamento": "",
+        }},
+    )
+    return {
+        "success": True,
+        "fattura_id": fattura_id,
+        "stato": "da_decidere",
+        "pagato": False,
+        "message": "Fattura riportata in Da decidere: ora puoi scegliere Cassa, Banca o Parziale.",
     }
 
 
@@ -2101,7 +2151,7 @@ async def annulla_auto_conferma(
 
 async def crea_entrata_cassa_da_corrispettivo(
     data: str = Query(..., description="Data corrispettivo YYYY-MM-DD"),
-    includi_uscita_pos: bool = Query(True, description="Se True crea anche l'uscita POS (battuto serale)"),
+    includi_uscita_pos: bool = Query(False, description="Parametro legacy ignorato: il POS nasce solo dal totale manuale"),
 ) -> Dict[str, Any]:
     """Crea manualmente l'entrata in Prima Nota Cassa dal corrispettivo XML già importato.
 
@@ -2203,7 +2253,7 @@ async def crea_entrata_cassa_da_corrispettivo(
     risultati["entrata_cassa_id"] = entrata_id
 
     # 2) USCITA CASSA = quota POS (opzionale)
-    if includi_uscita_pos and elettronico > 0:
+    if False:  # XML RT: solo coerenza fiscale, mai scritture POS in Prima Nota
         uscita_id = str(uuid.uuid4())
         movimento_uscita = {
             "id": uscita_id,
@@ -2226,7 +2276,7 @@ async def crea_entrata_cassa_da_corrispettivo(
         "totale_corrispettivo": round(totale, 2),
         "contanti": round(contanti, 2),
         "elettronico": round(elettronico, 2),
-        "include_uscita_pos": includi_uscita_pos and elettronico > 0,
+        "include_uscita_pos": False,
         **risultati,
         "message": f"Movimenti creati in Prima Nota Cassa per il {data}. Sono annullabili normalmente dalla pagina Prima Nota.",
     }

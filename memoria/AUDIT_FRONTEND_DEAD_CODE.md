@@ -3,13 +3,13 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 175
+**Totale file analizzati:** 174
 
 | Classificazione | File |
 |---|---:|
 | ENTRYPOINT | 3 |
 | ROUTE_ATTIVA | 27 |
-| COMPONENTE_USATO | 89 |
+| COMPONENTE_USATO | 88 |
 | MODALE_USATO | 4 |
 | HOOK_USATO | 3 |
 | TEST_ONLY | 26 |
@@ -57,7 +57,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | File | Classificazione | Importato da (n. file) |
 |---|---|---:|
 | `frontend/src/App.jsx` | ENTRYPOINT | 1 |
-| `frontend/src/api.js` | COMPONENTE_USATO | 98 |
+| `frontend/src/api.js` | COMPONENTE_USATO | 97 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/AssociaMovimentoBanca.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ChatIntelligente.jsx` | COMPONENTE_USATO | 1 |
@@ -70,7 +70,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/F24EmailSync.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/InAttesaDocumento.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/InstallAppButton.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/components/ModalFattura.jsx` | MODALE_USATO | 9 |
+| `frontend/src/components/ModalFattura.jsx` | MODALE_USATO | 8 |
 | `frontend/src/components/NotificationBell.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/PageLayout.jsx` | COMPONENTE_USATO | 42 |
 | `frontend/src/components/PannelloSumUp.jsx` | COMPONENTE_USATO | 1 |
@@ -90,7 +90,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ds/StatCard.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ds/Table.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/ds/Tabs.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/components/ds/index.js` | COMPONENTE_USATO | 60 |
+| `frontend/src/components/ds/index.js` | COMPONENTE_USATO | 59 |
 | `frontend/src/components/layout/TopNav.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ui/ConfirmDialog.jsx` | MODALE_USATO | 26 |
 | `frontend/src/components/ui/alert.jsx` | COMPONENTE_USATO | 1 |
@@ -118,7 +118,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ui/toaster.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ui/toggle.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ui/tooltip.jsx` | DINAMICO_DA_VERIFICARE | 0 |
-| `frontend/src/contexts/AnnoContext.jsx` | COMPONENTE_USATO | 51 |
+| `frontend/src/contexts/AnnoContext.jsx` | COMPONENTE_USATO | 50 |
 | `frontend/src/contexts/AnnoContext.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/contexts/AuthContext.jsx` | COMPONENTE_USATO | 7 |
 | `frontend/src/contexts/AuthContext.test.jsx` | TEST_ONLY | 0 |
@@ -129,7 +129,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/hooks/usePrimaNota.js` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/hooks/useWebSocket.js` | HOOK_USATO | 1 |
 | `frontend/src/lib/queryClient.js` | COMPONENTE_USATO | 2 |
-| `frontend/src/lib/utils.js` | COMPONENTE_USATO | 102 |
+| `frontend/src/lib/utils.js` | COMPONENTE_USATO | 101 |
 | `frontend/src/lib/utils.test.js` | TEST_ONLY | 0 |
 | `frontend/src/main.jsx` | ENTRYPOINT | 0 |
 | `frontend/src/navigation.config.js` | ENTRYPOINT | 0 |
@@ -159,13 +159,12 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/ControlloMensile.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/Corrispettivi.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/Dashboard.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/pages/DashboardRelazionale.jsx` | COMPONENTE_USATO | 2 |
-| `frontend/src/pages/DashboardRelazionale.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/DatiIsa.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/pages/DatiIsa.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/DettaglioVerbale.jsx` | ROUTE_ATTIVA | 2 |
 | `frontend/src/pages/DettaglioVerbale.test.jsx` | TEST_ONLY | 0 |
-| `frontend/src/pages/Documenti.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/pages/Documenti.jsx` | COMPONENTE_USATO | 2 |
+| `frontend/src/pages/Documenti.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/FattureEstereVerifica.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/FinanziamentoSoci.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/Finanziaria.jsx` | COMPONENTE_USATO | 2 |

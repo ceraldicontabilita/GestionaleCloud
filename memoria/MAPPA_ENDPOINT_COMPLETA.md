@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1065 endpoint** in **111 gruppi**.
+> Totale **1073 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 651 · ext esterni = 89 · — da verificare = 325
+**Riepilogo uso:** ✓ frontend = 651 · ext esterni = 89 · — da verificare = 333
 
 ## AI Parser  (11)
 
@@ -1171,9 +1171,9 @@
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| GET | `/api/partite-aperte/lista` | ✓ | partite_aperte_api |
+| GET | `/api/partite-aperte/lista` | — | partite_aperte_api |
 | GET | `/api/partite-aperte/scadute` | — | partite_aperte_api |
-| GET | `/api/partite-aperte/stats` | ✓ | partite_aperte_api |
+| GET | `/api/partite-aperte/stats` | — | partite_aperte_api |
 
 ## PayPal  (16)
 
@@ -1247,7 +1247,7 @@
 | GET | `/api/previsioni-acquisti/prodotti` | — | previsioni_acquisti |
 | GET | `/api/previsioni-acquisti/statistiche` | ✓ | previsioni_acquisti |
 
-## Prima Nota  (79)
+## Prima Nota  (80)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1307,6 +1307,7 @@
 | POST | `/api/prima-nota/provvisori/conferma` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/conferma-divisione` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/conferma-multipla` | ✓ | prima_nota_module.sync |
+| POST | `/api/prima-nota/provvisori/da-decidere` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/pulizia-pre-anno` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/recalculate-balances` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/regenerate-from-invoices` | — | prima_nota_module.manutenzione |
@@ -1419,7 +1420,7 @@
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| GET | `/api/riconciliazione/stats` | ✓ | riconciliazione_stats_api |
+| GET | `/api/riconciliazione/stats` | — | riconciliazione_stats_api |
 
 ## Ritenute  (3)
 
@@ -1476,13 +1477,25 @@
 | GET | `/api/settings/user-preferences` | — | settings |
 | PUT | `/api/settings/user-preferences` | — | settings |
 
-## SumUp POS  (5)
+## SumUp  (6)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/sumup/bonifica-pos-xml` | — | sumup |
 | POST | `/api/sumup/bonifica-pos-xml` | — | sumup |
 | POST | `/api/sumup/normalizza-descrizioni-pos` | — | sumup |
+| GET | `/api/sumup/riepilogo` | ✓ | sumup |
+| POST | `/api/sumup/sincronizza` | — | sumup |
+| GET | `/api/sumup/stato` | — | sumup |
+
+## SumUp POS  (6)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/sumup/bonifica-pos-xml` | — | sumup |
+| POST | `/api/sumup/bonifica-pos-xml` | — | sumup |
+| POST | `/api/sumup/normalizza-descrizioni-pos` | — | sumup |
+| GET | `/api/sumup/riepilogo` | ✓ | sumup |
 | POST | `/api/sumup/sincronizza` | — | sumup |
 | GET | `/api/sumup/stato` | — | sumup |
 

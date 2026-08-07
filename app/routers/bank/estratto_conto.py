@@ -861,6 +861,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     # movimento speculare in Prima Nota Cassa (un prelievo fa entrare
     # contanti in cassa, un versamento li fa uscire dalla cassa verso banca).
     sync_generico = {"inseriti_banca": 0, "inseriti_cassa": 0}
+    pos_storico = None
     if records_to_insert:
         try:
             ec_ids = [m["id"] for m in records_to_insert]
@@ -1020,6 +1021,26 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         except Exception as e:
             logger.error(f"Errore sync generico estratto conto -> prima nota: {e}")
 
+    # Recupero storico richiesto dall'utente: dopo avere salvato tutte le
+    # righe, somma i circuiti NUMIA dello stesso giorno vendita (causale DEL)
+    # e popola il POS provvisorio solo se non esiste gia' il totale manuale.
+    # L'XML RT non partecipa mai a questa scrittura.
+    if fonte_ufficiale and records_to_insert:
+        try:
+            from app.services.scritture_contabili import recupera_pos_storico_da_estratto
+            anni_pos = sorted({
+                int(str(m.get("data") or "")[:4])
+                for m in records_to_insert
+                if str(m.get("data") or "")[:4].isdigit()
+            })
+            esiti_pos = [
+                await recupera_pos_storico_da_estratto(db, anno_pos)
+                for anno_pos in anni_pos
+            ]
+            pos_storico = {"anni": esiti_pos}
+        except Exception as e:
+            logger.error(f"Errore recupero storico POS da estratto conto: {e}")
+
     # ── EVENTO: pubblica sul bus unico per matching automatico ──
     try:
         from app.services.event_bus import propagate_event, EventTypes
@@ -1071,6 +1092,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         "provvisori_riconciliati": provvisori_riconciliati,
         "assegni_sync": assegni_sync,
         "sync_prima_nota": sync_generico,
+        "recupero_pos_storico": pos_storico,
     }
 
 

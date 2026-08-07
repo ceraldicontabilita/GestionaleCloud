@@ -169,6 +169,47 @@ async def stato_sumup(
     return stato
 
 
+@router.get("/riepilogo")
+@handle_errors
+async def riepilogo_sumup(
+    anno: int,
+    mese: Optional[int] = None,
+    _user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Riepilogo di sola lettura delle transazioni SumUp gia' acquisite.
+
+    Non richiama la rete e non crea scritture: la pagina di coerenza mostra
+    esclusivamente le prove archiviate dall'ultima sincronizzazione.
+    """
+    if mese is not None and not 1 <= int(mese) <= 12:
+        raise HTTPException(status_code=400, detail="Mese non valido")
+    mese_inizio = int(mese or 1)
+    dal = date(int(anno), mese_inizio, 1)
+    if mese is None:
+        al = date(int(anno), 12, 31)
+    elif int(mese) == 12:
+        al = date(int(anno), 12, 31)
+    else:
+        al = date(int(anno), int(mese) + 1, 1) - timedelta(days=1)
+
+    transazioni = await sumup_sync.transazioni_del_periodo(
+        Database.get_db(), dal.isoformat(), al.isoformat()
+    )
+    giornate = sumup_sync.aggrega_per_giorno(transazioni)
+    righe = [giornate[data] for data in sorted(giornate, reverse=True)]
+    return {
+        "configured": bool((settings.SUMUP_API_KEY or "").strip()),
+        "anno": int(anno),
+        "mese": mese,
+        "totale_venduto": round(sum(r["vendite"] for r in righe), 2),
+        "totale_rimborsi": round(sum(r["rimborsi"] for r in righe), 2),
+        "totale_netto": round(sum(r["netto"] for r in righe), 2),
+        "numero_transazioni": sum(int(r["transazioni"]) for r in righe),
+        "giornalieri": righe,
+        "fonte": "sumup_transactions_archiviate",
+    }
+
+
 def _intervallo_predefinito() -> tuple:
     """Ieri e oggi: copre la giornata in corso e rilegge quella appena chiusa."""
     oggi = date.today()

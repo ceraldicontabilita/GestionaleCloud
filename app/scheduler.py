@@ -630,6 +630,24 @@ def start_scheduler():
         from datetime import datetime as _dt
         anno_corrente = _dt.now().year
         try:
+            from datetime import timedelta as _td
+            from app.database import Database
+            from app.services import sumup_sync
+
+            oggi = _dt.now().date()
+            r = await sumup_sync.sincronizza(
+                Database.get_db(), (oggi - _td(days=1)).isoformat(), oggi.isoformat()
+            )
+            logger.info(
+                "[SCHEDULER-SUMUP-PN] giornate=%s lordo=%s netto=%s",
+                len(r.get("giornate") or []), r.get("totale_lordo", 0),
+                r.get("totale_netto", 0),
+            )
+        except sumup_sync.SumUpNonConfigurato:
+            logger.info("[SCHEDULER-SUMUP-PN] credenziali non configurate")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-SUMUP-PN] errore: {e}")
+        try:
             from app.routers.prima_nota_module.sync import _sync_corrispettivi_impl
             r = await _sync_corrispettivi_impl(anno_corrente)
             logger.info(f"[SCHEDULER-PN-CORRISPETTIVI] inseriti={r.get('inseriti')} duplicati={r.get('duplicati')}")
@@ -659,13 +677,19 @@ def start_scheduler():
             logger.error(f"[SCHEDULER-PAYPAL-BANCA] errore: {e}")
         try:
             from app.database import Database
-            from app.services.stipendi_bonifici import associa_bonifici_stipendi
-            r = await associa_bonifici_stipendi(Database.get_db())
-            if r.get("bonifici_associati"):
-                logger.info(f"[SCHEDULER-STIPENDI-BONIFICI] associati={r['bonifici_associati']} "
-                            f"complete={r['righe_stipendio_completate']}")
+            from app.services.reconciliation_orchestrator import (
+                riconcilia_documenti_e_pagamenti,
+            )
+            r = await riconcilia_documenti_e_pagamenti(Database.get_db())
+            logger.info(
+                "[SCHEDULER-DOCUMENTI-PAGAMENTI] assegni=%s salari=%s f24=%s bonifici=%s",
+                (r.get("assegni_intenti") or {}).get("collegati", 0),
+                (r.get("salari") or {}).get("bonifici_associati", 0),
+                (r.get("f24") or {}).get("movimenti_associati", 0),
+                (r.get("bonifici_pdf") or {}).get("associati", 0),
+            )
         except Exception as e:
-            logger.error(f"[SCHEDULER-STIPENDI-BONIFICI] errore: {e}")
+            logger.error(f"[SCHEDULER-DOCUMENTI-PAGAMENTI] errore: {e}")
         try:
             from app.routers.prima_nota_module.sync import sposta_fatture_cassa_pagate_in_banca
             r = await sposta_fatture_cassa_pagate_in_banca(dry_run=False, anno=anno_corrente)

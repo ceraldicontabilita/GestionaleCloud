@@ -227,6 +227,8 @@ def register_all_handlers():
         register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_alert_fornitore)
         register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_audit)
         register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_iva)
+        from app.services.reconciliation_orchestrator import on_fattura_created_riprocessa
+        register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_riprocessa)
         register_handler(EventTypes.FATTURA_PAGATA, on_fattura_pagata_risolvi)
         register_handler(EventTypes.FORNITORE_UPDATED, on_fornitore_aggiornato_risolvi)
     except Exception as e:
@@ -247,6 +249,8 @@ def register_all_handlers():
             on_f24_pagato_risolvi,
         )
         register_handler(EventTypes.F24_ACQUISITO, on_f24_acquisito_crea_partita)
+        from app.services.reconciliation_orchestrator import on_f24_acquisito_riprocessa
+        register_handler(EventTypes.F24_ACQUISITO, on_f24_acquisito_riprocessa)
         register_handler(EventTypes.F24_PAGATO, on_f24_pagato_risolvi)
     except Exception as e:
         logger.warning(f"Handler F24 non registrati: {e}")
@@ -258,9 +262,18 @@ def register_all_handlers():
             on_cedolino_pagato_risolvi,
         )
         register_handler(EventTypes.CEDOLINO_IMPORTATO, on_cedolino_importato)
+        from app.services.reconciliation_orchestrator import on_cedolino_importato_riprocessa
+        register_handler(EventTypes.CEDOLINO_IMPORTATO, on_cedolino_importato_riprocessa)
         register_handler(EventTypes.CEDOLINO_PAGATO, on_cedolino_pagato_risolvi)
     except Exception as e:
         logger.warning(f"Handler cedolini non registrati: {e}")
+
+    # Estratto conto: riesamina documenti arrivati prima o dopo la banca.
+    try:
+        from app.services.reconciliation_orchestrator import on_estratto_conto_importato_riprocessa
+        register_handler(EventTypes.ESTRATTO_CONTO_IMPORTATO, on_estratto_conto_importato_riprocessa)
+    except Exception as e:
+        logger.warning(f"Handler riconciliazione documenti non registrato: {e}")
 
     # --- Fase 6: Corrispettivi (Chat 9c) ---
     try:

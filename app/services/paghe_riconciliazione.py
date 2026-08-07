@@ -404,17 +404,23 @@ async def esegui_riconciliazione_paghe_completa(db) -> dict:
     Chiamato automaticamente dopo ogni import di estratto conto bancario.
     """
     try:
-        stipendi_result = await riconcilia_tutti_stipendi(db)
-        cedolini_result = await riconcilia_tutti_cedolini(db)
-        f24_result = await riconcilia_tutti_f24(db)
+        # Unici motori autorizzati: identita' completa/acconti/residuo per i
+        # salari e allocazione univoca per singolo codice tributo per F24.
+        # I vecchi percorsi basati sul primo importo vicino restano disponibili
+        # solo per audit storico e non vengono piu' eseguiti automaticamente.
+        from app.services.stipendi_bonifici import associa_bonifici_stipendi
+        from app.services.f24_bank_reconciliation import riconcilia_f24_tributi_banca
 
+        salari_result = await associa_bonifici_stipendi(db)
+        f24_result = await riconcilia_f24_tributi_banca(db)
         return {
-            "stipendi": stipendi_result,
-            "cedolini": cedolini_result,
+            "stipendi": salari_result,
+            "cedolini": salari_result,
             "f24": f24_result,
             "totale_riconciliati": (
-                stipendi_result["riconciliati"] + cedolini_result["riconciliati"] + f24_result["riconciliati"]
-            )
+                salari_result.get("bonifici_associati", 0)
+                + f24_result.get("movimenti_associati", 0)
+            ),
         }
     except Exception as e:
         logger.error(f"Errore riconciliazione paghe completa: {e}")

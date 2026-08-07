@@ -52,66 +52,65 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 1 | [ ] | Login — `/login` | Autentica l'utente e apre la sessione del gestionale. | TENERE |
 | 2 | [ ] | Gestione riservata — `/gestione-riservata` | Accesso separato alle funzioni riservate previste dall'app. | VERIFICARE UTILIZZO |
 | 3 | [ ] | Dashboard — `/` | KPI reali di ricavi, costi, margine, cassa, banca, IVA e scadenze per anno/mese. | TENERE |
-| 4 | [~] IN REVISIONE | Dashboard relazionale — `/dashboard-relazionale` | Mostra alert, partite aperte e stato delle riconciliazioni tra entita. | FILTRO ANNO E STATI ERRORE PROVATI; ATTENDE DEPLOY LIVE |
-| 5 | [ ] | Inserimento rapido — `/rapido` | Inserisce operazioni operative guidate (corrispettivo, POS, banca, soci, personale). | TENERE CON GUARDIE ANTI-DUPLICATO |
-| 6 | [ ] | Archivio fatture — `/fatture` | Cerca e consulta fatture ricevute, stato pagamento, XML/PDF e dati fornitore. | TENERE |
-| 7 | [ ] | Corrispettivi — `/fatture/corrispettivi` | Consulta gli XML dei corrispettivi e i totali contanti/POS/IVA. | TENERE |
-| 8 | [ ] | Fornitori — `/fornitori` | Anagrafica fornitori, P.IVA, metodi di pagamento e documenti collegati. | TENERE |
-| 9 | [~] IN REVISIONE | Prima Nota — `/prima-nota` | Espone Cassa, Banca, Provvisori e finanziamenti soci senza duplicare le fonti. | TENERE |
-| 10 | [ ] | Pulizia Prima Nota — `/prima-nota/pulizia` | Diagnostica e propone deduplica/quadratura controllata della Prima Nota. | TENERE COME STRUMENTO AMMINISTRATIVO |
-| 11 | [ ] | Cedolini e salari — `/salari` | Gestisce cedolini, bonifici, saldo/acconto e riconciliazione paga. | TENERE |
-| 12 | [ ] | Flotta noleggio — `/noleggio` | Veicoli, contratti, driver storico e costi ricavati dalle fatture. | TENERE |
-| 13 | [ ] IN CORREZIONE | Verbali noleggio — `/noleggio/verbali` | Verbali da email/documenti, targa, driver alla data, fattura, PagoPA e pagamento. | TENERE |
-| 14 | [ ] IN CORREZIONE | Costi noleggio — `/noleggio/costi` | Riepiloga canoni, verbali, bollo, pedaggi e altri costi per veicolo. | TENERE |
-| 15 | [x] VERIFICATA | Dettaglio verbale — `/verbali-noleggio/:identificativo` | Mostra la singola catena Verbale -> veicolo -> driver -> fattura -> pagamento. | TENERE |
-| 16 | [x] VERIFICATA | Piano dei Conti — `/contabilita` | Mostra un solo conto per codice e i saldi derivati dalle fonti contabili. | TENERE |
-| 17 | [ ] IN CORREZIONE | Bilancio — `/contabilita/bilancio` | Stato patrimoniale e conto economico per periodo. | TENERE |
-| 18 | [ ] IN CORREZIONE | Verifica Bilancio — `/contabilita/verifica` | Controlla quadrature e incoerenze del bilancio. | TENERE |
-| 19 | [ ] IN CORREZIONE | Libro Giornale — `/contabilita/giornale` | Elenca le scritture contabili cronologiche e i mastri. | TENERE |
-| 20 | [ ] IN CORREZIONE | Controllo mensile — `/contabilita/controllo` | Incrocia mensilmente fatture, corrispettivi, banca e Prima Nota. | TENERE |
-| 21 | [ ] IN CORREZIONE | Calendario fiscale — `/contabilita/calendario` | Scadenze fiscali operative con fonte, applicabilita ed evidenza del completamento. | TENERE |
-| 22 | [ ] IN CORREZIONE | Cespiti — `/contabilita/cespiti` | Beni strumentali, ammortamenti e verifiche collegate. | TENERE |
-| 23 | [x] VERIFICATA | Finanziaria — `/contabilita/finanziaria` | Distingue flussi annuali, riporti e disponibilita contabile; IVA solo come stima documentale. | TENERE |
-| 24 | [x] VERIFICATA | Chiusura esercizio — `/contabilita/chiusura` | Verifiche preliminari e procedura controllata di chiusura. | TENERE CON CONFERMA FORTE |
-| 25 | [ ] | Budget — `/contabilita/budget` | Budget annuale e confronto con consuntivo. | TENERE |
-| 26 | [ ] | Mutui — `/contabilita/mutui` | Piano mutui, rate e riconciliazione. | TENERE SE DATI PRESENTI |
-| 27 | [ ] | Contabilita avanzata — `/contabilita/avanzata` | Imposte, disponibilita, ricategorizzazione e analisi avanzate. | VERIFICARE SOVRAPPOSIZIONI |
-| 28 | [ ] | Utile obiettivo — `/contabilita/utile` | Simula obiettivo economico e centri di costo. | TENERE SE UTILIZZATO |
-| 29 | [ ] | Previsioni acquisti — `/contabilita/previsioni-acquisti` | Analizza quantita acquistate per anno e suggerisce fabbisogni. | TENERE; MOSTRARE QUANTITA ANNO CORRENTE |
-| 30 | [ ] | Learning Machine — `/learning-machine` | Gestisce regole apprese per fornitori, assegni, documenti e categorizzazione. | TENERE, RIDURRE TAB DUPLICATE |
-| 31 | [ ] | Scadenze — `/scadenze` | Fatture, adempimenti e documenti ancora da riconciliare; l'IVA operativa e nella pagina 61. | TENERE |
-| 32 | [ ] | Ritenute — `/ritenute` | Ritenute per fattura, F24 multi-tributo, scadenza e stato di versamento. | TENERE |
-| 33 | [ ] | Riconciliazione dashboard — `/riconciliazione` | Riepiloga operazioni banca e documenti da confermare. | TENERE |
-| 34 | [ ] | Riconciliazione banca — `/riconciliazione/banca` | Collega movimenti di estratto conto a entita certe o crea proposte. | TENERE |
-| 35 | [ ] | Riconciliazione F24 — `/riconciliazione/f24` | Legge tributi multipli e propone associazioni supervisionate. | TENERE |
-| 36 | [ ] | Riconciliazione stipendi — `/riconciliazione/stipendi` | Confronta bonifici paga, cedolini, acconti e saldi. | TENERE |
-| 37 | [ ] | Riconciliazione documenti — `/riconciliazione/documenti` | Associa documenti non collegati senza creare legami ambigui. | TENERE |
-| 38 | [ ] | Archivio bonifici — `/riconciliazione/archivio-bonifici` | Consulta bonifici e propone associazioni a salari o fatture. | TENERE; BLOCCARE FATTURA SU DIPENDENTE |
-| 39 | [~] IN REVISIONE | Assegni — `/riconciliazione/assegni` | Carnet, assegni, incasso e associazione automatica fatture. | RIAPERTA: CONFLITTI STORICI DI SOVRA-ATTRIBUZIONE |
-| 40 | [x] VERIFICATA | PayPal — `/riconciliazione/paypal` | Transazioni, movimenti banca, documenti e mapping fornitori PayPal. | TENERE; CATENA E DEDUPLICA BANCARIA COLLAUDATE LIVE |
-| 41 | [x] VERIFICATA | Coerenza POS — `/riconciliazione/coerenza-pos` | Confronta XML corrispettivi, chiusure reali POS e accrediti banca. | TENERE; DEDUPLICA E RIEPILOGHI COLLAUDATI LIVE |
-| 42 | [x] VERIFICATA | Import documenti — `/documenti/import` | Unico ingresso per PDF/XML/ZIP con classificazione e deduplica. | TENERE; CLASSIFICAZIONE, ZIP SICURI E DEDUPLICA COLLAUDATI LIVE |
-| 43 | [ ] | Archivio documenti — `/documenti/archivio` | Consulta file, esiti, anomalie, provenienza e collegamenti. | TENERE |
-| 44 | [ ] | Verifica coerenza — `/strumenti` | Controlli incrociati in sola lettura; non esegue correzioni automatiche. | TENERE |
-| 45 | [ ] | Movimenti banca — `/strumenti/movimenti-banca` | Elenca movimenti non collegati e deve solo proporre, senza duplicare Prima Nota. | TENERE IN SOLA PROPOSTA |
-| 46 | [ ] | Commercialista — `/strumenti/commercialista` | Prepara riepiloghi e pacchetti di confronto per il commercialista. | TENERE |
-| 47 | [ ] | Pianificazione — `/strumenti/pianificazione` | Pianifica flussi e scadenze future. | VERIFICARE UTILIZZO |
-| 48 | [ ] | Visure — `/strumenti/visure` | Consulta/richiede informazioni camerali collegate. | TENERE SE SERVIZIO CONFIGURATO |
-| 49 | [ ] | Agenti AI — `/agenti` | Mostra segnalazioni, decisioni supervisionate e stato automazioni. | TENERE COME CONTROLLO, NON COME SECONDA UI OPERATIVA |
-| 50 | [ ] | Impostazioni F24 email — `/impostazioni-f24-email` | Credenziali, mittenti F24, scansioni e log di acquisizione. | VALUTARE ACCORPAMENTO CON 54 |
-| 51 | [ ] | Impostazioni AI — `/impostazioni-ai` | Configurazione dei servizi AI usati dal gestionale. | TENERE SOLO ADMIN |
-| 52 | [ ] | Integrazione OpenAPI — `/integrazioni` | Richiede dati e bilanci ufficiali da OpenAPI.it. | TENERE SE CONFIGURATA |
-| 53 | [ ] | Integrazione PagoPA — `/integrazioni/pagopa` | Gestisce avvisi/ricevute PagoPA e collegamenti ai verbali. | TENERE |
-| 54 | [x] VERIFICATA | Mittenti Email attendibili — `/integrazioni/mittenti-email` | Fonte unica dei mittenti autorizzati per classificare allegati email. | TENERE; FONTE DEL FLUSSO VERBALI |
-| 55 | [ ] | Admin sistema — `/admin` | Stato servizi, email, Drive, rollback controllato e collaudo. | TENERE SOLO ADMIN |
-| 56 | [ ] | Admin MFA — `/admin/mfa` | Configura e controlla autenticazione multifattore. | TENERE SOLO ADMIN |
-| 57 | [ ] | Batch reprocessing — `/admin/batch-reprocessing` | Anteprima e rilavorazione controllata di F24/cedolini. | CANDIDATA AD ACCORPAMENTO CON 58 |
-| 58 | [ ] | Batch processor — `/admin/batch-processor` | Esegue task batch tecnici configurati. | CANDIDATA AD ACCORPAMENTO CON 57 |
-| 59 | [ ] | Utenti — `/utenti` | Gestisce ruoli, stato, PIN e accessi. | TENERE SOLO ADMIN |
-| 60 | [ ] | Mappa gestionale — `/mappa-gestionale` | Documenta i collegamenti tra aree del gestionale. | VALUTARE RIMOZIONE DAL MENU OPERATIVO |
-| 61 | [ ] | Gestione IVA — `/iva` | Unica pagina IVA: attribuzione fatture, liquidazione mensile, confronto F24 e scadenze. | TENERE COME PAGINA IVA UNICA |
-| 62 | [ ] | Verifica fatture estere — `/fatture-estere-verifica` | Verifica dati fiscali delle fatture estere acquisite da email/documenti. | TENERE |
-| 63 | [~] IN REVISIONE | Dati ISA — `/contabilita/dati-isa` | Raccoglie consumi e indicatori operativi necessari al confronto con i modelli ISA, mantenendo fonti e periodo. | CONTRATTO API E STATI ASSENTI PROVATI; COMPLETARE PROVENIENZA 2026 |
+| 4 | [ ] | Inserimento rapido — `/rapido` | Inserisce operazioni operative guidate (corrispettivo, POS, banca, soci, personale). | TENERE CON GUARDIE ANTI-DUPLICATO |
+| 5 | [ ] | Archivio fatture — `/fatture` | Cerca e consulta fatture ricevute, stato pagamento, XML/PDF e dati fornitore. | TENERE |
+| 6 | [ ] | Corrispettivi — `/fatture/corrispettivi` | Consulta gli XML dei corrispettivi e i totali contanti/POS/IVA. | TENERE |
+| 7 | [ ] | Fornitori — `/fornitori` | Anagrafica fornitori, P.IVA, metodi di pagamento e documenti collegati. | TENERE |
+| 8 | [~] IN REVISIONE | Prima Nota — `/prima-nota` | Espone Cassa, Banca, Provvisori e finanziamenti soci senza duplicare le fonti. | TENERE |
+| 9 | [ ] | Pulizia Prima Nota — `/prima-nota/pulizia` | Diagnostica e propone deduplica/quadratura controllata della Prima Nota. | TENERE COME STRUMENTO AMMINISTRATIVO |
+| 10 | [ ] | Cedolini e salari — `/salari` | Gestisce cedolini, bonifici, saldo/acconto e riconciliazione paga. | TENERE |
+| 11 | [ ] | Flotta noleggio — `/noleggio` | Veicoli, contratti, driver storico e costi ricavati dalle fatture. | TENERE |
+| 12 | [ ] IN CORREZIONE | Verbali noleggio — `/noleggio/verbali` | Verbali da email/documenti, targa, driver alla data, fattura, PagoPA e pagamento. | TENERE |
+| 13 | [ ] IN CORREZIONE | Costi noleggio — `/noleggio/costi` | Riepiloga canoni, verbali, bollo, pedaggi e altri costi per veicolo. | TENERE |
+| 14 | [x] VERIFICATA | Dettaglio verbale — `/verbali-noleggio/:identificativo` | Mostra la singola catena Verbale -> veicolo -> driver -> fattura -> pagamento. | TENERE |
+| 15 | [x] VERIFICATA | Piano dei Conti — `/contabilita` | Mostra un solo conto per codice e i saldi derivati dalle fonti contabili. | TENERE |
+| 16 | [ ] IN CORREZIONE | Bilancio — `/contabilita/bilancio` | Stato patrimoniale e conto economico per periodo. | TENERE |
+| 17 | [ ] IN CORREZIONE | Verifica Bilancio — `/contabilita/verifica` | Controlla quadrature e incoerenze del bilancio. | TENERE |
+| 18 | [ ] IN CORREZIONE | Libro Giornale — `/contabilita/giornale` | Elenca le scritture contabili cronologiche e i mastri. | TENERE |
+| 19 | [ ] IN CORREZIONE | Controllo mensile — `/contabilita/controllo` | Incrocia mensilmente fatture, corrispettivi, banca e Prima Nota. | TENERE |
+| 20 | [ ] IN CORREZIONE | Calendario fiscale — `/contabilita/calendario` | Scadenze fiscali operative con fonte, applicabilita ed evidenza del completamento. | TENERE |
+| 21 | [ ] IN CORREZIONE | Cespiti — `/contabilita/cespiti` | Beni strumentali, ammortamenti e verifiche collegate. | TENERE |
+| 22 | [x] VERIFICATA | Finanziaria — `/contabilita/finanziaria` | Distingue flussi annuali, riporti e disponibilita contabile; IVA solo come stima documentale. | TENERE |
+| 23 | [x] VERIFICATA | Chiusura esercizio — `/contabilita/chiusura` | Verifiche preliminari e procedura controllata di chiusura. | TENERE CON CONFERMA FORTE |
+| 24 | [ ] | Budget — `/contabilita/budget` | Budget annuale e confronto con consuntivo. | TENERE |
+| 25 | [ ] | Mutui — `/contabilita/mutui` | Piano mutui, rate e riconciliazione. | TENERE SE DATI PRESENTI |
+| 26 | [ ] | Contabilita avanzata — `/contabilita/avanzata` | Imposte, disponibilita, ricategorizzazione e analisi avanzate. | VERIFICARE SOVRAPPOSIZIONI |
+| 27 | [ ] | Utile obiettivo — `/contabilita/utile` | Simula obiettivo economico e centri di costo. | TENERE SE UTILIZZATO |
+| 28 | [ ] | Previsioni acquisti — `/contabilita/previsioni-acquisti` | Analizza quantita acquistate per anno e suggerisce fabbisogni. | TENERE; MOSTRARE QUANTITA ANNO CORRENTE |
+| 29 | [ ] | Learning Machine — `/learning-machine` | Gestisce regole apprese per fornitori, assegni, documenti e categorizzazione. | TENERE, RIDURRE TAB DUPLICATE |
+| 30 | [ ] | Scadenze — `/scadenze` | Fatture, adempimenti e documenti ancora da riconciliare; l'IVA operativa e nella pagina 61. | TENERE |
+| 31 | [ ] | Ritenute — `/ritenute` | Ritenute per fattura, F24 multi-tributo, scadenza e stato di versamento. | TENERE |
+| 32 | [ ] | Riconciliazione dashboard — `/riconciliazione` | Riepiloga operazioni banca e documenti da confermare. | TENERE |
+| 33 | [ ] | Riconciliazione banca — `/riconciliazione/banca` | Collega movimenti di estratto conto a entita certe o crea proposte. | TENERE |
+| 34 | [ ] | Riconciliazione F24 — `/riconciliazione/f24` | Legge tributi multipli e propone associazioni supervisionate. | TENERE |
+| 35 | [ ] | Riconciliazione stipendi — `/riconciliazione/stipendi` | Confronta bonifici paga, cedolini, acconti e saldi. | TENERE |
+| 36 | [ ] | Riconciliazione documenti — `/riconciliazione/documenti` | Associa documenti non collegati senza creare legami ambigui. | TENERE |
+| 37 | [ ] | Archivio bonifici — `/riconciliazione/archivio-bonifici` | Consulta bonifici e propone associazioni a salari o fatture. | TENERE; BLOCCARE FATTURA SU DIPENDENTE |
+| 38 | [~] IN REVISIONE | Assegni — `/riconciliazione/assegni` | Carnet, assegni, incasso e associazione automatica fatture. | RIAPERTA: CONFLITTI STORICI DI SOVRA-ATTRIBUZIONE |
+| 39 | [x] VERIFICATA | PayPal — `/riconciliazione/paypal` | Transazioni, movimenti banca, documenti e mapping fornitori PayPal. | TENERE; CATENA E DEDUPLICA BANCARIA COLLAUDATE LIVE |
+| 40 | [x] VERIFICATA | Coerenza POS — `/riconciliazione/coerenza-pos` | Confronta XML corrispettivi, chiusure reali POS e accrediti banca. | TENERE; DEDUPLICA E RIEPILOGHI COLLAUDATI LIVE |
+| 41 | [x] VERIFICATA | Import documenti — `/documenti/import` | Unico ingresso per PDF/XML/ZIP con classificazione e deduplica. | TENERE; CLASSIFICAZIONE, ZIP SICURI E DEDUPLICA COLLAUDATI LIVE |
+| 42 | [ ] | Archivio documenti — `/documenti/archivio` | Consulta file, esiti, anomalie, provenienza e collegamenti. | TENERE |
+| 43 | [ ] | Verifica coerenza — `/strumenti` | Controlli incrociati in sola lettura; non esegue correzioni automatiche. | TENERE |
+| 44 | [ ] | Movimenti banca — `/strumenti/movimenti-banca` | Elenca movimenti non collegati e deve solo proporre, senza duplicare Prima Nota. | TENERE IN SOLA PROPOSTA |
+| 45 | [ ] | Commercialista — `/strumenti/commercialista` | Prepara riepiloghi e pacchetti di confronto per il commercialista. | TENERE |
+| 46 | [ ] | Pianificazione — `/strumenti/pianificazione` | Pianifica flussi e scadenze future. | VERIFICARE UTILIZZO |
+| 47 | [ ] | Visure — `/strumenti/visure` | Consulta/richiede informazioni camerali collegate. | TENERE SE SERVIZIO CONFIGURATO |
+| 48 | [ ] | Agenti AI — `/agenti` | Mostra segnalazioni, decisioni supervisionate e stato automazioni. | TENERE COME CONTROLLO, NON COME SECONDA UI OPERATIVA |
+| 49 | [ ] | Impostazioni F24 email — `/impostazioni-f24-email` | Credenziali, mittenti F24, scansioni e log di acquisizione. | VALUTARE ACCORPAMENTO CON 54 |
+| 50 | [ ] | Impostazioni AI — `/impostazioni-ai` | Configurazione dei servizi AI usati dal gestionale. | TENERE SOLO ADMIN |
+| 51 | [ ] | Integrazione OpenAPI — `/integrazioni` | Richiede dati e bilanci ufficiali da OpenAPI.it. | TENERE SE CONFIGURATA |
+| 52 | [ ] | Integrazione PagoPA — `/integrazioni/pagopa` | Gestisce avvisi/ricevute PagoPA e collegamenti ai verbali. | TENERE |
+| 53 | [x] VERIFICATA | Mittenti Email attendibili — `/integrazioni/mittenti-email` | Fonte unica dei mittenti autorizzati per classificare allegati email. | TENERE; FONTE DEL FLUSSO VERBALI |
+| 54 | [ ] | Admin sistema — `/admin` | Stato servizi, email, Drive, rollback controllato e collaudo. | TENERE SOLO ADMIN |
+| 55 | [ ] | Admin MFA — `/admin/mfa` | Configura e controlla autenticazione multifattore. | TENERE SOLO ADMIN |
+| 56 | [ ] | Batch reprocessing — `/admin/batch-reprocessing` | Anteprima e rilavorazione controllata di F24/cedolini. | CANDIDATA AD ACCORPAMENTO CON 58 |
+| 57 | [ ] | Batch processor — `/admin/batch-processor` | Esegue task batch tecnici configurati. | CANDIDATA AD ACCORPAMENTO CON 57 |
+| 58 | [ ] | Utenti — `/utenti` | Gestisce ruoli, stato, PIN e accessi. | TENERE SOLO ADMIN |
+| 59 | [ ] | Mappa gestionale — `/mappa-gestionale` | Documenta i collegamenti tra aree del gestionale. | VALUTARE RIMOZIONE DAL MENU OPERATIVO |
+| 60 | [ ] | Gestione IVA — `/iva` | Unica pagina IVA: attribuzione fatture, liquidazione mensile, confronto F24 e scadenze. | TENERE COME PAGINA IVA UNICA |
+| 61 | [ ] | Verifica fatture estere — `/fatture-estere-verifica` | Verifica dati fiscali delle fatture estere acquisite da email/documenti. | TENERE |
+| 62 | [~] IN REVISIONE | Dati ISA — `/contabilita/dati-isa` | Raccoglie consumi e indicatori operativi necessari al confronto con i modelli ISA, mantenendo fonti e periodo. | CONTRATTO API E STATI ASSENTI PROVATI; COMPLETARE PROVENIENZA 2026 |
 
 ## Pagina tecnica
 

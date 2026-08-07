@@ -178,6 +178,28 @@ describe('Fatture provvisorie in attesa banca', () => {
     );
   });
 
+  it('permette di correggere una fattura in attesa banca riportandola da decidere', async () => {
+    api.post.mockResolvedValue({ data: { message: 'Fattura riportata in Da decidere.' } });
+    const onRicarica = vi.fn().mockResolvedValue(undefined);
+    render(<Provvisori
+      provvisori={[]}
+      attesaBanca={[{
+        fattura_id: 'fatt-attesa', fattura_numero: '55', fattura_data: '2026-06-19',
+        fornitore: 'Fornitore Test', importo: 334.16, suggerimento: 'banca',
+      }]}
+      onRicarica={onRicarica}
+    />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Da decidere/i }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/prima-nota/provvisori/da-decidere',
+      { fattura_id: 'fatt-attesa' },
+    ));
+    expect(await screen.findByRole('status')).toHaveTextContent('Da decidere');
+    expect(onRicarica).toHaveBeenCalledTimes(1);
+  });
+
   it('registra in Cassa la conferma esplicita della singola fattura', async () => {
     api.post.mockResolvedValue({ data: { success: true } });
     const onRicarica = vi.fn().mockResolvedValue(undefined);

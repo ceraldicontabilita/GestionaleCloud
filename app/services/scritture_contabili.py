@@ -29,6 +29,7 @@ REGOLA CANONICA POS (utente, 18/07/2026 — confermata a voce e definitiva):
   con saldo progressivo in Coerenza POS per recuperarlo nei giorni dopo.
 """
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -943,4 +944,101 @@ def query_accrediti_pos_ec(anno: int) -> Dict[str, Any]:
                 "$options": "i",
             }},
         ],
+    }
+
+
+def raggruppa_accrediti_pos_per_giorno(
+    movimenti: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    """Somma gli accrediti Numia usando il giorno vendita nella causale.
+
+    Le copie provenienti da estratti sovrapposti restano come prove, ma non
+    vengono sommate due volte. Commissioni e accrediti privi di ``DEL
+    gg/mm/aa`` non sono chiusure POS utilizzabili.
+    """
+    from app.services.pos_evidence import (
+        _e_accredito_pos_numia_con_giorno,
+        _giorno_operazione_pos,
+    )
+
+    unici: Dict[tuple, Dict[str, Any]] = {}
+    for mov in movimenti:
+        descr = str(mov.get("descrizione_originale") or mov.get("descrizione") or "")
+        if not _e_accredito_pos_numia_con_giorno(descr):
+            continue
+        importo = abs(float(mov.get("importo") or mov.get("amount") or 0))
+        if importo <= 0:
+            continue
+        giorno = _giorno_operazione_pos(descr, str(mov.get("data") or ""))
+        chiave = (
+            str(mov.get("data") or mov.get("data_contabile") or "")[:10],
+            giorno,
+            int(round(importo * 100)),
+            re.sub(r"[^a-z0-9]+", "", descr.lower()),
+            re.sub(r"[^a-z0-9]+", "", str(mov.get("rapporto") or "").lower()),
+        )
+        corrente = unici.get(chiave)
+        if corrente is None or len(descr) > len(str(
+            corrente.get("descrizione_originale") or corrente.get("descrizione") or ""
+        )):
+            unici[chiave] = mov
+
+    out: Dict[str, Dict[str, Any]] = {}
+    for mov in unici.values():
+        descr = str(mov.get("descrizione_originale") or mov.get("descrizione") or "")
+        giorno = _giorno_operazione_pos(descr, str(mov.get("data") or ""))
+        item = out.setdefault(giorno, {"totale": 0.0, "estratto_conto_ids": []})
+        item["totale"] += abs(float(mov.get("importo") or mov.get("amount") or 0))
+        mov_id = str(mov.get("id") or mov.get("_id") or "")
+        if mov_id and mov_id not in item["estratto_conto_ids"]:
+            item["estratto_conto_ids"].append(mov_id)
+    for item in out.values():
+        item["totale"] = round(item["totale"], 2)
+        item["estratto_conto_ids"].sort()
+    return out
+
+
+async def recupera_pos_storico_da_estratto(db, anno: int) -> Dict[str, Any]:
+    """Popola Numia da EC solo quando non esiste la chiusura serale manuale."""
+    movimenti = await _leggi_tutti(
+        db["estratto_conto_movimenti"].find(query_accrediti_pos_ec(anno), {"_id": 0}),
+        20000,
+    )
+    gruppi = raggruppa_accrediti_pos_per_giorno(movimenti)
+    creati = aggiornati = saltati_manuali = 0
+    dettagli = []
+    for giorno, evidenza in sorted(gruppi.items()):
+        filtro = {"data": giorno, **filtro_gestore_pos(conti_pos.NUMIA)}
+        precedente = await db["chiusure_pos_manuali"].find_one(filtro, {"_id": 0})
+        if precedente and not precedente.get("recupero_storico_estratto"):
+            saltati_manuali += 1
+            continue
+        esito = await registra_chiusura_pos_reale(
+            db,
+            giorno,
+            evidenza["totale"],
+            gestore=conti_pos.NUMIA,
+            fonte=FONTE_EXCEL,
+            note="Recupero storico dagli accrediti POS dell'estratto conto",
+            actor={"sub": "system-pos-bank-backfill"},
+        )
+        await db["chiusure_pos_manuali"].update_one(
+            filtro,
+            {"$set": {
+                "recupero_storico_estratto": True,
+                "estratto_conto_ids": evidenza["estratto_conto_ids"],
+            }},
+        )
+        if precedente:
+            aggiornati += int(esito.get("action") != "noop")
+        else:
+            creati += 1
+        dettagli.append({"data": giorno, **evidenza, "action": esito.get("action")})
+    return {
+        "anno": anno,
+        "giorni_bancari": len(gruppi),
+        "creati": creati,
+        "aggiornati": aggiornati,
+        "saltati_per_chiusura_manuale": saltati_manuali,
+        "dettagli": dettagli,
     }

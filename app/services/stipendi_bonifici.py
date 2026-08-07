@@ -1,9 +1,10 @@
 """Associazione prudente tra movimenti bancari e stipendi.
 
 Una riga viene riconciliata soltanto quando la descrizione bancaria contiene
-il nome completo del dipendente e l'importo coincide al centesimo con la
-busta ancora da pagare. Non esistono fallback per mese, ordine del database o
-semplice vicinanza dell'importo.
+l'identita' completa del dipendente e l'importo e' positivo e non supera il
+residuo della busta. Sono ammessi piu' acconti; la riga si chiude soltanto
+quando la loro somma raggiunge il netto. Non esistono fallback per ordine del
+database, solo cognome o semplice vicinanza dell'importo.
 """
 from __future__ import annotations
 
