@@ -11,10 +11,11 @@ Banco BPM e SumUp sulla Mastercard. Restano aperte per sempre.
 
 Cosa fa questa bonifica, e cosa NON fa:
 
-- **non cancella nulla**, ma ARCHIVIA. In Prima Nota deve comparire solo il
-  valore reale delle chiusure (regola dell'utente): dove il terminale non ha
-  dato, la riga ricavata dall'XML esce dai registri invece di restarci con un
-  importo fiscale. Resta consultabile e ripristinabile;
+- **non cancella e non fa sparire nulla.** La giornata deve comparire sempre
+  in Prima Nota: un valore mancante ha spesso ragioni ordinarie (negozio
+  chiuso, chiusura serale saltata, terminale che consolida in ritardo secondo
+  il calendario di accredito), e togliere la riga nasconderebbe proprio la
+  giornata da controllare. La riga resta, dichiarata PROVVISORIA;
 - **non inventa il dato mancante.** Se il POS reale non c'e', la giornata
   resta segnalata: sara' la chiusura del terminale (o l'API SumUp) a
   correggere l'importo, passando dal motore unico;
@@ -136,25 +137,28 @@ async def applica(db, anno: Optional[int] = None,
                       "pos_bonifica_at": now}},
         )
 
-    # Regola dell'utente: in Prima Nota ci va SOLO il valore reale delle
-    # chiusure. Dove il dato del terminale non esiste, la riga ricavata
-    # dall'XML non deve restare: porterebbe un importo fiscale spacciato per
-    # movimento operativo. Viene archiviata, non cancellata — resta
-    # consultabile e ripristinabile, e l'audit conserva la traccia.
-    archiviate = 0
+    # La riga NON viene mai tolta: la giornata deve comparire sempre in Prima
+    # Nota, anche quando il valore reale manca. Il dato puo' mancare per
+    # ragioni ordinarie — negozio chiuso, chiusura serale saltata, terminale
+    # che consolida in ritardo secondo il calendario di accredito — e far
+    # sparire la riga nasconderebbe proprio la giornata da controllare.
+    # Resta quindi visibile e dichiarata PROVVISORIA, con l'importo XML come
+    # valore di lavoro e non come verita' operativa.
+    provvisorie = 0
     if giorni_scoperti:
         for registro in ("prima_nota_cassa", "prima_nota_banca"):
             risultato = await db[registro].update_many(
                 {**_query(anno), "data": {"$in": giorni_scoperti}},
-                {"$set": {"status": "archived", "archiviata_at": now,
-                          "archiviata_motivo": MOTIVO}},
+                {"$set": {"pos_stato": "attende_chiusura_pos_reale",
+                          "importo_provvisorio": True}},
             )
-            archiviate += getattr(risultato, "modified_count", 0) or 0
+            provvisorie += getattr(risultato, "modified_count", 0) or 0
 
     return {
         **esito,
         "righe_marcate": aggiornate,
-        "righe_archiviate": archiviate,
+        "righe_provvisorie": provvisorie,
+        "righe_archiviate": 0,   # per contratto: la riga resta sempre
         "giornate_riportate_in_attesa": len(giorni_scoperti),
         "cancellazioni": 0,   # per contratto: archivia, non elimina
     }

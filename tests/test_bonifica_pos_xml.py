@@ -147,17 +147,12 @@ def test_la_chiusura_reale_successiva_corregge_l_importo():
     _run(bonifica_pos_xml.applica(db))
     _run(registra_chiusura_pos_reale(db, "2026-08-03", 1500.0, gestore="nexi"))
 
+    # La riga provvisoria viene CORRETTA sul posto, non affiancata da una
+    # seconda: la giornata ha sempre una sola uscita POS.
     uscite = _run(db.prima_nota_cassa.find({"data": "2026-08-03"}).to_list(10))
-    attive = [u for u in uscite if u.get("status") != "archived"]
-    archiviate = [u for u in uscite if u.get("status") == "archived"]
-
-    # Nei registri resta UNA sola riga, col valore vero del terminale.
-    assert len(attive) == 1
-    assert attive[0]["importo"] == 1500.0
-    assert attive[0]["quota_pos_fonte"] == "chiusura_manuale"
-    # Quella da XML e' fuori dai registri ma conservata per l'audit.
-    assert len(archiviate) == 1
-    assert archiviate[0]["importo"] == 1629.50
+    assert len(uscite) == 1
+    assert uscite[0]["importo"] == 1500.0
+    assert uscite[0]["quota_pos_fonte"] == "chiusura_manuale"
 
 
 def test_rieseguire_la_bonifica_e_idempotente():
@@ -165,13 +160,14 @@ def test_rieseguire_la_bonifica_e_idempotente():
     primo = _run(bonifica_pos_xml.applica(db))
     secondo = _run(bonifica_pos_xml.applica(db))
 
-    assert primo["righe_archiviate"] == 2
-    # Alla seconda passata non c'e' piu' nulla da archiviare: le righe gia'
-    # fuori dai registri non rientrano nell'ambito.
-    assert secondo["righe_cassa"] == 0
-    assert secondo["righe_archiviate"] == 0
-    # E nessuna riga e' stata persa per strada.
-    assert len(_run(db.prima_nota_cassa.find({}).to_list(10))) == 1
+    assert primo["righe_provvisorie"] == 2
+    # Alla seconda passata non c'e' nulla da cambiare: erano gia' provvisorie.
+    assert secondo["righe_provvisorie"] == 0
+    assert primo["righe_cassa"] == secondo["righe_cassa"] == 1
+
+    righe = _run(db.prima_nota_cassa.find({}).to_list(10))
+    assert len(righe) == 1                       # nessun duplicato
+    assert righe[0]["importo_provvisorio"] is True
 
 
 # --- Normalizzazione delle descrizioni storiche ----------------------------
@@ -216,32 +212,33 @@ def test_l_applicazione_cambia_solo_il_testo():
 
 # --- In Prima Nota solo il valore reale ------------------------------------
 
-def test_senza_pos_reale_la_riga_da_xml_esce_dai_registri():
-    """Regola dell'utente: in Prima Nota ci va SOLO il valore reale delle
-    chiusure. Un importo fiscale spacciato per movimento operativo non
-    deve restare."""
+def test_la_riga_resta_sempre_in_prima_nota_ma_dichiarata_provvisoria():
+    """Il valore puo' mancare per ragioni ordinarie — negozio chiuso, chiusura
+    saltata, terminale in ritardo. Far sparire la riga nasconderebbe proprio
+    la giornata da controllare."""
     db = _riga_da_xml(_db())
     esito = _run(bonifica_pos_xml.applica(db))
 
-    assert esito["righe_archiviate"] == 2
+    assert esito["righe_archiviate"] == 0
+    assert esito["righe_provvisorie"] == 2
     for registro, chiave in (("prima_nota_cassa", "c-2026-08-03"),
                              ("prima_nota_banca", "b-2026-08-03")):
         riga = _run(db[registro].find_one({"id": chiave}))
-        assert riga["status"] == "archived"
-        # Archiviata, non cancellata: resta consultabile e ripristinabile.
+        assert riga.get("status") != "archived"     # c'e' ancora
+        assert riga["importo_provvisorio"] is True
+        assert riga["pos_stato"] == "attende_chiusura_pos_reale"
         assert riga["importo"] == 1629.50
-        assert riga["archiviata_motivo"] == "pos_da_xml_non_attendibile"
 
 
-def test_la_giornata_col_pos_reale_non_viene_archiviata():
-    """Li' il dato vero c'e': la riga va corretta dal riallineamento, non tolta."""
+def test_la_giornata_col_pos_reale_non_viene_dichiarata_provvisoria():
+    """Li' il dato vero c'e': la riga va corretta dal riallineamento."""
     db = _riga_da_xml(_db(), data="2026-08-04", importo=900.0)
     _run(registra_chiusura_pos_reale(db, "2026-08-04", 880.0, gestore="sumup"))
 
     esito = _run(bonifica_pos_xml.applica(db))
-    assert esito["righe_archiviate"] == 0
+    assert esito["righe_provvisorie"] == 0
     riga = _run(db.prima_nota_cassa.find_one({"id": "c-2026-08-04"}))
-    assert riga.get("status") != "archived"
+    assert not riga.get("importo_provvisorio")
 
 
 def test_l_entrata_del_corrispettivo_non_viene_mai_toccata():
