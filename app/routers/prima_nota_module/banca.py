@@ -9,6 +9,7 @@ import uuid
 
 from app.database import Database, Collections
 from .common import (
+    entra_in_prima_nota,
     COLLECTION_PRIMA_NOTA_BANCA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA,
     calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota, arricchisci_movimenti_fattura
 )
@@ -430,4 +431,98 @@ async def get_fattura_allegata_banca(movimento_id: str) -> Dict[str, Any]:
         "movimento_id": movimento_id,
         "fattura": fattura,
         "message": "Fattura trovata" if fattura else "Fattura non trovata nel DB"
+    }
+
+
+async def movimenti_in_attesa_documento(anno: Optional[int] = None) -> Dict[str, Any]:
+    """Righe di estratto conto che aspettano il documento a cui agganciarsi.
+
+    Sono il motivo — l'unico legittimo — per cui il saldo di Prima Nota Banca
+    e quello del conto corrente non coincidono. Vanno mostrate, non nascoste:
+    una differenza che nessuno spiega diventa un errore che nessuno cerca.
+
+    Sola lettura: non scrive e non modifica niente.
+    """
+    db = Database.get_db()
+
+    query: Dict[str, Any] = {
+        "stato_riconciliazione": "in_attesa_documento",
+        "riconciliato": {"$ne": True},
+    }
+    if anno:
+        query["data"] = {"$regex": f"^{anno}"}
+
+    movimenti = await db["estratto_conto_movimenti"].find(
+        query,
+        {"_id": 0, "id": 1, "data": 1, "tipo": 1, "importo": 1,
+         "descrizione": 1, "descrizione_originale": 1, "categoria": 1},
+    ).sort("data", -1).to_list(2000)
+
+    entrate = sum(float(m.get("importo") or 0)
+                  for m in movimenti if m.get("tipo") == "entrata")
+    uscite = sum(float(m.get("importo") or 0)
+                 for m in movimenti if m.get("tipo") == "uscita")
+
+    per_categoria: Dict[str, Dict[str, Any]] = {}
+    for m in movimenti:
+        voce = per_categoria.setdefault(
+            str(m.get("categoria") or "Altro"), {"conteggio": 0, "importo": 0.0})
+        voce["conteggio"] += 1
+        voce["importo"] = round(voce["importo"] + float(m.get("importo") or 0), 2)
+
+    return {
+        "movimenti": movimenti,
+        "totale": len(movimenti),
+        "entrate": round(entrate, 2),
+        "uscite": round(uscite, 2),
+        "effetto_sul_saldo": round(entrate - uscite, 2),
+        "per_categoria": per_categoria,
+    }
+
+
+async def analisi_righe_grezze_storiche(anno: Optional[int] = None) -> Dict[str, Any]:
+    """Quante righe in Prima Nota Banca arrivano dal vecchio caricamento a valanga.
+
+    Sono le righe scritte dall'import quando ancora copiava l'intero estratto
+    conto: nessun documento collegato, categoria generica. Questa e' solo la
+    fotografia — non tocca niente, serve a decidere con i numeri davanti.
+    """
+    db = Database.get_db()
+
+    query: Dict[str, Any] = {
+        "source": {"$in": ["estratto_conto_auto", "export_bancario_operativo"]},
+        "status": {"$nin": ["deleted", "archived"]},
+        "fattura_id": {"$in": [None, ""]},
+        "stipendio_id": {"$in": [None, ""]},
+        "f24_id": {"$in": [None, ""]},
+    }
+    if anno:
+        query["data"] = {"$regex": f"^{anno}"}
+
+    righe = await db[COLLECTION_PRIMA_NOTA_BANCA].find(
+        query, {"_id": 0, "id": 1, "data": 1, "tipo": 1, "importo": 1,
+                "categoria": 1, "descrizione": 1},
+    ).to_list(20000)
+
+    per_mese: Dict[str, Dict[str, Any]] = {}
+    per_categoria: Dict[str, int] = {}
+    for r in righe:
+        mese = str(r.get("data") or "")[:7]
+        voce = per_mese.setdefault(mese, {"conteggio": 0, "importo": 0.0})
+        voce["conteggio"] += 1
+        voce["importo"] = round(voce["importo"] + float(r.get("importo") or 0), 2)
+        categoria = str(r.get("categoria") or "Altro")
+        per_categoria[categoria] = per_categoria.get(categoria, 0) + 1
+
+    resterebbero = sum(1 for r in righe if entra_in_prima_nota(r.get("categoria")))
+
+    return {
+        "totale": len(righe),
+        "resterebbero_con_la_regola_nuova": resterebbero,
+        "uscirebbero_dalla_prima_nota": len(righe) - resterebbero,
+        "per_mese": dict(sorted(per_mese.items())),
+        "per_categoria": dict(sorted(per_categoria.items(),
+                                     key=lambda kv: -kv[1])),
+        "nota": ("Fotografia in sola lettura: nessuna riga e' stata "
+                 "modificata, spostata o cancellata."),
     }

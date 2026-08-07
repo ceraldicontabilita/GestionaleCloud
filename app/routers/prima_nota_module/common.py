@@ -1,7 +1,7 @@
 """
 Prima Nota Module - Costanti e utility condivise.
 """
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -359,3 +359,24 @@ async def calcola_saldo_anni_precedenti(db, collection: str, anno: int,
     if totals:
         return totals[0].get("entrate", 0) - totals[0].get("uscite", 0)
     return 0.0
+
+
+# REGOLA PRIMA NOTA BANCA (utente 07/08/2026): la Prima Nota non e' una copia
+# dell'estratto conto. Un pagamento entra quando si sa A COSA si riferisce —
+# una fattura, un cedolino, un F24, un assegno, un trasferimento POS. Finche'
+# non lo si sa resta nella coda "da riconciliare", non in Prima Nota.
+#
+# L'eccezione sotto non e' una scorciatoia: sono i movimenti che un documento
+# non ce l'hanno e non possono averlo. Le competenze del trimestre, il bollo,
+# il prelievo al bancomat sono operazioni della banca stessa. Tenerli fuori
+# non renderebbe la Prima Nota piu' pulita: la renderebbe SBAGLIATA, perche'
+# quel denaro dal conto e' uscito davvero e il saldo non tornerebbe mai.
+CATEGORIE_SENZA_DOCUMENTO = frozenset({
+    "Commissioni bancarie",
+    "Prelevamento Banca",
+})
+
+
+def entra_in_prima_nota(categoria: Optional[str]) -> bool:
+    """Se il movimento puo' entrare in Prima Nota senza un documento dietro."""
+    return str(categoria or "").strip() in CATEGORIE_SENZA_DOCUMENTO

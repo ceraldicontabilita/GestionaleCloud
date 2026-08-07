@@ -2,17 +2,17 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1060 · tenere: 698 · verificare: 339 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1062 · tenere: 700 · verificare: 339 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
 ## Endpoint prioritari (§7)
 | Metodo/path | Router | FE | Sch | Chat | Migr | Test | Decisione | Motivo |
 |---|---|:-:|:-:|:-:|:-:|:-:|---|---|
-| `POST /api/batch-reprocess/cedolini-only` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
-| `POST /api/batch-reprocess/f24-only` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
-| `GET /api/batch-reprocess/preview` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
-| `POST /api/batch-reprocess/start` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `POST /api/batch-reprocess/cedolini-only` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
+| `POST /api/batch-reprocess/f24-only` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
+| `GET /api/batch-reprocess/preview` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
+| `POST /api/batch-reprocess/start` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `GET /api/batch-reprocess/status` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `GET /api/cedolini/drive/quadratura-completa` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
 | `GET /api/cedolini/drive/status` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
@@ -22,10 +22,10 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 ## Tutti gli endpoint
 | Metodo/path | Router | FE | Sch | Chat | Migr | Test | Decisione | Motivo |
 |---|---|:-:|:-:|:-:|:-:|:-:|---|---|
-| `POST /api/batch-reprocess/cedolini-only` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
-| `POST /api/batch-reprocess/f24-only` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
-| `GET /api/batch-reprocess/preview` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
-| `POST /api/batch-reprocess/start` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `POST /api/batch-reprocess/cedolini-only` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
+| `POST /api/batch-reprocess/f24-only` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
+| `GET /api/batch-reprocess/preview` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
+| `POST /api/batch-reprocess/start` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `GET /api/batch-reprocess/status` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `GET /api/cedolini/drive/quadratura-completa` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
 | `GET /api/cedolini/drive/status` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
@@ -850,8 +850,10 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/prima-nota/arricchisci-pagamenti-banca` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota/banca` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/banca` | prima_nota_module.banca | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/prima-nota/banca/analisi-righe-grezze` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/prima-nota/banca/delete-all` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/prima-nota/banca/delete-by-source/{source}` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/prima-nota/banca/in-attesa-documento` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/banca/sync-estratto-conto` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/banca/template-csv` | prima_nota_module | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/prima-nota/banca/{movimento_id}` | prima_nota_module.banca | sì | — | — | — | sì | tenere | in uso: FE |

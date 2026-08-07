@@ -4,6 +4,7 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuroD, formatDateIT, useIsMobile } from '../lib/utils';
 import { useHashState } from '../hooks/useHashState';
 import ModalFattura from '../components/ModalFattura';
+import InAttesaDocumento from '../components/InAttesaDocumento';
 import DocumentViewerModal from '../components/DocumentViewerModal';
 import FinanziamentoSoci from './FinanziamentoSoci';
 import { useConfirm } from '../components/ui/ConfirmDialog';
@@ -1510,6 +1511,7 @@ export default function PrimaNota() {
           </div>
 
           <RipartoEntrate sezione={sezione} cassa={cassa} banca={banca} mese={mese} />
+          {sezione === 'banca' && <InAttesaDocumento anno={anno} />}
           {sezione === 'banca' && <CartaNexi anno={anno} />}
 
           {/* mese */}

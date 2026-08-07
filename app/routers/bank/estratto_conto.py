@@ -14,7 +14,10 @@ from collections import Counter, defaultdict
 
 from app.database import Database
 from app.utils.error_handler import handle_errors
-from app.routers.prima_nota_module.common import aggrega_saldo_prima_nota
+from app.routers.prima_nota_module.common import (
+    aggrega_saldo_prima_nota,
+    entra_in_prima_nota,
+)
 from app.routers.prima_nota_module.sync import costruisci_campi_movimento_fattura
 from app.services.scritture_contabili import scrivi_movimento
 from app.services.bank_evidence import EVIDENZA_UFFICIALE, campi_evidenza
@@ -860,6 +863,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             cassa_batch = []
             ec_da_marcare = []
             ec_pos_accrediti = []  # id EC accrediti POS (riconciliati senza duplicare)
+            ec_in_attesa = []      # id EC che aspettano il documento a cui agganciarsi
             for mov in records_to_insert:
                 mid = mov["id"]
                 stato = stato_aggiornato.get(mid, {})
@@ -888,6 +892,19 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                         logger.warning(f"Accredito POS non riconciliato ({mid}): {e}")
                     continue
 
+                categoria_pn = (mappa_categoria_ec(mov.get("categoria"), desc_upper)
+                                or mov.get("categoria") or "Altro")
+
+                # Un pagamento che dovrebbe avere un documento e non l'ha
+                # trovato NON entra in Prima Nota: resta nella coda da
+                # riconciliare, dove lo si aggancia alla sua fattura o al suo
+                # cedolino. Prima finiva qui come riga grezza "da verificare",
+                # ed e' il motivo per cui la Prima Nota Banca sembrava una
+                # fotocopia dell'estratto conto.
+                if not entra_in_prima_nota(categoria_pn):
+                    ec_in_attesa.append(mid)
+                    continue
+
                 banca_batch.append({
                     "id": str(_uuid.uuid4()),
                     "data": mov["data"],
@@ -896,8 +913,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                     "descrizione": mov.get("descrizione") or mov.get("descrizione_originale") or "",
                     # in Prima Nota entra il nome operativo; l'originale
                     # bancario resta sulla riga di estratto conto
-                    "categoria": mappa_categoria_ec(mov.get("categoria"), desc_upper)
-                                 or mov.get("categoria") or "Altro",
+                    "categoria": categoria_pn,
                     "estratto_conto_id": mid,
                     "source": "estratto_conto_auto" if fonte_ufficiale else "export_bancario_operativo",
                     "provvisorio": not fonte_ufficiale,
@@ -948,12 +964,25 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                         ),
                     }, "$unset": {"tipo_riconciliazione": ""}}
                 )
+            if ec_in_attesa:
+                # Marcati, non nascosti: sono il motivo per cui la Prima Nota
+                # e il saldo della banca non coincidono ancora, e devono
+                # potersi contare.
+                await db["estratto_conto_movimenti"].update_many(
+                    {"id": {"$in": ec_in_attesa}},
+                    {"$set": {
+                        "importato_prima_nota": False,
+                        "riconciliato": False,
+                        "stato_riconciliazione": "in_attesa_documento",
+                    }}
+                )
             # (le entrate banca degli accrediti POS sono già state create
             # dal motore unico riga per riga, con marcatura EC inclusa)
             sync_generico = {
                 "inseriti_banca": len(banca_batch),
                 "inseriti_cassa": len(cassa_batch),
                 "accrediti_pos_riconciliati": len(ec_pos_accrediti),
+                "in_attesa_documento": len(ec_in_attesa),
             }
         except Exception as e:
             logger.error(f"Errore sync generico estratto conto -> prima nota: {e}")
