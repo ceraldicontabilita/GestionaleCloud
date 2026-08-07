@@ -317,10 +317,9 @@ def _register_core(app: FastAPI):
     app.include_router(pagopa.router, prefix="/api/pagopa", tags=["PagoPA"])
 
     # Agenti AI, PayPal, Previsioni Acquisti
-    from app.routers import agenti, paypal_api, previsioni_acquisti, dati_isa, sumup
+    from app.routers import agenti, paypal_api, previsioni_acquisti, dati_isa
     app.include_router(agenti.router, prefix="/api/agenti", tags=["Agenti AI"])
     app.include_router(paypal_api.router, prefix="/api/paypal-api", tags=["PayPal API"])
-    app.include_router(sumup.router, prefix="/api/sumup", tags=["SumUp POS"])
     app.include_router(previsioni_acquisti.router, prefix="/api/previsioni-acquisti", tags=["Previsioni Acquisti"])
     app.include_router(dati_isa.router, prefix="/api/dati-isa", tags=["Dati ISA"])
 

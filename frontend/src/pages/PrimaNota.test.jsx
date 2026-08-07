@@ -303,7 +303,11 @@ describe('Fatture provvisorie in attesa banca', () => {
   });
 
   it('riprocessa tutto lo storico aperto senza selezionare movimenti a mano', async () => {
-    api.post.mockResolvedValue({ data: { analizzati: 3542, riconciliati: 17 } });
+    api.post.mockResolvedValue({ data: {
+      status: 'completed',
+      job_id: 'job-test',
+      result: { analizzati: 3542, riconciliati: 17 },
+    } });
     const onRicarica = vi.fn().mockResolvedValue(undefined);
     render(<Provvisori provvisori={[]} attesaBanca={[]} onRicarica={onRicarica} />);
 

@@ -14,7 +14,8 @@ router = APIRouter()
 # Import functions from modules
 from .smart import (
     banca_veloce, analizza_movimenti_smart, analizza_singolo_movimento,
-    riconcilia_automatico, riconcilia_manuale, conferma_f24_batch,
+    avvia_riconciliazione_automatica, stato_riconciliazione_automatica,
+    riconcilia_manuale, conferma_f24_batch,
     cerca_fatture_per_associazione, cerca_stipendi_per_associazione, cerca_f24_per_associazione
 )
 from .common import RiconciliaManuale
@@ -24,7 +25,8 @@ from .common import RiconciliaManuale
 # Smart riconciliazione
 router.add_api_route("/smart/banca-veloce", banca_veloce, methods=["GET"])
 router.add_api_route("/smart/analizza", analizza_movimenti_smart, methods=["GET"])
-router.add_api_route("/smart/riconcilia-auto", riconcilia_automatico, methods=["POST"])
+router.add_api_route("/smart/riconcilia-auto", avvia_riconciliazione_automatica, methods=["POST"])
+router.add_api_route("/smart/riconcilia-auto/status", stato_riconciliazione_automatica, methods=["GET"])
 router.add_api_route("/smart/riconcilia-manuale", riconcilia_manuale, methods=["POST"])
 router.add_api_route("/smart/conferma-f24", conferma_f24_batch, methods=["POST"])
 router.add_api_route("/smart/cerca-fatture", cerca_fatture_per_associazione, methods=["GET"])

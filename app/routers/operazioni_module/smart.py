@@ -1,6 +1,9 @@
 """
 Operazioni Module - Riconciliazione Smart (banca veloce, analisi, associazioni).
 """
+import asyncio
+import uuid
+
 from fastapi import HTTPException
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
@@ -18,6 +21,81 @@ from .common import RiconciliaManuale, ConfermaBatchRequest, logger, QUERY_FATTU
 # riconciliare" del tab Banca (bug 18/07/2026, segnalato dall'utente subito
 # dopo il primo import di uno statement Nexi reale).
 ESCLUDI_CARTA_CREDITO = {"tipo": {"$ne": "carta_credito"}}
+
+
+# La riconciliazione completa attraversa banca, PayPal, assegni, bonifici,
+# cedolini e F24. Su archivi reali puo' durare piu' del timeout HTTP del
+# browser: un solo job per processo viene quindi eseguito in background e la
+# pagina ne legge lo stato con polling. Il risultato contabile continua a
+# essere prodotto esclusivamente da ``riconcilia_automatico``.
+_riconciliazione_task: Optional[asyncio.Task] = None
+_riconciliazione_stato: Dict[str, Any] = {
+    "status": "idle",
+    "job_id": None,
+    "started_at": None,
+    "finished_at": None,
+    "result": None,
+    "error": None,
+}
+
+
+def _stato_riconciliazione_pubblico() -> Dict[str, Any]:
+    return dict(_riconciliazione_stato)
+
+
+async def _esegui_riconciliazione_background(
+    job_id: str,
+    tipo: Optional[str],
+    limit: int,
+) -> None:
+    try:
+        risultato = await riconcilia_automatico(tipo=tipo, limit=limit)
+        if _riconciliazione_stato.get("job_id") == job_id:
+            _riconciliazione_stato.update({
+                "status": "completed",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "result": risultato,
+                "error": None,
+            })
+    except Exception as exc:  # pragma: no cover - rete/DB, verificato via stato
+        logger.exception("Riconciliazione automatica in background fallita")
+        if _riconciliazione_stato.get("job_id") == job_id:
+            _riconciliazione_stato.update({
+                "status": "error",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "result": None,
+                "error": str(exc),
+            })
+
+
+async def avvia_riconciliazione_automatica(
+    tipo: Optional[str] = None,
+    limit: int = 100,
+) -> Dict[str, Any]:
+    """Accoda la riconciliazione completa senza trattenere la richiesta HTTP."""
+    global _riconciliazione_task
+
+    if _riconciliazione_task is not None and not _riconciliazione_task.done():
+        return _stato_riconciliazione_pubblico()
+
+    job_id = str(uuid.uuid4())
+    _riconciliazione_stato.update({
+        "status": "running",
+        "job_id": job_id,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "finished_at": None,
+        "result": None,
+        "error": None,
+    })
+    _riconciliazione_task = asyncio.create_task(
+        _esegui_riconciliazione_background(job_id, tipo, limit)
+    )
+    return _stato_riconciliazione_pubblico()
+
+
+async def stato_riconciliazione_automatica() -> Dict[str, Any]:
+    """Stato leggero del job avviato da Prima Nota."""
+    return _stato_riconciliazione_pubblico()
 
 
 async def banca_veloce(

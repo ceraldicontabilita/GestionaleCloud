@@ -25,5 +25,9 @@ services:
     envVars:
       - key: PYTHONUTF8
         value: "1"
+      - key: SUMUP_API_KEY
+        sync: false
+      - key: SUMUP_MERCHANT_CODE
+        sync: false
       # Credenziali, database e integrazioni sono configurati nella dashboard.
       # Non aggiungere valori sensibili al repository.

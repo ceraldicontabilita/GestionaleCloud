@@ -452,6 +452,14 @@ async def sync(db) -> Dict[str, Any]:
                 content = _download_bytes(service, item["id"])
                 if not content:
                     raise ValueError("file vuoto")
+                # Verifica sempre il contenuto, anche quando percorso o nome
+                # sembrano gia' sufficienti. Nell'archivio reale nomi come
+                # "Movimenti carta" ed "Estratto_Conto" sono ambigui.
+                route_verificata, motivo_verifica = classificazione_estratti.classifica(
+                    item["name"], content,
+                )
+                if route_verificata:
+                    item["route"] = route_verificata
                 if item["route"] is None:
                     # Ultima possibilita': l'intestazione del documento. Se
                     # non basta si ferma qui — attribuire la fonte a caso
@@ -566,6 +574,27 @@ async def sync(db) -> Dict[str, Any]:
                     "file": "PayPal (riconciliazione finale)",
                     "error": str(exc),
                 })
+
+        # Non basta riconciliare i soli movimenti appena inseriti. L'estratto
+        # conto puo' essere arrivato prima della fattura: in quel caso il file
+        # e' gia' in Elaborate e una scansione successiva non produce nuovi ID,
+        # ma deve comunque riesaminare i movimenti ufficiali ancora aperti.
+        # Il motore canonico applica soltanto riscontri forti e conserva in
+        # sospeso quelli ambigui; qui non viene mai usato il solo importo.
+        try:
+            from app.services.riconciliazione_bancaria import (
+                riconcilia_movimenti_banca,
+            )
+
+            result["bank_reconciliation"] = await riconcilia_movimenti_banca()
+        except Exception as exc:
+            logger.exception(
+                "Drive estratti conto: riprocessamento bancario finale fallito"
+            )
+            result["errors"].append({
+                "file": "Estratti conto (riconciliazione finale)",
+                "error": str(exc),
+            })
 
         now = datetime.now(timezone.utc).isoformat()
         await db["sistema_stato"].update_one(
