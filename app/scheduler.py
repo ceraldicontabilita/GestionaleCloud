@@ -636,7 +636,7 @@ def start_scheduler():
 
             oggi = _dt.now().date()
             r = await sumup_sync.sincronizza(
-                Database.get_db(), (oggi - _td(days=1)).isoformat(), oggi.isoformat()
+                Database.get_db(), (oggi - _td(days=30)).isoformat(), oggi.isoformat()
             )
             logger.info(
                 "[SCHEDULER-SUMUP-PN] giornate=%s lordo=%s netto=%s",
@@ -647,6 +647,22 @@ def start_scheduler():
             logger.info("[SCHEDULER-SUMUP-PN] credenziali non configurate")
         except Exception as e:
             logger.error(f"[SCHEDULER-SUMUP-PN] errore: {e}")
+        try:
+            from app.database import Database
+            from app.services import bonifica_pos_xml
+            r = await bonifica_pos_xml.applica(
+                Database.get_db(), anno=anno_corrente,
+                actor={"sub": "scheduler_pos_reale"},
+            )
+            if r.get("righe_archiviate") or r.get("trasferimenti_reali_ricostruiti"):
+                logger.info(
+                    "[SCHEDULER-POS-XML] archiviate=%s ricostruite=%s attesa=%s",
+                    r.get("righe_archiviate", 0),
+                    r.get("trasferimenti_reali_ricostruiti", 0),
+                    r.get("giornate_riportate_in_attesa", 0),
+                )
+        except Exception as e:
+            logger.error(f"[SCHEDULER-POS-XML] errore: {e}")
         try:
             from app.routers.prima_nota_module.sync import _sync_corrispettivi_impl
             r = await _sync_corrispettivi_impl(anno_corrente)

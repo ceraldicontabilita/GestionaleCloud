@@ -207,6 +207,74 @@ def test_verifica_riconcilia_quando_quadra(monkeypatch):
     assert ("genera", "NEXI_ADDEBITO_NON_QUADRA") not in alert_calls
 
 
+def test_verifica_include_bollo_dello_statement(monkeypatch):
+    """Il conto addebita spese carta + bollo: il bollo non e' una spesa
+    mancante e deve entrare nella quadratura mensile Nexi."""
+    async def fake_genera_alert(*args, **kwargs):
+        return {"id": "a1"}
+
+    async def fake_risolvi_alert(*args, **kwargs):
+        return 1
+
+    import app.services.alert_engine as alert_engine
+    monkeypatch.setattr(alert_engine, "genera_alert", fake_genera_alert)
+    monkeypatch.setattr(alert_engine, "risolvi_alert", fake_risolvi_alert)
+
+    db = _DB()
+    db["estratto_conto_movimenti"].docs.extend([
+        {"_id": "ec1", "id": "ec1", "data": "2026-02-16", "tipo": "uscita",
+         "importo": 2883.92, "descrizione_originale": "SPESA CON CARTA DI CREDITO NEXI"},
+        {"tipo": "carta_credito", "banca": "Nexi", "data": "2026-01-10", "importo": 2000.00},
+        {"tipo": "carta_credito", "banca": "Nexi", "data": "2026-01-20", "importo": 881.92},
+    ])
+    db["estratto_conto_nexi"].docs.append({
+        "id": "nexi-gennaio",
+        "metadata": {"data_estratto_iso": "2026-01-31", "imposta_bollo": 2.0},
+    })
+
+    stats = _run(verifica_addebiti_nexi(db, anno=2026))
+    assert stats["riconciliati"] == 1
+    assert stats["non_quadrano"] == 0
+    assert stats["dettagli"][0]["totale_carta"] == 2881.92
+    assert stats["dettagli"][0]["oneri_carta"] == 2.0
+    assert stats["dettagli"][0]["totale_carta_con_oneri"] == 2883.92
+
+
+def test_verifica_usa_totale_addebito_statement_con_credito_riportato(monkeypatch):
+    """Il totale ufficiale puo' differire dal netto del mese per crediti
+    riportati: prevale TOTALE ADDEBITO del PDF Nexi."""
+    async def fake_genera_alert(*args, **kwargs):
+        return {"id": "a1"}
+
+    async def fake_risolvi_alert(*args, **kwargs):
+        return 1
+
+    import app.services.alert_engine as alert_engine
+    monkeypatch.setattr(alert_engine, "genera_alert", fake_genera_alert)
+    monkeypatch.setattr(alert_engine, "risolvi_alert", fake_risolvi_alert)
+
+    db = _DB()
+    db["estratto_conto_movimenti"].docs.extend([
+        {"_id": "ec-feb", "id": "ec-feb", "data": "2026-03-16", "tipo": "uscita",
+         "importo": 2.0, "descrizione_originale": "SPESA CON CARTA DI CREDITO NEXI"},
+        {"tipo": "carta_credito", "banca": "Nexi", "data": "2026-02-10", "importo": -721.65},
+    ])
+    db["estratto_conto_nexi"].docs.append({
+        "id": "nexi-febbraio",
+        "metadata": {
+            "data_estratto_iso": "2026-02-28",
+            "imposta_bollo": 2.0,
+            "totale_addebito": 2.0,
+        },
+    })
+
+    stats = _run(verifica_addebiti_nexi(db, anno=2026))
+    assert stats["riconciliati"] == 1
+    assert stats["non_quadrano"] == 0
+    assert stats["dettagli"][0]["totale_carta"] == -721.65
+    assert stats["dettagli"][0]["totale_addebito_statement"] == 2.0
+
+
 def test_importa_pdf_totale_importo_e_netto(monkeypatch):
     """totale_importo deve essere il netto (addebiti - rimborsi), non la
     somma dei valori assoluti — stesso bug del calcolo di verifica."""

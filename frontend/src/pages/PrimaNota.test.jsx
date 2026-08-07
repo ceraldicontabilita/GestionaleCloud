@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../api';
 import {
   CartaNexi,
+  FattureAtteseNelRegistroBanca,
   MovimentoModal,
   Provvisori,
   etichettaTabProvvisori,
@@ -176,6 +177,21 @@ describe('Fatture provvisorie in attesa banca', () => {
     expect(etichettaTabProvvisori([{}, {}], [{}, {}, {}])).toBe(
       '⚠️ Da decidere (2) · 🏦 Attesa banca (3)',
     );
+  });
+
+  it('mostra nel registro Banca le fatture attese del mese selezionato', () => {
+    render(<FattureAtteseNelRegistroBanca
+      fatture={[
+        { fattura_id: 'gen', fattura_numero: 'G-1', fattura_data: '2026-01-10', fornitore: 'Gennaio SRL', importo: 100 },
+        { fattura_id: 'mag', fattura_numero: 'M-1', fattura_data: '2026-05-12', fornitore: 'Maggio SRL', importo: 200 },
+      ]}
+      mese={4}
+      onGestisci={vi.fn()}
+    />);
+
+    expect(screen.getByText(/Fatture attese in banca: 1/)).toBeInTheDocument();
+    expect(screen.getByText(/Maggio SRL/)).toBeInTheDocument();
+    expect(screen.queryByText(/Gennaio SRL/)).not.toBeInTheDocument();
   });
 
   it('permette di correggere una fattura in attesa banca riportandola da decidere', async () => {

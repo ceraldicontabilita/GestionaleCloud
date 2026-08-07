@@ -230,6 +230,8 @@ async def riconcilia_automatico(
         + int((documenti.get("bonifici_pdf") or {}).get("associati") or 0)
         + int((documenti.get("salari") or {}).get("bonifici_associati") or 0)
         + int((documenti.get("f24") or {}).get("movimenti_associati") or 0)
+        + int((((documenti.get("paypal") or {}).get("banca") or {}).get("riconciliati")) or 0)
+        + int((documenti.get("cbill_pagopa") or {}).get("associazioni_trovate") or 0)
     )
     return {
         "success": not errori,

@@ -417,14 +417,17 @@ export function CartaNexi({ anno }) {
         💳 Carta Nexi — addebiti da verificare
       </div>
       <div style={{ display: 'grid', gap: 6 }}>
-        {daCompletare.map(d => (
-          <div key={d.periodo} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5, flexWrap: 'wrap' }}>
+        {daCompletare.map((d, idx) => (
+          <div key={`${d.periodo}-${d.data_addebito}-${d.importo}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5, flexWrap: 'wrap' }}>
             <span style={{ color: '#334155' }}>
               {d.stato === 'estratto_mancante' ? '📎 Manca lo statement' : '⚠️ Non quadra'} — periodo {d.periodo}
               {' '}(addebito {formatDateIT(d.data_addebito)})
             </span>
             <b style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>
-              {eur(d.importo)}{d.totale_carta != null ? ` (carta ${eur(d.totale_carta)})` : ''}
+              {eur(d.importo)}
+              {d.totale_carta != null && ` (operazioni ${eur(d.totale_carta)}`}
+              {d.oneri_carta > 0 && ` + oneri ${eur(d.oneri_carta)}`}
+              {d.totale_carta != null && ')'}
             </b>
           </div>
         ))}
@@ -879,7 +882,12 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
               <button
                 key={s} onClick={() => setPagina(Math.min(totPagine, Math.max(1, p)))}
                 aria-label={s === '«' ? 'Prima pagina' : s === '‹' ? 'Pagina precedente' : s === '›' ? 'Pagina successiva' : 'Ultima pagina'}
-                style={{ width: 40, height: 40, border: 'none', borderRadius: 8, padding: 0, cursor: 'pointer', fontSize: 18 }}
+                style={{
+                  width: 42, height: 42, border: `2px solid ${BLU}`,
+                  background: 'white', color: BLU, borderRadius: 8, padding: 0,
+                  cursor: 'pointer', fontSize: 22, fontWeight: 900,
+                  lineHeight: 1, opacity: (p < 1 || p > totPagine) ? 0.45 : 1,
+                }}
               >
                 {s}
               </button>
@@ -1602,6 +1610,42 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
   );
 }
 
+export function FattureAtteseNelRegistroBanca({ fatture = [], mese, onGestisci }) {
+  const visibili = useMemo(() => {
+    if (mese === null) return fatture;
+    return fatture.filter(f => {
+      const data = f.fattura_data || f.invoice_date || f.data || '';
+      return Number(String(data).slice(5, 7)) === mese + 1;
+    });
+  }, [fatture, mese]);
+
+  if (!visibili.length) return null;
+  const totale = visibili.reduce((somma, f) => somma + Number(f.importo || 0), 0);
+  return (
+    <details open={mese !== null} style={{ margin: '12px 0 0', background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 10 }}>
+      <summary style={{ cursor: 'pointer', padding: '10px 13px', color: BLU, fontWeight: 800, fontSize: 13 }}>
+        Fatture attese in banca: {visibili.length} · {eur(totale)}
+      </summary>
+      <div style={{ padding: '0 10px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ color: '#475569', fontSize: 12 }}>
+          Sono visibili nel registro ma non entrano nel saldo finché non esiste un addebito reale riconciliato.
+        </div>
+        {visibili.map(f => (
+          <div key={f.fattura_id || f.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', background: 'white', border: '1px dashed #60a5fa', borderRadius: 8, padding: '8px 10px', fontSize: 12.5 }}>
+            <span>
+              <b>{f.fornitore || f.supplier_name || 'Fornitore'}</b> · Fatt. {f.fattura_numero || f.invoice_number || '—'} del {formatDateIT(f.fattura_data || f.invoice_date || f.data)}
+            </span>
+            <b style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(f.importo)}</b>
+          </div>
+        ))}
+        <button type="button" onClick={onGestisci} style={{ alignSelf: 'flex-start', background: BLU, color: 'white', border: 0, borderRadius: 8, padding: '7px 11px', fontWeight: 700, cursor: 'pointer' }}>
+          Gestisci associazioni
+        </button>
+      </div>
+    </details>
+  );
+}
+
 /* -------------------------------- pagina -------------------------------- */
 export default function PrimaNota() {
   const { anno } = useAnnoGlobale();
@@ -1761,6 +1805,14 @@ export default function PrimaNota() {
               </button>
             ))}
           </div>
+
+          {sezione === 'banca' && (
+            <FattureAtteseNelRegistroBanca
+              fatture={attesaBanca}
+              mese={mese}
+              onGestisci={() => setHs('sezione', 'provvisori')}
+            />
+          )}
 
           <Registro
             tipo={sezione}

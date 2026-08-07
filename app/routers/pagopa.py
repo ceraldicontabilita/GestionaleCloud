@@ -218,7 +218,15 @@ async def auto_associa_ricevute() -> Dict[str, Any]:
     
     Usa l'identificativo bolletta (codice CBILL) per il match.
     """
-    db = Database.get_db()
+    return await auto_associa_ricevute_db(Database.get_db())
+
+
+async def auto_associa_ricevute_db(db) -> Dict[str, Any]:
+    """Motore riusabile CBILL/PagoPA, richiamato anche dall'orchestratore.
+
+    Associa soltanto identificativo bolletta esplicito + importo al centesimo
+    con candidato unico; una causale generica CBILL non e' sufficiente.
+    """
     
     risultati = {
         "timestamp": datetime.now(timezone.utc).isoformat(),

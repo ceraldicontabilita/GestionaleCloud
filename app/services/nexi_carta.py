@@ -124,6 +124,40 @@ async def verifica_addebiti_nexi(db, anno: Optional[int] = None) -> Dict[str, An
         "dettagli": [],
     }
     addebiti_visti = set()
+    rapporti_per_addebito = {}
+    statement_per_periodo: Dict[str, Dict[str, Any]] = {}
+
+    # Rivalida i PDF gia' salvati con il parser corrente. I vecchi record
+    # potevano avere le operazioni ma non ``totale_addebito``/bollo; senza
+    # questo passaggio restavano falsi "Non quadra" anche dopo il fix.
+    from app.parsers.estratto_conto_nexi_parser import parse_estratto_conto_nexi
+    import base64
+    async for statement in db[COLL_ESTRATTI].find({}):
+        metadata = dict(statement.get("metadata") or {})
+        if not metadata.get("totale_addebito") and statement.get("pdf_data"):
+            try:
+                parsed = parse_estratto_conto_nexi(
+                    base64.b64decode(statement["pdf_data"])
+                )
+                if parsed.get("success"):
+                    metadata = parsed.get("metadata") or metadata
+                    await db[COLL_ESTRATTI].update_one(
+                        {"id": statement.get("id")},
+                        {"$set": {
+                            "metadata": metadata,
+                            "parser_updated_at": datetime.now(timezone.utc).isoformat(),
+                        }},
+                    )
+            except Exception:
+                logger.exception(
+                    "Rivalidazione statement Nexi fallita: %s",
+                    statement.get("id"),
+                )
+        periodo_statement = str(metadata.get("data_estratto_iso") or "")[:7]
+        if periodo_statement:
+            statement_per_periodo[periodo_statement] = {
+                **statement, "metadata": metadata,
+            }
 
     # Nessun filtro anno lato query Mongo: estratto_conto_movimenti ha righe
     # più vecchie con data in formato italiano GG/MM/AAAA accanto a quelle
@@ -137,10 +171,17 @@ async def verifica_addebiti_nexi(db, anno: Optional[int] = None) -> Dict[str, An
         if anno and not data_add.startswith(f"{anno}-"):
             continue
         identita_addebito = _chiave_addebito(doc)
-        if identita_addebito in addebiti_visti:
+        base_addebito = identita_addebito[:3]
+        rapporto = identita_addebito[-1]
+        rapporti_precedenti = rapporti_per_addebito.setdefault(base_addebito, set())
+        duplicato_compatibile = bool(rapporti_precedenti) and (
+            not rapporto or "" in rapporti_precedenti or rapporto in rapporti_precedenti
+        )
+        if identita_addebito in addebiti_visti or duplicato_compatibile:
             stats["duplicati_ignorati"] += 1
             continue
         addebiti_visti.add(identita_addebito)
+        rapporti_precedenti.add(rapporto)
         stats["addebiti_trovati"] += 1
         importo = round(abs(float(doc.get("importo") or 0)), 2)
         periodo = _periodo_addebito(data_add)
@@ -192,8 +233,31 @@ async def verifica_addebiti_nexi(db, anno: Optional[int] = None) -> Dict[str, An
             )
         else:
             await risolvi_alert("ESTRATTO_NEXI_MANCANTE", chiave, db)
-            diff = round(importo - totale_carta, 2)
+            statement_periodo = statement_per_periodo.get(periodo)
+            metadata = (statement_periodo or {}).get("metadata") or {}
+            oneri = round(float(metadata.get("imposta_bollo") or 0), 2)
+            totale_addebito_statement = round(
+                float(metadata.get("totale_addebito") or 0), 2
+            )
+            differenza_senza_oneri = round(importo - totale_carta, 2)
+            if (not totale_addebito_statement and not oneri and statement_periodo
+                    and abs(differenza_senza_oneri - 2.0) <= _TOLLERANZA):
+                oneri = 2.0
+                dettaglio_row["imposta_bollo_inferita_da_statement"] = True
+            # Il totale ufficiale del PDF prevale sulla somma del mese:
+            # Nexi puo' riportare crediti e residui dai periodi precedenti.
+            totale_quadratura = (
+                totale_addebito_statement
+                if totale_addebito_statement
+                else round(totale_carta + oneri, 2)
+            )
+            diff = round(importo - totale_quadratura, 2)
             dettaglio_row["totale_carta"] = totale_carta
+            dettaglio_row["oneri_carta"] = oneri
+            dettaglio_row["totale_carta_con_oneri"] = totale_quadratura
+            dettaglio_row["totale_addebito_statement"] = (
+                totale_addebito_statement or None
+            )
             dettaglio_row["operazioni_carta"] = n_operazioni
             dettaglio_row["differenza"] = diff
             if abs(diff) <= _TOLLERANZA:
@@ -236,22 +300,33 @@ async def importa_estratto_nexi_pdf(
     from app.parsers.estratto_conto_nexi_parser import parse_estratto_conto_nexi
 
     content_sha256 = hashlib.sha256(pdf_content).hexdigest()
+    result = parse_estratto_conto_nexi(pdf_content)
+    if not result.get("success"):
+        return {"success": False, "message": result.get("error", "Parsing PDF fallito")}
+
     condizioni = [{"content_sha256": content_sha256}]
     if drive_file_id:
         condizioni.append({"drive_file_id": drive_file_id})
     existing = await db[COLL_ESTRATTI].find_one({"$or": condizioni}, {"_id": 0, "id": 1})
     if existing:
+        # Un parser migliorato deve poter arricchire anche un PDF gia' noto
+        # (es. imposta di bollo Nexi), senza duplicare documento o movimenti.
+        await db[COLL_ESTRATTI].update_one(
+            {"id": existing.get("id")},
+            {"$set": {
+                "metadata": result.get("metadata", {}),
+                "parser_updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+        )
+        verifica = await verifica_addebiti_nexi(db)
         return {
             "success": True,
             "duplicate": True,
             "estratto_id": existing.get("id"),
             "operazioni": 0,
             "totale_importo": 0,
+            "verifica": verifica,
         }
-
-    result = parse_estratto_conto_nexi(pdf_content)
-    if not result.get("success"):
-        return {"success": False, "message": result.get("error", "Parsing PDF fallito")}
 
     transazioni = result.get("transazioni", [])
     if not transazioni:
