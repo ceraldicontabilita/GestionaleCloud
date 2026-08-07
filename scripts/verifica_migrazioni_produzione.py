@@ -7,7 +7,7 @@ risultati in memoria/VERIFICA_MIGRAZIONI_PRODUZIONE.md.
 
 NON esegue nessuna migrazione. Per eseguirle, lanciare singolarmente ogni
 script con --esegui dopo aver rivisto questo report (uno alla volta, non a
-blocco — vedi memoria/PIANO_MIGRAZIONE_COLLECTION.md per le note di
+blocco — note di migrazione nella cronologia git (PIANO_MIGRAZIONE_COLLECTION.md) di
 attenzione specifiche di ciascuna).
 
 Uso: python scripts/verifica_migrazioni_produzione.py

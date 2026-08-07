@@ -17,7 +17,7 @@ router = APIRouter()
 # dashboard, piano conti) fanno fallback manuali e incoerenti — imponibile/
 # iva in alcuni lettori non hanno fallback inglese, rischio di IVA a debito
 # sottostimata silenziosamente per un documento con solo taxable_amount/vat.
-# Piano residuo op.16 (memoria/PIANO_CONSOLIDAMENTO_TRACKING.md): qui si
+# Piano residuo op.16 (PIANO_CONSOLIDAMENTO_TRACKING.md, in cronologia git): qui si
 # normalizzano SOLO le nuove scritture, senza migrare i documenti già in
 # produzione (richiede verifica dati reali, fuori scope senza accesso DB).
 _MAPPA_CAMPI_CANONICI = {

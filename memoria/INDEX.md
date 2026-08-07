@@ -1,202 +1,118 @@
 # Ceraldi ERP — Scheda rapida
 
-DB MongoDB: `Gestionale` · P.IVA: 04523831214 · aggiornato Lug 2026
-
-> **Mappa completa dell'app** (router, endpoint, collezioni, codice morto):
-> `memoria/MAPPA_MODULI.md` (narrativa) + `MAPPA_ROUTER.md` / `MAPPA_ENDPOINT_COMPLETA.md`
-> / `MAPPA_COLLEZIONI.md` (generate da `python scripts/genera_mappa.py`).
+DB MongoDB: `Gestionale` · P.IVA 04523831214 · riscritta 07/08/2026
+(le regole vincolanti stanno in `CLAUDE.md`; qui i fatti tecnici).
 
 ## Stack
 
-| Layer    | Tecnologia                                  |
-|----------|---------------------------------------------|
-| Frontend | React 18 + Vite → porta 3000                |
-| Backend  | FastAPI + Motor (async) → porta 8001        |
-| DB       | MongoDB Atlas (`Gestionale`, cluster0.vofh7iz) |
-| Design   | Inline styles da `src/lib/utils.js` (no Tailwind, no Shadcn) |
-| Schedule | APScheduler (PEC orario, Gmail 10 min)      |
-| Servizi  | `app/services/` — event bus, alert, audit, deduplica, partite, riconciliazione |
+| Layer    | Tecnologia |
+|----------|------------|
+| Frontend | React 18 + Vite (inline styles da `src/lib/utils.js`, no Tailwind) |
+| Backend  | FastAPI + Motor (async) |
+| DB       | MongoDB Atlas (`Gestionale`) |
+| Deploy   | Render, servizio `GestionaleCloud`, autoDeploy da `main` |
+| Schedule | APScheduler (Drive/email ogni ora) |
+
+## Documenti di riferimento (tutti vivi, il resto è in git)
+
+| File | Cosa contiene |
+|---|---|
+| `CLAUDE.md` | Regole vincolanti in vigore |
+| `LOGICA_FUNZIONAMENTO.md` (root) | Comportamento del sistema per gli utenti |
+| `PIANO_CONTI_UFFICIALE_CERALDI.md` | Piano dei conti CEE del commercialista |
+| `SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md` | Fonte di verità paghe/fisco |
+| `SPECIFICA_IVA.md` | Attribuzione per competenza e liquidazioni |
+| `FORNITORI_REGOLA_CANONICA.md` | Anagrafica fornitori |
+| `LOGICA_LIBRO_MASTRO.md` | Libro giornale/mastro |
+| `LOGICA_OPERATIVA.md` | Dettaglio funzionale operativo |
+| `DRIVE_ESTRATTI_CONTO.md` | Cartella unica estratti conto |
+| `DISASTER_RECOVERY_MONGODB.md` | Ripristino DB |
+| `BACKLOG.md` | Lavoro pendente reale |
+| `MAPPA_MODULI.md` / `MAPPA_COLLEZIONI.md` | Mappa narrativa moduli e collezioni |
+
+**Generati dagli script, verificati dalla CI — mai a mano:**
+`MAPPA_ROUTER.md`, `MAPPA_ENDPOINT_COMPLETA.md` (→ `scripts/genera_mappa.py`),
+`ENDPOINT_CLASSIFICAZIONE_FINALE.md` (→ `genera_classificazione_endpoint.py`),
+`AUDIT_FRONTEND_DEAD_CODE.md` (→ `audit_frontend_dead_code.py`),
+`AUDIT_STATIC_REPORT.md` (→ `audit_static.py`).
 
 ## Collezioni canoniche
 
 ```
-# Core business
-invoices (~3856)                  → Fatture SDI TD01+TD04      [collection UNICA fatture passive]
+invoices (~3856)                  → Fatture SDI TD01+TD04      [UNICA fatture passive]
 fornitori (~268)                  → Anagrafica fornitori       [NON suppliers]
 dipendenti (~30)                  → HR anagrafica              [NON employees]
 cedolini (~916)                   → Buste paga Zucchetti v2
 corrispettivi (~1051)             → UNICA fonte ricavi
-
-# Contabilità
-prima_nota_cassa (~1428)          → Prima nota cassa
-prima_nota_banca (~1138)          → Prima nota banca
-estratto_conto_movimenti (~4261)  → Movimenti bancari BPM      [collection UNICA]
+prima_nota_cassa / prima_nota_banca
+estratto_conto_movimenti (~4261)  → Movimenti bancari          [UNICA]
 f24_unificato (~83)               → Modelli F24                [NON f24_models]
-assegni (~210)                    → Assegni emessi per carnet
+assegni (~210)                    → Assegni per carnet
 scadenziario_fornitori (~903)     → Scadenze fornitori
-
-# Paghe (gestione HR spostata nell'app esterna AppDipendenti, stesso DB)
-bonifici_stipendi (~736)          → Bonifici stipendi
-prima_nota_salari (~696)          → Movimenti stipendiali
-presenze_mensili (~211)           → Da parser Libro Unico
-quietanze_f24 (~303)              → Quietanze F24
-
-# Magazzino
-warehouse_inventory (~5372)       → Giacenze magazzino         [NON warehouse_stocks]
-acquisti_prodotti (~15065)        → Storico acquisti
-dizionario_prodotti (~112)        → Normalizzazione nomi
-
-# Documenti
-documents_inbox (~803)            → Staging documenti email
-documenti_classificati (~1967)    → Classificati per tipo
-documenti_non_associati (~285)    → Da associare manualmente
-
-# Sistema relazionale (nuovo)
-partite_aperte                    → Scadenziario materializzato
-riconciliazioni_match             → Match riconciliazione N:M
-audit_log                         → Log unificato cambi stato
-alert_definitions                 → Catalogo 48 codici alert
-alerts                            → Alert attivi/risolti
-
-# Veicoli
-verbali_noleggio (~165)           → Sanzioni stradali
-veicoli_noleggio (~4)             → Flotta aziendale
+chiusure_pos_manuali              → POS reale per giorno/gestore
+sumup_transactions / sumup_payouts→ Circuito SumUp da API
+warehouse_inventory (~5372)       → Giacenze                   [NON warehouse_stocks]
+documents_inbox / documenti_classificati / documenti_non_associati
+partite_aperte · riconciliazioni_match · audit_log · alerts
+verbali_noleggio (~165) · veicoli_noleggio (~4)
 ```
 
 ## Route principali
 
 ```
-/                       Dashboard
-/fatture                Fatture ricevute
-/fatture/corrispettivi  Corrispettivi giornalieri
-/prima-nota             Cassa + Banca + Provvisori
-/fornitori              Fornitori
-/noleggio               Flotta + verbali + costi
-/magazzino              Giacenze + inventario + ricerca
-/riconciliazione        Riconciliazione bancaria unificata
-/riconciliazione/assegni  Assegni per carnet
-/contabilita            Piano conti · Bilancio · Verifica · Calendario fiscale
-                        · Cespiti · Finanziaria · Chiusura · Budget · Mutui
-/strumenti              Verifica coerenza · Commercialista · Pianificazione · Visure
-/documenti              Archivio + Import documenti
-/integrazioni           OpenAPI + PagoPA
-/admin                  Email + Parole chiave + Fatture + Sistema
+/                dashboard          /prima-nota      cassa+banca+provvisori
+/fatture         fatture ricevute   /riconciliazione riconciliazione unificata
+/fornitori       fornitori          /contabilita     piano conti · bilancio · IVA
+/noleggio        flotta+verbali     /magazzino       giacenze
+/documenti       archivio+import    /admin           email · SumUp · sistema
 ```
 
 ## Servizi core (app/services/)
 
 ```
-event_bus.py                → Dispatcher eventi sincrono tra moduli
-alert_engine.py             → 48 codici alert con trigger e chiusura automatica
-audit_logger.py             → Log unificato: chi/quando/cosa/da-dove-a-dove
-deduplica.py                → Verifica duplicati: fatture, fornitori, cedolini, F24, movimenti
-partite_aperte_engine.py    → Scadenziario materializzato (CRUD + ricerca per match)
-riconciliazione_engine.py   → Scoring match 4 livelli: esatto → pattern → approssimato → debole
+scritture_contabili.py   → MOTORE UNICO Prima Nota (mai insert diretti)
+conti_pos.py             → circuiti POS → conti (Numia/SumUp/PayPal)
+sumup_sync.py / sumup_payout.py → circuito SumUp
+stato_coerenza_pos.py    → catene di controllo POS indipendenti
+classificazione_estratti.py → fonte dei documenti in cartella unica
+dedup_causali_ec.py      → doppioni EC da causali prefissate
+event_bus.py · alert_engine.py · audit_logger.py · deduplica.py
+partite_aperte_engine.py · riconciliazione_engine.py
 ```
 
-## Regole critiche (da non dimenticare mai)
+## Regole tecniche (da non dimenticare)
 
-1. DB: `Gestionale` — NON `azienda_erp_db`
-2. Fornitori: collection `fornitori` — NON `suppliers`
-3. Magazzino: `warehouse_inventory` — NON `warehouse_stocks` (deprecata, dati errati)
-4. Dipendenti: `dipendenti` — NON `employees`
-5. Cedolini display: campo `nome_dipendente` — NON `dipendente_nome`
-6. Note credito: TD04 → importo negativo + badge rosso
-7. Ricavi: SOLO da `corrispettivi` — le `invoices` sono costi
-8. IMAP: sempre dentro `asyncio.to_thread()`
-9. Settings: `.env` ha priorità su OS env (intenzionale)
-10. `backend/server.py`: non cancellare — è l'entry point di Supervisor
-11. Metodo pagamento fattura: preso sempre dal fornitore, mai dall'XML SDI
-12. Nomi collezioni: importare SEMPRE da `app/db_collections.py` — mai stringhe hardcoded
-13. Claude NON pusha su main — patch in `claude-patches/chat-N-descrizione/` + `ISTRUZIONI.md`
-14. Ogni CRUD significativo chiama `propagate_event()` dal event bus
-15. Alert: usare SOLO codici dal catalogo in `alert_engine.py` — mai alert "liberi"
-16. Design: `src/lib/utils.js` unica fonte di verità — palette navy #0f2744 + accento oro #b8860b
-
-## Comandi utili
-
-```bash
-# Riavviare i servizi
-sudo supervisorctl restart backend
-sudo supervisorctl restart frontend
-
-# Log
-tail -n 100 /var/log/supervisor/backend.err.log
-tail -n 100 /var/log/supervisor/frontend.err.log
-
-# Health check
-curl -s http://localhost:8001/api/health
-
-# Pacchetti Python:
-pip install <pkg> && pip freeze > /app/backend/requirements.txt
-
-# Pacchetti Node (usa sempre yarn, mai npm):
-cd /app/frontend && yarn add <pkg>
-```
+1. Nomi collezioni SEMPRE da `app/db_collections.py`, mai stringhe.
+2. Ricavi SOLO da `corrispettivi`; le `invoices` sono costi.
+3. Note credito TD04 → importo negativo.
+4. Metodo pagamento fattura: dal FORNITORE (anagrafica), mai dall'XML SDI;
+   il metodo REALE del pagamento è `_metodo_reale()` (fatture_module/crud).
+5. IMAP sempre dentro `asyncio.to_thread()`.
+6. Settings: il file `.env` ha priorità sull'ambiente OS (intenzionale —
+   ricordarlo quando "le variabili su Render non arrivano").
+7. Ogni CRUD significativo chiama `propagate_event()`.
+8. Alert solo dal catalogo di `alert_engine.py`.
+9. Design: `src/lib/utils.js` unica fonte (navy #0f2744, oro #b8860b).
+10. HACCP rimosso (app esterna Tracciabilità); HR nell'app AppDipendenti.
 
 ## Mittenti email autorizzati
 
-| Mittente                                              | Tipo doc          | Destinazione                  |
-|-------------------------------------------------------|-------------------|-------------------------------|
-| `grazia.studioferrantini@email.it`                    | Cedolino/F24      | `cedolini`                    |
-| `rosaria.marotta@email.it`                            | F24               | `cedolini`                    |
-| `f.ferrantini@email.it`                               | Cedolino/F24      | `cedolini`                    |
-| `ricevuta.pagaonline@agenziariscossione.gov.it`       | Cartella          | `documenti_non_associati`     |
-| `notifica.acc.campania@pec.agenziariscossione.gov.it` | Cartella          | `documenti_non_associati`     |
-| `no_reply@agenziariscossione.gov.it`                  | Cartella          | `documenti_non_associati`     |
-| `inpscomunica@postacert.inps.gov.it`                  | INPS              | `documenti_non_associati`     |
-| `auto_napoli@massivo.pec.inail.it`                    | INAIL             | `documenti_non_associati`     |
-| `partenopay@ext.comune.napoli.it`                     | PagoPA            | `verbali`                     |
-| `noreply-checkout@ricevute.pagopa.it`                 | PagoPA            | `documenti_non_associati`     |
-| `tari.avvisibonari@pec.comune.napoli.it`              | TARI              | `documenti_non_associati`     |
-| `entrate.tari-tares-tarsu@pec.comune.napoli.it`       | TARI              | `documenti_non_associati`     |
-| `assistenza@paypal.it`                                | PayPal            | `documenti_non_associati`     |
-| `@pec.fatturapa.it` (PEC)                             | Fattura XML SDI   | `invoices` (parser XML)       |
+| Mittente | Tipo | Destinazione |
+|---|---|---|
+| `grazia.studioferrantini@email.it` | Cedolino/F24 | `cedolini` |
+| `rosaria.marotta@email.it` | F24 | `cedolini` |
+| `f.ferrantini@email.it` | Cedolino/F24 | `cedolini` |
+| `ricevuta.pagaonline@agenziariscossione.gov.it` | Cartella | `documenti_non_associati` |
+| `notifica.acc.campania@pec.agenziariscossione.gov.it` | Cartella | `documenti_non_associati` |
+| `no_reply@agenziariscossione.gov.it` | Cartella | `documenti_non_associati` |
+| `inpscomunica@postacert.inps.gov.it` | INPS | `documenti_non_associati` |
+| `auto_napoli@massivo.pec.inail.it` | INAIL | `documenti_non_associati` |
+| `partenopay@ext.comune.napoli.it` | PagoPA | `verbali` |
+| `noreply-checkout@ricevute.pagopa.it` | PagoPA | `documenti_non_associati` |
+| `tari.avvisibonari@pec.comune.napoli.it` | TARI | `documenti_non_associati` |
+| `entrate.tari-tares-tarsu@pec.comune.napoli.it` | TARI | `documenti_non_associati` |
+| `assistenza@paypal.it` | PayPal | `documenti_non_associati` |
+| `@pec.fatturapa.it` (PEC) | Fattura XML SDI | `invoices` |
 
-NON attendibili da Gmail: ABC Napoli, TIM — le loro fatture arrivano come XML SDI dalla PEC.
-Corrispettivi: SOLO import manuale XML dal registratore telematico, MAI da Gmail.
-
-Per il dettaglio funzionale vedi `LOGICA_OPERATIVA.md`.
-Per lo stato di progetto vedi `PRD.md`.
-
-## Piano di consolidamento in corso (14/07/2026)
-
-Indice numerato e stato di avanzamento del piano derivato dal report esterno
-di verifica: `memoria/PIANO_CONSOLIDAMENTO_TRACKING.md` — da aggiornare ad
-ogni operazione eseguita.
-
-## Specifica vincolante F24 / Cedolini / IRES / IRAP / Chat (10/07/2026)
-
-`SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md` — documento dell'utente, fonte
-di verità per il motore contabilità paghe/fisco. Regole chiave:
-- F24 del consulente = dato UFFICIALE dei versamenti; cedolino/LUL = fonte
-  del costo retributivo e delle trattenute. Mai sostituire col calcolo interno.
-- Il saldo F24 NON è mai automaticamente il costo deducibile (ritenute,
-  addizionali, crediti compensati e sanzioni non sono costi del personale).
-- Associazione F24↔cedolini solo con periodo/causale/posizione/soggetto
-  coerenti; RC01 = regolarizzazione di periodo precedente, mai al mese corrente.
-- Scadenza naturale = 16 del mese successivo; stato "pagato in ritardo"
-  evidenziato con giorni di ritardo.
-- DM10↔RC01 dello stesso debito: mai sommati due volte; se entrambi pagati →
-  alert POSSIBILE DOPPIO PAGAMENTO (stati: da verificare/confermato/…).
-- Quietanza senza F24 (Caso 3): mai ricostruire il modello, alert bloccante
-  "F24 mancante", calcolo fiscale sospeso.
-Implementazione: `app/engines/tributi_engine.py` (classificazione §6-11,
-scadenze §20, associazione §15, DM10↔RC01 §21, doppio pagamento §23),
-`app/engines/fiscale_engine.py` (costo personale §12, IRES §13, IRAP §14),
-router `/api/f24-analisi/*`, tool chat `spiega_f24` e `doppi_pagamenti_f24`,
-Caso 3 in `app/services/quietanze_import.py`.
-Test: `tests/test_tributi_fiscale_engine.py` (incl. caso reale €50,61 §16).
-
-## Mappa dell'app (13/07/2026)
-
-Struttura completa e aggiornata: `MAPPA_MODULI.md` (come funziona ogni dominio,
-codice morto, duplicati), `MAPPA_ROUTER.md` / `MAPPA_ENDPOINT_COMPLETA.md` /
-`MAPPA_COLLEZIONI.md` (rigenerabili con `python scripts/genera_mappa.py`).
-Audit statico continuo: `AUDIT_STATIC_REPORT.md` (CI `audit-static.yml`).
-- Dominio HACCP RIMOSSO dal codice (resta all'app esterna Tracciabilità):
-  schede tecniche, giacenze fisiche, alert sotto-scorta. Restano Dizionario
-  Articoli contabile, Previsioni Acquisti, Libretti sanitari. Collection HACCP
-  archiviabili con `app/scripts/archivia_collection_haccp.py` (non distruttivo).
-- Fix P0: `Collections.SCADENZARIO_FORNITORI` inesistente svuotava i KPI live
-  dashboard (`websocket_realtime.py`).
+Fatture SOLO da Drive/PEC, mai da Gmail. Corrispettivi: solo XML del
+registratore telematico.
