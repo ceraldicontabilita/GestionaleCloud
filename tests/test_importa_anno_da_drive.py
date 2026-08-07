@@ -100,6 +100,12 @@ def test_promozione_corrispettivo_archiviato_entra_in_prima_nota():
          "status": "archiviata", "totale": 1000.0,
          "pagato_contanti": 400.0, "pagato_elettronico": 600.0},
     ]
+    # Chiusura REALE del terminale: dal 07/08/2026 l'uscita POS non si ricava
+    # piu' dall'elettronico XML, che non sa distinguere i circuiti.
+    db["chiusure_pos_manuali"].docs = [{
+        "data": "2023-05-10", "gestore": "nexi", "importo": 600.0,
+        "source": "inserimento_manuale_terminale",
+    }]
 
     esito = _run(mod.promuovi_archivio_anno(db, 2023))
 

@@ -92,10 +92,25 @@ def _corrispettivo(**over):
     return base
 
 
+def _con_pos_reale(db, importo, data="2026-07-14", gestore="nexi"):
+    """Chiusura REALE del terminale per quella giornata.
+
+    Dal 07/08/2026 l'uscita POS si costruisce solo da fonti reali: senza una
+    chiusura del terminale il motore non inventa piu' il trasferimento
+    dall'elettronico XML. Questi test verificano il trasferimento, quindi la
+    chiusura va fornita esplicitamente.
+    """
+    db["chiusure_pos_manuali"].docs.append({
+        "data": data, "gestore": gestore, "importo": importo,
+        "source": "inserimento_manuale_terminale",
+    })
+    return db
+
+
 # ---------- percorso 1: caricamento diretto (corrispettivi_helpers.py) ----------
 
 def test_create_prima_nota_movements_regola_contabile_completa():
-    db = _FakeDb()
+    db = _con_pos_reale(_FakeDb(), 400.0)
     corr = _corrispettivo()
 
     res = _run(helpers_mod._create_prima_nota_movements(db, corr))
@@ -109,7 +124,7 @@ def test_create_prima_nota_movements_regola_contabile_completa():
 
     uscita_cassa = next(d for d in cassa if d["tipo"] == "uscita")
     assert uscita_cassa["importo"] == 400.0
-    assert uscita_cassa["categoria"] == "POS Verso Banca"
+    assert uscita_cassa["categoria"] == "POS NUMIA Verso Banca"
 
     # REGOLA CANONICA 18/07/2026: trasferimento speculare in banca,
     # stesso importo dell'uscita cassa, source trasferimento_pos.
@@ -120,7 +135,7 @@ def test_create_prima_nota_movements_regola_contabile_completa():
 
 
 def test_create_prima_nota_movements_legge_pagato_pos_oltre_a_pagato_elettronico():
-    db = _FakeDb()
+    db = _con_pos_reale(_FakeDb(), 250.0)
     corr = _corrispettivo(pagato_elettronico=None)
     corr["pagato_pos"] = 250.0
     corr["pagato_contanti"] = 750.0
@@ -156,7 +171,7 @@ def _patch_db(monkeypatch, db):
 def test_sync_corrispettivi_impl_trasferimento_speculare(monkeypatch):
     """REGOLA CANONICA 18/07/2026: il sync crea cassa (entrata+uscita POS)
     e il trasferimento speculare in banca (stesso importo)."""
-    db = _FakeDb()
+    db = _con_pos_reale(_FakeDb(), 400.0)
     db["corrispettivi"].docs = [_corrispettivo()]
     _patch_db(monkeypatch, db)
 
@@ -171,7 +186,7 @@ def test_sync_corrispettivi_impl_trasferimento_speculare(monkeypatch):
 
 
 def test_sync_corrispettivi_impl_non_duplica_se_gia_caricato_dal_percorso_diretto(monkeypatch):
-    db = _FakeDb()
+    db = _con_pos_reale(_FakeDb(), 400.0)
     corr = _corrispettivo()
     db["corrispettivi"].docs = [corr]
     _patch_db(monkeypatch, db)
@@ -191,7 +206,7 @@ def test_sync_corrispettivi_impl_non_duplica_se_gia_caricato_dal_percorso_dirett
 
 
 def test_sync_corrispettivi_impl_idempotente_su_doppia_esecuzione(monkeypatch):
-    db = _FakeDb()
+    db = _con_pos_reale(_FakeDb(), 400.0)
     db["corrispettivi"].docs = [_corrispettivo()]
     _patch_db(monkeypatch, db)
 

@@ -94,6 +94,12 @@ class _Db:
 
 def _setup_db():
     db = _Db()
+    # Chiusura REALE del terminale: dal 07/08/2026 l'uscita POS non si ricava
+    # piu' dall'elettronico XML, che non sa distinguere i circuiti.
+    db["chiusure_pos_manuali"].docs = [{
+        "data": "2026-01-02", "gestore": "nexi", "importo": 3617.0,
+        "source": "inserimento_manuale_terminale",
+    }]
     db["corrispettivi"].docs = [
         {"id": "c1", "data": "2026-01-02", "matricola_rt": "RT1", "totale": 5169.0,
          "pagato_contanti": 1552.0, "pagato_elettronico": 3617.0, "created_at": "2026-01-02"},
@@ -142,7 +148,7 @@ def test_purge_elimina_tutte_le_pipeline_e_ricrea_pulito():
 
     cassa = db["prima_nota_cassa"].docs
     entrate = [m for m in cassa if m.get("tipo") == "entrata" and m.get("categoria") == "Corrispettivi"]
-    uscite_pos = [m for m in cassa if m.get("tipo") == "uscita" and m.get("categoria") == "POS Verso Banca"]
+    uscite_pos = [m for m in cassa if m.get("tipo") == "uscita" and m.get("categoria") == "POS NUMIA Verso Banca"]
     assert len(entrate) == 1 and entrate[0]["importo"] == 5169.0
     assert len(uscite_pos) == 1 and uscite_pos[0]["importo"] == 3617.0
     # intoccati

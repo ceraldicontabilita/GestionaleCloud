@@ -23,6 +23,9 @@
   memoria/AUDIT_ESTERNO_18_07_2026.md e LOGICA_FUNZIONAMENTO.md §4):
   cassa DARE = corrispettivo totale XML; cassa AVERE "POS Verso Banca" =
   POS REALE della chiusura manuale serale (fallback XML, fonte tracciata);
+  dal 07/08/2026 il POS reale e' la SOMMA dei gestori (Nexi + SumUp): campo
+  `gestore` sulle chiusure, righe storiche senza campo = Nexi, Prima Nota
+  sempre riallineata sul TOTALE del giorno e non sul singolo terminale;
   banca DARE = stessa cifra come puro TRASFERIMENTO (source
   trasferimento_pos, stesso trasferimento_id) — una sola operazione su
   due registri, mai duplicazioni; l'accredito dell'estratto conto NON

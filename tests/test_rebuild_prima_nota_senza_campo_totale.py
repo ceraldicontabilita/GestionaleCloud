@@ -128,6 +128,12 @@ def test_rebuild_somma_contanti_ed_elettronico_senza_totale():
         "id": "corr-1", "data": "2026-06-28",
         "pagato_contanti": 400.0, "pagato_elettronico": 163.0,
     }]
+    # Chiusura REALE del terminale: dal 07/08/2026 l'uscita POS non si ricava
+    # piu' dall'elettronico XML, che non sa distinguere i circuiti.
+    db["chiusure_pos_manuali"].docs = [{
+        "data": "2026-06-28", "gestore": "nexi", "importo": 163.0,
+        "source": "inserimento_manuale_terminale",
+    }]
 
     res = _run(rebuild_prima_nota_from_corrispettivi(db, anno=2026))
 
@@ -137,7 +143,7 @@ def test_rebuild_somma_contanti_ed_elettronico_senza_totale():
     uscita = next(d for d in cassa if d["tipo"] == "uscita")
     assert entrata["importo"] == 563.0
     assert uscita["importo"] == 163.0
-    assert uscita["categoria"] == "POS Verso Banca"
+    assert uscita["categoria"] == "POS NUMIA Verso Banca"
     uscite = [m for m in db["prima_nota_cassa"].docs if m["tipo"] == "uscita"]
     assert len(uscite) == 1 and uscite[0]["importo"] == 163.0
     banca = db["prima_nota_banca"].docs

@@ -184,7 +184,10 @@ async def importa_pos_terminal_file(db, content: bytes, filename: str, *, drive_
             upsert=True,
         )
 
-    from app.services.scritture_contabili import registra_chiusura_pos_reale
+    from app.services.scritture_contabili import (
+        GESTORE_POS_DEFAULT,
+        registra_chiusura_pos_reale,
+    )
 
     totals: Dict[str, float] = {}
     for data_iso in sorted(data for data in affected_dates if data):
@@ -197,6 +200,10 @@ async def importa_pos_terminal_file(db, content: bytes, filename: str, *, drive_
             raise ValueError(f"Totale POS negativo per {data_iso}")
         await registra_chiusura_pos_reale(
             db, data_iso, total,
+            # Questo flusso storico e' il terminale gia' esistente: resta il
+            # gestore predefinito, cosi' non nasce un secondo terminale
+            # fantasma accanto alle chiusure gia' registrate.
+            gestore=GESTORE_POS_DEFAULT,
             note="Import automatico POS BPM da Drive: somma transazioni approvate",
             actor={"user_id": "drive_pos_bpm", "name": "Import automatico Drive"},
         )

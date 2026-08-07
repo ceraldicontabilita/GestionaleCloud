@@ -36,6 +36,7 @@ COLLECTION_CHIUSURE_POS = "chiusure_pos_manuali"
 # La descrizione degli accrediti NUMIA/BPM contiene il giorno di VENDITA:
 # "INC.POS CARTE CREDIT - NUMIA-INTER DEL 02/04/26 PDV ..." → 2026-04-02
 from app.services.scritture_contabili import (
+    GESTORE_POS_DEFAULT,
     ScritturaNonValida,
     registra_chiusura_pos_reale,
 )
@@ -317,12 +318,17 @@ async def verifica_coerenza_pos_corrispettivi(
         pos_accreditato = pos["importo"]
         pos_manuale = chiusure_by_date.get(data, 0)
         
-        # REGOLA CANONICA (18/07/2026): la chiusura manuale serale è il POS
-        # REALE; l'XML è il confronto fiscale. Il "non battuto" (reale - XML)
-        # è quanto NON è stato battuto sul tasto elettronico del registratore:
-        # va evidenziato e recuperato nei giorni successivi (saldo progressivo).
-        riferimento_pos = pos_manuale if pos_manuale > 0 else elettronico_xml
-        non_battuto = round(pos_manuale - elettronico_xml, 2) if pos_manuale > 0 else 0.0
+        # REGOLA (utente 07/08/2026): il POS si ricostruisce SOLO dai terminali
+        # reali. Qui c'era `pos_manuale if pos_manuale > 0 else elettronico_xml`:
+        # in assenza della chiusura si usava il dato fiscale come riferimento,
+        # e la giornata sembrava quadrata perche' confrontava l'XML con se
+        # stesso. Senza terminale il riferimento non esiste, e va detto.
+        pos_reale_disponibile = pos_manuale > 0
+        riferimento_pos = pos_manuale if pos_reale_disponibile else 0.0
+        # Il "non battuto" e' quanto e' passato dal POS ma non e' stato battuto
+        # sul registratore. Ha senso solo con entrambe le fonti presenti.
+        non_battuto = (round(pos_manuale - elettronico_xml, 2)
+                       if pos_reale_disponibile else 0.0)
         
         totale_elettronico_xml += elettronico_xml
         totale_pos_accreditato += pos_accreditato
@@ -357,7 +363,15 @@ async def verifica_coerenza_pos_corrispettivi(
         oggi = datetime.now()
         is_recente = dt and dt >= oggi - timedelta(days=2)
         
-        if riferimento_pos > 0 and pos_accreditato == 0:
+        if not pos_reale_disponibile:
+            # Senza il dato del terminale non si puo' dire nulla sul giorno:
+            # dichiararlo "ok" perche' l'XML coincide con se stesso e' il
+            # falso verde che questa correzione elimina.
+            stato = "attende_pos_reale"
+            messaggio = ("Attende chiusura POS reale: il dato del terminale "
+                         "non e' ancora arrivato")
+            giorni_anomalia += 1
+        elif riferimento_pos > 0 and pos_accreditato == 0:
             if is_recente:
                 stato = "in_transito"
                 messaggio = f"POS in transito: €{riferimento_pos:.2f} (accredito atteso {data_accredito_attesa})"
@@ -685,14 +699,23 @@ async def upsert_chiusura_giornaliera(
             Database.get_db(),
             payload.get("data"),
             payload.get("importo"),
+            gestore=payload.get("gestore") or GESTORE_POS_DEFAULT,
             note=(payload.get("note") or "").strip(),
             actor=current_user,
         )
     except ScritturaNonValida as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    # Con un solo terminale i due importi coincidono; con Nexi + SumUp il
+    # totale del giorno e' quello che finisce davvero in Prima Nota.
+    totale = result.get("importo_totale_giorno", result["importo"])
+    dettaglio = (
+        "" if abs(totale - result["importo"]) < 0.01
+        else f" Totale POS del giorno (tutti i terminali): EUR {totale:.2f}."
+    )
     result["message"] = (
-        f"POS reale del {result['data']} salvato: EUR {result['importo']:.2f}. "
+        f"POS reale {result['gestore'].upper()} del {result['data']} salvato: "
+        f"EUR {result['importo']:.2f}.{dettaglio} "
         "Prima Nota Cassa e trasferimento atteso in Banca aggiornati."
     )
     return result
@@ -749,6 +772,10 @@ async def upsert_chiusure_giornaliere_batch(
 
     db = Database.get_db()
     note = str(payload.get("note") or "Importazione massiva POS").strip()
+    # Un'importazione massiva e' l'export di UN terminale: il gestore vale per
+    # tutte le righe. Cosi' resta valido anche il vincolo di data unica, che
+    # serializza le scritture sullo stesso giorno.
+    gestore = payload.get("gestore") or GESTORE_POS_DEFAULT
     semaforo = asyncio.Semaphore(8)
 
     async def salva(riga: Dict[str, Any]) -> Dict[str, Any]:
@@ -758,12 +785,14 @@ async def upsert_chiusure_giornaliere_batch(
                     db,
                     riga["data"],
                     riga["importo"],
+                    gestore=gestore,
                     note=note,
                     actor=current_user,
                 )
                 return {
                     "data": riga["data"],
                     "importo": riga["importo"],
+                    "gestore": gestore,
                     "success": True,
                     "action": risultato.get("action"),
                 }

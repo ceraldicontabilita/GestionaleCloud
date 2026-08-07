@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1054 · tenere: 699 · verificare: 332 · admin-only (migrazione/manutenzione): 23
+**Totale endpoint:** 1059 · tenere: 698 · verificare: 338 · admin-only (migrazione/manutenzione): 23
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -819,7 +819,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/pos-corrispettivi/chiusura-giornaliera/audit` | pos_corrispettivi_check | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/pos-corrispettivi/chiusure-giornaliere/batch` | pos_corrispettivi_check | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/pos-corrispettivi/controllo-due-fasi` | pos_corrispettivi_check | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/pos-corrispettivi/riconcilia-pos-giorno` | pos_corrispettivi_check | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/pos-corrispettivi/riconcilia-pos-giorno` | pos_corrispettivi_check | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/pos-corrispettivi/riepilogo-mensile` | pos_corrispettivi_check | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/pos-corrispettivi/verifica-coerenza` | pos_corrispettivi_check | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/previsioni-acquisti/confronto-ordine` | previsioni_acquisti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -908,6 +908,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/prima-nota/salari/auto-ricostruisci-dati` | prima_nota_module | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota/salari/stats` | prima_nota_module.salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `DELETE /api/prima-nota/salari/{movimento_id}` | prima_nota_module.salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/prima-nota/saldi-finanziari` | prima_nota_module.stats | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota/saldo-finale` | prima_nota_module.stats | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota/saldo-iniziale` | prima_nota_module.stats | sì | — | — | — | sì | tenere | in uso: FE |
 | `PUT /api/prima-nota/saldo-iniziale` | prima_nota_module.stats | sì | — | — | — | sì | tenere | in uso: FE |
@@ -969,6 +970,10 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/settings/logo` | settings | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/settings/user-preferences` | settings | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/settings/user-preferences` | settings | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/sumup/bonifica-pos-xml` | sumup | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/sumup/bonifica-pos-xml` | sumup | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/sumup/sincronizza` | sumup | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/sumup/stato` | sumup | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/suppliers` | suppliers_module.base | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/suppliers` | suppliers_module.base | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/suppliers-legacy` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

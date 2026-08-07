@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1054 endpoint** in **110 gruppi**.
+> Totale **1059 endpoint** in **111 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 665 · ext esterni = 90 · — da verificare = 299
+**Riepilogo uso:** ✓ frontend = 664 · ext esterni = 90 · — da verificare = 305
 
 ## AI Parser  (11)
 
@@ -1149,7 +1149,7 @@
 | GET | `/api/pos-corrispettivi/chiusura-giornaliera/audit` | ✓ | pos_corrispettivi_check |
 | POST | `/api/pos-corrispettivi/chiusure-giornaliere/batch` | ✓ | pos_corrispettivi_check |
 | GET | `/api/pos-corrispettivi/controllo-due-fasi` | ✓ | pos_corrispettivi_check |
-| POST | `/api/pos-corrispettivi/riconcilia-pos-giorno` | ✓ | pos_corrispettivi_check |
+| POST | `/api/pos-corrispettivi/riconcilia-pos-giorno` | — | pos_corrispettivi_check |
 | GET | `/api/pos-corrispettivi/riepilogo-mensile` | ✓ | pos_corrispettivi_check |
 | GET | `/api/pos-corrispettivi/verifica-coerenza` | ✓ | pos_corrispettivi_check |
 
@@ -1246,7 +1246,7 @@
 | GET | `/api/previsioni-acquisti/prodotti` | — | previsioni_acquisti |
 | GET | `/api/previsioni-acquisti/statistiche` | ✓ | previsioni_acquisti |
 
-## Prima Nota  (74)
+## Prima Nota  (75)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1313,6 +1313,7 @@
 | POST | `/api/prima-nota/salari/auto-ricostruisci-dati` | — | prima_nota_module |
 | GET | `/api/prima-nota/salari/stats` | — | prima_nota_module.salari |
 | DELETE | `/api/prima-nota/salari/{movimento_id}` | — | prima_nota_module.salari |
+| GET | `/api/prima-nota/saldi-finanziari` | — | prima_nota_module.stats |
 | GET | `/api/prima-nota/saldo-finale` | — | prima_nota_module.stats |
 | GET | `/api/prima-nota/saldo-iniziale` | ✓ | prima_nota_module.stats |
 | PUT | `/api/prima-nota/saldo-iniziale` | ✓ | prima_nota_module.stats |
@@ -1469,6 +1470,15 @@
 | POST | `/api/settings/logo` | — | settings |
 | GET | `/api/settings/user-preferences` | ✓ | settings |
 | PUT | `/api/settings/user-preferences` | ✓ | settings |
+
+## SumUp POS  (4)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/sumup/bonifica-pos-xml` | — | sumup |
+| POST | `/api/sumup/bonifica-pos-xml` | — | sumup |
+| POST | `/api/sumup/sincronizza` | — | sumup |
+| GET | `/api/sumup/stato` | — | sumup |
 
 ## Suppliers  (32)
 

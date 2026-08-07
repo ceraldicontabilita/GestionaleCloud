@@ -71,19 +71,54 @@ def module_of(route):
     return getattr(ep, "__module__", "?").replace("app.routers.", "")
 
 
+def _tutte_le_route(app):
+    """Endpoint con il percorso FINALE, su ogni versione di FastAPI.
+
+    Fino alla 0.120 ``include_router`` appiattiva tutto in ``app.routes`` come
+    APIRoute gia' prefissate. Dalla 0.121 inserisce un ``_IncludedRouter`` e le
+    rotte restano annidate: cercare solo le APIRoute di primo livello ne trova
+    ZERO, e questo script riscriverebbe le mappe vuote — ~2.800 righe di
+    documentazione cancellate, senza sollevare errori.
+
+    I contesti del router incluso portano il percorso gia' prefissato, quindi
+    non vanno ricomposti a mano (le rotte originali hanno il path SENZA
+    prefisso: usarle produrrebbe una mappa di percorsi inesistenti).
+    """
+    trovate = []
+    for r in app.routes:
+        if isinstance(r, APIRoute):
+            trovate.append(r)
+            continue
+        contesti = getattr(r, "effective_route_contexts", None)
+        if callable(contesti):
+            trovate.extend(contesti())
+    return trovate
+
+
 def main():
     app = build_app()
     fe = frontend_refs()
 
     routes = []
-    for r in app.routes:
-        if isinstance(r, APIRoute):
+    for r in _tutte_le_route(app):
+        # Path e metodi devono esserci entrambi: senza il filtro finirebbero
+        # in mappa righe vuote (route di servizio, docs, openapi.json).
+        if getattr(r, "path", None) and getattr(r, "methods", None):
             methods = ",".join(sorted(m for m in r.methods if m not in ("HEAD", "OPTIONS")))
             tag = r.tags[0] if r.tags else "(no tag)"
             routes.append({
                 "tag": tag, "path": r.path, "methods": methods,
                 "module": module_of(r), "fe": fe_flag(r.path, fe),
             })
+
+    if not routes:
+        # Guardia: senza endpoint le mappe verrebbero riscritte VUOTE, e lo
+        # script uscirebbe con successo. E' gia' successo (FastAPI 0.121):
+        # ~2.800 righe di documentazione cancellate in silenzio.
+        raise SystemExit(
+            "Nessun endpoint trovato: mappe NON riscritte. "
+            "Probabile incompatibilita' con questa versione di FastAPI."
+        )
 
     # ---- prefisso a due livelli /api/<x> ----
     def prefix2(p):
