@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, memo, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { ChevronDown, Bell, MoreHorizontal } from 'lucide-react';
+import { ChevronDown, Bell, MoreHorizontal, LogOut } from 'lucide-react';
+import { toast } from 'sonner';
 import api from '../../api';
 import { AnnoSelector } from '../../contexts/AnnoContext';
 import { COLORS, SHADOWS, useIsMobile } from '../../lib/utils';
@@ -327,6 +328,9 @@ const TopNav = memo(function TopNav() {
           <div style={S.avatar} title="Ceraldi Group Admin">
             CG
           </div>
+
+          {/* Esci */}
+          <BottoneEsci />
         </div>
       </nav>
 
@@ -337,6 +341,55 @@ const TopNav = memo(function TopNav() {
 });
 
 export default TopNav;
+
+/*     Esci  chiude la sessione e revoca il token lato server     */
+const BottoneEsci = memo(function BottoneEsci() {
+  const { logout, user } = useAuth();
+  const isMobile = useIsMobile(768);
+  const [inCorso, setInCorso] = useState(false);
+
+  const esci = useCallback(async () => {
+    setInCorso(true);
+    try {
+      await logout();
+    } catch (e) {
+      // logout() e' fail-closed: se il server non registra la revoca la
+      // sessione locale resta viva di proposito, altrimenti dichiareremmo
+      // chiuso un accesso che sul server e' ancora valido. Va detto.
+      toast.error('Uscita non riuscita: la sessione e’ ancora aperta. Riprova.');
+    } finally {
+      setInCorso(false);
+    }
+  }, [logout]);
+
+  return (
+    <button
+      onClick={esci}
+      disabled={inCorso}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        height: 34,
+        padding: isMobile ? '0 9px' : '0 12px',
+        borderRadius: 8,
+        background: 'rgba(255,255,255,0.1)',
+        border: '1px solid rgba(255,255,255,0.2)',
+        color: 'rgba(255,255,255,0.85)',
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: inCorso ? 'wait' : 'pointer',
+        opacity: inCorso ? 0.6 : 1,
+        flexShrink: 0,
+      }}
+      title={user?.email ? `Esci (${user.email})` : 'Esci'}
+      data-testid="btn-logout"
+    >
+      <LogOut size={15} />
+      {!isMobile && <span>{inCorso ? 'Esco…' : 'Esci'}</span>}
+    </button>
+  );
+});
 
 /*     Campana notifiche  usa /api/alerts/summary (sistema relazionale)     */
 const NotificationBellMinimal = memo(function NotificationBellMinimal() {

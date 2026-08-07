@@ -57,10 +57,18 @@ def test_dice_chiaramente_se_la_chiave_manca(monkeypatch):
     assert "SUMUP_API_KEY" in stato["messaggio"]
 
 
-def test_segnala_il_merchant_code_mancante(monkeypatch):
+def test_senza_merchant_code_lo_ricava_dalla_chiave(monkeypatch):
+    """Non e' una scelta di configurazione ma l'identita' del conto: la chiave
+    appartiene a un esercente solo e SumUp lo dichiara. Fermarsi qui nascondeva
+    proprio il valore da impostare."""
     _configura(monkeypatch, merchant="")
+    _risponde(monkeypatch, _Risposta(200, {
+        "merchant_profile": {"company_name": "ceraldi group srl",
+                             "merchant_code": "MFNRDMC4"},
+    }))
     stato = _run(sumup.stato_sumup(_admin={}))
-    assert stato["connessione_ok"] is False
+    assert stato["connessione_ok"] is True
+    assert stato["merchant_code"] == "MFNRDMC4"
     assert "SUMUP_MERCHANT_CODE" in stato["messaggio"]
 
 

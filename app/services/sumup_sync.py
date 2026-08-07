@@ -200,14 +200,60 @@ def aggrega_per_giorno(transazioni: Iterable[Dict[str, Any]]) -> Dict[str, Dict[
 # Client HTTP
 # --------------------------------------------------------------------------
 
-def _credenziali() -> tuple:
+# Codice esercente ricavato dalla chiave, memorizzato per non richiederlo a
+# ogni sincronizzazione. La chiave fa parte della cache: se viene ruotata o
+# sostituita con quella di un altro conto, il codice viene richiesto di nuovo.
+_merchant_ricavato: Dict[str, str] = {}
+
+
+def _chiave() -> str:
     chiave = (settings.SUMUP_API_KEY or "").strip()
-    merchant = (settings.SUMUP_MERCHANT_CODE or "").strip()
-    if not chiave or not merchant:
-        raise SumUpNonConfigurato(
-            "SUMUP_API_KEY e SUMUP_MERCHANT_CODE devono essere configurati."
+    if not chiave:
+        raise SumUpNonConfigurato("SUMUP_API_KEY deve essere configurata.")
+    return chiave
+
+
+async def merchant_effettivo() -> str:
+    """Codice esercente: quello configurato, altrimenti quello della chiave.
+
+    SUMUP_MERCHANT_CODE resta il valore che comanda. Se non e' impostato non
+    ha senso fermarsi: la chiave appartiene a un conto solo e SumUp lo dichiara
+    su ``/v0.1/me``. Ricavarlo evita di bloccare tutto per un dato che non e'
+    una scelta ma un'identita'.
+    """
+    configurato = (settings.SUMUP_MERCHANT_CODE or "").strip()
+    if configurato:
+        return configurato
+
+    chiave = _chiave()
+    if chiave in _merchant_ricavato:
+        return _merchant_ricavato[chiave]
+
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        risposta = await client.get(
+            f"{settings.SUMUP_API_BASE}/v0.1/me",
+            headers={"Authorization": f"Bearer {chiave}"},
         )
-    return chiave, merchant
+    if risposta.status_code != 200:
+        raise SumUpNonConfigurato(
+            f"SumUp non ha accettato la chiave (HTTP {risposta.status_code}): "
+            f"impossibile ricavare il codice esercente."
+        )
+    codice = str(
+        ((risposta.json() or {}).get("merchant_profile") or {}).get("merchant_code") or ""
+    ).strip()
+    if not codice:
+        raise SumUpNonConfigurato(
+            "SumUp non ha restituito il codice esercente: imposta "
+            "SUMUP_MERCHANT_CODE fra le variabili d'ambiente."
+        )
+    _merchant_ricavato[chiave] = codice
+    logger.info("SumUp: codice esercente ricavato dalla chiave: %s", codice)
+    return codice
+
+
+async def _credenziali() -> tuple:
+    return _chiave(), await merchant_effettivo()
 
 
 def _prossima_pagina(payload: Dict[str, Any]) -> Optional[str]:
@@ -219,7 +265,7 @@ def _prossima_pagina(payload: Dict[str, Any]) -> Optional[str]:
 
 async def scarica_transazioni(dal: str, al: str) -> List[Dict[str, Any]]:
     """Storico transazioni nell'intervallo, seguendo la paginazione a cursore."""
-    chiave, merchant = _credenziali()
+    chiave, merchant = await _credenziali()
     url = (f"{settings.SUMUP_API_BASE}/v2.1/merchants/{merchant}"
            f"/transactions/history")
     params: Optional[Dict[str, Any]] = {
@@ -300,7 +346,7 @@ async def sincronizza(db, dal: str, al: str,
     """
     from app.services.scritture_contabili import registra_chiusura_pos_reale
 
-    _, merchant = _credenziali()
+    _, merchant = await _credenziali()
     if grezze is None:
         grezze = await scarica_transazioni(dal, al)
 
