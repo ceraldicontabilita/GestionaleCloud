@@ -476,6 +476,15 @@ async def backfill_autoroute_da_metodo_fornitore(_admin: Dict[str, Any] = Depend
       - misto                                       → NON auto-routato (Prima Nota Provvisoria)
       - ambiguo/vuoto                               → NON auto-routato
     """
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "Funzione sostituita: il metodo del fornitore e' una regola di "
+            "instradamento, non una prova di pagamento. Usa Riprocessa "
+            "estratto conto: Cassa viene instradata direttamente; Banca "
+            "resta provvisoria finche non esiste evidenza univoca."
+        ),
+    )
     from .metodo_pagamento import normalizza_metodo_pagamento
     db = Database.get_db()
 

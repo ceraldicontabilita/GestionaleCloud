@@ -136,7 +136,7 @@ def _register_bank(app: FastAPI):
     )
     from app.routers.bonifici_module import router as archivio_bonifici_router
     from app.routers.bonifici_module import associazioni as bonifici_associazioni
-    from app.routers import paypal_statements, nexi_carta
+    from app.routers import paypal_statements, nexi_carta, sumup
 
     app.include_router(bank_statement_import.router, prefix="/api/bank-statement", tags=["Bank Statement"])
     app.include_router(estratto_conto.router, prefix="/api/estratto-conto-movimenti", tags=["Estratto Conto"])
@@ -144,6 +144,7 @@ def _register_bank(app: FastAPI):
     app.include_router(assegni.router, prefix="/api/assegni", tags=["Assegni"])
     app.include_router(assegni_learning.router, prefix="/api/assegni/learning", tags=["Assegni Learning"])
     app.include_router(nexi_carta.router, prefix="/api/nexi", tags=["Carta Nexi"])
+    app.include_router(sumup.router, prefix="/api/sumup", tags=["SumUp"])
     # pos_accredito (router HTTP): smontato (audit 14/07/2026, piano residuo
     # op.6) — sostituito funzionalmente da pos_corrispettivi_check, zero
     # chiamanti verificati. app/utils/pos_accredito.py (le funzioni di calcolo,

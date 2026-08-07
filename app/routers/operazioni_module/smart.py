@@ -133,15 +133,33 @@ async def riconcilia_automatico(
         paypal = {"riconciliati": 0, "ambigui": 0}
         errori.append({"motore": "paypal", "error": str(exc)})
 
+    try:
+        from app.services.reconciliation_orchestrator import (
+            riconcilia_documenti_e_pagamenti,
+        )
+        documenti = await riconcilia_documenti_e_pagamenti(db)
+    except Exception as exc:
+        logger.exception("Errore orchestratore documenti/pagamenti")
+        documenti = {}
+        errori.append({"motore": "documenti_pagamenti", "error": str(exc)})
+
     riconciliati_canonici = int(banca.get("totale_riconciliati") or 0) + int(
         paypal.get("riconciliati") or 0
     )
+    riconciliati_documenti = (
+        int((documenti.get("assegni_intenti") or {}).get("collegati") or 0)
+        + int((documenti.get("assegni_auto") or {}).get("fatture_aggiornate") or 0)
+        + int((documenti.get("bonifici_pdf") or {}).get("associati") or 0)
+        + int((documenti.get("salari") or {}).get("bonifici_associati") or 0)
+        + int((documenti.get("f24") or {}).get("movimenti_associati") or 0)
+    )
     return {
         "success": not errori,
-        "riconciliati": riconciliati_canonici,
+        "riconciliati": riconciliati_canonici + riconciliati_documenti,
         "analizzati": int(banca.get("movimenti_analizzati") or 0),
         "banca": banca,
         "paypal": paypal,
+        "documenti_pagamenti": documenti,
         "errori": errori[:10],
     }
 

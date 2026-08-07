@@ -1,5 +1,8 @@
 """Regressioni: PDF stipendio e banca non devono produrre match casuali."""
 from datetime import datetime
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 from app.routers.bonifici_module.pdf_parser import (
     extract_filename_metadata,
@@ -9,6 +12,12 @@ from app.routers.bonifici_module.riconciliazione import (
     trova_movimento_bancario_univoco,
 )
 from app.services.bonifici_pdf_ingest import seleziona_salario_univoco
+from app.services.payment_document_links import (
+    collega_bonifico_fatture,
+    payment_document_ref,
+    seleziona_fatture_bonifico,
+    valuta_fattura_bonifico,
+)
 
 
 def test_nome_e_mese_pagamento_dal_filename_nei_due_ordini():
@@ -222,3 +231,63 @@ def test_match_banca_ambiguo_non_riconcilia():
          "descrizione": "BONIFICO MARIO ROSSI"},
     ]
     assert trova_movimento_bancario_univoco(bonifico, movimenti, set()) is None
+
+
+def test_fattura_bonifico_richiede_numero_importo_e_fornitore():
+    bonifico = {
+        "importo": 120.50,
+        "beneficiario": {"nome": "FORNITORE TEST SRL"},
+        "causale": "Pagamento fattura FT-88 Fornitore Test Srl",
+    }
+    fattura = {
+        "id": "f1", "invoice_number": "FT-88", "total_amount": 120.50,
+        "supplier_name": "FORNITORE TEST SRL",
+    }
+    assert valuta_fattura_bonifico(bonifico, fattura)["compatibile"] is True
+    assert valuta_fattura_bonifico({**bonifico, "importo": 120.51}, fattura)["compatibile"] is False
+    assert valuta_fattura_bonifico({**bonifico, "causale": "Pagamento fornitore"}, fattura)["compatibile"] is False
+
+
+def test_distinta_bonifico_associa_solo_tutti_i_numeri_con_somma_esatta():
+    bonifico = {
+        "importo": 300.00,
+        "beneficiario": {"nome": "LEASYS ITALIA SPA"},
+        "causale": "FAVORE LEASYS ITALIA SPA FATTURE 202610239916 202610430648",
+    }
+    fatture = [
+        {"id": "f1", "invoice_number": "202610239916", "total_amount": 100.00,
+         "supplier_name": "LEASYS ITALIA SPA"},
+        {"id": "f2", "invoice_number": "202610430648", "total_amount": 200.00,
+         "supplier_name": "LEASYS ITALIA SPA"},
+        {"id": "f3", "invoice_number": "NON-CITATA", "total_amount": 300.00,
+         "supplier_name": "LEASYS ITALIA SPA"},
+    ]
+    assert [item["id"] for item in seleziona_fatture_bonifico(bonifico, fatture)] == ["f1", "f2"]
+    assert seleziona_fatture_bonifico({**bonifico, "importo": 299.99}, fatture) == []
+
+
+def test_documento_pagamento_e_un_riferimento_non_una_copia_pdf():
+    riferimento = payment_document_ref({
+        "id": "b1", "source_file": "bonifico.pdf", "document_hash": "abc",
+        "data": "2026-07-17", "importo": 42.62, "pdf_data": "BASE64",
+    })
+    assert riferimento["view_url"] == "/api/archivio-bonifici/transfers/b1/pdf"
+    assert riferimento["sha256"] == "abc"
+    assert "pdf_data" not in riferimento
+
+
+def test_collegamento_scrive_id_su_bonifico_e_fattura_senza_copiare_pdf():
+    db = SimpleNamespace(
+        bonifici_transfers=MagicMock(update_one=AsyncMock()),
+        invoices=MagicMock(update_one=AsyncMock()),
+        estratto_conto_movimenti=MagicMock(update_one=AsyncMock()),
+        prima_nota_banca=MagicMock(update_many=AsyncMock()),
+    )
+    transfer = {"id": "b1", "importo": 10, "pdf_data": "NON_COPIARE"}
+    asyncio.run(collega_bonifico_fatture(db, transfer, [{"id": "f1"}], auto=True))
+
+    transfer_update = db.bonifici_transfers.update_one.await_args.args[1]
+    invoice_update = db.invoices.update_one.await_args.args[1]
+    assert transfer_update["$set"]["fattura_ids"] == ["f1"]
+    assert invoice_update["$addToSet"]["payment_document_ids"] == "b1"
+    assert "pdf_data" not in str(invoice_update)

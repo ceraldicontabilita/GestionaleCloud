@@ -331,6 +331,28 @@ def test_attendi_banca_sposta_la_fattura_senza_creare_pagamento(monkeypatch):
     assert fattura["pagato"] is False
 
 
+def test_attesa_banca_puo_tornare_da_decidere_senza_creare_pagamento(monkeypatch):
+    db = _FakeDb()
+    db["invoices"].docs = [_fattura(
+        metodo_pagamento_previsto="banca",
+        metodo_pagamento_override_source="operatore_prima_nota",
+        stato_pagamento="in_attesa_banca",
+        pagato=False,
+        paid=False,
+    )]
+    _patch_db(monkeypatch, db)
+
+    res = _run(sync_mod.riporta_fattura_da_decidere({"fattura_id": "fatt-1"}))
+
+    assert res["success"] is True
+    assert res["stato"] == "da_decidere"
+    assert db["prima_nota_banca"].docs == []
+    fattura = db["invoices"].docs[0]
+    assert fattura["metodo_pagamento_previsto"] == "da_decidere"
+    assert fattura["stato_finanziario"] == "aperta_da_decidere"
+    assert fattura["pagato"] is False
+
+
 def test_attendi_banca_non_riapre_una_fattura_gia_registrata(monkeypatch):
     db = _FakeDb()
     db["invoices"].docs = [_fattura()]

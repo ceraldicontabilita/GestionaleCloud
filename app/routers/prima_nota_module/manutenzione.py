@@ -2386,7 +2386,8 @@ async def migra_pos_accrediti_reali(
        vendita (accumulo circuiti, quadratura al centesimo)."""
     from app.services.scritture_contabili import (
         chiusura_pos_del_giorno, riconcilia_accredito_pos_ec,
-        query_accrediti_pos_ec, scrivi_movimento)
+        query_accrediti_pos_ec, raggruppa_accrediti_pos_per_giorno,
+        scrivi_movimento)
 
     db = Database.get_db()
     now = datetime.now(timezone.utc).isoformat()
@@ -2400,13 +2401,42 @@ async def migra_pos_accrediti_reali(
         per_giorno[c["data"]] = per_giorno.get(c["data"], 0) + float(
             c.get("pagato_elettronico") or c.get("pagato_pos") or 0)
 
+    accrediti_pos = await db["estratto_conto_movimenti"].find(
+        query_accrediti_pos_ec(anno), {"_id": 0}
+    ).to_list(20000)
+    pos_ec_per_giorno = raggruppa_accrediti_pos_per_giorno(accrediti_pos)
+
     aggiornate_cassa = convertite_banca = create_banca = rimosse_doppie = 0
     tot_trasferimenti = 0.0
     for giorno, elettronico in sorted(per_giorno.items()):
         chiusura = await chiusura_pos_del_giorno(db, giorno)
-        quota = chiusura if chiusura is not None else round(elettronico, 2)
-        fonte = "chiusura_manuale" if chiusura is not None else "xml"
+        evidenza_ec = pos_ec_per_giorno.get(giorno) or {}
+        quota = (
+            chiusura if chiusura is not None
+            else round(float(evidenza_ec.get("totale") or 0), 2)
+        )
+        fonte = (
+            "chiusura_manuale" if chiusura is not None
+            else "estratto_conto_backfill"
+        )
         if quota <= 0:
+            if not dry_run:
+                motivo = "pos_xml_non_ammesso_senza_fonte_operativa"
+                filtro_xml = {
+                    "data": giorno,
+                    "quota_pos_fonte": "xml",
+                    "status": {"$nin": ["deleted", "archived"]},
+                }
+                await db["prima_nota_cassa"].update_many(
+                    filtro_xml,
+                    {"$set": {"status": "archived", "deleted": True,
+                              "deleted_reason": motivo, "deleted_at": now}},
+                )
+                await db["prima_nota_banca"].update_many(
+                    filtro_xml,
+                    {"$set": {"status": "archived", "deleted": True,
+                              "deleted_reason": motivo, "deleted_at": now}},
+                )
             continue
         tot_trasferimenti += quota
         trasferimento_id = str(uuid.uuid4())
@@ -2439,7 +2469,7 @@ async def migra_pos_accrediti_reali(
                 await scrivi_movimento(db, "cassa", {
                     "data": giorno, "tipo": "uscita", "importo": quota,
                     "descrizione": f"POS {giorno} → Banca"
-                                   + (" (chiusura terminale)" if fonte == "chiusura_manuale" else " (da XML)"),
+                                   + (" (chiusura terminale)" if fonte == "chiusura_manuale" else " (recupero estratto conto)"),
                     "categoria": "POS Verso Banca", "source": "corrispettivo_import",
                     "quota_pos_fonte": fonte, "trasferimento_id": trasferimento_id,
                 })
@@ -2479,7 +2509,7 @@ async def migra_pos_accrediti_reali(
             await scrivi_movimento(db, "banca", {
                 "data": giorno, "tipo": "entrata", "importo": quota,
                 "descrizione": f"POS {giorno} da cassa"
-                               + (" (chiusura terminale)" if fonte == "chiusura_manuale" else " (da XML)"),
+                               + (" (chiusura terminale)" if fonte == "chiusura_manuale" else " (recupero estratto conto)"),
                 "categoria": "Corrispettivi POS", "source": "trasferimento_pos",
                 "quota_pos_fonte": fonte, "giorno_vendita": giorno,
                 "trasferimento_id": trasferimento_id, "riconciliato": False,

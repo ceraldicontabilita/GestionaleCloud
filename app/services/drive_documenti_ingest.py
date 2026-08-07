@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 CANALI: Dict[str, Dict[str, Any]] = {
     "bonifico": {
         "category": "bonifico",
-        "label": "Bonifici stipendi",
+        "label": "Bonifici effettuati",
         "folder": lambda s: s.GOOGLE_DRIVE_BONIFICI_FOLDER_ID or s.DRIVE_FOLDER_BONIFICI_ID or get_folder_id("bonifico"),
         "enable": lambda s: s.ENABLE_DRIVE_BONIFICI_SYNC,
     },

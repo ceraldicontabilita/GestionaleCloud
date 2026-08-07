@@ -68,6 +68,7 @@ export default function CoerenzaPOSCorrispettivi() {
   const [riepilogoMensile, setRiepilogoMensile] = useState(null);
   // Nuova logica v2: controllo a 2 fasi (aprile 2026)
   const [dueFasi, setDueFasi] = useState(null);
+  const [sumup, setSumup] = useState(null);
   const [tab, setTab] = useState('due_fasi');  // nuovo tab default
   const [err, setErr] = useState('');
 
@@ -79,14 +80,18 @@ export default function CoerenzaPOSCorrispettivi() {
     setLoading(true);
     setErr('');
     try {
-      const [coerenzaRes, mensileRes, dueFasiRes] = await Promise.all([
+      const [coerenzaRes, mensileRes, dueFasiRes, sumupRes] = await Promise.all([
         api.get(`/api/pos-corrispettivi/verifica-coerenza?anno=${anno}`),
         api.get(`/api/pos-corrispettivi/riepilogo-mensile?anno=${anno}`),
         api.get(`/api/pos-corrispettivi/controllo-due-fasi?anno=${anno}`),
+        api.get(`/api/sumup/riepilogo?anno=${anno}`).catch(error => ({
+          data: { configured: false, detail: error.response?.data?.detail || error.message },
+        })),
       ]);
       setDati(coerenzaRes.data);
       setRiepilogoMensile(mensileRes.data);
       setDueFasi(dueFasiRes.data);
+      setSumup(sumupRes.data);
     } catch (e) {
       setErr('Errore caricamento: ' + (e.response?.data?.detail || e.message));
     } finally {
@@ -162,7 +167,7 @@ export default function CoerenzaPOSCorrispettivi() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
+            gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5, 1fr)',
             gap: 12,
             marginBottom: 20,
           }}
@@ -190,6 +195,13 @@ export default function CoerenzaPOSCorrispettivi() {
             label="Saldo da verificare"
             value={formatEuro(statsPos.fase2_saldo_finale || 0)}
             accent={Math.abs(statsPos.fase2_saldo_finale || 0) > 0.01 ? 'danger' : 'success'}
+          />
+          <StatCard
+            icon={<CreditCard size={18} />}
+            label="Venduto SumUp reale"
+            value={sumup?.configured ? formatEuro(sumup.totale_venduto || 0) : 'Non configurato'}
+            subtext={sumup?.configured ? `${sumup.numero_transazioni || 0} transazioni riuscite` : (sumup?.detail || 'Credenziali assenti')}
+            accent={sumup?.configured ? 'info' : 'warning'}
           />
         </div>
       )}

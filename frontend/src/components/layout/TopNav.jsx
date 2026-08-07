@@ -604,7 +604,7 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
           </div>
 
           <a
-            href="/dashboard-relazionale"
+            href="/"
             onClick={() => setOpen(false)}
             style={{
               display: 'block',
@@ -621,7 +621,7 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
               borderTop: `1px solid ${COLORS.gray[100]}`,
             }}
           >
-            Apri Dashboard Relazionale
+            Apri Dashboard
           </a>
         </div>
       )}

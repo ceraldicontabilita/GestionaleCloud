@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1064 endpoint** in **111 gruppi**.
+> Totale **1073 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 668 · ext esterni = 89 · — da verificare = 307
+**Riepilogo uso:** ✓ frontend = 651 · ext esterni = 89 · — da verificare = 333
 
 ## AI Parser  (11)
 
@@ -536,14 +536,14 @@
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| GET | `/api/document-ai/classified-documents-stats` | ✓ | document_ai |
+| GET | `/api/document-ai/classified-documents-stats` | — | document_ai |
 | GET | `/api/document-ai/document-types` | — | document_ai |
-| POST | `/api/document-ai/extract` | ✓ | document_ai |
-| POST | `/api/document-ai/extract-base64` | ✓ | document_ai |
-| POST | `/api/document-ai/extract-text-only` | ✓ | document_ai |
-| GET | `/api/document-ai/extracted-documents` | ✓ | document_ai |
-| DELETE | `/api/document-ai/extracted-documents/{doc_id}` | ✓ | document_ai |
-| POST | `/api/document-ai/process-all-classified` | ✓ | document_ai |
+| POST | `/api/document-ai/extract` | — | document_ai |
+| POST | `/api/document-ai/extract-base64` | — | document_ai |
+| POST | `/api/document-ai/extract-text-only` | — | document_ai |
+| GET | `/api/document-ai/extracted-documents` | — | document_ai |
+| DELETE | `/api/document-ai/extracted-documents/{doc_id}` | — | document_ai |
+| POST | `/api/document-ai/process-all-classified` | — | document_ai |
 | POST | `/api/document-ai/process-classified-email` | — | document_ai |
 | POST | `/api/document-ai/reprocess-and-save` | — | document_ai |
 
@@ -555,15 +555,15 @@
 | GET | `/api/documenti/categorie` | — | documenti |
 | GET | `/api/documenti/documento/{doc_id}` | ✓ | documenti |
 | DELETE | `/api/documenti/documento/{doc_id}` | ✓ | documenti |
-| POST | `/api/documenti/documento/{doc_id}/annulla-processamento` | ✓ | documenti |
-| POST | `/api/documenti/documento/{doc_id}/cambia-categoria` | ✓ | documenti |
+| POST | `/api/documenti/documento/{doc_id}/annulla-processamento` | — | documenti |
+| POST | `/api/documenti/documento/{doc_id}/cambia-categoria` | — | documenti |
 | GET | `/api/documenti/documento/{doc_id}/download` | ✓ | documenti |
-| POST | `/api/documenti/documento/{doc_id}/processa` | ✓ | documenti |
+| POST | `/api/documenti/documento/{doc_id}/processa` | — | documenti |
 | GET | `/api/documenti/drive/catalog` | ✓ | documenti |
 | POST | `/api/documenti/drive/sync` | ✓ | documenti |
 | POST | `/api/documenti/elimina-processati` | — | documenti |
 | GET | `/api/documenti/lista` | ✓ | documenti |
-| GET | `/api/documenti/lock-status` | ✓ | documenti |
+| GET | `/api/documenti/lock-status` | — | documenti |
 | POST | `/api/documenti/monitor/start` | — | documenti |
 | GET | `/api/documenti/monitor/status` | — | documenti |
 | POST | `/api/documenti/monitor/stop` | — | documenti |
@@ -572,12 +572,12 @@
 | POST | `/api/documenti/processa-tutti` | — | documenti |
 | POST | `/api/documenti/reimporta-da-filesystem` | — | documenti |
 | POST | `/api/documenti/ricategorizza-documenti` | — | documenti |
-| POST | `/api/documenti/scarica-da-email` | ✓ | documenti |
-| GET | `/api/documenti/statistiche` | ✓ | documenti |
+| POST | `/api/documenti/scarica-da-email` | — | documenti |
+| GET | `/api/documenti/statistiche` | — | documenti |
 | POST | `/api/documenti/sync-estratti-bnl` | — | documenti |
 | POST | `/api/documenti/sync-estratti-conto` | — | documenti |
 | POST | `/api/documenti/sync-f24-automatico` | ✓ | documenti |
-| GET | `/api/documenti/task/{task_id}` | ✓ | documenti |
+| GET | `/api/documenti/task/{task_id}` | — | documenti |
 | GET | `/api/documenti/telegram/status` | — | documenti |
 | POST | `/api/documenti/telegram/test` | — | documenti |
 | GET | `/api/documenti/ultimo-sync` | — | documenti |
@@ -589,7 +589,7 @@
 |---|---|:-:|---|
 | POST | `/api/documenti-non-associati/associa` | ✓ | documenti_non_associati |
 | GET | `/api/documenti-non-associati/associati-di-recente` | ✓ | documenti_non_associati |
-| GET | `/api/documenti-non-associati/categorie-mittente` | ✓ | documenti_non_associati |
+| GET | `/api/documenti-non-associati/categorie-mittente` | — | documenti_non_associati |
 | GET | `/api/documenti-non-associati/collezioni-disponibili` | ✓ | documenti_non_associati |
 | POST | `/api/documenti-non-associati/de-associa` | ✓ | documenti_non_associati |
 | GET | `/api/documenti-non-associati/lista` | ✓ | documenti_non_associati |
@@ -602,7 +602,7 @@
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/documenti-fiscali/lista` | — | documenti_fiscali |
-| POST | `/api/documenti-fiscali/upload` | ✓ | documenti_fiscali |
+| POST | `/api/documenti-fiscali/upload` | — | documenti_fiscali |
 
 ## Documents Inbox  (5)
 
@@ -813,7 +813,7 @@
 | GET | `/api/fatture-estere/da-verificare` | ✓ | fatture_estera_verifica |
 | POST | `/api/fatture-estere/{fattura_id}/verifica` | ✓ | fatture_estera_verifica |
 
-## Fatture Ricevute  (23)
+## Fatture Ricevute  (24)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -827,6 +827,7 @@
 | POST | `/api/fatture-ricevute/export-selezione` | ✓ | fatture_module.export_selezione |
 | GET | `/api/fatture-ricevute/fattura/{fattura_id}` | ✓ | fatture_module.crud |
 | PUT | `/api/fatture-ricevute/fattura/{fattura_id}` | ✓ | fatture_module.crud |
+| GET | `/api/fatture-ricevute/fattura/{fattura_id}/documenti-pagamento` | ✓ | fatture_module.crud |
 | GET | `/api/fatture-ricevute/fattura/{fattura_id}/pdf/{allegato_id}` | ✓ | fatture_module.crud |
 | GET | `/api/fatture-ricevute/fattura/{fattura_id}/storia` | ✓ | fatture_module.crud |
 | GET | `/api/fatture-ricevute/fattura/{fattura_id}/view-assoinvoice` | ✓ | fatture_module.crud |
@@ -1170,9 +1171,9 @@
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| GET | `/api/partite-aperte/lista` | ✓ | partite_aperte_api |
+| GET | `/api/partite-aperte/lista` | — | partite_aperte_api |
 | GET | `/api/partite-aperte/scadute` | — | partite_aperte_api |
-| GET | `/api/partite-aperte/stats` | ✓ | partite_aperte_api |
+| GET | `/api/partite-aperte/stats` | — | partite_aperte_api |
 
 ## PayPal  (16)
 
@@ -1246,7 +1247,7 @@
 | GET | `/api/previsioni-acquisti/prodotti` | — | previsioni_acquisti |
 | GET | `/api/previsioni-acquisti/statistiche` | ✓ | previsioni_acquisti |
 
-## Prima Nota  (79)
+## Prima Nota  (80)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1306,6 +1307,7 @@
 | POST | `/api/prima-nota/provvisori/conferma` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/conferma-divisione` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/conferma-multipla` | ✓ | prima_nota_module.sync |
+| POST | `/api/prima-nota/provvisori/da-decidere` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/pulizia-pre-anno` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/recalculate-balances` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/regenerate-from-invoices` | — | prima_nota_module.manutenzione |
@@ -1418,7 +1420,7 @@
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| GET | `/api/riconciliazione/stats` | ✓ | riconciliazione_stats_api |
+| GET | `/api/riconciliazione/stats` | — | riconciliazione_stats_api |
 
 ## Ritenute  (3)
 
@@ -1472,16 +1474,28 @@
 | PUT | `/api/settings` | ✓ | settings |
 | GET | `/api/settings/logo` | — | settings |
 | POST | `/api/settings/logo` | — | settings |
-| GET | `/api/settings/user-preferences` | ✓ | settings |
-| PUT | `/api/settings/user-preferences` | ✓ | settings |
+| GET | `/api/settings/user-preferences` | — | settings |
+| PUT | `/api/settings/user-preferences` | — | settings |
 
-## SumUp POS  (5)
+## SumUp  (6)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/sumup/bonifica-pos-xml` | — | sumup |
 | POST | `/api/sumup/bonifica-pos-xml` | — | sumup |
 | POST | `/api/sumup/normalizza-descrizioni-pos` | — | sumup |
+| GET | `/api/sumup/riepilogo` | ✓ | sumup |
+| POST | `/api/sumup/sincronizza` | — | sumup |
+| GET | `/api/sumup/stato` | — | sumup |
+
+## SumUp POS  (6)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/sumup/bonifica-pos-xml` | — | sumup |
+| POST | `/api/sumup/bonifica-pos-xml` | — | sumup |
+| POST | `/api/sumup/normalizza-descrizioni-pos` | — | sumup |
+| GET | `/api/sumup/riepilogo` | ✓ | sumup |
 | POST | `/api/sumup/sincronizza` | — | sumup |
 | GET | `/api/sumup/stato` | — | sumup |
 

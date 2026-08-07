@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import uuid
 
 from app.database import Database, Collections
+from app.services.payment_document_links import payment_document_ref
 from .common import (
     entra_in_prima_nota,
     COLLECTION_PRIMA_NOTA_BANCA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA,
@@ -173,6 +174,48 @@ async def _arricchisci_riconciliazione(db, movimenti: list) -> None:
         }
 
 
+async def _arricchisci_documenti_pagamento(db, movimenti: list) -> None:
+    """Espone i PDF dei bonifici collegati con due query batch, senza N+1."""
+    invoice_ids = list({m.get("fattura_id") for m in movimenti if m.get("fattura_id")})
+    invoice_to_transfer_ids: Dict[str, set] = {}
+    if invoice_ids:
+        invoices = await db[Collections.INVOICES].find(
+            {"$or": [{"id": {"$in": invoice_ids}}, {"invoice_key": {"$in": invoice_ids}}]},
+            {"_id": 0, "id": 1, "invoice_key": 1, "bonifico_id": 1,
+             "bonifico_ids": 1, "payment_document_ids": 1},
+        ).to_list(len(invoice_ids))
+        for invoice in invoices:
+            ids = set(invoice.get("bonifico_ids") or []) | set(invoice.get("payment_document_ids") or [])
+            if invoice.get("bonifico_id"):
+                ids.add(invoice["bonifico_id"])
+            for key in (invoice.get("id"), invoice.get("invoice_key")):
+                if key:
+                    invoice_to_transfer_ids[key] = ids
+
+    all_ids = set()
+    for movement in movimenti:
+        all_ids.update(movement.get("payment_document_ids") or [])
+        direct = movement.get("bonifico_transfer_id")
+        if direct:
+            all_ids.add(direct)
+        all_ids.update(invoice_to_transfer_ids.get(movement.get("fattura_id"), set()))
+    if not all_ids:
+        return
+    transfers = await db.bonifici_transfers.find(
+        {"id": {"$in": list(all_ids)}}, {"_id": 0, "pdf_data": 0}
+    ).to_list(len(all_ids))
+    refs = {transfer.get("id"): payment_document_ref(transfer) for transfer in transfers}
+    for movement in movimenti:
+        ids = set(movement.get("payment_document_ids") or [])
+        if movement.get("bonifico_transfer_id"):
+            ids.add(movement["bonifico_transfer_id"])
+        ids.update(invoice_to_transfer_ids.get(movement.get("fattura_id"), set()))
+        docs = [refs[item] for item in ids if item in refs]
+        if docs:
+            movement["documenti_pagamento"] = docs
+            movement["pagamento_documento"] = docs[0]
+
+
 async def list_prima_nota_banca(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=10000),
@@ -210,6 +253,7 @@ async def list_prima_nota_banca(
     movimenti = await db[COLLECTION_PRIMA_NOTA_BANCA].find(query, {"_id": 0}).sort("data", -1).skip(skip).limit(limit).to_list(limit)
     await arricchisci_movimenti_fattura(db, movimenti)
     await _arricchisci_riconciliazione(db, movimenti)
+    await _arricchisci_documenti_pagamento(db, movimenti)
 
     # §6.4: saldo tramite la funzione UNICA (segno/riporto/saldo finale uniformi)
     saldi = await aggrega_saldo_prima_nota(db, COLLECTION_PRIMA_NOTA_BANCA, query, anno)

@@ -714,18 +714,38 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
   };
 
   const badgeDocumento = mov => {
+    const pagamento = mov.pagamento_documento || mov.documenti_pagamento?.[0];
+    const pulsantePagamento = pagamento ? (
+      <button
+        type="button"
+        onClick={() => setDocumentView({
+          fetchUrl: pagamento.view_url,
+          title: `Pagamento ${pagamento.nome_file || mov.data || ''}`.trim(),
+          subtitle: `${pagamento.data || ''} · ${eur(pagamento.importo || 0)}`,
+        })}
+        title="Vedi PDF del pagamento"
+        aria-label="Vedi PDF del pagamento"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, background: VERDE, color: 'white', border: 'none', borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
+      >
+        <ReceiptText size={16} aria-hidden="true" /> Pagamento
+      </button>
+    ) : null;
     if (mov.fattura_id) {
       return (
-        <button
-          onClick={() => setFatturaView({ id: mov.fattura_id, numero: mov.numero_fattura })}
-          title="Vedi fattura"
-          aria-label={`Vedi fattura ${mov.numero_fattura || ''}`.trim()}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, background: '#3b82f6', color: 'white', border: 'none', borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
-        >
-          <FileText size={16} aria-hidden="true" /> Fattura
-        </button>
+        <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setFatturaView({ id: mov.fattura_id, numero: mov.numero_fattura })}
+            title="Vedi fattura"
+            aria-label={`Vedi fattura ${mov.numero_fattura || ''}`.trim()}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, background: '#3b82f6', color: 'white', border: 'none', borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+          >
+            <FileText size={16} aria-hidden="true" /> Fattura
+          </button>
+          {pulsantePagamento}
+        </span>
       );
     }
+    if (pulsantePagamento) return pulsantePagamento;
     if (mov.corrispettivo_id || mov.xml_filename) {
       const href = mov.corrispettivo_id
         ? `/api/corrispettivi/${mov.corrispettivo_id}/view`
@@ -1042,7 +1062,9 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
       {documentView && (
         <DocumentViewerModal
           title={documentView.title}
+          subtitle={documentView.subtitle}
           src={documentView.src}
+          fetchUrl={documentView.fetchUrl}
           documentType="documento_fiscale"
           onClose={() => setDocumentView(null)}
         />
@@ -1185,6 +1207,27 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
         fattura_id: p.fattura_id,
       });
       setEsito(response.data?.message || 'Fattura spostata tra i pagamenti attesi in banca.');
+      await onRicarica();
+    } catch (e) {
+      setErroreRiga({
+        fatturaId: p.fattura_id,
+        messaggio: e.response?.data?.detail || e.response?.data?.message || e.message,
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const riportaDaDecidere = async p => {
+    setBusy(p.fattura_id);
+    setErrore('');
+    setErroreRiga(null);
+    setEsito('');
+    try {
+      const response = await api.post('/api/prima-nota/provvisori/da-decidere', {
+        fattura_id: p.fattura_id,
+      });
+      setEsito(response.data?.message || 'Fattura riportata in Da decidere.');
       await onRicarica();
     } catch (e) {
       setErroreRiga({
@@ -1393,7 +1436,7 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
         <div style={{ marginTop: 8 }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: '#64748b', margin: '4px 0 8px' }}>
             🏦 Pagamenti previsti in banca — in attesa dell'addebito in estratto conto ({attesaBanca.length}).
-            Si registrano da sole quando l'addebito arriva. Se la causale della banca non porta il numero fattura, puoi associarle tu.
+            Si registrano da sole quando l'addebito arriva. Puoi associare manualmente un movimento oppure correggere il metodo in qualsiasi momento.
           </div>
           {attesaBancaVisibili.map(p => (
             <div
@@ -1418,7 +1461,7 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
                   </span>
                 )}
               </span>
-              <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <b style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(p.importo)}</b>
                 <button
                   onClick={() => setFatturaView({ id: p.fattura_id, numero: p.fattura_numero })}
@@ -1435,7 +1478,33 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
                 >
                   Associa a mano
                 </button>
+                <button
+                  type="button"
+                  onClick={() => confermaCassa(p)}
+                  disabled={busy === p.fattura_id}
+                  title="Correggi il metodo della fattura e registrala in Cassa"
+                  style={{ minHeight: 40, background: VERDE, color: 'white', border: 0, borderRadius: 8, padding: '7px 11px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}
+                >
+                  💵 Sposta in Cassa
+                </button>
+                <button
+                  type="button"
+                  onClick={() => riportaDaDecidere(p)}
+                  disabled={busy === p.fattura_id}
+                  title="Rimuovi l'attesa automatica e scegli nuovamente il metodo"
+                  style={{ minHeight: 40, background: '#fff7ed', color: '#9a3412', border: '1px solid #fdba74', borderRadius: 8, padding: '7px 11px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}
+                >
+                  ↩ Da decidere
+                </button>
+                <span title="Il gestionale continua a riesaminare automaticamente l'estratto conto" style={{ color: '#1d4ed8', fontSize: 11.5, fontWeight: 700 }}>
+                  Controllo automatico attivo
+                </span>
               </span>
+              {erroreRiga?.fatturaId === p.fattura_id && (
+                <div role="alert" style={{ width: '100%', color: '#991b1b', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 10px', fontSize: 12.5 }}>
+                  {erroreRiga.messaggio}
+                </div>
+              )}
             </div>
           ))}
         </div>

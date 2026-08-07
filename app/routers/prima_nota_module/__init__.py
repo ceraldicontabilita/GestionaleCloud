@@ -40,7 +40,8 @@ from .sync import (
     sync_corrispettivi_anno, sync_fatture_pagate, get_corrispettivi_sync_status,
     import_prima_nota_batch, create_movimento_generico, collega_fatture_movimenti,
     sync_estratto_conto_to_banca, get_fatture_provvisorie, conferma_fattura_provvisoria,
-    imposta_fattura_in_attesa_banca, conferma_provvisorie_multiple,
+    imposta_fattura_in_attesa_banca, riporta_fattura_da_decidere,
+    conferma_provvisorie_multiple,
     conferma_divisione_provvisoria,
     sposta_scrittura_prima_nota,
     auto_conferma_provvisori_per_metodo, annulla_auto_conferma,
@@ -151,6 +152,7 @@ router.add_api_route("/provvisori", get_fatture_provvisorie, methods=["GET"])
 router.add_api_route("/provvisori/conferma", conferma_fattura_provvisoria, methods=["POST"])
 router.add_api_route("/provvisori/attendi-banca", imposta_fattura_in_attesa_banca, methods=["POST"])
 router.add_api_route("/provvisori/conferma-multipla", conferma_provvisorie_multiple, methods=["POST"])
+router.add_api_route("/provvisori/da-decidere", riporta_fattura_da_decidere, methods=["POST"])
 from .sync import sposta_fatture_cassa_pagate_in_banca
 router.add_api_route("/sposta-cassa-pagate-in-banca", sposta_fatture_cassa_pagate_in_banca, methods=["POST"])
 router.add_api_route("/provvisori/conferma-divisione", conferma_divisione_provvisoria, methods=["POST"])

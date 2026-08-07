@@ -67,7 +67,6 @@ const router = createBrowserRouter([
       // Route canoniche: ogni hub gestisce internamente le proprie sottosezioni.
       { index: true, element: <LazyPage><DashboardHub /></LazyPage> },
       { path: "dashboard/*", element: <LazyPage><DashboardHub /></LazyPage> },
-      { path: "dashboard-relazionale", element: <LazyPage><DashboardHub /></LazyPage> },
       { path: "rapido", element: <LazyPage><InserimentoRapido /></LazyPage> },
       { path: "fatture/import", element: <Navigate to="/documenti/import" replace /> },
       { path: "fatture/*", element: <LazyPage><FattureHub /></LazyPage> },
