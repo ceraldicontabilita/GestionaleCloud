@@ -9,6 +9,7 @@ import { PageLayout } from '../components/PageLayout';
 import { useHashState } from '../hooks/useHashState';
 import { Button, Badge, StatCard, Card, Tabs, Input, Select } from '../components/ds';
 import { Trash2, AlertTriangle, X, Loader2, CheckCircle2 } from 'lucide-react';
+import PannelloSumUp from '../components/PannelloSumUp';
 
 export default function Admin() {
   const isMobile = useIsMobile();
@@ -839,6 +840,7 @@ export default function Admin() {
 
           {/* Anno di importazione attivo — governa i canali Drive (fatture + corrispettivi) sotto */}
           <AnnoImportazioneCard />
+          <PannelloSumUp />
 
           {/* CARD GOOGLE DRIVE — import fatture */}
           <div data-testid="drive-fatture-card">
