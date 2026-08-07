@@ -526,3 +526,85 @@ async def analisi_righe_grezze_storiche(anno: Optional[int] = None) -> Dict[str,
         "nota": ("Fotografia in sola lettura: nessuna riga e' stata "
                  "modificata, spostata o cancellata."),
     }
+
+
+async def candidati_banca_per_fattura(fattura_id: str) -> Dict[str, Any]:
+    """Movimenti bancari che potrebbero essere il pagamento di questa fattura.
+
+    Il matching automatico e' volutamente severo: pretende importo al
+    centesimo, numero fattura nella causale e nome fornitore. Quando manca una
+    di quelle prove non associa, ed e' giusto — ma l'utente resta a guardare
+    una lista che non puo' toccare.
+
+    Qui le prove si mostrano invece di pretenderle: ogni candidato arriva con
+    scritto cosa combacia e cosa no. La decisione resta all'utente, che di
+    quella fattura sa cose che il gestionale non sa.
+    """
+    from app.routers.invoices.fatture_upload import (
+        _finestra_pagamento,
+        _token_identita_fornitore,
+    )
+    from app.services.bank_evidence import filtro_solo_evidenza_ufficiale
+
+    db = Database.get_db()
+
+    fattura = await db["invoices"].find_one(
+        {"id": fattura_id},
+        {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1,
+         "supplier_name": 1, "total_amount": 1},
+    )
+    if not fattura:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+
+    importo = float(fattura.get("total_amount") or 0)
+    if importo <= 0:
+        return {"fattura": fattura, "candidati": [], "totale": 0}
+
+    # Tolleranza volutamente larga: serve a MOSTRARE, non ad associare da solo.
+    # L'associazione la conferma una persona, e la sua conferma e' la prova.
+    conds: Dict[str, Any] = {
+        "tipo": "uscita",
+        "abbinato": {"$ne": True},
+        "$and": [
+            filtro_solo_evidenza_ufficiale(),
+            {"riconciliato": {"$ne": True}},
+            {"$or": [
+                {"importo": {"$gte": importo - 0.05, "$lte": importo + 0.05}},
+                {"importo": {"$gte": -importo - 0.05, "$lte": -importo + 0.05}},
+            ]},
+        ],
+    }
+    finestra = _finestra_pagamento(str(fattura.get("invoice_date") or "")[:10])
+    if finestra:
+        conds["data"] = {"$gte": finestra[0], "$lte": finestra[1]}
+
+    movimenti = await db["estratto_conto_movimenti"].find(
+        conds,
+        {"_id": 0, "id": 1, "data": 1, "importo": 1, "tipo": 1,
+         "descrizione": 1, "descrizione_originale": 1, "categoria": 1},
+    ).sort("data", 1).limit(50).to_list(50)
+
+    numero = str(fattura.get("invoice_number") or "").strip().upper()
+    token_fornitore = _token_identita_fornitore(fattura.get("supplier_name") or "")
+
+    candidati = []
+    for m in movimenti:
+        testo = f"{m.get('descrizione') or ''} {m.get('descrizione_originale') or ''}".upper()
+        prove = []
+        if abs(abs(float(m.get("importo") or 0)) - importo) < 0.005:
+            prove.append("importo esatto")
+        if numero and numero in testo:
+            prove.append("numero fattura nella causale")
+        if token_fornitore and any(t in testo for t in token_fornitore):
+            prove.append("nome fornitore nella causale")
+        candidati.append({**m, "prove": prove, "forza": len(prove)})
+
+    candidati.sort(key=lambda c: (-c["forza"], str(c.get("data") or "")))
+
+    return {
+        "fattura": fattura,
+        "candidati": candidati,
+        "totale": len(candidati),
+        "nota": ("L'associazione la confermi tu: il gestionale mostra cosa "
+                 "combacia, non decide al posto tuo."),
+    }

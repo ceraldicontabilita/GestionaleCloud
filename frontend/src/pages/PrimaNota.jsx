@@ -5,6 +5,7 @@ import { formatEuroD, formatDateIT, useIsMobile } from '../lib/utils';
 import { useHashState } from '../hooks/useHashState';
 import ModalFattura from '../components/ModalFattura';
 import InAttesaDocumento from '../components/InAttesaDocumento';
+import AssociaMovimentoBanca from '../components/AssociaMovimentoBanca';
 import DocumentViewerModal from '../components/DocumentViewerModal';
 import FinanziamentoSoci from './FinanziamentoSoci';
 import { useConfirm } from '../components/ui/ConfirmDialog';
@@ -1066,6 +1067,7 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
   // fattura per controllarla prima di confermare cassa/banca — a differenza
   // del Registro (badgeDocumento), qui non c'era nessun modo di vederla.
   const [fatturaView, setFatturaView] = useState(null);
+  const [associaFattura, setAssociaFattura] = useState(null);
   const filtriFattura = {
     numeroFattura: fNumeroFattura,
     data: fDataFattura,
@@ -1290,7 +1292,7 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
         <div style={{ marginTop: 8 }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: '#64748b', margin: '4px 0 8px' }}>
             🏦 Pagamenti previsti in banca — in attesa dell'addebito in estratto conto ({attesaBanca.length}).
-            Si registrano da sole alla riconciliazione: nessuna azione richiesta.
+            Si registrano da sole quando l'addebito arriva. Se la causale della banca non porta il numero fattura, puoi associarle tu.
           </div>
           {attesaBancaVisibili.map(p => (
             <div
@@ -1325,12 +1327,13 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
                 >
                   <Eye size={18} />
                 </button>
-                <span
-                  title="Il gestionale riesamina automaticamente l'estratto conto; non devi cercare il movimento a mano"
-                  style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', background: '#eff6ff', border: '1px solid #93c5fd', color: '#1d4ed8', borderRadius: 7, padding: '4px 10px', fontSize: 11.5, fontWeight: 700 }}
+                <button
+                  onClick={() => setAssociaFattura(p)}
+                  title="Scegli tu il movimento bancario: il controllo automatico non associa senza numero fattura in causale"
+                  style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', background: '#eff6ff', border: '1px solid #93c5fd', color: '#1d4ed8', borderRadius: 7, padding: '4px 12px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}
                 >
-                  Controllo automatico attivo
-                </span>
+                  Associa a mano
+                </button>
               </span>
             </div>
           ))}
@@ -1372,6 +1375,14 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
             </div>
           </div>
         </div>
+      )}
+
+      {associaFattura && (
+        <AssociaMovimentoBanca
+          fattura={associaFattura}
+          onChiudi={() => setAssociaFattura(null)}
+          onAssociato={() => window.location.reload()}
+        />
       )}
 
       {fatturaView && (

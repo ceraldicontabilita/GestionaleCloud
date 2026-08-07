@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1062 endpoint** in **111 gruppi**.
+> Totale **1063 endpoint** in **111 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 666 · ext esterni = 90 · — da verificare = 306
+**Riepilogo uso:** ✓ frontend = 667 · ext esterni = 90 · — da verificare = 306
 
 ## AI Parser  (11)
 
@@ -1246,7 +1246,7 @@
 | GET | `/api/previsioni-acquisti/prodotti` | — | previsioni_acquisti |
 | GET | `/api/previsioni-acquisti/statistiche` | ✓ | previsioni_acquisti |
 
-## Prima Nota  (77)
+## Prima Nota  (78)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1256,6 +1256,7 @@
 | GET | `/api/prima-nota/banca` | ✓ | prima_nota_module.banca |
 | POST | `/api/prima-nota/banca` | ✓ | prima_nota_module.banca |
 | GET | `/api/prima-nota/banca/analisi-righe-grezze` | ✓ | prima_nota_module.banca |
+| GET | `/api/prima-nota/banca/candidati-per-fattura` | ✓ | prima_nota_module.banca |
 | DELETE | `/api/prima-nota/banca/delete-all` | ✓ | prima_nota_module.banca |
 | DELETE | `/api/prima-nota/banca/delete-by-source/{source}` | ✓ | prima_nota_module.banca |
 | GET | `/api/prima-nota/banca/in-attesa-documento` | ✓ | prima_nota_module.banca |

@@ -255,7 +255,12 @@ describe('Fatture provvisorie in attesa banca', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Pagamento non registrato');
   });
 
-  it('non offre piu una registrazione bancaria forzata', () => {
+  it('permette di associare a mano ma mai di forzare un pagamento inventato', async () => {
+    // La riga era di sola lettura: si poteva solo guardare la fattura, che si
+    // vede gia' nella pagina Fatture. Ora si puo' scegliere il movimento vero.
+    // Resta vietato quello che era vietato prima: registrare un pagamento
+    // senza un addebito reale in estratto conto.
+    api.get.mockResolvedValue({ data: { fattura: {}, candidati: [], totale: 0 } });
     render(<Provvisori
       provvisori={[]}
       attesaBanca={[{
@@ -266,8 +271,13 @@ describe('Fatture provvisorie in attesa banca', () => {
     />);
 
     expect(screen.queryByRole('button', { name: /Forza banca/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Cerca movimento' })).not.toBeInTheDocument();
-    expect(screen.getByText('Controllo automatico attivo')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Associa a mano' }));
+
+    // I candidati arrivano dall'estratto conto: nessuna riga inventata.
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
+      '/api/prima-nota/banca/candidati-per-fattura?fattura_id=fatt-2'));
+    expect(await screen.findByText(/Nessun movimento compatibile/)).toBeInTheDocument();
   });
 
   it('riprocessa tutto lo storico aperto senza selezionare movimenti a mano', async () => {
