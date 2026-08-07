@@ -21,7 +21,9 @@ COLONNE = [
     ("IVA", "iva"),
     ("Totale", "importo_totale"),
     ("Stato", "stato"),
-    ("Metodo", "metodo_pagamento"),
+    # Il metodo REALE del pagamento, non il piano dell'XML (che per
+    # BIG FOOD diceva "misto" mentre la fattura era stata pagata in cassa).
+    ("Metodo", "metodo_pagamento_effettivo"),
 ]
 _CAMPI_NUMERICI = {"imponibile", "iva", "importo_totale"}
 
@@ -117,7 +119,7 @@ def _pdf(fatture: List[Dict[str, Any]]) -> BytesIO:
             _eur(f.get("iva")),
             _eur(f.get("importo_totale")),
             f.get("stato") or "",
-            f.get("metodo_pagamento") or "",
+            f.get("metodo_pagamento_effettivo") or "",
         ])
     righe.append([
         "", "", "TOTALE", "",
