@@ -1101,7 +1101,7 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
 }
 
 /* ------------------------------ provvisori ------------------------------ */
-export function Provvisori({ provvisori, attesaBanca = [], completezza = null, onRicarica }) {
+export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], completezza = null, onRicarica }) {
   const confirm = useConfirm();
   const [busy, setBusy] = useState(null);
   const [parziale, setParziale] = useState(null);
@@ -1126,6 +1126,9 @@ export function Provvisori({ provvisori, attesaBanca = [], completezza = null, o
   const [busyMultiplo, setBusyMultiplo] = useState(false);
   const [modalitaRapida, setModalitaRapida] = useState(false);
   const [assegnoEditor, setAssegnoEditor] = useState(null);
+  const [vista, setVista] = useState('da_lavorare');
+  const [paginaTutte, setPaginaTutte] = useState(1);
+  const righePerPagina = 100;
   const filtriFattura = {
     numeroFattura: fNumeroFattura,
     numeroDdt: fNumeroDdt,
@@ -1140,6 +1143,19 @@ export function Provvisori({ provvisori, attesaBanca = [], completezza = null, o
     () => filtraFattureProvvisorie(attesaBanca, filtriFattura),
     [attesaBanca, fNumeroFattura, fNumeroDdt, fDataFattura, fFornitore],
   );
+  const tutteFattureVisibili = useMemo(
+    () => filtraFattureProvvisorie(tutteFatture, filtriFattura),
+    [tutteFatture, fNumeroFattura, fNumeroDdt, fDataFattura, fFornitore],
+  );
+  const pagineTutte = Math.max(1, Math.ceil(tutteFattureVisibili.length / righePerPagina));
+  const paginaTutteSicura = Math.min(paginaTutte, pagineTutte);
+  const tutteFatturePagina = tutteFattureVisibili.slice(
+    (paginaTutteSicura - 1) * righePerPagina,
+    paginaTutteSicura * righePerPagina,
+  );
+  useEffect(() => {
+    setPaginaTutte(1);
+  }, [fNumeroFattura, fNumeroDdt, fDataFattura, fFornitore, tutteFatture.length]);
 
   const dettaglioDdt = p => {
     const riferimenti = p.dati_ddt || [];
@@ -1157,6 +1173,19 @@ export function Provvisori({ provvisori, attesaBanca = [], completezza = null, o
             </span>
           );
         })}
+      </div>
+    );
+  };
+
+  const dettaglioDdtCompleto = p => {
+    const dettaglio = dettaglioDdt(p);
+    if (dettaglio) return dettaglio;
+    const testo = p.stato_ddt === 'non_indicato_nell_xml'
+      ? 'DDT non indicato nella fattura XML'
+      : 'DDT non disponibile: XML originale non presente nel record';
+    return (
+      <div style={{ marginTop: 3, color: '#64748b', fontSize: 11.5 }}>
+        {testo}
       </div>
     );
   };
@@ -1486,11 +1515,32 @@ export function Provvisori({ provvisori, attesaBanca = [], completezza = null, o
             <> + <b>{completezza.escluse_cassa_banca} escluse dal flusso Cassa/Banca</b></>
           )}.
           <div style={{ color: '#475569', marginTop: 2 }}>
-            Le fatture gia registrate restano consultabili in Cassa o Banca e non vengono duplicate in Provvisoria.
+            Nessuna fattura viene nascosta: usa "Tutte le fatture" per vedere
+            posizione contabile, residuo e riferimenti DDT di ogni documento.
           </div>
         </div>
       )}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div role="tablist" aria-label="Vista fatture Prima Nota" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={vista === 'da_lavorare'}
+          onClick={() => setVista('da_lavorare')}
+          style={{ minHeight: 42, flex: '1 1 240px', border: `1px solid ${vista === 'da_lavorare' ? BLU : '#cbd5e1'}`, borderRadius: 9, background: vista === 'da_lavorare' ? BLU : 'white', color: vista === 'da_lavorare' ? 'white' : '#334155', fontWeight: 800, cursor: 'pointer' }}
+        >
+          Da lavorare ({provvisori.length + attesaBanca.length})
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={vista === 'tutte'}
+          onClick={() => setVista('tutte')}
+          style={{ minHeight: 42, flex: '1 1 240px', border: `1px solid ${vista === 'tutte' ? BLU : '#cbd5e1'}`, borderRadius: 9, background: vista === 'tutte' ? BLU : 'white', color: vista === 'tutte' ? 'white' : '#334155', fontWeight: 800, cursor: 'pointer' }}
+        >
+          Tutte le fatture ({tutteFatture.length})
+        </button>
+      </div>
+      {vista === 'da_lavorare' && <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button
           type="button"
           onClick={riprocessaEstratto}
@@ -1499,7 +1549,7 @@ export function Provvisori({ provvisori, attesaBanca = [], completezza = null, o
         >
           {busy === 'riprocessa-estratto' ? 'Riprocessamento…' : 'Riprocessa estratto conto'}
         </button>
-      </div>
+      </div>}
       <FiltriFattura
         numeroFattura={fNumeroFattura}
         numeroDdt={fNumeroDdt}
@@ -1510,6 +1560,73 @@ export function Provvisori({ provvisori, attesaBanca = [], completezza = null, o
         onData={setFDataFattura}
         onFornitore={setFFornitore}
       />
+      {vista === 'tutte' && (
+        <div data-testid="registro-completo-fatture" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap', color: '#475569', fontSize: 12.5 }}>
+            <span>
+              Mostrate <b>{tutteFattureVisibili.length}</b> fatture.
+              {tutteFattureVisibili.length > 0 && (
+                <> Righe {(paginaTutteSicura - 1) * righePerPagina + 1}-{Math.min(paginaTutteSicura * righePerPagina, tutteFattureVisibili.length)}.</>
+              )}
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <button type="button" aria-label="Prima pagina fatture" onClick={() => setPaginaTutte(1)} disabled={paginaTutteSicura === 1} style={{ minWidth: 40, minHeight: 38, border: '1px solid #cbd5e1', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&laquo;</button>
+              <button type="button" aria-label="Pagina fatture precedente" onClick={() => setPaginaTutte(p => Math.max(1, p - 1))} disabled={paginaTutteSicura === 1} style={{ minWidth: 40, minHeight: 38, border: '1px solid #cbd5e1', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&lsaquo;</button>
+              <b>Pagina {paginaTutteSicura}/{pagineTutte}</b>
+              <button type="button" aria-label="Pagina fatture successiva" onClick={() => setPaginaTutte(p => Math.min(pagineTutte, p + 1))} disabled={paginaTutteSicura === pagineTutte} style={{ minWidth: 40, minHeight: 38, border: '1px solid #cbd5e1', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&rsaquo;</button>
+              <button type="button" aria-label="Ultima pagina fatture" onClick={() => setPaginaTutte(pagineTutte)} disabled={paginaTutteSicura === pagineTutte} style={{ minWidth: 40, minHeight: 38, border: '1px solid #cbd5e1', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&raquo;</button>
+            </span>
+          </div>
+          {tutteFatturePagina.length === 0 && (
+            <div style={{ padding: 28, textAlign: 'center', color: '#64748b', background: 'white', border: '1px solid #e2e8f0', borderRadius: 11 }}>
+              Nessuna fattura corrisponde ai filtri.
+            </div>
+          )}
+          {tutteFatturePagina.map(fattura => {
+            const registrata = String(fattura.stato || '').startsWith('registrata_');
+            const colore = registrata ? '#047857' : fattura.stato === 'in_attesa_banca' ? '#1d4ed8' : fattura.stato === 'anomalia_pagamento' ? '#b91c1c' : '#92400e';
+            return (
+              <div key={fattura.fattura_id} style={{ background: 'white', border: '1px solid #e2e8f0', borderLeft: `4px solid ${colore}`, borderRadius: 10, padding: '10px 12px', display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ minWidth: 0, flex: '1 1 430px' }}>
+                  <div style={{ color: BLU, fontSize: 13.5, fontWeight: 800 }}>{fattura.fornitore || 'Fornitore non indicato'}</div>
+                  <div style={{ color: '#475569', fontSize: 12 }}>
+                    Fatt. {fattura.fattura_numero || 'senza numero'} del {formatDateIT(fattura.fattura_data)}
+                  </div>
+                  {dettaglioDdtCompleto(fattura)}
+                  {(fattura.movimenti_prima_nota || []).length > 0 && (
+                    <div style={{ marginTop: 3, color: '#475569', fontSize: 11.5 }}>
+                      {(fattura.movimenti_prima_nota || []).map((movimento, indice) => (
+                        <span key={`${movimento.id || movimento.posizione}-${indice}`}>
+                          {indice > 0 && ' · '}
+                          {movimento.posizione === 'cassa' ? 'Cassa' : movimento.posizione === 'banca' ? 'Banca riconciliata' : 'Banca in attesa'}
+                          {movimento.data ? ` ${formatDateIT(movimento.data)}` : ''}
+                          {movimento.importo ? ` ${eur(movimento.importo)}` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ color: colore, background: `${colore}12`, border: `1px solid ${colore}55`, borderRadius: 999, padding: '5px 9px', fontSize: 11.5, fontWeight: 800 }}>
+                    {fattura.stato_label || fattura.stato}
+                  </span>
+                  <span style={{ textAlign: 'right', fontSize: 12 }}>
+                    <b style={{ display: 'block', color: BLU, fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(fattura.totale_fattura)}</b>
+                    {Number(fattura.importo_residuo || 0) > 0 && <span style={{ color: '#b45309' }}>Residuo {eur(fattura.importo_residuo)}</span>}
+                  </span>
+                  {bottoneVedi(fattura)}
+                  {fattura.richiede_azione && (
+                    <button type="button" onClick={() => setVista('da_lavorare')} style={{ minHeight: 40, background: BLU, color: 'white', border: 0, borderRadius: 8, padding: '7px 11px', fontWeight: 800, cursor: 'pointer' }}>
+                      Gestisci
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {vista === 'da_lavorare' && <>
       <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, alignSelf: 'flex-start', color: '#334155', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
         <input
           type="checkbox"
@@ -1849,6 +1966,8 @@ export function Provvisori({ provvisori, attesaBanca = [], completezza = null, o
         </div>
       )}
 
+      </>}
+
       {parziale && (
         <div
           onClick={() => setParziale(null)}
@@ -1948,6 +2067,7 @@ export default function PrimaNota() {
   const [banca, setBanca] = useState({ movimenti: [] });
   const [provvisori, setProvvisori] = useState([]);
   const [attesaBanca, setAttesaBanca] = useState([]);
+  const [tutteFatture, setTutteFatture] = useState([]);
   const [completezzaProvvisori, setCompletezzaProvvisori] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -1966,6 +2086,7 @@ export default function PrimaNota() {
       setBanca(b.data || { movimenti: [] });
       setProvvisori(p.data?.provvisori || []);
       setAttesaBanca(p.data?.in_attesa_banca || []);
+      setTutteFatture(p.data?.tutte_fatture || []);
       setCompletezzaProvvisori(p.data?.completezza || null);
     } catch (e) {
       console.error('Prima nota:', e);
@@ -2053,6 +2174,7 @@ export default function PrimaNota() {
         <Provvisori
           provvisori={provvisori}
           attesaBanca={attesaBanca}
+          tutteFatture={tutteFatture}
           completezza={completezzaProvvisori}
           onRicarica={carica}
         />

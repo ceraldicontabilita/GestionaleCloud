@@ -631,7 +631,59 @@ def test_provvisori_non_taglia_i_primi_mesi_oltre_cinquemila_fatture(monkeypatch
         "aperte_prima_delle_esclusioni": 5001,
         "escluse_cassa_banca": 0,
         "aperte_mostrate": 5001,
+        "tutte_visibili": 5001,
     }
+
+
+def test_ddt_legacy_viene_letto_da_xml_content_e_dalla_causale():
+    da_xml = sync_mod._estrai_riferimenti_ddt({
+        "xml_content": """
+          <FatturaElettronicaBody><DatiGenerali><DatiDDT>
+            <NumeroDDT>5010118184</NumeroDDT><DataDDT>2026-06-29</DataDDT>
+          </DatiDDT></DatiGenerali></FatturaElettronicaBody>
+        """,
+    })
+    da_causale = sync_mod._estrai_riferimenti_ddt({
+        "causali": ["Consegna come da DDT n. ABC-778 del 28/06/2026"],
+    })
+
+    assert da_xml == [{
+        "numero": "5010118184", "data": "2026-06-29",
+        "riferimenti_linea": [],
+    }]
+    assert da_causale == [{
+        "numero": "ABC-778", "data": "2026-06-28",
+        "riferimenti_linea": [], "fonte": "causale_fattura",
+    }]
+
+
+def test_registro_completo_espone_aperte_cassa_e_banca_senza_duplicarle(monkeypatch):
+    db = _FakeDb()
+    db["invoices"].docs = [
+        _fattura(id="fatt-aperta", invoice_number="A-1", total_amount=100),
+        _fattura(id="fatt-cassa", invoice_number="C-1", total_amount=50),
+        _fattura(id="fatt-banca", invoice_number="B-1", total_amount=75),
+    ]
+    db["prima_nota_cassa"].docs = [{
+        "id": "pn-cassa", "fattura_id": "fatt-cassa", "importo": 50,
+        "data": "2026-06-08", "status": "active",
+    }]
+    db["prima_nota_banca"].docs = [{
+        "id": "pn-banca", "fattura_id": "fatt-banca", "importo": 75,
+        "data": "2026-06-09", "status": "active", "estratto_conto_id": "ec-1",
+    }]
+    _patch_db(monkeypatch, db)
+
+    res = _run(sync_mod.get_fatture_provvisorie(anno=2026))
+    per_id = {riga["fattura_id"]: riga for riga in res["tutte_fatture"]}
+
+    assert len(res["tutte_fatture"]) == 3
+    assert [riga["fattura_id"] for riga in res["provvisori"]] == ["fatt-aperta"]
+    assert per_id["fatt-aperta"]["stato"] == "da_decidere"
+    assert per_id["fatt-cassa"]["stato"] == "registrata_cassa"
+    assert per_id["fatt-banca"]["stato"] == "registrata_banca"
+    assert per_id["fatt-cassa"]["importo_residuo"] == 0
+    assert per_id["fatt-banca"]["movimenti_prima_nota"][0]["confermato"] is True
 
 
 def test_conferma_banca_con_riga_reale_marca_riconciliata(monkeypatch):

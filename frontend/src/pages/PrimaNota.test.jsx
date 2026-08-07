@@ -551,3 +551,47 @@ describe('Conferma multipla delle provvisorie', () => {
     expect(screen.getByText(/pagamento contabile completo/)).toBeInTheDocument();
   });
 });
+
+describe('Registro completo fatture in Prima Nota', () => {
+  it('mantiene visibili pagate e aperte, espone DDT e pagina oltre cento righe', () => {
+    const tutteFatture = Array.from({ length: 101 }, (_, indice) => ({
+      fattura_id: `fatt-${indice + 1}`,
+      fattura_numero: `N-${indice + 1}`,
+      fattura_data: '2026-06-29',
+      fornitore: indice === 0 ? 'KIMBO S.P.A.' : `FORNITORE ${indice + 1}`,
+      totale_fattura: 10 + indice,
+      importo_residuo: indice === 0 ? 0 : 10 + indice,
+      stato: indice === 0 ? 'registrata_banca' : 'da_decidere',
+      stato_label: indice === 0 ? 'Registrata in Banca' : 'Da decidere',
+      stato_ddt: indice === 0 ? 'presente' : 'non_indicato_nell_xml',
+      dati_ddt: indice === 0
+        ? [{ numero: '5010118184', data: '2026-06-29', giorni_prima_fattura: 0 }]
+        : [],
+      richiede_azione: indice !== 0,
+      movimenti_prima_nota: indice === 0
+        ? [{ id: 'pn-1', posizione: 'banca', data: '2026-06-30', importo: 10 }]
+        : [],
+    }));
+
+    render(<Provvisori
+      provvisori={tutteFatture.slice(1)}
+      attesaBanca={[]}
+      tutteFatture={tutteFatture}
+      completezza={{
+        anno: 2026, fatture_attive_positive: 101,
+        gia_registrate_pagamento_completo: 1, aperte_mostrate: 100,
+        escluse_cassa_banca: 0,
+      }}
+      onRicarica={vi.fn().mockResolvedValue(undefined)}
+    />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tutte le fatture (101)' }));
+    expect(screen.getByText('Registrata in Banca')).toBeInTheDocument();
+    expect(screen.getByText(/DDT 5010118184 del/)).toBeInTheDocument();
+    expect(screen.getByText('Pagina 1/2')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Pagina fatture successiva'));
+    expect(screen.getByText('Pagina 2/2')).toBeInTheDocument();
+    expect(screen.getByText(/Fatt. N-101 del/)).toBeInTheDocument();
+  });
+});

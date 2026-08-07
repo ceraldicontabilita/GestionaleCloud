@@ -25,8 +25,12 @@ TIPI_FATTURA_ATTIVA = ["TD24", "TD25", "TD26", "TD27"]
 from app.constants.tipi_documento import TIPI_NOTA_CREDITO
 from app.services.scritture_contabili import scrivi_movimento
 from app.services.prima_nota_integrity import (
+    CAMPI_EVIDENZA_BANCA,
+    CAMPI_ID_PRIMA_NOTA,
     fatture_senza_pagamento_contabile_confermato,
+    totale_pagabile_al_fornitore,
 )
+from app.routers.invoices.invoices_main import _dedupe_invoices
 
 # Metodi fornitore -> destinazione Prima Nota: REGOLA UNICA, delegata al
 # motore centralizzato app.engines.prima_nota_engine (prima esistevano liste
@@ -71,9 +75,50 @@ def _estrai_riferimenti_ddt(fattura: Dict[str, Any]) -> list[Dict[str, Any]]:
     if riferimenti:
         return riferimenti
 
-    xml_raw = fattura.get("xml_raw")
+    def riferimenti_da_causali() -> list[Dict[str, Any]]:
+        # Alcuni fornitori riportano il DDT nella causale anziche' nel blocco
+        # XML DatiDDT. E' comunque una fonte documentale della fattura: la
+        # leggiamo senza dedurre nulla da date o importi.
+        trovati = []
+        causali = fattura.get("causali") or []
+        if isinstance(causali, (str, dict)):
+            causali = [causali]
+        for causale in causali:
+            if isinstance(causale, dict):
+                testo_causale = " ".join(str(value) for value in causale.values() if value)
+            else:
+                testo_causale = str(causale or "")
+            for match in re.finditer(
+                r"\b(?:D\.?D\.?T\.?|DOCUMENTO\s+DI\s+TRASPORTO)"
+                r"\s*(?:N(?:UMERO)?\.?\s*)?([A-Z0-9][A-Z0-9./_-]{1,39})"
+                r"(?:\s*(?:DEL|DATA)\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}))?",
+                testo_causale,
+                flags=re.IGNORECASE,
+            ):
+                numero = match.group(1).strip()
+                data = (match.group(2) or "").strip()
+                if data and ("/" in data or "-" in data) and not re.match(r"^\d{4}-", data):
+                    separatore = "/" if "/" in data else "-"
+                    formato = (
+                        f"%d{separatore}%m{separatore}%Y"
+                        if len(data.rsplit(separatore, 1)[-1]) == 4
+                        else f"%d{separatore}%m{separatore}%y"
+                    )
+                    try:
+                        data = datetime.strptime(data, formato).strftime("%Y-%m-%d")
+                    except ValueError:
+                        pass
+                trovati.append({
+                    "numero": numero,
+                    "data": data,
+                    "riferimenti_linea": [],
+                    "fonte": "causale_fattura",
+                })
+        return trovati
+
+    xml_raw = fattura.get("xml_raw") or fattura.get("xml_content")
     if not xml_raw:
-        return []
+        return riferimenti_da_causali()
     testo = xml_raw.decode("utf-8", errors="replace") if isinstance(xml_raw, bytes) else str(xml_raw)
     bodies = re.findall(
         r"<(?:\w+:)?FatturaElettronicaBody\b.*?</(?:\w+:)?FatturaElettronicaBody\s*>",
@@ -105,7 +150,7 @@ def _estrai_riferimenti_ddt(fattura: Dict[str, Any]) -> list[Dict[str, Any]]:
             continue
         visti.add(chiave)
         riferimenti.append({"numero": numero, "data": data, "riferimenti_linea": []})
-    return riferimenti
+    return riferimenti or riferimenti_da_causali()
 
 
 def _arricchisci_distanza_ddt(
@@ -127,6 +172,123 @@ def _arricchisci_distanza_ddt(
             pass
         risultato.append(item)
     return risultato
+
+
+async def _riepilogo_prima_nota_per_fattura(
+    db, fatture: list[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    """Raccoglie in batch dove e quanto e' stato registrato per fattura.
+
+    La funzione e' di sola lettura. Per Banca considera definitivo soltanto
+    un movimento dotato di evidenza finanziaria reale, con la stessa regola
+    usata per decidere se una fattura deve rimanere in Provvisoria.
+    """
+    alias_fattura: Dict[str, str] = {}
+    id_prima_nota: Dict[str, str] = {}
+    riepilogo: Dict[str, Dict[str, Any]] = {}
+    for fattura in fatture:
+        fattura_id = str(fattura.get("id") or fattura.get("invoice_key") or "")
+        if not fattura_id:
+            continue
+        riepilogo[fattura_id] = {
+            "cassa_importo": 0.0,
+            "banca_importo": 0.0,
+            "banca_in_attesa_importo": 0.0,
+            "cassa_presente": False,
+            "banca_presente": False,
+            "banca_in_attesa_presente": False,
+            "movimenti": [],
+        }
+        for alias in (fattura.get("id"), fattura.get("invoice_key")):
+            if alias not in (None, ""):
+                alias_fattura[str(alias)] = fattura_id
+        for campo in CAMPI_ID_PRIMA_NOTA:
+            if fattura.get(campo) not in (None, ""):
+                id_prima_nota[str(fattura[campo])] = fattura_id
+
+    condizioni = []
+    if alias_fattura:
+        alias = list(alias_fattura)
+        condizioni.extend([
+            {"fattura_id": {"$in": alias}},
+            {"invoice_id": {"$in": alias}},
+            {"fattura_ids": {"$in": alias}},
+            {"riferimento": {"$in": [f"FATT-{value}" for value in alias]}},
+        ])
+    if id_prima_nota:
+        condizioni.append({"id": {"$in": list(id_prima_nota)}})
+    if not condizioni:
+        return riepilogo
+
+    projection = {
+        "_id": 0, "id": 1, "data": 1, "data_contabile": 1,
+        "importo": 1, "fattura_id": 1, "invoice_id": 1,
+        "fattura_ids": 1, "riferimento": 1, "status": 1,
+        "entity_status": 1,
+        **{campo: 1 for campo in CAMPI_EVIDENZA_BANCA},
+    }
+    for collection in (COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA):
+        righe = await db[collection].find({"$or": condizioni}, projection).to_list(10000)
+        for riga in righe:
+            if riga.get("status") in ("deleted", "archived") or riga.get("entity_status") == "deleted":
+                continue
+            fatture_collegate = set()
+            for campo in ("fattura_id", "invoice_id"):
+                if riga.get(campo) not in (None, ""):
+                    fatture_collegate.add(str(riga[campo]))
+            fatture_collegate.update(
+                str(value) for value in (riga.get("fattura_ids") or []) if value
+            )
+            riferimento = str(riga.get("riferimento") or "")
+            if riferimento.startswith("FATT-"):
+                fatture_collegate.add(riferimento[5:])
+
+            canoniche = {
+                alias_fattura[value]
+                for value in fatture_collegate
+                if value in alias_fattura
+            }
+            movimento_id = str(riga.get("id") or "")
+            if movimento_id in id_prima_nota:
+                canoniche.add(id_prima_nota[movimento_id])
+            if not canoniche:
+                continue
+
+            valore = riga.get("importo")
+            try:
+                importo = abs(float(valore)) if valore not in (None, "") else 0.0
+            except (TypeError, ValueError):
+                importo = 0.0
+            evidenza_banca = any(
+                riga.get(campo) not in (None, "") for campo in CAMPI_EVIDENZA_BANCA
+            )
+            for fattura_id in canoniche:
+                stato = riepilogo[fattura_id]
+                if collection == COLLECTION_PRIMA_NOTA_CASSA:
+                    stato["cassa_presente"] = True
+                    stato["cassa_importo"] = round(stato["cassa_importo"] + importo, 2)
+                    posizione = "cassa"
+                    confermato = True
+                elif evidenza_banca:
+                    stato["banca_presente"] = True
+                    stato["banca_importo"] = round(stato["banca_importo"] + importo, 2)
+                    posizione = "banca"
+                    confermato = True
+                else:
+                    stato["banca_in_attesa_presente"] = True
+                    stato["banca_in_attesa_importo"] = round(
+                        stato["banca_in_attesa_importo"] + importo, 2
+                    )
+                    posizione = "banca_in_attesa"
+                    confermato = False
+                stato["movimenti"].append({
+                    "id": riga.get("id"),
+                    "posizione": posizione,
+                    "data": riga.get("data") or riga.get("data_contabile"),
+                    "importo": importo,
+                    "confermato": confermato,
+                })
+    return riepilogo
 
 
 # NB: app/config/azienda.py (che avrebbe questa costante centralizzata) è
@@ -1310,7 +1472,7 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
     # Tutte le fatture attive dell'anno. I flag pagato/paid legacy non sono
     # sufficienti: sotto verifichiamo la riga contabile reale e, per banca,
     # la presenza dell'evidenza dell'estratto conto.
-    fatture = await db["invoices"].find(
+    fatture_tutte = await db["invoices"].find(
         {
             "status": {"$nin": ["deleted", "archived"]},
             "entity_status": {"$ne": "deleted"},
@@ -1320,18 +1482,18 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
                 {"data_fattura": {"$regex": f"^{anno}"}},
             ],
         },
-        {"_id": 0, "xml_raw": 0, "linee": 0}
+        {"_id": 0, "xml_raw": 0, "xml_content": 0, "linee": 0}
     ).sort("invoice_date", -1).to_list(None)
-    fatture = [
-        f for f in fatture
+    fatture_tutte = _dedupe_invoices([
+        f for f in fatture_tutte
         if float(f.get("total_amount") or f.get("importo_totale") or 0) > 0
-    ]
-    totale_fatture_attive = len(fatture)
+    ])
+    totale_fatture_attive = len(fatture_tutte)
 
     # La ritenuta e' un debito verso l'Erario, non un residuo da bonificare
     # al professionista. La collection fiscale e' la fonte documentale gia'
     # estratta dall'XML; la riportiamo in memoria prima di calcolare i residui.
-    fatture_ids = [str(f.get("id")) for f in fatture if f.get("id")]
+    fatture_ids = [str(f.get("id")) for f in fatture_tutte if f.get("id")]
     ritenute_per_fattura = {}
     if fatture_ids:
         async for ritenuta in db["ritenute_acconto"].find(
@@ -1344,34 +1506,58 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
                 )
             except (TypeError, ValueError):
                 continue
-    for fattura in fatture:
+    for fattura in fatture_tutte:
         importo_ritenuta = ritenute_per_fattura.get(str(fattura.get("id")))
         if importo_ritenuta:
             fattura["ritenuta_importo"] = importo_ritenuta
-    fatture = await fatture_senza_pagamento_contabile_confermato(db, fatture)
-    totale_fatture_aperte = len(fatture)
-    totale_gia_registrate = totale_fatture_attive - totale_fatture_aperte
 
     # Gli import nuovi hanno `dati_ddt` gia' strutturato. Per i documenti
-    # esistenti carichiamo xml_raw soltanto quando contiene DatiDDT, evitando
-    # di trasferire centinaia di XML (spesso con PDF base64 allegati) ad ogni
-    # apertura della Prima Nota.
+    # esistenti carichiamo xml_raw/xml_content soltanto quando contiene
+    # DatiDDT, evitando di trasferire centinaia di XML (spesso con PDF base64
+    # allegati) ad ogni apertura della Prima Nota. La scansione riguarda tutte
+    # le fatture dell'anno, non solo quelle ancora aperte.
     ddt_per_fattura: Dict[str, list[Dict[str, Any]]] = {}
+    stato_ddt_per_fattura: Dict[str, str] = {}
     legacy_ddt_ids = []
-    for fattura in fatture:
+    for fattura in fatture_tutte:
+        fattura_id = str(fattura.get("id") or "")
         riferimenti = _estrai_riferimenti_ddt(fattura)
         if riferimenti:
-            ddt_per_fattura[str(fattura.get("id"))] = riferimenti
+            ddt_per_fattura[fattura_id] = riferimenti
+            stato_ddt_per_fattura[fattura_id] = "presente"
+        elif "dati_ddt" in fattura:
+            stato_ddt_per_fattura[fattura_id] = "non_indicato_nell_xml"
         elif fattura.get("id"):
             legacy_ddt_ids.append(str(fattura["id"]))
+            stato_ddt_per_fattura[fattura_id] = "xml_non_disponibile"
     if legacy_ddt_ids:
         async for documento_ddt in db["invoices"].find(
-            {"id": {"$in": legacy_ddt_ids}, "xml_raw": {"$regex": "DatiDDT"}},
-            {"_id": 0, "id": 1, "xml_raw": 1, "xml_body_index": 1},
+            {
+                "id": {"$in": legacy_ddt_ids},
+                "$or": [
+                    {"xml_raw": {"$regex": "DatiDDT"}},
+                    {"xml_content": {"$regex": "DatiDDT"}},
+                ],
+            },
+            {
+                "_id": 0, "id": 1, "xml_raw": 1, "xml_content": 1,
+                "xml_body_index": 1, "causali": 1,
+            },
         ):
             riferimenti = _estrai_riferimenti_ddt(documento_ddt)
             if riferimenti:
-                ddt_per_fattura[str(documento_ddt.get("id"))] = riferimenti
+                fattura_id = str(documento_ddt.get("id") or "")
+                ddt_per_fattura[fattura_id] = riferimenti
+                stato_ddt_per_fattura[fattura_id] = "presente"
+
+    pagamenti_per_fattura = await _riepilogo_prima_nota_per_fattura(
+        db, fatture_tutte,
+    )
+    fatture = await fatture_senza_pagamento_contabile_confermato(
+        db, fatture_tutte,
+    )
+    totale_fatture_aperte = len(fatture)
+    totale_gia_registrate = totale_fatture_attive - totale_fatture_aperte
 
     # Movimenti banca per match.
     # NB: l'importer EC scrive la data nel campo "data" (YYYY-MM-DD); i record
@@ -1743,12 +1929,135 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
     in_attesa_banca = [p for p in provvisori if p["suggerimento"] == "banca"]
     provvisori_finali = [p for p in provvisori if p["suggerimento"] != "banca"]
 
+    # Registro completo: la Provvisoria deve distinguere cio' che richiede
+    # un'azione da cio' che e' gia' stato registrato, senza far sparire le
+    # fatture. La vista e' di sola lettura per i documenti gia' saldati e usa
+    # le stesse prove contabili che governano i contatori Cassa/Banca.
+    aperte_per_id = {
+        str(fattura.get("id") or fattura.get("invoice_key") or ""): fattura
+        for fattura in fatture
+    }
+    azione_per_id = {
+        str(item.get("fattura_id") or ""): item for item in provvisori
+    }
+    etichette_stato = {
+        "da_decidere": "Da decidere",
+        "anomalia_pagamento": "Metodo da verificare",
+        "in_attesa_banca": "Attesa banca",
+        "parziale_cassa": "Parziale: quota in Cassa",
+        "parziale_banca": "Parziale: quota in Banca",
+        "parziale_mista": "Parziale: Cassa e Banca",
+        "registrata_cassa": "Registrata in Cassa",
+        "registrata_banca": "Registrata in Banca",
+        "registrata_mista": "Registrata tra Cassa e Banca",
+        "esclusa_flusso_finanziario": "Esclusa dal flusso Cassa/Banca",
+        "registrata_origine_da_verificare": "Registrata: origine da verificare",
+    }
+    tutte_fatture = []
+    for documento in fatture_tutte:
+        fattura_id = str(documento.get("id") or documento.get("invoice_key") or "")
+        aperta = aperte_per_id.get(fattura_id)
+        azione = azione_per_id.get(fattura_id)
+        riepilogo = pagamenti_per_fattura.get(fattura_id, {})
+        totale_fattura = abs(float(
+            documento.get("total_amount") or documento.get("importo_totale") or 0
+        ))
+        totale_pagabile = totale_pagabile_al_fornitore(documento)
+        pagato_confermato = round(
+            float(riepilogo.get("cassa_importo") or 0)
+            + float(riepilogo.get("banca_importo") or 0),
+            2,
+        )
+        if aperta is not None:
+            pagato_confermato = round(float(
+                aperta.get("_importo_pagato_confermato") or pagato_confermato
+            ), 2)
+            residuo = round(float(
+                aperta.get("_importo_residuo")
+                if aperta.get("_importo_residuo") is not None
+                else max(totale_pagabile - pagato_confermato, 0)
+            ), 2)
+        else:
+            # I movimenti storici senza importo sono comunque prova di una
+            # registrazione completa; mostriamo il totale pagabile senza
+            # alterare il documento o creare nuove scritture.
+            if pagato_confermato <= 0 and (
+                riepilogo.get("cassa_presente") or riepilogo.get("banca_presente")
+            ):
+                pagato_confermato = totale_pagabile
+            residuo = 0.0
+
+        piva = str(
+            documento.get("supplier_vat") or documento.get("cedente_piva") or ""
+        ).strip()
+        esclusa = bool(
+            documento.get("esclusa_da_cassa_banca") or piva in esclusi_cassa_banca
+        )
+        cassa = bool(riepilogo.get("cassa_presente"))
+        banca = bool(riepilogo.get("banca_presente"))
+        if aperta is not None and esclusa:
+            stato = "esclusa_flusso_finanziario"
+        elif aperta is not None and pagato_confermato > 0:
+            stato = "parziale_mista" if cassa and banca else (
+                "parziale_banca" if banca else "parziale_cassa"
+            )
+        elif aperta is not None and azione:
+            if (azione.get("anomalia_pagamento") or {}).get("stato") == "aperta":
+                stato = "anomalia_pagamento"
+            elif azione.get("suggerimento") == "banca":
+                stato = "in_attesa_banca"
+            else:
+                stato = "da_decidere"
+        elif aperta is not None:
+            stato = "da_decidere"
+        elif cassa and banca:
+            stato = "registrata_mista"
+        elif banca:
+            stato = "registrata_banca"
+        elif cassa:
+            stato = "registrata_cassa"
+        else:
+            stato = "registrata_origine_da_verificare"
+
+        data_fattura = (
+            documento.get("invoice_date") or documento.get("data_documento")
+            or documento.get("data_fattura") or ""
+        )
+        tutte_fatture.append({
+            "fattura_id": fattura_id,
+            "fattura_numero": (
+                documento.get("invoice_number") or documento.get("numero_fattura") or ""
+            ),
+            "fattura_data": data_fattura,
+            "fornitore": (
+                documento.get("supplier_name") or documento.get("cedente_denominazione") or ""
+            ),
+            "fornitore_piva": piva,
+            "totale_fattura": round(totale_fattura, 2),
+            "totale_pagabile_fornitore": round(totale_pagabile, 2),
+            "importo_pagato_confermato": round(pagato_confermato, 2),
+            "importo_residuo": round(residuo, 2),
+            "importo": round(residuo if aperta is not None else totale_pagabile, 2),
+            "stato": stato,
+            "stato_label": etichette_stato[stato],
+            "stato_ddt": stato_ddt_per_fattura.get(
+                fattura_id, "xml_non_disponibile"
+            ),
+            "dati_ddt": _arricchisci_distanza_ddt(
+                ddt_per_fattura.get(fattura_id, []), data_fattura,
+            ),
+            "anomalia_pagamento": documento.get("anomalia_pagamento"),
+            "movimenti_prima_nota": riepilogo.get("movimenti") or [],
+            "richiede_azione": aperta is not None and not esclusa,
+        })
+
     tot_cassa = sum(p["importo"] for p in provvisori_finali if p["suggerimento"] == "cassa")
     tot_banca = sum(p["importo"] for p in in_attesa_banca)
 
     return {
         "provvisori": provvisori_finali,
         "in_attesa_banca": in_attesa_banca,
+        "tutte_fatture": tutte_fatture,
         "totale": len(provvisori),
         "totale_da_decidere": len(provvisori_finali),
         "totale_in_attesa_banca": len(in_attesa_banca),
@@ -1765,6 +2074,7 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             "aperte_prima_delle_esclusioni": totale_fatture_aperte,
             "escluse_cassa_banca": totale_escluse_cassa_banca,
             "aperte_mostrate": len(provvisori),
+            "tutte_visibili": len(tutte_fatture),
         },
     }
 
