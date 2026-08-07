@@ -23,7 +23,7 @@ router = APIRouter()
 TIMEOUT = 20.0
 # Recupero prudente: SumUp puo' consolidare una transazione con qualche ora di
 # ritardo, quindi la sincronizzazione automatica rilegge anche il giorno prima.
-GIORNI_RECUPERO = 1
+GIORNI_RECUPERO = 7
 
 
 VARIABILI = ("SUMUP_API_KEY", "SUMUP_MERCHANT_CODE")
@@ -211,7 +211,7 @@ async def riepilogo_sumup(
 
 
 def _intervallo_predefinito() -> tuple:
-    """Ieri e oggi: copre la giornata in corso e rilegge quella appena chiusa."""
+    """Ultimi otto giorni inclusi: recupera anche brevi interruzioni API."""
     oggi = date.today()
     return (oggi - timedelta(days=GIORNI_RECUPERO)).isoformat(), oggi.isoformat()
 
@@ -282,11 +282,10 @@ async def applica_bonifica_pos_xml(
     payload: Optional[Dict[str, Any]] = Body(None),
     admin: Dict[str, Any] = Depends(get_current_admin_user),
 ) -> Dict[str, Any]:
-    """Marca come non attendibili le righe POS ricavate dall'XML.
+    """Archivia le contropartite monetarie POS ricavate dall'XML.
 
-    Non cancella nulla: sono scritture reali gia' in Prima Nota. Le
-    riclassifica e riporta in attesa le giornate senza dato del terminale,
-    che verranno corrette dalla chiusura reale o dall'API.
+    Non elimina prove: le conserva nello storico di audit, le esclude dai
+    saldi operativi e ricrea soltanto le righe supportate da Numia/SumUp.
 
     Va confermata esplicitamente con ``{"conferma": true}``: tocca la
     contabilita' esistente e non deve poter partire per sbaglio.

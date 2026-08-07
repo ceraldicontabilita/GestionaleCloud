@@ -67,6 +67,16 @@ export default function PannelloSumUp() {
       toast.info(`${d.giornate_totali} giornate con POS ricavato dall'XML`);
     });
 
+  const correggiXml = () =>
+    esegui('correggi-xml', () => api.post('/sumup/bonifica-pos-xml',
+      { conferma: true }), (d) => {
+      setBonifica(d);
+      toast.success(
+        `${d.righe_archiviate || 0} righe XML escluse dai saldi; ` +
+        `${d.trasferimenti_reali_ricostruiti || 0} trasferimenti reali ricostruiti`
+      );
+    });
+
   const occupato = Boolean(inCorso);
 
   return (
@@ -90,6 +100,11 @@ export default function PannelloSumUp() {
         <Button variant="ghost" onClick={analizza} disabled={occupato}>
           {inCorso === 'bonifica' ? 'Analizzo…' : 'Analizza POS da XML (sola lettura)'}
         </Button>
+        {bonifica?.giornate_totali > 0 && (
+          <Button variant="danger" onClick={correggiXml} disabled={occupato}>
+            {inCorso === 'correggi-xml' ? 'Correggo…' : 'Escludi POS errati da XML'}
+          </Button>
+        )}
       </div>
 
       {stato && (

@@ -104,14 +104,34 @@ class EstrattoContoNexiParser:
             self.metadata["intestatario"] = intestatario_match.group(1).strip()
         
         # Totale spese del mese
-        spese_match = re.search(r'QUESTO MESE HA SPESO[^\d]*(\d+[.,]\d{2})', text, re.IGNORECASE)
+        importo_it = r'(\d{1,3}(?:\.\d{3})*,\d{2}|\d+[.,]\d{2})'
+        spese_match = re.search(
+            r'QUESTO\s+MESE\s+HA\s+SPESO[^\d]*' + importo_it,
+            text, re.IGNORECASE)
         if spese_match:
             self.metadata["totale_spese_mese"] = self._parse_amount(spese_match.group(1))
         
         # Totale addebito
-        addebito_match = re.search(r'QUESTO MESE LE SARANNO ADDEBITATI[^\d]*(\d+[.,]\d{2})', text, re.IGNORECASE)
+        # Nexi in alcuni PDF estrae il titolo senza spazi
+        # (``QUESTOMESELESARANNOADDEBITATI``). Accettiamo entrambe le forme.
+        addebito_match = re.search(
+            r'QUESTO\s*MESE\s*LE\s*SARANNO\s*ADDEBITATI[^\d]*' + importo_it,
+            text, re.IGNORECASE)
         if addebito_match:
             self.metadata["totale_addebito"] = self._parse_amount(addebito_match.group(1))
+
+        if "totale_addebito" not in self.metadata:
+            addebito_match = re.search(
+                r'TOTALE\s+ADDEBITO\s+SUL\s+SUO\s+C/C[^\d]*' + importo_it,
+                text, re.IGNORECASE)
+            if addebito_match:
+                self.metadata["totale_addebito"] = self._parse_amount(addebito_match.group(1))
+
+        bollo_match = re.search(
+            r'IMPOSTA\s+DI\s+BOLLO[^\d-]*' + importo_it,
+            text, re.IGNORECASE)
+        if bollo_match:
+            self.metadata["imposta_bollo"] = self._parse_amount(bollo_match.group(1))
         
         # IBAN
         iban_match = re.search(r'(IT\d{2}[A-Z]\d{10}[A-Z0-9]{12})', text)

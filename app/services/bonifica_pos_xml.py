@@ -11,16 +11,13 @@ Banco BPM e SumUp sulla Mastercard. Restano aperte per sempre.
 
 Cosa fa questa bonifica, e cosa NON fa:
 
-- **non cancella e non fa sparire nulla.** La giornata deve comparire sempre
-  in Prima Nota: un valore mancante ha spesso ragioni ordinarie (negozio
-  chiuso, chiusura serale saltata, terminale che consolida in ritardo secondo
-  il calendario di accredito), e togliere la riga nasconderebbe proprio la
-  giornata da controllare. La riga resta, dichiarata PROVVISORIA;
+- archivia le sole contropartite monetarie POS inventate dall'XML, conservando
+  importo e provenienza nello storico di audit ma togliendole dai registri
+  operativi e dai saldi;
 - **non inventa il dato mancante.** Se il POS reale non c'e', la giornata
-  resta segnalata: sara' la chiusura del terminale (o l'API SumUp) a
-  correggere l'importo, passando dal motore unico;
-- **non tocca le giornate gia' a posto.** Dove esiste gia' una chiusura reale
-  la riga viene lasciata al flusso normale, che la riallinea da solo.
+  resta segnalata senza importo POS: sara' la chiusura Numia o l'API SumUp a
+  creare la scrittura corretta, passando dal motore unico;
+- dove il dato reale esiste gia', rigenera le righe distinte per circuito.
 
 L'analisi e' sempre in sola lettura: l'applicazione va chiesta esplicitamente.
 """
@@ -45,11 +42,31 @@ async def _leggi(cursore, n: int = 100000) -> List[Dict[str, Any]]:
     return [d async for d in cursore]
 
 
-def _query(anno: Optional[int]) -> Dict[str, Any]:
+def _query(anno: Optional[int], registro: str) -> Dict[str, Any]:
     query: Dict[str, Any] = {
         "quota_pos_fonte": FONTE_XML,
         "status": {"$nin": ["deleted", "archived"]},
     }
+    # Alcune vecchie ENTRATE Corrispettivi portano lo stesso metadato. Il
+    # ricavo fiscale non va mai archiviato: limitiamo la bonifica alle sole
+    # contropartite monetarie POS.
+    if registro == "prima_nota_cassa":
+        query.update({
+            "tipo": "uscita",
+            "$or": [
+                {"categoria": {"$regex": "POS", "$options": "i"}},
+                {"category": {"$regex": "POS", "$options": "i"}},
+                {"source": {"$in": ["corrispettivo_import",
+                                      "conferma_corrispettivo_manuale"]}},
+            ],
+        })
+    else:
+        query["$or"] = [
+            {"categoria": "Corrispettivi POS"},
+            {"category": "Corrispettivi POS"},
+            {"source": {"$in": ["trasferimento_pos", "corrispettivo_pos",
+                                  "chiusura_pos_mobile"]}},
+        ]
     if anno:
         query["data"] = {"$regex": f"^{int(anno)}-"}
     return query
@@ -64,8 +81,10 @@ async def analizza(db, anno: Optional[int] = None) -> Dict[str, Any]:
     """
     from app.services.scritture_contabili import pos_reale_del_giorno
 
-    cassa = await _leggi(db["prima_nota_cassa"].find(_query(anno), {"_id": 0}))
-    banca = await _leggi(db["prima_nota_banca"].find(_query(anno), {"_id": 0}))
+    cassa = await _leggi(db["prima_nota_cassa"].find(
+        _query(anno, "prima_nota_cassa"), {"_id": 0}))
+    banca = await _leggi(db["prima_nota_banca"].find(
+        _query(anno, "prima_nota_banca"), {"_id": 0}))
 
     giornate: Dict[str, Dict[str, Any]] = {}
     for riga in cassa + banca:
@@ -103,8 +122,8 @@ async def analizza(db, anno: Optional[int] = None) -> Dict[str, Any]:
     }
 
 
-async def applica(db, anno: Optional[int] = None,
-                  actor: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+async def _applica_legacy(db, anno: Optional[int] = None,
+                         actor: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Marca le righe da XML come non attendibili, senza cancellarle.
 
     Le giornate scoperte tornano in ``attende_chiusura_pos_reale``, cosi' la
@@ -124,7 +143,9 @@ async def applica(db, anno: Optional[int] = None,
 
     aggiornate = 0
     for registro in ("prima_nota_cassa", "prima_nota_banca"):
-        risultato = await db[registro].update_many(_query(anno), marcatura)
+        risultato = await db[registro].update_many(
+            _query(anno, registro), marcatura
+        )
         aggiornate += getattr(risultato, "modified_count", 0) or 0
 
     # Solo le giornate senza dato reale tornano "in attesa": quelle coperte
@@ -148,7 +169,7 @@ async def applica(db, anno: Optional[int] = None,
     if giorni_scoperti:
         for registro in ("prima_nota_cassa", "prima_nota_banca"):
             risultato = await db[registro].update_many(
-                {**_query(anno), "data": {"$in": giorni_scoperti}},
+                {**_query(anno, registro), "data": {"$in": giorni_scoperti}},
                 {"$set": {"pos_stato": "attende_chiusura_pos_reale",
                           "importo_provvisorio": True}},
             )
@@ -161,6 +182,78 @@ async def applica(db, anno: Optional[int] = None,
         "righe_archiviate": 0,   # per contratto: la riga resta sempre
         "giornate_riportate_in_attesa": len(giorni_scoperti),
         "cancellazioni": 0,   # per contratto: archivia, non elimina
+    }
+
+
+async def applica(db, anno: Optional[int] = None,
+                  actor: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Esclude dai saldi il POS monetario inventato dall'XML.
+
+    Le righe sono archiviate, non eliminate. Se esistono chiusure reali Numia
+    o transazioni SumUp, il motore unico ricostruisce le contropartite separate
+    per circuito; altrimenti la giornata resta in attesa senza importo fittizio.
+    """
+    esito = await analizza(db, anno)
+    now = datetime.now(timezone.utc).isoformat()
+    actor = actor or {}
+    user_id = actor.get("sub") or actor.get("user_id") or "sistema"
+    archivio = {"$set": {
+        "pos_fonte_attendibile": False,
+        "bonifica_motivo": MOTIVO,
+        "bonifica_at": now,
+        "bonifica_by": user_id,
+        "status": "archived",
+        "entity_status": "archived",
+        "archived": True,
+        "archived_reason": MOTIVO,
+        "archived_at": now,
+    }}
+
+    archiviate = 0
+    for registro in ("prima_nota_cassa", "prima_nota_banca"):
+        risultato = await db[registro].update_many(
+            _query(anno, registro), archivio)
+        archiviate += getattr(risultato, "modified_count", 0) or 0
+
+    giorni_scoperti = [g["data"] for g in esito["senza_pos_reale"]]
+    if giorni_scoperti:
+        await db["corrispettivi"].update_many(
+            {"data": {"$in": giorni_scoperti}},
+            {"$set": {"pos_stato": "attende_chiusura_pos_reale",
+                      "pos_bonifica_at": now}},
+        )
+
+    from app.services.scritture_contabili import registra_corrispettivo
+    ricostruite = 0
+    for voce in esito["gia_coperte_dal_pos_reale"]:
+        corr = await db["corrispettivi"].find_one(
+            {"data": voce["data"]}, {"_id": 0})
+        if corr:
+            risultato = await registra_corrispettivo(db, corr)
+            ricostruite += len(risultato.get("trasferimenti_pos") or {})
+
+    if archiviate:
+        await db["pos_bonifiche_audit"].insert_one({
+            "tipo": "archiviazione_pos_monetario_da_xml",
+            "anno": anno,
+            "righe_archiviate": archiviate,
+            "giornate": sorted({
+                g["data"] for g in (
+                    esito["gia_coperte_dal_pos_reale"] + esito["senza_pos_reale"]
+                )
+            }),
+            "actor": user_id,
+            "created_at": now,
+        })
+
+    return {
+        **esito,
+        "righe_marcate": archiviate,
+        "righe_provvisorie": 0,
+        "righe_archiviate": archiviate,
+        "trasferimenti_reali_ricostruiti": ricostruite,
+        "giornate_riportate_in_attesa": len(giorni_scoperti),
+        "cancellazioni": 0,
     }
 
 
