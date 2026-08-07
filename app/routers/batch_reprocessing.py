@@ -2,6 +2,10 @@
 Router per Batch Reprocessing di F24 e Cedolini.
 Espone endpoint per il frontend BatchReprocessing.jsx.
 
+Tutti gli endpoint sono admin-only: avviano un'operazione che riscrive
+documenti in archivio, e prima bastava essere loggati — anche in sola
+lettura — per farla partire.
+
 Lo stato del job è PERSISTITO in MongoDB (collezione `job_state`), non in una
 variabile globale di processo: così sopravvive a restart e funziona con più worker
 uvicorn. Vedi P0.10 / §11.4.
@@ -10,10 +14,11 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
 from app.database import Database
 from app.services.batch_reprocessing import BatchReprocessingService
+from app.utils.dependencies import get_current_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Batch Reprocessing"])
@@ -48,7 +53,9 @@ async def _set_state(db, patch: Dict[str, Any]) -> None:
 
 
 @router.get("/preview")
-async def get_preview() -> Dict[str, Any]:
+async def get_preview(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
     """Anteprima dei documenti disponibili per il riprocessamento."""
     db = Database.get_db()
 
@@ -91,7 +98,9 @@ async def get_preview() -> Dict[str, Any]:
 
 
 @router.get("/status")
-async def get_status() -> Dict[str, Any]:
+async def get_status(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
     """Stato corrente del job di riprocessamento (persistito su MongoDB)."""
     return await _get_state(Database.get_db())
 
@@ -149,18 +158,27 @@ async def _avvia(method: str, dry_run: bool, label: str) -> Dict[str, str]:
 
 
 @router.post("/start")
-async def start_reprocessing(dry_run: bool = Query(True)) -> Dict[str, str]:
+async def start_reprocessing(
+    dry_run: bool = Query(True),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, str]:
     """Avvia riprocessamento completo (F24 + Cedolini)."""
     return await _avvia("all", dry_run, "Riprocessamento avviato")
 
 
 @router.post("/f24-only")
-async def start_f24_only(dry_run: bool = Query(True)) -> Dict[str, str]:
+async def start_f24_only(
+    dry_run: bool = Query(True),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, str]:
     """Avvia riprocessamento solo F24."""
     return await _avvia("f24", dry_run, "Riprocessamento F24 avviato")
 
 
 @router.post("/cedolini-only")
-async def start_cedolini_only(dry_run: bool = Query(True)) -> Dict[str, str]:
+async def start_cedolini_only(
+    dry_run: bool = Query(True),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, str]:
     """Avvia riprocessamento solo Cedolini."""
     return await _avvia("cedolini", dry_run, "Riprocessamento Cedolini avviato")

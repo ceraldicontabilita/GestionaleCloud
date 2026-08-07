@@ -11,9 +11,9 @@ import re
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.routing import APIRoute
 
 from app.router_registry import register_all_routers
+from tests.route_table import elenco_route
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,11 +23,7 @@ FRONTEND = ROOT / "frontend" / "src"
 def _route_backend_statiche() -> set[str]:
     app = FastAPI()
     register_all_routers(app)
-    routes = {
-        route.path.rstrip("/")
-        for route in app.routes
-        if isinstance(route, APIRoute)
-    }
+    routes = {route.path.rstrip("/") for route in elenco_route(app)}
     # Registrata direttamente in app/main.py, fuori dal router registry.
     routes.add("/api/health")
     return routes

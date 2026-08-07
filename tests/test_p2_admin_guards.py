@@ -1,10 +1,10 @@
 """P2 §12 — Gli endpoint distruttivi di migrazione/manutenzione richiedono il ruolo
 ADMIN (dependency get_current_admin_user). Prima erano aperti/senza controllo ruolo."""
 from fastapi import FastAPI
-from fastapi.routing import APIRoute
 
 from app.router_registry import register_all_routers
 from app.utils.dependencies import get_current_admin_user
+from tests.route_table import elenco_route
 
 
 def _app():
@@ -14,9 +14,8 @@ def _app():
 
 
 def _route_ha_admin(app, path_frag, metodo):
-    for r in app.routes:
-        if isinstance(r, APIRoute) and path_frag in r.path and metodo in r.methods:
-            deps = [d.call for d in r.dependant.dependencies]
+    for r in elenco_route(app):
+        if path_frag in r.path and metodo in r.methods:
             # cerca ricorsivamente get_current_admin_user tra le dipendenze
             trovate = _raccogli_dipendenze(r.dependant)
             return get_current_admin_user in trovate
