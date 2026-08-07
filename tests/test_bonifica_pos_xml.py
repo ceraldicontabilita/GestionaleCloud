@@ -162,3 +162,43 @@ def test_rieseguire_la_bonifica_e_idempotente():
 
     assert primo["righe_cassa"] == secondo["righe_cassa"] == 1
     assert len(_run(db.prima_nota_cassa.find({}).to_list(10))) == 1
+
+
+# --- Normalizzazione delle descrizioni storiche ----------------------------
+
+def test_la_data_nella_descrizione_diventa_italiana():
+    from app.services.bonifica_pos_xml import descrizione_normalizzata as d
+
+    assert d("POS 2026-08-03 → Banca (da XML)") == "POS 03/08/2026 → Banca (da XML)"
+    # Due percorsi diversi scrivevano frecce diverse: si uniformano.
+    assert d("POS 2026-07-31 -> Banca (chiusura terminale)") == (
+        "POS 31/07/2026 → Banca (chiusura terminale)")
+
+
+def test_una_descrizione_gia_corretta_resta_intatta():
+    from app.services.bonifica_pos_xml import descrizione_normalizzata as d
+
+    testo = "POS NUMIA 03/08/2026 → Banca (chiusura terminale)"
+    assert d(testo) == testo
+
+
+def test_l_anteprima_non_scrive_nulla():
+    db = _riga_da_xml(_db())
+    esito = _run(bonifica_pos_xml.normalizza_descrizioni(db))
+
+    assert esito["descrizioni_da_correggere"] == 1
+    assert esito["esempi"][0]["dopo"] == "POS 03/08/2026 → Banca (da XML)"
+    riga = _run(db.prima_nota_cassa.find_one({"id": "c-2026-08-03"}))
+    assert riga["descrizione"] == "POS 2026-08-03 → Banca (da XML)"
+
+
+def test_l_applicazione_cambia_solo_il_testo():
+    db = _riga_da_xml(_db())
+    _run(bonifica_pos_xml.normalizza_descrizioni(db, applica=True))
+
+    riga = _run(db.prima_nota_cassa.find_one({"id": "c-2026-08-03"}))
+    assert riga["descrizione"] == "POS 03/08/2026 → Banca (da XML)"
+    # Nessun campo contabile toccato: e' una correzione di forma.
+    assert riga["importo"] == 1629.50
+    assert riga["data"] == "2026-08-03"      # a database la data resta ISO
+    assert riga["quota_pos_fonte"] == "xml"

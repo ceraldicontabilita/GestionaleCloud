@@ -193,3 +193,24 @@ async def applica_bonifica_pos_xml(
     return await bonifica_pos_xml.applica(
         Database.get_db(), payload.get("anno"), actor=admin
     )
+
+
+@router.post("/normalizza-descrizioni-pos")
+@handle_errors
+async def normalizza_descrizioni_pos(
+    payload: Optional[Dict[str, Any]] = Body(None),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Porta le descrizioni storiche in formato italiano (gg/mm/aaaa).
+
+    Correzione di sola forma: cambia il testo che si legge in Prima Nota, mai
+    importi, date o fonti. Senza ``{"conferma": true}`` restituisce solo
+    l'anteprima di cosa cambierebbe.
+    """
+    from app.services import bonifica_pos_xml
+
+    payload = payload or {}
+    return await bonifica_pos_xml.normalizza_descrizioni(
+        Database.get_db(), payload.get("anno"),
+        applica=payload.get("conferma") is True,
+    )
