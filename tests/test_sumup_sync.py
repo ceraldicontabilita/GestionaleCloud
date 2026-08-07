@@ -207,11 +207,35 @@ def test_risincronizzare_non_duplica_nulla():
     assert len(chiusure) == 1
     assert chiusure[0]["importo"] == 100.0
     assert chiusure[0]["gestore"] == "sumup"
+    assert chiusure[0]["fonte_dato"] == "api"
+    assert chiusure[0]["stato_dato"] == "confermato"
 
     uscite = _run(db.prima_nota_cassa.find(
         {"source": "corrispettivo_import"}).to_list(50))
     assert len(uscite) == 1
     assert uscite[0]["importo"] == 100.0
+
+
+def test_api_senza_transazioni_scrive_zero_esplicito_per_ogni_giorno():
+    db = _db()
+
+    esito = _sincronizza(
+        db, [], dal="2026-08-01", al="2026-08-03"
+    )
+
+    assert [g["data"] for g in esito["giornate"]] == [
+        "2026-08-01", "2026-08-02", "2026-08-03",
+    ]
+    assert all(g["netto"] == 0 for g in esito["giornate"])
+    chiusure = _run(db.chiusure_pos_manuali.find({}).sort("data", 1).to_list(10))
+    assert [(c["data"], c["importo"], c["fonte_dato"]) for c in chiusure] == [
+        ("2026-08-01", 0.0, "api"),
+        ("2026-08-02", 0.0, "api"),
+        ("2026-08-03", 0.0, "api"),
+    ]
+    # Lo zero non genera movimenti monetari fittizi.
+    assert _run(db.prima_nota_cassa.find({}).to_list(10)) == []
+    assert _run(db.prima_nota_banca.find({}).to_list(10)) == []
 
 
 def test_una_pagina_arrivata_prima_resta_nel_totale():

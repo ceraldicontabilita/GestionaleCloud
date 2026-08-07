@@ -105,59 +105,60 @@ describe('Editor POS reale del terminale', () => {
 
   it('parte vuoto quando il POS manuale non e ancora stato inserito', () => {
     render(<EditorPosReale g={{
-      data: '2026-07-05', pos_manuale: 0, pos_manuale_presente: false,
+      data: '2026-07-05', pos_per_circuito: { numia: null },
     }} />);
 
-    expect(screen.getByLabelText('POS reale terminale 2026-07-05')).toHaveValue('');
-    expect(screen.queryByLabelText('Salva POS reale 2026-07-05')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('POS NUMIA reale 2026-07-05')).toHaveValue('');
+    expect(screen.queryByLabelText('Salva POS NUMIA 2026-07-05')).not.toBeInTheDocument();
   });
 
   it('nasconde Salva se il valore e gia persistito e lo mostra solo dopo una modifica', () => {
     render(<EditorPosReale g={{
-      data: '2026-07-05', pos_manuale: 1098.40, pos_manuale_presente: true,
+      data: '2026-07-05', pos_per_circuito: { numia: 1098.40 },
     }} />);
 
-    const input = screen.getByLabelText('POS reale terminale 2026-07-05');
-    expect(screen.queryByLabelText('Salva POS reale 2026-07-05')).not.toBeInTheDocument();
+    const input = screen.getByLabelText('POS NUMIA reale 2026-07-05');
+    expect(screen.queryByLabelText('Salva POS NUMIA 2026-07-05')).not.toBeInTheDocument();
     fireEvent.change(input, { target: { value: '1100,00' } });
-    expect(screen.getByLabelText('Salva POS reale 2026-07-05')).toBeInTheDocument();
+    expect(screen.getByLabelText('Salva POS NUMIA 2026-07-05')).toBeInTheDocument();
   });
 
   it('salva il valore manuale senza modificare il dato XML', async () => {
     const onSaved = vi.fn();
     render(<EditorPosReale g={{
-      data: '2026-07-05', pos_manuale: 1098.40, pos_manuale_presente: true,
+      data: '2026-07-05', pos_per_circuito: { numia: 1098.40 },
       xml_elettronico: 1152.70,
     }} onSaved={onSaved} />);
 
-    const input = screen.getByLabelText('POS reale terminale 2026-07-05');
+    const input = screen.getByLabelText('POS NUMIA reale 2026-07-05');
     expect(input).toHaveValue('1098,40');
     fireEvent.change(input, { target: { value: '1.125,50' } });
     // Formato operativo semplice: nessun separatore migliaia nell'input.
     fireEvent.change(input, { target: { value: '1125,50' } });
-    fireEvent.click(screen.getByLabelText('Salva POS reale 2026-07-05'));
+    fireEvent.click(screen.getByLabelText('Salva POS NUMIA 2026-07-05'));
 
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       '/api/pos-corrispettivi/chiusura-giornaliera',
       {
         data: '2026-07-05',
         importo: 1125.50,
-        note: 'Inserimento manuale da Coerenza POS',
+        gestore: 'numia',
+        note: 'Inserimento manuale NUMIA da Coerenza POS',
       },
     ));
     expect(onSaved).toHaveBeenCalledTimes(1);
-    expect(screen.queryByLabelText('Salva POS reale 2026-07-05')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Salva POS NUMIA 2026-07-05')).not.toBeInTheDocument();
   });
 
   it('accetta zero come valore manuale esplicito', async () => {
     render(<EditorPosReale g={{
-      data: '2026-07-06', pos_manuale: 0, pos_manuale_presente: false,
+      data: '2026-07-06', pos_per_circuito: { numia: null },
     }} />);
 
-    fireEvent.change(screen.getByLabelText('POS reale terminale 2026-07-06'), {
+    fireEvent.change(screen.getByLabelText('POS NUMIA reale 2026-07-06'), {
       target: { value: '0,00' },
     });
-    fireEvent.keyDown(screen.getByLabelText('POS reale terminale 2026-07-06'), {
+    fireEvent.keyDown(screen.getByLabelText('POS NUMIA reale 2026-07-06'), {
       key: 'Enter', code: 'Enter',
     });
 
@@ -227,24 +228,39 @@ describe('CellaCircuito', () => {
     );
 
   it('mostra l\'importo del circuito quando il dato c\'e\'', () => {
-    rendi({ nexi: 500, sumup: 100 }, 'sumup');
+    rendi({ numia: 500, sumup: 100 }, 'sumup');
     expect(screen.getByText(/100/)).toBeInTheDocument();
   });
 
+  it('mostra la fonte reale del circuito', () => {
+    render(
+      <table><tbody><tr>
+        <CellaCircuito
+          g={{
+            pos_per_circuito: { numia: 867.30 },
+            fonte_pos_per_circuito: { numia: 'estratto_conto_numia' },
+          }}
+          circuito="numia"
+        />
+      </tr></tbody></table>
+    );
+    expect(screen.getByText('Estratto BPM')).toBeInTheDocument();
+  });
+
   it('distingue lo zero dichiarato dal dato mancante', () => {
-    const { unmount } = rendi({ nexi: 500, sumup: 0 }, 'sumup');
+    const { unmount } = rendi({ numia: 500, sumup: 0 }, 'sumup');
     expect(screen.getByText(/0,00/)).toBeInTheDocument();
     expect(screen.queryByText('in attesa')).toBeNull();
     unmount();
 
-    rendi({ nexi: 500, sumup: null }, 'sumup');
+    rendi({ numia: 500, sumup: null }, 'sumup');
     expect(screen.getByText('in attesa')).toBeInTheDocument();
   });
 
   it('non esplode se il dettaglio per circuito non arriva', () => {
     render(
       <table><tbody><tr>
-        <CellaCircuito g={{}} circuito="nexi" />
+        <CellaCircuito g={{}} circuito="numia" />
       </tr></tbody></table>
     );
     expect(screen.getByText('in attesa')).toBeInTheDocument();

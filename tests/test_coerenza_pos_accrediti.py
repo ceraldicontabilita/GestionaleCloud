@@ -259,6 +259,93 @@ def test_controllo_due_fasi_non_certifica_un_importo_solo_trascritto(monkeypatch
     _run(scenario())
 
 
+def test_due_fasi_separa_numia_da_sumup_e_non_usa_xml_come_pos(monkeypatch):
+    async def scenario():
+        db = AsyncMongoMockClient()["test_due_circuiti_reali"]
+        await db["corrispettivi"].insert_one({
+            "data": "2026-08-03", "pagato_elettronico": 1629.50,
+            "stato": "definitivo_xml", "entity_status": "active",
+        })
+        await db["chiusure_pos_manuali"].insert_one({
+            "data": "2026-08-03", "importo": 721.30,
+            "gestore": "sumup", "source": "api_sumup",
+        })
+        await db["estratto_conto_movimenti"].insert_many([
+            {
+                "id": f"EC-{indice}", "data": "2026-08-04", "importo": importo,
+                "descrizione_originale": (
+                    "INC.POS CARTE CREDIT - NUMIA-INTER DEL 03/08/26 "
+                    f"PDV 3757283/000{indice}"
+                ),
+            }
+            for indice, importo in enumerate([13.00, 410.50, 61.10, 382.70], start=1)
+        ])
+        monkeypatch.setattr(pc.Database, "get_db", staticmethod(lambda: db))
+
+        result = await pc.controllo_incassi_due_fasi(
+            data_da=None, data_a=None, anno=2026, tolleranza_euro=0.50
+        )
+        giorno = next(g for g in result["giorni"] if g["data"] == "2026-08-03")
+
+        assert giorno["pos_per_circuito"] == {
+            "numia": 867.30, "sumup": 721.30,
+        }
+        assert giorno["fonte_pos_per_circuito"]["numia"] == "estratto_conto_numia"
+        assert giorno["fonte_pos_per_circuito"]["sumup"] == "api_sumup"
+        assert giorno["pos_manuale"] == 1588.60
+        assert giorno["diff_serale"] == 40.90
+        assert giorno["fase2_per_circuito"]["numia"]["riconciliato"] is True
+        assert giorno["fase2_per_circuito"]["numia"]["accredito"] == 867.30
+        assert giorno["fase2_per_circuito"]["sumup"]["stato"] == "in_attesa_payout"
+        assert result["statistiche"]["fase2_pos_totale"] == 867.30
+        assert result["statistiche"]["fase2_sumup_pos_totale"] == 721.30
+
+    _run(scenario())
+
+
+def test_due_fasi_xml_senza_terminali_non_inventa_numia_o_sumup(monkeypatch):
+    async def scenario():
+        db = AsyncMongoMockClient()["test_xml_non_e_pos"]
+        await db["corrispettivi"].insert_one({
+            "data": "2026-08-01", "pagato_elettronico": 1620.70,
+            "stato": "definitivo_xml", "entity_status": "active",
+        })
+        monkeypatch.setattr(pc.Database, "get_db", staticmethod(lambda: db))
+
+        result = await pc.controllo_incassi_due_fasi(
+            data_da=None, data_a=None, anno=2026, tolleranza_euro=0.50
+        )
+        giorno = next(g for g in result["giorni"] if g["data"] == "2026-08-01")
+
+        assert giorno["xml_elettronico"] == 1620.70
+        assert giorno["pos_per_circuito"] == {"numia": None, "sumup": None}
+        assert giorno["pos_manuale_presente"] is False
+        assert giorno["pos_manuale"] == 0
+
+    _run(scenario())
+
+
+def test_due_fasi_sumup_zero_esplicito_non_attende_un_payout(monkeypatch):
+    async def scenario():
+        db = AsyncMongoMockClient()["test_sumup_zero_esplicito"]
+        await db["chiusure_pos_manuali"].insert_one({
+            "data": "2026-08-02", "importo": 0,
+            "gestore": "sumup", "source": "api_sumup",
+        })
+        monkeypatch.setattr(pc.Database, "get_db", staticmethod(lambda: db))
+
+        result = await pc.controllo_incassi_due_fasi(
+            data_da=None, data_a=None, anno=2026, tolleranza_euro=0.50
+        )
+        giorno = next(g for g in result["giorni"] if g["data"] == "2026-08-02")
+
+        assert giorno["pos_per_circuito"]["sumup"] == 0
+        assert giorno["fase2_per_circuito"]["sumup"]["stato"] == "nessun_incasso"
+        assert result["statistiche"]["fase2_sumup_in_attesa_payout"] == 0
+
+    _run(scenario())
+
+
 def test_controllo_due_fasi_legge_e_somma_xml_drive_storici(monkeypatch):
     """I record Drive legacy usano pagato_pos e non avevano stato definitivo_xml."""
     async def scenario():

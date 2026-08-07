@@ -386,7 +386,10 @@ async def sincronizza(db, dal: str, al: str,
     Se per quel giorno esisteva una chiusura manuale SumUp, il dato dell'API
     la sostituisce senza creare un secondo movimento.
     """
-    from app.services.scritture_contabili import registra_chiusura_pos_reale
+    from app.services.scritture_contabili import (
+        FONTE_API,
+        registra_chiusura_pos_reale,
+    )
 
     _, merchant = await _credenziali()
     if grezze is None:
@@ -397,12 +400,32 @@ async def sincronizza(db, dal: str, al: str,
     # arrivata in una sincronizzazione precedente resta nel totale del giorno.
     giornate = aggrega_per_giorno(await transazioni_del_periodo(db, dal, al))
 
+    # Una risposta API completa senza transazioni e' uno ZERO accertato, non
+    # un dato mancante. Materializziamo quindi anche le giornate vuote
+    # dell'intervallo richiesto: la pagina puo' distinguere "0,00 SumUp" da
+    # "API non ancora sincronizzata". Una sincronizzazione successiva della
+    # stessa giornata aggiorna lo zero in modo idempotente se arrivano vendite.
+    corrente = date.fromisoformat(dal)
+    ultimo = date.fromisoformat(al)
+    while corrente <= ultimo:
+        giorno = corrente.isoformat()
+        giornate.setdefault(giorno, {
+            "data": giorno,
+            "vendite": 0.0,
+            "rimborsi": 0.0,
+            "chargeback": 0.0,
+            "netto": 0.0,
+            "transazioni": 0,
+        })
+        corrente += timedelta(days=1)
+
     scritte: List[Dict[str, Any]] = []
     for data in sorted(giornate):
         giorno = giornate[data]
         esito = await registra_chiusura_pos_reale(
             db, data, giorno["netto"],
             gestore=GESTORE,
+            fonte=FONTE_API,
             note=(f"Sincronizzazione API SumUp: {giorno['transazioni']} "
                   f"transazioni, rimborsi {giorno['rimborsi']:.2f}"),
             actor=actor or {"user_id": "api_sumup", "name": "Sincronizzazione SumUp"},

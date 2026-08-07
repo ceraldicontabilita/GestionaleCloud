@@ -537,13 +537,17 @@ function ControlloDueFasi({ dati, isMobile, onReload }) {
   const [vista, setVista] = useState('giornaliero'); // giornaliero | settimanale
 
   const giorniFiltrati = giorni.filter(g => {
+    const statoSumUp = (g.fase2_per_circuito || {}).sumup?.stato;
+    const sumUpOk = !statoSumUp || statoSumUp === 'no_pos_sumup' ||
+      statoSumUp === 'nessun_incasso' || statoSumUp === 'riconciliato';
     if (filtroStato === 'tutti') return true;
     if (filtroStato === 'ok') {
-      return g.stato_serale === 'ok' && g.stato_accredito === 'ok' && g.stato_corrispettivo !== 'manca_xml';
+      return g.stato_serale === 'ok' && g.stato_accredito === 'ok' && sumUpOk && g.stato_corrispettivo !== 'manca_xml';
     }
     // problemi: almeno una fase con problemi
     return (g.stato_serale !== 'ok' && g.stato_serale !== 'no_dati' && g.stato_serale !== 'in_attesa_xml') ||
            (g.stato_accredito !== 'ok' && g.stato_accredito !== 'in_attesa' && g.stato_accredito !== 'no_pos_manuale') ||
+           !sumUpOk ||
            g.stato_corrispettivo === 'manca_xml';
   });
 
@@ -566,8 +570,8 @@ function ControlloDueFasi({ dati, isMobile, onReload }) {
           Importa totali POS
         </Button>
         <div style={{ fontSize: 12, color: COLORS.textMuted }}>
-          Il POS del terminale si inserisce anche direttamente nella tabella. Salva in
-          Prima Nota Cassa e crea il trasferimento atteso in Banca; l'XML resta solo confronto fiscale.
+          NUMIA si inserisce anche direttamente nella tabella; SumUp arriva dall'API. Ogni circuito salva
+          una scrittura distinta in Prima Nota e l'XML resta solo confronto fiscale.
           La differenza è XML − POS: positiva significa che gli scontrini coprono i pagamenti con carta.
         </div>
       </div>
@@ -649,9 +653,9 @@ function ControlloDueFasi({ dati, isMobile, onReload }) {
         />
         <StatCard
           icon={<XCircle size={16} />}
-          label="Accrediti banca mancanti"
+          label="Accrediti circuito mancanti"
           value={formatEuro(stats.importo_tot_mancante_banca)}
-          subtext={`${stats.fase2_mancante || 0} giorni`}
+          subtext={`NUMIA/BPM: ${stats.fase2_mancante || 0} giorni · SumUp payout: ${stats.fase2_sumup_in_attesa_payout || 0}`}
           accent="danger"
         />
       </div>
@@ -710,8 +714,8 @@ function ControlloDueFasi({ dati, isMobile, onReload }) {
               <Th colSpan={5} align="center" style={{ color: '#fff', background: 'transparent', borderLeft: '2px solid #fff', borderRight: '2px solid #fff' }}>
                 FASE 1: RT vs POS reale
               </Th>
-              <Th colSpan={3} align="center" style={{ color: '#fff', background: 'transparent' }}>
-                FASE 2: POS reale vs Banca
+              <Th colSpan={4} align="center" style={{ color: '#fff', background: 'transparent' }}>
+                FASE 2: NUMIA verso BPM / SUMUP verso Mastercard
               </Th>
             </tr>
             <tr style={{ background: COLORS.gray[800] }}>
@@ -720,12 +724,12 @@ function ControlloDueFasi({ dati, isMobile, onReload }) {
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>XML elettr. (confronto)</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS NUMIA</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS SUMUP</Th>
-              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS totale (modifica)</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>NUMIA manuale (modifica)</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11, borderRight: '2px solid #fff' }}>Diff. XML − POS</Th>
-              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS terminale</Th>
-              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Accredito banca</Th>
-              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Diff. accr.</Th>
-              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Saldo progr.</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS totale reale</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>NUMIA verso BPM</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>SUMUP verso Mastercard</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Saldo NUMIA</Th>
             </tr>
           </thead>
           <tbody>
@@ -736,20 +740,20 @@ function ControlloDueFasi({ dati, isMobile, onReload }) {
           {stats && (
             <tfoot>
               <tr style={{ background: COLORS.primary, color: '#fff', fontWeight: 700 }}>
-                <Td colSpan={5} align="right" style={{ color: '#fff', background: 'transparent' }}>
-                  TOTALI (accrediti maturati)
+                <Td colSpan={8} align="right" style={{ color: '#fff', background: 'transparent' }}>
+                  TOTALI PER CIRCUITO
                 </Td>
                 <Td align="right" style={{ color: '#fff', background: 'transparent' }}>
-                  {formatEuro(stats.fase2_pos_totale || 0)}
+                  NUMIA {formatEuro(stats.fase2_accrediti_totale || 0)}
                 </Td>
                 <Td align="right" style={{ color: '#fff', background: 'transparent' }}>
-                  {formatEuro(stats.fase2_accrediti_totale || 0)}
+                  SUMUP {formatEuro(stats.fase2_sumup_pos_totale || 0)}
                 </Td>
-                <Td colSpan={2} align="right" style={{
+                <Td align="right" style={{
                   background: 'transparent',
                   color: (stats.fase2_saldo_finale || 0) >= 0 ? COLORS.successLight : COLORS.dangerLight,
                 }}>
-                  SALDO {formatEuro(stats.fase2_saldo_finale || 0)}
+                  NUMIA Δ {formatEuro(stats.fase2_saldo_finale || 0)}
                 </Td>
               </tr>
             </tfoot>
@@ -791,9 +795,10 @@ function TabellaSettimanale({ settimane }) {
         <thead>
           <tr style={{ background: COLORS.primary }}>
             <Th style={{ color: '#fff', background: 'transparent' }}>Settimana</Th>
-            <Th align="right" style={{ color: '#fff', background: 'transparent' }}>Incassato (POS reale)</Th>
-            <Th align="right" style={{ color: '#fff', background: 'transparent' }}>Accreditato in banca</Th>
-            <Th align="right" style={{ color: '#fff', background: 'transparent' }}>Differenza</Th>
+            <Th align="right" style={{ color: '#fff', background: 'transparent' }}>POS NUMIA</Th>
+            <Th align="right" style={{ color: '#fff', background: 'transparent' }}>Accredito BPM</Th>
+            <Th align="right" style={{ color: '#fff', background: 'transparent' }}>POS SUMUP</Th>
+            <Th align="right" style={{ color: '#fff', background: 'transparent' }}>Differenza NUMIA</Th>
             <Th align="center" style={{ color: '#fff', background: 'transparent' }}>Stato</Th>
           </tr>
         </thead>
@@ -807,10 +812,13 @@ function TabellaSettimanale({ settimane }) {
                 </div>
               </Td>
               <Td align="right" style={{ fontWeight: 600 }}>
-                {formatEuro(sw.pos_totale)}
+                {formatEuro(sw.pos_numia_totale || 0)}
               </Td>
               <Td align="right" style={{ fontWeight: 600 }}>
                 {sw.accredito_totale > 0 ? formatEuro(sw.accredito_totale) : '—'}
+              </Td>
+              <Td align="right" style={{ fontWeight: 600 }}>
+                {sw.pos_sumup_totale > 0 ? formatEuro(sw.pos_sumup_totale) : '—'}
               </Td>
               <Td align="right" style={{
                 fontWeight: 700,
@@ -838,33 +846,56 @@ function TabellaSettimanale({ settimane }) {
  */
 export function CellaCircuito({ g, circuito }) {
   const valore = (g.pos_per_circuito || {})[circuito];
+  const fonte = (g.fonte_pos_per_circuito || {})[circuito];
   const assente = valore === null || valore === undefined;
+  const etichettaFonte = {
+    api: 'API SumUp',
+    api_sumup: 'API SumUp',
+    estratto_conto_numia: 'Estratto BPM',
+    excel: 'Estratto / Excel',
+    manuale: 'Manuale',
+    inserimento_manuale_terminale: 'Manuale',
+    terminale: 'Terminale',
+  }[fonte];
 
   return (
     <Td align="right" style={{ fontSize: 12 }}>
       {assente
         ? <em style={{ color: COLORS.textSubtle, fontSize: 11 }}>in attesa</em>
-        : formatEuro(valore)}
+        : (
+          <>
+            <div>{formatEuro(valore)}</div>
+            {etichettaFonte && (
+              <div style={{ color: COLORS.textMuted, fontSize: 10, marginTop: 2 }}>
+                {etichettaFonte}
+              </div>
+            )}
+          </>
+        )}
     </Td>
   );
 }
 
 export function EditorPosReale({ g, onSaved }) {
-  const valoreIniziale = g.pos_manuale_presente
-    ? Number(g.pos_manuale || 0).toFixed(2).replace('.', ',')
+  const valoreNumia = (g.pos_per_circuito || {}).numia;
+  const numiaPresente = valoreNumia !== null && valoreNumia !== undefined;
+  const valoreIniziale = numiaPresente
+    ? Number(valoreNumia || 0).toFixed(2).replace('.', ',')
     : '';
   const [valore, setValore] = useState(valoreIniziale);
   const [importoSalvato, setImportoSalvato] = useState(
-    g.pos_manuale_presente ? Number(g.pos_manuale || 0) : null
+    numiaPresente ? Number(valoreNumia || 0) : null
   );
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
-    setValore(g.pos_manuale_presente
-      ? Number(g.pos_manuale || 0).toFixed(2).replace('.', ',')
+    const nuovoNumia = (g.pos_per_circuito || {}).numia;
+    const presente = nuovoNumia !== null && nuovoNumia !== undefined;
+    setValore(presente
+      ? Number(nuovoNumia || 0).toFixed(2).replace('.', ',')
       : '');
-    setImportoSalvato(g.pos_manuale_presente ? Number(g.pos_manuale || 0) : null);
-  }, [g.data, g.pos_manuale, g.pos_manuale_presente]);
+    setImportoSalvato(presente ? Number(nuovoNumia || 0) : null);
+  }, [g.data, valoreNumia]);
 
   const normalizzato = String(valore).trim().replace(/\s/g, '').replace(',', '.');
   const importoCorrente = Number(normalizzato);
@@ -885,10 +916,11 @@ export function EditorPosReale({ g, onSaved }) {
       const res = await api.put('/api/pos-corrispettivi/chiusura-giornaliera', {
         data: g.data,
         importo,
-        note: 'Inserimento manuale da Coerenza POS',
+        gestore: 'numia',
+        note: 'Inserimento manuale NUMIA da Coerenza POS',
       });
       setImportoSalvato(importo);
-      toast.success(res.data?.message || `POS reale del ${formatDateIT(g.data)} salvato`);
+      toast.success(res.data?.message || `POS NUMIA del ${formatDateIT(g.data)} salvato`);
       if (onSaved) await onSaved();
     } catch (e) {
       toast.error('Errore salvataggio POS: ' + (e.response?.data?.detail || e.message));
@@ -900,7 +932,7 @@ export function EditorPosReale({ g, onSaved }) {
   return (
     <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end', alignItems: 'center', minWidth: 168 }}>
       <Input
-        aria-label={`POS reale terminale ${g.data}`}
+        aria-label={`POS NUMIA reale ${g.data}`}
         type="text"
         inputMode="decimal"
         value={valore}
@@ -919,7 +951,7 @@ export function EditorPosReale({ g, onSaved }) {
           variant="primary"
           onClick={salva}
           disabled={salvando}
-          aria-label={`Salva POS reale ${g.data}`}
+          aria-label={`Salva POS NUMIA ${g.data}`}
           style={{ minHeight: 36, padding: '6px 9px' }}
         >
           {salvando ? '...' : 'Salva'}
@@ -931,6 +963,8 @@ export function EditorPosReale({ g, onSaved }) {
 
 function RigaGiornaliera({ g, even, onReload }) {
   const [espansa, setEspansa] = useState(false);
+  const faseSumUp = (g.fase2_per_circuito || {}).sumup || {};
+  const payoutSumUp = faseSumUp.payout;
   const diffSerColor = g.stato_serale === 'ok' ? COLORS.success :
                        g.stato_serale === 'no_dati' ? COLORS.textSubtle :
                        g.stato_serale === 'in_attesa_xml' ? COLORS.purple : COLORS.danger;
@@ -974,7 +1008,7 @@ function RigaGiornaliera({ g, even, onReload }) {
       <Td align="right" style={{ borderLeft: `2px solid ${COLORS.border}` }}>
         {g.xml_elettronico > 0 ? formatEuro(g.xml_elettronico) : (statoCorr !== 'definitivo_xml' ? <em style={{ color: COLORS.textSubtle, fontSize: 11 }}>attendo XML</em> : '—')}
       </Td>
-      <CellaCircuito g={g} circuito="nexi" />
+      <CellaCircuito g={g} circuito="numia" />
       <CellaCircuito g={g} circuito="sumup" />
       <Td align="right">
         <EditorPosReale g={g} onSaved={onReload} />
@@ -1010,17 +1044,6 @@ function RigaGiornaliera({ g, even, onReload }) {
           </Button>
         )}
       </Td>
-      <Td align="right">
-        {g.stato_accredito === 'raggruppato'
-          ? <em style={{ color: COLORS.textSubtle, fontSize: 11 }}>↳ accr. {formatDateIT(g.data_accredito_attesa)}</em>
-          : g.accredito_banca > 0 ? formatEuro(g.accredito_banca) : '—'}
-        {g.numero_movimenti_banca > 0 && (
-          <div style={{ fontSize: 10, color: COLORS.textMuted, marginTop: 2 }}>
-            Estratto conto · {g.numero_movimenti_banca}{' '}
-            {g.numero_movimenti_banca === 1 ? 'movimento' : 'movimenti'}
-          </div>
-        )}
-      </Td>
       <Td
         align="right"
         style={{
@@ -1028,6 +1051,9 @@ function RigaGiornaliera({ g, even, onReload }) {
           fontWeight: 600,
         }}
       >
+        {g.accredito_banca > 0 && (
+          <div style={{ marginBottom: 3 }}>{formatEuro(g.accredito_banca)}</div>
+        )}
         {g.riconciliato_banca_reale ? (
           <BadgeRiconciliatoBanca riconciliato />
         ) : (
@@ -1040,6 +1066,38 @@ function RigaGiornaliera({ g, even, onReload }) {
           : g.stato_accredito === 'mancante'
             ? formatEuro(g.diff_accredito)
             : null}
+        {g.numero_movimenti_banca > 0 && (
+          <div style={{ fontSize: 10, color: COLORS.textMuted, marginTop: 2 }}>
+            BPM · {g.numero_movimenti_banca}{' '}
+            {g.numero_movimenti_banca === 1 ? 'movimento' : 'movimenti'}
+          </div>
+        )}
+      </Td>
+      <Td align="right" style={{ fontWeight: 600 }}>
+        {faseSumUp.stato === 'no_pos_sumup' ? '—' : faseSumUp.stato === 'nessun_incasso' ? (
+          <Badge variant="neutral">Nessun incasso</Badge>
+        ) : (
+          <>
+            {faseSumUp.stato === 'riconciliato' ? (
+              <Badge variant="success">✓ Payout riconciliato</Badge>
+            ) : faseSumUp.stato === 'payout_da_verificare' ? (
+              <Badge variant="warning">Payout da verificare</Badge>
+            ) : (
+              <Badge variant="info">In attesa payout</Badge>
+            )}
+            <div style={{ fontSize: 10, color: COLORS.textMuted, marginTop: 3 }}>
+              Mastercard SumUp
+            </div>
+            {payoutSumUp?.netto_gruppi > 0 && (
+              <div style={{ fontSize: 10, color: COLORS.textMuted }}>
+                Netto gruppo {formatEuro(payoutSumUp.netto_gruppi)}
+                {payoutSumUp.commissioni_gruppi > 0
+                  ? ` · costi ${formatEuro(payoutSumUp.commissioni_gruppi)}`
+                  : ''}
+              </div>
+            )}
+          </>
+        )}
       </Td>
       <Td
         align="right"
@@ -1054,7 +1112,7 @@ function RigaGiornaliera({ g, even, onReload }) {
     </tr>
     {g.dettaglio_gruppo && espansa && (
       <tr style={{ background: even ? COLORS.card : COLORS.bgAlt, borderBottom: `1px solid ${COLORS.gray[100]}` }}>
-        <Td colSpan={8} style={{ padding: '0 8px 10px 24px' }}>
+        <Td colSpan={11} style={{ padding: '0 8px 10px 24px' }}>
           <div style={{
             background: COLORS.bgAlt, border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.md,
             padding: '8px 12px', fontSize: 11, color: COLORS.gray[700],

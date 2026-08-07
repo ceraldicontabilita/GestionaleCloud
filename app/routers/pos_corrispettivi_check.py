@@ -6,8 +6,10 @@ IMPORTANTE - DISTINZIONE FONTI DATI:
 - "POS CHIUSURE" = Chiusure manuali dal registratore di cassa (chiusure_pos_manuali)
 - "CORRISPETTIVI XML" = Dati dal telematico (corrispettivi)
 
-La riconciliazione principale confronta:
-- Corrispettivi XML (pagato_elettronico) vs Accrediti POS BANCARI reali
+La verifica mantiene tre livelli distinti:
+- XML RT vs totale POS reale (controllo fiscale, nessuna attribuzione provider)
+- NUMIA reale vs accrediti NUMIA su BPM
+- SumUp reale vs payout netti su Mastercard SumUp e commissioni separate
 
 Le chiusure manuali sono un dato di supporto, NON sono movimenti bancari.
 
@@ -981,6 +983,102 @@ async def _carica_pos_manuale_per_data(db) -> Dict[str, float]:
             for giorno, per_circuito in (await _carica_pos_per_circuito(db)).items()}
 
 
+async def _carica_fonti_pos_per_circuito(db) -> Dict[str, Dict[str, str]]:
+    """Provenienza della chiusura scelta per ogni circuito e giornata."""
+    from app.services.scritture_contabili import normalizza_gestore_pos
+
+    fonti: Dict[str, Dict[str, str]] = {}
+    override: Dict[str, Dict[str, str]] = {}
+    async for c in db["chiusure_pos_manuali"].find(
+        {}, {
+            "_id": 0, "data": 1, "source": 1, "fonte_dato": 1,
+            "gestore": 1,
+        }
+    ):
+        d = c.get("data")
+        if not d:
+            continue
+        if isinstance(d, datetime):
+            d = d.strftime("%Y-%m-%d")
+        giorno = str(d)[:10]
+        circuito = normalizza_gestore_pos(c.get("gestore"))
+        fonte = str(
+            c.get("fonte_dato") or c.get("source") or "chiusura_terminale"
+        )
+        if fonte in {"manuale", "inserimento_manuale_terminale"}:
+            override.setdefault(giorno, {})[circuito] = fonte
+        else:
+            fonti.setdefault(giorno, {}).setdefault(circuito, fonte)
+    for giorno, per_circuito in override.items():
+        fonti.setdefault(giorno, {}).update(per_circuito)
+
+    async for c in db["prima_nota_banca"].find(
+        {"source": {"$in": ["chiusura_pos_mobile", "corrispettivo_pos"]}},
+        {"_id": 0, "data": 1, "source": 1, "gestore": 1},
+    ):
+        d = c.get("data")
+        if not d:
+            continue
+        if isinstance(d, datetime):
+            d = d.strftime("%Y-%m-%d")
+        giorno = str(d)[:10]
+        circuito = normalizza_gestore_pos(c.get("gestore"))
+        fonti.setdefault(giorno, {}).setdefault(
+            circuito, str(c.get("source") or "prima_nota_storica")
+        )
+    return fonti
+
+
+async def _carica_payout_sumup_per_giorno(
+    db, data_da: str, data_a: str
+) -> Dict[str, Dict[str, Any]]:
+    """Stato dei payout SumUp collegati alle giornate di vendita.
+
+    Un payout puo' coprire piu' giornate: il netto non viene ripartito in modo
+    arbitrario. La pagina riceve quindi il totale del *gruppo payout* e le
+    giornate coperte, mantenendolo distinto dall'accredito NUMIA su BPM.
+    """
+    out: Dict[str, Dict[str, Any]] = {}
+    async for payout in db["sumup_payouts"].find(
+        {"giorni": {"$exists": True, "$ne": []}},
+        {
+            "_id": 0, "payout_id": 1, "data": 1, "netto": 1,
+            "commissione": 1, "giorni": 1, "stato_riconciliazione": 1,
+        },
+    ):
+        giorni = sorted({str(g)[:10] for g in payout.get("giorni") or []})
+        giorni_periodo = [g for g in giorni if data_da <= g <= data_a]
+        if not giorni_periodo:
+            continue
+        dettaglio = {
+            "payout_id": str(payout.get("payout_id") or ""),
+            "data_payout": str(payout.get("data") or "")[:10],
+            "netto_gruppo": round(float(payout.get("netto") or 0), 2),
+            "commissioni_gruppo": round(float(payout.get("commissione") or 0), 2),
+            "giorni_coperti": giorni,
+            "stato": str(payout.get("stato_riconciliazione") or "da_verificare"),
+        }
+        for giorno in giorni_periodo:
+            item = out.setdefault(giorno, {
+                "payouts": [], "payout_ids": [], "netto_gruppi": 0.0,
+                "commissioni_gruppi": 0.0, "riconciliato": True,
+            })
+            item["payouts"].append(dettaglio)
+            if dettaglio["payout_id"]:
+                item["payout_ids"].append(dettaglio["payout_id"])
+            item["netto_gruppi"] += dettaglio["netto_gruppo"]
+            item["commissioni_gruppi"] += dettaglio["commissioni_gruppo"]
+            item["riconciliato"] = bool(
+                item["riconciliato"] and dettaglio["stato"] == "riconciliato"
+            )
+
+    for item in out.values():
+        item["netto_gruppi"] = round(item["netto_gruppi"], 2)
+        item["commissioni_gruppi"] = round(item["commissioni_gruppi"], 2)
+        item["payout_ids"].sort()
+    return out
+
+
 async def _carica_accrediti_banca_pos(
     db, data_da: str, data_a: str
 ) -> Dict[str, Dict[str, Any]]:
@@ -1102,8 +1200,27 @@ async def controllo_incassi_due_fasi(
         }
     ).sort("data", 1).to_list(10000)
 
-    pos_manuali = await _carica_pos_manuale_per_data(db)
+    # Il totale operativo nasce esclusivamente dai circuiti reali. L'XML non
+    # entra mai in questa mappa. Per lo storico NUMIA, quando manca una
+    # chiusura serale esplicita, l'estratto conto e' una prova del venduto
+    # lordo perche' NUMIA accredita il lordo su BPM.
+    pos_per_circuito = await _carica_pos_per_circuito(db)
     accrediti = await _carica_accrediti_banca_pos(db, data_da, data_a)
+    fonti_pos_per_circuito = await _carica_fonti_pos_per_circuito(db)
+    for giorno, evidenza in accrediti.items():
+        per_circuito = pos_per_circuito.setdefault(giorno, {})
+        if conti_pos.NUMIA not in per_circuito:
+            per_circuito[conti_pos.NUMIA] = round(
+                float(evidenza.get("totale") or 0), 2
+            )
+            fonti_pos_per_circuito.setdefault(giorno, {})[
+                conti_pos.NUMIA
+            ] = "estratto_conto_numia"
+    pos_manuali = {
+        giorno: round(sum(per_circuito.values()), 2)
+        for giorno, per_circuito in pos_per_circuito.items()
+    }
+    payout_sumup = await _carica_payout_sumup_per_giorno(db, data_da, data_a)
 
     # Unione di tutte le date che hanno almeno un dato (corrispettivo o chiusura manuale)
     date_note = set()
@@ -1114,6 +1231,12 @@ async def controllo_incassi_due_fasi(
         if d:
             date_note.add(d[:10])
     for d in pos_manuali.keys():
+        if data_da <= d <= data_a:
+            date_note.add(d)
+    for d in accrediti.keys():
+        if data_da <= d <= data_a:
+            date_note.add(d)
+    for d in payout_sumup.keys():
         if data_da <= d <= data_a:
             date_note.add(d)
 
@@ -1187,7 +1310,9 @@ async def controllo_incassi_due_fasi(
     # da _carica_accrediti_banca_pos e si confrontano col POS manuale del giorno.
     gruppi_accr: Dict[str, Dict[str, Any]] = {}
     for d in sorted(date_note):
-        pos_v = float(pos_manuali.get(d) or 0)
+        # L'estratto BPM contiene gli accrediti NUMIA, non i payout SumUp.
+        # Confrontare qui il totale NUMIA+SumUp produceva differenze false.
+        pos_v = float((pos_per_circuito.get(d) or {}).get(conti_pos.NUMIA) or 0)
         if pos_v <= 0:
             continue
         data_attesa = _data_accredito_attesa(d)
@@ -1240,12 +1365,17 @@ async def controllo_incassi_due_fasi(
     saldo_progressivo = 0.0
     stats["fase2_pos_totale"] = 0.0
     stats["fase2_accrediti_totale"] = 0.0
+    stats["fase2_sumup_pos_totale"] = 0.0
+    stats["fase2_sumup_in_attesa_payout"] = 0
 
     for d in sorted(date_note):
         c_row = corr_by_date.get(d, {})
         xml_el = _importo_elettronico_xml(c_row)
         pos_man = float(pos_manuali.get(d) or 0)
         pos_man_presente = d in pos_manuali
+        circuiti_giorno = pos_per_circuito.get(d) or {}
+        pos_numia = circuiti_giorno.get(conti_pos.NUMIA)
+        pos_sumup = circuiti_giorno.get(conti_pos.SUMUP)
 
         # FASE 0 v3: stato corrispettivo (provvisorio / definitivo_xml / manca_xml)
         stato_corr_raw = c_row.get("stato")
@@ -1319,7 +1449,7 @@ async def controllo_incassi_due_fasi(
         # La data attesa serve solo a distinguere un accredito non ancora dovuto.
         data_accr_attesa = _data_accredito_attesa(d)
         gruppo = gruppi_accr.get(d)
-        capogruppo = bool(gruppo and pos_man > 0)
+        capogruppo = bool(gruppo and float(pos_numia or 0) > 0)
         pos_gruppo = 0.0
         giorni_gruppo = 0
 
@@ -1331,7 +1461,7 @@ async def controllo_incassi_due_fasi(
         origine_accredito = None
         date_contabili_banca: List[str] = []
         riconciliato_banca_reale = False
-        if pos_man <= 0 or not gruppo:
+        if float(pos_numia or 0) <= 0 or not gruppo:
             diff_accr = 0.0
             accredito = 0.0
             stato_accr = "no_pos_manuale"
@@ -1373,6 +1503,24 @@ async def controllo_incassi_due_fasi(
                 stats["fase2_pos_totale"] += pos_gruppo
                 stats["fase2_accrediti_totale"] += accredito
 
+        payout_giorno = payout_sumup.get(d)
+        if pos_sumup is None:
+            stato_sumup = "no_pos_sumup"
+        elif abs(float(pos_sumup or 0)) <= 0.005:
+            # Uno zero esplicito e' un dato valido: quel giorno non c'e' alcun
+            # incasso SumUp da attendere o riconciliare con un payout.
+            stato_sumup = "nessun_incasso"
+        elif payout_giorno and payout_giorno.get("riconciliato"):
+            stato_sumup = "riconciliato"
+        elif payout_giorno:
+            stato_sumup = "payout_da_verificare"
+        else:
+            stato_sumup = "in_attesa_payout"
+            if float(pos_sumup or 0) > 0:
+                stats["fase2_sumup_in_attesa_payout"] += 1
+        if pos_sumup is not None:
+            stats["fase2_sumup_pos_totale"] += float(pos_sumup or 0)
+
         giorni.append({
             "data": d,
             # Fase 0 (v3): stato corrispettivo
@@ -1383,6 +1531,18 @@ async def controllo_incassi_due_fasi(
             "xml_elettronico": round(xml_el, 2),
             "pos_manuale": round(pos_man, 2),
             "pos_manuale_presente": pos_man_presente,
+            "pos_per_circuito": {
+                conti_pos.NUMIA: (
+                    None if pos_numia is None else round(float(pos_numia), 2)
+                ),
+                conti_pos.SUMUP: (
+                    None if pos_sumup is None else round(float(pos_sumup), 2)
+                ),
+            },
+            "fonte_pos_per_circuito": {
+                conti_pos.NUMIA: fonti_pos_per_circuito.get(d, {}).get(conti_pos.NUMIA),
+                conti_pos.SUMUP: fonti_pos_per_circuito.get(d, {}).get(conti_pos.SUMUP),
+            },
             "diff_serale": diff_serale,
             "stato_serale": stato_serale,
             "alert_compensazione": alert_serale,
@@ -1403,6 +1563,23 @@ async def controllo_incassi_due_fasi(
             "giorni_gruppo": giorni_gruppo,
             "dettaglio_gruppo": dettaglio_gruppo,
             "saldo_progressivo": round(saldo_progressivo, 2) if capogruppo and stato_accr != "in_attesa" else None,
+            "fase2_per_circuito": {
+                conti_pos.NUMIA: {
+                    "conto": "BPM",
+                    "pos_reale": None if pos_numia is None else round(float(pos_numia), 2),
+                    "accredito": round(accredito, 2),
+                    "differenza": diff_accr,
+                    "stato": stato_accr,
+                    "numero_movimenti": numero_movimenti_banca,
+                    "riconciliato": riconciliato_banca_reale,
+                },
+                conti_pos.SUMUP: {
+                    "conto": "Mastercard SumUp",
+                    "pos_reale": None if pos_sumup is None else round(float(pos_sumup), 2),
+                    "stato": stato_sumup,
+                    "payout": payout_giorno,
+                },
+            },
         })
         stats["tot_giorni"] += 1
 
@@ -1412,6 +1589,7 @@ async def controllo_incassi_due_fasi(
     stats["importo_tot_mancante_banca"] = round(stats["importo_tot_mancante_banca"], 2)
     stats["fase2_pos_totale"] = round(stats["fase2_pos_totale"], 2)
     stats["fase2_accrediti_totale"] = round(stats["fase2_accrediti_totale"], 2)
+    stats["fase2_sumup_pos_totale"] = round(stats["fase2_sumup_pos_totale"], 2)
     stats["fase2_saldo_finale"] = round(saldo_progressivo, 2)
 
     # ── Riepilogo settimanale ─────────────────────────────────────────────────
@@ -1434,9 +1612,12 @@ async def controllo_incassi_due_fasi(
             "data_inizio": None,
             "data_fine": None,
             "pos_totale": 0.0,
+            "pos_numia_totale": 0.0,
+            "pos_sumup_totale": 0.0,
             "accredito_totale": 0.0,
             "num_giorni_con_pos": 0,
             "num_giorni_in_attesa": 0,
+            "num_giorni_sumup_in_attesa": 0,
             "num_giorni_mancanti": 0,
             "num_giorni_differenza": 0,
         })
@@ -1447,6 +1628,11 @@ async def controllo_incassi_due_fasi(
         if g["pos_manuale"] > 0:
             sw["pos_totale"] += g["pos_manuale"]
             sw["num_giorni_con_pos"] += 1
+        circuiti_giorno = g.get("pos_per_circuito") or {}
+        sw["pos_numia_totale"] += float(circuiti_giorno.get(conti_pos.NUMIA) or 0)
+        sw["pos_sumup_totale"] += float(circuiti_giorno.get(conti_pos.SUMUP) or 0)
+        if (g.get("fase2_per_circuito") or {}).get(conti_pos.SUMUP, {}).get("stato") == "in_attesa_payout":
+            sw["num_giorni_sumup_in_attesa"] += 1
         # L'accredito/diff sono già "una volta per gruppo" (solo sul capogruppo,
         # gli altri giorni del gruppo hanno accredito_banca=0), quindi sommarli
         # per ogni giorno della settimana non duplica nulla.
@@ -1463,9 +1649,15 @@ async def controllo_incassi_due_fasi(
     for chiave in sorted(settimane.keys()):
         sw = settimane[chiave]
         sw["pos_totale"] = round(sw["pos_totale"], 2)
+        sw["pos_numia_totale"] = round(sw["pos_numia_totale"], 2)
+        sw["pos_sumup_totale"] = round(sw["pos_sumup_totale"], 2)
         sw["accredito_totale"] = round(sw["accredito_totale"], 2)
-        sw["diff_totale"] = round(sw["accredito_totale"] - sw["pos_totale"], 2)
-        if sw["num_giorni_in_attesa"] > 0:
+        # Il saldo BPM riguarda soltanto NUMIA. SumUp resta separato sulla
+        # Mastercard e non deve alterare questa differenza.
+        sw["diff_totale"] = round(
+            sw["accredito_totale"] - sw["pos_numia_totale"], 2
+        )
+        if sw["num_giorni_in_attesa"] > 0 or sw["num_giorni_sumup_in_attesa"] > 0:
             sw["stato"] = "in_attesa"
         elif sw["num_giorni_mancanti"] > 0:
             sw["stato"] = "mancante"

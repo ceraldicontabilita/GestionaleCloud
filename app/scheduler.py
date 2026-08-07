@@ -649,6 +649,23 @@ def start_scheduler():
             logger.error(f"[SCHEDULER-SUMUP-PN] errore: {e}")
         try:
             from app.database import Database
+            from app.services.scritture_contabili import recupera_pos_storico_da_estratto
+
+            r = await recupera_pos_storico_da_estratto(
+                Database.get_db(), anno_corrente
+            )
+            if r.get("creati") or r.get("aggiornati"):
+                logger.info(
+                    "[SCHEDULER-NUMIA-EC] giorni=%s creati=%s aggiornati=%s "
+                    "saltati_manuali=%s",
+                    r.get("giorni_bancari", 0), r.get("creati", 0),
+                    r.get("aggiornati", 0),
+                    r.get("saltati_per_chiusura_manuale", 0),
+                )
+        except Exception as e:
+            logger.error(f"[SCHEDULER-NUMIA-EC] errore: {e}")
+        try:
+            from app.database import Database
             from app.services import bonifica_pos_xml
             r = await bonifica_pos_xml.applica(
                 Database.get_db(), anno=anno_corrente,
