@@ -33,6 +33,33 @@ def _safe_year(value: Any) -> Optional[int]:
     return None
 
 
+def _metodo_reale(doc: dict) -> str:
+    """Come la fattura E' STATA pagata davvero, non come si prevedeva.
+
+    Segnalazione utente 07/08/2026: fattura registrata in Cassa, ma il PDF
+    esportato diceva "misto" — il metodo del piano di pagamento dell'XML, che
+    descrive un'intenzione, non un fatto. L'ordine qui e' dalla prova piu'
+    forte alla piu' debole:
+
+    1. il metodo effettivo scritto dalla conferma del pagamento;
+    2. la scrittura di Prima Nota (cassa e banca insieme = misto DAVVERO,
+       cioe' pagamento diviso, non etichetta del piano);
+    3. solo in assenza di tutto, il metodo previsto.
+    """
+    esplicito = str(doc.get("metodo_pagamento_effettivo") or "").strip()
+    if esplicito:
+        return esplicito
+    in_cassa = doc.get("prima_nota_tipo") == "cassa" or bool(doc.get("prima_nota_cassa_id"))
+    in_banca = doc.get("prima_nota_tipo") == "banca" or bool(doc.get("prima_nota_banca_id"))
+    if in_cassa and in_banca:
+        return "misto"
+    if in_cassa:
+        return "cassa"
+    if in_banca:
+        return "banca"
+    return doc.get("payment_method") or doc.get("metodo_pagamento") or ""
+
+
 def _normalizza_da_invoices(doc: dict) -> dict:
     """Mappa un documento della collection `invoices` nel formato unificato archivio.
 
@@ -83,7 +110,7 @@ def _normalizza_da_invoices(doc: dict) -> dict:
         "fornitore_partita_iva": doc.get("supplier_vat") or doc.get("fornitore_partita_iva"),
         "stato": "pagata" if pagato else stato_raw,
         "metodo_pagamento": doc.get("payment_method") or doc.get("metodo_pagamento"),
-        "metodo_pagamento_effettivo": doc.get("payment_method") or doc.get("metodo_pagamento"),
+        "metodo_pagamento_effettivo": _metodo_reale(doc),
         "pagato": pagato,
         "riconciliato": bool(doc.get("riconciliato")),
         "prima_nota_cassa_id": doc.get("prima_nota_cassa_id"),
@@ -135,7 +162,7 @@ def _normalizza_da_fatture_passive(doc: dict) -> dict:
         "fornitore_partita_iva": doc.get("fornitore_piva"),
         "stato": "pagata" if pagato else stato_raw,
         "metodo_pagamento": doc.get("metodo_pagamento"),
-        "metodo_pagamento_effettivo": doc.get("metodo_pagamento"),
+        "metodo_pagamento_effettivo": _metodo_reale(doc),
         "pagato": pagato,
         "riconciliato": bool(doc.get("riconciliato")),
         "prima_nota_cassa_id": doc.get("prima_nota_cassa_id"),
