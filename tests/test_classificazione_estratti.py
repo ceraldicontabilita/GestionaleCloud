@@ -145,3 +145,43 @@ def test_la_cartella_della_fonte_continua_a_comandare():
     assert _route_for_path("POS BPM/2026") == "pos"
     assert _route_for_path("Carta Nexi") == "nexi"
     assert _route_for_path("BPM/2026") == "bank"
+
+
+# --- Arretrato tenuto fermo ------------------------------------------------
+
+@pytest.mark.parametrize(("nome", "atteso"), [
+    ("Export_Mensile_Luglio_2026.csv", 2026),
+    ("EC-38949004-agosto 2024.pdf", 2024),
+    ("Paypal Maggio 2024.PDF", 2024),
+    # Piu' anni nel nome: vale il periodo del documento, non il riferimento.
+    ("2019-Q4 Estratto BNL 4-2019 (ott-dic) - cc 3192.pdf", 2019),
+    ("Estratto_Conto (7).pdf", None),
+    ("Gennaio.pdf", None),
+])
+def test_l_anno_si_legge_dal_nome_quando_c_e(nome, atteso):
+    assert cls.anno_del_nome(nome) == atteso
+
+
+def test_un_numero_lungo_non_viene_scambiato_per_un_anno():
+    assert cls.anno_del_nome("84B9EHMDDE6B4-MSR-20250301000000-20250331235959.PDF") is None
+
+
+def test_l_arretrato_resta_fermo_e_l_anno_in_corso_passa(monkeypatch):
+    from app.services import drive_estratti_conto_ingest as ingest
+
+    monkeypatch.setattr(ingest.settings, "DRIVE_ESTRATTI_ANNO_MINIMO", 2026,
+                        raising=False)
+    assert ingest._troppo_vecchio("Export_Mensile_Luglio_2026.csv") is False
+    assert ingest._troppo_vecchio("EC-38949004-agosto 2024.pdf") is True
+    # Senza anno leggibile si sta fermi: importare a caso meta' dello storico
+    # sarebbe peggio che aspettare.
+    assert ingest._troppo_vecchio("Estratto_Conto (7).pdf") is True
+
+
+def test_azzerare_l_anno_minimo_sblocca_tutto(monkeypatch):
+    from app.services import drive_estratti_conto_ingest as ingest
+
+    monkeypatch.setattr(ingest.settings, "DRIVE_ESTRATTI_ANNO_MINIMO", 0,
+                        raising=False)
+    assert ingest._troppo_vecchio("EC-38949004-agosto 2024.pdf") is False
+    assert ingest._troppo_vecchio("Estratto_Conto (7).pdf") is False

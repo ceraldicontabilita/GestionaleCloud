@@ -47,8 +47,22 @@ _PAYPAL_REPORT = re.compile(r"-(msr|csr)-\d{14}-\d{14}", re.IGNORECASE)
 _PAGINE_DA_LEGGERE = 2
 
 
+_ANNO = re.compile(r"(?<!\d)(19|20)\d{2}(?!\d)")
+
+
 def _pulisci(nome: str) -> str:
     return str(nome or "").strip().lower()
+
+
+def anno_del_nome(nome: str) -> Optional[int]:
+    """Anno leggibile nel nome del file, se c'e' ed e' uno solo.
+
+    Serve a tenere fermo l'arretrato senza aprire i documenti. Con piu' anni
+    nel nome (``2019-Q4 Estratto BNL 4-2019``) vale il piu' recente: e' il
+    periodo del documento, gli altri sono riferimenti.
+    """
+    anni = [int(trovato.group(0)) for trovato in _ANNO.finditer(str(nome or ""))]
+    return max(anni) if anni else None
 
 
 def estensione_trattata(nome: str) -> bool:

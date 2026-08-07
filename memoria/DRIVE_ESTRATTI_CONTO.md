@@ -72,7 +72,30 @@ l'importatore cieco:
 Test di guardia: `tests/test_classificazione_estratti.py`, scritti sui nomi
 reali di questa cartella.
 
-## Nota sugli accrediti NUMIA (da approfondire)
+## Arretrato tenuto fermo (scelta utente 07/08/2026)
+
+L'inbox contiene oltre 250 documenti dal 2023 a oggi, molti duplicati.
+Scelta: **"solo 2026, il resto fermo"**. Il parametro e'
+`DRIVE_ESTRATTI_ANNO_MINIMO` (default `2026`).
+
+I documenti piu' vecchi **non vengono ne' importati ne' spostati**: restano
+in `Da elaborare`, visibili, e il risultato del sync li conta in `deferred`.
+Un nome senza anno leggibile viene trattato come arretrato — prudenza voluta:
+l'alternativa sarebbe importare a caso meta' dello storico. Per sbloccare
+tutto basta portare il parametro a `0`.
+
+Fonti POS storiche presenti nell'arretrato, oggi **senza un parser**:
+
+- **Worldline** (ex Axepta, i vecchi "POS BNL"): `EC-<punto vendita>-<mese>
+  <anno>.pdf`, punti vendita `35536622` e `38949004`;
+- `Estratto transazioni <mese> <anno>.pdf` + `<mese>.xlsx`;
+- `pos 1..4 ceraldi.pdf`;
+- `summary_merchant_<uuid>_<AAAAMM>.pdf`.
+
+Finiscono in `Errori` col motivo scritto, che e' l'esito corretto: dire che
+non sappiamo leggerli e' meglio che indovinare.
+
+## Nota sugli accrediti NUMIA (approvata, da implementare)
 
 L'export BPM (`ESTRATTO <anno>.csv`) contiene gli accrediti POS con il giorno
 di vendita nella causale:
@@ -83,6 +106,9 @@ INC.POS CARTE CREDIT - NUMIA-AMEX DEL 16/07/26 PDV 3757283/00012
 ```
 
 Sommando per `DEL <data>` si ricostruisce il lordo Numia del giorno di
-vendita, perche' Numia accredita il lordo. E' una fonte **derivata**: vale
-meno dell'export del terminale e va registrata come tale, mai al posto suo
-quando l'export c'e'.
+vendita, perche' Numia accredita il lordo.
+
+Scelta utente 07/08/2026: **si usa, ma marcato come derivato** — fonte
+`estratto_conto`, priorita' piu' bassa dell'export del terminale. Se poi
+l'export vero viene caricato, quello vince e sostituisce. Copre i mesi senza
+export senza inventare niente.

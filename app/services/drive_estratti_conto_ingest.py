@@ -223,6 +223,24 @@ def _supported_file(route: Optional[str], filename: str) -> bool:
     return False
 
 
+def _troppo_vecchio(filename: str) -> bool:
+    """Documento dell'arretrato, da lasciare fermo.
+
+    L'inbox unico contiene anni di storico. L'utente ha chiesto di lavorare
+    prima l'anno in corso, quindi i documenti piu' vecchi non vengono ne'
+    importati ne' spostati: restano dove sono, visibili, pronti per quando
+    si abbassera' `DRIVE_ESTRATTI_ANNO_MINIMO`.
+
+    Un nome senza anno leggibile viene considerato arretrato: e' la scelta
+    prudente, perche' l'alternativa e' importare a caso meta' dello storico.
+    """
+    minimo = int(getattr(settings, "DRIVE_ESTRATTI_ANNO_MINIMO", 0) or 0)
+    if minimo <= 0:
+        return False
+    anno = classificazione_estratti.anno_del_nome(filename)
+    return anno is None or anno < minimo
+
+
 def _work_item_priority(item: Dict[str, Any]) -> Tuple[int, str, str]:
     """Da precedenza ai file affidati esplicitamente a ``Da elaborare``.
 
@@ -243,7 +261,7 @@ def _discover_work_items(
     service,
     root_id: str,
     initial_route: Optional[str] = None,
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, str]]]:
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, str]], List[str]]:
     """Scansiona le fonti supportate senza entrare negli archivi.
 
     Compatibilita' con la struttura esistente: durante la transizione legge
@@ -253,6 +271,7 @@ def _discover_work_items(
     """
     items: List[Dict[str, Any]] = []
     sources: Dict[str, Dict[str, str]] = {}
+    rimandati: List[str] = []
 
     def walk(folder_id: str, path: str, inherited_route: Optional[str], lifecycle_parent: Optional[str]):
         children = _list_children(service, folder_id)
@@ -272,6 +291,9 @@ def _discover_work_items(
         for item in direct_files:
             route = current_route or _route_for_path(path, item.get("name") or "")
             if not _supported_file(route, item.get("name") or ""):
+                continue
+            if _troppo_vecchio(item.get("name") or ""):
+                rimandati.append(item.get("name") or "")
                 continue
             target_parent = current_lifecycle or folder_id
             sources[target_parent] = {"id": target_parent, "path": path or "Estratti conto"}
@@ -300,6 +322,9 @@ def _discover_work_items(
                         route = current_route or classificazione_estratti.route_da_nome(nome)
                         if not _supported_file(route, nome):
                             continue
+                        if _troppo_vecchio(nome):
+                            rimandati.append(nome)
+                            continue
                         target_parent = current_lifecycle or folder_id
                         sources[target_parent] = {"id": target_parent, "path": path or "Estratti conto"}
                         items.append({
@@ -318,7 +343,7 @@ def _discover_work_items(
             walk(folder["id"], child_path, child_route, child_lifecycle)
 
     walk(root_id, "", initial_route, root_id if initial_route else None)
-    return items, list(sources.values())
+    return items, list(sources.values()), rimandati
 
 
 class _UploadDrive:
@@ -362,8 +387,9 @@ async def sync(db) -> Dict[str, Any]:
         }
         files_by_id: Dict[str, Dict[str, Any]] = {}
         sources_by_id: Dict[str, Dict[str, str]] = {}
+        rimandati: List[str] = []
         for root_id in _folder_ids():
-            root_files, root_sources = _discover_work_items(
+            root_files, root_sources, root_rimandati = _discover_work_items(
                 service,
                 root_id,
                 initial_route="nexi" if root_id in _nexi_folder_ids() else None,
@@ -372,6 +398,16 @@ async def sync(db) -> Dict[str, Any]:
                 files_by_id.setdefault(item["id"], item)
             for source in root_sources:
                 sources_by_id.setdefault(source["id"], source)
+            rimandati.extend(root_rimandati)
+        # Arretrato tenuto fermo: dichiarato, mai nascosto. Un conteggio che
+        # non si vede diventa "e' tutto importato" quando non lo e'.
+        result["deferred"] = len(rimandati)
+        result["deferred_before_year"] = int(
+            getattr(settings, "DRIVE_ESTRATTI_ANNO_MINIMO", 0) or 0
+        )
+        if rimandati:
+            logger.info("Drive estratti conto: %s documenti dell'arretrato lasciati "
+                        "fermi (anno minimo %s)", len(rimandati), result["deferred_before_year"])
         files = sorted(files_by_id.values(), key=_work_item_priority)
         sources = list(sources_by_id.values())
         result["sources"] = [source["path"] for source in sources]
