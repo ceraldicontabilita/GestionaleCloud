@@ -221,12 +221,12 @@ def test_i_contatori_calano_quando_le_catene_si_chiudono():
 
 def test_un_circuito_configurato_senza_righe_resta_sconosciuto():
     attesi = circuiti_attesi([{"gestore": "nexi", "importo": 500.0}],
-                             ["nexi", "sumup"])
-    assert attesi == {"nexi": 500.0, "sumup": None}
+                             ["numia", "sumup"])
+    assert attesi == {"numia": 500.0, "sumup": None}
 
 
 def test_le_righe_storiche_senza_campo_gestore_sono_nexi():
-    assert circuiti_attesi([{"importo": 500.0}], ["nexi", "sumup"])["nexi"] == 500.0
+    assert circuiti_attesi([{"importo": 500.0}], ["numia", "sumup"])["numia"] == 500.0
 
 
 def test_piu_righe_dello_stesso_circuito_si_sommano():
@@ -239,6 +239,6 @@ def test_piu_righe_dello_stesso_circuito_si_sommano():
 @pytest.mark.parametrize("valore", [0, 0.0])
 def test_una_chiusura_a_zero_non_diventa_sconosciuta(valore):
     attesi = circuiti_attesi([{"gestore": "sumup", "importo": valore}],
-                             ["nexi", "sumup"])
+                             ["numia", "sumup"])
     assert attesi["sumup"] == 0.0
-    assert attesi["nexi"] is None
+    assert attesi["numia"] is None

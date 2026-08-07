@@ -157,9 +157,9 @@ def test_sumup_e_numia_non_si_confermano_a_vicenda():
 
     righe = _run(db.chiusure_pos_manuali.find({"data": DATA}).to_list(10))
     per_gestore = {r["gestore"]: r for r in righe}
-    assert per_gestore["nexi"]["stato_dato"] == STATO_PROVVISORIO
+    assert per_gestore["numia"]["stato_dato"] == STATO_PROVVISORIO
     assert per_gestore["sumup"]["stato_dato"] == STATO_CONFERMATO
-    assert per_gestore["nexi"]["importo"] == 500.0
+    assert per_gestore["numia"]["importo"] == 500.0
 
 
 # --- Identita' del punto di incasso ----------------------------------------

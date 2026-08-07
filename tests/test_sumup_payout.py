@@ -220,6 +220,6 @@ def test_il_payout_non_tocca_i_crediti_nexi():
     _run(sumup_payout.registra_payout(db, _payout(98.0)))
 
     nexi = _run(db.prima_nota_banca.find_one(
-        {"source": "trasferimento_pos", "gestore": "nexi"}))
+        {"source": "trasferimento_pos", "gestore": "numia"}))
     assert nexi["in_transito"] is True
     assert nexi.get("payout_id") is None

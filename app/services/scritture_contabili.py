@@ -126,12 +126,17 @@ async def _leggi_tutti(cursor, n: int = 100):
     return [c async for c in cursor]
 
 
-GESTORE_POS_DEFAULT = "nexi"
+GESTORE_POS_DEFAULT = conti_pos.NUMIA
 
 
 def normalizza_gestore_pos(valore: Any) -> str:
-    """Normalizza il gestore POS. Le righe storiche senza campo sono Nexi."""
-    return str(valore or "").strip().lower() or GESTORE_POS_DEFAULT
+    """Nome canonico del circuito POS.
+
+    Le righe storiche senza campo, o con il vecchio nome "nexi", appartengono
+    tutte a NUMIA: e' l'unico provider POS esistito finora. L'alias evita di
+    dover riscrivere la contabilita' gia' registrata.
+    """
+    return conti_pos.normalizza(valore)
 
 
 def filtro_gestore_pos(gestore: str) -> Dict[str, Any]:
@@ -144,9 +149,11 @@ def filtro_gestore_pos(gestore: str) -> Dict[str, Any]:
     """
     gestore = normalizza_gestore_pos(gestore)
     if gestore == GESTORE_POS_DEFAULT:
+        # Comprende il nome storico "nexi" e le righe senza campo: sono tutte
+        # dello stesso terminale. Ometterle creerebbe una riga parallela e
+        # raddoppierebbe il POS del giorno.
         return {"$or": [
-            {"gestore": gestore},
-            {"gestore": {"$in": [None, ""]}},
+            {"gestore": {"$in": [gestore, "nexi", None, ""]}},
             {"gestore": {"$exists": False}},
         ]}
     return {"gestore": gestore}

@@ -226,7 +226,7 @@ def test_nexi_e_sumup_nello_stesso_giorno_restano_distinti():
     uscite = _run(db.prima_nota_cassa.find(
         {"source": "corrispettivo_import"}).to_list(50))
     assert {u["circuito"]: u["importo"] for u in uscite} == {
-        "NEXI": 500.0, "SUMUP": 100.0}
+        "NUMIA": 500.0, "SUMUP": 100.0}
 
 
 def test_senza_credenziali_si_ferma_invece_di_scrivere_a_vuoto(monkeypatch):
