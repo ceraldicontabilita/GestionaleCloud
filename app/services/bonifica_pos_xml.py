@@ -11,9 +11,10 @@ Banco BPM e SumUp sulla Mastercard. Restano aperte per sempre.
 
 Cosa fa questa bonifica, e cosa NON fa:
 
-- **non cancella nulla.** Sono scritture reali gia' esistenti in Prima Nota:
-  vanno riclassificate, non eliminate. Le marca come fonte non attendibile e
-  riporta la giornata in attesa del dato vero;
+- **non cancella nulla**, ma ARCHIVIA. In Prima Nota deve comparire solo il
+  valore reale delle chiusure (regola dell'utente): dove il terminale non ha
+  dato, la riga ricavata dall'XML esce dai registri invece di restarci con un
+  importo fiscale. Resta consultabile e ripristinabile;
 - **non inventa il dato mancante.** Se il POS reale non c'e', la giornata
   resta segnalata: sara' la chiusura del terminale (o l'API SumUp) a
   correggere l'importo, passando dal motore unico;
@@ -135,11 +136,27 @@ async def applica(db, anno: Optional[int] = None,
                       "pos_bonifica_at": now}},
         )
 
+    # Regola dell'utente: in Prima Nota ci va SOLO il valore reale delle
+    # chiusure. Dove il dato del terminale non esiste, la riga ricavata
+    # dall'XML non deve restare: porterebbe un importo fiscale spacciato per
+    # movimento operativo. Viene archiviata, non cancellata — resta
+    # consultabile e ripristinabile, e l'audit conserva la traccia.
+    archiviate = 0
+    if giorni_scoperti:
+        for registro in ("prima_nota_cassa", "prima_nota_banca"):
+            risultato = await db[registro].update_many(
+                {**_query(anno), "data": {"$in": giorni_scoperti}},
+                {"$set": {"status": "archived", "archiviata_at": now,
+                          "archiviata_motivo": MOTIVO}},
+            )
+            archiviate += getattr(risultato, "modified_count", 0) or 0
+
     return {
         **esito,
         "righe_marcate": aggiornate,
+        "righe_archiviate": archiviate,
         "giornate_riportate_in_attesa": len(giorni_scoperti),
-        "cancellazioni": 0,   # per contratto: questa bonifica non cancella
+        "cancellazioni": 0,   # per contratto: archivia, non elimina
     }
 
 

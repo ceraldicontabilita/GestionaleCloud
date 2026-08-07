@@ -147,12 +147,17 @@ def test_la_chiusura_reale_successiva_corregge_l_importo():
     _run(bonifica_pos_xml.applica(db))
     _run(registra_chiusura_pos_reale(db, "2026-08-03", 1500.0, gestore="nexi"))
 
-    # La riga storica senza gestore appartiene a Nexi: viene corretta,
-    # non affiancata da una seconda.
     uscite = _run(db.prima_nota_cassa.find({"data": "2026-08-03"}).to_list(10))
-    assert len(uscite) == 1
-    assert uscite[0]["importo"] == 1500.0
-    assert uscite[0]["quota_pos_fonte"] == "chiusura_manuale"
+    attive = [u for u in uscite if u.get("status") != "archived"]
+    archiviate = [u for u in uscite if u.get("status") == "archived"]
+
+    # Nei registri resta UNA sola riga, col valore vero del terminale.
+    assert len(attive) == 1
+    assert attive[0]["importo"] == 1500.0
+    assert attive[0]["quota_pos_fonte"] == "chiusura_manuale"
+    # Quella da XML e' fuori dai registri ma conservata per l'audit.
+    assert len(archiviate) == 1
+    assert archiviate[0]["importo"] == 1629.50
 
 
 def test_rieseguire_la_bonifica_e_idempotente():
@@ -160,7 +165,12 @@ def test_rieseguire_la_bonifica_e_idempotente():
     primo = _run(bonifica_pos_xml.applica(db))
     secondo = _run(bonifica_pos_xml.applica(db))
 
-    assert primo["righe_cassa"] == secondo["righe_cassa"] == 1
+    assert primo["righe_archiviate"] == 2
+    # Alla seconda passata non c'e' piu' nulla da archiviare: le righe gia'
+    # fuori dai registri non rientrano nell'ambito.
+    assert secondo["righe_cassa"] == 0
+    assert secondo["righe_archiviate"] == 0
+    # E nessuna riga e' stata persa per strada.
     assert len(_run(db.prima_nota_cassa.find({}).to_list(10))) == 1
 
 
@@ -202,3 +212,47 @@ def test_l_applicazione_cambia_solo_il_testo():
     assert riga["importo"] == 1629.50
     assert riga["data"] == "2026-08-03"      # a database la data resta ISO
     assert riga["quota_pos_fonte"] == "xml"
+
+
+# --- In Prima Nota solo il valore reale ------------------------------------
+
+def test_senza_pos_reale_la_riga_da_xml_esce_dai_registri():
+    """Regola dell'utente: in Prima Nota ci va SOLO il valore reale delle
+    chiusure. Un importo fiscale spacciato per movimento operativo non
+    deve restare."""
+    db = _riga_da_xml(_db())
+    esito = _run(bonifica_pos_xml.applica(db))
+
+    assert esito["righe_archiviate"] == 2
+    for registro, chiave in (("prima_nota_cassa", "c-2026-08-03"),
+                             ("prima_nota_banca", "b-2026-08-03")):
+        riga = _run(db[registro].find_one({"id": chiave}))
+        assert riga["status"] == "archived"
+        # Archiviata, non cancellata: resta consultabile e ripristinabile.
+        assert riga["importo"] == 1629.50
+        assert riga["archiviata_motivo"] == "pos_da_xml_non_attendibile"
+
+
+def test_la_giornata_col_pos_reale_non_viene_archiviata():
+    """Li' il dato vero c'e': la riga va corretta dal riallineamento, non tolta."""
+    db = _riga_da_xml(_db(), data="2026-08-04", importo=900.0)
+    _run(registra_chiusura_pos_reale(db, "2026-08-04", 880.0, gestore="sumup"))
+
+    esito = _run(bonifica_pos_xml.applica(db))
+    assert esito["righe_archiviate"] == 0
+    riga = _run(db.prima_nota_cassa.find_one({"id": "c-2026-08-04"}))
+    assert riga.get("status") != "archived"
+
+
+def test_l_entrata_del_corrispettivo_non_viene_mai_toccata():
+    """Il ricavo XML e' un dato reale: solo la QUOTA POS era inventata."""
+    db = _riga_da_xml(_db())
+    _run(db.prima_nota_cassa.insert_one({
+        "id": "entrata", "data": "2026-08-03", "tipo": "entrata",
+        "importo": 2181.40, "categoria": "Corrispettivi",
+    }))
+    _run(bonifica_pos_xml.applica(db))
+
+    entrata = _run(db.prima_nota_cassa.find_one({"id": "entrata"}))
+    assert entrata.get("status") != "archived"
+    assert entrata["importo"] == 2181.40
