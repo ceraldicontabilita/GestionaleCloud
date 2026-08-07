@@ -1068,6 +1068,12 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
   // del Registro (badgeDocumento), qui non c'era nessun modo di vederla.
   const [fatturaView, setFatturaView] = useState(null);
   const [associaFattura, setAssociaFattura] = useState(null);
+  // Selezione multipla (richiesta utente 07/08/2026): confermare una
+  // fattura alla volta ricaricava la pagina a ogni clic. Qui si spuntano
+  // N fatture e si registra tutto con UNA chiamata e UNA ricarica.
+  const [selezionate, setSelezionate] = useState(() => new Set());
+  const [esitiMultipli, setEsitiMultipli] = useState(null);
+  const [busyMultiplo, setBusyMultiplo] = useState(false);
   const filtriFattura = {
     numeroFattura: fNumeroFattura,
     data: fDataFattura,
@@ -1092,6 +1098,46 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
       <Eye size={17} /> Vedi fattura
     </button>
   );
+
+  const commuta = id => setSelezionate(prev => {
+    const nuovo = new Set(prev);
+    if (nuovo.has(id)) nuovo.delete(id); else nuovo.add(id);
+    return nuovo;
+  });
+
+  const confermaMultipla = async metodo => {
+    const ids = [...selezionate];
+    if (ids.length === 0) return;
+    const testo = metodo === 'cassa'
+      ? `Registri in Prima Nota Cassa ${ids.length} fatture come pagate in contanti?`
+      : `Sposti ${ids.length} fatture tra i pagamenti attesi in banca?`;
+    const approvato = await confirm({
+      title: metodo === 'cassa' ? 'Registrazione multipla in Cassa' : 'Attesa banca multipla',
+      message: testo,
+      confirmText: metodo === 'cassa' ? `Registra ${ids.length} in Cassa` : `Attendi banca (${ids.length})`,
+      cancelText: 'Annulla',
+      variant: 'warning',
+    });
+    if (!approvato) return;
+    setBusyMultiplo(true);
+    setEsitiMultipli(null);
+    setErrore('');
+    try {
+      const { data } = await api.post('/api/prima-nota/provvisori/conferma-multipla', {
+        fattura_ids: ids,
+        metodo: metodo === 'cassa' ? 'cassa' : 'attendi_banca',
+      });
+      setEsitiMultipli(data);
+      setSelezionate(new Set(
+        (data.esiti || []).filter(e => !e.success).map(e => e.fattura_id)
+      ));
+      await onRicarica();
+    } catch (e) {
+      setErrore(e.response?.data?.detail || e.message);
+    } finally {
+      setBusyMultiplo(false);
+    }
+  };
 
   const conferma = async (p, metodo, opzioni = {}) => {
     setBusy(p.fattura_id);
@@ -1221,6 +1267,52 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
           {esito}
         </div>
       )}
+      {provvisoriVisibili.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: 'white', borderRadius: 11, border: '1px solid #e2e8f0', padding: '9px 13px' }} data-testid="barra-conferma-multipla">
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 700, color: '#334155', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={selezionate.size > 0 && provvisoriVisibili.every(p => selezionate.has(p.fattura_id))}
+              onChange={e => setSelezionate(e.target.checked
+                ? new Set(provvisoriVisibili.map(p => p.fattura_id))
+                : new Set())}
+              aria-label="Seleziona tutte le fatture visibili"
+              style={{ width: 17, height: 17 }}
+            />
+            Seleziona tutte ({provvisoriVisibili.length})
+          </label>
+          {selezionate.size > 0 && (
+            <>
+              <span style={{ fontSize: 12.5, color: '#64748b' }}>
+                {selezionate.size} selezionate ·{' '}
+                {eur(provvisoriVisibili.filter(p => selezionate.has(p.fattura_id))
+                  .reduce((s, p) => s + Number(p.importo || 0), 0))}
+              </span>
+              <button
+                onClick={() => confermaMultipla('cassa')} disabled={busyMultiplo}
+                style={{ background: VERDE, color: 'white', border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: busyMultiplo ? 0.5 : 1 }}
+              >
+                💵 Registra in Cassa ({selezionate.size})
+              </button>
+              <button
+                onClick={() => confermaMultipla('banca')} disabled={busyMultiplo}
+                title="Le sposta tra i pagamenti attesi; nessun pagamento viene registrato senza estratto conto"
+                style={{ background: BLU, color: 'white', border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: busyMultiplo ? 0.5 : 1 }}
+              >
+                🏦 Attendi banca ({selezionate.size})
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {esitiMultipli && (
+        <div role="status" style={{ background: esitiMultipli.scartate ? '#fffbeb' : '#f0fdf4', border: `1px solid ${esitiMultipli.scartate ? '#fcd34d' : '#bbf7d0'}`, borderRadius: 10, padding: '9px 13px', fontSize: 12.5 }}>
+          <b>{esitiMultipli.message}</b>
+          {(esitiMultipli.esiti || []).filter(e => !e.success).slice(0, 10).map(e => (
+            <div key={e.fattura_id} style={{ color: '#92400e', marginTop: 3 }}>· {e.detail}</div>
+          ))}
+        </div>
+      )}
       {provvisoriVisibili.length === 0 && (
         <div style={{ padding: 26, textAlign: 'center', color: '#6b7280', background: 'white', borderRadius: 12, border: '1px solid #e2e8f0' }}>
           {provvisori.length === 0
@@ -1234,11 +1326,20 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
           style={{ background: 'white', borderRadius: 11, border: '1px solid #e2e8f0', borderLeft: '4px solid #d97706', padding: '10px 13px' }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-            <div style={{ minWidth: 0 }}>
+            <div style={{ minWidth: 0, display: 'flex', gap: 9, alignItems: 'flex-start' }}>
+              <input
+                type="checkbox"
+                checked={selezionate.has(p.fattura_id)}
+                onChange={() => commuta(p.fattura_id)}
+                aria-label={`Seleziona fattura ${p.fattura_numero || ''}`.trim()}
+                style={{ width: 17, height: 17, marginTop: 2, flexShrink: 0 }}
+              />
+              <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 13.5, color: BLU }}>{p.fornitore || p.supplier_name || '—'}</div>
               <div style={{ fontSize: 12, color: '#64748b' }}>
                 Fatt. {p.fattura_numero || p.numero_fattura || p.invoice_number || '—'} del {formatDateIT(p.fattura_data || p.data || p.invoice_date)}
                 {p.suggerimento === 'sospesa' && ' — ⏸ sospesa'}
+              </div>
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>

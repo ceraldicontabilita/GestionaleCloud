@@ -4,7 +4,7 @@
 > Totale **1063 endpoint** in **111 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 667 · ext esterni = 90 · — da verificare = 306
+**Riepilogo uso:** ✓ frontend = 668 · ext esterni = 89 · — da verificare = 306
 
 ## AI Parser  (11)
 
@@ -1076,11 +1076,10 @@
 | GET | `/api/noleggio/veicoli/{targa}/completo` | ✓ | noleggio |
 | GET | `/api/noleggio/verbali-dipendente` | — | noleggio |
 
-## OpenAPI Automotive  (6)
+## OpenAPI Automotive  (5)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| POST | `/api/openapi-automotive/aggiorna-bulk` | ext | openapi_automotive |
 | POST | `/api/openapi-automotive/aggiorna-veicolo` | ext | openapi_automotive |
 | GET | `/api/openapi-automotive/assicurazione/{targa}` | ext | openapi_automotive |
 | GET | `/api/openapi-automotive/info/{targa}` | ext | openapi_automotive |
@@ -1246,7 +1245,7 @@
 | GET | `/api/previsioni-acquisti/prodotti` | — | previsioni_acquisti |
 | GET | `/api/previsioni-acquisti/statistiche` | ✓ | previsioni_acquisti |
 
-## Prima Nota  (78)
+## Prima Nota  (79)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1305,6 +1304,7 @@
 | POST | `/api/prima-nota/provvisori/auto-conferma-per-metodo` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/conferma` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/conferma-divisione` | ✓ | prima_nota_module.sync |
+| POST | `/api/prima-nota/provvisori/conferma-multipla` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/pulizia-pre-anno` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/recalculate-balances` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/regenerate-from-invoices` | — | prima_nota_module.manutenzione |

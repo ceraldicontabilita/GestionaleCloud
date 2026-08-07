@@ -25,12 +25,6 @@ class UpdateVeicoloRequest(BaseModel):
     force_update: bool = False
 
 
-class BulkUpdateVeicoliRequest(BaseModel):
-    """Request per aggiornamento massivo veicoli"""
-    targhe: List[str]
-    force_update: bool = False
-
-
 @router.get("/status")
 async def check_api_status() -> Dict[str, Any]:
     """Verifica se il token OpenAPI Automotive è configurato e funzionante."""
@@ -162,79 +156,11 @@ async def aggiorna_veicolo(
         }
 
 
-@router.post("/aggiorna-bulk")
-async def aggiorna_veicoli_bulk(
-    request: BulkUpdateVeicoliRequest,
-    token: Optional[str] = Query(None)
-) -> Dict[str, Any]:
-    """Aggiorna più veicoli in batch."""
-    api_token = token or OPENAPI_TOKEN
-    
-    if not api_token:
-        raise HTTPException(status_code=400, detail="Token OpenAPI non configurato")
-    
-    results = {
-        "totale": len(request.targhe),
-        "aggiornati": 0,
-        "creati": 0,
-        "errori": 0,
-        "dettagli": []
-    }
-    
-    client = OpenAPIAutomotive(api_token)
-    db = Database.get_db()
-    
-    for targa in request.targhe:
-        targa_clean = targa.upper().replace(" ", "").replace("-", "")
-        
-        try:
-            result = await client.get_car_info(targa_clean)
-            
-            if result.get("success"):
-                auto_data = result.get("data", {})
-                veicolo_update = map_automotive_to_veicolo(auto_data)
-                veicolo_update["updated_at"] = datetime.now(timezone.utc).isoformat()
-                
-                # Upsert
-                update_result = await db.noleggio_veicoli.update_one(
-                    {"targa": {"$regex": f"^{targa_clean}$", "$options": "i"}},
-                    {"$set": veicolo_update},
-                    upsert=True
-                )
-                
-                if update_result.upserted_id:
-                    results["creati"] += 1
-                    results["dettagli"].append({
-                        "targa": targa_clean, 
-                        "status": "created",
-                        "marca": veicolo_update.get("marca"),
-                        "modello": veicolo_update.get("modello")
-                    })
-                else:
-                    results["aggiornati"] += 1
-                    results["dettagli"].append({
-                        "targa": targa_clean, 
-                        "status": "updated",
-                        "marca": veicolo_update.get("marca"),
-                        "modello": veicolo_update.get("modello")
-                    })
-            else:
-                results["errori"] += 1
-                results["dettagli"].append({
-                    "targa": targa_clean,
-                    "status": "error",
-                    "error": result.get("error")
-                })
-                
-        except Exception as e:
-            results["errori"] += 1
-            results["dettagli"].append({
-                "targa": targa_clean,
-                "status": "error",
-                "error": str(e)
-            })
-    
-    return results
+# Endpoint "/aggiorna-bulk" RIMOSSO su richiesta esplicita utente
+# (07/08/2026): "elimina integrazione Aggiorna dati da targa (tutti),
+# non mi serve piu'". Falliva sistematicamente con 400 (token OpenAPI
+# non configurato) e non aveva piu' un pulsante che lo chiamasse.
+# Il lookup della SINGOLA targa resta: serve all'inserimento veicolo.
 
 
 @router.get("/veicoli-da-aggiornare")

@@ -75,7 +75,6 @@ export default function NoleggioAuto() {
   // Stato per lookup OpenAPI
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupResult, setLookupResult] = useState(null);
-  const [bulkUpdateLoading, setBulkUpdateLoading] = useState(false);
 
   const categorie = [
     { key: 'canoni', label: 'Canoni', icon: '💰', color: '#4caf50' },
@@ -236,45 +235,6 @@ export default function NoleggioAuto() {
   };
 
   // Funzione per aggiornamento massivo di tutti i veicoli
-  const handleBulkUpdateFromOpenAPI = async () => {
-    const targhe = veicoli.map(v => v.targa).filter(Boolean);
-    if (targhe.length === 0) {
-      toast.error('Nessun veicolo con targa');
-      return;
-    }
-
-    const confermaBulk = await confirm({
-      title: 'Aggiorna dati da OpenAPI',
-      confirmText: 'Aggiorna',
-      message:
-        `Aggiornare dati da OpenAPI per ${targhe.length} veicoli?\nQuesta operazione può richiedere alcuni minuti.`,
-    });
-    if (!confermaBulk) {
-      return;
-    }
-
-    setBulkUpdateLoading(true);
-    try {
-      const res = await api.post('/api/openapi-automotive/aggiorna-bulk', { targhe });
-      const { aggiornati, creati, errori, dettagli } = res.data;
-      toast.success(`Completato: ${aggiornati} aggiornati, ${creati} creati, ${errori} errori`);
-
-      if (errori > 0) {
-        const erroriList = dettagli
-          .filter(d => d.status === 'error')
-          .map(d => `${d.targa}: ${d.error}`)
-          .join('\n');
-        console.warn('Errori aggiornamento:', erroriList);
-      }
-
-      fetchVeicoli();
-    } catch (e) {
-      toast.error(`Errore bulk update: ${e.response?.data?.detail || e.message}`);
-    } finally {
-      setBulkUpdateLoading(false);
-    }
-  };
-
   const formatDate = dateStr => {
     if (!dateStr) return '-';
     try {
@@ -500,21 +460,6 @@ export default function NoleggioAuto() {
           data-testid="noleggio-add-btn"
         >
           ➕ Aggiungi Veicolo
-        </Button>
-        <Button
-          onClick={handleBulkUpdateFromOpenAPI}
-          disabled={bulkUpdateLoading || veicoli.length === 0}
-          variant="success"
-          style={{
-            background: 'transparent',
-            color: bulkUpdateLoading ? COLORS.textMuted : COLORS.success,
-            borderColor: bulkUpdateLoading ? COLORS.border : COLORS.successLight,
-            opacity: veicoli.length === 0 ? 0.5 : 1,
-          }}
-          data-testid="noleggio-bulk-update-btn"
-          title="Azione di manutenzione occasionale: recupera marca, modello, alimentazione, potenza e cilindrata da OpenAPI Automotive per tutti i veicoli in elenco"
-        >
-          {bulkUpdateLoading ? '⏳ Aggiornamento...' : '🔄 Aggiorna dati da targa (tutti)'}
         </Button>
         {fattureNonAssociate > 0 && (
           <span
