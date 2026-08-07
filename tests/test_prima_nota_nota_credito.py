@@ -399,6 +399,126 @@ def test_attendi_banca_compare_nella_lista_dedicata(monkeypatch):
     assert attesa["stato_match"] == "in_attesa_estratto_conto"
 
 
+def test_rimborso_di_un_doppio_bonifico_lascia_un_riscontro_netto(monkeypatch):
+    db = _FakeDb()
+    db["invoices"].docs = [_fattura(
+        id="fatt-passalacqua", invoice_number="V1-2026-007590",
+        invoice_date="2026-06-15", supplier_name="S. PASSALACQUA S.P.A.",
+        supplier_vat="00123456789", total_amount=1220.0,
+        metodo_pagamento_previsto="banca",
+        metodo_pagamento_override_source="operatore_prima_nota",
+    )]
+    db["estratto_conto_movimenti"].docs = [
+        {"id": "ec-out-1", "data": "2026-06-15", "tipo": "uscita",
+         "importo": 1220.0,
+         "descrizione": "FAVORE S. PASSALACQUA S.P.A. fattura 7590"},
+        {"id": "ec-out-2", "data": "2026-06-15", "tipo": "uscita",
+         "importo": 1220.0,
+         "descrizione": "FAVORE S. PASSALACQUA S.P.A. fattura 7590"},
+        {"id": "ec-refund", "data": "2026-06-15", "tipo": "entrata",
+         "importo": 1220.0,
+         "descrizione": "PASSALACQUA RESTITUZIONE IMPORTO DUPLICATO"},
+    ]
+    _patch_db(monkeypatch, db)
+
+    async def _senza_pagamento(_db, fatture):
+        return fatture
+    monkeypatch.setattr(
+        sync_mod, "fatture_senza_pagamento_contabile_confermato",
+        _senza_pagamento,
+    )
+
+    res = _run(sync_mod.get_fatture_provvisorie(anno=2026))
+
+    attesa = res["in_attesa_banca"][0]
+    assert attesa["movimento_banca"] is not None
+    assert attesa["evidenza_banca"]["tipo"] == "pagamento_netto_dopo_rimborso_duplicato"
+    assert attesa["evidenza_banca"]["rimborsi_ids"] == ["ec-refund"]
+
+
+def test_assegno_cumulativo_trova_un_solo_lotto_di_fatture(monkeypatch):
+    db = _FakeDb()
+    db["invoices"].docs = [
+        _fattura(id="siro-1", invoice_number="2/1485", invoice_date="2026-06-12",
+                 supplier_name="SIRO S.R.L.", supplier_vat="04104640612",
+                 total_amount=121.37, metodo_pagamento_previsto="banca",
+                 metodo_pagamento_override_source="operatore_prima_nota"),
+        _fattura(id="siro-2", invoice_number="2/1486", invoice_date="2026-06-12",
+                 supplier_name="SIRO S.R.L.", supplier_vat="04104640612",
+                 total_amount=943.0, metodo_pagamento_previsto="banca",
+                 metodo_pagamento_override_source="operatore_prima_nota"),
+        _fattura(id="siro-3", invoice_number="1/778", invoice_date="2026-06-12",
+                 supplier_name="SIRO S.R.L.", supplier_vat="04104640612",
+                 total_amount=18.15, metodo_pagamento_previsto="banca",
+                 metodo_pagamento_override_source="operatore_prima_nota"),
+    ]
+    db["estratto_conto_movimenti"].docs = [{
+        "id": "ec-check", "data": "2026-06-19", "tipo": "uscita",
+        "importo": 1082.52,
+        "descrizione": "PRELIEVO ASSEGNO NUM: 0208769334",
+        "riconciliato": True,
+    }]
+    _patch_db(monkeypatch, db)
+
+    async def _senza_pagamento(_db, fatture):
+        return fatture
+    monkeypatch.setattr(
+        sync_mod, "fatture_senza_pagamento_contabile_confermato",
+        _senza_pagamento,
+    )
+
+    res = _run(sync_mod.get_fatture_provvisorie(anno=2026))
+
+    assert len(res["in_attesa_banca"]) == 3
+    assert {r["movimento_banca"]["id"] for r in res["in_attesa_banca"]} == {"ec-check"}
+    assert all(
+        r["evidenza_banca"]["tipo"] == "assegno_cumulativo_lotto_fatture"
+        for r in res["in_attesa_banca"]
+    )
+
+
+def test_due_assegni_uguali_seguono_due_fatture_uguali_in_ordine(monkeypatch):
+    db = _FakeDb()
+    db["invoices"].docs = [
+        _fattura(id="kimbo-old", invoice_number="0070017034",
+                 invoice_date="2026-05-20", supplier_name="KIMBO S.P.A.",
+                 supplier_vat="00123456789", total_amount=1498.96,
+                 metodo_pagamento_previsto="banca",
+                 metodo_pagamento_override_source="operatore_prima_nota"),
+        _fattura(id="kimbo-new", invoice_number="0070020417",
+                 invoice_date="2026-06-16", supplier_name="KIMBO S.P.A.",
+                 supplier_vat="00123456789", total_amount=1498.96,
+                 metodo_pagamento_previsto="banca",
+                 metodo_pagamento_override_source="operatore_prima_nota"),
+    ]
+    db["estratto_conto_movimenti"].docs = [
+        {"id": "check-old", "data": "2026-05-28", "tipo": "uscita",
+         "importo": 1498.96, "descrizione": "PRELIEVO ASSEGNO NUM: 0208769323",
+         "riconciliato": True},
+        {"id": "check-new", "data": "2026-06-24", "tipo": "uscita",
+         "importo": 1498.96, "descrizione": "PRELIEVO ASSEGNO NUM: 0208769335",
+         "riconciliato": True},
+    ]
+    _patch_db(monkeypatch, db)
+
+    async def _senza_pagamento(_db, fatture):
+        return fatture
+    monkeypatch.setattr(
+        sync_mod, "fatture_senza_pagamento_contabile_confermato",
+        _senza_pagamento,
+    )
+
+    res = _run(sync_mod.get_fatture_provvisorie(anno=2026))
+    per_id = {r["fattura_id"]: r for r in res["in_attesa_banca"]}
+
+    assert per_id["kimbo-old"]["movimento_banca"]["id"] == "check-old"
+    assert per_id["kimbo-new"]["movimento_banca"]["id"] == "check-new"
+    assert all(
+        r["evidenza_banca"]["tipo"] == "sequenza_assegni_fatture_stesso_fornitore_importo"
+        for r in per_id.values()
+    )
+
+
 def test_provvisori_non_taglia_i_primi_mesi_oltre_cinquemila_fatture(monkeypatch):
     """Il limite storico di 5.000 righe eliminava gennaio-maggio quando
     l'anno conteneva piu' documenti, perche' il cursore era ordinato dalla

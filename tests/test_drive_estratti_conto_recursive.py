@@ -96,6 +96,28 @@ def test_scansione_ricorsiva_separa_banca_pos_paypal_e_ignora_archivi():
     assert all(item["id"] not in {"old", "root_old", "pp_old"} for item in items)
 
 
+def test_recupero_archivio_elaborate_e_esplicito_e_non_confonde_l_inbox():
+    service = _Service({
+        "root": [
+            _folder("inbox", "Da elaborare"),
+            _folder("done", "Elaborate"),
+        ],
+        "inbox": [_file("new", "Estratto_BPM_Giugno_2026.csv")],
+        "done": [_file("old", "Estratto_BPM_Maggio_2026.csv")],
+    })
+
+    items, _sources, _rimandati = _discover_work_items(
+        service, "root", include_elaborate=True,
+    )
+
+    assert {item["id"] for item in items} == {"new", "old"}
+    nuovo = next(item for item in items if item["id"] == "new")
+    archivio = next(item for item in items if item["id"] == "old")
+    assert nuovo["archive_recovery"] is False
+    assert archivio["archive_recovery"] is True
+    assert archivio["source_path"] == "Elaborate/Estratto_BPM_Maggio_2026.csv"
+
+
 def test_piu_radici_da_env_e_registro_sono_deduplicate(monkeypatch):
     monkeypatch.setattr(settings, "GOOGLE_DRIVE_ESTRATTI_FOLDER_IDS", "root-a, root-b")
     monkeypatch.setattr(settings, "DRIVE_FOLDER_ESTRATTI_CONTO_IDS", None)

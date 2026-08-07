@@ -148,6 +148,17 @@ def test_numero_fattura_lungo_con_zeri_viene_riconosciuto_nella_causale():
     )
 
 
+def test_numero_composito_accetta_solo_progressivo_finale_documentale():
+    assert mod._numero_fattura_citato_esplicitamente(
+        "V1-2026-007590",
+        "S. PASSALACQUA S.P.A. - fattura 7590",
+    )
+    assert not mod._numero_fattura_citato_esplicitamente(
+        "V1-2026-007590",
+        "CRO 7590 PAGAMENTO GENERICO",
+    )
+
+
 def test_bonifico_non_si_chiude_se_la_causale_cita_una_fattura_non_importata(monkeypatch):
     async def scenario():
         db = _prepara_db(monkeypatch, 300.0)
