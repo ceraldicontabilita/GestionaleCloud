@@ -318,12 +318,17 @@ async def verifica_coerenza_pos_corrispettivi(
         pos_accreditato = pos["importo"]
         pos_manuale = chiusure_by_date.get(data, 0)
         
-        # REGOLA CANONICA (18/07/2026): la chiusura manuale serale è il POS
-        # REALE; l'XML è il confronto fiscale. Il "non battuto" (reale - XML)
-        # è quanto NON è stato battuto sul tasto elettronico del registratore:
-        # va evidenziato e recuperato nei giorni successivi (saldo progressivo).
-        riferimento_pos = pos_manuale if pos_manuale > 0 else elettronico_xml
-        non_battuto = round(pos_manuale - elettronico_xml, 2) if pos_manuale > 0 else 0.0
+        # REGOLA (utente 07/08/2026): il POS si ricostruisce SOLO dai terminali
+        # reali. Qui c'era `pos_manuale if pos_manuale > 0 else elettronico_xml`:
+        # in assenza della chiusura si usava il dato fiscale come riferimento,
+        # e la giornata sembrava quadrata perche' confrontava l'XML con se
+        # stesso. Senza terminale il riferimento non esiste, e va detto.
+        pos_reale_disponibile = pos_manuale > 0
+        riferimento_pos = pos_manuale if pos_reale_disponibile else 0.0
+        # Il "non battuto" e' quanto e' passato dal POS ma non e' stato battuto
+        # sul registratore. Ha senso solo con entrambe le fonti presenti.
+        non_battuto = (round(pos_manuale - elettronico_xml, 2)
+                       if pos_reale_disponibile else 0.0)
         
         totale_elettronico_xml += elettronico_xml
         totale_pos_accreditato += pos_accreditato
@@ -358,7 +363,15 @@ async def verifica_coerenza_pos_corrispettivi(
         oggi = datetime.now()
         is_recente = dt and dt >= oggi - timedelta(days=2)
         
-        if riferimento_pos > 0 and pos_accreditato == 0:
+        if not pos_reale_disponibile:
+            # Senza il dato del terminale non si puo' dire nulla sul giorno:
+            # dichiararlo "ok" perche' l'XML coincide con se stesso e' il
+            # falso verde che questa correzione elimina.
+            stato = "attende_pos_reale"
+            messaggio = ("Attende chiusura POS reale: il dato del terminale "
+                         "non e' ancora arrivato")
+            giorni_anomalia += 1
+        elif riferimento_pos > 0 and pos_accreditato == 0:
             if is_recente:
                 stato = "in_transito"
                 messaggio = f"POS in transito: €{riferimento_pos:.2f} (accredito atteso {data_accredito_attesa})"
