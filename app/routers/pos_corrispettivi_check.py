@@ -26,6 +26,7 @@ import re
 from app.database import Database
 from app.utils.error_handler import handle_errors
 from app.utils.dependencies import get_current_user
+from app.services import conti_pos
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/pos-corrispettivi", tags=["POS Corrispettivi Check"])
@@ -263,6 +264,14 @@ async def verifica_coerenza_pos_corrispettivi(
         importo = float(c.get("importo", 0) or 0)
         chiusure_by_date[data] = chiusure_by_date.get(data, 0) + importo
         totale_chiusure_manuali += importo
+
+    # Scomposizione per circuito: la pagina deve poter distinguere il POS
+    # NUMIA (inserito a mano) da quello SUMUP (scritto dall'API). Sommarli in
+    # un unico numero nasconderebbe proprio l'informazione che serve, visto
+    # che i due si accreditano su conti diversi.
+    pos_per_circuito = await _carica_pos_per_circuito(db)
+    circuiti_noti = conti_pos.circuiti_attivi()
+    totali_per_circuito = {c: 0.0 for c in circuiti_noti}
     
     # 4. Costruisci dizionario per data
     corrispettivi_by_date = {}
@@ -330,6 +339,9 @@ async def verifica_coerenza_pos_corrispettivi(
         non_battuto = (round(pos_manuale - elettronico_xml, 2)
                        if pos_reale_disponibile else 0.0)
         
+        for _circuito, _valore in (pos_per_circuito.get(data) or {}).items():
+            if _circuito in totali_per_circuito:
+                totali_per_circuito[_circuito] += float(_valore or 0)
         totale_elettronico_xml += elettronico_xml
         totale_pos_accreditato += pos_accreditato
         
@@ -402,6 +414,17 @@ async def verifica_coerenza_pos_corrispettivi(
             "non_riscosso": round(corr["non_riscosso"], 2),
             "pos_accreditato": round(pos_accreditato, 2),
             "pos_chiusura_manuale": round(chiusure_by_date.get(data, 0), 2),  # Aggiunto riferimento chiusure manuali
+            # Un circuito assente NON vale zero: vale "non ha ancora
+            # risposto", ed e' la pagina a doverlo mostrare come tale.
+            "pos_per_circuito": {
+                c: pos_per_circuito.get(data, {}).get(c)
+                for c in circuiti_noti
+            },
+            "circuiti_mancanti": [
+                c for c in circuiti_noti
+                if pos_per_circuito.get(data, {}).get(c) is None
+            ],
+            "pos_reale_disponibile": pos_reale_disponibile,
             "differenza": round(differenza, 2),
             "stato": stato,
             "messaggio": messaggio,
@@ -424,6 +447,16 @@ async def verifica_coerenza_pos_corrispettivi(
         "riepilogo": {
             "totale_elettronico_xml": round(totale_elettronico_xml, 2),
             "totale_pos_accreditato": round(totale_pos_accreditato, 2),
+            # Per circuito, cosi' la pagina puo' mostrare NUMIA e SUMUP
+            # affiancati invece di un unico "POS terminale" indistinto.
+            "totali_per_circuito": {
+                c: round(v, 2) for c, v in totali_per_circuito.items()
+            },
+            "circuiti": [
+                {"codice": c, "sigla": conti_pos.sigla(c),
+                 "etichetta": conti_pos.etichetta(c)}
+                for c in circuiti_noti
+            ],
             "totale_chiusure_manuali": round(totale_chiusure_manuali, 2),  # Chiusure da registratore (pos.xlsx)
             "differenza_totale": round(differenza_totale, 2),
             "non_battuto_totale": non_battuto_progressivo,
@@ -881,55 +914,71 @@ def _data_accredito_attesa(data_incasso_str: str) -> str:
     return prevista if prevista else data_incasso_str
 
 
-async def _carica_pos_manuale_per_data(db) -> Dict[str, float]:
-    """Carica il POS serale manuale per ogni data, unendo le due fonti:
-      - chiusure_pos_manuali (import CSV storico)
-      - prima_nota_banca con source='chiusura_pos_mobile' (inserimento da UI)
+async def _carica_pos_per_circuito(db) -> Dict[str, Dict[str, float]]:
+    """POS reale per giorno, SCOMPOSTO per circuito.
 
-    Se una data è in entrambe, vince prima_nota_banca (è più recente e aggiornabile
-    dall'utente). Ritorna un dizionario {data: importo}.
+    Prima questa funzione teneva un solo importo per giornata: con Numia e
+    SumUp attivi lo stesso giorno, l'override manuale dell'uno cancellava
+    quello dell'altro e in pagina compariva un solo terminale. Il POS reale
+    e' la somma dei circuiti, quindi vanno tenuti distinti fin da qui.
+
+    Ritorna ``{data: {circuito: importo}}``. L'inserimento dalla UI prevale
+    sui componenti importati, ma solo dentro il proprio circuito.
     """
-    out: Dict[str, float] = {}
-    override_manuali: Dict[str, float] = {}
+    from app.services.scritture_contabili import normalizza_gestore_pos
 
-    # Fonte 1: chiusure_pos_manuali (import CSV)
+    componenti: Dict[str, Dict[str, float]] = {}
+    override: Dict[str, Dict[str, float]] = {}
+
     async for c in db["chiusure_pos_manuali"].find(
-        {}, {"_id": 0, "data": 1, "importo": 1, "totale": 1, "source": 1}
+        {}, {"_id": 0, "data": 1, "importo": 1, "totale": 1,
+             "source": 1, "gestore": 1}
     ):
         d = c.get("data")
         if not d:
             continue
         if isinstance(d, datetime):
             d = d.strftime("%Y-%m-%d")
+        giorno = str(d)[:10]
+        circuito = normalizza_gestore_pos(c.get("gestore"))
         imp = float(c.get("importo") or c.get("totale") or 0)
-        if d:
-            # Anche 0,00 e' una chiusura manuale esplicita: non va confusa
-            # con un dato mancante e non deve riattivare il fallback XML.
-            giorno = d[:10]
-            if c.get("source") == "inserimento_manuale_terminale":
-                override_manuali[giorno] = imp
-            else:
-                # Gli import storici possono avere piu' componenti/circuiti
-                # nello stesso giorno: prima dell'override vanno sommati.
-                out[giorno] = out.get(giorno, 0.0) + imp
+        # Anche 0,00 e' una chiusura esplicita: non va confusa con un dato
+        # mancante e non deve riattivare alcun ripiego.
+        if c.get("source") == "inserimento_manuale_terminale":
+            override.setdefault(giorno, {})[circuito] = imp
+        else:
+            per_giorno = componenti.setdefault(giorno, {})
+            per_giorno[circuito] = per_giorno.get(circuito, 0.0) + imp
 
-    out.update(override_manuali)
+    for giorno, per_circuito in override.items():
+        componenti.setdefault(giorno, {}).update(per_circuito)
 
-    # Fonte 2: prima_nota_banca con source chiusura_pos_mobile (sovrascrive)
+    # Fonte storica: chiusure finite in prima_nota_banca (vecchio flusso UI).
+    # Non portano il circuito, quindi appartengono al terminale predefinito.
     async for c in db["prima_nota_banca"].find(
         {"source": {"$in": ["chiusura_pos_mobile", "corrispettivo_pos"]}},
-        {"_id": 0, "data": 1, "importo": 1, "amount": 1}
+        {"_id": 0, "data": 1, "importo": 1, "amount": 1, "gestore": 1}
     ):
         d = c.get("data")
         if not d:
             continue
         if isinstance(d, datetime):
             d = d.strftime("%Y-%m-%d")
-        imp = float(c.get("importo") or c.get("amount") or 0)
-        if d and d[:10] not in override_manuali:
-            out[d[:10]] = imp  # fallback storico, mai sopra l'override UI
+        giorno = str(d)[:10]
+        circuito = normalizza_gestore_pos(c.get("gestore"))
+        if circuito in componenti.get(giorno, {}):
+            continue  # mai sopra un dato piu' recente dello stesso circuito
+        componenti.setdefault(giorno, {})[circuito] = float(
+            c.get("importo") or c.get("amount") or 0)
 
-    return out
+    return {g: {c: round(v, 2) for c, v in per_circuito.items()}
+            for g, per_circuito in componenti.items()}
+
+
+async def _carica_pos_manuale_per_data(db) -> Dict[str, float]:
+    """Totale del POS reale per giorno: la somma dei circuiti."""
+    return {giorno: round(sum(per_circuito.values()), 2)
+            for giorno, per_circuito in (await _carica_pos_per_circuito(db)).items()}
 
 
 async def _carica_accrediti_banca_pos(
