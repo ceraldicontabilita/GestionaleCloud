@@ -239,6 +239,33 @@ describe('Fatture provvisorie in attesa banca', () => {
       },
     ));
     expect(onRicarica).toHaveBeenCalledTimes(1);
+    expect(onRicarica).toHaveBeenCalledWith({ silent: true });
+  });
+
+  it('in selezione veloce assegna metodi diversi senza smontare filtri e lista', async () => {
+    api.post.mockResolvedValue({ data: { success: true, message: 'Aggiornata' } });
+    const onRicarica = vi.fn().mockResolvedValue(undefined);
+    render(<Provvisori
+      provvisori={[
+        { fattura_id: 'cassa-1', fattura_numero: 'C1', fattura_data: '2026-08-01', fornitore: 'Carta Party', importo: 100 },
+        { fattura_id: 'banca-1', fattura_numero: 'B1', fattura_data: '2026-08-02', fornitore: 'Europa', importo: 200 },
+      ]}
+      attesaBanca={[]}
+      onRicarica={onRicarica}
+    />);
+
+    fireEvent.click(screen.getByLabelText('Attiva selezione veloce'));
+    fireEvent.change(screen.getByPlaceholderText('Es. San Carlo'), {
+      target: { value: 'Carta' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Cassa$/i }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/prima-nota/provvisori/conferma',
+      { fattura_id: 'cassa-1', metodo: 'cassa', approva_metodo_fattura: true },
+    ));
+    expect(onRicarica).toHaveBeenCalledWith({ silent: true });
+    expect(screen.getByPlaceholderText('Es. San Carlo')).toHaveValue('Carta');
   });
 
   it('registra la quota Cassa e lascia il residuo alla riconciliazione bancaria', async () => {
