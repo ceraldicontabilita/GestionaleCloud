@@ -87,11 +87,24 @@ Altre garanzie trasversali:
 |---|---|---|
 | Fatture fornitori | **Solo Google Drive** (cartella dedicata) | controllo automatico ogni ora + subito a ogni riavvio |
 | Corrispettivi RT | Google Drive (XML del registratore telematico) | ogni ora |
-| Estratti conto e POS | Google Drive (PDF/CSV/Excel BNL, BPM, carte; export transazioni POS BPM) | ogni ora, se `ENABLE_DRIVE_ESTRATTI_CONTO_SYNC` è attivo |
+| Estratti conto e POS | Google Drive, **una sola cartella `Estratti conto/Da elaborare`** (PDF/CSV/Excel: banca BNL e BPM, carta Nexi, PayPal, mutuo, export terminali POS) | ogni ora, se `ENABLE_DRIVE_ESTRATTI_CONTO_SYNC` è attivo |
 | Quietanze F24 | Google Drive (PDF) + upload manuale dalla pagina F24 | ogni ora (**attivo** dal 10/07/2026) |
 | Cedolini | **Email** da mittenti attendibili + **cartella Drive cedolini paga** (PDF) | ogni ora (attivo) |
 | F24 commercialista | Email da mittenti attendibili | ogni ora (**attivo** dal 13/07/2026, `ENABLE_EMAIL_F24_SYNC` — parser non ancora validato su F24 reali) |
 | Verbali/multe | Email da mittenti attendibili | ogni ora (**attivo** dal 13/07/2026, `ENABLE_EMAIL_VERBALI_SYNC`) |
+
+**Estratti conto, cartella unica (07/08/2026, scelta utente).** Tutti i documenti
+— banca, carta di credito, PayPal, mutuo, export dei terminali POS — si mettono
+nella stessa cartella `Estratti conto/Da elaborare`, senza più una cartella per
+fonte. Il gestionale capisce da solo di che documento si tratta: prima dal nome
+quando è inequivocabile (`Export_Mensile_`, `-MSR-`, `Estratto mutuo`), poi
+leggendo l'intestazione del documento. «Estratto conto» nel nome non basta a
+decidere: lo scrivono la banca, la carta **e** PayPal.
+
+Se un documento non viene riconosciuto **non viene indovinato**: finisce in
+`Errori` con scritto il motivo. Le vecchie cartelle per fonte (`POS BPM/`,
+`Carta Nexi/`, `BPM/`…) continuano a funzionare come prima. Dettaglio in
+`memoria/DRIVE_ESTRATTI_CONTO.md`.
 
 Regola non negoziabile: **le fatture arrivano SOLO da Drive, mai da Gmail né da PEC**.
 Se una scansione email trova un file che sembra una fattura elettronica, non la importa:

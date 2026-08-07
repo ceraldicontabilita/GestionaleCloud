@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.config import settings
+from app.services import classificazione_estratti
 from app.services.drive_invoice_ingest import (
     _download_bytes,
     _get_or_create_inbox_folder,
@@ -191,16 +192,19 @@ def _route_for_path(path: str, filename: str = "") -> Optional[str]:
         or "bpm" in segments
     ):
         return "bank"
-    # File bancari lasciati direttamente nella radice storica.
-    if not path and any(token in filename.lower() for token in (
-        "estratto", "elencoentrateuscite", "movimenti_bnl_bpm",
-    )):
-        return "bank"
-    return None
+    # Nessun indizio dal percorso: decide il nome del file, e se non basta
+    # decidera' il contenuto dopo lo scaricamento. Qui c'era una regola che
+    # dava per bancario qualunque file con "estratto" nel nome: con l'inbox
+    # unico mandava in estratto conto anche la carta di credito Nexi.
+    return classificazione_estratti.route_da_nome(filename)
 
 
 def _supported_file(route: Optional[str], filename: str) -> bool:
     lower = filename.lower()
+    if route is None:
+        # Fonte ancora ignota: si prende in carico se e' un formato di
+        # quest'area, e la si riconosce dal contenuto in fase di import.
+        return classificazione_estratti.estensione_trattata(lower)
     if route == "bank":
         return lower.endswith((".csv", ".xlsx", ".xls", ".pdf"))
     if route == "pos":
@@ -283,18 +287,27 @@ def _discover_work_items(
             name = (folder.get("name") or "").strip()
             lower = name.lower()
             if lower in _LIFECYCLE_NAMES:
-                if lower == "da elaborare" and current_route:
+                # Si entra in "Da elaborare" anche quando il percorso non dice
+                # la fonte: e' il caso dell'inbox unico, dove a classificare
+                # sono il nome del file e poi il suo contenuto. Prima serviva
+                # una cartella per fonte, quindi con tutto in un posto solo
+                # non veniva letto nulla.
+                if lower == "da elaborare":
                     for item in _list_children(service, folder["id"]):
-                        if item.get("mimeType") == _FOLDER_MIME or not _supported_file(current_route, item.get("name") or ""):
+                        if item.get("mimeType") == _FOLDER_MIME:
+                            continue
+                        nome = item.get("name") or ""
+                        route = current_route or classificazione_estratti.route_da_nome(nome)
+                        if not _supported_file(route, nome):
                             continue
                         target_parent = current_lifecycle or folder_id
                         sources[target_parent] = {"id": target_parent, "path": path or "Estratti conto"}
                         items.append({
                             **item,
-                            "route": current_route,
+                            "route": route,
                             "source_parent_id": folder["id"],
                             "lifecycle_parent_id": target_parent,
-                            "source_path": "/".join(part for part in (path, "Da elaborare", item.get("name") or "") if part),
+                            "source_path": "/".join(part for part in (path, "Da elaborare", nome) if part),
                         })
                 continue
             child_path = "/".join(part for part in (path, name) if part)
@@ -344,7 +357,7 @@ async def sync(db) -> Dict[str, Any]:
             "paypal_files": 0, "paypal_statements": 0,
             "paypal_transactions": 0, "paypal_transactions_linked": 0,
             "nexi_files": 0, "nexi_duplicates": 0,
-            "nexi_transactions": 0,
+            "nexi_transactions": 0, "unrecognized": 0,
             "sources": [], "errors": [],
         }
         files_by_id: Dict[str, Dict[str, Any]] = {}
@@ -378,6 +391,17 @@ async def sync(db) -> Dict[str, Any]:
                 content = _download_bytes(service, item["id"])
                 if not content:
                     raise ValueError("file vuoto")
+                if item["route"] is None:
+                    # Ultima possibilita': l'intestazione del documento. Se
+                    # non basta si ferma qui — attribuire la fonte a caso
+                    # significherebbe scrivere movimenti su un conto che non
+                    # c'entra, ed e' un danno peggiore del file non importato.
+                    item["route"], motivo = classificazione_estratti.classifica(
+                        item["name"], content,
+                    )
+                    if item["route"] is None:
+                        result["unrecognized"] += 1
+                        raise ValueError(f"fonte non riconosciuta: {motivo}")
                 if item["route"] == "pos":
                     if "commissioni_" in item["name"].lower():
                         esito = await importa_pos_commissioni_file(
