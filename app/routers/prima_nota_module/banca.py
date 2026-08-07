@@ -9,6 +9,7 @@ import uuid
 
 from app.database import Database, Collections
 from .common import (
+    entra_in_prima_nota,
     COLLECTION_PRIMA_NOTA_BANCA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA,
     calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota, arricchisci_movimenti_fattura
 )
@@ -430,4 +431,180 @@ async def get_fattura_allegata_banca(movimento_id: str) -> Dict[str, Any]:
         "movimento_id": movimento_id,
         "fattura": fattura,
         "message": "Fattura trovata" if fattura else "Fattura non trovata nel DB"
+    }
+
+
+async def movimenti_in_attesa_documento(anno: Optional[int] = None) -> Dict[str, Any]:
+    """Righe di estratto conto che aspettano il documento a cui agganciarsi.
+
+    Sono il motivo — l'unico legittimo — per cui il saldo di Prima Nota Banca
+    e quello del conto corrente non coincidono. Vanno mostrate, non nascoste:
+    una differenza che nessuno spiega diventa un errore che nessuno cerca.
+
+    Sola lettura: non scrive e non modifica niente.
+    """
+    db = Database.get_db()
+
+    query: Dict[str, Any] = {
+        "stato_riconciliazione": "in_attesa_documento",
+        "riconciliato": {"$ne": True},
+    }
+    if anno:
+        query["data"] = {"$regex": f"^{anno}"}
+
+    movimenti = await db["estratto_conto_movimenti"].find(
+        query,
+        {"_id": 0, "id": 1, "data": 1, "tipo": 1, "importo": 1,
+         "descrizione": 1, "descrizione_originale": 1, "categoria": 1},
+    ).sort("data", -1).to_list(2000)
+
+    entrate = sum(float(m.get("importo") or 0)
+                  for m in movimenti if m.get("tipo") == "entrata")
+    uscite = sum(float(m.get("importo") or 0)
+                 for m in movimenti if m.get("tipo") == "uscita")
+
+    per_categoria: Dict[str, Dict[str, Any]] = {}
+    for m in movimenti:
+        voce = per_categoria.setdefault(
+            str(m.get("categoria") or "Altro"), {"conteggio": 0, "importo": 0.0})
+        voce["conteggio"] += 1
+        voce["importo"] = round(voce["importo"] + float(m.get("importo") or 0), 2)
+
+    return {
+        "movimenti": movimenti,
+        "totale": len(movimenti),
+        "entrate": round(entrate, 2),
+        "uscite": round(uscite, 2),
+        "effetto_sul_saldo": round(entrate - uscite, 2),
+        "per_categoria": per_categoria,
+    }
+
+
+async def analisi_righe_grezze_storiche(anno: Optional[int] = None) -> Dict[str, Any]:
+    """Quante righe in Prima Nota Banca arrivano dal vecchio caricamento a valanga.
+
+    Sono le righe scritte dall'import quando ancora copiava l'intero estratto
+    conto: nessun documento collegato, categoria generica. Questa e' solo la
+    fotografia — non tocca niente, serve a decidere con i numeri davanti.
+    """
+    db = Database.get_db()
+
+    query: Dict[str, Any] = {
+        "source": {"$in": ["estratto_conto_auto", "export_bancario_operativo"]},
+        "status": {"$nin": ["deleted", "archived"]},
+        "fattura_id": {"$in": [None, ""]},
+        "stipendio_id": {"$in": [None, ""]},
+        "f24_id": {"$in": [None, ""]},
+    }
+    if anno:
+        query["data"] = {"$regex": f"^{anno}"}
+
+    righe = await db[COLLECTION_PRIMA_NOTA_BANCA].find(
+        query, {"_id": 0, "id": 1, "data": 1, "tipo": 1, "importo": 1,
+                "categoria": 1, "descrizione": 1},
+    ).to_list(20000)
+
+    per_mese: Dict[str, Dict[str, Any]] = {}
+    per_categoria: Dict[str, int] = {}
+    for r in righe:
+        mese = str(r.get("data") or "")[:7]
+        voce = per_mese.setdefault(mese, {"conteggio": 0, "importo": 0.0})
+        voce["conteggio"] += 1
+        voce["importo"] = round(voce["importo"] + float(r.get("importo") or 0), 2)
+        categoria = str(r.get("categoria") or "Altro")
+        per_categoria[categoria] = per_categoria.get(categoria, 0) + 1
+
+    resterebbero = sum(1 for r in righe if entra_in_prima_nota(r.get("categoria")))
+
+    return {
+        "totale": len(righe),
+        "resterebbero_con_la_regola_nuova": resterebbero,
+        "uscirebbero_dalla_prima_nota": len(righe) - resterebbero,
+        "per_mese": dict(sorted(per_mese.items())),
+        "per_categoria": dict(sorted(per_categoria.items(),
+                                     key=lambda kv: -kv[1])),
+        "nota": ("Fotografia in sola lettura: nessuna riga e' stata "
+                 "modificata, spostata o cancellata."),
+    }
+
+
+async def candidati_banca_per_fattura(fattura_id: str) -> Dict[str, Any]:
+    """Movimenti bancari che potrebbero essere il pagamento di questa fattura.
+
+    Il matching automatico e' volutamente severo: pretende importo al
+    centesimo, numero fattura nella causale e nome fornitore. Quando manca una
+    di quelle prove non associa, ed e' giusto — ma l'utente resta a guardare
+    una lista che non puo' toccare.
+
+    Qui le prove si mostrano invece di pretenderle: ogni candidato arriva con
+    scritto cosa combacia e cosa no. La decisione resta all'utente, che di
+    quella fattura sa cose che il gestionale non sa.
+    """
+    from app.routers.invoices.fatture_upload import (
+        _finestra_pagamento,
+        _token_identita_fornitore,
+    )
+    from app.services.bank_evidence import filtro_solo_evidenza_ufficiale
+
+    db = Database.get_db()
+
+    fattura = await db["invoices"].find_one(
+        {"id": fattura_id},
+        {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1,
+         "supplier_name": 1, "total_amount": 1},
+    )
+    if not fattura:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+
+    importo = float(fattura.get("total_amount") or 0)
+    if importo <= 0:
+        return {"fattura": fattura, "candidati": [], "totale": 0}
+
+    # Tolleranza volutamente larga: serve a MOSTRARE, non ad associare da solo.
+    # L'associazione la conferma una persona, e la sua conferma e' la prova.
+    conds: Dict[str, Any] = {
+        "tipo": "uscita",
+        "abbinato": {"$ne": True},
+        "$and": [
+            filtro_solo_evidenza_ufficiale(),
+            {"riconciliato": {"$ne": True}},
+            {"$or": [
+                {"importo": {"$gte": importo - 0.05, "$lte": importo + 0.05}},
+                {"importo": {"$gte": -importo - 0.05, "$lte": -importo + 0.05}},
+            ]},
+        ],
+    }
+    finestra = _finestra_pagamento(str(fattura.get("invoice_date") or "")[:10])
+    if finestra:
+        conds["data"] = {"$gte": finestra[0], "$lte": finestra[1]}
+
+    movimenti = await db["estratto_conto_movimenti"].find(
+        conds,
+        {"_id": 0, "id": 1, "data": 1, "importo": 1, "tipo": 1,
+         "descrizione": 1, "descrizione_originale": 1, "categoria": 1},
+    ).sort("data", 1).limit(50).to_list(50)
+
+    numero = str(fattura.get("invoice_number") or "").strip().upper()
+    token_fornitore = _token_identita_fornitore(fattura.get("supplier_name") or "")
+
+    candidati = []
+    for m in movimenti:
+        testo = f"{m.get('descrizione') or ''} {m.get('descrizione_originale') or ''}".upper()
+        prove = []
+        if abs(abs(float(m.get("importo") or 0)) - importo) < 0.005:
+            prove.append("importo esatto")
+        if numero and numero in testo:
+            prove.append("numero fattura nella causale")
+        if token_fornitore and any(t in testo for t in token_fornitore):
+            prove.append("nome fornitore nella causale")
+        candidati.append({**m, "prove": prove, "forza": len(prove)})
+
+    candidati.sort(key=lambda c: (-c["forza"], str(c.get("data") or "")))
+
+    return {
+        "fattura": fattura,
+        "candidati": candidati,
+        "totale": len(candidati),
+        "nota": ("L'associazione la confermi tu: il gestionale mostra cosa "
+                 "combacia, non decide al posto tuo."),
     }

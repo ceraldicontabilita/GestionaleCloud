@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.config import settings
+from app.services import classificazione_estratti
 from app.services.drive_invoice_ingest import (
     _download_bytes,
     _get_or_create_inbox_folder,
@@ -191,16 +192,19 @@ def _route_for_path(path: str, filename: str = "") -> Optional[str]:
         or "bpm" in segments
     ):
         return "bank"
-    # File bancari lasciati direttamente nella radice storica.
-    if not path and any(token in filename.lower() for token in (
-        "estratto", "elencoentrateuscite", "movimenti_bnl_bpm",
-    )):
-        return "bank"
-    return None
+    # Nessun indizio dal percorso: decide il nome del file, e se non basta
+    # decidera' il contenuto dopo lo scaricamento. Qui c'era una regola che
+    # dava per bancario qualunque file con "estratto" nel nome: con l'inbox
+    # unico mandava in estratto conto anche la carta di credito Nexi.
+    return classificazione_estratti.route_da_nome(filename)
 
 
 def _supported_file(route: Optional[str], filename: str) -> bool:
     lower = filename.lower()
+    if route is None:
+        # Fonte ancora ignota: si prende in carico se e' un formato di
+        # quest'area, e la si riconosce dal contenuto in fase di import.
+        return classificazione_estratti.estensione_trattata(lower)
     if route == "bank":
         return lower.endswith((".csv", ".xlsx", ".xls", ".pdf"))
     if route == "pos":
@@ -217,6 +221,24 @@ def _supported_file(route: Optional[str], filename: str) -> bool:
     if route == "nexi":
         return lower.endswith(".pdf")
     return False
+
+
+def _troppo_vecchio(filename: str) -> bool:
+    """Documento dell'arretrato, da lasciare fermo.
+
+    L'inbox unico contiene anni di storico. L'utente ha chiesto di lavorare
+    prima l'anno in corso, quindi i documenti piu' vecchi non vengono ne'
+    importati ne' spostati: restano dove sono, visibili, pronti per quando
+    si abbassera' `DRIVE_ESTRATTI_ANNO_MINIMO`.
+
+    Un nome senza anno leggibile viene considerato arretrato: e' la scelta
+    prudente, perche' l'alternativa e' importare a caso meta' dello storico.
+    """
+    minimo = int(getattr(settings, "DRIVE_ESTRATTI_ANNO_MINIMO", 0) or 0)
+    if minimo <= 0:
+        return False
+    anno = classificazione_estratti.anno_del_nome(filename)
+    return anno is None or anno < minimo
 
 
 def _work_item_priority(item: Dict[str, Any]) -> Tuple[int, str, str]:
@@ -239,7 +261,7 @@ def _discover_work_items(
     service,
     root_id: str,
     initial_route: Optional[str] = None,
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, str]]]:
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, str]], List[str]]:
     """Scansiona le fonti supportate senza entrare negli archivi.
 
     Compatibilita' con la struttura esistente: durante la transizione legge
@@ -249,6 +271,7 @@ def _discover_work_items(
     """
     items: List[Dict[str, Any]] = []
     sources: Dict[str, Dict[str, str]] = {}
+    rimandati: List[str] = []
 
     def walk(folder_id: str, path: str, inherited_route: Optional[str], lifecycle_parent: Optional[str]):
         children = _list_children(service, folder_id)
@@ -269,6 +292,9 @@ def _discover_work_items(
             route = current_route or _route_for_path(path, item.get("name") or "")
             if not _supported_file(route, item.get("name") or ""):
                 continue
+            if _troppo_vecchio(item.get("name") or ""):
+                rimandati.append(item.get("name") or "")
+                continue
             target_parent = current_lifecycle or folder_id
             sources[target_parent] = {"id": target_parent, "path": path or "Estratti conto"}
             items.append({
@@ -283,18 +309,30 @@ def _discover_work_items(
             name = (folder.get("name") or "").strip()
             lower = name.lower()
             if lower in _LIFECYCLE_NAMES:
-                if lower == "da elaborare" and current_route:
+                # Si entra in "Da elaborare" anche quando il percorso non dice
+                # la fonte: e' il caso dell'inbox unico, dove a classificare
+                # sono il nome del file e poi il suo contenuto. Prima serviva
+                # una cartella per fonte, quindi con tutto in un posto solo
+                # non veniva letto nulla.
+                if lower == "da elaborare":
                     for item in _list_children(service, folder["id"]):
-                        if item.get("mimeType") == _FOLDER_MIME or not _supported_file(current_route, item.get("name") or ""):
+                        if item.get("mimeType") == _FOLDER_MIME:
+                            continue
+                        nome = item.get("name") or ""
+                        route = current_route or classificazione_estratti.route_da_nome(nome)
+                        if not _supported_file(route, nome):
+                            continue
+                        if _troppo_vecchio(nome):
+                            rimandati.append(nome)
                             continue
                         target_parent = current_lifecycle or folder_id
                         sources[target_parent] = {"id": target_parent, "path": path or "Estratti conto"}
                         items.append({
                             **item,
-                            "route": current_route,
+                            "route": route,
                             "source_parent_id": folder["id"],
                             "lifecycle_parent_id": target_parent,
-                            "source_path": "/".join(part for part in (path, "Da elaborare", item.get("name") or "") if part),
+                            "source_path": "/".join(part for part in (path, "Da elaborare", nome) if part),
                         })
                 continue
             child_path = "/".join(part for part in (path, name) if part)
@@ -305,7 +343,7 @@ def _discover_work_items(
             walk(folder["id"], child_path, child_route, child_lifecycle)
 
     walk(root_id, "", initial_route, root_id if initial_route else None)
-    return items, list(sources.values())
+    return items, list(sources.values()), rimandati
 
 
 class _UploadDrive:
@@ -344,13 +382,14 @@ async def sync(db) -> Dict[str, Any]:
             "paypal_files": 0, "paypal_statements": 0,
             "paypal_transactions": 0, "paypal_transactions_linked": 0,
             "nexi_files": 0, "nexi_duplicates": 0,
-            "nexi_transactions": 0,
+            "nexi_transactions": 0, "unrecognized": 0,
             "sources": [], "errors": [],
         }
         files_by_id: Dict[str, Dict[str, Any]] = {}
         sources_by_id: Dict[str, Dict[str, str]] = {}
+        rimandati: List[str] = []
         for root_id in _folder_ids():
-            root_files, root_sources = _discover_work_items(
+            root_files, root_sources, root_rimandati = _discover_work_items(
                 service,
                 root_id,
                 initial_route="nexi" if root_id in _nexi_folder_ids() else None,
@@ -359,6 +398,16 @@ async def sync(db) -> Dict[str, Any]:
                 files_by_id.setdefault(item["id"], item)
             for source in root_sources:
                 sources_by_id.setdefault(source["id"], source)
+            rimandati.extend(root_rimandati)
+        # Arretrato tenuto fermo: dichiarato, mai nascosto. Un conteggio che
+        # non si vede diventa "e' tutto importato" quando non lo e'.
+        result["deferred"] = len(rimandati)
+        result["deferred_before_year"] = int(
+            getattr(settings, "DRIVE_ESTRATTI_ANNO_MINIMO", 0) or 0
+        )
+        if rimandati:
+            logger.info("Drive estratti conto: %s documenti dell'arretrato lasciati "
+                        "fermi (anno minimo %s)", len(rimandati), result["deferred_before_year"])
         files = sorted(files_by_id.values(), key=_work_item_priority)
         sources = list(sources_by_id.values())
         result["sources"] = [source["path"] for source in sources]
@@ -378,6 +427,17 @@ async def sync(db) -> Dict[str, Any]:
                 content = _download_bytes(service, item["id"])
                 if not content:
                     raise ValueError("file vuoto")
+                if item["route"] is None:
+                    # Ultima possibilita': l'intestazione del documento. Se
+                    # non basta si ferma qui — attribuire la fonte a caso
+                    # significherebbe scrivere movimenti su un conto che non
+                    # c'entra, ed e' un danno peggiore del file non importato.
+                    item["route"], motivo = classificazione_estratti.classifica(
+                        item["name"], content,
+                    )
+                    if item["route"] is None:
+                        result["unrecognized"] += 1
+                        raise ValueError(f"fonte non riconosciuta: {motivo}")
                 if item["route"] == "pos":
                     if "commissioni_" in item["name"].lower():
                         esito = await importa_pos_commissioni_file(

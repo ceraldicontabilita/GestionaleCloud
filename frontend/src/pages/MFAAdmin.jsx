@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import api from '../api';
+import CopiaTesto from '../components/CopiaTesto';
 import { useAuth } from '../contexts/AuthContext';
 
 const card = { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 22, maxWidth: 760, margin: '0 auto' };
@@ -112,7 +113,10 @@ export default function MFAAdmin() {
             )}
             <div style={{ background: '#fff', padding: 14, width: 'fit-content', border: '1px solid #e2e8f0' }}><QRCodeSVG value={setup.otpauth_uri} size={190} /></div>
             <p style={{ color: '#64748b', fontSize: 13 }}>Se non puoi scansionarlo, inserisci manualmente questa chiave. Non condividerla.</p>
-            <code style={{ display: 'block', wordBreak: 'break-all', background: '#f8fafc', padding: 10 }}>{setup.secret}</code>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <code style={{ flex: '1 1 260px', wordBreak: 'break-all', background: '#f8fafc', padding: 10 }}>{setup.secret}</code>
+              <CopiaTesto testo={setup.secret} label="Copia chiave" data-testid="copia-chiave-mfa" />
+            </div>
             <h3>2. Conferma il primo codice</h3>
             <p style={{ color: '#475569', lineHeight: 1.5 }}>
               Apri l'app Authenticator e inserisci qui esclusivamente il codice numerico temporaneo di 6 cifre. Non incollare la chiave lunga in questo campo.
@@ -154,8 +158,16 @@ export default function MFAAdmin() {
 
         {recoveryCodes.length > 0 && (
           <div style={{ marginTop: 20, padding: 16, border: '2px solid #f59e0b', borderRadius: 10 }}>
-            <h3 style={{ marginTop: 0 }}>Codici di recupero — mostrati una sola volta</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0 }}>Codici di recupero — mostrati una sola volta</h3>
+              {/* Si vedono una volta sola: se non li copi ora, sono persi. */}
+              <CopiaTesto
+                testo={recoveryCodes.join('\n')}
+                label="Copia tutti"
+                data-testid="copia-codici-recupero"
+              />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginTop: 12 }}>
               {recoveryCodes.map(item => <code key={item} style={{ padding: 8, background: '#fffbeb' }}>{item}</code>)}
             </div>
           </div>

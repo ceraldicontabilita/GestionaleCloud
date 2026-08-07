@@ -1,6 +1,8 @@
 import json
 import re
 
+import pytest
+
 from app.config import settings
 from app.services.drive_estratti_conto_ingest import (
     _discover_work_items,
@@ -48,6 +50,17 @@ def _file(id_, name):
     return {"id": id_, "name": name, "mimeType": "application/octet-stream"}
 
 
+@pytest.fixture(autouse=True)
+def _senza_soglia_arretrato(monkeypatch):
+    """Qui si verifica l'instradamento, non il blocco dell'arretrato.
+
+    Il filtro per anno ha un test suo; lasciarlo acceso farebbe sparire da
+    questi casi i documenti storici che servono proprio a provare che
+    vengono classificati bene.
+    """
+    monkeypatch.setattr(settings, "DRIVE_ESTRATTI_ANNO_MINIMO", 0, raising=False)
+
+
 def test_scansione_ricorsiva_separa_banca_pos_paypal_e_ignora_archivi():
     service = _Service({
         "root": [
@@ -72,7 +85,7 @@ def test_scansione_ricorsiva_separa_banca_pos_paypal_e_ignora_archivi():
         "done": [_file("root_old", "estratto-archiviato.pdf")],
     })
 
-    items, sources = _discover_work_items(service, "root")
+    items, sources, _rimandati = _discover_work_items(service, "root")
 
     assert {(item["id"], item["route"]) for item in items} == {
         ("ec1", "bank"), ("pos1", "pos"), ("pos2", "pos"),
@@ -111,7 +124,8 @@ def test_radice_nexi_accetta_pdf_con_nomi_generici():
         "done": [_file("old", "dicembre.pdf")],
     })
 
-    items, sources = _discover_work_items(service, "carte", initial_route="nexi")
+    items, sources, _rimandati = _discover_work_items(
+        service, "carte", initial_route="nexi")
 
     assert {(item["id"], item["route"]) for item in items} == {
         ("n1", "nexi"), ("n2", "nexi"),
@@ -125,7 +139,7 @@ def test_crea_ciclo_anche_per_fonte_riconosciuta_senza_file():
         "bpm": [],
     })
 
-    items, sources = _discover_work_items(service, "root")
+    items, sources, _rimandati = _discover_work_items(service, "root")
 
     assert items == []
     assert sources == [{"id": "bpm", "path": "BPM"}]
@@ -143,3 +157,23 @@ def test_da_elaborare_ha_priorita_sui_file_storici_diretti():
     assert [item["id"] for item in ordinati] == [
         "inbox-a", "inbox-b", "storico",
     ]
+
+
+def test_l_arretrato_non_entra_nel_lavoro_ma_viene_contato(monkeypatch):
+    """Cartella unica con dentro storico e anno in corso: passa solo il 2026,
+    e i documenti fermi restano dichiarati invece di sparire in silenzio."""
+    monkeypatch.setattr(settings, "DRIVE_ESTRATTI_ANNO_MINIMO", 2026, raising=False)
+    service = _Service({
+        "root": [_folder("inbox", "Da elaborare")],
+        "inbox": [
+            _file("nuovo", "Export_Mensile_Giugno_2026.csv"),
+            _file("vecchio", "EC-38949004-agosto 2024.pdf"),
+            _file("senza_anno", "Estratto_Conto (7).pdf"),
+        ],
+    })
+
+    items, _sources, rimandati = _discover_work_items(service, "root")
+
+    assert [item["id"] for item in items] == ["nuovo"]
+    assert sorted(rimandati) == ["EC-38949004-agosto 2024.pdf",
+                                 "Estratto_Conto (7).pdf"]

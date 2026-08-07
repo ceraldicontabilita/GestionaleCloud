@@ -18,6 +18,25 @@ from app.services.enhanced_document_parser import (
 
 logger = logging.getLogger(__name__)
 
+# Quanti documenti tenere in memoria per volta. Prima se ne caricavano fino a
+# 5.000 in una lista sola, ognuno col proprio PDF in base64: poche centinaia
+# di cedolini bastavano a esaurire la memoria del servizio e farlo cadere.
+DIMENSIONE_BLOCCO = 25
+LIMITE_DOCUMENTI = 100000
+
+
+async def _identificativi(coll, filtro: Dict[str, Any]) -> List[Any]:
+    """Solo gli _id: e' una lettura leggera, senza i PDF."""
+    cursore = coll.find(filtro, {"_id": 1})
+    return [doc["_id"] for doc in await cursore.to_list(length=LIMITE_DOCUMENTI)]
+
+
+async def _blocco(coll, identificativi: List[Any],
+                  proiezione: Dict[str, int]) -> List[Dict[str, Any]]:
+    """Carica i documenti di un blocco, PDF compresi."""
+    cursore = coll.find({"_id": {"$in": identificativi}}, proiezione)
+    return await cursore.to_list(length=len(identificativi))
+
 
 class BatchReprocessingService:
     """Servizio per riprocessare batch di documenti con il parser migliorato."""
@@ -44,6 +63,71 @@ class BatchReprocessingService:
         if self.db is None:
             raise Exception("Database non connesso")
     
+    async def _riprocessa_f24(self, coll, coll_name: str, doc: Dict[str, Any],
+                              dry_run: bool) -> None:
+        """Rilegge un F24 e gli aggiunge i campi del parser migliorato.
+
+        Non inserisce mai un documento nuovo e non tocca i campi originali:
+        scrive solo in `enhanced_parsing` e nei `*_enhanced` dello stesso
+        documento. Un errore su un documento non ferma gli altri.
+        """
+        try:
+            doc_id = doc.get("_id")
+            pdf_data = doc.get("pdf_data")
+            if not pdf_data:
+                return
+
+            pdf_bytes = base64.b64decode(pdf_data)
+
+            # Conta ogni tentativo, anche se il parser solleva prima
+            # di produrre un risultato (evita "42 errori / 0 processati").
+            self.stats["f24_processed"] += 1
+
+            result = await parse_f24_enhanced(pdf_bytes, "application/pdf")
+
+            if not result.get("success"):
+                self.stats["f24_errors"] += 1
+                self.stats["errors"].append({
+                    "type": "f24",
+                    "collection": coll_name,
+                    "doc_id": str(doc_id),
+                    "error": result.get("error", "Unknown error"),
+                })
+                return
+
+            self.stats["f24_success"] += 1
+            if not dry_run:
+                update_data = {
+                    "enhanced_parsing": result,
+                    "enhanced_parsing_date": datetime.now(timezone.utc).isoformat(),
+                    "enhanced_parser_version": "v2",
+                }
+                sezioni = {
+                    "sezione_erario": "sezione_erario_enhanced",
+                    "sezione_inps": "sezione_inps_enhanced",
+                    "sezione_regioni": "sezione_regioni_enhanced",
+                    "sezione_imu_tributi_locali": "sezione_imu_enhanced",
+                    "totali": "totali_enhanced",
+                    "validazione": "validazione_enhanced",
+                }
+                for origine, destinazione in sezioni.items():
+                    if result.get(origine):
+                        update_data[destinazione] = result[origine]
+
+                await coll.update_one({"_id": doc_id}, {"$set": update_data})
+
+            logger.info(f"F24 {doc_id} riprocessato con successo")
+
+        except Exception as e:
+            self.stats["f24_errors"] += 1
+            self.stats["errors"].append({
+                "type": "f24",
+                "collection": coll_name,
+                "doc_id": str(doc.get("_id")),
+                "error": str(e),
+            })
+            logger.error(f"Errore riprocessamento F24 {doc.get('_id')}: {e}")
+
     async def reprocess_all_f24(self, dry_run: bool = False) -> Dict[str, Any]:
         """
         Riprocessa tutti gli F24 con PDF disponibile.
@@ -63,92 +147,100 @@ class BatchReprocessingService:
         for coll_name in collections:
             try:
                 coll = self.db[coll_name]
-                
-                # Trova tutti i documenti con pdf_data
-                cursor = coll.find(
-                    {"pdf_data": {"$exists": True, "$ne": None}},
-                    {"_id": 1, "pdf_data": 1, "id": 1, "filename": 1}
-                )
-                
-                docs = await cursor.to_list(length=5000)
-                self.stats["f24_total"] += len(docs)
-                
-                logger.info(f"Trovati {len(docs)} F24 con PDF in {coll_name}")
-                
-                for doc in docs:
-                    try:
-                        doc_id = doc.get("_id")
-                        pdf_data = doc.get("pdf_data")
-                        
-                        if not pdf_data:
-                            continue
-                        
-                        # Decodifica PDF
-                        pdf_bytes = base64.b64decode(pdf_data)
-                        
-                        # Conta ogni tentativo, anche se il parser solleva prima
-                        # di produrre un risultato (evita "42 errori / 0 processati").
-                        self.stats["f24_processed"] += 1
 
-                        # Riprocessa con nuovo parser
-                        result = await parse_f24_enhanced(pdf_bytes, "application/pdf")
-                        
-                        if result.get("success"):
-                            self.stats["f24_success"] += 1
-                            
-                            if not dry_run:
-                                # Aggiorna documento con nuovi dati
-                                update_data = {
-                                    "enhanced_parsing": result,
-                                    "enhanced_parsing_date": datetime.now(timezone.utc).isoformat(),
-                                    "enhanced_parser_version": "v2"
-                                }
-                                
-                                # Aggiorna anche le sezioni se presenti
-                                if result.get("sezione_erario"):
-                                    update_data["sezione_erario_enhanced"] = result["sezione_erario"]
-                                if result.get("sezione_inps"):
-                                    update_data["sezione_inps_enhanced"] = result["sezione_inps"]
-                                if result.get("sezione_regioni"):
-                                    update_data["sezione_regioni_enhanced"] = result["sezione_regioni"]
-                                if result.get("sezione_imu_tributi_locali"):
-                                    update_data["sezione_imu_enhanced"] = result["sezione_imu_tributi_locali"]
-                                if result.get("totali"):
-                                    update_data["totali_enhanced"] = result["totali"]
-                                if result.get("validazione"):
-                                    update_data["validazione_enhanced"] = result["validazione"]
-                                
-                                await coll.update_one(
-                                    {"_id": doc_id},
-                                    {"$set": update_data}
-                                )
-                                
-                            logger.info(f"F24 {doc_id} riprocessato con successo")
-                        else:
-                            self.stats["f24_errors"] += 1
-                            self.stats["errors"].append({
-                                "type": "f24",
-                                "collection": coll_name,
-                                "doc_id": str(doc_id),
-                                "error": result.get("error", "Unknown error")
-                            })
-                            
-                    except Exception as e:
-                        self.stats["f24_errors"] += 1
-                        self.stats["errors"].append({
-                            "type": "f24",
-                            "collection": coll_name,
-                            "doc_id": str(doc.get("_id")),
-                            "error": str(e)
-                        })
-                        logger.error(f"Errore riprocessamento F24 {doc.get('_id')}: {e}")
-                        
+                filtro = {"pdf_data": {"$exists": True, "$ne": None}}
+                proiezione = {"_id": 1, "pdf_data": 1, "id": 1, "filename": 1}
+                identificativi = await _identificativi(coll, filtro)
+                self.stats["f24_total"] += len(identificativi)
+
+                logger.info(f"Trovati {len(identificativi)} F24 con PDF in {coll_name}")
+
+                for inizio in range(0, len(identificativi), DIMENSIONE_BLOCCO):
+                    gruppo = identificativi[inizio:inizio + DIMENSIONE_BLOCCO]
+                    for doc in await _blocco(coll, gruppo, proiezione):
+                        await self._riprocessa_f24(coll, coll_name, doc, dry_run)
+
             except Exception as e:
                 logger.error(f"Errore accesso collezione {coll_name}: {e}")
         
         self.stats["end_time"] = datetime.now(timezone.utc).isoformat()
         return self.stats
     
+    async def _riprocessa_cedolino(self, coll, coll_name: str, doc: Dict[str, Any],
+                                   dry_run: bool) -> None:
+        """Rilegge un cedolino e gli aggiunge i campi del parser migliorato.
+
+        Come per gli F24: nessun inserimento, nessuna sovrascrittura dei dati
+        originali, e un errore su un documento non ferma gli altri.
+        """
+        try:
+            doc_id = doc.get("_id")
+            pdf_data = (doc.get("pdf_data") or doc.get("file_base64")
+                        or doc.get("pdf_base64"))
+            if not pdf_data:
+                return
+
+            pdf_bytes = base64.b64decode(pdf_data)
+
+            # Conta il tentativo prima della chiamata al modello.
+            self.stats["cedolini_processed"] += 1
+
+            result = await parse_cedolino_enhanced(pdf_bytes, "application/pdf")
+
+            if not result.get("success"):
+                self.stats["cedolini_errors"] += 1
+                self.stats["errors"].append({
+                    "type": "cedolino",
+                    "collection": coll_name,
+                    "doc_id": str(doc_id),
+                    "error": result.get("error", "Unknown error"),
+                })
+                return
+
+            self.stats["cedolini_success"] += 1
+            if not dry_run:
+                update_data = {
+                    "enhanced_parsing": result,
+                    "enhanced_parsing_date": datetime.now(timezone.utc).isoformat(),
+                    "enhanced_parser_version": "v2",
+                }
+
+                importi = result.get("importi_finali", {})
+                netto = importi.get("netto_in_busta") or importi.get("netto_da_pagare")
+                if netto:
+                    update_data["netto_enhanced"] = netto
+                if importi.get("totale_competenze"):
+                    update_data["lordo_enhanced"] = importi["totale_competenze"]
+                if importi.get("totale_trattenute"):
+                    update_data["trattenute_enhanced"] = importi["totale_trattenute"]
+
+                tfr = result.get("tfr", {})
+                if tfr.get("retribuzione_utile_tfr"):
+                    update_data["tfr_retribuzione_utile_enhanced"] = tfr["retribuzione_utile_tfr"]
+                if tfr.get("quota_tfr_mese"):
+                    update_data["tfr_quota_mese_enhanced"] = tfr["quota_tfr_mese"]
+
+                if result.get("ferie_permessi"):
+                    update_data["ferie_permessi_enhanced"] = result["ferie_permessi"]
+                if result.get("validazione"):
+                    update_data["validazione_enhanced"] = result["validazione"]
+
+                await coll.update_one({"_id": doc_id}, {"$set": update_data})
+
+            dipendente = doc.get("dipendente_nome", "Unknown")
+            periodo = f"{doc.get('mese', '?')}/{doc.get('anno', '?')}"
+            logger.info(f"Cedolino {dipendente} {periodo} riprocessato con successo")
+
+        except Exception as e:
+            self.stats["cedolini_errors"] += 1
+            self.stats["errors"].append({
+                "type": "cedolino",
+                "collection": coll_name,
+                "doc_id": str(doc.get("_id")),
+                "error": str(e),
+            })
+            logger.error(f"Errore riprocessamento cedolino {doc.get('_id')}: {e}")
+
     async def reprocess_all_cedolini(self, dry_run: bool = False) -> Dict[str, Any]:
         """
         Riprocessa tutti i cedolini con PDF disponibile.
@@ -170,105 +262,26 @@ class BatchReprocessingService:
         for coll_name in collections:
             try:
                 coll = self.db[coll_name]
-                
-                # Trova documenti con PDF (pdf_data o file_base64)
-                cursor = coll.find(
-                    {"$or": [
-                        {"pdf_data": {"$exists": True, "$ne": None}},
-                        {"file_base64": {"$exists": True, "$ne": None}},
-                        {"pdf_base64": {"$exists": True, "$ne": None}}
-                    ]},
-                    {"_id": 1, "pdf_data": 1, "file_base64": 1, "pdf_base64": 1, 
-                     "id": 1, "filename": 1, "dipendente_nome": 1, "mese": 1, "anno": 1}
-                )
-                
-                docs = await cursor.to_list(length=5000)
-                self.stats["cedolini_total"] += len(docs)
-                
-                logger.info(f"Trovati {len(docs)} cedolini con PDF in {coll_name}")
-                
-                for doc in docs:
-                    try:
-                        doc_id = doc.get("_id")
-                        
-                        # Trova il PDF data
-                        pdf_data = doc.get("pdf_data") or doc.get("file_base64") or doc.get("pdf_base64")
-                        
-                        if not pdf_data:
-                            continue
-                        
-                        # Decodifica PDF
-                        pdf_bytes = base64.b64decode(pdf_data)
-                        
-                        # Conta il tentativo prima della chiamata al modello.
-                        self.stats["cedolini_processed"] += 1
 
-                        # Riprocessa con nuovo parser
-                        result = await parse_cedolino_enhanced(pdf_bytes, "application/pdf")
-                        
-                        if result.get("success"):
-                            self.stats["cedolini_success"] += 1
-                            
-                            if not dry_run:
-                                # Aggiorna documento con nuovi dati
-                                update_data = {
-                                    "enhanced_parsing": result,
-                                    "enhanced_parsing_date": datetime.now(timezone.utc).isoformat(),
-                                    "enhanced_parser_version": "v2"
-                                }
-                                
-                                # Aggiorna campi specifici se migliorati
-                                importi = result.get("importi_finali", {})
-                                if importi.get("netto_in_busta") or importi.get("netto_da_pagare"):
-                                    update_data["netto_enhanced"] = importi.get("netto_in_busta") or importi.get("netto_da_pagare")
-                                if importi.get("totale_competenze"):
-                                    update_data["lordo_enhanced"] = importi.get("totale_competenze")
-                                if importi.get("totale_trattenute"):
-                                    update_data["trattenute_enhanced"] = importi.get("totale_trattenute")
-                                
-                                # TFR
-                                tfr = result.get("tfr", {})
-                                if tfr.get("retribuzione_utile_tfr"):
-                                    update_data["tfr_retribuzione_utile_enhanced"] = tfr["retribuzione_utile_tfr"]
-                                if tfr.get("quota_tfr_mese"):
-                                    update_data["tfr_quota_mese_enhanced"] = tfr["quota_tfr_mese"]
-                                
-                                # Ferie e permessi
-                                ferie = result.get("ferie_permessi", {})
-                                if ferie:
-                                    update_data["ferie_permessi_enhanced"] = ferie
-                                
-                                # Validazione
-                                if result.get("validazione"):
-                                    update_data["validazione_enhanced"] = result["validazione"]
-                                
-                                await coll.update_one(
-                                    {"_id": doc_id},
-                                    {"$set": update_data}
-                                )
-                            
-                            dipendente = doc.get("dipendente_nome", "Unknown")
-                            periodo = f"{doc.get('mese', '?')}/{doc.get('anno', '?')}"
-                            logger.info(f"Cedolino {dipendente} {periodo} riprocessato con successo")
-                        else:
-                            self.stats["cedolini_errors"] += 1
-                            self.stats["errors"].append({
-                                "type": "cedolino",
-                                "collection": coll_name,
-                                "doc_id": str(doc_id),
-                                "error": result.get("error", "Unknown error")
-                            })
-                            
-                    except Exception as e:
-                        self.stats["cedolini_errors"] += 1
-                        self.stats["errors"].append({
-                            "type": "cedolino",
-                            "collection": coll_name,
-                            "doc_id": str(doc.get("_id")),
-                            "error": str(e)
-                        })
-                        logger.error(f"Errore riprocessamento cedolino {doc.get('_id')}: {e}")
-                        
+                filtro = {"$or": [
+                    {"pdf_data": {"$exists": True, "$ne": None}},
+                    {"file_base64": {"$exists": True, "$ne": None}},
+                    {"pdf_base64": {"$exists": True, "$ne": None}},
+                ]}
+                proiezione = {
+                    "_id": 1, "pdf_data": 1, "file_base64": 1, "pdf_base64": 1,
+                    "id": 1, "filename": 1, "dipendente_nome": 1, "mese": 1, "anno": 1,
+                }
+                identificativi = await _identificativi(coll, filtro)
+                self.stats["cedolini_total"] += len(identificativi)
+
+                logger.info(f"Trovati {len(identificativi)} cedolini con PDF in {coll_name}")
+
+                for inizio in range(0, len(identificativi), DIMENSIONE_BLOCCO):
+                    gruppo = identificativi[inizio:inizio + DIMENSIONE_BLOCCO]
+                    for doc in await _blocco(coll, gruppo, proiezione):
+                        await self._riprocessa_cedolino(coll, coll_name, doc, dry_run)
+
             except Exception as e:
                 logger.error(f"Errore accesso collezione {coll_name}: {e}")
         

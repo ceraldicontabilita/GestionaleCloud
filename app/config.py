@@ -170,6 +170,11 @@ class Settings(BaseSettings):
     # Quietanze: ACCESO su scelta esplicita dell'utente (10/07/2026)
     ENABLE_DRIVE_QUIETANZE_SYNC: bool = True
     ENABLE_DRIVE_ESTRATTI_CONTO_SYNC: bool = True
+    # Anno minimo dei documenti da importare dall'area Estratti conto
+    # (scelta utente 07/08/2026: "solo 2026, il resto fermo"). L'inbox unico
+    # contiene un arretrato dal 2023: i documenti piu' vecchi restano dove
+    # sono, non vengono ne' importati ne' spostati. Metterlo a 0 li sblocca.
+    DRIVE_ESTRATTI_ANNO_MINIMO: int = 2026
     ENABLE_DRIVE_BONIFICI_SYNC: bool = False
     # Nuovi canali documentali (default SPENTI finché l'utente non crea le
     # cartelle su Drive e ne mette gli ID su Render).

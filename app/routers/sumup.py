@@ -4,7 +4,9 @@ Espone la verifica della configurazione (la chiave non viene mai restituita
 in chiaro) e la sincronizzazione delle transazioni, che aggiorna la chiusura
 giornaliera del circuito SumUp passando dal motore unico di scrittura.
 """
+import os
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import httpx
@@ -24,10 +26,71 @@ TIMEOUT = 20.0
 GIORNI_RECUPERO = 1
 
 
+VARIABILI = ("SUMUP_API_KEY", "SUMUP_MERCHANT_CODE")
+
+
 def _mascherata(chiave: str) -> str:
     """Ultime 4 cifre soltanto: serve a riconoscerla, non a riusarla."""
     chiave = (chiave or "").strip()
     return f"...{chiave[-4:]}" if len(chiave) >= 4 else ""
+
+
+def _nomi_nel_file_env(percorso: Path) -> list:
+    """Quali delle nostre variabili compaiono nel file .env. Solo i NOMI.
+
+    Il contenuto non viene mai letto in uscita: serve sapere se il file
+    definisce la variabile, non quanto vale.
+    """
+    try:
+        righe = percorso.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except OSError:
+        return []
+    presenti = []
+    for riga in righe:
+        pulita = riga.strip().lstrip("export ").strip()
+        for nome in VARIABILI:
+            if pulita.startswith(f"{nome}=") and nome not in presenti:
+                presenti.append(nome)
+    return presenti
+
+
+def _diagnostica_ambiente(chiave: str, merchant: str) -> Dict[str, Any]:
+    """Dove il backend ha trovato — o non ha trovato — le due variabili.
+
+    Distingue i due errori che in pagina danno lo stesso identico sintomo:
+    le variabili messe su un altro servizio (qui non arrivano proprio) e le
+    variabili presenti ma coperte dal file .env, che in questa applicazione
+    ha la precedenza sull'ambiente (vedi settings_customise_sources).
+    """
+    percorso = Path(str(settings.model_config.get("env_file") or ""))
+    esiste = bool(str(percorso)) and percorso.is_file()
+    nel_file = _nomi_nel_file_env(percorso) if esiste else []
+    nell_ambiente = [n for n in VARIABILI if (os.environ.get(n) or "").strip()]
+    caricate = [n for n, v in zip(VARIABILI, (chiave, merchant)) if v]
+
+    diagnostica: Dict[str, Any] = {
+        "variabili_nell_ambiente": nell_ambiente,
+        "variabili_caricate": caricate,
+        "file_env": str(percorso) if esiste else "",
+        "file_env_definisce": nel_file,
+        "causa_probabile": "",
+    }
+
+    coperte = [n for n in nell_ambiente if n in nel_file and n not in caricate]
+    if coperte:
+        diagnostica["causa_probabile"] = (
+            f"Le variabili {', '.join(coperte)} esistono nell'ambiente ma sono "
+            f"coperte dal file {percorso}, che ha la precedenza. Rimuovile dal "
+            f"file oppure correggile lì."
+        )
+    elif not chiave and "SUMUP_API_KEY" not in nell_ambiente:
+        diagnostica["causa_probabile"] = (
+            "SUMUP_API_KEY non risulta fra le variabili d'ambiente di QUESTO "
+            "servizio. Se l'hai salvata su Render, controlla di averla messa "
+            "sul servizio che serve il sito e di aver fatto un deploy dopo il "
+            "salvataggio: le variabili si applicano solo al riavvio."
+        )
+    return diagnostica
 
 
 @router.get("/stato")
@@ -45,6 +108,7 @@ async def stato_sumup(
         "merchant_code": merchant,
         "connessione_ok": False,
         "messaggio": "",
+        "diagnostica": _diagnostica_ambiente(chiave, merchant),
     }
 
     if not chiave:
@@ -53,13 +117,9 @@ async def stato_sumup(
             "variabili d'ambiente e riavvia il servizio."
         )
         return stato
-    if not merchant:
-        stato["messaggio"] = (
-            "Manca SUMUP_MERCHANT_CODE: senza il codice esercente non si "
-            "possono leggere le transazioni."
-        )
-        return stato
 
+    # Il merchant code NON blocca piu' la verifica: e' ricavabile dalla chiave
+    # stessa, e fermarsi qui nascondeva l'informazione che serve a impostarlo.
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
             risposta = await client.get(
@@ -77,7 +137,17 @@ async def stato_sumup(
         stato["esercente"] = conto.get("company_name") or profilo.get("account", {}).get("username")
         merchant_reale = conto.get("merchant_code") or ""
         stato["merchant_code_reale"] = merchant_reale
-        if merchant_reale and merchant_reale != merchant:
+        if not merchant:
+            # La chiave funziona e dice a quale conto appartiene: si usa quello
+            # invece di fermare tutto. Resta comunque scritto di fissarlo, cosi'
+            # il controllo di appartenenza qui sotto torna a poter scattare.
+            stato["merchant_code"] = merchant_reale
+            stato["messaggio"] = (
+                f"Connessione riuscita. SUMUP_MERCHANT_CODE non e' impostato: "
+                f"uso il codice esercente della chiave ({merchant_reale}). "
+                f"Conviene fissarlo fra le variabili d'ambiente."
+            )
+        elif merchant_reale and merchant_reale != merchant:
             # Chiave valida ma di un altro conto: leggeremmo le transazioni
             # sbagliate senza accorgercene.
             stato["connessione_ok"] = False
