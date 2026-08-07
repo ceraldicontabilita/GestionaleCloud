@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1063 endpoint** in **111 gruppi**.
+> Totale **1064 endpoint** in **111 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 668 · ext esterni = 89 · — da verificare = 306
+**Riepilogo uso:** ✓ frontend = 668 · ext esterni = 89 · — da verificare = 307
 
 ## AI Parser  (11)
 
@@ -181,11 +181,12 @@
 |---|---|:-:|---|
 | POST | `/api/auto-repair/collega-targa-driver` | ✓ | auto_repair |
 
-## Bank Statement  (6)
+## Bank Statement  (7)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | POST | `/api/bank-statement/cleanup-duplicati` | — | bank.bank_statement_import |
+| POST | `/api/bank-statement/cleanup-duplicati-causale` | — | bank.bank_statement_import |
 | GET | `/api/bank-statement/formati-supportati` | — | bank.bank_statement_import |
 | POST | `/api/bank-statement/import` | — | bank.bank_statement_import |
 | GET | `/api/bank-statement/movements` | ✓ | bank.bank_statement_import |

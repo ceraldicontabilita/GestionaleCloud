@@ -119,6 +119,29 @@ _CATEGORIE_EC_PREFISSI = {
 }
 
 
+# La STESSA operazione bancaria arriva con causali diverse a seconda del
+# file: l'export sintetico scrive "SDD CORE: M-...", quello analitico
+# "ADDEBITO DIRETTO SDD - SDD CORE: M-...". Con la descrizione grezza nella
+# chiave di deduplica le due forme risultavano operazioni diverse, e lo
+# stesso addebito WORLDPAY entrava due volte (segnalazione utente 07/08/2026,
+# tre coppie da 1,79 nello stesso giorno).
+#
+# Si normalizzano SOLO i prefissi di canale, mai il contenuto: il mandato,
+# il beneficiario e i riferimenti restano parte della chiave. Se la banca ha
+# davvero addebitato 3 volte 1,79 nello stesso giorno, ogni file porta 3
+# righe e il conteggio per occorrenza le conserva tutte e tre.
+_PREFISSI_CANALE_EC = re.compile(
+    r"^(ADDEBITO DIRETTO SDD\s*-\s*|ADDEBITO SDD\s*-\s*|PAGAMENTO\s*-\s*)",
+    re.IGNORECASE,
+)
+
+
+def normalizza_descrizione_ec(desc: str) -> str:
+    """Descrizione canonica di una riga EC ai fini della deduplica."""
+    compatta = re.sub(r"\s+", " ", (desc or "").strip())
+    return _PREFISSI_CANALE_EC.sub("", compatta)[:80]
+
+
 def mappa_categoria_ec(categoria: Optional[str], descrizione: Optional[str] = None) -> Optional[str]:
     """Categoria OPERATIVA di Prima Nota per una riga di estratto conto.
 
@@ -574,7 +597,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     # interni ("NUMIA-INTER  DEL" vs "NUMIA-INTER DEL") e senza normalizzare
     # un re-import duplicherebbe centinaia di movimenti identici
     def _norm_desc(desc: str) -> str:
-        return re.sub(r"\s+", " ", (desc or "").strip())[:80]
+        return normalizza_descrizione_ec(desc)
 
     existing_by_key: Dict[Any, List[Dict[str, Any]]] = defaultdict(list)
     async for rec in existing_cursor:
