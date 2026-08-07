@@ -41,7 +41,7 @@ Non deve creare una contabilità immaginaria per far quadrare i numeri.
 
 ## 3. Stato corrente e linguaggio di collaudo
 
-L'applicazione possiede 63 schermate funzionali distinte e una pagina tecnica 404. Redirect, alias e varianti con anno o mese non sono pagine aggiuntive.
+L'applicazione possiede 62 schermate funzionali distinte e una pagina tecnica 404. Redirect, alias, varianti con anno o mese e la rimossa Dashboard relazionale duplicata non sono pagine aggiuntive.
 
 Alla data di questa riscrittura il catalogo macchina registra:
 
