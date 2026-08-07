@@ -10,6 +10,14 @@ _CAUSALE_ACCREDITO_POS_RE = re.compile(
 )
 _CAUSALI_NUMIA_ESCLUSE = ("REMUNERAZIONE DCC", "COMMISSION", "FATTURA NUMIA")
 
+# In estratto conto lo stesso circuito compare con due marchi: NUMIA e' la
+# societa' che esegue l'accredito, NEXI il gestore del terminale. Pretendere
+# solo "NUMIA" faceva ignorare in silenzio le righe etichettate NEXI, che
+# restavano senza riconciliazione. Le altre condizioni (causale POS + giorno
+# operativo "DEL gg/mm/aa" + esclusione di commissioni e fatture) restano e
+# sono quelle che escludono i falsi positivi.
+_MARCHI_ACCREDITO_POS = ("NUMIA", "NEXI")
+
 
 def _giorno_operazione_pos(descrizione: str, data_accredito: str) -> str:
     match = _GIORNO_POS_RE.search(descrizione or "")
@@ -20,11 +28,16 @@ def _giorno_operazione_pos(descrizione: str, data_accredito: str) -> str:
 
 
 def _e_accredito_pos_numia_con_giorno(descrizione: str) -> bool:
-    """Accetta solo un accredito reale NUMIA con giorno operativo esplicito."""
+    """Accetta solo un accredito reale del circuito, con giorno esplicito.
+
+    Vale per entrambi i marchi con cui compare in estratto conto (NUMIA e
+    NEXI): sono lo stesso circuito, e scartarne uno lascerebbe trasferimenti
+    POS eternamente non riconciliati.
+    """
     testo = descrizione or ""
     testo_upper = testo.upper()
     return bool(
-        "NUMIA" in testo_upper
+        any(marchio in testo_upper for marchio in _MARCHI_ACCREDITO_POS)
         and _GIORNO_POS_RE.search(testo)
         and _CAUSALE_ACCREDITO_POS_RE.search(testo)
         and not any(voce in testo_upper for voce in _CAUSALI_NUMIA_ESCLUSE)
