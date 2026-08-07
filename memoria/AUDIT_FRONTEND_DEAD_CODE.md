@@ -3,13 +3,13 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 172
+**Totale file analizzati:** 175
 
 | Classificazione | File |
 |---|---:|
 | ENTRYPOINT | 3 |
 | ROUTE_ATTIVA | 27 |
-| COMPONENTE_USATO | 86 |
+| COMPONENTE_USATO | 89 |
 | MODALE_USATO | 4 |
 | HOOK_USATO | 3 |
 | TEST_ONLY | 26 |
@@ -57,15 +57,18 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | File | Classificazione | Importato da (n. file) |
 |---|---|---:|
 | `frontend/src/App.jsx` | ENTRYPOINT | 1 |
-| `frontend/src/api.js` | COMPONENTE_USATO | 96 |
+| `frontend/src/api.js` | COMPONENTE_USATO | 98 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
+| `frontend/src/components/AssociaMovimentoBanca.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ChatIntelligente.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/components/CopiaTesto.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/CopyLinkButton.jsx` | COMPONENTE_USATO | 5 |
 | `frontend/src/components/DocumentViewerModal.jsx` | MODALE_USATO | 8 |
 | `frontend/src/components/ErrorBoundary.jsx` | COMPONENTE_USATO | 3 |
 | `frontend/src/components/ErrorBoundary.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/components/ExportButton.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/F24EmailSync.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/components/InAttesaDocumento.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/InstallAppButton.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ModalFattura.jsx` | MODALE_USATO | 9 |
 | `frontend/src/components/NotificationBell.jsx` | DINAMICO_DA_VERIFICARE | 0 |
