@@ -827,12 +827,12 @@ def start_scheduler():
 
     scheduler.add_job(
         _drive_estratti_conto_job,
-        'interval', hours=1,
+        'interval', minutes=5,
         next_run_time=datetime.now(),
         misfire_grace_time=300,
         coalesce=True,
         id="drive_estratti_conto_ingest",
-        name="Import Estratti Conto da Google Drive (ogni ora + al riavvio)",
+        name="Import Estratti Conto da Google Drive (ogni 5 min + al riavvio)",
         replace_existing=True,
     )
 

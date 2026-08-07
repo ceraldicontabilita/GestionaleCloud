@@ -16,8 +16,9 @@ La sincronizzazione e' idempotente: la chiave e' ``merchant_code`` +
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional
+from urllib.parse import urljoin, urlparse
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -263,14 +264,55 @@ def _prossima_pagina(payload: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _istante_utc(data_locale: date) -> str:
+    """Mezzanotte italiana nel formato UTC accettato da SumUp."""
+    momento = datetime.combine(data_locale, time.min, tzinfo=FUSO_NEGOZIO)
+    return momento.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _parametri_intervallo(dal: str, al: str) -> Dict[str, Any]:
+    """Intervallo SumUp inclusivo per giorno contabile Europe/Rome.
+
+    L'API Transactions usa ``oldest_time`` e ``newest_time``; il secondo
+    limite e' l'inizio del giorno successivo, cosi' l'intera giornata ``al``
+    resta compresa anche durante i cambi tra ora solare e legale.
+    """
+    inizio = date.fromisoformat(dal)
+    fine = date.fromisoformat(al)
+    if fine < inizio:
+        raise ValueError("La data finale SumUp precede quella iniziale.")
+    return {
+        "oldest_time": _istante_utc(inizio),
+        "newest_time": _istante_utc(fine + timedelta(days=1)),
+        "order": "ascending",
+        "limit": 100,
+    }
+
+
+def _url_pagina_successiva(url_corrente: str, href: str) -> str:
+    """Converte anche i link ``next`` relativi di SumUp in URL assoluti."""
+    riferimento = str(href or "").strip()
+    if not riferimento:
+        return ""
+    if urlparse(riferimento).scheme:
+        return riferimento
+    if riferimento.startswith("?"):
+        return f"{url_corrente.split('?', 1)[0]}{riferimento}"
+    if riferimento.startswith("/"):
+        return urljoin(settings.SUMUP_API_BASE.rstrip("/") + "/", riferimento)
+    # La documentazione SumUp mostra anche href come semplice query string,
+    # ad esempio ``limit=10&oldest_ref=...``.
+    if "=" in riferimento and "/" not in riferimento.split("?", 1)[0]:
+        return f"{url_corrente.split('?', 1)[0]}?{riferimento.lstrip('?')}"
+    return urljoin(url_corrente, riferimento)
+
+
 async def scarica_transazioni(dal: str, al: str) -> List[Dict[str, Any]]:
     """Storico transazioni nell'intervallo, seguendo la paginazione a cursore."""
     chiave, merchant = await _credenziali()
     url = (f"{settings.SUMUP_API_BASE}/v2.1/merchants/{merchant}"
            f"/transactions/history")
-    params: Optional[Dict[str, Any]] = {
-        "start_date": dal, "end_date": al, "limit": 100,
-    }
+    params: Optional[Dict[str, Any]] = _parametri_intervallo(dal, al)
     headers = {"Authorization": f"Bearer {chiave}"}
 
     raccolte: List[Dict[str, Any]] = []
@@ -285,7 +327,7 @@ async def scarica_transazioni(dal: str, al: str) -> List[Dict[str, Any]]:
                 break
             # Il link "next" porta gia' il cursore: i parametri iniziali
             # non vanno riapplicati, altrimenti si torna alla prima pagina.
-            url, params = successiva, None
+            url, params = _url_pagina_successiva(url, successiva), None
         else:
             logger.warning(
                 "SumUp: raggiunto il limite di %s pagine per %s..%s",

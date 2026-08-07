@@ -79,6 +79,18 @@ def test_l_export_della_banca_si_riconosce_dalle_colonne():
     assert cls.route_da_testo(_BPM) == cls.BANCA
 
 
+def test_export_pos_si_riconosce_dalle_colonne_reali_del_terminale():
+    testo = ("Data e ora;Importo;Stato operazione;ID terminale / TML;MID;"
+             "Punto vendita;Circuito")
+    assert cls.route_da_testo(testo) == cls.POS
+
+
+def test_movimenti_carta_di_debito_restano_movimenti_bancari():
+    testo = ("Carta di debito Circuito: MASTERCARD Conto Appoggio: 5462 "
+             "Azienda: CERALDI GROUP S.R.L.")
+    assert cls.route_da_testo(testo) == cls.BANCA
+
+
 def test_un_documento_muto_resta_ignoto():
     assert cls.route_da_testo("Ricevuta di pagamento numero 12") is None
 
@@ -108,12 +120,12 @@ def test_senza_contenuto_un_nome_ambiguo_resta_ignoto():
     assert motivo
 
 
-def test_il_nome_ha_la_precedenza_sul_contenuto():
-    """Un export POS resta POS anche se dentro cita la banca."""
+def test_il_contenuto_ha_la_precedenza_sul_nome():
+    """Un nome generico POS non deve trasformare un export BPM in incassi."""
     fonte, motivo = cls.classifica("Export_Mensile_Luglio_2026.csv",
                                    _BPM.encode("utf-8"))
-    assert fonte == cls.POS
-    assert "nome" in motivo
+    assert fonte == cls.BANCA
+    assert "intestazione" in motivo
 
 
 # --- Integrazione con l'instradamento Drive --------------------------------

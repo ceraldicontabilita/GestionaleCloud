@@ -1272,9 +1272,34 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
     setErroreRiga(null);
     setEsito('');
     try {
-      const response = await api.post('/api/operazioni-da-confermare/smart/riconcilia-auto');
-      const riconciliati = Number(response.data?.riconciliati || 0);
-      const analizzati = Number(response.data?.analizzati || 0);
+      const avvio = await api.post('/api/operazioni-da-confermare/smart/riconcilia-auto');
+      const jobId = avvio.data?.job_id;
+      setEsito(avvio.data?.status === 'running'
+        ? 'Riconciliazione avviata in background. La pagina si aggiornera al termine.'
+        : 'Riconciliazione accodata.');
+
+      let stato = avvio.data || {};
+      const scadenzaPolling = Date.now() + (15 * 60 * 1000);
+      while (stato.status === 'running' && Date.now() < scadenzaPolling) {
+        await new Promise(resolve => setTimeout(resolve, 2500));
+        const response = await api.get('/api/operazioni-da-confermare/smart/riconcilia-auto/status');
+        stato = response.data || {};
+        if (jobId && stato.job_id && stato.job_id !== jobId) {
+          throw new Error('E in corso una nuova riconciliazione: ricarica la pagina per seguirla.');
+        }
+      }
+
+      if (stato.status === 'error') {
+        throw new Error(stato.error || 'Riconciliazione non completata.');
+      }
+      if (stato.status === 'running') {
+        setEsito('La riconciliazione continua in background. Puoi lasciare la pagina e tornare piu tardi.');
+        return;
+      }
+
+      const risultato = stato.result || {};
+      const riconciliati = Number(risultato.riconciliati || 0);
+      const analizzati = Number(risultato.analizzati || 0);
       setEsito(`Estratto conto riprocessato: ${analizzati} movimenti esaminati, ${riconciliati} riconciliati.`);
       await onRicarica();
     } catch (e) {

@@ -169,6 +169,19 @@ class Database:
         await _safe_index("paypal_transactions", "is_pagopa", name="idx_paypal_pagopa")
         await _safe_index("paypal_transactions", [("initiation_date", -1)], name="idx_paypal_date")
 
+        # --- SumUp ---
+        # La sincronizzazione fa un upsert per transazione e poi rilegge il
+        # periodo per costruire la chiusura giornaliera. Senza questi indici
+        # Atlas deve scandire l'intera collezione a ogni ciclo.
+        await _safe_index(
+            "sumup_transactions", "chiave", unique=True,
+            name="idx_sumup_chiave_unique",
+        )
+        await _safe_index(
+            "sumup_transactions", [("data", 1)],
+            name="idx_sumup_data",
+        )
+
         # --- Partite Aperte (Chat 8) ---
         await _safe_index("partite_aperte", "id", unique=True, name="idx_pa_id")
 

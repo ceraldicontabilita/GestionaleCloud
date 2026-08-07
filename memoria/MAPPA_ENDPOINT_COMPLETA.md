@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1073 endpoint** in **112 gruppi**.
+> Totale **1068 endpoint** in **111 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 651 · ext esterni = 89 · — da verificare = 333
+**Riepilogo uso:** ✓ frontend = 651 · ext esterni = 89 · — da verificare = 328
 
 ## AI Parser  (11)
 
@@ -1116,7 +1116,7 @@
 | GET | `/api/openapi/xbrl/status` | ext | openapi_it |
 | GET | `/api/openapi/xbrl/storico-richieste` | ext | openapi_it |
 
-## Operazioni  (12)
+## Operazioni  (13)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1130,6 +1130,7 @@
 | POST | `/api/operazioni-da-confermare/smart/ignora` | ✓ | operazioni_module |
 | GET | `/api/operazioni-da-confermare/smart/movimento/{movimento_id}` | — | operazioni_module.smart |
 | POST | `/api/operazioni-da-confermare/smart/riconcilia-auto` | ✓ | operazioni_module.smart |
+| GET | `/api/operazioni-da-confermare/smart/riconcilia-auto/status` | ✓ | operazioni_module.smart |
 | POST | `/api/operazioni-da-confermare/smart/riconcilia-manuale` | ✓ | operazioni_module.smart |
 | POST | `/api/operazioni-da-confermare/smart/riconcilia-stipendio` | ✓ | operazioni_module |
 
@@ -1478,17 +1479,6 @@
 | PUT | `/api/settings/user-preferences` | — | settings |
 
 ## SumUp  (6)
-
-| Metodo | Path | FE | File |
-|---|---|:-:|---|
-| GET | `/api/sumup/bonifica-pos-xml` | — | sumup |
-| POST | `/api/sumup/bonifica-pos-xml` | — | sumup |
-| POST | `/api/sumup/normalizza-descrizioni-pos` | — | sumup |
-| GET | `/api/sumup/riepilogo` | ✓ | sumup |
-| POST | `/api/sumup/sincronizza` | — | sumup |
-| GET | `/api/sumup/stato` | — | sumup |
-
-## SumUp POS  (6)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|

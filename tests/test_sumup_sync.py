@@ -12,6 +12,8 @@ from mongomock_motor import AsyncMongoMockClient
 
 from app.services import sumup_sync
 from app.services.sumup_sync import (
+    _parametri_intervallo,
+    _url_pagina_successiva,
     aggrega_per_giorno,
     giorno_locale,
     normalizza_transazione,
@@ -60,6 +62,35 @@ def test_il_giorno_e_quello_del_negozio_non_utc(istante, atteso):
 def test_un_istante_senza_fuso_e_letto_come_utc():
     """SumUp dichiara UTC: non va mai usato il fuso del server."""
     assert giorno_locale("2026-08-06T22:30:00") == "2026-08-07"
+
+
+def test_intervallo_api_usa_i_parametri_ufficiali_e_il_fuso_del_negozio():
+    params = _parametri_intervallo("2026-08-06", "2026-08-06")
+    assert params == {
+        "oldest_time": "2026-08-05T22:00:00Z",
+        "newest_time": "2026-08-06T22:00:00Z",
+        "order": "ascending",
+        "limit": 100,
+    }
+    assert "start_date" not in params
+    assert "end_date" not in params
+
+
+def test_intervallo_api_rispetta_anche_l_ora_solare():
+    params = _parametri_intervallo("2026-01-15", "2026-01-15")
+    assert params["oldest_time"] == "2026-01-14T23:00:00Z"
+    assert params["newest_time"] == "2026-01-15T23:00:00Z"
+
+
+def test_link_paginazione_sumup_relativo_diventa_assoluto():
+    base = "https://api.sumup.com/v2.1/merchants/M1/transactions/history"
+    assert _url_pagina_successiva(
+        base, "limit=100&oldest_ref=ABC&order=ascending"
+    ) == (
+        "https://api.sumup.com/v2.1/merchants/M1/transactions/history"
+        "?limit=100&oldest_ref=ABC&order=ascending"
+    )
+    assert _url_pagina_successiva(base, "?oldest_ref=XYZ") == f"{base}?oldest_ref=XYZ"
 
 
 # --- Normalizzazione -------------------------------------------------------

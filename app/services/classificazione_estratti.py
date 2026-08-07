@@ -145,6 +145,9 @@ def route_da_testo(testo: str) -> Optional[str]:
     if "mutuo" in testo:
         return MUTUO
 
+    if "carta di debito" in testo and "conto appoggio" in testo:
+        return BANCA
+
     if any(segno in testo for segno in (
         "banca nazionale del lavoro", "banco bpm", "banca popolare di milano",
         "bnl bnp paribas",
@@ -155,6 +158,15 @@ def route_da_testo(testo: str) -> Optional[str]:
     # non compaiono in nessun altro documento di quest'area.
     if "data contabile" in testo and "data valuta" in testo:
         return BANCA
+
+    # Colonne reali dell'export dei terminali Numia/BPM. Il circuito indica la
+    # carta del cliente, non un addebito del conto corrente.
+    if all(segno in testo for segno in (
+        "data e ora", "importo", "stato operazione",
+    )) and any(segno in testo for segno in (
+        "id terminale", "mid", "punto vendita",
+    )):
+        return POS
 
     return None
 
@@ -170,6 +182,29 @@ def _testo_del_csv(contenuto: bytes) -> str:
     return frammento.decode("utf-8", errors="replace")
 
 
+def _testo_del_foglio(contenuto: bytes) -> str:
+    """Intestazioni iniziali XLSX/XLSM per distinguere banca e terminale POS."""
+    try:
+        import io
+        import openpyxl
+
+        workbook = openpyxl.load_workbook(
+            io.BytesIO(contenuto), read_only=True, data_only=True,
+        )
+        sheet = workbook.active
+        righe = []
+        for raw in sheet.iter_rows(min_row=1, max_row=50, max_col=40,
+                                   values_only=True):
+            valori = [str(value).strip() for value in raw if value not in (None, "")]
+            if valori:
+                righe.append(" ; ".join(valori))
+        workbook.close()
+        return "\n".join(righe)
+    except Exception as exc:
+        logger.warning("Foglio illeggibile in fase di classificazione: %s", exc)
+        return ""
+
+
 def classifica(nome: str, contenuto: Optional[bytes] = None) -> Tuple[Optional[str], str]:
     """Fonte del documento e motivo della scelta, per il registro di audit.
 
@@ -179,21 +214,28 @@ def classifica(nome: str, contenuto: Optional[bytes] = None) -> Tuple[Optional[s
     if not estensione_trattata(nome):
         return None, "estensione non trattata da quest'area"
 
-    dal_nome = route_da_nome(nome)
-    if dal_nome:
-        return dal_nome, "riconosciuto dal nome del file"
-
+    # Il contenuto prevale sul nome. Nella cartella reale esistono PDF chiamati
+    # tutti "Estratto_Conto (N).pdf", e "Movimenti carta" puo' indicare carta
+    # di debito oppure carta di credito.
     if contenuto:
         testo = ""
         if _pulisci(nome).endswith(".pdf"):
             testo = _testo_del_pdf(contenuto)
         elif _pulisci(nome).endswith(".csv"):
             testo = _testo_del_csv(contenuto)
+        elif _pulisci(nome).endswith((".xlsx", ".xlsm")):
+            testo = _testo_del_foglio(contenuto)
         if testo:
             dal_testo = route_da_testo(testo)
             if dal_testo:
                 return dal_testo, "riconosciuto dall'intestazione del documento"
-            return None, ("intestazione non riconosciuta: il documento non "
-                          "dichiara ne' la banca ne' il gestore che lo ha emesso")
+
+    dal_nome = route_da_nome(nome)
+    if dal_nome:
+        return dal_nome, "intestazione non decisiva; riconosciuto dal nome del file"
+
+    if contenuto:
+        return None, ("intestazione non riconosciuta: il documento non "
+                      "dichiara ne' la banca ne' il gestore che lo ha emesso")
 
     return None, "il nome non dice da quale fonte arrivi"
