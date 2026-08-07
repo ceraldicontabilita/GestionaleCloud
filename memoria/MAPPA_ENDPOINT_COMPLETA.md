@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1057 endpoint** in **111 gruppi**.
+> Totale **1059 endpoint** in **111 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 664 · ext esterni = 90 · — da verificare = 303
+**Riepilogo uso:** ✓ frontend = 664 · ext esterni = 90 · — da verificare = 305
 
 ## AI Parser  (11)
 
@@ -1471,10 +1471,12 @@
 | GET | `/api/settings/user-preferences` | ✓ | settings |
 | PUT | `/api/settings/user-preferences` | ✓ | settings |
 
-## SumUp POS  (2)
+## SumUp POS  (4)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
+| GET | `/api/sumup/bonifica-pos-xml` | — | sumup |
+| POST | `/api/sumup/bonifica-pos-xml` | — | sumup |
 | POST | `/api/sumup/sincronizza` | — | sumup |
 | GET | `/api/sumup/stato` | — | sumup |
 

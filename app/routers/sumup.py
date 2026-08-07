@@ -151,3 +151,45 @@ async def sincronizza_sumup(
         f"EUR {esito.get('totale_netto', 0):.2f} netti."
     )
     return esito
+
+
+@router.get("/bonifica-pos-xml")
+@handle_errors
+async def analizza_bonifica_pos_xml(
+    anno: Optional[int] = None,
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Quante righe POS in Prima Nota derivano dall'XML. Sola lettura."""
+    from app.services import bonifica_pos_xml
+
+    return await bonifica_pos_xml.analizza(Database.get_db(), anno)
+
+
+@router.post("/bonifica-pos-xml")
+@handle_errors
+async def applica_bonifica_pos_xml(
+    payload: Optional[Dict[str, Any]] = Body(None),
+    admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Marca come non attendibili le righe POS ricavate dall'XML.
+
+    Non cancella nulla: sono scritture reali gia' in Prima Nota. Le
+    riclassifica e riporta in attesa le giornate senza dato del terminale,
+    che verranno corrette dalla chiusura reale o dall'API.
+
+    Va confermata esplicitamente con ``{"conferma": true}``: tocca la
+    contabilita' esistente e non deve poter partire per sbaglio.
+    """
+    from app.services import bonifica_pos_xml
+
+    payload = payload or {}
+    if payload.get("conferma") is not True:
+        raise HTTPException(
+            status_code=400,
+            detail="Serve {\"conferma\": true}: la bonifica modifica righe di "
+                   "Prima Nota gia' registrate. Usa prima la GET per vedere "
+                   "quante sono.",
+        )
+    return await bonifica_pos_xml.applica(
+        Database.get_db(), payload.get("anno"), actor=admin
+    )
