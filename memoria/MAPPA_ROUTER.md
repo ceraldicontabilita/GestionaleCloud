@@ -1,7 +1,7 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **1064 endpoint** in **111 prefissi**.
+> Totale **1065 endpoint** in **111 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
@@ -43,9 +43,9 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/dati-provvisori` | 1 | — | dati_provvisori |
 | `/api/dipendenti` | 28 | ✓ | employees.dipendenti |
 | `/api/dizionario-articoli` | 11 | ✓ | warehouse.dizionario_articoli |
-| `/api/document-ai` | 10 | ✓ | document_ai |
+| `/api/document-ai` | 10 | — | document_ai |
 | `/api/documenti` | 31 | ✓ | documenti |
-| `/api/documenti-fiscali` | 2 | ✓ | documenti_fiscali |
+| `/api/documenti-fiscali` | 2 | — | documenti_fiscali |
 | `/api/documenti-inbox` | 5 | ✓ | documents_inbox_classify |
 | `/api/documenti-non-associati` | 9 | ✓ | documenti_non_associati |
 | `/api/email-download` | 41 | ✓ | email_download |
@@ -60,7 +60,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/f24-riconciliazione` | 23 | ✓ | bank.riconciliazione_f24_banca, f24.f24_riconciliazione |
 | `/api/fatture` | 15 | ✓ | invoices.fatture_drive, invoices.fatture_upload |
 | `/api/fatture-estere` | 3 | ✓ | fatture_estera_verifica |
-| `/api/fatture-ricevute` | 23 | ✓ | fatture_module.crud, fatture_module.export_selezione, fatture_module.pagamento |
+| `/api/fatture-ricevute` | 24 | ✓ | fatture_module.crud, fatture_module.export_selezione, fatture_module.pagamento |
 | `/api/finanziamenti-soci` | 4 | ✓ | finanziamenti_soci |
 | `/api/finanziaria` | 4 | ✓ | finanziaria |
 | `/api/fiscalita` | 11 | ✓ | fiscalita_italiana |

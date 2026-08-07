@@ -714,18 +714,38 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
   };
 
   const badgeDocumento = mov => {
+    const pagamento = mov.pagamento_documento || mov.documenti_pagamento?.[0];
+    const pulsantePagamento = pagamento ? (
+      <button
+        type="button"
+        onClick={() => setDocumentView({
+          fetchUrl: pagamento.view_url,
+          title: `Pagamento ${pagamento.nome_file || mov.data || ''}`.trim(),
+          subtitle: `${pagamento.data || ''} · ${eur(pagamento.importo || 0)}`,
+        })}
+        title="Vedi PDF del pagamento"
+        aria-label="Vedi PDF del pagamento"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, background: VERDE, color: 'white', border: 'none', borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
+      >
+        <ReceiptText size={16} aria-hidden="true" /> Pagamento
+      </button>
+    ) : null;
     if (mov.fattura_id) {
       return (
-        <button
-          onClick={() => setFatturaView({ id: mov.fattura_id, numero: mov.numero_fattura })}
-          title="Vedi fattura"
-          aria-label={`Vedi fattura ${mov.numero_fattura || ''}`.trim()}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, background: '#3b82f6', color: 'white', border: 'none', borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
-        >
-          <FileText size={16} aria-hidden="true" /> Fattura
-        </button>
+        <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setFatturaView({ id: mov.fattura_id, numero: mov.numero_fattura })}
+            title="Vedi fattura"
+            aria-label={`Vedi fattura ${mov.numero_fattura || ''}`.trim()}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, background: '#3b82f6', color: 'white', border: 'none', borderRadius: 8, padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+          >
+            <FileText size={16} aria-hidden="true" /> Fattura
+          </button>
+          {pulsantePagamento}
+        </span>
       );
     }
+    if (pulsantePagamento) return pulsantePagamento;
     if (mov.corrispettivo_id || mov.xml_filename) {
       const href = mov.corrispettivo_id
         ? `/api/corrispettivi/${mov.corrispettivo_id}/view`
@@ -1042,7 +1062,9 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
       {documentView && (
         <DocumentViewerModal
           title={documentView.title}
+          subtitle={documentView.subtitle}
           src={documentView.src}
+          fetchUrl={documentView.fetchUrl}
           documentType="documento_fiscale"
           onClose={() => setDocumentView(null)}
         />

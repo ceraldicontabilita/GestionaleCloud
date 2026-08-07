@@ -10,7 +10,6 @@ import zipfile
 import shutil
 
 from app.database import Database
-from app.routers.bonifici_module.associazioni import _valuta_fattura_bonifico
 from .common import (
     UPLOAD_DIR, safe_filename, build_dedup_key,
     parse_filename_data, logger
@@ -258,6 +257,10 @@ async def _auto_associate_bonifici(db, job_id: str) -> tuple:
         ).to_list(500)
         
         from app.services.bonifici_pdf_ingest import associa_transfer_a_salario
+        from app.services.payment_document_links import (
+            collega_bonifico_fatture,
+            seleziona_fatture_bonifico,
+        )
 
         for bonifico in new_bonifici:
             importo = abs(bonifico.get("importo", 0))
@@ -274,33 +277,20 @@ async def _auto_associate_bonifici(db, job_id: str) -> tuple:
                 continue
             
             # Match FATTURE
-            fatture = await db.invoices.find({
-                "fattura_associata": {"$ne": True},
-                "$or": [
-                    {"total_amount": importo},
-                    {"importo_totale": importo},
-                ],
-            }, {"_id": 0}).to_list(100)
-            fatture_compatibili = [
-                candidata for candidata in fatture
-                if _valuta_fattura_bonifico(bonifico, candidata)["compatibile"]
-            ]
-            if len(fatture_compatibili) == 1:
-                fattura_match = fatture_compatibili[0]
-                await db.bonifici_transfers.update_one(
-                    {"id": bonifico["id"]},
-                    {"$set": {
-                        "fattura_associata": True,
-                        "fattura_id": fattura_match.get("id"),
-                        "auto_associated": True,
-                        "updated_at": datetime.now(timezone.utc).isoformat()
-                    }}
-                )
-                await db.invoices.update_one(
-                    {"id": fattura_match.get("id")},
-                    {"$set": {"bonifico_associato": True, "bonifico_id": bonifico["id"]}}
-                )
-                auto_fatture += 1
+            # La causale puo' indicare una fattura singola o una distinta con
+            # piu' numeri. Non filtriamo soltanto per importo singolo: la somma
+            # delle fatture esplicitamente citate puo' coincidere col bonifico.
+            fatture = await db.invoices.find(
+                {"bonifico_associato": {"$ne": True}},
+                {"_id": 0, "id": 1, "invoice_number": 1, "numero_fattura": 1,
+                 "supplier_name": 1, "fornitore_denominazione": 1, "fornitore": 1,
+                 "cedente_denominazione": 1, "total_amount": 1, "totale": 1,
+                 "importo_totale": 1, "invoice_date": 1},
+            ).to_list(5000)
+            fatture_match = seleziona_fatture_bonifico(bonifico, fatture)
+            if fatture_match:
+                await collega_bonifico_fatture(db, bonifico, fatture_match, auto=True)
+                auto_fatture += len(fatture_match)
     except Exception as e:
         logger.error(f"Auto-association error: {e}")
     

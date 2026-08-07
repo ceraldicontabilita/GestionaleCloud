@@ -11,6 +11,7 @@ import logging
 
 from app.database import Database
 from app.services.identity_matching import identita_coincide, nome_presente_nel_testo
+from app.services.payment_document_links import propaga_documento_pagamento
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,14 @@ async def _registra_match_bancario(db, bonifico: Dict[str, Any], movimento: Dict
             "stipendio_id": salario_id,
             "data_riconciliazione": now,
         }},
+    )
+    invoice_ids = list(bonifico.get("fattura_ids") or [])
+    if bonifico.get("fattura_id") and bonifico["fattura_id"] not in invoice_ids:
+        invoice_ids.append(bonifico["fattura_id"])
+    if bonifico.get("fattura_associata_id") and bonifico["fattura_associata_id"] not in invoice_ids:
+        invoice_ids.append(bonifico["fattura_associata_id"])
+    await propaga_documento_pagamento(
+        db, movimento.get("id"), bonifico.get("id"), invoice_ids
     )
     if salario_id:
         importo = round(abs(float(movimento.get("importo") or 0)), 2)

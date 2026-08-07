@@ -278,6 +278,35 @@ async def associa_transfer_a_salario(db, transfer: Dict[str, Any]) -> Dict[str, 
     return {"associato": True, "salario_id": candidato.get("id"), "dipendente": nome}
 
 
+async def associa_transfer_a_fatture(db, transfer: Dict[str, Any]) -> Dict[str, Any]:
+    """Collega fatture solo con numero esplicito, fornitore e centesimi certi."""
+    from app.services.payment_document_links import (
+        collega_bonifico_fatture,
+        seleziona_fatture_bonifico,
+    )
+
+    invoices = await db["invoices"].find(
+        {"bonifico_associato": {"$ne": True}},
+        {"_id": 0, "id": 1, "invoice_number": 1, "numero_fattura": 1,
+         "supplier_name": 1, "fornitore_denominazione": 1, "fornitore": 1,
+         "cedente_denominazione": 1, "total_amount": 1, "totale": 1,
+         "importo_totale": 1, "invoice_date": 1},
+    ).to_list(5000)
+    matched = seleziona_fatture_bonifico(transfer, invoices)
+    if not matched:
+        return {"associato": False, "motivo": "fattura_non_certa_o_ambigua"}
+    await collega_bonifico_fatture(db, transfer, matched, auto=True)
+    return {"associato": True, "fattura_ids": [item["id"] for item in matched]}
+
+
+async def associa_transfer_documento(db, transfer: Dict[str, Any]) -> Dict[str, Any]:
+    """Prima salari/cedolini, poi fatture fornitori; mai entrambe."""
+    salary = await associa_transfer_a_salario(db, transfer)
+    if salary.get("associato"):
+        return salary
+    return await associa_transfer_a_fatture(db, transfer)
+
+
 async def importa_pdf_bonifico(
     db,
     content: bytes,
@@ -320,7 +349,7 @@ async def importa_pdf_bonifico(
         )
         esistente.update(aggiornamento)
         associazione = (
-            await associa_transfer_a_salario(db, esistente)
+            await associa_transfer_documento(db, esistente)
             if auto_associa
             else {"associato": False, "motivo": "associazione_manuale_richiesta"}
         )
@@ -355,7 +384,7 @@ async def importa_pdf_bonifico(
     )
     await db["bonifici_transfers"].insert_one(dict(transfer))
     associazione = (
-        await associa_transfer_a_salario(db, transfer)
+        await associa_transfer_documento(db, transfer)
         if auto_associa
         else {"associato": False, "motivo": "associazione_manuale_richiesta"}
     )

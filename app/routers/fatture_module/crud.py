@@ -727,6 +727,15 @@ async def get_fattura_dettaglio(fattura_id: str) -> Dict[str, Any]:
     return {"fattura": fattura, "righe": righe, "allegati": allegati}
 
 
+async def get_documenti_pagamento_fattura(fattura_id: str) -> Dict[str, Any]:
+    """Elenca le prove di pagamento senza duplicare i PDF nella fattura."""
+    db = Database.get_db()
+    from app.services.payment_document_links import documenti_pagamento_fattura
+
+    documenti = await documenti_pagamento_fattura(db, fattura_id)
+    return {"fattura_id": fattura_id, "documenti": documenti, "count": len(documenti)}
+
+
 async def update_fattura(fattura_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
     """Aggiorna una fattura."""
     db = Database.get_db()

@@ -10,10 +10,9 @@ from datetime import datetime, timezone
 import logging
 
 from app.database import Database, Collections
-from app.services.identity_matching import identita_coincide, nome_presente_nel_testo
-from app.services.payment_invoice_matching import (
-    amounts_equal_to_cent,
-    invoice_reference_in_text,
+from app.services.payment_document_links import (
+    collega_bonifico_fatture,
+    valuta_fattura_bonifico,
 )
 from .classification import classifica_bonifico_dipendente
 
@@ -60,15 +59,6 @@ async def associa_fattura_a_bonifico(
             ),
         )
 
-    aggiornamento = {
-        "fattura_associata_id": fattura_id,
-        "fattura_collection": collection,
-        "fattura_associazione_evidenze": compatibilita["evidenze"],
-        "fattura_associazione_score": compatibilita["score"],
-        "stato_riconciliazione": "associato",
-        "data_associazione": datetime.now(timezone.utc).isoformat()
-    }
-
     # 1) Prova prima su bonifici_transfers (collection moderna, ID stringa UUID)
     # Controlla se il bonifico è già associato a un'altra fattura (blocca doppia associazione)
     existing = await db["bonifici_transfers"].find_one({"id": bonifico_id}, {"_id": 0, "fattura_associata_id": 1})
@@ -78,11 +68,8 @@ async def associa_fattura_a_bonifico(
             detail=f"Bonifico già associato alla fattura {existing['fattura_associata_id']}. Disassocia prima."
         )
 
-    result = await db["bonifici_transfers"].update_one(
-        {"id": bonifico_id},
-        {"$set": aggiornamento}
-    )
-    if result.modified_count > 0:
+    if existing:
+        await collega_bonifico_fatture(db, bonifico, [fattura], auto=False)
         return {"success": True, "message": "Fattura associata al bonifico (transfers)"}
 
     # 2) Fallback su archivio_bonifici (collection legacy, MongoDB ObjectId)
@@ -90,7 +77,14 @@ async def associa_fattura_a_bonifico(
     try:
         result2 = await db["archivio_bonifici"].update_one(
             {"_id": ObjectId(bonifico_id)},
-            {"$set": aggiornamento}
+            {"$set": {
+                "fattura_associata_id": fattura_id,
+                "fattura_collection": collection,
+                "fattura_associazione_evidenze": compatibilita["evidenze"],
+                "fattura_associazione_score": compatibilita["score"],
+                "stato_riconciliazione": "associato",
+                "data_associazione": datetime.now(timezone.utc).isoformat(),
+            }}
         )
         if result2.modified_count > 0:
             return {"success": True, "message": "Fattura associata al bonifico (archivio)"}
@@ -106,17 +100,27 @@ async def disassocia_fattura(bonifico_id: str) -> Dict[str, Any]:
     db = Database.get_db()
 
     rimozione = {
-        "fattura_associata_id": "",
-        "fattura_collection": "",
-        "data_associazione": ""
+        "fattura_associata_id": "", "fattura_id": "", "fattura_ids": "",
+        "fattura_collection": "", "data_associazione": "",
+        "fattura_associazione_evidenze": "",
     }
 
     # 1) Prova bonifici_transfers
+    transfer = await db["bonifici_transfers"].find_one({"id": bonifico_id}, {"_id": 0})
+    invoice_ids = set((transfer or {}).get("fattura_ids") or [])
+    if (transfer or {}).get("fattura_id"):
+        invoice_ids.add(transfer["fattura_id"])
     result = await db["bonifici_transfers"].update_one(
         {"id": bonifico_id},
-        {"$unset": rimozione, "$set": {"stato_riconciliazione": "non_riconciliato"}}
+        {"$unset": rimozione, "$set": {"fattura_associata": False, "stato_riconciliazione": "non_riconciliato"}}
     )
-    if result.modified_count > 0:
+    if result.matched_count > 0:
+        for invoice_id in invoice_ids:
+            await db["invoices"].update_one(
+                {"id": invoice_id},
+                {"$pull": {"bonifico_ids": bonifico_id, "payment_document_ids": bonifico_id},
+                 "$unset": {"bonifico_id": ""}, "$set": {"bonifico_associato": False}},
+            )
         return {"success": True, "message": "Associazione fattura rimossa (transfers)"}
 
     # 2) Fallback archivio_bonifici
@@ -232,56 +236,8 @@ def _importo_fattura(fattura: Dict[str, Any]) -> float:
 def _valuta_fattura_bonifico(
     bonifico: Dict[str, Any], fattura: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """Valuta una fattura senza usare il solo importo come prova."""
-    importo_bonifico = abs(float(bonifico.get("importo") or 0))
-    importo_fattura = _importo_fattura(fattura)
-    importo_esatto = amounts_equal_to_cent(importo_bonifico, importo_fattura)
-
-    beneficiario = bonifico.get("beneficiario") or {}
-    beneficiario_nome = (
-        beneficiario.get("nome") if isinstance(beneficiario, dict) else str(beneficiario)
-    ) or ""
-    causale = str(bonifico.get("causale") or "")
-    fornitore = str(
-        fattura.get("supplier_name")
-        or fattura.get("fornitore_denominazione")
-        or fattura.get("fornitore")
-        or fattura.get("cedente_denominazione")
-        or ""
-    )
-    numero = str(fattura.get("invoice_number") or fattura.get("numero_fattura") or "")
-
-    identita = bool(
-        beneficiario_nome and fornitore and identita_coincide(beneficiario_nome, fornitore)
-    )
-    fornitore_in_causale = bool(
-        fornitore and nome_presente_nel_testo(fornitore, causale)
-    )
-    fattura_in_causale = invoice_reference_in_text(numero, causale)
-
-    evidenze: List[str] = []
-    score = 0
-    if importo_esatto:
-        score += 55
-        evidenze.append("importo_esatto")
-    if identita:
-        score += 40
-        evidenze.append("identita_fornitore")
-    if fornitore_in_causale:
-        score += 35
-        evidenze.append("fornitore_in_causale")
-    if fattura_in_causale:
-        score += 50
-        evidenze.append("numero_fattura_in_causale")
-
-    return {
-        "compatibile": importo_esatto and fattura_in_causale and bool(
-            identita or fornitore_in_causale
-        ),
-        "score": score,
-        "evidenze": evidenze,
-        "importo_fattura": importo_fattura,
-    }
+    """Compatibilita' canonica condivisa con import automatico e UI."""
+    return valuta_fattura_bonifico(bonifico, fattura)
 
 
 @router.get("/fatture-compatibili/{bonifico_id}")

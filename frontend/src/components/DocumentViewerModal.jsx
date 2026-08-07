@@ -40,6 +40,7 @@ export default function DocumentViewerModal({
   mimeType = 'application/pdf',
   onClose,
   onDownload,
+  extraActions,
   maxWidth = 960,
   testIdPrefix = 'document-viewer',
 }) {
@@ -272,6 +273,7 @@ export default function DocumentViewerModal({
             )}
           </div>
           <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {extraActions}
             <button onClick={zoomOut} aria-label="Riduci zoom" title="Zoom −"
               data-testid={`${testIdPrefix}-zoom-out`} style={btn({ fontSize: 20 })}>−</button>
             <button onClick={zoomIn} aria-label="Aumenta zoom" title="Zoom +"

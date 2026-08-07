@@ -111,7 +111,7 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_QUIETANZE_FOLDER_ID: Optional[str] = None     # quietanze F24
     GOOGLE_DRIVE_ESTRATTI_FOLDER_ID: Optional[str] = None      # estratti conto
     GOOGLE_DRIVE_ESTRATTI_FOLDER_IDS: Optional[str] = None     # piu radici, separate da virgola
-    GOOGLE_DRIVE_BONIFICI_FOLDER_ID: Optional[str] = None      # bonifici stipendi (PDF)
+    GOOGLE_DRIVE_BONIFICI_FOLDER_ID: Optional[str] = None      # bonifici effettuati: fornitori, stipendi e altri pagamenti
     # Nuovi canali documentali (scelta utente 12-07-2026): cartelle Drive
     # dedicate. Gli ID vanno su Render; ogni cartella condivisa con la
     # client_email del service account che la legge.
