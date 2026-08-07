@@ -399,6 +399,49 @@ def test_attendi_banca_compare_nella_lista_dedicata(monkeypatch):
     assert attesa["stato_match"] == "in_attesa_estratto_conto"
 
 
+def test_provvisori_non_taglia_i_primi_mesi_oltre_cinquemila_fatture(monkeypatch):
+    """Il limite storico di 5.000 righe eliminava gennaio-maggio quando
+    l'anno conteneva piu' documenti, perche' il cursore era ordinato dalla
+    fattura piu' recente. La pagina deve ricevere l'intero anno selezionato.
+    """
+    db = _FakeDb()
+    db["invoices"].docs = [
+        _fattura(
+            id=f"fatt-giugno-{indice}",
+            invoice_number=f"G-{indice}",
+            invoice_date="2026-06-01",
+            total_amount=1.0,
+        )
+        for indice in range(5000)
+    ] + [
+        _fattura(
+            id="fatt-gennaio-non-tagliata",
+            invoice_number="GEN-1",
+            invoice_date="2026-01-10",
+            total_amount=1.0,
+        )
+    ]
+    _patch_db(monkeypatch, db)
+
+    async def _senza_pagamento(_db, fatture):
+        return fatture
+
+    monkeypatch.setattr(
+        sync_mod,
+        "fatture_senza_pagamento_contabile_confermato",
+        _senza_pagamento,
+    )
+
+    res = _run(sync_mod.get_fatture_provvisorie(anno=2026))
+
+    tutte = res["provvisori"] + res["in_attesa_banca"]
+    assert len(tutte) == 5001
+    assert any(
+        fattura["fattura_id"] == "fatt-gennaio-non-tagliata"
+        for fattura in tutte
+    )
+
+
 def test_conferma_banca_con_riga_reale_marca_riconciliata(monkeypatch):
     db = _FakeDb()
     db["invoices"].docs = [_fattura(metodo_pagamento="banca")]

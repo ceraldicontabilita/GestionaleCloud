@@ -850,7 +850,7 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             ],
         },
         {"_id": 0, "xml_raw": 0, "linee": 0}
-    ).sort("invoice_date", -1).to_list(5000)
+    ).sort("invoice_date", -1).to_list(None)
     fatture = [
         f for f in fatture
         if float(f.get("total_amount") or f.get("importo_totale") or 0) > 0
