@@ -160,3 +160,40 @@ def test_sumup_e_numia_non_si_confermano_a_vicenda():
     assert per_gestore["nexi"]["stato_dato"] == STATO_PROVVISORIO
     assert per_gestore["sumup"]["stato_dato"] == STATO_CONFERMATO
     assert per_gestore["nexi"]["importo"] == 500.0
+
+
+# --- Identita' del punto di incasso ----------------------------------------
+
+def test_il_punto_vendita_si_normalizza():
+    """Negli export reali lo stesso negozio compare con e senza apostrofo
+    finale: come chiave spaccherebbe in due i raggruppamenti."""
+    from app.services.pos_terminal_import import _normalizza_row
+
+    def _riga(nome):
+        return _normalizza_row({
+            "Data e ora": "31/05/2026 20:33:50.000", "Importo": "96,50",
+            "Stato operazione": "Acquisto approvato", "Punto vendita": nome,
+            "ID Terminale / TML": "40086700", "MID": "8009890",
+            "Circuito": "MASTERCARD", "ID Transazione": "581110431069267914",
+        }, "export.csv")
+
+    assert _riga("CERALDI CAFFE")["punto_vendita"] == "CERALDI CAFFE"
+    assert _riga("CERALDI CAFFE'")["punto_vendita"] == "CERALDI CAFFE"
+    assert _riga("CERALDI CAFFE’")["punto_vendita"] == "CERALDI CAFFE"
+
+
+def test_la_riga_porta_l_identita_del_terminale():
+    from app.services.pos_terminal_import import _normalizza_row
+
+    riga = _normalizza_row({
+        "Data e ora": "31/05/2026 20:33:50.000", "Importo": "96,50",
+        "Stato operazione": "Acquisto approvato", "Punto vendita": "CERALDI CAFFE",
+        "ID Terminale / TML": "40086700", "MID": "8009890",
+        "Circuito": "MASTERCARD", "ID Transazione": "581110431069267914",
+    }, "export.csv")
+
+    assert riga["provider"] == "numia"
+    assert riga["terminale"] == "40086700"
+    assert riga["mid"] == "8009890"
+    # Il "circuito" dell'export e' quello della CARTA, non il gestore.
+    assert riga["circuito_carta"] == "MASTERCARD"

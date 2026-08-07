@@ -68,7 +68,10 @@ def _normalizza_row(row: Dict[str, Any], filename: str) -> Dict[str, Any] | None
     # reale di maggio 2026 ce ne sono due, con MID diversi.
     terminale = _text(lowered.get("id terminale / tml") or lowered.get("id terminale"))
     mid = _text(lowered.get("mid"))
-    punto_vendita = _text(lowered.get("punto vendita"))
+    # Negli export reali lo stesso negozio compare come "CERALDI CAFFE" e
+    # "CERALDI CAFFE'": l'apostrofo finale e' incostante. Usato come chiave
+    # spaccherebbe in due i raggruppamenti per punto vendita.
+    punto_vendita = _text(lowered.get("punto vendita")).rstrip("'\u2019 ").upper()
     id_punto_vendita = _text(lowered.get("id punto vendita"))
     # "Circuito" nell'export e' il circuito della CARTA (Mastercard,
     # PagoBancomat...), non il gestore: sono tutti incassi Numia e vanno
