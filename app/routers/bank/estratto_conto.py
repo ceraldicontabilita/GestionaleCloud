@@ -882,8 +882,18 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
 
                 # REGOLA CANONICA POS (utente 18/07/2026): l'accredito POS
                 # dell'estratto conto NON crea un'entrata — RICONCILIA il
-                # trasferimento cassa→banca del suo giorno di vendita.
-                if fonte_ufficiale and mov.get("tipo") == "entrata" and any(k in desc_upper for k in KEYWORDS_ACCREDITO_POS):
+                # trasferimento cassa→banca del suo giorno di vendita,
+                # sommando i circuiti della stessa giornata (BNCMT, AMEX,
+                # INTER, per ogni punto vendita).
+                #
+                # Vale anche per l'export CSV (07/08/2026, richiesta utente):
+                # prima scattava solo col PDF ufficiale, e nel frattempo le
+                # righe NUMIA del CSV finivano in Prima Nota come "Rimborso" —
+                # entrate mai avvenute, visto che il denaro era gia' contato
+                # nel trasferimento. Se poi arriva il PDF, la promozione a
+                # ufficiale azzera `riconciliato` e il gruppo viene riverificato
+                # con l'evidenza piena.
+                if mov.get("tipo") == "entrata" and any(k in desc_upper for k in KEYWORDS_ACCREDITO_POS):
                     try:
                         from app.services.scritture_contabili import riconcilia_accredito_pos_ec
                         if await riconcilia_accredito_pos_ec(db, mov):

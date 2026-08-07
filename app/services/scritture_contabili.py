@@ -855,9 +855,16 @@ async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:
     giorno_vendita = _giorno_operazione_pos(descr, data_acc)
     importo = abs(float(mov_ec.get("importo") or 0))
 
+    # Dal 07/08/2026 i trasferimenti sono per circuito (Numia E SumUp nello
+    # stesso giorno). L'accredito con causale NUMIA deve agganciare il
+    # trasferimento NUMIA: senza questo filtro poteva prendere quello SumUp
+    # del medesimo giorno e "riconciliare" il circuito sbagliato.
     trasferimento = await db["prima_nota_banca"].find_one({
         "source": "trasferimento_pos",
-        "$or": [{"giorno_vendita": giorno_vendita}, {"data": giorno_vendita}],
+        "$and": [
+            {"$or": [{"giorno_vendita": giorno_vendita}, {"data": giorno_vendita}]},
+            filtro_gestore_pos(conti_pos.NUMIA),
+        ],
         "status": {"$nin": ["deleted", "archived"]},
     })
     if not trasferimento:
