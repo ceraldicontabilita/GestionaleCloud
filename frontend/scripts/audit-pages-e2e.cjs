@@ -1,5 +1,5 @@
 /**
- * Collaudo di apertura delle 63 schermate contro l'ERP isolato.
+ * Collaudo di apertura delle 62 schermate operative contro l'ERP isolato.
  *
  * Usa router backend reali e MongoDB in memoria (vedi
  * scripts/e2e_distruttivo_server.py). Non legge e non modifica dati aziendali.
@@ -58,8 +58,8 @@ function uniqueProblems(problems) {
 }
 
 (async () => {
-  if (catalog.pages.length !== 63) {
-    throw new Error(`Catalogo incompleto: attese 63 pagine, trovate ${catalog.pages.length}`);
+  if (catalog.pages.length !== 62) {
+    throw new Error(`Catalogo incompleto: attese 62 pagine, trovate ${catalog.pages.length}`);
   }
 
   const browser = await chromium.launch(EXE ? { executablePath: EXE } : {});
