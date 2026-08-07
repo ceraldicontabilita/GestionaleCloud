@@ -28,6 +28,58 @@ CAMPI_EVIDENZA_BANCA = (
 )
 
 
+def totale_pagabile_al_fornitore(fattura: Dict[str, Any]) -> float:
+    """Importo finanziario da saldare al fornitore, al netto ritenuta.
+
+    ``ImportoTotaleDocumento`` non e' sufficiente per le parcelle: diversi
+    XML espongono il lordo documento, mentre ``DettaglioPagamento`` contiene
+    il netto effettivamente bonificabile dopo la ritenuta. Usiamo il totale
+    delle rate soltanto quando la differenza e' spiegata da una ritenuta
+    esplicita; per le fatture ordinarie il totale documento resta la fonte.
+    """
+    totale = abs(float(
+        fattura.get("total_amount") or fattura.get("importo_totale") or 0
+    ))
+    if totale <= 0:
+        return 0.0
+
+    ritenuta = 0.0
+    for campo in ("importo_ritenuta", "ritenuta_importo", "withholding_amount"):
+        try:
+            ritenuta = abs(float(fattura.get(campo) or 0))
+        except (TypeError, ValueError):
+            ritenuta = 0.0
+        if ritenuta > 0:
+            break
+
+    rate_totale = fattura.get("pagamento_rate_totale")
+    try:
+        rate_totale = abs(float(rate_totale)) if rate_totale not in (None, "") else 0.0
+    except (TypeError, ValueError):
+        rate_totale = 0.0
+    if rate_totale <= 0:
+        try:
+            rate_totale = round(sum(
+                abs(float(rata.get("importo") or 0))
+                for rata in (fattura.get("pagamento_rate") or [])
+                if isinstance(rata, dict)
+            ), 2)
+        except (TypeError, ValueError):
+            rate_totale = 0.0
+
+    # Se l'importo delle rate e' inferiore al lordo, la differenza rappresenta
+    # il netto fornitore solo in presenza di una ritenuta documentata. Una
+    # distinta rate incompleta, da sola, non autorizza a ridurre il debito.
+    if 0 < rate_totale < totale - 0.01:
+        differenza = round(totale - rate_totale, 2)
+        if ritenuta > 0 and abs(differenza - ritenuta) <= 0.05:
+            return round(rate_totale, 2)
+
+    if 0 < ritenuta < totale:
+        return round(totale - ritenuta, 2)
+    return round(totale, 2)
+
+
 def filtro_fatture_marcate_pagate() -> Dict[str, Any]:
     """Filtro Mongo tollerante a tutti gli alias storici di 'pagata'."""
     return {
@@ -208,9 +260,7 @@ async def fatture_senza_pagamento_contabile_confermato(
             str(fattura.get(campo)) for campo in CAMPI_ID_PRIMA_NOTA
             if fattura.get(campo) not in (None, "")
         }
-        totale = abs(float(
-            fattura.get("total_amount") or fattura.get("importo_totale") or 0
-        ))
+        totale = totale_pagabile_al_fornitore(fattura)
         pagamento_confermato = max(
             [importi_per_fattura.get(ref, 0.0) for ref in refs_fattura]
             + [importi_per_pn.get(pn_id, 0.0) for pn_id in ids_fattura]
@@ -234,6 +284,13 @@ async def fatture_senza_pagamento_contabile_confermato(
         )
         fattura_aperta["_importo_residuo"] = round(
             max(0.0, totale - pagamento_confermato), 2
+        )
+        fattura_aperta["_totale_pagabile_fornitore"] = round(totale, 2)
+        lordo_documento = abs(float(
+            fattura.get("total_amount") or fattura.get("importo_totale") or 0
+        ))
+        fattura_aperta["_ritenuta_non_pagabile_fornitore"] = round(
+            max(0.0, lordo_documento - totale), 2
         )
         risultato.append(fattura_aperta)
     return risultato
