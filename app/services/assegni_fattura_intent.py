@@ -195,7 +195,15 @@ def _score(assegno: Dict[str, Any], invoice: Dict[str, Any]) -> int:
     return 0
 
 
-async def _collega(db, assegno: Dict[str, Any], invoice: Dict[str, Any], *, session=None) -> Dict[str, Any]:
+async def _collega(
+    db,
+    assegno: Dict[str, Any],
+    invoice: Dict[str, Any],
+    *,
+    session=None,
+    match_auto: bool = True,
+    match_livello: str = "INTENTO_ASSEGNO_XML",
+) -> Dict[str, Any]:
     # L'estratto conto puo' essere stato importato prima dell'XML. In quel
     # caso il movimento bancario e' gia' prova ufficiale: il collegamento
     # tardivo deve chiudere la fattura e soprattutto non deve degradare
@@ -238,8 +246,8 @@ async def _collega(db, assegno: Dict[str, Any], invoice: Dict[str, Any], *, sess
         "numero": assegno.get("numero"),
         "quota": quota,
         "data_collegamento": now,
-        "match_auto": True,
-        "match_livello": "INTENTO_ASSEGNO_XML",
+        "match_auto": match_auto,
+        "match_livello": match_livello,
         "banca_confermata": False,
     }
 
@@ -250,7 +258,7 @@ async def _collega(db, assegno: Dict[str, Any], invoice: Dict[str, Any], *, sess
             "fattura_id": fid,
             "fatture_collegate": [{
                 "fattura_id": fid, "quota": quota, "data_collegamento": now,
-                "match_auto": True, "match_livello": "INTENTO_ASSEGNO_XML",
+                "match_auto": match_auto, "match_livello": match_livello,
             }],
             "numero_fattura": numero_fattura,
             "fornitore_piva": piva,
@@ -298,6 +306,23 @@ async def _collega(db, assegno: Dict[str, Any], invoice: Dict[str, Any], *, sess
             "fattura_id": fid,
         }
     return {"collegato": True, "assegno_id": assegno.get("id"), "fattura_id": fid}
+
+
+async def collega_assegno_compilato_a_fattura(
+    db, assegno: Dict[str, Any], invoice: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Collega la scelta esplicita fatta dalla Prima Nota.
+
+    Prima dell'estratto conto registra soltanto l'intento assegno-fattura:
+    non crea una riga bancaria e non marca il documento come pagato.
+    """
+    return await _collega(
+        db,
+        assegno,
+        invoice,
+        match_auto=False,
+        match_livello="MANUALE_PRIMA_NOTA_NUMERO_ASSEGNO",
+    )
 
 
 async def _registra_ambigui(db, invoice: Dict[str, Any], assegni: List[Dict[str, Any]], *, session=None) -> None:

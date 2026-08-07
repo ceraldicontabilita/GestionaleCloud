@@ -1085,6 +1085,7 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             "causali": parsed.get("causali", []),
             "dati_fatture_collegate": parsed.get("dati_fatture_collegate", []),
             "dati_ordine_acquisto": parsed.get("dati_ordine_acquisto", []),
+            "dati_ddt": parsed.get("dati_ddt", []),
             "tipo_documento_desc": parsed.get("tipo_documento_desc", ""),
         }
 
@@ -1735,6 +1736,7 @@ async def archivia_fattura_storica(db, parsed: Dict[str, Any], filename: str, so
         "pagamento_rate_totale": parsed.get("pagamento_rate_totale"),
         "pagamento_rate_coerente": parsed.get("pagamento_rate_coerente"),
         "causali": parsed.get("causali", []),
+        "dati_ddt": parsed.get("dati_ddt", []),
         "status": "archiviata",
         "stato_import": "archivio_storico",
         "source": source,
@@ -1833,6 +1835,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "causali": parsed.get("causali", []),
         "dati_fatture_collegate": parsed.get("dati_fatture_collegate", []),
         "dati_ordine_acquisto": parsed.get("dati_ordine_acquisto", []),
+        "dati_ddt": parsed.get("dati_ddt", []),
         "metodo_pagamento": metodo_pagamento,
         "status": "imported",
         "source": source,

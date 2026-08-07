@@ -161,6 +161,28 @@ def test_parse_fattura_xml_body_seleziona_il_body_giusto():
     assert parse_fattura_xml_body(xml, 99)["invoice_number"] == "20"
 
 
+def test_parser_espone_numero_data_e_righe_del_ddt():
+    body = _body("FVL824", "190.00").replace(
+        "</DatiGenerali>",
+        """
+        <DatiDDT>
+          <NumeroDDT>DDT862</NumeroDDT>
+          <DataDDT>2026-04-17</DataDDT>
+          <RiferimentoNumeroLinea>1</RiferimentoNumeroLinea>
+          <RiferimentoNumeroLinea>2</RiferimentoNumeroLinea>
+        </DatiDDT>
+      </DatiGenerali>""",
+    )
+
+    parsed = parse_fattura_xml(_xml(body))
+
+    assert parsed["dati_ddt"] == [{
+        "numero": "DDT862",
+        "data": "2026-04-17",
+        "riferimenti_linea": ["1", "2"],
+    }]
+
+
 def test_process_xml_bytes_promuove_imported_su_archiviata(monkeypatch):
     """Review Codex su PR #71: con filtro anno attivo, se il primo body del
     file è di un anno passato (→ 'archiviata', sola consultazione) ma un

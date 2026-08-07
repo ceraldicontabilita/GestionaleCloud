@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1068 endpoint** in **111 gruppi**.
+> Totale **1071 endpoint** in **111 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 651 · ext esterni = 89 · — da verificare = 328
+**Riepilogo uso:** ✓ frontend = 654 · ext esterni = 89 · — da verificare = 328
 
 ## AI Parser  (11)
 
@@ -1248,7 +1248,7 @@
 | GET | `/api/previsioni-acquisti/prodotti` | — | previsioni_acquisti |
 | GET | `/api/previsioni-acquisti/statistiche` | ✓ | previsioni_acquisti |
 
-## Prima Nota  (80)
+## Prima Nota  (83)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1303,12 +1303,15 @@
 | POST | `/api/prima-nota/movimento` | — | prima_nota_module.sync |
 | GET | `/api/prima-nota/provvisori` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/annulla-auto-conferma` | ✓ | prima_nota_module.sync |
+| GET | `/api/prima-nota/provvisori/assegni-proposti` | ✓ | prima_nota_module.sync |
+| POST | `/api/prima-nota/provvisori/associa-assegno` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/attendi-banca` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/auto-conferma-per-metodo` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/conferma` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/conferma-divisione` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/conferma-multipla` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/da-decidere` | ✓ | prima_nota_module.sync |
+| POST | `/api/prima-nota/provvisori/segnala-dubbio` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/pulizia-pre-anno` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/recalculate-balances` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/regenerate-from-invoices` | — | prima_nota_module.manutenzione |

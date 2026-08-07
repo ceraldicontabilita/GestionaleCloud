@@ -114,19 +114,25 @@ export function filtraMovimentiPrimaNota(movimenti = [], filtri = {}) {
 
 export function filtraFattureProvvisorie(fatture = [], filtri = {}) {
   const numero = testoRicerca(filtri.numeroFattura);
+  const numeroDdt = testoRicerca(filtri.numeroDdt);
   const fornitore = testoRicerca(filtri.fornitore);
   const data = String(filtri.data || '').trim();
   return fatture.filter(fattura => {
     const numeroFattura = fattura.fattura_numero || fattura.numero_fattura || fattura.invoice_number || '';
     const nomeFornitore = fattura.fornitore || fattura.supplier_name || '';
     const dataFattura = fattura.fattura_data || fattura.data || fattura.invoice_date || '';
+    const ddt = (fattura.dati_ddt || []).map(item => item?.numero).filter(Boolean);
     return (!numero || testoRicerca(numeroFattura).includes(numero)) &&
+      (!numeroDdt || ddt.some(valore => testoRicerca(valore).includes(numeroDdt))) &&
       (!fornitore || testoRicerca(nomeFornitore).includes(fornitore)) &&
       (!data || dataFattura === data);
   });
 }
 
-function FiltriFattura({ numeroFattura, data, fornitore, onNumeroFattura, onData, onFornitore }) {
+function FiltriFattura({
+  numeroFattura, numeroDdt = '', data, fornitore,
+  onNumeroFattura, onNumeroDdt, onData, onFornitore,
+}) {
   const stileCampo = {
     display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0,
   };
@@ -157,6 +163,18 @@ function FiltriFattura({ numeroFattura, data, fornitore, onNumeroFattura, onData
           style={stileInput}
         />
       </label>
+      {onNumeroDdt && (
+        <label style={stileCampo}>
+          <span style={stileLabel}>Numero DDT</span>
+          <input
+            aria-label="Filtra per numero DDT"
+            placeholder="Es. DDT862"
+            value={numeroDdt}
+            onChange={e => onNumeroDdt(e.target.value)}
+            style={stileInput}
+          />
+        </label>
+      )}
       <label style={stileCampo}>
         <span style={stileLabel}>Data fattura</span>
         <input
@@ -559,6 +577,7 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
   const [pagina, setPagina] = useState(1);
   const [cerca, setCerca] = useState('');
   const [fNumeroFattura, setFNumeroFattura] = useState('');
+  const [fNumeroDdt, setFNumeroDdt] = useState('');
   const [fDataFattura, setFDataFattura] = useState('');
   const [fFornitore, setFFornitore] = useState('');
   const [fCategoria, setFCategoria] = useState('');
@@ -1082,7 +1101,7 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
 }
 
 /* ------------------------------ provvisori ------------------------------ */
-export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
+export function Provvisori({ provvisori, attesaBanca = [], completezza = null, onRicarica }) {
   const confirm = useConfirm();
   const [busy, setBusy] = useState(null);
   const [parziale, setParziale] = useState(null);
@@ -1091,6 +1110,7 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
   const [erroreRiga, setErroreRiga] = useState(null);
   const [esito, setEsito] = useState('');
   const [fNumeroFattura, setFNumeroFattura] = useState('');
+  const [fNumeroDdt, setFNumeroDdt] = useState('');
   const [fDataFattura, setFDataFattura] = useState('');
   const [fFornitore, setFFornitore] = useState('');
   // Richiesta utente 19/07/2026: da Provvisori non si poteva mai aprire la
@@ -1105,19 +1125,41 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
   const [esitiMultipli, setEsitiMultipli] = useState(null);
   const [busyMultiplo, setBusyMultiplo] = useState(false);
   const [modalitaRapida, setModalitaRapida] = useState(false);
+  const [assegnoEditor, setAssegnoEditor] = useState(null);
   const filtriFattura = {
     numeroFattura: fNumeroFattura,
+    numeroDdt: fNumeroDdt,
     data: fDataFattura,
     fornitore: fFornitore,
   };
   const provvisoriVisibili = useMemo(
     () => filtraFattureProvvisorie(provvisori, filtriFattura),
-    [provvisori, fNumeroFattura, fDataFattura, fFornitore],
+    [provvisori, fNumeroFattura, fNumeroDdt, fDataFattura, fFornitore],
   );
   const attesaBancaVisibili = useMemo(
     () => filtraFattureProvvisorie(attesaBanca, filtriFattura),
-    [attesaBanca, fNumeroFattura, fDataFattura, fFornitore],
+    [attesaBanca, fNumeroFattura, fNumeroDdt, fDataFattura, fFornitore],
   );
+
+  const dettaglioDdt = p => {
+    const riferimenti = p.dati_ddt || [];
+    if (riferimenti.length === 0) return null;
+    return (
+      <div style={{ marginTop: 3, color: '#7c3aed', fontSize: 11.5, fontWeight: 700 }}>
+        {riferimenti.map((ddt, indice) => {
+          const distanza = Number.isFinite(ddt.giorni_prima_fattura)
+            ? ` · ${ddt.giorni_prima_fattura} gg prima della fattura`
+            : '';
+          return (
+            <span key={`${ddt.numero || 'ddt'}-${ddt.data || indice}`}>
+              {indice > 0 && ' · '}
+              DDT {ddt.numero || 'senza numero'} del {formatDateIT(ddt.data)}{distanza}
+            </span>
+          );
+        })}
+      </div>
+    );
+  };
 
   const bottoneVedi = p => (
     <button
@@ -1240,7 +1282,15 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
       const response = await api.post('/api/prima-nota/provvisori/da-decidere', {
         fattura_id: p.fattura_id,
       });
-      setEsito(response.data?.message || 'Fattura riportata in Da decidere.');
+      const riferimento = response.data?.fattura || {};
+      const numero = riferimento.numero || p.fattura_numero || p.numero_fattura || p.invoice_number || 'senza numero';
+      const fornitore = riferimento.fornitore || p.fornitore || p.supplier_name || 'Fornitore non disponibile';
+      const dataFattura = riferimento.data || p.fattura_data || p.data || p.invoice_date;
+      const importo = riferimento.importo ?? p.importo;
+      setEsito(response.data?.message || (
+        `Fattura ${numero} di ${fornitore}, del ${formatDateIT(dataFattura)}, ${eur(importo)}, `
+        + 'riportata in Da decidere. Ora puoi scegliere Cassa, Banca o Parziale.'
+      ));
       await onRicarica({ silent: true });
     } catch (e) {
       setErroreRiga({
@@ -1249,6 +1299,105 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
       });
     } finally {
       setBusy(null);
+    }
+  };
+
+  const segnalaDubbio = async p => {
+    const numero = p.fattura_numero || p.numero_fattura || p.invoice_number || 'senza numero';
+    const fornitore = p.fornitore || p.supplier_name || 'Fornitore non disponibile';
+    const approvato = await confirm({
+      title: 'Segnala metodo di pagamento incerto',
+      message: `Apri un'anomalia sulla fattura ${numero} di ${fornitore}? Non verra creato o cancellato alcun pagamento; la fattura tornera tra quelle da decidere.`,
+      confirmText: 'Segnala dubbio',
+      cancelText: 'Annulla',
+      variant: 'warning',
+    });
+    if (!approvato) return;
+    setBusy(p.fattura_id);
+    setErrore('');
+    setErroreRiga(null);
+    setEsito('');
+    try {
+      const response = await api.post('/api/prima-nota/provvisori/segnala-dubbio', {
+        fattura_id: p.fattura_id,
+      });
+      setEsito(response.data?.message || `Anomalia aperta sulla fattura ${numero}.`);
+      await onRicarica({ silent: true });
+    } catch (e) {
+      setErroreRiga({
+        fatturaId: p.fattura_id,
+        messaggio: e.response?.data?.detail || e.response?.data?.message || e.message,
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const cercaAssegni = async (p, frammento = '') => {
+    setAssegnoEditor(prev => ({
+      ...(prev?.fatturaId === p.fattura_id ? prev : {}),
+      fatturaId: p.fattura_id,
+      fattura: p,
+      frammento,
+      proposte: [],
+      loading: true,
+      errore: '',
+    }));
+    try {
+      const { data } = await api.get('/api/prima-nota/provvisori/assegni-proposti', {
+        params: { fattura_id: p.fattura_id, frammento },
+      });
+      setAssegnoEditor(prev => ({
+        ...prev,
+        fatturaId: p.fattura_id,
+        fattura: p,
+        frammento,
+        proposte: data?.candidati || [],
+        message: data?.message || '',
+        loading: false,
+        errore: '',
+      }));
+    } catch (e) {
+      setAssegnoEditor(prev => ({
+        ...prev,
+        fatturaId: p.fattura_id,
+        fattura: p,
+        frammento,
+        proposte: [],
+        loading: false,
+        errore: e.response?.data?.detail || e.response?.data?.message || e.message,
+      }));
+    }
+  };
+
+  const collegaAssegno = async candidato => {
+    const p = assegnoEditor?.fattura;
+    if (!p) return;
+    const approvato = await confirm({
+      title: 'Collega assegno alla fattura',
+      message: `Colleghi l'assegno ${candidato.numero_completo} alla fattura ${p.fattura_numero || 'senza numero'} per ${eur(p.importo)}?`,
+      confirmText: 'Collega assegno',
+      cancelText: 'Annulla',
+      variant: 'warning',
+    });
+    if (!approvato) return;
+    setAssegnoEditor(prev => ({ ...prev, loading: true, errore: '' }));
+    try {
+      const { data } = await api.post('/api/prima-nota/provvisori/associa-assegno', {
+        fattura_id: p.fattura_id,
+        assegno_id: candidato.assegno_id,
+        movimento_estratto_conto_id: candidato.movimento_estratto_conto_id,
+        numero_completo: candidato.numero_completo,
+      });
+      setEsito(data?.message || `Assegno ${candidato.numero_completo} collegato.`);
+      setAssegnoEditor(null);
+      await onRicarica({ silent: true });
+    } catch (e) {
+      setAssegnoEditor(prev => ({
+        ...prev,
+        loading: false,
+        errore: e.response?.data?.detail || e.response?.data?.message || e.message,
+      }));
     }
   };
 
@@ -1324,6 +1473,23 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+      {completezza && (
+        <div
+          data-testid="completezza-fatture-provvisorie"
+          style={{ background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 11, padding: '10px 13px', color: '#1e3a5f', fontSize: 12.5, lineHeight: 1.55 }}
+        >
+          <b>Completezza fatture {completezza.anno}:</b>{' '}
+          {completezza.fatture_attive_positive} fatture dell'anno con importo positivo ={' '}
+          <b>{completezza.gia_registrate_pagamento_completo} gia registrate/pagate</b> +{' '}
+          <b>{completezza.aperte_mostrate} aperte mostrate qui</b>
+          {completezza.escluse_cassa_banca > 0 && (
+            <> + <b>{completezza.escluse_cassa_banca} escluse dal flusso Cassa/Banca</b></>
+          )}.
+          <div style={{ color: '#475569', marginTop: 2 }}>
+            Le fatture gia registrate restano consultabili in Cassa o Banca e non vengono duplicate in Provvisoria.
+          </div>
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button
           type="button"
@@ -1336,9 +1502,11 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
       </div>
       <FiltriFattura
         numeroFattura={fNumeroFattura}
+        numeroDdt={fNumeroDdt}
         data={fDataFattura}
         fornitore={fFornitore}
         onNumeroFattura={setFNumeroFattura}
+        onNumeroDdt={setFNumeroDdt}
         onData={setFDataFattura}
         onFornitore={setFFornitore}
       />
@@ -1414,7 +1582,13 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
       {provvisoriVisibili.map(p => (
         <div
           key={p.fattura_id || p.id}
-          style={{ background: 'white', borderRadius: 11, border: '1px solid #e2e8f0', borderLeft: '4px solid #d97706', padding: '10px 13px' }}
+          style={{
+            background: p.anomalia_pagamento?.stato === 'aperta' ? '#fff7ed' : 'white',
+            borderRadius: 11,
+            border: `1px solid ${p.anomalia_pagamento?.stato === 'aperta' ? '#fb923c' : '#e2e8f0'}`,
+            borderLeft: `4px solid ${p.anomalia_pagamento?.stato === 'aperta' ? '#dc2626' : '#d97706'}`,
+            padding: '10px 13px',
+          }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0, display: 'flex', gap: 9, alignItems: 'flex-start' }}>
@@ -1431,6 +1605,12 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
                 Fatt. {p.fattura_numero || p.numero_fattura || p.invoice_number || '—'} del {formatDateIT(p.fattura_data || p.data || p.invoice_date)}
                 {p.suggerimento === 'sospesa' && ' — ⏸ sospesa'}
               </div>
+              {dettaglioDdt(p)}
+              {p.anomalia_pagamento?.stato === 'aperta' && (
+                <div role="status" style={{ marginTop: 4, color: '#b91c1c', fontSize: 11.5, fontWeight: 800 }}>
+                  ⚠ Metodo di pagamento da verificare
+                </div>
+              )}
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
@@ -1471,6 +1651,15 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
                 ⏸ Sospendi
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => segnalaDubbio(p)}
+              disabled={busy === p.fattura_id || p.anomalia_pagamento?.stato === 'aperta'}
+              title="Evidenzia la fattura come anomalia senza creare o cancellare pagamenti"
+              style={{ background: '#fff7ed', color: '#b91c1c', border: '1px solid #fb923c', borderRadius: 8, padding: '7px 13px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', opacity: p.anomalia_pagamento?.stato === 'aperta' ? 0.6 : 1 }}
+            >
+              ⚠ {p.anomalia_pagamento?.stato === 'aperta' ? 'Dubbio segnalato' : 'Dubbio sul pagamento'}
+            </button>
           </div>
           {erroreRiga?.fatturaId === p.fattura_id && (
             <div role="alert" style={{ color: '#991b1b', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 10px', marginTop: 8, fontSize: 12.5 }}>
@@ -1489,9 +1678,15 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
           {attesaBancaVisibili.map(p => (
             <div
               key={p.fattura_id}
-              style={{ background: 'white', borderRadius: 10, border: '1px dashed #93c5fd', borderLeft: '4px solid #2563eb', padding: '8px 12px', marginBottom: 6, display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5, flexWrap: 'wrap' }}
+              style={{
+                background: p.anomalia_pagamento?.stato === 'aperta' ? '#fff7ed' : 'white',
+                borderRadius: 10,
+                border: `1px dashed ${p.anomalia_pagamento?.stato === 'aperta' ? '#fb923c' : '#93c5fd'}`,
+                borderLeft: `4px solid ${p.anomalia_pagamento?.stato === 'aperta' ? '#dc2626' : '#2563eb'}`,
+                padding: '8px 12px', marginBottom: 6, display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5, flexWrap: 'wrap',
+              }}
             >
-              <span style={{ minWidth: 0 }}>
+              <div style={{ minWidth: 0, flex: '1 1 360px' }}>
                 {p.fornitore || '—'} — Fatt. {p.fattura_numero || '—'} del {formatDateIT(p.fattura_data)}
                 {p.fonte_metodo === 'assegno_compilato' && (
                   <span style={{ color: '#7c3aed', fontWeight: 700 }}>
@@ -1523,7 +1718,13 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
                     {' '}· totale {eur(p.totale_fattura)} · già pagato {eur(p.importo_pagato_confermato)} · residuo {eur(p.importo_residuo)}
                   </span>
                 )}
-              </span>
+                {dettaglioDdt(p)}
+                {p.anomalia_pagamento?.stato === 'aperta' && (
+                  <div role="status" style={{ marginTop: 4, color: '#b91c1c', fontSize: 11.5, fontWeight: 800 }}>
+                    ⚠ Metodo di pagamento da verificare
+                  </div>
+                )}
+              </div>
               <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <b style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(p.importo)}</b>
                 <button
@@ -1543,6 +1744,17 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
                 </button>
                 <button
                   type="button"
+                  onClick={() => assegnoEditor?.fatturaId === p.fattura_id
+                    ? setAssegnoEditor(null)
+                    : cercaAssegni(p)}
+                  title="Cerca il numero assegno nel registro e nell'estratto conto"
+                  aria-label={`Associa assegno alla fattura ${p.fattura_numero || ''}`.trim()}
+                  style={{ minHeight: 40, background: '#f5f3ff', color: '#6d28d9', border: '1px solid #c4b5fd', borderRadius: 7, padding: '4px 12px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}
+                >
+                  Assegno
+                </button>
+                <button
+                  type="button"
                   onClick={() => confermaCassa(p)}
                   disabled={busy === p.fattura_id}
                   title="Correggi il metodo della fattura e registrala in Cassa"
@@ -1559,6 +1771,15 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
                 >
                   ↩ Da decidere
                 </button>
+                <button
+                  type="button"
+                  onClick={() => segnalaDubbio(p)}
+                  disabled={busy === p.fattura_id || p.anomalia_pagamento?.stato === 'aperta'}
+                  title="Evidenzia la fattura come anomalia e riportala tra le decisioni"
+                  style={{ minHeight: 40, background: '#fff7ed', color: '#b91c1c', border: '1px solid #fb923c', borderRadius: 8, padding: '7px 11px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer', opacity: p.anomalia_pagamento?.stato === 'aperta' ? 0.6 : 1 }}
+                >
+                  ⚠ {p.anomalia_pagamento?.stato === 'aperta' ? 'Dubbio segnalato' : 'Dubbio'}
+                </button>
                 <span title={p.movimento_banca ? 'Il movimento ha prova univoca ed e in elaborazione' : 'Nessuna associazione automatica senza una prova univoca'} style={{ color: p.movimento_banca ? '#047857' : '#64748b', fontSize: 11.5, fontWeight: 700 }}>
                   {p.movimento_banca ? 'Riscontro univoco trovato' : 'In attesa di riscontro univoco'}
                 </span>
@@ -1566,6 +1787,61 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
               {erroreRiga?.fatturaId === p.fattura_id && (
                 <div role="alert" style={{ width: '100%', color: '#991b1b', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 10px', fontSize: 12.5 }}>
                   {erroreRiga.messaggio}
+                </div>
+              )}
+              {assegnoEditor?.fatturaId === p.fattura_id && (
+                <div style={{ width: '100%', background: '#faf5ff', border: '1px solid #c4b5fd', borderRadius: 9, padding: 10 }}>
+                  <div style={{ color: '#5b21b6', fontWeight: 800, marginBottom: 7 }}>
+                    Collega un assegno reale alla fattura {p.fattura_numero || 'senza numero'}
+                  </div>
+                  <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+                    <input
+                      aria-label="Ultime 5 cifre e suffisso assegno"
+                      placeholder="Ultime 5 cifre, es. 69431-7"
+                      value={assegnoEditor.frammento || ''}
+                      onChange={e => setAssegnoEditor(prev => ({ ...prev, frammento: e.target.value }))}
+                      style={{ minHeight: 40, flex: '1 1 240px', border: '1px solid #a78bfa', borderRadius: 8, padding: '7px 10px', fontSize: 12.5 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => cercaAssegni(p, assegnoEditor.frammento || '')}
+                      disabled={assegnoEditor.loading}
+                      style={{ minHeight: 40, background: '#6d28d9', color: 'white', border: 0, borderRadius: 8, padding: '7px 13px', fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      {assegnoEditor.loading ? 'Ricerca…' : 'Cerca assegno'}
+                    </button>
+                  </div>
+                  <div style={{ color: '#64748b', marginTop: 6, fontSize: 11.5 }}>
+                    Digita le ultime 5 cifre e il suffisso dopo il trattino. Il sistema propone il numero completo e non collega mai sulla sola uguaglianza dell'importo.
+                  </div>
+                  {assegnoEditor.errore && <div role="alert" style={{ color: '#b91c1c', marginTop: 7 }}>{assegnoEditor.errore}</div>}
+                  {!assegnoEditor.loading && assegnoEditor.message && (
+                    <div role="status" style={{ color: '#5b21b6', marginTop: 7, fontWeight: 700 }}>{assegnoEditor.message}</div>
+                  )}
+                  {!assegnoEditor.loading && (assegnoEditor.proposte || []).map(candidato => {
+                    const collegatoAltrove = candidato.gia_collegato_fattura_id
+                      && candidato.gia_collegato_fattura_id !== p.fattura_id;
+                    return (
+                      <div key={`${candidato.assegno_id || 'ec'}-${candidato.numero_completo}`} style={{ marginTop: 7, padding: '7px 9px', background: 'white', border: '1px solid #ddd6fe', borderRadius: 8, display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span>
+                          <b>Assegno {candidato.numero_completo}</b> · {eur(candidato.importo)}
+                          {candidato.data ? ` · ${formatDateIT(candidato.data)}` : ''}
+                          <span style={{ color: '#64748b' }}>
+                            {' '}· {candidato.fonte_estratto_conto ? 'presente in estratto conto' : 'in attesa di estratto conto'}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => collegaAssegno(candidato)}
+                          disabled={collegatoAltrove || assegnoEditor.loading}
+                          title={collegatoAltrove ? 'Assegno gia collegato a un altra fattura' : 'Conferma questo numero completo'}
+                          style={{ minHeight: 36, background: collegatoAltrove ? '#cbd5e1' : '#6d28d9', color: 'white', border: 0, borderRadius: 7, padding: '6px 11px', fontWeight: 800, cursor: collegatoAltrove ? 'not-allowed' : 'pointer' }}
+                        >
+                          {collegatoAltrove ? 'Gia collegato' : `Collega ${candidato.numero_completo}`}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1672,6 +1948,7 @@ export default function PrimaNota() {
   const [banca, setBanca] = useState({ movimenti: [] });
   const [provvisori, setProvvisori] = useState([]);
   const [attesaBanca, setAttesaBanca] = useState([]);
+  const [completezzaProvvisori, setCompletezzaProvvisori] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
@@ -1689,6 +1966,7 @@ export default function PrimaNota() {
       setBanca(b.data || { movimenti: [] });
       setProvvisori(p.data?.provvisori || []);
       setAttesaBanca(p.data?.in_attesa_banca || []);
+      setCompletezzaProvvisori(p.data?.completezza || null);
     } catch (e) {
       console.error('Prima nota:', e);
       setLoadError(e.response?.data?.detail || e.response?.data?.message || e.message || 'Caricamento non riuscito');
@@ -1772,7 +2050,12 @@ export default function PrimaNota() {
       )}
 
       {!loading && !loadError && sezione === 'provvisori' && (
-        <Provvisori provvisori={provvisori} attesaBanca={attesaBanca} onRicarica={carica} />
+        <Provvisori
+          provvisori={provvisori}
+          attesaBanca={attesaBanca}
+          completezza={completezzaProvvisori}
+          onRicarica={carica}
+        />
       )}
 
       {sezione === 'soci' && <FinanziamentoSoci />}

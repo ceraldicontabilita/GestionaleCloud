@@ -41,6 +41,8 @@ from .sync import (
     import_prima_nota_batch, create_movimento_generico, collega_fatture_movimenti,
     sync_estratto_conto_to_banca, get_fatture_provvisorie, conferma_fattura_provvisoria,
     imposta_fattura_in_attesa_banca, riporta_fattura_da_decidere,
+    segnala_dubbio_pagamento,
+    proponi_assegni_fattura, associa_assegno_fattura_provvisoria,
     conferma_provvisorie_multiple,
     conferma_divisione_provvisoria,
     sposta_scrittura_prima_nota,
@@ -153,6 +155,9 @@ router.add_api_route("/provvisori/conferma", conferma_fattura_provvisoria, metho
 router.add_api_route("/provvisori/attendi-banca", imposta_fattura_in_attesa_banca, methods=["POST"])
 router.add_api_route("/provvisori/conferma-multipla", conferma_provvisorie_multiple, methods=["POST"])
 router.add_api_route("/provvisori/da-decidere", riporta_fattura_da_decidere, methods=["POST"])
+router.add_api_route("/provvisori/segnala-dubbio", segnala_dubbio_pagamento, methods=["POST"])
+router.add_api_route("/provvisori/assegni-proposti", proponi_assegni_fattura, methods=["GET"])
+router.add_api_route("/provvisori/associa-assegno", associa_assegno_fattura_provvisoria, methods=["POST"])
 from .sync import sposta_fatture_cassa_pagate_in_banca
 router.add_api_route("/sposta-cassa-pagate-in-banca", sposta_fatture_cassa_pagate_in_banca, methods=["POST"])
 router.add_api_route("/provvisori/conferma-divisione", conferma_divisione_provvisoria, methods=["POST"])

@@ -346,7 +346,21 @@ def test_attesa_banca_puo_tornare_da_decidere_senza_creare_pagamento(monkeypatch
 
     assert res["success"] is True
     assert res["stato"] == "da_decidere"
+    assert res["fattura"] == {
+        "id": "fatt-1",
+        "numero": "4",
+        "data": "2026-06-05",
+        "fornitore": "RONDINELLA MARKET S.R.L.",
+        "importo": 58.0,
+    }
+    assert "Fattura 4 di RONDINELLA MARKET S.R.L." in res["message"]
+    assert "2026-06-05" in res["message"]
+    assert "EUR 58,00" in res["message"]
     assert db["prima_nota_banca"].docs == []
+    audit = db["audit_log"].docs
+    assert len(audit) == 1
+    assert audit[0]["azione"] == "riporta_da_decidere"
+    assert audit[0]["extra"]["fattura"]["numero"] == "4"
     fattura = db["invoices"].docs[0]
     assert fattura["metodo_pagamento_previsto"] == "da_decidere"
     assert fattura["stato_finanziario"] == "aperta_da_decidere"
@@ -397,6 +411,56 @@ def test_attendi_banca_compare_nella_lista_dedicata(monkeypatch):
     assert attesa["fattura_id"] == "fatt-1"
     assert attesa["fonte_metodo"] == "operatore_prima_nota"
     assert attesa["stato_match"] == "in_attesa_estratto_conto"
+
+
+def test_dubbio_pagamento_apre_anomalia_e_non_registra_cassa_o_banca(monkeypatch):
+    db = _FakeDb()
+    db["invoices"].docs = [_fattura(
+        metodo_pagamento_previsto="banca",
+        metodo_pagamento_override_source="operatore_prima_nota",
+        stato_pagamento="in_attesa_banca",
+        stato_finanziario="aperta_in_attesa_banca",
+        pagato=False,
+        paid=False,
+        dati_ddt=[{"numero": "DDT862", "data": "2026-05-31"}],
+    )]
+    _patch_db(monkeypatch, db)
+
+    async def _senza_pagamento(_db, fatture):
+        return fatture
+
+    monkeypatch.setattr(
+        sync_mod,
+        "fatture_senza_pagamento_contabile_confermato",
+        _senza_pagamento,
+    )
+
+    res = _run(sync_mod.segnala_dubbio_pagamento({
+        "fattura_id": "fatt-1",
+        "performed_by": "test",
+        "nota": "Non ricordo se pagata in contanti o con assegno",
+    }))
+    lista = _run(sync_mod.get_fatture_provvisorie(anno=2026))
+
+    assert res["success"] is True
+    assert db["prima_nota_cassa"].docs == []
+    assert db["prima_nota_banca"].docs == []
+    fattura = db["invoices"].docs[0]
+    assert fattura["metodo_pagamento_previsto"] == "da_decidere"
+    assert fattura["metodo_pagamento_override_source"] == "operatore_prima_nota"
+    assert fattura["stato_finanziario"] == "anomalia_metodo_pagamento"
+    assert fattura["anomalia_pagamento"]["stato"] == "aperta"
+    assert lista["in_attesa_banca"] == []
+    assert len(lista["provvisori"]) == 1
+    dubbia = lista["provvisori"][0]
+    assert dubbia["fattura_id"] == "fatt-1"
+    assert dubbia["anomalia_pagamento"]["tipo"] == "metodo_pagamento_incerto"
+    assert dubbia["dati_ddt"] == [{
+        "numero": "DDT862",
+        "data": "2026-05-31",
+        "riferimenti_linea": [],
+        "giorni_prima_fattura": 5,
+    }]
 
 
 def test_rimborso_di_un_doppio_bonifico_lascia_un_riscontro_netto(monkeypatch):
@@ -560,6 +624,14 @@ def test_provvisori_non_taglia_i_primi_mesi_oltre_cinquemila_fatture(monkeypatch
         fattura["fattura_id"] == "fatt-gennaio-non-tagliata"
         for fattura in tutte
     )
+    assert res["completezza"] == {
+        "anno": 2026,
+        "fatture_attive_positive": 5001,
+        "gia_registrate_pagamento_completo": 0,
+        "aperte_prima_delle_esclusioni": 5001,
+        "escluse_cassa_banca": 0,
+        "aperte_mostrate": 5001,
+    }
 
 
 def test_conferma_banca_con_riga_reale_marca_riconciliata(monkeypatch):

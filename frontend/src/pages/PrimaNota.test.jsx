@@ -195,7 +195,15 @@ describe('Fatture provvisorie in attesa banca', () => {
   });
 
   it('permette di correggere una fattura in attesa banca riportandola da decidere', async () => {
-    api.post.mockResolvedValue({ data: { message: 'Fattura riportata in Da decidere.' } });
+    api.post.mockResolvedValue({
+      data: {
+        fattura: {
+          id: 'fatt-attesa', numero: '55', data: '2026-06-19',
+          fornitore: 'Fornitore Test', importo: 334.16,
+        },
+        message: 'Fattura 55 di Fornitore Test, del 2026-06-19, EUR 334,16, riportata in Da decidere.',
+      },
+    });
     const onRicarica = vi.fn().mockResolvedValue(undefined);
     render(<Provvisori
       provvisori={[]}
@@ -212,8 +220,34 @@ describe('Fatture provvisorie in attesa banca', () => {
       '/api/prima-nota/provvisori/da-decidere',
       { fattura_id: 'fatt-attesa' },
     ));
-    expect(await screen.findByRole('status')).toHaveTextContent('Da decidere');
+    const esito = await screen.findByRole('status');
+    expect(esito).toHaveTextContent('Fattura 55');
+    expect(esito).toHaveTextContent('Fornitore Test');
+    expect(esito).toHaveTextContent('2026-06-19');
+    expect(esito).toHaveTextContent('EUR 334,16');
     expect(onRicarica).toHaveBeenCalledTimes(1);
+  });
+
+  it('mostra la quadratura completa delle fatture senza duplicare quelle gia registrate', () => {
+    render(<Provvisori
+      provvisori={[]}
+      attesaBanca={[]}
+      completezza={{
+        anno: 2026,
+        fatture_attive_positive: 745,
+        gia_registrate_pagamento_completo: 451,
+        aperte_prima_delle_esclusioni: 294,
+        escluse_cassa_banca: 2,
+        aperte_mostrate: 292,
+      }}
+      onRicarica={vi.fn()}
+    />);
+
+    const riepilogo = screen.getByTestId('completezza-fatture-provvisorie');
+    expect(riepilogo).toHaveTextContent("745 fatture dell'anno con importo positivo");
+    expect(riepilogo).toHaveTextContent('451 gia registrate/pagate');
+    expect(riepilogo).toHaveTextContent('292 aperte mostrate qui');
+    expect(riepilogo).toHaveTextContent('2 escluse dal flusso Cassa/Banca');
   });
 
   it('registra in Cassa la conferma esplicita della singola fattura', async () => {
@@ -363,6 +397,91 @@ describe('Fatture provvisorie in attesa banca', () => {
       '3542 movimenti esaminati, 17 riconciliati',
     );
     expect(onRicarica).toHaveBeenCalledTimes(1);
+  });
+
+  it('evidenzia un dubbio sul metodo senza creare un pagamento', async () => {
+    api.post.mockResolvedValue({ data: {
+      message: 'Anomalia aperta sulla fattura 2/761 di CERAMICHE MARA S.R.L.',
+    } });
+    const onRicarica = vi.fn().mockResolvedValue(undefined);
+    render(<Provvisori
+      provvisori={[{
+        fattura_id: 'fatt-dubbia', fattura_numero: '2/761', fattura_data: '2026-03-02',
+        fornitore: 'CERAMICHE MARA S.R.L.', importo: 464.23, suggerimento: 'sospesa',
+      }]}
+      attesaBanca={[]}
+      onRicarica={onRicarica}
+    />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Dubbio sul pagamento/i }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/prima-nota/provvisori/segnala-dubbio',
+      { fattura_id: 'fatt-dubbia' },
+    ));
+    expect(api.post).not.toHaveBeenCalledWith(
+      '/api/prima-nota/provvisori/conferma', expect.anything(),
+    );
+    expect(await screen.findByRole('status')).toHaveTextContent('Anomalia aperta');
+    expect(onRicarica).toHaveBeenCalledWith({ silent: true });
+  });
+
+  it('mostra e filtra il DDT collegato alla fattura', () => {
+    render(<Provvisori
+      provvisori={[{
+        fattura_id: 'fatt-ddt', fattura_numero: 'FVL824', fattura_data: '2026-04-30',
+        fornitore: '2M ITALIA S.R.L.', importo: 190,
+        dati_ddt: [{ numero: 'DDT862', data: '2026-04-17', giorni_prima_fattura: 13 }],
+      }]}
+      attesaBanca={[]}
+      onRicarica={vi.fn()}
+    />);
+
+    expect(screen.getByText(/DDT DDT862 del 17-04-2026 · 13 gg prima/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Filtra per numero DDT'), { target: { value: '999' } });
+    expect(screen.getByText('Nessuna fattura provvisoria corrisponde ai filtri.')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Filtra per numero DDT'), { target: { value: '862' } });
+    expect(screen.getByText(/FVL824/)).toBeInTheDocument();
+  });
+
+  it('ricostruisce il numero completo dell assegno dalle ultime cinque cifre e suffisso', async () => {
+    api.get.mockResolvedValue({ data: {
+      candidati: [{
+        assegno_id: 'ass-7', numero_completo: '0208769431-7', importo: 448.35,
+        data: '2026-05-15', fonte_estratto_conto: true,
+        movimento_estratto_conto_id: 'ec-7',
+      }],
+      message: 'Numero assegno completo trovato. Verifica e conferma il collegamento.',
+    } });
+    api.post.mockResolvedValue({ data: { message: 'Assegno 0208769431-7 collegato.' } });
+    const onRicarica = vi.fn().mockResolvedValue(undefined);
+    render(<Provvisori
+      provvisori={[]}
+      attesaBanca={[{
+        fattura_id: 'fatt-ass', fattura_numero: '2600735/V', fattura_data: '2026-05-15',
+        fornitore: 'GRUPPO MARTELLOZZO S.R.L.', importo: 448.35,
+      }]}
+      onRicarica={onRicarica}
+    />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Associa assegno alla fattura 2600735\/V/ }));
+    const frammento = await screen.findByLabelText('Ultime 5 cifre e suffisso assegno');
+    fireEvent.change(frammento, { target: { value: '69431-7' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cerca assegno' }));
+
+    await waitFor(() => expect(api.get).toHaveBeenLastCalledWith(
+      '/api/prima-nota/provvisori/assegni-proposti',
+      { params: { fattura_id: 'fatt-ass', frammento: '69431-7' } },
+    ));
+    expect(await screen.findByText(/Assegno 0208769431-7/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Collega 0208769431-7' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/prima-nota/provvisori/associa-assegno',
+      expect.objectContaining({
+        fattura_id: 'fatt-ass', assegno_id: 'ass-7',
+        movimento_estratto_conto_id: 'ec-7', numero_completo: '0208769431-7',
+      }),
+    ));
   });
 });
 

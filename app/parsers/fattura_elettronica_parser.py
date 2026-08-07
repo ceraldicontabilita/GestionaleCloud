@@ -335,6 +335,26 @@ def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_t
         if ordine:
             dati_ordine.append(ordine)
 
+    # DatiDDT e' il riferimento determinante per le fatture differite: spesso
+    # il pagamento (o l'assegno) viene disposto sul documento di trasporto,
+    # mentre la fattura arriva alcuni giorni dopo. Conserviamo tutti i DDT,
+    # non soltanto il primo, per poterli mostrare e usare nei suggerimenti
+    # senza affidarsi alla sola vicinanza delle date.
+    dati_ddt = []
+    for ddt in find_all_elements(dati_generali_parent or body, 'DatiDDT'):
+        riferimento = {
+            "numero": get_text(ddt, 'NumeroDDT'),
+            "data": get_text(ddt, 'DataDDT'),
+            "riferimenti_linea": [
+                elemento.text.strip()
+                for elemento in find_all_elements(ddt, 'RiferimentoNumeroLinea')
+                if elemento.text and elemento.text.strip()
+            ],
+        }
+        riferimento = {k: v for k, v in riferimento.items() if v}
+        if riferimento:
+            dati_ddt.append(riferimento)
+
     # Estrai DatiContratto (es. numero contratto di noleggio/leasing)
     dati_contratto = []
     for dc in find_all_elements(dati_generali_parent or body, 'DatiContratto'):
@@ -495,6 +515,7 @@ def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_t
         "causali": causali,
         "dati_fatture_collegate": dati_fatture_collegate,
         "dati_ordine_acquisto": dati_ordine,
+        "dati_ddt": dati_ddt,
         "dati_contratto": dati_contratto,
         "fornitore": fornitore,
         "cliente": cliente,
