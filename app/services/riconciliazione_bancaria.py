@@ -39,6 +39,7 @@ import itertools
 
 from app.database import Database, Collections
 from app.services.payment_invoice_matching import amounts_equal_to_cent
+from app.services.prima_nota_integrity import totale_pagabile_al_fornitore
 from app.services.scritture_contabili import scrivi_movimento
 
 # Fuzzy matching per nomi fornitori
@@ -623,7 +624,7 @@ def _riferimenti_fattura_dichiarati(descrizione: str) -> List[str]:
 
 def _quota_aperta_fattura(fattura: Dict[str, Any]) -> float:
     """Quota ancora aperta da usare nella ripartizione del bonifico."""
-    totale = float(fattura.get("importo_totale") or fattura.get("total_amount") or 0)
+    totale = totale_pagabile_al_fornitore(fattura)
     if fattura.get("importo_residuo") is not None:
         return round(max(0.0, float(fattura.get("importo_residuo") or 0)), 2)
     return round(max(0.0, totale - float(fattura.get("importo_pagato") or 0)), 2)
@@ -657,7 +658,7 @@ def _evidenza_forte_fattura_banca(
     fatture rateizzate e' ammesso
     l'importo esatto della rata XML o del residuo ancora aperto.
     """
-    totale = float(fattura.get("importo_totale") or fattura.get("total_amount") or 0)
+    totale = totale_pagabile_al_fornitore(fattura)
     residuo = float(
         fattura.get("importo_residuo")
         if fattura.get("importo_residuo") is not None

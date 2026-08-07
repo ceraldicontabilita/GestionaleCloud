@@ -855,6 +855,27 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
         f for f in fatture
         if float(f.get("total_amount") or f.get("importo_totale") or 0) > 0
     ]
+
+    # La ritenuta e' un debito verso l'Erario, non un residuo da bonificare
+    # al professionista. La collection fiscale e' la fonte documentale gia'
+    # estratta dall'XML; la riportiamo in memoria prima di calcolare i residui.
+    fatture_ids = [str(f.get("id")) for f in fatture if f.get("id")]
+    ritenute_per_fattura = {}
+    if fatture_ids:
+        async for ritenuta in db["ritenute_acconto"].find(
+            {"fattura_id": {"$in": fatture_ids}},
+            {"_id": 0, "fattura_id": 1, "importo": 1},
+        ):
+            try:
+                ritenute_per_fattura[str(ritenuta.get("fattura_id"))] = abs(
+                    float(ritenuta.get("importo") or 0)
+                )
+            except (TypeError, ValueError):
+                continue
+    for fattura in fatture:
+        importo_ritenuta = ritenute_per_fattura.get(str(fattura.get("id")))
+        if importo_ritenuta:
+            fattura["ritenuta_importo"] = importo_ritenuta
     fatture = await fatture_senza_pagamento_contabile_confermato(db, fatture)
 
     # Movimenti banca per match.
@@ -1008,6 +1029,8 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             "fornitore_piva": f.get("supplier_vat", ""),
             "importo": importo,
             "totale_fattura": totale_fattura,
+            "totale_pagabile_fornitore": f.get("_totale_pagabile_fornitore", totale_fattura),
+            "ritenuta_non_pagabile_fornitore": f.get("_ritenuta_non_pagabile_fornitore", 0),
             "importo_pagato_confermato": importo_pagato_confermato,
             "importo_residuo": importo,
             "metodo_xml": metodo_xml,

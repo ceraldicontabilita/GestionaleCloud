@@ -6,6 +6,7 @@ from app.routers.prima_nota_module import manutenzione
 from app.services.collaudo_invarianti import check_prima_nota_link_rotti
 from app.services.prima_nota_integrity import (
     fatture_senza_pagamento_contabile_confermato,
+    totale_pagabile_al_fornitore,
 )
 
 
@@ -161,3 +162,55 @@ def test_pagamento_parziale_mantiene_aperto_solo_il_residuo():
         assert saldate == []
 
     asyncio.run(scenario())
+
+
+def test_parcella_con_ritenuta_chiude_sul_netto_fornitore():
+    async def scenario():
+        db = AsyncMongoMockClient()["test_parcella_netto"]
+        fattura = {
+            "id": "parcella-1",
+            "total_amount": 3806.40,
+            "ritenuta_importo": 600.0,
+            "pagamento_rate_totale": "3206.40",
+            "pagamento_rate": [{"importo": 3206.40}],
+        }
+        assert totale_pagabile_al_fornitore(fattura) == 3206.40
+        await db["prima_nota_banca"].insert_one({
+            "id": "pn-parcella",
+            "fattura_id": "parcella-1",
+            "importo": 3206.40,
+            "estratto_conto_id": "ec-parcella",
+            "status": "active",
+        })
+        assert await fatture_senza_pagamento_contabile_confermato(
+            db, [fattura]
+        ) == []
+
+    asyncio.run(scenario())
+
+
+def test_parcella_con_ritenuta_mostra_solo_il_netto_residuo():
+    async def scenario():
+        db = AsyncMongoMockClient()["test_parcella_residuo"]
+        fattura = {
+            "id": "parcella-2",
+            "total_amount": 3806.40,
+            "ritenuta_importo": 600.0,
+            "pagamento_rate_totale": "3206.40",
+            "pagamento_rate": [{"importo": 3206.40}],
+        }
+        aperte = await fatture_senza_pagamento_contabile_confermato(db, [fattura])
+        assert aperte[0]["_importo_residuo"] == 3206.40
+        assert aperte[0]["_ritenuta_non_pagabile_fornitore"] == 600.0
+
+    asyncio.run(scenario())
+
+
+def test_rate_incomplete_senza_ritenuta_non_riducono_il_debito():
+    fattura = {
+        "id": "fattura-rate-incomplete",
+        "total_amount": 1000.0,
+        "pagamento_rate_totale": "400.00",
+        "pagamento_rate": [{"importo": 400.0}],
+    }
+    assert totale_pagabile_al_fornitore(fattura) == 1000.0

@@ -1452,7 +1452,12 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
                 )}
                 {p.movimento_banca && (
                   <span style={{ color: '#047857', fontWeight: 700 }}>
-                    {' '}· riscontro bancario forte del {formatDateIT(p.movimento_banca.data)}, in elaborazione automatica
+                    {' '}· riscontro univoco del {formatDateIT(p.movimento_banca.data)} ({p.evidenza_banca === 'sdd_fornitore_importo_data' ? 'SDD + fornitore + importo + data' : 'fornitore + numero fattura + importo'}), in elaborazione
+                  </span>
+                )}
+                {(p.ritenuta_non_pagabile_fornitore || 0) > 0 && (
+                  <span style={{ color: '#7c3aed', fontWeight: 700 }}>
+                    {' '}· netto fornitore {eur(p.totale_pagabile_fornitore)} · ritenuta {eur(p.ritenuta_non_pagabile_fornitore)} separata su F24
                   </span>
                 )}
                 {(p.importo_pagato_confermato || 0) > 0 && (
@@ -1496,8 +1501,8 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
                 >
                   ↩ Da decidere
                 </button>
-                <span title="Il gestionale continua a riesaminare automaticamente l'estratto conto" style={{ color: '#1d4ed8', fontSize: 11.5, fontWeight: 700 }}>
-                  Controllo automatico attivo
+                <span title={p.movimento_banca ? 'Il movimento ha prova univoca ed e in elaborazione' : 'Nessuna associazione automatica senza una prova univoca'} style={{ color: p.movimento_banca ? '#047857' : '#64748b', fontSize: 11.5, fontWeight: 700 }}>
+                  {p.movimento_banca ? 'Riscontro univoco trovato' : 'In attesa di riscontro univoco'}
                 </span>
               </span>
               {erroreRiga?.fatturaId === p.fattura_id && (
