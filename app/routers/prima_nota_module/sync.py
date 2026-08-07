@@ -2359,3 +2359,80 @@ async def sposta_fatture_cassa_pagate_in_banca(
         "spostate_in_banca" if not dry_run else "da_spostare_in_banca": spostate,
         "dettaglio": dettaglio,
     }
+
+
+async def conferma_provvisorie_multiple(data: Dict = Body(...)) -> Dict:
+    """Conferma PIU' fatture provvisorie in un giro solo.
+
+    Nata da una richiesta esplicita dell'utente (07/08/2026): confermare una
+    fattura alla volta ricaricava la pagina a ogni clic, e con cento fatture
+    in coda diventava una tortura. Qui si spuntano N fatture e si sceglie una
+    volta sola: Cassa oppure Attendi banca.
+
+    Body: { fattura_ids: [...], metodo: "cassa" | "attendi_banca" }
+
+    Non e' una scorciatoia contabile: ogni fattura passa ESATTAMENTE dalle
+    stesse funzioni della conferma singola, con tutte le loro guardie (gia'
+    pagata, esclusa, pagamento parziale). Un rifiuto su una fattura non ferma
+    le altre: l'esito arriva riga per riga, con il motivo di ogni scarto.
+    """
+    fattura_ids = [str(f) for f in (data.get("fattura_ids") or []) if f]
+    metodo = str(data.get("metodo") or "").strip().lower()
+
+    if not fattura_ids:
+        raise HTTPException(status_code=400, detail="Nessuna fattura selezionata")
+    if len(fattura_ids) > 200:
+        raise HTTPException(
+            status_code=400,
+            detail="Massimo 200 fatture per giro: seleziona un blocco piu' piccolo",
+        )
+    if metodo not in ("cassa", "attendi_banca"):
+        raise HTTPException(
+            status_code=400,
+            detail="Metodo non valido: scegli 'cassa' oppure 'attendi_banca'",
+        )
+
+    esiti = []
+    riuscite = 0
+    for fattura_id in dict.fromkeys(fattura_ids):  # dedup preservando l'ordine
+        try:
+            if metodo == "cassa":
+                await conferma_fattura_provvisoria({
+                    "fattura_id": fattura_id,
+                    "metodo": "cassa",
+                    # La selezione esplicita nel riquadro multiplo VALE come
+                    # approvazione: e' l'utente che ha spuntato la fattura.
+                    "approva_metodo_fattura": True,
+                })
+            else:
+                await imposta_fattura_in_attesa_banca({"fattura_id": fattura_id})
+            riuscite += 1
+            esiti.append({"fattura_id": fattura_id, "success": True})
+        except HTTPException as exc:
+            # Il motivo del rifiuto resta leggibile: e' la stessa guardia
+            # che l'utente avrebbe visto confermando la singola fattura.
+            esiti.append({
+                "fattura_id": fattura_id,
+                "success": False,
+                "detail": str(exc.detail),
+            })
+        except Exception as exc:  # una fattura rotta non ferma il lotto
+            logger.exception(f"Conferma multipla: errore su {fattura_id}")
+            esiti.append({
+                "fattura_id": fattura_id,
+                "success": False,
+                "detail": str(exc),
+            })
+
+    scartate = len(esiti) - riuscite
+    return {
+        "success": scartate == 0,
+        "metodo": metodo,
+        "riuscite": riuscite,
+        "scartate": scartate,
+        "esiti": esiti,
+        "message": (
+            f"{riuscite} fatture registrate"
+            + (f", {scartate} scartate (vedi dettaglio)" if scartate else "")
+        ),
+    }

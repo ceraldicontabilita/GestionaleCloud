@@ -75,7 +75,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/nexi` | 4 | ✓ | nexi_carta |
 | `/api/noleggio` | 13 | ✓ | noleggio |
 | `/api/openapi` | 12 | ext | openapi_it |
-| `/api/openapi-automotive` | 6 | ext | openapi_automotive |
+| `/api/openapi-automotive` | 5 | ext | openapi_automotive |
 | `/api/openapi-imprese` | 6 | ext | openapi_imprese |
 | `/api/operazioni-da-confermare` | 12 | ✓ | operazioni_module, operazioni_module.smart |
 | `/api/pagamenti` | 6 | ✓ | multi_pagamento |
@@ -88,7 +88,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/portal` | 1 | ext | public_api |
 | `/api/pos-corrispettivi` | 9 | ✓ | pos_corrispettivi_check |
 | `/api/previsioni-acquisti` | 5 | ✓ | previsioni_acquisti |
-| `/api/prima-nota` | 78 | ✓ | prima_nota_module, prima_nota_module.banca, prima_nota_module.cassa, prima_nota_module.manutenzione, prima_nota_module.salari, prima_nota_module.stats, prima_nota_module.sync |
+| `/api/prima-nota` | 79 | ✓ | prima_nota_module, prima_nota_module.banca, prima_nota_module.cassa, prima_nota_module.manutenzione, prima_nota_module.salari, prima_nota_module.stats, prima_nota_module.sync |
 | `/api/prima-nota-salari` | 18 | ✓ | accounting.prima_nota_salari |
 | `/api/privacy` | 1 | — | legal_pages |
 | `/api/proposte` | 1 | — | dati_provvisori |

@@ -296,3 +296,70 @@ describe('Fatture provvisorie in attesa banca', () => {
     expect(onRicarica).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Conferma multipla delle provvisorie', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const due = [
+    { fattura_id: 'f1', fattura_numero: '10', fattura_data: '2026-08-01',
+      fornitore: 'Kimbo', importo: 100 },
+    { fattura_id: 'f2', fattura_numero: '11', fattura_data: '2026-08-02',
+      fornitore: 'Saima', importo: 50 },
+  ];
+
+  it('spunta piu fatture e le registra in Cassa con UNA chiamata', async () => {
+    api.post.mockResolvedValue({ data: {
+      success: true, riuscite: 2, scartate: 0, esiti: [],
+      message: '2 fatture registrate',
+    } });
+    const onRicarica = vi.fn().mockResolvedValue(undefined);
+    render(<Provvisori provvisori={due} attesaBanca={[]} onRicarica={onRicarica} />);
+
+    fireEvent.click(screen.getByLabelText('Seleziona fattura 10'));
+    fireEvent.click(screen.getByLabelText('Seleziona fattura 11'));
+    fireEvent.click(screen.getByRole('button', { name: /Registra in Cassa \(2\)/ }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/prima-nota/provvisori/conferma-multipla',
+      { fattura_ids: ['f1', 'f2'], metodo: 'cassa' },
+    ));
+    expect(api.post).toHaveBeenCalledTimes(1);   // UNA chiamata, non una per fattura
+    expect(onRicarica).toHaveBeenCalledTimes(1); // UNA ricarica: era la lentezza
+    expect(await screen.findByRole('status')).toHaveTextContent('2 fatture registrate');
+  });
+
+  it('seleziona tutte e le sposta in attesa banca', async () => {
+    api.post.mockResolvedValue({ data: {
+      success: true, riuscite: 2, scartate: 0, esiti: [], message: '2 fatture registrate',
+    } });
+    render(<Provvisori provvisori={due} attesaBanca={[]}
+      onRicarica={vi.fn().mockResolvedValue(undefined)} />);
+
+    fireEvent.click(screen.getByLabelText('Seleziona tutte le fatture visibili'));
+    fireEvent.click(screen.getByRole('button', { name: /Attendi banca \(2\)/ }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/prima-nota/provvisori/conferma-multipla',
+      { fattura_ids: ['f1', 'f2'], metodo: 'attendi_banca' },
+    ));
+  });
+
+  it('una fattura scartata resta selezionata e il motivo si legge', async () => {
+    api.post.mockResolvedValue({ data: {
+      success: false, riuscite: 1, scartate: 1,
+      esiti: [
+        { fattura_id: 'f1', success: true },
+        { fattura_id: 'f2', success: false, detail: 'La fattura ha gia un pagamento contabile completo.' },
+      ],
+      message: '1 fatture registrate, 1 scartate (vedi dettaglio)',
+    } });
+    render(<Provvisori provvisori={due} attesaBanca={[]}
+      onRicarica={vi.fn().mockResolvedValue(undefined)} />);
+
+    fireEvent.click(screen.getByLabelText('Seleziona tutte le fatture visibili'));
+    fireEvent.click(screen.getByRole('button', { name: /Registra in Cassa \(2\)/ }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('1 scartate');
+    expect(screen.getByText(/pagamento contabile completo/)).toBeInTheDocument();
+  });
+});
