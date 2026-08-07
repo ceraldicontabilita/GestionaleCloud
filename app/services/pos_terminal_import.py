@@ -61,6 +61,19 @@ def _normalizza_row(row: Dict[str, Any], filename: str) -> Dict[str, Any] | None
 
     data_iso = _date(data_raw)
     importo = _amount(importo_raw)
+    # Identita' del punto di incasso. Serve alla chiave logica
+    # provider + terminale + giornata e all'aggancio dell'accredito, che la
+    # banca distingue per punto vendita e terminale. Senza questi campi due
+    # terminali dello stesso negozio sarebbero indistinguibili: nell'export
+    # reale di maggio 2026 ce ne sono due, con MID diversi.
+    terminale = _text(lowered.get("id terminale / tml") or lowered.get("id terminale"))
+    mid = _text(lowered.get("mid"))
+    punto_vendita = _text(lowered.get("punto vendita"))
+    id_punto_vendita = _text(lowered.get("id punto vendita"))
+    # "Circuito" nell'export e' il circuito della CARTA (Mastercard,
+    # PagoBancomat...), non il gestore: sono tutti incassi Numia e vanno
+    # sommati nella stessa giornata, non trattati come provider diversi.
+    circuito_carta = _text(lowered.get("circuito"))
     transaction_id = _text(
         lowered.get("id transazione") or lowered.get("codice autorizzazione")
     )
@@ -80,6 +93,12 @@ def _normalizza_row(row: Dict[str, Any], filename: str) -> Dict[str, Any] | None
         "importo": importo,
         "stato": stato,
         "tipo_transazione": _text(lowered.get("tipo transazione")).lower(),
+        "provider": "numia",
+        "terminale": terminale or None,
+        "mid": mid or None,
+        "punto_vendita": punto_vendita or None,
+        "id_punto_vendita": id_punto_vendita or None,
+        "circuito_carta": circuito_carta.upper() or None,
         "source_filename": filename,
     }
 
@@ -147,11 +166,17 @@ def parse_pos_terminal_file(content: bytes, filename: str) -> Dict[str, Any]:
         raise ValueError("Nessuna transazione POS riconosciuta")
 
     daily = defaultdict(float)
+    per_terminale = defaultdict(float)
     for item in transactions:
         if item["stato"] in _APPROVED_STATUSES:
             daily[item["data"]] += item["importo"]
+            # Chiave logica della specifica: provider + terminale + giornata.
+            per_terminale[(item["data"], item.get("terminale") or "?")] += item["importo"]
     return {
         "transactions": transactions,
+        "terminali": sorted({t["terminale"] for t in transactions if t.get("terminale")}),
+        "per_terminale": {f"{g}|{t}": round(v, 2)
+                          for (g, t), v in sorted(per_terminale.items())},
         "daily_totals": {key: round(value, 2) for key, value in sorted(daily.items())},
         "rows": len(transactions),
         "approved": sum(1 for item in transactions if item["stato"] in _APPROVED_STATUSES),
@@ -204,6 +229,9 @@ async def importa_pos_terminal_file(db, content: bytes, filename: str, *, drive_
             # gestore predefinito, cosi' non nasce un secondo terminale
             # fantasma accanto alle chiusure gia' registrate.
             gestore=GESTORE_POS_DEFAULT,
+            # L'Excel ufficiale conferma (o smentisce) l'inserimento serale:
+            # non lo sovrascrive in silenzio.
+            fonte="excel",
             note="Import automatico POS BPM da Drive: somma transazioni approvate",
             actor={"user_id": "drive_pos_bpm", "name": "Import automatico Drive"},
         )

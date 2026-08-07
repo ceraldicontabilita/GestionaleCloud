@@ -152,6 +152,79 @@ def filtro_gestore_pos(gestore: str) -> Dict[str, Any]:
     return {"gestore": gestore}
 
 
+# Fonti del dato POS, in ordine di attendibilita' crescente (decisione utente
+# 07/08/2026). Il manuale alimenta subito la Prima Nota ma resta provvisorio:
+# quando arriva l'Excel ufficiale o il terminale, la nuova evidenza CONFERMA
+# se coincide e SEGNALA se no. Mai una sovrascrittura silenziosa, mai un
+# secondo movimento: sono evidenze successive dello stesso ciclo.
+FONTE_MANUALE = "manuale"
+FONTE_EXCEL = "excel"
+FONTE_TERMINALE = "terminale"
+FONTE_API = "api"
+PRIORITA_FONTE = {FONTE_MANUALE: 1, FONTE_EXCEL: 2, FONTE_TERMINALE: 3, FONTE_API: 3}
+
+STATO_PROVVISORIO = "provvisorio_operativo"
+STATO_CONFERMATO = "confermato"
+STATO_DIFFERENZA = "differenza_da_verificare"
+
+
+def valuta_evidenza(precedente: Optional[Dict[str, Any]], importo: float,
+                    fonte: str) -> Dict[str, Any]:
+    """Confronta la nuova evidenza con quella gia' registrata.
+
+    Ritorna l'importo che deve finire in Prima Nota, lo stato del dato e tutti
+    i valori visti per fonte. Il valore precedente non viene mai perso: se le
+    due evidenze divergono resta consultabile accanto alla nuova, e la
+    giornata si dichiara da verificare invece di far sparire il disaccordo.
+    """
+    fonte = str(fonte or FONTE_MANUALE).strip().lower()
+    importo = round(float(importo), 2)
+    valori = dict((precedente or {}).get("valori_per_fonte") or {})
+    # Il documento precedente puo' essere anteriore a questa tracciatura:
+    # senza questo innesto il valore gia' registrato andrebbe perso proprio
+    # nel caso che conta, cioe' quando le due evidenze non coincidono.
+    fonte_gia_nota = str((precedente or {}).get("fonte_dato") or "").strip().lower()
+    if fonte_gia_nota and fonte_gia_nota not in valori:
+        precedente_importo = (precedente or {}).get("importo")
+        if precedente_importo is not None:
+            valori[fonte_gia_nota] = round(float(precedente_importo), 2)
+    valori[fonte] = importo
+
+    fonte_prec = str((precedente or {}).get("fonte_dato") or "").strip().lower()
+    importo_prec = (precedente or {}).get("importo")
+    if precedente is None or importo_prec is None or not fonte_prec:
+        stato = (STATO_PROVVISORIO if fonte == FONTE_MANUALE
+                 else STATO_CONFERMATO)
+        return {"importo": importo, "fonte_dato": fonte, "stato_dato": stato,
+                "valori_per_fonte": valori, "differenza": None}
+
+    importo_prec = round(float(importo_prec), 2)
+    differenza = round(importo - importo_prec, 2)
+    if fonte == fonte_prec or abs(differenza) <= 0.01:
+        # Stessa fonte che si corregge, oppure evidenza che conferma.
+        stato = (STATO_PROVVISORIO if fonte == FONTE_MANUALE == fonte_prec
+                 else STATO_CONFERMATO)
+        vincente = importo if fonte == fonte_prec else max(
+            (importo, fonte), (importo_prec, fonte_prec),
+            key=lambda v: PRIORITA_FONTE.get(v[1], 0))[0]
+        return {"importo": vincente, "fonte_dato": fonte,
+                "stato_dato": stato, "valori_per_fonte": valori,
+                "differenza": 0.0 if fonte != fonte_prec else None}
+
+    # Fonti diverse con importi diversi: vince la piu' attendibile, ma il
+    # disaccordo resta scritto e la giornata va verificata a mano.
+    piu_attendibile = max(
+        (importo, fonte), (importo_prec, fonte_prec),
+        key=lambda v: PRIORITA_FONTE.get(v[1], 0))
+    return {
+        "importo": piu_attendibile[0],
+        "fonte_dato": piu_attendibile[1],
+        "stato_dato": STATO_DIFFERENZA,
+        "valori_per_fonte": valori,
+        "differenza": differenza,
+    }
+
+
 async def pos_reale_del_giorno(db, data: str) -> Dict[str, Any]:
     """POS reale del giorno, scomposto per circuito.
 
@@ -244,6 +317,7 @@ async def registra_chiusura_pos_reale(
     importo: float,
     *,
     gestore: str = GESTORE_POS_DEFAULT,
+    fonte: str = FONTE_MANUALE,
     note: str = "",
     actor: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -295,8 +369,14 @@ async def registra_chiusura_pos_reale(
     # sovrascriverebbe la chiusura Nexi dello stesso giorno.
     filtro_chiusura = {"data": data, **filtro_gestore_pos(gestore)}
     precedente_doc = await db["chiusure_pos_manuali"].find_one(
-        filtro_chiusura, {"_id": 0, "importo": 1, "totale": 1, "id": 1}
+        filtro_chiusura,
+        {"_id": 0, "importo": 1, "totale": 1, "id": 1,
+         "fonte_dato": 1, "valori_per_fonte": 1},
     )
+    # L'evidenza nuova non sovrascrive mai in silenzio quella gia' registrata:
+    # conferma se coincide, segnala se no, e conserva entrambi i valori.
+    evidenza = valuta_evidenza(precedente_doc, importo, fonte)
+    importo = evidenza["importo"]
     importo_precedente = None
     if precedente_doc is not None:
         importo_precedente = round(float(
@@ -310,6 +390,10 @@ async def registra_chiusura_pos_reale(
         "importo": importo,
         "totale": importo,
         "gestore": gestore,
+        "fonte_dato": evidenza["fonte_dato"],
+        "stato_dato": evidenza["stato_dato"],
+        "valori_per_fonte": evidenza["valori_per_fonte"],
+        "differenza_fonti": evidenza["differenza"],
         "source": "inserimento_manuale_terminale",
         "note": note,
         "updated_at": now,
@@ -564,6 +648,9 @@ async def registra_chiusura_pos_reale(
         "action": action,
         "data": data,
         "gestore": gestore,
+        "fonte_dato": evidenza["fonte_dato"],
+        "stato_dato": evidenza["stato_dato"],
+        "differenza_fonti": evidenza["differenza"],
         "importo": importo,
         "importo_precedente": importo_precedente,
         "importo_totale_giorno": totale_giorno,
