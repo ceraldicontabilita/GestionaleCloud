@@ -1104,6 +1104,7 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
   const [selezionate, setSelezionate] = useState(() => new Set());
   const [esitiMultipli, setEsitiMultipli] = useState(null);
   const [busyMultiplo, setBusyMultiplo] = useState(false);
+  const [modalitaRapida, setModalitaRapida] = useState(false);
   const filtriFattura = {
     numeroFattura: fNumeroFattura,
     data: fDataFattura,
@@ -1161,7 +1162,7 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
       setSelezionate(new Set(
         (data.esiti || []).filter(e => !e.success).map(e => e.fattura_id)
       ));
-      await onRicarica();
+      await onRicarica({ silent: true });
     } catch (e) {
       setErrore(e.response?.data?.detail || e.message);
     } finally {
@@ -1180,7 +1181,7 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
         metodo,
         ...opzioni,
       });
-      await onRicarica();
+      await onRicarica({ silent: true });
     } catch (e) {
       setErroreRiga({
         fatturaId: p.fattura_id,
@@ -1192,6 +1193,10 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
   };
 
   const confermaCassa = async p => {
+    if (modalitaRapida) {
+      await conferma(p, 'cassa', { approva_metodo_fattura: true });
+      return;
+    }
     const numero = p.fattura_numero || p.numero_fattura || p.invoice_number || 'senza numero';
     const fornitore = p.fornitore || p.supplier_name || 'Fornitore';
     const approvato = await confirm({
@@ -1215,7 +1220,7 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
         fattura_id: p.fattura_id,
       });
       setEsito(response.data?.message || 'Fattura spostata tra i pagamenti attesi in banca.');
-      await onRicarica();
+      await onRicarica({ silent: true });
     } catch (e) {
       setErroreRiga({
         fatturaId: p.fattura_id,
@@ -1236,7 +1241,7 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
         fattura_id: p.fattura_id,
       });
       setEsito(response.data?.message || 'Fattura riportata in Da decidere.');
-      await onRicarica();
+      await onRicarica({ silent: true });
     } catch (e) {
       setErroreRiga({
         fatturaId: p.fattura_id,
@@ -1266,7 +1271,7 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
       setParziale(null);
       setImportoCassa('');
       setEsito(response.data?.message || 'Quota Cassa registrata; residuo in attesa della banca.');
-      await onRicarica();
+      await onRicarica({ silent: true });
     } catch (e) {
       setErrore(e.response?.data?.detail || e.response?.data?.message || e.message);
     } finally {
@@ -1337,6 +1342,16 @@ export function Provvisori({ provvisori, attesaBanca = [], onRicarica }) {
         onData={setFDataFattura}
         onFornitore={setFFornitore}
       />
+      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, alignSelf: 'flex-start', color: '#334155', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+        <input
+          type="checkbox"
+          checked={modalitaRapida}
+          onChange={e => setModalitaRapida(e.target.checked)}
+          aria-label="Attiva selezione veloce"
+          style={{ width: 17, height: 17 }}
+        />
+        Selezione veloce: Cassa e Attendi banca con un clic, senza perdere filtri e selezioni
+      </label>
       {errore && <div style={{ color: ROSSO, fontSize: 13 }}>{errore}</div>}
       {esito && (
         <div role="status" style={{ color: '#166534', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '9px 11px', fontSize: 13 }}>
@@ -1660,8 +1675,8 @@ export default function PrimaNota() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
-  const carica = async () => {
-    setLoading(true);
+  const carica = async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     setLoadError('');
     try {
       const params = `anno=${anno}&limit=10000`;
@@ -1678,7 +1693,7 @@ export default function PrimaNota() {
       console.error('Prima nota:', e);
       setLoadError(e.response?.data?.detail || e.response?.data?.message || e.message || 'Caricamento non riuscito');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
   useEffect(() => { carica(); }, [anno]);
