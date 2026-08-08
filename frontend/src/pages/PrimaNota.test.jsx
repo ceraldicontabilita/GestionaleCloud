@@ -460,6 +460,7 @@ describe('Fatture provvisorie in attesa banca', () => {
       attesaBanca={[{
         fattura_id: 'fatt-ass', fattura_numero: '2600735/V', fattura_data: '2026-05-15',
         fornitore: 'GRUPPO MARTELLOZZO S.R.L.', importo: 448.35,
+        fonte_metodo: 'assegno_compilato',
       }]}
       onRicarica={onRicarica}
     />);
@@ -482,6 +483,29 @@ describe('Fatture provvisorie in attesa banca', () => {
         movimento_estratto_conto_id: 'ec-7', numero_completo: '0208769431-7',
       }),
     ));
+  });
+
+  it('riconosce la RiBa bancaria e non propone un assegno', () => {
+    render(<Provvisori
+      provvisori={[]}
+      attesaBanca={[{
+        fattura_id: 'fatt-riba', fattura_numero: '0000202611306589',
+        fattura_data: '2026-08-07', fornitore: 'Leasys Italia S.p.A.',
+        importo: 1119.48,
+        evidenza_banca: 'strumento_fornitore_importo_data',
+        strumento_bancario: { codice: 'riba', label: 'RiBa' },
+        motivo_sospensione: 'Importo al centesimo, ma due documenti sono candidati',
+        movimento_banca: {
+          id: 'ec-riba', data: '2026-08-08',
+          descrizione: 'RIB LEASYS ITALIA SPA FATTURA 0000202611306589',
+        },
+      }]}
+      onRicarica={vi.fn()}
+    />);
+
+    expect(screen.getByText(/RiBa identificata nell'estratto conto/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Associa assegno/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/Importo al centesimo, ma due documenti/)).toBeInTheDocument();
   });
 });
 

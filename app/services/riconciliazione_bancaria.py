@@ -22,8 +22,10 @@ REGOLE FONDAMENTALI:
 1. Se TROVO match in estratto conto banca → posso mettere "Bonifico" o "Assegno N.XXX"
 2. Se NON TROVO in estratto conto → NON posso mettere "Bonifico"
 3. Devo rispettare il metodo di pagamento del fornitore (Cassa, Bonifico, etc.)
-4. Una fattura richiede numero esplicito e importo identico al centesimo
-5. Il fornitore deve essere coerente; fuzzy/data producono solo proposte
+4. Una fattura richiede sempre l'importo identico al centesimo
+5. L'identita' deve essere univoca: numero fattura esplicito oppure
+   fornitore leggibile su uno strumento diretto (RiBa/bonifico/SDD-RID)
+6. Se piu' fatture soddisfano le stesse prove il caso resta sospeso
 
 Punto di ingresso unico: `riconcilia_movimenti_banca()`, richiamata dallo
 scheduler (ogni 30 min) e da app/routers/bank/estratto_conto.py dopo ogni
@@ -780,6 +782,83 @@ def _evidenza_sdd_fattura_banca(
     }
 
 
+def classifica_strumento_bancario(descrizione: str) -> Dict[str, str]:
+    """Classifica lo strumento senza confondere RiBa e assegni.
+
+    La classificazione serve sia al motore sia alla UI. Non e' una prova di
+    pagamento da sola: l'auto-match richiede comunque importo al centesimo,
+    identita' del fornitore e unicita' della fattura candidata.
+    """
+    testo = str(descrizione or "").upper()
+    if extract_assegno_number(testo):
+        return {"codice": "assegno", "label": "Assegno"}
+    if re.search(r"\b(?:RI[.\s-]?BA|RIBA|RIB|RICEVUTA\s+BANCARIA)\b", testo):
+        return {"codice": "riba", "label": "RiBa"}
+    if "F24" in testo or re.search(r"\bI24\b", testo):
+        return {"codice": "f24", "label": "F24"}
+    if "CBILL" in testo:
+        return {"codice": "cbill", "label": "CBILL"}
+    if "PAYPAL" in testo:
+        return {"codice": "paypal", "label": "PayPal"}
+    if any(token in testo for token in ("NEXI", "NUMIA", "P.O.S", "INC.POS", "INCAS. TRAMITE POS")):
+        return {"codice": "pos", "label": "POS"}
+    if re.search(r"\b(?:SDD|RID)\b", testo):
+        return {"codice": "addebito_diretto", "label": "SDD/RID"}
+    if re.search(
+        r"\b(?:BONIF(?:ICO)?|VS[.]?\s*DISP|VOSTRA\s+DISPOSIZIONE|A\s+FAVORE)\b",
+        testo,
+    ):
+        return {"codice": "bonifico", "label": "Bonifico"}
+    return {"codice": "altro", "label": "Altro"}
+
+
+def _evidenza_pagamento_fornitore_banca(
+    fattura: Dict[str, Any], descrizione: str, importo_movimento: float,
+    data_movimento: str,
+) -> Dict[str, Any]:
+    """Prova per pagamenti diretti che normalmente omettono il n. fattura.
+
+    Esempio: una RiBa LEASYS riporta il creditore e l'importo, ma non il
+    numero XML. E' automatica soltanto se la quota aperta coincide al
+    centesimo, il fornitore e' leggibile, la data e' plausibile e il motore
+    trova una sola fattura candidata. Collettori e tributi sono esclusi e
+    seguono i loro motori documentali.
+    """
+    strumento = classifica_strumento_bancario(descrizione)
+    diretto = strumento["codice"] in {"riba", "bonifico", "addebito_diretto"}
+    importo_atteso = _quota_aperta_fattura(fattura)
+    importo_esatto = (
+        importo_atteso > 0
+        and amounts_equal_to_cent(importo_atteso, importo_movimento)
+    )
+    fornitore = (
+        fattura.get("cedente_denominazione")
+        or fattura.get("fornitore_ragione_sociale")
+        or fattura.get("supplier_name") or ""
+    )
+    fornitore_presente = match_fornitore_descrizione(
+        fornitore, str(descrizione or "")
+    ) > 0
+    data_fattura = (
+        fattura.get("data") or fattura.get("invoice_date")
+        or fattura.get("data_documento") or ""
+    )
+    giorni = _giorni_pagamento_plausibili(data_movimento, data_fattura)
+    # L'estratto puo' essere importato prima dell'XML: sono ammessi pochi
+    # giorni negativi, non abbinamenti cross-esercizio arbitrari.
+    data_coerente = giorni is not None and -7 <= giorni <= 400
+    return {
+        "strumento": strumento,
+        "strumento_diretto": diretto,
+        "importo_esatto": importo_esatto,
+        "fornitore_presente": fornitore_presente,
+        "giorni_da_fattura": giorni,
+        "auto_ammesso": bool(
+            diretto and importo_esatto and fornitore_presente and data_coerente
+        ),
+    }
+
+
 def extract_invoice_number(descrizione: str) -> Optional[str]:
     """Estrae numero fattura dalla descrizione estratto conto."""
     if not descrizione:
@@ -1285,8 +1364,9 @@ async def riconcilia_movimenti_banca(
                 fatture_scored.sort(key=lambda x: x[1], reverse=True)
 
                 # Filtro duro: il solo importo/data non prova un pagamento.
-                # L'auto-match richiede importo esatto al centesimo e almeno
-                # un'identita' leggibile nella causale (fornitore o numero).
+                # Sono ammesse due prove: numero fattura + fornitore, oppure
+                # fornitore + strumento diretto (RiBa/bonifico/SDD-RID). In
+                # entrambi i casi l'importo deve coincidere al centesimo.
                 evidenze_fatture = {}
                 filtrate = []
                 for fattura, score in fatture_scored:
@@ -1297,8 +1377,18 @@ async def riconcilia_movimenti_banca(
                     sdd = _evidenza_sdd_fattura_banca(
                         fattura, descrizione, importo, data_ec
                     )
-                    evidenze_fatture[fid] = {"forte": forte, "sdd": sdd}
-                    if forte["auto_ammesso"] or sdd["auto_ammesso"]:
+                    pagamento_diretto = _evidenza_pagamento_fornitore_banca(
+                        fattura, descrizione, importo, data_ec
+                    )
+                    evidenze_fatture[fid] = {
+                        "forte": forte,
+                        "sdd": sdd,
+                        "pagamento_diretto": pagamento_diretto,
+                    }
+                    if (
+                        forte["auto_ammesso"] or sdd["auto_ammesso"]
+                        or pagamento_diretto["auto_ammesso"]
+                    ):
                         filtrate.append((fattura, score))
                 fatture_scored = filtrate
 
@@ -1322,10 +1412,15 @@ async def riconcilia_movimenti_banca(
                 # Una sola candidata con importo+identita' e' un match sicuro.
                 if len(fatture_scored) == 1 and fatture_scored[0][1] >= 10:
                     fattura = fatture_scored[0][0]
+                    fid = str(fattura.get("id") or fattura.get("_id"))
+                    evidenza_scelta = evidenze_fatture[fid]
+                    strumento = classifica_strumento_bancario(descrizione)
                     match_found = True
                     match_type = "fattura_match_completo"
 
-                    metodo_pagamento = "Bonifico"
+                    metodo_pagamento = strumento["label"] if strumento["codice"] in {
+                        "riba", "bonifico", "addebito_diretto"
+                    } else "Bonifico"
                     if num_assegno:
                         metodo_pagamento = f"Assegno N.{num_assegno}"
                         await db[COLLECTION_ASSEGNI].update_one(
@@ -1357,8 +1452,12 @@ async def riconcilia_movimenti_banca(
                         "match_score": fatture_scored[0][1],
                         "match_type": (
                             "sdd+fornitore+importo+data"
-                            if "SDD" in descrizione.upper()
-                            else "importo+fornitore+numero"
+                            if evidenza_scelta["sdd"]["auto_ammesso"]
+                            else (
+                                f"{strumento['codice']}+fornitore+importo_al_centesimo"
+                                if evidenza_scelta["pagamento_diretto"]["auto_ammesso"]
+                                else "importo+fornitore+numero"
+                            )
                         )
                     }
                     results["riconciliati_fatture"] += 1
@@ -1387,10 +1486,13 @@ async def riconcilia_movimenti_banca(
 
                     if len(fatture_buone) == 1 and data_plausibile:
                         fattura = fatture_buone[0]
+                        strumento = classifica_strumento_bancario(descrizione)
                         match_found = True
                         match_type = "fattura_match_parziale"
 
-                        metodo_pagamento = "Bonifico"
+                        metodo_pagamento = strumento["label"] if strumento["codice"] in {
+                            "riba", "bonifico", "addebito_diretto"
+                        } else "Bonifico"
                         if num_assegno:
                             metodo_pagamento = f"Assegno N.{num_assegno}"
 
@@ -1440,7 +1542,12 @@ async def riconcilia_movimenti_banca(
                                     }
                                     for f in fatture_ordinate[:10]
                                 ],
-                                "motivo_dubbio": f"Trovate {len(fatture_ordinate)} fatture con match parziale"
+                                "strumento_bancario": classifica_strumento_bancario(descrizione),
+                                "motivo_dubbio": (
+                                    f"Importo al centesimo e identita coerenti, ma "
+                                    f"{len(fatture_ordinate)} fatture sono candidate: "
+                                    "serve scegliere il documento esatto"
+                                )
                             },
                             "stato": "da_confermare",
                             "created_at": now

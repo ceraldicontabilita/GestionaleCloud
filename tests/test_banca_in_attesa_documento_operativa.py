@@ -1,0 +1,47 @@
+import asyncio
+
+from mongomock_motor import AsyncMongoMockClient
+
+from app.routers.prima_nota_module import banca
+
+
+def _run(awaitable):
+    return asyncio.run(awaitable)
+
+
+def test_coda_esclude_gia_collegati_e_mostra_i_candidati(monkeypatch):
+    db = AsyncMongoMockClient()["banca_in_attesa_documento_test"]
+    monkeypatch.setattr(banca.Database, "get_db", staticmethod(lambda: db))
+    _run(db["estratto_conto_movimenti"].insert_many([
+        {
+            "id": "ec-gia-collegato", "data": "2026-08-01", "tipo": "uscita",
+            "importo": 100.0, "stato_riconciliazione": "in_attesa_documento",
+            "riconciliato": False, "fattura_id": "fattura-esistente",
+        },
+        {
+            "id": "ec-riba", "data": "2026-08-08", "tipo": "uscita",
+            "importo": 1119.48, "stato_riconciliazione": "in_attesa_documento",
+            "riconciliato": False,
+            "descrizione_originale": "RIB LEASYS ITALIA SPA",
+        },
+    ]))
+    _run(db["operazioni_da_confermare"].insert_one({
+        "id": "op-riba", "movimento_ec_id": "ec-riba", "stato": "da_confermare",
+        "created_at": "2026-08-08T10:00:00",
+        "dettagli": {
+            "motivo_dubbio": "Importo al centesimo, ma 2 fatture sono candidate",
+            "fatture_candidate": [
+                {"id": "f1", "numero": "100", "fornitore": "LEASYS ITALIA SPA", "importo": 1119.48},
+                {"id": "f2", "numero": "101", "fornitore": "LEASYS ITALIA SPA", "importo": 1119.48},
+            ],
+        },
+    }))
+
+    risultato = _run(banca.movimenti_in_attesa_documento(anno=2026))
+
+    assert risultato["totale"] == 1
+    assert risultato["gia_collegati_da_allineare"] == 1
+    assert risultato["movimenti"][0]["id"] == "ec-riba"
+    assert risultato["movimenti"][0]["strumento_bancario"]["codice"] == "riba"
+    assert {c["id"] for c in risultato["movimenti"][0]["candidati"]} == {"f1", "f2"}
+    assert "2 fatture" in risultato["movimenti"][0]["motivo_sospensione"]

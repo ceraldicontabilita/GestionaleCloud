@@ -1,5 +1,9 @@
 from app.handlers.estratto_conto import _score_match
-from app.services.riconciliazione_bancaria import _evidenza_forte_fattura_banca
+from app.services.riconciliazione_bancaria import (
+    _evidenza_forte_fattura_banca,
+    _evidenza_pagamento_fornitore_banca,
+    classifica_strumento_bancario,
+)
 
 
 FATTURA_LEASYS = {
@@ -142,3 +146,47 @@ def test_numero_di_carta_party_con_nome_timas_e_conflitto_non_auto_associa():
     causale = "BONIFICO TIMAS ASCENSORI PAGAMENTO FATTURA 56"
     assert _evidenza_forte_fattura_banca(timas, causale, 153.72)["auto_ammesso"] is False
     assert _evidenza_forte_fattura_banca(carta_party, causale, 153.72)["auto_ammesso"] is False
+
+
+def test_riba_leasys_non_viene_classificata_come_assegno():
+    strumento = classifica_strumento_bancario(
+        "ADDEBITO RIB LEASYS ITALIA SPA SCADENZA 27/03/2026"
+    )
+    assert strumento == {"codice": "riba", "label": "RiBa"}
+
+
+def test_riba_importo_al_centesimo_e_fornitore_e_prova_ammessa():
+    evidenza = _evidenza_pagamento_fornitore_banca(
+        FATTURA_LEASYS,
+        "ADDEBITO RI.BA. LEASYS ITALIA SPA SCADENZA 27/03/2026",
+        24.40,
+        "2026-03-27",
+    )
+    assert evidenza["importo_esatto"] is True
+    assert evidenza["fornitore_presente"] is True
+    assert evidenza["strumento"]["codice"] == "riba"
+    assert evidenza["auto_ammesso"] is True
+
+
+def test_importo_al_centesimo_senza_identita_fornitore_resta_sospeso():
+    evidenza = _evidenza_pagamento_fornitore_banca(
+        FATTURA_LEASYS,
+        "ADDEBITO RI.BA. CREDITORE NON IDENTIFICATO",
+        24.40,
+        "2026-03-27",
+    )
+    assert evidenza["importo_esatto"] is True
+    assert evidenza["fornitore_presente"] is False
+    assert evidenza["auto_ammesso"] is False
+
+
+def test_collettore_paypal_non_usa_la_regola_generica_fornitore_importo():
+    fattura = {**FATTURA_LEASYS, "supplier_name": "PayPal Europe S.a.r.l."}
+    evidenza = _evidenza_pagamento_fornitore_banca(
+        fattura,
+        "ADDEBITO DIRETTO SDD PAYPAL EUROPE S.A.R.L.",
+        24.40,
+        "2026-03-27",
+    )
+    assert evidenza["strumento"]["codice"] == "paypal"
+    assert evidenza["auto_ammesso"] is False
