@@ -58,8 +58,10 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Seed alert_definitions non eseguito: {e}")
 
+    process_role = os.getenv("PROCESS_ROLE", "combined").strip().lower()
     scheduler_attivo = (
         settings.ENABLE_SCHEDULER
+        and process_role != "web"
         and settings.ENVIRONMENT.lower() not in {"test", "testing"}
     )
     if scheduler_attivo:
@@ -72,9 +74,10 @@ async def lifespan(app: FastAPI):
             logger.warning(f"Scheduler non avviato: {e}")
     else:
         logger.info(
-            "Scheduler disabilitato (ENABLE_SCHEDULER=%s, ambiente=%s)",
+            "Scheduler disabilitato (ENABLE_SCHEDULER=%s, ambiente=%s, ruolo=%s)",
             settings.ENABLE_SCHEDULER,
             settings.ENVIRONMENT,
+            process_role,
         )
 
     try:
@@ -375,12 +378,13 @@ async def lifespan(app: FastAPI):
         stop_monitor()
     except Exception:
         pass
-    try:
-        from app.scheduler import stop_scheduler
+    if scheduler_attivo:
+        try:
+            from app.scheduler import stop_scheduler
 
-        stop_scheduler()
-    except Exception:
-        pass
+            stop_scheduler()
+        except Exception:
+            pass
     await Database.close_db()
     logger.info("Shutdown complete")
 
