@@ -103,6 +103,8 @@ def _register_accounting(app: FastAPI):
 
     app.include_router(prima_nota_router, prefix="/api/prima-nota", tags=["Prima Nota"])
     app.include_router(prima_nota_salari.router, prefix="/api/prima-nota-salari", tags=["Prima Nota Salari"])
+    from app.routers import pagamenti_buoni
+    app.include_router(pagamenti_buoni.router, prefix="/api/pagamenti-buoni", tags=["Pagamenti buoni"])
     app.include_router(finanziamenti_soci.router, prefix="/api/finanziamenti-soci", tags=["Finanziamento Soci"])
     app.include_router(piano_conti.router, prefix="/api/piano-conti", tags=["Piano dei Conti"])
     app.include_router(bilancio.router, prefix="/api/bilancio", tags=["Bilancio"])

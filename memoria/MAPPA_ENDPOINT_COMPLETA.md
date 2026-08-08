@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1071 endpoint** in **111 gruppi**.
+> Totale **1075 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 654 · ext esterni = 89 · — da verificare = 328
+**Riepilogo uso:** ✓ frontend = 655 · ext esterni = 89 · — da verificare = 331
 
 ## AI Parser  (11)
 
@@ -1155,6 +1155,13 @@
 | GET | `/api/pos-corrispettivi/riepilogo-mensile` | ✓ | pos_corrispettivi_check |
 | GET | `/api/pos-corrispettivi/verifica-coerenza` | ✓ | pos_corrispettivi_check |
 
+## Pagamenti buoni  (2)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/pagamenti-buoni` | — | pagamenti_buoni |
+| POST | `/api/pagamenti-buoni/import` | — | pagamenti_buoni |
+
 ## PagoPA  (8)
 
 | Metodo | Path | FE | File |
@@ -1336,12 +1343,14 @@
 | POST | `/api/prima-nota/unifica-categorie` | — | prima_nota_module.manutenzione |
 | GET | `/api/prima-nota/verifica-metodo-fattura/{fattura_id}` | — | prima_nota_module.manutenzione |
 
-## Prima Nota Salari  (18)
+## Prima Nota Salari  (20)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | POST | `/api/prima-nota-salari/consolida-record` | — | accounting.prima_nota_salari |
 | GET | `/api/prima-nota-salari/dipendenti-lista` | ✓ | accounting.prima_nota_salari |
+| GET | `/api/prima-nota-salari/export-appdipendenti/download` | ✓ | accounting.prima_nota_salari |
+| GET | `/api/prima-nota-salari/export-appdipendenti/preview` | — | accounting.prima_nota_salari |
 | GET | `/api/prima-nota-salari/export-excel` | — | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/import-bonifici` | ✓ | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/import-paghe` | ✓ | accounting.prima_nota_salari |

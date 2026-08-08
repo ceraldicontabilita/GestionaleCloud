@@ -3,6 +3,7 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronDown,
+  Download,
   FileSpreadsheet,
   FileText,
   Landmark,
@@ -155,6 +156,7 @@ export default function CedoliniSalari() {
   const [documentoInApertura, setDocumentoInApertura] = useState(null);
   const [uploadInCorso, setUploadInCorso] = useState(null);
   const [importazioneInCorso, setImportazioneInCorso] = useState(false);
+  const [exportInCorso, setExportInCorso] = useState(false);
 
   const caricaRighe = async () => {
     const risposta = await api.get('/api/prima-nota-salari/salari');
@@ -192,6 +194,30 @@ export default function CedoliniSalari() {
     } finally {
       setImportazioneInCorso(false);
       evento.target.value = '';
+    }
+  };
+
+  const esportaAppDipendenti = async () => {
+    setExportInCorso(true);
+    try {
+      const params = annoFiltro !== 'tutti' ? { anno: annoFiltro } : {};
+      const risposta = await api.get('/api/prima-nota-salari/export-appdipendenti/download', {
+        params,
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(new Blob([risposta.data], { type: 'application/zip' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'export_appdipendenti.zip';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+      toast.success('Export AppDipendenti creato con PDF originali e fogli Excel');
+    } catch (errore) {
+      toast.error(errore.response?.data?.detail || 'Export AppDipendenti non riuscito');
+    } finally {
+      setExportInCorso(false);
     }
   };
 
@@ -288,6 +314,16 @@ export default function CedoliniSalari() {
               style={{ display: 'none' }}
             />
           </label>
+          <button
+            type="button"
+            onClick={esportaAppDipendenti}
+            disabled={exportInCorso}
+            title="Esporta i PDF originali e i registri per AppDipendenti"
+            style={{ minHeight: 42, borderRadius: 9, padding: '10px 14px', border: '1px solid #cbd5e1', background: '#fff', color: '#0f2744', fontWeight: 750, cursor: exportInCorso ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7 }}
+          >
+            {exportInCorso ? <Loader2 size={18} className="spin" /> : <Download size={18} />}
+            {exportInCorso ? 'Esportazione...' : 'Export AppDipendenti'}
+          </button>
           <label style={{ display: 'grid', gap: 5, color: '#475569', fontSize: 12, fontWeight: 700 }}>
             Anno
             <select value={annoFiltro} onChange={e => setAnnoFiltro(e.target.value)} aria-label="Anno cedolini" style={{ minWidth: 150, minHeight: 42, padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: 9, background: '#fff' }}>

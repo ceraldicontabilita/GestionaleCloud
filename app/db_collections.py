@@ -57,6 +57,7 @@ COLL_BONIFICI_STIPENDI = "bonifici_stipendi"  # 736 docs
 COLL_PRIMA_NOTA_SALARI = "prima_nota_salari"  # 696 docs
 COLL_ACCONTI_STIPENDI = "acconti_stipendi"
 COLL_ACCONTI_DIPENDENTI = "acconti_dipendenti"
+COLL_PAGAMENTI_BUONI = "pagamenti_buoni"  # Registro importato da Documenti, dedup per riferimento
 
 # TFR
 COLL_TFR_ACCANTONAMENTI = "tfr_accantonamenti"

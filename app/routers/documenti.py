@@ -2018,6 +2018,10 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
 
     if lower.endswith((".xlsx", ".xls", ".csv")):
         content_str = _spreadsheet_text_for_detection(lower, file_content).upper()
+        if lower.endswith(".csv"):
+            from app.services.pagamenti_buoni import is_canonical_csv
+            if is_canonical_csv(file_content):
+                return "pagamenti_buoni"
         if all(marker in content_str for marker in (
             "ID SDI", "METODO DI PAGAMENTO", "TOTALE DOCUMENTO",
             "NETTO A PAGARE", "FORNITORE",
@@ -2499,6 +2503,57 @@ async def upload_documento_automatico(
             )
             result.update(report_result)
             result["tipo_rilevato"] = "report_fatture_ricevute"
+
+        elif tipo_rilevato == 'pagamenti_buoni':
+            # Registro dedicato: resta dietro Documenti e deduplica per
+            # riferimento operazione, senza creare movimenti contabili o
+            # associazioni a dipendenti in assenza di prova.
+            import base64 as b64
+            from app.services.pagamenti_buoni import import_rows, parse_csv
+
+            file_hash = hashlib.md5(content).hexdigest()
+            existing = await db["documents_inbox"].find_one(
+                {"file_hash": file_hash, "category": "pagamenti_buoni"},
+                {"_id": 0, "id": 1, "filename": 1},
+            )
+            if existing:
+                result.update({
+                    "success": False,
+                    "duplicate": True,
+                    "action": "duplicate",
+                    "imported": 0,
+                    "message": f"Registro Pagamenti buoni gia acquisito: {existing.get('filename') or filename}",
+                })
+            else:
+                rows, errors = parse_csv(content)
+                import_result = await import_rows(db, rows, filename, errors)
+                doc_id = f"pagamenti_buoni_{uuid.uuid4()}"
+                source_doc = {
+                    "id": doc_id,
+                    "filename": filename,
+                    "pdf_data": b64.b64encode(content).decode("ascii"),
+                    "file_hash": file_hash,
+                    "file_size": len(content),
+                    "category": "pagamenti_buoni",
+                    "category_label": "Pagamenti buoni",
+                    "status": "elaborato",
+                    "processed": True,
+                    "source": "upload_automatico_documenti",
+                    "processed_at": datetime.now(timezone.utc).isoformat(),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "import_result": import_result,
+                }
+                await db["documents_inbox"].insert_one(dict(source_doc).copy())
+                result.update(import_result)
+                result.update({
+                    "doc_id": doc_id,
+                    "workflow": "PAGAMENTI_BUONI_DEDUP_RIFERIMENTO",
+                    "message": (
+                        f"Pagamenti buoni: {import_result['imported']} importati, "
+                        f"{import_result['duplicates']} duplicati, "
+                        f"{import_result['invalid']} righe non valide"
+                    ),
+                })
 
         elif tipo_rilevato == 'estratto_conto':
             # Import diretto estratto conto CSV Banco BPM → estratto_conto_movimenti

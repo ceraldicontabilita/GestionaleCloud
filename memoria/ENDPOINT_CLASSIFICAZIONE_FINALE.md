@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1071 · tenere: 692 · verificare: 355 · admin-only (migrazione/manutenzione): 24
+**Totale endpoint:** 1075 · tenere: 694 · verificare: 357 · admin-only (migrazione/manutenzione): 24
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -753,6 +753,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/operazioni-da-confermare/smart/riconcilia-auto/status` | operazioni_module.smart | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/operazioni-da-confermare/smart/riconcilia-manuale` | operazioni_module.smart | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/operazioni-da-confermare/smart/riconcilia-stipendio` | operazioni_module | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/pagamenti-buoni` | pagamenti_buoni | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/pagamenti-buoni/import` | pagamenti_buoni | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/pagamenti/assegno-multi-fatture` | multi_pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/pagamenti/fattura-multi-metodo` | multi_pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/pagamenti/fattura/{fattura_id}` | multi_pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -831,6 +833,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/previsioni-acquisti/statistiche` | previsioni_acquisti | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota-salari/consolida-record` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota-salari/dipendenti-lista` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/prima-nota-salari/export-appdipendenti/download` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/prima-nota-salari/export-appdipendenti/preview` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota-salari/export-excel` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota-salari/import-bonifici` | accounting.prima_nota_salari | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota-salari/import-paghe` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |

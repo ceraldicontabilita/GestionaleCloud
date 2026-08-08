@@ -282,6 +282,20 @@ class Database:
         await _safe_index("prima_nota_salari", [("anno", 1), ("mese", 1)], name="idx_pn_salari_anno_mese")
         await _safe_index("prima_nota_salari", "dipendente_id", sparse=True, name="idx_pn_salari_dip")
 
+        # --- Pagamenti buoni importati da Documenti ---
+        await _safe_index(
+            Collections.PAGAMENTI_BUONI,
+            "transfer_reference",
+            unique=True,
+            sparse=True,
+            name="idx_pagamenti_buoni_reference_unique",
+        )
+        await _safe_index(
+            Collections.PAGAMENTI_BUONI,
+            [("accounting_year", 1), ("accounting_date", -1)],
+            name="idx_pagamenti_buoni_periodo",
+        )
+
         # --- Movimenti contabili ---
         await _safe_index("movimenti_contabili", [("data", -1)], name="idx_mov_cont_data")
         await _safe_index("movimenti_contabili", [("anno", 1), ("conto", 1)], name="idx_mov_cont_anno_conto")
@@ -516,6 +530,7 @@ from app.db_collections import (
     COLL_CORRISPETTIVI, COLL_EMPLOYEES, COLL_CEDOLINI,
     COLL_PRIMA_NOTA_CASSA, COLL_ESTRATTO_CONTO, COLL_PIANO_CONTI,
     COLL_ACCOUNTING_ENTRIES, COLL_F24, COLL_CHIUSURE_ESERCIZIO,
+    COLL_PAGAMENTI_BUONI,
 )
 
 
@@ -542,6 +557,7 @@ class Collections:
     # Employees
     EMPLOYEES = COLL_EMPLOYEES
     PAYSLIPS = COLL_CEDOLINI  # Cambiato a collezione principale
+    PAGAMENTI_BUONI = COLL_PAGAMENTI_BUONI
 
     # Cash & Bank
     CASH_MOVEMENTS = COLL_PRIMA_NOTA_CASSA
