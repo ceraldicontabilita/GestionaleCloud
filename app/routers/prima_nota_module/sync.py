@@ -3,7 +3,7 @@ Prima Nota Module - Sincronizzazione e Import.
 Sync corrispettivi, fatture, import CSV/batch.
 """
 from fastapi import HTTPException, Query, Body
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta, timezone
 from itertools import combinations
 import logging
@@ -1460,6 +1460,71 @@ def _rimborso_duplica_pagamento(
     }
 
 
+def _risolvi_rivendicazioni_movimenti(
+    provvisori: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Rende univoca l'assegnazione fattura -> movimento bancario.
+
+    L'importo al centesimo e' necessario, ma non autorizza a scegliere per
+    ordine di lettura. Una prova con numero fattura/SDD prevale su una prova
+    generica basata su strumento + fornitore; se piu' fatture hanno la stessa
+    prova migliore, tutte restano sospese con i candidati visibili.
+    """
+    rivendicazioni: Dict[str, List[Dict[str, Any]]] = {}
+    for riga in provvisori:
+        movimento_id = (riga.get("movimento_banca") or {}).get("id")
+        if movimento_id:
+            rivendicazioni.setdefault(str(movimento_id), []).append(riga)
+
+    priorita_evidenza = {
+        "identita_fattura_importo": 3,
+        "sdd_fornitore_importo_data": 3,
+        "strumento_fornitore_importo_data": 2,
+    }
+    for righe in rivendicazioni.values():
+        if len(righe) < 2:
+            continue
+        priorita_massima = max(
+            priorita_evidenza.get(str(riga.get("evidenza_banca") or ""), 1)
+            for riga in righe
+        )
+        migliori = [
+            riga for riga in righe
+            if priorita_evidenza.get(str(riga.get("evidenza_banca") or ""), 1)
+            == priorita_massima
+        ]
+        da_sospendere = (
+            [riga for riga in righe if riga is not migliori[0]]
+            if len(migliori) == 1 else righe
+        )
+        candidati = [
+            {
+                "fattura_id": riga.get("fattura_id"),
+                "numero": riga.get("fattura_numero"),
+                "fornitore": riga.get("fornitore"),
+                "importo": riga.get("importo"),
+            }
+            for riga in migliori
+        ]
+        for riga in da_sospendere:
+            riga["movimento_banca"] = None
+            riga["evidenza_banca"] = None
+            riga["strumento_bancario"] = None
+            riga["stato_match"] = (
+                "in_attesa_evidenza_specifica"
+                if len(migliori) == 1 else "ambiguo_importo_al_centesimo"
+            )
+            riga["candidati_ambigui"] = candidati
+            riga["motivo_sospensione"] = (
+                "Il movimento con lo stesso importo e stato assegnato alla "
+                "fattura citata esplicitamente nella causale"
+                if len(migliori) == 1 else
+                f"Importo al centesimo, ma {len(migliori)} fatture hanno "
+                "la stessa identita bancaria: scegli il documento esatto"
+            )
+    return provvisori
+
+
 async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
     """
     Lista fatture NON ancora registrate in Prima Nota.
@@ -1687,7 +1752,9 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
         if suggerimento == "banca":
             from app.services.riconciliazione_bancaria import (
                 _evidenza_forte_fattura_banca,
+                _evidenza_pagamento_fornitore_banca,
                 _evidenza_sdd_fattura_banca,
+                classifica_strumento_bancario,
             )
 
             candidati = [
@@ -1705,10 +1772,15 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
                 sdd = _evidenza_sdd_fattura_banca(
                     f, descrizione, importo, data_movimento,
                 )
+                pagamento_diretto = _evidenza_pagamento_fornitore_banca(
+                    f, descrizione, importo, data_movimento,
+                )
                 if forte.get("auto_ammesso"):
                     candidati_forti.append((m, "identita_fattura_importo"))
                 elif sdd.get("auto_ammesso"):
                     candidati_forti.append((m, "sdd_fornitore_importo_data"))
+                elif pagamento_diretto.get("auto_ammesso"):
+                    candidati_forti.append((m, "strumento_fornitore_importo_data"))
 
             # Il solo importo non identifica il pagamento. Inoltre, se due
             # movimenti hanno la stessa evidenza, il caso resta ambiguo.
@@ -1758,6 +1830,13 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             "suggerimento": suggerimento,
             "stato_match": stato_match,
             "evidenza_banca": evidenza_banca,
+            "strumento_bancario": (
+                classifica_strumento_bancario(
+                    movimento_match.get("descrizione_originale")
+                    or movimento_match.get("descrizione") or ""
+                ) if movimento_match else None
+            ),
+            "motivo_sospensione": None,
             "movimento_banca": {
                 "data": (movimento_match.get("data") or movimento_match.get("data_contabile", "")) if movimento_match else None,
                 "descrizione": (
@@ -1767,6 +1846,13 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
                 "id": movimento_match.get("id") if movimento_match else None,
             } if movimento_match else None,
         })
+
+    # La scansione parte dalle fatture: due documenti dello stesso fornitore
+    # e dello stesso importo possono quindi rivendicare la stessa RiBa. La
+    # decisione viene resa globale prima di mostrarla: una prova con numero
+    # fattura prevale su quella generica; due prove dello stesso livello
+    # restano sospese e mostrano il motivo, senza scegliere per ordine DB.
+    _risolvi_rivendicazioni_movimenti(provvisori)
 
     # Un assegno puo' saldare piu' fatture dello stesso fornitore. La prova
     # viene mostrata soltanto quando esiste una sola combinazione globale di

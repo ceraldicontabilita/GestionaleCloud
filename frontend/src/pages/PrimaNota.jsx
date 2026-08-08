@@ -1811,11 +1811,18 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                     {' '}· Assegno{p.assegno_numero ? ` n. ${p.assegno_numero}` : ''} già predisposto
                   </span>
                 )}
+                {p.strumento_bancario?.codice === 'riba' && (
+                  <span style={{ color: '#0369a1', fontWeight: 800 }}>
+                    {' '}· RiBa identificata nell'estratto conto
+                  </span>
+                )}
                 {p.movimento_banca && (
                   <span style={{ color: '#047857', fontWeight: 700 }}>
                     {' '}· riscontro univoco del {formatDateIT(p.movimento_banca.data)} ({
                       p.evidenza_banca === 'sdd_fornitore_importo_data'
                         ? 'SDD + fornitore + importo + data'
+                        : p.evidenza_banca === 'strumento_fornitore_importo_data'
+                          ? `${p.strumento_bancario?.label || 'strumento bancario'} + fornitore + importo al centesimo`
                         : p.evidenza_banca?.tipo === 'pagamento_netto_dopo_rimborso_duplicato'
                           ? 'fattura esplicita + doppio pagamento neutralizzato dal rimborso'
                           : p.evidenza_banca?.tipo === 'assegno_cumulativo_lotto_fatture'
@@ -1842,6 +1849,11 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                     ⚠ Metodo di pagamento da verificare
                   </div>
                 )}
+                {p.motivo_sospensione && (
+                  <div role="status" style={{ marginTop: 4, color: '#92400e', fontSize: 11.5, fontWeight: 800 }}>
+                    {p.motivo_sospensione}
+                  </div>
+                )}
               </div>
               <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <b style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{eur(p.importo)}</b>
@@ -1855,22 +1867,26 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                 </button>
                 <button
                   onClick={() => setAssociaFattura(p)}
-                  title="Scegli tu il movimento bancario: il controllo automatico non associa senza numero fattura in causale"
+                  title="Scegli il movimento reale quando piu documenti hanno lo stesso importo o l'identita non e univoca"
                   style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', background: '#eff6ff', border: '1px solid #93c5fd', color: '#1d4ed8', borderRadius: 7, padding: '4px 12px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}
                 >
                   Associa a mano
                 </button>
-                <button
-                  type="button"
-                  onClick={() => assegnoEditor?.fatturaId === p.fattura_id
-                    ? setAssegnoEditor(null)
-                    : cercaAssegni(p)}
-                  title="Cerca il numero assegno nel registro e nell'estratto conto"
-                  aria-label={`Associa assegno alla fattura ${p.fattura_numero || ''}`.trim()}
-                  style={{ minHeight: 40, background: '#f5f3ff', color: '#6d28d9', border: '1px solid #c4b5fd', borderRadius: 7, padding: '4px 12px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}
-                >
-                  Assegno
-                </button>
+                {(p.fonte_metodo === 'assegno_compilato'
+                  || p.strumento_bancario?.codice === 'assegno'
+                  || p.assegno_numero) && (
+                  <button
+                    type="button"
+                    onClick={() => assegnoEditor?.fatturaId === p.fattura_id
+                      ? setAssegnoEditor(null)
+                      : cercaAssegni(p)}
+                    title="Cerca il numero assegno nel registro e nell'estratto conto"
+                    aria-label={`Associa assegno alla fattura ${p.fattura_numero || ''}`.trim()}
+                    style={{ minHeight: 40, background: '#f5f3ff', color: '#6d28d9', border: '1px solid #c4b5fd', borderRadius: 7, padding: '4px 12px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}
+                  >
+                    Assegno
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => confermaCassa(p)}
@@ -1898,8 +1914,8 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                 >
                   ⚠ {p.anomalia_pagamento?.stato === 'aperta' ? 'Dubbio segnalato' : 'Dubbio'}
                 </button>
-                <span title={p.movimento_banca ? 'Il movimento ha prova univoca ed e in elaborazione' : 'Nessuna associazione automatica senza una prova univoca'} style={{ color: p.movimento_banca ? '#047857' : '#64748b', fontSize: 11.5, fontWeight: 700 }}>
-                  {p.movimento_banca ? 'Riscontro univoco trovato' : 'In attesa di riscontro univoco'}
+                <span title={p.movimento_banca ? 'Il movimento ha prova univoca ed e in elaborazione' : (p.motivo_sospensione || 'Nessuna associazione automatica senza una prova univoca')} style={{ color: p.movimento_banca ? '#047857' : '#64748b', fontSize: 11.5, fontWeight: 700 }}>
+                  {p.movimento_banca ? 'Riscontro univoco trovato' : (p.stato_match === 'ambiguo_importo_al_centesimo' ? 'Sospesa: piu fatture compatibili' : 'In attesa di riscontro univoco')}
                 </span>
               </span>
               {erroreRiga?.fatturaId === p.fattura_id && (
@@ -2239,7 +2255,7 @@ export default function PrimaNota() {
           </div>
 
           <RipartoEntrate sezione={sezione} cassa={cassa} banca={banca} mese={mese} />
-          {sezione === 'banca' && <InAttesaDocumento anno={anno} />}
+          {sezione === 'banca' && <InAttesaDocumento anno={anno} onRicarica={carica} />}
           {sezione === 'banca' && <CartaNexi anno={anno} />}
 
           {/* mese */}

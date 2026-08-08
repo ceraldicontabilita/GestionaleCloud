@@ -496,11 +496,81 @@ async def movimenti_in_attesa_documento(anno: Optional[int] = None) -> Dict[str,
     if anno:
         query["data"] = {"$regex": f"^{anno}"}
 
-    movimenti = await db["estratto_conto_movimenti"].find(
+    movimenti_grezzi = await db["estratto_conto_movimenti"].find(
         query,
         {"_id": 0, "id": 1, "data": 1, "tipo": 1, "importo": 1,
-         "descrizione": 1, "descrizione_originale": 1, "categoria": 1},
+         "descrizione": 1, "descrizione_originale": 1, "categoria": 1,
+         "fattura_id": 1, "invoice_id": 1, "fattura_ids": 1,
+         "documento_id": 1, "cedolino_id": 1, "stipendio_id": 1,
+         "f24_id": 1, "tributo_id": 1, "paypal_transaction_id": 1},
     ).sort("data", -1).to_list(2000)
+
+    campi_collegamento = (
+        "fattura_id", "invoice_id", "fattura_ids", "documento_id",
+        "cedolino_id", "stipendio_id", "f24_id", "tributo_id",
+        "paypal_transaction_id",
+    )
+    gia_collegati = [
+        movimento for movimento in movimenti_grezzi
+        if any(movimento.get(campo) for campo in campi_collegamento)
+    ]
+    movimenti = [
+        movimento for movimento in movimenti_grezzi
+        if not any(movimento.get(campo) for campo in campi_collegamento)
+    ]
+
+    # Porta nella coda operativa le proposte gia' calcolate dal motore. Il
+    # GET resta di sola lettura: ripulisce soltanto la rappresentazione e non
+    # cambia lo stato contabile dei movimenti.
+    ids = [str(m.get("id")) for m in movimenti if m.get("id")]
+    operazioni = []
+    if ids:
+        operazioni = await db["operazioni_da_confermare"].find(
+            {
+                "movimento_ec_id": {"$in": ids},
+                "stato": "da_confermare",
+            },
+            {"_id": 0},
+        ).sort("created_at", -1).to_list(4000)
+    operazione_per_movimento: Dict[str, Dict[str, Any]] = {}
+    for operazione in operazioni:
+        chiave = str(operazione.get("movimento_ec_id") or "")
+        if chiave and chiave not in operazione_per_movimento:
+            operazione_per_movimento[chiave] = operazione
+
+    from app.services.riconciliazione_bancaria import classifica_strumento_bancario
+
+    for movimento in movimenti:
+        descrizione = (
+            movimento.get("descrizione_originale")
+            or movimento.get("descrizione") or ""
+        )
+        operazione = operazione_per_movimento.get(str(movimento.get("id") or ""))
+        dettagli = (operazione or {}).get("dettagli") or {}
+        candidate = []
+        for fattura in dettagli.get("fatture_candidate") or []:
+            fattura_id = fattura.get("id") or fattura.get("fattura_id")
+            if not fattura_id:
+                continue
+            candidate.append({
+                "tipo": "fattura",
+                "id": str(fattura_id),
+                "numero": fattura.get("numero") or fattura.get("numero_fattura"),
+                "fornitore": fattura.get("fornitore") or fattura.get("supplier_name"),
+                "importo": fattura.get("importo") or fattura.get("total_amount"),
+                "data": fattura.get("data") or fattura.get("invoice_date"),
+            })
+        movimento["strumento_bancario"] = classifica_strumento_bancario(descrizione)
+        movimento["candidati"] = candidate
+        movimento["operazione_id"] = (operazione or {}).get("id")
+        movimento["motivo_sospensione"] = (
+            dettagli.get("motivo_dubbio")
+            or (
+                f"Importo al centesimo, ma {len(candidate)} fatture sono candidate"
+                if len(candidate) > 1 else
+                "Nessun documento con importo al centesimo e identita univoca"
+            )
+        )
 
     entrate = sum(float(m.get("importo") or 0)
                   for m in movimenti if m.get("tipo") == "entrata")
@@ -521,6 +591,7 @@ async def movimenti_in_attesa_documento(anno: Optional[int] = None) -> Dict[str,
         "uscite": round(uscite, 2),
         "effetto_sul_saldo": round(entrate - uscite, 2),
         "per_categoria": per_categoria,
+        "gia_collegati_da_allineare": len(gia_collegati),
     }
 
 
