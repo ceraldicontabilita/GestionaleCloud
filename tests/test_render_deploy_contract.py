@@ -27,5 +27,5 @@ def test_render_builds_backend_and_frontend_from_source():
 def test_render_serves_the_combined_app_with_health_check():
     service = _production_service()
 
-    assert service["startCommand"] == "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    assert service["startCommand"] == "python -m app.process_supervisor"
     assert service["healthCheckPath"] == "/api/health"
