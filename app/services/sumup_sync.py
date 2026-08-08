@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 GESTORE = "sumup"
 COLL_TRANSAZIONI = "sumup_transactions"
+COLL_PAYOUT = "sumup_payouts"
 
 # Il giorno contabile e' quello del negozio, non UTC: una vendita delle 23:30
 # del 6 agosto appartiene al 6 agosto anche se SumUp la marca 21:30Z.
@@ -42,6 +43,12 @@ TIPO_CHARGEBACK = "CHARGEBACK"
 # per l'audit ma non entrano in nessun totale.
 STATO_VALIDO = "SUCCESSFUL"
 STATI_ESCLUSI = {"FAILED", "CANCELLED", "PENDING"}
+TIPI_DEDUZIONE_PAYOUT = {
+    "CHARGE_BACK_DEDUCTION",
+    "REFUND_DEDUCTION",
+    "DD_RETURN_DEDUCTION",
+    "BALANCE_DEDUCTION",
+}
 
 TIMEOUT = 30.0
 LIMITE_PAGINE = 200
@@ -336,6 +343,95 @@ async def scarica_transazioni(dal: str, al: str) -> List[Dict[str, Any]]:
     return raccolte
 
 
+async def scarica_payouts(dal: str, al: str) -> List[Dict[str, Any]]:
+    """Record finanziari SumUp che hanno mosso la Mastercard aziendale.
+
+    L'endpoint non restituisce un payout gia' aggregato: ogni riga rappresenta
+    una vendita o una deduzione e piu' righe condividono lo stesso
+    ``reference``. Per questo si richiede il limite massimo documentato e il
+    raggruppamento viene eseguito separatamente, senza confronti per importo.
+    """
+    chiave, merchant = await _credenziali()
+    url = (f"{settings.SUMUP_API_BASE}/v1.0/merchants/{merchant}"
+           f"/payouts")
+    params = {
+        "start_date": date.fromisoformat(dal).isoformat(),
+        "end_date": date.fromisoformat(al).isoformat(),
+        "format": "json",
+        "limit": 9999,
+        "order": "asc",
+    }
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        risposta = await client.get(
+            url, params=params,
+            headers={"Authorization": f"Bearer {chiave}"},
+        )
+    risposta.raise_for_status()
+    payload = risposta.json() or []
+    if not isinstance(payload, list):
+        raise ValueError("SumUp payouts: risposta non conforme (attesa lista).")
+    return [r for r in payload if isinstance(r, dict)]
+
+
+def raggruppa_payouts(righe: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Aggrega le righe finanziarie per riferimento Mastercard.
+
+    ``id`` identifica la singola riga; il riferimento identifica invece il
+    movimento finanziario composto. La transazione originaria resta provata
+    da ``transaction_code``. Mescolare questi tre identificativi era la causa
+    per cui nessun payout riusciva a chiudere il credito giornaliero.
+    """
+    gruppi: Dict[str, List[Dict[str, Any]]] = {}
+    for riga in righe:
+        if not isinstance(riga, dict):
+            continue
+        riferimento = str(riga.get("reference") or "").strip()
+        if not riferimento:
+            identificativo = str(riga.get("id") or "").strip()
+            if not identificativo:
+                continue
+            riferimento = f"record:{identificativo}"
+        gruppi.setdefault(riferimento, []).append(riga)
+
+    risultati: List[Dict[str, Any]] = []
+    for riferimento, componenti in gruppi.items():
+        payout_rows = [
+            r for r in componenti
+            if str(r.get("type") or "").upper() == "PAYOUT"
+        ]
+        deduction_rows = [
+            r for r in componenti
+            if str(r.get("type") or "").upper() in TIPI_DEDUZIONE_PAYOUT
+        ]
+        date_payout = sorted({str(r.get("date") or "")[:10] for r in componenti})
+        statuses = sorted({str(r.get("status") or "").upper() for r in componenti})
+        valuta = next((str(r.get("currency") or "EUR").upper()
+                       for r in componenti if r.get("currency")), "EUR")
+        payout_amount = round(sum(_importo(r.get("amount")) for r in payout_rows), 2)
+        deduction_amount = round(sum(_importo(r.get("amount")) for r in deduction_rows), 2)
+        commissioni = round(sum(_importo(r.get("fee")) for r in componenti), 2)
+        risultati.append({
+            "payout_id": riferimento,
+            "reference": riferimento,
+            "date": date_payout[-1] if date_payout else "",
+            "currency": valuta,
+            "status": "SUCCESSFUL" if statuses == ["SUCCESSFUL"] else "DA_VERIFICARE",
+            "tipi": sorted({str(r.get("type") or "").upper() for r in componenti}),
+            "payout_amount": payout_amount,
+            "deduction_amount": deduction_amount,
+            "movimento_mastercard": round(payout_amount - deduction_amount, 2),
+            "fee_total": commissioni,
+            "transaction_codes": sorted({
+                str(r.get("transaction_code") or "").strip()
+                for r in componenti if r.get("transaction_code")
+            }),
+            "record_ids": sorted({str(r.get("id")) for r in componenti if r.get("id")}),
+            "records": len(componenti),
+            "solo_rettifica": not payout_rows and bool(deduction_rows),
+        })
+    return sorted(risultati, key=lambda g: (g.get("date") or "", g["payout_id"]))
+
+
 # --------------------------------------------------------------------------
 # Scrittura
 # --------------------------------------------------------------------------
@@ -373,6 +469,121 @@ async def transazioni_del_periodo(db, dal: str, al: str) -> List[Dict[str, Any]]
     if hasattr(cursore, "to_list"):
         return await cursore.to_list(100000)
     return [t async for t in cursore]
+
+
+async def _transazioni_per_codici(
+    db, codici: Iterable[str]
+) -> List[Dict[str, Any]]:
+    codici = sorted({str(c or "").strip() for c in codici if str(c or "").strip()})
+    if not codici:
+        return []
+    cursore = db[COLL_TRANSAZIONI].find(
+        {"transaction_code": {"$in": codici}}, {"_id": 0}
+    )
+    if hasattr(cursore, "to_list"):
+        righe = await cursore.to_list(100000)
+    else:
+        righe = [t async for t in cursore]
+    # Una sincronizzazione ripetuta o un vecchio schema non deve far contare
+    # due volte la stessa vendita.
+    uniche: Dict[str, Dict[str, Any]] = {}
+    for riga in righe:
+        chiave = str(riga.get("chiave") or riga.get("transaction_id") or "")
+        if chiave:
+            uniche[chiave] = riga
+    return list(uniche.values())
+
+
+async def sincronizza_payouts(
+    db, dal: str, al: str, *,
+    righe: Optional[Iterable[Dict[str, Any]]] = None,
+    actor: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Collega vendite -> riferimento payout -> Mastercard SumUp.
+
+    Nessun abbinamento usa l'importo. Il solo legame ammesso e' il
+    ``transaction_code`` dichiarato da SumUp; il movimento composto e'
+    identificato dal ``reference`` comune alle righe finanziarie.
+    """
+    from app.services import sumup_payout
+
+    if righe is None:
+        righe = await scarica_payouts(dal, al)
+    gruppi = raggruppa_payouts(righe)
+    risultati: List[Dict[str, Any]] = []
+    codici_collegati = 0
+    for gruppo in gruppi:
+        codici = gruppo.get("transaction_codes") or []
+        transazioni = await _transazioni_per_codici(db, codici)
+        payout_id = gruppo["payout_id"]
+        transazioni_collegate = []
+        for transazione in transazioni:
+            copia = {**transazione, "payout_id": payout_id}
+            transazioni_collegate.append(copia)
+
+        if codici:
+            esito_update = await db[COLL_TRANSAZIONI].update_many(
+                {"transaction_code": {"$in": codici}},
+                {"$set": {
+                    "payout_id": payout_id,
+                    "payout_date": gruppo.get("date"),
+                    "payout_updated_at": datetime.now(timezone.utc).isoformat(),
+                }},
+            )
+            codici_collegati += int(getattr(esito_update, "modified_count", 0) or 0)
+
+        if gruppo.get("solo_rettifica"):
+            esito = await sumup_payout.registra_rettifica_payout(
+                db, gruppo, transazioni=transazioni_collegate
+            )
+        else:
+            esito = await sumup_payout.registra_payout(
+                db,
+                {
+                    "id": payout_id,
+                    "date": gruppo.get("date"),
+                    "amount": gruppo.get("payout_amount"),
+                    "fee_total": gruppo.get("fee_total"),
+                    "currency": gruppo.get("currency"),
+                    "status": gruppo.get("status"),
+                    "reference": gruppo.get("reference"),
+                },
+                transazioni=transazioni_collegate,
+                actor=actor,
+            )
+            # Conserva la prova finanziaria aggregata senza salvare chiavi o
+            # payload superflui dell'API.
+            await db[COLL_PAYOUT].update_one(
+                {"payout_id": payout_id},
+                {"$set": {
+                    "record_ids": gruppo.get("record_ids") or [],
+                    "records": gruppo.get("records") or 0,
+                    "transaction_codes": codici,
+                    "tipi": gruppo.get("tipi") or [],
+                    "movimento_mastercard": gruppo.get("movimento_mastercard"),
+                    "commissione_api": gruppo.get("fee_total"),
+                }},
+            )
+        risultati.append({
+            "payout_id": payout_id,
+            "data": gruppo.get("date"),
+            "tipo": "rettifica" if gruppo.get("solo_rettifica") else "payout",
+            "righe_api": gruppo.get("records") or 0,
+            "transazioni_collegate": len(transazioni_collegate),
+            "stato_riconciliazione": esito.get("stato_riconciliazione"),
+            "quadra": esito.get("quadra"),
+        })
+
+    return {
+        "success": True,
+        "dal": dal,
+        "al": al,
+        "righe_api": sum(int(g.get("records") or 0) for g in gruppi),
+        "gruppi": risultati,
+        "payout": sum(g.get("tipo") == "payout" for g in risultati),
+        "rettifiche": sum(g.get("tipo") == "rettifica" for g in risultati),
+        "transazioni_collegate": codici_collegati,
+    }
 
 
 async def sincronizza(db, dal: str, al: str,
@@ -432,6 +643,35 @@ async def sincronizza(db, dal: str, al: str,
         )
         scritte.append({**giorno, "action": esito.get("action")})
 
+    # I payout sono datati dopo le vendite. Una sincronizzazione storica deve
+    # quindi cercare fino a sette giorni oltre il limite richiesto, senza mai
+    # spingersi nel futuro.
+    fine_payout = min(
+        date.today(), date.fromisoformat(al) + timedelta(days=7)
+    ).isoformat()
+    # Le vendite e i payout provengono da endpoint SumUp distinti e possono
+    # avere autorizzazioni diverse. Un errore del solo endpoint payout non deve
+    # annullare le chiusure POS gia' verificate e scritte: in quel caso il
+    # credito verso SumUp resta esplicitamente in attesa di riconciliazione
+    # Mastercard e l'errore viene restituito al chiamante.
+    try:
+        payouts = await sincronizza_payouts(
+            db, dal, fine_payout, actor=actor,
+        )
+    except (httpx.HTTPError, ValueError, SumUpNonConfigurato) as exc:
+        logger.warning(
+            "SumUp: transazioni sincronizzate ma payout non disponibili: %s",
+            exc,
+        )
+        payouts = {
+            "success": False,
+            "dal": dal,
+            "al": fine_payout,
+            "errore": "Payout Mastercard SumUp non disponibili",
+            "dettaglio": str(exc),
+            "payouts": [],
+        }
+
     return {
         "success": True,
         "dal": dal,
@@ -439,4 +679,5 @@ async def sincronizza(db, dal: str, al: str,
         "transazioni": conteggi,
         "giornate": scritte,
         "totale_netto": round(sum(g["netto"] for g in scritte), 2),
+        "payouts": payouts,
     }

@@ -2,6 +2,7 @@
 Application configuration using Pydantic Settings.
 FIX: path .env corretto
 """
+from pydantic import PrivateAttr
 from pydantic_settings import BaseSettings, SettingsConfigDict, PydanticBaseSettingsSource
 from typing import Optional, Type, Tuple
 from pathlib import Path
@@ -30,8 +31,23 @@ class Settings(BaseSettings):
     # In produzione è comunque impostato via env.
     DB_NAME: str = "Gestionale"
     MONGODB_MAX_POOL_SIZE: int = 50
-    MONGODB_MIN_POOL_SIZE: int = 10
+    # Dieci connessioni minime per ogni replica/worker esauriscono presto i
+    # limiti Atlas. Il pool cresce su domanda e rilascia le socket inattive.
+    MONGODB_MIN_POOL_SIZE: int = 0
     MONGODB_TIMEOUT_MS: int = 5000
+    MONGODB_CONNECT_TIMEOUT_MS: int = 5000
+    MONGODB_SOCKET_TIMEOUT_MS: int = 20000
+    MONGODB_WAIT_QUEUE_TIMEOUT_MS: int = 5000
+    MONGODB_MAX_IDLE_TIME_MS: int = 120000
+    # Le riparazioni dati sono migrazioni operative, non attivita' di bootstrap.
+    # Un riavvio dell'app non deve modificare registrazioni contabili.
+    RUN_STARTUP_DATA_REPAIRS: bool = False
+    RUN_STARTUP_INDEX_MIGRATIONS: bool = False
+    RUN_STARTUP_SEED_DATA: bool = False
+    # I processi periodici devono poter essere esclusi nelle istanze locali o
+    # dedicate al solo frontend. In produzione restano attivi per default.
+    ENABLE_SCHEDULER: bool = True
+    SCHEDULER_LEASE_SECONDS: int = 21600
 
     # Security
     SECRET_KEY: Optional[str] = None
@@ -47,7 +63,8 @@ class Settings(BaseSettings):
     # Origin consentiti in produzione: impostare col dominio reale del
     # gestionale, es. CORS_ALLOWED_ORIGINS="https://gestionale.esempio.it"
     # (più domini separati da virgola). Se valorizzato, chiude l'accesso a
-    # ogni altro sito; se vuoto, resta aperto (vedi get_cors_origins).
+    # ogni altro sito; se vuoto e le credenziali sono abilitate, resta
+    # consentito soltanto il traffico same-origin (vedi get_cors_origins).
     CORS_ALLOWED_ORIGINS: str = ""
     CORS_ORIGINS: str = "*"
     ALLOWED_ORIGINS: str = "*"
@@ -240,6 +257,11 @@ class Settings(BaseSettings):
     STATIC_FILES_DIR: Path = Path("static")
     TEMPLATES_DIR: Path = Path("templates")
     FONTS_DIR: Path = Path("fonts")
+
+    # Stato runtime, escluso dalle variabili e dalla serializzazione. La
+    # configurazione non deve aprire connessioni o scrivere su MongoDB durante
+    # l'import: il segreto condiviso viene inizializzato dal lifecycle async.
+    _auth_secret_source: str = PrivateAttr(default="unset")
     
     model_config = SettingsConfigDict(
         env_file="/app/backend/.env",
@@ -260,103 +282,34 @@ class Settings(BaseSettings):
         # Priorità: valori espliciti > .env file > variabili OS (pod Kubernetes)
         # Garantisce che MONGO_URL e DB_NAME nel .env non vengano
         # sovrascritti da variabili d'ambiente iniettate dalla piattaforma di deploy.
-        return (init_settings, dotenv_settings, env_settings, file_secret_settings)
+        # Le variabili iniettate da Render/Kubernetes devono prevalere su un
+        # file .env dell'immagine potenzialmente obsoleto.
+        return (init_settings, env_settings, dotenv_settings, file_secret_settings)
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         if not self.MONGODB_ATLAS_URI and self.MONGO_URL:
             self.MONGODB_ATLAS_URI = self.MONGO_URL
-        
-        # ── SECRET_KEY JWT: DEVE essere stabile tra riavvii e identica su
-        # tutti i worker, altrimenti i login "muoiono" a ogni deploy e con
-        # piu' processi un token firmato da un worker viene rifiutato dagli
-        # altri (401 intermittenti: era la causa dell'autenticazione che si
-        # rompeva di continuo in produzione).
-        # Priorita':
-        #   1. variabile d'ambiente SECRET_KEY (se impostata, vince sempre)
-        #   2. chiave condivisa in Gestionale.sistema_stato.auth_secret
-        #      (stesso meccanismo di Lotti/AppDipendenti: token interoperabili);
-        #      se il documento NON esiste viene CREATO in modo atomico
-        #      ($setOnInsert: piu' worker concorrenti convergono sulla stessa)
-        #   3. fallback deterministico derivato dall'URI Mongo (stabile tra
-        #      worker e riavvii anche se il DB e' momentaneamente irraggiungibile)
-        if not self.SECRET_KEY:
-            import logging
-            import os as _os
-            import secrets
 
-            _uri = self.MONGO_URL or self.MONGODB_ATLAS_URI or _os.getenv("MONGO_URL") or ""
-
-            chiave_condivisa = None
-            if _uri:
-                try:
-                    from pymongo import MongoClient as _MC
-                    _cli = _MC(_uri, serverSelectionTimeoutMS=4000)
-                    _coll = _cli[_os.getenv("DB_NAME", "Gestionale")]["sistema_stato"]
-                    _doc = _coll.find_one({"chiave": "auth_secret"})
-                    if not (_doc and _doc.get("valore")):
-                        # crea la chiave condivisa una sola volta, race-safe
-                        from datetime import datetime as _dt, timezone as _tz
-                        _coll.update_one(
-                            {"chiave": "auth_secret"},
-                            {"$setOnInsert": {
-                                "chiave": "auth_secret",
-                                "valore": secrets.token_urlsafe(64),
-                                "created_at": _dt.now(_tz.utc).isoformat(),
-                                "created_by": "gestionale_config",
-                            }},
-                            upsert=True,
-                        )
-                        _doc = _coll.find_one({"chiave": "auth_secret"})
-                    _cli.close()
-                    if _doc and _doc.get("valore"):
-                        chiave_condivisa = _doc["valore"]
-                except Exception:
-                    logging.getLogger(__name__).warning(
-                        "SECRET_KEY: impossibile leggere/creare auth_secret su Mongo, "
-                        "uso il fallback deterministico"
-                    )
-
-            if chiave_condivisa:
-                self.SECRET_KEY = chiave_condivisa
-            else:
-                # Nessuna chiave esplicita e nessuna leggibile/creabile su Mongo.
-                # NON derivarla dall'URI (sarebbe prevedibile da chi conosce la
-                # stringa di connessione): usa una chiave casuale di processo con
-                # avviso critico. Se il DB è irraggiungibile l'app è comunque
-                # inoperante (è un'app MongoDB), quindi non si perde continuità
-                # reale delle sessioni.
-                # §12.2 fail-fast produzione (OPT-IN, non distruttivo di default): se
-                # SECRET_KEY_REQUIRED=true e siamo in produzione, rifiuta l'avvio invece
-                # di usare una chiave temporanea (che invaliderebbe i token ad ogni
-                # riavvio). Default off = comportamento attuale invariato.
-                _strict = _os.getenv("SECRET_KEY_REQUIRED", "").lower() in ("1", "true", "yes")
-                if _strict and self.ENVIRONMENT == "production":
-                    raise RuntimeError(
-                        "SECRET_KEY mancante in produzione (SECRET_KEY_REQUIRED=true): "
-                        "impostare SECRET_KEY nelle variabili d'ambiente. Avvio rifiutato."
-                    )
-                self.SECRET_KEY = secrets.token_urlsafe(64)
-                logging.getLogger(__name__).critical(
-                    "⚠️ CRITICAL: SECRET_KEY non configurata e auth_secret non "
-                    "disponibile su Mongo: chiave temporanea di processo. Imposta "
-                    "SECRET_KEY nelle variabili d'ambiente per token stabili."
-                )
+        if self.SECRET_KEY:
+            self._auth_secret_source = "configured"
         else:
-            # SECRET_KEY esplicita: comunque prova ad allinearla alla chiave
-            # condivisa tra le app se presente (interoperabilita' token).
-            try:
-                import os as _os
-                from pymongo import MongoClient as _MC
-                _uri = self.MONGO_URL or self.MONGODB_ATLAS_URI or _os.getenv("MONGO_URL")
-                if _uri:
-                    _cli = _MC(_uri, serverSelectionTimeoutMS=4000)
-                    _doc = _cli[_os.getenv("DB_NAME", "Gestionale")]["sistema_stato"].find_one({"chiave": "auth_secret"})
-                    _cli.close()
-                    if _doc and _doc.get("valore"):
-                        self.SECRET_KEY = _doc["valore"]
-            except Exception:
-                pass
+            # Mantiene importabili i moduli e isolati i test, senza I/O di
+            # rete. In produzione il lifecycle sostituisce questa chiave con
+            # quella condivisa di Mongo prima di accettare richieste.
+            import secrets
+            self.SECRET_KEY = secrets.token_urlsafe(64)
+            self._auth_secret_source = "ephemeral"
+
+    @property
+    def auth_secret_source(self) -> str:
+        return self._auth_secret_source
+
+    def set_runtime_auth_secret(self, value: str, *, source: str) -> None:
+        if not value or len(value) < 32:
+            raise ValueError("SECRET_KEY deve contenere almeno 32 caratteri")
+        self.SECRET_KEY = value
+        self._auth_secret_source = source
     
     def get_cors_origins(self) -> list[str]:
         """Origin CORS consentiti.
@@ -397,18 +350,19 @@ class Settings(BaseSettings):
         if self.FRONTEND_URL:
             return [self.FRONTEND_URL]
 
-        # Niente di esplicito. Se le credenziali sono attive segnaliamo il
-        # rischio ma NON blocchiamo: restare a wildcard preserva il
-        # funzionamento attuale del frontend finché il dominio non è
-        # impostato. La chiusura effettiva scatta appena si valorizza
-        # CORS_ALLOWED_ORIGINS (o FRONTEND_URL).
+        # Niente di esplicito. Il frontend di produzione e' same-origin:
+        # con cookie attivi si chiude ogni accesso cross-site finche' il
+        # dominio esterno non viene autorizzato esplicitamente.
         if self.ALLOW_CREDENTIALS:
             logging.getLogger(__name__).warning(
-                "CORS APERTO A TUTTI (insicuro): ALLOW_CREDENTIALS=True senza "
-                "origin esplicito. Imposta CORS_ALLOWED_ORIGINS col dominio del "
-                "gestionale per chiudere l'accesso agli altri siti."
+                "CORS cross-site disabilitato: ALLOW_CREDENTIALS=True senza "
+                "origin esplicito. Imposta CORS_ALLOWED_ORIGINS soltanto per "
+                "i domini esterni autorizzati."
             )
-        return ["*"]
+        # Il frontend di produzione e' same-origin. Con cookie abilitati il
+        # fallback sicuro e' quindi nessun origin cross-site; le integrazioni
+        # esterne devono essere autorizzate esplicitamente.
+        return [] if self.ALLOW_CREDENTIALS else ["*"]
     
     def get_allowed_extensions(self) -> set[str]:
         """Parse allowed file extensions."""
@@ -446,16 +400,13 @@ class Settings(BaseSettings):
         fail_fast = self.is_production and os.getenv("FAIL_FAST_SECRETS", "").lower() in ("true", "1", "yes")
         errors: list[str] = []
 
-        # Check SECRET_KEY was explicitly configured (not auto-generated).
-        # NB: dal 10/07/2026 la chiave, se non in env, viene presa/creata
-        # nella collection condivisa sistema_stato.auth_secret (stabile tra
-        # riavvii e worker): il messaggio resta come promemoria, ma i token
-        # NON muoiono piu' al riavvio.
-        if not os.getenv("SECRET_KEY"):
+        # Una chiave effimera rende i token diversi tra worker e li invalida
+        # a ogni deploy. Il lifecycle puo' sostituirla con la chiave Mongo
+        # condivisa; in modalita' fail-fast una sorgente effimera e' fatale.
+        if self.auth_secret_source == "ephemeral":
             msg = (
-                "SECRET_KEY non configurata nell'ambiente: uso la chiave "
-                "condivisa sistema_stato.auth_secret (stabile). Per maggiore "
-                "robustezza configurare comunque SECRET_KEY nei secret del deploy."
+                "SECRET_KEY effimera: configurare SECRET_KEY nel secret store "
+                "oppure inizializzare la chiave condivisa Mongo prima dell'avvio."
             )
             if fail_fast:
                 errors.append(msg)
@@ -478,18 +429,21 @@ class Settings(BaseSettings):
             msg = "DB_NAME non configurato in produzione."
             errors.append(msg) if fail_fast else logger.error(f"❌ ERROR: {msg}")
 
-        # CORS in produzione: senza origin espliciti si ricade su una policy
-        # permissiva. Va impostato CORS_ALLOWED_ORIGINS col dominio reale (§8/SEC-2).
-        if self.is_production and not (self.CORS_ALLOWED_ORIGINS or "").strip():
+        # Senza origin espliciti ``get_cors_origins`` restituisce [] e mantiene
+        # il frontend same-origin: e' una configurazione sicura. L'unico caso
+        # da rifiutare e' una wildcard esplicita insieme alle credenziali.
+        cors_raw = (self.CORS_ALLOWED_ORIGINS or "").strip()
+        if self.is_production and self.ALLOW_CREDENTIALS and "*" in {
+            value.strip() for value in cors_raw.split(",") if value.strip()
+        }:
             msg = (
-                "CORS_ALLOWED_ORIGINS non configurato in produzione: imposta il "
-                "dominio reale (es. 'https://impresasemplice.online') nelle "
-                "variabili d'ambiente per limitare le origini consentite."
+                "CORS wildcard non consentito con ALLOW_CREDENTIALS=true: "
+                "usa origini esplicite oppure il fallback same-origin."
             )
             if fail_fast:
                 errors.append(msg)
             else:
-                logger.warning(f"⚠️ {msg}")
+                logger.error(f"❌ ERROR: {msg}")
 
         if errors:
             raise RuntimeError(

@@ -1,74 +1,133 @@
-# Specifica MCP per Gestionale Cloud
+# GestionaleCloud MCP — specifica di produzione
 
-## Obiettivo
+## Scopo e confine architetturale
 
-Esporre agli agenti AI funzioni stabili del gestionale senza duplicare parser, query o regole contabili. Il server proposto si chiama `gestionale_cloud_mcp` e riusa esclusivamente servizi e API esistenti.
+`gestionale_cloud_mcp` espone agli agenti AI tutte le aree operative del GestionaleCloud senza creare un secondo ERP.
 
-Questa fase definisce il contratto. L'attivazione remota richiede prima autenticazione OAuth, ruoli applicativi, audit log e test di autorizzazione; per questo non viene aggiunto un secondo backend MCP non protetto durante l'audit contabile.
+Il server MCP:
 
-## Principi
+1. non apre connessioni MongoDB;
+2. non interroga direttamente Drive, Gmail, PayPal o SumUp;
+3. usa le API HTTP già registrate dal backend come unico confine applicativo;
+4. inoltra il JWT dell'utente al backend, che continua a verificare firma, scadenza, revoca e ruolo;
+5. rende disponibili strumenti specifici e, per la copertura completa, le sole operazioni `GET` dichiarate dall'OpenAPI corrente;
+6. rifiuta URL arbitrari, redirect, parametri non dichiarati, export e contenuti binari;
+7. non abilita scritture finché non sono soddisfatti contemporaneamente configurazione, ruolo admin, MFA e conferma esplicita.
 
-- Trasporto remoto Streamable HTTP; `stdio` solo per sviluppo locale.
-- Input Pydantic con campi extra vietati e limiti espliciti.
-- Output strutturato, paginato e privo di PDF/base64 salvo richiesta autorizzata.
-- Annotazioni `readOnlyHint`, `destructiveHint`, `idempotentHint` e `openWorldHint` su ogni tool.
-- JWT/OAuth con controllo di ruolo a ogni chiamata; le annotazioni non sostituiscono l'autorizzazione.
-- Conferma umana per modifiche fiscali, riconciliazioni e operazioni documentali.
-- Nessun tool di cancellazione definitiva nella prima versione.
+Questo evita query Mongo duplicate, regole contabili divergenti e bypass dei middleware già presenti.
 
-## Tool di prima versione
+## Regole semantiche inderogabili
 
-| Tool | Riusa | Modalità | Risultato |
-|---|---|---|---|
-| `gestionale_search_documents` | `documents_inbox` e ricerca documenti | sola lettura | documenti filtrati, hash, stato e provenienza |
-| `gestionale_get_invoice` | API fatture | sola lettura | fattura, fornitore, scadenza e collegamenti |
-| `gestionale_get_vat_period` | motori IVA e liquidazioni | sola lettura | vendite, acquisti classificati, credito/debito e anomalie |
-| `gestionale_list_bank_movements` | API estratto conto | sola lettura | movimenti paginati con stato riconciliazione |
-| `gestionale_explain_reconciliation` | motore riconciliazione | sola lettura | evidenze, punteggio e motivi di esclusione |
-| `gestionale_get_f24_status` | `f24_unificato` e `quietanze_f24` | sola lettura | modello, pagamento, quietanza e prova bancaria |
-| `gestionale_get_payslip_context` | cedolini e prima nota salari | sola lettura | cedolino, dipendente, bonifico e stato match |
-| `gestionale_run_audit` | `esegui_collaudo` | scrittura idempotente di report | report aggregato e alert aggiornati |
-| `gestionale_propose_match` | motore matching | proposta | candidato non applicato con evidenze |
-| `gestionale_confirm_match` | API riconciliazione esistente | mutazione confermata | relazione bidirezionale e audit log |
+- Documento, fattura, movimento bancario, assegno, cedolino, F24, quietanza, liquidazione IVA, transazione POS e payout sono entità distinte.
+- L'importo da solo non costituisce mai una corrispondenza sufficiente.
+- Ogni collegamento mantiene identificativi e provenienza in entrambe le direzioni.
+- Il movimento bancario importato è prova finanziaria immutabile; la Prima Nota lo rappresenta ma non lo sostituisce.
+- Un F24 può contenere più codici tributo: stato e residuo si determinano per riga, non soltanto sul totale del modello.
+- XML RT, Numia, SumUp e PayPal sono fonti indipendenti. XML RT non attribuisce il gestore POS; payout e accrediti non sono nuovi ricavi.
+- Cassa configurata sul fornitore porta la fattura in Cassa; Banca resta Provvisoria finché non esiste un riscontro bancario valido.
+- Un risultato ambiguo resta da verificare: l'MCP propone, non inventa.
 
-## Esempio di input paginato
+## Tool pubblicati
 
-```json
-{
-  "category": "f24",
-  "status": "da_verificare",
-  "limit": 25,
-  "cursor": null,
-  "response_format": "json"
-}
-```
+| Tool | Area | Effetto |
+|---|---|---|
+| `gestionale_status` | sistema | verifica API, identità, ruolo, MFA e catalogo |
+| `gestionale_list_capabilities` | sistema | elenca tool curati, GET OpenAPI e azioni confermate |
+| `gestionale_read_api` | tutte | esegue una GET OpenAPI non binaria con validazione rigorosa |
+| `gestionale_search_documents` | documenti | ricerca per anno, categoria, stato e testo |
+| `gestionale_search_invoices` | fatture | ricerca fatture ricevute e relativi stati |
+| `gestionale_get_invoice_context` | fatture | dettaglio, storia e prove di pagamento, senza file binari |
+| `gestionale_list_bank_movements` | banca | movimenti estratto conto filtrati e paginati |
+| `gestionale_get_prima_nota` | contabilità | Cassa, Banca o Provvisori, senza creare righe |
+| `gestionale_get_checks` | assegni | assegni e proposte di associazione |
+| `gestionale_get_payment_channel` | PayPal/POS | PayPal, SumUp o coerenza POS reale |
+| `gestionale_get_payroll` | paghe | Prima Nota salari per dipendente/mese/anno |
+| `gestionale_get_f24_status` | F24 | modelli, righe tributo, quietanze e banca |
+| `gestionale_get_vat_period` | IVA | liquidazione mensile/annuale e anomalie |
+| `gestionale_get_accounting_report` | contabilità | piano conti, bilancio, audit o discrepanze |
+| `gestionale_get_operational_context` | operazioni | scadenze, PagoPA, noleggi, verbali, cespiti, bonifici |
+| `gestionale_prepare_action` | workflow | crea una proposta a durata limitata senza eseguirla |
+| `gestionale_execute_confirmed_action` | workflow | esegue una proposta solo dopo tutti i controlli |
 
-La risposta include `items`, `count`, `has_more` e `next_cursor`. I dati personali non necessari vengono omessi.
+### Copertura completa senza tool duplicati
 
-## Autorizzazioni
+`gestionale_read_api` non accetta un percorso o un URL. Accetta esclusivamente un `operationId` presente nell'OpenAPI vivo del backend. Il gateway verifica:
 
-| Ambito | Ruoli minimi |
-|---|---|
-| documenti e ricerca | operatore, contabile, amministratore |
-| IVA e liquidazioni | contabile, amministratore |
-| banca e riconciliazioni | tesoreria, contabile, amministratore |
-| cedolini | paghe, amministratore |
-| conferme e mutazioni | ruolo di dominio + conferma esplicita |
+- metodo `GET`;
+- percorso interno `/api/...`;
+- nomi dei parametri path e query;
+- limiti di paginazione;
+- assenza di endpoint PDF, download, export, template o XML originale;
+- risposta JSON entro la dimensione configurata.
 
-Ogni invocazione registra utente, tool, parametri minimizzati, esito, durata e identificativi delle entità coinvolte. Credenziali, PDF e payload base64 non entrano nei log.
+Questa soluzione copre le centinaia di letture esistenti senza generare centinaia di funzioni quasi identiche.
 
-## Criteri di accettazione
+## Modello di autorizzazione
 
-1. Nessuna query Mongo duplicata se esiste già un service applicativo.
-2. Test di autorizzazione positivi e negativi per ogni tool.
-3. Paginazione obbligatoria per gli elenchi.
-4. Output schema validato.
-5. Errori applicativi utili ma senza stack trace o segreti.
-6. Dieci valutazioni read-only su casi storici e stabili prima del deploy.
-7. Nessun dato reale incluso nei fixture o nel repository.
+### Trasporto `stdio`
 
-## Riferimenti tecnici
+È destinato allo sviluppo locale e ai client desktop. Il processo legge `GESTIONALE_MCP_API_TOKEN` e lo inoltra alle API. Il token non viene scritto nei log.
 
-- [MCP specification: tools](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)
-- [MCP specification: authorization](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization)
-- [SDK Python ufficiale](https://github.com/modelcontextprotocol/python-sdk)
+### Trasporto Streamable HTTP
+
+Il gateway richiede:
+
+- metadata dell'authorization server e del resource server;
+- protezione DNS rebinding con allowlist di host e origin;
+- JWT valido del GestionaleCloud;
+- scope MCP `gestionale:read` per ogni tool;
+- ruolo `admin`, MFA attiva e verificata per le mutazioni.
+
+La verifica del bearer token viene delegata a `/api/auth/verify`, quindi include il controllo di revoca già implementato dal gestionale.
+
+### Mutazioni
+
+Le modifiche sono disabilitate per impostazione predefinita. Per abilitarle serve `GESTIONALE_MCP_ALLOW_WRITES=true`.
+
+Il flusso è sempre a due passaggi:
+
+1. `gestionale_prepare_action` valida l'azione contro una lista chiusa e crea una proposta con hash SHA-256 e scadenza;
+2. `gestionale_execute_confirmed_action` accetta soltanto la frase esatta `CONFERMO <proposal_id>`, poi ricontrolla admin e MFA.
+
+Non sono presenti strumenti di cancellazione definitiva. Le azioni ammesse riguardano soltanto conferme o collegamenti già supportati dalle API: Provvisori, assegni, PayPal, cedolini, F24, PagoPA e fatture-banca.
+
+## Protezione dei dati
+
+- Log: nome tool, operation ID, nomi dei parametri, esito, durata e trace ID; mai valori, credenziali o documenti.
+- Output: token, password, segreti, chiavi API, base64, contenuto PDF e XML originale sono oscurati.
+- Dimensione: massimo 2 MB per risposta per impostazione predefinita.
+- Liste: massimo 500 elementi per impostazione predefinita.
+- Errori: nessuno stack trace o URL sensibile restituito all'agente.
+- Test: soltanto risposte HTTP sintetiche; nessun fixture contiene dati aziendali reali.
+
+## Contratto delle azioni consentite
+
+| Action ID | Endpoint esistente | Vincolo |
+|---|---|---|
+| `prima_nota_confirm_pending` | `POST /api/prima-nota/provvisori/conferma` | conferma metodo |
+| `prima_nota_wait_bank` | `POST /api/prima-nota/provvisori/attendi-banca` | non crea pagamento |
+| `prima_nota_mark_uncertain` | `POST /api/prima-nota/provvisori/segnala-dubbio` | segnala anomalia |
+| `check_confirm_proposal` | `POST /api/assegni/conferma-proposta/{proposta_id}` | proposta preesistente |
+| `paypal_link_transaction` | `POST /api/paypal-statements/transazione/{transaction_id}/associa` | entità preesistenti |
+| `payroll_reconcile` | `PUT /api/prima-nota-salari/salari/{record_id}/riconcilia` | cedolino/bonifico |
+| `f24_reconcile` | `POST /api/f24/riconcilia` | righe tributo preservate |
+| `pagopa_link_receipt` | `POST /api/pagopa/ricevute/associa-manuale` | ricevuta/verbale |
+| `invoice_reconcile_bank` | `POST /api/fatture-ricevute/riconcilia-con-estratto-conto` | prova bancaria |
+
+## Accettazione tecnica
+
+1. Ogni endpoint curato deve esistere nell'OpenAPI corrente con il metodo atteso.
+2. Le operazioni generiche non possono chiamare POST, PUT, PATCH o DELETE.
+3. Path traversal, URL assoluti, header injection e parametri sconosciuti devono fallire.
+4. Redirect, file, output non JSON e risposte oltre limite devono fallire.
+5. Le proposte devono essere allowlistate, scadere e poter essere consumate una sola volta.
+6. Scritture disabilitate, ruolo non admin o MFA non verificata devono fallire chiuso.
+7. Tutti i tool devono avere annotazioni MCP corrette.
+8. La suite di valutazione read-only deve contenere almeno dieci casi stabili e sintetici.
+
+## Riferimenti
+
+- [MCP Python SDK 2.0](https://github.com/modelcontextprotocol/python-sdk)
+- [Documentazione SDK Python](https://py.sdk.modelcontextprotocol.io/)
+- [MCP authorization](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization)
+- [MCP tools](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)

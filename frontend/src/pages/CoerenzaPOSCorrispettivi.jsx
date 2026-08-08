@@ -180,8 +180,9 @@ export default function CoerenzaPOSCorrispettivi() {
           />
           <StatCard
             icon={<CreditCard size={18} />}
-            label="POS terminale inserito"
-            value={formatEuro(statsPos.fase2_pos_totale || 0)}
+            label="Totale POS reale anno"
+            value={formatEuro(statsPos.pos_totale_reale_annuo || 0)}
+            subtext={`NUMIA ${formatEuro(statsPos.pos_numia_reale_annuo || 0)} + SUMUP ${formatEuro(statsPos.pos_sumup_reale_annuo || 0)}`}
             accent="info"
           />
           <StatCard
@@ -711,10 +712,10 @@ function ControlloDueFasi({ dati, isMobile, onReload }) {
               <Th align="center" style={{ color: '#fff', background: 'transparent', borderLeft: '2px solid #fff' }}>
                 Stato
               </Th>
-              <Th colSpan={5} align="center" style={{ color: '#fff', background: 'transparent', borderLeft: '2px solid #fff', borderRight: '2px solid #fff' }}>
+              <Th colSpan={6} align="center" style={{ color: '#fff', background: 'transparent', borderLeft: '2px solid #fff', borderRight: '2px solid #fff' }}>
                 FASE 1: RT vs POS reale
               </Th>
-              <Th colSpan={4} align="center" style={{ color: '#fff', background: 'transparent' }}>
+              <Th colSpan={3} align="center" style={{ color: '#fff', background: 'transparent' }}>
                 FASE 2: NUMIA verso BPM / SUMUP verso Mastercard
               </Th>
             </tr>
@@ -726,7 +727,7 @@ function ControlloDueFasi({ dati, isMobile, onReload }) {
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS SUMUP</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>NUMIA manuale (modifica)</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11, borderRight: '2px solid #fff' }}>Diff. XML − POS</Th>
-              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS totale reale</Th>
+              <Th align="right" style={{ color: '#fff', background: COLORS.accent, fontSize: 11 }}>TOTALE POS GIORNALIERO (NUMIA + SUMUP)</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>NUMIA verso BPM</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>SUMUP verso Mastercard</Th>
               <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Saldo NUMIA</Th>
@@ -741,10 +742,12 @@ function ControlloDueFasi({ dati, isMobile, onReload }) {
             <tfoot>
               <tr style={{ background: COLORS.primary, color: '#fff', fontWeight: 700 }}>
                 <Td colSpan={8} align="right" style={{ color: '#fff', background: 'transparent' }}>
-                  TOTALI PER CIRCUITO
+                  TOTALE ANNUO POS {formatEuro(stats.pos_totale_reale_annuo || 0)}
+                  {' '}= NUMIA {formatEuro(stats.pos_numia_reale_annuo || 0)}
+                  {' '}+ SUMUP {formatEuro(stats.pos_sumup_reale_annuo || 0)}
                 </Td>
                 <Td align="right" style={{ color: '#fff', background: 'transparent' }}>
-                  NUMIA {formatEuro(stats.fase2_accrediti_totale || 0)}
+                  BPM {formatEuro(stats.fase2_accrediti_totale || 0)}
                 </Td>
                 <Td align="right" style={{ color: '#fff', background: 'transparent' }}>
                   SUMUP {formatEuro(stats.fase2_sumup_pos_totale || 0)}
@@ -963,6 +966,7 @@ export function EditorPosReale({ g, onSaved }) {
 
 function RigaGiornaliera({ g, even, onReload }) {
   const [espansa, setEspansa] = useState(false);
+  const [dettaglioBancaAperto, setDettaglioBancaAperto] = useState(false);
   const faseSumUp = (g.fase2_per_circuito || {}).sumup || {};
   const payoutSumUp = faseSumUp.payout;
   const diffSerColor = g.stato_serale === 'ok' ? COLORS.success :
@@ -1026,7 +1030,18 @@ function RigaGiornaliera({ g, even, onReload }) {
           : formatEuroConSegno(g.diff_serale)}
       </Td>
       <Td align="right">
-        {g.pos_manuale_presente ? formatEuro(g.pos_manuale) : '—'}
+        {g.pos_totale_giornaliero !== null && g.pos_totale_giornaliero !== undefined
+          ? (
+            <>
+              <div style={{ fontWeight: 800, color: COLORS.primary }}>
+                {formatEuro(g.pos_totale_giornaliero)}
+              </div>
+              <div style={{ fontSize: 10, color: g.pos_totale_completo ? COLORS.success : COLORS.warning, marginTop: 2 }}>
+                {g.pos_totale_completo ? 'NUMIA + SUMUP' : 'PARZIALE · circuito mancante'}
+              </div>
+            </>
+          )
+          : '—'}
         {g.capogruppo && g.giorni_gruppo > 1 && (
           <Button
             type="button"
@@ -1052,7 +1067,21 @@ function RigaGiornaliera({ g, even, onReload }) {
         }}
       >
         {g.accredito_banca > 0 && (
-          <div style={{ marginBottom: 3 }}>{formatEuro(g.accredito_banca)}</div>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => setDettaglioBancaAperto(v => !v)}
+            aria-expanded={dettaglioBancaAperto}
+            aria-label={`Dettaglio accrediti BPM ${g.data}`}
+            style={{
+              display: 'block', marginLeft: 'auto', marginBottom: 3,
+              padding: 0, minHeight: 'auto', color: 'inherit', fontWeight: 800,
+              textDecoration: 'underline', textDecorationStyle: 'dotted',
+            }}
+            title="Mostra i singoli accrediti BPM che formano il totale"
+          >
+            {formatEuro(g.accredito_banca)} {dettaglioBancaAperto ? '▲' : '▼'}
+          </Button>
         )}
         {g.riconciliato_banca_reale ? (
           <BadgeRiconciliatoBanca riconciliato />
@@ -1145,6 +1174,63 @@ function RigaGiornaliera({ g, even, onReload }) {
                 </tr>
               </tbody>
             </table>
+          </div>
+        </Td>
+      </tr>
+    )}
+    {dettaglioBancaAperto && g.accredito_banca > 0 && (
+      <tr style={{ background: even ? COLORS.card : COLORS.bgAlt, borderBottom: `1px solid ${COLORS.gray[100]}` }}>
+        <Td colSpan={11} style={{ padding: '0 8px 12px 24px' }}>
+          <div style={{
+            background: COLORS.card, border: `1px solid ${COLORS.border}`,
+            borderRadius: BORDER_RADIUS.md, padding: '10px 12px',
+          }}>
+            <div style={{ fontWeight: 800, color: COLORS.primary, marginBottom: 7 }}>
+              Accrediti NUMIA su BPM che compongono {formatEuro(g.accredito_banca)}
+            </div>
+            {(g.movimenti_banca || []).length > 0 ? (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <thead>
+                  <tr style={{ color: COLORS.textMuted, textAlign: 'left' }}>
+                    <th style={{ padding: '3px 8px 5px 0' }}>Data banca</th>
+                    <th style={{ padding: '3px 8px 5px 0' }}>Causale</th>
+                    <th style={{ padding: '3px 0 5px', textAlign: 'right' }}>Importo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(g.movimenti_banca || []).map((movimento, indice) => (
+                    <tr key={movimento.id || `${g.data}-${indice}`} style={{ borderTop: `1px solid ${COLORS.gray[100]}` }}>
+                      <td style={{ padding: '5px 8px 5px 0', whiteSpace: 'nowrap' }}>
+                        {formatDateIT(movimento.data_contabile)}
+                      </td>
+                      <td style={{ padding: '5px 8px 5px 0', color: COLORS.gray[700] }}>
+                        {movimento.descrizione || '—'}
+                        {movimento.duplicati_unificati > 0
+                          ? ` · ${movimento.duplicati_unificati} copia/e duplicate unificate`
+                          : ''}
+                      </td>
+                      <td style={{ padding: '5px 0', textAlign: 'right', fontWeight: 700 }}>
+                        {formatEuro(movimento.importo)}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr style={{ borderTop: `2px solid ${COLORS.border}` }}>
+                    <td colSpan={2} style={{ padding: '7px 8px 0 0', fontWeight: 800 }}>
+                      Totale ricalcolato ({(g.movimenti_banca || []).length} movimenti)
+                    </td>
+                    <td style={{ padding: '7px 0 0', textAlign: 'right', fontWeight: 800 }}>
+                      {formatEuro((g.movimenti_banca || []).reduce(
+                        (somma, movimento) => somma + Number(movimento.importo || 0), 0
+                      ))}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            ) : (
+              <div style={{ fontSize: 12, color: COLORS.warning }}>
+                Il totale è presente, ma il backend non ha restituito il dettaglio delle righe sorgente.
+              </div>
+            )}
           </div>
         </Td>
       </tr>

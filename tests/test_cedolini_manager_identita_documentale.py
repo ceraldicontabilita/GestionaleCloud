@@ -55,7 +55,10 @@ def _data(netto, tipo="mensile"):
     return {
         "codice_fiscale": "RSSMRA80A01H501U",
         "nome_dipendente": "Rossi Mario",
-        "mese": 12,
+        # Usa un mese gia' maturato nel periodo contabile operativo. Dicembre
+        # 2026 e' futuro rispetto alla data del collaudo e deve correttamente
+        # restare fuori dalla Prima Nota Salari.
+        "mese": 6,
         "anno": 2026,
         "netto_mese": netto,
         "lordo": netto + 500,

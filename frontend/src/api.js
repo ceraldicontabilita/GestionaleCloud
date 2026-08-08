@@ -49,7 +49,12 @@ api.interceptors.response.use(
     const cfg = error.config || {};
     const status = error.response?.status;
     const transitorio = !error.response || status === 502 || status === 503 || status === 504;
-    if (transitorio && (cfg.method || '').toLowerCase() === 'get' && !cfg.__ritentata) {
+    if (
+      transitorio
+      && (cfg.method || '').toLowerCase() === 'get'
+      && !cfg.__ritentata
+      && !cfg.__noRetry
+    ) {
       cfg.__ritentata = true;
       await new Promise(r => setTimeout(r, 2000));
       return api.request(cfg);

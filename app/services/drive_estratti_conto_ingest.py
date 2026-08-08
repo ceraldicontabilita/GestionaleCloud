@@ -232,14 +232,29 @@ def _troppo_vecchio(filename: str) -> bool:
     importati ne' spostati: restano dove sono, visibili, pronti per quando
     si abbassera' `DRIVE_ESTRATTI_ANNO_MINIMO`.
 
-    Un nome senza anno leggibile viene considerato arretrato: e' la scelta
-    prudente, perche' l'alternativa e' importare a caso meta' dello storico.
+    Un nome senza anno non viene piu' scartato: deve essere scaricato e letto.
+    Nella cartella reale tutti gli estratti Nexi 2026 si chiamano infatti
+    ``Estratto_Conto.pdf`` o ``Estratto_Conto (N).pdf``. Il controllo prudente
+    sul periodo viene eseguito sul contenuto prima di qualunque importazione.
     """
     minimo = int(getattr(settings, "DRIVE_ESTRATTI_ANNO_MINIMO", 0) or 0)
     if minimo <= 0:
         return False
     anno = classificazione_estratti.anno_del_nome(filename)
-    return anno is None or anno < minimo
+    return anno is not None and anno < minimo
+
+
+def _periodo_contenuto(filename: str, content: bytes) -> Tuple[Optional[int], bool]:
+    """Restituisce anno provato e indica se il documento va rimandato.
+
+    L'assenza di un anno non viene trasformata in uno zero: resta ``None`` e
+    il documento prosegue verso la classificazione, che lo fermera' in Errori
+    se anche la fonte non e' dimostrabile. Se invece il contenuto prova un
+    anno anteriore alla soglia, il file resta nella cartella senza scritture.
+    """
+    anno = classificazione_estratti.anno_documento(filename, content)
+    minimo = int(getattr(settings, "DRIVE_ESTRATTI_ANNO_MINIMO", 0) or 0)
+    return anno, bool(minimo > 0 and anno is not None and anno < minimo)
 
 
 def _work_item_priority(item: Dict[str, Any]) -> Tuple[int, str, str]:
@@ -398,7 +413,7 @@ async def sync(db) -> Dict[str, Any]:
             "paypal_transactions": 0, "paypal_transactions_linked": 0,
             "nexi_files": 0, "nexi_duplicates": 0,
             "nexi_transactions": 0, "unrecognized": 0,
-            "sources": [], "errors": [],
+            "sources": [], "errors": [], "deferred_content": 0,
         }
         files_by_id: Dict[str, Dict[str, Any]] = {}
         sources_by_id: Dict[str, Dict[str, str]] = {}
@@ -452,6 +467,31 @@ async def sync(db) -> Dict[str, Any]:
                 content = _download_bytes(service, item["id"])
                 if not content:
                     raise ValueError("file vuoto")
+                document_year, defer_by_content = _periodo_contenuto(
+                    item["name"], content,
+                )
+                if defer_by_content:
+                    # Non e' un errore e non va spostato: il documento e'
+                    # leggibile, ma appartiene allo storico fuori perimetro.
+                    # Il registro rende verificabile il motivo della mancata
+                    # importazione senza creare alcun movimento contabile.
+                    now_file = datetime.now(timezone.utc).isoformat()
+                    await db[_IMPORT_REGISTRY].update_one(
+                        {"drive_file_id": item["id"]},
+                        {"$set": {
+                            "drive_file_id": item["id"],
+                            "filename": item.get("name"),
+                            "source_path": item.get("source_path"),
+                            "status": "deferred_before_year",
+                            "document_year": document_year,
+                            "minimum_year": result["deferred_before_year"],
+                            "checked_at": now_file,
+                        }},
+                        upsert=True,
+                    )
+                    result["deferred"] += 1
+                    result["deferred_content"] += 1
+                    continue
                 # Verifica sempre il contenuto, anche quando percorso o nome
                 # sembrano gia' sufficienti. Nell'archivio reale nomi come
                 # "Movimenti carta" ed "Estratto_Conto" sono ambigui.
@@ -541,6 +581,7 @@ async def sync(db) -> Dict[str, Any]:
                         "filename": item.get("name"),
                         "source_path": item.get("source_path"),
                         "route": item.get("route"),
+                        "document_year": document_year,
                         "status": "processed",
                         "archive_recovery": archive_recovery,
                         "processed_at": now_file,
@@ -586,7 +627,17 @@ async def sync(db) -> Dict[str, Any]:
                 riconcilia_movimenti_banca,
             )
 
-            result["bank_reconciliation"] = await riconcilia_movimenti_banca()
+            # Il Drive operativo contiene dal 2026 in avanti. Limitare il
+            # replay allo stesso confine evita di riprocessare migliaia di
+            # movimenti storici a ogni ciclo di cinque minuti, mantenendo
+            # comunque il caso essenziale EC-prima/fattura-dopo.
+            anno_minimo = int(
+                getattr(settings, "DRIVE_ESTRATTI_ANNO_MINIMO", 0) or 0
+            )
+            data_dal = f"{anno_minimo}-01-01" if anno_minimo else None
+            result["bank_reconciliation"] = await riconcilia_movimenti_banca(
+                data_dal=data_dal,
+            )
         except Exception as exc:
             logger.exception(
                 "Drive estratti conto: riprocessamento bancario finale fallito"

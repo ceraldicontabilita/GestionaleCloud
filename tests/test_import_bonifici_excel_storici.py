@@ -66,10 +66,10 @@ def test_importa_busta_e_acconto_separati_ed_e_idempotente(monkeypatch):
             "DATA ACCONTO", "IMPORTO ACCONTO",
         ],
         [
-            [2025, "Gennaio", "Mario Rossi", 9999, "10/02/2025", 1200.50],
-            [2025, "Gennaio", "Mario Rossi", 9999, "10/02/2025", 1200.50],
-            [2025, "Gennaio", "Mario Rossi", None, "20/02/2025", 1200.50],
-            [2025, "Febbraio", "Lucia Verdi", 1500, None, None],
+            [2025, "Dicembre", "Mario Rossi", 9999, "10/12/2025", 1200.50],
+            [2025, "Dicembre", "Mario Rossi", 9999, "10/12/2025", 1200.50],
+            [2025, "Dicembre", "Mario Rossi", None, "20/12/2025", 1200.50],
+            [2026, "Gennaio", "Lucia Verdi", 1500, None, None],
         ],
     )
 
@@ -86,7 +86,7 @@ def test_importa_busta_e_acconto_separati_ed_e_idempotente(monkeypatch):
     assert secondo["duplicates"] == 4
     assert len(db.collection.docs) == 3
     assert {d["data_bonifico_documentata"] for d in db.collection.docs} == {
-        "2025-02-10", "2025-02-20", None,
+        "2025-12-10", "2025-12-20", None,
     }
     mario = [d for d in db.collection.docs if d["dipendente"] == "MARIO ROSSI"]
     assert sorted(d["importo_busta"] for d in mario) == [0, 9999]
@@ -108,7 +108,7 @@ def test_import_generico_senza_data_bonifico(monkeypatch):
     monkeypatch.setattr(modulo.Database, "get_db", lambda: db)
     content = _xlsx(
         ["Dipendente", "Mese", "Anno", "Importo erogato"],
-        [["Dipendente Test", "Marzo", 2024, "1.234,56"]],
+        [["Dipendente Test", "Gennaio", 2026, "1.234,56"]],
     )
 
     esito = asyncio.run(modulo.import_bonifici(_upload(content)))
@@ -125,7 +125,7 @@ def test_importo_busta_da_solo_viene_importato_ma_non_diventa_bonifico(monkeypat
     monkeypatch.setattr(modulo.Database, "get_db", lambda: db)
     content = _xlsx(
         ["Dipendente", "Mese", "Anno", "Importo Busta"],
-        [["Dipendente Test", "Marzo", 2024, 1500]],
+        [["Dipendente Test", "Gennaio", 2026, 1500]],
     )
 
     esito = asyncio.run(modulo.import_bonifici(_upload(content)))
@@ -148,10 +148,10 @@ def test_secondo_import_aggiorna_la_busta_su_bonifico_gia_importato(monkeypatch)
             "ANNO", "MESE", "NOME DIPENDENTE", "IMPORTO BUSTA",
             "DATA ACCONTO", "IMPORTO ACCONTO",
         ],
-        [[2025, "Gennaio", "Mario Rossi", 1350, "10/02/2025", 1200.50]],
+        [[2025, "Dicembre", "Mario Rossi", 1350, "10/12/2025", 1200.50]],
     )
     key = modulo._chiave_bonifico_excel(
-        "MARIO ROSSI", 2025, 1, "2025-02-10", 1200.50,
+        "MARIO ROSSI", 2025, 12, "2025-12-10", 1200.50,
     )
     db.collection.docs.append({
         "import_key": key,
@@ -167,3 +167,20 @@ def test_secondo_import_aggiorna_la_busta_su_bonifico_gia_importato(monkeypatch)
     assert esito["duplicates"] == 0
     assert db.collection.docs[0]["importo_busta"] == 1350
     assert db.collection.docs[0]["importo_busta_documentato"] == 1350
+
+
+def test_import_ignora_competenze_precedenti_dicembre_2025(monkeypatch):
+    from app.routers.accounting import prima_nota_salari as modulo
+
+    db = _Db()
+    monkeypatch.setattr(modulo.Database, "get_db", lambda: db)
+    content = _xlsx(
+        ["Dipendente", "Mese", "Anno", "Importo Busta"],
+        [["Dipendente Storico", "Novembre", 2025, 1500]],
+    )
+
+    esito = asyncio.run(modulo.import_bonifici(_upload(content)))
+
+    assert esito["created"] == 0
+    assert esito["skipped"] == 1
+    assert db.collection.docs == []

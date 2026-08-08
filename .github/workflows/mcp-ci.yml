@@ -1,0 +1,70 @@
+name: MCP gateway
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "gestionale_mcp/**"
+      - "tests/test_mcp_gateway.py"
+      - "tests/test_mcp_openapi_contract.py"
+      - "app/**"
+      - "backend/requirements.txt"
+      - ".github/workflows/mcp-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "gestionale_mcp/**"
+      - "tests/test_mcp_gateway.py"
+      - "tests/test_mcp_openapi_contract.py"
+      - "app/**"
+      - "backend/requirements.txt"
+      - ".github/workflows/mcp-ci.yml"
+
+env:
+  PYTHONUTF8: "1"
+
+jobs:
+  contract-and-gateway:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            gestionale_mcp/requirements.txt
+            gestionale_mcp/requirements-dev.txt
+
+      - name: Installa dipendenze backend e verifica contratto OpenAPI
+        run: |
+          python -m pip install -r backend/requirements.txt
+          python -m pytest -q tests/test_mcp_openapi_contract.py
+
+      - name: Installa SDK MCP isolato e verifica gateway
+        run: |
+          python -m pip install -r gestionale_mcp/requirements-dev.txt
+          python -m pytest -q tests/test_mcp_gateway.py
+          python -m compileall -q gestionale_mcp
+
+      - name: Smoke server Streamable HTTP autenticato
+        env:
+          GESTIONALE_MCP_API_BASE_URL: http://127.0.0.1:8000
+          GESTIONALE_MCP_ISSUER_URL: https://impresasemplice.online
+          GESTIONALE_MCP_RESOURCE_SERVER_URL: https://mcp.impresasemplice.online
+          GESTIONALE_MCP_ALLOWED_HOSTS: "127.0.0.1:*"
+          GESTIONALE_MCP_ALLOWED_ORIGINS: "http://127.0.0.1:*"
+        run: |
+          python - <<'PY'
+          from gestionale_mcp.config import MCPConfig
+          from gestionale_mcp.server import create_server
+
+          server = create_server(MCPConfig.from_env(), authenticated_http=True)
+          app = server.streamable_http_app(json_response=True, stateless_http=True)
+          assert len(server._tool_manager.list_tools()) == 17
+          assert any(route.path == "/mcp" for route in app.routes)
+          PY

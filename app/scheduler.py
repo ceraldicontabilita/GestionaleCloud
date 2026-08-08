@@ -5,15 +5,128 @@ Scheduler per task automatici.
 import logging
 import uuid
 import asyncio
-from datetime import datetime, timedelta
+import inspect
+import os
+import socket
+from contextlib import suppress
+from datetime import datetime, timedelta, timezone
+from functools import wraps
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 import random
 
 logger = logging.getLogger(__name__)
 
-# Scheduler instance
-scheduler = AsyncIOScheduler()
+async def _esegui_con_lease_distribuito(job_id, funzione, *args, **kwargs):
+    """Esegue un job una sola volta anche con piu' worker/istanze.
+
+    Il lock vive in MongoDB ed e' acquisito con una singola operazione atomica.
+    Un heartbeat prolunga la lease mentre il job lavora; se il processo muore,
+    la scadenza permette a un'altra istanza di riprendere il ciclo successivo.
+    """
+    from app.config import settings
+    from app.database import Database
+
+    db = Database.get_db()
+    if db is None:
+        raise RuntimeError(f"Scheduler {job_id}: database non disponibile")
+
+    durata = max(int(getattr(settings, "SCHEDULER_LEASE_SECONDS", 21600)), 60)
+    owner = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4()}"
+    adesso = datetime.now(timezone.utc)
+    filtro = {
+        "_id": job_id,
+        "$or": [
+            {"expires_at": {"$lte": adesso}},
+            {"expires_at": {"$exists": False}},
+        ],
+    }
+    try:
+        lease = await db["scheduler_leases"].find_one_and_update(
+            filtro,
+            {
+                "$set": {
+                    "owner": owner,
+                    "acquired_at": adesso,
+                    "expires_at": adesso + timedelta(seconds=durata),
+                },
+                "$setOnInsert": {"created_at": adesso},
+            },
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+    except DuplicateKeyError:
+        lease = None
+
+    if not lease or lease.get("owner") != owner:
+        logger.info("[SCHEDULER] job %s gia' in esecuzione su un'altra istanza", job_id)
+        return None
+
+    async def _heartbeat():
+        try:
+            while True:
+                await asyncio.sleep(min(60, max(durata // 3, 10)))
+                rinnovo = datetime.now(timezone.utc)
+                result = await db["scheduler_leases"].update_one(
+                    {"_id": job_id, "owner": owner},
+                    {"$set": {"expires_at": rinnovo + timedelta(seconds=durata)}},
+                )
+                if not result.matched_count:
+                    logger.error("[SCHEDULER] lease persa durante il job %s", job_id)
+                    return
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # Un guasto transitorio del rinnovo deve essere visibile, ma non
+            # deve sostituire l'eccezione o il risultato del job principale.
+            logger.exception("[SCHEDULER] heartbeat fallito per %s", job_id)
+
+    heartbeat = asyncio.create_task(_heartbeat())
+    try:
+        risultato = funzione(*args, **kwargs)
+        return await risultato if inspect.isawaitable(risultato) else risultato
+    finally:
+        heartbeat.cancel()
+        with suppress(asyncio.CancelledError):
+            await heartbeat
+        rilascio = datetime.now(timezone.utc)
+        try:
+            await db["scheduler_leases"].update_one(
+                {"_id": job_id, "owner": owner},
+                {"$set": {"expires_at": rilascio, "released_at": rilascio}},
+            )
+        except Exception:
+            # La lease scade comunque; non mascherare l'esito del job.
+            logger.exception("[SCHEDULER] rilascio lease fallito per %s", job_id)
+
+
+class DistributedLockedScheduler(AsyncIOScheduler):
+    """APScheduler con esclusione distribuita applicata a ogni job."""
+
+    def add_job(self, func, trigger=None, args=None, kwargs=None, id=None, **options):
+        job_id = id or getattr(func, "__name__", str(uuid.uuid4()))
+
+        @wraps(func)
+        async def _locked(*job_args, **job_kwargs):
+            return await _esegui_con_lease_distribuito(
+                job_id, func, *job_args, **job_kwargs
+            )
+
+        return super().add_job(
+            _locked,
+            trigger,
+            args=args,
+            kwargs=kwargs,
+            id=id,
+            **options,
+        )
+
+
+# Un solo oggetto per processo; il lock Mongo impedisce duplicazioni tra
+# worker e istanze orizzontali.
+scheduler = DistributedLockedScheduler()
 
 async def scan_verbali_email_task():
     """
@@ -649,18 +762,22 @@ def start_scheduler():
             logger.error(f"[SCHEDULER-SUMUP-PN] errore: {e}")
         try:
             from app.database import Database
-            from app.services.scritture_contabili import recupera_pos_storico_da_estratto
+            from app.services.scritture_contabili import bonifica_accrediti_pos_numia
 
-            r = await recupera_pos_storico_da_estratto(
-                Database.get_db(), anno_corrente
+            r = await bonifica_accrediti_pos_numia(
+                Database.get_db(), anno_corrente, dry_run=False,
+                actor={"sub": "scheduler-pos-numia"},
             )
-            if r.get("creati") or r.get("aggiornati"):
+            recupero = r.get("recupero_storico") or {}
+            if (r.get("righe_prima_nota_archiviate")
+                    or recupero.get("creati") or recupero.get("aggiornati")):
                 logger.info(
-                    "[SCHEDULER-NUMIA-EC] giorni=%s creati=%s aggiornati=%s "
-                    "saltati_manuali=%s",
-                    r.get("giorni_bancari", 0), r.get("creati", 0),
-                    r.get("aggiornati", 0),
-                    r.get("saltati_per_chiusura_manuale", 0),
+                    "[SCHEDULER-NUMIA-EC] giorni=%s riconciliati=%s "
+                    "legacy_archiviate=%s creati=%s aggiornati=%s",
+                    r.get("giornate_numia", 0),
+                    r.get("giornate_riconciliate", 0),
+                    r.get("righe_prima_nota_archiviate", 0),
+                    recupero.get("creati", 0), recupero.get("aggiornati", 0),
                 )
         except Exception as e:
             logger.error(f"[SCHEDULER-NUMIA-EC] errore: {e}")

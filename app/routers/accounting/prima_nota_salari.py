@@ -21,6 +21,10 @@ import hashlib
 from decimal import Decimal, InvalidOperation
 
 from app.database import Database
+from app.services.salari_periodo import (
+    filtro_periodo_prima_nota,
+    periodo_ammesso_in_prima_nota,
+)
 from app.utils.dependencies import get_current_admin_user, get_current_user
 
 logger = logging.getLogger(__name__)
@@ -172,7 +176,7 @@ async def get_prima_nota_salari(
     from app.services.bonifici_pdf_ingest import arricchisci_nomi_salari_da_cedolini
     await arricchisci_nomi_salari_da_cedolini(db)
     
-    query = {}
+    query = filtro_periodo_prima_nota()
     if anno:
         query["anno"] = anno
     if mese:
@@ -187,6 +191,7 @@ async def get_prima_nota_salari(
     # Espone soltanto un booleano leggero, mai il PDF base64 nella lista.
     query_pdf: Dict[str, Any] = {
         "pdf_data": {"$exists": True, "$nin": [None, ""]},
+        **filtro_periodo_prima_nota(),
     }
     if anno:
         query_pdf["anno"] = anno
@@ -538,7 +543,7 @@ async def get_riepilogo_salari(
     """Riepilogo statistiche salari."""
     db = Database.get_db()
     
-    query = {"anno": anno}
+    query = {**filtro_periodo_prima_nota(), "anno": anno}
     if mese:
         query["mese"] = mese
     
@@ -649,6 +654,8 @@ async def import_paghe(file: UploadFile = File(...)) -> Dict[str, Any]:
                 anno = anno_val.year
             else:
                 anno = int(anno_val)
+            if not periodo_ammesso_in_prima_nota(anno, mese):
+                continue
             
             importo = float(row[col_importo]) if pd.notna(row[col_importo]) else 0
             
@@ -827,6 +834,9 @@ async def import_bonifici(file: UploadFile = File(...)) -> Dict[str, Any]:
             
             if mese == 0 or mese > 14 or not anno:
                 errors.append(f"Riga {idx + 2}: mese non valido ({mese_val})")
+                continue
+            if not periodo_ammesso_in_prima_nota(anno, mese):
+                skipped += 1
                 continue
 
             importo = _importo_positivo(row[col_importo]) if col_importo else None
@@ -1054,6 +1064,11 @@ async def aggiungi_aggiustamento(
     
     if not dipendente:
         raise HTTPException(status_code=400, detail="Dipendente obbligatorio")
+    if not periodo_ammesso_in_prima_nota(anno, mese):
+        raise HTTPException(
+            status_code=422,
+            detail="La prima nota salari ammette soltanto dicembre 2025 e i mesi dal 2026 fino a oggi",
+        )
     
     # Crea il record di aggiustamento
     new_record = {
@@ -1089,7 +1104,9 @@ async def aggiungi_aggiustamento(
 async def get_dipendenti_lista() -> List[str]:
     """Lista nomi dipendenti unici dalla prima nota salari."""
     db = Database.get_db()
-    dipendenti = await db["prima_nota_salari"].distinct("dipendente")
+    dipendenti = await db["prima_nota_salari"].distinct(
+        "dipendente", filtro_periodo_prima_nota()
+    )
     return sorted(dipendenti)
 
 
@@ -1166,7 +1183,10 @@ async def consolida_record() -> Dict[str, Any]:
     db = Database.get_db()
     
     # Ottieni tutti i record
-    all_records = await db["prima_nota_salari"].find({}, {"_id": 0}).to_list(10000)
+    filtro_contabile = filtro_periodo_prima_nota()
+    all_records = await db["prima_nota_salari"].find(
+        filtro_contabile, {"_id": 0}
+    ).to_list(10000)
     
     # Raggruppa per dipendente/anno/mese
     grouped = {}
@@ -1185,11 +1205,13 @@ async def consolida_record() -> Dict[str, Any]:
         return {"message": "Nessun record da consolidare", "duplicates": 0}
     
     # Elimina tutti e ricrea consolidati
-    await db["prima_nota_salari"].delete_many({})
+    await db["prima_nota_salari"].delete_many(filtro_contabile)
     
     created = 0
     for (dipendente, anno, mese), data in grouped.items():
         if not dipendente or not anno or not mese:
+            continue
+        if not periodo_ammesso_in_prima_nota(anno, mese):
             continue
         
         importo_busta = round(data["busta"], 2)

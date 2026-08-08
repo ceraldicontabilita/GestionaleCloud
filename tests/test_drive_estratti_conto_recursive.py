@@ -196,6 +196,5 @@ def test_l_arretrato_non_entra_nel_lavoro_ma_viene_contato(monkeypatch):
 
     items, _sources, rimandati = _discover_work_items(service, "root")
 
-    assert [item["id"] for item in items] == ["nuovo"]
-    assert sorted(rimandati) == ["EC-38949004-agosto 2024.pdf",
-                                 "Estratto_Conto (7).pdf"]
+    assert [item["id"] for item in items] == ["nuovo", "senza_anno"]
+    assert rimandati == ["EC-38949004-agosto 2024.pdf"]

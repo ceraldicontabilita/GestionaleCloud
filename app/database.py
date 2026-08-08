@@ -29,8 +29,10 @@ class Database:
 
                 cls.client = AsyncMongoMockClient()
                 cls.db = cls.client[settings.DB_NAME]
-                await cls._create_indexes()
-                await cls._ensure_builtin_senders()
+                if settings.RUN_STARTUP_INDEX_MIGRATIONS:
+                    await cls._create_indexes()
+                if settings.RUN_STARTUP_SEED_DATA:
+                    await cls._ensure_builtin_senders()
                 logger.info("Connected to isolated in-memory MongoDB for local testing")
                 return
 
@@ -39,7 +41,16 @@ class Database:
                 mongo_uri,
                 maxPoolSize=settings.MONGODB_MAX_POOL_SIZE,
                 minPoolSize=settings.MONGODB_MIN_POOL_SIZE,
-                serverSelectionTimeoutMS=settings.MONGODB_TIMEOUT_MS
+                serverSelectionTimeoutMS=settings.MONGODB_TIMEOUT_MS,
+                connectTimeoutMS=settings.MONGODB_CONNECT_TIMEOUT_MS,
+                socketTimeoutMS=settings.MONGODB_SOCKET_TIMEOUT_MS,
+                waitQueueTimeoutMS=settings.MONGODB_WAIT_QUEUE_TIMEOUT_MS,
+                maxIdleTimeMS=settings.MONGODB_MAX_IDLE_TIME_MS,
+                retryReads=True,
+                retryWrites=True,
+                tz_aware=True,
+                uuidRepresentation="standard",
+                appname="GestionaleCloud",
             )
             cls.db = cls.client[settings.DB_NAME]
             
@@ -47,13 +58,15 @@ class Database:
             await cls.client.admin.command('ping')
             logger.info(f"✅ Connected to MongoDB database: {settings.DB_NAME}")
             
-            # Create indexes for unique constraints
-            await cls._create_indexes()
+            # Provisioning e migrazioni non appartengono al lifecycle web:
+            # 144 create_index sequenziali ad ogni avvio rallentavano il deploy
+            # e rendevano ogni replica capace di mutare lo schema.
+            if settings.RUN_STARTUP_INDEX_MIGRATIONS:
+                await cls._create_indexes()
 
-            # Rende visibili nella pagina Mittenti Email le fonti istituzionali
-            # gia' previste dai servizi Verbali/PagoPA. Operazione idempotente:
-            # non riattiva e non modifica mai un mittente disabilitato.
-            await cls._ensure_builtin_senders()
+            if settings.RUN_STARTUP_SEED_DATA:
+                # Operazione idempotente ma comunque separata dallo startup.
+                await cls._ensure_builtin_senders()
             
         except Exception as e:
             logger.error(f"❌ Error connecting to MongoDB: {e}")
@@ -71,19 +84,25 @@ class Database:
             logger.exception("Impossibile assicurare i mittenti istituzionali")
 
     @classmethod
-    async def _create_indexes(cls) -> None:
+    async def _create_indexes(cls, *, strict: bool = False) -> dict:
         """Create database indexes for unique constraints and performance."""
         db = cls.db
         created = 0
         skipped = 0
+        failures = []
         
         async def _safe_index(collection_name, keys, **kwargs):
-            nonlocal created, skipped
+            nonlocal created, skipped, failures
             try:
                 await db[collection_name].create_index(keys, **kwargs)
                 created += 1
             except Exception as exc:
                 skipped += 1
+                failures.append({
+                    "collection": collection_name,
+                    "index": kwargs.get("name") or str(keys),
+                    "error": str(exc),
+                })
                 logger.warning(
                     "Indice non creato su %s (%s): %s",
                     collection_name,
@@ -132,8 +151,28 @@ class Database:
                           name="idx_dizionario_descrizione")
         
         # --- Estratto Conto ---
+        await _safe_index(
+            Collections.BANK_STATEMENTS, "id", unique=True,
+            name="idx_ec_id_unique",
+        )
         await _safe_index(Collections.BANK_STATEMENTS, [("data", -1)], name="idx_ec_data")
         await _safe_index(Collections.BANK_STATEMENTS, [("importo", 1)], name="idx_ec_importo")
+        await _safe_index(
+            Collections.BANK_STATEMENTS,
+            [("data", -1), ("importo", 1), ("riconciliato", 1)],
+            name="idx_ec_data_importo_riconciliato",
+        )
+
+        # Retry e doppio click di un pagamento manuale non devono generare
+        # due righe. La chiave operazione e' deterministica per request.
+        await _safe_index(
+            Collections.CASH_MOVEMENTS, "payment_operation_id",
+            unique=True, sparse=True, name="idx_pn_cassa_payment_operation_unique",
+        )
+        await _safe_index(
+            "prima_nota_banca", "payment_operation_id",
+            unique=True, sparse=True, name="idx_pn_banca_payment_operation_unique",
+        )
         
         # --- F24 ---
         await _safe_index(Collections.F24_MODELS, [("periodo", 1), ("stato", 1)], name="idx_f24_periodo_stato")
@@ -143,6 +182,24 @@ class Database:
         
         # --- Fornitori ---
         await _safe_index(Collections.SUPPLIERS, "partita_iva", unique=True, sparse=True, name="idx_fornitori_piva_unique")
+        # I fornitori storici e quelli del nuovo gestionale convivono nella
+        # stessa collezione. Il vecchio indice match_key_1 comprendeva anche i
+        # documenti privi di match_key e poteva quindi bloccare l'import XML
+        # con E11000 su match_key null. L'unicita' vale solo per chiavi forti.
+        try:
+            supplier_indexes = await db[Collections.SUPPLIERS].index_information()
+            legacy_match_index = supplier_indexes.get("match_key_1")
+            if legacy_match_index and not legacy_match_index.get("partialFilterExpression"):
+                await db[Collections.SUPPLIERS].drop_index("match_key_1")
+        except Exception:
+            logger.exception("Impossibile normalizzare l'indice legacy match_key fornitori")
+        await _safe_index(
+            Collections.SUPPLIERS,
+            "match_key",
+            unique=True,
+            partialFilterExpression={"match_key": {"$type": "string"}},
+            name="idx_fornitori_match_key_unique",
+        )
         
         # --- Anno indexes ---
         await _safe_index(Collections.INVOICES, "anno", name="idx_invoices_anno")
@@ -463,7 +520,17 @@ class Database:
         # Dedup cross-canale documents_inbox per impronta md5.
         await _safe_index("documents_inbox", "file_hash", sparse=True, name="idx_docs_inbox_hash")
 
-        logger.info(f"✅ Database indexes: {created} creati, {skipped} già esistenti")
+        logger.info(
+            "Database indexes: %s verificati/creati, %s falliti",
+            created,
+            skipped,
+        )
+        if strict and failures:
+            raise RuntimeError(
+                f"Provisioning indici incompleto: {len(failures)} errori; "
+                f"primo={failures[0]}"
+            )
+        return {"verified_or_created": created, "failed": failures}
 
     @classmethod
     async def close_db(cls) -> None:

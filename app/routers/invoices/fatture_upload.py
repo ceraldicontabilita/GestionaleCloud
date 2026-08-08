@@ -299,6 +299,11 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
     cliente_data = parsed_invoice.get("cliente") or {}
     cliente_piva = (cliente_data.get("partita_iva") or "").strip().upper().replace(" ", "")
     cedente_piva_norm = supplier_vat.strip().upper().replace(" ", "")
+    supplier_match_key = (
+        cedente_piva_norm[2:]
+        if cedente_piva_norm.startswith("IT")
+        else cedente_piva_norm
+    )
     stesso_soggetto = False
     if cliente_piva and cliente_piva.lstrip("IT") == cedente_piva_norm.lstrip("IT"):
         stesso_soggetto = True
@@ -399,6 +404,9 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
         # Aggiorna SEMPRE i campi anagrafici mancanti (non sovrascrive quelli già compilati)
         update_data = {}
         field_map = {
+            "match_key": supplier_match_key,
+            "name": supplier_name,
+            "vat": f"IT{supplier_match_key}" if supplier_match_key.isdigit() and len(supplier_match_key) == 11 else supplier_vat,
             "partita_iva": supplier_vat,
             "piva": supplier_vat,
             "nome": supplier_name,
@@ -446,6 +454,9 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
     # Fornitore non esiste — CREA
     new_supplier = {
         "id": str(uuid.uuid4()),
+        "match_key": supplier_match_key,
+        "name": supplier_name,
+        "vat": f"IT{supplier_match_key}" if supplier_match_key.isdigit() and len(supplier_match_key) == 11 else supplier_vat,
         "nome": supplier_name,
         "ragione_sociale": supplier_name,
         "partita_iva": supplier_vat,

@@ -1,0 +1,4 @@
+# Ambiente separato dal backend FastAPI: MCP 2 usa uno stack ASGI più recente.
+mcp==2.0.0
+httpx==0.28.1
+pydantic==2.12.5

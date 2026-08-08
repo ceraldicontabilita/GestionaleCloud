@@ -71,6 +71,7 @@ def normalizza_payout(grezzo: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "payout_id": str(payout_id),
         "data": data,
         "netto": round(abs(_importo(grezzo.get("amount"))), 2),
+        "commissione_api": round(abs(_importo(grezzo.get("fee_total"))), 2),
         "valuta": str(grezzo.get("currency") or "EUR").upper(),
         "stato": str(grezzo.get("status") or "").strip().upper(),
         "riferimento": str(grezzo.get("reference") or ""),
@@ -145,11 +146,19 @@ async def registra_payout(db, grezzo: Dict[str, Any], *,
     if transazioni is None:
         transazioni = await _transazioni_del_payout(db, payout_id)
     componenti = componenti_del_payout(transazioni, payout_id)
-    commissione = calcola_commissione(
+    commissione_calcolata = calcola_commissione(
         vendite=componenti["vendite"],
         rimborsi=componenti["rimborsi"],
         chargeback=componenti["chargeback"],
         netto=payout["netto"],
+    )
+    # La fee restituita dal Financial Payout e' la fonte primaria. Il calcolo
+    # inverso resta una quadratura indipendente e puo' differire di un centesimo
+    # per gli arrotondamenti applicati alla singola transazione.
+    commissione = (
+        payout["commissione_api"]
+        if payout.get("commissione_api") > 0
+        else commissione_calcolata
     )
 
     # Senza transazioni collegate non si sa cosa copre l'accredito: agganciarlo
@@ -164,6 +173,13 @@ async def registra_payout(db, grezzo: Dict[str, Any], *,
         **payout,
         **componenti,
         "commissione": commissione,
+        "commissione_calcolata": commissione_calcolata,
+        "credito_coperto": round(
+            componenti["vendite"] - componenti["rimborsi"]
+            - componenti["chargeback"], 2
+        ),
+        "movimento_mastercard": payout["netto"],
+        "tipo_record": "payout",
         "stato_riconciliazione": stato,
         "gestore": GESTORE,
         "conto_contabile": conti_pos.conto_accredito(GESTORE),
@@ -190,6 +206,7 @@ async def registra_payout(db, grezzo: Dict[str, Any], *,
         "netto": payout["netto"],
         **componenti,
         "commissione": commissione,
+        "commissione_calcolata": commissione_calcolata,
         "stato_riconciliazione": stato,
         "scrittura": scrittura,
         "crediti_chiusi": aggiornati,
@@ -198,7 +215,103 @@ async def registra_payout(db, grezzo: Dict[str, Any], *,
         "quadra": abs(
             componenti["vendite"] - componenti["rimborsi"]
             - componenti["chargeback"] - payout["netto"] - commissione
-        ) <= TOLLERANZA,
+        ) <= 0.05,
+    }
+
+
+async def registra_rettifica_payout(
+    db, gruppo: Dict[str, Any], *,
+    transazioni: Iterable[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Registra una deduzione SumUp separata dal payout ordinario.
+
+    Un rimborso/chargeback riduce la Mastercard e il credito gia' aperto dalle
+    vendite. Non e' una commissione e non e' un nuovo ricavo. Le due righe
+    contabili condividono lo stesso settlement id e sono idempotenti.
+    """
+    payout_id = str(gruppo.get("payout_id") or gruppo.get("reference") or "")
+    data_payout = str(gruppo.get("date") or "")[:10]
+    importo = round(abs(_importo(gruppo.get("deduction_amount"))), 2)
+    if not payout_id or not data_payout or importo <= TOLLERANZA:
+        return {"success": False, "motivo": "rettifica payout non interpretabile"}
+
+    transazioni = [t for t in transazioni if isinstance(t, dict)]
+    giorni = sorted({str(t.get("data") or "")[:10] for t in transazioni if t.get("data")})
+    now = datetime.now(timezone.utc).isoformat()
+    documento = {
+        "payout_id": payout_id,
+        "data": data_payout,
+        "netto": round(-importo, 2),
+        "movimento_mastercard": round(-importo, 2),
+        "commissione": 0.0,
+        "credito_coperto": round(-importo, 2),
+        "giorni": giorni,
+        "transazioni": len(transazioni),
+        "tipo_record": "rettifica",
+        "tipi": list(gruppo.get("tipi") or []),
+        "stato": str(gruppo.get("status") or "").upper(),
+        "stato_riconciliazione": (
+            "rettifica_confermata" if giorni and gruppo.get("status") == "SUCCESSFUL"
+            else "rettifica_da_verificare"
+        ),
+        "gestore": GESTORE,
+        "conto_contabile": conti_pos.conto_accredito(GESTORE),
+        "record_ids": list(gruppo.get("record_ids") or []),
+        "updated_at": now,
+    }
+    await db[COLL_PAYOUT].update_one(
+        {"payout_id": payout_id},
+        {"$set": documento, "$setOnInsert": {"created_at": now}},
+        upsert=True,
+    )
+
+    settlement_id = f"sumup:{payout_id}"
+    comune = {
+        "data": data_payout,
+        "settlement_id": settlement_id,
+        "payout_id": payout_id,
+        "gestore": GESTORE,
+        "circuito": "SUMUP",
+        "giorni_coperti": giorni,
+    }
+    credito = {
+        **comune,
+        "tipo": "entrata",
+        "importo": importo,
+        "categoria": "Crediti verso gestori incassi",
+        "descrizione": f"Rettifica credito SumUp — {payout_id}",
+        "source": "rettifica_credito_pos",
+        "natura": NATURA_CREDITO_POS,
+        "conto_contabile": conti_pos.conto_credito(GESTORE),
+        "conto_nome": conti_pos.descrizione_conto(conti_pos.conto_credito(GESTORE)),
+    }
+    mastercard = {
+        **comune,
+        "tipo": "uscita",
+        "importo": importo,
+        "categoria": "Rettifiche POS",
+        "descrizione": f"Deduzione SumUp su Mastercard — {payout_id}",
+        "source": "rettifica_payout",
+        "natura": "liquidita",
+        "conto_contabile": conti_pos.conto_accredito(GESTORE),
+        "conto_nome": conti_pos.descrizione_conto(conti_pos.conto_accredito(GESTORE)),
+    }
+    scritture = {}
+    for ruolo, movimento in (("credito", credito), ("mastercard", mastercard)):
+        identificativo, _ = await _scrivi_se_assente(
+            db, "banca",
+            {"settlement_id": settlement_id, "source": movimento["source"]},
+            movimento,
+        )
+        scritture[ruolo] = identificativo
+    return {
+        "success": True,
+        "payout_id": payout_id,
+        "data": data_payout,
+        "rettifica": importo,
+        "giorni": giorni,
+        "stato_riconciliazione": documento["stato_riconciliazione"],
+        "scritture": scritture,
     }
 
 

@@ -848,6 +848,7 @@ def extract_supplier_name(descrizione: str) -> Optional[str]:
 
 async def riconcilia_movimenti_banca(
     movimento_ids: Optional[List[str]] = None,
+    data_dal: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Motore unico di riconciliazione automatica estratto conto ↔ fatture/F24/
@@ -887,7 +888,7 @@ async def riconcilia_movimenti_banca(
             sincronizza_assegni_da_estratto_conto,
         )
         esito_assegni = await sincronizza_assegni_da_estratto_conto(
-            db, movimento_ids=movimento_ids,
+            db, movimento_ids=movimento_ids, data_dal=data_dal,
         )
         results["assegni_sincronizzati"] = esito_assegni
         results["riconciliati_assegni"] = esito_assegni.get("assegni_riconciliati", 0)
@@ -921,6 +922,9 @@ async def riconcilia_movimenti_banca(
         results["ambito"] = "nuovi_movimenti"
     else:
         results["ambito"] = "completo"
+    if data_dal:
+        filtri_movimenti.append({"data": {"$gte": str(data_dal)}})
+        results["data_dal"] = str(data_dal)
 
     movimenti_ec = await db[COLLECTION_ESTRATTO_CONTO].find(
         {"$and": filtri_movimenti},

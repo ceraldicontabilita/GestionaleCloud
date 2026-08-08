@@ -90,6 +90,7 @@ scheduler, usare `ENVIRONMENT=testing` e `MONGO_URL=mongomock://localhost`.
 - `memoria/BACKLOG.md` — backlog operativo con priorita'
 - `PIANO_LAVORO_RELAZIONALE.md` — architettura relazionale, catalogo alert, piano 8 fasi
 - `docs/AUDIT_PDF_IVA_QUALITA_DATI.md` — audit end-to-end, regole IVA, import documenti e recovery
+- `docs/SPECIFICA_OPERATIVA_GESTIONALECLOUD.md` — specifica canonica, stato verificato e piano prioritario
 - `docs/MCP_GESTIONALE_SPEC.md` — contratto proposto per strumenti AI riusabili e autorizzati
 
 ## Architettura relazionale

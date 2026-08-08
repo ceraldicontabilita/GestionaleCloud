@@ -12,7 +12,7 @@ from app.routers.fatture_module.ciclo_utils import COL_SCADENZIARIO
 from .common import COL_FORNITORI, COL_FATTURE_RICEVUTE, logger
 
 
-async def paga_fattura_manuale(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+async def _paga_fattura_manuale_legacy(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """Registra il pagamento manuale in Cassa o Banca.
 
     La registrazione bancaria resta non riconciliata finche' non viene
@@ -213,6 +213,26 @@ async def paga_fattura_manuale(payload: Dict[str, Any] = Body(...)) -> Dict[str,
 
 
 
+from app.services.invoice_payments import (
+    InvoiceBankReconciliationRequest,
+    ManualInvoicePaymentRequest,
+    ManualInvoicePaymentResponse,
+    register_manual_invoice_payment,
+)
+
+
+async def paga_fattura_manuale(
+    payload: ManualInvoicePaymentRequest,
+) -> Dict[str, Any]:
+    """API rigorosa e atomica per il pagamento manuale."""
+    if isinstance(payload, dict):
+        try:
+            payload = ManualInvoicePaymentRequest.model_validate(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail="Payload pagamento non valido") from exc
+    return await register_manual_invoice_payment(Database.get_db(), payload)
+
+
 async def cambia_metodo_pagamento_fattura(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """Modifica il metodo di pagamento di una fattura."""
     db = Database.get_db()
@@ -266,7 +286,7 @@ async def cambia_metodo_pagamento_fattura(payload: Dict[str, Any] = Body(...)) -
     }
 
 
-async def riconcilia_fattura_con_estratto_conto(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+async def _riconcilia_fattura_con_estratto_conto_legacy(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """Riconcilia fattura con movimento estratto conto."""
     db = Database.get_db()
     
@@ -353,6 +373,20 @@ async def riconcilia_fattura_con_estratto_conto(payload: Dict[str, Any] = Body(.
         "movimento_id": movimento_id,
         "message": "Riconciliazione completata"
     }
+
+
+async def riconcilia_fattura_con_estratto_conto(
+    payload: InvoiceBankReconciliationRequest,
+) -> Dict[str, Any]:
+    """API atomica: numero fattura e importo al centesimo sono obbligatori."""
+    from app.services.invoice_payments import reconcile_invoice_bank_movement
+
+    if isinstance(payload, dict):
+        try:
+            payload = InvoiceBankReconciliationRequest.model_validate(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail="Payload riconciliazione non valido") from exc
+    return await reconcile_invoice_bank_movement(Database.get_db(), payload)
 
 
 async def verifica_incoerenze_estratto_conto() -> Dict[str, Any]:

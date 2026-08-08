@@ -496,29 +496,33 @@ async def processa_cedolino_v2(
             if tipo_cedolino == "mensile"
             else tipo_cedolino
         )
-        existing_pn = await db["prima_nota_salari"].find_one({
-            "$or": [
-                {"cedolino_dedup_key": cedolino_dedup_key},
-                {"$and": [
-                    {
-                        "cedolino_dedup_key": {"$exists": False},
-                        "mese": int(mese), "anno": int(anno),
-                        "tipo_cedolino": pn_tipo_filter,
-                    },
-                    {"$or": [
-                        {"cedolino_id": cedolino_id},
-                        {"dipendente_id": dipendente_id},
-                        {"codice_fiscale": cf},
+        from app.services.salari_periodo import periodo_ammesso_in_prima_nota
+        periodo_contabile = periodo_ammesso_in_prima_nota(anno, mese)
+        existing_pn = None
+        if periodo_contabile:
+            existing_pn = await db["prima_nota_salari"].find_one({
+                "$or": [
+                    {"cedolino_dedup_key": cedolino_dedup_key},
+                    {"$and": [
+                        {
+                            "cedolino_dedup_key": {"$exists": False},
+                            "mese": int(mese), "anno": int(anno),
+                            "tipo_cedolino": pn_tipo_filter,
+                        },
+                        {"$or": [
+                            {"cedolino_id": cedolino_id},
+                            {"dipendente_id": dipendente_id},
+                            {"codice_fiscale": cf},
+                        ]},
+                        {"$or": [
+                            {"importo_busta": netto},
+                            {"importo": netto},
+                        ]},
                     ]},
-                    {"$or": [
-                        {"importo_busta": netto},
-                        {"importo": netto},
-                    ]},
-                ]},
-            ]
-        })
+                ]
+            })
         
-        if not existing_pn:
+        if periodo_contabile and not existing_pn:
             ultimo_giorno = calendar.monthrange(int(anno), int(mese))[1]
             pn_id = str(uuid.uuid4())
             
@@ -547,7 +551,7 @@ async def processa_cedolino_v2(
             
             await db["prima_nota_salari"].insert_one(dict(pn_record).copy())
             result["prima_nota_id"] = pn_id
-        else:
+        elif periodo_contabile:
             # Completa anche le vecchie righe create prima che il nome e il
             # collegamento al PDF fossero sempre persistiti. L'identita'
             # arriva dal cedolino/CF, mai da una somiglianza di importo.
@@ -573,11 +577,15 @@ async def processa_cedolino_v2(
         # --- 4. Riconciliazione automatica ---
         from app.services.cedolini_manager import riconcilia_stipendio_automatico
         
-        riconc = await riconcilia_stipendio_automatico(
-            db, nome, netto, int(mese), int(anno),
-            result.get("prima_nota_id") or (existing_pn or {}).get("id", ""),
-            cedolino_data.get("iban")
-        )
+        riconc = False
+        if periodo_contabile:
+            riconc = await riconcilia_stipendio_automatico(
+                db, nome, netto, int(mese), int(anno),
+                result.get("prima_nota_id") or (existing_pn or {}).get("id", ""),
+                cedolino_data.get("iban")
+            )
+        else:
+            result["prima_nota_fuori_periodo"] = True
         
         if riconc:
             result["riconciliato"] = True

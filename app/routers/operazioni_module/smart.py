@@ -196,6 +196,19 @@ async def riconcilia_automatico(
 
     errori = []
     try:
+        # Prima del matching fatture/cedolini ripulisce il vecchio modello
+        # NUMIA: le componenti BNCMT/INTER/AMEX dello stesso giorno non sono
+        # rimborsi distinti, ma prove dell'unico trasferimento POS giornaliero.
+        from app.services.scritture_contabili import bonifica_accrediti_pos_numia
+        pos_numia = await bonifica_accrediti_pos_numia(
+            db, datetime.now().year, dry_run=False,
+            actor={"sub": "riconciliazione-automatica"},
+        )
+    except Exception as exc:
+        logger.exception("Errore bonifica automatica accrediti POS NUMIA")
+        pos_numia = {}
+        errori.append({"motore": "pos_numia", "error": str(exc)})
+    try:
         from app.services.riconciliazione_bancaria import riconcilia_movimenti_banca
         banca = await riconcilia_movimenti_banca()
     except Exception as exc:
@@ -238,6 +251,7 @@ async def riconcilia_automatico(
         "riconciliati": riconciliati_canonici + riconciliati_documenti,
         "analizzati": int(banca.get("movimenti_analizzati") or 0),
         "banca": banca,
+        "pos_numia": pos_numia,
         "paypal": paypal,
         "documenti_pagamenti": documenti,
         "errori": errori[:10],

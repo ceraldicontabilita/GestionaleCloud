@@ -185,9 +185,29 @@ def test_l_arretrato_resta_fermo_e_l_anno_in_corso_passa(monkeypatch):
                         raising=False)
     assert ingest._troppo_vecchio("Export_Mensile_Luglio_2026.csv") is False
     assert ingest._troppo_vecchio("EC-38949004-agosto 2024.pdf") is True
-    # Senza anno leggibile si sta fermi: importare a caso meta' dello storico
-    # sarebbe peggio che aspettare.
-    assert ingest._troppo_vecchio("Estratto_Conto (7).pdf") is True
+    # Senza anno nel nome si deve leggere il contenuto: e' il formato reale
+    # degli estratti Nexi 2026.
+    assert ingest._troppo_vecchio("Estratto_Conto (7).pdf") is False
+
+
+def test_l_anno_del_pdf_generico_si_legge_dal_contenuto(monkeypatch):
+    monkeypatch.setattr(
+        cls, "_testo_del_pdf",
+        lambda _content: "Estratto conto Nexi al 31 maggio 2026",
+    )
+    assert cls.anno_documento("Estratto_Conto (1).pdf", b"pdf") == 2026
+
+
+def test_un_pdf_generico_2025_viene_rimandato_dopo_la_lettura(monkeypatch):
+    from app.services import drive_estratti_conto_ingest as ingest
+
+    monkeypatch.setattr(ingest.settings, "DRIVE_ESTRATTI_ANNO_MINIMO", 2026,
+                        raising=False)
+    monkeypatch.setattr(
+        cls, "_testo_del_pdf",
+        lambda _content: "Movimenti carta dal 01 ottobre 2025 al 31 ottobre 2025",
+    )
+    assert ingest._periodo_contenuto("movimenti.pdf", b"pdf") == (2025, True)
 
 
 def test_azzerare_l_anno_minimo_sblocca_tutto(monkeypatch):

@@ -477,6 +477,7 @@ async def _garantisci_prima_nota(
 async def sincronizza_assegni_da_estratto_conto(
     db,
     movimento_ids: Optional[List[str]] = None,
+    data_dal: Optional[str] = None,
 ) -> Dict[str, Any]:
     from app.services.bank_evidence import filtro_solo_evidenza_ufficiale
     risultati: Dict[str, Any] = {
@@ -506,6 +507,9 @@ async def sincronizza_assegni_da_estratto_conto(
         filtri_movimenti.append({"id": {"$in": ids_richiesti}})
     else:
         risultati["ambito"] = "completo"
+    if data_dal:
+        filtri_movimenti.append({"data": {"$gte": str(data_dal)}})
+        risultati["data_dal"] = str(data_dal)
 
     movimenti = await db["estratto_conto_movimenti"].find(
         {"$and": filtri_movimenti}, {"_id": 0},
