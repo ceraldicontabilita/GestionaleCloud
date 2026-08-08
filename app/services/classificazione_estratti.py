@@ -205,6 +205,44 @@ def _testo_del_foglio(contenuto: bytes) -> str:
         return ""
 
 
+def testo_del_documento(nome: str, contenuto: bytes) -> str:
+    """Testo iniziale normalizzato usato per classificazione e periodo.
+
+    Centralizzare la lettura evita che il job Drive apra lo stesso PDF con
+    regole diverse: la fonte e l'anno contabile devono derivare dalla stessa
+    evidenza documentale.
+    """
+    lower = _pulisci(nome)
+    if lower.endswith(".pdf"):
+        return _testo_del_pdf(contenuto)
+    if lower.endswith(".csv"):
+        return _testo_del_csv(contenuto)
+    if lower.endswith((".xlsx", ".xlsm")):
+        return _testo_del_foglio(contenuto)
+    return ""
+
+
+def anni_del_documento(nome: str, contenuto: bytes) -> set[int]:
+    """Anni espliciti presenti nell'intestazione/contenuto del documento.
+
+    I file reali Nexi si chiamano spesso soltanto ``Estratto_Conto.pdf``:
+    l'anno non puo' quindi essere deciso dal nome. Si considera esclusivamente
+    un anno a quattro cifre, evitando che numeri carta, importi o progressivi
+    vengano scambiati per un periodo.
+    """
+    testo = testo_del_documento(nome, contenuto)
+    return {int(match.group(0)) for match in _ANNO.finditer(testo)}
+
+
+def anno_documento(nome: str, contenuto: bytes) -> Optional[int]:
+    """Anno piu' recente provato dal nome o dal contenuto, se disponibile."""
+    anni = anni_del_documento(nome, contenuto)
+    anno_nome = anno_del_nome(nome)
+    if anno_nome is not None:
+        anni.add(anno_nome)
+    return max(anni) if anni else None
+
+
 def classifica(nome: str, contenuto: Optional[bytes] = None) -> Tuple[Optional[str], str]:
     """Fonte del documento e motivo della scelta, per il registro di audit.
 
@@ -218,13 +256,7 @@ def classifica(nome: str, contenuto: Optional[bytes] = None) -> Tuple[Optional[s
     # tutti "Estratto_Conto (N).pdf", e "Movimenti carta" puo' indicare carta
     # di debito oppure carta di credito.
     if contenuto:
-        testo = ""
-        if _pulisci(nome).endswith(".pdf"):
-            testo = _testo_del_pdf(contenuto)
-        elif _pulisci(nome).endswith(".csv"):
-            testo = _testo_del_csv(contenuto)
-        elif _pulisci(nome).endswith((".xlsx", ".xlsm")):
-            testo = _testo_del_foglio(contenuto)
+        testo = testo_del_documento(nome, contenuto)
         if testo:
             dal_testo = route_da_testo(testo)
             if dal_testo:

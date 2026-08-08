@@ -209,21 +209,30 @@ async def processa_cedolino_completo(
         # 3. PRIMA NOTA SALARI
         # ============================================
         # Controlla se esiste già
-        existing_pn = await db["prima_nota_salari"].find_one({
-            "$or": [
-                {"cedolino_dedup_key": cedolino_dedup_key},
-                {
-                    "cedolino_dedup_key": {"$exists": False},
-                    "dipendente_id": dipendente_id, "mese": mese, "anno": anno,
-                    "importo": netto,
-                },
-                {
-                    "cedolino_dedup_key": {"$exists": False},
-                    "dipendente_id": dipendente_id, "mese": mese, "anno": anno,
-                    "importo_busta": netto,
-                },
-            ]
-        })
+        from app.services.salari_periodo import periodo_ammesso_in_prima_nota
+        periodo_contabile = periodo_ammesso_in_prima_nota(anno, mese)
+        existing_pn = None
+        if periodo_contabile:
+            existing_pn = await db["prima_nota_salari"].find_one({
+                "$or": [
+                    {"cedolino_dedup_key": cedolino_dedup_key},
+                    {
+                        "cedolino_dedup_key": {"$exists": False},
+                        "dipendente_id": dipendente_id, "mese": mese, "anno": anno,
+                        "importo": netto,
+                    },
+                    {
+                        "cedolino_dedup_key": {"$exists": False},
+                        "dipendente_id": dipendente_id, "mese": mese, "anno": anno,
+                        "importo_busta": netto,
+                    },
+                ]
+            })
+        else:
+            # Il PDF e il riepilogo storico restano conservati, ma il cedolino
+            # non deve generare una scrittura nella contabilita' operativa.
+            existing_pn = {"id": None, "cedolino_dedup_key": cedolino_dedup_key}
+            result["prima_nota_fuori_periodo"] = True
         
         # movimento_id garantito in entrambi i rami (if existing_pn / if not)
         # Necessario per publish evento sotto

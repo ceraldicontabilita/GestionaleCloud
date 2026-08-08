@@ -7,6 +7,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict
 
+from app.services.salari_periodo import periodo_ammesso_in_prima_nota
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,6 +30,11 @@ async def handler_prima_nota_cedolino(payload: Dict[str, Any], db) -> Dict[str, 
 
     if netto <= 0:
         return {"skipped": True, "reason": "netto zero o negativo"}
+    if not periodo_ammesso_in_prima_nota(anno, mese):
+        return {
+            "skipped": True,
+            "reason": "cedolino storico conservato fuori dalla prima nota salari operativa",
+        }
 
     # Anti-duplicato. Senza la chiave completa (dipendente+mese+anno) non e'
     # possibile riconoscere un replay dello stesso cedolino: meglio saltare

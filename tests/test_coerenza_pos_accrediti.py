@@ -44,6 +44,41 @@ def test_somma_circuiti_sul_giorno_del_riferimento_non_sulla_data_contabile():
                 "duplicati_unificati": 0,
                 "date_contabili": ["2026-07-07", "2026-07-08"],
                 "fonti_movimento_ids": [],
+                "movimenti": [
+                    {
+                        "id": "",
+                        "data_contabile": "2026-07-07",
+                        "importo": 1000.20,
+                        "descrizione": (
+                            "INCAS. TRAMITE P.O.S - NUMIA-BNCMT DEL 06/07/26 "
+                            "PDV 3757283/00012"
+                        ),
+                        "rapporto": "",
+                        "duplicati_unificati": 0,
+                    },
+                    {
+                        "id": "",
+                        "data_contabile": "2026-07-08",
+                        "importo": 300.30,
+                        "descrizione": (
+                            "INC.POS CARTE CREDIT - NUMIA-INTER DEL 06/07/26 "
+                            "PDV 3757283/00011"
+                        ),
+                        "rapporto": "",
+                        "duplicati_unificati": 0,
+                    },
+                    {
+                        "id": "",
+                        "data_contabile": "2026-07-08",
+                        "importo": 53.20,
+                        "descrizione": (
+                            "INCAS. TRAMITE P.O.S - NUMIA-PGBNT DEL 06/07/26 "
+                            "PDV 3757283/00012"
+                        ),
+                        "rapporto": "",
+                        "duplicati_unificati": 0,
+                    },
+                ],
                 "origine": "estratto_conto_movimenti",
             }
         }
@@ -290,6 +325,8 @@ def test_due_fasi_separa_numia_da_sumup_e_non_usa_xml_come_pos(monkeypatch):
         assert giorno["pos_per_circuito"] == {
             "numia": 867.30, "sumup": 721.30,
         }
+        assert giorno["pos_totale_giornaliero"] == 1588.60
+        assert giorno["pos_totale_completo"] is True
         assert giorno["fonte_pos_per_circuito"]["numia"] == "estratto_conto_numia"
         assert giorno["fonte_pos_per_circuito"]["sumup"] == "api_sumup"
         assert giorno["pos_manuale"] == 1588.60
@@ -299,6 +336,9 @@ def test_due_fasi_separa_numia_da_sumup_e_non_usa_xml_come_pos(monkeypatch):
         assert giorno["fase2_per_circuito"]["sumup"]["stato"] == "in_attesa_payout"
         assert result["statistiche"]["fase2_pos_totale"] == 867.30
         assert result["statistiche"]["fase2_sumup_pos_totale"] == 721.30
+        assert result["statistiche"]["pos_numia_reale_annuo"] == 867.30
+        assert result["statistiche"]["pos_sumup_reale_annuo"] == 721.30
+        assert result["statistiche"]["pos_totale_reale_annuo"] == 1588.60
 
     _run(scenario())
 
@@ -319,6 +359,8 @@ def test_due_fasi_xml_senza_terminali_non_inventa_numia_o_sumup(monkeypatch):
 
         assert giorno["xml_elettronico"] == 1620.70
         assert giorno["pos_per_circuito"] == {"numia": None, "sumup": None}
+        assert giorno["pos_totale_giornaliero"] is None
+        assert giorno["pos_totale_completo"] is False
         assert giorno["pos_manuale_presente"] is False
         assert giorno["pos_manuale"] == 0
 

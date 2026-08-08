@@ -31,8 +31,35 @@ REGOLA CANONICA POS (utente, 18/07/2026 — confermata a voce e definitiva):
 import logging
 import re
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+
+@asynccontextmanager
+async def _transazione_mongo(db):
+    """Apre una transazione Mongo quando il driver la supporta.
+
+    Atlas supporta le transazioni; ``mongomock`` usato nei test no. Il fallback
+    e' ammesso esclusivamente per quella capability assente, non per errori di
+    connessione o di scrittura che devono interrompere la bonifica.
+    """
+    client = getattr(db, "client", None)
+    if client is None:
+        yield None
+        return
+    try:
+        session = await client.start_session()
+    except NotImplementedError:
+        yield None
+        return
+    async with session:
+        async with session.start_transaction():
+            yield session
+
+
+def _sessione(session) -> Dict[str, Any]:
+    return {"session": session} if session is not None else {}
 
 from app.services import conti_pos
 
@@ -1041,4 +1068,301 @@ async def recupera_pos_storico_da_estratto(db, anno: int) -> Dict[str, Any]:
         "aggiornati": aggiornati,
         "saltati_per_chiusura_manuale": saltati_manuali,
         "dettagli": dettagli,
+    }
+
+
+async def bonifica_accrediti_pos_numia(
+    db,
+    anno: int,
+    *,
+    dry_run: bool = True,
+    actor: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Converte il vecchio import NUMIA nel modello POS giornaliero.
+
+    Prima della regola canonica, ogni accredito NUMIA dell'estratto conto
+    veniva copiato in ``prima_nota_banca`` come entrata generica (spesso con
+    categoria ``Rimborso``). Cinque circuiti/punti vendita dello stesso giorno
+    apparivano quindi come cinque ricavi bancari, nonostante fossero soltanto
+    le componenti dell'unico trasferimento POS gia' registrato in Cassa.
+
+    La bonifica e' idempotente e conservativa:
+
+    * ricostruisce, se manca, la coppia Cassa/Banca NUMIA del giorno vendita;
+    * riconcilia al centesimo il totale giornaliero con le righe EC canoniche;
+    * archivia (mai elimina) le vecchie copie individuali di Prima Nota;
+    * salva prima una fotografia nella collezione di audit;
+    * lascia SumUp completamente separato.
+    """
+    from app.services.pos_evidence import _giorno_operazione_pos
+
+    anno = int(anno)
+    now = datetime.now(timezone.utc).isoformat()
+    actor = actor or {"sub": "system-pos-numia-repair"}
+    actor_id = str(
+        actor.get("sub") or actor.get("user_id") or actor.get("id") or "system"
+    )
+    movimenti = await _leggi_tutti(
+        db["estratto_conto_movimenti"].find(
+            query_accrediti_pos_ec(anno), {"_id": 0}
+        ),
+        20000,
+    )
+    gruppi = raggruppa_accrediti_pos_per_giorno(movimenti)
+
+    tutti_ids: List[str] = []
+    ids_per_giorno: Dict[str, List[str]] = {}
+    date_accredito_per_giorno: Dict[str, List[str]] = {}
+    for movimento in movimenti:
+        mov_id = str(movimento.get("id") or "")
+        if not mov_id:
+            continue
+        descrizione = str(
+            movimento.get("descrizione_originale")
+            or movimento.get("descrizione")
+            or ""
+        )
+        giorno = _giorno_operazione_pos(
+            descrizione, str(movimento.get("data") or "")
+        )
+        tutti_ids.append(mov_id)
+        ids_per_giorno.setdefault(giorno, []).append(mov_id)
+        data_accredito = str(movimento.get("data") or "")[:10]
+        if data_accredito:
+            date_accredito_per_giorno.setdefault(giorno, []).append(data_accredito)
+
+    filtro_legacy: Dict[str, Any] = {
+        "source": {"$in": ["estratto_conto_auto", "export_bancario_operativo"]},
+        "estratto_conto_id": {"$in": sorted(set(tutti_ids))},
+        "status": {"$nin": ["deleted", "archived"]},
+    }
+    legacy = []
+    if tutti_ids:
+        legacy = await _leggi_tutti(
+            db["prima_nota_banca"].find(filtro_legacy), 20000
+        )
+
+    recupero = {
+        "anno": anno,
+        "giorni_bancari": len(gruppi),
+        "creati": 0,
+        "aggiornati": 0,
+        "saltati_per_chiusura_manuale": 0,
+    }
+    if not dry_run:
+        recupero = await recupera_pos_storico_da_estratto(db, anno)
+
+    # Una sola query per tutti i trasferimenti dell'anno: evita l'N+1 (una
+    # find_one per giornata) e permette di rilevare candidati duplicati. In
+    # presenza di piu' trasferimenti NUMIA attivi nello stesso giorno non si
+    # sceglie mai arbitrariamente un documento contabile.
+    trasferimenti = await _leggi_tutti(
+        db["prima_nota_banca"].find({
+            "source": "trasferimento_pos",
+            "$and": [
+                filtro_gestore_pos(conti_pos.NUMIA),
+                {"$or": [
+                    {"anno": anno},
+                    {"giorno_vendita": {"$regex": f"^{anno}-"}},
+                    {"data": {"$regex": f"^{anno}-"}},
+                ]},
+            ],
+            "status": {"$nin": ["deleted", "archived"]},
+        }),
+        20000,
+    )
+    trasferimenti_per_giorno: Dict[str, List[Dict[str, Any]]] = {}
+    for trasferimento in trasferimenti:
+        giorno_trasferimento = str(
+            trasferimento.get("giorno_vendita")
+            or trasferimento.get("data")
+            or ""
+        )[:10]
+        if giorno_trasferimento:
+            trasferimenti_per_giorno.setdefault(giorno_trasferimento, []).append(
+                trasferimento
+            )
+
+    giornate_riconciliate = 0
+    giornate_non_quadrate = 0
+    giornate_senza_trasferimento = 0
+    giornate_trasferimento_ambiguo = 0
+    ec_riconciliati = 0
+    ec_duplicati_esclusi = 0
+    dettaglio: List[Dict[str, Any]] = []
+
+    for giorno, evidenza in sorted(gruppi.items()):
+        candidati_trasferimento = trasferimenti_per_giorno.get(giorno) or []
+        trasferimento_ambiguo = len(candidati_trasferimento) > 1
+        trasferimento = (
+            candidati_trasferimento[0]
+            if len(candidati_trasferimento) == 1
+            else None
+        )
+        ids_canonici = sorted(set(evidenza.get("estratto_conto_ids") or []))
+        ids_tutti = sorted(set(ids_per_giorno.get(giorno) or []))
+        ids_duplicati = sorted(set(ids_tutti) - set(ids_canonici))
+        accreditato = round(float(evidenza.get("totale") or 0), 2)
+        atteso = round(float((trasferimento or {}).get("importo") or 0), 2)
+        quadrato = bool(trasferimento) and abs(accreditato - atteso) <= 0.01
+
+        if trasferimento_ambiguo:
+            giornate_trasferimento_ambiguo += 1
+        elif not trasferimento:
+            giornate_senza_trasferimento += 1
+        elif quadrato:
+            giornate_riconciliate += 1
+            ec_riconciliati += len(ids_canonici)
+        else:
+            giornate_non_quadrate += 1
+        ec_duplicati_esclusi += len(ids_duplicati)
+
+        dettaglio.append({
+            "giorno_vendita": giorno,
+            "importo_atteso": atteso,
+            "importo_accreditato": accreditato,
+            "differenza": round(accreditato - atteso, 2),
+            "righe_ec": len(ids_canonici),
+            "righe_ec_duplicate_escluse": len(ids_duplicati),
+            "trasferimenti_candidati": len(candidati_trasferimento),
+            "stato": (
+                "riconciliato" if quadrato
+                else "trasferimenti_duplicati" if trasferimento_ambiguo
+                else "senza_trasferimento" if not trasferimento
+                else "non_quadrato"
+            ),
+        })
+        if dry_run or not trasferimento or trasferimento_ambiguo:
+            continue
+
+        data_ultimo_accredito = max(
+            date_accredito_per_giorno.get(giorno) or [giorno]
+        )
+        dettagli_riconciliazione = {
+            "prima_nota_id": trasferimento.get("id"),
+            "giorno_vendita": giorno,
+            "importo_atteso": atteso,
+            "importo_accreditato": accreditato,
+            "differenza": round(accreditato - atteso, 2),
+            "righe_ec": len(ids_canonici),
+        }
+        # Il trasferimento e tutte le prove EC della giornata cambiano stato
+        # insieme. Su Atlas questa e' una transazione; nei test in-memory il
+        # fallback conserva la stessa sequenza idempotente.
+        async with _transazione_mongo(db) as session:
+            sessione = _sessione(session)
+            await db["prima_nota_banca"].update_one(
+                {"id": trasferimento.get("id")},
+                {"$set": {
+                    "estratto_conto_ids": ids_canonici,
+                    "accreditato_ec": accreditato,
+                    "riconciliato": quadrato,
+                    "in_transito": not quadrato,
+                    "stato_riconciliazione": (
+                        "riconciliato" if quadrato else "da_verificare"
+                    ),
+                    "tipo_riconciliazione": (
+                        "accredito_pos_ec" if quadrato
+                        else "accredito_pos_non_quadrato"
+                    ),
+                    "data_ultimo_accredito": data_ultimo_accredito,
+                    "updated_at": now,
+                }},
+                **sessione,
+            )
+            if ids_canonici:
+                await db["estratto_conto_movimenti"].update_many(
+                    {"id": {"$in": ids_canonici}},
+                    {"$set": {
+                        "riconciliato": quadrato,
+                        "importato_prima_nota": False,
+                        "stato_riconciliazione": (
+                            "riconciliato" if quadrato else "da_verificare"
+                        ),
+                        "tipo_riconciliazione": (
+                            "accredito_pos_trasferimento" if quadrato
+                            else "accredito_pos_non_quadrato"
+                        ),
+                        "dettagli_riconciliazione": dettagli_riconciliazione,
+                    }},
+                    **sessione,
+                )
+            if ids_duplicati:
+                await db["estratto_conto_movimenti"].update_many(
+                    {"id": {"$in": ids_duplicati}},
+                    {"$set": {
+                        "riconciliato": False,
+                        "importato_prima_nota": False,
+                        "stato_riconciliazione": "duplicato_evidenza_escluso",
+                        "tipo_riconciliazione": "duplicato_accredito_pos_ec",
+                        "dettagli_riconciliazione": {
+                            **dettagli_riconciliazione,
+                            "righe_canoniche": ids_canonici,
+                        },
+                    }},
+                    **sessione,
+                )
+
+    migration_id = f"bonifica-pos-numia-{anno}"
+    if not dry_run:
+        archiviate = 0
+        for riga in legacy:
+            riga_id = str(riga.get("id") or "")
+            snapshot = {k: v for k, v in riga.items() if k != "_id"}
+            audit_id = f"{migration_id}:{riga_id}"
+            async with _transazione_mongo(db) as session:
+                sessione = _sessione(session)
+                await db["prima_nota_migrazioni_audit"].update_one(
+                    {"id": audit_id},
+                    {"$setOnInsert": {
+                        "id": audit_id,
+                        "migrazione_id": migration_id,
+                        "azione": "archivia_accredito_numia_individuale",
+                        "collection": "prima_nota_banca",
+                        "documento_id": riga_id,
+                        "originale": snapshot,
+                        "created_at": now,
+                        "created_by": actor_id,
+                    }},
+                    upsert=True,
+                    **sessione,
+                )
+                archiviata = await db["prima_nota_banca"].update_one(
+                    {
+                        "id": riga_id,
+                        "status": {"$nin": ["deleted", "archived"]},
+                    },
+                    {"$set": {
+                        "status": "archived",
+                        "deleted": True,
+                        "deleted_reason": (
+                            "accredito_pos_numia_gia_rappresentato_da_"
+                            "trasferimento_giornaliero"
+                        ),
+                        "deleted_at": now,
+                        "deleted_by": actor_id,
+                        "migrazione_id": migration_id,
+                    }},
+                    **sessione,
+                )
+                archiviate += int(archiviata.modified_count or 0)
+    else:
+        archiviate = 0
+
+    return {
+        "success": True,
+        "dry_run": dry_run,
+        "anno": anno,
+        "righe_ec_numia": len(movimenti),
+        "giornate_numia": len(gruppi),
+        "giornate_riconciliate": giornate_riconciliate,
+        "giornate_non_quadrate": giornate_non_quadrate,
+        "giornate_senza_trasferimento": giornate_senza_trasferimento,
+        "giornate_trasferimento_ambiguo": giornate_trasferimento_ambiguo,
+        "righe_ec_riconciliate": ec_riconciliati,
+        "righe_ec_duplicate_escluse": ec_duplicati_esclusi,
+        "righe_prima_nota_da_archiviare": len(legacy),
+        "righe_prima_nota_archiviate": archiviate,
+        "recupero_storico": recupero,
+        "dettaglio": dettaglio,
     }

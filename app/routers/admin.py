@@ -1,9 +1,10 @@
 """Admin router - Administrative functions."""
-from fastapi import APIRouter, Body, Depends, Path, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import logging
 import asyncio
+import uuid
 
 from app.database import Database
 from app.utils.dependencies import get_current_user, get_current_admin_user
@@ -18,57 +19,42 @@ async def get_dashboard_summary() -> Dict[str, Any]:
     db = Database.get_db()
 
     async def _stats():
-        try:
-            return {
-                "invoices": await db["invoices"].count_documents({}),
-                "suppliers": await db["fornitori"].count_documents({}),
-                "employees": await db["dipendenti"].count_documents({}),
-                "prima_nota_cassa": await db["prima_nota_cassa"].count_documents({}),
-                "prima_nota_banca": await db["prima_nota_banca"].count_documents({}),
-                "f24": await db["f24_unificato"].count_documents({}),
-            }
-        except Exception:
-            return {}
+        return {
+            "invoices": await db["invoices"].count_documents({}),
+            "suppliers": await db["fornitori"].count_documents({}),
+            "employees": await db["dipendenti"].count_documents({}),
+            "prima_nota_cassa": await db["prima_nota_cassa"].count_documents({}),
+            "prima_nota_banca": await db["prima_nota_banca"].count_documents({}),
+            "f24": await db["f24_unificato"].count_documents({}),
+        }
 
     async def _alert_count():
-        try:
-            count = await db["alerts"].count_documents({"letto": {"$ne": True}, "risolto": {"$ne": True}})
-            return {"non_letti": count}
-        except Exception:
-            return {"non_letti": 0}
+        count = await db["alerts"].count_documents({"letto": {"$ne": True}, "risolto": {"$ne": True}})
+        return {"non_letti": count}
 
     async def _agenti_count():
-        try:
-            count = await db["agenti_segnalazioni"].count_documents({"letta": {"$ne": True}})
-            return {"non_lette": count}
-        except Exception:
-            return {"non_lette": 0}
+        count = await db["agenti_segnalazioni"].count_documents({"letta": {"$ne": True}})
+        return {"non_lette": count}
 
     async def _sync_status():
-        try:
-            fatture = await db["invoices"].count_documents({})
-            cassa = await db["prima_nota_cassa"].count_documents({})
-            banca = await db["prima_nota_banca"].count_documents({})
-            return {"fatture": fatture, "prima_nota_cassa": cassa, "prima_nota_banca": banca}
-        except Exception:
-            return {}
+        fatture = await db["invoices"].count_documents({})
+        cassa = await db["prima_nota_cassa"].count_documents({})
+        banca = await db["prima_nota_banca"].count_documents({})
+        return {"fatture": fatture, "prima_nota_cassa": cassa, "prima_nota_banca": banca}
 
     async def _commercialista_alert():
-        try:
-            from datetime import date
-            today = date.today()
-            # Controlla se siamo nel periodo di invio (primi 10 giorni del mese)
-            if today.day <= 10:
-                prev_month = today.month - 1 if today.month > 1 else 12
-                prev_year = today.year if today.month > 1 else today.year - 1
-                return {
-                    "show_alert": True,
-                    "mese": prev_month,
-                    "anno": prev_year
-                }
-            return {"show_alert": False}
-        except Exception:
-            return {"show_alert": False}
+        from datetime import date
+        today = date.today()
+        # Controlla se siamo nel periodo di invio (primi 10 giorni del mese)
+        if today.day <= 10:
+            prev_month = today.month - 1 if today.month > 1 else 12
+            prev_year = today.year if today.month > 1 else today.year - 1
+            return {
+                "show_alert": True,
+                "mese": prev_month,
+                "anno": prev_year
+            }
+        return {"show_alert": False}
 
     stats, alerts, agenti, sync, comm_alert = await asyncio.gather(
         _stats(), _alert_count(), _agenti_count(), _sync_status(), _commercialista_alert()
@@ -163,6 +149,11 @@ async def get_collections(
 async def reset_collections(
     selected: List[str] = Query(None),
     delete_files: bool = False,
+    confirmation: str = Query(
+        ...,
+        pattern="^RESET_SELECTED_COLLECTIONS$",
+        description="Conferma esplicita per l'operazione distruttiva",
+    ),
     current_user: Dict[str, Any] = Depends(get_current_admin_user)
 ) -> Dict[str, Any]:
     """
@@ -174,20 +165,50 @@ async def reset_collections(
     deleted_stats = {}
     
     # Protect critical collections
-    protected = ["users", "system_settings", "settings"]
+    protected = {
+        "users", "system_settings", "settings", "sistema_stato",
+        "token_blacklist", "mfa_settings", "audit_log",
+        "prima_nota_migrazioni_audit", "migration_runs",
+        "scheduler_leases", "admin_destructive_audit",
+    }
     
-    targets = selected or []
+    targets = list(dict.fromkeys(selected or []))
+    if not targets:
+        raise HTTPException(status_code=422, detail="Seleziona almeno una collection")
+    if len(targets) > 20:
+        raise HTTPException(status_code=422, detail="Massimo 20 collection per operazione")
+    invalid = [
+        col for col in targets
+        if col in protected or not col.replace("_", "").isalnum()
+    ]
+    if invalid:
+        raise HTTPException(
+            status_code=403,
+            detail={"message": "Collection protetta o non valida", "collections": invalid},
+        )
+    existing_collections = set(await db.list_collection_names())
     
     for col in targets:
-        if col in protected:
-            continue
-        if col not in await db.list_collection_names():
+        if col not in existing_collections:
             continue
             
         result = await db[col].delete_many({})
         deleted_stats[col] = {"deleted": result.deleted_count}
         
-    return {"message": "Collections reset", "deleted_collections": deleted_stats}
+    audit_id = str(uuid.uuid4())
+    await db["admin_destructive_audit"].insert_one({
+        "id": audit_id,
+        "azione": "reset_collections",
+        "collections": deleted_stats,
+        "delete_files_requested": bool(delete_files),
+        "actor": current_user.get("sub") or current_user.get("username") or "admin",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {
+        "message": "Collections reset",
+        "deleted_collections": deleted_stats,
+        "audit_id": audit_id,
+    }
 
 
 # ============================================================================
@@ -202,7 +223,9 @@ async def reset_collections(
     "/cleanup-trattenute-disciplinari",
     summary="One-shot: rimuove record orfani del sistema trattenute disciplinari (Task 4 rollback)",
 )
-async def cleanup_trattenute_disciplinari() -> Dict[str, Any]:
+async def cleanup_trattenute_disciplinari(
+    current_user: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
     """Cancella tutti i record di trattenute_dipendenti con
     source='trattenute_disciplinari' creati dal sistema poi annullato.
 

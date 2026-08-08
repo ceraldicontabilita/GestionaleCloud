@@ -53,13 +53,23 @@ def _run(c):
         loop.close()
 
 
-def _patch_db(monkey_db):
-    mod.Database.get_db = staticmethod(lambda: monkey_db)
+def _patch_db(monkeypatch, monkey_db):
+    """Isola il database finto al singolo test.
+
+    Una assegnazione diretta a ``Database.get_db`` contaminava tutti i test
+    successivi nello stesso processo e poteva bloccare il test del lease dello
+    scheduler. ``monkeypatch`` ripristina sempre il metodo originale.
+    """
+    monkeypatch.setattr(
+        mod.Database,
+        "get_db",
+        staticmethod(lambda: monkey_db),
+    )
 
 
-def test_crud_usa_solo_fatture_emesse():
+def test_crud_usa_solo_fatture_emesse(monkeypatch):
     db = _Db()
-    _patch_db(db)
+    _patch_db(monkeypatch, db)
     user = {"user_id": "u1"}
 
     _run(mod.create_invoice_emessa(data={"cliente": "ACME", "importo": 100}, current_user=user))

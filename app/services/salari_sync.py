@@ -17,6 +17,7 @@ from typing import Any, Dict, Optional, Tuple
 import fitz
 
 from app.parsers.busta_paga_multi_template import _detect_tipo_cedolino
+from app.services.salari_periodo import filtro_periodo_prima_nota
 
 logger = logging.getLogger(__name__)
 
@@ -70,11 +71,14 @@ async def sincronizza_prima_nota_da_cedolini(
 ) -> Dict[str, int]:
     """Crea le righe mancanti e corregge quelle collegate al PDF.
 
-    L'operazione e' idempotente. I documenti antecedenti al 2018 vengono
-    ignorati e nessuna riga di pagamento viene eliminata.
+    L'operazione e' idempotente. I documenti storici restano in ``cedolini``;
+    la prima nota viene creata soltanto dal periodo contabile operativo
+    centralizzato in ``salari_periodo``. Nessuna riga di pagamento viene
+    eliminata da questa funzione.
     """
+    periodo_contabile = filtro_periodo_prima_nota()
     cedolini = await db["cedolini"].find(
-        {"anno": {"$gte": int(anno_minimo)}},
+        periodo_contabile,
         {
             "_id": 0, "id": 1, "dipendente_id": 1,
             "nome_dipendente": 1, "codice_fiscale": 1,
@@ -128,7 +132,7 @@ async def sincronizza_prima_nota_da_cedolini(
         )
 
     pn_rows = await db["prima_nota_salari"].find(
-        {"anno": {"$gte": int(anno_minimo)}}, {"_id": 0}
+        periodo_contabile, {"_id": 0}
     ).to_list(20000)
     per_cedolino = {
         str(row.get("cedolino_id")): row

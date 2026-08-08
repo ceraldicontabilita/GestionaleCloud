@@ -5,12 +5,13 @@ in chiaro) e la sincronizzazione delle transazioni, che aggiorna la chiusura
 giornaliera del circuito SumUp passando dal motore unico di scrittura.
 """
 import os
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import settings
 from app.database import Database
@@ -24,6 +25,31 @@ TIMEOUT = 20.0
 # Recupero prudente: SumUp puo' consolidare una transazione con qualche ora di
 # ritardo, quindi la sincronizzazione automatica rilegge anche il giorno prima.
 GIORNI_RECUPERO = 7
+
+
+class NumiaRepairRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    anno: int = Field(default_factory=lambda: datetime.now().year, ge=2020, le=2100)
+    conferma: bool = False
+
+
+class NumiaRepairResponse(BaseModel):
+    success: bool
+    dry_run: bool
+    anno: int
+    righe_ec_numia: int
+    giornate_numia: int
+    giornate_riconciliate: int
+    giornate_non_quadrate: int
+    giornate_senza_trasferimento: int
+    giornate_trasferimento_ambiguo: int
+    righe_ec_riconciliate: int
+    righe_ec_duplicate_escluse: int
+    righe_prima_nota_da_archiviare: int
+    righe_prima_nota_archiviate: int
+    recupero_storico: Dict[str, Any]
+    dettaglio: list[Dict[str, Any]]
 
 
 VARIABILI = ("SUMUP_API_KEY", "SUMUP_MERCHANT_CODE")
@@ -302,6 +328,30 @@ async def applica_bonifica_pos_xml(
         )
     return await bonifica_pos_xml.applica(
         Database.get_db(), payload.get("anno"), actor=admin
+    )
+
+
+@router.post(
+    "/bonifica-accrediti-numia",
+    response_model=NumiaRepairResponse,
+)
+@handle_errors
+async def bonifica_accrediti_numia(
+    payload: Optional[NumiaRepairRequest] = Body(None),
+    admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Accorpa le componenti NUMIA per giorno e archivia le vecchie copie.
+
+    Senza ``conferma`` restituisce soltanto l'anteprima. L'applicazione e'
+    reversibile: ogni riga archiviata viene fotografata nell'audit Mongo.
+    """
+    from app.services.scritture_contabili import bonifica_accrediti_pos_numia
+
+    payload = payload or NumiaRepairRequest()
+    return await bonifica_accrediti_pos_numia(
+        Database.get_db(), payload.anno,
+        dry_run=not payload.conferma,
+        actor=admin,
     )
 
 

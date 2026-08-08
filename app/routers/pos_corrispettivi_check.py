@@ -1129,6 +1129,7 @@ async def _carica_accrediti_banca_pos(
             "duplicati_unificati": 0,
             "date_contabili": [],
             "fonti_movimento_ids": [],
+            "movimenti": [],
             "origine": "estratto_conto_movimenti",
         })
         evidenza["totale"] += imp
@@ -1142,11 +1143,22 @@ async def _carica_accrediti_banca_pos(
         data_contabile = str(m.get("data") or "")[:10]
         if data_contabile and data_contabile not in evidenza["date_contabili"]:
             evidenza["date_contabili"].append(data_contabile)
+        evidenza["movimenti"].append({
+            "id": str(m.get("id") or ""),
+            "data_contabile": data_contabile,
+            "importo": round(imp, 2),
+            "descrizione": str(descrizione),
+            "rapporto": str(m.get("rapporto") or ""),
+            "duplicati_unificati": duplicati,
+        })
 
     for evidenza in out.values():
         evidenza["totale"] = round(evidenza["totale"], 2)
         evidenza["date_contabili"].sort()
         evidenza["fonti_movimento_ids"].sort()
+        evidenza["movimenti"].sort(key=lambda r: (
+            r.get("data_contabile") or "", r.get("id") or ""
+        ))
 
     return out
 
@@ -1289,6 +1301,11 @@ async def controllo_incassi_due_fasi(
         "importo_tot_da_compensare_piu": 0.0,
         "importo_tot_da_compensare_meno": 0.0,
         "importo_tot_mancante_banca": 0.0,
+        # Totali operativi dei terminali reali. Restano separati dai
+        # corrispettivi XML e dagli accrediti/payout successivi.
+        "pos_numia_reale_annuo": 0.0,
+        "pos_sumup_reale_annuo": 0.0,
+        "pos_totale_reale_annuo": 0.0,
         "fase2_movimenti_banca": sum(
             int(evidenza.get("numero_movimenti") or 0) for evidenza in accrediti.values()
         ),
@@ -1331,6 +1348,7 @@ async def controllo_incassi_due_fasi(
                 numero_movimenti_banca=numero_movimenti_banca,
                 origine_accredito=evidenza_banca.get("origine"),
                 date_contabili_banca=evidenza_banca.get("date_contabili", []),
+                movimenti_banca=evidenza_banca.get("movimenti", []),
                 riconciliato_banca_reale=False,
             )
         elif accr == 0:
@@ -1339,6 +1357,7 @@ async def controllo_incassi_due_fasi(
                 numero_movimenti_banca=0,
                 origine_accredito=None,
                 date_contabili_banca=[],
+                movimenti_banca=[],
                 riconciliato_banca_reale=False,
             )
         else:
@@ -1358,6 +1377,7 @@ async def controllo_incassi_due_fasi(
                 numero_movimenti_banca=numero_movimenti_banca,
                 origine_accredito=evidenza_banca.get("origine"),
                 date_contabili_banca=evidenza_banca.get("date_contabili", []),
+                movimenti_banca=evidenza_banca.get("movimenti", []),
                 riconciliato_banca_reale=riconciliato_banca_reale,
             )
         gruppi_accr[d] = g
@@ -1376,6 +1396,14 @@ async def controllo_incassi_due_fasi(
         circuiti_giorno = pos_per_circuito.get(d) or {}
         pos_numia = circuiti_giorno.get(conti_pos.NUMIA)
         pos_sumup = circuiti_giorno.get(conti_pos.SUMUP)
+        if pos_numia is not None:
+            stats["pos_numia_reale_annuo"] += float(pos_numia or 0)
+        if pos_sumup is not None:
+            stats["pos_sumup_reale_annuo"] += float(pos_sumup or 0)
+        if pos_numia is not None or pos_sumup is not None:
+            stats["pos_totale_reale_annuo"] += (
+                float(pos_numia or 0) + float(pos_sumup or 0)
+            )
 
         # FASE 0 v3: stato corrispettivo (provvisorio / definitivo_xml / manca_xml)
         stato_corr_raw = c_row.get("stato")
@@ -1460,6 +1488,7 @@ async def controllo_incassi_due_fasi(
         fonti_movimento_ids: List[str] = []
         origine_accredito = None
         date_contabili_banca: List[str] = []
+        movimenti_banca: List[Dict[str, Any]] = []
         riconciliato_banca_reale = False
         if float(pos_numia or 0) <= 0 or not gruppo:
             diff_accr = 0.0
@@ -1480,6 +1509,7 @@ async def controllo_incassi_due_fasi(
             fonti_movimento_ids = list(evidenza_giorno.get("fonti_movimento_ids") or [])
             origine_accredito = gruppo.get("origine_accredito")
             date_contabili_banca = gruppo.get("date_contabili_banca", [])
+            movimenti_banca = gruppo.get("movimenti_banca", [])
             riconciliato_banca_reale = bool(gruppo.get("riconciliato_banca_reale"))
             pos_gruppo = gruppo["pos_tot"]
             giorni_gruppo = len(gruppo["giorni"])
@@ -1539,6 +1569,17 @@ async def controllo_incassi_due_fasi(
                     None if pos_sumup is None else round(float(pos_sumup), 2)
                 ),
             },
+            # Somma esplicita dei soli circuiti POS reali. L'XML RT resta
+            # esclusivamente il termine di confronto fiscale e non entra mai
+            # nel totale operativo.
+            "pos_totale_giornaliero": (
+                round(float(pos_man), 2) if pos_man_presente else None
+            ),
+            # Un totale parziale resta visibile, ma la UI deve poter dire che
+            # manca ancora almeno un circuito invece di spacciarlo per chiuso.
+            "pos_totale_completo": bool(
+                pos_numia is not None and pos_sumup is not None
+            ),
             "fonte_pos_per_circuito": {
                 conti_pos.NUMIA: fonti_pos_per_circuito.get(d, {}).get(conti_pos.NUMIA),
                 conti_pos.SUMUP: fonti_pos_per_circuito.get(d, {}).get(conti_pos.SUMUP),
@@ -1558,6 +1599,7 @@ async def controllo_incassi_due_fasi(
             "fonti_movimento_ids": fonti_movimento_ids,
             "origine_accredito": origine_accredito,
             "date_contabili_banca": date_contabili_banca,
+            "movimenti_banca": movimenti_banca,
             "capogruppo": capogruppo,
             "pos_gruppo": round(pos_gruppo, 2),
             "giorni_gruppo": giorni_gruppo,
@@ -1590,6 +1632,9 @@ async def controllo_incassi_due_fasi(
     stats["fase2_pos_totale"] = round(stats["fase2_pos_totale"], 2)
     stats["fase2_accrediti_totale"] = round(stats["fase2_accrediti_totale"], 2)
     stats["fase2_sumup_pos_totale"] = round(stats["fase2_sumup_pos_totale"], 2)
+    stats["pos_numia_reale_annuo"] = round(stats["pos_numia_reale_annuo"], 2)
+    stats["pos_sumup_reale_annuo"] = round(stats["pos_sumup_reale_annuo"], 2)
+    stats["pos_totale_reale_annuo"] = round(stats["pos_totale_reale_annuo"], 2)
     stats["fase2_saldo_finale"] = round(saldo_progressivo, 2)
 
     # ── Riepilogo settimanale ─────────────────────────────────────────────────

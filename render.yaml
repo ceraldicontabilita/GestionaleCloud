@@ -25,6 +25,8 @@ services:
     envVars:
       - key: PYTHONUTF8
         value: "1"
+      - key: FAIL_FAST_SECRETS
+        value: "true"
       - key: SUMUP_API_KEY
         sync: false
       - key: SUMUP_MERCHANT_CODE

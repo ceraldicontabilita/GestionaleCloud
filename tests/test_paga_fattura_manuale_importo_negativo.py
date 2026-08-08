@@ -101,4 +101,5 @@ def test_importo_zero_resta_bloccato(monkeypatch):
         _run(mod.paga_fattura_manuale(_payload(importo=0)))
         assert False, "doveva sollevare HTTPException"
     except HTTPException as e:
-        assert e.status_code == 400
+        # Payload semanticamente invalido: FastAPI/Pydantic usa 422.
+        assert e.status_code == 422

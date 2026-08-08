@@ -5,9 +5,15 @@ from app.services import salari_sync
 
 def _matches(row, query):
     for key, value in query.items():
+        if key == "$or":
+            if not any(_matches(row, alternativa) for alternativa in value):
+                return False
+            continue
         actual = row.get(key)
-        if isinstance(value, dict) and "$gte" in value:
-            if actual is None or actual < value["$gte"]:
+        if isinstance(value, dict):
+            if "$gte" in value and (actual is None or actual < value["$gte"]):
+                return False
+            if "$gt" in value and (actual is None or actual <= value["$gt"]):
                 return False
         elif actual != value:
             return False
@@ -66,25 +72,25 @@ class _Db:
         return self.collections[name]
 
 
-def test_sync_completa_tutti_i_dipendenti_dal_2018_senza_toccare_pagamenti(monkeypatch):
+def test_sync_completa_solo_il_periodo_contabile_senza_toccare_pagamenti(monkeypatch):
     cedolini = [
         {"id": "ced-vincenzo", "dipendente_id": "dip-v", "nome_dipendente": "CERALDI VINCENZO",
-         "codice_fiscale": "CFV", "mese": 1, "anno": 2018, "netto": 1000,
+         "codice_fiscale": "CFV", "mese": 12, "anno": 2025, "netto": 1000,
          "tipo_cedolino": "mensile", "pdf_data": "pdf"},
         {"id": "ced-valerio", "dipendente_id": "dip-l", "nome_dipendente": "CERALDI VALERIO",
-         "codice_fiscale": "CFL", "mese": 2, "anno": 2025, "netto_mese": 1200,
+         "codice_fiscale": "CFL", "mese": 1, "anno": 2026, "netto_mese": 1200,
          "tipo_cedolino": "tredicesima", "pdf_data": "pdf"},
         {"id": "ced-altra", "dipendente_id": "dip-a", "nome_dipendente": "ALTRA PERSONA",
-         "codice_fiscale": "CFA", "mese": 3, "anno": 2024, "netto": 900,
+         "codice_fiscale": "CFA", "mese": 2, "anno": 2026, "netto": 900,
          "tipo_cedolino": "mensile", "pdf_data": "pdf"},
         {"id": "ced-vecchio", "dipendente_id": "dip-x", "nome_dipendente": "FUORI PERIODO",
-         "codice_fiscale": "CFX", "mese": 1, "anno": 2017, "netto": 800,
+         "codice_fiscale": "CFX", "mese": 11, "anno": 2025, "netto": 800,
          "tipo_cedolino": "mensile", "pdf_data": "pdf"},
     ]
     salari = [{
         "id": "pn-valerio", "cedolino_id": "ced-valerio", "dipendente_id": "dip-l",
-        "dipendente": "CERALDI VALERIO", "codice_fiscale": "CFL", "mese": 2,
-        "anno": 2025, "tipo_cedolino": "tredicesima", "importo_busta": 1100,
+        "dipendente": "CERALDI VALERIO", "codice_fiscale": "CFL", "mese": 1,
+        "anno": 2026, "tipo_cedolino": "tredicesima", "importo_busta": 1100,
         "importo_bonifico": 600, "pagamenti": [{"id": "pag-1"}], "riconciliato": True,
     }]
     db = _Db(cedolini, salari)
@@ -103,7 +109,8 @@ def test_sync_completa_tutti_i_dipendenti_dal_2018_senza_toccare_pagamenti(monke
     assert valerio["importo_bonifico"] == 600
     assert valerio["pagamenti"] == [{"id": "pag-1"}]
     assert valerio["riconciliato"] is True
-    assert all(r["anno"] >= 2018 for r in db["prima_nota_salari"].rows)
+    assert all((r["anno"], r["mese"]) >= (2025, 12)
+               for r in db["prima_nota_salari"].rows)
 
 
 def test_sync_e_idempotente_e_conserva_mensilita_aggiuntive(monkeypatch):

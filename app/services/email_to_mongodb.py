@@ -308,15 +308,16 @@ async def process_cedolino(db: AsyncIOMotorDatabase, doc: Dict, pdf_content: byt
         }
         
         # Verifica se esiste già
-        existing = await db["prima_nota_salari"].find_one({
-            "dipendente_nome": dipendente_nome,
-            "mese": parsed.get('mese'),
-            "anno": parsed.get('anno')
-        })
-        
-        if not existing:
-            await db["prima_nota_salari"].insert_one(salario_doc)
-            logger.info(f"Prima nota salari creata: {dipendente_nome} {parsed.get('mese')}/{parsed.get('anno')}")
+        from app.services.salari_periodo import periodo_ammesso_in_prima_nota
+        if periodo_ammesso_in_prima_nota(parsed.get('anno'), parsed.get('mese')):
+            existing = await db["prima_nota_salari"].find_one({
+                "dipendente_nome": dipendente_nome,
+                "mese": parsed.get('mese'),
+                "anno": parsed.get('anno')
+            })
+            if not existing:
+                await db["prima_nota_salari"].insert_one(salario_doc)
+                logger.info(f"Prima nota salari creata: {dipendente_nome} {parsed.get('mese')}/{parsed.get('anno')}")
         
         # Aggiorna documento come processato
         await db["email_documents"].update_one(

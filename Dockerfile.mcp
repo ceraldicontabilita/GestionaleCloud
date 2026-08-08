@@ -1,0 +1,18 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    GESTIONALE_MCP_HOST=0.0.0.0 \
+    GESTIONALE_MCP_PORT=8765
+
+WORKDIR /srv/gestionale-mcp
+
+COPY gestionale_mcp/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY gestionale_mcp ./gestionale_mcp
+
+USER 65532:65532
+EXPOSE 8765
+
+CMD ["python", "-m", "gestionale_mcp", "--transport", "http"]

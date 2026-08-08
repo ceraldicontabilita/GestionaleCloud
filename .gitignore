@@ -13,6 +13,9 @@ node_modules/
 
 # Testing
 /coverage
+.pytest_cache/
+frontend/.pytest_cache/
+tmp/
 
 # Production builds
 /build
@@ -22,6 +25,12 @@ dist/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.codex-*.log
+.codex-*.err.log
+.codex-pytest*/
+.codex-test-temp*/
+.verify-pytest*/
+.testtmp-cache*/
 
 # System files
 .DS_Store

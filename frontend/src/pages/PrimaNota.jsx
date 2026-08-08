@@ -322,8 +322,9 @@ function RipartoEntrate({ sezione, cassa, banca, mese }) {
 
   const diffPos = posBanca - posCassa;
   const posOk = Math.abs(diffPos) < 0.01;
+  const confrontoPosDisponibile = cassa.loaded === true && banca.loaded === true;
   const righe = RIGHE_RIPARTO[sezione].filter(([k]) => (totali[k] || 0) > 0.004);
-  if (righe.length === 0 && posCassa === 0 && posBanca === 0) return null;
+  if (righe.length === 0 && (!confrontoPosDisponibile || (posCassa === 0 && posBanca === 0))) return null;
 
   return (
     <div
@@ -346,7 +347,7 @@ function RipartoEntrate({ sezione, cassa, banca, mese }) {
           </div>
         ))}
       </div>
-      {(posCassa > 0 || posBanca > 0) && (
+      {confrontoPosDisponibile && (posCassa > 0 || posBanca > 0) && (
         <div
           style={{
             marginTop: 8, paddingTop: 8, borderTop: '1px dashed #e2e8f0',
@@ -2063,39 +2064,81 @@ export default function PrimaNota() {
   const sezione = hs.sezione || 'cassa';
   const mese = hs.mese === '' ? null : parseInt(hs.mese, 10);
 
-  const [cassa, setCassa] = useState({ movimenti: [] });
-  const [banca, setBanca] = useState({ movimenti: [] });
+  const [cassa, setCassa] = useState({ movimenti: [], loaded: false });
+  const [banca, setBanca] = useState({ movimenti: [], loaded: false });
   const [provvisori, setProvvisori] = useState([]);
   const [attesaBanca, setAttesaBanca] = useState([]);
   const [tutteFatture, setTutteFatture] = useState([]);
   const [completezzaProvvisori, setCompletezzaProvvisori] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const richiestaRef = React.useRef(0);
+  // Una lettura della Prima Nota e' interattiva: se Atlas non risponde, la UI
+  // deve sbloccarsi rapidamente e permettere un nuovo tentativo. Il retry
+  // globale di Axios (pensato per il cold start di Render) qui raddoppierebbe
+  // inutilmente l'attesa.
+  const richiestaInterattiva = { timeout: 10000, __noRetry: true };
 
   const carica = async ({ silent = false } = {}) => {
+    const richiesta = ++richiestaRef.current;
+    if (sezione === 'soci') {
+      setLoading(false);
+      setLoadError('');
+      return;
+    }
     if (!silent) setLoading(true);
     setLoadError('');
     try {
       const params = `anno=${anno}&limit=10000`;
-      const [c, b, p] = await Promise.all([
-        api.get(`/api/prima-nota/cassa?${params}`),
-        api.get(`/api/prima-nota/banca?${params}`),
-        api.get(`/api/prima-nota/provvisori?anno=${anno}`),
-      ]);
-      setCassa(c.data || { movimenti: [] });
-      setBanca(b.data || { movimenti: [] });
-      setProvvisori(p.data?.provvisori || []);
-      setAttesaBanca(p.data?.in_attesa_banca || []);
-      setTutteFatture(p.data?.tutte_fatture || []);
-      setCompletezzaProvvisori(p.data?.completezza || null);
+      if (sezione === 'provvisori') {
+        const p = await api.get(
+          `/api/prima-nota/provvisori?anno=${anno}`,
+          richiestaInterattiva,
+        );
+        if (richiesta !== richiestaRef.current) return;
+        setProvvisori(p.data?.provvisori || []);
+        setAttesaBanca(p.data?.in_attesa_banca || []);
+        setTutteFatture(p.data?.tutte_fatture || []);
+        setCompletezzaProvvisori(p.data?.completezza || null);
+      } else {
+        const endpoint = sezione === 'banca' ? 'banca' : 'cassa';
+        const risposta = await api.get(
+          `/api/prima-nota/${endpoint}?${params}`,
+          richiestaInterattiva,
+        );
+        if (richiesta !== richiestaRef.current) return;
+        const dati = { ...(risposta.data || { movimenti: [] }), loaded: true };
+        if (endpoint === 'banca') setBanca(dati);
+        else setCassa(dati);
+
+        // Il registro opposto serve solo al confronto POS. Lo carichiamo in
+        // background dopo aver gia' mostrato la pagina richiesta: non puo'
+        // piu' bloccare Cassa o Banca e non rende falsi i totali visualizzati.
+        const opposto = endpoint === 'banca' ? 'cassa' : 'banca';
+        api.get(`/api/prima-nota/${opposto}?${params}`, richiestaInterattiva)
+          .then((secondaria) => {
+            if (richiesta !== richiestaRef.current) return;
+            const altriDati = { ...(secondaria.data || { movimenti: [] }), loaded: true };
+            if (opposto === 'banca') setBanca(altriDati);
+            else setCassa(altriDati);
+          })
+          .catch((errore) => console.warn(`Prima nota ${opposto} (background):`, errore));
+      }
     } catch (e) {
+      if (richiesta !== richiestaRef.current) return;
       console.error('Prima nota:', e);
-      setLoadError(e.response?.data?.detail || e.response?.data?.message || e.message || 'Caricamento non riuscito');
+      const messaggio = e.code === 'ECONNABORTED'
+        ? 'Il database non ha risposto entro 10 secondi. Nessun dato e stato modificato.'
+        : (e.response?.data?.detail || e.response?.data?.message || e.message || 'Caricamento non riuscito');
+      setLoadError(messaggio);
     } finally {
-      if (!silent) setLoading(false);
+      if (!silent && richiesta === richiestaRef.current) setLoading(false);
     }
   };
-  useEffect(() => { carica(); }, [anno]);
+  useEffect(() => {
+    carica();
+    return () => { richiestaRef.current += 1; };
+  }, [anno, sezione]);
 
   // Modale dedicata (niente window.prompt: su telefono/PWA è inaffidabile)
   const [riportoModal, setRiportoModal] = useState(null); // {tipo}

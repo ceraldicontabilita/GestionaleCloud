@@ -30,6 +30,10 @@ from .pagamento import (
     riconcilia_fatture_paypal,
     auto_ricostruisci_dati, lista_fatture_paypal, import_paypal_file
 )
+from app.services.invoice_payments import (
+    InvoiceBankReconciliationResponse,
+    ManualInvoicePaymentResponse,
+)
 
 # === ROTTE STATICHE (devono venire PRIMA delle dinamiche) ===
 
@@ -45,9 +49,15 @@ router.add_api_route("/elimina-gusci-vuoti", elimina_fatture_guscio_vuoto, metho
 router.add_api_route("/elimina-anni-vecchi", elimina_fatture_anni_vecchi, methods=["POST"])
 
 # Pagamento e Riconciliazione
-router.add_api_route("/paga-manuale", paga_fattura_manuale, methods=["POST"])
+router.add_api_route(
+    "/paga-manuale", paga_fattura_manuale, methods=["POST"],
+    response_model=ManualInvoicePaymentResponse, status_code=201,
+)
 router.add_api_route("/cambia-metodo-pagamento", cambia_metodo_pagamento_fattura, methods=["POST"])
-router.add_api_route("/riconcilia-con-estratto-conto", riconcilia_fattura_con_estratto_conto, methods=["POST"])
+router.add_api_route(
+    "/riconcilia-con-estratto-conto", riconcilia_fattura_con_estratto_conto,
+    methods=["POST"], response_model=InvoiceBankReconciliationResponse,
+)
 router.add_api_route("/verifica-incoerenze-estratto-conto", verifica_incoerenze_estratto_conto, methods=["GET"])
 router.add_api_route("/aggiorna-metodi-pagamento", aggiorna_metodi_pagamento_da_fornitori, methods=["POST"])
 router.add_api_route("/backfill-autoroute", backfill_autoroute_da_metodo_fornitore, methods=["POST"])

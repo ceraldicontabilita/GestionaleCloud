@@ -31,11 +31,12 @@ async def lifespan(app: FastAPI):
     """Application lifecycle: startup, yield, shutdown."""
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
 
-    try:
-        await Database.connect_db()
-    except Exception as e:
-        logger.error(f"Database connection failed: {e}")
+    # Fail closed: senza MongoDB il gestionale non puo' garantire letture o
+    # scritture contabili coerenti. Il processo non deve risultare healthy.
+    await Database.connect_db()
+    from app.services.auth_secret import initialize_auth_secret
 
+    await initialize_auth_secret(Database.get_db())
     settings.validate_startup()
 
     # Bus eventi unico (app/services/event_bus.py): include anche gli handler
@@ -47,16 +48,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Event bus non inizializzato: {e}")
 
-    try:
-        from app.services.alert_engine import seed_alert_definitions
+    if settings.RUN_STARTUP_SEED_DATA:
+        try:
+            from app.services.alert_engine import seed_alert_definitions
 
-        db = Database.get_db()
-        if db is not None:
-            await seed_alert_definitions(db)
-    except Exception as e:
-        logger.warning(f"Seed alert_definitions non eseguito: {e}")
+            db = Database.get_db()
+            if db is not None:
+                await seed_alert_definitions(db)
+        except Exception as e:
+            logger.warning(f"Seed alert_definitions non eseguito: {e}")
 
-    if settings.ENVIRONMENT.lower() not in {"test", "testing"}:
+    scheduler_attivo = (
+        settings.ENABLE_SCHEDULER
+        and settings.ENVIRONMENT.lower() not in {"test", "testing"}
+    )
+    if scheduler_attivo:
         try:
             from app.scheduler import start_scheduler
 
@@ -65,21 +71,27 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Scheduler non avviato: {e}")
     else:
-        logger.info("Scheduler disabilitato nell'ambiente di test locale")
+        logger.info(
+            "Scheduler disabilitato (ENABLE_SCHEDULER=%s, ambiente=%s)",
+            settings.ENABLE_SCHEDULER,
+            settings.ENVIRONMENT,
+        )
 
     try:
         db = Database.get_db()
-        if db is not None:
+        if settings.RUN_STARTUP_DATA_REPAIRS and db is not None:
             from app.routers.prima_nota_module.manutenzione import migrazione_pulisci_bancari_da_cassa
 
             await migrazione_pulisci_bancari_da_cassa()
     except Exception:
-        pass
+        logger.exception("Riparazione dati startup non completata")
 
     # Operazione una tantum autorizzata: elimina i dati operativi antecedenti
     # al 2026 solo in produzione Render, dopo backup separato per collection.
     # Cedolini, prima nota salari e bonifici collegati sono esclusi e verificati.
-    if os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID"):
+    if settings.RUN_STARTUP_DATA_REPAIRS and (
+        os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID")
+    ):
         try:
             from app.routers.prima_nota_module.manutenzione import (
                 esegui_pulizia_pregressi_una_tantum,
@@ -304,7 +316,7 @@ async def lifespan(app: FastAPI):
     # `anno`/`data_documento` non comparivano nei filtri per anno.
     try:
         db = Database.get_db()
-        if db is not None:
+        if settings.RUN_STARTUP_DATA_REPAIRS and db is not None:
             r = await db["invoices"].update_many(
                 {"anno": {"$exists": False},
                  "invoice_date": {"$regex": r"^\d{4}-"}},
@@ -326,7 +338,7 @@ async def lifespan(app: FastAPI):
     # "da associare" senza perdere il collegamento alla fattura già trovato.
     try:
         db = Database.get_db()
-        if db is not None:
+        if settings.RUN_STARTUP_DATA_REPAIRS and db is not None:
             r = await db["assegni"].update_many(
                 {"beneficiario": {"$regex": r"^Pag\. fatt\. "}},
                 {"$set": {"beneficiario": "", "stato": "vuoto"}},
@@ -342,7 +354,7 @@ async def lifespan(app: FastAPI):
     # riconoscibili senza ambiguità dal source dedicato.
     try:
         db = Database.get_db()
-        if db is not None:
+        if settings.RUN_STARTUP_DATA_REPAIRS and db is not None:
             r = await db["prima_nota_cassa"].update_many(
                 {"source": "ammortamento_cespiti", "status": {"$ne": "deleted"}},
                 {"$set": {"status": "deleted",
@@ -474,6 +486,33 @@ async def root(request: Request):
 @app.get("/api/health")
 async def health_check():
     from datetime import datetime, timezone
+
+    if Database.db is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unhealthy",
+                "database": "disconnected",
+                "version": settings.APP_VERSION,
+                "deploy_commit": (os.getenv("RENDER_GIT_COMMIT") or "")[:8] or None,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+
+    try:
+        await Database.db.command("ping")
+    except Exception:
+        logger.exception("Health check MongoDB fallito")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unhealthy",
+                "database": "unreachable",
+                "version": settings.APP_VERSION,
+                "deploy_commit": (os.getenv("RENDER_GIT_COMMIT") or "")[:8] or None,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
 
     salari_sync = "not_started"
     try:
