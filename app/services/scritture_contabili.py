@@ -147,6 +147,21 @@ async def _scrivi_se_assente(db, registro: str, query_esistente: Dict[str, Any],
     return doc["id"], False
 
 
+async def scrivi_movimento_se_assente(
+    db,
+    registro: str,
+    query_esistente: Dict[str, Any],
+    mov: Dict[str, Any],
+) -> tuple:
+    """Writer pubblico e idempotente per i motori di riconciliazione.
+
+    Mantiene un solo punto di scrittura in Prima Nota e impedisce che due
+    riprocessamenti concorrenti della stessa prova bancaria producano righe
+    duplicate. Ritorna ``(id_movimento, era_gia_esistente)``.
+    """
+    return await _scrivi_se_assente(db, registro, query_esistente, mov)
+
+
 async def _leggi_tutti(cursor, n: int = 100):
     """Compat: cursori Motor reali (async for) e fake dei test (to_list)."""
     if hasattr(cursor, "to_list"):

@@ -271,11 +271,19 @@ function Card({ titolo, valore, colore, onEdit, testId }) {
 const SOCI_RE = /(vincenzo|antonietta|valerio)\s+ceraldi|ceraldi\s+(vincenzo|antonietta|valerio)|giuseppina\s+pane|pane\s+giuseppina|finanziament\w*\s+soc|apporto\s+soc/i;
 
 function tipoEntrataBanca(m) {
-  if (m.source === 'trasferimento_pos' || m.categoria === 'Corrispettivi POS') return 'pos';
-  const t = `${m.categoria || ''} ${m.descrizione || ''}`.toLowerCase();
+  const t = `${m.categoria || ''} ${m.descrizione || ''} ${m.source || ''}`.toLowerCase();
+  // L'API esclude i crediti POS virtuali dal conto Banca. Qui restano solo
+  // accrediti effettivi, separati per circuito e quindi verificabili.
+  if (/sumup/.test(t) && /payout|accredito|incas|pos/.test(t)) return 'pos_sumup';
+  if (/numia|nexi/.test(t) && /accredito|incas|pos/.test(t)) return 'pos_numia';
+  if (m.source === 'accredito_payout' || /incas.*p\.o\.s|inc\.pos/.test(t)) return 'pos_altro';
   if (/nota\s*d[i']\s*credito|storno|rimborso/.test(t)) return 'nc';
   if (SOCI_RE.test(t)) return 'soci';
   if (/versament/.test(t)) return 'versamenti';
+  if (/paypal/.test(t)) return 'paypal';
+  if (/amazon|ecommerce|marketplace/.test(t)) return 'ecommerce';
+  if (/chp\s+legal|risarciment|indennizz/.test(t)) return 'legale';
+  if (/^\s*\d{4}\b/.test(String(m.categoria || '')) || m.source === 'export_bancario_operativo') return 'storico';
   return 'altro';
 }
 
@@ -289,11 +297,17 @@ function tipoEntrataCassa(m) {
 
 const RIGHE_RIPARTO = {
   banca: [
-    ['pos', '🟦 POS dalla cassa (trasferimenti)'],
+    ['pos_numia', 'Accrediti POS Numia/Nexi su BPM'],
+    ['pos_sumup', 'Payout POS SumUp su Mastercard'],
+    ['pos_altro', 'Altri accrediti POS su conto'],
     ['versamenti', '💰 Versamenti contanti'],
     ['nc', '↩️ Note di credito / rimborsi'],
     ['soci', '👥 Finanziamento soci'],
-    ['altro', '📄 Altre entrate'],
+    ['paypal', 'Incassi e rimborsi PayPal'],
+    ['ecommerce', 'Incassi e rimborsi e-commerce'],
+    ['legale', 'Risarcimenti e indennizzi'],
+    ['storico', 'Movimenti storici importati da banca'],
+    ['altro', 'Entrate bancarie da classificare'],
   ],
   cassa: [
     ['corrispettivi', '🧾 Corrispettivi'],
@@ -319,11 +333,11 @@ function RipartoEntrate({ sezione, cassa, banca, mese }) {
       tot[k] = (tot[k] || 0) + Math.abs(m.importo || 0);
     });
     const pb = delMese(banca.movimenti || [])
-      .filter(m => m.tipo === 'entrata' && tipoEntrataBanca(m) === 'pos')
+      .filter(m => m.tipo === 'entrata' && tipoEntrataBanca(m).startsWith('pos_'))
       .reduce((s, m) => s + Math.abs(m.importo || 0), 0);
     const pc = delMese(cassa.movimenti || [])
       .filter(m => m.tipo === 'uscita' &&
-        (m.categoria === 'POS Verso Banca' || /pos\s+verso\s+banca|battuto\s+pos/i.test(m.categoria || '')))
+        (/pos(?:\s+(?:numia|nexi|sumup))?\s+verso\s+banca|battuto\s+pos/i.test(m.categoria || '')))
       .reduce((s, m) => s + Math.abs(m.importo || 0), 0);
     return { totali: tot, posBanca: pb, posCassa: pc };
   }, [dati, banca, cassa, mese, sezione]);
@@ -363,12 +377,12 @@ function RipartoEntrate({ sezione, cassa, banca, mese }) {
           }}
         >
           <span style={{ color: '#334155' }}>
-            {posOk ? '↔️' : '⚠️'} Trasferimenti POS registrati: cassa <b>{eur(posCassa)}</b> → banca <b>{eur(posBanca)}</b>
-            {posOk && " (controllo contabile, non prova dell'accredito in estratto conto)"}
+            {posOk ? '↔️' : '⚠️'} POS reali: chiusure terminali <b>{eur(posCassa)}</b> · accrediti effettivi <b>{eur(posBanca)}</b>
+            {posOk && " (quadrati per importo complessivo; il dettaglio resta separato per circuito)"}
           </span>
           {!posOk && (
             <b style={{ color: ROSSO, fontFamily: 'ui-monospace, Menlo, monospace' }}>
-              Δ {eur(diffPos)}
+              Credito POS ancora da incassare / differenza temporale {eur(posCassa - posBanca)}
             </b>
           )}
         </div>

@@ -6,6 +6,7 @@ import asyncio
 
 from app.services.finanziamenti_soci import (
     SOCI,
+    classifica_finanziamento_ec,
     scan_finanziamenti_da_ec,
     schede_soci,
     socio_in_testo,
@@ -94,6 +95,20 @@ def test_scan_rimborso_richiede_causale_esplicita():
     scheda = next(s for s in schede["schede"] if s["socio_id"] == "antonietta_ceraldi")
     assert scheda["rimborsi"] == 1000.0
     assert scheda["apporti"] == 0
+
+
+def test_stipendio_socio_non_diventa_rimborso_finanziamento():
+    movimento = {
+        "id": "ec-stipendio-valerio",
+        "data_contabile": "2026-08-07",
+        "tipo": "uscita",
+        "importo": 1400.0,
+        "descrizione_originale": (
+            "VOSTRA DISPOSIZIONE FAVORE CERALDI VALERIO "
+            "CRLVLR88H14F839O stipendio"
+        ),
+    }
+    assert classifica_finanziamento_ec(movimento) is None
 
 
 def test_scan_idempotente_non_duplica():

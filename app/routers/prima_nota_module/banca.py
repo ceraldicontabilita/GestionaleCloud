@@ -11,7 +11,8 @@ from app.database import Database, Collections
 from app.services.payment_document_links import payment_document_ref
 from .common import (
     entra_in_prima_nota,
-    COLLECTION_PRIMA_NOTA_BANCA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA,
+    COLLECTION_PRIMA_NOTA_BANCA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE,
+    ESCLUSIONI_SALDO_REALE,
     calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota, arricchisci_movimenti_fattura
 )
 
@@ -228,10 +229,12 @@ async def list_prima_nota_banca(
     """Lista movimenti prima nota banca con saldo separato per anno."""
     db = Database.get_db()
 
-    query = {
+    query_base = {
         "status": {"$nin": ["deleted", "archived"]},
-        **ESCLUSIONI_PRIMA_NOTA,
+        "categoria": {"$nin": CATEGORIE_ESCLUSE},
+        **ESCLUSIONI_SALDO_REALE,
     }
+    query = dict(query_base)
 
     if anno:
         # §6.4: query anno allineata a cassa.py (copre anche i doc con anno == "")
@@ -256,7 +259,13 @@ async def list_prima_nota_banca(
     await _arricchisci_documenti_pagamento(db, movimenti)
 
     # §6.4: saldo tramite la funzione UNICA (segno/riporto/saldo finale uniformi)
-    saldi = await aggrega_saldo_prima_nota(db, COLLECTION_PRIMA_NOTA_BANCA, query, anno)
+    saldi = await aggrega_saldo_prima_nota(
+        db,
+        COLLECTION_PRIMA_NOTA_BANCA,
+        query,
+        anno,
+        query_base_precedente=query_base,
+    )
 
     return {
         "movimenti": movimenti,
@@ -492,6 +501,7 @@ async def movimenti_in_attesa_documento(anno: Optional[int] = None) -> Dict[str,
     query: Dict[str, Any] = {
         "stato_riconciliazione": "in_attesa_documento",
         "riconciliato": {"$ne": True},
+        "classificato_contabilmente": {"$ne": True},
     }
     if anno:
         query["data"] = {"$regex": f"^{anno}"}
@@ -502,13 +512,17 @@ async def movimenti_in_attesa_documento(anno: Optional[int] = None) -> Dict[str,
          "descrizione": 1, "descrizione_originale": 1, "categoria": 1,
          "fattura_id": 1, "invoice_id": 1, "fattura_ids": 1,
          "documento_id": 1, "cedolino_id": 1, "stipendio_id": 1,
-         "f24_id": 1, "tributo_id": 1, "paypal_transaction_id": 1},
+         "f24_id": 1, "tributo_id": 1, "paypal_transaction_id": 1,
+         "prima_nota_banca_id": 1, "tipo_classificazione_contabile": 1,
+         "socio_id": 1, "dipendente_id": 1, "gestore_pagamento": 1},
     ).sort("data", -1).to_list(2000)
 
     campi_collegamento = (
         "fattura_id", "invoice_id", "fattura_ids", "documento_id",
         "cedolino_id", "stipendio_id", "f24_id", "tributo_id",
-        "paypal_transaction_id",
+        "paypal_transaction_id", "prima_nota_banca_id",
+        "tipo_classificazione_contabile", "socio_id", "dipendente_id",
+        "gestore_pagamento",
     )
     gia_collegati = [
         movimento for movimento in movimenti_grezzi

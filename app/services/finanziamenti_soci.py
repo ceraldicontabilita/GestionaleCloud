@@ -12,9 +12,11 @@ Regole (dettate dall'utente):
   nella scheda del socio corrispondente (gli stipendi ai soci dipendenti
   NON sono rimborsi e vengono ignorati).
 
-La scansione è idempotente (chiave = riga di estratto conto) e i dati
-finiscono nella collezione `finanziamenti_soci_movimenti`. Nessuna
-scrittura in prima_nota_cassa/banca: è un registro analitico separato.
+La scansione è idempotente (chiave = riga di estratto conto) e alimenta il
+registro analitico `finanziamenti_soci_movimenti`. La corrispondente evidenza
+nel registro Banca viene creata, sempre dalla stessa riga di estratto conto,
+dal servizio `proiezione_bancaria`: i due registri restano così allineati e
+la prova bancaria non viene duplicata.
 """
 import logging
 import re
@@ -85,6 +87,40 @@ def _verso_ec(doc: Dict[str, Any]) -> Optional[str]:
 
 def _id_ec(doc: Dict[str, Any]) -> str:
     return str(doc.get("id") or doc.get("_id") or "")
+
+
+def classifica_finanziamento_ec(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Classifica una prova bancaria come apporto/rimborso soci.
+
+    Il solo importo non viene mai usato. Un'entrata richiede il nome completo
+    di un socio; un'uscita richiede anche una causale esplicita di rimborso,
+    restituzione o finanziamento, cosi' uno stipendio non diventa rimborso.
+    """
+    descrizione = _descrizione_ec(doc)
+    socio = socio_in_testo(descrizione)
+    verso = _verso_ec(doc)
+    if not socio or verso not in ("entrata", "uscita"):
+        return None
+    if verso == "uscita" and not _RE_RIMBORSO.search(descrizione):
+        return None
+    try:
+        importo = round(abs(float(doc.get("importo") or 0)), 2)
+    except (TypeError, ValueError):
+        return None
+    data = _data_ec(doc)
+    ec_id = _id_ec(doc)
+    if importo <= 0 or not data or not ec_id:
+        return None
+    return {
+        "socio_id": socio["id"],
+        "socio_nome": socio["nome"],
+        "tipo": "apporto" if verso == "entrata" else "rimborso",
+        "tipo_banca": verso,
+        "importo": importo,
+        "data": data,
+        "descrizione": descrizione,
+        "estratto_conto_id": ec_id,
+    }
 
 
 _PAROLE_BANCA = {
@@ -178,33 +214,24 @@ async def scan_finanziamenti_da_ec(db, anno: Optional[int] = None) -> Dict[str, 
         if anno and not data_norm.startswith(f"{anno}-"):
             continue
         stats["righe_esaminate"] += 1
-        descr = _descrizione_ec(doc)
-        socio = socio_in_testo(descr)
-        if not socio:
+        classificazione = classifica_finanziamento_ec(doc)
+        if not classificazione:
+            descr = _descrizione_ec(doc)
+            socio = socio_in_testo(descr)
+            verso = _verso_ec(doc)
+            if socio and verso == "uscita" and not _RE_RIMBORSO.search(descr):
+                # Causale letta ogni volta: senza rimborso/restituzione/
+                # finanziamento NON e' un rimborso soci (es. stipendio).
+                stats["uscite_ignorate_causale"] += 1
             continue
-        verso = _verso_ec(doc)
-        if verso is None:
-            continue
-        if verso == "uscita" and not _RE_RIMBORSO.search(descr):
-            # Causale letta ogni volta: senza rimborso/restituzione/
-            # finanziamento NON è un rimborso soci (es. stipendio).
-            stats["uscite_ignorate_causale"] += 1
-            continue
-        ec_id = _id_ec(doc)
+        ec_id = classificazione["estratto_conto_id"]
         if not ec_id or ec_id in gia_importati:
             stats["gia_presenti"] += 1
             continue
 
-        tipo_mov = "apporto" if verso == "entrata" else "rimborso"
         movimento = {
             "id": str(uuid.uuid4()),
-            "socio_id": socio["id"],
-            "socio_nome": socio["nome"],
-            "tipo": tipo_mov,
-            "importo": round(abs(float(doc.get("importo") or 0)), 2),
-            "data": data_norm,
-            "descrizione": descr,
-            "estratto_conto_id": ec_id,
+            **classificazione,
             "source": "estratto_conto_auto",
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -216,8 +243,10 @@ async def scan_finanziamenti_da_ec(db, anno: Optional[int] = None) -> Dict[str, 
         await db[COLLECTION].insert_one(movimento)
         movimenti_esistenti.append(movimento)
         gia_importati.add(ec_id)
-        stats["per_socio"][socio["id"]] += 1
-        stats["apporti_nuovi" if tipo_mov == "apporto" else "rimborsi_nuovi"] += 1
+        stats["per_socio"][classificazione["socio_id"]] += 1
+        stats[
+            "apporti_nuovi" if classificazione["tipo"] == "apporto" else "rimborsi_nuovi"
+        ] += 1
 
     return stats
 

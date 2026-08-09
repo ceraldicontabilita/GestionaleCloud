@@ -24,6 +24,15 @@ def test_coda_esclude_gia_collegati_e_mostra_i_candidati(monkeypatch):
             "riconciliato": False,
             "descrizione_originale": "RIB LEASYS ITALIA SPA",
         },
+        {
+            "id": "ec-stipendio-classificato", "data": "2026-08-07",
+            "tipo": "uscita", "importo": 1400.0,
+            "stato_riconciliazione": "in_attesa_documento",
+            "riconciliato": False, "classificato_contabilmente": True,
+            "tipo_classificazione_contabile": "stipendio",
+            "dipendente_id": "valerio-ceraldi",
+            "prima_nota_banca_id": "pn-stipendio-valerio",
+        },
     ]))
     _run(db["operazioni_da_confermare"].insert_one({
         "id": "op-riba", "movimento_ec_id": "ec-riba", "stato": "da_confermare",
