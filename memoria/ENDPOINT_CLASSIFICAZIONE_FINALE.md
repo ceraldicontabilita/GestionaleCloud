@@ -37,7 +37,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/admin/export` | admin_export | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/admin/export/{filename}` | admin_export | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/admin/noleggio/backfill-dati-gestionali` | admin | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
-| `POST /api/admin/reset-collections` | admin | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
+| `POST /api/admin/reset-collections` | admin | — | — | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/admin/rollback/drive-fatture/conta` | admin_rollback | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/admin/rollback/drive-fatture/elimina` | admin_rollback | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/admin/rollback/fatture/azzera-tutto` | admin_rollback | sì | — | — | — | — | tenere | in uso: FE |
@@ -559,7 +559,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/f24/upload-pdf` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/f24/upload-zip` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/f24/{f24_id}` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/f24/{f24_id}` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/f24/{f24_id}` | f24.f24_main | sì | — | — | — | sì | tenere | in uso: FE |
 | `PUT /api/f24/{f24_id}` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/f24/{f24_id}/mark-paid` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/fatture-estere/affidabilita` | fatture_estera_verifica | sì | — | — | — | sì | tenere | in uso: FE |
@@ -832,7 +832,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/previsioni-acquisti/prodotti` | previsioni_acquisti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/previsioni-acquisti/statistiche` | previsioni_acquisti | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota-salari/consolida-record` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/prima-nota-salari/dipendenti-lista` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/prima-nota-salari/dipendenti-lista` | accounting.prima_nota_salari | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/prima-nota-salari/export-appdipendenti/download` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota-salari/export-appdipendenti/preview` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota-salari/export-excel` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -854,13 +854,13 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/prima-nota/anni-disponibili` | prima_nota_module.stats | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/annulla-associazione-fattura-banca` | prima_nota_module.manutenzione | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/arricchisci-pagamenti-banca` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/prima-nota/banca` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/prima-nota/banca` | prima_nota_module.banca | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota/banca` | prima_nota_module.banca | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/prima-nota/banca/analisi-righe-grezze` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/banca/candidati-per-fattura` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/prima-nota/banca/delete-all` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/prima-nota/banca/delete-by-source/{source}` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/prima-nota/banca/in-attesa-documento` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/prima-nota/banca/in-attesa-documento` | prima_nota_module.banca | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota/banca/sync-estratto-conto` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/banca/template-csv` | prima_nota_module | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/prima-nota/banca/{movimento_id}` | prima_nota_module.banca | sì | — | — | — | sì | tenere | in uso: FE |
