@@ -13,6 +13,10 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.database import Collections
+from app.routers.bonifici_module.classification import (
+    classifica_destinazione_dipendente,
+)
 from app.services.bonifici_pdf_ingest import arricchisci_nomi_salari_da_cedolini
 from app.services.identity_matching import nome_presente_nel_testo, nome_tokens
 
@@ -82,11 +86,31 @@ def _importo_residuo(riga: Dict[str, Any]) -> float:
     return round(max(0.0, atteso - pagato), 2)
 
 
+def _anagrafica_fallback_da_salari(righe: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Compatibilita' per record storici: l'anagrafica resta la fonte primaria."""
+    result: List[Dict[str, Any]] = []
+    identita = set()
+    for riga in righe:
+        nome = _nome_riga_stipendio(riga)
+        chiave = tuple(sorted(_tokens(nome)))
+        if len(chiave) < 2 or chiave in identita:
+            continue
+        identita.add(chiave)
+        result.append({
+            "id": riga.get("dipendente_id") or f"salario:{'|'.join(chiave)}",
+            "nome_completo": nome,
+            "codice_fiscale": riga.get("codice_fiscale"),
+            "iban": riga.get("iban"),
+        })
+    return result
+
+
 def _candidati_univoci(
     descrizione: str,
     importo: float,
     righe: List[Dict[str, Any]],
     data_movimento: str = "",
+    dipendente_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Nome completo + importo entro il residuo + periodo, se presente."""
     nome_favore = estrai_nome_favore(descrizione)
@@ -94,6 +118,11 @@ def _candidati_univoci(
     candidati: List[Dict[str, Any]] = []
     for riga in righe:
         if riga.get("riconciliato") is True:
+            continue
+        # Quando l'anagrafica ha identificato il dipendente per CF/IBAN/nome,
+        # non permettere che un omonimo con un altro id diventi candidato.
+        riga_dipendente_id = str(riga.get("dipendente_id") or "").strip()
+        if dipendente_id and riga_dipendente_id and riga_dipendente_id != str(dipendente_id):
             continue
         residuo = _importo_residuo(riga)
         if residuo <= 0 or importo - residuo > 0.009:
@@ -147,14 +176,47 @@ async def associa_bonifici_stipendi(
         filtro, {"_id": 0}
     ).to_list(5000)
 
-    movimenti = await db["estratto_conto_movimenti"].find(
-        {
-            "riconciliato": {"$ne": True},
-            "$or": [
-                {"descrizione": {"$regex": "FAVORE|STIPEND|EMOLUMENT|SALARI|COMPETENZ", "$options": "i"}},
-                {"descrizione_originale": {"$regex": "FAVORE|STIPEND|EMOLUMENT|SALARI|COMPETENZ", "$options": "i"}},
-            ],
+    dipendenti = await db[Collections.EMPLOYEES].find(
+        {}, {
+            "_id": 0,
+            "id": 1,
+            "nome": 1,
+            "cognome": 1,
+            "nome_completo": 1,
+            "codice_fiscale": 1,
+            "cf": 1,
+            "iban": 1,
         },
+    ).to_list(5000)
+    # I salari storici possono precedere la migrazione dell'anagrafica. Sono
+    # usati solo come fallback e non sostituiscono mai una identita' corrente.
+    ids_anagrafica = {str(d.get("id") or "") for d in dipendenti if d.get("id")}
+    nomi_anagrafica = {
+        tuple(sorted(_tokens(
+            d.get("nome_completo")
+            or f"{d.get('nome', '')} {d.get('cognome', '')}".strip()
+        )))
+        for d in dipendenti
+    }
+    for fallback in _anagrafica_fallback_da_salari(righe):
+        nome_fallback = tuple(sorted(_tokens(fallback.get("nome_completo") or "")))
+        if (
+            str(fallback.get("id") or "") not in ids_anagrafica
+            and nome_fallback not in nomi_anagrafica
+        ):
+            dipendenti.append(fallback)
+
+    filtro_movimenti: Dict[str, Any] = {
+        "riconciliato": {"$ne": True},
+        "$or": [
+            {"tipo": "uscita"},
+            {"importo": {"$lt": 0}},
+        ],
+    }
+    if anno:
+        filtro_movimenti["data"] = {"$regex": rf"^{int(anno)}-"}
+    movimenti = await db["estratto_conto_movimenti"].find(
+        filtro_movimenti,
         {"_id": 0},
     ).sort("data", 1).to_list(10000)
 
@@ -173,11 +235,18 @@ async def associa_bonifici_stipendi(
         )
         if "COMM" in descrizione.upper()[:30]:
             continue
+        destinazione = classifica_destinazione_dipendente(movimento, dipendenti)
+        if not (
+            destinazione.get("destinazione_dipendente")
+            and destinazione.get("identita_univoca")
+        ):
+            continue
         candidati = _candidati_univoci(
             descrizione,
             abs(importo_grezzo),
             righe,
             data_movimento=movimento.get("data") or "",
+            dipendente_id=destinazione.get("dipendente_id"),
         )
         if len(candidati) != 1:
             ambigui += int(len(candidati) > 1)
@@ -197,6 +266,9 @@ async def associa_bonifici_stipendi(
                 "tipo_riconciliazione": "stipendio_nome_importo_entro_residuo",
                 "stipendio_id": riga["id"],
                 "dipendente": _nome_riga_stipendio(riga),
+                "dipendente_id": (
+                    destinazione.get("dipendente_id") or riga.get("dipendente_id")
+                ),
                 "categoria": "Stipendi",
                 "data_riconciliazione": now,
             }},
@@ -214,7 +286,7 @@ async def associa_bonifici_stipendi(
                         "riconciliato" if completata else "parzialmente_riconciliato"
                     ),
                     "riconciliazione_evidenze": [
-                        "nome_completo_in_causale",
+                        destinazione.get("motivo_destinazione"),
                         "importo_entro_residuo",
                         "movimento_estratto_conto",
                     ],

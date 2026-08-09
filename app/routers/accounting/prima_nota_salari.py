@@ -20,7 +20,7 @@ import io
 import hashlib
 from decimal import Decimal, InvalidOperation
 
-from app.database import Database
+from app.database import Collections, Database
 from app.services.salari_periodo import (
     filtro_periodo_prima_nota,
     periodo_ammesso_in_prima_nota,
@@ -1102,12 +1102,40 @@ async def aggiungi_aggiustamento(
 
 @router.get("/dipendenti-lista")
 async def get_dipendenti_lista() -> List[str]:
-    """Lista nomi dipendenti unici dalla prima nota salari."""
+    """Nomi noti dall'anagrafica dipendenti e dallo storico salari."""
     db = Database.get_db()
-    dipendenti = await db["prima_nota_salari"].distinct(
+    storico = await db["prima_nota_salari"].distinct(
         "dipendente", filtro_periodo_prima_nota()
     )
-    return sorted(dipendenti)
+    anagrafica = await db[Collections.EMPLOYEES].find(
+        {
+            "attivo": {"$ne": False},
+            "merged_into": {"$exists": False},
+        },
+        {
+            "_id": 0,
+            "nome": 1,
+            "cognome": 1,
+            "nome_completo": 1,
+        },
+    ).to_list(5000)
+
+    def chiave_identita(nome: str) -> str:
+        # Cognome Nome e Nome Cognome devono indicare la stessa anagrafica.
+        return "|".join(sorted(normalize_name(nome).split()))
+
+    nomi_per_chiave: Dict[str, str] = {}
+    for dipendente in anagrafica:
+        nome = (
+            dipendente.get("nome_completo")
+            or f"{dipendente.get('nome', '')} {dipendente.get('cognome', '')}".strip()
+        )
+        if nome and normalize_name(nome):
+            nomi_per_chiave[chiave_identita(nome)] = str(nome).strip()
+    for nome in storico:
+        if nome and normalize_name(nome):
+            nomi_per_chiave.setdefault(chiave_identita(nome), str(nome).strip())
+    return sorted(nomi_per_chiave.values(), key=normalize_name)
 
 
 @router.delete("/salari/reset")

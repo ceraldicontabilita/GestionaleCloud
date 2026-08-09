@@ -66,15 +66,17 @@ class _Coll:
 
 
 class _Db:
-    def __init__(self, salari, movimenti):
+    def __init__(self, salari, movimenti, dipendenti=None):
         self.salari = _Coll(salari)
         self.movimenti = _Coll(movimenti)
         self.cedolini = _Coll([])
+        self.dipendenti = _Coll(dipendenti or [])
 
     def __getitem__(self, name):
         return {"prima_nota_salari": self.salari,
                 "estratto_conto_movimenti": self.movimenti,
-                "cedolini": self.cedolini}[name]
+                "cedolini": self.cedolini,
+                "dipendenti": self.dipendenti}[name]
 
 
 def _run(c):
@@ -122,6 +124,94 @@ def test_associa_bonifico_per_nome_e_importo():
     assert riga["riconciliato"] is True and riga["importo_bonifico"] == 530.0
     # il fornitore Dolciaria non viene mai toccato
     assert not db.movimenti.docs[1].get("riconciliato")
+
+
+def test_anagrafica_associa_movimento_senza_parole_stipendio_o_favore():
+    db = _Db(
+        salari=[{
+            "id": "S1", "dipendente_id": "D1", "dipendente": "CERALDI VALERIO",
+            "anno": 2026, "mese": 7, "importo_busta": 1400.0,
+            "riconciliato": False,
+        }],
+        movimenti=[{
+            "id": "M1", "data": "2026-08-07", "importo": -1400.0,
+            "descrizione_originale": (
+                "VOSTRA DISPOSIZIONE RIF. 90731633 CERALDI VALERIO "
+                "CRLVLR88H14F839O COMPETENZE"
+            ),
+        }],
+        dipendenti=[{
+            "id": "D1", "nome": "Valerio", "cognome": "Ceraldi",
+            "codice_fiscale": "CRLVLR88H14F839O",
+        }],
+    )
+    result = _run(associa_bonifici_stipendi(db))
+    assert result["bonifici_associati"] == 1
+    assert db.movimenti.docs[0]["stipendio_id"] == "S1"
+    assert db.movimenti.docs[0]["dipendente_id"] == "D1"
+    assert db.salari.docs[0]["riconciliato"] is True
+
+
+def test_anagrafica_non_diventa_ambigua_se_salario_storico_non_ha_dipendente_id():
+    db = _Db(
+        salari=[{
+            "id": "S1", "dipendente": "CERALDI VALERIO",
+            "anno": 2026, "mese": 7, "importo_busta": 1400.0,
+            "riconciliato": False,
+        }],
+        movimenti=[{
+            "id": "M1", "data": "2026-08-07", "importo": -1400.0,
+            "descrizione": "VOSTRA DISPOSIZIONE CERALDI VALERIO COMPETENZE",
+        }],
+        dipendenti=[{
+            "id": "D1", "nome_completo": "Valerio Ceraldi",
+            "codice_fiscale": "CRLVLR88H14F839O",
+        }],
+    )
+
+    result = _run(associa_bonifici_stipendi(db))
+
+    assert result["bonifici_associati"] == 1
+    assert db.movimenti.docs[0]["dipendente_id"] == "D1"
+    assert db.salari.docs[0]["riconciliato"] is True
+
+
+def test_id_anagrafico_impedisce_associazione_a_omonimo_diverso():
+    db = _Db(
+        salari=[
+            {
+                "id": "S1", "dipendente_id": "D1", "dipendente": "MARIO ROSSI",
+                "anno": 2026, "mese": 7, "importo_busta": 1200.0,
+                "riconciliato": False,
+            },
+            {
+                "id": "S2", "dipendente_id": "D2", "dipendente": "MARIO ROSSI",
+                "anno": 2026, "mese": 7, "importo_busta": 1200.0,
+                "riconciliato": False,
+            },
+        ],
+        movimenti=[{
+            "id": "M1", "data": "2026-08-07", "importo": -1200.0,
+            "descrizione": "VS.DISP. RSSMRA80A01F839X MARIO ROSSI COMPETENZE",
+        }],
+        dipendenti=[
+            {
+                "id": "D1", "nome_completo": "Mario Rossi",
+                "codice_fiscale": "RSSMRA80A01F839X",
+            },
+            {
+                "id": "D2", "nome_completo": "Mario Rossi",
+                "codice_fiscale": "RSSMRA81A01F839Y",
+            },
+        ],
+    )
+
+    result = _run(associa_bonifici_stipendi(db))
+
+    assert result["bonifici_associati"] == 1
+    assert db.movimenti.docs[0]["stipendio_id"] == "S1"
+    assert db.salari.docs[0]["riconciliato"] is True
+    assert db.salari.docs[1]["riconciliato"] is False
 
 
 def test_acconto_viene_associato_ma_non_chiude_la_busta():
