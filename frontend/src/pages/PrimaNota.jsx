@@ -59,6 +59,12 @@ function parseImportoIT(input) {
   return isNaN(v) ? null : v;
 }
 
+export function formattaFinaleAssegno(input) {
+  const cifre = String(input ?? '').replace(/\D/g, '').slice(-5);
+  if (cifre.length <= 3) return cifre;
+  return `${cifre.slice(0, 3)}-${cifre.slice(3)}`;
+}
+
 const testoRicerca = valore => String(valore ?? '').trim().toLocaleLowerCase('it-IT');
 
 export function etichettaTabProvvisori(provvisori = [], attesaBanca = []) {
@@ -1935,10 +1941,15 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                   </div>
                   <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
                     <input
-                      aria-label="Ultime 5 cifre e suffisso assegno"
-                      placeholder="Ultime 5 cifre, es. 69431-7"
+                      aria-label="Finale assegno nel formato 123-01"
+                      placeholder="Es. 123-01"
+                      inputMode="numeric"
+                      maxLength={6}
                       value={assegnoEditor.frammento || ''}
-                      onChange={e => setAssegnoEditor(prev => ({ ...prev, frammento: e.target.value }))}
+                      onChange={e => setAssegnoEditor(prev => ({
+                        ...prev,
+                        frammento: formattaFinaleAssegno(e.target.value),
+                      }))}
                       style={{ minHeight: 40, flex: '1 1 240px', border: '1px solid #a78bfa', borderRadius: 8, padding: '7px 10px', fontSize: 12.5 }}
                     />
                     <button
@@ -1951,7 +1962,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                     </button>
                   </div>
                   <div style={{ color: '#64748b', marginTop: 6, fontSize: 11.5 }}>
-                    Digita le ultime 5 cifre e il suffisso dopo il trattino. Il sistema propone il numero completo e non collega mai sulla sola uguaglianza dell'importo.
+                    Digita il finale come 123-01. Se scrivi 12301, il trattino viene inserito automaticamente. Il sistema propone il numero completo e non collega mai sulla sola uguaglianza dell'importo.
                   </div>
                   {assegnoEditor.errore && <div role="alert" style={{ color: '#b91c1c', marginTop: 7 }}>{assegnoEditor.errore}</div>}
                   {!assegnoEditor.loading && assegnoEditor.message && (

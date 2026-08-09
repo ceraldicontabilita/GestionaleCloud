@@ -444,16 +444,16 @@ describe('Fatture provvisorie in attesa banca', () => {
     expect(screen.getByText(/FVL824/)).toBeInTheDocument();
   });
 
-  it('ricostruisce il numero completo dell assegno dalle ultime cinque cifre e suffisso', async () => {
+  it('ricostruisce il numero completo dell assegno dal finale 123-01', async () => {
     api.get.mockResolvedValue({ data: {
       candidati: [{
-        assegno_id: 'ass-7', numero_completo: '0208769431-7', importo: 448.35,
+        assegno_id: 'ass-7', numero_completo: '0208770000-01', importo: 448.35,
         data: '2026-05-15', fonte_estratto_conto: true,
         movimento_estratto_conto_id: 'ec-7',
       }],
       message: 'Numero assegno completo trovato. Verifica e conferma il collegamento.',
     } });
-    api.post.mockResolvedValue({ data: { message: 'Assegno 0208769431-7 collegato.' } });
+    api.post.mockResolvedValue({ data: { message: 'Assegno 0208770000-01 collegato.' } });
     const onRicarica = vi.fn().mockResolvedValue(undefined);
     render(<Provvisori
       provvisori={[]}
@@ -466,21 +466,22 @@ describe('Fatture provvisorie in attesa banca', () => {
     />);
 
     fireEvent.click(screen.getByRole('button', { name: /Associa assegno alla fattura 2600735\/V/ }));
-    const frammento = await screen.findByLabelText('Ultime 5 cifre e suffisso assegno');
-    fireEvent.change(frammento, { target: { value: '69431-7' } });
+    const frammento = await screen.findByLabelText('Finale assegno nel formato 123-01');
+    fireEvent.change(frammento, { target: { value: '00001' } });
+    expect(frammento).toHaveValue('000-01');
     fireEvent.click(screen.getByRole('button', { name: 'Cerca assegno' }));
 
     await waitFor(() => expect(api.get).toHaveBeenLastCalledWith(
       '/api/prima-nota/provvisori/assegni-proposti',
-      { params: { fattura_id: 'fatt-ass', frammento: '69431-7' } },
+      { params: { fattura_id: 'fatt-ass', frammento: '000-01' } },
     ));
-    expect(await screen.findByText(/Assegno 0208769431-7/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Collega 0208769431-7' }));
+    expect(await screen.findByText(/Assegno 0208770000-01/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Collega 0208770000-01' }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       '/api/prima-nota/provvisori/associa-assegno',
       expect.objectContaining({
         fattura_id: 'fatt-ass', assegno_id: 'ass-7',
-        movimento_estratto_conto_id: 'ec-7', numero_completo: '0208769431-7',
+        movimento_estratto_conto_id: 'ec-7', numero_completo: '0208770000-01',
       }),
     ));
   });

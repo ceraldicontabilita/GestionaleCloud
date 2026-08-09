@@ -309,18 +309,23 @@ def _parti_numero_assegno(valore: Any) -> tuple[str, str]:
 
 
 def _numero_assegno_corrisponde_frammento(numero: Any, frammento: str) -> bool:
-    """Match sulle ultime cinque cifre e sull'eventuale suffisso.
+    """Confronta il finale guidato ``123-01`` con il numero completo.
 
-    Esempio: ``69431-7`` identifica ``0208769431-7`` senza perdere gli zeri
-    iniziali. Il suffisso, se scritto, deve coincidere esattamente.
+    Le tre cifre prima del trattino identificano la coda del numero bancario;
+    le due successive identificano il foglio del carnet. Il suffisso resta
+    obbligatorio per non scegliere un assegno soltanto in base all'importo.
+    I vecchi dati con suffisso non riempito di zeri (``-1``) restano leggibili.
     """
     base, suffisso = _parti_numero_assegno(numero)
     frag_base, frag_suffisso = _parti_numero_assegno(frammento)
-    if not base or not frag_base or len(frag_base) != 5:
+    if (
+        not base or not suffisso
+        or len(frag_base) != 3 or len(frag_suffisso) != 2
+    ):
         return False
     if not base.endswith(frag_base):
         return False
-    return not frag_suffisso or suffisso == frag_suffisso
+    return suffisso.lstrip("0") == frag_suffisso.lstrip("0")
 
 
 def _movimento_assegno_ufficiale(movimento: Dict[str, Any]) -> bool:
@@ -451,10 +456,10 @@ async def _candidati_assegno_per_fattura(
                 "gia_collegato_fattura_id": None,
             })
     if frammento:
-        if not re.fullmatch(r"\d{5}(?:-\d+)?", re.sub(r"\s+", "", frammento)):
+        if not re.fullmatch(r"\d{3}-\d{2}", re.sub(r"\s+", "", frammento)):
             raise HTTPException(
                 status_code=400,
-                detail="Inserisci le ultime 5 cifre, con suffisso facoltativo (es. 69431-7).",
+                detail="Inserisci il finale dell'assegno nel formato 123-01.",
             )
         candidati = [
             candidato for candidato in candidati
@@ -492,7 +497,7 @@ async def proponi_assegni_fattura(
             if len(candidati) == 1 else
             "Nessun assegno compatibile trovato."
             if not candidati else
-            f"Trovati {len(candidati)} assegni dello stesso importo: inserisci le ultime 5 cifre."
+            f"Trovati {len(candidati)} assegni dello stesso importo: inserisci il finale, per esempio 123-01."
         ),
     }
 
