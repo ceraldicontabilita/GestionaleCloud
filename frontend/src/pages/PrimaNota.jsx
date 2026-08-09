@@ -65,6 +65,13 @@ export function etichettaTabProvvisori(provvisori = [], attesaBanca = []) {
   return `\u26a0\ufe0f Da decidere (${provvisori.length}) \u00b7 \ud83c\udfe6 Attesa banca (${attesaBanca.length})`;
 }
 
+export function puoAssociareAssegno(pagamento = {}) {
+  if (pagamento.fonte_metodo === 'assegno_compilato' || pagamento.assegno_numero) return true;
+  const codice = String(pagamento.strumento_bancario?.codice || '').trim().toLowerCase();
+  if (!codice) return true;
+  return ['assegno', 'altro', 'non_classificato', 'sconosciuto'].includes(codice);
+}
+
 export function numeroFatturaMovimento(movimento = {}) {
   return movimento.numero_fattura || movimento.fattura_numero || movimento.invoice_number || '';
 }
@@ -1872,9 +1879,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                 >
                   Associa a mano
                 </button>
-                {(p.fonte_metodo === 'assegno_compilato'
-                  || p.strumento_bancario?.codice === 'assegno'
-                  || p.assegno_numero) && (
+                {puoAssociareAssegno(p) && (
                   <button
                     type="button"
                     onClick={() => assegnoEditor?.fatturaId === p.fattura_id
@@ -1884,7 +1889,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                     aria-label={`Associa assegno alla fattura ${p.fattura_numero || ''}`.trim()}
                     style={{ minHeight: 40, background: '#f5f3ff', color: '#6d28d9', border: '1px solid #c4b5fd', borderRadius: 7, padding: '4px 12px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}
                   >
-                    Assegno
+                    Abbina assegno
                   </button>
                 )}
                 <button

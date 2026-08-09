@@ -507,6 +507,22 @@ describe('Fatture provvisorie in attesa banca', () => {
     expect(screen.queryByRole('button', { name: /Associa assegno/ })).not.toBeInTheDocument();
     expect(screen.getByText(/Importo al centesimo, ma due documenti/)).toBeInTheDocument();
   });
+
+  it('per una fattura banca senza strumento identificato espone Abbina assegno', () => {
+    render(<Provvisori
+      provvisori={[]}
+      attesaBanca={[{
+        fattura_id: 'fatt-generica', fattura_numero: '0070021988',
+        fattura_data: '2026-06-29', fornitore: 'KIMBO S.P.A.',
+        importo: 1498.96,
+      }]}
+      onRicarica={vi.fn()}
+    />);
+
+    expect(screen.getByRole('button', {
+      name: /Associa assegno alla fattura 0070021988/,
+    })).toHaveTextContent('Abbina assegno');
+  });
 });
 
 describe('Conferma multipla delle provvisorie', () => {

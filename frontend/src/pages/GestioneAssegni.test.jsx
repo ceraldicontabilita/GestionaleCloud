@@ -6,7 +6,9 @@ import api from '../api';
 
 import GestioneAssegni, {
   assegnoInteramenteAssociato,
+  fatturePerFornitore,
   filtraAssegni,
+  importiCoincidonoAlCentesimo,
   normalizzaBeneficiarioAssegno,
   totaleQuoteFatture,
 } from './GestioneAssegni';
@@ -78,6 +80,26 @@ describe('Copertura assegno con fatture collegate', () => {
     expect(
       assegnoInteramenteAssociato(652.74, [{ quota: 331.04 }, { quota: 321.70 }])
     ).toBe(true);
+  });
+});
+
+describe('Selezione guidata fornitore e fattura', () => {
+  const fatture = [
+    {
+      id: 'fatt-kimbo-1', supplier_name: 'KIMBO S.P.A.', supplier_vat: 'IT00123456789',
+      invoice_number: '0070021988', invoice_date: '2026-06-29', importo_residuo: 1498.96,
+    },
+    {
+      id: 'fatt-altro', supplier_name: 'ALTRO FORNITORE SRL', supplier_vat: 'IT00987654321',
+      invoice_number: '77', invoice_date: '2026-06-30', importo_residuo: 1498.96,
+    },
+  ];
+
+  it('usa identita fornitore e centesimi esatti senza mescolare fatture omonime', () => {
+    expect(fatturePerFornitore(fatture, 'KIMBO S.P.A.', 'IT00123456789'))
+      .toHaveLength(1);
+    expect(importiCoincidonoAlCentesimo(1498.96, '1498.960')).toBe(true);
+    expect(importiCoincidonoAlCentesimo(1498.96, 1498.95)).toBe(false);
   });
 });
 
@@ -158,6 +180,47 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     expect(screen.getByText('15-06-2026')).toBeInTheDocument();
     expect(screen.getByText('30-06-2026')).toBeInTheDocument();
     expect(screen.getByText('Estratto conto')).toBeInTheDocument();
+  });
+
+  it('seleziona il fornitore, mostra solo le sue fatture e compila la data dal documento', async () => {
+    const assegno = {
+      id: 'a-kimbo', numero: '0208769323', stato: 'incassato', importo: 1498.96,
+      beneficiario: '', data_incasso: '2026-05-28',
+    };
+    const fatture = [
+      {
+        id: 'fatt-kimbo', supplier_name: 'KIMBO S.P.A.', supplier_vat: 'IT00123456789',
+        invoice_number: '0070021988', invoice_date: '2026-06-29', importo_residuo: 1498.96,
+      },
+      {
+        id: 'fatt-saima', supplier_name: 'SAIMA S.P.A.', supplier_vat: 'IT00987654321',
+        invoice_number: '1/1557', invoice_date: '2026-01-07', importo_residuo: 1498.96,
+      },
+    ];
+    api.get.mockImplementation(url => {
+      if (url.includes('/supporto/fatture-disponibili')) return Promise.resolve({ data: fatture });
+      return rispostaPagina([assegno])(url);
+    });
+    api.put.mockResolvedValue({ data: { success: true } });
+
+    renderPagina();
+    fireEvent.click(await screen.findByTestId('edit-a-kimbo'));
+    fireEvent.change(screen.getByLabelText('Cerca e seleziona fornitore'), {
+      target: { value: 'KIMBO S.P.A.' },
+    });
+
+    const selezione = await screen.findByLabelText('Fattura del fornitore');
+    await waitFor(() => expect(selezione.querySelectorAll('option')).toHaveLength(2));
+    expect(selezione).toHaveTextContent('0070021988');
+    expect(selezione).not.toHaveTextContent('1/1557');
+    fireEvent.change(selezione, { target: { value: 'fatt-kimbo' } });
+    expect(screen.getByText(/Data fattura:/)).toHaveTextContent('29-06-2026');
+
+    fireEvent.click(screen.getByTitle('Salva'));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      '/api/assegni/a-kimbo/fatture-collegate',
+      { fatture: [{ fattura_id: 'fatt-kimbo', quota: 1498.96 }] },
+    ));
   });
 
   it('non propone scelte manuali e attende dati univoci nei casi ambigui', async () => {

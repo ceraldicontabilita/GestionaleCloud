@@ -428,6 +428,45 @@ def test_endpoint_legacy_non_puo_sovrascrivere_una_fattura_gia_attribuita(monkey
     assert salvata["assegni_collegati"][0]["assegno_id"] == "ass-vecchio"
 
 
+def test_collegamento_guidato_salva_numero_data_fornitore_e_relazione_bidirezionale(monkeypatch):
+    async def scenario():
+        db = AsyncMongoMockClient()["assegno_collegamento_guidato"]
+        await db.assegni.insert_one({
+            "id": "ass-kimbo", "numero": "0208769323", "importo": 1498.96,
+            "stato": "compilato", "anno": 2026,
+        })
+        await db.invoices.insert_one({
+            "id": "fatt-kimbo", "invoice_number": "0070021988",
+            "invoice_date": "2026-06-29", "supplier_vat": "IT00123456789",
+            "supplier_name": "KIMBO S.P.A.", "total_amount": 1498.96,
+            "importo_residuo": 1498.96, "importo_pagato": 0.0,
+            "payment_status": "open", "pagato": False,
+        })
+        monkeypatch.setattr(assegni_router.Database, "get_db", staticmethod(lambda: db))
+
+        await assegni_router.collega_fatture_assegno(
+            "ass-kimbo",
+            assegni_router.FattureCollegateIn(fatture=[
+                assegni_router.FatturaQuotaIn(
+                    fattura_id="fatt-kimbo", quota=1498.96,
+                )
+            ]),
+        )
+        assegno = await db.assegni.find_one({"id": "ass-kimbo"}, {"_id": 0})
+        fattura = await db.invoices.find_one({"id": "fatt-kimbo"}, {"_id": 0})
+        return assegno, fattura
+
+    assegno, fattura = _run(scenario())
+    assert assegno["beneficiario"] == "KIMBO S.P.A."
+    assert assegno["numero_fattura"] == "0070021988"
+    assert assegno["data_fattura"] == "2026-06-29"
+    assert assegno["fattura_collegata"] == "fatt-kimbo"
+    assert assegno["fatture_collegate"][0]["fattura_id"] == "fatt-kimbo"
+    assert fattura["assegni_collegati"][0]["assegno_id"] == "ass-kimbo"
+    assert fattura["metodo_pagamento_previsto"] == "assegno"
+    assert fattura["stato_finanziario"] == "in_attesa_estratto_conto"
+
+
 def test_riprocessamento_storico_collega_assegno_incassato_alla_fattura_univoca():
     async def scenario():
         db = AsyncMongoMockClient()["assegno_riprocessamento_storico"]

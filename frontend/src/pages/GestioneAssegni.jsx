@@ -43,6 +43,45 @@ export const residuoFattura = fattura => {
   return Math.max(0, totale - (Number(fattura?.importo_pagato) || 0));
 };
 
+const nomeFornitoreFattura = fattura =>
+  String(fattura?.supplier_name || fattura?.cedente_denominazione || '').trim();
+
+const pivaFornitoreFattura = fattura =>
+  String(
+    fattura?.supplier_vat || fattura?.cedente_piva || fattura?.fornitore_partita_iva || ''
+  ).replace(/\s/g, '').toUpperCase();
+
+const numeroFattura = fattura =>
+  String(
+    fattura?.invoice_number || fattura?.numero_fattura || fattura?.numero_documento || ''
+  ).trim();
+
+const dataFattura = fattura =>
+  String(fattura?.invoice_date || fattura?.data_fattura || fattura?.data_documento || '')
+    .slice(0, 10);
+
+export const normalizzaIdentitaFornitore = value =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]+/gi, ' ')
+    .trim()
+    .toUpperCase();
+
+export const fatturePerFornitore = (elenco, nome, piva = '') => {
+  const pivaNormalizzata = String(piva || '').replace(/\s/g, '').toUpperCase();
+  const nomeNormalizzato = normalizzaIdentitaFornitore(nome);
+  if (!pivaNormalizzata && !nomeNormalizzato) return [];
+  return (elenco || []).filter(fattura => {
+    const pivaFattura = pivaFornitoreFattura(fattura);
+    if (pivaNormalizzata && pivaFattura) return pivaNormalizzata === pivaFattura;
+    return normalizzaIdentitaFornitore(nomeFornitoreFattura(fattura)) === nomeNormalizzato;
+  });
+};
+
+export const importiCoincidonoAlCentesimo = (a, b) =>
+  Math.round((Number(a) || 0) * 100) === Math.round((Number(b) || 0) * 100);
+
 const TOLLERANZA_ASSEGNO = 0.005;
 
 export const totaleQuoteFatture = fatture =>
@@ -155,6 +194,9 @@ export default function GestioneAssegni() {
   // Edit inline
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [fattureEditDisponibili, setFattureEditDisponibili] = useState([]);
+  const [loadingFattureEdit, setLoadingFattureEdit] = useState(false);
+  const [erroreFattureEdit, setErroreFattureEdit] = useState('');
 
   // Fatture per collegamento
   const [fatture, setFatture] = useState([]);
@@ -277,6 +319,26 @@ export default function GestioneAssegni() {
     }
   };
 
+  const loadFatturePerEdit = async () => {
+    setLoadingFattureEdit(true);
+    setErroreFattureEdit('');
+    try {
+      const params = new URLSearchParams({ anno: String(anno), limit: '2000' });
+      const res = await api.get(`/api/assegni/supporto/fatture-disponibili?${params}`);
+      const items = res.data?.items || res.data || [];
+      setFattureEditDisponibili(items.filter(fattura => {
+        const nome = nomeFornitoreFattura(fattura).toLowerCase();
+        return !FORNITORI_MAI_ASSEGNO.some(voce => nome.includes(voce));
+      }));
+    } catch (error) {
+      const dettaglio = error.response?.data?.detail || error.message;
+      setFattureEditDisponibili([]);
+      setErroreFattureEdit(`Fatture non disponibili: ${dettaglio}`);
+    } finally {
+      setLoadingFattureEdit(false);
+    }
+  };
+
   const handleGenerate = async () => {
     if (!generateForm.numero_primo) {
       toast.warning('Inserisci il numero del primo assegno');
@@ -318,22 +380,56 @@ export default function GestioneAssegni() {
 ;
 
   const startEdit = assegno => {
+    const collegata = assegno.fatture_collegate?.length === 1
+      ? assegno.fatture_collegate[0].fattura_id
+      : assegno.fattura_collegata || '';
     setEditingId(assegno.id);
     setEditForm({
       beneficiario: assegno.beneficiario || '',
+      fornitore_piva: assegno.fornitore_piva || '',
       importo: assegno.importo || '',
       data_fattura: assegno.data_fattura || '',
       numero_fattura: assegno.numero_fattura || '',
+      fattura_selezionata_id: collegata,
       note: assegno.note || '',
       fatture_collegate: assegno.fatture_collegate || [],
     });
+    loadFatturePerEdit();
   };
 
   const handleSaveEdit = async () => {
     if (!editingId) return;
 
     try {
-      const res = await api.put(`/api/assegni/${editingId}`, editForm);
+      const fatturaSelezionata = fattureEditDisponibili.find(
+        fattura => fattura.id === editForm.fattura_selezionata_id
+      );
+      if (editForm.fattura_selezionata_id && !fatturaSelezionata) {
+        toast.error('La fattura selezionata non e piu disponibile: aggiorna la scelta');
+        return;
+      }
+      if (fatturaSelezionata) {
+        const quota = residuoFattura(fatturaSelezionata);
+        if (!importiCoincidonoAlCentesimo(editForm.importo, quota)) {
+          toast.warning(
+            `Importi diversi: assegno ${formatEuro(editForm.importo)} e residuo fattura ${formatEuro(quota)}`
+          );
+          return;
+        }
+        await api.put(`/api/assegni/${editingId}/fatture-collegate`, {
+          fatture: [{ fattura_id: fatturaSelezionata.id, quota }],
+        });
+        toast.success(
+          `Fattura ${numeroFattura(fatturaSelezionata)} collegata all'assegno e pagamento aggiornato`
+        );
+        setEditingId(null);
+        setEditForm({});
+        await loadData();
+        return;
+      }
+
+      const { fattura_selezionata_id: _fatturaId, ...payload } = editForm;
+      const res = await api.put(`/api/assegni/${editingId}`, payload);
       const intento = res.data?.intento_fattura;
       if (intento?.collegato) {
         toast.success('Assegno salvato e fattura associata automaticamente');
@@ -354,6 +450,7 @@ export default function GestioneAssegni() {
   const cancelEdit = () => {
     setEditingId(null);
     setEditForm({});
+    setErroreFattureEdit('');
   };
 
   // Le fatture collegate salvate nel DB hanno lo schema canonico
@@ -784,6 +881,68 @@ export default function GestioneAssegni() {
     filterNumeroFattura,
     filterSoloDaAssociare,
   ]);
+
+  const fornitoriEdit = useMemo(() => {
+    const unici = new Map();
+    fattureEditDisponibili.forEach(fattura => {
+      const nome = nomeFornitoreFattura(fattura);
+      if (!nome) return;
+      const piva = pivaFornitoreFattura(fattura);
+      const chiave = piva || normalizzaIdentitaFornitore(nome);
+      if (!unici.has(chiave)) unici.set(chiave, { nome, piva });
+    });
+    return [...unici.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'it'));
+  }, [fattureEditDisponibili]);
+
+  const fattureEditFornitore = useMemo(() => {
+    const elenco = fatturePerFornitore(
+      fattureEditDisponibili,
+      editForm.beneficiario,
+      editForm.fornitore_piva
+    );
+    return [...elenco].sort((a, b) => {
+      const esattaA = importiCoincidonoAlCentesimo(residuoFattura(a), editForm.importo);
+      const esattaB = importiCoincidonoAlCentesimo(residuoFattura(b), editForm.importo);
+      if (esattaA !== esattaB) return esattaA ? -1 : 1;
+      return dataFattura(b).localeCompare(dataFattura(a));
+    });
+  }, [fattureEditDisponibili, editForm.beneficiario, editForm.fornitore_piva, editForm.importo]);
+
+  const aggiornaBeneficiarioEdit = valore => {
+    const identita = normalizzaIdentitaFornitore(valore);
+    const fornitore = fornitoriEdit.find(
+      voce => normalizzaIdentitaFornitore(voce.nome) === identita
+    );
+    setEditForm(corrente => ({
+      ...corrente,
+      beneficiario: fornitore?.nome || valore,
+      fornitore_piva: fornitore?.piva || '',
+      fattura_selezionata_id: '',
+      numero_fattura: '',
+      data_fattura: '',
+    }));
+  };
+
+  const selezionaFatturaEdit = fatturaId => {
+    const fattura = fattureEditDisponibili.find(item => item.id === fatturaId);
+    if (!fattura) {
+      setEditForm(corrente => ({
+        ...corrente,
+        fattura_selezionata_id: '',
+        numero_fattura: '',
+        data_fattura: '',
+      }));
+      return;
+    }
+    setEditForm(corrente => ({
+      ...corrente,
+      beneficiario: nomeFornitoreFattura(fattura),
+      fornitore_piva: pivaFornitoreFattura(fattura),
+      fattura_selezionata_id: fattura.id,
+      numero_fattura: numeroFattura(fattura),
+      data_fattura: dataFattura(fattura),
+    }));
+  };
 
   // Reset filtri
   const resetFilters = () => {
@@ -2614,13 +2773,35 @@ export default function GestioneAssegni() {
                 tdStyle: assegno => ({ maxWidth: 250, ...(tdSelezione(assegno) || {}) }),
                 render: assegno =>
                   editingId === assegno.id ? (
-                    <Input
-                      type="text"
-                      value={editForm.beneficiario}
-                      onChange={e => setEditForm({ ...editForm, beneficiario: e.target.value })}
-                      placeholder="Beneficiario"
-                      style={{ padding: 6, fontSize: 12 }}
-                    />
+                    <div style={{ minWidth: 220 }}>
+                      <Input
+                        type="text"
+                        list="fornitori-fatture-assegno-edit"
+                        aria-label="Cerca e seleziona fornitore"
+                        value={editForm.beneficiario}
+                        onChange={e => aggiornaBeneficiarioEdit(e.target.value)}
+                        placeholder="Scrivi il nome del fornitore"
+                        autoComplete="off"
+                        style={{ padding: 6, fontSize: 12, width: '100%' }}
+                      />
+                      <datalist id="fornitori-fatture-assegno-edit">
+                        {fornitoriEdit.map(fornitore => (
+                          <option key={fornitore.piva || fornitore.nome} value={fornitore.nome}>
+                            {fornitore.piva || 'P.IVA non disponibile'}
+                          </option>
+                        ))}
+                      </datalist>
+                      {loadingFattureEdit && (
+                        <div style={{ color: COLORS.textMuted, fontSize: 10.5, marginTop: 3 }}>
+                          Caricamento fornitori e fatture...
+                        </div>
+                      )}
+                      {erroreFattureEdit && (
+                        <div role="alert" style={{ color: COLORS.danger, fontSize: 10.5, marginTop: 3 }}>
+                          {erroreFattureEdit}
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <div>
                       <div style={{ fontWeight: 500, fontSize: 13 }}>
@@ -2704,22 +2885,47 @@ export default function GestioneAssegni() {
                 tdStyle: tdSelezione,
                 render: assegno =>
                   editingId === assegno.id ? (
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <Input
-                        type="date"
-                        value={editForm.data_fattura}
-                        onChange={e => setEditForm({ ...editForm, data_fattura: e.target.value })}
-                        style={{ padding: 4, fontSize: 11, width: 110 }}
-                      />
-                      <Input
-                        type="text"
-                        value={editForm.numero_fattura}
-                        onChange={e =>
-                          setEditForm({ ...editForm, numero_fattura: e.target.value })
-                        }
-                        placeholder="N.Fatt"
-                        style={{ padding: 4, fontSize: 11, width: 80 }}
-                      />
+                    <div style={{ minWidth: 250 }}>
+                      <select
+                        aria-label="Fattura del fornitore"
+                        value={editForm.fattura_selezionata_id || ''}
+                        onChange={e => selezionaFatturaEdit(e.target.value)}
+                        disabled={loadingFattureEdit || fattureEditFornitore.length === 0}
+                        style={{
+                          width: '100%', minHeight: 34, padding: '5px 8px', fontSize: 11.5,
+                          border: '1px solid #cbd5e1', borderRadius: 7, background: 'white',
+                        }}
+                      >
+                        <option value="">
+                          {loadingFattureEdit
+                            ? 'Caricamento fatture...'
+                            : fattureEditFornitore.length
+                              ? 'Seleziona una fattura ricevuta'
+                              : "Seleziona prima un fornitore dall'elenco"}
+                        </option>
+                        {editForm.fattura_selezionata_id
+                          && !fattureEditFornitore.some(f => f.id === editForm.fattura_selezionata_id) && (
+                          <option value={editForm.fattura_selezionata_id}>
+                            {editForm.numero_fattura || 'Fattura gia collegata'}
+                          </option>
+                        )}
+                        {fattureEditFornitore.map(fattura => {
+                          const residuo = residuoFattura(fattura);
+                          const esatta = importiCoincidonoAlCentesimo(residuo, editForm.importo);
+                          return (
+                            <option key={fattura.id} value={fattura.id}>
+                              {numeroFattura(fattura)} - {formatDateIT(dataFattura(fattura))} - {formatEuro(residuo)}
+                              {esatta ? ' - IMPORTO ESATTO' : ''}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      {editForm.fattura_selezionata_id && (
+                        <div style={{ marginTop: 4, fontSize: 10.5, color: COLORS.textMuted }}>
+                          Data fattura: <b>{formatDateIT(editForm.data_fattura)}</b>
+                          {' '}· numero: <b>{editForm.numero_fattura}</b>
+                        </div>
+                      )}
                     </div>
                   ) : isMobile ? (
                     assegno.numero_fattura || assegno.data_fattura ? (

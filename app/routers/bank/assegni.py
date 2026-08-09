@@ -1540,6 +1540,11 @@ async def collega_fatture_assegno(assegno_id: str, body: FattureCollegateIn) -> 
     fornitore_piva = next(iter(piva_set), None)
     first_inv = next(iter(fatture_map.values()), None)
     fornitore_nome = (first_inv.get("supplier_name") or first_inv.get("cedente_denominazione")) if first_inv else None
+    data_fattura_collegata = (
+        first_inv.get("invoice_date")
+        or first_inv.get("data_fattura")
+        or first_inv.get("data_documento")
+    ) if first_inv and len(body.fatture) == 1 else None
     numeri_fatture = ", ".join(
         (fatture_map[f.fattura_id].get("invoice_number") or fatture_map[f.fattura_id].get("numero_fattura") or "")
         for f in body.fatture
@@ -1558,7 +1563,9 @@ async def collega_fatture_assegno(assegno_id: str, body: FattureCollegateIn) -> 
             "fornitore_piva": fornitore_piva or assegno.get("fornitore_piva"),
             "fornitore_ragione_sociale": fornitore_nome or assegno.get("fornitore_ragione_sociale"),
             "beneficiario": fornitore_nome or assegno.get("beneficiario"),
-            "numero_fattura": numeri_fatture or assegno.get("numero_fattura"),
+            "numero_fattura": numeri_fatture if fatture_collegate else None,
+            "data_fattura": data_fattura_collegata,
+            "fattura_collegata": body.fatture[0].fattura_id if len(body.fatture) == 1 else None,
             "stato": nuovo_stato,
             "match_auto": False,
             "metodo_pagamento_previsto": "assegno" if fatture_collegate else None,
