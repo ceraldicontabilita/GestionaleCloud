@@ -96,8 +96,7 @@ La storia sta in git, non qui.
 - Repo di lavoro: SOLO `GestionaleCloud`. `GestionaleCloud-Private` è
   storico e non si usa.
 - File da non aggiungere mai in automatico: `README.md`,
-  `docs/AUDIT_DRIVE_SICUREZZA_DUPLICATI_2026-08-05.md`,
-  `download_emergent_bundle.py`, `tmp/`.
+  `docs/AUDIT_DRIVE_SICUREZZA_DUPLICATI_2026-08-05.md`, `tmp/`.
 - Le mappe in `memoria/` (MAPPA_ROUTER, MAPPA_ENDPOINT_COMPLETA,
   ENDPOINT_CLASSIFICAZIONE_FINALE, AUDIT_FRONTEND_DEAD_CODE,
   AUDIT_STATIC_REPORT) sono GENERATE dagli script in `scripts/` e verificate
