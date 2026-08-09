@@ -6,6 +6,7 @@ import { useHashState } from '../hooks/useHashState';
 import ModalFattura from '../components/ModalFattura';
 import InAttesaDocumento from '../components/InAttesaDocumento';
 import AssociaMovimentoBanca from '../components/AssociaMovimentoBanca';
+import AssociaAssegnoFattura from '../components/AssociaAssegnoFattura';
 import DocumentViewerModal from '../components/DocumentViewerModal';
 import FinanziamentoSoci from './FinanziamentoSoci';
 import { useConfirm } from '../components/ui/ConfirmDialog';
@@ -57,12 +58,6 @@ const eur = v => formatEuroD(v || 0);
 function parseImportoIT(input) {
   const v = parseFloat(String(input ?? '').replace(/\./g, '').replace(',', '.'));
   return isNaN(v) ? null : v;
-}
-
-export function formattaFinaleAssegno(input) {
-  const cifre = String(input ?? '').replace(/\D/g, '').slice(-5);
-  if (cifre.length <= 3) return cifre;
-  return `${cifre.slice(0, 3)}-${cifre.slice(3)}`;
 }
 
 const testoRicerca = valore => String(valore ?? '').trim().toLocaleLowerCase('it-IT');
@@ -1139,7 +1134,6 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
   const [esitiMultipli, setEsitiMultipli] = useState(null);
   const [busyMultiplo, setBusyMultiplo] = useState(false);
   const [modalitaRapida, setModalitaRapida] = useState(false);
-  const [assegnoEditor, setAssegnoEditor] = useState(null);
   const [vista, setVista] = useState('da_lavorare');
   const [paginaTutte, setPaginaTutte] = useState(1);
   const righePerPagina = 100;
@@ -1373,74 +1367,6 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
       });
     } finally {
       setBusy(null);
-    }
-  };
-
-  const cercaAssegni = async (p, frammento = '') => {
-    setAssegnoEditor(prev => ({
-      ...(prev?.fatturaId === p.fattura_id ? prev : {}),
-      fatturaId: p.fattura_id,
-      fattura: p,
-      frammento,
-      proposte: [],
-      loading: true,
-      errore: '',
-    }));
-    try {
-      const { data } = await api.get('/api/prima-nota/provvisori/assegni-proposti', {
-        params: { fattura_id: p.fattura_id, frammento },
-      });
-      setAssegnoEditor(prev => ({
-        ...prev,
-        fatturaId: p.fattura_id,
-        fattura: p,
-        frammento,
-        proposte: data?.candidati || [],
-        message: data?.message || '',
-        loading: false,
-        errore: '',
-      }));
-    } catch (e) {
-      setAssegnoEditor(prev => ({
-        ...prev,
-        fatturaId: p.fattura_id,
-        fattura: p,
-        frammento,
-        proposte: [],
-        loading: false,
-        errore: e.response?.data?.detail || e.response?.data?.message || e.message,
-      }));
-    }
-  };
-
-  const collegaAssegno = async candidato => {
-    const p = assegnoEditor?.fattura;
-    if (!p) return;
-    const approvato = await confirm({
-      title: 'Collega assegno alla fattura',
-      message: `Colleghi l'assegno ${candidato.numero_completo} alla fattura ${p.fattura_numero || 'senza numero'} per ${eur(p.importo)}?`,
-      confirmText: 'Collega assegno',
-      cancelText: 'Annulla',
-      variant: 'warning',
-    });
-    if (!approvato) return;
-    setAssegnoEditor(prev => ({ ...prev, loading: true, errore: '' }));
-    try {
-      const { data } = await api.post('/api/prima-nota/provvisori/associa-assegno', {
-        fattura_id: p.fattura_id,
-        assegno_id: candidato.assegno_id,
-        movimento_estratto_conto_id: candidato.movimento_estratto_conto_id,
-        numero_completo: candidato.numero_completo,
-      });
-      setEsito(data?.message || `Assegno ${candidato.numero_completo} collegato.`);
-      setAssegnoEditor(null);
-      await onRicarica({ silent: true });
-    } catch (e) {
-      setAssegnoEditor(prev => ({
-        ...prev,
-        loading: false,
-        errore: e.response?.data?.detail || e.response?.data?.message || e.message,
-      }));
     }
   };
 
@@ -1886,17 +1812,13 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
                   Associa a mano
                 </button>
                 {puoAssociareAssegno(p) && (
-                  <button
-                    type="button"
-                    onClick={() => assegnoEditor?.fatturaId === p.fattura_id
-                      ? setAssegnoEditor(null)
-                      : cercaAssegni(p)}
-                    title="Cerca il numero assegno nel registro e nell'estratto conto"
-                    aria-label={`Associa assegno alla fattura ${p.fattura_numero || ''}`.trim()}
-                    style={{ minHeight: 40, background: '#f5f3ff', color: '#6d28d9', border: '1px solid #c4b5fd', borderRadius: 7, padding: '4px 12px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}
-                  >
-                    Abbina assegno
-                  </button>
+                  <AssociaAssegnoFattura
+                    fattura={p}
+                    onSuccess={async data => {
+                      setEsito(data?.message || 'Assegno collegato alla fattura.');
+                      await onRicarica({ silent: true });
+                    }}
+                  />
                 )}
                 <button
                   type="button"
@@ -1932,66 +1854,6 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
               {erroreRiga?.fatturaId === p.fattura_id && (
                 <div role="alert" style={{ width: '100%', color: '#991b1b', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 10px', fontSize: 12.5 }}>
                   {erroreRiga.messaggio}
-                </div>
-              )}
-              {assegnoEditor?.fatturaId === p.fattura_id && (
-                <div style={{ width: '100%', background: '#faf5ff', border: '1px solid #c4b5fd', borderRadius: 9, padding: 10 }}>
-                  <div style={{ color: '#5b21b6', fontWeight: 800, marginBottom: 7 }}>
-                    Collega un assegno reale alla fattura {p.fattura_numero || 'senza numero'}
-                  </div>
-                  <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-                    <input
-                      aria-label="Finale assegno nel formato 123-01"
-                      placeholder="Es. 123-01"
-                      inputMode="numeric"
-                      maxLength={6}
-                      value={assegnoEditor.frammento || ''}
-                      onChange={e => setAssegnoEditor(prev => ({
-                        ...prev,
-                        frammento: formattaFinaleAssegno(e.target.value),
-                      }))}
-                      style={{ minHeight: 40, flex: '1 1 240px', border: '1px solid #a78bfa', borderRadius: 8, padding: '7px 10px', fontSize: 12.5 }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => cercaAssegni(p, assegnoEditor.frammento || '')}
-                      disabled={assegnoEditor.loading}
-                      style={{ minHeight: 40, background: '#6d28d9', color: 'white', border: 0, borderRadius: 8, padding: '7px 13px', fontWeight: 800, cursor: 'pointer' }}
-                    >
-                      {assegnoEditor.loading ? 'Ricerca…' : 'Cerca assegno'}
-                    </button>
-                  </div>
-                  <div style={{ color: '#64748b', marginTop: 6, fontSize: 11.5 }}>
-                    Digita il finale come 123-01. Se scrivi 12301, il trattino viene inserito automaticamente. Il sistema propone il numero completo e non collega mai sulla sola uguaglianza dell'importo.
-                  </div>
-                  {assegnoEditor.errore && <div role="alert" style={{ color: '#b91c1c', marginTop: 7 }}>{assegnoEditor.errore}</div>}
-                  {!assegnoEditor.loading && assegnoEditor.message && (
-                    <div role="status" style={{ color: '#5b21b6', marginTop: 7, fontWeight: 700 }}>{assegnoEditor.message}</div>
-                  )}
-                  {!assegnoEditor.loading && (assegnoEditor.proposte || []).map(candidato => {
-                    const collegatoAltrove = candidato.gia_collegato_fattura_id
-                      && candidato.gia_collegato_fattura_id !== p.fattura_id;
-                    return (
-                      <div key={`${candidato.assegno_id || 'ec'}-${candidato.numero_completo}`} style={{ marginTop: 7, padding: '7px 9px', background: 'white', border: '1px solid #ddd6fe', borderRadius: 8, display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <span>
-                          <b>Assegno {candidato.numero_completo}</b> · {eur(candidato.importo)}
-                          {candidato.data ? ` · ${formatDateIT(candidato.data)}` : ''}
-                          <span style={{ color: '#64748b' }}>
-                            {' '}· {candidato.fonte_estratto_conto ? 'presente in estratto conto' : 'in attesa di estratto conto'}
-                          </span>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => collegaAssegno(candidato)}
-                          disabled={collegatoAltrove || assegnoEditor.loading}
-                          title={collegatoAltrove ? 'Assegno gia collegato a un altra fattura' : 'Conferma questo numero completo'}
-                          style={{ minHeight: 36, background: collegatoAltrove ? '#cbd5e1' : '#6d28d9', color: 'white', border: 0, borderRadius: 7, padding: '6px 11px', fontWeight: 800, cursor: collegatoAltrove ? 'not-allowed' : 'pointer' }}
-                        >
-                          {collegatoAltrove ? 'Gia collegato' : `Collega ${candidato.numero_completo}`}
-                        </button>
-                      </div>
-                    );
-                  })}
                 </div>
               )}
             </div>

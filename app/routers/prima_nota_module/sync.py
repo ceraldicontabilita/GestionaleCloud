@@ -312,19 +312,27 @@ def _numero_assegno_corrisponde_frammento(numero: Any, frammento: str) -> bool:
     """Confronta il finale guidato ``123-01`` con il numero completo.
 
     Le tre cifre prima del trattino identificano la coda del numero bancario;
-    le due successive identificano il foglio del carnet. Il suffisso resta
-    obbligatorio per non scegliere un assegno soltanto in base all'importo.
-    I vecchi dati con suffisso non riempito di zeri (``-1``) restano leggibili.
+    le due successive identificano il foglio del carnet. Gli estratti BPM
+    riportano pero' soltanto il numero bancario completo (``0208769328``),
+    senza il suffisso del foglio: in quel caso il finale ``328-01`` deve
+    comunque ritrovare il movimento ufficiale. Non e' un match sul solo
+    importo: il candidato resta vincolato al numero estratto dalla causale,
+    all'importo esatto e al movimento bancario ufficiale. I vecchi dati con
+    suffisso non riempito di zeri (``-1``) restano leggibili.
     """
     base, suffisso = _parti_numero_assegno(numero)
     frag_base, frag_suffisso = _parti_numero_assegno(frammento)
     if (
-        not base or not suffisso
-        or len(frag_base) != 3 or len(frag_suffisso) != 2
+        not base or len(frag_base) != 3 or len(frag_suffisso) != 2
     ):
         return False
     if not base.endswith(frag_base):
         return False
+    # Il PDF/CSV BPM non espone il numero del foglio dopo il trattino. In
+    # assenza di tale dato non lo inventiamo: conserviamo il numero ufficiale
+    # e lasciamo la scelta esplicita all'utente fra gli eventuali candidati.
+    if not suffisso:
+        return True
     return suffisso.lstrip("0") == frag_suffisso.lstrip("0")
 
 

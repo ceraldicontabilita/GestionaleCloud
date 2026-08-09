@@ -15,6 +15,7 @@ import {
 import { useHashState } from '../hooks/useHashState';
 import { CopyLinkButton } from '../components/CopyLinkButton';
 import ModalFattura from '../components/ModalFattura';
+import AssociaAssegnoFattura from '../components/AssociaAssegnoFattura';
 import {
   Button,
   Badge,
@@ -246,6 +247,11 @@ export default function ArchivioFatture() {
     } catch (err) {
       console.error('Errore caricamento statistiche:', err);
     }
+  };
+
+  const dopoAssociazioneAssegno = async data => {
+    toast.success(data?.message || 'Assegno collegato alla fattura.');
+    await Promise.all([fetchFatture(), fetchStatistiche()]);
   };
 
   // ==================== EFFECTS ====================
@@ -667,6 +673,12 @@ export default function ArchivioFatture() {
                   >
                     <Eye size={17} aria-hidden="true" /> Vedi
                   </Button>
+                  {!isPaid && !isRiconciliata && (
+                    <AssociaAssegnoFattura
+                      fattura={f}
+                      onSuccess={dopoAssociazioneAssegno}
+                    />
+                  )}
                   {!isPaid && (isFornitoreBanca || isFornitoreCassa) && (
                     <Badge
                       variant={isFornitoreCassa ? 'success' : 'info'}
@@ -935,6 +947,12 @@ export default function ArchivioFatture() {
                           >
                             <Eye size={17} aria-hidden="true" /> Vedi
                           </Button>
+                          {!isPaid && !isRiconciliata && (
+                            <AssociaAssegnoFattura
+                              fattura={f}
+                              onSuccess={dopoAssociazioneAssegno}
+                            />
+                          )}
                           {isPaid ? (
                             <Badge
                               variant={metodoPagEffettivo === 'cassa' ? 'success' : 'info'}

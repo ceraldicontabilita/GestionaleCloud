@@ -15,6 +15,12 @@ def test_finale_assegno_legge_anche_vecchi_suffissi_senza_zero():
     )
 
 
+def test_finale_assegno_ritrova_numero_ufficiale_bpm_senza_suffisso():
+    assert _numero_assegno_corrisponde_frammento(
+        "0208769328", "328-01",
+    )
+
+
 def test_finale_assegno_non_accetta_numero_o_suffisso_diversi():
     assert not _numero_assegno_corrisponde_frammento(
         "0208770000-01", "999-01",
