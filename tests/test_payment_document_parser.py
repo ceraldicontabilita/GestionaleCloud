@@ -7,6 +7,7 @@ from mongomock_motor import AsyncMongoMockClient
 
 from app.routers import documenti
 from app.services.pagopa_receipts import parse_receipt_pdf
+from tests.document_preview_helpers import confirmed_preview_headers
 
 
 def _pdf(*lines: str) -> bytes:
@@ -104,10 +105,12 @@ def test_upload_auto_cbill_e_idempotente_e_non_inventa_la_banca(monkeypatch):
         first = client.post(
             "/api/documenti/upload-auto",
             files={"file": ("pagamento_bancario.pdf", content, "application/pdf")},
+            headers=confirmed_preview_headers(content, "ricevuta_cbill"),
         )
         second = client.post(
             "/api/documenti/upload-auto",
             files={"file": ("pagamento_bancario.pdf", content, "application/pdf")},
+            headers=confirmed_preview_headers(content, "ricevuta_cbill"),
         )
 
     assert first.status_code == second.status_code == 200

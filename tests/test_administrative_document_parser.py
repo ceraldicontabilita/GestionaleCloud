@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from mongomock_motor import AsyncMongoMockClient
 
 from app.routers import documenti
+from tests.document_preview_helpers import confirmed_preview_headers
 from app.services.administrative_document_parser import (
     parse_ader, parse_dimissioni, parse_tari,
 )
@@ -88,6 +89,7 @@ def test_upload_dimissioni_archivia_e_propone_dipendente_senza_modificarlo(monke
         response = client.post(
             "/api/documenti/upload-auto",
             files={"file": ("dimissione.pdf", content, "application/pdf")},
+            headers=confirmed_preview_headers(content, "dimissioni_telematiche"),
         )
 
     payload = response.json()
@@ -115,6 +117,7 @@ def test_upload_zip_preserva_percorso_e_gruppo_per_associare_allegati(monkeypatc
         response = client.post(
             "/api/documenti/upload-auto",
             files={"file": ("raccolta.zip", archive.getvalue(), "application/zip")},
+            headers=confirmed_preview_headers(archive.getvalue(), "archivio_zip"),
         )
 
     assert response.status_code == 200

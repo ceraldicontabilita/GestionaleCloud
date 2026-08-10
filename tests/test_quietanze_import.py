@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from mongomock_motor import AsyncMongoMockClient
 
 from app.services import quietanze_import as qi
+from tests.document_preview_helpers import confirmed_preview_headers
 
 
 class _FakeCursor:
@@ -256,6 +257,7 @@ def test_upload_auto_endpoint_usa_il_servizio_canonico_quietanze(monkeypatch):
         response = client.post(
             "/api/documenti/upload-auto",
             files={"file": ("quietanza_1040.pdf", b"%PDF-1.4 fixture anonima", "application/pdf")},
+            headers=confirmed_preview_headers(b"%PDF-1.4 fixture anonima", "quietanza_f24"),
         )
 
     assert response.status_code == 200
@@ -294,6 +296,7 @@ def test_upload_auto_endpoint_importa_modello_nella_sola_collezione_canonica(mon
         response = client.post(
             "/api/documenti/upload-auto",
             files={"file": ("modello_f24.pdf", b"%PDF-1.4 fixture anonima", "application/pdf")},
+            headers=confirmed_preview_headers(b"%PDF-1.4 fixture anonima", "f24"),
         )
 
     assert response.status_code == 200

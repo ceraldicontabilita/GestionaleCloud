@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1113 · tenere: 720 · verificare: 369 · admin-only (migrazione/manutenzione): 24
+**Totale endpoint:** 1114 · tenere: 721 · verificare: 369 · admin-only (migrazione/manutenzione): 24
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -74,7 +74,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/ai-parser/parse-fattura` | ai_parser | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/ai-parser/process-email-batch` | ai_parser | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/ai-parser/statistiche` | ai_parser | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/ai-parser/test` | ai_parser | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/ai-parser/test` | ai_parser | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/alerts/fornitori-senza-metodo` | alerts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/alerts/lista` | alerts | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/alerts/risolvi-fornitore/{fornitore_piva}` | alerts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -436,6 +436,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/documenti/telegram/test` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/documenti/ultimo-sync` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/documenti/upload-auto` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/documenti/upload-auto/preview` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/email-download/associa-documento` | email_download | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-download/associa-f24-filesystem` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-download/auto-associa` | email_download | sì | — | — | — | — | tenere | in uso: FE |
@@ -529,8 +530,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/f24-public/pdf/{f24_id}` | f24.f24_public | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/f24-public/scadenze-prossime` | f24.f24_public | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/f24-public/test` | f24.f24_public | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/f24-public/upload` | f24.f24_public | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/f24-public/upload-overwrite` | f24.f24_public | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/f24-public/upload` | f24.f24_public | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/f24-public/upload-overwrite` | f24.f24_public | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/f24-riconciliazione/alerts` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/f24-riconciliazione/alerts/{alert_id}/conferma-elimina` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/f24-riconciliazione/alerts/{alert_id}/ignora` | f24.f24_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -571,9 +572,9 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `DELETE /api/f24/quietanze/{f24_id}` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/f24/quietanze/{f24_id}` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/f24/riconcilia` | f24.f24_main | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
-| `POST /api/f24/upload` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/f24/upload` | f24.f24_main | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/f24/upload-multiple` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/f24/upload-pdf` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/f24/upload-pdf` | f24.f24_main | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/f24/upload-zip` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/f24/{f24_id}` | f24.f24_main | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/f24/{f24_id}` | f24.f24_main | sì | — | — | — | sì | tenere | in uso: FE |
@@ -992,7 +993,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/riconciliazione/stats` | riconciliazione_stats_api | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/rifiuta/{proposta_id}` | dati_provvisori | — | sì | — | — | sì | tenere | in uso: scheduler |
 | `GET /api/ritenute` | ritenute | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/ritenute/codici-ravvedimento` | ritenute | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/ritenute/codici-ravvedimento` | ritenute | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/ritenute/scan` | ritenute | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/scadenzario-fornitori/` | scadenzario_fornitori | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/scadenzario-fornitori/aggiorna-scadenza` | scadenzario_fornitori | sì | — | — | — | — | tenere | in uso: FE |

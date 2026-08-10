@@ -3,7 +3,7 @@ Router Gestione Documenti
 API per scaricare, visualizzare e processare documenti dalle email.
 """
 
-from fastapi import APIRouter, BackgroundTasks, Query, HTTPException, Depends, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Query, HTTPException, Depends, UploadFile, File, Header
 from app.utils.dependencies import get_current_admin_mfa_user, get_current_admin_user
 from app.utils.ruoli import richiedi_admin
 from fastapi.responses import StreamingResponse
@@ -2301,7 +2301,15 @@ async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
                 "archive_group": str(Path(normalized_path).parent).replace("\\", "/"),
                 "archive_sha256": hashlib.sha256(content).hexdigest(),
             }
-            item = await upload_documento_automatico(file=nested_upload)
+            from app.services.document_import_preview import create_confirmation_token
+
+            nested_type = detect_document_type(clean_name, payload)
+            nested_token = create_confirmation_token(
+                hashlib.sha256(payload).hexdigest(), nested_type
+            )
+            item = await upload_documento_automatico(
+                file=nested_upload, preview_token=nested_token
+            )
             item = item if isinstance(item, dict) else {"success": False, "message": str(item)}
             duplicate = bool(item.get("duplicate") or item.get("action") == "duplicate")
             if duplicate:
@@ -2448,10 +2456,37 @@ async def _archive_non_payment_document(
     }
 
 
+@router.post("/upload-auto/preview")
+@handle_errors
+async def anteprima_upload_documento_automatico(
+    file: UploadFile = File(...),
+) -> Dict[str, Any]:
+    """Classifica ed estrae senza creare documenti o fatti contabili."""
+    filename = Path(file.filename or "documento").name
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail=f"File vuoto: {filename}")
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"File oltre il limite di 50 MB: {filename}")
+    if filename.lower().endswith(".pdf"):
+        from app.utils.upload_validation import verifica_pdf_reale
+
+        verifica_pdf_reale(content, filename)
+
+    document_type = detect_document_type(filename, content)
+    from app.services.document_import_preview import build_import_preview
+
+    return await build_import_preview(
+        Database.get_db(), content=content, filename=filename,
+        document_type=document_type,
+    )
+
+
 @router.post("/upload-auto")
 @handle_errors
 async def upload_documento_automatico(
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    preview_token: Optional[str] = Header(None, alias="X-Document-Preview-Token"),
 ) -> Dict[str, Any]:
     """
     Upload documento con riconoscimento automatico del tipo.
@@ -2485,6 +2520,24 @@ async def upload_documento_automatico(
     
     # Rileva tipo
     tipo_rilevato = detect_document_type(filename, content)
+
+    from app.services.document_import_preview import verify_confirmation_token
+    from fastapi.params import Header as HeaderParameter
+
+    content_sha256 = hashlib.sha256(content).hexdigest()
+    direct_internal_call = isinstance(preview_token, HeaderParameter)
+    if not direct_internal_call and (
+        not preview_token or not verify_confirmation_token(
+            preview_token, content_sha256, tipo_rilevato
+        )
+    ):
+        raise HTTPException(
+            status_code=428,
+            detail=(
+                "Anteprima obbligatoria mancante, scaduta o riferita a un file diverso. "
+                "Eseguire /api/documenti/upload-auto/preview e confermare il risultato."
+            ),
+        )
     
     logger.info(f"Upload automatico: {filename} -> tipo rilevato: {tipo_rilevato}")
 

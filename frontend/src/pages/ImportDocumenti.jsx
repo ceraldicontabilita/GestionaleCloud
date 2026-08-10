@@ -96,6 +96,7 @@ export default function ImportDocumenti() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, filename: '' });
   const [results, setResults] = useState([]);
+  const [previewComplete, setPreviewComplete] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
   const zipInputRef = useRef(null);
@@ -135,9 +136,51 @@ export default function ImportDocumenti() {
       status: 'pending',
     }));
     setFiles(prev => [...prev, ...filesWithInfo]);
+    setPreviewComplete(false);
+    setResults([]);
   };
 
-  const removeFile = index => setFiles(prev => prev.filter((_, i) => i !== index));
+  const removeFile = index => {
+    setFiles(prev => prev.filter((_, i) => i !== index));
+    setPreviewComplete(false);
+  };
+
+  const handlePreview = async () => {
+    if (files.length === 0) return;
+    setUploading(true);
+    setUploadProgress({ current: 0, total: files.length, filename: '' });
+    let blocked = false;
+    const analyzed = [];
+    for (let i = 0; i < files.length; i++) {
+      const fileInfo = files[i];
+      setUploadProgress({ current: i + 1, total: files.length, filename: fileInfo.name });
+      try {
+        const formData = new FormData();
+        formData.append('file', fileInfo.file);
+        const res = await api.post('/api/documenti/upload-auto/preview', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        const preview = res.data || {};
+        const hasErrors = (preview.blocking_errors || []).length > 0;
+        blocked = blocked || hasErrors;
+        analyzed.push({
+          ...fileInfo,
+          status: hasErrors ? 'error' : 'preview',
+          tipo: preview.tipo_rilevato,
+          preview,
+          previewToken: preview.confirmation_token,
+          error: hasErrors ? preview.blocking_errors.join('; ') : undefined,
+        });
+      } catch (e) {
+        blocked = true;
+        const rawError = e.response?.data?.detail || e.response?.data?.message || e.message;
+        analyzed.push({ ...fileInfo, status: 'error', error: String(rawError) });
+      }
+    }
+    setFiles(analyzed);
+    setPreviewComplete(!blocked && analyzed.length === files.length);
+    setUploading(false);
+  };
 
   // Upload automatico - il backend rileva tutto
   const handleUpload = async () => {
@@ -159,7 +202,10 @@ export default function ImportDocumenti() {
 
         // Endpoint unico che rileva e processa automaticamente
         const res = await api.post('/api/documenti/upload-auto', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            'X-Document-Preview-Token': fileInfo.previewToken,
+          },
         });
 
         const tipo = res.data?.tipo_rilevato || res.data?.detected_type || 'auto';
@@ -210,7 +256,11 @@ export default function ImportDocumenti() {
   const handleReset = () => {
     setFiles([]);
     setResults([]);
+    setPreviewComplete(false);
   };
+
+  const canConfirm =
+    previewComplete && files.length > 0 && files.every(f => f.previewToken && f.status !== 'error');
 
   const successCount = results.filter(r => r.status === 'success').length;
   const duplicateCount = results.filter(r => r.status === 'duplicate').length;
@@ -501,7 +551,7 @@ export default function ImportDocumenti() {
                 <Button
                   variant="primary"
                   size="sm"
-                  onClick={handleUpload}
+                  onClick={canConfirm ? handleUpload : handlePreview}
                   disabled={uploading}
                   data-testid="upload-btn"
                   iconLeft={
@@ -512,7 +562,11 @@ export default function ImportDocumenti() {
                     )
                   }
                 >
-                  {uploading ? 'Elaborazione...' : 'Carica Tutti'}
+                  {uploading
+                    ? 'Elaborazione...'
+                    : canConfirm
+                      ? 'Conferma importazione'
+                      : 'Analizza senza salvare'}
                 </Button>
               </div>
             </div>
@@ -577,6 +631,8 @@ export default function ImportDocumenti() {
                     background:
                       f.status === 'success'
                         ? COLORS.successLight
+                        : f.status === 'preview'
+                          ? COLORS.infoLight
                         : f.status === 'duplicate' || f.status === 'partial'
                           ? COLORS.warningLight
                           : f.status === 'error'
@@ -592,6 +648,8 @@ export default function ImportDocumenti() {
                       background:
                         f.status === 'success'
                           ? COLORS.successLight
+                          : f.status === 'preview'
+                            ? COLORS.infoLight
                           : f.status === 'duplicate' || f.status === 'partial'
                             ? COLORS.warningLight
                             : f.status === 'error'
@@ -611,6 +669,8 @@ export default function ImportDocumenti() {
                       />
                     ) : f.status === 'success' ? (
                       <CheckCircle size={16} color={COLORS.success} />
+                    ) : f.status === 'preview' ? (
+                      <CheckCircle size={16} color={COLORS.info} />
                     ) : f.status === 'duplicate' || f.status === 'partial' ? (
                       <AlertCircle size={16} color={COLORS.warning} />
                     ) : f.status === 'error' ? (
@@ -636,6 +696,21 @@ export default function ImportDocumenti() {
                       {(f.size / 1024).toFixed(1)} KB
                       {f.error && <span style={{ color: COLORS.danger }}> • {f.error}</span>}
                     </div>
+                    {f.preview && (
+                      <div
+                        data-testid={`preview-details-${idx}`}
+                        style={{ fontSize: 11, color: COLORS.info, marginTop: 3 }}
+                      >
+                        SHA-256: {f.preview.file?.sha256?.slice(0, 12)}...
+                        {Number.isInteger(f.preview.parsed?.righe_tributo)
+                          ? ` | Righe tributo: ${f.preview.parsed.righe_tributo}`
+                          : ''}
+                        {f.preview.validation?.saldo_quadrato === true
+                          ? ' | Quadratura verificata'
+                          : ''}
+                        {f.preview.duplicate ? ' | Duplicato rilevato' : ' | Nuovo'}
+                      </div>
+                    )}
                   </div>
                   {/* Badge tipo rilevato (solo dopo upload) */}
                   {f.tipo && <Badge variant={getTipoVariant(f.tipo)}>{getTipoLabel(f.tipo)}</Badge>}
@@ -648,6 +723,24 @@ export default function ImportDocumenti() {
               ))}
             </div>
           </Card>
+        )}
+
+        {previewComplete && results.length === 0 && (
+          <div
+            data-testid="preview-summary"
+            style={{
+              marginBottom: 20,
+              padding: 14,
+              background: COLORS.infoLight,
+              border: `1px solid ${COLORS.info}`,
+              borderRadius: BORDER_RADIUS.lg,
+              color: COLORS.info,
+              fontSize: 13,
+            }}
+          >
+            <strong>Anteprima completata: nessun dato salvato.</strong>{' '}
+            Controlla tipo, hash, quadratura e duplicati; poi usa "Conferma importazione".
+          </div>
         )}
 
         {/* Risultati */}

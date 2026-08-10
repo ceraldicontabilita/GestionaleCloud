@@ -3,6 +3,7 @@ import asyncio
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from mongomock_motor import AsyncMongoMockClient
+from tests.document_preview_helpers import confirmed_preview_headers
 
 from app.db_collections import (
     COLL_TAX_ALLOCATIONS,
@@ -124,6 +125,7 @@ def test_upload_auto_cbill_collega_rata_e_cartella(monkeypatch):
         response = client.post(
             "/api/documenti/upload-auto",
             files={"file": ("quietanza_CBILL_rata_18.pdf", b"%PDF-1.4 fixture", "application/pdf")},
+            headers=confirmed_preview_headers(b"%PDF-1.4 fixture", "ricevuta_pagopa"),
         )
 
     assert response.status_code == 200

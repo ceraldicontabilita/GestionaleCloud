@@ -110,7 +110,7 @@ def test_zip_sospetto_viene_bloccato_prima_della_decompressione():
 def test_zip_valido_riusa_il_flusso_canonico_per_ogni_file(monkeypatch):
     calls = []
 
-    async def fake_upload(*, file):
+    async def fake_upload(*, file, preview_token=None):
         calls.append((file.filename, await file.read()))
         return {
             "success": True,

@@ -7,21 +7,37 @@ import ImportDocumenti, { classificaEsitoUpload, descriviProvaFiscale } from './
 
 vi.mock('../api', () => ({ default: { post: vi.fn() } }));
 
+function mockPreviewThenImport(tipo, importData, parsed = {}) {
+  api.post.mockImplementation(url => Promise.resolve({
+    data: url.endsWith('/preview')
+      ? {
+          success: true,
+          preview_only: true,
+          tipo_rilevato: tipo,
+          confirmation_token: `token-${tipo}`,
+          blocking_errors: [],
+          duplicate: false,
+          file: { sha256: 'a'.repeat(64) },
+          parsed,
+          validation: parsed.validazione || {},
+        }
+      : importData,
+  }));
+}
+
 describe('Import documenti - corrispettivo duplicato', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it('non presenta come importato un duplicato restituito con HTTP 200', async () => {
-    api.post.mockResolvedValue({
-      data: {
+    mockPreviewThenImport('corrispettivo', {
         success: false,
         duplicate: true,
         action: 'duplicate',
         imported: 0,
         tipo_rilevato: 'corrispettivo',
         message: 'Corrispettivo duplicato ignorato: 2026-07-06 — totale 2006.30€',
-      },
     });
 
     render(<ImportDocumenti />);
@@ -32,7 +48,10 @@ describe('Import documenti - corrispettivo duplicato', () => {
     fireEvent.change(screen.getByTestId('file-input'), { target: { files: [xml] } });
     fireEvent.click(await screen.findByTestId('upload-btn'));
 
-    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    expect(await screen.findByTestId('preview-summary')).toHaveTextContent('nessun dato salvato');
+    expect(api.post).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId('upload-btn'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
     expect(await screen.findByText('Nessun nuovo documento: duplicati ignorati')).toBeInTheDocument();
     expect(screen.getByText(/Corrispettivo duplicato ignorato: 2026-07-06/)).toBeInTheDocument();
     expect(screen.queryByText('Import completato!')).not.toBeInTheDocument();
@@ -49,8 +68,7 @@ describe('Import documenti - corrispettivo duplicato', () => {
   });
 
   it('mostra la prova del parsing F24 canonico senza confonderla con la banca', async () => {
-    api.post.mockResolvedValue({
-      data: {
+    mockPreviewThenImport('f24', {
         success: true,
         tipo_rilevato: 'f24',
         workflow: 'F24_CANONICO',
@@ -61,13 +79,14 @@ describe('Import documenti - corrispettivo duplicato', () => {
           righe_credito: 1,
           validazione: { saldo_quadrato: true },
         },
-      },
-    });
+    }, { righe_tributo: 2, validazione: { saldo_quadrato: true } });
     render(<ImportDocumenti />);
 
     const pdf = new File(['%PDF-test'], 'f24-test.pdf', { type: 'application/pdf' });
     fireEvent.change(screen.getByTestId('file-input'), { target: { files: [pdf] } });
     fireEvent.click(await screen.findByTestId('upload-btn'));
+    await screen.findByTestId('preview-summary');
+    fireEvent.click(screen.getByTestId('upload-btn'));
 
     expect(await screen.findByText('Righe tributo: 2 • Crediti: 1 • Quadratura verificata')).toBeInTheDocument();
     expect(descriviProvaFiscale({ workflow: 'ALTRO' })).toBe('');
@@ -106,13 +125,11 @@ describe('Import documenti - corrispettivo duplicato', () => {
   });
 
   it('mantiene lo ZIP intero e lo affida ai controlli del backend', async () => {
-    api.post.mockResolvedValue({
-      data: {
+    mockPreviewThenImport('archivio_zip', {
         success: true,
         tipo_rilevato: 'archivio_zip',
         imported: 2,
         message: 'ZIP elaborato: 2 importati, 0 duplicati, 0 errori, 0 ignorati',
-      },
     });
     render(<ImportDocumenti />);
 
@@ -125,8 +142,13 @@ describe('Import documenti - corrispettivo duplicato', () => {
 
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
     const [url, formData] = api.post.mock.calls[0];
-    expect(url).toBe('/api/documenti/upload-auto');
+    expect(url).toBe('/api/documenti/upload-auto/preview');
     expect(formData.get('file').name).toBe('documenti.zip');
+    fireEvent.click(screen.getByTestId('upload-btn'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+    const [importUrl, , config] = api.post.mock.calls[1];
+    expect(importUrl).toBe('/api/documenti/upload-auto');
+    expect(config.headers['X-Document-Preview-Token']).toBe('token-archivio_zip');
     expect((await screen.findAllByText('Archivio ZIP')).length).toBeGreaterThan(0);
   });
 });
