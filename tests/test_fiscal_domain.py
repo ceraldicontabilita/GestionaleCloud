@@ -95,3 +95,18 @@ def test_controllo_segnala_pretese_non_revisionate():
     findings = fiscal_control_findings([], [{"id": "c", "current_due": 0}])
     assert {item["code"] for item in findings} == {
         "ZERO_WITHOUT_PAYMENT_EVIDENCE", "ORIGINAL_CLAIM_NOT_REVIEWED"}
+
+
+def test_pagopa_avviso_esito_negativo_e_ricevuta_restano_distinti():
+    notice = classify_document(
+        "AvvisoDigitale.pdf", "AVVISO DI PAGAMENTO - QUANTO E QUANDO PAGARE",
+    )
+    negative = classify_document(
+        "RicevutaTelematica.pdf", "ATTESTAZIONE DI PAGAMENTO - PAGAMENTO NON ESEGUITO",
+    )
+    receipt = classify_document(
+        "RicevutaTelematica.pdf", "ATTESTAZIONE DI PAGAMENTO - PAGAMENTO ESEGUITO",
+    )
+    assert notice["document_type"] == "AVVISO_PAGOPA"
+    assert negative["document_type"] == "ESITO_NEGATIVO_PAGOPA"
+    assert receipt["document_type"] == "RICEVUTA_PAGOPA"

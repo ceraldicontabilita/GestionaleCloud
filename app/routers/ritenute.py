@@ -166,7 +166,9 @@ def _id_f24(f24: Dict[str, Any]) -> str:
 
 
 async def _carica_f24(db) -> List[Dict[str, Any]]:
-    return [doc async for doc in db["f24_unificato"].find({}, {"_id": 0})]
+    from app.services.tax_payment_query import TaxPaymentQueryService
+
+    return await TaxPaymentQueryService(db).list_documents()
 
 
 async def _riconcilia_ritenuta(

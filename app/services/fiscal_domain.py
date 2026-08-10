@@ -37,6 +37,8 @@ class DocumentType(StrEnum):
     AVVISO_ADDEBITO_INPS = "AVVISO_ADDEBITO_INPS"
     QUIETANZA_ADE_R = "QUIETANZA_ADE_R"
     RICEVUTA_PAGOPA = "RICEVUTA_PAGOPA"
+    AVVISO_PAGOPA = "AVVISO_PAGOPA"
+    ESITO_NEGATIVO_PAGOPA = "ESITO_NEGATIVO_PAGOPA"
     RICEVUTA_CBILL = "RICEVUTA_CBILL"
     PIANO_RATEIZZAZIONE = "PIANO_RATEIZZAZIONE"
     RATA_RATEIZZAZIONE = "RATA_RATEIZZAZIONE"
@@ -48,6 +50,8 @@ class DocumentType(StrEnum):
     ATTO_GIUDIZIARIO = "ATTO_GIUDIZIARIO"
     DIRITTO_CAMERA_COMMERCIO = "DIRITTO_CAMERA_COMMERCIO"
     VERBALE_CODICE_STRADA = "VERBALE_CODICE_STRADA"
+    TARI_AVVISO = "TARI_AVVISO"
+    DIMISSIONI_TELEMATICHE = "DIMISSIONI_TELEMATICHE"
     MOVIMENTO_BANCARIO_DOCUMENTO = "MOVIMENTO_BANCARIO_DOCUMENTO"
     ALTRO_FISCALE = "ALTRO_FISCALE"
 
@@ -105,18 +109,22 @@ def normalize_cartella_number(value: str) -> str:
 
 _CLASSIFIERS: tuple[tuple[DocumentType, tuple[str, ...]], ...] = (
     (DocumentType.QUIETANZA_ADE_R, ("quietanza ader", "quietanza ade-r", "ricevuta pagamento riscossione")),
+    (DocumentType.DEFINIZIONE_AGEVOLATA, ("definizione agevolata", "rottamazione")),
+    (DocumentType.SOSPENSIONE, ("sospensione legale della riscossione", "provvedimento di sospensione")),
     (DocumentType.CARTELLA_ADE_R, ("cartella di pagamento", "cartella esattoriale", "agenzia entrate riscossione")),
     (DocumentType.AVVISO_BONARIO, ("avviso bonario", "comunicazione di irregolarita")),
     (DocumentType.PIANO_RATEIZZAZIONE, ("piano di ammortamento", "piano rateizzazione")),
-    (DocumentType.DEFINIZIONE_AGEVOLATA, ("definizione agevolata", "rottamazione")),
-    (DocumentType.SOSPENSIONE, ("sospensione della riscossione", "provvedimento di sospensione")),
     (DocumentType.SGRAVIO, ("provvedimento di sgravio", "sgravio")),
     (DocumentType.QUIETANZA_F24, ("quietanza f24", "esito delega", "protocollo telematico")),
     (DocumentType.LIPE, ("liquidazioni periodiche iva", "comunicazione liquidazioni")),
     (DocumentType.MODELLO_770, ("modello 770", "770/")),
     (DocumentType.DICHIARAZIONE_IVA, ("dichiarazione iva", "modello iva")),
     (DocumentType.F24, ("modello f24", "f24")),
-    (DocumentType.RICEVUTA_PAGOPA, ("pagopa", "iuv")),
+    (DocumentType.TARI_AVVISO, ("avviso di pagamento tari",)),
+    (DocumentType.DIMISSIONI_TELEMATICHE, ("modulo recesso rapporto di lavoro", "recesso dal rapporto di lavoro")),
+    (DocumentType.ESITO_NEGATIVO_PAGOPA, ("pagamento non eseguito", "pagamento rifiutato", "pagamento annullato")),
+    (DocumentType.AVVISO_PAGOPA, ("avviso di pagamento", "quanto e quando pagare")),
+    (DocumentType.RICEVUTA_PAGOPA, ("attestazione di pagamento", "pagamento eseguito", "importo totale pagato")),
     (DocumentType.RICEVUTA_CBILL, ("cbill",)),
 )
 

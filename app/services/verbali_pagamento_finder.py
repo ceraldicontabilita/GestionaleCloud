@@ -9,7 +9,7 @@ import email as email_lib
 import logging
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -398,7 +398,7 @@ async def applica_pagamento_a_verbale(db, verbale_id, match):
         "ricevuta_pagopa_id": match.get("ricevuta_pagopa_id"),
         "pagamento_id": pagamento_id,
         "iuv": match.get("iuv_usato"),
-        "updated_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     update = {k: v for k, v in update.items() if v is not None}
     verbale = await db["verbali_noleggio"].find_one(

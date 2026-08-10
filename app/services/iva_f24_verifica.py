@@ -182,10 +182,9 @@ def verifica_versamento_iva_da_documenti(
 async def verifica_versamento_iva(
     db, *, anno: int, mese: int, debito_liquidazione: Optional[float] = None,
 ) -> Dict[str, Any]:
-    docs = await db["f24_unificato"].find(
-        {"sezione_erario.codice_tributo": codice_iva_mensile(mese)},
-        {"_id": 0, "pdf_data": 0},
-    ).to_list(5000)
+    from app.services.tax_payment_query import TaxPaymentQueryService
+
+    docs = await TaxPaymentQueryService(db).list_documents()
     return verifica_versamento_iva_da_documenti(
         anno=anno,
         mese=mese,

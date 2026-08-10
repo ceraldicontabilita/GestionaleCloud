@@ -1961,7 +1961,7 @@ from app.utils.error_handler import handle_errors
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 MAX_INBOX_BYTES = 10 * 1024 * 1024
-MAX_ZIP_FILES = 200
+MAX_ZIP_FILES = 1000
 MAX_ZIP_UNCOMPRESSED_BYTES = 250 * 1024 * 1024
 MAX_ZIP_COMPRESSION_RATIO = 200
 SUPPORTED_UPLOAD_SUFFIXES = {
@@ -2048,9 +2048,105 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         # parser fatture con un falso positivo.
         return "auto"
 
-    # Segnali espliciti nel nome, dal piu specifico al piu generico.
-    if any(keyword in lower for keyword in ("cbill", "pagopa", "pago_pa", "pago-pa")):
+    if lower.endswith(".pdf"):
+        if "identita" in lower or "identity_card" in lower:
+            return "documento_identita"
+        if "visura" in lower:
+            return "visura_camerale"
+        if "tari" in lower and any(marker in lower for marker in (
+            "istanza", "rimborso", "compensazione",
+        )):
+            return "tari_istanza_compensazione"
+
+    # Prima del nome file prevale la natura probatoria del contenuto. Una
+    # nota INPS puo citare il modello F24 senza essere un F24; un avviso
+    # PagoPA contiene IUV/CBILL ma non dimostra alcun pagamento.
+    pdf_text = _pdf_text_for_detection(file_content).upper() if lower.endswith(".pdf") else ""
+    if len(pdf_text.strip()) < 80 and any(clue in lower for clue in (
+        "istanza", "identita", "carta", "visura", "ant_",
+    )):
+        try:
+            from app.services.pagopa_receipts import _extract_receipt_text
+
+            pdf_text = _extract_receipt_text(file_content)[0].upper() or pdf_text
+        except Exception:
+            pass
+    compact_pdf_text = re.sub(r"\s+", " ", pdf_text)
+    marker_pdf_text = re.sub(r"[^A-Z0-9]", "", pdf_text)
+    if any(marker in compact_pdf_text for marker in (
+        "NOTA DI RETTIFICA", "STAMPA SINTESI RETTIFICA", "MODELLO DMRA",
+        "DIFFERENZE CONTRIBUTIVE",
+    )):
+        return "nota_rettifica_inps"
+    if all(marker in compact_pdf_text for marker in (
+        "SEZIONE 1", "LAVORATORE", "RECESSO DAL RAPPORTO DI LAVORO",
+    )) or "MODULO RECESSO RAPPORTO DI LAVORO" in compact_pdf_text:
+        return "dimissioni_telematiche"
+    if "AVVISO DI PAGAMENTO TARI" in compact_pdf_text:
+        return "tari_avviso"
+    if (
+        "ISTANZADIRIMBORSOCOMPENSAZIONETARI" in marker_pdf_text
+        or "TARI-ISTANZARIMBORSOCOMPENSAZIONE" in marker_pdf_text
+    ):
+        return "tari_istanza_compensazione"
+    if "VISURA ORDINARIA SOCIETA" in compact_pdf_text:
+        return "visura_camerale"
+    if any(marker in marker_pdf_text for marker in (
+        "IDENTITAIDENTITYCARD", "CARTADIIDENTITA", "IDENTITYCARD",
+    )):
+        return "documento_identita"
+    if "SOSPENSIONE LEGALE DELLA RISCOSSIONE" in compact_pdf_text:
+        return "ader_sospensione"
+    if any(marker in compact_pdf_text for marker in (
+        "DICHIARAZIONE DI ADESIONE ALLA DEFINIZIONE AGEVOLATA",
+        "ROTTAMAZIONE-QUATER", "ROTTAMAZIONE QUATER",
+    )):
+        return "ader_definizione_agevolata"
+    if any(marker in compact_pdf_text for marker in (
+        "VERBALE DI ACCERTAMENTO DI VIOLAZIONE",
+        "RELAZIONE DI NOTIFICAZIONE DI ATTO AMMINISTRATIVO",
+    )) and any(marker in compact_pdf_text for marker in (
+        "CODICE DELLA STRADA", "SANZIONE AMMINISTRATIVA",
+    )):
+        return "verbale_codice_strada"
+    if any(marker in compact_pdf_text for marker in (
+        "ATTESTAZIONE DI PAGAMENTO", "ESITO : PAGAMENTO ESEGUITO",
+        "IMPORTO TOTALE PAGATO", "RICEVUTA TELEMATICA",
+    )):
         return "ricevuta_pagopa"
+    if (
+        "AVVISO DI PAGAMENTO" in compact_pdf_text
+        or "QUANTO E QUANDO PAGARE" in compact_pdf_text
+        or "RATA UNICA ENTRO IL" in compact_pdf_text
+    ):
+        return "avviso_pagopa"
+
+    # Segnali espliciti nel nome, dal piu specifico al piu generico.
+    if "identita" in lower or "identity_card" in lower:
+        return "documento_identita"
+    if "visura" in lower:
+        return "visura_camerale"
+    if "tari" in lower and any(marker in lower for marker in ("istanza", "rimborso", "compensazione")):
+        return "tari_istanza_compensazione"
+    if any(keyword in lower for keyword in ("ricevutatelematica", "ricevuta_pagopa", "ricevuta-pagopa")):
+        return "ricevuta_pagopa"
+    if any(keyword in lower for keyword in (
+        "quietanza_cbill", "quietanza-cbill", "ricevuta_cbill", "ricevuta-cbill",
+    )):
+        return "ricevuta_pagopa"
+    if any(keyword in lower for keyword in ("avvisodigitale", "avviso_pagopa", "avviso-pagopa")):
+        return "avviso_pagopa"
+    if any(keyword in lower for keyword in ("rettifica", "dmra")) and "inps" in compact_pdf_text:
+        return "nota_rettifica_inps"
+    if (
+        any(keyword in lower for keyword in ("cbill", "pagopa", "pago_pa", "pago-pa"))
+        and any(keyword in lower for keyword in ("quietanza", "ricevuta", "pagamento", "eseguito"))
+    ):
+        return "ricevuta_pagopa"
+    if any(keyword in lower for keyword in ("cbill", "pagopa", "pago_pa", "pago-pa")):
+        # Dal solo nome non e' possibile affermare che il pagamento sia
+        # avvenuto: il default sicuro e' avviso/obbligazione.
+        return "avviso_pagopa"
     if any(keyword in lower for keyword in (
         "quietanza", "ricevuta_f24", "ricevuta-f24", "pagamento_f24",
     )):
@@ -2067,14 +2163,7 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         return "fattura"
 
     if lower.endswith(".pdf"):
-        content_str = _pdf_text_for_detection(file_content).upper()
-        if (
-            "CBILL" in content_str
-            or "PAGOPA" in content_str
-            or "IDENTIFICATIVO UNIVOCO VERSAMENTO" in content_str
-            or "IDENTIFICATIVO BOLLETTA" in content_str
-        ):
-            return "ricevuta_pagopa"
+        content_str = pdf_text
         if any(marker in content_str for marker in (
             "QUIETANZA", "RICEVUTA DI VERSAMENTO", "ESITO DEL VERSAMENTO F24",
         )):
@@ -2190,6 +2279,13 @@ async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
                 continue
             payload = archive.read(info)
             nested_upload = UploadFile(filename=clean_name, file=io.BytesIO(payload))
+            normalized_path = info.filename.replace("\\", "/")
+            nested_upload.source_context = {
+                "archive_filename": filename,
+                "archive_path": normalized_path,
+                "archive_group": str(Path(normalized_path).parent).replace("\\", "/"),
+                "archive_sha256": hashlib.sha256(content).hexdigest(),
+            }
             item = await upload_documento_automatico(file=nested_upload)
             item = item if isinstance(item, dict) else {"success": False, "message": str(item)}
             duplicate = bool(item.get("duplicate") or item.get("action") == "duplicate")
@@ -2201,6 +2297,7 @@ async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
                 importati += max(1, int(item.get("imported") or 0))
             dettagli.append({
                 "filename": clean_name,
+                "archive_path": info.filename.replace("\\", "/"),
                 "tipo_rilevato": item.get("tipo_rilevato"),
                 "success": item.get("success", True),
                 "duplicate": duplicate,
@@ -2229,6 +2326,113 @@ async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
     }
 
 
+async def _archive_non_payment_document(
+    db, *, filename: str, content: bytes, document_type: str,
+    metadata: Dict[str, Any] | None = None,
+    source_context: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Archivia un'obbligazione senza promuoverla a prova di pagamento."""
+    if len(content) > MAX_INBOX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="Documento di obbligazione oltre il limite inbox di 10 MB",
+        )
+    digest = hashlib.sha256(content).hexdigest()
+    existing = await db["documents_inbox"].find_one(
+        {"sha256": digest}, {"_id": 0, "id": 1, "filename": 1},
+    )
+    if existing:
+        return {
+            "success": False, "duplicate": True, "action": "duplicate",
+            "imported": 0, "tipo_rilevato": document_type,
+            "doc_id": existing.get("id"), "filename": filename,
+            "message": f"Documento gia acquisito: {existing.get('filename') or filename}",
+        }
+    import base64
+
+    now = datetime.now(timezone.utc).isoformat()
+    doc_id = f"upload_{document_type}_{digest[:16]}"
+    labels = {
+        "avviso_pagopa": "Avviso PagoPA da collegare",
+        "nota_rettifica_inps": "Nota di rettifica INPS da verificare",
+        "esito_pagopa_negativo": "Pagamento PagoPA non eseguito",
+        "tari_avviso": "Avviso TARI da collegare",
+        "tari_istanza_compensazione": "Istanza rimborso/compensazione TARI",
+        "ader_sospensione": "Istanza di sospensione riscossione",
+        "ader_definizione_agevolata": "Definizione agevolata AdeR",
+        "dimissioni_telematiche": "Modulo dimissioni telematiche",
+        "verbale_codice_strada": "Verbale Codice della strada",
+        "visura_camerale": "Visura camerale",
+        "documento_identita": "Documento di identita allegato",
+    }
+    negative_outcome = document_type == "esito_pagopa_negativo"
+    evidence_roles = {
+        "esito_pagopa_negativo": "esito_negativo",
+        "dimissioni_telematiche": "evidenza_rapporto_lavoro",
+        "ader_sospensione": "istanza_amministrativa",
+        "ader_definizione_agevolata": "istanza_amministrativa",
+        "verbale_codice_strada": "obbligazione",
+        "tari_istanza_compensazione": "istanza_amministrativa",
+        "visura_camerale": "documento_anagrafico",
+        "documento_identita": "allegato_identita",
+    }
+    if metadata is None and document_type in {
+        "tari_avviso", "tari_istanza_compensazione", "visura_camerale",
+        "documento_identita", "ader_sospensione", "ader_definizione_agevolata",
+        "dimissioni_telematiche",
+    }:
+        from app.services.administrative_document_parser import extract_administrative_metadata
+
+        metadata = extract_administrative_metadata(
+            content=content, filename=filename, document_type=document_type,
+        )
+    association_candidates: list[dict[str, Any]] = []
+    if document_type == "dimissioni_telematiche" and (metadata or {}).get("lavoratore_cf"):
+        employees = await db["dipendenti"].find(
+            {"codice_fiscale": (metadata or {})["lavoratore_cf"]},
+            {"_id": 0, "id": 1, "codice_fiscale": 1, "nome": 1, "cognome": 1},
+        ).limit(5).to_list(5)
+        association_candidates.extend({"entity_type": "dipendente", **item} for item in employees)
+    elif document_type in {"ader_sospensione", "ader_definizione_agevolata"}:
+        claim_numbers = (metadata or {}).get("numeri_cartella") or []
+        if claim_numbers:
+            claims = await db["tax_collection_claims"].find(
+                {"collection_number": {"$in": claim_numbers}},
+                {"_id": 0, "id": 1, "collection_number": 1, "portal_status": 1},
+            ).limit(100).to_list(100)
+            association_candidates.extend({"entity_type": "cartella_ader", **item} for item in claims)
+    parsed_metadata = metadata or {}
+    record = {
+        "id": doc_id, "filename": filename,
+        "pdf_data": base64.b64encode(content).decode("ascii"),
+        "file_hash": digest, "sha256": digest, "hash_algorithm": "sha256",
+        "file_size": len(content), "category": document_type,
+        "category_label": labels.get(document_type, document_type),
+        "document_type": document_type,
+        "evidence_role": evidence_roles.get(document_type, "obbligazione"),
+        "is_payment_evidence": False, "pagato": False, "chiuso": False,
+        "status": "pagamento_non_eseguito" if negative_outcome else "da_verificare",
+        "processed": negative_outcome,
+        "source": "upload_automatico", "downloaded_at": now,
+        "source_context": source_context or {},
+        "parsed_metadata": parsed_metadata,
+        "obligation_status": parsed_metadata.get("obligation_status") or "APERTO",
+        "data_scadenza": parsed_metadata.get("data_scadenza"),
+        "relation_keys": parsed_metadata.get("relation_keys") or {},
+        "parser_version": parsed_metadata.get("parser_version"),
+        "association_candidates": association_candidates,
+    }
+    await db["documents_inbox"].insert_one(record.copy())
+    return {
+        "success": True, "duplicate": False, "imported": 1,
+        "tipo_rilevato": document_type, "doc_id": doc_id,
+        "filename": filename, "workflow": "OBBLIGAZIONE_DOCUMENTALE",
+        "payment_evidence": False,
+        "association_candidates": association_candidates,
+        "message": labels.get(document_type, "Documento archiviato per verifica"),
+    }
+
+
 @router.post("/upload-auto")
 @handle_errors
 async def upload_documento_automatico(
@@ -2249,6 +2453,7 @@ async def upload_documento_automatico(
     """
     
     filename = Path(file.filename or "documento").name
+    source_context = getattr(file, "source_context", None) or {}
     content = await file.read()
 
     if not content:
@@ -2336,7 +2541,8 @@ async def upload_documento_automatico(
             "file_hash": file_hash,
             "file_size": len(content),
             "downloaded_at": datetime.now(timezone.utc).isoformat(),
-            "source": "upload_automatico"
+            "source": "upload_automatico",
+            "source_context": source_context,
         }
         
         await db["documents_inbox"].insert_one(dict(doc_record).copy())
@@ -2531,6 +2737,65 @@ async def upload_documento_automatico(
                 result["imported"] = 0
                 result["message"] = f"Errore import Quietanza F24: {quietanza.get('error', 'parsing fallito')}"
 
+        elif tipo_rilevato in {
+            'avviso_pagopa', 'nota_rettifica_inps', 'tari_avviso',
+            'tari_istanza_compensazione', 'visura_camerale', 'documento_identita',
+            'ader_sospensione', 'ader_definizione_agevolata',
+            'dimissioni_telematiche',
+        }:
+            metadata = None
+            if tipo_rilevato == "avviso_pagopa":
+                from app.services.pagopa_receipts import parse_receipt_pdf
+
+                metadata = parse_receipt_pdf(content, filename=filename)
+                metadata["obligation_status"] = "APERTO"
+                metadata["relation_keys"] = {
+                    "codice_avviso": metadata.get("codice_avviso"),
+                    "numero_verbale": metadata.get("numero_verbale"),
+                    "targa": metadata.get("targa"),
+                    "data_violazione": metadata.get("data_violazione"),
+                }
+            elif tipo_rilevato == "nota_rettifica_inps":
+                from app.services.inps_adjustment_parser import parse_nota_rettifica_inps
+
+                metadata = parse_nota_rettifica_inps(content)
+
+            archived = await _archive_non_payment_document(
+                db, filename=filename, content=content,
+                document_type=tipo_rilevato,
+                source_context=source_context,
+                metadata=metadata,
+            )
+            if tipo_rilevato == "avviso_pagopa" and archived.get("success"):
+                from app.services.verbali_document_import import process_verbale_document
+
+                archived["association"] = await process_verbale_document(
+                    db, document_id=archived["doc_id"], content=content,
+                    filename=filename, source="documenti_upload_auto",
+                    parsed_metadata=metadata,
+                )
+                archived["workflow"] = "AVVISO_VERBALE_DOCUMENTALE"
+            return archived
+
+        elif tipo_rilevato == 'verbale_codice_strada':
+            archived = await _archive_non_payment_document(
+                db, filename=filename, content=content,
+                document_type=tipo_rilevato,
+                source_context=source_context,
+            )
+            if archived.get("duplicate"):
+                return archived
+            from app.services.verbali_document_import import process_verbale_document
+
+            association = await process_verbale_document(
+                db, document_id=archived["doc_id"], content=content,
+                filename=filename, source="documenti_upload_auto",
+            )
+            archived["association"] = association
+            archived["workflow"] = "VERBALE_DOCUMENTALE"
+            archived["message"] = "Verbale archiviato e associato per numero/IUV"
+            return archived
+
         elif tipo_rilevato == 'ricevuta_pagopa':
             from app.config import settings
             from app.services.pagopa_receipts import import_receipt
@@ -2554,6 +2819,13 @@ async def upload_documento_automatico(
                 if fiscal_match.get("matched"):
                     result["message"] += ", rata e cartelle AdeR collegate"
             else:
+                if receipt.get("document_kind") == "ESITO_PAGOPA_NEGATIVO":
+                    return await _archive_non_payment_document(
+                        db, filename=filename, content=content,
+                        document_type="esito_pagopa_negativo",
+                        metadata=receipt.get("parsed"),
+                        source_context=source_context,
+                    )
                 result["success"] = False
                 result["imported"] = 0
                 result["message"] = receipt.get(

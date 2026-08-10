@@ -163,6 +163,11 @@ def normalize_f24_evidence_rows(parsed: dict[str, Any]) -> list[dict[str, Any]]:
                 "entity_code": str(entity).strip().upper(),
                 "debit_amount": debit,
                 "credit_amount": credit,
+                "debit_cents": int(round(debit * 100)),
+                "credit_cents": int(round(credit * 100)),
+                "page_number": int(source.get("pagina") or source.get("page_number") or 1),
+                "source_row_y": source.get("riga_y"),
+                "source_text": source.get("testo_sorgente") or "",
                 "row_kind": "CREDIT_OFFSET_USE" if credit > 0 else "DEBIT_SETTLEMENT",
                 "description": source.get("descrizione") or "",
                 "is_accounting_cost": False,
@@ -239,6 +244,11 @@ async def ingest_f24_evidence(
         "parser_validation": parsed["validazione"],
         "updated_at": now,
     }
+    payment.update({
+        "total_debit_cents": int(round(payment["total_debit"] * 100)),
+        "total_credit_cents": int(round(payment["total_credit"] * 100)),
+        "net_amount_cents": int(round(payment["net_amount"] * 100)),
+    })
     await db[COLL_TAX_PAYMENTS].update_one(
         {"company_id": company_id, "id": payment_id},
         {"$set": payment, "$setOnInsert": {"created_at": now}},
@@ -252,7 +262,7 @@ async def ingest_f24_evidence(
         evidence = normalize_evidence(
             document_id=document_id,
             version_id=version_id,
-            page_number=1,
+            page_number=int(row.get("page_number") or 1),
             field="f24_row",
             raw_value=row["source_fields"],
             normalized_value={key: value for key, value in row.items() if key != "source_fields"},

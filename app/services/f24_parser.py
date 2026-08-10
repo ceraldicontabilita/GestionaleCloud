@@ -84,6 +84,8 @@ def _coordinate_quietanza(doc) -> dict[str, Any]:
     parsed: dict[str, Any] = {name: [] for name in _QUIETANZA_SECTION_LABELS.values()}
     parsed["saldo_delega"] = None
     parsed["data_pagamento"] = None
+    parsed["protocollo_telematico"] = None
+    parsed["numero_modello"] = None
 
     for page in doc:
         grouped: dict[int, list[tuple[float, str]]] = {}
@@ -143,9 +145,25 @@ def _coordinate_quietanza(doc) -> dict[str, Any]:
                                                "descrizione": get_descrizione_tributo_locale(code)})
                 continue
 
-            protocol = next((token for x, token in words if x < 300 and re.fullmatch(r"\d{17}", token)), None)
-            if protocol and parsed["saldo_delega"] is None:
-                parsed["saldo_delega"] = _row_amount(words, 500, None)
+            protocol_word = next(
+                ((x, token) for x, token in words if x < 300 and re.fullmatch(r"\d{17}", token)),
+                None,
+            )
+            if protocol_word:
+                protocol_x, protocol = protocol_word
+                numero_modello = next(
+                    (
+                        token for x, token in words
+                        if protocol_x < x < 450 and re.fullmatch(r"\d{6}", token)
+                    ),
+                    None,
+                )
+                parsed["protocollo_telematico"] = (
+                    f"{protocol}/{numero_modello}" if numero_modello else protocol
+                )
+                parsed["numero_modello"] = numero_modello
+                if parsed["saldo_delega"] is None:
+                    parsed["saldo_delega"] = _row_amount(words, 500, None)
 
             abi = next((token for x, token in words if 350 <= x < 450 and re.fullmatch(r"\d{5}", token)), None)
             date_digits = [token for x, token in words if 140 <= x < 300 and re.fullmatch(r"\d", token)]
@@ -242,6 +260,12 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
     except Exception as exc:
         logger.warning("Estrazione coordinate quietanza non disponibile: %s", exc)
         coordinate_data = {name: [] for name in _QUIETANZA_SECTION_LABELS.values()}
+        coordinate_data.update({
+            "saldo_delega": None,
+            "data_pagamento": None,
+            "protocollo_telematico": None,
+            "numero_modello": None,
+        })
     
     # ============================================
     # DATI GENERALI
@@ -269,10 +293,24 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
         if rs_match2:
             result["dati_generali"]["ragione_sociale"] = rs_match2.group(1).strip()
     
-    # Protocollo Telematico - numero di 17 cifre
-    pt_match = re.search(r'(\d{17})', text)
+    # Protocollo Telematico: nei PDF AE il numero modello puo essere in una
+    # casella separata senza slash nel layer testuale ("...3961 000001").
+    pt_match = re.search(
+        r'PROTOCOLLO\s+TELEMATICO\s*(\d{17})\s*(?:/\s*)?(\d{6})',
+        text, re.IGNORECASE,
+    )
     if pt_match:
-        result["dati_generali"]["protocollo_telematico"] = pt_match.group(1)
+        protocollo = f"{pt_match.group(1)}/{pt_match.group(2)}"
+        result["dati_generali"]["protocollo_telematico"] = protocollo
+        result["dati_generali"]["numero_modello"] = pt_match.group(2)
+    else:
+        pt_match = re.search(r'(\d{17}(?:\s*/\s*\d{6})?)', text)
+    if pt_match:
+        if "protocollo_telematico" not in result["dati_generali"]:
+            protocollo = re.sub(r"\s+", "", pt_match.group(1))
+            result["dati_generali"]["protocollo_telematico"] = protocollo
+            if "/" in protocollo:
+                result["dati_generali"]["numero_modello"] = protocollo.split("/", 1)[1]
     
     # Data e Ora documento
     data_ora_match = re.search(r'Data:\s*(\d{2}/\d{2}/\d{4})\s*-\s*Ore:\s*(\d{2}:\d{2}:\d{2})', text)
@@ -295,8 +333,8 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
 
     # Saldo Delega - pattern: 5.498,79 o simile prima di data+ABI (5 cifre generico)
     saldo_patterns = [
-        r'(\d{1,3}(?:\.\d{3})*,\d{2})\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d{5}',  # Prima di data e ABI
         r'Saldo\s*delega\s*[\n\s]*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})',
+        r'(\d{1,3}(?:\.\d{3})*,\d{2})\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d{5}',  # Prima di data e ABI
         r',\s*(\d{1,3}(?:\.\d{3})*,\d{2})\s*\n',
     ]
     for pattern in saldo_patterns:
@@ -322,7 +360,17 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
 
     if coordinate_data.get("data_pagamento"):
         result["dati_generali"]["data_pagamento"] = coordinate_data["data_pagamento"]
-    if coordinate_data.get("saldo_delega") is not None:
+    if coordinate_data.get("protocollo_telematico"):
+        result["dati_generali"]["protocollo_telematico"] = coordinate_data["protocollo_telematico"]
+        if coordinate_data.get("numero_modello"):
+            result["dati_generali"]["numero_modello"] = coordinate_data["numero_modello"]
+    if (
+        coordinate_data.get("saldo_delega") is not None
+        and (
+            coordinate_data["saldo_delega"] > 0
+            or result["dati_generali"].get("saldo_delega") is None
+        )
+    ):
         result["dati_generali"]["saldo_delega"] = coordinate_data["saldo_delega"]
     
     # ============================================

@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import re
+from mongomock_motor import AsyncMongoMockClient
 
 from app.services import ai_document_parser
 from app.services import verbali_document_import as mod
@@ -139,7 +140,7 @@ def test_documento_senza_numero_o_iuv_resta_da_revisionare(monkeypatch):
     assert db["verbali_noleggio"].docs == []
 
 
-def test_verbale_collega_documento_veicolo_e_driver_senza_duplicare(monkeypatch):
+def test_verbale_collega_veicolo_ma_non_deduce_driver_dalla_sola_targa(monkeypatch):
     db = _Db()
     db["documents_inbox"].docs = [{"id": "doc-1"}]
     db["veicoli_noleggio"].docs = [{
@@ -163,9 +164,28 @@ def test_verbale_collega_documento_veicolo_e_driver_senza_duplicare(monkeypatch)
     verbale = db["verbali_noleggio"].docs[0]
     assert verbale["numero_verbale"] == "A25111540620"
     assert verbale["targa"] == "AB123CD"
-    assert verbale["driver_id"] == "dip-1"
+    assert verbale.get("driver_id") is None
+    assert verbale.get("driver") is None
     assert verbale["document_ids"] == ["doc-1"]
     assert db["documents_inbox"].docs[0]["verbale_id"] == verbale["id"]
+
+
+def test_driver_richiede_assegnazione_storica_compatibile_con_la_data():
+    db = AsyncMongoMockClient()["verbale-driver-temporale"]
+    _run(db["veicoli_noleggio"].insert_one({
+        "id": "car-1", "targa": "AB123CD", "driver_id": "driver-corrente",
+    }))
+    _run(db["storico_assegnazioni_veicoli"].insert_one({
+        "targa": "AB123CD", "driver_id": "driver-storico",
+        "driver": "Mario Storico", "data_inizio": "2025-01-01",
+        "data_fine": "2025-06-30",
+    }))
+
+    context = _run(mod._vehicle_context(db, "AB123CD", "2025-04-10"))
+
+    assert context["veicolo_id"] == "car-1"
+    assert context["driver_id"] == "driver-storico"
+    assert context["driver_match_basis"] == "assegnazione_storica_alla_data"
 
 
 def test_ricevuta_pagopa_non_si_associa_se_importo_non_coincide(monkeypatch):

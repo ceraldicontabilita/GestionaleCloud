@@ -74,6 +74,129 @@ def parse_periodo(mese: str, anno: str) -> str:
     return f"{mese}/{anno}" if mese and anno and mese != "00" else anno or mese
 
 
+def _importo_da_token(parts) -> float:
+    """Ricompone euro e centesimi senza perdere la virgola del PDF."""
+    if not parts:
+        return 0.0
+    ordered = sorted(parts, key=lambda item: item[0])
+    values = [str(value).strip() for _x, value in ordered]
+    joined = "".join(values)
+    # PyMuPDF colloca spesso la virgola su una baseline diversa e quindi in
+    # un'altra riga. Due caselle finali sono i centesimi, non altre centinaia.
+    if (
+        "," not in joined
+        and len(values) >= 2
+        and re.fullmatch(r"\d{2}", values[-1])
+        and ordered[-1][0] - ordered[-2][0] <= 45
+    ):
+        joined = "".join(values[:-1]) + "," + values[-1]
+    joined = re.sub(r"[^0-9.,]", "", joined)
+    joined = re.sub(r",+", ",", joined)
+    if not re.search(r"\d", joined):
+        return 0.0
+    # Nei campi a caselle dell'F24 una sequenza compatta senza separatore e'
+    # espressa in centesimi: le ultime due cifre sono sempre i decimali.
+    # Esempi reali: 123 -> 1,23; 1234 -> 12,34.
+    if re.fullmatch(r"\d+", joined):
+        return int(joined) / 100
+    return parse_importo(joined)
+
+
+def _dati_anagrafici_da_coordinate(doc) -> Dict[str, str]:
+    """Legge contribuente e intermediario da aree distinte del modello."""
+    result: Dict[str, str] = {}
+    for page in doc:
+        rows = {}
+        for x0, y0, x1, _y1, word, *_rest in page.get_text("words"):
+            # Nei modelli 2026 l'etichetta e le caselle del codice fiscale
+            # hanno baseline differenti di 1-2 punti. Una fascia da 8 punti
+            # le ricompone senza inglobare la riga anagrafica successiva.
+            rows.setdefault(round(y0 / 8) * 8, []).append((x0, x1, word.strip()))
+        for row in rows.values():
+            ordered = sorted(row, key=lambda item: item[0])
+            compact = "".join(item[2] for item in ordered).upper()
+            if "INTERMEDIARIO:" in compact:
+                for _x0, _x1, token in ordered:
+                    candidate = re.sub(r"\W", "", token.upper())
+                    if re.fullmatch(r"[A-Z0-9]{16}|\d{11}", candidate):
+                        result.setdefault("intermediario_codice_fiscale", candidate)
+                        break
+            if "FISCALE" not in compact:
+                continue
+            # Il vecchio layout spezza CODICE FISCALE in token come
+            # ``C O D ICE FIS C A LE``. Individuiamo quindi la fine
+            # dell'etichetta sulla stringa cumulativa, non sul singolo token:
+            # in caso contrario le lettere CODCA venivano anteposte al CF.
+            label_end = 0
+            label_text = ""
+            for _x0, x1, token in ordered:
+                label_text += re.sub(r"[^A-Z0-9]", "", token.upper())
+                if "CODICEFISCALE" in label_text:
+                    label_end = x1
+                    break
+            if not label_end:
+                continue
+            box_chars = []
+            for x0, _x1, token in ordered:
+                normalized = re.sub(r"[^A-Z0-9]", "", token.upper())
+                if label_end < x0 < 330 and len(normalized) == 1:
+                    box_chars.append(normalized)
+            chars = "".join(box_chars)
+            if len(chars) == 16 and re.fullmatch(r"[A-Z0-9]{16}", chars):
+                result.setdefault("codice_fiscale", chars)
+            elif len(chars) == 11 and chars.isdigit():
+                result.setdefault("codice_fiscale", chars)
+    return result
+
+
+def _codice_regione_da_riga(row) -> str:
+    """Estrae il codice regione anche se a sinistra c'e' testo marginale.
+
+    Alcuni PDF sovrappongono alla prima colonna frammenti dell'indirizzo del
+    software produttore. Basarsi sui primi token faceva perdere ``05`` nelle
+    prime righe IRAP pur essendo chiaramente presente nel modulo.
+    """
+    candidati = sorted(
+        (
+            (float(item.get("x", 0)), str(item.get("word", "")).strip())
+            for item in row
+            if 28 <= float(item.get("x", 0)) <= 95
+        ),
+        key=lambda item: item[0],
+    )
+    for index, (_x, value) in enumerate(candidati):
+        if re.fullmatch(r"0[1-9]|1\d|2[0-1]", value):
+            return value
+        if value != "0" or index + 1 >= len(candidati):
+            continue
+        next_x, next_value = candidati[index + 1]
+        if re.fullmatch(r"\d", next_value) and next_x - candidati[index][0] <= 24:
+            combined = value + next_value
+            if re.fullmatch(r"0[1-9]", combined):
+                return combined
+    return ""
+
+
+def _saldo_da_coordinate(page) -> float | None:
+    rows = {}
+    for x0, y0, x1, _y1, word, *_rest in page.get_text("words"):
+        rows.setdefault(round(y0 / 4) * 4, []).append((x0, x1, word.strip()))
+    label_y = None
+    for y, row in rows.items():
+        compact = "".join(token for _x0, _x1, token in sorted(row)).upper()
+        if "SALDOFINALE" in compact:
+            label_y = y
+    if label_y is None:
+        return None
+    parts = []
+    for y, row in rows.items():
+        if label_y - 12 <= y <= label_y + 28:
+            for x0, _x1, token in row:
+                if x0 >= 515 and re.fullmatch(r"[\d.,]+", token):
+                    parts.append((x0, token))
+    return round(_importo_da_token(parts), 2) if parts else None
+
+
 def extract_text_from_pdf(pdf_path: str = None, pdf_content: bytes = None) -> str:
     """
     Estrae tutto il testo da un PDF.
@@ -145,19 +268,24 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
     # DATI GENERALI
     # ============================================
     
+    coordinate_identity = _dati_anagrafici_da_coordinate(doc)
+    result["dati_generali"].update(coordinate_identity)
+
     cf_patterns = [
         r'CODICE\s*FISCALE\s*[\n\s]*([A-Z0-9]{11,16})',
         r'(\d{11})\s*(?:cognome|ragione)',
         r'\b([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])\b',
         r'(\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d)',
     ]
-    for pattern in cf_patterns:
-        cf_match = re.search(pattern, text, re.IGNORECASE)
-        if cf_match:
-            cf = cf_match.group(1).replace(' ', '')
-            if len(cf) == 11 or len(cf) == 16:
-                result["dati_generali"]["codice_fiscale"] = cf
-                break
+    if not result["dati_generali"].get("codice_fiscale"):
+        intermediary = result["dati_generali"].get("intermediario_codice_fiscale")
+        for pattern in cf_patterns:
+            cf_match = re.search(pattern, text, re.IGNORECASE)
+            if cf_match:
+                cf = cf_match.group(1).replace(' ', '').upper()
+                if (len(cf) == 11 or len(cf) == 16) and cf != intermediary:
+                    result["dati_generali"]["codice_fiscale"] = cf
+                    break
     
     ragione_sociale_match = re.search(r'CERALDI\s+GROUP\s+S\.?R\.?L\.?', text, re.IGNORECASE)
     if ragione_sociale_match:
@@ -196,7 +324,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
             x = item['x']
             word = item['word']
             
-            if word in [',', '+/–', '+/-', '+', '-']:
+            if word in ['+/–', '+/-', '+', '-']:
                 continue
             if not re.match(r'^[\d.,]+$', word):
                 continue
@@ -206,15 +334,8 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
             elif x >= CREDITO_X_MIN:
                 credito_parts.append((x, word))
         
-        def parse_parts(parts):
-            if not parts:
-                return 0.0
-            parts.sort()
-            joined = re.sub(r",+", ",", "".join(value for _x, value in parts))
-            return parse_importo(joined)
-
-        debito = parse_parts(debito_parts)
-        credito = parse_parts(credito_parts)
+        debito = _importo_da_token(debito_parts)
+        credito = _importo_da_token(credito_parts)
         
         return round(debito, 2), round(credito, 2)
     
@@ -224,6 +345,9 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
     
     for page_num, page in enumerate(doc):
         words = page.get_text('words')
+        saldo_coordinate = _saldo_da_coordinate(page)
+        if saldo_coordinate is not None:
+            result["dati_generali"]["saldo_delega"] = saldo_coordinate
         
         # Raggruppa per riga (tolleranza 8 pixel)
         rows = {}
@@ -318,6 +442,9 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "mese": mese,
                                     "importo_debito": debito,
                                     "importo_credito": credito,
+                                    "pagina": page_num + 1,
+                                    "riga_y": y_key,
+                                    "testo_sorgente": row_text,
                                     "descrizione": get_descrizione_tributo(codice)
                                 })
                                 
@@ -380,6 +507,9 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "anno": anno,
                                     "importo_debito": round(importo, 2),
                                     "importo_credito": 0.0,
+                                    "pagina": page_num + 1,
+                                    "riga_y": y_key,
+                                    "testo_sorgente": row_text,
                                     "descrizione": get_descrizione_causale_inps(causale)
                                 })
                         break
@@ -435,6 +565,9 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                             "causale": causale_inail,
                             "importo_debito": round(importo_inail, 2),
                             "importo_credito": round(credito_inail, 2),
+                            "pagina": page_num + 1,
+                            "riga_y": y_key,
+                            "testo_sorgente": row_text,
                             "descrizione": f"Premio INAIL - Causale {causale_inail}"
                         })
             
@@ -450,9 +583,9 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
             CODICI_IRAP = {'1868', '3800', '3801', '3802', '3803', '3805', '3812', '3813', 
                           '3858', '3881', '3882', '3883', '4070', '1993', '8907'}
             
-            is_regioni_row = False
-            cod_regione = ""
-            if len(row) >= 3:
+            cod_regione = _codice_regione_da_riga(row)
+            is_regioni_row = bool(cod_regione)
+            if len(row) >= 3 and not cod_regione:
                 first_words = [r['word'] for r in row[:4]]
                 # Pattern "0 X" dove X è una cifra = codice regione
                 if len(first_words) >= 2 and first_words[0] == '0' and re.match(r'^\d$', first_words[1]):
@@ -506,6 +639,9 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "mese": mese,
                                     "importo_debito": debito,
                                     "importo_credito": credito,
+                                    "pagina": page_num + 1,
+                                    "riga_y": y_key,
+                                    "testo_sorgente": row_text,
                                     "descrizione": get_descrizione_tributo_regioni(codice)
                                 })
                         break
@@ -554,6 +690,9 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "mese": mese,
                                     "importo_debito": debito,
                                     "importo_credito": credito,
+                                    "pagina": page_num + 1,
+                                    "riga_y": y_key,
+                                    "testo_sorgente": row_text,
                                     "descrizione": get_descrizione_tributo_regioni(codice)
                                 })
                         break
@@ -633,11 +772,28 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "mese": mese,
                                     "importo_debito": debito,
                                     "importo_credito": credito,
+                                    "pagina": page_num + 1,
+                                    "riga_y": y_key,
+                                    "testo_sorgente": row_text,
                                     "descrizione": get_descrizione_tributo_locale(codice)
                                 })
                         break
     
     doc.close()
+
+    # Il ravvedimento appartiene alla delega e puo' essere rappresentato in
+    # qualunque sezione. Derivarlo da tutte le righe evita di perdere, per
+    # esempio, interessi 1993 e sanzioni 8907 nella sezione Regioni.
+    codici_presenti = {
+        str(item.get("codice_tributo") or "")
+        for nome_sezione in (
+            "sezione_erario", "sezione_regioni", "sezione_tributi_locali",
+        )
+        for item in result[nome_sezione]
+    }
+    codici_ravvedimento = sorted(codici_presenti.intersection(CODICI_RAVVEDIMENTO))
+    result["codici_ravvedimento"] = codici_ravvedimento
+    result["has_ravvedimento"] = bool(codici_ravvedimento)
     
     # ============================================
     # CALCOLO TOTALI
