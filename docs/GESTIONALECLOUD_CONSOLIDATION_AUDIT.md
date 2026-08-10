@@ -4,13 +4,15 @@ Data audit: 2026-08-10
 
 Repository autorevole: `ceraldicontabilita/GestionaleCloud`
 
-Branch audit: `codex/master-implementation-fiscale-drive`
-Commit verificato: `9b674934d06a7312eb0036d528c46e534d2135e2`
+Branch audit: `codex/ader-snapshot-baseline`
+Commit base verificato: `7d53315d47d1cd562d4323c1e659979796d2597a`
 
 ## Metodo e confini
 
 - Il clone locale era pulito e allineato a `origin/main`; il connettore GitHub e la produzione hanno confermato lo stesso commit (`deploy_commit=9b674934`).
-- I 15 ZIP del pacchetto sono stati inventariati senza sovrascrivere il repository. I tre snapshot codice richiesti contengono rispettivamente 1.427, 1.409 e 1.387 voci.
+- Gli ZIP del pacchetto sono stati inventariati senza sovrascrivere il repository. Il main corrente resta la sola autorita' del codice.
+- Nel pacchetto MASTER e' stato trovato l'archivio annidato `allegati_completi_da_importare/CARTELLE ESATTORIALI.zip`, SHA-256 `e5738d898d89fc4abab177566fb927026a5a71ee36c7b4ed2a9309a6f7475c0b`: 47 PDF, dei quali 43 analitiche AdeR (36 `Saldati`, 7 `Da saldare`), due accoglimenti di rateizzazione e due documenti di definizione/riscossione.
+- Tutte le 43 analitiche sono state lette dal parser di audit; i sette casi indicati nella specifica sono stati verificati anche per importi e stato. Tre campioni strutturalmente diversi sono stati renderizzati e controllati visivamente.
 - I due archivi fiscali contengono entrambi 436 PDF. Condividono 446 hash complessivi; il V2 aggiunge 4 hash e l'archivio precedente ne conserva 7 non presenti nel V2.
 - I sette Excel sono stati letti per fogli, righe, formule e riferimenti documentali. La loro esistenza non e' stata trattata come import DB.
 - I 25 PDF diretti sono stati verificati per SHA-256, numero pagine, estraibilita' del testo e campione visuale. Sono fixture private e non vanno committati.
@@ -62,9 +64,9 @@ Commit verificato: `9b674934d06a7312eb0036d528c46e534d2135e2`
 | Dataset dichiarazioni 2020-2026 | PARZIALE | 61 indici dichiarazioni; 436 PDF totali nei pacchetti | hash/manifest verificati | zero hash del nuovo archivio nel Drive del 04/08; DB corrente non letto | Import controllato e idempotente; nessuna conclusione da Excel. |
 | Dataset 302 operazioni/320 PDF F24 | PARZIALE | manifest e indice unificato | coerenza file/hash verificata | DB storico 48 F24/130 quietanze | Dry-run e report differenze prima di ogni scrittura reale. |
 | Excel fiscali allegati | PRESENTE | 7 file, 2-13 fogli ciascuno | struttura/righe/formule lette | non provano DB | Trattarli come staging e confronto, non fonte di pagamento. |
-| Avvisi bonari - modello dominio | ASSENTE | nessuna `tax_collection_*` equivalente completa | nessun test | Drive storico root separato con 0 PDF | Implementare schema/import/parser/evidence. |
-| Cartelle esattoriali - modello dominio | ASSENTE | solo PDF/document inbox e servizi generici | nessun test di claim/eventi | 25/25 fixture gia' su Drive storico; DB dominio non provato | Implementare dominio strutturato senza dedurre stato dal nome. |
-| `tax_collection_documents/claims/claim_lines/events` | ASSENTE | collezioni non presenti | assenti | non verificati | Implementare. |
+| Avvisi bonari - modello dominio | PRESENTE | `tax_collection_*`, ingestion fiscale, prove e API | suite fiscale corrente | DB corrente non letto | Estendere solo quando una fonte reale lo richiede. |
+| Cartelle esattoriali - modello dominio | PRESENTE | documenti, claim, righe, eventi, snapshot generici | suite fiscale corrente | 43 analitiche verificate fuori DB | Aggiungere baseline AdeR immutabile per singola posizione. |
+| `tax_collection_documents/claims/claim_lines/events` | PRESENTE | `app/db_collections.py`, servizi e router fiscale | test fiscali | import baseline non eseguito | Riutilizzare; non duplicare il dominio. |
 | `tax_notification_events` / `tax_legal_events` | ASSENTE | non presenti | assenti | non verificati | Implementare. |
 | Piani rateali, rate e allocazioni | ASSENTE | `tax_rate_*` non presenti | assenti | alcuni PDF/RAV locali esistono | Implementare con ID cartella normalizzato e prove. |
 | Definizioni/rottamazioni | ASSENTE | `tax_settlement_*` non presenti | assenti | PDF locali parziali; archivio AdeR completo non allegato | Implementare, senza chiudere l'importo originario pieno. |
@@ -81,9 +83,9 @@ Commit verificato: `9b674934d06a7312eb0036d528c46e534d2135e2`
 | Dedup Drive SHA-256 | DIVERGENTE | salva SHA-256 ma deduplica primaria su MD5 `file_hash` | test generici dedup | hash locali disponibili | Migrare a chiave SHA-256 senza rompere compatibilita' storica. |
 | Stesso pipeline `Documenti` | PRESENTE | `drive_documenti_ingest.sync_tutti` | test route/ingest | esecuzione live non letta | Conservare `Documenti` come unica entrata. |
 | Pulsante `Sincronizza Drive ora` fiscale | ASSENTE | endpoint backend presenti; nessun chiamante frontend fiscale | test route solo backend | non verificato | Collegare il comando nella pagina `Documenti`, senza nuova pagina parallela. |
-| Snapshot AdeR 10/08/2026 (43 documenti) | ASSENTE | solo testo requisiti 68-89 | nessun test | `CERALDI_GROUP_04523831214_AER_2026-08-10.zip` non e' nel pacchetto | Non seedare numeri/valori senza archivio e hash; implementare schema/import generico. |
-| Stati AdeR portal vs business | ASSENTE | nessun `ader_position_snapshots` | assenti | esempi solo nel testo allegato | Implementare snapshot immutabili e calcolo separato. |
-| Micro-residui/sospensioni/net payable | ASSENTE | nessun motore AdeR | assenti | esempi non verificabili senza ZIP AdeR | Implementare soglia configurabile e stati fail-closed. |
+| Snapshot AdeR 10/08/2026 (43 documenti) | PARZIALE | archivio e parser audit verificati; manca `ader_position_snapshots` | parser audit 43/43 | 43 PDF reali verificati, DB non scritto | Implementare dry-run/import da un archivio gia' registrato in `Documenti`. |
+| Stati AdeR portal vs business | PARZIALE | snapshot generico esiste, ma non il record immutabile per posizione | test generici | bucket portale verificato dai nomi e dai PDF | Separare `portal_bucket`, `portal_status` e `calculated_business_status`. |
+| Micro-residui/sospensioni/net payable | PARZIALE | classificazione generica con soglia fissa di 5 euro | test generici | sette casi reali verificati | Rendere la soglia configurabile e non cancellare mai il residuo. |
 | Sicurezza: PDF fiscali fuori Git | PRESENTE | `git ls-files '*.pdf'` mostra solo report audit documentale | controllo Git | fixture solo fuori repo | Mantenere `.private/`/ignore e controllo CI. |
 | Sicurezza: segreti fuori Git | PRESENTE | nessun `.env`, PEM/key/credential tracciato | controllo Git | n/d | Aggiungere secret scan CI se non gia' coperto. |
 | Autenticazione/RBAC | PRESENTE | middleware globale + dipendenze admin | test guardie | 401 live confermato | Aggiungere guardia esplicita sui router sensibili dove manca. |
@@ -95,4 +97,4 @@ Commit verificato: `9b674934d06a7312eb0036d528c46e534d2135e2`
 
 ## Conclusione audit
 
-Il main e' piu' recente degli ZIP per Assistente, relazioni contabili, banca/POS e Drive fiscale. Non va sostituito. Le parti realmente mancanti sono il dominio fiscale/riscossione strutturato, lo snapshot AdeR, il registro obblighi/crediti con lineage, il bridge IVA/F24/bilancio completo, la prova documentale a pagina e i gate live di Drive/DB. I dataset sono preparati e in parte gia' presenti come documenti, ma non risultano dimostrati come importati e riconciliati integralmente.
+Il main e' piu' recente degli ZIP e non va sostituito. Il dominio fiscale/riscossione, le prove, Drive incrementale, gli agenti e il dossier sono gia' presenti. Il delta provato dal nuovo archivio e' circoscritto: snapshot AdeR immutabile per singola posizione, import idempotente dall'unico ingresso `Documenti`, stati portale/business separati, soglia micro-residuo configurabile, normalizzazione fail-closed dei riferimenti rateali e vista dedicata. Nessun record reale e' stato importato durante l'audit.

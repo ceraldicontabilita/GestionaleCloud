@@ -6,7 +6,7 @@ Questo documento contiene soltanto gli esiti `PARZIALE`, `ASSENTE` o `DIVERGENTE
 
 1. Ottenere una lettura amministrativa corrente, in sola lettura, delle collezioni DB e degli endpoint `/api/documenti/drive/fiscal/status` e `/api/documenti/tax-codes/status`.
 2. Eseguire la discovery Drive API sulla root `1f48bounfoOyHL_kqpHAp2GAnFfEpHvVa` e registrare gli ID reali/univoci di `Avvisi bonari` e `Cartelle esattoriali`.
-3. Rendere disponibile l'archivio citato dal testo `CERALDI_GROUP_04523831214_AER_2026-08-10.zip`: non e' contenuto nel pacchetto trasferito, quindi i 43 documenti AdeR e i relativi importi non possono essere seedati come prova.
+3. Registrare in `Documenti` l'archivio AdeR verificato nel pacchetto MASTER prima di qualunque import reale. L'archivio e' stato trovato e validato, ma non e' stato scritto nel DB.
 4. Correggere il job CI backend rosso: le mappe endpoint committate non riflettono i test delle cinque nuove route fiscali.
 
 ## Import e riconciliazione dataset 2020-2026
@@ -28,21 +28,16 @@ Questo documento contiene soltanto gli esiti `PARZIALE`, `ASSENTE` o `DIVERGENTE
 
 ## Riscossione, avvisi e cartelle
 
-- Implementare `tax_collection_documents`, `tax_collection_claims`, `tax_collection_claim_lines`, `tax_collection_events`, `tax_notification_events`, `tax_legal_events`.
-- Implementare `tax_rate_plans`, `tax_rate_installments`, `tax_rate_plan_claim_allocations`.
-- Implementare `tax_settlement_programs`, `tax_settlement_applications`, `tax_settlement_claims`.
-- Implementare `tax_credit_ledger`, `tax_credit_movements`, `tax_credit_lineage`.
-- Implementare `collection_tax_code_registry`, `tax_code_crosswalk`, `legal_rule_versions`.
-- Implementare `RavvedimentoEngine`, `FiscalControlAgent`, `AdvisorBriefGenerator`, `buildTaxReviewDossier`, `buildTaxEvidencePackage` come motori evidence-bound e revisionabili.
-- Estendere `entity_relations` e il viewer con un pannello prove collegate bidirezionale, incluso numero pagina/intervallo pagina.
+- Le collezioni di dominio, il ravvedimento, gli agenti, il dossier, il pacchetto prove e il pannello evidenze esistono gia': non duplicarli.
+- Integrare nel dominio corrente la baseline AdeR per posizione e collegarla a documenti, piani ed eventi mediante prove.
+- Conservare riferimenti rateali ambigui come anomalie: i numeri a 17 cifre si risolvono solo contro una e una sola posizione analitica a 20 cifre.
 
 ## Snapshot AdeR
 
-- Implementare import generico e immutabile di snapshot AdeR con archivio sorgente, SHA-256 e merge non distruttivo.
-- Separare sempre `portal_status`/bucket dal `calculated_business_status`.
-- Conservare importo originario, pagato, sgravato, sospeso, rateizzato, definito, residuo ed esigibile ora.
-- Implementare micro-residuo configurabile, residui accessori, sospensione totale, chiusura con causa e confronto snapshot N/N+1.
-- Non caricare i 43 record specifici del testo finche' il relativo ZIP/PDF analitico non e' disponibile e verificato.
+- L'import generico e immutabile, il dry-run, la verifica SHA-256, il merge non distruttivo, la soglia micro-residuo e la separazione tra stato portale e stato gestionale sono implementati.
+- Restano da eseguire l'import reale attraverso un archivio registrato in `Documenti` e il collaudo amministrativo sul database di produzione; nessun PDF viene letto direttamente dal filesystem in esercizio.
+- Aggiungere il confronto temporale tra snapshot N/N+1 e generare eventi espliciti per variazioni di residuo, sospensione, sgravio e chiusura.
+- Validare con l'utente le posizioni marcate `MICRO_RESIDUAL_REVIEW`, i riferimenti rateali non univoci e ogni definizione priva di quietanza prima di cambiare lo stato contabile.
 
 ## Drive e documenti
 

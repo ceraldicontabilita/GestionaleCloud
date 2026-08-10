@@ -20,10 +20,10 @@ Data verifica: 2026-08-10. `NON_VERIFICATO_CORRENTE` significa che la produzione
 | Avvisi bonari Drive | cartella logica richiesta | NON_VERIFICATO_CORRENTE | NO | inventory 04/08 mostrava root separata con 0 PDF | Discovery live sotto root fiscale e import tramite `Documenti`. |
 | Cartelle esattoriali Drive | SI storico: 35 PDF nella root separata | DOCUMENTI PRESENTI; MODELLO DOMINIO ASSENTE | PARZIALE | 25 fixture coincidono esattamente | Riscoprire sotto la root fiscale e importare struttura, non duplicare file. |
 | Registro codici tributo AdE | codice e job presenti | NON_VERIFICATO_CORRENTE | n/d | endpoint live esiste ma richiede auth | Eseguire sync ufficiale e leggere versione/count. |
-| Snapshot AdeR `CERALDI_GROUP_04523831214_AER_2026-08-10.zip` | NO: citato nel testo ma non allegato | NO | NO | nessun file/hash/PDF analitico nel pacchetto | Richiedere/rendere disponibile l'archivio prima del seed. |
-| 43 documenti AdeR (36 saldati, 7 da saldare) | SOLO ELENCO TESTUALE | NO | NO | requisiti 68-89, non prova documentale | Implementare importer generico; non registrare come baseline finche' i PDF non sono verificati. |
-| Piani AR071812706 / AR071904285 | SOLO TESTO; alcune fixture rateali diverse presenti | NO | NO | mancano i due provvedimenti nominati nel pacchetto corrente | Verificare PDF, rate e pagamenti prima dello stato `ACTIVE`. |
-| Rottamazione-quater 07190202302172623000 | SOLO TESTO; fixture correlate parziali | NO | NO | archivio completo e ricevuta specifica non dimostrati insieme | Collegare cartella, definizione e pagamento senza attribuire l'importo originario pieno. |
+| Snapshot AdeR 10/08/2026 | SI: archivio annidato, SHA-256 `e5738d898d89fc4abab177566fb927026a5a71ee36c7b4ed2a9309a6f7475c0b` | NO | NO | 47 PDF; parser audit 43/43 analitiche; tre render visuali | Registrare prima l'archivio in `Documenti`, poi dry-run/import MFA idempotente. |
+| 43 documenti AdeR (36 `Saldati`, 7 `Da saldare`) | SI, PDF analitici reali | NO | NO | importi e stati dei sette casi campione verificati | Importare snapshot immutabili; il bucket portale non prova il pagamento. |
+| Piani AR071812706 / AR071904285 | SI, due PDF di accoglimento | NO | NO | 18 rate e 6 rate; riferimenti posizione stampati a 17 cifre | Risolvere contro le analitiche a 20 cifre solo con corrispondenza univoca. |
+| Rottamazione-quater 07190202302172623000 | SI, comunicazione e documento collegato | NO | NO | importo definizione 126,68; la ricevuta bancaria non e' provata dal PDF di definizione | Stato fail-closed finche' una distinta evidenza bancaria/documentale non conferma il pagamento. |
 
 ## Verdetto
 

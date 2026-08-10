@@ -13,16 +13,19 @@ from pydantic import BaseModel, Field
 from app.config import settings
 from app.database import Database
 from app.db_collections import (
+    COLL_ADER_ARCHIVE_IMPORTS, COLL_ADER_POSITION_SNAPSHOTS,
     COLL_FISCAL_DOCUMENTS, COLL_FISCAL_EVIDENCE, COLL_TAX_ALLOCATIONS,
     COLL_TAX_CODE_CROSSWALK, COLL_TAX_COLLECTION_CLAIMS,
     COLL_TAX_COLLECTION_EVENTS, COLL_TAX_COLLECTION_SNAPSHOTS,
     COLL_TAX_CREDIT_MOVEMENTS, COLL_TAX_OBLIGATIONS, COLL_TAX_PAYMENTS,
+    COLL_TAX_RATE_PLANS, COLL_TAX_SETTLEMENT_APPLICATIONS,
 )
 from app.services.fiscal_agents import AdvisorBriefGenerator, FiscalControlAgent, buildTaxEvidencePackage, buildTaxReviewDossier, load_review_data
 from app.services.fiscal_domain import rebuild_vat_credit_chain, reconstruct_collection_state
 from app.services.fiscal_evidence import find_linked_evidence, now_iso, stable_id
 from app.services.ravvedimento_engine import RavvedimentoEngine
 from app.services.tax_collection_service import build_snapshot
+from app.services.ader_snapshot_import import apply_ader_archive_plan, build_ader_archive_plan
 from app.utils.dependencies import get_current_admin_mfa_user, get_current_admin_user
 
 
@@ -61,8 +64,46 @@ class CollectionEventRequest(BaseModel):
     source_reference: Optional[str] = None
 
 
+class AderArchiveRequest(BaseModel):
+    source_archive_document_id: str = Field(min_length=1)
+    expected_sha256: Optional[str] = None
+
+
 def _company() -> str:
     return settings.FISCAL_COMPANY_ID
+
+
+async def _load_ader_archive(body: AderArchiveRequest) -> tuple[dict[str, Any], bytes]:
+    db = Database.get_db()
+    source = await db["documents_inbox"].find_one(
+        {"id": body.source_archive_document_id, "company_id": _company()},
+        {"_id": 0, "id": 1, "filename": 1, "pdf_data": 1, "content_type": 1},
+    )
+    if not source:
+        raise HTTPException(404, "Archivio AdeR non trovato nel deposito Documenti")
+    filename = str(source.get("filename") or "")
+    if not filename.lower().endswith(".zip"):
+        raise HTTPException(422, "Il documento sorgente AdeR deve essere un archivio ZIP")
+    encoded = source.get("pdf_data")
+    if not encoded:
+        raise HTTPException(409, "Archivio AdeR privo del contenuto originale")
+    try:
+        content = base64.b64decode(encoded, validate=True) if isinstance(encoded, str) else bytes(encoded)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(422, "Contenuto dell'archivio AdeR non valido") from exc
+    return source, content
+
+
+def _ader_plan_preview(plan: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value for key, value in plan.items()
+        if key != "pdfs"
+    } | {
+        "pdfs": [
+            {key: value for key, value in item.items() if key != "content"}
+            for item in plan["pdfs"]
+        ]
+    }
 
 
 @router.get("/summary")
@@ -71,7 +112,8 @@ async def summary(_admin: Dict[str, Any] = Depends(get_current_admin_user)):
     names = {"documents": COLL_FISCAL_DOCUMENTS, "obligations": COLL_TAX_OBLIGATIONS,
              "payments": COLL_TAX_PAYMENTS, "allocations": COLL_TAX_ALLOCATIONS,
              "collection_claims": COLL_TAX_COLLECTION_CLAIMS,
-             "collection_snapshots": COLL_TAX_COLLECTION_SNAPSHOTS}
+             "collection_snapshots": COLL_TAX_COLLECTION_SNAPSHOTS,
+             "ader_snapshots": COLL_ADER_POSITION_SNAPSHOTS}
     counts = {key: await db[name].count_documents({"company_id": _company()}) for key, name in names.items()}
     unresolved = await db[COLL_TAX_COLLECTION_CLAIMS].count_documents({"company_id": _company(), "business_status": {"$in": ["DA_VERIFICARE", "CONTESTATA"]}})
     return {"company_id": _company(), "counts": counts, "requires_review": unresolved}
@@ -95,6 +137,90 @@ async def collection_claims(limit: int = Query(200, ge=1, le=1000),
     db = Database.get_db()
     items = await db[COLL_TAX_COLLECTION_CLAIMS].find(query, {"_id": 0}).sort("updated_at", -1).to_list(limit)
     return {"items": items, "total": await db[COLL_TAX_COLLECTION_CLAIMS].count_documents(query)}
+
+
+@router.get("/ader-snapshots")
+async def ader_snapshots(
+    business_status: str | None = None,
+    limit: int = Query(200, ge=1, le=1000),
+    skip: int = Query(0, ge=0),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    query: dict[str, Any] = {"company_id": _company()}
+    if business_status:
+        query["calculated_business_status"] = business_status
+    db = Database.get_db()
+    items = await (
+        db[COLL_ADER_POSITION_SNAPSHOTS]
+        .find(query, {"_id": 0})
+        .sort([("snapshot_date", -1), ("net_payable_amount", -1)])
+        .skip(skip)
+        .limit(limit)
+        .to_list(limit)
+    )
+    latest_import = await db[COLL_ADER_ARCHIVE_IMPORTS].find_one(
+        {"company_id": _company()}, {"_id": 0}, sort=[("snapshot_date", -1), ("created_at", -1)]
+    )
+    rate_plans = await (
+        db[COLL_TAX_RATE_PLANS]
+        .find({"company_id": _company()}, {"_id": 0})
+        .sort([("application_date", -1), ("created_at", -1)])
+        .to_list(100)
+    )
+    settlements = await (
+        db[COLL_TAX_SETTLEMENT_APPLICATIONS]
+        .find({"company_id": _company()}, {"_id": 0})
+        .sort([("created_at", -1)])
+        .to_list(100)
+    )
+    return {
+        "items": items,
+        "total": await db[COLL_ADER_POSITION_SNAPSHOTS].count_documents(query),
+        "latest_import": latest_import,
+        "rate_plans": rate_plans,
+        "settlements": settlements,
+    }
+
+
+@router.post("/ader-snapshots/dry-run")
+async def ader_snapshot_dry_run(
+    body: AderArchiveRequest,
+    _admin: Dict[str, Any] = Depends(get_current_admin_mfa_user),
+):
+    _source, content = await _load_ader_archive(body)
+    try:
+        plan = build_ader_archive_plan(
+            content=content,
+            company_id=_company(),
+            source_archive_id=body.source_archive_document_id,
+            expected_sha256=body.expected_sha256,
+            threshold_cents=settings.ADER_MICRO_RESIDUAL_THRESHOLD_CENTS,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return _ader_plan_preview(plan)
+
+
+@router.post("/ader-snapshots/import")
+async def ader_snapshot_import(
+    body: AderArchiveRequest,
+    admin: Dict[str, Any] = Depends(get_current_admin_mfa_user),
+):
+    _source, content = await _load_ader_archive(body)
+    try:
+        plan = build_ader_archive_plan(
+            content=content,
+            company_id=_company(),
+            source_archive_id=body.source_archive_document_id,
+            expected_sha256=body.expected_sha256,
+            threshold_cents=settings.ADER_MICRO_RESIDUAL_THRESHOLD_CENTS,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    result = await apply_ader_archive_plan(
+        db=Database.get_db(), plan=plan, actor=admin.get("user_id")
+    )
+    return {**result, "counts": plan["counts"], "requires_review": plan["requires_review"]}
 
 
 @router.get("/collections/{claim_id}")

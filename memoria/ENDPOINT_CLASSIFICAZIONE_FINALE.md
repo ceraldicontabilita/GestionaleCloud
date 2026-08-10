@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1108 · tenere: 716 · verificare: 368 · admin-only (migrazione/manutenzione): 24
+**Totale endpoint:** 1111 · tenere: 719 · verificare: 368 · admin-only (migrazione/manutenzione): 24
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -629,8 +629,11 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/finanziaria/costi` | finanziaria | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/finanziaria/costo` | finanziaria | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/finanziaria/summary` | finanziaria | sì | — | — | — | sì | tenere | in uso: FE |
+| `GET /api/fiscal/ader-snapshots` | fiscal_control | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/fiscal/ader-snapshots/dry-run` | fiscal_control | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/fiscal/ader-snapshots/import` | fiscal_control | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/fiscal/collection-snapshots/dry-run` | fiscal_control | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/fiscal/collection-snapshots/import` | fiscal_control | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/fiscal/collection-snapshots/import` | fiscal_control | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/fiscal/collections` | fiscal_control | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/fiscal/collections/{claim_id}` | fiscal_control | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/fiscal/collections/{claim_id}/events` | fiscal_control | sì | — | — | — | — | tenere | in uso: FE |
