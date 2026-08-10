@@ -75,6 +75,20 @@ def test_id_duplicati_contano_una_volta_sola(registro):
     assert len(registro["cassa"]) == 1
 
 
+def test_duplicati_vengono_ridotti_prima_del_limite(registro):
+    esito = _run(conferma_provvisorie_multiple(
+        {"fattura_ids": ["f1"] * 201, "metodo": "cassa"}))
+    assert esito["riuscite"] == 1
+    assert len(registro["cassa"]) == 1
+
+
+def test_fattura_ids_deve_essere_una_lista(registro):
+    with pytest.raises(HTTPException) as err:
+        _run(conferma_provvisorie_multiple(
+            {"fattura_ids": "f1", "metodo": "cassa"}))
+    assert "lista" in str(err.value.detail)
+
+
 @pytest.mark.parametrize(("payload", "atteso"), [
     ({"fattura_ids": [], "metodo": "cassa"}, "Nessuna fattura"),
     ({"fattura_ids": ["f1"], "metodo": "banca"}, "Metodo non valido"),

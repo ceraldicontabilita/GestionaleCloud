@@ -14,6 +14,7 @@ from app.services import sumup_sync
 from app.services.sumup_sync import (
     _parametri_intervallo,
     _url_pagina_successiva,
+    accrediti_payout_per_giorno,
     aggrega_per_giorno,
     giorno_locale,
     normalizza_transazione,
@@ -91,6 +92,36 @@ def test_link_paginazione_sumup_relativo_diventa_assoluto():
         "?limit=100&oldest_ref=ABC&order=ascending"
     )
     assert _url_pagina_successiva(base, "?oldest_ref=XYZ") == f"{base}?oldest_ref=XYZ"
+
+
+def test_accrediti_con_riferimenti_diversi_sono_unificati_per_data():
+    giorni = accrediti_payout_per_giorno([
+        {
+            "payout_id": "P1", "date": "2026-08-07", "status": "SUCCESSFUL",
+            "movimento_mastercard": 58.8, "fee_total": 1.2,
+            "solo_rettifica": False,
+        },
+        {
+            "payout_id": "P2", "date": "2026-08-07", "status": "SUCCESSFUL",
+            "movimento_mastercard": 39.2, "fee_total": 0.8,
+            "solo_rettifica": False,
+        },
+        {
+            "payout_id": "P3", "date": "2026-08-07", "status": "FAILED",
+            "movimento_mastercard": 50.0, "fee_total": 1.0,
+            "solo_rettifica": False,
+        },
+    ])
+
+    assert giorni == [{
+        "data": "2026-08-07",
+        "accredito_mastercard": 98.0,
+        "commissioni": 2.0,
+        "gruppi": 3,
+        "rettifiche": 0,
+        "da_verificare": 1,
+        "payout_ids": ["P1", "P2", "P3"],
+    }]
 
 
 # --- Normalizzazione -------------------------------------------------------

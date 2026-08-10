@@ -1161,6 +1161,20 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
     () => filtraFattureProvvisorie(provvisori, filtriFattura),
     [provvisori, fNumeroFattura, fNumeroDdt, fDataFattura, fFornitore],
   );
+  const idsProvvisoriVisibili = useMemo(
+    () => new Set(provvisoriVisibili.map(p => p.fattura_id).filter(Boolean)),
+    [provvisoriVisibili],
+  );
+  useEffect(() => {
+    // Una fattura nascosta da anno o filtri non deve finire per errore nel
+    // lotto. Restano selezionate soltanto le righe che l'operatore vede.
+    setSelezionate(precedenti => {
+      const visibili = new Set(
+        [...precedenti].filter(id => idsProvvisoriVisibili.has(id))
+      );
+      return visibili.size === precedenti.size ? precedenti : visibili;
+    });
+  }, [idsProvvisoriVisibili]);
   const attesaBancaVisibili = useMemo(
     () => filtraFattureProvvisorie(attesaBanca, filtriFattura),
     [attesaBanca, fNumeroFattura, fNumeroDdt, fDataFattura, fFornitore],
@@ -1232,9 +1246,12 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
   const confermaMultipla = async metodo => {
     const ids = [...selezionate];
     if (ids.length === 0) return;
+    const totale = provvisoriVisibili
+      .filter(p => selezionate.has(p.fattura_id))
+      .reduce((somma, p) => somma + Number(p.importo || 0), 0);
     const testo = metodo === 'cassa'
-      ? `Registri in Prima Nota Cassa ${ids.length} fatture come pagate in contanti?`
-      : `Sposti ${ids.length} fatture tra i pagamenti attesi in banca?`;
+      ? `Registri in Prima Nota Cassa ${ids.length} fatture, per un totale di ${eur(totale)}, come pagate in contanti?`
+      : `Sposti ${ids.length} fatture, per un totale di ${eur(totale)}, tra i pagamenti attesi in banca?`;
     const approvato = await confirm({
       title: metodo === 'cassa' ? 'Registrazione multipla in Cassa' : 'Attesa banca multipla',
       message: testo,

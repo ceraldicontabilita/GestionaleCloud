@@ -591,6 +591,26 @@ describe('Conferma multipla delle provvisorie', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('1 scartate');
     expect(screen.getByText(/pagamento contabile completo/)).toBeInTheDocument();
   });
+
+  it('cambiando filtro non invia fatture diventate invisibili', async () => {
+    api.post.mockResolvedValue({ data: {
+      success: true, riuscite: 1, scartate: 0, esiti: [], message: '1 fattura registrata',
+    } });
+    render(<Provvisori provvisori={due} attesaBanca={[]}
+      onRicarica={vi.fn().mockResolvedValue(undefined)} />);
+
+    fireEvent.click(screen.getByLabelText('Seleziona tutte le fatture visibili'));
+    fireEvent.change(screen.getByLabelText('Filtra per nome fornitore'), {
+      target: { value: 'Kimbo' },
+    });
+    await waitFor(() => expect(screen.getByText(/1 selezionate/)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Registra in Cassa \(1\)/ }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/prima-nota/provvisori/conferma-multipla',
+      { fattura_ids: ['f1'], metodo: 'cassa' },
+    ));
+  });
 });
 
 describe('Registro completo fatture in Prima Nota', () => {
