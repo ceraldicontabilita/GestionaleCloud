@@ -14,6 +14,7 @@ from app.services.payment_document_links import (
     collega_bonifico_fatture,
     valuta_fattura_bonifico,
 )
+from app.services.entity_relations import revoke_entity_relation
 from .classification import classifica_bonifico_dipendente
 
 logger = logging.getLogger(__name__)
@@ -121,6 +122,26 @@ async def disassocia_fattura(bonifico_id: str) -> Dict[str, Any]:
                 {"$pull": {"bonifico_ids": bonifico_id, "payment_document_ids": bonifico_id},
                  "$unset": {"bonifico_id": ""}, "$set": {"bonifico_associato": False}},
             )
+            await revoke_entity_relation(
+                db,
+                source_type="bonifico_pdf",
+                source_id=bonifico_id,
+                relation_type="documents_invoice_payment",
+                target_type="invoice",
+                target_id=str(invoice_id),
+                actor="manual_unlink",
+            )
+            movement_id = (transfer or {}).get("movimento_estratto_conto_id")
+            if movement_id:
+                await revoke_entity_relation(
+                    db,
+                    source_type="bank_movement",
+                    source_id=str(movement_id),
+                    relation_type="proves_invoice_payment",
+                    target_type="invoice",
+                    target_id=str(invoice_id),
+                    actor="manual_unlink",
+                )
         return {"success": True, "message": "Associazione fattura rimossa (transfers)"}
 
     # 2) Fallback archivio_bonifici

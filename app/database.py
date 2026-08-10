@@ -415,6 +415,18 @@ class Database:
         # --- Operazioni da confermare ---
         await _safe_index("operazioni_da_confermare", [("created_at", -1)], name="idx_op_conf_data")
         await _safe_index("operazioni_da_confermare", "stato", name="idx_op_conf_stato")
+        # Registro relazioni contabili: una coppia di evidenze, due direzioni di lettura.
+        await _safe_index("entity_relations", "relation_key", unique=True, name="idx_entity_rel_key")
+        await _safe_index(
+            "entity_relations",
+            [("source.type", 1), ("source.id", 1), ("status", 1)],
+            name="idx_entity_rel_source",
+        )
+        await _safe_index(
+            "entity_relations",
+            [("target.type", 1), ("target.id", 1), ("status", 1)],
+            name="idx_entity_rel_target",
+        )
         await _safe_index("partite_aperte", [("stato", 1), ("tipo", 1)], name="idx_pa_stato_tipo")
         await _safe_index("partite_aperte", [("controparte_id", 1), ("stato", 1)], name="idx_pa_controparte")
         await _safe_index("partite_aperte", [("documento_id", 1), ("tipo", 1)], name="idx_pa_doc_tipo")

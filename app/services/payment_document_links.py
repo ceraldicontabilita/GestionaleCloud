@@ -8,6 +8,7 @@ viene copiato in piu' collection e rimane sempre possibile risalire alla prova.
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List
 
+from app.services.entity_relations import upsert_entity_relation
 from app.services.identity_matching import identita_coincide, nome_presente_nel_testo
 from app.services.payment_invoice_matching import amounts_equal_to_cent, invoice_reference_in_text
 
@@ -130,7 +131,11 @@ def payment_document_ref(transfer: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def collega_bonifico_fatture(db, transfer: Dict[str, Any], invoices: List[Dict[str, Any]], *, auto: bool) -> None:
-    """Scrive gli stessi ID su entrambi i lati, in modo idempotente."""
+    """Collega documento e fatture e registra la prova canonica idempotente.
+
+    Il collegamento non cambia da solo lo stato ``pagata`` della fattura: il
+    pagamento e' provato soltanto quando esiste anche il movimento bancario.
+    """
     if not invoices:
         return
     now = datetime.now(timezone.utc).isoformat()
@@ -163,6 +168,80 @@ async def collega_bonifico_fatture(db, transfer: Dict[str, Any], invoices: List[
     movement_id = transfer.get("movimento_estratto_conto_id")
     if movement_id:
         await propaga_documento_pagamento(db, movement_id, transfer_id, invoice_ids)
+
+    actor = "automatic_reconciliation" if auto else "manual_confirmation"
+    rule = (
+        "invoice_number+exact_cents+supplier_identity"
+        if auto
+        else "manual_confirmation_after_strong_validation"
+    )
+    provenance = {
+        "collection": "bonifici_transfers",
+        "document_id": transfer_id,
+        "filename": transfer.get("source_file") or transfer.get("filename"),
+        "sha256": transfer.get("document_hash") or transfer.get("sha256"),
+    }
+    for invoice in invoices:
+        invoice_id = str(invoice.get("id") or "")
+        if not invoice_id:
+            continue
+        invoice_evidence = [
+            {"type": "invoice_number", "value": _invoice_number(invoice)},
+            {"type": "exact_amount_cents", "value": _invoice_amount(invoice)},
+            {"type": "supplier_identity", "value": _invoice_supplier(invoice)},
+            {"type": "payment_document_id", "value": transfer_id},
+        ]
+        await upsert_entity_relation(
+            db,
+            source_type="bonifico_pdf",
+            source_id=transfer_id,
+            relation_type="documents_invoice_payment",
+            target_type="invoice",
+            target_id=invoice_id,
+            status="confirmed",
+            rule=rule,
+            evidence=invoice_evidence,
+            amount=_invoice_amount(invoice),
+            provenance=provenance,
+            actor=actor,
+        )
+        if movement_id:
+            await upsert_entity_relation(
+                db,
+                source_type="bank_movement",
+                source_id=str(movement_id),
+                relation_type="proves_invoice_payment",
+                target_type="invoice",
+                target_id=invoice_id,
+                status="confirmed",
+                rule="bank_movement+payment_document+validated_invoice",
+                evidence=[
+                    {"type": "bank_movement_id", "value": str(movement_id)},
+                    {"type": "payment_document_id", "value": transfer_id},
+                    {"type": "invoice_number", "value": _invoice_number(invoice)},
+                ],
+                amount=_invoice_amount(invoice),
+                provenance=provenance,
+                actor=actor,
+            )
+    if movement_id:
+        await upsert_entity_relation(
+            db,
+            source_type="bonifico_pdf",
+            source_id=transfer_id,
+            relation_type="confirmed_by_bank_movement",
+            target_type="bank_movement",
+            target_id=str(movement_id),
+            status="confirmed",
+            rule="payment_document+bank_movement_identity",
+            evidence=[
+                {"type": "payment_document_id", "value": transfer_id},
+                {"type": "bank_movement_id", "value": str(movement_id)},
+            ],
+            amount=transfer.get("importo"),
+            provenance=provenance,
+            actor=actor,
+        )
 
 
 async def propaga_documento_pagamento(db, movement_id: str, transfer_id: str, invoice_ids: List[str]) -> None:

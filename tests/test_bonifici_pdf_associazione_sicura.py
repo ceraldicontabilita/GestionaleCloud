@@ -282,6 +282,7 @@ def test_collegamento_scrive_id_su_bonifico_e_fattura_senza_copiare_pdf():
         invoices=MagicMock(update_one=AsyncMock()),
         estratto_conto_movimenti=MagicMock(update_one=AsyncMock()),
         prima_nota_banca=MagicMock(update_many=AsyncMock()),
+        entity_relations=MagicMock(update_one=AsyncMock()),
     )
     transfer = {"id": "b1", "importo": 10, "pdf_data": "NON_COPIARE"}
     asyncio.run(collega_bonifico_fatture(db, transfer, [{"id": "f1"}], auto=True))
@@ -291,3 +292,9 @@ def test_collegamento_scrive_id_su_bonifico_e_fattura_senza_copiare_pdf():
     assert transfer_update["$set"]["fattura_ids"] == ["f1"]
     assert invoice_update["$addToSet"]["payment_document_ids"] == "b1"
     assert "pdf_data" not in str(invoice_update)
+    relation_update = db.entity_relations.update_one.await_args
+    assert relation_update.args[0]["relation_key"] == (
+        "bonifico_pdf|b1|documents_invoice_payment|invoice|f1"
+    )
+    assert relation_update.kwargs["upsert"] is True
+    assert "pdf_data" not in str(relation_update)

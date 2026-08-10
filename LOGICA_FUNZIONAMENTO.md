@@ -799,6 +799,22 @@ senza crearne una seconda; solo allora il motore puo' chiudere la riconciliazion
 I PDF storici privi del nuovo metadato restano considerati ufficiali per
 compatibilita'.
 
+### Registro unico delle relazioni contabili
+
+Le associazioni confermate tra **bonifico PDF**, **fattura** e **movimento
+bancario** vengono inoltre registrate in `entity_relations`. Ogni relazione ha
+una chiave deterministica, quindi riprocessare lo stesso documento non crea
+doppioni. Il record conserva regola applicata, importo in centesimi, identita',
+numero fattura, hash e provenienza del documento, ma mai una seconda copia del
+PDF.
+
+Il registro e' interrogabile da entrambi i lati: dalla fattura si risale al
+bonifico e al movimento bancario; dal movimento si risale alla fattura. Il
+bonifico documenta la disposizione, mentre soltanto il movimento dell'estratto
+conto prova il pagamento. Disassociare una fattura non cancella la storia: la
+relazione viene marcata `revoked`. Il solo importo uguale non crea mai una
+relazione confermata.
+
 **Come cerca un pagamento (per le USCITE)**: per ogni movimento banca in uscita non
 riconciliato, cerca fra le fatture fornitore **non pagate** con importo compatibile
 (uguale ±0,05€, o "a rata" fra il 50% e il 200%) e assegna un punteggio:

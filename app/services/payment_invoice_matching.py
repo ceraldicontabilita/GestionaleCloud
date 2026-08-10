@@ -16,7 +16,13 @@ def money_cents(value: Any) -> int | None:
     """Converte un importo in centesimi senza confronti approssimativi float."""
     if value in (None, ""):
         return None
-    text = str(value).strip().replace("\u00a0", "").replace("€", "")
+    text = (
+        str(value)
+        .strip()
+        .replace("\u00a0", "")
+        .replace("€", "")
+        .replace(" ", "")
+    )
     if "," in text:
         text = text.replace(".", "").replace(",", ".")
     try:
