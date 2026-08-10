@@ -138,3 +138,42 @@ def test_upload_auto_cbill_collega_rata_e_cartella(monkeypatch):
     assert receipt["cartelle_collegate"] == ["claim-1"]
     claim = asyncio.run(db[COLL_TAX_COLLECTION_CLAIMS].find_one({"id": "claim-1"}))
     assert len(claim["payment_evidence_ids"]) == 1
+
+
+def test_quietanza_f24_con_identificativo_ader_usa_lo_stesso_motore(monkeypatch):
+    from app.services import f24_parser, quietanze_import
+
+    db = AsyncMongoMockClient()["quietanza-f24-ader-test"]
+    plan = _plan()
+    plan["company_id"] = "04523831214"
+    asyncio.run(db[COLL_TAX_RATE_PLANS].insert_one(plan))
+    asyncio.run(db[COLL_TAX_COLLECTION_CLAIMS].insert_one({
+        "id": "claim-quietanza", "company_id": "04523831214",
+        "collection_number": "07120260000000000001",
+    }))
+    monkeypatch.setattr(f24_parser, "parse_quietanza_f24", lambda pdf_content: {
+        "dati_generali": {
+            "protocollo_telematico": "PROTO-F24",
+            "identificativo_bolletta": "180071110618697515",
+            "saldo_delega": 284.0,
+            "data_pagamento": "2026-07-21",
+            "codice_fiscale": "CF-ANONIMO",
+        },
+        "sezione_erario": [{
+            "codice_tributo": "1040", "periodo_riferimento": "06/2026",
+            "importo_debito": 284.0,
+        }],
+        "sezione_inps": [], "sezione_regioni": [],
+        "sezione_tributi_locali": [], "sezione_inail": [],
+        "totali": {"saldo_netto": 284.0},
+        "validazione": {"saldo_quadrato": True, "differenza_saldo": 0.0},
+    })
+
+    result = asyncio.run(quietanze_import.importa_quietanza_bytes(
+        db, b"%PDF-quietanza-ader-anonima", "quietanza_f24_rata.pdf",
+        fonte="documenti_upload_auto",
+    ))
+
+    assert result["riconciliazione_ader"]["matched"] is True
+    assert result["riconciliazione_ader"]["target_type"] == "rate_installment"
+    assert result["riconciliazione_ader"]["linked_claim_ids"] == ["claim-quietanza"]

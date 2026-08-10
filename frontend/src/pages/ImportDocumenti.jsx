@@ -45,6 +45,11 @@ export function descriviProvaFiscale(data = {}) {
   if (data?.workflow !== 'F24_CANONICO') return '';
   const canonical = data?.data || {};
   const parts = [];
+  if (canonical?.riconciliazione_ader?.matched) {
+    const cartelle = canonical.riconciliazione_ader.linked_claim_ids || [];
+    parts.push(`Rata AdeR collegata`);
+    parts.push(`Cartelle collegate: ${cartelle.length}`);
+  }
   if (Number.isInteger(canonical.righe_tributo)) {
     parts.push(`Righe tributo: ${canonical.righe_tributo}`);
   }

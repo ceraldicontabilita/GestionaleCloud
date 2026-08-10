@@ -130,6 +130,41 @@ def estrai_tributi_dettaglio(doc: dict) -> list:
     ]
 
 
+async def _riconcilia_quietanza_ader(
+    db, *, content: bytes, filename: str, quietanza: dict,
+) -> Dict[str, Any]:
+    """Usa lo stesso motore di PagoPA/CBILL se la quietanza porta un ID AdeR."""
+    from app.config import settings
+    from app.services.fiscal_evidence import register_document
+    from app.services.fiscal_payment_reconciliation import reconcile_fiscal_payment
+
+    dg = quietanza.get("dati_generali") or {}
+    document = await register_document(
+        db, company_id=settings.FISCAL_COMPANY_ID, content=content,
+        filename=filename, source=quietanza.get("fonte") or "quietanza_f24",
+        source_ref=quietanza["id"], category="quietanza_f24",
+    )
+    return await reconcile_fiscal_payment(
+        db, company_id=settings.FISCAL_COMPANY_ID,
+        payment={
+            "amount": quietanza.get("saldo"),
+            "payment_date": quietanza.get("data_pagamento"),
+            "identificativo_bolletta": (
+                dg.get("identificativo_bolletta") or dg.get("codice_bolletta")
+            ),
+            "iuv": dg.get("iuv") or dg.get("identificativo_univoco_versamento"),
+            "payment_module_code": (
+                dg.get("payment_module_code") or dg.get("codice_modulo_pagamento")
+            ),
+            "cartella_number": dg.get("numero_cartella") or dg.get("cartella_number"),
+            "protocollo_telematico": quietanza.get("protocollo_telematico"),
+            "bank_verified": False,
+        },
+        source_type="QUIETANZA_F24", source_id=quietanza["id"],
+        document_id=document.get("document_id"), version_id=document.get("id"),
+    )
+
+
 async def importa_quietanza_bytes(
     db, content: bytes, filename: str, fonte: str = "upload_manuale"
 ) -> Dict[str, Any]:
@@ -144,11 +179,15 @@ async def importa_quietanza_bytes(
     # Dedup per impronta: la stessa quietanza (da Drive, email o upload)
     # non deve mai creare un doppione.
     existing = await db[COLL_QUIETANZE].find_one(
-        {"pdf_hash": pdf_hash}, {"_id": 0, "id": 1}
+        {"pdf_hash": pdf_hash}, {"_id": 0}
     )
     if existing:
+        ader = await _riconcilia_quietanza_ader(
+            db, content=content, filename=filename, quietanza=existing,
+        )
         return {"success": True, "duplicate": True,
-                "quietanza_id": existing["id"], "filename": filename}
+                "quietanza_id": existing["id"], "filename": filename,
+                "riconciliazione_ader": ader}
 
     try:
         from app.services.f24_parser import parse_quietanza_f24
@@ -221,6 +260,13 @@ async def importa_quietanza_bytes(
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db[COLL_QUIETANZE].insert_one(quietanza_doc.copy())
+    try:
+        riconciliazione_ader = await _riconcilia_quietanza_ader(
+            db, content=content, filename=filename, quietanza=quietanza_doc,
+        )
+    except Exception:
+        logger.exception("Errore riconciliazione AdeR quietanza %s", file_id)
+        riconciliazione_ader = {"matched": False, "reason": "errore_riconciliazione_ader"}
 
     # ── MATCHING AUTOMATICO CON F24 COMMERCIALISTA (v3) ──────────────────
     tributi_quietanza = estrai_tributi_dettaglio(parsed)
@@ -318,6 +364,7 @@ async def importa_quietanza_bytes(
         "data_pagamento": data_pagamento,
         "codici_tributo": len(codici_quietanza),
         "f24_matchati": f24_matchati,
+        "riconciliazione_ader": riconciliazione_ader,
     }
 
     if not f24_matchati:

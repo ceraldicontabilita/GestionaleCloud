@@ -84,6 +84,13 @@ describe('Import documenti - corrispettivo duplicato', () => {
     })).toBe('Rata collegata â€¢ Cartelle collegate: 2 â€¢ Banca da verificare');
   });
 
+  it('mostra anche il collegamento AdeR prodotto da una quietanza F24', () => {
+    expect(descriviProvaFiscale({
+      workflow: 'F24_CANONICO',
+      data: { riconciliazione_ader: { matched: true, linked_claim_ids: ['claim-1'] } },
+    })).toBe('Rata AdeR collegata • Cartelle collegate: 1');
+  });
+
   it('mantiene lo ZIP intero e lo affida ai controlli del backend', async () => {
     api.post.mockResolvedValue({
       data: {
