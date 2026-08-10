@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1076 endpoint** in **112 gruppi**.
+> Totale **1087 endpoint** in **113 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 655 · ext esterni = 89 · — da verificare = 332
+**Riepilogo uso:** ✓ frontend = 657 · ext esterni = 89 · — da verificare = 341
 
 ## AI Parser  (11)
 
@@ -166,6 +166,22 @@
 | POST | `/api/assegni/learning/pulizia-duplicati` | ✓ | bank.assegni_learning |
 | GET | `/api/assegni/learning/stats-avanzate` | ✓ | bank.assegni_learning |
 | GET | `/api/assegni/learning/suggerimenti/{importo}` | ✓ | bank.assegni_learning |
+
+## Assistente Ceraldi  (11)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| POST | `/api/assistente/cases` | — | assistente_operativo |
+| GET | `/api/assistente/dashboard` | ✓ | assistente_operativo |
+| POST | `/api/assistente/facts/driver-assignment` | — | assistente_operativo |
+| POST | `/api/assistente/knowledge-sources/official` | — | assistente_operativo |
+| POST | `/api/assistente/observations` | — | assistente_operativo |
+| POST | `/api/assistente/questions/{question_id}/answer` | — | assistente_operativo |
+| POST | `/api/assistente/scan/all` | ✓ | assistente_operativo |
+| POST | `/api/assistente/scan/employees` | — | assistente_operativo |
+| POST | `/api/assistente/scan/f24` | — | assistente_operativo |
+| POST | `/api/assistente/scan/payroll` | — | assistente_operativo |
+| POST | `/api/assistente/tax-obligations` | — | assistente_operativo |
 
 ## Authentication  (3)
 

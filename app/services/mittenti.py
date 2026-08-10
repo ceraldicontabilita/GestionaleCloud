@@ -15,7 +15,8 @@ un `pattern` esatto), quindi diventa la fonte UNICA. Qui si forniscono:
 """
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, Set
+from email.utils import parseaddr
+from typing import Any, Dict, List, Optional, Set
 
 COLL = "mittenti_email"
 COLL_LEGACY = "mittenti_attendibili"
@@ -76,6 +77,65 @@ BUILTIN_MITTENTI = (
 
 def _addr(m: Dict[str, Any]) -> str:
     return (m.get("indirizzo_email") or m.get("pattern") or "").strip().lower()
+
+
+def _sender_address(sender: Any) -> str:
+    if isinstance(sender, dict):
+        sender = sender.get("email") or sender.get("address") or sender.get("from") or ""
+    return parseaddr(str(sender or ""))[1].strip().lower()
+
+
+async def trusted_sender_rules(db, canale: str = "gmail") -> List[Dict[str, str]]:
+    """Carica una sola volta le regole attive canoniche e legacy.
+
+    La funzione e' pensata per scansioni massive, evitando una query per ogni
+    documento. Una regola disattivata non viene mai riabilitata implicitamente.
+    """
+    channel = str(canale or "gmail").strip().lower()
+    rules: Dict[tuple[str, str], Dict[str, str]] = {}
+    for collection in (COLL, COLL_LEGACY):
+        try:
+            query = {
+                "$and": [
+                    {"$or": [{"canale": channel}, {"canale": {"$exists": False}}]},
+                    {"$or": [{"attivo": True}, {"attivo": {"$exists": False}}]},
+                ]
+            }
+            async for item in db[collection].find(query):
+                pattern = _addr(item)
+                category = str(item.get("tipo_documento") or "generico").strip().lower()
+                if pattern:
+                    rules[(pattern, category)] = {"pattern": pattern, "tipo_documento": category}
+        except Exception:
+            continue
+    return list(rules.values())
+
+
+def sender_matches_trusted_rules(
+    sender: Any, tipo_documento: Optional[str], rules: List[Dict[str, str]]
+) -> bool:
+    address = _sender_address(sender)
+    category = str(tipo_documento or "").strip().lower()
+    if not address:
+        return False
+    for rule in rules:
+        pattern = str(rule.get("pattern") or "").strip().lower()
+        rule_category = str(rule.get("tipo_documento") or "generico").strip().lower()
+        category_matches = not category or rule_category in {category, "generico"}
+        if not category_matches:
+            continue
+        if pattern == address:
+            return True
+        if pattern.startswith("*@") and address.endswith(pattern[1:]):
+            return True
+    return False
+
+
+async def is_sender_attendibile(
+    db, sender: Any, tipo_documento: Optional[str] = None, canale: str = "gmail"
+) -> bool:
+    rules = await trusted_sender_rules(db, canale=canale)
+    return sender_matches_trusted_rules(sender, tipo_documento, rules)
 
 
 async def senders_attendibili(db, tipo_documento: str, canale: str) -> Set[str]:

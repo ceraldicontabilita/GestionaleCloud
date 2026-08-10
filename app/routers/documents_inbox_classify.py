@@ -23,6 +23,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, HTTPException, Query
 
 from app.database import Database
+from app.services.mittenti import sender_matches_trusted_rules, trusted_sender_rules
+from app.services.operational_learning_engine import OperationalLearningEngine
 from app.utils.error_handler import handle_errors
 
 
@@ -177,6 +179,8 @@ async def auto_classify(
         "_id": 0, "id": 1, "cognome": 1, "nome": 1, "surname": 1, "name": 1,
         "codice_fiscale": 1, "fiscal_code": 1,
     }).to_list(5000)
+    sender_rules = await trusted_sender_rules(db, canale="gmail")
+    learning_engine = OperationalLearningEngine(db)
 
     report = {
         "totali": len(docs),
@@ -185,6 +189,8 @@ async def auto_classify(
         "f24_creati": 0,
         "nessuna_categoria": 0,
         "errori": 0,
+        "observations_recorded": 0,
+        "observation_errors": 0,
         "dry_run": dry_run,
     }
 
@@ -259,6 +265,48 @@ async def auto_classify(
             {"id": d.get("id")} if d.get("id") else {"filename": filename},
             {"$set": update_fields},
         )
+
+        # Le email attendibili diventano osservazioni versionate, non verita'
+        # contabili. Il payload conserva solo metadati utili e il motore puo'
+        # scrivere esclusivamente nella propria knowledge base.
+        if sender_matches_trusted_rules(sender, categoria, sender_rules):
+            source_version = str(
+                d.get("file_hash")
+                or d.get("content_hash")
+                or d.get("email_message_id")
+                or d.get("id")
+                or d.get("email_date")
+                or ""
+            ).strip()
+            if not source_version:
+                report["observation_errors"] += 1
+                continue
+            observed_at = d.get("email_date")
+            if hasattr(observed_at, "isoformat"):
+                observed_at = observed_at.isoformat()
+            elif observed_at is not None:
+                observed_at = str(observed_at)
+            try:
+                await learning_engine.record_observation(
+                    source="trusted_email_document",
+                    source_version=source_version,
+                    observed_at=observed_at,
+                    payload={
+                        "document_id": d.get("id"),
+                        "category": categoria,
+                        "sender": sender,
+                        "subject": subject,
+                        "email_date": d.get("email_date"),
+                        "filename": filename,
+                        "source_collection": "documents_inbox",
+                        "extracted_importo": update_fields.get("importo"),
+                        "extracted_scadenza": update_fields.get("data_scadenza"),
+                        "dipendente_id": update_fields.get("dipendente_id"),
+                    },
+                )
+                report["observations_recorded"] += 1
+            except Exception:  # noqa: BLE001 - la classificazione non deve bloccarsi
+                report["observation_errors"] += 1
 
     return {"success": True, **report}
 

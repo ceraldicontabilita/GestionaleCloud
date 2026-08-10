@@ -372,7 +372,13 @@ def _register_noleggio(app: FastAPI):
 
 # ─── AI Module ───────────────────────────────────────────────────────────────
 def _register_ai(app: FastAPI):
-    """Registra router AI/ML (opzionale - non blocca se fallisce)."""
-    pass  # AI routers already registered in _register_email
+    """Registra le API AI/ML con prefissi espliciti e controlli di accesso."""
+    from app.routers import assistente_operativo
+
+    app.include_router(
+        assistente_operativo.router,
+        prefix="/api/assistente",
+        tags=["Assistente Ceraldi"],
+    )
 
 

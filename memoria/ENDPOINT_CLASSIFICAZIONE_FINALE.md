@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1076 · tenere: 694 · verificare: 358 · admin-only (migrazione/manutenzione): 24
+**Totale endpoint:** 1087 · tenere: 700 · verificare: 363 · admin-only (migrazione/manutenzione): 24
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -153,6 +153,17 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `PUT /api/assegni/{assegno_id}/fatture-collegate` | bank.assegni | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/assegni/{assegno_id}/incassa` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/assegni/{assegno_id}/risolvi-ambiguo` | bank.assegni | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/assistente/cases` | assistente_operativo | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/assistente/dashboard` | assistente_operativo | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
+| `POST /api/assistente/facts/driver-assignment` | assistente_operativo | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/assistente/knowledge-sources/official` | assistente_operativo | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/assistente/observations` | assistente_operativo | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/assistente/questions/{question_id}/answer` | assistente_operativo | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/assistente/scan/all` | assistente_operativo | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/assistente/scan/employees` | assistente_operativo | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/assistente/scan/f24` | assistente_operativo | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/assistente/scan/payroll` | assistente_operativo | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/assistente/tax-obligations` | assistente_operativo | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/auth/login` | auth | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/auth/logout` | auth | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/auth/mfa/disable` | mfa | sì | — | — | — | — | tenere | in uso: FE |

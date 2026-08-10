@@ -244,6 +244,17 @@ COLL_COMMERCIALISTA_LOG = "commercialista_log"
 
 COLL_LEARNING_FEEDBACK = "learning_feedback"  # Feedback utente
 COLL_LEARNING_RULES = "learning_rules"  # Regole apprese
+
+# Assistente operativo: memoria e proposte isolate dai dati contabili di
+# dominio.  L'assistente puo' scrivere esclusivamente in queste collezioni;
+# fatture, estratti conto, F24 e cedolini restano fonti in sola lettura.
+COLL_OPERATIONAL_FACTS = "operational_facts"
+COLL_LEARNED_PATTERNS = "learned_patterns"
+COLL_EXPECTED_EVENTS = "expected_events"
+COLL_ADMIN_ANOMALIES = "administrative_anomalies"
+COLL_DECISION_QUESTIONS = "decision_questions"
+COLL_CASE_MEMORY = "case_memory"
+COLL_KNOWLEDGE_SOURCES = "knowledge_sources"
 COLL_REGOLE_CATEGORIE = "regole_categorie"
 COLL_REGOLE_CATEGORIZZAZIONE_DESC = "regole_categorizzazione_descrizioni"
 COLL_REGOLE_CATEGORIZZAZIONE_FORN = "regole_categorizzazione_fornitori"

@@ -6,6 +6,15 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from typing import Optional
 import logging
 from .config import settings
+from .db_collections import (
+    COLL_ADMIN_ANOMALIES,
+    COLL_CASE_MEMORY,
+    COLL_DECISION_QUESTIONS,
+    COLL_EXPECTED_EVENTS,
+    COLL_KNOWLEDGE_SOURCES,
+    COLL_LEARNED_PATTERNS,
+    COLL_OPERATIONAL_FACTS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -519,6 +528,61 @@ class Database:
         )
         # Dedup cross-canale documents_inbox per impronta md5.
         await _safe_index("documents_inbox", "file_hash", sparse=True, name="idx_docs_inbox_hash")
+
+        # --- Assistente Ceraldi: memoria operativa separata dai domini ---
+        # Ogni record ha un id deterministico: la stessa evidenza puo' essere
+        # riprocessata senza produrre duplicati o scritture contabili.
+        for collection in (
+            COLL_OPERATIONAL_FACTS,
+            COLL_LEARNED_PATTERNS,
+            COLL_EXPECTED_EVENTS,
+            COLL_ADMIN_ANOMALIES,
+            COLL_DECISION_QUESTIONS,
+            COLL_CASE_MEMORY,
+            COLL_KNOWLEDGE_SOURCES,
+        ):
+            await _safe_index(
+                collection,
+                "id",
+                unique=True,
+                name=f"idx_{collection}_id_unique",
+            )
+        await _safe_index(
+            COLL_OPERATIONAL_FACTS,
+            [("subject.key", 1), ("status", 1)],
+            name="idx_operational_facts_subject_status",
+        )
+        await _safe_index(
+            COLL_LEARNED_PATTERNS,
+            [("key", 1), ("status", 1)],
+            name="idx_learned_patterns_key_status",
+        )
+        await _safe_index(
+            COLL_EXPECTED_EVENTS,
+            [("year", 1), ("month", 1), ("status", 1)],
+            name="idx_expected_events_period_status",
+        )
+        await _safe_index(
+            COLL_ADMIN_ANOMALIES,
+            [("status", 1), ("severity", 1), ("updated_at", -1)],
+            name="idx_admin_anomalies_status_severity",
+        )
+        await _safe_index(
+            COLL_DECISION_QUESTIONS,
+            [("status", 1), ("severity", 1), ("updated_at", -1)],
+            name="idx_decision_questions_status_severity",
+        )
+        await _safe_index(
+            COLL_CASE_MEMORY,
+            [("case_type", 1), ("created_at", -1)],
+            name="idx_case_memory_type_date",
+        )
+        await _safe_index(
+            COLL_KNOWLEDGE_SOURCES,
+            [("source", 1), ("source_version", 1), ("content_hash", 1)],
+            unique=True,
+            name="idx_knowledge_source_version_hash",
+        )
 
         logger.info(
             "Database indexes: %s verificati/creati, %s falliti",
