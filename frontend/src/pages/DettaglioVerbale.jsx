@@ -123,6 +123,30 @@ export default function DettaglioVerbale() {
         </div>
       </PageSection>
 
+      {(verbale?.stato_pratica || verbale?.pagato_documentalmente !== undefined || verbale?.review_questions?.length) && (
+        <PageSection title="Stato probatorio e verifiche">
+          <div style={{ display: 'grid', gap: 8, fontSize: 13 }}>
+            <div><strong>Stato pratica:</strong> {verbale?.stato_pratica || 'APERTO'}</div>
+            <div><strong>Pagamento documentale:</strong> {verbale?.pagato_documentalmente ? 'Sì' : 'No'}</div>
+            <div><strong>Banca verificata:</strong> {verbale?.banca_verificata ? 'Sì' : 'No'}</div>
+            <div><strong>Fonte pagamento:</strong> {verbale?.fonte_pagamento || 'Non collegata'}</div>
+            {verbale?.origine === 'AVVISO_PAGOPA' && (
+              <div style={{ color: COLORS.warning }}>
+                Avviso PagoPA: verbale originale non ancora acquisito. La targa non determina automaticamente il driver.
+              </div>
+            )}
+            {verbale?.review_questions?.length > 0 && (
+              <div style={{ marginTop: 6 }}>
+                <strong>Domande da confermare</strong>
+                <ul style={{ margin: '6px 0 0 18px' }}>
+                  {verbale.review_questions.map((item) => <li key={item.key}>{item.question}</li>)}
+                </ul>
+              </div>
+            )}
+          </div>
+        </PageSection>
+      )}
+
       {pdfCount > 0 && (
         <PageSection title="Documenti PDF">
           <div style={{ display: 'grid', gap: 8 }}>

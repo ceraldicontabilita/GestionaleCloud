@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import re
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 
@@ -79,6 +80,54 @@ def parse_nota_rettifica_inps(content: bytes) -> dict[str, Any]:
     differenza = _money(_group(r"Differenze\s+contributive\s+a\s+debito\s+azienda\s+(?:€|EUR)?\s*([\d.]+,\d{2})", compact))
     sanzioni = _money(_group(r"Sanzioni\s+civili\s+(?:su|per)\s+differenze\s+contributive\s+(?:€|EUR)?\s*([\d.]+,\d{2})", compact))
 
+    field_evidence = {}
+    for field, value in {
+        "periodo_competenza": periodo,
+        "matricola_inps": matricola,
+        "data_scadenza": data_scadenza,
+        "differenze_contributive": differenza,
+        "sanzioni_civili": sanzioni,
+        "importo_totale": totale,
+        "data_f24_originario": _iso_date(_group(r"Data\s+pagamento\s+F24\s+(\d{2}/\d{2}/\d{4})", compact)),
+        "data_invio_uniemens": _iso_date(_group(r"Data\s+di\s+invio\s+flusso\s+UniEmens\s+(\d{2}/\d{2}/\d{4})", compact)),
+    }.items():
+        if value is None:
+            continue
+        field_evidence[field] = {
+            "page": 1,
+            "raw_text": str(value),
+            "normalized_value": value,
+            "parser_version": PARSER_VERSION,
+            "confidence": 0.8,
+        }
+    try:
+        import fitz
+
+        with fitz.open(stream=content, filetype="pdf") as document:
+            for item in field_evidence.values():
+                candidates = [item["raw_text"]]
+                if isinstance(item.get("normalized_value"), float):
+                    candidates.append(
+                        f"{item['normalized_value']:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+                    )
+                for page_number, page in enumerate(document, start=1):
+                    rectangles = []
+                    for candidate in candidates:
+                        rectangles = page.search_for(str(candidate)) if candidate else []
+                        if rectangles:
+                            break
+                    if rectangles:
+                        rect = rectangles[0]
+                        item.update({
+                            "page": page_number,
+                            "x0": round(rect.x0, 2), "y0": round(rect.y0, 2),
+                            "x1": round(rect.x1, 2), "y1": round(rect.y1, 2),
+                            "confidence": 1.0,
+                        })
+                        break
+    except Exception:
+        pass
+
     return {
         "document_kind": "NOTA_RETTIFICA_INPS",
         "is_payment_evidence": False,
@@ -104,10 +153,20 @@ def parse_nota_rettifica_inps(content: bytes) -> dict[str, Any]:
         "giorni_sanzione": int(_group(r"n\.\s*giorni\s+(\d+)", compact) or 0) or None,
         "tasso_sanzione": _money(_group(r"tasso\s+([\d,]+)%", compact)),
         "istruzioni_f24": f24,
+        "field_evidence": field_evidence,
         "relation_keys": {
             "matricola_inps": matricola,
             "periodo_competenza": periodo,
             "codice_fiscale": codice_fiscale,
             "data_f24_originario": _iso_date(_group(r"Data\s+pagamento\s+F24\s+(\d{2}/\d{2}/\d{4})", compact)),
+        },
+        "canonical_relations": {
+            "rectification": {"status": "SOURCE_DOCUMENT"},
+            "uniemens": {"date": _iso_date(_group(r"Data\s+di\s+invio\s+flusso\s+UniEmens\s+(\d{2}/\d{2}/\d{4})", compact)), "status": "CITED"},
+            "original_f24": {"date": _iso_date(_group(r"Data\s+pagamento\s+F24\s+(\d{2}/\d{2}/\d{4})", compact)), "status": "CITED"},
+            "obligation": {"status": "OPEN", "amount_cents": int(Decimal(str(totale)) * 100) if totale is not None else None},
+            "corrective_f24": {"status": "TO_BE_LINKED"},
+            "quietanza": {"status": "TO_BE_LINKED"},
+            "bank_movement": {"status": "TO_BE_LINKED"},
         },
     }

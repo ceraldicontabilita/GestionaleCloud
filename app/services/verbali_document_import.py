@@ -251,6 +251,7 @@ async def process_verbale_document(
         ai_data.get("tipo_documento") == "ricevuta_pagopa"
         or any(marker in combined.casefold() for marker in _RICEVUTA_MARKERS)
     )
+    is_notice = pagopa_data.get("document_kind") == "AVVISO_PAGOPA"
     now = datetime.now(timezone.utc).isoformat()
 
     extracted = {
@@ -372,7 +373,7 @@ async def process_verbale_document(
         "codice_cbill": pagopa_data.get("codice_cbill"),
         "ora_violazione": ai_data.get("ora_violazione"),
         "numero_atto": ai_data.get("numero_atto"),
-        "ente_creditore": ai_data.get("ente_creditore"),
+        "ente_creditore": ai_data.get("ente_creditore") or pagopa_data.get("beneficiario"),
         "articolo_cds": ai_data.get("articolo_cds"),
         "descrizione_violazione": ai_data.get("descrizione_violazione"),
         "responsabile": ai_data.get("responsabile"),
@@ -382,7 +383,24 @@ async def process_verbale_document(
         "source_document_id": document_id,
         "source_sha256": sha256,
         "source": source,
-        "stato": (existing or {}).get("stato") or "salvato",
+        # Un avviso cita numero/targa ma non e' il verbale originale. Mantieni
+        # il legacy ``stato`` per le viste esistenti e usa questi campi come
+        # stato probatorio autorevole.
+        "origine": "AVVISO_PAGOPA" if is_notice else "VERBALE_ORIGINALE",
+        "verbale_originale_acquisito": not is_notice,
+        "numero_verbale_citato": numero if is_notice else None,
+        "targa_citata": targa if is_notice else None,
+        "stato_pratica": "DA_ACQUISIRE_VERBALE" if is_notice else ((existing or {}).get("stato_pratica") or "APERTO"),
+        "review_questions": ([
+            {"key": "verbale_originale", "question": "Esiste la copia del verbale originale?", "required": True},
+            {"key": "indirizzo_risposta", "question": "Quale indirizzo/PEC ufficiale deve ricevere la risposta?", "required": False},
+            {"key": "targa_confermata", "question": "Confermi la targa estratta dal documento?", "required": True},
+            {"key": "driver_confermato", "question": "Esiste un'assegnazione o un viaggio compatibile con il driver alla data?", "required": True},
+            {"key": "copia_pagamento", "question": "Esiste una copia del pagamento e qual e' la fonte?", "required": True},
+            {"key": "movimento_bancario", "question": "Esiste un movimento bancario collegato al pagamento?", "required": True},
+            {"key": "autorizza_chiusura", "question": "Autorizzi la chiusura solo dopo evidenza completa?", "required": True},
+        ] if is_notice else []),
+        "stato": (existing or {}).get("stato") or ("salvato" if is_notice else "aperto"),
         "updated_at": now,
         **vehicle,
     }

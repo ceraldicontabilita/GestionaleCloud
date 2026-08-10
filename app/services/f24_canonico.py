@@ -27,7 +27,7 @@ COLL_QUIETANZE = "quietanze_f24"
 def richiedi_quadratura_f24(parsed: Dict[str, Any]) -> Dict[str, Any]:
     """Rifiuta un PDF F24 privo di quadratura positiva esplicita."""
     validation = parsed.get("validazione") or {}
-    if validation.get("saldo_quadrato") is not True:
+    if validation.get("saldo_quadrato") is not True or validation.get("sezioni_quadrate") is False:
         difference = validation.get("differenza_saldo")
         raise ValueError(
             "F24 non quadrato o non validato: salvataggio bloccato"

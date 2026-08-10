@@ -409,6 +409,11 @@ def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, 
         r"ENTE\s+BENEFICIARIO.*?DENOMINAZIONE\s*:\s*(.+?)\s+(?:TIPO|ANAGRAFICA)\s*:",
         compact, re.IGNORECASE,
     )
+    if not beneficiary_match:
+        beneficiary_match = re.search(
+            r"\b(COMUNE\s+DI\s+[A-ZÀ-Ü]+(?:\s+[A-ZÀ-Ü]+)*?)(?=\s+(?:CERALDI|SERVIZIO|\d{4,}|VIOLAZIONE)|$)",
+            compact, re.IGNORECASE,
+        )
     detected_dates = []
     for day, month, year in re.findall(r"\b([0-3]\d)/([01]\d)/(20\d{2})\b", compact):
         try:
@@ -428,19 +433,37 @@ def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, 
         else "AVVISO_PAGOPA" if is_notice and not is_receipt
         else "RICEVUTA_PAGOPA"
     )
-    return {
+    beneficiary = (
+        bpm_payment.get("beneficiario")
+        or (beneficiary_match.group(1).strip() if beneficiary_match else None)
+    )
+    generic_evidence = {
+        "iuv": {"page_number": 1, "source_text": normalized_iuv, "normalized_value": normalized_iuv, "parser_version": PARSER_VERSION},
+        "codice_avviso": {"page_number": 1, "source_text": notice_code, "normalized_value": notice_code, "parser_version": PARSER_VERSION},
+        "numero_verbale": {"page_number": 1, "source_text": verbale_match.group(1) if verbale_match else None, "normalized_value": verbale_match.group(1).upper().rstrip("-") if verbale_match else None, "parser_version": PARSER_VERSION},
+        "targa": {"page_number": 1, "source_text": targa_match.group(1) if targa_match else None, "normalized_value": targa_match.group(1).upper() if targa_match else None, "parser_version": PARSER_VERSION},
+        "importo": {"page_number": 1, "source_text": amount_match.group(0) if amount_match else None, "normalized_value": amount, "parser_version": PARSER_VERSION},
+        "data_scadenza": {"page_number": 1, "source_text": data_scadenza, "normalized_value": data_scadenza, "parser_version": PARSER_VERSION},
+        "beneficiario": {"page_number": 1, "source_text": beneficiary, "normalized_value": beneficiary, "parser_version": PARSER_VERSION},
+        "codice_cbill": {"page_number": 1, "source_text": cbill_candidates[0] if cbill_candidates else None, "normalized_value": cbill_candidates[0] if cbill_candidates else None, "parser_version": PARSER_VERSION},
+    }
+    result = {
         **bpm_payment,
         "identificativo_bolletta": normalized_iuv,
         "codice_avviso": notice_code,
         "importo": amount,
+        "operation_amount": amount,
+        "operation_amount_cents": int(Decimal(str(amount)) * 100) if amount is not None else None,
+        "bank_debit_total": bpm_payment.get("bank_debit_total") or amount,
+        "bank_debit_total_cents": (
+            bpm_payment.get("bank_debit_total_cents")
+            or (int(Decimal(str(amount)) * 100) if amount is not None else None)
+        ),
         "data_pagamento": payment_date,
         "targa": targa_match.group(1).upper() if targa_match else None,
         "numero_verbale": verbale_match.group(1).upper().rstrip("-") if verbale_match else None,
         "data_violazione": violation_date,
-        "beneficiario": (
-            bpm_payment.get("beneficiario")
-            or (beneficiary_match.group(1).strip() if beneficiary_match else None)
-        ),
+        "beneficiario": beneficiary,
         "data_scadenza": data_scadenza,
         "codice_cbill": bpm_payment.get("codice_cbill") or (cbill_candidates[0] if cbill_candidates else None),
         "codici_fiscali_rilevati": codici_fiscali,
@@ -452,7 +475,10 @@ def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, 
             or (is_receipt and not is_notice and not is_negative_outcome)
         ),
         "parser_version": PARSER_VERSION,
+        "field_evidence": {**(bpm_payment.get("field_evidence") or {}), **generic_evidence},
     }
+    _attach_pdf_coordinates(content, result)
+    return result
 
 
 async def find_bank_movement(db, code: str | list[str], amount: Any):

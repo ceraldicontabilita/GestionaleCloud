@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from decimal import Decimal
 from typing import Any
 
 from app.db_collections import (
@@ -33,22 +34,21 @@ _SECTIONS = (
     ("REGIONI", "sezione_regioni"),
     ("TRIB.LOCALI", "sezione_tributi_locali"),
     ("INAIL", "sezione_inail"),
-    ("IMU", "sezione_imu"),
 )
 
 
-def _number(value: Any) -> float:
+def _number_cents(value: Any) -> int:
     if value in (None, ""):
-        return 0.0
+        return 0
     if isinstance(value, (int, float)):
-        return round(float(value), 2)
+        return int(Decimal(str(value)) * 100)
     text = str(value).strip().replace("€", "").replace(" ", "")
     if "," in text:
         text = text.replace(".", "").replace(",", ".")
     try:
-        return round(float(text), 2)
+        return int(Decimal(text) * 100)
     except (TypeError, ValueError):
-        return 0.0
+        return 0
 
 
 def normalize_reference_period(source: dict[str, Any]) -> str | None:
@@ -119,7 +119,7 @@ def parse_f24_evidence(content: bytes, *, document_kind: str) -> dict[str, Any]:
     if not parsed or parsed.get("error"):
         raise ValueError((parsed or {}).get("error") or "Parsing F24 fallito")
     validation = parsed.get("validazione") or {}
-    if not validation.get("saldo_quadrato"):
+    if not validation.get("saldo_quadrato") or validation.get("sezioni_quadrate") is False:
         raise ValueError(
             "F24 non quadrato: importazione fiscale sospesa "
             f"(differenza {validation.get('differenza_saldo')})"
@@ -131,7 +131,10 @@ def normalize_f24_evidence_rows(parsed: dict[str, Any]) -> list[dict[str, Any]]:
     """Return one row per PDF line; equal rows in different PDFs stay distinct."""
     rows: list[dict[str, Any]] = []
     ordinal = 0
-    sources = list(_SECTIONS) + [
+    sources = list(_SECTIONS)
+    if not parsed.get("sezione_tributi_locali") and parsed.get("sezione_imu"):
+        sources.append(("IMU", "sezione_imu"))
+    sources += [
         ("TRIBUTI", "tributi"),
         ("RIGHE", "righe"),
         ("DETTAGLIO", "dettaglio_tributi"),
@@ -139,8 +142,12 @@ def normalize_f24_evidence_rows(parsed: dict[str, Any]) -> list[dict[str, Any]]:
     for section, field in sources:
         for source in _section_rows(parsed.get(field)):
             ordinal += 1
-            debit = _number(source.get("importo_debito") or source.get("debito") or source.get("importo"))
-            credit = _number(source.get("importo_credito") or source.get("credito"))
+            debit_cents = int(source.get("importo_debito_cents") or _number_cents(
+                source.get("importo_debito") or source.get("debito") or source.get("importo")
+            ))
+            credit_cents = int(source.get("importo_credito_cents") or _number_cents(
+                source.get("importo_credito") or source.get("credito")
+            ))
             code = (
                 source.get("codice_tributo")
                 or source.get("codice")
@@ -161,14 +168,14 @@ def normalize_f24_evidence_rows(parsed: dict[str, Any]) -> list[dict[str, Any]]:
                 "reference_period": normalize_reference_period(source),
                 "reference_period_raw": source.get("periodo_raw") or "",
                 "entity_code": str(entity).strip().upper(),
-                "debit_amount": debit,
-                "credit_amount": credit,
-                "debit_cents": int(round(debit * 100)),
-                "credit_cents": int(round(credit * 100)),
+                "debit_amount": debit_cents / 100,
+                "credit_amount": credit_cents / 100,
+                "debit_cents": debit_cents,
+                "credit_cents": credit_cents,
                 "page_number": int(source.get("pagina") or source.get("page_number") or 1),
                 "source_row_y": source.get("riga_y"),
                 "source_text": source.get("testo_sorgente") or "",
-                "row_kind": "CREDIT_OFFSET_USE" if credit > 0 else "DEBIT_SETTLEMENT",
+                "row_kind": "CREDIT_OFFSET_USE" if credit_cents > 0 else "DEBIT_SETTLEMENT",
                 "description": source.get("descrizione") or "",
                 "is_accounting_cost": False,
                 "source_fields": source,
@@ -212,11 +219,15 @@ async def ingest_f24_evidence(
     general = parsed.get("dati_generali") or {}
     totals = parsed.get("totali") or {}
     protocol = general.get("protocollo_telematico") or metadata.get("protocollo_telematico") or ""
-    payment_date = (
-        general.get("data_pagamento")
-        or general.get("data_versamento")
-        or metadata.get("data_versamento")
-    )
+    payment_date = None
+    if document_kind == PARSER_KIND_QUIETANZA:
+        payment_date = (
+            general.get("data_pagamento")
+            or general.get("data_versamento")
+            or metadata.get("data_versamento")
+        )
+    elif metadata.get("payment_date"):
+        payment_date = metadata.get("payment_date")
     payment_id = stable_id("taxpayment", company_id, document_id, version_id)
     now = now_iso()
     payment = {
@@ -229,11 +240,15 @@ async def ingest_f24_evidence(
         "filename": filename,
         "sha256": digest,
         "protocol": protocol,
+        "taxpayer_id": general.get("taxpayer_id") or general.get("codice_fiscale"),
+        "intermediary_id": general.get("intermediary_id") or general.get("intermediario_codice_fiscale"),
+        "coobbligato_id": general.get("coobbligato_codice_fiscale"),
+        "identity_status": general.get("identita_stato") or "IDENTITA_AMBIGUA",
         "payment_date": payment_date,
         "payment_year": _year_from_value(payment_date),
-        "total_debit": round(float(totals.get("totale_debito") or 0), 2),
-        "total_credit": round(float(totals.get("totale_credito") or 0), 2),
-        "net_amount": round(float(totals.get("saldo_netto") or 0), 2),
+        "total_debit_cents": int(totals.get("totale_debito_cents") or _number_cents(totals.get("totale_debito"))),
+        "total_credit_cents": int(totals.get("totale_credito_cents") or _number_cents(totals.get("totale_credito"))),
+        "net_amount_cents": int(totals.get("saldo_netto_cents") or _number_cents(totals.get("saldo_netto"))),
         "payment_status": (
             "QUIETANZA_PRESENTE_DA_VERIFICARE_BANCA"
             if document_kind == PARSER_KIND_QUIETANZA
@@ -245,9 +260,9 @@ async def ingest_f24_evidence(
         "updated_at": now,
     }
     payment.update({
-        "total_debit_cents": int(round(payment["total_debit"] * 100)),
-        "total_credit_cents": int(round(payment["total_credit"] * 100)),
-        "net_amount_cents": int(round(payment["net_amount"] * 100)),
+        "total_debit": payment["total_debit_cents"] / 100,
+        "total_credit": payment["total_credit_cents"] / 100,
+        "net_amount": payment["net_amount_cents"] / 100,
     })
     await db[COLL_TAX_PAYMENTS].update_one(
         {"company_id": company_id, "id": payment_id},
@@ -316,8 +331,13 @@ async def ingest_f24_evidence(
                 "year": _year_from_value(row["reference_period"]) or payment["payment_year"],
                 "effective_at": payment["payment_date"],
                 "amount": row["credit_amount"],
+                "amount_cents": row["credit_cents"],
                 "credit_origin_id": None,
                 "origin_status": "UNRESOLVED",
+                "origin_relation": "CREDITO_ORIGINARIO_DA_ASSOCIARE",
+                "used_cents": row["credit_cents"],
+                "residual_cents": None,
+                "residual_status": "NON_CALCOLABILE_SENZA_ORIGINE",
                 "allocation_id": allocation_id,
                 "document_id": document_id,
                 "version_id": version_id,

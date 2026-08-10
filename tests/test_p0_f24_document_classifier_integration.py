@@ -1,5 +1,6 @@
 import asyncio
 import io
+from pathlib import Path
 
 import fitz
 from fastapi import FastAPI
@@ -144,6 +145,103 @@ def test_classificatore_separa_rettifica_avviso_e_ricevuta():
     assert parsed["data_pagamento"] == "2026-03-18"
 
 
+def test_classificatore_f24_non_dipende_dal_nome_e_normalizza_grafica_spezzata():
+    content = _pdf(
+        "DELEG A IRREVO CABILE",
+        "COD ICE FISCALE 04523831214",
+        "SEZIONE ERARIO CODICE TRIBUTO 3918",
+        "SALD O FINALE 3.575,00",
+    )
+    assert documenti.detect_document_type("documento_generico.pdf", content) == "f24"
+
+
+def test_campioni_f24_reali_esercitano_imu_irap_centesimi_e_provenienza():
+    base = Path(r"C:\Users\ceral\Downloads\Dati applicazione\Dati app\f 24\f24 commercialista")
+    imu_path = base / "IMU CERALDI GROUP.pdf"
+    irap_path = base / "RAVV II ACC IRAP CERALDI.PDF"
+    if not imu_path.exists() or not irap_path.exists():
+        return
+    imu = parse_f24_commercialista(pdf_content=imu_path.read_bytes())
+    irap = parse_f24_commercialista(pdf_content=irap_path.read_bytes())
+    assert documenti.detect_document_type(imu_path.name, imu_path.read_bytes()) == "f24"
+    assert documenti.detect_document_type(irap_path.name, irap_path.read_bytes()) == "f24"
+    row = imu["sezione_imu"][0]
+    assert row["importo_debito_cents"] == 357500
+    assert row["codice_comune"] == "F839"
+    assert row["numero_immobili"] == 1
+    assert row["has_ravvedimento"] is True
+    assert row["field_evidence"]["confidence"] == 1.0
+    assert imu["dati_generali"]["taxpayer_id"] == "04523831214"
+    assert imu["dati_generali"]["intermediary_id"] is None
+    assert imu["dati_generali"]["identita_stato"] == "VERIFICATA"
+    assert irap["totali"]["saldo_netto_cents"] == 173636
+    assert irap["validazione"]["quadrature_sezioni"]["sezione_regioni"]["net_cents"] == 173636
+
+
+def test_data_modello_f24_e_data_pagamento_restano_eventi_distinti():
+    content = _pdf(
+        "CERALDI GROUP S.R.L. STAMPA DI PROVA",
+        "Azienda Scadenza 16/05/2026",
+        "SALDO FINALE 200,00",
+    )
+    parsed = parse_f24_commercialista(pdf_content=content)
+    assert parsed["dati_generali"]["data_stampa"] == "2026-05-16"
+    assert parsed["dati_generali"]["data_versamento_provenienza"] == "MODELLO_NON_PAGAMENTO"
+
+
+def test_caso_reale_1040_giugno_2026_quietanza_21_luglio():
+    path = Path(
+        r"C:\Users\ceral\Downloads\CERALDI_GROUP_FISCALE_CODEX_COMPLETO_2020_2026_V2"
+        r"\CERALDI_GROUP_FISCALE_CODEX_COMPLETO_2020_2026_V2\02_F24_QUIETANZE\2026"
+        r"\2026-07-21__F24_021__quietanza_AE__prot_26072135472143961-000001.pdf"
+    )
+    if not path.exists():
+        return
+    parsed = parse_quietanza_f24(pdf_content=path.read_bytes())
+    assert parsed["dati_generali"]["data_pagamento"] == "2026-07-21"
+    row = next(
+        row for row in parsed["sezione_erario"]
+        if row.get("codice_tributo") == "1040"
+    )
+    assert row["periodo_riferimento"] == "06/2026"
+    assert row["importo_debito"] == 284.0
+    assert parsed["totali"]["saldo_netto"] == 286.0
+
+
+def test_upload_auto_campioni_reali_imu_e_avviso_solo_su_database_di_test(monkeypatch):
+    base = Path(r"C:\Users\ceral\Downloads\Dati applicazione\Dati app\f 24\f24 commercialista")
+    imu_path = base / "IMU CERALDI GROUP.pdf"
+    avviso_path = Path(r"C:\Users\ceral\Downloads\AvvisoDigitale_302000600008408304.pdf")
+    if not imu_path.exists() or not avviso_path.exists():
+        return
+    db = AsyncMongoMockClient()["upload-auto-real-fixtures"]
+    monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
+    app = FastAPI()
+    app.include_router(documenti.router, prefix="/api/documenti")
+    with TestClient(app) as client:
+        imu = imu_path.read_bytes()
+        first = client.post(
+            "/api/documenti/upload-auto",
+            files={"file": (imu_path.name, imu, "application/pdf")},
+            headers=confirmed_preview_headers(imu, "f24"),
+        )
+        avviso = avviso_path.read_bytes()
+        second = client.post(
+            "/api/documenti/upload-auto",
+            files={"file": (avviso_path.name, avviso, "application/pdf")},
+            headers=confirmed_preview_headers(avviso, "avviso_pagopa"),
+        )
+    assert first.status_code == second.status_code == 200
+    assert first.json()["tipo_rilevato"] == "f24"
+    assert first.json()["data"]["validazione"]["saldo_quadrato"] is True
+    assert second.json()["tipo_rilevato"] == "avviso_pagopa"
+    assert second.json()["payment_evidence"] is False
+    assert second.json()["association"]["status"] == "linked"
+    verbale = asyncio.run(db["verbali_noleggio"].find_one({}, {"_id": 0}))
+    assert verbale["ente_creditore"] == "COMUNE DI NAPOLI"
+    assert verbale["stato_pratica"] == "DA_ACQUISIRE_VERBALE"
+
+
 def test_upload_auto_avviso_non_crea_ricevuta_o_pagamento(monkeypatch):
     db = AsyncMongoMockClient()["upload-auto-avviso"]
     monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
@@ -178,6 +276,9 @@ def test_upload_auto_avviso_non_crea_ricevuta_o_pagamento(monkeypatch):
     assert verbale["data_scadenza"] == "2026-04-11"
     assert verbale["codice_avviso"] == "302000600008408304"
     assert verbale["stato"] == "salvato"
+    assert verbale["origine"] == "AVVISO_PAGOPA"
+    assert verbale["verbale_originale_acquisito"] is False
+    assert verbale["stato_pratica"] == "DA_ACQUISIRE_VERBALE"
     assert verbale.get("pagato") is not True and verbale.get("chiuso") is not True
 
 
@@ -204,6 +305,10 @@ def test_nota_rettifica_inps_crea_obbligazione_e_non_un_pagamento(monkeypatch):
     assert parsed["differenze_contributive"] == 1559.52
     assert parsed["sanzioni_civili"] == 139.29
     assert parsed["istruzioni_f24"]["causale_contributo"] == "DMRA"
+    assert parsed["field_evidence"]["importo_totale"]["normalized_value"] == 1698.81
+    assert parsed["field_evidence"]["importo_totale"]["parser_version"] == "inps-dmra-v1"
+    assert parsed["canonical_relations"]["uniemens"]["status"] == "CITED"
+    assert parsed["canonical_relations"]["corrective_f24"]["status"] == "TO_BE_LINKED"
 
     db = AsyncMongoMockClient()["upload-auto-rettifica"]
     monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
@@ -306,6 +411,8 @@ def test_avviso_e_ricevuta_pagopa_si_collegano_al_verbale_senza_inventare_banca(
     verbale = asyncio.run(db["verbali_noleggio"].find_one({"numero_verbale": "B26120449023"}))
     receipt = asyncio.run(db["ricevute_pagopa"].find_one({"numero_verbale": "B26120449023"}))
     assert verbale["stato"] == "pagato"
+    assert verbale["stato_pratica"] == "PAGATO_DOCUMENTALE"
+    assert verbale["pagato_documentalmente"] is True
     assert verbale["ricevuta_pagopa_id"] == receipt["id"]
     assert receipt["verbale_id"] == verbale["id"]
     assert receipt["versato_documentalmente"] is True

@@ -386,6 +386,12 @@ async def applica_pagamento_a_verbale(db, verbale_id, match):
     )
     update = {
         "stato": "pagato",
+        # Stato probatorio separato: una ricevuta dimostra il pagamento
+        # documentale, non la presenza del movimento sul conto.
+        "stato_pratica": "PAGATO_DOCUMENTALE",
+        "pagato_documentalmente": True,
+        "banca_verificata": bool(match.get("movimento_id")),
+        "fonte_pagamento": match.get("fonte"),
         "importo": match.get("importo") or None,
         "metodo_pagamento": match.get("metodo_pagamento"),
         "psp": match.get("psp"),

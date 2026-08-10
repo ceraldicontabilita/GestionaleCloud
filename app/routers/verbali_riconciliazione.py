@@ -624,7 +624,9 @@ async def riconcilia_verbale(numero_verbale: str) -> Dict[str, Any]:
         
         # 3. Cerca veicolo e driver
         if targa:
-            veicolo = await db["veicoli_noleggio"].find_one({"targa": targa})
+            # Il record veicolo contiene al massimo un driver corrente, non
+            # necessariamente quello valido alla data della violazione.
+            veicolo = None
             if veicolo:
                 updates["veicolo_id"] = str(veicolo["_id"])
                 if veicolo.get("driver_id"):
@@ -740,11 +742,16 @@ async def collega_driver_massivo() -> Dict[str, Any]:
                         {"data_inizio": {"$lte": data_violazione}, "data_fine": {"$exists": False}},
                     ]
                 
-                storico = await db["storico_assegnazioni_veicoli"].find_one(
-                    query_storico,
-                    sort=[("data_inizio", -1)]
-                )
-                if storico and (storico.get("driver_id") or storico.get("driver")):
+                storico_candidates = await db["storico_assegnazioni_veicoli"].find(
+                    query_storico, {"_id": 0}
+                ).limit(10).to_list(10)
+                driver_candidates = {
+                    str(item.get("driver_id") or item.get("driver") or item.get("driver_nome")): item
+                    for item in storico_candidates
+                    if item.get("driver_id") or item.get("driver") or item.get("driver_nome")
+                }
+                storico = next(iter(driver_candidates.values())) if len(driver_candidates) == 1 else None
+                if storico and (storico.get("driver_id") or storico.get("driver") or storico.get("driver_nome")):
                     driver_id = storico.get("driver_id")
                     driver_nome = storico.get("driver") or storico.get("driver_nome")
                     strategia = "storico"
@@ -802,6 +809,18 @@ async def collega_driver_massivo() -> Dict[str, Any]:
                             strategia = "descrizione"
                             break
             
+            # Una relazione proposta da veicolo/contratto/dipendente senza
+            # assegnazione storica alla data non e' probatoria: resta in coda
+            # per conferma manuale e non viene scritta sul verbale.
+            if strategia != "storico" or not data_violazione:
+                non_trovati.append({
+                    "numero": numero,
+                    "targa": targa,
+                    "data": data_violazione,
+                    "reason": "driver_requires_temporal_confirmation",
+                })
+                continue
+
             # === APPLICA RISULTATO ===
             if driver_id or driver_nome:
                 update_data = {"updated_at": datetime.now(timezone.utc)}

@@ -1095,7 +1095,10 @@ async def sync_f24_automatico(
                         })
                     
                     totali = parsed.get("totali", {})
-                    data_scadenza = parsed.get("dati_generali", {}).get("data_versamento")
+                    data_scadenza = (
+                        parsed.get("dati_generali", {}).get("data_stampa")
+                        or parsed.get("dati_generali", {}).get("data_compilazione")
+                    )
                     
                     f24_model_record = {
                         "id": f24_data["id"],  # Usa lo stesso ID
@@ -2072,6 +2075,10 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         except Exception:
             pass
     compact_pdf_text = re.sub(r"\s+", " ", pdf_text)
+    # I modelli F24 generati da alcuni intermediari hanno glifi spezzati
+    # (``DELEG A IRREVO CABILE`` / ``SALD O FINALE``).  Il testo con tutti i
+    # separatori rimossi conserva comunque la struttura semantica e deve
+    # essere usato prima del nome file.
     marker_pdf_text = re.sub(r"[^A-Z0-9]", "", pdf_text)
     if any(marker in compact_pdf_text for marker in (
         "NOTA DI RETTIFICA", "STAMPA SINTESI RETTIFICA", "MODELLO DMRA",
@@ -2129,6 +2136,24 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         "IMPORTO TOTALE PAGATO", "RICEVUTA TELEMATICA",
     )):
         return "ricevuta_pagopa"
+
+    # Struttura positiva del modello F24.  Non dipendere dal nome file e non
+    # usare una singola parola: una nota INPS o un avviso PagoPA possono
+    # citare F24, ma non contengono simultaneamente delega, anagrafica e
+    # griglia dei codici tributo/saldo.
+    f24_structure_markers = (
+        "CODICEFISCALE" in marker_pdf_text,
+        "CODICETRIBUTO" in marker_pdf_text,
+        "SALDOFINALE" in marker_pdf_text or "SALDODELEGA" in marker_pdf_text,
+        "SEZIONEERARIO" in marker_pdf_text or "SEZIONEINPS" in marker_pdf_text
+        or "SEZIONEREGIONI" in marker_pdf_text,
+        bool(re.search(r"\b(?:1|2|3|6|7|8|9)\d{3}\b", pdf_text)),
+    )
+    if (
+        "DELEGAIRREVOCABILE" in marker_pdf_text
+        or "MODELLODIPAGAMENTOUNIFICATO" in marker_pdf_text
+    ) and sum(f24_structure_markers) >= 2:
+        return "f24"
     if (
         "AVVISO DI PAGAMENTO" in compact_pdf_text
         or "QUANTO E QUANDO PAGARE" in compact_pdf_text

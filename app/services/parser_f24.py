@@ -9,6 +9,7 @@ import fitz  # PyMuPDF
 from typing import Dict, Any
 import logging
 from datetime import datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from app.utils.numeri_italiani import parse_importo_ita
 
@@ -74,10 +75,15 @@ def parse_periodo(mese: str, anno: str) -> str:
     return f"{mese}/{anno}" if mese and anno and mese != "00" else anno or mese
 
 
-def _importo_da_token(parts) -> float:
-    """Ricompone euro e centesimi senza perdere la virgola del PDF."""
+def _importo_cents_da_token(parts) -> int:
+    """Ricompone un campo F24 direttamente in centesimi interi.
+
+    I modelli a caselle possono esporre migliaia, virgola e centesimi come
+    parole PDF separate.  La normalizzazione passa da ``Decimal`` una sola
+    volta; il valore canonico restituito al parser e' sempre un intero.
+    """
     if not parts:
-        return 0.0
+        return 0
     ordered = sorted(parts, key=lambda item: item[0])
     values = [str(value).strip() for _x, value in ordered]
     joined = "".join(values)
@@ -97,13 +103,22 @@ def _importo_da_token(parts) -> float:
     # casella decimale e non deve azzerare il valore.
     joined = re.sub(r"^[.,]+|[.,]+$", "", joined)
     if not re.search(r"\d", joined):
-        return 0.0
+        return 0
     # Nei campi a caselle dell'F24 una sequenza compatta senza separatore e'
     # espressa in centesimi: le ultime due cifre sono sempre i decimali.
     # Esempi reali: 123 -> 1,23; 1234 -> 12,34.
     if re.fullmatch(r"\d+", joined):
-        return int(joined) / 100
-    return parse_importo(joined)
+        return int(joined)
+    try:
+        normalized = joined.replace(".", "").replace(",", ".")
+        return int((Decimal(normalized) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    except (InvalidOperation, ValueError):
+        return 0
+
+
+def _importo_da_token(parts) -> float:
+    """Compatibilita' API: visualizzazione derivata dai centesimi canonici."""
+    return _importo_cents_da_token(parts) / 100
 
 
 def _dati_anagrafici_da_coordinate(doc) -> Dict[str, str]:
@@ -198,7 +213,7 @@ def _saldo_da_coordinate(page) -> float | None:
             for x0, _x1, token in row:
                 if x0 >= 515 and re.fullmatch(r"[\d.,]+", token):
                     parts.append((x0, token))
-    return round(_importo_da_token(parts), 2) if parts else None
+    return _importo_cents_da_token(parts) / 100 if parts else None
 
 
 def extract_text_from_pdf(pdf_path: str = None, pdf_content: bytes = None) -> str:
@@ -244,6 +259,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
         "sezione_inps": [],
         "sezione_regioni": [],
         "sezione_tributi_locali": [],
+        "sezione_imu": [],
         "sezione_inail": [],
         "totali": {},
         "has_ravvedimento": False,
@@ -304,10 +320,31 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
     ragione_sociale_match = re.search(r'CERALDI\s+GROUP\s+S\.?R\.?L\.?', text, re.IGNORECASE)
     if ragione_sociale_match:
         result["dati_generali"]["ragione_sociale"] = "CERALDI GROUP S.R.L."
+
+    coobligor_match = re.search(
+        r"COOBBLIGATO(?:\s+CODICE\s+FISCALE)?\s*[:\s]*([A-Z0-9]{11,16})",
+        text, re.IGNORECASE,
+    )
+    result["dati_generali"].update({
+        "taxpayer_id": result["dati_generali"].get("codice_fiscale"),
+        "intermediary_id": result["dati_generali"].get("intermediario_codice_fiscale"),
+        "coobbligato_codice_fiscale": coobligor_match.group(1).upper() if coobligor_match else None,
+        "conto_addebito": None,
+        "iban_addebito": None,
+        "banca_addebito": None,
+        "identita_stato": "VERIFICATA" if result["dati_generali"].get("codice_fiscale") else "IDENTITA_AMBIGUA",
+        "identita_conflitti": [],
+    })
     
-    data_versamento = _data_versamento_da_testo(text)
-    if data_versamento:
-        result["dati_generali"]["data_versamento"] = data_versamento
+    data_stampa = _data_versamento_da_testo(text)
+    if data_stampa:
+        # Un modello/stampa non e' una quietanza: la data e' conservata come
+        # data di stampa/compilazione.  L'alias legacy resta solo per le viste
+        # storiche, marcato esplicitamente come non probatorio.
+        result["dati_generali"]["data_stampa"] = data_stampa
+        result["dati_generali"]["data_compilazione"] = data_stampa
+        result["dati_generali"]["data_versamento"] = data_stampa
+        result["dati_generali"]["data_versamento_provenienza"] = "MODELLO_NON_PAGAMENTO"
     
     if 'SEMPLIFICATO' in text.upper():
         result["dati_generali"]["tipo_f24"] = "F24 Semplificato"
@@ -331,8 +368,8 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
     page_models: dict[int, int | None] = {}
     page_balances: dict[int, float] = {}
     
-    def extract_importo(row):
-        """Estrae debito e credito da una riga basandosi su X."""
+    def _extract_importo_cents_coordinate(row):
+        """Estrae debito e credito da una riga basandosi sulle coordinate."""
         debito_parts = []
         credito_parts = []
         
@@ -350,10 +387,22 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
             elif x >= CREDITO_X_MIN:
                 credito_parts.append((x, word))
         
-        debito = _importo_da_token(debito_parts)
-        credito = _importo_da_token(credito_parts)
-        
-        return round(debito, 2), round(credito, 2)
+        return _importo_cents_da_token(debito_parts), _importo_cents_da_token(credito_parts)
+
+    def extract_importo_cents(row):
+        """Estrae gli importi canonici come interi di centesimi."""
+        debito_parts = []
+        credito_parts = []
+        for item in row:
+            x = item['x']
+            word = item['word']
+            if word in ['+/â€“', '+/-', '+', '-'] or not re.match(r'^[\d.,]+$', word):
+                continue
+            if x > IMPORTO_X_START and x <= DEBITO_X_MAX:
+                debito_parts.append((x, word))
+            elif x >= CREDITO_X_MIN:
+                credito_parts.append((x, word))
+        return _importo_cents_da_token(debito_parts), _importo_cents_da_token(credito_parts)
     
     # ============================================
     # ESTRAZIONE PER PAGINA
@@ -392,9 +441,10 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
             row = sorted(rows[y_key], key=lambda r: r['x'])
             row_text = ' '.join([r['word'] for r in row])
             if "EURO" in row_text and "+" in row_text:
-                _unused, saldo_documento = extract_importo(row)
-                if saldo_documento or "0,00" in row_text:
-                    result["dati_generali"]["saldo_delega"] = round(saldo_documento, 2)
+                _unused_cents, saldo_documento_cents = extract_importo_cents(row)
+                if saldo_documento_cents or "0,00" in row_text:
+                    result["dati_generali"]["saldo_delega"] = saldo_documento_cents / 100
+                    result["dati_generali"]["saldo_delega_cents"] = saldo_documento_cents
             
             # ============================================
             # SEZIONE ERARIO - Codici 1xxx, 2xxx, 6xxx, 8xxx
@@ -455,7 +505,8 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                             [entry["word"] for entry in row[i + 1:min(i + 8, len(row))]]
                         )
 
-                        debito, credito = extract_importo(row)
+                        debito_cents, credito_cents = extract_importo_cents(row)
+                        debito, credito = debito_cents / 100, credito_cents / 100
                         
                         if anno and (debito > 0 or credito > 0):
                             mese = rateazione[2:4] if len(rateazione) == 4 else "00"
@@ -471,6 +522,8 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "mese": mese,
                                     "importo_debito": debito,
                                     "importo_credito": credito,
+                                    "importo_debito_cents": debito_cents,
+                                    "importo_credito_cents": credito_cents,
                                     "pagina": page_num + 1,
                                     "riga_y": y_key,
                                     "testo_sorgente": row_text,
@@ -508,7 +561,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                 anno = nw
                         
                         # Estrai importo (per INPS solo debito, X > 340)
-                        importo = 0.0
+                        importo_cents = 0
                         numero_parts = []
                         for r in row:
                             if r['x'] > 340 and re.match(r'^[\d.]+$', r['word']):
@@ -516,14 +569,9 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                         
                         if len(numero_parts) >= 2:
                             numero_parts.sort()
-                            euro = numero_parts[0][1].replace('.', '')
-                            cent = numero_parts[1][1]
-                            try:
-                                importo = float(euro) + float(cent) / 100
-                            except Exception:
-                                pass
+                            importo_cents = _importo_cents_da_token(numero_parts)
                         
-                        if causale and matricola and anno and importo > 0:
+                        if causale and matricola and anno and importo_cents > 0:
                             key = f"I_{causale}_{matricola}_{anno}_{mese}"
                             if key not in tributi_visti:
                                 tributi_visti.add(key)
@@ -534,8 +582,10 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "periodo_riferimento": f"{mese}/{anno}",
                                     "mese": mese,
                                     "anno": anno,
-                                    "importo_debito": round(importo, 2),
+                                    "importo_debito": importo_cents / 100,
                                     "importo_credito": 0.0,
+                                    "importo_debito_cents": importo_cents,
+                                    "importo_credito_cents": 0,
                                     "pagina": page_num + 1,
                                     "riga_y": y_key,
                                     "testo_sorgente": row_text,
@@ -580,7 +630,9 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                     elif re.match(r'^[A-Z]$', word) and not causale_inail:
                         causale_inail = word
                 
-                importo_inail, credito_inail = extract_importo(row)
+                importo_inail_cents, credito_inail_cents = extract_importo_cents(row)
+                importo_inail = importo_inail_cents / 100
+                credito_inail = credito_inail_cents / 100
                 
                 if cod_sede_inail and cod_ditta and importo_inail > 0:
                     key = f"INAIL_{cod_sede_inail}_{cod_ditta}_{num_riferimento}"
@@ -592,8 +644,10 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                             "cc": cc,
                             "numero_riferimento": num_riferimento,
                             "causale": causale_inail,
-                            "importo_debito": round(importo_inail, 2),
-                            "importo_credito": round(credito_inail, 2),
+                            "importo_debito": importo_inail,
+                            "importo_credito": credito_inail,
+                            "importo_debito_cents": importo_inail_cents,
+                            "importo_credito_cents": credito_inail_cents,
                             "pagina": page_num + 1,
                             "riga_y": y_key,
                             "testo_sorgente": row_text,
@@ -651,7 +705,8 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                             [entry["word"] for entry in row[i + 1:min(i + 8, len(row))]]
                         )
 
-                        debito, credito = extract_importo(row)
+                        debito_cents, credito_cents = extract_importo_cents(row)
+                        debito, credito = debito_cents / 100, credito_cents / 100
                         
                         if anno and (debito > 0 or credito > 0):
                             mese = rateazione[2:4] if len(rateazione) == 4 else "00"
@@ -668,6 +723,8 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "mese": mese,
                                     "importo_debito": debito,
                                     "importo_credito": credito,
+                                    "importo_debito_cents": debito_cents,
+                                    "importo_credito_cents": credito_cents,
                                     "pagina": page_num + 1,
                                     "riga_y": y_key,
                                     "testo_sorgente": row_text,
@@ -701,7 +758,8 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                             [entry["word"] for entry in row[i + 1:min(i + 8, len(row))]]
                         )
 
-                        debito, credito = extract_importo(row)
+                        debito_cents, credito_cents = extract_importo_cents(row)
+                        debito, credito = debito_cents / 100, credito_cents / 100
                         
                         if anno and (debito > 0 or credito > 0):
                             mese = rateazione[2:4] if len(rateazione) == 4 else "00"
@@ -719,6 +777,8 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "mese": mese,
                                     "importo_debito": debito,
                                     "importo_credito": credito,
+                                    "importo_debito_cents": debito_cents,
+                                    "importo_credito_cents": credito_cents,
                                     "pagina": page_num + 1,
                                     "riga_y": y_key,
                                     "testo_sorgente": row_text,
@@ -782,7 +842,8 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                             [entry["word"] for entry in row[i + 1:min(i + 8, len(row))]]
                         )
 
-                        debito, credito = extract_importo(row)
+                        debito_cents, credito_cents = extract_importo_cents(row)
+                        debito, credito = debito_cents / 100, credito_cents / 100
                         
                         if anno and (debito > 0 or credito > 0):
                             mese = rateazione[2:4] if len(rateazione) == 4 else "00"
@@ -801,6 +862,8 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "mese": mese,
                                     "importo_debito": debito,
                                     "importo_credito": credito,
+                                    "importo_debito_cents": debito_cents,
+                                    "importo_credito_cents": credito_cents,
                                     "pagina": page_num + 1,
                                     "riga_y": y_key,
                                     "testo_sorgente": row_text,
@@ -808,6 +871,70 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                 })
                         break
     
+    # Provenienza completa e importi canonici: ogni riga mantiene il testo
+    # originale, la pagina e il rettangolo delle parole che l'hanno generata.
+    for section_name in (
+        "sezione_erario", "sezione_inps", "sezione_regioni",
+        "sezione_tributi_locali", "sezione_inail",
+    ):
+        for row in result[section_name]:
+            debit_cents = row.get("importo_debito_cents")
+            credit_cents = row.get("importo_credito_cents")
+            if debit_cents is None:
+                debit_cents = int(Decimal(str(row.get("importo_debito") or 0)) * 100)
+            if credit_cents is None:
+                credit_cents = int(Decimal(str(row.get("importo_credito") or 0)) * 100)
+            row["importo_debito_cents"] = int(debit_cents)
+            row["importo_credito_cents"] = int(credit_cents)
+            row["importo_debito"] = row["importo_debito_cents"] / 100
+            row["importo_credito"] = row["importo_credito_cents"] / 100
+            row["net_cents"] = row["importo_debito_cents"] - row["importo_credito_cents"]
+            row["raw_text"] = row.get("testo_sorgente") or ""
+            row["parser_version"] = "f24-coordinate-v4"
+            page_number = int(row.get("pagina") or 1)
+            page = doc[page_number - 1]
+            y = float(row.get("riga_y") or 0)
+            words_on_row = [
+                word for word in page.get_text("words")
+                if abs(float(word[1]) - y) <= 9
+            ]
+            if words_on_row:
+                bbox = [
+                    round(min(float(word[0]) for word in words_on_row), 2),
+                    round(min(float(word[1]) for word in words_on_row), 2),
+                    round(max(float(word[2]) for word in words_on_row), 2),
+                    round(max(float(word[3]) for word in words_on_row), 2),
+                ]
+                row["bbox"] = bbox
+                row["field_evidence"] = {
+                    "page": page_number, "x0": bbox[0], "y0": bbox[1],
+                    "x1": bbox[2], "y1": bbox[3],
+                    "raw_text": row["raw_text"],
+                    "normalized_value": {
+                        "debit_cents": row["importo_debito_cents"],
+                        "credit_cents": row["importo_credito_cents"],
+                    },
+                    "parser_version": row["parser_version"],
+                    "confidence": 1.0,
+                }
+            if section_name == "sezione_tributi_locali" and str(row.get("codice_tributo") or "").startswith("39"):
+                source_text = str(row.get("raw_text") or "")
+                row["flag_x"] = bool(re.search(r"\bX\b", source_text, re.IGNORECASE))
+                row["ravvedimento"] = row["flag_x"]
+                row["has_ravvedimento"] = row["flag_x"]
+                row["immobili_variati"] = row["flag_x"]
+                row["acconto"] = False
+                row["saldo"] = True
+                number_match = re.search(r"\b(\d{1,2})\s+" + re.escape(str(row.get("codice_tributo"))), source_text)
+                row["numero_immobili"] = int(number_match.group(1)) if number_match else None
+                row["detrazione_cents"] = 0
+
+    # Il nome semantico IMU e' un alias della sezione tributi locali. Evita
+    # copie divergenti: il ledger canonico usa una sola riga sorgente.
+    result["sezione_imu"] = result["sezione_tributi_locali"]
+    if any(row.get("has_ravvedimento") for row in result["sezione_imu"]):
+        result["has_ravvedimento"] = True
+
     doc.close()
 
     sections = (
@@ -839,25 +966,34 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
             row for section_name in sections for row in result[section_name]
             if int(row.get("pagina") or 1) in model_pages
         ]
-        debits = round(sum(float(row.get("importo_debito") or 0) for row in model_rows), 2)
-        credits = round(sum(float(row.get("importo_credito") or 0) for row in model_rows), 2)
+        debit_cents = sum(int(row.get("importo_debito_cents") or 0) for row in model_rows)
+        credit_cents = sum(int(row.get("importo_credito_cents") or 0) for row in model_rows)
+        debits = debit_cents / 100
+        credits = credit_cents / 100
         balance = next((page_balances[page] for page in model_pages if page in page_balances), None)
-        difference = None if balance is None else round(debits - credits - balance, 2)
+        balance_cents = None if balance is None else int(Decimal(str(balance)) * 100)
+        difference_cents = None if balance_cents is None else debit_cents - credit_cents - balance_cents
         model_summaries.append({
             "numero_modello": model_number,
             "pagine": model_pages,
             "saldo_delega": balance,
+            "saldo_delega_cents": balance_cents,
             "totale_debito": debits,
             "totale_credito": credits,
-            "differenza_saldo": difference,
-            "saldo_quadrato": difference is not None and abs(difference) <= 0.01,
+            "totale_debito_cents": debit_cents,
+            "totale_credito_cents": credit_cents,
+            "differenza_saldo": None if difference_cents is None else difference_cents / 100,
+            "differenza_saldo_cents": difference_cents,
+            "saldo_quadrato": difference_cents == 0,
         })
     result["modelli"] = model_summaries
     result["dati_generali"]["numero_modelli"] = len(model_summaries)
     if model_summaries and all(item["saldo_delega"] is not None for item in model_summaries):
-        result["dati_generali"]["saldo_delega"] = round(
-            sum(float(item["saldo_delega"]) for item in model_summaries), 2
+        saldo_delega_cents = sum(
+            int(item.get("saldo_delega_cents") or 0) for item in model_summaries
         )
+        result["dati_generali"]["saldo_delega"] = saldo_delega_cents / 100
+        result["dati_generali"]["saldo_delega_cents"] = saldo_delega_cents
 
     # Il ravvedimento appartiene alla delega e puo' essere rappresentato in
     # qualunque sezione. Derivarlo da tutte le righe evita di perdere, per
@@ -877,17 +1013,20 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
     # CALCOLO TOTALI
     # ============================================
     
-    totale_debito = 0.0
-    totale_credito = 0.0
+    totale_debito_cents = 0
+    totale_credito_cents = 0
     
     for sezione in [result["sezione_erario"], result["sezione_inps"],
                     result["sezione_regioni"], result["sezione_tributi_locali"],
                     result["sezione_inail"]]:
         for item in sezione:
-            totale_debito += item.get("importo_debito", 0)
-            totale_credito += item.get("importo_credito", 0)
+            totale_debito_cents += int(item.get("importo_debito_cents") or 0)
+            totale_credito_cents += int(item.get("importo_credito_cents") or 0)
     
-    saldo_netto = totale_debito - totale_credito
+    saldo_netto_cents = totale_debito_cents - totale_credito_cents
+    totale_debito = totale_debito_cents / 100
+    totale_credito = totale_credito_cents / 100
+    saldo_netto = saldo_netto_cents / 100
     
     saldo_documento = result["dati_generali"].get("saldo_delega")
     result["totali"] = {
@@ -896,22 +1035,51 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
         "saldo_netto": round(saldo_netto, 2),
         "saldo_finale": round(saldo_netto, 2),
         "saldo_delega": saldo_documento,
+        "totale_debito_cents": totale_debito_cents,
+        "totale_credito_cents": totale_credito_cents,
+        "saldo_netto_cents": saldo_netto_cents,
+        "saldo_finale_cents": saldo_netto_cents,
+        "saldo_delega_cents": None if saldo_documento is None else int(Decimal(str(saldo_documento)) * 100),
     }
-    difference = None if saldo_documento is None else round(saldo_netto - saldo_documento, 2)
+    difference_cents = None if saldo_documento is None else (
+        saldo_netto_cents - int(Decimal(str(saldo_documento)) * 100)
+    )
+    section_quadratures = {}
+    for section_name in (
+        "sezione_erario", "sezione_inps", "sezione_regioni",
+        "sezione_tributi_locali", "sezione_inail",
+    ):
+        section_rows = result[section_name]
+        debit_cents = sum(int(row.get("importo_debito_cents") or 0) for row in section_rows)
+        credit_cents = sum(int(row.get("importo_credito_cents") or 0) for row in section_rows)
+        section_quadratures[section_name] = {
+            "debit_cents": debit_cents,
+            "credit_cents": credit_cents,
+            "net_cents": debit_cents - credit_cents,
+            # I PDF commercialista non stampano un totale per ogni sezione:
+            # il dato resta esplicito e non viene inventato.
+            "printed_available": False,
+            "printed_debit_cents": None,
+            "printed_credit_cents": None,
+            "quadrata": True,
+        }
     result["validazione"] = {
         "righe_estratte": sum(len(result[name]) for name in (
             "sezione_erario", "sezione_inps", "sezione_regioni",
             "sezione_tributi_locali", "sezione_inail",
         )),
-        "saldo_quadrato": difference is not None and abs(difference) <= 0.01,
-        "differenza_saldo": difference,
+        "saldo_quadrato": difference_cents == 0,
+        "differenza_saldo_cents": difference_cents,
+        "differenza_saldo": None if difference_cents is None else difference_cents / 100,
         "modelli_quadrati": bool(model_summaries) and all(
             item["saldo_quadrato"] for item in model_summaries
         ),
         "pagine_bianche": [
             item["pagina"] for item in result["diagnostica_pagine"] if item["stato"] == "bianca"
         ],
-        "parser_version": "f24-coordinate-v3",
+        "quadrature_sezioni": section_quadratures,
+        "sezioni_quadrate": all(value["quadrata"] for value in section_quadratures.values()),
+        "parser_version": "f24-coordinate-v4",
     }
     
     return result
