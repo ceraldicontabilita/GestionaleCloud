@@ -13,8 +13,8 @@ from app.database import Database
 from app.models.stati import STATI_PAGATI
 from app.routers.accounting.contabilita_gestionale import _bilancio_verifica_da_registro
 from app.routers.prima_nota_module.common import (
-    ESCLUSIONI_PRIMA_NOTA,
     aggrega_saldo_prima_nota,
+    filtro_saldo_prima_nota,
 )
 from app.services.registrazione_contabile import registra_scrittura_semplice
 from app.utils.error_handler import handle_errors
@@ -513,19 +513,20 @@ async def apertura_nuovo_esercizio(input_data: AperturaEsercizioInput) -> Dict[s
             detail=f"L'esercizio {anno_precedente} non è ancora stato chiuso"
         )
     
-    query_prima_nota = {
-        "data": {"$gte": f"{anno_precedente}-01-01", "$lte": f"{anno_precedente}-12-31"},
-        "status": {"$nin": ["deleted", "archived"]},
-        **ESCLUSIONI_PRIMA_NOTA,
+    intervallo_prima_nota = {
+        "$gte": f"{anno_precedente}-01-01",
+        "$lte": f"{anno_precedente}-12-31",
     }
+    query_cassa = filtro_saldo_prima_nota("prima_nota_cassa", data=intervallo_prima_nota)
+    query_banca = filtro_saldo_prima_nota("prima_nota_banca", data=intervallo_prima_nota)
     saldo_cassa = (
         await aggrega_saldo_prima_nota(
-            db, "prima_nota_cassa", query_prima_nota, anno=anno_precedente
+            db, "prima_nota_cassa", query_cassa, anno=anno_precedente
         )
     )["saldo"]
     saldo_banca = (
         await aggrega_saldo_prima_nota(
-            db, "prima_nota_banca", query_prima_nota, anno=anno_precedente
+            db, "prima_nota_banca", query_banca, anno=anno_precedente
         )
     )["saldo"]
 

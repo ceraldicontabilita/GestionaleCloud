@@ -55,7 +55,7 @@ from io import BytesIO
 import logging
 
 from app.models.stati import STATI_PAGATI
-from app.routers.prima_nota_module.common import CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA
+from app.routers.prima_nota_module.common import CATEGORIE_ESCLUSE, filtro_saldo_prima_nota
 from app.utils.error_handler import handle_errors
 
 # Esclude movimenti soft-deleted (status deleted/archived) e i duplicati POS
@@ -63,11 +63,6 @@ from app.utils.error_handler import handle_errors
 # riepilogo prima nota (finanziaria.py, prima_nota_module/cassa.py, banca.py,
 # sync.py). Prima mancava qui: cancellare un movimento da Prima Nota non lo
 # toglieva dal Totale Attivo del Bilancio, che restava quindi gonfiato.
-PRIMA_NOTA_MATCH = {
-    "status": {"$nin": ["deleted", "archived"]},
-    **ESCLUSIONI_PRIMA_NOTA,
-}
-
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -120,12 +115,14 @@ async def get_stato_patrimoniale(
     # appena impostato, SP e Prima Nota mostravano due saldi diversi).
     from app.routers.prima_nota_module.common import aggrega_saldo_prima_nota
 
-    query_anno = {**PRIMA_NOTA_MATCH, "data": {"$gte": data_inizio, "$lte": data_fine}}
+    intervallo = {"$gte": data_inizio, "$lte": data_fine}
+    query_cassa = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_CASSA, data=intervallo)
+    query_banca = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_BANCA, data=intervallo)
     saldi_cassa = await aggrega_saldo_prima_nota(
-        db, COLLECTION_PRIMA_NOTA_CASSA, query_anno, anno)
+        db, COLLECTION_PRIMA_NOTA_CASSA, query_cassa, anno)
     saldo_cassa = saldi_cassa["saldo"]
     saldi_banca = await aggrega_saldo_prima_nota(
-        db, COLLECTION_PRIMA_NOTA_BANCA, query_anno, anno)
+        db, COLLECTION_PRIMA_NOTA_BANCA, query_banca, anno)
     saldo_banca = saldi_banca["saldo"]
     
     # Crediti (fatture emesse non pagate - dalla collection fatture_emesse)

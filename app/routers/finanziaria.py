@@ -9,8 +9,8 @@ from app.database import Database
 from app.models.stati import STATI_PAGATI
 from app.routers.prima_nota_module.common import (
     CATEGORIE_ESCLUSE,
-    ESCLUSIONI_PRIMA_NOTA,
     aggrega_saldo_prima_nota,
+    filtro_saldo_prima_nota,
 )
 from app.utils.error_handler import handle_errors
 
@@ -41,24 +41,19 @@ async def get_financial_summary(
     # (prima_nota_module/cassa.py, banca.py, sync.py, manutenzione.py).
     # Senza questo filtro i movimenti "eliminati" dall'utente o dal job di
     # dedup restavano comunque sommati qui, gonfiando i totali.
-    prima_nota_match = {
-        "status": {"$nin": ["deleted", "archived"]},
-        **ESCLUSIONI_PRIMA_NOTA,
-    }
-    flusso_economico_match = {
-        "$and": [
-            prima_nota_match,
-            {"$nor": [
-                {"categoria": {"$regex": "versament|prelevament|trasferiment", "$options": "i"}},
-                {"source": "trasferimento_interno"},
-            ]},
-        ]
-    }
+    prima_nota_match_cassa = filtro_saldo_prima_nota("prima_nota_cassa")
+    prima_nota_match_banca = filtro_saldo_prima_nota("prima_nota_banca")
+    esclusione_trasferimenti = {"$nor": [
+        {"categoria": {"$regex": "versament|prelevament|trasferiment", "$options": "i"}},
+        {"source": "trasferimento_interno"},
+    ]}
+    flusso_economico_match_cassa = {"$and": [prima_nota_match_cassa, esclusione_trasferimenti]}
+    flusso_economico_match_banca = {"$and": [prima_nota_match_banca, esclusione_trasferimenti]}
 
     try:
         # Get Prima Nota Cassa totals
         cassa_pipeline = [
-            {"$match": {"$and": [flusso_economico_match, {"data": date_range}]}},
+            {"$match": {"$and": [flusso_economico_match_cassa, {"data": date_range}]}},
             {"$group": {
                 "_id": "$tipo",
                 "total": {"$sum": "$importo"}
@@ -70,7 +65,7 @@ async def get_financial_summary(
 
         # Get Prima Nota Banca totals
         banca_pipeline = [
-            {"$match": {"$and": [flusso_economico_match, {"data": date_range}]}},
+            {"$match": {"$and": [flusso_economico_match_banca, {"data": date_range}]}},
             {"$group": {
                 "_id": "$tipo",
                 "total": {"$sum": "$importo"}
@@ -83,12 +78,13 @@ async def get_financial_summary(
         # Riporto iniziale (impostato a mano dall'utente o cumulato anni
         # precedenti): senza, i saldi qui differivano dalla Prima Nota
         # appena l'utente impostava il riporto al 01/01.
-        saldo_query = {**prima_nota_match, "data": date_range}
+        saldo_query_cassa = filtro_saldo_prima_nota("prima_nota_cassa", data=date_range)
+        saldo_query_banca = filtro_saldo_prima_nota("prima_nota_banca", data=date_range)
         saldi_cassa = await aggrega_saldo_prima_nota(
-            db, "prima_nota_cassa", saldo_query, anno,
+            db, "prima_nota_cassa", saldo_query_cassa, anno,
         )
         saldi_banca = await aggrega_saldo_prima_nota(
-            db, "prima_nota_banca", saldo_query, anno,
+            db, "prima_nota_banca", saldo_query_banca, anno,
         )
         riporto_cassa = saldi_cassa["saldo_precedente"]
         riporto_banca = saldi_banca["saldo_precedente"]

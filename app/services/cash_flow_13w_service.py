@@ -12,8 +12,8 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from app.routers.prima_nota_module.common import (
     COLLECTION_PRIMA_NOTA_BANCA,
     COLLECTION_PRIMA_NOTA_CASSA,
-    ESCLUSIONI_PRIMA_NOTA,
     aggrega_saldo_prima_nota,
+    filtro_saldo_prima_nota,
 )
 
 
@@ -77,16 +77,14 @@ def _aperto(doc: Dict[str, Any]) -> bool:
 
 
 async def _saldo_liquidita(db, riferimento: date) -> Decimal:
-    query = {
-        "status": {"$nin": ["deleted", "archived"]},
-        **ESCLUSIONI_PRIMA_NOTA,
-        "data": {"$gte": f"{riferimento.year}-01-01", "$lte": riferimento.isoformat()},
-    }
+    intervallo = {"$gte": f"{riferimento.year}-01-01", "$lte": riferimento.isoformat()}
+    query_cassa = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_CASSA, data=intervallo)
+    query_banca = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_BANCA, data=intervallo)
     cassa = await aggrega_saldo_prima_nota(
-        db, COLLECTION_PRIMA_NOTA_CASSA, query, anno=riferimento.year
+        db, COLLECTION_PRIMA_NOTA_CASSA, query_cassa, anno=riferimento.year
     )
     banca = await aggrega_saldo_prima_nota(
-        db, COLLECTION_PRIMA_NOTA_BANCA, query, anno=riferimento.year
+        db, COLLECTION_PRIMA_NOTA_BANCA, query_banca, anno=riferimento.year
     )
     return Decimal(str(cassa.get("saldo", 0))) + Decimal(str(banca.get("saldo", 0)))
 

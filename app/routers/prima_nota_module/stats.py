@@ -13,7 +13,7 @@ from app.database import Database
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA,
     COLLECTION_SALDI_INIZIALI,
-    CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA, aggrega_saldo_prima_nota,
+    CATEGORIE_ESCLUSE, aggrega_saldo_prima_nota, filtro_saldo_prima_nota,
     saldi_finanziari,
 )
 
@@ -138,17 +138,17 @@ async def get_prima_nota_stats(
     # Stesse esclusioni di tutte le altre query di riepilogo (§6.4): prima
     # qui i movimenti eliminati (soft-delete) e i duplicati POS venivano
     # ancora sommati, e le stats non tornavano con la Prima Nota.
-    match_filter = {
-        "status": {"$nin": ["deleted", "archived"]},
-        **ESCLUSIONI_PRIMA_NOTA,
-    }
+    cassa_match = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_CASSA)
+    banca_match = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_BANCA)
     if data_da:
-        match_filter["data"] = {"$gte": data_da}
+        cassa_match["data"] = {"$gte": data_da}
+        banca_match["data"] = {"$gte": data_da}
     if data_a:
-        match_filter.setdefault("data", {})["$lte"] = data_a
+        cassa_match.setdefault("data", {})["$lte"] = data_a
+        banca_match.setdefault("data", {})["$lte"] = data_a
 
     cassa_pipeline = [
-        {"$match": match_filter} if match_filter else {"$match": {}},
+        {"$match": cassa_match},
         {"$group": {
             "_id": None,
             "entrate": {"$sum": {"$cond": [{"$eq": ["$tipo", "entrata"]}, "$importo", 0]}},
@@ -159,7 +159,7 @@ async def get_prima_nota_stats(
     cassa_stats = await db[COLLECTION_PRIMA_NOTA_CASSA].aggregate(cassa_pipeline).to_list(1)
     
     banca_pipeline = [
-        {"$match": match_filter} if match_filter else {"$match": {}},
+        {"$match": banca_match},
         {"$group": {
             "_id": None,
             "entrate": {"$sum": {"$cond": [{"$eq": ["$tipo", "entrata"]}, "$importo", 0]}},
@@ -221,11 +221,10 @@ async def get_saldo_finale(
 
     # §6.4: stessa funzione/engine di cassa.py e banca.py (filtri, esclusioni e segno
     # uniformi: niente deleted/archived né categorie escluse; niente to_list illimitato).
-    query = {
-        "data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"},
-        "status": {"$nin": ["deleted", "archived"]},
-        **ESCLUSIONI_PRIMA_NOTA,
-    }
+    query = filtro_saldo_prima_nota(
+        collection,
+        data={"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"},
+    )
     # anno passato ad aggrega: il saldo FINALE include il riporto iniziale
     # (manuale o cumulato) — prima veniva ignorato (anno=None).
     saldi = await aggrega_saldo_prima_nota(db, collection, query, anno=anno)

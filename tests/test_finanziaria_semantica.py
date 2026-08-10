@@ -50,9 +50,11 @@ def test_summary_distingue_flussi_riporti_e_disponibilita(monkeypatch):
 
     result = _run(finanziaria.get_financial_summary(anno=2026))
 
-    assert result["total_income"] == 400.0
+    # Il credito POS lordo da 300 resta prova di riconciliazione ma non è una
+    # disponibilità bancaria reale; la Finanziaria conta solo l'entrata Cassa.
+    assert result["total_income"] == 100.0
     assert result["total_expenses"] == 90.0
-    assert result["balance"] == result["flow_balance"] == 310.0
+    assert result["balance"] == result["flow_balance"] == 10.0
     assert result["opening_balance"] == -90.0
     assert result["saldo_cassa"] == 50.0
     assert result["saldo_banca"] == 170.0

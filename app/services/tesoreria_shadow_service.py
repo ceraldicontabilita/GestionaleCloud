@@ -9,8 +9,8 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional
 
 from app.routers.prima_nota_module.common import (
-    ESCLUSIONI_PRIMA_NOTA,
     aggrega_saldo_prima_nota,
+    filtro_saldo_prima_nota,
 )
 from app.services.pos_evidence import (
     _e_accredito_pos_numia_con_giorno,
@@ -112,9 +112,7 @@ def _aggregato(docs: List[Dict[str, Any]]) -> AggregatoOperativo:
 
 async def _liquidita(db, riferimento: date) -> Liquidita:
     anno = riferimento.year
-    query = {
-        "status": {"$nin": ["deleted", "archived"]},
-        **ESCLUSIONI_PRIMA_NOTA,
+    periodo = {
         "$or": [
             {
                 "anno": anno,
@@ -130,8 +128,10 @@ async def _liquidita(db, riferimento: date) -> Liquidita:
             },
         ],
     }
-    cassa = await aggrega_saldo_prima_nota(db, "prima_nota_cassa", query, anno=anno)
-    banca = await aggrega_saldo_prima_nota(db, "prima_nota_banca", query, anno=anno)
+    query_cassa = filtro_saldo_prima_nota("prima_nota_cassa", **periodo)
+    query_banca = filtro_saldo_prima_nota("prima_nota_banca", **periodo)
+    cassa = await aggrega_saldo_prima_nota(db, "prima_nota_cassa", query_cassa, anno=anno)
+    banca = await aggrega_saldo_prima_nota(db, "prima_nota_banca", query_banca, anno=anno)
     saldo_cassa = Decimal(str(cassa["saldo"]))
     saldo_banca = Decimal(str(banca["saldo"]))
     return Liquidita(

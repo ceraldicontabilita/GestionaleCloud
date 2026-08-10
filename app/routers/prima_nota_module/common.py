@@ -53,25 +53,16 @@ CATEGORIE_BANCA = [
 # reali, quindi non devono mai contribuire a saldi/entrate/uscite.
 CATEGORIE_ESCLUSE = ["POS_DUPLICATO"]
 
-# Source da escludere nei conteggi. Bug corretto 16/07/2026: prima qui era
-# esclusa l'intera categoria "Corrispettivi POS", ma quella categoria la
-# scrivono DUE percorsi diversi: la chiusura POS serale di verifica (source
-# chiusura_pos_mobile — giustamente da escludere, non è un secondo incasso)
-# E la quota POS del corrispettivo XML (source corrispettivo_pos /
-# corrispettivi_sync — che è l'INCASSO REALE in banca, l'unico: l'import
-# dell'estratto conto NON copia gli accrediti POS proprio perché già qui,
-# vedi bank/estratto_conto.py). Risultato: la Prima Nota Banca mostrava
-# solo uscite, con ~204.000€ di incassi POS 2026 spariti dai saldi.
-# La distinzione giusta è per source, non per categoria:
-#  - chiusura_pos_mobile / import_manuale_pos: chiusure serali di VERIFICA
-#    (coerenza col battuto POS), mai un secondo incasso reale.
-#  - estratto_conto_sync: copia integrale del vecchio endpoint di sync
-#    dell'estratto conto reale dentro prima_nota_banca — duplicherebbe sia
-#    i pagamenti fatture (già registrati dai flussi gestionali) sia gli
-#    accrediti POS (già registrati come quota POS del corrispettivo).
-#    L'estratto conto reale vive in estratto_conto_movimenti e serve a
-#    riconciliare, non a sommare (verificato live 16/07/2026: 409 uscite
-#    gen-apr contate due volte per questo).
+# Source da escludere nei conteggi generali:
+#  - chiusura_pos_mobile / import_manuale_pos sono evidenze di verifica POS,
+#    non un secondo movimento finanziario;
+#  - estratto_conto_sync e' la copia legacy dell'estratto conto e
+#    duplicherebbe i movimenti gestionali gia' registrati.
+#
+# La quota POS lorda (corrispettivo_pos/corrispettivi_sync) non e' liquidita'
+# bancaria: apre un credito verso il gestore. Resta visibile nei conti POS
+# dedicati ma viene esclusa dal solo saldo dei conti bancari reali tramite
+# ESCLUSIONI_SALDO_REALE.
 SOURCES_ESCLUSE = ["chiusura_pos_mobile", "import_manuale_pos", "estratto_conto_sync"]
 
 # Esclusioni standard complete della Prima Nota (da spargere con ** nelle
@@ -103,9 +94,38 @@ FILTRO_CREDITO_POS = {"$or": [
 
 # Da unire con ** alle query dei saldi bancari reali.
 ESCLUSIONI_SALDO_REALE = {
+    "categoria": {"$nin": CATEGORIE_ESCLUSE},
     "natura": {"$ne": NATURA_CREDITO_POS},
     "source": {"$nin": SOURCES_ESCLUSE + SOURCES_CREDITO_POS},
 }
+
+
+def esclusioni_saldo_per_collection(collection: str) -> Dict[str, Any]:
+    """Restituisce le esclusioni corrette per il luogo finanziario.
+
+    La cassa usa le esclusioni generali. La banca reale esclude anche i
+    crediti POS lordi, che appartengono ai conti transitori dei gestori e non
+    alla liquidita' BPM/Mastercard finche' non avviene l'accredito.
+    """
+    if collection == COLLECTION_PRIMA_NOTA_BANCA:
+        return {
+            "categoria": {"$nin": list(CATEGORIE_ESCLUSE)},
+            "natura": {"$ne": NATURA_CREDITO_POS},
+            "source": {"$nin": list(SOURCES_ESCLUSE + SOURCES_CREDITO_POS)},
+        }
+    return {
+        "categoria": {"$nin": list(CATEGORIE_ESCLUSE)},
+        "source": {"$nin": list(SOURCES_ESCLUSE)},
+    }
+
+
+def filtro_saldo_prima_nota(collection: str, **extra: Any) -> Dict[str, Any]:
+    """Filtro canonico per qualsiasi saldo/riepilogo di Prima Nota."""
+    return {
+        "status": {"$nin": ["deleted", "archived"]},
+        **esclusioni_saldo_per_collection(collection),
+        **extra,
+    }
 
 
 def clean_mongo_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -216,9 +236,11 @@ async def aggrega_saldo_prima_nota(db, collection: str, query: Dict[str, Any],
                        altrimenti riporto cumulato degli anni precedenti
       saldo_finale = saldo_iniziale + saldo_anno
 
-    Le esclusioni (status deleted/archived, CATEGORIE_ESCLUSE) fanno parte di `query`
-    costruita dal chiamante. Per il riporto: con `query_base_precedente=None` (default,
-    Prima Nota cassa/banca) si applicano le esclusioni standard della Prima Nota;
+    Le esclusioni fanno parte di `query`, costruita dal chiamante tramite
+    filtro_saldo_prima_nota(). Per il riporto: con
+    `query_base_precedente=None` (default, Prima Nota cassa/banca) si applicano
+    automaticamente le esclusioni proprie della collection; per la banca
+    vengono esclusi anche i crediti POS virtuali;
     passando un dict (es. {} per l'estratto conto, che non ha soft-delete né categorie
     escluse) il riporto usa quelle condizioni + data < 1/1/anno.
     Ritorna importi già arrotondati a 2 decimali.
@@ -341,17 +363,15 @@ async def calcola_saldo_anni_precedenti(db, collection: str, anno: int,
     Calcola il saldo cumulativo di tutti gli anni precedenti all'anno specificato.
     Questo è il "riporto" o "saldo iniziale" dell'anno.
 
-    `query_base=None` (default) applica le esclusioni standard della Prima Nota;
-    un dict esplicito (anche vuoto) le sostituisce (usato dall'estratto conto).
+    `query_base=None` (default) applica le esclusioni canoniche della collection
+    (inclusi i crediti POS virtuali per la banca); un dict esplicito, anche
+    vuoto, le sostituisce (usato dall'estratto conto).
     """
     if not anno:
         return 0.0
 
     if query_base is None:
-        query_base = {
-            "status": {"$nin": ["deleted", "archived"]},
-            **ESCLUSIONI_PRIMA_NOTA,
-        }
+        query_base = filtro_saldo_prima_nota(collection)
     query = {**query_base, "data": {"$lt": f"{anno}-01-01"}}
 
     totals = await db[collection].aggregate(_pipeline_entrate_uscite(query)).to_list(1)

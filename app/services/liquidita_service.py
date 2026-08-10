@@ -10,8 +10,8 @@ from datetime import date
 from typing import Any, Dict, Optional
 
 from app.routers.prima_nota_module.common import (
-    ESCLUSIONI_PRIMA_NOTA,
     aggrega_saldo_prima_nota,
+    filtro_saldo_prima_nota,
 )
 
 
@@ -25,16 +25,13 @@ async def calcola_liquidita(
         data_fine = f"{anno}-12-31"
     data_inizio = f"{anno}-01-01"
     intervallo = {"$gte": data_inizio, "$lte": data_fine}
-    pn_query = {
-        "status": {"$nin": ["deleted", "archived"]},
-        **ESCLUSIONI_PRIMA_NOTA,
-        "data": intervallo,
-    }
+    cassa_query = filtro_saldo_prima_nota("prima_nota_cassa", data=intervallo)
+    banca_query = filtro_saldo_prima_nota("prima_nota_banca", data=intervallo)
     cassa = await aggrega_saldo_prima_nota(
-        db, "prima_nota_cassa", pn_query, anno,
+        db, "prima_nota_cassa", cassa_query, anno,
     )
     banca = await aggrega_saldo_prima_nota(
-        db, "prima_nota_banca", pn_query, anno,
+        db, "prima_nota_banca", banca_query, anno,
     )
 
     ec_base = {

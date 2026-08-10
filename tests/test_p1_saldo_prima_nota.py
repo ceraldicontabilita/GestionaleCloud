@@ -48,6 +48,8 @@ def _match(doc, query):
         elif isinstance(v, dict):
             if "$nin" in v and doc.get(k) in v["$nin"]:
                 return False
+            if "$ne" in v and doc.get(k) == v["$ne"]:
+                return False
             if "$lt" in v and not (doc.get(k) is not None and doc.get(k) < v["$lt"]):
                 return False
             if "$gte" in v and not (doc.get(k) is not None and doc.get(k) >= v["$gte"]):
@@ -118,16 +120,16 @@ def test_saldo_con_riporto_anni_precedenti():
     assert s["saldo"] == 230.0              # 150 + 80
 
 
-def test_esclusioni_non_contano():
-    """Semantica corretta 16/07/2026: l'esclusione è per SOURCE, non più per
-    l'intera categoria "Corrispettivi POS" — quella categoria la scrivono sia
-    le chiusure di verifica (chiusura_pos_mobile, da escludere) sia l'incasso
-    POS reale del corrispettivo XML (corrispettivo_pos, da CONTARE: prima
-    veniva buttato via e la banca mostrava solo uscite)."""
+def test_esclusioni_generali_non_contano_in_cassa():
+    """Le esclusioni generali rimuovono copie e righe tecniche.
+
+    In Cassa una riga POS valida può essere una scrittura reale; il saldo Banca
+    usa invece il filtro più stretto verificato nel test successivo.
+    """
     movimenti = [
         {"tipo": "entrata", "importo": 100.0, "data": "2026-03-01", "status": "ok"},
         {"tipo": "entrata", "importo": 999.0, "data": "2026-03-01", "status": "deleted"},
-        # Incasso POS reale da corrispettivo XML: CONTA (bug corretto).
+        # Scrittura POS valida in Cassa: conta.
         {"tipo": "entrata", "importo": 888.0, "data": "2026-03-01", "status": "ok",
          "categoria": "Corrispettivi POS", "source": "corrispettivo_pos"},
         # Chiusura POS serale di verifica: esclusa (non è un secondo incasso).
@@ -142,10 +144,73 @@ def test_esclusioni_non_contano():
          "categoria": "POS_DUPLICATO"},
     ]
     db = _Db(_Coll(movimenti))
-    query = {"status": {"$nin": ["deleted", "archived"]},
-             **common.ESCLUSIONI_PRIMA_NOTA}
-    s = _run(common.aggrega_saldo_prima_nota(db, "prima_nota_banca", query, anno=None))
+    query = common.filtro_saldo_prima_nota("prima_nota_cassa")
+    s = _run(common.aggrega_saldo_prima_nota(db, "prima_nota_cassa", query, anno=None))
     assert s["saldo"] == 988.0  # 100 + 888; deleted/verifica/legacy-EC/duplicato esclusi
+
+
+def test_saldo_banca_reale_esclude_crediti_pos_virtuali():
+    """Il saldo bancario espone solo movimenti reali dell'estratto conto.
+
+    I crediti POS lordi restano disponibili per la riconciliazione, ma non sono
+    liquidità BPM e non devono gonfiare saldo o riepiloghi finanziari.
+    """
+    movimenti = [
+        {"tipo": "entrata", "importo": 100.0, "data": "2026-03-01", "status": "ok",
+         "source": "proiezione_bancaria"},
+        {"tipo": "entrata", "importo": 50.0, "data": "2026-03-02", "status": "ok",
+         "source": "manuale"},
+        {"tipo": "entrata", "importo": 888.0, "data": "2026-03-03", "status": "ok",
+         "categoria": "Corrispettivi POS", "source": "corrispettivo_pos"},
+        {"tipo": "entrata", "importo": 777.0, "data": "2026-03-04", "status": "ok",
+         "categoria": "Corrispettivi POS", "source": "trasferimento_pos"},
+        {"tipo": "entrata", "importo": 666.0, "data": "2026-03-05", "status": "ok",
+         "categoria": "Corrispettivi POS", "source": "corrispettivi_sync"},
+        {"tipo": "entrata", "importo": 555.0, "data": "2026-03-06", "status": "ok",
+         "natura": common.NATURA_CREDITO_POS, "source": "altro_generatore"},
+    ]
+    db = _Db(_Coll(movimenti))
+    query = common.filtro_saldo_prima_nota("prima_nota_banca")
+    s = _run(common.aggrega_saldo_prima_nota(db, "prima_nota_banca", query, anno=None))
+    assert s["saldo"] == 150.0
+
+
+def test_filtro_saldo_distingue_cassa_e_banca():
+    cassa = common.filtro_saldo_prima_nota("prima_nota_cassa")
+    banca = common.filtro_saldo_prima_nota("prima_nota_banca")
+
+    assert "natura" not in cassa
+    assert banca["natura"] == {"$ne": common.NATURA_CREDITO_POS}
+    assert "corrispettivo_pos" not in cassa["source"]["$nin"]
+    assert "corrispettivo_pos" in banca["source"]["$nin"]
+    assert "trasferimento_pos" in banca["source"]["$nin"]
+    assert "corrispettivi_sync" in banca["source"]["$nin"]
+
+
+def test_riporto_banca_esclude_crediti_pos_virtuali_anni_precedenti():
+    movimenti = [
+        {"tipo": "entrata", "importo": 100.0, "data": "2025-06-01", "status": "ok",
+         "source": "proiezione_bancaria"},
+        {"tipo": "entrata", "importo": 500.0, "data": "2025-06-02", "status": "ok",
+         "source": "corrispettivo_pos", "natura": common.NATURA_CREDITO_POS},
+        {"tipo": "entrata", "importo": 50.0, "data": "2026-02-01", "anno": 2026,
+         "status": "ok", "source": "proiezione_bancaria"},
+    ]
+    db = _Db(_Coll(movimenti))
+    query = common.filtro_saldo_prima_nota(
+        "prima_nota_banca",
+        **{
+            "$or": [
+                {"anno": 2026},
+                {"anno": {"$exists": False},
+                 "data": {"$gte": "2026-01-01", "$lte": "2026-12-31"}},
+            ]
+        },
+    )
+    s = _run(common.aggrega_saldo_prima_nota(db, "prima_nota_banca", query, anno=2026))
+    assert s["saldo_anno"] == 50.0
+    assert s["saldo_precedente"] == 100.0
+    assert s["saldo"] == 150.0
 
 
 def test_importo_stringa_convertito():

@@ -12,7 +12,7 @@ import uuid
 from app.database import Database
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA, logger,
-    CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA, aggrega_saldo_prima_nota,
+    CATEGORIE_ESCLUSE, aggrega_saldo_prima_nota, filtro_saldo_prima_nota,
 )
 from .sync import determina_tipo_movimento_fattura
 
@@ -218,19 +218,18 @@ async def recalculate_all_balances(anno: Optional[int] = Query(None)) -> Dict:
     db = Database.get_db()
     
     # §6.4: stessa funzione/engine di cassa/banca/stats (filtri ed esclusioni uniformi).
-    query = {
-        "status": {"$nin": ["deleted", "archived"]},
-        **ESCLUSIONI_PRIMA_NOTA,
-    }
+    query_cassa = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_CASSA)
+    query_banca = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_BANCA)
     if anno:
-        query["data"] = {"$regex": f"^{anno}"}
+        query_cassa["data"] = {"$regex": f"^{anno}"}
+        query_banca["data"] = {"$regex": f"^{anno}"}
 
-    s_cassa = await aggrega_saldo_prima_nota(db, COLLECTION_PRIMA_NOTA_CASSA, query, anno=None)
-    s_banca = await aggrega_saldo_prima_nota(db, COLLECTION_PRIMA_NOTA_BANCA, query, anno=None)
+    s_cassa = await aggrega_saldo_prima_nota(db, COLLECTION_PRIMA_NOTA_CASSA, query_cassa, anno=None)
+    s_banca = await aggrega_saldo_prima_nota(db, COLLECTION_PRIMA_NOTA_BANCA, query_banca, anno=None)
     cassa = {"entrate": s_cassa["totale_entrate"], "uscite": s_cassa["totale_uscite"],
-             "count": await db[COLLECTION_PRIMA_NOTA_CASSA].count_documents(query)}
+             "count": await db[COLLECTION_PRIMA_NOTA_CASSA].count_documents(query_cassa)}
     banca = {"entrate": s_banca["totale_entrate"], "uscite": s_banca["totale_uscite"],
-             "count": await db[COLLECTION_PRIMA_NOTA_BANCA].count_documents(query)}
+             "count": await db[COLLECTION_PRIMA_NOTA_BANCA].count_documents(query_banca)}
 
     saldo_cassa = s_cassa["saldo_anno"]
     saldo_banca = s_banca["saldo_anno"]
