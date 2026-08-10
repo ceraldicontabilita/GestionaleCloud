@@ -44,7 +44,7 @@ def _tx(tid, importo, *, giorno="2026-08-06", tipo="PAYMENT",
 
 def _payout(netto, *, pid=PAYOUT, data="2026-08-07T05:00:00Z"):
     return {"id": pid, "amount": netto, "date": data,
-            "currency": "EUR", "status": "PAID"}
+            "currency": "EUR", "status": "SUCCESSFUL"}
 
 
 # --- Formula ---------------------------------------------------------------
@@ -193,6 +193,43 @@ def test_una_trattenuta_anomala_non_diventa_costo_in_automatico():
 
     assert esito["stato_riconciliazione"] == "commissioni_da_verificare"
     assert _run(db.prima_nota_banca.find_one({"source": "commissioni_sumup"})) is None
+    credito = _run(db.prima_nota_banca.find_one({"source": "trasferimento_pos"}))
+    assert credito["in_transito"] is True
+
+
+def test_un_payout_failed_non_scrive_e_non_chiude_il_credito():
+    db = _db()
+    _scenario_utente(db)
+    payout = {**_payout(98.0), "status": "FAILED"}
+
+    esito = _run(sumup_payout.registra_payout(db, payout))
+
+    assert esito["stato_riconciliazione"] == "payout_fallito"
+    assert esito["scrittura"] == {}
+    assert esito["crediti_chiusi"] == 0
+    credito = _run(db.prima_nota_banca.find_one({"source": "trasferimento_pos"}))
+    assert credito["in_transito"] is True
+    assert _run(db.prima_nota_banca.find_one({"source": "accredito_payout"})) is None
+
+
+def test_rettifica_failed_resta_prova_senza_scritture():
+    db = _db()
+    gruppo = {
+        "payout_id": "RET-FAILED",
+        "date": "2026-08-08",
+        "deduction_amount": 10.0,
+        "status": "FAILED",
+        "tipi": ["REFUND_DEDUCTION"],
+        "record_ids": ["r1"],
+    }
+
+    esito = _run(sumup_payout.registra_rettifica_payout(
+        db, gruppo, transazioni=[_tx("t1", 10.0)]
+    ))
+
+    assert esito["stato_riconciliazione"] == "rettifica_da_verificare"
+    assert esito["scritture"] == {}
+    assert _run(db.prima_nota_banca.find_one({"settlement_id": "sumup:RET-FAILED"})) is None
 
 
 def test_il_payout_di_piu_giorni_chiude_tutti_i_crediti_coperti():

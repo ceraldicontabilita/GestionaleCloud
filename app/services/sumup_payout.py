@@ -163,11 +163,18 @@ async def registra_payout(db, grezzo: Dict[str, Any], *,
 
     # Senza transazioni collegate non si sa cosa copre l'accredito: agganciarlo
     # "per importo simile" e' proprio l'errore da evitare.
-    coperto = bool(componenti["giorni"])
-    stato = "riconciliato" if coperto else "payout_senza_transazioni"
+    collegato = bool(componenti["giorni"])
+    coperto = collegato and payout["stato"] == STATO_VALIDO
+    if payout["stato"] == "FAILED":
+        stato = "payout_fallito"
+    elif payout["stato"] != STATO_VALIDO:
+        stato = "payout_da_verificare"
+    else:
+        stato = "riconciliato" if collegato else "payout_senza_transazioni"
     if coperto and abs(commissione) > max(payout["netto"] * 0.1, 5.0):
         # Una trattenuta anomala non va scritta a costo in automatico.
         stato = "commissioni_da_verificare"
+    coperto = stato == "riconciliato"
 
     documento = {
         **payout,
@@ -264,6 +271,17 @@ async def registra_rettifica_payout(
         {"$set": documento, "$setOnInsert": {"created_at": now}},
         upsert=True,
     )
+
+    if documento["stato_riconciliazione"] != "rettifica_confermata":
+        return {
+            "success": True,
+            "payout_id": payout_id,
+            "data": data_payout,
+            "rettifica": importo,
+            "giorni": giorni,
+            "stato_riconciliazione": documento["stato_riconciliazione"],
+            "scritture": {},
+        }
 
     settlement_id = f"sumup:{payout_id}"
     comune = {

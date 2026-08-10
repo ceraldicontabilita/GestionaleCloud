@@ -432,6 +432,50 @@ def raggruppa_payouts(righe: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return sorted(risultati, key=lambda g: (g.get("date") or "", g["payout_id"]))
 
 
+def accrediti_payout_per_giorno(
+    gruppi: Iterable[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Unifica i movimenti SumUp per data effettiva di accredito.
+
+    Soltanto i gruppi interamente ``SUCCESSFUL`` entrano negli importi. Quelli
+    falliti o misti restano visibili come prove da verificare, senza diventare
+    accrediti contabili.
+    """
+    giorni: Dict[str, Dict[str, Any]] = {}
+    for gruppo in gruppi:
+        data_accredito = str(gruppo.get("date") or "")[:10]
+        if len(data_accredito) != 10:
+            continue
+        giorno = giorni.setdefault(data_accredito, {
+            "data": data_accredito,
+            "accredito_mastercard": 0.0,
+            "commissioni": 0.0,
+            "gruppi": 0,
+            "rettifiche": 0,
+            "da_verificare": 0,
+            "payout_ids": [],
+        })
+        giorno["gruppi"] += 1
+        if gruppo.get("solo_rettifica"):
+            giorno["rettifiche"] += 1
+        payout_id = str(gruppo.get("payout_id") or "")
+        if payout_id and payout_id not in giorno["payout_ids"]:
+            giorno["payout_ids"].append(payout_id)
+        if gruppo.get("status") != STATO_VALIDO:
+            giorno["da_verificare"] += 1
+            continue
+        giorno["accredito_mastercard"] += float(
+            gruppo.get("movimento_mastercard") or 0
+        )
+        giorno["commissioni"] += float(gruppo.get("fee_total") or 0)
+
+    for giorno in giorni.values():
+        giorno["accredito_mastercard"] = round(giorno["accredito_mastercard"], 2)
+        giorno["commissioni"] = round(giorno["commissioni"], 2)
+        giorno["payout_ids"].sort()
+    return [giorni[data] for data in sorted(giorni)]
+
+
 # --------------------------------------------------------------------------
 # Scrittura
 # --------------------------------------------------------------------------
@@ -583,6 +627,7 @@ async def sincronizza_payouts(
         "payout": sum(g.get("tipo") == "payout" for g in risultati),
         "rettifiche": sum(g.get("tipo") == "rettifica" for g in risultati),
         "transazioni_collegate": codici_collegati,
+        "accrediti_per_giorno": accrediti_payout_per_giorno(gruppi),
     }
 
 

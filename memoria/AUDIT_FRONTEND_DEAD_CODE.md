@@ -3,7 +3,7 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 179
+**Totale file analizzati:** 180
 
 | Classificazione | File |
 |---|---:|
@@ -12,7 +12,7 @@
 | COMPONENTE_USATO | 90 |
 | MODALE_USATO | 4 |
 | HOOK_USATO | 3 |
-| TEST_ONLY | 27 |
+| TEST_ONLY | 28 |
 | DINAMICO_DA_VERIFICARE | 23 |
 | ORFANO_ELIMINABILE | 0 |
 
@@ -57,7 +57,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | File | Classificazione | Importato da (n. file) |
 |---|---|---:|
 | `frontend/src/App.jsx` | ENTRYPOINT | 1 |
-| `frontend/src/api.js` | COMPONENTE_USATO | 102 |
+| `frontend/src/api.js` | COMPONENTE_USATO | 103 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/AssociaAssegnoFattura.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/AssociaMovimentoBanca.jsx` | COMPONENTE_USATO | 1 |
@@ -76,7 +76,8 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ModalFattura.jsx` | MODALE_USATO | 8 |
 | `frontend/src/components/NotificationBell.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/PageLayout.jsx` | COMPONENTE_USATO | 44 |
-| `frontend/src/components/PannelloSumUp.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/components/PannelloSumUp.jsx` | COMPONENTE_USATO | 2 |
+| `frontend/src/components/PannelloSumUp.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/components/PaypalTransactionDetailModal.jsx` | MODALE_USATO | 1 |
 | `frontend/src/components/Portal.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/UploadStatusBar.jsx` | COMPONENTE_USATO | 1 |

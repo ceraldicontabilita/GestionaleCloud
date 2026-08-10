@@ -159,6 +159,40 @@ export default function PannelloSumUp() {
               </table>
             </div>
           )}
+          {sync.payouts?.success === false && (
+            <div style={{ marginTop: 10, color: COLORS.warning || '#92400e', fontSize: 13 }}>
+              Vendite acquisite, ma accrediti non disponibili: {sync.payouts.errore || 'verifica autorizzazione payouts.read'}.
+            </div>
+          )}
+          {(sync.payouts?.accrediti_per_giorno || []).length > 0 && (
+            <div style={{ marginTop: 14, overflowX: 'auto' }}>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>
+                Accrediti SumUp unificati per giorno effettivo
+              </div>
+              <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left' }}>Data accredito</th>
+                    <th style={{ textAlign: 'right' }}>Mastercard</th>
+                    <th style={{ textAlign: 'right' }}>Commissioni</th>
+                    <th style={{ textAlign: 'right' }}>Gruppi</th>
+                    <th style={{ textAlign: 'right' }}>Da verificare</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sync.payouts.accrediti_per_giorno.map((g) => (
+                    <tr key={g.data}>
+                      <td>{dataIT(g.data)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 600 }}>{euro(g.accredito_mastercard)}</td>
+                      <td style={{ textAlign: 'right' }}>{euro(g.commissioni)}</td>
+                      <td style={{ textAlign: 'right' }}>{g.gruppi}</td>
+                      <td style={{ textAlign: 'right' }}>{g.da_verificare || 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

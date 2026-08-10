@@ -3705,7 +3705,14 @@ async def conferma_provvisorie_multiple(data: Dict = Body(...)) -> Dict:
     pagata, esclusa, pagamento parziale). Un rifiuto su una fattura non ferma
     le altre: l'esito arriva riga per riga, con il motivo di ogni scarto.
     """
-    fattura_ids = [str(f) for f in (data.get("fattura_ids") or []) if f]
+    ids_raw = data.get("fattura_ids") or []
+    if not isinstance(ids_raw, list):
+        raise HTTPException(status_code=400, detail="fattura_ids deve essere una lista")
+    # Deduplica prima del limite: cento ripetizioni accidentali dello stesso
+    # ID non devono trasformare una richiesta valida in un errore artificiale.
+    fattura_ids = list(dict.fromkeys(
+        str(f).strip() for f in ids_raw if str(f or "").strip()
+    ))
     metodo = str(data.get("metodo") or "").strip().lower()
 
     if not fattura_ids:
@@ -3723,7 +3730,7 @@ async def conferma_provvisorie_multiple(data: Dict = Body(...)) -> Dict:
 
     esiti = []
     riuscite = 0
-    for fattura_id in dict.fromkeys(fattura_ids):  # dedup preservando l'ordine
+    for fattura_id in fattura_ids:
         try:
             if metodo == "cassa":
                 await conferma_fattura_provvisoria({
@@ -3745,12 +3752,12 @@ async def conferma_provvisorie_multiple(data: Dict = Body(...)) -> Dict:
                 "success": False,
                 "detail": str(exc.detail),
             })
-        except Exception as exc:  # una fattura rotta non ferma il lotto
+        except Exception:  # una fattura rotta non ferma il lotto
             logger.exception(f"Conferma multipla: errore su {fattura_id}")
             esiti.append({
                 "fattura_id": fattura_id,
                 "success": False,
-                "detail": str(exc),
+                "detail": "Errore interno durante l'elaborazione",
             })
 
     scartate = len(esiti) - riuscite

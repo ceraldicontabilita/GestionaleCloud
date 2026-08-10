@@ -128,7 +128,7 @@ def test_il_payout_sposta_il_denaro_dal_credito_alla_mastercard():
 
     _run(sumup_payout.registra_payout(db, {
         "id": PAYOUT, "amount": 98.0, "date": "2026-08-07T05:00:00Z",
-        "currency": "EUR", "status": "PAID",
+        "currency": "EUR", "status": "SUCCESSFUL",
     }))
 
     dopo = _run(saldi_finanziari(db))
