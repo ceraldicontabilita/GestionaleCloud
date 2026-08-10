@@ -7,6 +7,7 @@ L'associazione a fattura e' automatica solo quando la candidata e' univoca.
 """
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -15,6 +16,10 @@ from typing import Any, Dict, Iterable, List, Optional
 from app.routers.bank.assegni_auto_match import TOLL, _f, _load_open_invoices_by_piva
 from app.services.scritture_contabili import scrivi_movimento
 from app.services.assegni_fattura_intent import capienza_assegno_fattura
+from app.services.accounting_relation_writers import record_check_reconciliation
+
+
+logger = logging.getLogger(__name__)
 
 
 _PATTERN_NUMERO = (
@@ -430,6 +435,18 @@ async def collega_assegno_riconciliato_a_fatture(
             "confirmed_at": now,
         }},
     )
+    try:
+        await record_check_reconciliation(
+            db,
+            cheque=assegno_aggiornato,
+            movement=movimento,
+            invoice_links=links,
+        )
+    except Exception:
+        logger.exception(
+            "Errore registrazione relazioni per assegno %s",
+            assegno.get("id"),
+        )
     return {
         "collegato": bool(applicate),
         "quote_applicate": applicate,

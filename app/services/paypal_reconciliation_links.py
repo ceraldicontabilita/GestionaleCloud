@@ -18,6 +18,10 @@ from app.services.paypal_invoice_matching import (
     invoice_number,
     transaction_amount,
 )
+from app.services.accounting_relation_writers import (
+    record_paypal_bank_chain,
+    record_paypal_invoice_link,
+)
 
 
 COLL_TRANSACTIONS = "paypal_transactions"
@@ -179,6 +183,18 @@ async def finalizza_transazione_paypal_se_completa(
             "fattura_pagamento_finalizzato_at": now,
         }},
     )
+    try:
+        await record_paypal_bank_chain(
+            db,
+            transaction=transaction,
+            invoice=invoice,
+            movement=movement,
+            amount=transaction_amount(transaction),
+        )
+    except Exception:
+        logger.exception(
+            "Errore registrazione catena PayPal/banca %s", transaction_id
+        )
     return {
         "finalizzata": True,
         "transaction_id": transaction_id,
@@ -237,6 +253,27 @@ async def collega_transazione_a_fattura(
         },
         "$addToSet": {"paypal_transaction_ids": transaction_id},
     })
+    try:
+        relation_evidence = []
+        for item in evaluation.get("evidenze") or []:
+            if isinstance(item, dict):
+                relation_evidence.append(item)
+            elif str(item or "").strip():
+                relation_evidence.append({
+                    "type": "paypal_match",
+                    "value": str(item).strip(),
+                })
+        await record_paypal_invoice_link(
+            db,
+            transaction=transaction,
+            invoice=invoice,
+            amount=transaction_amount(transaction),
+            evidence=relation_evidence,
+        )
+    except Exception:
+        logger.exception(
+            "Errore registrazione relazione PayPal/fattura %s", transaction_id
+        )
     finalization = await finalizza_transazione_paypal_se_completa(db, transaction_id)
     return {
         "collegata": True,

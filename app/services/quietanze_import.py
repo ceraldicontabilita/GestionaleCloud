@@ -27,6 +27,7 @@ COLL_CALENDARIO = "calendario_fiscale"
 
 # Codici ravvedimento da escludere dal confronto tributi — fonte unica condivisa.
 from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
+from app.services.accounting_relation_writers import record_f24_receipt_link
 from app.services.f24_payment_evidence import patch_quietanza_associata
 
 # Codici tributo → tipo di scadenza del calendario fiscale (app/routers/
@@ -267,6 +268,22 @@ async def importa_quietanza_bytes(
         await db[COLL_QUIETANZE].update_one(
             {"id": file_id}, {"$push": {"f24_associati": f24["id"]}}
         )
+        try:
+            await record_f24_receipt_link(
+                db,
+                f24=f24,
+                receipt_id=file_id,
+                protocol=protocollo,
+                amount=saldo_quietanza,
+                matched_tributes=tributi_trovati,
+                total_tributes=len(tributi_f24_principali),
+            )
+        except Exception:
+            logger.exception(
+                "Errore registrazione relazione quietanza %s / F24 %s",
+                file_id,
+                f24.get("id"),
+            )
         # La quietanza collega il documento, ma la scadenza diventa completata
         # solo dopo l'addebito bancario. Prima il calendario veniva chiuso qui,
         # creando falsi pagamenti.

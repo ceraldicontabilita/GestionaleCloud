@@ -19,6 +19,7 @@ from app.routers.bonifici_module.classification import (
 )
 from app.services.bonifici_pdf_ingest import arricchisci_nomi_salari_da_cedolini
 from app.services.identity_matching import nome_presente_nel_testo, nome_tokens
+from app.services.accounting_relation_writers import record_salary_reconciliation
 
 logger = logging.getLogger(__name__)
 
@@ -298,6 +299,20 @@ async def associa_bonifici_stipendi(
         riga["importo_bonifico"] = pagato_totale
         riga["saldo"] = 0.0 if completata else saldo
         riga["riconciliato"] = completata
+        try:
+            await record_salary_reconciliation(
+                db,
+                salary_entry=riga,
+                movement=movimento,
+                amount=importo,
+                employee_name=_nome_riga_stipendio(riga),
+            )
+        except Exception:
+            logger.exception(
+                "Errore registrazione relazione stipendio %s / movimento %s",
+                riga.get("id"),
+                movimento.get("id"),
+            )
         associati += 1
         righe_completate += int(completata)
         if len(dettaglio) < 40:

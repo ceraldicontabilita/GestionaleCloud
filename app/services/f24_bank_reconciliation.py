@@ -6,6 +6,7 @@ mai la prova bancaria.
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -13,6 +14,10 @@ from app.db_collections import COLL_ESTRATTO_CONTO, COLL_F24
 from app.services.bank_evidence import filtro_solo_evidenza_ufficiale
 from app.services.estratto_conto_bpm_parser import riconcilia_f24_con_estratto
 from app.services.f24_payment_evidence import patch_pagamento_banca
+from app.services.accounting_relation_writers import record_f24_bank_allocations
+
+
+logger = logging.getLogger(__name__)
 
 
 def _filtro_f24_aperti(anno: Optional[int] = None) -> Dict[str, Any]:
@@ -115,9 +120,27 @@ async def riconcilia_f24_tributi_banca(
                 "updated_at": now,
             }
         await db[COLL_F24].update_one({"id": f24.get("id")}, {"$set": patch})
+        relation_allocations = list(f24.get("allocazioni_banca") or [])
+        if not relation_allocations:
+            movimento = f24.get("movimento_bancario") or {}
+            movimento_id = movimento.get("id") or movimento.get("fingerprint")
+            if movimento_id:
+                relation_allocations = [{
+                    "movimento_id": str(movimento_id),
+                    "importo": abs(float(movimento.get("importo") or 0)),
+                    "codici_tributo": [],
+                }]
+        try:
+            await record_f24_bank_allocations(
+                db, f24=f24, allocations=relation_allocations
+            )
+        except Exception:
+            logger.exception(
+                "Errore registrazione relazione bancaria F24 %s", f24.get("id")
+            )
 
     for f24 in risultato.get("f24_parzialmente_pagati", []):
-        allocazioni = f24.get("allocazioni_banca", [])
+        allocazioni = f24.get("allocazioni_banca") or []
         movimenti_associati.update(
             str(a.get("movimento_id")) for a in allocazioni if a.get("movimento_id")
         )
@@ -135,6 +158,15 @@ async def riconcilia_f24_tributi_banca(
                 "updated_at": now,
             }},
         )
+        try:
+            await record_f24_bank_allocations(
+                db, f24=f24, allocations=allocazioni
+            )
+        except Exception:
+            logger.exception(
+                "Errore registrazione relazione bancaria parziale F24 %s",
+                f24.get("id"),
+            )
 
     for movimento_id in movimenti_associati:
         f24_ids = []

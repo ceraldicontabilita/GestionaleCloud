@@ -44,9 +44,10 @@ def test_servizio_associa_solo_il_codice_tributo_pagato_e_marca_la_prova_bancari
         risultato = await riconcilia_f24_tributi_banca(db, anno=2026)
         f24 = await db.f24_unificato.find_one({"id": "f24-isa"}, {"_id": 0})
         movimento = await db.estratto_conto_movimenti.find_one({"id": "mov-2001"}, {"_id": 0})
-        return risultato, f24, movimento
+        relazioni = await db.entity_relations.find({}, {"_id": 0}).to_list(length=10)
+        return risultato, f24, movimento, relazioni
 
-    risultato, f24, movimento = _run(scenario())
+    risultato, f24, movimento, relazioni = _run(scenario())
     assert risultato["f24_parziali"] == 1
     assert risultato["movimenti_associati"] == 1
     assert f24["pagato"] is False
@@ -54,6 +55,9 @@ def test_servizio_associa_solo_il_codice_tributo_pagato_e_marca_la_prova_bancari
     assert f24["allocazioni_banca"][0]["codici_tributo"] == ["2001"]
     assert movimento["riconciliato"] is True
     assert movimento["tipo_riconciliazione"] == "f24_tributi"
+    assert len(relazioni) == 1
+    assert relazioni[0]["relation_type"] == "settles_f24_model"
+    assert relazioni[0]["amount_cents"] == 461350
 
 
 def test_servizio_non_sceglie_fra_due_f24_compatibili():

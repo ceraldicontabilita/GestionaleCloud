@@ -76,6 +76,10 @@ def test_importo_api_senza_lordo_collega_sui_due_lati_ma_attende_banca():
         assert invoice["stato_finanziario"] == "in_attesa_estratto_conto"
         assert invoice["pagato"] is False
         assert await db.prima_nota_banca.count_documents({}) == 0
+        relations = await db.entity_relations.find({}, {"_id": 0}).to_list(length=10)
+        assert [row["relation_type"] for row in relations] == [
+            "allocates_paypal_payment"
+        ]
 
     _run(scenario())
 
@@ -116,6 +120,11 @@ def test_estratto_prima_fattura_dopo_chiude_catena_e_prima_nota_una_sola_volta()
         assert refreshed["stato_finanziario"] == "riconciliato"
         assert refreshed["paypal_movimento_banca_id"] == "EC-PAY-1"
         assert await db.prima_nota_banca.count_documents({}) == 1
+        relations = await db.entity_relations.find({}, {"_id": 0}).to_list(length=10)
+        assert {row["relation_type"] for row in relations} == {
+            "allocates_paypal_payment", "settles_paypal_transaction",
+            "proves_invoice_payment",
+        }
 
     _run(scenario())
 
