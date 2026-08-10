@@ -36,7 +36,7 @@ function tokenPerRuolo(role) {
 
 async function getScadenze(request, token) {
   const response = await request.get(
-    `${BASE}/api/scadenze/tutte?anno=2026&include_passate=true&limit=50`,
+    `${BASE}/api/scadenze/tutte?anno=2026&tipo=CUSTOM&include_passate=true&limit=50`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!response.ok()) throw new Error(`GET scadenze fallita: HTTP ${response.status()}`);
@@ -63,9 +63,23 @@ async function getScadenze(request, token) {
   // evita che il token di test compaia nell'access log del server.
   await page.routeWebSocket('**', socket => socket.close());
   await page.goto(`${BASE}/scadenze`, { waitUntil: 'networkidle', timeout: 30000 });
-  const riga = page.locator('tr, [data-testid], div').filter({
-    hasText: 'COLLAUDO E2E - cancellami',
-  }).last();
+  // La pagina limita la risposta a 50 elementi. Con tutte le fatture e le
+  // scadenze fiscali il record isolato puo' essere correttamente salvato ma
+  // restare fuori dalla prima pagina: il filtro CUSTOM rende deterministico
+  // il collaudo senza modificare il contratto di produzione.
+  await page
+    .locator('select')
+    .filter({ has: page.locator('option[value="CUSTOM"]') })
+    .selectOption('CUSTOM');
+  // Limita la ricerca alla tabella Scadenze: il precedente selettore generico
+  // poteva scegliere il div interno della descrizione, che non contiene il
+  // pulsante. La riga e il relativo comando restano così legati allo stesso
+  // record di prova senza dipendere dalla struttura di contenitori della pagina.
+  const riga = page
+    .getByTestId('scadenze-table')
+    .locator('tbody tr')
+    .filter({ hasText: 'COLLAUDO E2E - cancellami' })
+    .first();
   await riga.getByTitle('Elimina').click();
   await page.getByTestId('confirm-dialog-cancel').click();
 

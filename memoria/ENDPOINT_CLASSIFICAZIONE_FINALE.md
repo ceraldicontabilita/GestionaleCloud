@@ -158,10 +158,10 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/assistente/facts/driver-assignment` | assistente_operativo | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/assistente/knowledge-sources/official` | assistente_operativo | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/assistente/observations` | assistente_operativo | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/assistente/questions/{question_id}/answer` | assistente_operativo | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/assistente/questions/{question_id}/answer` | assistente_operativo | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/assistente/scan/all` | assistente_operativo | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/assistente/scan/employees` | assistente_operativo | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/assistente/scan/f24` | assistente_operativo | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/assistente/scan/f24` | assistente_operativo | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/assistente/scan/payroll` | assistente_operativo | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/assistente/tax-obligations` | assistente_operativo | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/auth/login` | auth | sì | — | — | — | sì | tenere | in uso: FE |

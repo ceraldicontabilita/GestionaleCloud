@@ -84,6 +84,24 @@ async def health():
     }
 
 
+@app.get("/api/system/lock-status")
+async def system_lock_status():
+    """Replica il contratto read-only esposto dall'applicazione reale.
+
+    Il collaudo delle pagine deve usare gli stessi endpoint del deploy, anche
+    quando il server isolato non importa ``app.main`` per evitare bootstrap e
+    connessioni esterne. Lo stato deriva dal lock reale del router Documenti.
+    """
+    from app.routers.documenti import get_current_operation, is_email_operation_running
+
+    locked = is_email_operation_running()
+    return {
+        "email_locked": locked,
+        "operation": get_current_operation(),
+        "can_start_email_operation": not locked,
+    }
+
+
 if not DIST.is_dir():
     raise RuntimeError("frontend/dist assente: eseguire prima il build frontend")
 
