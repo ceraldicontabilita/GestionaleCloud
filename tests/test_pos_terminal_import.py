@@ -1,6 +1,7 @@
 import io
 
 import openpyxl
+import pytest
 
 from app.services.pos_terminal_import import parse_pos_terminal_file
 
@@ -34,6 +35,33 @@ def test_xlsx_pos_trova_header_alla_terza_riga():
     result = parse_pos_terminal_file(buffer.getvalue(), "Export_Transazioni_giugno_2026.xlsx")
 
     assert result["daily_totals"] == {"2026-06-03": 15.4}
+
+
+def test_csv_pos_deduplica_id_transazione_prima_dei_totali():
+    content = (
+        "Data e ora;Importo;Tipo transazione;Stato operazione;ID Transazione\n"
+        "03/06/2026 08:10:00;15,40;Acquisto;Acquisto approvato;TX-1\n"
+        "03/06/2026 08:10:00;15,40;Acquisto;Acquisto approvato;TX-1\n"
+    ).encode("utf-8")
+
+    result = parse_pos_terminal_file(content, "Export_Transazioni_giugno_2026.csv")
+
+    assert result["source_rows"] == 2
+    assert result["rows"] == 1
+    assert result["duplicates"] == 1
+    assert result["approved"] == 1
+    assert result["daily_totals"] == {"2026-06-03": 15.4}
+
+
+def test_csv_pos_blocca_stesso_id_con_importi_diversi():
+    content = (
+        "Data e ora;Importo;Tipo transazione;Stato operazione;ID Transazione\n"
+        "03/06/2026 08:10:00;15,40;Acquisto;Acquisto approvato;TX-1\n"
+        "03/06/2026 08:10:00;16,40;Acquisto;Acquisto approvato;TX-1\n"
+    ).encode("utf-8")
+
+    with pytest.raises(ValueError, match="ID transazione POS contraddittorio TX-1"):
+        parse_pos_terminal_file(content, "Export_Transazioni_giugno_2026.csv")
 
 
 def test_file_commissioni_viene_instradato_senza_essere_un_export_transazioni():

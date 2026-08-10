@@ -153,17 +153,47 @@ def parse_pos_terminal_file(content: bytes, filename: str) -> Dict[str, Any]:
         raise ValueError("Formato POS supportato: CSV o XLSX")
 
     transactions: List[Dict[str, Any]] = []
+    by_key: Dict[str, Dict[str, Any]] = {}
+    source_rows = 0
+    duplicates = 0
     invalid = 0
     for row in rows:
+        source_rows += 1
         try:
             normalized = _normalizza_row(row, filename)
         except (TypeError, ValueError):
             invalid += 1
             continue
-        if normalized:
-            transactions.append(normalized)
-        else:
+        if not normalized:
             invalid += 1
+            continue
+
+        key = normalized["transaction_key"]
+        previous = by_key.get(key)
+        if previous is not None:
+            # Lo stesso ID transazione non puo' descrivere due fatti diversi.
+            # Un duplicato identico viene contato per audit ma escluso dai
+            # totali; un duplicato contraddittorio blocca l'importazione.
+            comparable = (
+                "transaction_id", "data", "importo", "stato",
+                "tipo_transazione", "provider", "terminale", "mid",
+                "punto_vendita", "id_punto_vendita", "circuito_carta",
+            )
+            conflicts = [
+                field for field in comparable
+                if previous.get(field) != normalized.get(field)
+            ]
+            if conflicts:
+                tx_id = normalized.get("transaction_id") or key[:12]
+                raise ValueError(
+                    "ID transazione POS contraddittorio "
+                    f"{tx_id}: campi diversi {', '.join(conflicts)}"
+                )
+            duplicates += 1
+            continue
+
+        by_key[key] = normalized
+        transactions.append(normalized)
 
     if not transactions:
         raise ValueError("Nessuna transazione POS riconosciuta")
@@ -182,6 +212,8 @@ def parse_pos_terminal_file(content: bytes, filename: str) -> Dict[str, Any]:
                           for (g, t), v in sorted(per_terminale.items())},
         "daily_totals": {key: round(value, 2) for key, value in sorted(daily.items())},
         "rows": len(transactions),
+        "source_rows": source_rows,
+        "duplicates": duplicates,
         "approved": sum(1 for item in transactions if item["stato"] in _APPROVED_STATUSES),
         "invalid": invalid,
     }
@@ -246,13 +278,16 @@ async def importa_pos_terminal_file(db, content: bytes, filename: str, *, drive_
             "filename": filename,
             "file_hash": hashlib.sha256(content).hexdigest(),
             "rows": parsed["rows"],
+            "source_rows": parsed["source_rows"],
+            "duplicates": parsed["duplicates"],
             "approved": parsed["approved"],
             "updated_at": now,
         }},
         upsert=True,
     )
     return {
-        "rows": parsed["rows"], "approved": parsed["approved"],
+        "rows": parsed["rows"], "source_rows": parsed["source_rows"],
+        "duplicates": parsed["duplicates"], "approved": parsed["approved"],
         "inserted": inserted, "updated": updated,
         "days": len(totals), "daily_totals": totals,
     }
