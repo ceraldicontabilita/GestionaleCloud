@@ -540,6 +540,11 @@ class Database:
         )
         # Dedup cross-canale documents_inbox per impronta md5.
         await _safe_index("documents_inbox", "file_hash", sparse=True, name="idx_docs_inbox_hash")
+        await _safe_index("drive_folder_registry", "area", unique=True, name="idx_drive_folder_registry_area")
+        await _safe_index("drive_sync_state", "key", unique=True, name="idx_drive_sync_state_key")
+        await _safe_index("drive_sync_runs", [("created_at", -1)], name="idx_drive_sync_runs_created")
+        await _safe_index("tax_code_registry", "code", unique=True, name="idx_tax_code_registry_code")
+        await _safe_index("tax_code_registry_versions", "version_id", unique=True, name="idx_tax_registry_version")
 
         # --- Assistente Ceraldi: memoria operativa separata dai domini ---
         # Ogni record ha un id deterministico: la stessa evidenza puo' essere

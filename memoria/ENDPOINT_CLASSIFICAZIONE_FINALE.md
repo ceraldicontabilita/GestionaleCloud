@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1087 · tenere: 700 · verificare: 363 · admin-only (migrazione/manutenzione): 24
+**Totale endpoint:** 1092 · tenere: 703 · verificare: 365 · admin-only (migrazione/manutenzione): 24
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -408,6 +408,9 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/documenti/documento/{doc_id}/download` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/documenti/documento/{doc_id}/processa` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti/drive/catalog` | documenti | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/documenti/drive/fiscal/discover` | documenti | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/documenti/drive/fiscal/status` | documenti | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/documenti/drive/fiscal/sync` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/documenti/drive/sync` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/documenti/elimina-processati` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/documenti/lista` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
@@ -426,6 +429,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/documenti/sync-estratti-conto` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/documenti/sync-f24-automatico` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti/task/{task_id}` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/documenti/tax-codes/status` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/documenti/tax-codes/sync` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/documenti/telegram/status` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/documenti/telegram/test` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/documenti/ultimo-sync` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1087 endpoint** in **113 gruppi**.
+> Totale **1092 endpoint** in **113 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 657 · ext esterni = 89 · — da verificare = 341
+**Riepilogo uso:** ✓ frontend = 657 · ext esterni = 89 · — da verificare = 346
 
 ## AI Parser  (11)
 
@@ -563,7 +563,7 @@
 | POST | `/api/document-ai/process-classified-email` | — | document_ai |
 | POST | `/api/document-ai/reprocess-and-save` | — | document_ai |
 
-## Documenti  (31)
+## Documenti  (36)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -576,6 +576,9 @@
 | GET | `/api/documenti/documento/{doc_id}/download` | ✓ | documenti |
 | POST | `/api/documenti/documento/{doc_id}/processa` | — | documenti |
 | GET | `/api/documenti/drive/catalog` | ✓ | documenti |
+| POST | `/api/documenti/drive/fiscal/discover` | — | documenti |
+| GET | `/api/documenti/drive/fiscal/status` | — | documenti |
+| POST | `/api/documenti/drive/fiscal/sync` | — | documenti |
 | POST | `/api/documenti/drive/sync` | ✓ | documenti |
 | POST | `/api/documenti/elimina-processati` | — | documenti |
 | GET | `/api/documenti/lista` | ✓ | documenti |
@@ -594,6 +597,8 @@
 | POST | `/api/documenti/sync-estratti-conto` | — | documenti |
 | POST | `/api/documenti/sync-f24-automatico` | ✓ | documenti |
 | GET | `/api/documenti/task/{task_id}` | — | documenti |
+| GET | `/api/documenti/tax-codes/status` | — | documenti |
+| POST | `/api/documenti/tax-codes/sync` | — | documenti |
 | GET | `/api/documenti/telegram/status` | — | documenti |
 | POST | `/api/documenti/telegram/test` | — | documenti |
 | GET | `/api/documenti/ultimo-sync` | — | documenti |

@@ -39,6 +39,14 @@ _AREA_ALIASES = {
     "fattura_xml": ("fatture",),
 }
 
+_runtime_entries: list[dict[str, Any]] = []
+
+
+def set_runtime_folders(entries: list[dict[str, Any]]) -> None:
+    """Aggiorna il registro scoperto senza mutare configurazioni o segreti."""
+    global _runtime_entries
+    _runtime_entries = [dict(entry) for entry in entries if isinstance(entry, dict)]
+
 
 def _slug(value: Any) -> str:
     text = str(value or "").strip().lower()
@@ -48,14 +56,20 @@ def _slug(value: Any) -> str:
 def _registry_entries() -> list[dict[str, Any]]:
     raw = (settings.DRIVE_FOLDER_REGISTRY_JSON or "").strip()
     if not raw:
-        return []
+        return list(_runtime_entries)
     try:
         payload = json.loads(raw)
     except (TypeError, ValueError):
         return []
     if isinstance(payload, dict):
         payload = payload.get("folders", [])
-    return [entry for entry in payload if isinstance(entry, dict)] if isinstance(payload, list) else []
+    configured = [entry for entry in payload if isinstance(entry, dict)] if isinstance(payload, list) else []
+    # Il valore scoperto e persistito prevale sul JSON storico per la stessa
+    # area; il catalogo pubblico continua a non esporre gli ID.
+    merged = {_slug(entry.get("area") or entry.get("label")): entry for entry in configured}
+    for entry in _runtime_entries:
+        merged[_slug(entry.get("area") or entry.get("label"))] = entry
+    return list(merged.values())
 
 
 def get_folder_id(area: str) -> str | None:

@@ -1058,18 +1058,35 @@ def start_scheduler():
     # con la cartella configurata su Render (altrimenti no-op). ──
     async def _drive_documenti_job():
         from app.database import Database
-        from app.services import drive_documenti_ingest
+        from app.services.drive_fiscal_registry import sync_incremental
         try:
-            result = await drive_documenti_ingest.sync_tutti(Database.get_db())
+            result = await sync_incremental(Database.get_db())
             logger.info(f"[SCHEDULER-DRIVE-DOCUMENTI] {result}")
         except Exception as e:
             logger.error(f"[SCHEDULER-DRIVE-DOCUMENTI] errore: {e}")
 
     scheduler.add_job(
         _drive_documenti_job,
-        'interval', hours=1,
+        'interval', minutes=15,
         id="drive_documenti_ingest",
-        name="Import documenti fiscali (dichiarazione IVA/esattoriali/avvisi) da Drive (ogni ora)",
+        name="Import incrementale documenti fiscali da Drive (ogni 15 minuti)",
+        replace_existing=True,
+    )
+
+    async def _tax_code_registry_job():
+        from app.database import Database
+        from app.services.tax_code_registry import sync_tax_code_registry
+        try:
+            result = await sync_tax_code_registry(Database.get_db())
+            logger.info(f"[SCHEDULER-CODICI-TRIBUTO] {result}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-CODICI-TRIBUTO] errore: {e}")
+
+    scheduler.add_job(
+        _tax_code_registry_job,
+        CronTrigger(day_of_week="sun", hour=4, minute=10),
+        id="tax_code_registry_sync",
+        name="Aggiornamento registro ufficiale codici tributo (settimanale)",
         replace_existing=True,
     )
 

@@ -55,6 +55,50 @@ async def sincronizza_cartelle_drive(
     }
 
 
+@router.get("/drive/fiscal/status")
+async def stato_drive_fiscale(
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Stato operativo senza esporre ID Drive o credenziali."""
+    db = Database.get_db()
+    registry = await db["drive_folder_registry"].find({}, {"_id": 0, "area": 1, "source": 1, "discovered_at": 1}).to_list(50)
+    state = await db["drive_sync_state"].find_one({"key": "fiscal_documents"}, {"_id": 0, "page_token": 0})
+    return {"configured_areas": registry, "sync": state or {"status": "not_initialized"}}
+
+
+@router.post("/drive/fiscal/discover")
+async def scopri_cartelle_drive_fiscali(
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    from app.services.drive_fiscal_registry import discover_fiscal_folders
+    return await discover_fiscal_folders(Database.get_db())
+
+
+@router.post("/drive/fiscal/sync")
+async def sincronizza_drive_fiscale_incrementale(
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    from app.services.drive_fiscal_registry import sync_incremental
+    return await sync_incremental(Database.get_db())
+
+
+@router.get("/tax-codes/status")
+async def stato_codici_tributo(
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    db = Database.get_db()
+    latest = await db["tax_code_registry_versions"].find_one({}, {"_id": 0}, sort=[("fetched_at", -1)])
+    return latest or {"status": "not_initialized"}
+
+
+@router.post("/tax-codes/sync")
+async def sincronizza_codici_tributo(
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    from app.services.tax_code_registry import sync_tax_code_registry
+    return await sync_tax_code_registry(Database.get_db())
+
+
 # ============================================================
 # ENDPOINT MONITOR EMAIL
 # ============================================================

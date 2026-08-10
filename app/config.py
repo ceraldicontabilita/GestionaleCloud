@@ -166,6 +166,10 @@ class Settings(BaseSettings):
     DRIVE_VERBALI_FOLDER_ID: Optional[str] = None
     DRIVE_AVVISI_ESATTORIALI_FOLDER_ID: Optional[str] = None
     DRIVE_FOLDER_REGISTRY_JSON: Optional[str] = None
+    # Radice fiscale canonica indicata dall'amministratore. L'ID identifica
+    # soltanto la cartella contenitore: le sottocartelle operative vengono
+    # scoperte e verificate via Drive API, mai create per supposizione.
+    DRIVE_FISCAL_ROOT_FOLDER_ID: str = "1f48bounfoOyHL_kqpHAp2GAnFfEpHvVa"
     GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: Optional[str] = None
 
     # Service account DEDICATI per cartella (scelta utente: un account per
@@ -193,11 +197,12 @@ class Settings(BaseSettings):
     # sono, non vengono ne' importati ne' spostati. Metterlo a 0 li sblocca.
     DRIVE_ESTRATTI_ANNO_MINIMO: int = 2026
     ENABLE_DRIVE_BONIFICI_SYNC: bool = False
-    # Nuovi canali documentali (default SPENTI finché l'utente non crea le
-    # cartelle su Drive e ne mette gli ID su Render).
+    # Canali fiscali Drive: avvisi bonari e cartelle esattoriali sono abilitati,
+    # ma restano fail-closed finche' la discovery non trova una sola cartella
+    # con il nome atteso sotto la radice fiscale configurata.
     ENABLE_DRIVE_DICHIARAZIONI_IVA_SYNC: bool = False
-    ENABLE_DRIVE_CARTELLE_ESATTORIALI_SYNC: bool = False
-    ENABLE_DRIVE_AVVISI_BONARI_SYNC: bool = False
+    ENABLE_DRIVE_CARTELLE_ESATTORIALI_SYNC: bool = True
+    ENABLE_DRIVE_AVVISI_BONARI_SYNC: bool = True
     ENABLE_DRIVE_VERBALI_SYNC: bool = True
     # Canali EMAIL F24 e Verbali: ACCESI su scelta esplicita dell'utente
     # (13/07/2026). Interruttore dedicato per poterli spegnere senza toccare
