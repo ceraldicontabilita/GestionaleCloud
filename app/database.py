@@ -564,6 +564,8 @@ class Database:
             fiscal_coll.COLL_TAX_COLLECTION_CLAIM_LINES,
             fiscal_coll.COLL_TAX_COLLECTION_EVENTS,
             fiscal_coll.COLL_TAX_COLLECTION_SNAPSHOTS,
+            fiscal_coll.COLL_ADER_POSITION_SNAPSHOTS,
+            fiscal_coll.COLL_ADER_ARCHIVE_IMPORTS,
             fiscal_coll.COLL_TAX_NOTIFICATION_EVENTS,
             fiscal_coll.COLL_TAX_LEGAL_EVENTS,
             fiscal_coll.COLL_TAX_RATE_PLANS,
@@ -626,6 +628,22 @@ class Database:
             fiscal_coll.COLL_TAX_COLLECTION_EVENTS,
             [("company_id", 1), ("claim_id", 1), ("effective_at", 1)],
             name="idx_tax_collection_events_timeline",
+        )
+        await _safe_index(
+            fiscal_coll.COLL_ADER_POSITION_SNAPSHOTS,
+            [("company_id", 1), ("document_number", 1), ("snapshot_date", -1)],
+            name="idx_ader_snapshots_document_timeline",
+        )
+        await _safe_index(
+            fiscal_coll.COLL_ADER_POSITION_SNAPSHOTS,
+            [("company_id", 1), ("snapshot_date", -1), ("calculated_business_status", 1)],
+            name="idx_ader_snapshots_date_business_status",
+        )
+        await _safe_index(
+            fiscal_coll.COLL_ADER_ARCHIVE_IMPORTS,
+            [("company_id", 1), ("source_sha256", 1)],
+            unique=True,
+            name="idx_ader_archive_company_sha256_unique",
         )
         await _safe_index(
             fiscal_coll.COLL_TAX_CREDIT_MOVEMENTS,

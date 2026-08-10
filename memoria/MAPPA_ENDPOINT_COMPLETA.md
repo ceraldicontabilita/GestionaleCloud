@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1110 endpoint** in **114 gruppi**.
+> Totale **1111 endpoint** in **114 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 669 · ext esterni = 89 · — da verificare = 352
+**Riepilogo uso:** ✓ frontend = 671 · ext esterni = 89 · — da verificare = 351
 
 ## AI Parser  (11)
 
@@ -1512,10 +1512,13 @@
 | GET | `/api/settings/user-preferences` | — | settings |
 | PUT | `/api/settings/user-preferences` | — | settings |
 
-## Situazione fiscale  (17)
+## Situazione fiscale  (18)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
+| GET | `/api/fiscal/ader-snapshots` | ✓ | fiscal_control |
+| POST | `/api/fiscal/ader-snapshots/dry-run` | ✓ | fiscal_control |
+| POST | `/api/fiscal/ader-snapshots/import` | ✓ | fiscal_control |
 | POST | `/api/fiscal/collection-snapshots/dry-run` | — | fiscal_control |
 | POST | `/api/fiscal/collection-snapshots/import` | — | fiscal_control |
 | GET | `/api/fiscal/collections` | ✓ | fiscal_control |
@@ -1526,8 +1529,6 @@
 | GET | `/api/fiscal/dossier.pdf` | ✓ | fiscal_control |
 | GET | `/api/fiscal/evidence-package.zip` | ✓ | fiscal_control |
 | GET | `/api/fiscal/evidence/{entity_type}/{entity_id}` | — | fiscal_control |
-| GET | `/api/fiscal/f24-documents` | — | fiscal_control |
-| GET | `/api/fiscal/f24-rows` | ✓ | fiscal_control |
 | GET | `/api/fiscal/obligations` | ✓ | fiscal_control |
 | POST | `/api/fiscal/ravvedimento/calculate` | — | fiscal_control |
 | GET | `/api/fiscal/review` | ✓ | fiscal_control |

@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     # porta questa chiave e ogni query la filtra: non si deduce mai l'azienda
     # dal nome di un file o di una cartella Drive.
     FISCAL_COMPANY_ID: str = "04523831214"
+    ADER_MICRO_RESIDUAL_THRESHOLD_CENTS: int = 500
     # I processi periodici devono poter essere esclusi nelle istanze locali o
     # dedicate al solo frontend. In produzione restano attivi per default.
     ENABLE_SCHEDULER: bool = True
