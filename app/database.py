@@ -611,6 +611,18 @@ class Database:
             name="idx_tax_obligations_company_period_status",
         )
         await _safe_index(
+            fiscal_coll.COLL_TAX_ALLOCATIONS,
+            [("company_id", 1), ("source_kind", 1), ("payment_year", -1),
+             ("tax_code", 1), ("credit_amount", 1)],
+            name="idx_tax_allocations_f24_lookup",
+        )
+        await _safe_index(
+            fiscal_coll.COLL_TAX_PAYMENTS,
+            [("company_id", 1), ("source_kind", 1), ("payment_year", -1),
+             ("payment_date", -1)],
+            name="idx_tax_payments_f24_documents",
+        )
+        await _safe_index(
             fiscal_coll.COLL_TAX_COLLECTION_EVENTS,
             [("company_id", 1), ("claim_id", 1), ("effective_at", 1)],
             name="idx_tax_collection_events_timeline",

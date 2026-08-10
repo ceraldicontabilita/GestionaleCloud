@@ -9,7 +9,7 @@ export default function LinkedEvidencePanel({ entityType, entityId }) {
   const [selected, setSelected] = useState(null);
   useEffect(() => {
     if (!entityType || !entityId) return;
-    api.get(`/api/situazione-fiscale/evidence/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}`)
+    api.get(`/api/fiscal/evidence/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}`)
       .then(response => setLinks(response.data?.links || []))
       .catch(requestError => setError(requestError.response?.data?.detail || requestError.message));
   }, [entityType, entityId]);

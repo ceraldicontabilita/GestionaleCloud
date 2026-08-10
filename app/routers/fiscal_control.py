@@ -88,6 +88,69 @@ async def obligations(status: str | None = None, limit: int = Query(200, ge=1, l
     return {"items": items, "total": await db[COLL_TAX_OBLIGATIONS].count_documents(query)}
 
 
+@router.get("/f24-rows")
+async def f24_rows(
+    tax_code: str | None = None,
+    document_id: str | None = None,
+    year: int | None = Query(None, ge=2000, le=2100),
+    credits_only: bool = False,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(200, ge=1, le=1000),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Normalized F24 lines with a direct, reversible link to their PDF."""
+    query: dict[str, Any] = {
+        "company_id": _company(),
+        "source_kind": "F24_DOCUMENT_EVIDENCE",
+    }
+    if tax_code:
+        query["tax_code"] = tax_code.strip().upper()
+    if document_id:
+        query["document_id"] = document_id
+    if year:
+        query["payment_year"] = year
+    if credits_only:
+        query["credit_amount"] = {"$gt": 0}
+    db = Database.get_db()
+    cursor = db[COLL_TAX_ALLOCATIONS].find(query, {"_id": 0}).sort([
+        ("payment_date", -1), ("filename", 1), ("ordinal", 1),
+    ]).skip(offset).limit(limit)
+    items = await cursor.to_list(limit)
+    return {
+        "items": items,
+        "total": await db[COLL_TAX_ALLOCATIONS].count_documents(query),
+        "offset": offset,
+        "limit": limit,
+        "filters": {"tax_code": tax_code, "document_id": document_id, "year": year, "credits_only": credits_only},
+    }
+
+
+@router.get("/f24-documents")
+async def f24_documents(
+    year: int | None = Query(None, ge=2000, le=2100),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(200, ge=1, le=1000),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """PDF-first view; every item can be expanded through ``/f24-rows``."""
+    query: dict[str, Any] = {
+        "company_id": _company(),
+        "source_kind": "F24_DOCUMENT_EVIDENCE",
+    }
+    if year:
+        query["payment_year"] = year
+    db = Database.get_db()
+    items = await db[COLL_TAX_PAYMENTS].find(query, {"_id": 0}).sort([
+        ("payment_date", -1), ("filename", 1),
+    ]).skip(offset).limit(limit).to_list(limit)
+    return {
+        "items": items,
+        "total": await db[COLL_TAX_PAYMENTS].count_documents(query),
+        "offset": offset,
+        "limit": limit,
+    }
+
+
 @router.get("/collections")
 async def collection_claims(limit: int = Query(200, ge=1, le=1000),
                             _admin: Dict[str, Any] = Depends(get_current_admin_user)):

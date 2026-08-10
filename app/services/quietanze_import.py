@@ -170,6 +170,22 @@ async def importa_quietanza_bytes(
         return {"success": False, "filename": filename,
                 "error": (parsed or {}).get("error", "Parsing fallito")}
 
+    validation = parsed.get("validazione") or {}
+    if not validation.get("saldo_quadrato"):
+        difference = validation.get("differenza_saldo")
+        logger.warning(
+            "Quietanza %s non quadrata (differenza=%s): importazione sospesa",
+            filename,
+            difference,
+        )
+        return {
+            "success": False,
+            "filename": filename,
+            "error": f"Saldo F24 non quadrato (differenza {difference})",
+            "stato_quietanza": "PARSING_DA_VERIFICARE",
+            "validazione": validation,
+        }
+
     dg = parsed.get("dati_generali", {})
     protocollo = dg.get("protocollo_telematico", "")
     saldo_quietanza = dg.get("saldo_delega", 0) or parsed.get("totali", {}).get("saldo_netto", 0)
@@ -207,6 +223,7 @@ async def importa_quietanza_bytes(
         "sezione_tributi_locali": parsed.get("sezione_tributi_locali", []),
         "sezione_inail": parsed.get("sezione_inail", []),
         "totali": parsed.get("totali", {}),
+        "validazione": validation,
         "codici_tributo": list(codici_quietanza),
         "f24_associati": [],
         "fonte": fonte,

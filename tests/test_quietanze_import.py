@@ -71,6 +71,11 @@ PARSED_OK = {
     "sezione_tributi_locali": [],
     "sezione_inail": [],
     "totali": {"saldo_netto": 1500.0},
+    "validazione": {
+        "saldo_quadrato": True,
+        "differenza_saldo": 0.0,
+        "parser_version": "test-v1",
+    },
 }
 
 
@@ -157,6 +162,20 @@ def test_parsing_fallito_non_salva(monkeypatch):
     db = _FakeDb()
     esito = asyncio.run(qi.importa_quietanza_bytes(db, b"non-pdf", "rotto.pdf"))
     assert esito["success"] is False
+    assert db[qi.COLL_QUIETANZE].docs == []
+
+
+def test_saldo_non_quadrato_non_salva(monkeypatch):
+    parsed = {**PARSED_OK, "validazione": {
+        "saldo_quadrato": False,
+        "differenza_saldo": 12.34,
+        "parser_version": "test-v1",
+    }}
+    _patch_parser(monkeypatch, parsed)
+    db = _FakeDb()
+    esito = asyncio.run(qi.importa_quietanza_bytes(db, b"%PDF-non-quadrato", "non-quadrato.pdf"))
+    assert esito["success"] is False
+    assert esito["stato_quietanza"] == "PARSING_DA_VERIFICARE"
     assert db[qi.COLL_QUIETANZE].docs == []
 
 

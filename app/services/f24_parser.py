@@ -14,6 +14,150 @@ from app.utils.numeri_italiani import parse_importo_ita
 logger = logging.getLogger(__name__)
 
 
+_QUIETANZA_SECTION_LABELS = {
+    "ERARIO": "sezione_erario",
+    "INPS": "sezione_inps",
+    "INAIL": "sezione_inail",
+    "REGIONI": "sezione_regioni",
+    "TRIB.LOCALI": "sezione_tributi_locali",
+}
+
+
+def _open_pdf(pdf_path: str = None, pdf_content: bytes = None):
+    if pdf_content:
+        return fitz.open(stream=pdf_content, filetype="pdf")
+    if pdf_path:
+        return fitz.open(pdf_path)
+    raise ValueError("Nessun PDF fornito")
+
+
+def _row_amount(words: list[tuple[float, str]], start_x: float, end_x: float | None) -> float:
+    """Ricompone un importo anche quando euro, virgola e centesimi sono separati."""
+    tokens = []
+    for x, token in sorted(words):
+        if x < start_x or (end_x is not None and x >= end_x):
+            continue
+        clean = token.strip().replace("\x00", "")
+        if re.fullmatch(r"[0-9.,]+", clean):
+            tokens.append(clean)
+    if not tokens:
+        return 0.0
+    joined = re.sub(r",+", ",", "".join(tokens))
+    return parse_importo(joined)
+
+
+def _period_from_words(words: list[tuple[float, str]]) -> dict[str, str]:
+    tokens = [
+        token.strip()
+        for x, token in sorted(words)
+        if 300 <= x < 410 and re.fullmatch(r"[0-9/]+", token.strip())
+    ]
+    raw = " ".join(tokens)
+    if not tokens:
+        return {"periodo_riferimento": "", "periodo_raw": ""}
+
+    # RC01 puo' essere estratto come: 10 201912 2019, cioe'
+    # da 10/2019 a 12/2019. Conserviamo entrambi gli estremi.
+    for index, token in enumerate(tokens):
+        if re.fullmatch(r"20\d{2}\d{2}", token):
+            start_month = tokens[index - 1].zfill(2) if index else ""
+            start_year, end_month = token[:4], token[4:]
+            end_year = next((item for item in tokens[index + 1:] if re.fullmatch(r"20\d{2}", item)), "")
+            start = f"{start_month}/{start_year}" if start_month else start_year
+            end = f"{end_month}/{end_year}" if end_year else ""
+            return {
+                "periodo_riferimento": start,
+                "periodo_da": start,
+                "periodo_a": end,
+                "periodo_raw": raw,
+            }
+
+    year = next((token for token in reversed(tokens) if re.fullmatch(r"20\d{2}", token)), "")
+    month_token = next((token for token in tokens if token != year and re.fullmatch(r"(?:\d{1,2}|\d{2}/\d{2})", token)), "")
+    month = month_token.split("/")[-1].zfill(2) if month_token else ""
+    period = f"{month}/{year}" if month and year else year
+    return {"periodo_riferimento": period, "periodo_raw": raw}
+
+
+def _coordinate_quietanza(doc) -> dict[str, Any]:
+    """Legge la tabella AdE dalle coordinate, indipendentemente dai ritorni a capo."""
+    parsed: dict[str, Any] = {name: [] for name in _QUIETANZA_SECTION_LABELS.values()}
+    parsed["saldo_delega"] = None
+    parsed["data_pagamento"] = None
+
+    for page in doc:
+        grouped: dict[int, list[tuple[float, str]]] = {}
+        for word in page.get_text("words"):
+            x0, y0, _x1, _y1, token, *_rest = word
+            grouped.setdefault(round(y0 / 2) * 2, []).append((float(x0), token.replace("\x00", "").strip()))
+
+        for words in grouped.values():
+            words.sort()
+            left = " ".join(token for x, token in words if x < 115).strip()
+            target = _QUIETANZA_SECTION_LABELS.get(left)
+            if target:
+                debit = _row_amount(words, 410, 500)
+                credit = _row_amount(words, 500, None)
+                if debit == 0 and credit == 0:
+                    continue
+                period = _period_from_words(words)
+                by_x = {round(x): token for x, token in words}
+                common = {
+                    **period,
+                    "importo_debito": debit,
+                    "importo_credito": credit,
+                }
+                if left == "ERARIO":
+                    code = next((token for x, token in words if 145 <= x < 200 and re.fullmatch(r"[A-Z0-9]{4}", token)), "")
+                    if code:
+                        parsed[target].append({**common, "codice_tributo": code,
+                                               "descrizione": get_descrizione_tributo_erario(code)})
+                elif left == "INPS":
+                    office = next((token for x, token in words if 110 <= x < 150), "")
+                    causale = next((token for x, token in words if 145 <= x < 200), "")
+                    matricola = next((token for x, token in words if 195 <= x < 300), "")
+                    if causale:
+                        parsed[target].append({**common, "codice_sede": office,
+                                               "causale": causale, "matricola": matricola,
+                                               "descrizione": get_descrizione_causale_inps(causale)})
+                elif left == "INAIL":
+                    office = next((token for x, token in words if 110 <= x < 150), "")
+                    act = next((token for x, token in words if 145 <= x < 200), "")
+                    details = next((token for x, token in words if 195 <= x < 320), "")
+                    parsed[target].append({**common, "codice_ufficio": office,
+                                           "codice_atto": act,
+                                           "estremi_identificativi": details})
+                elif left == "REGIONI":
+                    region = next((token for x, token in words if 110 <= x < 150), "")
+                    code = next((token for x, token in words if 145 <= x < 200 and re.fullmatch(r"\d{4}", token)), "")
+                    if code:
+                        parsed[target].append({**common, "codice_regione": region,
+                                               "codice_tributo": code,
+                                               "descrizione": get_descrizione_tributo_regioni(code)})
+                else:
+                    municipality = next((token for x, token in words if 110 <= x < 150), "")
+                    code = next((token for x, token in words if 145 <= x < 200 and re.fullmatch(r"[A-Z0-9]{4}", token)), "")
+                    if code:
+                        parsed[target].append({**common, "codice_comune": municipality,
+                                               "codice_tributo": code,
+                                               "descrizione": get_descrizione_tributo_locale(code)})
+                continue
+
+            protocol = next((token for x, token in words if x < 300 and re.fullmatch(r"\d{17}", token)), None)
+            if protocol and parsed["saldo_delega"] is None:
+                parsed["saldo_delega"] = _row_amount(words, 500, None)
+
+            abi = next((token for x, token in words if 350 <= x < 450 and re.fullmatch(r"\d{5}", token)), None)
+            date_digits = [token for x, token in words if 140 <= x < 300 and re.fullmatch(r"\d", token)]
+            if abi and len(date_digits) >= 8:
+                candidate = "".join(date_digits[:8])
+                try:
+                    parsed["data_pagamento"] = datetime.strptime(candidate, "%d%m%Y").date().isoformat()
+                except ValueError:
+                    pass
+    return parsed
+
+
 def parse_importo(value: str) -> float:
     """Converte stringa importo italiano in float."""
     return parse_importo_ita(value)
@@ -90,6 +234,14 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
         "totali": {},
         "raw_text_preview": text[:200]  # Solo per debug
     }
+
+    try:
+        coordinate_doc = _open_pdf(pdf_path=pdf_path, pdf_content=pdf_content)
+        coordinate_data = _coordinate_quietanza(coordinate_doc)
+        coordinate_doc.close()
+    except Exception as exc:
+        logger.warning("Estrazione coordinate quietanza non disponibile: %s", exc)
+        coordinate_data = {name: [] for name in _QUIETANZA_SECTION_LABELS.values()}
     
     # ============================================
     # DATI GENERALI
@@ -167,6 +319,11 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
             cab_match = re.search(re.escape(abi) + r'\s*\n?\s*(\d{5})', text)
             if cab_match:
                 result["dati_generali"]["cab"] = cab_match.group(1)
+
+    if coordinate_data.get("data_pagamento"):
+        result["dati_generali"]["data_pagamento"] = coordinate_data["data_pagamento"]
+    if coordinate_data.get("saldo_delega") is not None:
+        result["dati_generali"]["saldo_delega"] = coordinate_data["saldo_delega"]
     
     # ============================================
     # SEZIONE ERARIO
@@ -190,6 +347,8 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
             "importo_credito": credito,
             "descrizione": get_descrizione_tributo_erario(codice)
         })
+    if coordinate_data["sezione_erario"]:
+        result["sezione_erario"] = coordinate_data["sezione_erario"]
     
     # ============================================
     # SEZIONE INPS
@@ -207,6 +366,8 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
             "importo_credito": parse_importo(match.group(7)),
             "descrizione": get_descrizione_causale_inps(match.group(2))
         })
+    if coordinate_data["sezione_inps"]:
+        result["sezione_inps"] = coordinate_data["sezione_inps"]
     
     # ============================================
     # SEZIONE INAIL
@@ -222,6 +383,8 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
             "importo_debito": parse_importo(match.group(4)),
             "importo_credito": parse_importo(match.group(5))
         })
+    if coordinate_data["sezione_inail"]:
+        result["sezione_inail"] = coordinate_data["sezione_inail"]
     
     # ============================================
     # SEZIONE REGIONI
@@ -238,6 +401,8 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
             "importo_credito": parse_importo(match.group(6)),
             "descrizione": get_descrizione_tributo_regioni(match.group(2))
         })
+    if coordinate_data["sezione_regioni"]:
+        result["sezione_regioni"] = coordinate_data["sezione_regioni"]
     
     # ============================================
     # SEZIONE TRIBUTI LOCALI (IMU, TARI, etc.)
@@ -254,6 +419,8 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
             "importo_credito": parse_importo(match.group(5)),
             "descrizione": get_descrizione_tributo_locale(match.group(2))
         })
+    if coordinate_data["sezione_tributi_locali"]:
+        result["sezione_tributi_locali"] = coordinate_data["sezione_tributi_locali"]
     
     # ============================================
     # CALCOLO TOTALI
@@ -274,6 +441,14 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
         "totale_credito": round(totale_credito, 2),
         "saldo_netto": round(totale_debito - totale_credito, 2),
         "saldo_delega": result["dati_generali"].get("saldo_delega", 0)
+    }
+    saldo_delega = result["totali"]["saldo_delega"]
+    difference = round(result["totali"]["saldo_netto"] - saldo_delega, 2)
+    result["validazione"] = {
+        "righe_estratte": sum(len(result[name]) for name in _QUIETANZA_SECTION_LABELS.values()),
+        "saldo_quadrato": abs(difference) <= 0.01,
+        "differenza_saldo": difference,
+        "parser_version": "quietanza-coordinate-v2",
     }
     
     # Rimuovi raw_text prima di restituire

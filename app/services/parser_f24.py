@@ -17,14 +17,19 @@ logger = logging.getLogger(__name__)
 
 def _rateazione_e_anno(tokens):
     """Separa la rateazione (anche ``0101``) dall'anno d'imposta."""
-    rateazione = ""
-    anno = ""
-    for token in tokens:
-        valore = str(token).strip()
-        if re.fullmatch(r"20\d{2}", valore) and not anno:
-            anno = valore
-        elif re.fullmatch(r"\d{4}", valore) and not rateazione:
-            rateazione = valore
+    values = [str(token).strip() for token in tokens]
+    anno = next((value for value in values if re.fullmatch(r"20\d{2}", value)), "")
+    before_year = values[:values.index(anno)] if anno in values else values
+    rateazione = next(
+        (value.replace("/", "") for value in before_year if re.fullmatch(r"\d{2}/\d{2}", value)),
+        "",
+    )
+    if not rateazione:
+        rateazione = next((value for value in before_year if re.fullmatch(r"\d{4}", value)), "")
+    if not rateazione:
+        months = [value for value in before_year if re.fullmatch(r"\d{1,2}", value) and int(value) > 0]
+        if months:
+            rateazione = f"00{months[-1].zfill(2)}"
     return rateazione, anno
 
 
@@ -64,9 +69,9 @@ def parse_importo(value: str) -> float:
 
 def parse_periodo(mese: str, anno: str) -> str:
     """Formatta periodo riferimento."""
-    mese = mese.strip().zfill(2) if mese else "00"
+    mese = mese.strip().zfill(2) if mese else ""
     anno = anno.strip() if anno else ""
-    return f"{mese}/{anno}" if anno else mese
+    return f"{mese}/{anno}" if mese and anno and mese != "00" else anno or mese
 
 
 def extract_text_from_pdf(pdf_path: str = None, pdf_content: bytes = None) -> str:
@@ -193,7 +198,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
             
             if word in [',', '+/–', '+/-', '+', '-']:
                 continue
-            if not re.match(r'^[\d.]+$', word):
+            if not re.match(r'^[\d.,]+$', word):
                 continue
             
             if x > IMPORTO_X_START and x <= DEBITO_X_MAX:
@@ -201,26 +206,15 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
             elif x >= CREDITO_X_MIN:
                 credito_parts.append((x, word))
         
-        debito = 0.0
-        credito = 0.0
-        
-        if len(debito_parts) >= 2:
-            debito_parts.sort()
-            euro = debito_parts[0][1].replace('.', '')
-            cent = debito_parts[1][1]
-            try:
-                debito = float(euro) + float(cent) / 100
-            except Exception:
-                pass
-        
-        if len(credito_parts) >= 2:
-            credito_parts.sort()
-            euro = credito_parts[0][1].replace('.', '')
-            cent = credito_parts[1][1]
-            try:
-                credito = float(euro) + float(cent) / 100
-            except Exception:
-                pass
+        def parse_parts(parts):
+            if not parts:
+                return 0.0
+            parts.sort()
+            joined = re.sub(r",+", ",", "".join(value for _x, value in parts))
+            return parse_importo(joined)
+
+        debito = parse_parts(debito_parts)
+        credito = parse_parts(credito_parts)
         
         return round(debito, 2), round(credito, 2)
     
@@ -244,6 +238,10 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
         for y_key in sorted(rows.keys()):
             row = sorted(rows[y_key], key=lambda r: r['x'])
             row_text = ' '.join([r['word'] for r in row])
+            if "EURO" in row_text and "+" in row_text:
+                _unused, saldo_documento = extract_importo(row)
+                if saldo_documento or "0,00" in row_text:
+                    result["dati_generali"]["saldo_delega"] = round(saldo_documento, 2)
             
             # ============================================
             # SEZIONE ERARIO - Codici 1xxx, 2xxx, 6xxx, 8xxx
@@ -281,7 +279,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                     # Codici ERARIO: 1xxx, 2xxx, 6xxx, 8xxx 
                     # ESCLUDI i codici 3xxx (IRAP) che vanno in REGIONI
                     # ESCLUDI anche codici IRAP specifici (1993, 8907) senza codice regione
-                    if re.match(r'^(1\d{3}|2\d{3}|6\d{3}|8\d{3})$', word):
+                    if re.match(r'^(1\d{3}|2\d{3}|6\d{3}|7\d{3}|8\d{3}|9\d{3})$', word):
                         codice = word
                         
                         # Se è un codice IRAP (1993, 8907), salta - andrà in REGIONI
@@ -300,7 +298,10 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                 rateazione = nw
                             elif re.match(r'^20\d{2}$', nw) and not anno:
                                 anno = nw
-                        
+                        rateazione, anno = _rateazione_e_anno(
+                            [entry["word"] for entry in row[i + 1:min(i + 8, len(row))]]
+                        )
+
                         debito, credito = extract_importo(row)
                         
                         if anno and (debito > 0 or credito > 0):
@@ -420,21 +421,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                     elif re.match(r'^[A-Z]$', word) and not causale_inail:
                         causale_inail = word
                 
-                # Estrai importo (debito, X > 340)
-                importo_inail = 0.0
-                numero_parts = []
-                for r in row:
-                    if r['x'] > 340 and re.match(r'^[\d.]+$', r['word']):
-                        numero_parts.append((r['x'], r['word']))
-                
-                if len(numero_parts) >= 2:
-                    numero_parts.sort()
-                    euro = numero_parts[0][1].replace('.', '')
-                    cent = numero_parts[1][1]
-                    try:
-                        importo_inail = float(euro) + float(cent) / 100
-                    except Exception:
-                        pass
+                importo_inail, credito_inail = extract_importo(row)
                 
                 if cod_sede_inail and cod_ditta and importo_inail > 0:
                     key = f"INAIL_{cod_sede_inail}_{cod_ditta}_{num_riferimento}"
@@ -447,7 +434,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                             "numero_riferimento": num_riferimento,
                             "causale": causale_inail,
                             "importo_debito": round(importo_inail, 2),
-                            "importo_credito": 0.0,
+                            "importo_credito": round(credito_inail, 2),
                             "descrizione": f"Premio INAIL - Causale {causale_inail}"
                         })
             
@@ -498,7 +485,10 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                 rateazione = nw
                             elif re.match(r'^20\d{2}$', nw) and not anno:
                                 anno = nw
-                        
+                        rateazione, anno = _rateazione_e_anno(
+                            [entry["word"] for entry in row[i + 1:min(i + 8, len(row))]]
+                        )
+
                         debito, credito = extract_importo(row)
                         
                         if anno and (debito > 0 or credito > 0):
@@ -542,7 +532,10 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                 rateazione = nw
                             elif re.match(r'^20\d{2}$', nw) and not anno:
                                 anno = nw
-                        
+                        rateazione, anno = _rateazione_e_anno(
+                            [entry["word"] for entry in row[i + 1:min(i + 8, len(row))]]
+                        )
+
                         debito, credito = extract_importo(row)
                         
                         if anno and (debito > 0 or credito > 0):
@@ -617,7 +610,10 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                 rateazione = nw
                             elif re.match(r'^20\d{2}$', nw) and not anno:
                                 anno = nw
-                        
+                        rateazione, anno = _rateazione_e_anno(
+                            [entry["word"] for entry in row[i + 1:min(i + 8, len(row))]]
+                        )
+
                         debito, credito = extract_importo(row)
                         
                         if anno and (debito > 0 or credito > 0):
@@ -659,11 +655,23 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
     
     saldo_netto = totale_debito - totale_credito
     
+    saldo_documento = result["dati_generali"].get("saldo_delega")
     result["totali"] = {
         "totale_debito": round(totale_debito, 2),
         "totale_credito": round(totale_credito, 2),
         "saldo_netto": round(saldo_netto, 2),
-        "saldo_finale": round(saldo_netto, 2)
+        "saldo_finale": round(saldo_netto, 2),
+        "saldo_delega": saldo_documento,
+    }
+    difference = None if saldo_documento is None else round(saldo_netto - saldo_documento, 2)
+    result["validazione"] = {
+        "righe_estratte": sum(len(result[name]) for name in (
+            "sezione_erario", "sezione_inps", "sezione_regioni",
+            "sezione_tributi_locali", "sezione_inail",
+        )),
+        "saldo_quadrato": difference is not None and abs(difference) <= 0.01,
+        "differenza_saldo": difference,
+        "parser_version": "f24-coordinate-v2",
     }
     
     return result
