@@ -3,13 +3,13 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 177
+**Totale file analizzati:** 179
 
 | Classificazione | File |
 |---|---:|
 | ENTRYPOINT | 3 |
-| ROUTE_ATTIVA | 28 |
-| COMPONENTE_USATO | 89 |
+| ROUTE_ATTIVA | 29 |
+| COMPONENTE_USATO | 90 |
 | MODALE_USATO | 4 |
 | HOOK_USATO | 3 |
 | TEST_ONLY | 27 |
@@ -57,14 +57,14 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | File | Classificazione | Importato da (n. file) |
 |---|---|---:|
 | `frontend/src/App.jsx` | ENTRYPOINT | 1 |
-| `frontend/src/api.js` | COMPONENTE_USATO | 100 |
+| `frontend/src/api.js` | COMPONENTE_USATO | 102 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/AssociaAssegnoFattura.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/AssociaMovimentoBanca.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ChatIntelligente.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/CopiaTesto.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/CopyLinkButton.jsx` | COMPONENTE_USATO | 5 |
-| `frontend/src/components/DocumentViewerModal.jsx` | MODALE_USATO | 8 |
+| `frontend/src/components/DocumentViewerModal.jsx` | MODALE_USATO | 9 |
 | `frontend/src/components/ErrorBoundary.jsx` | COMPONENTE_USATO | 3 |
 | `frontend/src/components/ErrorBoundary.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/components/ExportButton.jsx` | COMPONENTE_USATO | 1 |
@@ -72,9 +72,10 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/InAttesaDocumento.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/InAttesaDocumento.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/components/InstallAppButton.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/components/LinkedEvidencePanel.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ModalFattura.jsx` | MODALE_USATO | 8 |
 | `frontend/src/components/NotificationBell.jsx` | DINAMICO_DA_VERIFICARE | 0 |
-| `frontend/src/components/PageLayout.jsx` | COMPONENTE_USATO | 43 |
+| `frontend/src/components/PageLayout.jsx` | COMPONENTE_USATO | 44 |
 | `frontend/src/components/PannelloSumUp.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/PaypalTransactionDetailModal.jsx` | MODALE_USATO | 1 |
 | `frontend/src/components/Portal.jsx` | COMPONENTE_USATO | 1 |
@@ -92,7 +93,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ds/StatCard.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ds/Table.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/ds/Tabs.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/components/ds/index.js` | COMPONENTE_USATO | 60 |
+| `frontend/src/components/ds/index.js` | COMPONENTE_USATO | 62 |
 | `frontend/src/components/layout/TopNav.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ui/ConfirmDialog.jsx` | MODALE_USATO | 28 |
 | `frontend/src/components/ui/alert.jsx` | COMPONENTE_USATO | 1 |
@@ -122,7 +123,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ui/tooltip.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/contexts/AnnoContext.jsx` | COMPONENTE_USATO | 50 |
 | `frontend/src/contexts/AnnoContext.test.jsx` | TEST_ONLY | 0 |
-| `frontend/src/contexts/AuthContext.jsx` | COMPONENTE_USATO | 7 |
+| `frontend/src/contexts/AuthContext.jsx` | COMPONENTE_USATO | 8 |
 | `frontend/src/contexts/AuthContext.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/contexts/UploadContext.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/hooks/use-toast.js` | DINAMICO_DA_VERIFICARE | 1 |
@@ -212,6 +213,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/RiconciliazioneUnificata.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/Ritenute.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/Scadenze.jsx` | ROUTE_ATTIVA | 1 |
+| `frontend/src/pages/SituazioneFiscale.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/Utenti.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/UtileObiettivo.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/VerbaliRiconciliazione.jsx` | COMPONENTE_USATO | 1 |
