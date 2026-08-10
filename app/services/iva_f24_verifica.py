@@ -11,6 +11,7 @@ from datetime import date, timedelta
 from typing import Any, Dict, Iterable, List, Optional
 
 from app.services.f24_payment_evidence import stato_evidenza_pagamento
+from app.services.f24_canonico import normalizza_righe_tributo
 
 
 CODICE_SANZIONE_IVA = "8904"
@@ -61,14 +62,16 @@ def _anno_riga(riga: Dict[str, Any], f24: Dict[str, Any]) -> Optional[int]:
 
 
 def _righe_erario(f24: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
-    yield from (f24.get("sezione_erario") or [])
+    for row in normalizza_righe_tributo(f24):
+        if row["section"] == "ERARIO":
+            yield row
 
 
 def _codici(f24: Dict[str, Any]) -> set[str]:
     return {
-        str(r.get("codice_tributo") or "").strip()
+        str(r.get("tax_code") or "").strip()
         for r in _righe_erario(f24)
-        if r.get("codice_tributo")
+        if r.get("tax_code")
     }
 
 
@@ -87,16 +90,19 @@ def verifica_versamento_iva_da_documenti(
 
     for f24 in f24_docs:
         for riga in _righe_erario(f24):
-            if str(riga.get("codice_tributo") or "").strip() != codice:
+            if str(riga.get("tax_code") or "").strip() != codice:
                 continue
-            if _anno_riga(riga, f24) != anno:
+            source = riga.get("source_fields") or {}
+            periodo = riga.get("reference_period")
+            anno_riga = int(str(periodo)[:4]) if periodo else _anno_riga(source, f24)
+            if anno_riga != anno:
                 continue
             evidenza = stato_evidenza_pagamento(f24)
             codici = _codici(f24)
             candidati.append({
                 "f24_id": f24.get("id"),
                 "file": f24.get("file_name") or f24.get("filename"),
-                "importo_iva": round(_float(riga.get("importo_debito") or riga.get("importo")), 2),
+                "importo_iva": round(_float(riga.get("debit_amount")), 2),
                 "saldo_f24": round(_float((f24.get("totali") or {}).get("saldo_netto") or f24.get("importo_totale")), 2),
                 "quietanza_id": f24.get("quietanza_id"),
                 "evidenza_pagamento": evidenza,
@@ -113,7 +119,16 @@ def verifica_versamento_iva_da_documenti(
     candidati.sort(key=lambda c: priorita.get(c["evidenza_pagamento"]["stato"], 9))
     principale = candidati[0] if candidati else None
     pagato_banca = bool(principale and principale["evidenza_pagamento"]["pagato"])
-    scaduto = oggi > scadenza and not pagato_banca
+    versato_documentalmente = bool(
+        principale and principale["evidenza_pagamento"].get("versato_documentalmente")
+    )
+    data_versamento = (
+        principale["evidenza_pagamento"].get("data_versamento_documentale")
+        if principale else None
+    )
+    data_versamento_iso = str(data_versamento)[:10] if data_versamento else None
+    tardivo = bool(data_versamento_iso and data_versamento_iso > scadenza.isoformat())
+    scaduto = oggi > scadenza and not versato_documentalmente
 
     if not candidati:
         stato = "F24_NON_TROVATO"
@@ -135,6 +150,8 @@ def verifica_versamento_iva_da_documenti(
         "scadenza": scadenza.isoformat(),
         "stato": stato,
         "pagato_banca": pagato_banca,
+        "versato_documentalmente": versato_documentalmente,
+        "data_versamento_documentale": data_versamento_iso,
         "scaduto": scaduto,
         "f24_trovati": len(candidati),
         "f24": principale,
@@ -145,7 +162,10 @@ def verifica_versamento_iva_da_documenti(
         ),
         "scostamento_f24_liquidazione": scostamento,
         "ravvedimento": {
-            "necessario": scaduto,
+            "necessario": bool(
+                scaduto
+                or (versato_documentalmente and tardivo and not (principale and principale["ravvedimento"]))
+            ),
             "gia_presente_nel_f24": bool(principale and principale["ravvedimento"]),
             "codice_sanzione": CODICE_SANZIONE_IVA,
             "codice_interessi": CODICE_INTERESSI_IVA,

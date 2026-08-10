@@ -148,14 +148,52 @@ def test_f24_associato_ma_non_pagato():
     assert upd["stato"] == "f24_associato_da_pagare"
 
 
-def test_f24_con_sola_quietanza_non_chiude_la_ritenuta():
+def test_f24_con_sola_quietanza_prova_il_versamento_documentale():
     db = _Db()
     db["f24_unificato"].docs = [{
         "id": "F5", "tributi": [{"codice": "1040", "importo": 280.0}],
         "quietanza_id": "q-1", "data_pagamento_quietanza": "2026-04-16",
     }]
     upd = _run(mod._riconcilia_ritenuta(db, dict(RIT)))
-    assert upd["stato"] == "f24_associato_da_pagare"
+    assert upd["stato"] == "pagata_puntuale"
+    assert upd["data_pagamento"] == "2026-04-16"
+    assert upd["stato_evidenza_pagamento"] == "QUIETANZA_PRESENTE_DA_VERIFICARE_BANCA"
+    assert upd["movimento_bancario_f24_id"] is None
+
+
+def test_caso_reale_1040_giugno_284_quietanza_21_luglio_2026():
+    db = _Db()
+    rit = {
+        "id": "rit-1040-06-2026",
+        "importo": 284.0,
+        "periodo_ritenuta": "2026-06",
+        "scadenza": "2026-07-16",
+    }
+    db["f24_unificato"].docs = [{
+        "id": "F24-1040-06-2026",
+        "sezione_erario": [{
+            "codice_tributo": "1040",
+            "periodo_riferimento": "06/2026",
+            "importo_debito": 284.0,
+        }],
+        # Campi prodotti dal matching della quietanza reale, che contiene
+        # anche 8948 per EUR 2,00 senza ricostruire il modello F24.
+        "ravveduto": True,
+        "codici_ravvedimento": ["8948"],
+        "importo_ravvedimento": 2.0,
+        "totali": {"saldo_netto": 284.0},
+        "quietanza_id": "quietanza-2026-07-21",
+        "data_pagamento_quietanza": "2026-07-21",
+    }]
+
+    upd = _run(mod._riconcilia_ritenuta(db, rit))
+
+    assert upd["f24_id"] == "F24-1040-06-2026"
+    assert upd["f24_periodo"] == "2026-06"
+    assert upd["f24_quota_ritenuta"] == 284.0
+    assert upd["data_pagamento"] == "2026-07-21"
+    assert upd["stato"] == "pagata_con_ravvedimento"
+    assert upd["stato_evidenza_pagamento"] == "QUIETANZA_PRESENTE_DA_VERIFICARE_BANCA"
 
 
 def test_f24_multi_tributo_associa_solo_riga_1040_aggregata_del_periodo():

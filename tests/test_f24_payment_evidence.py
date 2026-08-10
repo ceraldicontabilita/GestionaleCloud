@@ -28,6 +28,8 @@ def test_quietanza_non_e_prova_bancaria():
     evidenza = stato_evidenza_pagamento(doc)
     assert evidenza["stato"] == STATO_QUIETANZA_DA_VERIFICARE
     assert evidenza["pagato"] is False
+    assert evidenza["versato_documentalmente"] is True
+    assert evidenza["data_versamento_documentale"] == "2026-07-16"
 
     analisi = te.classifica_f24(doc)
     assert analisi["data_pagamento"] is None

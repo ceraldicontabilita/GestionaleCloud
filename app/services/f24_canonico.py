@@ -14,6 +14,7 @@ Le collezioni legacy dei MODELLI F24 (`f24_models`, `f24_commercialista` lettera
 `distinte_f24`) e la classificazione (`f24_tributi`) restano separati: sono vivi e
 verranno consolidati in una fase dedicata.
 """
+import base64
 import hashlib
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
@@ -21,6 +22,75 @@ from uuid import uuid4
 
 COLL = "f24_unificato"
 COLL_QUIETANZE = "quietanze_f24"
+
+
+def normalizza_righe_tributo(doc: Dict[str, Any]) -> list[Dict[str, Any]]:
+    """Unica vista applicativa di debiti, crediti e periodi delle righe F24."""
+    from app.services.f24_fiscal_evidence import normalize_f24_evidence_rows
+
+    return normalize_f24_evidence_rows(doc)
+
+
+async def importa_quietanza(
+    db, content: bytes, filename: str, *, source: str = "upload_manuale"
+) -> Dict[str, Any]:
+    """Ingresso canonico delle quietanze, condiviso da ogni canale."""
+    from app.services.quietanze_import import importa_quietanza_bytes
+
+    return await importa_quietanza_bytes(db, content, filename, fonte=source)
+
+
+async def importa_modello_bytes(
+    db, content: bytes, filename: str, *, source: str = "upload_manuale"
+) -> Dict[str, Any]:
+    """Importa un modello F24 direttamente in ``f24_unificato``.
+
+    Conserva il PDF, tutte le righe a debito/credito e usa la stessa chiave
+    idempotente degli altri canali. Non alimenta le collezioni legacy.
+    """
+    from app.services.parser_f24 import parse_f24_commercialista
+
+    parsed = parse_f24_commercialista(pdf_content=content)
+    if not parsed or parsed.get("error"):
+        return {
+            "success": False,
+            "filename": filename,
+            "error": (parsed or {}).get("error", "Parsing F24 fallito"),
+        }
+    validation = parsed.get("validazione") or {}
+    if validation and not validation.get("saldo_quadrato"):
+        return {
+            "success": False,
+            "filename": filename,
+            "error": f"Saldo F24 non quadrato (differenza {validation.get('differenza_saldo')})",
+            "validazione": validation,
+        }
+
+    documento = dict(parsed)
+    documento.update({
+        "file_name": filename,
+        "pdf_data": base64.b64encode(content).decode("utf-8"),
+        "pdf_hash": hashlib.sha256(content).hexdigest(),
+        "status": "da_pagare",
+        "riconciliato": False,
+        "pagato": False,
+        "import_date": datetime.now(timezone.utc).isoformat(),
+    })
+    documento["f24_dedup_key"] = chiave_f24(documento)
+    existing = await db[COLL].find_one(
+        {"f24_dedup_key": documento["f24_dedup_key"]}, {"_id": 0, "id": 1}
+    )
+    f24_id = await salva_f24(db, documento, source=source)
+    rows = normalizza_righe_tributo(documento)
+    return {
+        "success": True,
+        "duplicate": bool(existing),
+        "f24_id": f24_id,
+        "filename": filename,
+        "righe_tributo": len(rows),
+        "righe_credito": sum(1 for row in rows if row["credit_amount"] > 0),
+        "validazione": validation,
+    }
 
 
 def _saldo(doc: Dict[str, Any]) -> float:

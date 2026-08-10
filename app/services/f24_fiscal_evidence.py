@@ -33,7 +33,66 @@ _SECTIONS = (
     ("REGIONI", "sezione_regioni"),
     ("TRIB.LOCALI", "sezione_tributi_locali"),
     ("INAIL", "sezione_inail"),
+    ("IMU", "sezione_imu"),
 )
+
+
+def _number(value: Any) -> float:
+    if value in (None, ""):
+        return 0.0
+    if isinstance(value, (int, float)):
+        return round(float(value), 2)
+    text = str(value).strip().replace("€", "").replace(" ", "")
+    if "," in text:
+        text = text.replace(".", "").replace(",", ".")
+    try:
+        return round(float(text), 2)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def normalize_reference_period(source: dict[str, Any]) -> str | None:
+    """Normalizza il periodo della singola riga in ``YYYY-MM`` quando noto."""
+    raw = str(
+        source.get("periodo_riferimento")
+        or source.get("riferimento")
+        or source.get("mese_riferimento")
+        or source.get("mese")
+        or source.get("periodo_da")
+        or ""
+    ).strip()
+    year = str(source.get("anno_riferimento") or source.get("anno") or "").strip()
+    digits = re.sub(r"\D", "", raw)
+    year_digits = re.sub(r"\D", "", year)
+    if len(digits) >= 6:
+        if digits[:4].startswith(("19", "20")):
+            year_digits, digits = digits[:4], digits[4:6]
+        else:
+            year_digits, digits = digits[-4:], digits[:2]
+    elif len(digits) == 4 and not year_digits and digits.startswith(("19", "20")):
+        return None
+    elif len(digits) == 4:
+        first, last = digits[:2], digits[-2:]
+        digits = first if 1 <= int(first or 0) <= 12 else last
+    elif len(digits) > 2:
+        digits = digits[:2]
+    if len(year_digits) >= 4 and digits:
+        month = int(digits[:2])
+        if 1 <= month <= 12:
+            return f"{year_digits[:4]}-{month:02d}"
+    return None
+
+
+def _section_rows(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [row for row in value if isinstance(row, dict)]
+    if isinstance(value, dict):
+        for key in ("righe", "tributi", "dettaglio", "items"):
+            if isinstance(value.get(key), list):
+                return [row for row in value[key] if isinstance(row, dict)]
+        if value.get("codice") or value.get("codice_tributo") or value.get("causale"):
+            return [value]
+    return []
 
 
 def _year_from_value(value: Any) -> int | None:
@@ -72,13 +131,19 @@ def normalize_f24_evidence_rows(parsed: dict[str, Any]) -> list[dict[str, Any]]:
     """Return one row per PDF line; equal rows in different PDFs stay distinct."""
     rows: list[dict[str, Any]] = []
     ordinal = 0
-    for section, field in _SECTIONS:
-        for source in parsed.get(field, []) or []:
+    sources = list(_SECTIONS) + [
+        ("TRIBUTI", "tributi"),
+        ("RIGHE", "righe"),
+        ("DETTAGLIO", "dettaglio_tributi"),
+    ]
+    for section, field in sources:
+        for source in _section_rows(parsed.get(field)):
             ordinal += 1
-            debit = round(float(source.get("importo_debito") or 0), 2)
-            credit = round(float(source.get("importo_credito") or 0), 2)
+            debit = _number(source.get("importo_debito") or source.get("debito") or source.get("importo"))
+            credit = _number(source.get("importo_credito") or source.get("credito"))
             code = (
                 source.get("codice_tributo")
+                or source.get("codice")
                 or source.get("causale")
                 or ("INAIL" if section == "INAIL" else "")
             )
@@ -93,7 +158,7 @@ def normalize_f24_evidence_rows(parsed: dict[str, Any]) -> list[dict[str, Any]]:
                 "ordinal": ordinal,
                 "section": section,
                 "tax_code": str(code).strip().upper(),
-                "reference_period": source.get("periodo_riferimento") or "",
+                "reference_period": normalize_reference_period(source),
                 "reference_period_raw": source.get("periodo_raw") or "",
                 "entity_code": str(entity).strip().upper(),
                 "debit_amount": debit,

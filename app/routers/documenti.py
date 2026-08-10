@@ -2475,46 +2475,48 @@ async def upload_documento_automatico(
                 result["message"] = "Errore parsing XML fattura"
                 
         elif tipo_rilevato == 'f24':
-            # Import F24 PDF - USA IL WORKFLOW COMPLETO
-            from app.routers.f24_parser import import_f24
-            import io
-            
-            # Crea un nuovo UploadFile per il workflow
-            file_obj = io.BytesIO(content)
-            new_upload = UploadFile(filename=filename, file=file_obj)
-            
-            try:
-                f24_result = await import_f24(file=new_upload, aggiorna_esistente=True)
-                result["message"] = f24_result.get("message", "F24 importato con workflow completo")
-                result["data"] = f24_result.get("data", {})
-                result["workflow"] = "F24_COMPLETO"
-                result["imported"] = 1
-            except HTTPException as he:
-                result["success"] = False
-                result["message"] = f"Errore import F24: {he.detail}"
-            except Exception as e:
-                result["success"] = False
-                result["message"] = f"Errore import F24: {str(e)}"
-                
-        elif tipo_rilevato == 'quietanza_f24':
-            # Import Quietanza F24
-            from app.services.parser_f24 import parse_f24_pdf_bytes
-            
-            parsed = await parse_f24_pdf_bytes(content, filename, is_quietanza=True)
-            
-            if parsed:
-                quietanza_doc = {
-                    "id": f"quietanza_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
-                    "filename": filename,
-                    **parsed,
-                    "created_at": datetime.now(timezone.utc).isoformat()
-                }
-                await db["quietanze_f24"].insert_one(dict(quietanza_doc).copy())
-                result["message"] = "Quietanza F24 importata"
-                result["imported"] = 1
+            from app.services.f24_canonico import importa_modello_bytes
+
+            f24_result = await importa_modello_bytes(
+                db, content, filename, source="documenti_upload_auto"
+            )
+            result["data"] = f24_result
+            result["workflow"] = "F24_CANONICO"
+            result["duplicate"] = bool(f24_result.get("duplicate"))
+            if f24_result.get("success"):
+                result["imported"] = 0 if f24_result.get("duplicate") else 1
+                result["message"] = (
+                    "F24 già importato"
+                    if f24_result.get("duplicate")
+                    else "F24 importato nel registro canonico"
+                )
             else:
                 result["success"] = False
-                result["message"] = "Errore parsing PDF Quietanza"
+                result["imported"] = 0
+                result["message"] = f"Errore import F24: {f24_result.get('error', 'parsing fallito')}"
+                
+        elif tipo_rilevato == 'quietanza_f24':
+            # Tutti i canali passano dallo stesso servizio: validazione dei
+            # totali, deduplica, righe/crediti e collegamenti bidirezionali.
+            from app.services.f24_canonico import importa_quietanza
+
+            quietanza = await importa_quietanza(
+                db, content, filename, source="documenti_upload_auto"
+            )
+            result["data"] = quietanza
+            result["workflow"] = "F24_CANONICO"
+            result["duplicate"] = bool(quietanza.get("duplicate"))
+            if quietanza.get("success"):
+                result["imported"] = 0 if quietanza.get("duplicate") else 1
+                result["message"] = (
+                    "Quietanza F24 già importata"
+                    if quietanza.get("duplicate")
+                    else "Quietanza F24 importata e riconciliata"
+                )
+            else:
+                result["success"] = False
+                result["imported"] = 0
+                result["message"] = f"Errore import Quietanza F24: {quietanza.get('error', 'parsing fallito')}"
                 
         elif tipo_rilevato == 'cedolino':
             # Import cedolino / Libro Unico - USA IL WORKFLOW COMPLETO

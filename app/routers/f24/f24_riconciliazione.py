@@ -1066,7 +1066,7 @@ async def upload_quietanze_multiplo(
     MOTORE UNICO app/services/quietanze_import.py, lo stesso usato dal
     canale Google Drive: qui resta solo la gestione dell'upload HTTP.
     """
-    from app.services.quietanze_import import importa_quietanza_bytes
+    from app.services.f24_canonico import importa_quietanza
 
     db = Database.get_db()
 
@@ -1097,7 +1097,7 @@ async def upload_quietanze_multiplo(
             })
             continue
 
-        esito = await importa_quietanza_bytes(db, content, file.filename, fonte="upload_manuale")
+        esito = await importa_quietanza(db, content, file.filename, source="upload_manuale")
         risultati["dettaglio"].append(esito)
         if not esito.get("success"):
             continue

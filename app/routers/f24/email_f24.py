@@ -14,8 +14,7 @@ import os
 import logging
 import hashlib
 from app.config import settings
-from app.services.f24_canonico import salva_f24
-from app.services.quietanze_import import importa_quietanza_bytes
+from app.services.f24_canonico import importa_quietanza, salva_f24
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -151,11 +150,11 @@ async def processa_allegati_f24() -> Dict[str, Any]:
                 and bool(dg_quietanza.get("data_pagamento") or dg_quietanza.get("abi"))
             )
             if is_quietanza_forte:
-                esito_quietanza = await importa_quietanza_bytes(
+                esito_quietanza = await importa_quietanza(
                     db,
                     pdf_content,
                     allegato.get("original_filename") or "quietanza.pdf",
-                    fonte="email_f24",
+                    source="email_f24",
                 )
                 if not esito_quietanza.get("success"):
                     raise ValueError(esito_quietanza.get("error") or "Import quietanza fallito")
@@ -243,11 +242,11 @@ async def processa_allegati_f24() -> Dict[str, Any]:
                 )
                 
                 if has_quietanza_data and "error" not in parsed_quietanza:
-                    esito_fallback = await importa_quietanza_bytes(
+                    esito_fallback = await importa_quietanza(
                         db,
                         pdf_content,
                         allegato.get("original_filename") or "quietanza.pdf",
-                        fonte="email_f24_fallback",
+                        source="email_f24_fallback",
                     )
                     if not esito_fallback.get("success"):
                         raise ValueError(esito_fallback.get("error") or "Import quietanza fallito")
@@ -315,9 +314,9 @@ async def processa_allegati_f24() -> Dict[str, Any]:
                 and protocollo_q.isdigit()
                 and bool(dg_q.get("data_pagamento") or dg_q.get("abi"))
             ):
-                esito_q = await importa_quietanza_bytes(
+                esito_q = await importa_quietanza(
                     db, pdf_content, doc.get("filename") or "quietanza.pdf",
-                    fonte="documents_inbox_email",
+                    source="documents_inbox_email",
                 )
                 if not esito_q.get("success"):
                     raise ValueError(esito_q.get("error") or "Import quietanza fallito")

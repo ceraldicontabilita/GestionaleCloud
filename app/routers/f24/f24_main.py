@@ -861,8 +861,7 @@ async def get_codice_info(
 
 
 # ============== PARSING QUIETANZE F24 ==============
-from app.services.f24_parser import parse_quietanza_f24, generate_f24_summary
-import base64
+from app.services.f24_parser import generate_f24_summary
 
 
 @router.post(
@@ -880,78 +879,22 @@ async def upload_quietanza_f24(
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Il file deve essere un PDF")
     
-    # Leggi contenuto PDF
-    file_id = str(uuid4())
     content = await file.read()
-    
-    # Architettura MongoDB-only: codifica in Base64
-    pdf_base64 = base64.b64encode(content).decode('utf-8')
-    
-    # Parsing del PDF direttamente dai bytes
-    try:
-        # Il parser supporta pdf_content bytes
-        parsed_data = parse_quietanza_f24(pdf_content=content)
-    except Exception as e:
-        logger.error(f"Errore parsing F24: {e}")
-        raise HTTPException(status_code=500, detail=f"Errore parsing PDF: {str(e)}")
-    
-    if "error" in parsed_data:
-        raise HTTPException(status_code=400, detail=parsed_data["error"])
-    
-    # Prepara documento per MongoDB
     db = Database.get_db()
-    
-    # Genera chiave univoca per evitare duplicati
-    dg = parsed_data.get("dati_generali", {})
-    f24_key = f"{dg.get('codice_fiscale', '')}_{dg.get('data_pagamento', '')}_{dg.get('protocollo_telematico', '')}"
-    
-    # Verifica duplicato
-    existing = await db["quietanze_f24"].find_one({"f24_key": f24_key})
-    if existing:
-        return {
-            "success": False,
-            "message": "Quietanza già presente nel sistema",
-            "existing_id": existing.get("id"),
-            "data_pagamento": existing.get("dati_generali", {}).get("data_pagamento")
-        }
-    
-    # Salva nel database con pdf_data (architettura MongoDB-only)
-    documento = {
-        "id": file_id,
-        "f24_key": f24_key,
-        "file_name": file.filename,
-        "pdf_data": pdf_base64,  # Architettura MongoDB-only
-        "dati_generali": parsed_data.get("dati_generali", {}),
-        "sezione_erario": parsed_data.get("sezione_erario", []),
-        "sezione_inps": parsed_data.get("sezione_inps", []),
-        "sezione_inail": parsed_data.get("sezione_inail", []),
-        "sezione_regioni": parsed_data.get("sezione_regioni", []),
-        "sezione_tributi_locali": parsed_data.get("sezione_tributi_locali", []),
-        "totali": parsed_data.get("totali", {}),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }
-    
-    await db["quietanze_f24"].insert_one(documento.copy())
-    
-    # Genera riepilogo
-    summary = generate_f24_summary(parsed_data)
-    
+    from app.services.f24_canonico import importa_quietanza
+
+    esito = await importa_quietanza(
+        db, content, file.filename, source="f24_quietanze_upload"
+    )
+    if not esito.get("success"):
+        raise HTTPException(status_code=400, detail=esito.get("error", "Parsing fallito"))
     return {
-        "success": True,
-        "message": "Quietanza F24 elaborata con successo",
-        "id": file_id,
-        "file_name": file.filename,
-        "dati_generali": parsed_data.get("dati_generali", {}),
-        "totali": parsed_data.get("totali", {}),
-        "sezioni": {
-            "erario": len(parsed_data.get("sezione_erario", [])),
-            "inps": len(parsed_data.get("sezione_inps", [])),
-            "inail": len(parsed_data.get("sezione_inail", [])),
-            "regioni": len(parsed_data.get("sezione_regioni", [])),
-            "tributi_locali": len(parsed_data.get("sezione_tributi_locali", []))
-        },
-        "summary": summary
+        **esito,
+        "message": (
+            "Quietanza già presente nel sistema"
+            if esito.get("duplicate")
+            else "Quietanza F24 elaborata e riconciliata"
+        ),
     }
 
 

@@ -173,7 +173,7 @@ async def _do_sync(db) -> Dict[str, Any]:
     if service is None:
         return {"status": "error", "message": "Service Drive non disponibile (errore costruzione client)."}
 
-    from app.services.quietanze_import import importa_quietanza_bytes
+    from app.services.f24_canonico import importa_quietanza
 
     parent_id = _folder_id()
     result = {
@@ -197,7 +197,7 @@ async def _do_sync(db) -> Dict[str, Any]:
                     if error_id:
                         _move_to_folder(service, fid, source_id, error_id)
                     continue
-                esito = await importa_quietanza_bytes(db, content, fname, fonte="drive_quietanze")
+                esito = await importa_quietanza(db, content, fname, source="drive_quietanze")
                 if not esito.get("success"):
                     # Parsing fallito: NON spostare, resta visibile per diagnosi
                     result["errors"] += 1
@@ -282,7 +282,7 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
     if service is None:
         return {"status": "error", "message": "Service Drive non disponibile"}
 
-    from app.services.quietanze_import import importa_quietanza_bytes, COLL_QUIETANZE
+    from app.services.f24_canonico import importa_quietanza, COLL_QUIETANZE
 
     parent_id = _folder_id()
     esito = {"status": "ok", "controllati": 0, "quadrati": 0,
@@ -305,7 +305,7 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
                 if existing:
                     esito["quadrati"] += 1
                     continue
-                res = await importa_quietanza_bytes(db, content, f["name"], fonte="drive_quietanze_quadratura")
+                res = await importa_quietanza(db, content, f["name"], source="drive_quietanze_quadratura")
                 if res.get("success") and not res.get("duplicate"):
                     esito["recuperati"] += 1
                     esito["details"].append({"file": f["name"], "recuperato": True})

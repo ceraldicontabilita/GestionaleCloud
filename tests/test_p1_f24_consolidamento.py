@@ -2,7 +2,7 @@
 chiave naturale di deduplica stabile tra schemi diversi + salva_f24 idempotente."""
 import asyncio
 
-from app.services.f24_canonico import chiave_f24, salva_f24, COLL
+from app.services.f24_canonico import chiave_f24, importa_modello_bytes, salva_f24, COLL
 
 
 class _Coll:
@@ -68,3 +68,33 @@ def test_salva_f24_idempotente():
     assert len(db.c.docs) == 1      # una sola riga
     assert db.c.docs[0]["status"] == "pagato"   # update applicato
     assert db.c.docs[0]["f24_dedup_key"].startswith("f24_")
+
+
+def test_importa_modello_canonico_conserva_debiti_crediti_e_pdf(monkeypatch):
+    parsed = {
+        "dati_generali": {"codice_fiscale": "CF1", "data_versamento": "2026-07-16"},
+        "sezione_erario": [
+            {"codice_tributo": "1040", "periodo_riferimento": "06/2026", "importo_debito": 284.0},
+            {"codice_tributo": "1704", "periodo_riferimento": "06/2026", "importo_credito": 20.0},
+        ],
+        "totali": {"totale_debito": 284.0, "totale_credito": 20.0, "saldo_netto": 264.0},
+        "validazione": {"saldo_quadrato": True, "parser_version": "test-v1"},
+    }
+    import app.services.parser_f24 as parser
+    monkeypatch.setattr(parser, "parse_f24_commercialista", lambda pdf_content: parsed)
+    db = _Db()
+
+    first = _run(importa_modello_bytes(
+        db, b"%PDF-1.4 fixture", "f24.pdf", source="test"
+    ))
+    second = _run(importa_modello_bytes(
+        db, b"%PDF-1.4 fixture", "f24.pdf", source="test"
+    ))
+
+    assert first["success"] is True and first["duplicate"] is False
+    assert first["righe_tributo"] == 2
+    assert first["righe_credito"] == 1
+    assert second["duplicate"] is True
+    assert len(db.c.docs) == 1
+    assert db.c.docs[0]["pdf_data"]
+    assert db.c.docs[0]["sezione_erario"][1]["importo_credito"] == 20.0

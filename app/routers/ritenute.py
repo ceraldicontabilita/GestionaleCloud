@@ -29,6 +29,7 @@ from fastapi import APIRouter, Query
 from app.database import Database
 from app.utils.error_handler import handle_errors
 from app.services.f24_payment_evidence import stato_evidenza_pagamento
+from app.services.f24_canonico import normalizza_righe_tributo
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -41,12 +42,14 @@ COLLECTION = "ritenute_acconto"
 # del tributo tardivo, con codici dedicati.
 CODICI_RAVVEDIMENTO_RITENUTE = {
     "8906": "Sanzione pecuniaria sostituti d'imposta (ravvedimento su ritenute, es. 1040)",
+    "8948": "Sanzione ravvedimento ritenute su redditi di lavoro autonomo",
     "1989": "Interessi sul ravvedimento - IRPEF e ritenute",
 }
 LOGICA_RAVVEDIMENTO = (
     "Ravvedimento operoso (art. 13 D.Lgs. 472/1997): se la ritenuta non è "
     "versata entro il 16 del mese successivo, si può regolarizzare pagando "
-    "il tributo (1040) più la sanzione ridotta (codice 8906) e gli "
+    "il tributo (1040) più la sanzione ridotta (codice 8948 per lavoro "
+    "autonomo; 8906 nei flussi storici) e gli "
     "interessi legali (codice 1989) nello stesso F24. Sanzione ridotta: "
     "0,083%/giorno fino a 14 giorni (ravvedimento sprint), 1,25% entro 30 "
     "giorni, 1,39% entro 90 giorni, 3,125% entro 1 anno."
@@ -119,108 +122,31 @@ def _estrai_dati_ritenuta(xml_raw, body_index: int = 0) -> Optional[Dict[str, An
     }
 
 
-def _numero(value: Any) -> Optional[float]:
-    if value in (None, ""):
-        return None
-    if isinstance(value, (int, float)):
-        return round(float(value), 2)
-    text = str(value).strip().replace("€", "").replace(" ", "")
-    if "," in text:
-        text = text.replace(".", "").replace(",", ".")
-    try:
-        return round(float(text), 2)
-    except (TypeError, ValueError):
-        return None
-
-
-def _periodo_tributo(t: Dict[str, Any]) -> Optional[str]:
-    """Normalizza mese/anno della singola riga F24 nel formato YYYY-MM."""
-    raw = str(
-        t.get("periodo_riferimento")
-        or t.get("riferimento")
-        or t.get("mese_riferimento")
-        or t.get("mese")
-        or ""
-    ).strip()
-    anno = str(t.get("anno_riferimento") or t.get("anno") or "").strip()
-    digits = re.sub(r"\D", "", raw)
-    year_digits = re.sub(r"\D", "", anno)
-
-    if len(digits) == 6:
-        if digits[:4].startswith("20"):
-            year_digits, digits = digits[:4], digits[4:]
-        else:
-            year_digits, digits = digits[-4:], digits[:2]
-    elif len(digits) == 4 and not year_digits and digits.startswith("20"):
-        return None  # solo anno: non identifica il mese della ritenuta
-    elif len(digits) == 4:
-        # Alcuni parser conservano il campo F24 MM/AAAA come quattro cifre.
-        first, last = digits[:2], digits[-2:]
-        digits = first if 1 <= int(first or 0) <= 12 else last
-    elif len(digits) > 2:
-        digits = digits[:2]
-
-    if len(year_digits) >= 4 and digits:
-        month = int(digits[:2])
-        if 1 <= month <= 12:
-            return f"{year_digits[:4]}-{month:02d}"
-    return None
-
-
-def _righe_sezione(value: Any) -> List[Dict[str, Any]]:
-    if isinstance(value, list):
-        return [r for r in value if isinstance(r, dict)]
-    if isinstance(value, dict):
-        for key in ("righe", "tributi", "dettaglio", "items"):
-            if isinstance(value.get(key), list):
-                return [r for r in value[key] if isinstance(r, dict)]
-        if value.get("codice") or value.get("codice_tributo"):
-            return [value]
-    return []
-
-
 def _tributi_di(f24: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Normalizza tutte le righe di un F24, anche da sezioni annidate."""
-    sorgenti = (
-        "tributi", "righe", "dettaglio_tributi", "sezione_erario",
-        "sezione_inps", "sezione_regioni", "sezione_tributi_locali", "sezione_imu",
-    )
-    out: List[Dict[str, Any]] = []
-    viste = set()
-    for sezione in sorgenti:
-        for t in _righe_sezione(f24.get(sezione)):
-            codice = str(t.get("codice") or t.get("codice_tributo") or "").strip()
-            importo = _numero(t.get("importo_debito"))
-            if importo is None:
-                importo = _numero(t.get("debito"))
-            if importo is None:
-                importo = _numero(t.get("importo"))
-            periodo = _periodo_tributo(t)
-            firma = (codice, importo, periodo)
-            if not codice or firma in viste:
-                continue
-            viste.add(firma)
-            out.append({
-                "indice": len(out),
-                "sezione": sezione,
-                "codice": codice,
-                "importo": importo,
-                "periodo": periodo,
-            })
+    """Compatibilità router sulla vista canonica delle righe F24."""
+    out = [{
+        "indice": row["ordinal"] - 1,
+        "sezione": row["section"],
+        "codice": row["tax_code"],
+        "importo": row["debit_amount"],
+        "periodo": row["reference_period"],
+    } for row in normalizza_righe_tributo(f24)]
+    codici_presenti = {row["codice"] for row in out}
     for c in (f24.get("codici_tributo") or []):
         codice = c.get("codice") if isinstance(c, dict) else c
-        firma = (str(codice or "").strip(), None, None)
-        if firma[0] and firma not in viste:
-            viste.add(firma)
+        codice = str(codice or "").strip()
+        if codice and codice not in codici_presenti:
+            codici_presenti.add(codice)
             out.append({
                 "indice": len(out), "sezione": "codici_tributo",
-                "codice": firma[0], "importo": None, "periodo": None,
+                "codice": codice, "importo": None, "periodo": None,
             })
     return out
 
 
 def _data_pagamento_f24(f24: Dict[str, Any]) -> Optional[str]:
-    data = stato_evidenza_pagamento(f24).get("data_pagamento")
+    evidenza = stato_evidenza_pagamento(f24)
+    data = evidenza.get("data_versamento_documentale") or evidenza.get("data_pagamento")
     return str(data)[:10] if data else None
 
 
@@ -350,7 +276,7 @@ async def _riconcilia_ritenuta(
     upd["stato_evidenza_pagamento"] = evidenza["stato"]
     upd["movimento_bancario_f24_id"] = evidenza.get("movimento_bancario_id")
 
-    if not evidenza["pagato"]:
+    if not evidenza["versato_documentalmente"]:
         upd["stato"] = "f24_associato_da_pagare"
         return upd
 
@@ -360,7 +286,14 @@ async def _riconcilia_ritenuta(
         upd["stato"] = "pagata_puntuale"
     else:
         codici = {t["codice"] for t in _tributi_di(f24_match)}
-        if codici & set(CODICI_RAVVEDIMENTO_RITENUTE):
+        codici_quietanza = {
+            str(codice) for codice in (f24_match.get("codici_ravvedimento") or [])
+        }
+        if (
+            f24_match.get("ravveduto") is True
+            or codici & set(CODICI_RAVVEDIMENTO_RITENUTE)
+            or codici_quietanza & set(CODICI_RAVVEDIMENTO_RITENUTE)
+        ):
             upd["stato"] = "pagata_con_ravvedimento"
         else:
             upd["stato"] = "pagata_in_ritardo_senza_ravvedimento"

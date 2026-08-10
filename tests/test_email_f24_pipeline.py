@@ -38,7 +38,7 @@ def test_email_quietanza_non_viene_scambiata_per_modello_f24(monkeypatch):
                 "f24_matchati": ["f1"],
             }
 
-        monkeypatch.setattr(email_f24, "importa_quietanza_bytes", importa)
+        monkeypatch.setattr(email_f24, "importa_quietanza", importa)
         esito = await email_f24.processa_allegati_f24()
 
         assert f24_chiamato is False

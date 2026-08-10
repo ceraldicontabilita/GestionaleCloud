@@ -5,6 +5,9 @@ Usato sia dall'upload manuale che dal canale Google Drive.
 """
 import asyncio
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
 from app.services import quietanze_import as qi
 
 
@@ -179,6 +182,44 @@ def test_saldo_non_quadrato_non_salva(monkeypatch):
     assert db[qi.COLL_QUIETANZE].docs == []
 
 
+def test_quietanza_reale_1040_8948_marca_ravvedimento(monkeypatch):
+    parsed = {
+        **PARSED_OK,
+        "dati_generali": {
+            **PARSED_OK["dati_generali"],
+            "saldo_delega": 286.0,
+            "data_pagamento": "2026-07-21",
+        },
+        "sezione_erario": [
+            {"codice_tributo": "1040", "periodo_riferimento": "06/2026", "importo_debito": 284.0},
+            {"codice_tributo": "8948", "periodo_riferimento": "06/2026", "importo_debito": 2.0},
+        ],
+        "totali": {"totale_debito": 286.0, "totale_credito": 0.0, "saldo_netto": 286.0},
+    }
+    _patch_parser(monkeypatch, parsed)
+    db = _FakeDb()
+    asyncio.run(db[qi.COLL_F24_COMMERCIALISTA].insert_one({
+        "id": "f24-1040-06-2026",
+        "status": "da_pagare",
+        "riconciliato": False,
+        "sezione_erario": [{
+            "codice_tributo": "1040",
+            "periodo_riferimento": "06/2026",
+            "importo_debito": 284.0,
+        }],
+        "totali": {"saldo_netto": 284.0},
+    }))
+
+    esito = asyncio.run(qi.importa_quietanza_bytes(
+        db, b"%PDF-caso-reale-anonimizzato", "quietanza_2026-07-21.pdf", fonte="test"
+    ))
+
+    assert esito["f24_matchati"][0]["ravveduto"] is True
+    f24 = db[qi.COLL_F24_COMMERCIALISTA].docs[0]
+    assert f24["codici_ravvedimento"] == ["8948"]
+    assert f24["importo_ravvedimento"] == 2.0
+
+
 def test_drive_quietanze_helpers():
     from app.services import drive_quietanze_ingest as dq
     assert dq.is_quietanza_filename("quietanza_giugno.PDF")
@@ -187,3 +228,80 @@ def test_drive_quietanze_helpers():
     # flag di default è ACCESO (scelta utente 10/07)
     from app.config import settings
     assert settings.ENABLE_DRIVE_QUIETANZE_SYNC is True
+
+
+def test_upload_auto_endpoint_usa_il_servizio_canonico_quietanze(monkeypatch):
+    """Integrazione HTTP reale: multipart -> router -> servizio -> DB fake."""
+    from app.routers import documenti
+    from app.utils import upload_validation
+
+    _patch_parser(monkeypatch, PARSED_OK)
+    db = _FakeDb()
+    asyncio.run(db[qi.COLL_F24_COMMERCIALISTA].insert_one({
+        "id": "f24-upload-auto",
+        "status": "da_pagare",
+        "riconciliato": False,
+        "file_name": "F24 giugno 2026.pdf",
+        "sezione_erario": PARSED_OK["sezione_erario"],
+        "totali": PARSED_OK["totali"],
+    }))
+    monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
+    monkeypatch.setattr(documenti, "detect_document_type", lambda *_: "quietanza_f24")
+    monkeypatch.setattr(upload_validation, "verifica_pdf_reale", lambda *_: None)
+
+    test_app = FastAPI()
+    test_app.include_router(documenti.router, prefix="/api/documenti")
+    with TestClient(test_app) as client:
+        response = client.post(
+            "/api/documenti/upload-auto",
+            files={"file": ("quietanza_1040.pdf", b"%PDF-1.4 fixture anonima", "application/pdf")},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["workflow"] == "F24_CANONICO"
+    assert payload["imported"] == 1
+    assert payload["data"]["f24_matchati"][0]["f24_id"] == "f24-upload-auto"
+    assert len(db[qi.COLL_QUIETANZE].docs) == 1
+    assert db[qi.COLL_F24_COMMERCIALISTA].docs[0]["quietanza_id"] == payload["data"]["quietanza_id"]
+
+
+def test_upload_auto_endpoint_importa_modello_nella_sola_collezione_canonica(monkeypatch):
+    from app.routers import documenti
+    from app.utils import upload_validation
+    import app.services.parser_f24 as parser
+
+    parsed = {
+        "dati_generali": {"codice_fiscale": "CF-ANONIMO", "data_versamento": "2026-07-16"},
+        "sezione_erario": [
+            {"codice_tributo": "1040", "periodo_riferimento": "06/2026", "importo_debito": 284.0},
+            {"codice_tributo": "1704", "periodo_riferimento": "06/2026", "importo_credito": 20.0},
+        ],
+        "totali": {"totale_debito": 284.0, "totale_credito": 20.0, "saldo_netto": 264.0},
+        "validazione": {"saldo_quadrato": True, "parser_version": "test-v1"},
+    }
+    db = _FakeDb()
+    monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
+    monkeypatch.setattr(documenti, "detect_document_type", lambda *_: "f24")
+    monkeypatch.setattr(upload_validation, "verifica_pdf_reale", lambda *_: None)
+    monkeypatch.setattr(parser, "parse_f24_commercialista", lambda pdf_content: parsed)
+
+    test_app = FastAPI()
+    test_app.include_router(documenti.router, prefix="/api/documenti")
+    with TestClient(test_app) as client:
+        response = client.post(
+            "/api/documenti/upload-auto",
+            files={"file": ("modello_f24.pdf", b"%PDF-1.4 fixture anonima", "application/pdf")},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["workflow"] == "F24_CANONICO"
+    assert payload["data"]["righe_tributo"] == 2
+    assert payload["data"]["righe_credito"] == 1
+    assert len(db["f24_unificato"].docs) == 1
+    assert db["f24_pagamenti"].docs == []
+    assert db["tributi_pagati"].docs == []
+    assert db["distinte_f24"].docs == []

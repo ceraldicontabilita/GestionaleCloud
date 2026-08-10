@@ -217,26 +217,17 @@ async def process_document_with_ai(
                     logger.info(f"📋 Cedolino salvato: {update_data.get('dipendente_nome')} {mese}/{anno}")
             
             elif detected_type == "f24" and parsed.get("totali", {}).get("totale_debito"):
-                # Salva in quietanze_f24 se non esiste
-                existing = await db["quietanze_f24"].find_one({
-                    "codice_fiscale": parsed.get("codice_fiscale"),
-                    "data_pagamento": parsed.get("data_pagamento")
-                })
-                if not existing:
-                    f24_db = {
-                        "id": f"email_{document_id}",
-                        "codice_fiscale": parsed.get("codice_fiscale"),
-                        "ragione_sociale": parsed.get("ragione_sociale"),
-                        "data_pagamento": parsed.get("data_pagamento"),
-                        "totale_versato": parsed.get("totali", {}).get("totale_debito", 0),
-                        "tributi": parsed.get("sezione_erario", []),
-                        "source": "email_parser",
-                        "documents_inbox_id": document_id,
-                        "created_at": datetime.now(timezone.utc).isoformat()
-                    }
-                    await db["quietanze_f24"].insert_one(f24_db)
-                    result["saved_to"] = "quietanze_f24"
-                    logger.info(f"🧾 F24 salvato: {parsed.get('data_pagamento')}")
+                # L'output AI non è una quietanza validata: resta nell'inbox
+                # fino al passaggio del PDF nel servizio F24 canonico.
+                await db[collection].update_one(
+                    {"id": document_id},
+                    {"$set": {
+                        "f24_import_status": "DA_VALIDARE_DA_PDF",
+                        "f24_import_service": "f24_canonico",
+                    }},
+                )
+                result["saved_to"] = collection
+                result["requires_f24_canonical_import"] = True
         except Exception as e:
             logger.warning(f"Errore salvataggio in collection specifica: {e}")
         

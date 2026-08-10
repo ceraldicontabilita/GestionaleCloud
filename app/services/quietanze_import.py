@@ -29,6 +29,7 @@ COLL_CALENDARIO = "calendario_fiscale"
 from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
 from app.services.accounting_relation_writers import record_f24_receipt_link
 from app.services.f24_payment_evidence import patch_quietanza_associata
+from app.services.f24_canonico import normalizza_righe_tributo
 
 # Codici tributo → tipo di scadenza del calendario fiscale (app/routers/
 # fiscalita_italiana.py::genera_scadenze_anno). Servono a segnare COMPLETATA
@@ -117,26 +118,16 @@ async def _marca_scadenze_calendario(db, f24: dict, data_pagamento: str, quietan
 
 
 def estrai_tributi_dettaglio(doc: dict) -> list:
-    """Estrae lista tributi con codice, periodo, importo (quietanza o F24)."""
-    tributi = []
-    for sezione in ["sezione_erario", "sezione_regioni", "sezione_tributi_locali"]:
-        for item in doc.get(sezione, []):
-            codice = item.get("codice_tributo", "")
-            if codice:
-                tributi.append({
-                    "codice": codice,
-                    "periodo": item.get("periodo_riferimento", "").strip(),
-                    "importo": float(item.get("importo_debito", 0) or item.get("importo", 0) or 0)
-                })
-    for item in doc.get("sezione_inps", []):
-        causale = item.get("causale", "")
-        if causale:
-            tributi.append({
-                "codice": causale,
-                "periodo": item.get("periodo_riferimento", "").strip(),
-                "importo": float(item.get("importo_debito", 0) or item.get("importo", 0) or 0)
-            })
-    return tributi
+    """Vista legacy basata sul normalizzatore fiscale canonico."""
+    return [
+        {
+            "codice": row["tax_code"],
+            "periodo": row["reference_period"] or "",
+            "importo": row["debit_amount"],
+        }
+        for row in normalizza_righe_tributo(doc)
+        if row["tax_code"] and row["debit_amount"] > 0
+    ]
 
 
 async def importa_quietanza_bytes(

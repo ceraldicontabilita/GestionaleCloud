@@ -1,8 +1,9 @@
 """Stato canonico del pagamento F24 basato sulle evidenze disponibili.
 
-Il modello F24, l'email che lo contiene e la quietanza sono documenti fiscali;
-non sostituiscono il movimento dell'estratto conto quando il gestionale deve
-affermare che l'uscita finanziaria e' avvenuta.
+Il modello F24 e l'email che lo contiene non provano il versamento. Una
+quietanza valida prova invece il versamento documentale del tributo, pur senza
+sostituire il movimento dell'estratto conto quando il gestionale deve affermare
+che l'uscita finanziaria e' stata verificata anche in banca.
 """
 from __future__ import annotations
 
@@ -71,6 +72,22 @@ def ha_quietanza(f24: Dict[str, Any]) -> bool:
     )
 
 
+def data_pagamento_quietanza(f24: Dict[str, Any]) -> Optional[Any]:
+    """Data risultante dalla quietanza, distinta dalla data bancaria."""
+    for campo in (
+        "data_pagamento_quietanza",
+        "data_versamento_quietanza",
+        "quietanza_payment_date",
+    ):
+        valore = f24.get(campo)
+        if valore not in (None, ""):
+            return valore
+    quietanza = f24.get("quietanza")
+    if isinstance(quietanza, dict):
+        return quietanza.get("data_pagamento") or quietanza.get("data_versamento")
+    return None
+
+
 def stato_evidenza_pagamento(f24: Dict[str, Any]) -> Dict[str, Any]:
     """Classifica la prova di pagamento senza fidarsi dei flag legacy."""
     if f24.get("allocazioni_banca") and float(f24.get("importo_residuo") or 0) > 0:
@@ -81,21 +98,27 @@ def stato_evidenza_pagamento(f24: Dict[str, Any]) -> Dict[str, Any]:
             "data_pagamento": None,
             "movimento_bancario_id": None,
             "quietanza_presente": ha_quietanza(f24),
+            "versato_documentalmente": False,
+            "data_versamento_documentale": None,
             "importo_residuo": float(f24.get("importo_residuo") or 0),
             "tributi_aperti": [
                 r.get("codice") for r in (f24.get("saldo_tributi") or {}).get("righe_aperte", [])
             ],
         }
     if ha_evidenza_bancaria(f24):
+        data_banca = data_pagamento_banca(f24)
         return {
             "stato": STATO_PAGATO_BANCA,
             "pagato": True,
             "verificato_banca": True,
-            "data_pagamento": data_pagamento_banca(f24),
+            "data_pagamento": data_banca,
             "movimento_bancario_id": riferimento_bancario(f24),
             "quietanza_presente": ha_quietanza(f24),
+            "versato_documentalmente": True,
+            "data_versamento_documentale": data_banca,
         }
     if ha_quietanza(f24):
+        data_quietanza = data_pagamento_quietanza(f24)
         return {
             "stato": STATO_QUIETANZA_DA_VERIFICARE,
             "pagato": False,
@@ -103,6 +126,8 @@ def stato_evidenza_pagamento(f24: Dict[str, Any]) -> Dict[str, Any]:
             "data_pagamento": None,
             "movimento_bancario_id": None,
             "quietanza_presente": True,
+            "versato_documentalmente": True,
+            "data_versamento_documentale": data_quietanza,
         }
     if f24.get("pagato_manualmente") or f24.get("pagamento_dichiarato_manualmente"):
         return {
@@ -112,6 +137,8 @@ def stato_evidenza_pagamento(f24: Dict[str, Any]) -> Dict[str, Any]:
             "data_pagamento": None,
             "movimento_bancario_id": None,
             "quietanza_presente": False,
+            "versato_documentalmente": False,
+            "data_versamento_documentale": None,
         }
     return {
         "stato": STATO_DA_PAGARE,
@@ -120,6 +147,8 @@ def stato_evidenza_pagamento(f24: Dict[str, Any]) -> Dict[str, Any]:
         "data_pagamento": None,
         "movimento_bancario_id": None,
         "quietanza_presente": False,
+        "versato_documentalmente": False,
+        "data_versamento_documentale": None,
     }
 
 
