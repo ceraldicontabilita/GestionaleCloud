@@ -2109,6 +2109,21 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         "CODICE DELLA STRADA", "SANZIONE AMMINISTRATIVA",
     )):
         return "verbale_codice_strada"
+    # Le contabili bancarie sono prove documentali di un pagamento eseguito,
+    # ma CBILL, MAV/RAV e bollettino postale conservano identificativi diversi
+    # e non devono essere appiattiti su una ricevuta PagoPA generica.
+    if any(marker in compact_pdf_text for marker in (
+        "CODICE IDENTIFICATIVO CBILL", "CBILL - PAGOPA", "CODICE TRANSAZIONE CBILL",
+    )):
+        return "ricevuta_cbill"
+    if "PAGAMENTO MAV" in compact_pdf_text:
+        return "ricevuta_mav"
+    if "PAGAMENTO RAV" in compact_pdf_text:
+        return "ricevuta_rav"
+    if "BOLLETTINO POSTALE" in compact_pdf_text and any(
+        marker in compact_pdf_text for marker in ("COD.RIF", "ID. POSTE")
+    ):
+        return "ricevuta_bollettino_postale"
     if any(marker in compact_pdf_text for marker in (
         "ATTESTAZIONE DI PAGAMENTO", "ESITO : PAGAMENTO ESEGUITO",
         "IMPORTO TOTALE PAGATO", "RICEVUTA TELEMATICA",
@@ -2796,7 +2811,10 @@ async def upload_documento_automatico(
             archived["message"] = "Verbale archiviato e associato per numero/IUV"
             return archived
 
-        elif tipo_rilevato == 'ricevuta_pagopa':
+        elif tipo_rilevato in {
+            'ricevuta_pagopa', 'ricevuta_cbill', 'ricevuta_mav',
+            'ricevuta_rav', 'ricevuta_bollettino_postale',
+        }:
             from app.config import settings
             from app.services.pagopa_receipts import import_receipt
 
@@ -2806,15 +2824,20 @@ async def upload_documento_automatico(
                 source="documenti_upload_auto",
             )
             result["data"] = receipt
-            result["workflow"] = "PAGOPA_CBILL_CANONICO"
+            receipt_kind = (receipt.get("receipt") or {}).get("document_kind")
+            result["workflow"] = (
+                "PAGOPA_CBILL_CANONICO"
+                if receipt_kind in (None, "RICEVUTA_PAGOPA", "RICEVUTA_CBILL")
+                else "PAGAMENTO_DOCUMENTALE_CANONICO"
+            )
             result["duplicate"] = bool(receipt.get("duplicate"))
             if receipt.get("success"):
                 result["imported"] = 0 if receipt.get("duplicate") else 1
                 fiscal_match = receipt.get("riconciliazione_fiscale") or {}
                 result["message"] = (
-                    "Ricevuta PagoPA/CBILL gia importata"
+                    "Ricevuta di pagamento gia importata"
                     if receipt.get("duplicate")
-                    else "Ricevuta PagoPA/CBILL importata"
+                    else "Ricevuta di pagamento importata"
                 )
                 if fiscal_match.get("matched"):
                     result["message"] += ", rata e cartelle AdeR collegate"

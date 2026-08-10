@@ -84,6 +84,20 @@ describe('Import documenti - corrispettivo duplicato', () => {
     })).toBe('Rata collegata â€¢ Cartelle collegate: 2 â€¢ Banca da verificare');
   });
 
+  it('separa importo, commissione e addebito per MAV RAV e bollettini', () => {
+    const description = descriviProvaFiscale({
+      workflow: 'PAGAMENTO_DOCUMENTALE_CANONICO',
+      data: {
+        receipt: { operation_amount: 34.9, fee_amount: 2.85, bank_debit_total: 37.75 },
+        riconciliazione_fiscale: { matched: false, bank_verified: false },
+      },
+    });
+    expect(description).toContain('Operazione: € 34.90');
+    expect(description).toContain('Commissione: € 2.85');
+    expect(description).toContain('Addebito: € 37.75');
+    expect(description).toContain('Banca da verificare');
+  });
+
   it('mostra anche il collegamento AdeR prodotto da una quietanza F24', () => {
     expect(descriviProvaFiscale({
       workflow: 'F24_CANONICO',

@@ -24,6 +24,18 @@ COLL = "f24_unificato"
 COLL_QUIETANZE = "quietanze_f24"
 
 
+def richiedi_quadratura_f24(parsed: Dict[str, Any]) -> Dict[str, Any]:
+    """Rifiuta un PDF F24 privo di quadratura positiva esplicita."""
+    validation = parsed.get("validazione") or {}
+    if validation.get("saldo_quadrato") is not True:
+        difference = validation.get("differenza_saldo")
+        raise ValueError(
+            "F24 non quadrato o non validato: salvataggio bloccato"
+            + (f" (differenza {difference})" if difference is not None else "")
+        )
+    return validation
+
+
 def normalizza_righe_tributo(doc: Dict[str, Any]) -> list[Dict[str, Any]]:
     """Unica vista applicativa di debiti, crediti e periodi delle righe F24."""
     from app.services.f24_fiscal_evidence import normalize_f24_evidence_rows
@@ -57,13 +69,14 @@ async def importa_modello_bytes(
             "filename": filename,
             "error": (parsed or {}).get("error", "Parsing F24 fallito"),
         }
-    validation = parsed.get("validazione") or {}
-    if validation and not validation.get("saldo_quadrato"):
+    try:
+        validation = richiedi_quadratura_f24(parsed)
+    except ValueError as exc:
         return {
             "success": False,
             "filename": filename,
-            "error": f"Saldo F24 non quadrato (differenza {validation.get('differenza_saldo')})",
-            "validazione": validation,
+            "error": str(exc),
+            "validazione": parsed.get("validazione") or {},
         }
 
     documento = dict(parsed)
@@ -146,16 +159,31 @@ def chiave_f24(doc: Dict[str, Any]) -> str:
     return "f24_" + hashlib.md5(base.encode("utf-8")).hexdigest()[:20]
 
 
-async def salva_f24(db, doc: Dict[str, Any], source: Optional[str] = None) -> str:
+async def salva_f24(
+    db,
+    doc: Dict[str, Any],
+    source: Optional[str] = None,
+    *,
+    existing_id: Optional[str] = None,
+) -> str:
     """Scrive un modello F24 nella collezione canonica in modo IDEMPOTENTE:
     se un F24 con la stessa chiave naturale esiste già lo aggiorna (senza
     duplicarlo), altrimenti lo inserisce. Ritorna l'`id` canonico."""
     doc = dict(doc)
     doc.pop("_id", None)
+    validation = doc.get("validazione")
+    if validation is not None and validation.get("saldo_quadrato") is not True:
+        richiedi_quadratura_f24(doc)
     chiave = chiave_f24(doc)
     doc["f24_dedup_key"] = chiave
     if source:
         doc.setdefault("import_source", source)
+
+    if existing_id:
+        doc["id"] = existing_id
+        patch = {k: v for k, v in doc.items() if k not in ("id", "_id")}
+        await db[COLL].update_one({"id": existing_id}, {"$set": patch})
+        return existing_id
 
     esistente = await db[COLL].find_one({"f24_dedup_key": chiave}, {"_id": 0, "id": 1})
     if esistente:

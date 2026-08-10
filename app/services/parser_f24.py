@@ -92,6 +92,10 @@ def _importo_da_token(parts) -> float:
         joined = "".join(values[:-1]) + "," + values[-1]
     joined = re.sub(r"[^0-9.,]", "", joined)
     joined = re.sub(r",+", ",", joined)
+    # I modelli F24 storici contengono talvolta una seconda virgola grafica
+    # dopo un importo gia' completo ("137,37" + ","). Non e' un'altra
+    # casella decimale e non deve azzerare il valore.
+    joined = re.sub(r"^[.,]+|[.,]+$", "", joined)
     if not re.search(r"\d", joined):
         return 0.0
     # Nei campi a caselle dell'F24 una sequenza compatta senza separatore e'

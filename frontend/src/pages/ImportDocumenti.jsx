@@ -36,6 +36,22 @@ export function classificaEsitoUpload(data = {}) {
 }
 
 export function descriviProvaFiscale(data = {}) {
+  if (data?.workflow === 'PAGAMENTO_DOCUMENTALE_CANONICO') {
+    const match = data?.data?.riconciliazione_fiscale || {};
+    const receipt = data?.data?.receipt || {};
+    const parts = [];
+    if (Number.isFinite(receipt.operation_amount)) parts.push(`Operazione: € ${receipt.operation_amount.toFixed(2)}`);
+    if (Number.isFinite(receipt.fee_amount)) parts.push(`Commissione: € ${receipt.fee_amount.toFixed(2)}`);
+    if (Number.isFinite(receipt.bank_debit_total)) parts.push(`Addebito: € ${receipt.bank_debit_total.toFixed(2)}`);
+    if (match.matched) {
+      const cartelle = Array.isArray(match.linked_claim_ids) ? match.linked_claim_ids.length : 0;
+      parts.push('Rata collegata', `Cartelle collegate: ${cartelle}`);
+    } else {
+      parts.push('Collegamento da verificare');
+    }
+    parts.push(match.bank_verified ? 'Banca verificata' : 'Banca da verificare');
+    return parts.join(' • ');
+  }
   if (data?.workflow === 'PAGOPA_CBILL_CANONICO') {
     const match = data?.data?.riconciliazione_fiscale || {};
     if (!match.matched) return 'Ricevuta acquisita â€¢ collegamento AdeR da verificare';
@@ -212,6 +228,11 @@ export default function ImportDocumenti() {
       bonifici: 'info',
       pagamenti_buoni: 'info',
       quietanza_f24: 'warning',
+      ricevuta_pagopa: 'warning',
+      ricevuta_cbill: 'warning',
+      ricevuta_mav: 'warning',
+      ricevuta_rav: 'warning',
+      ricevuta_bollettino_postale: 'warning',
       avviso_pagopa: 'warning',
       nota_rettifica_inps: 'warning',
       esito_pagopa_negativo: 'danger',
@@ -241,6 +262,10 @@ export default function ImportDocumenti() {
       pagamenti_buoni: 'Pagamenti buoni',
       quietanza_f24: 'Quietanza F24',
       ricevuta_pagopa: 'PagoPA / CBILL',
+      ricevuta_cbill: 'Ricevuta CBILL',
+      ricevuta_mav: 'Pagamento MAV',
+      ricevuta_rav: 'Pagamento RAV',
+      ricevuta_bollettino_postale: 'Bollettino postale pagato',
       avviso_pagopa: 'Avviso PagoPA (non pagato)',
       nota_rettifica_inps: 'Nota rettifica INPS',
       esito_pagopa_negativo: 'PagoPA non eseguito',
@@ -267,6 +292,7 @@ export default function ImportDocumenti() {
     { label: 'Estratti Conto', variant: 'success' },
     { label: 'Quietanze F24', variant: 'warning' },
     { label: 'Ricevute PagoPA / CBILL', variant: 'warning' },
+    { label: 'MAV, RAV e bollettini postali', variant: 'warning' },
     { label: 'Avvisi PagoPA', variant: 'warning' },
     { label: 'Note rettifica INPS', variant: 'warning' },
     { label: 'Verbali e notifiche CdS', variant: 'warning' },

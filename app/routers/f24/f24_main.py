@@ -436,6 +436,12 @@ async def upload_f24_pdf(
             "error": parsed["error"],
             "filename": file.filename
         }
+    try:
+        from app.services.f24_canonico import richiedi_quadratura_f24
+
+        richiedi_quadratura_f24(parsed)
+    except ValueError as exc:
+        return {"success": False, "error": str(exc), "filename": file.filename}
     
     totali = parsed.get("totali", {})
     dati = parsed.get("dati_generali", {})
@@ -471,6 +477,7 @@ async def upload_f24_pdf(
         "sezione_tributi_locali": parsed.get("sezione_tributi_locali", []),
         "sezione_inail": parsed.get("sezione_inail", []),
         "totali": totali,
+        "validazione": parsed.get("validazione", {}),
         "has_ravvedimento": parsed.get("has_ravvedimento", False),
         "status": "da_pagare",
         "riconciliato": False,

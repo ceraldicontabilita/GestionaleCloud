@@ -294,6 +294,12 @@ async def upload_f24_pdf(
             "error": parsed["error"],
             "filename": file.filename
         }
+    try:
+        from app.services.f24_canonico import richiedi_quadratura_f24
+
+        richiedi_quadratura_f24(parsed)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     
     # Get database
     db = Database.get_db()
@@ -430,6 +436,7 @@ async def upload_f24_pdf(
         "sezione_tributi_locali": parsed.get("sezione_tributi_locali", []),
         "sezione_inail": parsed.get("sezione_inail", []),
         "totali": totali,
+        "validazione": parsed.get("validazione", {}),
         "has_ravvedimento": parsed.get("has_ravvedimento", False),
         "status": "da_pagare",
         "riconciliato": False,
@@ -438,8 +445,10 @@ async def upload_f24_pdf(
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    # Insert into database
-    await db[F24_COLLECTION].insert_one(f24_doc.copy())
+    # Anche il vecchio endpoint pubblico passa dall'unico writer canonico.
+    from app.services.f24_canonico import salva_f24
+
+    f24_id = await salva_f24(db, f24_doc, source="f24_public_upload")
     
     logger.info(f"F24 importato: {f24_id} - Scadenza {data_scadenza} - €{totali.get('saldo_finale', 0):.2f}")
     
@@ -644,6 +653,12 @@ async def upload_f24_pdf_overwrite(
             "error": parsed["error"],
             "filename": file.filename
         }
+    try:
+        from app.services.f24_canonico import richiedi_quadratura_f24
+
+        richiedi_quadratura_f24(parsed)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     
     db = Database.get_db()
     
@@ -760,6 +775,7 @@ async def upload_f24_pdf_overwrite(
         "sezione_tributi_locali": parsed.get("sezione_tributi_locali", []),
         "sezione_inail": parsed.get("sezione_inail", []),
         "totali": totali,
+        "validazione": parsed.get("validazione", {}),
         "has_ravvedimento": parsed.get("has_ravvedimento", False),
         "status": existing.get("status", "da_pagare") if existing else "da_pagare",
         "riconciliato": existing.get("riconciliato", False) if existing else False,
@@ -767,16 +783,17 @@ async def upload_f24_pdf_overwrite(
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    if existing:
-        await db[F24_COLLECTION].update_one(
-            {"id": f24_id},
-            {"$set": f24_doc}
-        )
-        action = "aggiornato"
-    else:
+    from app.services.f24_canonico import salva_f24
+
+    if not existing:
         f24_doc["created_at"] = datetime.now(timezone.utc).isoformat()
-        await db[F24_COLLECTION].insert_one(f24_doc.copy())
-        action = "creato"
+    await salva_f24(
+        db,
+        f24_doc,
+        source="f24_public_overwrite",
+        existing_id=f24_id if existing else None,
+    )
+    action = "aggiornato" if existing else "creato"
     
     logger.info(f"F24 {action}: {f24_id} - €{totali.get('saldo_netto', totali.get('saldo_finale', 0)):.2f}")
     

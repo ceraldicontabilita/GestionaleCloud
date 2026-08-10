@@ -15,7 +15,6 @@ import uuid
 import base64
 import logging
 from app.utils.error_handler import handle_errors
-from app.services.scritture_contabili import scrivi_movimento
 from app.services.f24_payment_evidence import (
     patch_quietanza_associata,
     stato_evidenza_pagamento,
@@ -156,6 +155,12 @@ async def upload_f24_commercialista(
     
     if "error" in parsed:
         raise HTTPException(status_code=400, detail=parsed["error"])
+    try:
+        from app.services.f24_canonico import richiedi_quadratura_f24
+
+        richiedi_quadratura_f24(parsed)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     
     # Genera chiave univoca per rilevare duplicati
     # Basata su: filename + data_versamento + saldo
@@ -243,6 +248,7 @@ async def upload_f24_commercialista(
         "sezione_tributi_locali": parsed.get("sezione_tributi_locali", []),
         "sezione_inail": parsed.get("sezione_inail", []),
         "totali": parsed.get("totali", {}),
+        "validazione": parsed.get("validazione", {}),
         "codici_univoci": parsed.get("codici_univoci", []),
         "has_ravvedimento": parsed.get("has_ravvedimento", False),
         "codici_ravvedimento": parsed.get("codici_ravvedimento", []),
@@ -255,34 +261,13 @@ async def upload_f24_commercialista(
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db[COLL_F24_COMMERCIALISTA].insert_one(documento.copy())
+    from app.services.f24_canonico import salva_f24
+
+    file_id = await salva_f24(db, documento, source="f24_commercialista_upload")
     
-    # D: Crea movimento in prima_nota_banca all'upload F24
-    data_vers = parsed.get("dati_generali", {}).get("data_versamento")
-    saldo = float(parsed.get("totali", {}).get("saldo_netto", 0) or
-                  parsed.get("totali", {}).get("saldo_finale", 0))
-    if saldo > 0:
-        codici = parsed.get("codici_univoci", [])[:4]
-        desc = f"F24 {data_vers[:7] if data_vers else ''} - {', '.join(codici) if codici else 'vari'}"
-        mov_f24 = {
-            "id": str(uuid.uuid4()),
-            "tipo": "uscita",
-            "importo": saldo,
-            "data": (data_vers or datetime.now().strftime("%Y-%m-%d"))[:10],
-            "descrizione": desc,
-            "categoria": "F24",
-            "source": "f24_upload",
-            "riferimento_id": file_id,
-            "f24_id": file_id,
-            "codici_tributo": parsed.get("codici_univoci", []),
-            "has_ravvedimento": parsed.get("has_ravvedimento", False),
-            "riconciliato": False,
-            "anno": int(data_vers[:4]) if data_vers and len(data_vers) >= 4 else datetime.now().year,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        await scrivi_movimento(db, "banca", mov_f24)
-        await db[COLL_F24_COMMERCIALISTA].update_one(
-            {"id": file_id}, {"$set": {"prima_nota_banca_id": mov_f24["id"]}})
+    # Il modello F24 prova solo la predisposizione/presentazione. Un movimento
+    # banca nasce esclusivamente dall'import dell'estratto conto e viene poi
+    # riconciliato; non viene mai sintetizzato durante l'upload del PDF.
     
     # Se è un ravvedimento che sostituisce un F24 precedente, crea alert
     if is_ravvedimento_update and f24_precedente:
