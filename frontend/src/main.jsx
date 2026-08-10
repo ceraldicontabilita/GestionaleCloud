@@ -53,6 +53,7 @@ const LegacyRouteResolver = lazy(() => import("./pages/LegacyRouteResolver.jsx")
 const GestioneIVA = lazy(() => import("./pages/GestioneIVA.jsx"));
 const FattureEstereVerifica = lazy(() => import("./pages/FattureEstereVerifica.jsx"));
 const CedoliniSalari = lazy(() => import("./pages/CedoliniSalari.jsx"));
+const SituazioneFiscale = lazy(() => import("./pages/SituazioneFiscale.jsx"));
 
 const LazyPage = ({ children }) => (
   <Suspense fallback={<PageLoader />}>{children}</Suspense>
@@ -93,6 +94,7 @@ const router = createBrowserRouter([
       { path: "utenti", element: <RequireAdmin><LazyPage><Utenti /></LazyPage></RequireAdmin> },
       { path: "mappa-gestionale", element: <LazyPage><MappaGestionale /></LazyPage> },
       { path: "iva/*", element: <LazyPage><GestioneIVA /></LazyPage> },
+      { path: "situazione-fiscale/*", element: <RequireAdmin><LazyPage><SituazioneFiscale /></LazyPage></RequireAdmin> },
       { path: "fatture-estere-verifica", element: <LazyPage><FattureEstereVerifica /></LazyPage> },
 
       // Un solo punto di compatibilità per vecchi preferiti; altrimenti 404 reale.

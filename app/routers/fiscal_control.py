@@ -1,0 +1,212 @@
+"""API della situazione fiscale: letture protette e mutazioni admin con MFA."""
+
+from __future__ import annotations
+
+import base64
+import io
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+
+from app.config import settings
+from app.database import Database
+from app.db_collections import (
+    COLL_FISCAL_DOCUMENTS, COLL_FISCAL_EVIDENCE, COLL_TAX_ALLOCATIONS,
+    COLL_TAX_CODE_CROSSWALK, COLL_TAX_COLLECTION_CLAIMS,
+    COLL_TAX_COLLECTION_EVENTS, COLL_TAX_COLLECTION_SNAPSHOTS,
+    COLL_TAX_CREDIT_MOVEMENTS, COLL_TAX_OBLIGATIONS, COLL_TAX_PAYMENTS,
+)
+from app.services.fiscal_agents import AdvisorBriefGenerator, FiscalControlAgent, buildTaxEvidencePackage, buildTaxReviewDossier, load_review_data
+from app.services.fiscal_domain import rebuild_vat_credit_chain, reconstruct_collection_state
+from app.services.fiscal_evidence import find_linked_evidence, now_iso, stable_id
+from app.services.ravvedimento_engine import RavvedimentoEngine
+from app.services.tax_collection_service import build_snapshot
+from app.utils.dependencies import get_current_admin_mfa_user, get_current_admin_user
+
+
+router = APIRouter()
+
+
+class SnapshotRow(BaseModel):
+    collection_number: str
+    original_amount: float = 0
+    residual: float = 0
+    portal_status: Optional[str] = None
+    payment_evidence: bool = False
+    suspended: bool = False
+    disputed: bool = False
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SnapshotRequest(BaseModel):
+    source_document_id: str
+    captured_at: str
+    rows: List[SnapshotRow]
+
+
+class RavvedimentoRequest(BaseModel):
+    principal: float
+    days_late: int = Field(ge=0)
+    legal_rule_version: Optional[str] = None
+
+
+class CollectionEventRequest(BaseModel):
+    event_type: str
+    effective_at: str
+    amount: float = 0
+    evidence_ids: List[str] = Field(min_length=1)
+    closure_cause: Optional[str] = None
+    source_reference: Optional[str] = None
+
+
+def _company() -> str:
+    return settings.FISCAL_COMPANY_ID
+
+
+@router.get("/summary")
+async def summary(_admin: Dict[str, Any] = Depends(get_current_admin_user)):
+    db = Database.get_db()
+    names = {"documents": COLL_FISCAL_DOCUMENTS, "obligations": COLL_TAX_OBLIGATIONS,
+             "payments": COLL_TAX_PAYMENTS, "allocations": COLL_TAX_ALLOCATIONS,
+             "collection_claims": COLL_TAX_COLLECTION_CLAIMS,
+             "collection_snapshots": COLL_TAX_COLLECTION_SNAPSHOTS}
+    counts = {key: await db[name].count_documents({"company_id": _company()}) for key, name in names.items()}
+    unresolved = await db[COLL_TAX_COLLECTION_CLAIMS].count_documents({"company_id": _company(), "business_status": {"$in": ["DA_VERIFICARE", "CONTESTATA"]}})
+    return {"company_id": _company(), "counts": counts, "requires_review": unresolved}
+
+
+@router.get("/obligations")
+async def obligations(status: str | None = None, limit: int = Query(200, ge=1, le=1000),
+                      _admin: Dict[str, Any] = Depends(get_current_admin_user)):
+    query: dict[str, Any] = {"company_id": _company()}
+    if status:
+        query["payment_status"] = status
+    db = Database.get_db()
+    items = await db[COLL_TAX_OBLIGATIONS].find(query, {"_id": 0}).sort("updated_at", -1).to_list(limit)
+    return {"items": items, "total": await db[COLL_TAX_OBLIGATIONS].count_documents(query)}
+
+
+@router.get("/collections")
+async def collection_claims(limit: int = Query(200, ge=1, le=1000),
+                            _admin: Dict[str, Any] = Depends(get_current_admin_user)):
+    query = {"company_id": _company()}
+    db = Database.get_db()
+    items = await db[COLL_TAX_COLLECTION_CLAIMS].find(query, {"_id": 0}).sort("updated_at", -1).to_list(limit)
+    return {"items": items, "total": await db[COLL_TAX_COLLECTION_CLAIMS].count_documents(query)}
+
+
+@router.get("/collections/{claim_id}")
+async def collection_detail(claim_id: str, _admin: Dict[str, Any] = Depends(get_current_admin_user)):
+    db = Database.get_db()
+    claim = await db[COLL_TAX_COLLECTION_CLAIMS].find_one({"company_id": _company(), "$or": [{"id": claim_id}, {"collection_number": claim_id}]}, {"_id": 0})
+    if not claim:
+        raise HTTPException(404, "Posizione fiscale non trovata")
+    events = await db[COLL_TAX_COLLECTION_EVENTS].find({"company_id": _company(), "claim_id": claim.get("id") or claim_id}, {"_id": 0}).sort("effective_at", 1).to_list(5000)
+    return {"claim": claim, "events": events, "state": reconstruct_collection_state(events)}
+
+
+@router.post("/collections/{claim_id}/events")
+async def append_event(claim_id: str, body: CollectionEventRequest,
+                       admin: Dict[str, Any] = Depends(get_current_admin_mfa_user)):
+    db = Database.get_db()
+    claim = await db[COLL_TAX_COLLECTION_CLAIMS].find_one({"company_id": _company(), "id": claim_id}, {"_id": 0, "id": 1})
+    if not claim:
+        raise HTTPException(404, "Posizione fiscale non trovata")
+    event_id = stable_id("taxevent", _company(), claim_id, body.event_type, body.effective_at, body.source_reference)
+    event = {**body.model_dump(), "id": event_id, "company_id": _company(), "claim_id": claim_id, "created_at": now_iso(), "created_by": admin.get("user_id")}
+    await db[COLL_TAX_COLLECTION_EVENTS].update_one({"company_id": _company(), "id": event_id}, {"$setOnInsert": event}, upsert=True)
+    events = await db[COLL_TAX_COLLECTION_EVENTS].find({"company_id": _company(), "claim_id": claim_id}, {"_id": 0}).to_list(5000)
+    state = reconstruct_collection_state(events)
+    await db[COLL_TAX_COLLECTION_CLAIMS].update_one({"company_id": _company(), "id": claim_id}, {"$set": {**state, "updated_at": now_iso()}})
+    return {"event_id": event_id, "state": state}
+
+
+@router.get("/evidence/{entity_type}/{entity_id}")
+async def evidence(entity_type: str, entity_id: str, _admin: Dict[str, Any] = Depends(get_current_admin_user)):
+    return {"links": await find_linked_evidence(Database.get_db(), company_id=_company(), entity_type=entity_type, entity_id=entity_id)}
+
+
+@router.get("/documents/{document_id}/content")
+async def document_content(document_id: str, _admin: Dict[str, Any] = Depends(get_current_admin_user)):
+    db = Database.get_db()
+    document = await db[COLL_FISCAL_DOCUMENTS].find_one({"company_id": _company(), "id": document_id}, {"_id": 0})
+    if not document:
+        raise HTTPException(404, "Documento fiscale non trovato")
+    inbox_id = (document.get("metadata") or {}).get("documents_inbox_id")
+    query = {"id": inbox_id, "company_id": _company()} if inbox_id else {"company_id": _company(), "fiscal_document_id": document_id}
+    source = await db["documents_inbox"].find_one(query, {"_id": 0, "pdf_data": 1, "filename": 1})
+    if not source or not source.get("pdf_data"):
+        raise HTTPException(404, "Originale non disponibile nel deposito Documenti")
+    content = base64.b64decode(source["pdf_data"])
+    safe_filename = str(source.get("filename") or "documento.pdf").replace('"', "_").replace("\r", "_").replace("\n", "_")
+    return StreamingResponse(io.BytesIO(content), media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{safe_filename}"'})
+
+
+@router.post("/collection-snapshots/dry-run")
+async def snapshot_dry_run(body: SnapshotRequest, _admin: Dict[str, Any] = Depends(get_current_admin_mfa_user)):
+    return build_snapshot(company_id=_company(), source_document_id=body.source_document_id, captured_at=body.captured_at, rows=[row.model_dump() for row in body.rows])
+
+
+@router.post("/collection-snapshots/import")
+async def snapshot_import(body: SnapshotRequest, admin: Dict[str, Any] = Depends(get_current_admin_mfa_user)):
+    db = Database.get_db()
+    if not await db[COLL_FISCAL_DOCUMENTS].find_one({"company_id": _company(), "id": body.source_document_id}):
+        raise HTTPException(409, "Documento sorgente non registrato: importazione vietata")
+    snapshot = build_snapshot(company_id=_company(), source_document_id=body.source_document_id, captured_at=body.captured_at, rows=[row.model_dump() for row in body.rows])
+    if await db[COLL_TAX_COLLECTION_SNAPSHOTS].find_one({"company_id": _company(), "id": snapshot["id"]}, {"_id": 0, "id": 1}):
+        return {"duplicate": True, "id": snapshot["id"], "row_count": snapshot["row_count"]}
+    snapshot.update({"created_at": now_iso(), "created_by": admin.get("user_id")})
+    await db[COLL_TAX_COLLECTION_SNAPSHOTS].insert_one(snapshot.copy())
+    for row in snapshot["rows"]:
+        claim_id = stable_id("taxclaim", _company(), row["collection_number"])
+        await db[COLL_TAX_COLLECTION_CLAIMS].update_one(
+            {"company_id": _company(), "id": claim_id},
+            {"$setOnInsert": {"created_at": now_iso()}, "$set": {**row, "id": claim_id, "company_id": _company(), "snapshot_id": snapshot["id"], "source_document_id": body.source_document_id, "updated_at": now_iso()}}, upsert=True)
+    return {"duplicate": False, "id": snapshot["id"], "row_count": snapshot["row_count"]}
+
+
+@router.post("/ravvedimento/calculate")
+async def calculate_ravvedimento(body: RavvedimentoRequest, _admin: Dict[str, Any] = Depends(get_current_admin_user)):
+    rule = None
+    if body.legal_rule_version:
+        rule = await Database.get_db()["legal_rule_versions"].find_one({"company_id": _company(), "version": body.legal_rule_version}, {"_id": 0})
+    return RavvedimentoEngine.calculate(principal=body.principal, days_late=body.days_late, legal_rule=rule)
+
+
+@router.post("/vat-credit-chain/rebuild")
+async def vat_credit_chain(start_year: int = Query(..., ge=2000, le=2100), end_year: int = Query(..., ge=2000, le=2100),
+                           _admin: Dict[str, Any] = Depends(get_current_admin_mfa_user)):
+    if end_year < start_year:
+        raise HTTPException(422, "Intervallo anni non valido")
+    db = Database.get_db()
+    rows = await db[COLL_TAX_CREDIT_MOVEMENTS].find({"company_id": _company(), "tax_family": "IVA", "year": {"$gte": start_year, "$lte": end_year}}, {"_id": 0}).to_list(10000)
+    return rebuild_vat_credit_chain(rows, start_year, end_year)
+
+
+@router.get("/crosswalk")
+async def crosswalk(limit: int = Query(200, ge=1, le=1000), _admin: Dict[str, Any] = Depends(get_current_admin_user)):
+    db = Database.get_db()
+    query = {"company_id": _company()}
+    return {"items": await db[COLL_TAX_CODE_CROSSWALK].find(query, {"_id": 0}).limit(limit).to_list(limit), "total": await db[COLL_TAX_CODE_CROSSWALK].count_documents(query)}
+
+
+@router.get("/review")
+async def fiscal_review(_admin: Dict[str, Any] = Depends(get_current_admin_user)):
+    obligations_data, claims = await load_review_data(Database.get_db(), _company())
+    findings = FiscalControlAgent.review(obligations=obligations_data, claims=claims)
+    return {"brief": AdvisorBriefGenerator.build(company_id=_company(), obligations=obligations_data, claims=claims, findings=findings), "findings": findings}
+
+
+@router.get("/dossier.pdf")
+async def dossier(_admin: Dict[str, Any] = Depends(get_current_admin_user)):
+    obligations_data, claims = await load_review_data(Database.get_db(), _company())
+    findings = FiscalControlAgent.review(obligations=obligations_data, claims=claims)
+    brief = AdvisorBriefGenerator.build(company_id=_company(), obligations=obligations_data, claims=claims, findings=findings)
+    return StreamingResponse(io.BytesIO(buildTaxReviewDossier(brief, findings)), media_type="application/pdf", headers={"Content-Disposition": "attachment; filename=dossier_fiscale.pdf"})
+
+
+@router.get("/evidence-package.zip")
+async def evidence_package(_admin: Dict[str, Any] = Depends(get_current_admin_mfa_user)):
+    return StreamingResponse(io.BytesIO(await buildTaxEvidencePackage(Database.get_db(), company_id=_company())), media_type="application/zip", headers={"Content-Disposition": "attachment; filename=evidence_fiscale.zip"})

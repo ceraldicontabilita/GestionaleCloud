@@ -546,6 +546,81 @@ class Database:
         await _safe_index("tax_code_registry", "code", unique=True, name="idx_tax_code_registry_code")
         await _safe_index("tax_code_registry_versions", "version_id", unique=True, name="idx_tax_registry_version")
 
+        # --- Sottosistema fiscale evidence-bound ---
+        # Tutte le chiavi includono company_id: nessuna query o unicita'
+        # fiscale puo' attraversare involontariamente il perimetro aziendale.
+        from app import db_collections as fiscal_coll
+        fiscal_id_collections = (
+            fiscal_coll.COLL_FISCAL_DOCUMENTS,
+            fiscal_coll.COLL_FISCAL_DOCUMENT_VERSIONS,
+            fiscal_coll.COLL_FISCAL_PAGES,
+            fiscal_coll.COLL_FISCAL_EVIDENCE,
+            fiscal_coll.COLL_FISCAL_LINKS,
+            fiscal_coll.COLL_TAX_OBLIGATIONS,
+            fiscal_coll.COLL_TAX_PAYMENTS,
+            fiscal_coll.COLL_TAX_ALLOCATIONS,
+            fiscal_coll.COLL_TAX_COLLECTION_DOCUMENTS,
+            fiscal_coll.COLL_TAX_COLLECTION_CLAIMS,
+            fiscal_coll.COLL_TAX_COLLECTION_CLAIM_LINES,
+            fiscal_coll.COLL_TAX_COLLECTION_EVENTS,
+            fiscal_coll.COLL_TAX_COLLECTION_SNAPSHOTS,
+            fiscal_coll.COLL_TAX_NOTIFICATION_EVENTS,
+            fiscal_coll.COLL_TAX_LEGAL_EVENTS,
+            fiscal_coll.COLL_TAX_RATE_PLANS,
+            fiscal_coll.COLL_TAX_RATE_INSTALLMENTS,
+            fiscal_coll.COLL_TAX_RATE_PLAN_CLAIM_ALLOCATIONS,
+            fiscal_coll.COLL_TAX_SETTLEMENT_PROGRAMS,
+            fiscal_coll.COLL_TAX_SETTLEMENT_APPLICATIONS,
+            fiscal_coll.COLL_TAX_SETTLEMENT_CLAIMS,
+            fiscal_coll.COLL_TAX_SETTLEMENT_INSTALLMENTS,
+            fiscal_coll.COLL_TAX_CREDIT_LEDGER,
+            fiscal_coll.COLL_TAX_CREDIT_MOVEMENTS,
+            fiscal_coll.COLL_TAX_CREDIT_LINEAGE,
+            fiscal_coll.COLL_COLLECTION_TAX_CODE_REGISTRY,
+            fiscal_coll.COLL_TAX_CODE_CROSSWALK,
+            fiscal_coll.COLL_LEGAL_RULE_VERSIONS,
+        )
+        for collection in fiscal_id_collections:
+            await _safe_index(
+                collection,
+                [("company_id", 1), ("id", 1)],
+                unique=True,
+                name=f"idx_{collection}_company_id_unique",
+            )
+        await _safe_index(
+            fiscal_coll.COLL_DOCUMENTS_INBOX,
+            [("company_id", 1), ("sha256", 1)],
+            unique=True,
+            sparse=True,
+            name="idx_documents_inbox_company_sha256_unique",
+        )
+        await _safe_index(
+            fiscal_coll.COLL_FISCAL_DOCUMENT_VERSIONS,
+            [("company_id", 1), ("sha256", 1)],
+            unique=True,
+            name="idx_fiscal_versions_company_sha256_unique",
+        )
+        await _safe_index(
+            fiscal_coll.COLL_FISCAL_EVIDENCE,
+            [("company_id", 1), ("document_id", 1), ("page_number", 1)],
+            name="idx_fiscal_evidence_document_page",
+        )
+        await _safe_index(
+            fiscal_coll.COLL_TAX_OBLIGATIONS,
+            [("company_id", 1), ("competence_year", -1), ("tax_code", 1), ("payment_status", 1)],
+            name="idx_tax_obligations_company_period_status",
+        )
+        await _safe_index(
+            fiscal_coll.COLL_TAX_COLLECTION_EVENTS,
+            [("company_id", 1), ("claim_id", 1), ("effective_at", 1)],
+            name="idx_tax_collection_events_timeline",
+        )
+        await _safe_index(
+            fiscal_coll.COLL_TAX_CREDIT_MOVEMENTS,
+            [("company_id", 1), ("tax_family", 1), ("year", 1), ("effective_at", 1)],
+            name="idx_tax_credit_movements_lineage",
+        )
+
         # --- Assistente Ceraldi: memoria operativa separata dai domini ---
         # Ogni record ha un id deterministico: la stessa evidenza puo' essere
         # riprocessata senza produrre duplicati o scritture contabili.

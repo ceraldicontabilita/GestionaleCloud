@@ -3,8 +3,8 @@ Router Gestione Documenti
 API per scaricare, visualizzare e processare documenti dalle email.
 """
 
-from fastapi import APIRouter, BackgroundTasks, Query, HTTPException, Depends
-from app.utils.dependencies import get_current_admin_user
+from fastapi import APIRouter, BackgroundTasks, Query, HTTPException, Depends, UploadFile, File
+from app.utils.dependencies import get_current_admin_mfa_user, get_current_admin_user
 from app.utils.ruoli import richiedi_admin
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any, Optional, List
@@ -68,7 +68,7 @@ async def stato_drive_fiscale(
 
 @router.post("/drive/fiscal/discover")
 async def scopri_cartelle_drive_fiscali(
-    _admin: Dict[str, Any] = Depends(richiedi_admin),
+    _admin: Dict[str, Any] = Depends(get_current_admin_mfa_user),
 ) -> Dict[str, Any]:
     from app.services.drive_fiscal_registry import discover_fiscal_folders
     return await discover_fiscal_folders(Database.get_db())
@@ -76,7 +76,7 @@ async def scopri_cartelle_drive_fiscali(
 
 @router.post("/drive/fiscal/sync")
 async def sincronizza_drive_fiscale_incrementale(
-    _admin: Dict[str, Any] = Depends(richiedi_admin),
+    _admin: Dict[str, Any] = Depends(get_current_admin_mfa_user),
 ) -> Dict[str, Any]:
     from app.services.drive_fiscal_registry import sync_incremental
     return await sync_incremental(Database.get_db())
@@ -93,10 +93,35 @@ async def stato_codici_tributo(
 
 @router.post("/tax-codes/sync")
 async def sincronizza_codici_tributo(
-    _admin: Dict[str, Any] = Depends(richiedi_admin),
+    _admin: Dict[str, Any] = Depends(get_current_admin_mfa_user),
 ) -> Dict[str, Any]:
     from app.services.tax_code_registry import sync_tax_code_registry
     return await sync_tax_code_registry(Database.get_db())
+
+
+@router.post("/fiscal/ingest")
+async def acquisisci_documento_fiscale(
+    file: UploadFile = File(...),
+    expected_sha256: Optional[str] = Query(None, min_length=64, max_length=64),
+    _admin: Dict[str, Any] = Depends(get_current_admin_mfa_user),
+) -> Dict[str, Any]:
+    """Ingresso fiscale manuale dentro Documenti, con SHA-256 e pagina prova."""
+    content = await file.read()
+    if len(content) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="PDF oltre il limite di 50 MB")
+    from app.services.fiscal_document_ingestion import FiscalDocumentIngestionService
+
+    service = FiscalDocumentIngestionService(Database.get_db())
+    try:
+        return await service.ingest(
+            content=content,
+            filename=file.filename or "documento.pdf",
+            source="documenti_upload",
+            source_metadata={"uploaded_by": _admin.get("user_id")},
+            expected_sha256=expected_sha256,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 # ============================================================
@@ -1928,7 +1953,6 @@ async def reimporta_documenti_da_filesystem(
 # UPLOAD AUTOMATICO CON RICONOSCIMENTO TIPO
 # ============================================================
 
-from fastapi import UploadFile, File
 from app.utils.error_handler import handle_errors
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024

@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     RUN_STARTUP_DATA_REPAIRS: bool = False
     RUN_STARTUP_INDEX_MIGRATIONS: bool = False
     RUN_STARTUP_SEED_DATA: bool = False
+    # Perimetro fiscale esplicito. Ogni nuovo record del sottosistema fiscale
+    # porta questa chiave e ogni query la filtra: non si deduce mai l'azienda
+    # dal nome di un file o di una cartella Drive.
+    FISCAL_COMPANY_ID: str = "04523831214"
     # I processi periodici devono poter essere esclusi nelle istanze locali o
     # dedicate al solo frontend. In produzione restano attivi per default.
     ENABLE_SCHEDULER: bool = True

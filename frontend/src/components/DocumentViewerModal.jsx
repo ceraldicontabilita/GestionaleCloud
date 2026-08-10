@@ -41,6 +41,7 @@ export default function DocumentViewerModal({
   onClose,
   onDownload,
   extraActions,
+  pageNumber = 1,
   maxWidth = 960,
   testIdPrefix = 'document-viewer',
 }) {
@@ -161,7 +162,10 @@ export default function DocumentViewerModal({
     };
   }, [fetchUrl, mimeType]);
 
-  const iframeSrc = src || blobUrl;
+  const baseIframeSrc = src || blobUrl;
+  const iframeSrc = baseIframeSrc && pageNumber > 1
+    ? `${baseIframeSrc.split('#')[0]}#page=${pageNumber}`
+    : baseIframeSrc;
 
   const btn = extra => ({
     width: 40,

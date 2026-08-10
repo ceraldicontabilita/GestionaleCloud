@@ -15,6 +15,9 @@ def test_endpoint_fiscali_documenti_sono_realmente_montati():
         ("/api/documenti/drive/fiscal/sync", "POST"),
         ("/api/documenti/tax-codes/status", "GET"),
         ("/api/documenti/tax-codes/sync", "POST"),
+        ("/api/fiscal/summary", "GET"),
+        ("/api/fiscal/obligations", "GET"),
+        ("/api/fiscal/collections", "GET"),
     }
 
     assert attesi <= route

@@ -130,7 +130,7 @@ def _list_changes(service, token: str) -> tuple[list[dict[str, Any]], str]:
             spaces="drive",
             includeItemsFromAllDrives=True,
             supportsAllDrives=True,
-            fields="nextPageToken,newStartPageToken,changes(fileId,removed,time,file(id,name,mimeType,parents,trashed))",
+            fields="nextPageToken,newStartPageToken,changes(fileId,removed,time,file(id,name,mimeType,parents,trashed,modifiedTime,md5Checksum,size))",
         ).execute()
         changes.extend(response.get("changes", []))
         page_token = response.get("nextPageToken")
@@ -158,6 +158,57 @@ def _is_under_target(service, file: dict[str, Any], target_ids: set[str]) -> boo
     return False
 
 
+def _list_fiscal_pdfs_recursive(service, entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    pending = [(entry["folder_id"], entry["area"], entry.get("label") or entry["area"]) for entry in entries]
+    visited: set[str] = set()
+    files: list[dict[str, Any]] = []
+    while pending:
+        folder_id, area, path = pending.pop(0)
+        if folder_id in visited:
+            continue
+        visited.add(folder_id)
+        for item in _drive._list_children(service, folder_id):
+            child_path = f"{path}/{item.get('name') or ''}"
+            if item.get("mimeType") == FOLDER_MIME:
+                pending.append((item["id"], area, child_path))
+            elif str(item.get("name") or "").lower().endswith(".pdf"):
+                files.append({**item, "area": area, "path": child_path})
+    return files
+
+
+async def _ingest_drive_file(db, service, file: dict[str, Any]) -> dict[str, Any]:
+    from app.services.fiscal_document_ingestion import FiscalDocumentIngestionService, download_drive_file
+
+    content = await asyncio.to_thread(download_drive_file, service, file["id"])
+    ingestion = FiscalDocumentIngestionService(db)
+    return await ingestion.ingest(
+        content=content,
+        filename=file.get("name") or f"{file['id']}.pdf",
+        source="google_drive",
+        source_metadata={
+            "drive_file_id": file["id"],
+            "drive_area": file.get("area"),
+            "drive_path": file.get("path"),
+            "modified_time": file.get("modifiedTime"),
+        },
+    )
+
+
+async def _initial_fiscal_scan(db, service, entries: list[dict[str, Any]]) -> dict[str, Any]:
+    files = await asyncio.to_thread(_list_fiscal_pdfs_recursive, service, entries)
+    counters = {"discovered": len(files), "inserted": 0, "duplicates": 0, "errors": 0}
+    error_details = []
+    for file in files:
+        try:
+            result = await _ingest_drive_file(db, service, file)
+            key = "duplicates" if result.get("status") == "duplicate" else "inserted"
+            counters[key] += 1
+        except Exception as exc:
+            counters["errors"] += 1
+            error_details.append({"drive_file_id": file.get("id"), "path": file.get("path"), "error": str(exc)})
+    return {**counters, "error_details": error_details[:100]}
+
+
 async def sync_incremental(db, service=None) -> dict[str, Any]:
     """Consuma Drive Changes; il primo avvio esegue una sola scansione piena."""
     service = service or build_drive_service()
@@ -170,11 +221,10 @@ async def sync_incremental(db, service=None) -> dict[str, Any]:
 
     state = await db["drive_sync_state"].find_one({"key": STATE_KEY})
     if not state or not state.get("page_token"):
-        from app.services import drive_documenti_ingest
         # Acquisire il cursore prima della scansione elimina la finestra in cui
         # una modifica concorrente potrebbe sfuggire tra scansione e token.
         token = await asyncio.to_thread(_get_start_token, service)
-        full_result = await drive_documenti_ingest.sync_tutti(db)
+        full_result = await _initial_fiscal_scan(db, service, entries)
         await db["drive_sync_state"].update_one(
             {"key": STATE_KEY}, {"$set": {"page_token": token, "initialized_at": _now(), "updated_at": _now()}}, upsert=True,
         )
@@ -185,21 +235,45 @@ async def sync_incremental(db, service=None) -> dict[str, Any]:
     relevant = []
     for change in changes:
         file = change.get("file") or {}
+        removed_was_imported = False
         if change.get("removed") or file.get("trashed"):
-            await db["documents_inbox"].update_many(
-                {"drive_file_id": change.get("fileId")},
+            from app.services.fiscal_document_ingestion import FiscalDocumentIngestionService
+            fiscal_modified = await FiscalDocumentIngestionService(db).mark_source_deleted(
+                change.get("fileId"), change.get("time") or _now()
+            )
+            inbox_result = await db["documents_inbox"].update_many(
+                {"$or": [
+                    {"source_metadata.drive_file_id": change.get("fileId")},
+                    {"drive_file_id": change.get("fileId")},
+                ]},
                 {"$set": {"source_deleted_at": change.get("time") or _now()}},
             )
-        is_relevant = bool(change.get("removed"))
+            removed_was_imported = bool(fiscal_modified or inbox_result.modified_count)
+        # Una change `removed` non contiene piu' i parent. E' fiscale soltanto
+        # se il suo ID era gia' nel nostro registro; non contiamo cancellazioni
+        # estranee avvenute altrove nello stesso Drive.
+        is_relevant = removed_was_imported
         if file and not is_relevant:
             is_relevant = await asyncio.to_thread(_is_under_target, service, file, target_ids)
         if is_relevant:
             relevant.append(change)
 
-    ingest_result: dict[str, Any] = {"status": "no_changes"}
-    if relevant:
-        from app.services import drive_documenti_ingest
-        ingest_result = await drive_documenti_ingest.sync_tutti(db)
+    ingest_result: dict[str, Any] = {"status": "no_changes", "inserted": 0, "duplicates": 0, "errors": 0}
+    for change in relevant:
+        file = change.get("file") or {}
+        if change.get("removed") or file.get("trashed") or file.get("mimeType") == FOLDER_MIME:
+            continue
+        if not str(file.get("name") or "").lower().endswith(".pdf"):
+            continue
+        try:
+            result = await _ingest_drive_file(db, service, file)
+            key = "duplicates" if result.get("status") == "duplicate" else "inserted"
+            ingest_result[key] += 1
+            ingest_result["status"] = "ok"
+        except Exception as exc:
+            ingest_result["errors"] += 1
+            ingest_result["status"] = "partial"
+            logger.exception("Drive fiscale: import fallito per %s", file.get("id"))
     await db["drive_sync_state"].update_one(
         {"key": STATE_KEY}, {"$set": {"page_token": new_token, "updated_at": _now(), "last_changes": len(changes), "last_relevant": len(relevant)}}, upsert=True,
     )

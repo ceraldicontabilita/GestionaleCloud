@@ -16,6 +16,7 @@ import {
   StatCard,
 } from '../components/ds';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
+import { useAuth } from '../contexts/AuthContext';
 import {
   BORDER_RADIUS,
   COLORS,
@@ -95,6 +96,7 @@ const categoryStyle = doc => CATEGORY_COLORS[doc.category] || CATEGORY_COLORS.al
 
 export default function Documenti() {
   const { anno } = useAnnoGlobale();
+  const { isAdmin } = useAuth();
   const isMobile = useIsMobile();
   const [documents, setDocuments] = useState([]);
   const [categories, setCategories] = useState({});
@@ -189,6 +191,20 @@ export default function Documenti() {
     setPage(0);
   };
 
+  const syncFiscalDrive = async () => {
+    try {
+      const response = await api.post('/api/documenti/drive/fiscal/sync');
+      toast.success('Sincronizzazione fiscale completata', {
+        description: `${response.data?.mode || response.data?.status || 'ok'}. I documenti restano da verificare.`,
+      });
+      await loadData();
+    } catch (requestError) {
+      toast.error('Sincronizzazione fiscale non riuscita', {
+        description: requestError.response?.data?.detail || requestError.message,
+      });
+    }
+  };
+
   return (
     <PageLayout
       title="Archivio documenti"
@@ -199,6 +215,7 @@ export default function Documenti() {
           <Button variant="secondary" onClick={loadData} disabled={loading}>
             {loading ? 'Aggiornamento…' : 'Aggiorna'}
           </Button>
+          {isAdmin && <Button variant="secondary" onClick={syncFiscalDrive}>Sincronizza Drive fiscale</Button>}
           <Link
             to="/documenti/import"
             style={{

@@ -3,7 +3,7 @@ Ingest generico di documenti da cartelle Drive dedicate → hub `documents_inbox
 
 Un solo motore per i nuovi canali documentali (scelta utente 12/07/2026):
 dichiarazione IVA, cartelle esattoriali, avvisi bonari. Legge i PDF dalla
-cartella Drive del canale, deduplica per impronta md5, li deposita in
+cartella Drive del canale, deduplica per impronta SHA-256, li deposita in
 `documents_inbox` con la `category` giusta e li sposta in `Elaborate`. Riusa
 gli helper Drive collaudati di drive_cedolini_ingest (credenziali, service,
 lista, download, spostamento).
@@ -22,6 +22,7 @@ from app.config import settings
 from app.constants.tipi_documento import set_tassonomia_documento
 from app.services import drive_cedolini_ingest as _base
 from app.services.drive_folder_registry import get_folder_id
+from app.services.fiscal_document_ingestion import FiscalDocumentIngestionService
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,7 @@ def _build_inbox_doc(
         "xml_processed": True,  # già classificato: non passa dal routing email
         "created_at": now,
         "downloaded_at": now,
+        "company_id": settings.FISCAL_COMPANY_ID,
     }
     # Tassonomia canonica: tipo_documento + alias categoria/category coerenti (P2-3)
     return set_tassonomia_documento(doc, conf["category"], label=conf["label"])
@@ -160,9 +162,12 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
                     if error_id:
                         _base._move_to_folder(service, fid, source_id, error_id)
                     continue
-                content_hash = hashlib.md5(content).hexdigest()
+                content_hash = hashlib.sha256(content).hexdigest()
+                legacy_md5 = hashlib.md5(content).hexdigest()
                 existing = await db["documents_inbox"].find_one(
-                    {"file_hash": content_hash}, {"_id": 0, "id": 1}
+                    {"$or": [{"sha256": content_hash}, {"file_hash": content_hash},
+                             {"file_hash": legacy_md5}]},
+                    {"_id": 0, "id": 1, "fiscal_document_id": 1}
                 )
                 if existing:
                     result["duplicates"] += 1
@@ -175,6 +180,18 @@ async def _do_sync(db, canale: str) -> Dict[str, Any]:
                         source_path=f"{CANALI[canale]['label']}/{fname}",
                     )
                     await db["documents_inbox"].insert_one(doc)
+                    if canale in {"dichiarazione_iva", "cartella_esattoriale", "avviso_bonario"}:
+                        registered = await FiscalDocumentIngestionService(db).ingest(
+                            content=content, filename=fname, source=f"drive_{canale}",
+                            category_hint=CANALI[canale]["category"],
+                            source_metadata={"drive_file_id": fid,
+                                             "source_path": doc["source_path"]},
+                        )
+                        await db["documents_inbox"].update_one(
+                            {"id": doc["id"]}, {"$set": {
+                                "fiscal_document_id": registered["document_id"],
+                                "fiscal_version_id": registered["version_id"]}},
+                        )
                     result["imported"] += 1
                     logger.info(f"Drive {canale}: importato {fname}")
                     document_id = doc["id"]

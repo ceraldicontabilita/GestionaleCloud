@@ -10,6 +10,9 @@ vi.mock('../api', () => ({ default: { get: vi.fn() } }));
 vi.mock('../contexts/AnnoContext', () => ({
   useAnnoGlobale: () => ({ anno: 2026 }),
 }));
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ isAdmin: false }),
+}));
 vi.mock('../components/DocumentViewerModal', () => ({
   default: ({ title }) => <div data-testid="viewer">{title}</div>,
 }));

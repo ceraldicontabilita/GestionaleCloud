@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1092 endpoint** in **113 gruppi**.
+> Totale **1108 endpoint** in **114 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 657 · ext esterni = 89 · — da verificare = 346
+**Riepilogo uso:** ✓ frontend = 668 · ext esterni = 89 · — da verificare = 351
 
 ## AI Parser  (11)
 
@@ -563,7 +563,7 @@
 | POST | `/api/document-ai/process-classified-email` | — | document_ai |
 | POST | `/api/document-ai/reprocess-and-save` | — | document_ai |
 
-## Documenti  (36)
+## Documenti  (37)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -578,9 +578,10 @@
 | GET | `/api/documenti/drive/catalog` | ✓ | documenti |
 | POST | `/api/documenti/drive/fiscal/discover` | — | documenti |
 | GET | `/api/documenti/drive/fiscal/status` | — | documenti |
-| POST | `/api/documenti/drive/fiscal/sync` | — | documenti |
+| POST | `/api/documenti/drive/fiscal/sync` | ✓ | documenti |
 | POST | `/api/documenti/drive/sync` | ✓ | documenti |
 | POST | `/api/documenti/elimina-processati` | — | documenti |
+| POST | `/api/documenti/fiscal/ingest` | — | documenti |
 | GET | `/api/documenti/lista` | ✓ | documenti |
 | GET | `/api/documenti/lock-status` | — | documenti |
 | POST | `/api/documenti/monitor/start` | — | documenti |
@@ -597,7 +598,7 @@
 | POST | `/api/documenti/sync-estratti-conto` | — | documenti |
 | POST | `/api/documenti/sync-f24-automatico` | ✓ | documenti |
 | GET | `/api/documenti/task/{task_id}` | — | documenti |
-| GET | `/api/documenti/tax-codes/status` | — | documenti |
+| GET | `/api/documenti/tax-codes/status` | ✓ | documenti |
 | POST | `/api/documenti/tax-codes/sync` | — | documenti |
 | GET | `/api/documenti/telegram/status` | — | documenti |
 | POST | `/api/documenti/telegram/test` | — | documenti |
@@ -1510,6 +1511,26 @@
 | POST | `/api/settings/logo` | — | settings |
 | GET | `/api/settings/user-preferences` | — | settings |
 | PUT | `/api/settings/user-preferences` | — | settings |
+
+## Situazione fiscale  (15)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| POST | `/api/fiscal/collection-snapshots/dry-run` | — | fiscal_control |
+| POST | `/api/fiscal/collection-snapshots/import` | — | fiscal_control |
+| GET | `/api/fiscal/collections` | ✓ | fiscal_control |
+| GET | `/api/fiscal/collections/{claim_id}` | ✓ | fiscal_control |
+| POST | `/api/fiscal/collections/{claim_id}/events` | ✓ | fiscal_control |
+| GET | `/api/fiscal/crosswalk` | ✓ | fiscal_control |
+| GET | `/api/fiscal/documents/{document_id}/content` | — | fiscal_control |
+| GET | `/api/fiscal/dossier.pdf` | ✓ | fiscal_control |
+| GET | `/api/fiscal/evidence-package.zip` | ✓ | fiscal_control |
+| GET | `/api/fiscal/evidence/{entity_type}/{entity_id}` | — | fiscal_control |
+| GET | `/api/fiscal/obligations` | ✓ | fiscal_control |
+| POST | `/api/fiscal/ravvedimento/calculate` | — | fiscal_control |
+| GET | `/api/fiscal/review` | ✓ | fiscal_control |
+| GET | `/api/fiscal/summary` | ✓ | fiscal_control |
+| POST | `/api/fiscal/vat-credit-chain/rebuild` | — | fiscal_control |
 
 ## SumUp  (7)
 

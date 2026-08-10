@@ -118,6 +118,8 @@ def _register_accounting(app: FastAPI):
     # filtro_uscite_da_riconciliare direttamente dal modulo.
     app.include_router(contabilita_italiana.router, prefix="/api/contabilita", tags=["Contabilità Italiana"])
     app.include_router(fiscalita_italiana.router, prefix="/api/fiscalita", tags=["Fiscalità Italiana"])
+    from app.routers import fiscal_control
+    app.include_router(fiscal_control.router, prefix="/api/fiscal", tags=["Situazione fiscale"])
 
 
 # ─── Bank Module ─────────────────────────────────────────────────────────────

@@ -92,3 +92,8 @@ async def lookup_verified_tax_code(db, code: str) -> dict | None:
     return await db["tax_code_registry"].find_one(
         {"code": normalized, "status": "verified"}, {"_id": 0}
     )
+
+
+async def syncOfficialTaxCodes(db, fetcher: Callable[[], str] | None = None) -> dict:
+    """Nome di dominio pubblico richiesto dal master; usa il servizio canonico."""
+    return await sync_tax_code_registry(db, fetcher=fetcher)

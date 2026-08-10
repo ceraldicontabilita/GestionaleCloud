@@ -93,6 +93,37 @@ COLL_F24_EMAIL = "f24_email_attachments"
 COLL_TRIBUTI_PAGATI = "tributi_pagati"
 COLL_RITENUTE_ACCONTO = "ritenute_acconto"
 
+# Sottosistema fiscale evidence-bound. Documenti, versioni e pagine sono
+# separati dagli oggetti fiscali e collegati solo tramite prove tracciabili.
+COLL_FISCAL_DOCUMENTS = "fiscal_documents"
+COLL_FISCAL_DOCUMENT_VERSIONS = "fiscal_document_versions"
+COLL_FISCAL_PAGES = "fiscal_pages"
+COLL_FISCAL_EVIDENCE = "fiscal_evidence"
+COLL_FISCAL_LINKS = "fiscal_links"
+COLL_TAX_OBLIGATIONS = "tax_obligations"
+COLL_TAX_PAYMENTS = "tax_payments"
+COLL_TAX_ALLOCATIONS = "tax_allocations"
+COLL_TAX_COLLECTION_DOCUMENTS = "tax_collection_documents"
+COLL_TAX_COLLECTION_CLAIMS = "tax_collection_claims"
+COLL_TAX_COLLECTION_CLAIM_LINES = "tax_collection_claim_lines"
+COLL_TAX_COLLECTION_EVENTS = "tax_collection_events"
+COLL_TAX_COLLECTION_SNAPSHOTS = "tax_collection_snapshots"
+COLL_TAX_NOTIFICATION_EVENTS = "tax_notification_events"
+COLL_TAX_LEGAL_EVENTS = "tax_legal_events"
+COLL_TAX_RATE_PLANS = "tax_rate_plans"
+COLL_TAX_RATE_INSTALLMENTS = "tax_rate_installments"
+COLL_TAX_RATE_PLAN_CLAIM_ALLOCATIONS = "tax_rate_plan_claim_allocations"
+COLL_TAX_SETTLEMENT_PROGRAMS = "tax_settlement_programs"
+COLL_TAX_SETTLEMENT_APPLICATIONS = "tax_settlement_applications"
+COLL_TAX_SETTLEMENT_CLAIMS = "tax_settlement_claims"
+COLL_TAX_SETTLEMENT_INSTALLMENTS = "tax_settlement_installments"
+COLL_TAX_CREDIT_LEDGER = "tax_credit_ledger"
+COLL_TAX_CREDIT_MOVEMENTS = "tax_credit_movements"
+COLL_TAX_CREDIT_LINEAGE = "tax_credit_lineage"
+COLL_COLLECTION_TAX_CODE_REGISTRY = "collection_tax_code_registry"
+COLL_TAX_CODE_CROSSWALK = "tax_code_crosswalk"
+COLL_LEGAL_RULE_VERSIONS = "legal_rule_versions"
+
 # ===========================================
 # BANCA E CONTABILITÀ
 # ===========================================

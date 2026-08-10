@@ -4,6 +4,8 @@ avvisi bonari): carichi un PDF → ottieni un ID → il file è memorizzato in
 documents_inbox e recuperabile/scaricabile.
 """
 import asyncio
+import base64
+import hashlib
 
 import pytest
 
@@ -18,6 +20,8 @@ class _FakeInbox:
     async def find_one(self, query, proj=None):
         for d in self.docs:
             if "file_hash" in query and d.get("file_hash") == query["file_hash"]:
+                return d
+            if "sha256" in query and d.get("sha256") == query["sha256"]:
                 return d
         return None
 
@@ -76,6 +80,27 @@ def fake_db(monkeypatch):
     inbox = _FakeInbox()
     db = _FakeDb(inbox)
     monkeypatch.setattr(Database, "get_db", staticmethod(lambda: db))
+
+    class _FakeIngestion:
+        def __init__(self, _db): self.db = _db
+        async def ingest(self, *, content, filename, source, category_hint, source_metadata, **_kwargs):
+            digest = hashlib.sha256(content).hexdigest()
+            existing = await inbox.find_one({"sha256": digest})
+            if existing:
+                return {"status": "duplicate", "document_id": existing["fiscal_document_id"],
+                        "version_id": existing["fiscal_version_id"], "sha256": digest}
+            doc_id = f"doc-{len(inbox.docs) + 1}"
+            fiscal_id = f"fiscal-{len(inbox.docs) + 1}"
+            await inbox.insert_one({"id": doc_id, "company_id": df.settings.FISCAL_COMPANY_ID,
+                                    "filename": filename, "pdf_data": base64.b64encode(content).decode(),
+                                    "sha256": digest, "file_hash": digest, "category": category_hint,
+                                    "periodo": source_metadata.get("periodo") if isinstance(source_metadata.get("periodo"), str) else None,
+                                    "fiscal_document_id": fiscal_id, "fiscal_version_id": f"version-{fiscal_id}",
+                                    "created_at": "2026-08-10T00:00:00Z"})
+            return {"status": "inserted", "document_id": fiscal_id,
+                    "version_id": f"version-{fiscal_id}", "inbox_id": doc_id, "sha256": digest}
+
+    monkeypatch.setattr(df, "FiscalDocumentIngestionService", _FakeIngestion)
     return db, inbox
 
 

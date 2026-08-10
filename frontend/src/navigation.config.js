@@ -49,6 +49,7 @@ export const NAV_PRINCIPALI = [
 export const NAV_ALTRO = [
   { to: '/riconciliazione/f24', label: 'F24', Icon: Receipt },
   { to: '/iva', label: 'Gestione IVA', Icon: Receipt },
+  { to: '/situazione-fiscale', label: 'Situazione fiscale', Icon: FileBarChart, adminOnly: true },
   { to: '/contabilita', label: 'Contabilita', Icon: FileBarChart },
   { to: '/documenti', label: 'Documenti', Icon: BookMarked },
   { to: '/riconciliazione/coerenza-pos', label: 'Incassi POS', Icon: CreditCard },
