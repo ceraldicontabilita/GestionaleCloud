@@ -19,6 +19,9 @@ class _FakeCollection:
     async def insert_one(self, doc, *a, **k):
         self.docs.append(dict(doc))
 
+    async def find_one(self, query, *a, **k):
+        return None
+
 
 class _FakeDb:
     def __init__(self):

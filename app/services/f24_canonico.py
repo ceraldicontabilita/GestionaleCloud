@@ -99,6 +99,9 @@ def _saldo(doc: Dict[str, Any]) -> float:
         doc.get("saldo")
         or doc.get("saldo_finale")
         or doc.get("saldo_netto")
+        or doc.get("totale_versato")
+        or doc.get("totale_versamento")
+        or doc.get("importo")
         or tot.get("saldo_netto")
         or tot.get("saldo_finale")
         or 0

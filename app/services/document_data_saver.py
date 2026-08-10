@@ -70,18 +70,10 @@ async def save_f24_to_gestionale(db, data: Dict[str, Any], source_info: Dict[str
             "processed": True
         }
         
-        # Evita duplicati (stesso CF + data + totale)
-        existing = await db["f24_unificato"].find_one({
-            "codice_fiscale": doc["codice_fiscale"],
-            "data_versamento": doc["data_versamento"],
-            "totale_versamento": doc["totale_versamento"]
-        })
-        
-        if existing:
-            return {"status": "duplicate", "message": "F24 già presente", "id": str(existing.get("_id"))}
-        
-        result = await db["f24_unificato"].insert_one(doc)
-        return {"status": "saved", "collection": "f24_unificato", "id": str(result.inserted_id)}
+        from app.services.f24_canonico import salva_f24
+
+        f24_id = await salva_f24(db, doc, source="document_ai")
+        return {"status": "saved", "collection": "f24_unificato", "id": f24_id}
         
     except Exception as e:
         logger.error(f"Errore salvataggio F24: {e}")
@@ -447,8 +439,9 @@ async def save_extracted_data_to_gestionale(
         extracted_data: Dati estratti dal documento (output di extract_structured_data)
         source_info: Informazioni sulla fonte (filename, email_id, etc.)
         conferma_scrittura_gestionale: guardia di sicurezza (audit 19/07/2026).
-            Questa funzione fa insert_one diretti su f24_unificato/cedolini/
+            Questa funzione contiene ancora writer diretti per cedolini,
             invoices/estratto_conto_movimenti/ecc., FUORI dal motore unico
+            (gli F24 sono invece delegati a f24_canonico),
             scritture_contabili.py e senza soglia di confidenza o revisione
             umana. Fino a stanotte era di fatto irraggiungibile perché il
             parser AI a monte falliva sempre (mismatch d'interfaccia, ora

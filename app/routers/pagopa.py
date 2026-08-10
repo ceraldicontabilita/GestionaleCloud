@@ -16,6 +16,7 @@ import logging
 import re
 
 from app.database import Database
+from app.config import settings
 from app.services.payment_invoice_matching import amounts_equal_to_cent
 from app.utils.error_handler import handle_errors
 
@@ -24,6 +25,49 @@ router = APIRouter(tags=["PagoPA"])
 
 # Collection per ricevute PagoPA
 COLLECTION_RICEVUTE = "ricevute_pagopa"
+
+
+async def riconcilia_ricevuta_fiscale(db, ricevuta: Dict[str, Any]) -> Dict[str, Any]:
+    """Collega PagoPA/CBILL a rata, piano e cartelle AdeR con prove forti."""
+    from app.services.fiscal_evidence import register_document
+    from app.services.fiscal_payment_reconciliation import reconcile_fiscal_payment
+
+    content = None
+    if ricevuta.get("pdf_data"):
+        try:
+            content = base64.b64decode(ricevuta["pdf_data"])
+        except Exception:
+            content = None
+    document = {}
+    if content:
+        document = await register_document(
+            db,
+            company_id=settings.FISCAL_COMPANY_ID,
+            content=content,
+            filename=ricevuta.get("filename") or "ricevuta_pagopa.pdf",
+            source="documenti_upload_auto",
+            source_ref=ricevuta["id"],
+            category="riscossione",
+            metadata={"receipt_collection": COLLECTION_RICEVUTE},
+        )
+    source_type = "RICEVUTA_CBILL" if (
+        "CBILL" in str(ricevuta.get("note") or "").upper()
+        or ricevuta.get("identificativo_bolletta")
+    ) else "RICEVUTA_PAGOPA"
+    return await reconcile_fiscal_payment(
+        db,
+        company_id=settings.FISCAL_COMPANY_ID,
+        payment={
+            **ricevuta,
+            "amount": ricevuta.get("importo"),
+            "payment_date": ricevuta.get("data_pagamento"),
+            "bank_verified": bool(ricevuta.get("movimento_id")),
+        },
+        source_type=source_type,
+        source_id=ricevuta["id"],
+        document_id=document.get("document_id"),
+        version_id=document.get("id"),
+    )
 
 
 @router.get("/ricevute")
@@ -96,59 +140,29 @@ async def upload_ricevuta(
     - identificativo_bolletta: codice univoco (es. 180071110618697515)
     - beneficiario: es. "AGENZIA DELLE ENTRATE - RISCOSSIONE"
     """
-    db = Database.get_db()
-    
-    # Salva file
     content = await file.read()
-    
-    ricevuta_id = str(uuid.uuid4())
-    ricevuta = {
-        "id": ricevuta_id,
-        "filename": file.filename,
-        "content_type": file.content_type,
-        "size": len(content),
-        # Il file viene salvato in Mongo (base64), stesso pattern usato per
-        # i PDF dei bonifici (bonifici_transfers.pdf_data): prima veniva letto
-        # e mai persistito, quindi la ricevuta spariva subito dopo l'upload e
-        # i pulsanti Visualizza/Scarica non avevano nulla da mostrare.
-        "pdf_data": base64.b64encode(content).decode("utf-8"),
-        "importo": importo,
-        "data_pagamento": data_pagamento,
-        "identificativo_bolletta": identificativo_bolletta,
-        "beneficiario": beneficiario or "AGENZIA DELLE ENTRATE - RISCOSSIONE",
-        "note": note,
-        "movimento_id": None,
-        "associazione_automatica": False,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    
-    # Se abbiamo l'identificativo bolletta, cerca il movimento
-    if identificativo_bolletta:
-        movimento = await cerca_movimento_per_bolletta(db, identificativo_bolletta, importo)
-        if movimento:
-            ricevuta["movimento_id"] = movimento.get("id")
-            ricevuta["associazione_automatica"] = True
-            ricevuta["movimento_data"] = movimento.get("data")
-            ricevuta["movimento_importo"] = movimento.get("importo")
-            
-            # Aggiorna anche il movimento con riferimento alla ricevuta
-            await db.estratto_conto_movimenti.update_one(
-                {"id": movimento["id"]},
-                {"$set": {
-                    "ricevuta_pagopa_id": ricevuta_id,
-                    "ricevuta_filename": file.filename,
-                    "updated_at": datetime.now(timezone.utc).isoformat()
-                }}
-            )
-    
-    await db[COLLECTION_RICEVUTE].insert_one(ricevuta)
-    
+    from app.services.pagopa_receipts import import_receipt
+
+    imported = await import_receipt(
+        Database.get_db(), content=content, filename=file.filename or "ricevuta_pagopa.pdf",
+        company_id=settings.FISCAL_COMPANY_ID, source="pagopa_upload",
+        overrides={
+            "importo": importo, "data_pagamento": data_pagamento,
+            "identificativo_bolletta": identificativo_bolletta,
+            "beneficiario": beneficiario, "note": note,
+        },
+    )
+    if not imported.get("success"):
+        raise HTTPException(status_code=422, detail=imported.get("error"))
+    ricevuta = imported["receipt"]
     return {
-        "id": ricevuta_id,
+        "id": ricevuta["id"],
         "filename": file.filename,
-        "associata": ricevuta["movimento_id"] is not None,
-        "movimento_id": ricevuta["movimento_id"],
-        "movimento_importo": ricevuta.get("movimento_importo")
+        "associata": ricevuta.get("movimento_id") is not None,
+        "movimento_id": ricevuta.get("movimento_id"),
+        "movimento_importo": ricevuta.get("movimento_importo"),
+        "duplicate": imported.get("duplicate", False),
+        "riconciliazione_fiscale": imported.get("riconciliazione_fiscale"),
     }
 
 
@@ -205,8 +219,22 @@ async def associa_manuale(data: Dict[str, Any]) -> Dict[str, Any]:
             "updated_at": datetime.now(timezone.utc).isoformat()
         }}
     )
+
+    ricevuta_aggiornata = {**ricevuta, "movimento_id": movimento_id}
+    fiscal_match = await riconcilia_ricevuta_fiscale(db, ricevuta_aggiornata)
+    if fiscal_match.get("matched"):
+        await db[COLLECTION_RICEVUTE].update_one(
+            {"id": ricevuta_id},
+            {"$set": {
+                "fiscal_payment_id": fiscal_match["payment_id"],
+                "fiscal_target_id": fiscal_match["target_id"],
+                "fiscal_target_type": fiscal_match["target_type"],
+                "cartelle_collegate": fiscal_match["linked_claim_ids"],
+            }},
+        )
     
-    return {"success": True, "ricevuta_id": ricevuta_id, "movimento_id": movimento_id}
+    return {"success": True, "ricevuta_id": ricevuta_id, "movimento_id": movimento_id,
+            "riconciliazione_fiscale": fiscal_match}
 
 
 @router.post("/auto-associa")
@@ -280,6 +308,19 @@ async def auto_associa_ricevute_db(db) -> Dict[str, Any]:
                         "updated_at": datetime.now(timezone.utc).isoformat()
                     }}
                 )
+
+                ricevuta_aggiornata = {**ricevuta, "movimento_id": movimento["id"]}
+                fiscal_match = await riconcilia_ricevuta_fiscale(db, ricevuta_aggiornata)
+                if fiscal_match.get("matched"):
+                    await db[COLLECTION_RICEVUTE].update_one(
+                        {"id": ricevuta["id"]},
+                        {"$set": {
+                            "fiscal_payment_id": fiscal_match["payment_id"],
+                            "fiscal_target_id": fiscal_match["target_id"],
+                            "fiscal_target_type": fiscal_match["target_type"],
+                            "cartelle_collegate": fiscal_match["linked_claim_ids"],
+                        }},
+                    )
                 
                 risultati["associazioni_trovate"] += 1
             except Exception as e:
@@ -412,22 +453,9 @@ async def cerca_movimento_per_bolletta(
     Cerca un movimento nell'estratto conto usando il codice bolletta.
     Il codice appare nella descrizione come "CBILL 180071110618697515"
     """
-    if not codice_bolletta or importo in (None, ""):
-        return None
-    
-    # Codice esplicito, importo al centesimo e candidato unico.
-    movimenti = await db.estratto_conto_movimenti.find({
-        "$or": [
-            {"descrizione_originale": {"$regex": re.escape(codice_bolletta)}},
-            {"descrizione": {"$regex": re.escape(codice_bolletta)}}
-        ],
-        "ricevuta_pagopa_id": {"$in": [None, ""]},
-    }, {"_id": 0}).limit(20).to_list(20)
-    movimenti = [
-        movimento for movimento in movimenti
-        if amounts_equal_to_cent(movimento.get("importo"), importo)
-    ]
-    return movimenti[0] if len(movimenti) == 1 else None
+    from app.services.pagopa_receipts import find_bank_movement
+
+    return await find_bank_movement(db, codice_bolletta, importo)
 
 
 # Alias per compatibilità

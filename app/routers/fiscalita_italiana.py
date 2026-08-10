@@ -1271,7 +1271,9 @@ async def registra_f24(f24: F24Create) -> Dict[str, Any]:
         "move_id": move_id,
         "created_at": now
     }
-    await db["f24_unificato"].insert_one(doc)
+    from app.services.f24_canonico import salva_f24
+
+    await salva_f24(db, doc, source="fiscalita_italiana")
     
     # Aggiorna scadenze calendario
     for tributo in f24.tributi:

@@ -300,6 +300,27 @@ async def _riconcilia_ritenuta(
     return upd
 
 
+async def riconcilia_ritenute_esistenti(db) -> Dict[str, Any]:
+    """Ricalcola le ritenute gia censite quando cambia la prova F24.
+
+    E' richiamata dall'import canonico delle quietanze: l'utente non deve
+    premere manualmente "Aggiorna" per vedere la prova documentale.
+    """
+    ritenute = await db[COLLECTION].find({}, {"_id": 0}).to_list(10000)
+    if not ritenute:
+        return {"analizzate": 0, "aggiornate": 0}
+    f24_docs = await _carica_f24(db)
+    aggiornate = 0
+    for rit in ritenute:
+        upd = await _riconcilia_ritenuta(
+            db, rit, ritenute_periodo=ritenute, f24_docs=f24_docs,
+        )
+        result = await db[COLLECTION].update_one({"id": rit["id"]}, {"$set": upd})
+        aggiornate += int(getattr(result, "modified_count", 0) > 0)
+    return {"analizzate": len(ritenute), "aggiornate": aggiornate,
+            "f24_analizzati": len(f24_docs)}
+
+
 @router.post("/scan")
 @handle_errors
 async def scan_ritenute(anno: int = Query(2026)) -> Dict[str, Any]:

@@ -7,6 +7,7 @@ import asyncio
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from mongomock_motor import AsyncMongoMockClient
 
 from app.services import quietanze_import as qi
 
@@ -305,3 +306,51 @@ def test_upload_auto_endpoint_importa_modello_nella_sola_collezione_canonica(mon
     assert db["f24_pagamenti"].docs == []
     assert db["tributi_pagati"].docs == []
     assert db["distinte_f24"].docs == []
+
+
+def test_upload_quietanza_aggiorna_subito_ritenuta_reale_1040(monkeypatch):
+    parsed = {
+        "dati_generali": {
+            "protocollo_telematico": "PROTO-1040-062026",
+            "saldo_delega": 286.0,
+            "data_pagamento": "2026-07-21",
+            "codice_fiscale": "CF-ANONIMO",
+        },
+        "sezione_erario": [
+            {"codice_tributo": "1040", "periodo_riferimento": "06/2026", "importo_debito": 284.0},
+            {"codice_tributo": "8948", "periodo_riferimento": "06/2026", "importo_debito": 2.0},
+        ],
+        "sezione_inps": [], "sezione_regioni": [],
+        "sezione_tributi_locali": [], "sezione_inail": [],
+        "totali": {"saldo_netto": 286.0},
+        "validazione": {"saldo_quadrato": True, "differenza_saldo": 0.0},
+    }
+    _patch_parser(monkeypatch, parsed)
+    db = AsyncMongoMockClient()["quietanza-ritenuta-real-case"]
+    asyncio.run(db[qi.COLL_F24_COMMERCIALISTA].insert_one({
+        "id": "F24-1040-06-2026", "status": "da_pagare", "riconciliato": False,
+        "codice_fiscale": "CF-ANONIMO",
+        "sezione_erario": [{
+            "codice_tributo": "1040", "periodo_riferimento": "06/2026", "importo_debito": 284.0,
+        }],
+        "totali": {"saldo_netto": 284.0},
+    }))
+    asyncio.run(db["ritenute_acconto"].insert_one({
+        "id": "rit-1040-06-2026", "importo": 284.0,
+        "periodo_ritenuta": "2026-06", "scadenza": "2026-07-16",
+        "data_fattura": "2026-06-30", "stato": "scaduta_da_versare",
+    }))
+
+    result = asyncio.run(qi.importa_quietanza_bytes(
+        db, b"%PDF-real-case-anonimo", "quietanza_1040_2026-07-21.pdf",
+        fonte="documenti_upload_auto",
+    ))
+
+    assert result["success"] is True
+    assert result["ritenute_aggiornate"]["analizzate"] == 1
+    ritenuta = asyncio.run(db["ritenute_acconto"].find_one({"id": "rit-1040-06-2026"}))
+    assert ritenuta["f24_id"] == "F24-1040-06-2026"
+    assert ritenuta["data_pagamento"] == "2026-07-21"
+    assert ritenuta["stato"] == "pagata_con_ravvedimento"
+    assert ritenuta["stato_evidenza_pagamento"] == "QUIETANZA_PRESENTE_DA_VERIFICARE_BANCA"
+    assert ritenuta["movimento_bancario_f24_id"] is None

@@ -326,7 +326,9 @@ async def batch_parse_f24(db, limit: int = 50) -> Dict[str, Any]:
                         "source": "gmail_llm_parse",
                         "imported_at": datetime.now(timezone.utc).isoformat(),
                     }
-                    await db["f24_unificato"].insert_one(f24_doc)
+                    from app.services.f24_canonico import salva_f24
+
+                    await salva_f24(db, f24_doc, source="gmail_llm_parse")
                     stats["nuovi_f24"] += 1
                 
                 stats["con_tributi"] += 1

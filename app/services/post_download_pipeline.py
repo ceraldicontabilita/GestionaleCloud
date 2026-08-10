@@ -102,7 +102,9 @@ async def processa_f24_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                 # Dedup per hash — collezione canonica f24_unificato
                 existing = await db["f24_unificato"].find_one({"pdf_hash": doc.get("pdf_hash")})
                 if not existing:
-                    await db["f24_unificato"].insert_one(f24_doc)
+                    from app.services.f24_canonico import salva_f24
+
+                    await salva_f24(db, f24_doc, source="gmail_scan")
                     stats["nuovi"] += 1
                     logger.info(f"[PIPELINE-F24] Salvato: {filename}")
                 else:

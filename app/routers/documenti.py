@@ -1012,6 +1012,8 @@ async def sync_f24_automatico(
                     }
                     f24_data["auto_imported"] = True
                     f24_data["import_date"] = datetime.now(timezone.utc).isoformat()
+                    f24_data["pdf_data"] = pdf_data
+                    f24_data["file_hash"] = hashlib.sha256(pdf_content).hexdigest()
                     
                     # Controlla se già esiste (per evitare duplicati)
                     existing = await db["f24_unificato"].find_one({
@@ -1022,8 +1024,9 @@ async def sync_f24_automatico(
                         f24_errori.append({"file": doc["filename"], "errore": "F24 già presente nel database"})
                         continue
                     
-                    # Salva nel database f24_commercialista
-                    await db["f24_unificato"].insert_one(f24_data.copy())
+                    from app.services.f24_canonico import salva_f24
+
+                    f24_data["id"] = await salva_f24(db, f24_data, source="email_sync")
                     
                     # Salva anche in f24_models per la visualizzazione frontend
                     # Usa pdf_data già disponibile da MongoDB (architettura MongoDB-first)
@@ -1123,8 +1126,9 @@ async def sync_f24_automatico(
                         "filename": doc["filename"]
                     })
                     
-                    if not existing_model:
-                        await db["f24_unificato"].insert_one(f24_model_record.copy())
+                    # La vista frontend legge lo schema tollerante del record
+                    # canonico appena salvato: non creare una seconda copia
+                    # dello stesso PDF con un'altra forma dati.
                     
                     # Aggiorna stato documento
                     await db["documents_inbox"].update_one(
@@ -2045,6 +2049,8 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         return "auto"
 
     # Segnali espliciti nel nome, dal piu specifico al piu generico.
+    if any(keyword in lower for keyword in ("cbill", "pagopa", "pago_pa", "pago-pa")):
+        return "ricevuta_pagopa"
     if any(keyword in lower for keyword in (
         "quietanza", "ricevuta_f24", "ricevuta-f24", "pagamento_f24",
     )):
@@ -2062,6 +2068,13 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
 
     if lower.endswith(".pdf"):
         content_str = _pdf_text_for_detection(file_content).upper()
+        if (
+            "CBILL" in content_str
+            or "PAGOPA" in content_str
+            or "IDENTIFICATIVO UNIVOCO VERSAMENTO" in content_str
+            or "IDENTIFICATIVO BOLLETTA" in content_str
+        ):
+            return "ricevuta_pagopa"
         if any(marker in content_str for marker in (
             "QUIETANZA", "RICEVUTA DI VERSAMENTO", "ESITO DEL VERSAMENTO F24",
         )):
@@ -2517,6 +2530,35 @@ async def upload_documento_automatico(
                 result["success"] = False
                 result["imported"] = 0
                 result["message"] = f"Errore import Quietanza F24: {quietanza.get('error', 'parsing fallito')}"
+
+        elif tipo_rilevato == 'ricevuta_pagopa':
+            from app.config import settings
+            from app.services.pagopa_receipts import import_receipt
+
+            receipt = await import_receipt(
+                db, content=content, filename=filename,
+                company_id=settings.FISCAL_COMPANY_ID,
+                source="documenti_upload_auto",
+            )
+            result["data"] = receipt
+            result["workflow"] = "PAGOPA_CBILL_CANONICO"
+            result["duplicate"] = bool(receipt.get("duplicate"))
+            if receipt.get("success"):
+                result["imported"] = 0 if receipt.get("duplicate") else 1
+                fiscal_match = receipt.get("riconciliazione_fiscale") or {}
+                result["message"] = (
+                    "Ricevuta PagoPA/CBILL gia importata"
+                    if receipt.get("duplicate")
+                    else "Ricevuta PagoPA/CBILL importata"
+                )
+                if fiscal_match.get("matched"):
+                    result["message"] += ", rata e cartelle AdeR collegate"
+            else:
+                result["success"] = False
+                result["imported"] = 0
+                result["message"] = receipt.get(
+                    "error", "Parsing ricevuta PagoPA/CBILL fallito"
+                )
                 
         elif tipo_rilevato == 'cedolino':
             # Import cedolino / Libro Unico - USA IL WORKFLOW COMPLETO

@@ -18,7 +18,8 @@ from app.db_collections import (
     COLL_TAX_CODE_CROSSWALK, COLL_TAX_COLLECTION_CLAIMS,
     COLL_TAX_COLLECTION_EVENTS, COLL_TAX_COLLECTION_SNAPSHOTS,
     COLL_TAX_CREDIT_MOVEMENTS, COLL_TAX_OBLIGATIONS, COLL_TAX_PAYMENTS,
-    COLL_TAX_RATE_PLANS, COLL_TAX_SETTLEMENT_APPLICATIONS,
+    COLL_TAX_RATE_INSTALLMENTS, COLL_TAX_RATE_PLANS,
+    COLL_TAX_SETTLEMENT_APPLICATIONS,
 )
 from app.services.fiscal_agents import AdvisorBriefGenerator, FiscalControlAgent, buildTaxEvidencePackage, buildTaxReviewDossier, load_review_data
 from app.services.fiscal_domain import rebuild_vat_credit_chain, reconstruct_collection_state
@@ -230,6 +231,14 @@ async def ader_snapshots(
         .sort([("application_date", -1), ("created_at", -1)])
         .to_list(100)
     )
+    installments = await db[COLL_TAX_RATE_INSTALLMENTS].find(
+        {"company_id": _company()}, {"_id": 0}
+    ).sort([("due_date", -1), ("installment_number", -1)]).to_list(5000)
+    installments_by_plan: dict[str, list[dict[str, Any]]] = {}
+    for installment in installments:
+        installments_by_plan.setdefault(installment.get("rate_plan_id") or "", []).append(installment)
+    for plan in rate_plans:
+        plan["reconciled_installments"] = installments_by_plan.get(plan.get("id") or "", [])
     settlements = await (
         db[COLL_TAX_SETTLEMENT_APPLICATIONS]
         .find({"company_id": _company()}, {"_id": 0})

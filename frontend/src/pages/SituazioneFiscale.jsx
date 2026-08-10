@@ -148,6 +148,9 @@ export default function SituazioneFiscale() {
               {(plan.payment_modules || []).map(module => <div key={module.id} style={{ marginTop: 5, color: '#475569' }}>
                 Modulo {module.document_number || module.source_filename}: {(module.installments || []).map(rate => `${rate.number}ª ${rate.due_date} ${euro(rate.amount)}`).join(' · ') || 'rate non leggibili'}
               </div>)}
+              {(plan.reconciled_installments || []).map(rate => <div key={rate.id} style={{ marginTop: 7, padding: '7px 9px', borderRadius: 7, background: '#ecfdf5', color: '#166534' }}>
+                <strong>Rata {rate.installment_number}: pagamento documentato</strong> · {euro(rate.amount)} · {rate.due_date || 'scadenza non disponibile'} · {rate.bank_verified ? 'banca verificata' : 'banca da verificare'}
+              </div>)}
               {plan.source_document_id && <Button size="sm" variant="secondary" style={{ marginTop: 8 }} onClick={() => openDocument(plan.source_document_id)}>Apri accoglimento</Button>}
             </div>)}
           </section>
@@ -188,6 +191,9 @@ export default function SituazioneFiscale() {
             </div>}
             {tab === 'ader' && item.source_document_id && <Button size="sm" variant="secondary" style={{ marginTop: 10 }} onClick={() => openDocument(item.source_document_id)}>Apri PDF sorgente</Button>}
             {tab === 'riscossione' && <Button size="sm" variant="secondary" style={{ marginLeft: 10 }} onClick={() => setSelected(selected === entityId ? null : entityId)}>Perché? / prove</Button>}
+            {tab === 'riscossione' && (item.payment_evidence_ids || []).length > 0 && <div style={{ marginTop: 8, color: '#166534', fontWeight: 700 }}>
+              Pagamento documentato collegato · prove: {item.payment_evidence_ids.length}
+            </div>}
             {tab === 'f24' && <Button size="sm" variant="secondary" style={{ marginTop: 8 }} onClick={() => setSelected(selected === entityId ? null : entityId)}>Apri PDF / prove</Button>}
             {selected === entityId && <div style={{ marginTop: 12 }}><LinkedEvidencePanel entityType={tab === 'f24' ? 'tax_allocation' : 'tax_collection_claim'} entityId={entityId} /></div>}
           </div>;

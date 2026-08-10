@@ -375,4 +375,16 @@ async def importa_quietanza_bytes(
             {"$set": {"stato_associazione": "associata", "calcolo_fiscale_sospeso": False}},
         )
 
+        # La quietanza e' prova documentale sufficiente per Ritenute e IVA
+        # anche se l'addebito bancario non e' ancora verificato. Ritenute
+        # persiste lo stato: va quindi aggiornata nello stesso flusso di import,
+        # senza richiedere un secondo clic nella pagina dedicata.
+        try:
+            from app.routers.ritenute import riconcilia_ritenute_esistenti
+
+            risultato["ritenute_aggiornate"] = await riconcilia_ritenute_esistenti(db)
+        except Exception:
+            logger.exception("Errore aggiornamento ritenute dopo quietanza %s", file_id)
+            risultato["ritenute_aggiornate"] = {"errore": True}
+
     return risultato

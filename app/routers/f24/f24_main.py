@@ -134,7 +134,9 @@ async def upload_f24_zip(
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             
-            await db["f24_unificato"].insert_one(doc.copy())
+            from app.services.f24_canonico import salva_f24
+
+            file_id = await salva_f24(db, doc, source="f24_upload_zip")
             existing_hashes.add(file_hash)  # Aggiungi all'elenco per evitare duplicati nello stesso upload
             
             results["imported"] += 1
@@ -236,7 +238,9 @@ async def upload_f24_multiple(
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             
-            await db["f24_unificato"].insert_one(doc.copy())
+            from app.services.f24_canonico import salva_f24
+
+            file_id = await salva_f24(db, doc, source="f24_upload_multiple")
             existing_hashes.add(file_hash)
             
             results["imported"] += 1
@@ -363,7 +367,9 @@ async def create_f24(
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db[COLL_F24].insert_one(f24.copy())
+    from app.services.f24_canonico import salva_f24
+
+    f24["id"] = await salva_f24(db, f24, source="f24_manual_create")
     f24.pop("_id", None)
 
     # --- EVENT BUS: F24 acquisito (Chat 9c) ---
@@ -473,7 +479,9 @@ async def upload_f24_pdf(
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db[COLL_F24].insert_one(f24_doc.copy())
+    from app.services.f24_canonico import salva_f24
+
+    f24_id = await salva_f24(db, f24_doc, source="f24_upload_pdf")
     
     logger.info(f"F24 importato: {f24_id} - €{totali.get('saldo_netto', totali.get('saldo_finale', 0)):.2f}")
     

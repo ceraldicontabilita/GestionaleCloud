@@ -83,14 +83,21 @@ async def parse_document(
                 result["collection"] = "invoices"
                 
             elif detected_type == "f24":
-                result["filename"] = file.filename
-                result["pdf_data"] = base64.b64encode(content).decode()
-                result["created_at"] = datetime.now(timezone.utc).isoformat()
-                
-                # Salva in collezione f24_unificato
-                insert_result = await db["f24_unificato"].insert_one(result.copy())
-                result["saved_id"] = str(insert_result.inserted_id)
+                from app.services.f24_canonico import importa_modello_bytes
+
+                canonical = await importa_modello_bytes(
+                    db, content, file.filename or "f24.pdf", source="ai_parser_auto"
+                )
+                if not canonical.get("success"):
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"F24 non salvato: {canonical.get('error', 'validazione fallita')}",
+                    )
+                result["saved"] = True
+                result["saved_id"] = canonical["f24_id"]
+                result["duplicate"] = bool(canonical.get("duplicate"))
                 result["collection"] = "f24_unificato"
+                result["canonical_save"] = canonical
                 
             elif detected_type == "busta_paga":
                 result["filename"] = file.filename
@@ -104,6 +111,8 @@ async def parse_document(
         
         return result
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Errore parsing documento: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -224,14 +233,26 @@ async def parse_f24_endpoint(
         # Salva nel database
         if save_to_db:
             db = Database.get_db()
-            result["pdf_data"] = base64.b64encode(content).decode()
-            result["created_at"] = datetime.now(timezone.utc).isoformat()
-            
-            await db["f24_parsed"].insert_one(result.copy())
+            from app.services.f24_canonico import importa_modello_bytes
+
+            canonical = await importa_modello_bytes(
+                db, content, file.filename or "f24.pdf", source="ai_parser_f24"
+            )
+            if not canonical.get("success"):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"F24 non salvato: {canonical.get('error', 'validazione fallita')}",
+                )
             result["saved"] = True
+            result["saved_id"] = canonical["f24_id"]
+            result["duplicate"] = bool(canonical.get("duplicate"))
+            result["collection"] = "f24_unificato"
+            result["canonical_save"] = canonical
         
         return result
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Errore parsing F24: {e}")
         raise HTTPException(status_code=500, detail=str(e))

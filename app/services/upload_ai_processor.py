@@ -22,7 +22,7 @@ from app.services.ai_document_parser import (
     parse_fattura_ai,
     convert_ai_busta_paga_to_dipendente_update
 )
-from app.db_collections import COLL_F24, COLL_EMPLOYEES, COLL_CEDOLINI
+from app.db_collections import COLL_EMPLOYEES, COLL_CEDOLINI
 
 logger = logging.getLogger(__name__)
 
@@ -66,89 +66,25 @@ async def process_upload_f24(
         
         if not parsed.get("success"):
             result["errors"].append(parsed.get("error", "Parsing AI fallito"))
-            # Salva comunque con errore per revisione manuale
-            error_doc = {
-                "id": str(uuid.uuid4()),
-                "filename": filename,
-                "pdf_data": base64.b64encode(pdf_content).decode(),
-                "file_hash": calculate_file_hash(pdf_content),
-                "source": source,
-                "ai_error": parsed.get("error"),
-                "needs_review": True,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-            await db[COLL_F24].insert_one(error_doc)
-            result["document_id"] = error_doc["id"]
+            result["message"] = "F24 non salvato: estrazione AI fallita"
             return result
         
         result["parsed_data"] = parsed
         
-        # 2. Verifica duplicati basata su campi chiave
-        # Chiave univoca: data_pagamento + codice_fiscale + totale_debito + primo_tributo
         data_pagamento = parsed.get("data_pagamento")
-        codice_fiscale = parsed.get("codice_fiscale")
         totale_debito = parsed.get("totali", {}).get("totale_debito", 0)
-        
-        # Estrai primo tributo per identificazione più precisa
-        primo_tributo = None
-        for sezione in ["sezione_erario", "sezione_inps", "sezione_regioni", "sezione_imu"]:
-            tributi = parsed.get(sezione, [])
-            if tributi and len(tributi) > 0:
-                primo_tributo = tributi[0].get("codice_tributo") or tributi[0].get("causale")
-                break
-        
-        # Cerca duplicato - include primo_tributo se disponibile
-        if data_pagamento and codice_fiscale:
-            duplicate_query = {
-                "data_pagamento": data_pagamento,
-                "codice_fiscale": codice_fiscale
-            }
-            
-            # Aggiungi primo_tributo alla query se disponibile per match più preciso
-            if primo_tributo:
-                duplicate_query["$or"] = [
-                    {"parsed_data.sezione_erario.0.codice_tributo": primo_tributo},
-                    {"parsed_data.sezione_inps.0.causale": primo_tributo}
-                ]
-            
-            # Se abbiamo anche totale, aggiungi alla query con tolleranza
-            if totale_debito and totale_debito > 0:
-                duplicate_query["parsed_data.totali.totale_debito"] = {
-                    "$gte": totale_debito - 1,
-                    "$lte": totale_debito + 1
-                }
-            
-            existing = await db[COLL_F24].find_one(duplicate_query, {"_id": 0, "id": 1, "filename": 1})
-            if existing:
-                result["is_duplicate"] = True
-                result["duplicate_of"] = existing.get("id")
-                result["duplicate_filename"] = existing.get("filename")
-                result["success"] = True
-                result["message"] = f"F24 duplicato: già presente come {existing.get('filename')}"
-                logger.info(f"⏭️ F24 duplicato saltato: {filename} (duplicato di {existing.get('filename')})")
-                return result
-        
-        # 3. Salva in f24_unificato
-        f24_doc = {
-            "id": str(uuid.uuid4()),
-            "filename": filename,
-            "pdf_data": base64.b64encode(pdf_content).decode(),
-            "file_hash": calculate_file_hash(pdf_content),
-            "source": source,
-            "parsed_data": parsed,
-            "tipo_documento": parsed.get("tipo_documento", "f24"),
-            "data_pagamento": data_pagamento,
-            "codice_fiscale": codice_fiscale,
-            "ragione_sociale": parsed.get("ragione_sociale"),
-            "totale_versato": totale_debito,
-            "ai_parsed": True,
-            "ai_parsed_at": datetime.now(timezone.utc).isoformat(),
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        
-        await db[COLL_F24].insert_one(f24_doc)
+
+        from app.services.f24_canonico import importa_modello_bytes
+
+        canonical = await importa_modello_bytes(db, pdf_content, filename, source=source)
+        if not canonical.get("success"):
+            result["errors"].append(canonical.get("error", "Validazione canonica fallita"))
+            result["message"] = "F24 non salvato: validazione canonica fallita"
+            return result
         result["success"] = True
-        result["document_id"] = f24_doc["id"]
+        result["document_id"] = canonical["f24_id"]
+        result["is_duplicate"] = bool(canonical.get("duplicate"))
+        result["canonical_save"] = canonical
         result["message"] = f"F24 parsato e salvato: {data_pagamento} - €{totale_debito:.2f}"
         
         logger.info(f"✅ F24 processato: {filename} -> {data_pagamento}, €{totale_debito:.2f}")

@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../api';
-import ImportDocumenti, { classificaEsitoUpload } from './ImportDocumenti';
+import ImportDocumenti, { classificaEsitoUpload, descriviProvaFiscale } from './ImportDocumenti';
 
 vi.mock('../api', () => ({ default: { post: vi.fn() } }));
 
@@ -46,6 +46,42 @@ describe('Import documenti - corrispettivo duplicato', () => {
       status: 'error',
       message: 'Errore parsing F24',
     });
+  });
+
+  it('mostra la prova del parsing F24 canonico senza confonderla con la banca', async () => {
+    api.post.mockResolvedValue({
+      data: {
+        success: true,
+        tipo_rilevato: 'f24',
+        workflow: 'F24_CANONICO',
+        imported: 1,
+        message: 'F24 importato nel registro canonico',
+        data: {
+          righe_tributo: 2,
+          righe_credito: 1,
+          validazione: { saldo_quadrato: true },
+        },
+      },
+    });
+    render(<ImportDocumenti />);
+
+    const pdf = new File(['%PDF-test'], 'f24-test.pdf', { type: 'application/pdf' });
+    fireEvent.change(screen.getByTestId('file-input'), { target: { files: [pdf] } });
+    fireEvent.click(await screen.findByTestId('upload-btn'));
+
+    expect(await screen.findByText('Righe tributo: 2 • Crediti: 1 • Quadratura verificata')).toBeInTheDocument();
+    expect(descriviProvaFiscale({ workflow: 'ALTRO' })).toBe('');
+  });
+
+  it('mostra il collegamento CBILL a rata e cartelle distinguendo la banca', () => {
+    expect(descriviProvaFiscale({
+      workflow: 'PAGOPA_CBILL_CANONICO',
+      data: { riconciliazione_fiscale: {
+        matched: true,
+        linked_claim_ids: ['claim-1', 'claim-2'],
+        bank_verified: false,
+      } },
+    })).toBe('Rata collegata â€¢ Cartelle collegate: 2 â€¢ Banca da verificare');
   });
 
   it('mantiene lo ZIP intero e lo affida ai controlli del backend', async () => {

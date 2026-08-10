@@ -35,6 +35,28 @@ export function classificaEsitoUpload(data = {}) {
   };
 }
 
+export function descriviProvaFiscale(data = {}) {
+  if (data?.workflow === 'PAGOPA_CBILL_CANONICO') {
+    const match = data?.data?.riconciliazione_fiscale || {};
+    if (!match.matched) return 'Ricevuta acquisita â€¢ collegamento AdeR da verificare';
+    const cartelle = Array.isArray(match.linked_claim_ids) ? match.linked_claim_ids.length : 0;
+    return `Rata collegata â€¢ Cartelle collegate: ${cartelle} â€¢ ${match.bank_verified ? 'Banca verificata' : 'Banca da verificare'}`;
+  }
+  if (data?.workflow !== 'F24_CANONICO') return '';
+  const canonical = data?.data || {};
+  const parts = [];
+  if (Number.isInteger(canonical.righe_tributo)) {
+    parts.push(`Righe tributo: ${canonical.righe_tributo}`);
+  }
+  if (Number.isInteger(canonical.righe_credito)) {
+    parts.push(`Crediti: ${canonical.righe_credito}`);
+  }
+  if (canonical?.validazione?.saldo_quadrato === true) {
+    parts.push('Quadratura verificata');
+  }
+  return parts.join(' • ');
+}
+
 /**
  * ImportDocumenti - Pagina SEMPLIFICATA
  *
@@ -128,6 +150,7 @@ export default function ImportDocumenti() {
           status: esito.status,
           message: esito.message,
           workflow: res.data?.workflow,
+          evidenceSummary: descriviProvaFiscale(res.data),
           details: res.data,
         });
         setFiles(prev =>
@@ -201,6 +224,7 @@ export default function ImportDocumenti() {
       bonifici: 'Bonifici',
       pagamenti_buoni: 'Pagamenti buoni',
       quietanza_f24: 'Quietanza F24',
+      ricevuta_pagopa: 'PagoPA / CBILL',
       corrispettivi: 'Corrispettivi',
       pos: 'POS',
       archivio_zip: 'Archivio ZIP',
@@ -215,6 +239,7 @@ export default function ImportDocumenti() {
     { label: 'Fatture XML', variant: 'danger' },
     { label: 'Estratti Conto', variant: 'success' },
     { label: 'Quietanze F24', variant: 'warning' },
+    { label: 'Ricevute PagoPA / CBILL', variant: 'warning' },
     { label: 'Bonifici', variant: 'info' },
     { label: 'Pagamenti buoni CSV', variant: 'info' },
     { label: 'Corrispettivi', variant: 'success' },
@@ -246,8 +271,8 @@ export default function ImportDocumenti() {
           <div style={{ fontSize: 13, color: COLORS.info }}>
             <strong>Riconoscimento Automatico</strong>
             <br />
-            Carica qualsiasi documento: F24, Libro Unico, Fatture XML, Estratti Conto, Bonifici,
-            ecc.
+            Carica qualsiasi documento: F24, quietanze, PagoPA/CBILL, Libro Unico, Fatture XML,
+            Estratti Conto, Bonifici, ecc.
             <br />
             Il sistema riconosce il tipo e lo elabora con il workflow completo.
           </div>
@@ -669,6 +694,11 @@ export default function ImportDocumenti() {
                     >
                       {r.message}
                     </div>
+                    {r.evidenceSummary && (
+                      <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 3 }}>
+                        {r.evidenceSummary}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
