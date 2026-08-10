@@ -50,10 +50,12 @@ async def riconcilia_ricevuta_fiscale(db, ricevuta: Dict[str, Any]) -> Dict[str,
             category="riscossione",
             metadata={"receipt_collection": COLLECTION_RICEVUTE},
         )
-    source_type = "RICEVUTA_CBILL" if (
-        "CBILL" in str(ricevuta.get("note") or "").upper()
-        or ricevuta.get("identificativo_bolletta")
-    ) else "RICEVUTA_PAGOPA"
+    source_type = {
+        "RICEVUTA_CBILL": "RICEVUTA_CBILL",
+        "RICEVUTA_MAV": "RICEVUTA_MAV",
+        "RICEVUTA_RAV": "RICEVUTA_RAV",
+        "RICEVUTA_BOLLETTINO_POSTALE": "RICEVUTA_BOLLETTINO_POSTALE",
+    }.get(ricevuta.get("document_kind"), "RICEVUTA_PAGOPA")
     return await reconcile_fiscal_payment(
         db,
         company_id=settings.FISCAL_COMPANY_ID,

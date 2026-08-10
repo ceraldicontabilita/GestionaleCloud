@@ -64,6 +64,7 @@ def test_pagamento_cbill_collega_rata_e_cartelle_senza_duplicare_importo():
             payment={
                 "identificativo_bolletta": "180071110618697515",
                 "importo": 284, "data_pagamento": "2026-07-21",
+                "fee_amount": 2.85, "bank_debit_total": 286.85,
                 "movimento_id": "bank-1",
             },
             source_type="RICEVUTA_CBILL", source_id="receipt-1",
@@ -76,6 +77,11 @@ def test_pagamento_cbill_collega_rata_e_cartelle_senza_duplicare_importo():
         assert installment["status"] == "PAID_DOCUMENTED"
         assert installment["installment_number"] == 18
         assert await db[COLL_TAX_PAYMENTS].count_documents({}) == 1
+        payment = await db[COLL_TAX_PAYMENTS].find_one({})
+        assert payment["operation_amount"] == "284.00"
+        assert payment["fee_amount"] == "2.85"
+        assert payment["bank_debit_total"] == "286.85"
+        assert payment["fee_accounting_status"] == "BANK_EVIDENCE_LINKED"
         assert await db[COLL_TAX_ALLOCATIONS].count_documents({}) == 1
         events = await db[COLL_TAX_COLLECTION_EVENTS].find({}).to_list(10)
         assert len(events) == 2

@@ -89,6 +89,38 @@ def test_regione_non_si_perde_per_testo_marginale_e_ravvedimento_e_di_delega():
     assert parsed["codici_ravvedimento"] == ["1993"]
 
 
+def test_f24_multipagina_quadra_ogni_modello_e_registra_pagina_bianca():
+    doc = fitz.open()
+    for model_number, code, amount in ((1, "1040", "210"), (2, "2002", "3.574")):
+        page = doc.new_page()
+        page.insert_text((40, 40), "CERALDI GROUP S.R.L. - STAMPA DI PROVA", fontsize=7)
+        page.insert_text((40, 55), f"MOD NUM: {model_number}", fontsize=7)
+        for x, text in ((120, code), (220, "2024"), (350, amount), (391, "00")):
+            page.insert_text((x, 180), text, fontsize=7)
+        page.insert_text((250, 240), "SALDO FINALE", fontsize=7)
+        page.insert_text((530, 240), amount, fontsize=7)
+        page.insert_text((570, 240), "00", fontsize=7)
+        if model_number == 1:
+            doc.new_page()
+    content = doc.tobytes()
+    doc.close()
+
+    parsed = parse_f24_commercialista(pdf_content=content)
+
+    assert parsed["dati_generali"]["natura_documento"] == "F24_STAMPA_DI_PROVA"
+    assert parsed["dati_generali"]["numero_modelli"] == 2
+    assert parsed["totali"]["saldo_delega"] == 3784.0
+    assert parsed["validazione"]["saldo_quadrato"] is True
+    assert parsed["validazione"]["modelli_quadrati"] is True
+    assert parsed["validazione"]["pagine_bianche"] == [2]
+    assert [item["saldo_quadrato"] for item in parsed["modelli"]] == [True, True]
+    assert [item["numero_modello"] for item in parsed["modelli"]] == [1, 2]
+    rows = parsed["sezione_erario"]
+    assert [(row["codice_tributo"], row["pagina"], row["numero_modello"]) for row in rows] == [
+        ("1040", 1, 1), ("2002", 3, 2),
+    ]
+
+
 def test_classificatore_separa_rettifica_avviso_e_ricevuta():
     rettifica = _pdf(
         "INPS - NOTA DI RETTIFICA", "MODELLO DMRA", "Il pagamento avviene con modello F24",

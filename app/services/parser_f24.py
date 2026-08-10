@@ -247,7 +247,9 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
         "sezione_inail": [],
         "totali": {},
         "has_ravvedimento": False,
-        "codici_ravvedimento": []
+        "codici_ravvedimento": [],
+        "modelli": [],
+        "diagnostica_pagine": [],
     }
     
     from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
@@ -274,6 +276,14 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
     
     coordinate_identity = _dati_anagrafici_da_coordinate(doc)
     result["dati_generali"].update(coordinate_identity)
+
+    upper_text = text.upper()
+    if "STAMPA DI PROVA" in upper_text:
+        result["dati_generali"]["natura_documento"] = "F24_STAMPA_DI_PROVA"
+    elif "PRESENTAZIONE INTERMEDIARIO" in upper_text:
+        result["dati_generali"]["natura_documento"] = "F24_MODELLO_PRESENTATO"
+    else:
+        result["dati_generali"]["natura_documento"] = "F24_MODELLO"
 
     cf_patterns = [
         r'CODICE\s*FISCALE\s*[\n\s]*([A-Z0-9]{11,16})',
@@ -318,6 +328,8 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
     # Le determineremo dinamicamente cercando le intestazioni
     
     tributi_visti = set()
+    page_models: dict[int, int | None] = {}
+    page_balances: dict[int, float] = {}
     
     def extract_importo(row):
         """Estrae debito e credito da una riga basandosi su X."""
@@ -348,10 +360,23 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
     # ============================================
     
     for page_num, page in enumerate(doc):
+        page_number = page_num + 1
+        page_text = page.get_text()
         words = page.get_text('words')
+        model_match = re.search(r"MOD\s*NUM\s*:\s*(\d+)", page_text, re.IGNORECASE)
+        model_number = int(model_match.group(1)) if model_match else None
+        page_models[page_number] = model_number
+        result["diagnostica_pagine"].append({
+            "pagina": page_number,
+            "stato": "bianca" if not words and not page_text.strip() else "elaborata",
+            "numero_modello": model_number,
+            "caratteri_testo": len(page_text.strip()),
+            "parole": len(words),
+        })
         saldo_coordinate = _saldo_da_coordinate(page)
         if saldo_coordinate is not None:
             result["dati_generali"]["saldo_delega"] = saldo_coordinate
+            page_balances[page_number] = saldo_coordinate
         
         # Raggruppa per riga (tolleranza 8 pixel)
         rows = {}
@@ -785,6 +810,55 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
     
     doc.close()
 
+    sections = (
+        "sezione_erario", "sezione_inps", "sezione_regioni",
+        "sezione_tributi_locali", "sezione_inail",
+    )
+    for section_name in sections:
+        for row in result[section_name]:
+            row["numero_modello"] = page_models.get(int(row.get("pagina") or 1))
+
+    # Una delega PDF puo' contenere piu' modelli separati da pagine bianche.
+    # La quadratura va verificata per modello e poi sull'intero documento:
+    # confrontare tutte le righe con il solo saldo dell'ultima pagina produce
+    # un falso non-quadrato sul campione IMU + ritenuta.
+    model_keys = []
+    for page_number, model_number in page_models.items():
+        if model_number is not None and model_number not in model_keys:
+            model_keys.append(model_number)
+    if not model_keys and any(item["stato"] == "elaborata" for item in result["diagnostica_pagine"]):
+        model_keys = [1]
+
+    model_summaries = []
+    for model_number in model_keys:
+        model_pages = [
+            page_number for page_number, value in page_models.items()
+            if value == model_number or (len(model_keys) == 1 and value is None)
+        ]
+        model_rows = [
+            row for section_name in sections for row in result[section_name]
+            if int(row.get("pagina") or 1) in model_pages
+        ]
+        debits = round(sum(float(row.get("importo_debito") or 0) for row in model_rows), 2)
+        credits = round(sum(float(row.get("importo_credito") or 0) for row in model_rows), 2)
+        balance = next((page_balances[page] for page in model_pages if page in page_balances), None)
+        difference = None if balance is None else round(debits - credits - balance, 2)
+        model_summaries.append({
+            "numero_modello": model_number,
+            "pagine": model_pages,
+            "saldo_delega": balance,
+            "totale_debito": debits,
+            "totale_credito": credits,
+            "differenza_saldo": difference,
+            "saldo_quadrato": difference is not None and abs(difference) <= 0.01,
+        })
+    result["modelli"] = model_summaries
+    result["dati_generali"]["numero_modelli"] = len(model_summaries)
+    if model_summaries and all(item["saldo_delega"] is not None for item in model_summaries):
+        result["dati_generali"]["saldo_delega"] = round(
+            sum(float(item["saldo_delega"]) for item in model_summaries), 2
+        )
+
     # Il ravvedimento appartiene alla delega e puo' essere rappresentato in
     # qualunque sezione. Derivarlo da tutte le righe evita di perdere, per
     # esempio, interessi 1993 e sanzioni 8907 nella sezione Regioni.
@@ -806,7 +880,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
     totale_debito = 0.0
     totale_credito = 0.0
     
-    for sezione in [result["sezione_erario"], result["sezione_inps"], 
+    for sezione in [result["sezione_erario"], result["sezione_inps"],
                     result["sezione_regioni"], result["sezione_tributi_locali"],
                     result["sezione_inail"]]:
         for item in sezione:
@@ -831,7 +905,13 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
         )),
         "saldo_quadrato": difference is not None and abs(difference) <= 0.01,
         "differenza_saldo": difference,
-        "parser_version": "f24-coordinate-v2",
+        "modelli_quadrati": bool(model_summaries) and all(
+            item["saldo_quadrato"] for item in model_summaries
+        ),
+        "pagine_bianche": [
+            item["pagina"] for item in result["diagnostica_pagine"] if item["stato"] == "bianca"
+        ],
+        "parser_version": "f24-coordinate-v3",
     }
     
     return result

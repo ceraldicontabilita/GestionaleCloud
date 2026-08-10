@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import {
   formatEuro,
   formatDateIT,
@@ -31,6 +32,17 @@ import {
 } from 'lucide-react';
 import { toast } from '../components/ui/sonner';
 import api from '../api';
+
+export const paymentKindLabel = kind => ({
+  RICEVUTA_CBILL: 'CBILL', RICEVUTA_MAV: 'MAV', RICEVUTA_RAV: 'RAV',
+  RICEVUTA_BOLLETTINO_POSTALE: 'Bollettino postale', RICEVUTA_PAGOPA: 'PagoPA',
+}[kind] || 'Pagamento documentale');
+
+export const paymentAmountParts = receipt => ({
+  operation: Number(receipt.operation_amount ?? receipt.importo ?? 0),
+  fee: Number(receipt.fee_amount ?? 0),
+  bankTotal: Number(receipt.bank_debit_total ?? receipt.operation_amount ?? receipt.importo ?? 0),
+});
 
 export default function GestionePagoPA() {
   const [pdfViewer, setPdfViewer] = useState(null); // {title, src} — viewer canonico §8
@@ -654,13 +666,22 @@ export default function GestionePagoPA() {
                           📅 {ricevuta.data_pagamento ? formatDateIT(ricevuta.data_pagamento) : '-'}
                         </td>
                         <td style={{ padding: '12px 16px', fontFamily: 'monospace', fontSize: 13 }}>
-                          {ricevuta.identificativo_bolletta || '-'}
+                          <strong>{paymentKindLabel(ricevuta.document_kind)}</strong><br />
+                          {ricevuta.identificativo_bolletta || ricevuta.numero_bollettino || '-'}
                         </td>
                         <td style={{ padding: '12px 16px' }}>{ricevuta.beneficiario || '-'}</td>
                         <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 500 }}>
-                          {formatEuro(ricevuta.importo || 0)}
+                          {formatEuro(paymentAmountParts(ricevuta).operation)}
+                          <div style={{ fontSize: 11, color: '#64748b', fontWeight: 400, marginTop: 3 }}>
+                            Commissione {formatEuro(paymentAmountParts(ricevuta).fee)}<br />
+                            Addebito banca {formatEuro(paymentAmountParts(ricevuta).bankTotal)}
+                          </div>
                         </td>
                         <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                          <div style={{ display: 'grid', gap: 4, justifyItems: 'center' }}>
+                          <span style={{ fontSize: 11, color: '#166534', fontWeight: 700 }}>
+                            Versamento documentato
+                          </span>
                           {ricevuta.movimento_id ? (
                             <span
                               style={{
@@ -688,6 +709,10 @@ export default function GestionePagoPA() {
                               ⏳ Da Associare
                             </span>
                           )}
+                          {ricevuta.fiscal_target_id && <Link to="/situazione-fiscale/riscossione" style={{ fontSize: 11, color: '#0369a1' }}>
+                            Rata/cartelle collegate ({(ricevuta.cartelle_collegate || []).length})
+                          </Link>}
+                          </div>
                         </td>
                         <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                           <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>

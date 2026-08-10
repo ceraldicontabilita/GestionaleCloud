@@ -42,7 +42,7 @@ def _payment_identifiers(payment: dict[str, Any]) -> set[str]:
     return {
         normalized
         for field in (
-            "identificativo_bolletta", "iuv", "cbill_code", "payment_module_code",
+            "identificativo_bolletta", "iuv", "codice_cbill", "cbill_code", "payment_module_code",
             "document_number", "cartella_number", "collection_number",
             "protocollo_telematico",
         )
@@ -153,10 +153,23 @@ async def reconcile_fiscal_payment(
         "document_id": document_id,
         "version_id": version_id,
         "amount": amount,
+        "operation_amount": amount,
+        "fee_amount": str(_money(payment.get("fee_amount")) or Decimal("0.00")),
+        "bank_debit_total": str(
+            _money(payment.get("bank_debit_total")) or amount
+        ),
         "payment_date": payment.get("payment_date") or payment.get("data_pagamento"),
         "matched_identifier": target["matched_identifier"],
         "bank_verified": bool(payment.get("bank_verified") or payment.get("movimento_id")),
         "documentary_evidence": True,
+        # La commissione diventa costo soltanto dopo il collegamento al vero
+        # movimento bancario. Qui resta una componente documentale distinta,
+        # senza creare una scrittura o un movimento sintetico.
+        "fee_accounting_status": (
+            "BANK_EVIDENCE_LINKED"
+            if bool(payment.get("bank_verified") or payment.get("movimento_id"))
+            else "PENDING_BANK_VERIFICATION"
+        ),
         "updated_at": now,
     }
     await db[COLL_TAX_PAYMENTS].update_one(

@@ -1,6 +1,7 @@
 import asyncio
 
 import fitz
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from mongomock_motor import AsyncMongoMockClient
@@ -48,6 +49,62 @@ def test_cbill_separa_operazione_commissione_e_totale():
     assert parsed["field_evidence"]["importo_operazione"]["page_number"] == 1
     assert parsed["field_evidence"]["importo_operazione"]["source_text"] == "126,68 EUR"
     assert len(parsed["field_evidence"]["importo_operazione"]["bbox"]) == 4
+
+
+@pytest.mark.parametrize(
+    ("code", "operation", "fee", "total"),
+    [
+        ("301001500092427141", "80,00", "2,85", "82,85"),
+        ("180071502664980543", "126,68", "2,85", "129,53"),
+        ("180071108057937558", "46,92", "2,85", "49,77"),
+        ("180071108462062586", "122,48", "2,85", "125,33"),
+        ("301000000013560150", "1.400,00", "2,85", "1.402,85"),
+    ],
+)
+def test_cinque_layout_cbill_audit_restano_esatti_al_centesimo(code, operation, fee, total):
+    content = _pdf(
+        "UTENZE E SERVIZI: ADDEBITO", "CBILL - pagoPA",
+        "CODICE IDENTIFICATIVO CBILL", code,
+        "IMPORTO OPERAZIONE", operation, "COMMISSIONI", fee, "TOTALE", total,
+        "CODICE TRANSAZIONE CBILL 03575825444", "CODICE SIA BILLER AJZ8Z",
+    )
+
+    parsed = parse_receipt_pdf(content, "nome_generico.pdf")
+
+    expected_operation = int(operation.replace(".", "").replace(",", ""))
+    expected_fee = int(fee.replace(".", "").replace(",", ""))
+    expected_total = int(total.replace(".", "").replace(",", ""))
+    assert parsed["document_kind"] == "RICEVUTA_CBILL"
+    assert parsed["operation_amount_cents"] == expected_operation
+    assert parsed["fee_amount_cents"] == expected_fee
+    assert parsed["bank_debit_total_cents"] == expected_total
+    assert parsed["identifiers"]["identificativo_bolletta"] == {
+        "raw": code, "normalized": code,
+    }
+    assert parsed["transaction_code"] == "03575825444"
+
+
+@pytest.mark.parametrize(
+    ("operation", "total"),
+    [("917,10", "919,95"), ("34,90", "37,75"), ("8,86", "11,71"), ("147,72", "150,57")],
+)
+def test_quattro_bollettini_postali_audit_separano_obbligo_e_addebito(operation, total):
+    content = _pdf(
+        "UTENZE E SERVIZI: ADDEBITO", "BOLLETTINO POSTALE",
+        "C/C POSTALE N. 123456789", "IMPORTO OPERAZIONE", operation,
+        "COMMISSIONI", "2,85", "TOTALE ADDEBITO", total,
+        "COD.RIF ABC123456789", "ID. POSTE 06209227663", "N.op PVV427665443",
+    )
+
+    parsed = parse_receipt_pdf(content, "documento.pdf")
+
+    assert parsed["document_kind"] == "RICEVUTA_BOLLETTINO_POSTALE"
+    assert parsed["operation_amount_cents"] == int(operation.replace(".", "").replace(",", ""))
+    assert parsed["fee_amount_cents"] == 285
+    assert parsed["bank_debit_total_cents"] == int(total.replace(".", "").replace(",", ""))
+    assert parsed["identificativo_bolletta"] == "ABC123456789"
+    assert parsed["postal_account_number"] == "123456789"
+    assert parsed["identifiers"]["postal_account_number"]["raw"] == "123456789"
 
 
 def test_mav_e_bollettino_postale_restano_tipi_distinti():
@@ -125,3 +182,54 @@ def test_upload_auto_cbill_e_idempotente_e_non_inventa_la_banca(monkeypatch):
     assert receipt["movimento_id"] is None
     assert second.json()["duplicate"] is True
     assert asyncio.run(db["ricevute_pagopa"].count_documents({})) == 1
+
+
+def test_upload_auto_bollettino_postale_usa_codice_forte_e_importo_operazione(monkeypatch):
+    db = AsyncMongoMockClient()["upload-auto-postal"]
+    monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
+    app = FastAPI()
+    app.include_router(documenti.router, prefix="/api/documenti")
+    content = _pdf(
+        "UTENZE E SERVIZI: ADDEBITO", "BOLLETTINO POSTALE", "01/03/2023",
+        "C/C POSTALE N. 123456789", "IMPORTO OPERAZIONE", "917,10",
+        "COMMISSIONI", "2,85", "TOTALE ADDEBITO", "919,95",
+        "COD.RIF ABC123456789", "ID. POSTE 06209227663", "N.op PVV427665443",
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/documenti/upload-auto",
+            files={"file": ("addebito_bpm.pdf", content, "application/pdf")},
+            headers=confirmed_preview_headers(content, "ricevuta_bollettino_postale"),
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["workflow"] == "PAGAMENTO_DOCUMENTALE_CANONICO"
+    receipt = payload["data"]["receipt"]
+    assert receipt["operation_amount"] == 917.10
+    assert receipt["fee_amount"] == 2.85
+    assert receipt["bank_debit_total"] == 919.95
+    assert receipt["identificativo_bolletta"] == "ABC123456789"
+    assert receipt["movimento_id"] is None
+
+
+@pytest.mark.parametrize("document_kind", [
+    "RICEVUTA_CBILL", "RICEVUTA_MAV", "RICEVUTA_RAV", "RICEVUTA_BOLLETTINO_POSTALE",
+])
+def test_riconciliazione_pagopa_non_perde_il_sottotipo(document_kind, monkeypatch):
+    from app.routers import pagopa
+    from app.services import fiscal_payment_reconciliation
+
+    captured = {}
+
+    async def fake_reconcile(_db, **kwargs):
+        captured.update(kwargs)
+        return {"matched": False}
+
+    monkeypatch.setattr(fiscal_payment_reconciliation, "reconcile_fiscal_payment", fake_reconcile)
+    asyncio.run(pagopa.riconcilia_ricevuta_fiscale(
+        object(), {"id": "receipt-1", "document_kind": document_kind, "importo": 57.09},
+    ))
+
+    assert captured["source_type"] == document_kind

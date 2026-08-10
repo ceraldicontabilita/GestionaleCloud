@@ -16,7 +16,7 @@ from app.services.payment_invoice_matching import amounts_equal_to_cent
 
 
 COLLECTION_RICEVUTE = "ricevute_pagopa"
-PARSER_VERSION = "payment-receipt-layout-v3"
+PARSER_VERSION = "payment-receipt-layout-v4"
 
 
 def _money_decimal(value: str | None) -> Decimal | None:
@@ -109,13 +109,20 @@ def _parse_bpm_payment(text: str) -> dict[str, Any]:
         "reference_code": (r"COD\.\s*RIF\s*[:#-]?\s*([A-Z0-9]{8,30})",),
         "poste_id": (r"ID\.\s*POSTE\s*[:#-]?\s*([A-Z0-9]{6,30})",),
         "operation_number": (r"N\.\s*OP\s*([A-Z0-9]{6,30})",),
+        "postal_account_number": (
+            r"(?:C/C|CONTO\s+CORRENTE)\s*POSTALE\s*(?:N\.?|NUMERO)?\s*[:#-]?\s*(\d{5,20})",
+        ),
+        "cv_code": (r"\bC\.\s*V\.\s*[:#-]?\s*([A-Z0-9]{2,30})",),
     }
     parsed: dict[str, Any] = {}
+    raw_identifiers: dict[str, str] = {}
     for field, field_patterns in patterns.items():
         for pattern in field_patterns:
             match = re.search(pattern, compact, re.IGNORECASE)
             if match:
-                parsed[field] = match.group(1).upper()
+                raw_value = match.group(1).strip()
+                raw_identifiers[field] = raw_value
+                parsed[field] = re.sub(r"\s+", "", raw_value).upper()
                 break
     if parsed.get("sia_biller") in {"IMPORTO", "UFFICIO", "DEBITO", "VALUTA"}:
         parsed.pop("sia_biller", None)
@@ -123,12 +130,14 @@ def _parse_bpm_payment(text: str) -> dict[str, Any]:
         sia_candidate = re.search(r"\b([A-Z]{2,4}\d[A-Z0-9])\b", compact)
         if sia_candidate:
             parsed["sia_biller"] = sia_candidate.group(1)
+            raw_identifiers["sia_biller"] = sia_candidate.group(1)
     if document_kind == "RICEVUTA_CBILL" and not parsed.get("numero_bollettino"):
         number_candidate = re.search(
             r"\b\d{18}\b\s+(\d{10})\b", compact,
         )
         if number_candidate:
             parsed["numero_bollettino"] = number_candidate.group(1)
+            raw_identifiers["numero_bollettino"] = number_candidate.group(1)
 
     dates = []
     for day, month, year in re.findall(r"\b([0-3]\d)/([01]\d)/(20\d{2})\b", compact):
@@ -150,7 +159,14 @@ def _parse_bpm_payment(text: str) -> dict[str, Any]:
         r"(?:CODICE\s+OPERAZIONE|N\.\s*OP)[^\n]*\n(.+?)(?:\nEUR\d|\nCERALDI GROUP)",
         text, re.IGNORECASE | re.DOTALL,
     )
-    identifier = parsed.get("identificativo_bolletta") or parsed.get("numero_bollettino")
+    identifier = (
+        parsed.get("identificativo_bolletta") or parsed.get("numero_bollettino")
+        or parsed.get("reference_code") or parsed.get("operation_number")
+    )
+    payer_tax_id = next(iter(re.findall(r"\b\d{11}\b", compact)), None)
+    if payer_tax_id:
+        raw_identifiers.setdefault("payer_tax_id", payer_tax_id)
+        parsed.setdefault("payer_tax_id", payer_tax_id)
     amount_float = float(operation) if operation is not None else None
     fee_float = float(fee) if fee is not None else None
     total_float = float(total) if total is not None else None
@@ -179,6 +195,14 @@ def _parse_bpm_payment(text: str) -> dict[str, Any]:
             "data_pagamento": dates[0] if dates else None,
         }.items() if value is not None
     }
+    for field, raw_value in raw_identifiers.items():
+        evidence[field] = {
+            "page_number": 1,
+            "source_text": raw_value,
+            "raw_value": raw_value,
+            "normalized_value": parsed.get(field),
+            "parser_version": PARSER_VERSION,
+        }
     return {
         **parsed,
         "document_kind": document_kind,
@@ -193,9 +217,14 @@ def _parse_bpm_payment(text: str) -> dict[str, Any]:
         "bank_debit_total_cents": int(total * 100) if total is not None else None,
         "data_pagamento": dates[0] if dates else None,
         "beneficiario": beneficiary_match.group(1).strip(" -") if beneficiary_match else None,
-        "payer_tax_id": next(iter(re.findall(r"\b\d{11}\b", compact)), None),
+        "payer_tax_id": payer_tax_id,
         "causale": re.sub(r"\s+", " ", causale_match.group(1)).strip() if causale_match else None,
         "is_payment_receipt": operation is not None and total is not None,
+        "raw_identifiers": raw_identifiers,
+        "identifiers": {
+            field: {"raw": raw_value, "normalized": parsed.get(field)}
+            for field, raw_value in raw_identifiers.items()
+        },
         "parser_version": PARSER_VERSION,
         "field_evidence": evidence,
     }
@@ -584,6 +613,10 @@ async def import_receipt(
         "reference_code": values.get("reference_code"),
         "poste_id": values.get("poste_id"),
         "operation_number": values.get("operation_number"),
+        "postal_account_number": values.get("postal_account_number"),
+        "cv_code": values.get("cv_code"),
+        "raw_identifiers": values.get("raw_identifiers") or {},
+        "identifiers": values.get("identifiers") or {},
         "document_kind": values.get("document_kind") or "RICEVUTA_PAGOPA",
         "parser_version": values.get("parser_version") or PARSER_VERSION,
         "field_evidence": values.get("field_evidence") or {},
