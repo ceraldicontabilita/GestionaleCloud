@@ -4,7 +4,7 @@
 > Totale **1113 endpoint** in **114 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 663 · ext esterni = 88 · — da verificare = 362
+**Riepilogo uso:** ✓ frontend = 667 · ext esterni = 88 · — da verificare = 358
 
 ## AI Parser  (11)
 
@@ -1542,12 +1542,12 @@
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | POST | `/api/sumup/bonifica-accrediti-numia` | — | sumup |
-| GET | `/api/sumup/bonifica-pos-xml` | — | sumup |
-| POST | `/api/sumup/bonifica-pos-xml` | — | sumup |
+| GET | `/api/sumup/bonifica-pos-xml` | ✓ | sumup |
+| POST | `/api/sumup/bonifica-pos-xml` | ✓ | sumup |
 | POST | `/api/sumup/normalizza-descrizioni-pos` | — | sumup |
 | GET | `/api/sumup/riepilogo` | ✓ | sumup |
-| POST | `/api/sumup/sincronizza` | — | sumup |
-| GET | `/api/sumup/stato` | — | sumup |
+| POST | `/api/sumup/sincronizza` | ✓ | sumup |
+| GET | `/api/sumup/stato` | ✓ | sumup |
 
 ## Suppliers  (32)
 
