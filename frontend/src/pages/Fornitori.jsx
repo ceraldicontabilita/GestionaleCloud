@@ -34,8 +34,6 @@ import {
   Th,
   Td,
   ListaAdattiva,
-  RowActions,
-  RowActionButton,
 } from '../components/ds';
 import {
   Search,
@@ -1130,145 +1128,99 @@ function AzioniFornitore({
     setSearching(false);
   };
 
-  // Colonna Azioni compattata (richiesta utente 10/07: "troppa accozzaglia
-  // di icone"): restano visibili solo fatturato anno corrente e Modifica,
-  // tutto il resto va nel menù "⋯".
-  const [menuAperto, setMenuAperto] = useState(false);
-  const menuBtnRef = useRef(null);
-  const [menuPos, setMenuPos] = useState(null);
-
-  // Bug 14/07/2026: il menù era posizionato con `position: absolute` DENTRO
-  // la cella della tabella. TableWrap ha overflow-x:auto, che per spec CSS
-  // forza anche overflow-y ad 'auto' (clipping) quando non è 'visible':
-  // per l'ULTIMA riga il menù si apriva sotto il bordo del box tabella e
-  // veniva tagliato via, invisibile ("non compare... è troppo giù").
-  // Fix: portal fuori dalla tabella, posizionato in `fixed` sulle
-  // coordinate reali del bottone — non risente più del clipping del contenitore.
-  const apriMenu = () => {
-    const rect = menuBtnRef.current?.getBoundingClientRect();
-    if (rect) {
-      setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
-    }
-    setMenuAperto(a => !a);
+  const actionStyle = {
+    minHeight: 28,
+    padding: isMobile ? '4px 7px' : '5px 9px',
+    fontSize: isMobile ? 10.5 : 11,
   };
 
-  const vociMenu = [
-    {
-      label: `📊 Fatturato ${selectedYear - 1}`,
-      onClick: () => handleShowFatturato(selectedYear - 1),
-    },
-    hasPiva && {
-      label: searching ? '🔎 Ricerca…' : '🔎 Cerca dati P.IVA',
-      onClick: handleSearchPiva,
-    },
-    { label: '📄 Estratto fatture', onClick: () => onViewInvoices(supplier) },
-    onToggleCessato && {
-      label: supplier.cessato ? '↩️ Riattiva fornitore' : '🚪 Segna come cessato',
-      onClick: () => onToggleCessato(supplier),
-      testId: `btn-toggle-cessato-${idFornitore(supplier)}`,
-    },
-    {
-      label: '🗑️ Elimina fornitore',
-      onClick: () => onDelete(idFornitore(supplier)),
-      pericolosa: true,
-    },
-  ].filter(Boolean);
-
-  // Icone su UNA fila e ben visibili (richiesta utente 10/07): bottoni
-  // 30×30 con icone più grandi, mai a capo.
+  // Tutte le azioni sono visibili. Su mobile diventano chip compatti su due
+  // righe invece di un menu nascosto che obbliga ad aprire ogni fornitore.
   return (
-    <RowActions style={{ justifyContent: isMobile ? 'flex-end' : 'center', flexWrap: 'nowrap' }}>
+    <div
+      data-testid={`azioni-visibili-${idFornitore(supplier)}`}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: isMobile ? 'flex-start' : 'flex-end',
+        flexWrap: 'wrap',
+        gap: 5,
+        minWidth: 0,
+      }}
+    >
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => handleShowFatturato(selectedYear)}
+        disabled={loadingFatturato}
+        title={`Visualizza fatturato ${selectedYear}`}
+        data-testid={`btn-fatturato-${supplier.id}`}
+        style={actionStyle}
+      >
+        <TrendingUp size={13} /> {loadingFatturato ? '...' : selectedYear}
+      </Button>
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => handleShowFatturato(selectedYear - 1)}
+        disabled={loadingFatturato}
+        title={`Visualizza fatturato ${selectedYear - 1}`}
+        style={actionStyle}
+      >
+        {selectedYear - 1}
+      </Button>
       {hasPiva && (
-        <RowActionButton
-          variant="info"
-          onClick={() => handleShowFatturato(selectedYear)}
-          disabled={loadingFatturato}
-          title={`Visualizza fatturato ${selectedYear}`}
-          data-testid={`btn-fatturato-${supplier.id}`}
-          style={{
-            width: 'auto',
-            height: 30,
-            padding: '0 8px',
-            gap: 4,
-            fontSize: 12,
-            fontWeight: 700,
-          }}
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={handleSearchPiva}
+          disabled={searching}
+          title="Cerca dati della partita IVA"
+          style={actionStyle}
         >
-          <TrendingUp size={15} /> {loadingFatturato ? '...' : selectedYear}
-        </RowActionButton>
+          <Search size={13} /> {searching ? 'Ricerca...' : 'P.IVA'}
+        </Button>
       )}
-      <RowActionButton
-        variant="primary"
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => onViewInvoices(supplier)}
+        title="Apri estratto fatture"
+        style={actionStyle}
+      >
+        <FileText size={13} /> Fatture
+      </Button>
+      <Button
+        variant="secondary"
+        size="sm"
         onClick={() => onEdit(supplier)}
         title="Modifica anagrafica"
         data-testid={`btn-modifica-${idFornitore(supplier)}`}
-        style={{ width: 30, height: 30 }}
+        style={actionStyle}
       >
-        <Edit2 size={16} />
-      </RowActionButton>
-      <div style={{ position: 'relative', display: 'inline-block' }}>
-        <RowActionButton
-          ref={menuBtnRef}
-          variant="neutral"
-          onClick={apriMenu}
-          title="Altre azioni"
-          style={{ fontWeight: 800, width: 30, height: 30, fontSize: 16 }}
+        <Edit2 size={13} /> Modifica
+      </Button>
+      {onToggleCessato && (
+        <Button
+          variant={supplier.cessato ? 'success' : 'secondary'}
+          size="sm"
+          onClick={() => onToggleCessato(supplier)}
+          data-testid={`btn-toggle-cessato-${idFornitore(supplier)}`}
+          style={actionStyle}
         >
-          ⋯
-        </RowActionButton>
-        {menuAperto && menuPos && (
-          <Portal>
-            {/* chiude il menù cliccando fuori */}
-            <div
-              onClick={() => setMenuAperto(false)}
-              style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
-            />
-            <div
-              style={{
-                position: 'fixed',
-                top: menuPos.top,
-                right: menuPos.right,
-                zIndex: 9999,
-                background: 'white',
-                border: `1px solid ${COLORS.border}`,
-                borderRadius: 8,
-                boxShadow: '0 8px 24px rgba(15,39,68,0.18)',
-                minWidth: 190,
-                padding: 4,
-              }}
-            >
-              {vociMenu.map(voce => (
-                <button
-                  key={voce.label}
-                  data-testid={voce.testId}
-                  onClick={() => {
-                    setMenuAperto(false);
-                    voce.onClick();
-                  }}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '8px 10px',
-                    border: 'none',
-                    background: 'transparent',
-                    borderRadius: 6,
-                    fontSize: 12.5,
-                    cursor: 'pointer',
-                    color: voce.pericolosa ? '#dc2626' : COLORS.text,
-                    fontWeight: voce.pericolosa ? 700 : 500,
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = COLORS.bgAlt)}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                >
-                  {voce.label}
-                </button>
-              ))}
-            </div>
-          </Portal>
-        )}
-      </div>
-    </RowActions>
+          {supplier.cessato ? 'Riattiva' : 'Cessa'}
+        </Button>
+      )}
+      <Button
+        variant="danger"
+        size="sm"
+        onClick={() => onDelete(idFornitore(supplier))}
+        title="Elimina fornitore"
+        style={actionStyle}
+      >
+        <X size={13} /> Elimina
+      </Button>
+    </div>
   );
 }
 
@@ -1308,7 +1260,7 @@ function SupplierCard({
   };
   const sectionStyle = {
     minWidth: 0,
-    padding: '10px 12px',
+    padding: isMobile ? '7px 8px' : '8px 10px',
     borderRadius: BORDER_RADIUS.md,
     background: COLORS.bgAlt,
     border: `1px solid ${COLORS.border}`,
@@ -1321,13 +1273,13 @@ function SupplierCard({
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'flex-start',
-          gap: 16,
-          flexWrap: 'wrap',
-          paddingBottom: 10,
+          gap: 8,
+          flexWrap: isMobile ? 'nowrap' : 'wrap',
+          paddingBottom: 6,
           borderBottom: `1px solid ${COLORS.border}`,
         }}
       >
-        <div style={{ minWidth: 0, flex: '1 1 320px' }}>
+        <div style={{ minWidth: 0, flex: '1 1 260px' }}>
           <div
             style={{
               display: 'flex',
@@ -1335,7 +1287,7 @@ function SupplierCard({
               gap: 7,
               flexWrap: 'wrap',
               color: COLORS.primary,
-              fontSize: isMobile ? 15 : 16,
+              fontSize: isMobile ? 14 : 16,
               fontWeight: 800,
               lineHeight: 1.3,
             }}
@@ -1349,7 +1301,7 @@ function SupplierCard({
             )}
             {incompleto && <AlertCircle size={15} color={COLORS.warning} title="Dati incompleti" />}
           </div>
-          <div style={{ marginTop: 4, color: COLORS.textMuted, fontSize: 12 }}>
+          <div style={{ marginTop: 2, color: COLORS.textMuted, fontSize: isMobile ? 10.5 : 12 }}>
             P.IVA <span style={{ fontFamily: 'monospace' }}>{piva}</span>
             {supplier.comune && (
               <span>
@@ -1360,12 +1312,12 @@ function SupplierCard({
             )}
           </div>
         </div>
-        <div style={{ textAlign: isMobile ? 'left' : 'right', flexShrink: 0 }}>
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
           <span style={labelStyle}>Acquistato</span>
           <div
             style={{
               color: COLORS.primary,
-              fontSize: 18,
+              fontSize: isMobile ? 15 : 18,
               fontWeight: 800,
               fontVariantNumeric: 'tabular-nums',
               whiteSpace: 'nowrap',
@@ -1379,15 +1331,19 @@ function SupplierCard({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-          gap: 8,
-          marginTop: 10,
+          gridTemplateColumns: isMobile
+            ? 'repeat(2, minmax(0, 1fr))'
+            : '1.2fr 1fr 1fr',
+          gap: 6,
+          marginTop: 6,
         }}
       >
-        <div style={sectionStyle}>
+        <div style={{ ...sectionStyle, gridColumn: isMobile ? '1 / -1' : 'auto' }}>
           <span style={labelStyle}>Contatti e coordinate</span>
-          <div style={valueStyle}>{supplier.email || 'Email non registrata'}</div>
-          <div style={{ ...valueStyle, marginTop: 5, fontFamily: 'monospace', fontSize: 12 }}>
+          <div style={{ ...valueStyle, fontSize: isMobile ? 11.5 : 13 }}>
+            {supplier.email || 'Email non registrata'}
+          </div>
+          <div style={{ ...valueStyle, marginTop: 2, fontFamily: 'monospace', fontSize: isMobile ? 10.5 : 12 }}>
             {supplier.iban || 'IBAN non registrato'}
           </div>
         </div>
@@ -1445,18 +1401,18 @@ function SupplierCard({
       <div
         style={{
           display: 'flex',
-          justifyContent: 'space-between',
+          justifyContent: 'flex-start',
           alignItems: 'center',
-          gap: 10,
+          gap: 6,
           flexWrap: 'wrap',
-          marginTop: 10,
+          marginTop: 6,
         }}
       >
         <Button
           variant={supplier.esclude_magazzino ? 'warning' : 'success'}
           size="sm"
           onClick={() => onToggleMagazzino(idFornitore(supplier), !supplier.esclude_magazzino)}
-          style={{ padding: '5px 10px', fontSize: 11 }}
+          style={{ padding: isMobile ? '4px 7px' : '5px 9px', fontSize: isMobile ? 10.5 : 11 }}
         >
           {supplier.esclude_magazzino ? '🚫 Escluso magazzino' : '📦 In magazzino'}
         </Button>
@@ -2173,14 +2129,15 @@ export default function Fornitori() {
           style={{
             backgroundColor: COLORS.card,
             borderRadius: BORDER_RADIUS.lg,
-            padding: '16px',
-            marginBottom: '24px',
+            padding: isMobile ? '9px' : '11px',
+            marginBottom: '10px',
             boxShadow: SHADOWS.sm,
+            border: `1px solid ${COLORS.border}`,
           }}
         >
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '7px', flexWrap: 'wrap', alignItems: 'center' }}>
             {/* Search */}
-            <div style={{ flex: 1, minWidth: '250px', position: 'relative' }}>
+            <div style={{ flex: '2 1 230px', minWidth: isMobile ? '100%' : '230px', position: 'relative' }}>
               <Search
                 size={18}
                 style={{
@@ -2198,7 +2155,7 @@ export default function Fornitori() {
                 onChange={e => setSearch(e.target.value)}
                 style={{
                   width: '100%',
-                  padding: '10px 12px 10px 40px',
+                  padding: '8px 10px 8px 36px',
                   border: `1px solid ${COLORS.border}`,
                   borderRadius: BORDER_RADIUS.md,
                   fontSize: '14px',
@@ -2212,12 +2169,12 @@ export default function Fornitori() {
               value={filterMetodo}
               onChange={e => setFilterMetodo(e.target.value)}
               style={{
-                padding: '10px 14px',
+                padding: '8px 10px',
                 border: `1px solid ${COLORS.border}`,
                 borderRadius: BORDER_RADIUS.md,
                 fontSize: '14px',
                 backgroundColor: 'white',
-                minWidth: '140px',
+                minWidth: '132px',
               }}
             >
               <option value="tutti">Tutti i metodi</option>
@@ -2233,12 +2190,12 @@ export default function Fornitori() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
-                padding: '10px 14px',
+                gap: '6px',
+                padding: '7px 9px',
                 border: `1px solid ${COLORS.border}`,
                 borderRadius: BORDER_RADIUS.md,
                 cursor: 'pointer',
-                fontSize: '14px',
+                fontSize: '12px',
                 backgroundColor: filterIncomplete ? COLORS.warningLight : 'white',
               }}
             >
@@ -2257,14 +2214,14 @@ export default function Fornitori() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
-                padding: '10px 14px',
+                gap: '6px',
+                padding: '7px 9px',
                 border: filterSenzaMetodo
                   ? `1px solid ${COLORS.warning}`
                   : `1px solid ${COLORS.border}`,
                 borderRadius: BORDER_RADIUS.md,
                 cursor: 'pointer',
-                fontSize: '14px',
+                fontSize: '12px',
                 fontWeight: filterSenzaMetodo ? 700 : 400,
                 backgroundColor: filterSenzaMetodo ? COLORS.warningLight : 'white',
                 color: filterSenzaMetodo ? COLORS.warning : COLORS.gray[700],
@@ -2277,7 +2234,7 @@ export default function Fornitori() {
                 onChange={e => setFilterSenzaMetodo(e.target.checked)}
                 style={{ width: '16px', height: '16px', accentColor: COLORS.warning }}
               />
-              ⚠️ Fatture senza metodo
+              ⚠️ Senza metodo
             </label>
 
             <Button
@@ -2298,18 +2255,18 @@ export default function Fornitori() {
           <div
             style={{
               display: 'flex',
-              gap: '12px',
+              gap: '7px',
               flexWrap: 'wrap',
               alignItems: 'center',
-              marginTop: '12px',
-              paddingTop: '12px',
+              marginTop: '8px',
+              paddingTop: '8px',
               borderTop: `1px solid ${COLORS.border}`,
             }}
             data-testid="filtri-avanzati-row"
           >
             {/* Segmented: Anzianità */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: 13, color: COLORS.primary, fontWeight: 600 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 11.5, color: COLORS.primary, fontWeight: 700 }}>
                 Anzianità:
               </span>
               {[
@@ -2325,7 +2282,8 @@ export default function Fornitori() {
                   onClick={() => setFilterAnzianita(opt.k)}
                   data-testid={`filter-anzianita-${opt.k}`}
                   style={{
-                    minHeight: 40,
+                    minHeight: 30,
+                    padding: '5px 8px',
                     ...(filterAnzianita === opt.k ? { color: COLORS.accent } : {}),
                   }}
                 >
@@ -2336,8 +2294,8 @@ export default function Fornitori() {
 
             {/* Soglia giorni — visibile solo se Nuovi o Storici selezionato */}
             {(filterAnzianita === 'nuovo' || filterAnzianita === 'storico') && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: 13, color: COLORS.primary, fontWeight: 600 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ fontSize: 11.5, color: COLORS.primary, fontWeight: 700 }}>
                   Soglia giorni:
                 </span>
                 <input
@@ -2362,8 +2320,8 @@ export default function Fornitori() {
             )}
 
             {/* Ricerca prodotto venduto */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: '1 1 220px' }}>
-              <span style={{ fontSize: 13, color: COLORS.primary, fontWeight: 600 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: '1 1 190px' }}>
+              <span style={{ fontSize: 11.5, color: COLORS.primary, fontWeight: 700 }}>
                 Prodotto:
               </span>
               <input
@@ -2420,7 +2378,7 @@ export default function Fornitori() {
         </div>
 
         {/* Results Count */}
-        <div style={{ marginBottom: '16px', fontSize: '14px', color: COLORS.textMuted }}>
+        <div style={{ marginBottom: '8px', fontSize: '12px', color: COLORS.textMuted }}>
           {filteredSuppliers.length === suppliers.length
             ? `${suppliers.length} fornitori`
             : `${filteredSuppliers.length} di ${suppliers.length} fornitori`}
