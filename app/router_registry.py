@@ -24,7 +24,6 @@ def register_all_routers(app: FastAPI) -> None:
     _register_core(app)
     _register_email(app)
     _register_noleggio(app)
-    _register_ai(app)
 
     # Sistema relazionale (Chat 9e)
     try:
@@ -370,17 +369,5 @@ def _register_noleggio(app: FastAPI):
     # File conservato in git, non montato in produzione.
     from app.routers import admin_export
     app.include_router(admin_export.router, prefix="/api", tags=["Admin Export"])
-
-
-# ─── AI Module ───────────────────────────────────────────────────────────────
-def _register_ai(app: FastAPI):
-    """Registra le API AI/ML con prefissi espliciti e controlli di accesso."""
-    from app.routers import assistente_operativo
-
-    app.include_router(
-        assistente_operativo.router,
-        prefix="/api/assistente",
-        tags=["Assistente Ceraldi"],
-    )
 
 

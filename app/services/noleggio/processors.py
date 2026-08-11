@@ -50,10 +50,17 @@ def scegli_veicolo_per_fattura(
     if len(veicoli_fornitore) == 1:
         return veicoli_fornitore[0][0], True
 
-    contratto_fattura = (fattura.get("contratto") or "").strip().lower()
+    # I riferimenti nei PDF/XML possono contenere spazi, trattini o prefissi
+    # grafici. Il confronto resta esatto sul valore alfanumerico normalizzato.
+    contratto_fattura = re.sub(
+        r"[^A-Z0-9]", "", str(fattura.get("contratto") or "").upper()
+    )
     if contratto_fattura:
         for targa, salvato in veicoli_fornitore:
-            if (salvato.get("contratto") or "").strip().lower() == contratto_fattura:
+            contratto_veicolo = re.sub(
+                r"[^A-Z0-9]", "", str(salvato.get("contratto") or "").upper()
+            )
+            if contratto_veicolo == contratto_fattura:
                 return targa, True
 
     oggi = datetime.now().strftime("%Y-%m-%d")

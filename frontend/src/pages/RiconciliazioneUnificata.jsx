@@ -44,11 +44,36 @@ const TABS = [
   { id: 'paypal', label: '💳 PayPal', color: '#0f2744' },
 ];
 
+const RENTAL_RECONCILIATION_TERMS = [
+  'leasys',
+  'ald automotive',
+  'arval',
+  'leaseplan',
+];
+
+export function isRentalReconciliationMovement(movement) {
+  const haystack = [
+    movement?.descrizione,
+    movement?.causale,
+    movement?.tipo,
+    movement?.fornitore,
+    movement?.supplier_name,
+    movement?.beneficiario,
+    movement?.nome,
+    movement?.controparte,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return RENTAL_RECONCILIATION_TERMS.some(term => haystack.includes(term));
+}
+
 export default function RiconciliazioneUnificata() {
   const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
   const navigate = useNavigate();
   const location = useLocation();
+  const ambitoNoleggio = new URLSearchParams(location.search).get('ambito') === 'noleggio';
 
   // Ottieni tab dall'URL (es. /riconciliazione-unificata/banca -> banca)
   const getTabFromPath = () => {
@@ -118,6 +143,8 @@ export default function RiconciliazioneUnificata() {
   // Applica filtri ai movimenti
   const applyFilters = movimenti => {
     return movimenti.filter(m => {
+      if (ambitoNoleggio && !isRentalReconciliationMovement(m)) return false;
+
       // Usa data o data_emissione
       const dataMovimento = m.data || m.data_emissione;
 
@@ -586,6 +613,45 @@ export default function RiconciliazioneUnificata() {
           </button>
         </div>
       )}
+      {ambitoNoleggio && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: '10px 14px',
+            background: '#eff6ff',
+            border: '1px solid #bfdbfe',
+            borderRadius: 8,
+            color: '#1e3a8a',
+            fontSize: 13,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12,
+          }}
+          data-testid="rental-reconciliation-scope"
+        >
+          <span>
+            <strong>Filtro attivo:</strong> movimenti dei fornitori di noleggio. Il collegamento
+            al veicolo resta nella pagina Noleggio.
+          </span>
+          <button
+            type="button"
+            onClick={() => navigate('/riconciliazione/banca')}
+            style={{
+              padding: '6px 10px',
+              background: '#fff',
+              color: '#1e3a8a',
+              border: '1px solid #93c5fd',
+              borderRadius: 6,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              fontWeight: 600,
+            }}
+          >
+            Mostra tutti
+          </button>
+        </div>
+      )}
       {/* Action Bar - senza cornice blu */}
       <div
         style={{
@@ -859,8 +925,8 @@ export default function RiconciliazioneUnificata() {
             onIgnora={handleIgnora}
             onVediProva={handleVediProva}
             processing={processing}
-            title="Movimenti Bancari"
-            totalRows={stats.banca}
+            title={ambitoNoleggio ? 'Movimenti Bancari · Noleggio' : 'Movimenti Bancari'}
+            totalRows={ambitoNoleggio ? movimentiBancaFiltrati.length : stats.banca}
             emptyText="Tutti i movimenti sono stati riconciliati"
             tipo="banca"
             vistaLista

@@ -60,13 +60,14 @@ export default function NoleggioAuto() {
     fornitore_piva: '',
     contratto: '',
   });
-  const [fattureNonAssociate, setFattureNonAssociate] = useState(0);
   const [modalFattureNonAssociate, setModalFattureNonAssociate] = useState({
     open: false,
     loading: false,
     fatture: [],
     errore: '',
   });
+  const [veicoloSceltoPerFattura, setVeicoloSceltoPerFattura] = useState({});
+  const [fatturaInAssociazione, setFatturaInAssociazione] = useState(null);
   // Cruscotto "Controlli": conteggi + prime voci di ciò che richiede
   // attenzione (verbali aperti, trattenute, driver mancanti, ...).
   // Se l'API fallisce o è vuota il pannello semplicemente non appare.
@@ -98,7 +99,6 @@ export default function NoleggioAuto() {
       ]);
       setVeicoli(vRes.data.veicoli || []);
       setStatistiche(vRes.data.statistiche || {});
-      setFattureNonAssociate(vRes.data.fatture_non_associate || 0);
       setDrivers(dRes.data.drivers || []);
       setFornitori(fRes.data.fornitori || []);
     } catch (e) {
@@ -146,6 +146,35 @@ export default function NoleggioAuto() {
         fatture: [],
         errore: e.response?.data?.detail || e.message,
       });
+    }
+  };
+
+  const handleAssociaFatturaVeicolo = async fattura => {
+    const targa = veicoloSceltoPerFattura[fattura.id];
+    if (!fattura.id || !targa) {
+      toast.error('Seleziona il veicolo da collegare');
+      return;
+    }
+    setFatturaInAssociazione(fattura.id);
+    try {
+      await api.post(`/api/noleggio/fatture/${fattura.id}/associa-veicolo`, { targa });
+      setModalFattureNonAssociate(current => ({
+        ...current,
+        fatture: current.fatture.filter(item => item.id !== fattura.id),
+      }));
+      setVeicoloSceltoPerFattura(current => {
+        const next = { ...current };
+        delete next[fattura.id];
+        return next;
+      });
+      toast.success(`Fattura associata al veicolo ${targa}`);
+      await Promise.all([fetchVeicoli(), fetchControlli()]);
+    } catch (e) {
+      toast.error('Associazione non riuscita', {
+        description: e.response?.data?.detail || e.message,
+      });
+    } finally {
+      setFatturaInAssociazione(null);
     }
   };
 
@@ -277,9 +306,11 @@ export default function NoleggioAuto() {
     },
     {
       key: 'pagamenti_non_riconciliati',
-      label: 'Pagamenti da riconciliare',
+      label: 'Pagamenti noleggio da verificare',
       color: COLORS.danger,
       bg: COLORS.dangerLight,
+      onClick: () =>
+        navigate(`/riconciliazione/banca?ambito=noleggio&anno=${annoFiltro || ''}`),
     },
     {
       key: 'alert_aperti',
@@ -461,33 +492,6 @@ export default function NoleggioAuto() {
         >
           ➕ Aggiungi Veicolo
         </Button>
-        {fattureNonAssociate > 0 && (
-          <span
-            style={{
-              padding: '8px 16px',
-              background: COLORS.warningLight,
-              color: COLORS.warning,
-              borderRadius: BORDER_RADIUS.md,
-              fontSize: 13,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            ⚠️ {fattureNonAssociate} fatture non associate
-            <Button
-              size="sm"
-              variant="warning"
-              onClick={openFattureNonAssociate}
-              style={{
-                padding: '4px 10px',
-                fontSize: 11,
-              }}
-            >
-              👁️ Visualizza
-            </Button>
-          </span>
-        )}
       </div>
 
       {err && (
@@ -1774,8 +1778,8 @@ export default function NoleggioAuto() {
               </Button>
             </div>
             <p style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 16 }}>
-              Il sistema non è riuscito a estrarre la targa da queste fatture: vanno associate
-              manualmente a un veicolo (bottone "➕ Aggiungi Veicolo").
+              Queste fatture non indicano una targa certa. Seleziona il veicolo o il contratto
+              corretto: questa relazione non modifica lo stato del pagamento.
             </p>
 
             {modalFattureNonAssociate.loading && (
@@ -1836,7 +1840,16 @@ export default function NoleggioAuto() {
                         </div>
                       )}
                     </div>
-                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 6,
+                        flexShrink: 0,
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        justifyContent: 'flex-end',
+                      }}
+                    >
                       {f.id && (
                         <Button
                           variant="outline"
@@ -1849,17 +1862,54 @@ export default function NoleggioAuto() {
                           Vedi
                         </Button>
                       )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setNuovoVeicolo(v => ({ ...v, fornitore_piva: f.piva || '' }));
-                          setModalFattureNonAssociate(m => ({ ...m, open: false }));
-                          setShowAddVeicolo(true);
-                        }}
-                      >
-                        🔗 Associa
-                      </Button>
+                      {(f.veicoli_candidati || []).length > 0 ? (
+                        <>
+                          <Select
+                            aria-label={`Veicolo per fattura ${f.numero || ''}`}
+                            value={veicoloSceltoPerFattura[f.id] || ''}
+                            onChange={event =>
+                              setVeicoloSceltoPerFattura(current => ({
+                                ...current,
+                                [f.id]: event.target.value,
+                              }))
+                            }
+                            style={{ minWidth: 190, padding: '7px 9px' }}
+                          >
+                            <option value="">Scegli veicolo</option>
+                            {(f.veicoli_candidati || []).map(veicolo => (
+                              <option key={veicolo.targa} value={veicolo.targa}>
+                                {veicolo.targa}
+                                {veicolo.contratto ? ` · contratto ${veicolo.contratto}` : ''}
+                                {veicolo.modello ? ` · ${veicolo.modello}` : ''}
+                              </option>
+                            ))}
+                          </Select>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={
+                              !veicoloSceltoPerFattura[f.id] || fatturaInAssociazione === f.id
+                            }
+                            onClick={() => handleAssociaFatturaVeicolo(f)}
+                          >
+                            {fatturaInAssociazione === f.id
+                              ? 'Associazione...'
+                              : 'Associa al veicolo'}
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setNuovoVeicolo(v => ({ ...v, fornitore_piva: f.piva || '' }));
+                            setModalFattureNonAssociate(m => ({ ...m, open: false }));
+                            setShowAddVeicolo(true);
+                          }}
+                        >
+                          Nuovo veicolo
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}

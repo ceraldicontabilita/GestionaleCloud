@@ -6,6 +6,10 @@ import { PageLayout } from '../components/PageLayout';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { Button, Badge, Card, RowActionButton } from '../components/ds';
 import {
+  AnnoImportazioneCard,
+  DriveFattureImportCard,
+} from '../components/DriveImportControls';
+import {
   Upload,
   FileText,
   CheckCircle,
@@ -383,6 +387,14 @@ export default function ImportDocumenti() {
       description="Carica file e il sistema li elabora automaticamente"
     >
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
+        <div
+          data-testid="drive-import-controls"
+          style={{ display: 'grid', gap: 16, marginBottom: 20 }}
+        >
+          <DriveFattureImportCard />
+          <AnnoImportazioneCard />
+        </div>
+
         {/* Info Box */}
         <div
           style={{

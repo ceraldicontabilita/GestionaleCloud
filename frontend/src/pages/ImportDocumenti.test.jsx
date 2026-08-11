@@ -6,6 +6,10 @@ import api from '../api';
 import ImportDocumenti, { classificaEsitoUpload, descriviProvaFiscale } from './ImportDocumenti';
 
 vi.mock('../api', () => ({ default: { post: vi.fn() } }));
+vi.mock('../components/DriveImportControls', () => ({
+  DriveFattureImportCard: () => <div>Controllo import fatture Drive</div>,
+  AnnoImportazioneCard: () => <div>Controllo anno import Drive</div>,
+}));
 
 function mockPreviewThenImport(tipo, importData, parsed = {}) {
   api.post.mockImplementation(url => Promise.resolve({
@@ -28,6 +32,14 @@ function mockPreviewThenImport(tipo, importData, parsed = {}) {
 describe('Import documenti - corrispettivo duplicato', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('espone i controlli operativi Drive nell unico punto di importazione', () => {
+    render(<ImportDocumenti />);
+
+    expect(screen.getByTestId('drive-import-controls')).toBeInTheDocument();
+    expect(screen.getByText('Controllo import fatture Drive')).toBeInTheDocument();
+    expect(screen.getByText('Controllo anno import Drive')).toBeInTheDocument();
   });
 
   it('non presenta come importato un duplicato restituito con HTTP 200', async () => {

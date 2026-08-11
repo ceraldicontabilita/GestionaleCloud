@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1115 endpoint** in **114 gruppi**.
+> Totale **1105 endpoint** in **113 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 670 · ext esterni = 88 · — da verificare = 357
+**Riepilogo uso:** ✓ frontend = 666 · ext esterni = 88 · — da verificare = 351
 
 ## AI Parser  (11)
 
@@ -166,22 +166,6 @@
 | POST | `/api/assegni/learning/pulizia-duplicati` | ✓ | bank.assegni_learning |
 | GET | `/api/assegni/learning/stats-avanzate` | ✓ | bank.assegni_learning |
 | GET | `/api/assegni/learning/suggerimenti/{importo}` | ✓ | bank.assegni_learning |
-
-## Assistente Ceraldi  (11)
-
-| Metodo | Path | FE | File |
-|---|---|:-:|---|
-| POST | `/api/assistente/cases` | — | assistente_operativo |
-| GET | `/api/assistente/dashboard` | ✓ | assistente_operativo |
-| POST | `/api/assistente/facts/driver-assignment` | — | assistente_operativo |
-| POST | `/api/assistente/knowledge-sources/official` | — | assistente_operativo |
-| POST | `/api/assistente/observations` | — | assistente_operativo |
-| POST | `/api/assistente/questions/{question_id}/answer` | — | assistente_operativo |
-| POST | `/api/assistente/scan/all` | ✓ | assistente_operativo |
-| POST | `/api/assistente/scan/employees` | — | assistente_operativo |
-| POST | `/api/assistente/scan/f24` | — | assistente_operativo |
-| POST | `/api/assistente/scan/payroll` | — | assistente_operativo |
-| POST | `/api/assistente/tax-obligations` | — | assistente_operativo |
 
 ## Authentication  (3)
 
@@ -1082,7 +1066,7 @@
 | POST | `/api/mutui/parse-multiple` | ✓ | mutui_parser |
 | POST | `/api/mutui/parse-pdf` | ✓ | mutui_parser |
 
-## Noleggio Auto  (13)
+## Noleggio Auto  (14)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1091,6 +1075,7 @@
 | GET | `/api/noleggio/drivers` | ✓ | noleggio |
 | GET | `/api/noleggio/export-pdf-costi` | ✓ | noleggio |
 | GET | `/api/noleggio/fatture-non-associate` | ✓ | noleggio |
+| POST | `/api/noleggio/fatture/{fattura_id}/associa-veicolo` | ✓ | noleggio |
 | GET | `/api/noleggio/fornitori` | ✓ | noleggio |
 | GET | `/api/noleggio/riepilogo-controlli` | ✓ | noleggio |
 | GET | `/api/noleggio/veicoli` | ✓ | noleggio |
@@ -1544,11 +1529,11 @@
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | POST | `/api/sumup/bonifica-accrediti-numia` | — | sumup |
-| GET | `/api/sumup/bonifica-pos-xml` | ✓ | sumup |
-| POST | `/api/sumup/bonifica-pos-xml` | ✓ | sumup |
+| GET | `/api/sumup/bonifica-pos-xml` | — | sumup |
+| POST | `/api/sumup/bonifica-pos-xml` | — | sumup |
 | POST | `/api/sumup/normalizza-descrizioni-pos` | — | sumup |
 | GET | `/api/sumup/riepilogo` | ✓ | sumup |
-| POST | `/api/sumup/sincronizza` | ✓ | sumup |
+| POST | `/api/sumup/sincronizza` | — | sumup |
 | GET | `/api/sumup/stato` | ✓ | sumup |
 
 ## Suppliers  (32)

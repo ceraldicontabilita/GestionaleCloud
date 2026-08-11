@@ -385,6 +385,17 @@ class Database:
         # --- Veicoli noleggio ---
         await _safe_index("veicoli_noleggio", "targa", unique=True, sparse=True, name="idx_veicoli_targa")
         await _safe_index("veicoli_noleggio", "disponibile", name="idx_veicoli_disponibile")
+        await _safe_index(
+            "noleggio_fattura_veicolo_links",
+            "invoice_id",
+            unique=True,
+            name="idx_noleggio_fattura_veicolo_invoice",
+        )
+        await _safe_index(
+            "noleggio_fattura_veicolo_links",
+            "targa",
+            name="idx_noleggio_fattura_veicolo_targa",
+        )
 
         # --- Riepilogo cedolini ---
         await _safe_index("riepilogo_cedolini", [("anno", 1), ("mese", 1)], name="idx_riep_ced_anno_mese")
@@ -651,7 +662,7 @@ class Database:
             name="idx_tax_credit_movements_lineage",
         )
 
-        # --- Assistente Ceraldi: memoria operativa separata dai domini ---
+        # --- Memoria documentale e apprendimento operativo separati dai domini ---
         # Ogni record ha un id deterministico: la stessa evidenza puo' essere
         # riprocessata senza produrre duplicati o scritture contabili.
         for collection in (

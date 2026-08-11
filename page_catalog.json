@@ -63,7 +63,6 @@
     {"id": 59, "label": "Mappa gestionale", "path": "/mappa-gestionale", "component": "frontend/src/pages/MappaGestionale.jsx", "entry": "frontend/src/main.jsx", "access": "authenticated", "audit_status": "unverified"},
     {"id": 60, "label": "Gestione IVA", "path": "/iva", "component": "frontend/src/pages/GestioneIVA.jsx", "entry": "frontend/src/main.jsx", "access": "authenticated", "audit_status": "unverified"},
     {"id": 61, "label": "Verifica fatture estere", "path": "/fatture-estere-verifica", "component": "frontend/src/pages/FattureEstereVerifica.jsx", "entry": "frontend/src/main.jsx", "access": "authenticated", "audit_status": "unverified"},
-    {"id": 62, "label": "Dati ISA", "path": "/contabilita/dati-isa", "component": "frontend/src/pages/DatiIsa.jsx", "entry": "frontend/src/pages/hub/ContabilitaHub.jsx", "access": "authenticated", "audit_status": "in_review"},
-    {"id": 63, "label": "Assistente Ceraldi", "path": "/assistente", "component": "frontend/src/pages/AssistenteCeraldi.jsx", "entry": "frontend/src/main.jsx", "access": "admin", "audit_status": "in_review"}
+    {"id": 62, "label": "Dati ISA", "path": "/contabilita/dati-isa", "component": "frontend/src/pages/DatiIsa.jsx", "entry": "frontend/src/pages/hub/ContabilitaHub.jsx", "access": "authenticated", "audit_status": "in_review"}
   ]
 }

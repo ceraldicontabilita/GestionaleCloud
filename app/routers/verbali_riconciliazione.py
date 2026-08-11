@@ -34,6 +34,11 @@ import re
 import logging
 
 from app.database import Database
+from app.services.verbali_evidence import (
+    describe_verbale_amount,
+    describe_verbale_date,
+    sanitize_verbale_evidence,
+)
 from app.utils.dependencies import get_current_admin_user
 from app.utils.error_handler import handle_errors
 
@@ -145,11 +150,64 @@ async def get_verbali_dashboard() -> Dict[str, Any]:
     try:
         # Conta verbali per stato - USA PROIEZIONE per evitare di caricare PDF
         pipeline = [
-            {"$project": {"stato": 1, "importo": 1}},  # Solo campi necessari
+            {"$project": {
+                "stato": {
+                    "$cond": [
+                        {"$and": [
+                            {"$in": ["$stato", ["pagato", "pagato_attesa_fattura", "riconciliato"]]},
+                            {"$or": [
+                                {"$ne": ["$importo_verificato", True]},
+                                {"$eq": [
+                                    {"$or": [
+                                        {"$eq": ["$pagato_documentalmente", True]},
+                                        {"$eq": ["$banca_verificata", True]},
+                                        {"$ne": [{"$ifNull": ["$pagamento_id", None]}, None]},
+                                        {"$ne": [{"$ifNull": ["$ricevuta_pagopa_id", None]}, None]},
+                                        {"$ne": [{"$ifNull": ["$paypal_transaction_id", None]}, None]},
+                                        {"$ne": [{"$ifNull": ["$movimento_banca_id", None]}, None]},
+                                    ]},
+                                    False,
+                                ]},
+                            ]},
+                        ]},
+                        "da_verificare",
+                        "$stato",
+                    ]
+                },
+                "importo_verificato": 1,
+                "importo_centesimi": 1,
+                "importo": 1,
+                "importo_candidato_presente": {
+                    "$or": [
+                        {"$gt": [{"$ifNull": ["$importo_candidato_centesimi", 0]}, 0]},
+                        {"$gt": [{"$ifNull": ["$importo", 0]}, 0]},
+                    ]
+                },
+            }},
             {"$group": {
                 "_id": "$stato",
                 "count": {"$sum": 1},
-                "totale_importo": {"$sum": {"$toDouble": {"$ifNull": ["$importo", 0]}}}
+                "totale_importo": {"$sum": {
+                    "$cond": [
+                        {"$eq": ["$importo_verificato", True]},
+                        {"$cond": [
+                            {"$ne": [{"$ifNull": ["$importo_centesimi", None]}, None]},
+                            {"$divide": ["$importo_centesimi", 100]},
+                            {"$toDouble": {"$ifNull": ["$importo", 0]}},
+                        ]},
+                        0,
+                    ]
+                }},
+                "importi_da_verificare": {"$sum": {
+                    "$cond": [
+                        {"$and": [
+                            {"$ne": ["$importo_verificato", True]},
+                            {"$eq": ["$importo_candidato_presente", True]},
+                        ]},
+                        1,
+                        0,
+                    ]
+                }},
             }}
         ]
         stati = await db["verbali_noleggio"].aggregate(pipeline).to_list(100)
@@ -157,11 +215,17 @@ async def get_verbali_dashboard() -> Dict[str, Any]:
         per_stato = {}
         totale_verbali = 0
         totale_importo = 0
+        importi_da_verificare = 0
         for s in stati:
             stato = s["_id"] or "sconosciuto"
-            per_stato[stato] = {"count": s["count"], "importo": round(s["totale_importo"], 2)}
+            per_stato[stato] = {
+                "count": s["count"],
+                "importo": round(s["totale_importo"], 2),
+                "importi_da_verificare": s.get("importi_da_verificare", 0),
+            }
             totale_verbali += s["count"]
             totale_importo += s["totale_importo"]
+            importi_da_verificare += s.get("importi_da_verificare", 0)
         
         # Verbali da riconciliare - solo count
         da_riconciliare = await db["verbali_noleggio"].count_documents({
@@ -179,8 +243,18 @@ async def get_verbali_dashboard() -> Dict[str, Any]:
             "numero_verbale": 1,
             "targa": 1,
             "importo": 1,
+            "importo_centesimi": 1,
+            "importo_verificato": 1,
+            "importo_stato": 1,
+            "importo_fonte": 1,
+            "importo_candidato": 1,
+            "importo_candidato_centesimi": 1,
             "stato": 1,
             "data_violazione": 1,
+            "data_verbale": 1,
+            "data_verbale_verificata": 1,
+            "data_verbale_stato": 1,
+            "data_verbale_candidato": 1,
             "created_at": 1
         }
         ultimi = await db["verbali_noleggio"].find({}, projection).sort("created_at", -1).limit(5).to_list(5)
@@ -220,10 +294,11 @@ async def get_verbali_dashboard() -> Dict[str, Any]:
             "riepilogo": {
                 "totale_verbali": totale_verbali,
                 "totale_importo": round(totale_importo, 2),
+                "importi_da_verificare": importi_da_verificare,
                 "da_riconciliare": da_riconciliare,
                 "per_stato": per_stato
             },
-            "ultimi_verbali": [serialize_doc(v) for v in ultimi],
+            "ultimi_verbali": [serialize_doc(sanitize_verbale_evidence(v)) for v in ultimi],
             "sorgenti": {
                 "email": {
                     "configurata": email_configurata,
@@ -275,9 +350,20 @@ async def get_lista_verbali(
             "numero_verbale": 1,
             "targa": 1,
             "importo": 1,
+            "importo_centesimi": 1,
+            "importo_verificato": 1,
+            "importo_stato": 1,
+            "importo_fonte": 1,
+            "fonte_importo": 1,
+            "importo_candidato": 1,
+            "importo_candidato_centesimi": 1,
+            "importo_candidato_fonte": 1,
             "stato": 1,
             "data_verbale": 1,
             "data_violazione": 1,
+            "data_verbale_verificata": 1,
+            "data_verbale_stato": 1,
+            "data_verbale_candidato": 1,
             "scadenza_pagamento": 1,
             "driver": 1,
             "driver_nome": 1,
@@ -316,6 +402,7 @@ async def get_lista_verbali(
         
         # Normalizza driver_nome e fattura_numero
         for v in verbali:
+            v.update(sanitize_verbale_evidence(v))
             if not v.get("driver_nome") and v.get("driver"):
                 v["driver_nome"] = v["driver"]
             if not v.get("fattura_numero") and v.get("numero_fattura"):
@@ -562,9 +649,15 @@ async def pulisci_duplicati_verbali(dry_run: bool = Query(True)) -> Dict[str, An
 
 @router.post("/riconcilia/{numero_verbale}")
 @handle_errors
-async def riconcilia_verbale(numero_verbale: str) -> Dict[str, Any]:
+async def riconcilia_verbale(
+    numero_verbale: str,
+    dry_run: bool = Query(
+        True,
+        description="Anteprima obbligatoria; false applica solo dopo conferma esplicita",
+    ),
+) -> Dict[str, Any]:
     """
-    Tenta riconciliazione automatica di un verbale.
+    Cerca prove e prepara un'anteprima; non scrive senza conferma esplicita.
     
     Cerca:
     1. Fattura con numero verbale nella descrizione
@@ -580,16 +673,25 @@ async def riconcilia_verbale(numero_verbale: str) -> Dict[str, Any]:
         if not verbale:
             raise HTTPException(status_code=404, detail="Verbale non trovato")
         
-        updates = {}
-        messages = []
+        updates: Dict[str, Any] = {}
+        messages: List[str] = []
+        proposte: List[Dict[str, Any]] = []
+        evidenze: List[Dict[str, Any]] = []
+        motivi_blocco: List[str] = []
+        fattura_da_collegare: Optional[Dict[str, Any]] = None
         
         # 1. Cerca fattura se non presente
         if not verbale.get("fattura_id"):
-            fattura = await db["invoices"].find_one({
+            fatture = await db["invoices"].find({
                 "$or": campi_ricerca_verbale_in_fattura(numero_verbale)
-            })
-            
-            if fattura:
+            }).limit(2).to_list(2)
+
+            if len(fatture) > 1:
+                motivi_blocco.append(
+                    "Piu fatture citano lo stesso numero verbale: serve una scelta manuale."
+                )
+            elif len(fatture) == 1:
+                fattura = fatture[0]
                 # id canonico UUID (non l'ObjectId _id): tutto il resto dell'app
                 # collega le fatture per `id`. Vedi P0.4.
                 fattura_id = fattura.get("id") or str(fattura.get("_id"))
@@ -606,11 +708,18 @@ async def riconcilia_verbale(numero_verbale: str) -> Dict[str, Any]:
                     "fornitore": fornitore,
                     "fattura_associata_fornitore": fornitore,
                 })
-                await db["invoices"].update_one(
-                    {"id": fattura_id},
-                    {"$addToSet": {"verbali_collegati": numero_verbale}},
-                )
-                messages.append(f"Fattura trovata: {fattura.get('invoice_number')}")
+                fattura_da_collegare = fattura
+                messages.append(f"Fattura univoca trovata: {fattura_numero}")
+                proposte.append({
+                    "tipo": "FATTURA_VERBALE",
+                    "descrizione": f"Collega la fattura {fattura_numero or fattura_id}",
+                    "target_id": fattura_id,
+                })
+                evidenze.append({
+                    "tipo": "NUMERO_VERBALE_IN_FATTURA",
+                    "documento_id": fattura_id,
+                    "numero_fattura": fattura_numero,
+                })
         
         # 2. Cerca targa se non presente
         targa = verbale.get("targa") or updates.get("targa")
@@ -618,27 +727,83 @@ async def riconcilia_verbale(numero_verbale: str) -> Dict[str, Any]:
             # Cerca in verbali_noleggio_completi
             completo = await db["verbali_noleggio_completi"].find_one({"numero_verbale": numero_verbale})
             if completo and completo.get("targa"):
-                targa = completo["targa"]
+                targa = str(completo["targa"]).upper()
                 updates["targa"] = targa
-                messages.append(f"Targa trovata: {targa}")
+                messages.append(f"Targa citata nel documento completo: {targa}")
+                proposte.append({
+                    "tipo": "TARGA_VERBALE",
+                    "descrizione": f"Conferma la targa {targa}",
+                    "target_id": targa,
+                })
+                evidenze.append({
+                    "tipo": "TARGA_IN_DOCUMENTO",
+                    "documento_id": str(completo.get("_id") or completo.get("id") or ""),
+                    "targa": targa,
+                })
         
         # 3. Cerca veicolo e driver
         if targa:
             # Il record veicolo contiene al massimo un driver corrente, non
             # necessariamente quello valido alla data della violazione.
-            veicolo = None
+            veicolo = await db["veicoli_noleggio"].find_one({"targa": str(targa).upper()})
             if veicolo:
-                updates["veicolo_id"] = str(veicolo["_id"])
-                if veicolo.get("driver_id"):
-                    updates["driver_id"] = veicolo["driver_id"]
+                veicolo_id = str(veicolo.get("_id") or veicolo.get("id") or "")
+                updates["veicolo_id"] = veicolo_id
+                proposte.append({
+                    "tipo": "VEICOLO_VERBALE",
+                    "descrizione": f"Collega il veicolo con targa {str(targa).upper()}",
+                    "target_id": veicolo_id,
+                })
+
+                from app.services.noleggio.controlli import driver_alla_data
+
+                data_info = describe_verbale_date(verbale)
+                data_evento = data_info.get("data_verbale")
+                driver_prova = driver_alla_data(veicolo, data_evento)
+                if driver_prova.get("fonte") != "storico_assegnazioni" and data_evento:
+                    storico_items = await db["storico_assegnazioni_veicoli"].find(
+                        {
+                            "targa": str(targa).upper(),
+                            "$or": [
+                                {"data_inizio": {"$lte": data_evento}, "data_fine": {"$gte": data_evento}},
+                                {"data_inizio": {"$lte": data_evento}, "data_fine": {"$exists": False}},
+                            ],
+                        },
+                        {"_id": 0},
+                    ).limit(10).to_list(10)
+                    unici = {
+                        str(item.get("driver_id") or item.get("driver") or item.get("driver_nome")): item
+                        for item in storico_items
+                        if item.get("driver_id") or item.get("driver") or item.get("driver_nome")
+                    }
+                    if len(unici) == 1:
+                        storico = next(iter(unici.values()))
+                        driver_prova = {
+                            "driver_id": storico.get("driver_id"),
+                            "driver": storico.get("driver") or storico.get("driver_nome"),
+                            "fonte": "storico_assegnazioni_collection",
+                        }
+                if str(driver_prova.get("fonte") or "").startswith("storico_assegnazioni") and driver_prova.get("driver_id"):
+                    updates["driver_id"] = driver_prova["driver_id"]
                     
                     # Trova nome driver (driver_id è un UUID stringa, non ObjectId —
                     # vedi il pattern corretto già usato in associa_verbale_completo
                     # in questo stesso file)
-                    driver = await db["dipendenti"].find_one({"id": veicolo["driver_id"]})
+                    driver = await db["dipendenti"].find_one({"id": driver_prova["driver_id"]})
                     if driver:
                         updates["driver_nome"] = f"{driver.get('nome', '')} {driver.get('cognome', '')}"
                         messages.append(f"Driver: {updates['driver_nome']}")
+                        updates["driver_associazione_fonte"] = driver_prova["fonte"]
+                        proposte.append({
+                            "tipo": "DRIVER_VERBALE",
+                            "descrizione": f"Collega il driver storico {updates['driver_nome']}",
+                            "target_id": driver_prova["driver_id"],
+                            "fonte": driver_prova["fonte"],
+                        })
+                elif driver_prova.get("driver_id") or driver_prova.get("driver"):
+                    motivi_blocco.append(
+                        "La targa ha un driver corrente, ma manca una assegnazione valida alla data del verbale."
+                    )
         
         # 4. Determina nuovo stato
         has_fattura = verbale.get("fattura_id") or updates.get("fattura_id")
@@ -649,30 +814,49 @@ async def riconcilia_verbale(numero_verbale: str) -> Dict[str, Any]:
             or verbale.get("movimento_banca_id")
         )
         
-        if has_fattura and has_pagamento:
+        importo_info = describe_verbale_amount(verbale)
+        if has_fattura and has_pagamento and importo_info["importo_verificato"]:
             updates["stato"] = "riconciliato"
         elif has_fattura:
             updates["stato"] = "fattura_ricevuta"
         elif has_pagamento:
-            updates["stato"] = "pagato"
+            motivi_blocco.append(
+                "Esiste una prova di pagamento, ma l'importo del verbale non e' ancora verificato."
+            )
         
-        # Applica updates
-        if updates:
+        # L'anteprima predefinita non scrive nulla. La seconda chiamata viene
+        # effettuata solo dopo la conferma esplicita mostrata dall'interfaccia.
+        if updates and not dry_run:
             updates["updated_at"] = datetime.now(timezone.utc)
             await db["verbali_noleggio"].update_one(
                 {"numero_verbale": numero_verbale},
                 {"$set": updates}
             )
-        
-        # Ricarica verbale aggiornato
-        verbale = await db["verbali_noleggio"].find_one({"numero_verbale": numero_verbale})
+            if fattura_da_collegare:
+                fattura_id = fattura_da_collegare.get("id")
+                fattura_query = (
+                    {"id": fattura_id}
+                    if fattura_id
+                    else {"_id": fattura_da_collegare.get("_id")}
+                )
+                await db["invoices"].update_one(
+                    fattura_query,
+                    {"$addToSet": {"verbali_collegati": numero_verbale}},
+                )
+
+            verbale = await db["verbali_noleggio"].find_one({"numero_verbale": numero_verbale})
         
         return {
             "success": True,
+            "dry_run": dry_run,
+            "richiede_conferma": bool(proposte) and dry_run,
             "numero_verbale": numero_verbale,
             "stato": verbale.get("stato"),
             "azioni": messages,
-            "verbale": serialize_doc(verbale)
+            "proposte": proposte,
+            "evidenze": evidenze,
+            "motivi_blocco": motivi_blocco,
+            "verbale": serialize_doc(sanitize_verbale_evidence(verbale))
         }
     except HTTPException:
         raise

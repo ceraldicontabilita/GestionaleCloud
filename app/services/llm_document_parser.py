@@ -13,6 +13,7 @@ import base64
 import logging
 from typing import Dict, Any, Optional, List
 from dotenv import load_dotenv
+from app.services.verbali_evidence import amount_to_cents
 
 load_dotenv("backend/.env", override=True)
 
@@ -249,9 +250,15 @@ async def batch_parse_verbali(db, limit: int = 50) -> Dict[str, Any]:
                 update = {"targa": targa}
                 
                 if parsed.get("importo"):
-                    update["importo"] = parsed["importo"]
+                    update["importo_candidato"] = parsed["importo"]
+                    update["importo_candidato_centesimi"] = amount_to_cents(parsed["importo"])
+                    update["importo_candidato_fonte"] = parsed.get("source") or "parser_documento"
+                    update["importo_verificato"] = False
+                    update["importo_stato"] = "DA_VERIFICARE"
                 if parsed.get("data_verbale"):
-                    update["data_verbale"] = parsed["data_verbale"]
+                    update["data_verbale_candidato"] = parsed["data_verbale"]
+                    update["data_verbale_verificata"] = False
+                    update["data_verbale_stato"] = "DA_VERIFICARE"
                 if parsed.get("ente_emittente"):
                     update["ente_emittente"] = parsed["ente_emittente"]
                 if parsed.get("numero_verbale") and verbale.get("numero_verbale", "").startswith("VERB-"):
@@ -345,7 +352,7 @@ async def batch_parse_f24(db, limit: int = 50) -> Dict[str, Any]:
 
 async def batch_extract_importi_verbali(db, limit: int = 76) -> Dict[str, Any]:
     """
-    Estrae SOLO l'importo dai verbali che hanno PDF ma importo mancante.
+    Estrae SOLO un candidato importo dai verbali che hanno PDF.
     Usa prima regex sul testo, poi LLM come fallback.
     Più veloce di batch_parse_verbali perché non cerca targa.
     """
@@ -354,7 +361,12 @@ async def batch_extract_importi_verbali(db, limit: int = 76) -> Dict[str, Any]:
     
     cursor = db["verbali_noleggio"].find(
         {
-            "$or": [{"importo": None}, {"importo": 0}, {"importo": {"$exists": False}}],
+            "$or": [
+                {"importo_candidato": None},
+                {"importo_candidato": 0},
+                {"importo_candidato": {"$exists": False}},
+            ],
+            "importo_verificato": {"$ne": True},
             "pdf_data": {"$ne": None}
         },
         {"_id": 0}
@@ -416,9 +428,17 @@ async def batch_extract_importi_verbali(db, limit: int = 76) -> Dict[str, Any]:
             
             # Aggiorna verbale
             if importo is not None and importo > 0:
-                update = {"importo": importo}
+                update = {
+                    "importo_candidato": importo,
+                    "importo_candidato_centesimi": amount_to_cents(importo),
+                    "importo_candidato_fonte": "regex_o_llm",
+                    "importo_verificato": False,
+                    "importo_stato": "DA_VERIFICARE",
+                }
                 if data_verbale:
-                    update["data_verbale"] = data_verbale
+                    update["data_verbale_candidato"] = data_verbale
+                    update["data_verbale_verificata"] = False
+                    update["data_verbale_stato"] = "DA_VERIFICARE"
                 update["importo_parsed_at"] = datetime.now(tz.utc).isoformat()
                 
                 await db["verbali_noleggio"].update_one(

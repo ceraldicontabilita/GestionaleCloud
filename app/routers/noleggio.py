@@ -23,6 +23,11 @@ from app.services.noleggio import (
     estrai_causale_note,
     scegli_veicolo_per_fattura
 )
+from app.services.noleggio.associations import (
+    associate_invoice_to_vehicle,
+    load_manual_vehicle_links,
+    normalize_company_id,
+)
 
 from app.utils.error_handler import handle_errors
 
@@ -163,6 +168,7 @@ async def get_veicoli(
     cursor = db[COLLECTION].find({}, {"_id": 0})
     async for v in cursor:
         veicoli_salvati[v["targa"]] = v
+    collegamenti_manuali = await load_manual_vehicle_links(db)
     
     # Associa fatture senza targa ai veicoli salvati. Traccia quali sono
     # state associate con certezza (fornitore con un solo veicolo, o
@@ -175,18 +181,23 @@ async def get_veicoli(
         is_nota_credito = "nota" in tipo_doc or tipo_doc == "td04"
         fattura_id = fattura.get("invoice_id", "")
 
-        # Trova tutti i veicoli di questo fornitore
+        # Trova tutti i veicoli di questo fornitore. P.IVA con e senza
+        # prefisso IT/spazi deve identificare la stessa impresa.
         veicoli_fornitore = [
             (targa, salvato) for targa, salvato in veicoli_salvati.items()
-            if salvato.get("fornitore_piva") == piva
+            if normalize_company_id(salvato.get("fornitore_piva")) == normalize_company_id(piva)
         ]
 
-        if not veicoli_fornitore:
-            continue
-
-        target_targa, certo = scegli_veicolo_per_fattura(
-            fattura, veicoli_fornitore, set(veicoli_fatture.keys())
-        )
+        collegamento = collegamenti_manuali.get(str(fattura_id or ""))
+        targa_manual = str((collegamento or {}).get("targa") or "").upper()
+        if targa_manual and targa_manual in veicoli_salvati:
+            target_targa, certo = targa_manual, True
+        else:
+            if not veicoli_fornitore:
+                continue
+            target_targa, certo = scegli_veicolo_per_fattura(
+                fattura, veicoli_fornitore, set(veicoli_fatture.keys())
+            )
         if certo and fattura_id:
             fatture_id_confidenti.add(fattura_id)
 
@@ -227,20 +238,34 @@ async def get_veicoli(
         for linea in fattura.get("linee", []):
             desc = linea.get("descrizione", "")
             prezzo = float(linea.get("prezzo_totale") or linea.get("prezzo_unitario") or 0)
+            aliquota_iva = float(
+                linea.get("aliquota_iva")
+                if linea.get("aliquota_iva") not in (None, "")
+                else linea.get("AliquotaIVA") or 0
+            )
             note_extra = estrai_causale_note(linea)
             categoria, importo, metadata = categorizza_spesa(desc, prezzo, is_nota_credito, note_extra)
+            iva_linea = round(abs(importo) * aliquota_iva / 100, 2)
+            if importo < 0:
+                iva_linea = -iva_linea
             
             if categoria not in linee_per_cat:
-                linee_per_cat[categoria] = {"voci": [], "imponibile": 0, "metadata": {}}
+                linee_per_cat[categoria] = {
+                    "voci": [],
+                    "imponibile": 0,
+                    "iva": 0,
+                    "metadata": {},
+                }
             linee_per_cat[categoria]["voci"].append({"descrizione": desc, "importo": round(importo, 2)})
             linee_per_cat[categoria]["imponibile"] += importo
+            linee_per_cat[categoria]["iva"] += iva_linea
             for k, v in metadata.items():
                 if k not in linee_per_cat[categoria]["metadata"]:
                     linee_per_cat[categoria]["metadata"][k] = v
         
         for categoria, dati in linee_per_cat.items():
             imponibile = round(dati["imponibile"], 2)
-            iva = 0 if categoria == "bollo" else round(imponibile * 0.22, 2)
+            iva = round(dati["iva"], 2)
             record = {
                 "data": fattura["invoice_date"],
                 "numero_fattura": fattura["invoice_number"],
@@ -569,12 +594,18 @@ async def get_fatture_non_associate(
     cursor = db[COLLECTION].find({}, {"_id": 0})
     async for v in cursor:
         veicoli_salvati[v["targa"]] = v
+    collegamenti_manuali = await load_manual_vehicle_links(db)
 
     fatture_formattate = []
     for f in fatture_senza_targa:
+        invoice_id = str(f.get("invoice_id") or "")
+        collegamento = collegamenti_manuali.get(invoice_id)
+        if collegamento and str(collegamento.get("targa") or "").upper() in veicoli_salvati:
+            continue
         veicoli_fornitore = [
             (targa, salvato) for targa, salvato in veicoli_salvati.items()
-            if salvato.get("fornitore_piva") == f["supplier_vat"]
+            if normalize_company_id(salvato.get("fornitore_piva"))
+            == normalize_company_id(f["supplier_vat"])
         ]
         _, certo = scegli_veicolo_per_fattura(f, veicoli_fornitore, set())
         if certo:
@@ -589,13 +620,43 @@ async def get_fatture_non_associate(
             "descrizione": ", ".join([l.get("descrizione", "")[:50] for l in f.get("linee", [])[:2]]),
             "tipo": f.get("tipo_documento"),
             "codice_cliente": f.get("codice_cliente"),
-            "contratto": f.get("contratto")
+            "contratto": f.get("contratto"),
+            "veicoli_candidati": [
+                {
+                    "targa": targa,
+                    "marca": salvato.get("marca"),
+                    "modello": salvato.get("modello"),
+                    "contratto": salvato.get("contratto"),
+                }
+                for targa, salvato in veicoli_fornitore
+            ],
         })
 
     return {
         "fatture": fatture_formattate,
         "count": len(fatture_formattate),
-        "nota": "Queste fatture richiedono associazione manuale ad un veicolo"
+        "nota": "Queste fatture richiedono una relazione esplicita con un veicolo esistente"
+    }
+
+
+@router.post("/fatture/{fattura_id}/associa-veicolo")
+@handle_errors
+async def associa_fattura_a_veicolo(
+    fattura_id: str,
+    data: Dict[str, Any] = Body(...),
+) -> Dict[str, Any]:
+    """Conferma la relazione fattura -> veicolo senza toccare il pagamento."""
+
+    link = await associate_invoice_to_vehicle(
+        Database.get_db(),
+        invoice_id=fattura_id,
+        targa=data.get("targa"),
+        actor=str(data.get("confirmed_by") or "operatore"),
+    )
+    return {
+        "success": True,
+        "relazione": link,
+        "message": f"Fattura {link.get('invoice_number') or fattura_id} associata al veicolo {link['targa']}",
     }
 
 
@@ -610,8 +671,8 @@ async def get_riepilogo_controlli(
     pagati/chiusi (unione delle due fonti, dedup per numero_verbale come
     _get_verbali_completi_per_targa ma senza filtro targa), trattenute
     da confermare, contratti cessati, auto senza driver, fatture non
-    associate, pagamenti fornitori noleggio non riconciliati (anno
-    corrente) e alert NOL_* aperti del motore alert.
+    associate, conteggio dei pagamenti fornitori noleggio da aprire nella
+    Riconciliazione bancaria e alert NOL_* aperti del motore alert.
     """
     db = Database.get_db()
     LIMITE_VOCI = 10
@@ -708,23 +769,16 @@ async def get_riepilogo_controlli(
     dati_fatture = await get_fatture_non_associate(anno=anno)
     fatture_items = dati_fatture.get("fatture", [])
 
-    # ── 6) Pagamenti non riconciliati: fatture fornitori noleggio anno
-    # corrente né pagate né riconciliate, proiezione minima ──
-    anno_corrente = datetime.now().year
+    # ── 6) Pagamenti non riconciliati: qui resta soltanto il conteggio.
+    # Il dettaglio e le azioni appartengono esclusivamente alla pagina Banca.
+    anno_pagamenti = anno or datetime.now().year
     query_pagamenti = {
         "supplier_vat": {"$in": list(FORNITORI_NOLEGGIO.values())},
-        "invoice_date": {"$regex": f"^{anno_corrente}"},
+        "invoice_date": {"$regex": f"^{anno_pagamenti}"},
         "pagato": {"$ne": True},
         "riconciliato": {"$ne": True},
     }
-    proiezione_pagamenti = {
-        "_id": 0, "invoice_number": 1, "invoice_date": 1,
-        "supplier_name": 1, "supplier_vat": 1, "total_amount": 1,
-    }
     pagamenti_count = await db["invoices"].count_documents(query_pagamenti)
-    pagamenti_items = await db["invoices"].find(
-        query_pagamenti, proiezione_pagamenti
-    ).sort("invoice_date", -1).to_list(LIMITE_VOCI)
 
     # ── 7) Alert NOL_* aperti dal motore alert (collection 'alerts') ──
     query_alert = {"codice": {"$regex": "^NOL_"}, "stato": "aperto"}
@@ -743,13 +797,13 @@ async def get_riepilogo_controlli(
         "contratti_cessati": {"count": cessati_count, "items": cessati_items},
         "auto_senza_driver": {"count": senza_driver_count, "items": senza_driver_items},
         "fatture_non_associate": {"count": len(fatture_items), "items": fatture_items[:LIMITE_VOCI]},
-        "pagamenti_non_riconciliati": {"count": pagamenti_count, "items": pagamenti_items},
+        "pagamenti_non_riconciliati": {"count": pagamenti_count, "items": []},
         "alert_aperti": {"count": alert_count, "items": alert_items},
     }
     return {
         **sezioni,
         "totale_segnalazioni": sum(s["count"] for s in sezioni.values()),
-        "anno_pagamenti": anno_corrente,
+        "anno_pagamenti": anno_pagamenti,
         "anno": anno,
     }
 
