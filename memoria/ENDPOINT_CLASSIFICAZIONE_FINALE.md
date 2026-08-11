@@ -2,15 +2,15 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1113 · tenere: 719 · verificare: 370 · admin-only (migrazione/manutenzione): 24
+**Totale endpoint:** 1113 · tenere: 712 · verificare: 377 · admin-only (migrazione/manutenzione): 24
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
 ## Endpoint prioritari (§7)
 | Metodo/path | Router | FE | Sch | Chat | Migr | Test | Decisione | Motivo |
 |---|---|:-:|:-:|:-:|:-:|:-:|---|---|
-| `POST /api/batch-reprocess/cedolini-only` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
-| `POST /api/batch-reprocess/f24-only` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
+| `POST /api/batch-reprocess/cedolini-only` | batch_reprocessing | — | sì | — | — | sì | tenere | in uso: scheduler |
+| `POST /api/batch-reprocess/f24-only` | batch_reprocessing | — | sì | — | — | sì | tenere | in uso: scheduler |
 | `GET /api/batch-reprocess/preview` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `POST /api/batch-reprocess/start` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `GET /api/batch-reprocess/status` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
@@ -22,8 +22,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 ## Tutti gli endpoint
 | Metodo/path | Router | FE | Sch | Chat | Migr | Test | Decisione | Motivo |
 |---|---|:-:|:-:|:-:|:-:|:-:|---|---|
-| `POST /api/batch-reprocess/cedolini-only` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
-| `POST /api/batch-reprocess/f24-only` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
+| `POST /api/batch-reprocess/cedolini-only` | batch_reprocessing | — | sì | — | — | sì | tenere | in uso: scheduler |
+| `POST /api/batch-reprocess/f24-only` | batch_reprocessing | — | sì | — | — | sì | tenere | in uso: scheduler |
 | `GET /api/batch-reprocess/preview` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `POST /api/batch-reprocess/start` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `GET /api/batch-reprocess/status` | batch_reprocessing | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
@@ -428,7 +428,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/documenti/statistiche` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/documenti/sync-estratti-bnl` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/documenti/sync-estratti-conto` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/documenti/sync-f24-automatico` | documenti | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/documenti/sync-f24-automatico` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/documenti/task/{task_id}` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/documenti/tax-codes/status` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/documenti/tax-codes/sync` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
@@ -807,11 +807,11 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/partite-aperte/scadute` | partite_aperte_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/partite-aperte/stats` | partite_aperte_api | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/paypal-api/account-ids-non-mappati` | paypal_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/paypal-api/account/{paypal_account_id}/cerca-fattura-email` | paypal_api | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/paypal-api/crea-fornitore-e-mappa` | paypal_api | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/paypal-api/mappa-fornitore` | paypal_api | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/paypal-api/account/{paypal_account_id}/cerca-fattura-email` | paypal_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/paypal-api/crea-fornitore-e-mappa` | paypal_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/paypal-api/mappa-fornitore` | paypal_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/paypal-api/ricevuta-pdf/{transaction_id}` | paypal_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/paypal-api/riconcilia` | paypal_api | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/paypal-api/riconcilia` | paypal_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-api/smappa-fornitore` | paypal_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/paypal-api/status` | paypal_api | sì | sì | sì | — | sì | tenere | in uso: FE, scheduler, chat |
 | `POST /api/paypal-api/sync` | paypal_api | sì | — | — | — | sì | tenere | in uso: FE |
@@ -820,19 +820,19 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/paypal-statements/auto-associa` | paypal_statements | — | sì | — | — | sì | tenere | in uso: scheduler |
 | `POST /api/paypal-statements/auto-cerca-gmail` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/paypal-statements/bank-movements` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/paypal-statements/dashboard` | paypal_statements | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/paypal-statements/dashboard` | paypal_statements | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/paypal-statements/import-all-local` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-statements/import-csv` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-statements/import-pdf` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-statements/pulisci-match-solo-importo` | paypal_statements | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/paypal-statements/report` | paypal_statements | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/paypal-statements/riconcilia-banca` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/paypal-statements/report` | paypal_statements | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/paypal-statements/riconcilia-banca` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-statements/riprocessa` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/paypal-statements/statements` | paypal_statements | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/paypal-statements/transactions` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/paypal-statements/transazione/{transaction_id}/associa` | paypal_statements | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/paypal-statements/transazione/{transaction_id}/cerca-gmail` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/paypal-statements/transazione/{transaction_id}/dettaglio` | paypal_statements | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/paypal-statements/transazione/{transaction_id}/associa` | paypal_statements | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/paypal-statements/transazione/{transaction_id}/cerca-gmail` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/paypal-statements/transazione/{transaction_id}/dettaglio` | paypal_statements | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/pianificazione/costi-previsionali` | pianificazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/pianificazione/costi-previsionali` | pianificazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `DELETE /api/pianificazione/costi-previsionali/{costo_id}` | pianificazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

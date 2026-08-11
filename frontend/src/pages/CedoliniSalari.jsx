@@ -4,19 +4,16 @@ import {
   CheckCircle2,
   ChevronDown,
   Download,
-  FileSpreadsheet,
   FileText,
   Landmark,
   Loader2,
   Paperclip,
   Search,
   TriangleAlert,
-  Upload,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../api';
 import { formatEuroD } from '../lib/utils';
-import DocumentImportLink from '../components/DocumentImportLink';
 
 const MESI = [
   '', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
@@ -43,102 +40,49 @@ function aggregaRighe(righe) {
   const mensilita = new Map();
   for (const riga of righe) {
     const dipendente = nomeRiga(riga) || 'Dipendente da identificare';
-    const identita = String(
-      riga.dipendente_id || riga.codice_fiscale || dipendente.toUpperCase(),
-    );
+    const identita = String(riga.dipendente_id || riga.codice_fiscale || dipendente.toUpperCase());
     const anno = Number(riga.anno) || 0;
     const tipoCedolino = String(riga.tipo_cedolino || 'mensile').toLowerCase();
     const meseOriginale = Number(riga.mese) || 0;
-    const mese = tipoCedolino === 'tredicesima'
-      ? 13
-      : tipoCedolino === 'quattordicesima' ? 14 : meseOriginale;
+    const mese = tipoCedolino === 'tredicesima' ? 13 : tipoCedolino === 'quattordicesima' ? 14 : meseOriginale;
     const chiave = `${identita}|${anno}|${meseOriginale}|${tipoCedolino}`;
-    if (!mensilita.has(chiave)) {
-      mensilita.set(chiave, {
-        identita, dipendente, anno, mese, meseOriginale, tipoCedolino, righe: [],
-      });
-    }
+    if (!mensilita.has(chiave)) mensilita.set(chiave, { identita, dipendente, anno, mese, meseOriginale, tipoCedolino, righe: [] });
     mensilita.get(chiave).righe.push(riga);
   }
 
   const dipendenti = new Map();
   for (const gruppo of mensilita.values()) {
     const valoriBusta = gruppo.righe.map(r => numero(r.importo_busta)).filter(v => v > 0);
-    // Il cedolino e il prospetto storico possono documentare la stessa busta:
-    // il valore mensile non va sommato due volte.
     gruppo.importoBusta = valoriBusta.length ? Math.max(...valoriBusta) : 0;
     gruppo.importoAcconti = gruppo.righe.reduce((totale, r) => totale + importoAccontoRiga(r), 0);
     gruppo.saldo = gruppo.importoBusta - gruppo.importoAcconti;
-    gruppo.rigaPrincipale = gruppo.righe.find(r => r.cedolino_id)
-      || gruppo.righe.find(r => nomeRiga(r))
-      || gruppo.righe[0];
     gruppo.rigaCedolino = gruppo.righe.find(r => r.cedolino_disponibile);
     gruppo.rigaBonifico = gruppo.righe.find(r => r.bonifico_documento_disponibile);
     gruppo.cedolinoDisponibile = Boolean(gruppo.rigaCedolino);
     gruppo.bonificoDisponibile = Boolean(gruppo.rigaBonifico);
     const righeConPagamento = gruppo.righe.filter(r => importoAccontoRiga(r) > 0);
-    gruppo.riconciliato = righeConPagamento.length > 0
-      && righeConPagamento.every(r => r.riconciliato === true);
+    gruppo.riconciliato = righeConPagamento.length > 0 && righeConPagamento.every(r => r.riconciliato === true);
     gruppo.daRivedere = gruppo.righe.some(r => r.riconciliazione_precedente_da_rivedere);
 
-    const chiaveDipendente = gruppo.identita;
-    if (!dipendenti.has(chiaveDipendente)) {
-      dipendenti.set(chiaveDipendente, {
-        id: gruppo.identita,
-        nome: gruppo.dipendente,
-        anni: new Map(),
-      });
-    }
-    const dipendente = dipendenti.get(chiaveDipendente);
+    if (!dipendenti.has(gruppo.identita)) dipendenti.set(gruppo.identita, { id: gruppo.identita, nome: gruppo.dipendente, anni: new Map() });
+    const dipendente = dipendenti.get(gruppo.identita);
     if (!dipendente.anni.has(gruppo.anno)) dipendente.anni.set(gruppo.anno, []);
     dipendente.anni.get(gruppo.anno).push(gruppo);
   }
 
   return [...dipendenti.values()].map(dipendente => {
-    dipendente.anni = [...dipendente.anni.entries()]
-      .map(([anno, mesi]) => {
-        mesi.sort((a, b) => a.mese - b.mese);
-        return {
-          anno,
-          mesi,
-          busta: mesi.reduce((totale, mese) => totale + mese.importoBusta, 0),
-          acconti: mesi.reduce((totale, mese) => totale + mese.importoAcconti, 0),
-          saldo: mesi.reduce((totale, mese) => totale + mese.saldo, 0),
-        };
-      })
-      .sort((a, b) => b.anno - a.anno);
-    dipendente.busta = dipendente.anni.reduce((totale, anno) => totale + anno.busta, 0);
-    dipendente.acconti = dipendente.anni.reduce((totale, anno) => totale + anno.acconti, 0);
-    dipendente.saldo = dipendente.busta - dipendente.acconti;
+    dipendente.anni = [...dipendente.anni.entries()].map(([anno, mesi]) => {
+      mesi.sort((a, b) => a.mese - b.mese);
+      return {
+        anno,
+        mesi,
+        busta: mesi.reduce((totale, mese) => totale + mese.importoBusta, 0),
+        acconti: mesi.reduce((totale, mese) => totale + mese.importoAcconti, 0),
+        saldo: mesi.reduce((totale, mese) => totale + mese.saldo, 0),
+      };
+    }).sort((a, b) => b.anno - a.anno);
     return dipendente;
   }).sort((a, b) => a.nome.localeCompare(b.nome, 'it'));
-}
-
-function BottoneUpload({ tipo, gruppo }) {
-  const nome = tipo === 'cedolino' ? 'cedolino' : 'bonifico';
-  return (
-    <DocumentImportLink
-      workflow={tipo}
-      title={`Allega ${nome} PDF`}
-      style={{
-        minHeight: 38,
-        border: '1px solid #cbd5e1',
-        borderRadius: 8,
-        padding: '8px 10px',
-        background: '#fff',
-        color: '#0f2744',
-        fontWeight: 750,
-        cursor: 'pointer',
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        whiteSpace: 'nowrap',
-      }}
-    >
-      <Upload size={16} />
-      Importa {nome} in Documenti
-    </DocumentImportLink>
-  );
 }
 
 export default function CedoliniSalari() {
@@ -147,16 +91,7 @@ export default function CedoliniSalari() {
   const [ricerca, setRicerca] = useState('');
   const [annoFiltro, setAnnoFiltro] = useState('tutti');
   const [documentoInApertura, setDocumentoInApertura] = useState(null);
-  const [uploadInCorso, setUploadInCorso] = useState(null);
-  // Compatibilita per i dati importati dal vecchio endpoint: l'acquisizione
-  // interattiva passa ora sempre da Documenti.
-  const [importazioneInCorso, setImportazioneInCorso] = useState(false);
   const [exportInCorso, setExportInCorso] = useState(false);
-
-  const caricaRighe = async () => {
-    const risposta = await api.get('/api/prima-nota-salari/salari');
-    setRighe(Array.isArray(risposta.data) ? risposta.data : []);
-  };
 
   useEffect(() => {
     let attivo = true;
@@ -168,38 +103,11 @@ export default function CedoliniSalari() {
     return () => { attivo = false; };
   }, []);
 
-  const importaBonifici = async evento => {
-    const file = evento.target.files?.[0];
-    if (!file) return;
-    setImportazioneInCorso(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const risposta = await api.post('/api/prima-nota-salari/import-bonifici', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      const esito = risposta.data || {};
-      toast.success(
-        `Importate ${esito.created || 0} righe; ${esito.updated || 0} aggiornate; `
-        + `${esito.duplicates || 0} già presenti`,
-      );
-      await caricaRighe();
-    } catch (errore) {
-      toast.error(errore.response?.data?.detail || 'Importazione buste e bonifici non riuscita');
-    } finally {
-      setImportazioneInCorso(false);
-      evento.target.value = '';
-    }
-  };
-
   const esportaAppDipendenti = async () => {
     setExportInCorso(true);
     try {
       const params = annoFiltro !== 'tutti' ? { anno: annoFiltro } : {};
-      const risposta = await api.get('/api/prima-nota-salari/export-appdipendenti/download', {
-        params,
-        responseType: 'blob',
-      });
+      const risposta = await api.get('/api/prima-nota-salari/export-appdipendenti/download', { params, responseType: 'blob' });
       const url = URL.createObjectURL(new Blob([risposta.data], { type: 'application/zip' }));
       const link = document.createElement('a');
       link.href = url;
@@ -220,10 +128,7 @@ export default function CedoliniSalari() {
     const chiave = `${tipo}-${riga.id}`;
     setDocumentoInApertura(chiave);
     try {
-      const risposta = await api.get(
-        `/api/prima-nota-salari/salari/${encodeURIComponent(riga.id)}/${tipo}-pdf`,
-        { responseType: 'blob' },
-      );
+      const risposta = await api.get(`/api/prima-nota-salari/salari/${encodeURIComponent(riga.id)}/${tipo}-pdf`, { responseType: 'blob' });
       const url = URL.createObjectURL(new Blob([risposta.data], { type: 'application/pdf' }));
       const finestra = window.open(url, '_blank', 'noopener,noreferrer');
       if (!finestra) {
@@ -241,40 +146,12 @@ export default function CedoliniSalari() {
     }
   };
 
-  const allegaDocumento = async (tipo, gruppo, evento) => {
-    const file = evento.target.files?.[0];
-    if (!file || !gruppo.rigaPrincipale?.id) return;
-    const chiave = `${tipo}-${gruppo.rigaPrincipale.id}`;
-    setUploadInCorso(chiave);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const risposta = await api.post(
-        `/api/prima-nota-salari/salari/${encodeURIComponent(gruppo.rigaPrincipale.id)}/${tipo}-pdf`,
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' } },
-      );
-      toast.success(risposta.data?.message || `${tipo === 'cedolino' ? 'Cedolino' : 'Bonifico'} allegato`);
-      await caricaRighe();
-    } catch (errore) {
-      toast.error(errore.response?.data?.detail || `Allegato ${tipo} non riuscito`);
-    } finally {
-      setUploadInCorso(null);
-      evento.target.value = '';
-    }
-  };
-
   const datiDipendenti = useMemo(() => aggregaRighe(righe), [righe]);
-  const anniDisponibili = [...new Set(
-    righe.map(r => Number(r.anno)).filter(Number.isFinite),
-  )].sort((a, b) => b - a);
+  const anniDisponibili = [...new Set(righe.map(r => Number(r.anno)).filter(Number.isFinite))].sort((a, b) => b - a);
   const termine = ricerca.trim().toLowerCase();
   const dipendentiVisibili = datiDipendenti
     .filter(d => !termine || d.nome.toLowerCase().includes(termine))
-    .map(d => ({
-      ...d,
-      anni: d.anni.filter(a => annoFiltro === 'tutti' || Number(a.anno) === Number(annoFiltro)),
-    }))
+    .map(d => ({ ...d, anni: d.anni.filter(a => annoFiltro === 'tutti' || Number(a.anno) === Number(annoFiltro)) }))
     .filter(d => d.anni.length > 0);
   const totali = dipendentiVisibili.reduce((acc, d) => {
     for (const anno of d.anni) {
@@ -289,30 +166,13 @@ export default function CedoliniSalari() {
     <main style={{ maxWidth: 1680, margin: '0 auto', padding: '22px 20px 60px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end', gap: 16, flexWrap: 'wrap', marginBottom: 18 }}>
         <div>
-          <h1 style={{ margin: 0, color: '#0f2744', fontSize: 27 }}>
-            Cedolini, acconti e bonifici per dipendente
-          </h1>
+          <h1 style={{ margin: 0, color: '#0f2744', fontSize: 27 }}>Cedolini, acconti e bonifici per dipendente</h1>
           <p style={{ margin: '6px 0 0', color: '#64748b' }}>
-            Apri un dipendente per vedere ogni anno e ogni mese. Gli allegati manuali restano in attesa del riscontro bancario reale.
+            I documenti vengono acquisiti esclusivamente da Documenti. Qui controlli importi, allegati gia acquisiti e riscontro bancario reale.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'end', flexWrap: 'wrap' }}>
-          <DocumentImportLink
-            workflow="cedolini-excel"
-            aria-label="Importa buste e bonifici Excel"
-            title="Acquisisci il prospetto da Documenti: classificazione e controllo centralizzati"
-            style={{ minHeight: 42, borderRadius: 9, padding: '10px 14px', background: '#0f2744', color: '#fff', fontWeight: 750, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7 }}
-          >
-            <FileSpreadsheet size={18} />
-            Importa prospetto Excel in Documenti
-          </DocumentImportLink>
-          <button
-            type="button"
-            onClick={esportaAppDipendenti}
-            disabled={exportInCorso}
-            title="Esporta i PDF originali e i registri per AppDipendenti"
-            style={{ minHeight: 42, borderRadius: 9, padding: '10px 14px', border: '1px solid #cbd5e1', background: '#fff', color: '#0f2744', fontWeight: 750, cursor: exportInCorso ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7 }}
-          >
+          <button type="button" onClick={esportaAppDipendenti} disabled={exportInCorso} title="Esporta i PDF originali e i registri per AppDipendenti" style={{ minHeight: 42, borderRadius: 9, padding: '10px 14px', border: '1px solid #cbd5e1', background: '#fff', color: '#0f2744', fontWeight: 750, cursor: exportInCorso ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7 }}>
             {exportInCorso ? <Loader2 size={18} className="spin" /> : <Download size={18} />}
             {exportInCorso ? 'Esportazione...' : 'Export AppDipendenti'}
           </button>
@@ -367,7 +227,7 @@ export default function CedoliniSalari() {
                     <span><small style={{ opacity: .75 }}>Saldo</small><b style={{ display: 'block' }}>{formatEuroD(anno.saldo)}</b></span>
                   </header>
                   <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1180 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1040 }}>
                       <thead style={{ background: '#eef2f7', color: '#475569' }}>
                         <tr>
                           {['Mese', 'Importo busta', 'Acconti / bonifici', 'Saldo', 'Cedolino', 'Bonifico', 'Stato banca'].map(titolo => (
@@ -385,24 +245,18 @@ export default function CedoliniSalari() {
                               <td style={{ padding: '11px 12px', textAlign: 'right', fontWeight: 800 }}>{formatEuroD(mese.importoAcconti)}</td>
                               <td style={{ padding: '11px 12px', textAlign: 'right' }}><span style={{ ...stileSaldo, borderRadius: 999, padding: '5px 9px', fontWeight: 850 }}>{formatEuroD(mese.saldo)}</span></td>
                               <td style={{ padding: '8px 12px' }}>
-                                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-                                  {mese.cedolinoDisponibile && (
-                                    <button onClick={() => apriDocumento('cedolino', mese.rigaCedolino)} disabled={documentoInApertura === `cedolino-${mese.rigaCedolino.id}`} style={{ minHeight: 38, border: 0, borderRadius: 8, padding: '8px 10px', background: '#2563eb', color: '#fff', fontWeight: 750, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                                      <FileText size={16} /> Vedi
-                                    </button>
-                                  )}
-                                  <BottoneUpload tipo="cedolino" gruppo={mese} inCorso={uploadInCorso} onUpload={allegaDocumento} />
-                                </div>
+                                {mese.cedolinoDisponibile ? (
+                                  <button type="button" onClick={() => apriDocumento('cedolino', mese.rigaCedolino)} disabled={documentoInApertura === `cedolino-${mese.rigaCedolino.id}`} style={{ minHeight: 38, border: 0, borderRadius: 8, padding: '8px 10px', background: '#2563eb', color: '#fff', fontWeight: 750, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                    <FileText size={16} /> Vedi
+                                  </button>
+                                ) : <span style={{ color: '#64748b' }}>Non acquisito</span>}
                               </td>
                               <td style={{ padding: '8px 12px' }}>
-                                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-                                  {mese.bonificoDisponibile && (
-                                    <button onClick={() => apriDocumento('bonifico', mese.rigaBonifico)} disabled={documentoInApertura === `bonifico-${mese.rigaBonifico.id}`} style={{ minHeight: 38, border: 0, borderRadius: 8, padding: '8px 10px', background: '#7c3aed', color: '#fff', fontWeight: 750, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                                      <Paperclip size={16} /> Vedi
-                                    </button>
-                                  )}
-                                  <BottoneUpload tipo="bonifico" gruppo={mese} inCorso={uploadInCorso} onUpload={allegaDocumento} />
-                                </div>
+                                {mese.bonificoDisponibile ? (
+                                  <button type="button" onClick={() => apriDocumento('bonifico', mese.rigaBonifico)} disabled={documentoInApertura === `bonifico-${mese.rigaBonifico.id}`} style={{ minHeight: 38, border: 0, borderRadius: 8, padding: '8px 10px', background: '#7c3aed', color: '#fff', fontWeight: 750, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                    <Paperclip size={16} /> Vedi
+                                  </button>
+                                ) : <span style={{ color: '#64748b' }}>Non acquisito</span>}
                               </td>
                               <td style={{ padding: '11px 12px' }}>
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: mese.riconciliato ? '#15803d' : '#b45309', fontWeight: 750 }}>

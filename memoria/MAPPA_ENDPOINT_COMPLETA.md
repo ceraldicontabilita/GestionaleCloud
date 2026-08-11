@@ -4,7 +4,7 @@
 > Totale **1113 endpoint** in **114 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 672 · ext esterni = 88 · — da verificare = 353
+**Riepilogo uso:** ✓ frontend = 663 · ext esterni = 88 · — da verificare = 362
 
 ## AI Parser  (11)
 
@@ -213,8 +213,8 @@
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| POST | `/api/batch-reprocess/cedolini-only` | ✓ | batch_reprocessing |
-| POST | `/api/batch-reprocess/f24-only` | ✓ | batch_reprocessing |
+| POST | `/api/batch-reprocess/cedolini-only` | — | batch_reprocessing |
+| POST | `/api/batch-reprocess/f24-only` | — | batch_reprocessing |
 | GET | `/api/batch-reprocess/preview` | ✓ | batch_reprocessing |
 | POST | `/api/batch-reprocess/start` | ✓ | batch_reprocessing |
 | GET | `/api/batch-reprocess/status` | ✓ | batch_reprocessing |
@@ -596,7 +596,7 @@
 | GET | `/api/documenti/statistiche` | — | documenti |
 | POST | `/api/documenti/sync-estratti-bnl` | — | documenti |
 | POST | `/api/documenti/sync-estratti-conto` | — | documenti |
-| POST | `/api/documenti/sync-f24-automatico` | ✓ | documenti |
+| POST | `/api/documenti/sync-f24-automatico` | — | documenti |
 | GET | `/api/documenti/task/{task_id}` | — | documenti |
 | GET | `/api/documenti/tax-codes/status` | ✓ | documenti |
 | POST | `/api/documenti/tax-codes/sync` | — | documenti |
@@ -1215,24 +1215,24 @@
 | POST | `/api/paypal-statements/import-pdf` | — | paypal_statements |
 | POST | `/api/paypal-statements/pulisci-match-solo-importo` | — | paypal_statements |
 | GET | `/api/paypal-statements/report` | ✓ | paypal_statements |
-| POST | `/api/paypal-statements/riconcilia-banca` | ✓ | paypal_statements |
+| POST | `/api/paypal-statements/riconcilia-banca` | — | paypal_statements |
 | POST | `/api/paypal-statements/riprocessa` | ✓ | paypal_statements |
 | GET | `/api/paypal-statements/statements` | ✓ | paypal_statements |
 | GET | `/api/paypal-statements/transactions` | ✓ | paypal_statements |
 | POST | `/api/paypal-statements/transazione/{transaction_id}/associa` | — | paypal_statements |
 | GET | `/api/paypal-statements/transazione/{transaction_id}/cerca-gmail` | — | paypal_statements |
-| GET | `/api/paypal-statements/transazione/{transaction_id}/dettaglio` | ✓ | paypal_statements |
+| GET | `/api/paypal-statements/transazione/{transaction_id}/dettaglio` | — | paypal_statements |
 
 ## PayPal API  (11)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| GET | `/api/paypal-api/account-ids-non-mappati` | ✓ | paypal_api |
+| GET | `/api/paypal-api/account-ids-non-mappati` | — | paypal_api |
 | POST | `/api/paypal-api/account/{paypal_account_id}/cerca-fattura-email` | — | paypal_api |
-| POST | `/api/paypal-api/crea-fornitore-e-mappa` | ✓ | paypal_api |
-| POST | `/api/paypal-api/mappa-fornitore` | ✓ | paypal_api |
+| POST | `/api/paypal-api/crea-fornitore-e-mappa` | — | paypal_api |
+| POST | `/api/paypal-api/mappa-fornitore` | — | paypal_api |
 | GET | `/api/paypal-api/ricevuta-pdf/{transaction_id}` | — | paypal_api |
-| POST | `/api/paypal-api/riconcilia` | ✓ | paypal_api |
+| POST | `/api/paypal-api/riconcilia` | — | paypal_api |
 | POST | `/api/paypal-api/smappa-fornitore` | — | paypal_api |
 | GET | `/api/paypal-api/status` | ✓ | paypal_api |
 | POST | `/api/paypal-api/sync` | ✓ | paypal_api |

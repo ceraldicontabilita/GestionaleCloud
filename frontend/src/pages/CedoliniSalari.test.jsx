@@ -64,27 +64,25 @@ describe('CedoliniSalari', () => {
     expect(screen.queryByText('Riconciliato con estratto conto')).not.toBeInTheDocument();
   });
 
-  it('indirizza il prospetto Excel alla porta unica Documenti', async () => {
+  it('non espone un import Excel locale nella pagina di consultazione', async () => {
     render(<CedoliniSalari />);
     await waitFor(() => expect(screen.getByText('Mario Rossi')).toBeInTheDocument());
-    expect(screen.getByRole('link', { name: 'Importa buste e bonifici Excel' }))
-      .toHaveAttribute('href', '/documenti/import?workflow=cedolini-excel');
+    expect(screen.queryByRole('link', { name: /Importa buste e bonifici Excel/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/acquisiti esclusivamente da Documenti/i)).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   });
 
-  it('indirizza il cedolino alla porta unica Documenti', async () => {
+  it('non espone upload del cedolino dalla pagina di consultazione', async () => {
     render(<CedoliniSalari />);
     await waitFor(() => expect(screen.getByText('Mario Rossi')).toBeInTheDocument());
-    const link = screen.getAllByRole('link', { name: /Importa cedolino in Documenti/ })[0];
-    expect(link).toHaveAttribute('href', '/documenti/import?workflow=cedolino');
+    expect(screen.queryByRole('link', { name: /Importa cedolino/i })).not.toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   });
 
-  it('indirizza il PDF bonifico alla porta unica Documenti', async () => {
+  it('non espone upload del bonifico dalla pagina di consultazione', async () => {
     render(<CedoliniSalari />);
     await waitFor(() => expect(screen.getByText('Mario Rossi')).toBeInTheDocument());
-    const link = screen.getAllByRole('link', { name: /Importa bonifico in Documenti/ })[0];
-    expect(link).toHaveAttribute('href', '/documenti/import?workflow=bonifico');
+    expect(screen.queryByRole('link', { name: /Importa bonifico/i })).not.toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   });
 });

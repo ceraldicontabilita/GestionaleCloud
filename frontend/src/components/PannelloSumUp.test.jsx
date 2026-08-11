@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../api';
@@ -17,6 +17,7 @@ describe('Pannello SumUp', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('mostra gli accrediti gia unificati per data effettiva', async () => {
+    api.get.mockResolvedValue({ data: { connessione_ok: true, esercente: 'Ceraldi Group' } });
     api.post.mockResolvedValue({ data: {
       message: 'Sincronizzazione completata',
       totale_netto: 100,
@@ -33,7 +34,11 @@ describe('Pannello SumUp', () => {
     } });
 
     render(<PannelloSumUp />);
-    fireEvent.click(screen.getByRole('button', { name: 'Sincronizza ieri e oggi' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/sumup/sincronizza',
+      expect.objectContaining({ dal: expect.any(String), al: expect.any(String) }),
+    ));
 
     expect(await screen.findByText('Accrediti SumUp unificati per giorno effettivo'))
       .toBeInTheDocument();

@@ -92,7 +92,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 41 | [x] VERIFICATA | Import documenti — `/documenti/import` | Unico ingresso per PDF/XML/ZIP con classificazione e deduplica. | TENERE; CLASSIFICAZIONE, ZIP SICURI E DEDUPLICA COLLAUDATI LIVE |
 | 42 | [ ] | Archivio documenti — `/documenti/archivio` | Consulta file, esiti, anomalie, provenienza e collegamenti. | TENERE |
 | 43 | [ ] | Verifica coerenza — `/strumenti` | Controlli incrociati in sola lettura; non esegue correzioni automatiche. | TENERE |
-| 44 | [ ] | Movimenti banca — `/strumenti/movimenti-banca` | Elenca movimenti non collegati e deve solo proporre, senza duplicare Prima Nota. | TENERE IN SOLA PROPOSTA |
+| 44 | [ ] | Movimenti banca — `/riconciliazione/movimenti-banca` | Elenca movimenti non collegati e deve solo proporre, senza duplicare Prima Nota. | TENERE IN SOLA PROPOSTA |
 | 45 | [ ] | Commercialista — `/strumenti/commercialista` | Prepara riepiloghi e pacchetti di confronto per il commercialista. | TENERE |
 | 46 | [ ] | Pianificazione — `/strumenti/pianificazione` | Pianifica flussi e scadenze future. | VERIFICARE UTILIZZO |
 | 47 | [ ] | Visure — `/strumenti/visure` | Consulta/richiede informazioni camerali collegate. | TENERE SE SERVIZIO CONFIGURATO |
@@ -100,12 +100,12 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 49 | [ ] | Impostazioni F24 email — `/impostazioni-f24-email` | Credenziali, mittenti F24, scansioni e log di acquisizione. | VALUTARE ACCORPAMENTO CON 54 |
 | 50 | [ ] | Impostazioni AI — `/impostazioni-ai` | Configurazione dei servizi AI usati dal gestionale. | TENERE SOLO ADMIN |
 | 51 | [ ] | Integrazione OpenAPI — `/integrazioni` | Richiede dati e bilanci ufficiali da OpenAPI.it. | TENERE SE CONFIGURATA |
-| 52 | [ ] | Integrazione PagoPA — `/integrazioni/pagopa` | Gestisce avvisi/ricevute PagoPA e collegamenti ai verbali. | TENERE |
+| 52 | [ ] | Riconciliazione PagoPA — `/riconciliazione/pagopa` | Gestisce avvisi/ricevute PagoPA e collegamenti ai verbali. | TENERE |
 | 53 | [x] VERIFICATA | Mittenti Email attendibili — `/integrazioni/mittenti-email` | Fonte unica dei mittenti autorizzati per classificare allegati email. | TENERE; FONTE DEL FLUSSO VERBALI |
 | 54 | [ ] | Admin sistema — `/admin` | Stato servizi, email, Drive, rollback controllato e collaudo. | TENERE SOLO ADMIN |
 | 55 | [ ] | Admin MFA — `/admin/mfa` | Configura e controlla autenticazione multifattore. | TENERE SOLO ADMIN |
-| 56 | [ ] | Batch reprocessing — `/admin/batch-reprocessing` | Anteprima e rilavorazione controllata di F24/cedolini. | CANDIDATA AD ACCORPAMENTO CON 58 |
-| 57 | [ ] | Batch processor — `/admin/batch-processor` | Esegue task batch tecnici configurati. | CANDIDATA AD ACCORPAMENTO CON 57 |
+| 56 | [ ] | Elaborazioni amministrative — `/admin/elaborazioni` | Riunisce diagnostica automatica e rielaborazione controllata dei documenti. | AREA TECNICA CANONICA |
+| 57 | [ ] | Elaborazioni legacy — `/admin/batch-processor` | Alias storico reindirizzato all'area Elaborazioni. | COMPATIBILITA URL |
 | 58 | [ ] | Utenti — `/utenti` | Gestisce ruoli, stato, PIN e accessi. | TENERE SOLO ADMIN |
 | 59 | [ ] | Mappa gestionale — `/mappa-gestionale` | Documenta i collegamenti tra aree del gestionale. | VALUTARE RIMOZIONE DAL MENU OPERATIVO |
 | 60 | [ ] | Gestione IVA — `/iva` | Unica pagina IVA: attribuzione fatture, liquidazione mensile, confronto F24 e scadenze. | TENERE COME PAGINA IVA UNICA |
