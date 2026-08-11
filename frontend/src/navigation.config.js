@@ -17,12 +17,10 @@ import {
   Building2,
   Landmark,
   FileBarChart,
-  CreditCard,
   Receipt,
   BookMarked,
   Car,
   Wrench,
-  Map,
   Users,
   Settings,
   Clock,
@@ -33,32 +31,31 @@ import {
 export const APP_DIPENDENTI_URL = 'https://appdipendenti.onrender.com';
 
 // Voci principali: barra desktop + prima parte del menù mobile.
+// Assegni e PayPal non sono pagine di primo livello: sono sezioni interne
+// dell'hub Riconciliazione e restano raggiungibili dai suoi tab.
 export const NAV_PRINCIPALI = [
   { to: '/', label: 'Dashboard', Icon: LayoutDashboard },
   { to: '/fatture', label: 'Fatture', Icon: FileText },
   { to: '/prima-nota', label: 'Prima Nota', Icon: BookOpen },
   { to: '/fornitori', label: 'Fornitori', Icon: Building2 },
   { to: '/riconciliazione', label: 'Riconciliazione', Icon: Landmark },
-  { to: '/riconciliazione/assegni', label: 'Assegni', Icon: FileBarChart },
-  { to: '/riconciliazione/paypal', label: 'PayPal', Icon: CreditCard },
 ];
 
 // Voci secondarie: dropdown "Altro" su desktop + resto del menù mobile.
-// Corrispettivi NON è qui: si raggiunge dal tab dentro Fatture
-// (richiesta utente 10/07, un solo posto canonico).
+// Corrispettivi NON è qui: si raggiunge dal tab dentro Fatture.
+// F24 e Coerenza POS sono sezioni dell'hub Riconciliazione e non duplicano
+// più la navigazione principale. Mappa gestionale resta raggiungibile via URL
+// e verrà ricollocata nell'area diagnostica/admin.
 export const NAV_ALTRO = [
-  { to: '/riconciliazione/f24', label: 'F24', Icon: Receipt },
   { to: '/iva', label: 'Gestione IVA', Icon: Receipt },
   { to: '/situazione-fiscale', label: 'Situazione fiscale', Icon: FileBarChart, adminOnly: true },
   { to: '/contabilita', label: 'Contabilita', Icon: FileBarChart },
   { to: '/documenti', label: 'Documenti', Icon: BookMarked },
-  { to: '/riconciliazione/coerenza-pos', label: 'Incassi POS', Icon: CreditCard },
   { to: '/noleggio', label: 'Noleggi', Icon: Car },
   { to: '/scadenze', label: 'Scadenze', Icon: Clock },
   { to: '/ritenute', label: 'Ritenute', Icon: Receipt },
   { to: '/salari', label: 'Cedolini paga', Icon: Users },
   { to: '/strumenti', label: 'Strumenti', Icon: Wrench },
-  { to: '/mappa-gestionale', label: 'Mappa gestionale', Icon: Map },
   { to: null, href: APP_DIPENDENTI_URL, label: 'HR', Icon: Users, external: true },
   { to: '/assistente', label: 'Assistente Ceraldi', Icon: Bot, adminOnly: true },
   { to: '/impostazioni-ai', label: 'Assistente AI', Icon: Bot, adminOnly: true },
