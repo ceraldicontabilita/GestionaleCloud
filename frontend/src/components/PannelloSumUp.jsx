@@ -42,7 +42,7 @@ export default function PannelloSumUp() {
   };
 
   const verifica = (silenzioso = false) =>
-    esegui('stato', () => api.get('/sumup/stato'), (d) => {
+    esegui('stato', () => api.get('/api/sumup/stato'), (d) => {
       setStato(d);
       if (!silenzioso) {
         if (d.connessione_ok) toast.success(`SumUp collegato: ${d.esercente || ''}`);
@@ -55,7 +55,7 @@ export default function PannelloSumUp() {
     const dal = new Date(oggi);
     dal.setDate(dal.getDate() - (giorni - 1));
     const iso = (d) => d.toISOString().slice(0, 10);
-    return esegui('sync', () => api.post('/sumup/sincronizza',
+    return esegui('sync', () => api.post('/api/sumup/sincronizza',
       { dal: iso(dal), al: iso(oggi) }), (d) => {
       setSync(d);
       if (!silenzioso) toast.success(d.message || 'Sincronizzazione completata');
@@ -65,21 +65,23 @@ export default function PannelloSumUp() {
   useEffect(() => {
     let attivo = true;
     const inizializza = async () => {
-      await verifica(true);
-      if (attivo) await sincronizza(2, true);
+      const statoCorrente = await verifica(true);
+      if (attivo && statoCorrente?.connessione_ok) {
+        await sincronizza(2, true);
+      }
     };
     inizializza();
     return () => { attivo = false; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const analizza = () =>
-    esegui('bonifica', () => api.get('/sumup/bonifica-pos-xml'), (d) => {
+    esegui('bonifica', () => api.get('/api/sumup/bonifica-pos-xml'), (d) => {
       setBonifica(d);
       toast.info(`${d.giornate_totali} giornate con POS ricavato dall'XML`);
     });
 
   const correggiXml = () =>
-    esegui('correggi-xml', () => api.post('/sumup/bonifica-pos-xml',
+    esegui('correggi-xml', () => api.post('/api/sumup/bonifica-pos-xml',
       { conferma: true }), (d) => {
       setBonifica(d);
       toast.success(

@@ -35,8 +35,9 @@ describe('Pannello SumUp', () => {
 
     render(<PannelloSumUp />);
 
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/sumup/stato'));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
-      '/sumup/sincronizza',
+      '/api/sumup/sincronizza',
       expect.objectContaining({ dal: expect.any(String), al: expect.any(String) }),
     ));
 
@@ -45,5 +46,16 @@ describe('Pannello SumUp', () => {
     await waitFor(() => expect(screen.getByText('07/08/2026')).toBeInTheDocument());
     expect(screen.getByText(/98,00/)).toBeInTheDocument();
     expect(screen.getByText(/2,00/)).toBeInTheDocument();
+  });
+
+  it('non avvia la sincronizzazione se SumUp non e configurato', async () => {
+    api.get.mockResolvedValue({
+      data: { connessione_ok: false, messaggio: 'Chiave API non configurata' },
+    });
+
+    render(<PannelloSumUp />);
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/sumup/stato'));
+    expect(api.post).not.toHaveBeenCalled();
   });
 });
