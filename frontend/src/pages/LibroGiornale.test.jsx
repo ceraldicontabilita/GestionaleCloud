@@ -110,11 +110,10 @@ describe('LibroGiornale', () => {
     expect(screen.getByTestId('alert-qualita-giornale')).toHaveTextContent('1 scritture sbilanciate');
   });
 
-  it('indirizza il reimport alla porta unica Documenti', async () => {
+  it('non espone il reimport dalla pagina del registro definitivo', async () => {
     render(<LibroGiornale />);
     await screen.findByText('1 scritture');
-    expect(screen.getByTestId('import-giornale'))
-      .toHaveAttribute('href', '/documenti/import?workflow=libro-giornale');
+    expect(screen.queryByTestId('import-giornale')).not.toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   });
 });

@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import api from '../api';
-import { useAnnoGlobale } from '../contexts/AnnoContext';
+import { useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
+
+import api from '../api';
 import { PageLayout } from '../components/PageLayout';
+import { useAnnoGlobale } from '../contexts/AnnoContext';
+import { useIsMobile } from '../hooks/useData';
 
 const euro = valore => new Intl.NumberFormat('it-IT', {
   style: 'currency',
@@ -15,87 +18,108 @@ const dataIT = valore => {
   return Number.isNaN(data.getTime()) ? String(valore) : data.toLocaleDateString('it-IT');
 };
 
+const statoFatturaLabel = stato => ({
+  associata_validata: 'Associata validata',
+  da_rivalidare: 'Da rivalidare',
+  non_associata: 'Non associata',
+}[stato] || 'Da verificare');
+
+const fonteLabel = fonte => (
+  String(fonte.source_type || '').toLowerCase() === 'api'
+    ? 'PayPal API'
+    : (fonte.nome_file || fonte.tipo_documento || 'Fonte PayPal')
+);
+
 export default function RiconciliazionePaypal() {
   const { anno } = useAnnoGlobale();
+  const isMobile = useIsMobile();
+  const location = useLocation();
+  const tabIniziale = new URLSearchParams(location.search).get('tab') || 'transazioni';
+  const [tab, setTab] = useState(tabIniziale);
   const [loading, setLoading] = useState(true);
   const [errore, setErrore] = useState('');
   const [statoApi, setStatoApi] = useState(null);
+  const [dashboard, setDashboard] = useState({});
   const [transazioni, setTransazioni] = useState([]);
   const [movimentiBanca, setMovimentiBanca] = useState([]);
+  const [riepilogoBanca, setRiepilogoBanca] = useState({});
+  const [fonti, setFonti] = useState([]);
   const [ricerca, setRicerca] = useState('');
+  const [statoCollegamento, setStatoCollegamento] = useState('tutti');
+  const [rielaborazione, setRielaborazione] = useState(false);
 
   const caricaDati = useCallback(async () => {
-    const paramsAnno = anno ? `?anno=${anno}` : '';
     const paramsTx = new URLSearchParams({ limit: '1000', solo_pagamenti: 'true' });
-    if (anno) paramsTx.append('anno', anno);
     const paramsBanca = new URLSearchParams({ limit: '5000' });
-    if (anno) paramsBanca.append('anno', anno);
+    if (anno) {
+      paramsTx.append('anno', anno);
+      paramsBanca.append('anno', anno);
+    }
 
-    const [apiStatus, tx, banca] = await Promise.all([
-      api.get('/api/paypal-api/status'),
+    const risultati = await Promise.allSettled([
+      api.get(`/api/paypal-statements/dashboard?anno=${anno}`),
       api.get(`/api/paypal-statements/transactions?${paramsTx}`),
+      api.get(`/api/paypal-statements/report?anno=${anno}`),
+      api.get(`/api/paypal-statements/statements?anno=${anno}`),
       api.get(`/api/paypal-statements/bank-movements?${paramsBanca}`),
+      api.get('/api/paypal-api/status'),
     ]);
 
-    setStatoApi(apiStatus.data || null);
-    setTransazioni(tx.data?.transactions || []);
-    setMovimentiBanca(banca.data?.movimenti || []);
-    return { apiStatus: apiStatus.data || null, paramsAnno };
+    const valore = (indice, fallback = {}) => (
+      risultati[indice].status === 'fulfilled' ? (risultati[indice].value.data || fallback) : fallback
+    );
+    const datiDashboard = valore(0);
+    const datiTransazioni = valore(1);
+    const datiFonti = valore(3);
+    const datiBanca = valore(4);
+
+    setDashboard(datiDashboard);
+    setTransazioni(Array.isArray(datiTransazioni.transactions) ? datiTransazioni.transactions : []);
+    setFonti(Array.isArray(datiFonti.fonti) ? datiFonti.fonti : (Array.isArray(datiFonti.statements) ? datiFonti.statements : []));
+    setMovimentiBanca(Array.isArray(datiBanca.movimenti) ? datiBanca.movimenti : []);
+    setRiepilogoBanca(datiBanca);
+    setStatoApi(valore(5, null));
+    setErrore(risultati.some(risultato => risultato.status === 'rejected')
+      ? 'Alcuni dati PayPal non sono stati caricati. Riprova senza considerare certi i valori mancanti.'
+      : '');
   }, [anno]);
-
-  const sincronizzaAutomaticamente = useCallback(async () => {
-    try {
-      const stato = await api.get('/api/paypal-api/status');
-      setStatoApi(stato.data || null);
-      if (!stato.data?.api_configurata) return;
-
-      const oggi = new Date();
-      const inizio = new Date(oggi.getFullYear(), oggi.getMonth() - 2, 1);
-      await api.post('/api/paypal-api/sync', {
-        start_date: inizio.toISOString().slice(0, 10),
-        end_date: oggi.toISOString().slice(0, 10),
-      });
-    } catch (e) {
-      console.error('Sincronizzazione PayPal non riuscita', e);
-    }
-  }, []);
 
   useEffect(() => {
     let attivo = true;
-    (async () => {
-      setLoading(true);
-      setErrore('');
-      try {
-        await sincronizzaAutomaticamente();
-        if (attivo) await caricaDati();
-      } catch (e) {
-        if (attivo) setErrore(e.response?.data?.detail || e.message || 'Errore caricamento PayPal');
-      } finally {
-        if (attivo) setLoading(false);
-      }
-    })();
+    setLoading(true);
+    caricaDati()
+      .catch(() => {
+        if (attivo) setErrore('Alcuni dati PayPal non sono stati caricati. Riprova senza considerare certi i valori mancanti.');
+      })
+      .finally(() => { if (attivo) setLoading(false); });
     return () => { attivo = false; };
-  }, [caricaDati, sincronizzaAutomaticamente]);
+  }, [caricaDati]);
 
   const riconciliaBanca = async () => {
+    setRielaborazione(true);
     try {
       await api.post(`/api/paypal-statements/riprocessa?anno=${anno}`);
       await caricaDati();
       toast.success('Riconciliazione PayPal aggiornata');
     } catch (e) {
       toast.error(e.response?.data?.detail || e.message || 'Riconciliazione non riuscita');
+    } finally {
+      setRielaborazione(false);
     }
   };
 
   const righe = useMemo(() => {
     const termine = ricerca.trim().toLowerCase();
-    if (!termine) return transazioni;
-    return transazioni.filter(tx => `${tx.nome_controparte || ''} ${tx.descrizione || ''} ${tx.email_controparte || ''}`
-      .toLowerCase().includes(termine));
-  }, [transazioni, ricerca]);
+    return transazioni.filter(tx => {
+      const compatibileTesto = !termine || `${tx.nome_controparte || ''} ${tx.descrizione || ''} ${tx.email_controparte || ''}`
+        .toLowerCase().includes(termine);
+      const compatibileStato = statoCollegamento === 'tutti' || tx.stato_collegamento_fattura === statoCollegamento;
+      return compatibileTesto && compatibileStato;
+    });
+  }, [transazioni, ricerca, statoCollegamento]);
 
-  const riconciliati = movimentiBanca.filter(m => m.riconciliato_paypal).length;
-  const daVerificare = movimentiBanca.length - riconciliati;
+  const riconciliati = Number(riepilogoBanca.riconciliati ?? movimentiBanca.filter(m => m.riconciliato_paypal).length);
+  const daVerificare = Number(riepilogoBanca.da_associare ?? Math.max(0, movimentiBanca.length - riconciliati));
 
   return (
     <PageLayout>
@@ -107,66 +131,101 @@ export default function RiconciliazionePaypal() {
               Sincronizzazione automatica all'apertura. I documenti si acquisiscono solo da Documenti.
             </p>
           </div>
-          <button type="button" onClick={riconciliaBanca} style={{ minHeight: 40, padding: '8px 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', fontWeight: 700 }}>
-            Rielabora collegamenti
+          <button data-testid="reprocess-paypal-btn" type="button" onClick={riconciliaBanca} disabled={rielaborazione} style={buttonStyle}>
+            {rielaborazione ? 'Rielaborazione...' : 'Rielabora collegamenti'}
           </button>
         </div>
 
-        {errore && <div role="alert" style={{ padding: 12, background: '#fef2f2', color: '#991b1b', borderRadius: 8, marginBottom: 12 }}>{errore}</div>}
+        {loading && <div role="status" style={messageStyle}>Caricamento dati PayPal...</div>}
+        {errore && <div role="alert" style={{ ...messageStyle, background: '#fef2f2', color: '#991b1b' }}>{errore}</div>}
         {statoApi && !statoApi.api_configurata && (
-          <div style={{ padding: 12, background: '#eff6ff', color: '#1d4ed8', borderRadius: 8, marginBottom: 12 }}>
-            API PayPal non configurata. Le transazioni gia presenti restano consultabili e riconciliabili.
+          <div style={{ ...messageStyle, background: '#eff6ff', color: '#1d4ed8' }}>
+            API PayPal non configurata. Le transazioni già presenti restano consultabili e riconciliabili.
           </div>
         )}
 
         <section style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(150px, 1fr))', gap: 10, marginBottom: 16 }}>
-          <div style={card}><small>Transazioni</small><strong style={value}>{transazioni.length}</strong></div>
-          <div style={card}><small>Movimenti banca</small><strong style={value}>{movimentiBanca.length}</strong></div>
+          <div style={card}><small>Transazioni</small><strong style={value}>{dashboard.total_transactions ?? transazioni.length}</strong></div>
+          <div style={card}><small>Movimenti banca</small><strong style={value}>{dashboard.movimenti_banca_paypal ?? movimentiBanca.length}</strong></div>
           <div style={card}><small>Riconciliati</small><strong style={value}>{riconciliati}</strong></div>
           <div style={card}><small>Da verificare</small><strong style={value}>{daVerificare}</strong></div>
         </section>
 
-        <input
-          value={ricerca}
-          onChange={e => setRicerca(e.target.value)}
-          placeholder="Cerca controparte, descrizione o email"
-          style={{ width: '100%', minHeight: 40, padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: 8, marginBottom: 12 }}
-        />
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+          {[
+            ['transazioni', 'Transazioni'],
+            ['estratti', 'Movimenti banca'],
+            ['documenti', 'Fonti'],
+          ].map(([id, label]) => (
+            <button key={id} type="button" onClick={() => setTab(id)} style={{ ...buttonStyle, background: tab === id ? '#0f2744' : '#fff', color: tab === id ? '#fff' : '#0f2744' }}>{label}</button>
+          ))}
+        </div>
 
-        {loading ? (
-          <div style={{ padding: 30, color: '#64748b' }}>Caricamento…</div>
-        ) : (
-          <div style={{ overflowX: 'auto', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
-              <thead style={{ background: '#f8fafc' }}>
-                <tr>
-                  {['Data', 'Controparte', 'Descrizione', 'Importo', 'Fattura', 'Stato'].map(t => <th key={t} style={th}>{t}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {righe.map(tx => (
-                  <tr key={tx.transaction_id || tx.id} style={{ borderTop: '1px solid #e2e8f0' }}>
-                    <td style={td}>{dataIT(tx.data || tx.date)}</td>
-                    <td style={td}>{tx.nome_controparte || '-'}</td>
-                    <td style={td}>{tx.descrizione || '-'}</td>
-                    <td style={{ ...td, textAlign: 'right', fontWeight: 700 }}>{euro(tx.importo)}</td>
-                    <td style={td}>{tx.fattura_numero || tx.stato_collegamento_fattura || '-'}</td>
-                    <td style={td}>{tx.riconciliato_banca ? 'Riconciliato' : 'Da verificare'}</td>
-                  </tr>
-                ))}
-                {righe.length === 0 && (
-                  <tr><td colSpan={6} style={{ ...td, textAlign: 'center', color: '#64748b' }}>Nessuna transazione</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+        {!loading && tab === 'transazioni' && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 1fr) minmax(190px, 260px)', gap: 10, marginBottom: 12 }}>
+              <input value={ricerca} onChange={e => setRicerca(e.target.value)} placeholder="Cerca controparte, descrizione o email" style={inputStyle} />
+              <select aria-label="Stato collegamento fattura" value={statoCollegamento} onChange={e => setStatoCollegamento(e.target.value)} style={inputStyle}>
+                <option value="tutti">Tutti gli stati</option>
+                <option value="associata_validata">Associata validata</option>
+                <option value="da_rivalidare">Da rivalidare</option>
+                <option value="non_associata">Non associata</option>
+              </select>
+            </div>
+            {isMobile ? <TransactionCards righe={righe} /> : <TransactionTable righe={righe} />}
+          </>
+        )}
+
+        {!loading && tab === 'estratti' && (
+          <>
+            <p style={{ color: '#64748b' }}>Fonti duplicate unificate: <strong>{riepilogoBanca.duplicati_unificati || 0}</strong></p>
+            {isMobile ? <BankCards righe={movimentiBanca} /> : <BankTable righe={movimentiBanca} />}
+          </>
+        )}
+
+        {!loading && tab === 'documenti' && (
+          isMobile ? <SourceCards fonti={fonti} /> : <SourceTable fonti={fonti} />
         )}
       </main>
     </PageLayout>
   );
 }
 
-const card = { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14 };
+function TransactionCards({ righe }) {
+  return <div data-testid="paypal-transaction-cards" style={cards}>{righe.map(tx => <article key={tx.transaction_id || tx.id} style={card}><strong>{tx.descrizione || '-'}</strong><span>{tx.nome_controparte || '-'}</span><span>{dataIT(tx.data || tx.date)} - {euro(tx.importo ?? tx.lordo)}</span><span>{statoFatturaLabel(tx.stato_collegamento_fattura)}</span></article>)}</div>;
+}
+
+function TransactionTable({ righe }) {
+  return <div data-testid="paypal-transactions-table" style={tableWrap}><table style={table}><thead><tr>{['Data', 'Controparte', 'Descrizione', 'Importo', 'Fattura', 'Stato'].map(t => <th key={t} style={th}>{t}</th>)}</tr></thead><tbody>{righe.map(tx => <tr key={tx.transaction_id || tx.id}><td style={td}>{dataIT(tx.data || tx.date)}</td><td style={td}>{tx.nome_controparte || '-'}</td><td style={td}>{tx.descrizione || '-'}</td><td style={td}>{euro(tx.importo ?? tx.lordo)}</td><td style={td}>{tx.fattura_associata?.numero || tx.fattura_numero || '-'}</td><td style={td}>{statoFatturaLabel(tx.stato_collegamento_fattura)}</td></tr>)}</tbody></table></div>;
+}
+
+function BankCards({ righe }) {
+  return <div data-testid="paypal-bank-cards" style={cards}>{righe.map(riga => <article key={riga.id} style={card}><strong>{riga.descrizione || '-'}</strong><span>{dataIT(riga.data)} - {euro(riga.importo)}</span><span>{riga.riconciliato_paypal ? 'Riconciliato' : 'Da associare'}</span></article>)}</div>;
+}
+
+function BankTable({ righe }) {
+  return <div data-testid="paypal-bank-table" style={tableWrap}><table style={table}><thead><tr>{['Data', 'Descrizione', 'Importo', 'Stato'].map(t => <th key={t} style={th}>{t}</th>)}</tr></thead><tbody>{righe.map(riga => <tr key={riga.id}><td style={td}>{dataIT(riga.data)}</td><td style={td}>{riga.descrizione || '-'}</td><td style={td}>{euro(riga.importo)}</td><td style={td}>{riga.riconciliato_paypal ? 'Riconciliato' : 'Da associare'}</td></tr>)}</tbody></table></div>;
+}
+
+function SourceDetails({ fonte }) {
+  return <><strong>{fonteLabel(fonte)}</strong><span>{fonte.periodo_inizio || '-'} - {fonte.periodo_fine || '-'}</span><span>{fonte.totale_transazioni || 0} transazioni</span><span>{fonte.totale_pagamenti || 0} pagamenti</span>{fonte.documento_presente === false && <span>Nessun file: fonte API</span>}</>;
+}
+
+function SourceCards({ fonti }) {
+  return <div data-testid="paypal-source-cards" style={cards}>{fonti.map(fonte => <article key={fonte.id} style={card}><SourceDetails fonte={fonte} /></article>)}</div>;
+}
+
+function SourceTable({ fonti }) {
+  return <div data-testid="paypal-source-table" style={tableWrap}><table style={table}><thead><tr>{['Fonte', 'Periodo', 'Transazioni', 'Pagamenti', 'Documento'].map(t => <th key={t} style={th}>{t}</th>)}</tr></thead><tbody>{fonti.map(fonte => <tr key={fonte.id}><td style={td}>{fonteLabel(fonte)}</td><td style={td}>{fonte.periodo_inizio || '-'} - {fonte.periodo_fine || '-'}</td><td style={td}>{fonte.totale_transazioni || 0}</td><td style={td}>{fonte.totale_pagamenti || 0}</td><td style={td}>{fonte.documento_presente === false ? 'Nessun file: fonte API' : 'Documento acquisito'}</td></tr>)}</tbody></table></div>;
+}
+
+const card = { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14, display: 'grid', gap: 6 };
+const cards = { display: 'grid', gap: 10 };
 const value = { display: 'block', marginTop: 6, fontSize: 24, color: '#0f2744' };
-const th = { padding: '10px 12px', textAlign: 'left', fontSize: 12, color: '#475569' };
-const td = { padding: '10px 12px', fontSize: 13, color: '#1e293b' };
+const buttonStyle = { minHeight: 40, padding: '8px 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', fontWeight: 700 };
+const inputStyle = { width: '100%', minHeight: 40, padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: 8 };
+const messageStyle = { padding: 12, color: '#64748b', borderRadius: 8, marginBottom: 12 };
+const tableWrap = { overflowX: 'auto', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10 };
+const table = { width: '100%', borderCollapse: 'collapse', minWidth: 760 };
+const th = { padding: '10px 12px', textAlign: 'left', fontSize: 12, color: '#475569', background: '#f8fafc' };
+const td = { padding: '10px 12px', fontSize: 13, color: '#1e293b', borderTop: '1px solid #e2e8f0' };

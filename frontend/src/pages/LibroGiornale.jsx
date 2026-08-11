@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 import { toast } from 'sonner';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { COLORS, useIsMobile } from '../lib/utils.js';
-import DocumentImportLink from '../components/DocumentImportLink';
 
 /**
  * Libro Giornale e Libro Mastro (art. 2216 c.c.) — registro UNICO
@@ -30,7 +29,6 @@ export default function LibroGiornale() {
   const [registerError, setRegisterError] = useState(null);
   const [espansa, setEspansa] = useState(null); // id scrittura espansa
   const [controllo60, setControllo60] = useState(null);
-  const fileInputRef = useRef(null);
 
   const carica = useCallback(async () => {
     setLoading(true);
@@ -88,39 +86,6 @@ export default function LibroGiornale() {
     }
   };
 
-  const importa = async file => {
-    try {
-      if (file.size > 25 * 1024 * 1024) {
-        throw new Error('File troppo grande: limite 25 MB');
-      }
-      const testo = await file.text();
-      const dump = JSON.parse(testo);
-      if (
-        dump?.tipo !== 'libro_giornale_gestionalecloud' ||
-        dump?.versione !== 1 ||
-        !Array.isArray(dump?.scritture)
-      ) {
-        throw new Error('File non riconosciuto: selezionare un export del Libro Giornale');
-      }
-      const conferma = window.confirm(
-        `Reimportare ${dump.scritture.length} scritture dal file ${file.name}?\n\n` +
-        'Saranno aggiunte soltanto quelle mancanti. Il server annullerà tutto se trova ' +
-        'scritture sbilanciate, protocolli duplicati o righe invalide.'
-      );
-      if (!conferma) return;
-      const res = await api.post('/api/contabilita-gestionale/libro-giornale/import', dump);
-      toast.success('Registro reimportato', {
-        description: `${res.data.ricreate} scritture ricreate, ${res.data.gia_presenti} già presenti`,
-      });
-      carica();
-    } catch (e) {
-      toast.error('Errore reimport', {
-        description:
-          e.response?.data?.detail?.messaggio || e.response?.data?.detail || e.message,
-      });
-    }
-  };
-
   const eur = v =>
     (v || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -153,11 +118,6 @@ export default function LibroGiornale() {
           disabled={loading || !giornale}>
           📥 Esporta registro {anno}
         </button>
-        <DocumentImportLink workflow="libro-giornale" data-testid="import-giornale"
-          style={btnGhost} title="Ricostruzione da export precedente (solo Admin)"
-          >
-          ♻️ Reimporta
-        </DocumentImportLink>
       </div>
 
       <p style={{ color: COLORS.textMuted, fontSize: 12, margin: '0 0 14px' }}>

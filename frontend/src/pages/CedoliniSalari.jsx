@@ -214,4 +214,68 @@ export default function CedoliniSalari() {
               <span><small style={{ display: 'block', color: '#64748b' }}>BUSTE</small><b>{formatEuroD(dipendente.anni.reduce((t, a) => t + a.busta, 0))}</b></span>
               <span><small style={{ display: 'block', color: '#64748b' }}>ACCONTI / BONIFICI</small><b>{formatEuroD(dipendente.anni.reduce((t, a) => t + a.acconti, 0))}</b></span>
               <span><small style={{ display: 'block', color: '#64748b' }}>SALDO</small><b style={{ color: saldoStyle(dipendente.anni.reduce((t, a) => t + a.saldo, 0)).color }}>{formatEuroD(dipendente.anni.reduce((t, a) => t + a.saldo, 0))}</b></span>
-              <ChevronDown size={21} color="#64748b
+              <ChevronDown size={21} color="#64748b" />
+            </summary>
+
+            <div style={{ padding: 15, display: 'grid', gap: 14 }}>
+              {dipendente.anni.map(anno => (
+                <section key={anno.anno} style={{ border: '1px solid #e2e8f0', borderRadius: 11, overflow: 'hidden' }}>
+                  <header style={{ display: 'grid', gridTemplateColumns: '110px repeat(3, minmax(130px, 1fr))', gap: 10, alignItems: 'center', padding: '12px 14px', background: '#0f2744', color: '#fff' }}>
+                    <strong style={{ fontSize: 18 }}>{anno.anno}</strong>
+                    <span><small style={{ opacity: .75 }}>Busta</small><b style={{ display: 'block' }}>{formatEuroD(anno.busta)}</b></span>
+                    <span><small style={{ opacity: .75 }}>Acconti / bonifici</small><b style={{ display: 'block' }}>{formatEuroD(anno.acconti)}</b></span>
+                    <span><small style={{ opacity: .75 }}>Saldo</small><b style={{ display: 'block' }}>{formatEuroD(anno.saldo)}</b></span>
+                  </header>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1040 }}>
+                      <thead style={{ background: '#eef2f7', color: '#475569' }}>
+                        <tr>
+                          {['Mese', 'Importo busta', 'Acconti / bonifici', 'Saldo', 'Cedolino', 'Bonifico', 'Stato banca'].map(titolo => (
+                            <th key={titolo} style={{ padding: '10px 12px', textAlign: ['Mese', 'Cedolino', 'Bonifico', 'Stato banca'].includes(titolo) ? 'left' : 'right', fontSize: 11 }}>{titolo}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {anno.mesi.map(mese => {
+                          const stileSaldo = saldoStyle(mese.saldo);
+                          return (
+                            <tr key={`${anno.anno}-${mese.meseOriginale}-${mese.tipoCedolino}`} style={{ borderTop: '1px solid #e2e8f0' }}>
+                              <td style={{ padding: '11px 12px', fontWeight: 800, color: '#0f2744' }}>{MESI[mese.mese] || `Mese ${mese.mese}`}</td>
+                              <td style={{ padding: '11px 12px', textAlign: 'right', fontWeight: 800 }}>{formatEuroD(mese.importoBusta)}</td>
+                              <td style={{ padding: '11px 12px', textAlign: 'right', fontWeight: 800 }}>{formatEuroD(mese.importoAcconti)}</td>
+                              <td style={{ padding: '11px 12px', textAlign: 'right' }}><span style={{ ...stileSaldo, borderRadius: 999, padding: '5px 9px', fontWeight: 850 }}>{formatEuroD(mese.saldo)}</span></td>
+                              <td style={{ padding: '8px 12px' }}>
+                                {mese.cedolinoDisponibile ? (
+                                  <button type="button" onClick={() => apriDocumento('cedolino', mese.rigaCedolino)} disabled={documentoInApertura === `cedolino-${mese.rigaCedolino.id}`} style={{ minHeight: 38, border: 0, borderRadius: 8, padding: '8px 10px', background: '#2563eb', color: '#fff', fontWeight: 750, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                    <FileText size={16} /> Vedi
+                                  </button>
+                                ) : <span style={{ color: '#64748b' }}>Non acquisito</span>}
+                              </td>
+                              <td style={{ padding: '8px 12px' }}>
+                                {mese.bonificoDisponibile ? (
+                                  <button type="button" onClick={() => apriDocumento('bonifico', mese.rigaBonifico)} disabled={documentoInApertura === `bonifico-${mese.rigaBonifico.id}`} style={{ minHeight: 38, border: 0, borderRadius: 8, padding: '8px 10px', background: '#7c3aed', color: '#fff', fontWeight: 750, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                    <Paperclip size={16} /> Vedi
+                                  </button>
+                                ) : <span style={{ color: '#64748b' }}>Non acquisito</span>}
+                              </td>
+                              <td style={{ padding: '11px 12px' }}>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: mese.riconciliato ? '#15803d' : '#b45309', fontWeight: 750 }}>
+                                  {mese.riconciliato ? <CheckCircle2 size={17} /> : <TriangleAlert size={17} />}
+                                  {mese.riconciliato ? 'Riconciliato con estratto conto' : mese.daRivedere ? 'Associazione da rivedere' : 'Da verificare in banca'}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              ))}
+            </div>
+          </details>
+        ))}
+      </section>
+    </main>
+  );
+}
