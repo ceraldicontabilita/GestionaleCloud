@@ -65,6 +65,7 @@ def test_esecuzione_salva_esito_accanto_all_originale(monkeypatch):
         doc = await db["documents_inbox"].find_one({"id": "v-1"})
         assert doc["pdf_data"] == originale
         assert doc["rielaborazione"]["success"] is True
+        assert doc["rielaborazione"]["stato"] == "rielaborato"
         assert doc["rielaborazione"]["risultato"]["numero_verbale"] == "V-1"
 
     asyncio.run(scenario())
@@ -88,5 +89,34 @@ def test_filtro_categoria_non_tocca_le_altre(monkeypatch):
         assert result["totale_documenti"] == 1
         assert "rielaborazione" not in await db["documents_inbox"].find_one({"id": "a"})
         assert "rielaborazione" in await db["documents_inbox"].find_one({"id": "b"})
+
+    asyncio.run(scenario())
+
+
+def test_formato_senza_parser_specifico_resta_da_verificare_non_errore(monkeypatch):
+    async def parser_finto(**kwargs):
+        assert kwargs["document_type"] == "auto"
+        return {
+            "success": False,
+            "detected_type": "altro",
+            "error": "Tipo documento non supportato: altro",
+        }
+
+    monkeypatch.setattr(modulo, "parse_document_with_ai", parser_finto)
+
+    async def scenario():
+        db = AsyncMongoMockClient()["rielaborazione-fallback"]
+        originale = _pdf_fake()
+        await db["documents_inbox"].insert_one({
+            "id": "ader-1", "document_type": "cartella_ader", "pdf_data": originale,
+        })
+        result = await RielaborazioneDocumentiService(db).rielabora(dry_run=False)
+        assert result["totale_errori"] == 0
+        assert result["totale_da_verificare"] == 1
+        assert result["categorie"]["cartella_ader"]["da_verificare"] == 1
+        doc = await db["documents_inbox"].find_one({"id": "ader-1"})
+        assert doc["pdf_data"] == originale
+        assert doc["rielaborazione"]["stato"] == "da_verificare"
+        assert doc["rielaborazione"]["parser_usato"] == "auto"
 
     asyncio.run(scenario())
