@@ -13,6 +13,14 @@ def _production_service():
     return services[0]
 
 
+def _environment_values(service):
+    return {
+        item["key"]: item.get("value")
+        for item in service.get("envVars", [])
+        if "value" in item
+    }
+
+
 def test_render_builds_backend_and_frontend_from_source():
     service = _production_service()
     build_command = service["buildCommand"]
@@ -29,3 +37,13 @@ def test_render_serves_the_combined_app_with_health_check():
 
     assert service["startCommand"] == "python -m app.process_supervisor"
     assert service["healthCheckPath"] == "/api/health"
+
+
+def test_render_pins_a_python_runtime_compatible_with_rapidocr():
+    service = _production_service()
+    python_version = (ROOT / ".python-version").read_text(encoding="utf-8").strip()
+    requirements = (ROOT / "backend" / "requirements.txt").read_text(encoding="utf-8")
+
+    assert _environment_values(service)["PYTHON_VERSION"] == python_version
+    assert tuple(map(int, python_version.split(".")[:2])) < (3, 13)
+    assert "rapidocr_onnxruntime==1.4.4" in requirements.splitlines()

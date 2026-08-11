@@ -25,6 +25,10 @@ services:
     startCommand: python -m app.process_supervisor
     healthCheckPath: /api/health
     envVars:
+      # rapidocr-onnxruntime 1.4.4 supporta Python < 3.13. Il pin evita che
+      # l'aggiornamento automatico del runtime Render interrompa i deploy.
+      - key: PYTHON_VERSION
+        value: "3.12.10"
       - key: PYTHONUTF8
         value: "1"
       - key: FAIL_FAST_SECRETS
