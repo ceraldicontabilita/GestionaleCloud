@@ -781,14 +781,23 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
 
   const bottoniRiga = mov => tipo === 'cassa' ? (
     <span style={{ display: 'inline-flex', gap: 7, whiteSpace: 'nowrap', alignItems: 'center' }}>
-      <button
-        onClick={() => setEditing(mov)}
-        title="Modifica"
-        aria-label="Modifica movimento"
-        style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: 8, padding: 0, cursor: 'pointer' }}
-      >
-        <Pencil size={18} />
-      </button>
+      {mov.non_modificabile ? (
+        <span
+          title="Dato aggiornato dalla prova SumUp archiviata; il movimento sorgente non viene riscritto"
+          style={{ color: '#0369a1', fontSize: 10.5, fontWeight: 800, whiteSpace: 'normal' }}
+        >
+          Dato live
+        </span>
+      ) : (
+        <button
+          onClick={() => setEditing(mov)}
+          title="Modifica"
+          aria-label="Modifica movimento"
+          style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: 8, padding: 0, cursor: 'pointer' }}
+        >
+          <Pencil size={18} />
+        </button>
+      )}
     </span>
   ) : null;
 

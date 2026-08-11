@@ -164,6 +164,8 @@ export default function Dashboard() {
   const cassa = primaNota?.cassa ?? null;
   const banca = primaNota?.banca ?? null;
   const sumup = primaNota?.sumup ?? null;
+  const coperturaCorrispettivi = costiRicavi?.copertura_corrispettivi ?? null;
+  const sumupCassaLive = primaNota?.sumup_cassa_live ?? null;
 
   // IVA: forma diversa fra mese (verifica) e anno (confronto completo).
   const ivaDaVersare = mese
@@ -338,7 +340,12 @@ export default function Dashboard() {
             {costiRicavi?.ricavi && (
               <Riga label="di cui corrispettivi" valore={costiRicavi.ricavi.corrispettivi} />
             )}
-            <Nota>Ricavi imponibili del periodo; IVA esclusa.</Nota>
+            <Nota>
+              Ricavi imponibili del periodo; IVA esclusa.
+              {coperturaCorrispettivi?.documenti > 0 && (
+                <> Fonte: {coperturaCorrispettivi.documenti} corrispettivi dal {coperturaCorrispettivi.dal} al {coperturaCorrispettivi.al}.</>
+              )}
+            </Nota>
           </CardBox>
 
           {/* ACQUISTI / COSTI */}
@@ -379,7 +386,12 @@ export default function Dashboard() {
                 <Riga label="Movimenti" valore={cassa.movimenti} raw />
               </>
             )}
-            <Nota>Saldo dei movimenti di cassa nel periodo.</Nota>
+            <Nota>
+              Saldo dei movimenti di cassa nel periodo.
+              {sumupCassaLive?.applicabile && (
+                <> La giornata SumUp corrente usa il dato live {formatEuro(sumupCassaLive.importo_corrente)} senza riscrivere la prova sorgente.</>
+              )}
+            </Nota>
           </CardBox>
 
           {/* BANCA */}

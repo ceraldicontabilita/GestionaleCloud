@@ -45,6 +45,10 @@ def test_dashboard_non_somma_fattura_iva_e_pagamento_cassa_due_volte(monkeypatch
         "id": "corr-1", "data": "2026-01-10", "totale": 122.0,
         "totale_imponibile": 100.0, "totale_iva": 22.0,
     }))
+    _run(db["corrispettivi"].insert_one({
+        "id": "corr-legacy", "data": "2026-01-11", "totale": 97.6,
+        "totale_imponibile": 0.0, "imponibile": 80.0, "iva": 17.6,
+    }))
     _run(db["invoices"].insert_many([
         {"id": "fatt-1", "invoice_date": "2026-01-12", "tipo_documento": "TD01",
          "total_amount": 61.0, "imponibile": 50.0, "iva": 11.0},
@@ -60,10 +64,13 @@ def test_dashboard_non_somma_fattura_iva_e_pagamento_cassa_due_volte(monkeypatch
 
     risultato = _run(controllo_gestione.get_analisi_costi_ricavi(anno=2026, mese=1))
 
-    assert risultato["ricavi"]["totale"] == 100.0
+    assert risultato["ricavi"]["totale"] == 180.0
     assert risultato["costi"]["acquisti_merce"] == 40.0
     assert risultato["costi"]["personale"] == 20.0
     assert risultato["costi"]["altre_uscite"] == 0.0
     assert risultato["costi"]["totale"] == 60.0
-    assert risultato["margine"]["importo"] == 40.0
+    assert risultato["margine"]["importo"] == 120.0
     assert risultato["criterio"] == "competenza_imponibile_senza_doppio_conteggio_pagamenti"
+    assert risultato["copertura_corrispettivi"] == {
+        "dal": "2026-01-10", "al": "2026-01-11", "documenti": 2,
+    }

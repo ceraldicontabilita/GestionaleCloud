@@ -11,6 +11,10 @@ import uuid
 
 from app.database import Database
 from app.services import conti_pos
+from app.services.prima_nota_sumup_projection import (
+    giorno_corrente_negozio,
+    leggi_proiezione_sumup_cassa,
+)
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA,
     COLLECTION_SALDI_INIZIALI,
@@ -196,6 +200,25 @@ async def get_prima_nota_stats(
     banca = banca_stats[0] if banca_stats else {"entrate": 0, "uscite": 0, "count": 0}
     sumup = sumup_stats[0] if sumup_stats else {"entrate": 0, "uscite": 0, "count": 0}
 
+    oggi = giorno_corrente_negozio()
+    oggi_compreso = (
+        (data_da is None or oggi >= data_da)
+        and (data_a is None or oggi <= data_a)
+    )
+    proiezione_sumup = {
+        "data": oggi,
+        "stato": "fuori_filtro",
+        "applicabile": False,
+        "delta": 0.0,
+    }
+    if oggi_compreso:
+        proiezione_sumup = await leggi_proiezione_sumup_cassa(db, oggi)
+        if proiezione_sumup.get("applicabile"):
+            delta = round(float(proiezione_sumup.get("delta") or 0), 2)
+            cassa["uscite"] = round(float(cassa.get("uscite") or 0) + delta, 2)
+            if proiezione_sumup.get("numero_righe_persistite") == 0:
+                cassa["count"] = int(cassa.get("count") or 0) + 1
+
     # La Dashboard espone il saldo dei movimenti dell'intervallo richiesto.
     # Non trascina automaticamente anni storici incompleti: un saldo di conto
     # richiede un riporto certificato e resta consultabile in Prima Nota.
@@ -231,6 +254,7 @@ async def get_prima_nota_stats(
         },
         "criterio": "movimenti_del_periodo_senza_riporti_storici",
         "saldo_conto_certificato": False,
+        "sumup_cassa_live": proiezione_sumup,
     }
 
 

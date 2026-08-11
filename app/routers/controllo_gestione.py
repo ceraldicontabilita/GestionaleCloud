@@ -61,10 +61,33 @@ async def get_analisi_costi_ricavi(
             "entity_status": {"$ne": "deleted"},
         }},
         {"$group": {"_id": None, "totale": {
-            "$sum": {"$ifNull": ["$totale_imponibile", 0]}
-        }}}
+            # Gli XML recenti usano ``totale_imponibile``; i documenti
+            # storici canonici usano ``imponibile``. Ignorare il secondo
+            # campo confrontava pochi giorni di ricavi con un anno di costi.
+            "$sum": {"$cond": [
+                {"$gt": [{"$ifNull": ["$totale_imponibile", 0]}, 0]},
+                "$totale_imponibile",
+                {"$cond": [
+                    {"$gt": [{"$ifNull": ["$imponibile", 0]}, 0]},
+                    "$imponibile",
+                    {"$subtract": [
+                        {"$ifNull": ["$totale", 0]},
+                        {"$ifNull": [
+                            "$totale_iva",
+                            {"$ifNull": ["$iva", 0]},
+                        ]},
+                    ]},
+                ]},
+            ]}
+        }, "prima_data": {"$min": "$data"}, "ultima_data": {"$max": "$data"},
+            "documenti": {"$sum": 1}}}
     ]).to_list(1)
     totale_corrispettivi = corrispettivi[0]["totale"] if corrispettivi else 0
+    copertura_corrispettivi = {
+        "dal": corrispettivi[0].get("prima_data") if corrispettivi else None,
+        "al": corrispettivi[0].get("ultima_data") if corrispettivi else None,
+        "documenti": int(corrispettivi[0].get("documenti") or 0) if corrispettivi else 0,
+    }
     
     # Ricavi = SOLO corrispettivi: `invoices` contiene solo fatture RICEVUTE,
     # le TD01/TD24/TD26 non sono fatture emesse — contarle nei ricavi
@@ -149,6 +172,7 @@ async def get_analisi_costi_ricavi(
         },
         "criterio": "competenza_imponibile_senza_doppio_conteggio_pagamenti",
         "fonti": ["corrispettivi", "invoices", "cedolini/prima_nota_salari"],
+        "copertura_corrispettivi": copertura_corrispettivi,
     }
 
 
