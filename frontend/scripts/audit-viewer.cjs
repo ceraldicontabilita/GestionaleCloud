@@ -96,14 +96,15 @@ async function testaViewport(browser, vp) {
   }
   await page.waitForTimeout(1500);
 
-  // La tabella coi documenti è nel tab "Tutti i Documenti" (di default è
-  // selezionato "Per Mittente").
-  await page.getByText('Tutti i Documenti', { exact: false }).first().click();
+  // /documenti apre il punto unico di caricamento. Il viewer appartiene
+  // all'Archivio: attraversiamo la stessa azione visibile usata dall'operatore.
+  await page.getByRole('link', { name: /Archivio documenti/i }).click();
   await page.waitForTimeout(500);
 
-  const bottoneVedi = page.locator(`[data-testid="view-pdf-${DOC_FINTO.id}"]`);
-  const trovato = await bottoneVedi.count();
-  if (!trovato) {
+  const bottoneVedi = page.getByRole('button', { name: 'Vedi', exact: true }).first();
+  try {
+    await bottoneVedi.waitFor({ state: 'visible', timeout: 10000 });
+  } catch {
     risultati.push({ ok: false, nota: 'bottone "Vedi" non trovato — il documento finto non è nella lista renderizzata' });
     await ctx.close();
     return risultati;
