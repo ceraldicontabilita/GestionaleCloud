@@ -1,9 +1,7 @@
 # Verifica persistente della produzione su impresasemplice.online.
 #
-# Obiettivo: dopo ogni modifica rilevante su main, ricostruire il frontend
-# esattamente dal sorgente del commit e aspettare che la produzione serva
-# lo stesso bundle. In questo modo la verifica non dipende da frontend/dist
-# committato e segue il comportamento reale di Render, che compila al deploy.
+# Dopo ogni modifica rilevante su main ricostruiamo il frontend dal sorgente
+# del commit e aspettiamo che la produzione serva lo stesso bundle.
 name: Verifica produzione
 
 on:
@@ -31,9 +29,7 @@ jobs:
       - name: Configura Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          node-version: 24
 
       - name: Ricostruisci il frontend del commit
         run: |
@@ -45,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          ATTESO=$(grep -o 'assets/index-[^"]*\.js' frontend/dist/index.html | head -1)
+          ATTESO=$(grep -o 'assets/index-[^\"]*\.js' frontend/dist/index.html | head -1)
           if [ -z "$ATTESO" ]; then
             echo "ERRORE: bundle frontend atteso non trovato dopo la build"
             exit 1
@@ -57,12 +53,10 @@ jobs:
           UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
           URL="https://impresasemplice.online/login"
 
-          # Render può impiegare diversi minuti per installazione, build e riavvio.
-          # Ritentiamo fino a circa 15 minuti prima di dichiarare il deploy non aggiornato.
           for i in $(seq 1 30); do
             BODY=$(curl -sS --compressed -A "$UA" -H 'Accept: text/html' --max-time 20 "$URL" || true)
             CODE=$(curl -sS -o /dev/null -w '%{http_code}' --compressed -A "$UA" -H 'Accept: text/html' --max-time 20 "$URL" || echo '000')
-            LIVE=$(printf '%s' "$BODY" | grep -o 'assets/index-[^"]*\.js' | head -1 || true)
+            LIVE=$(printf '%s' "$BODY" | grep -o 'assets/index-[^\"]*\.js' | head -1 || true)
 
             echo "Tentativo $i/30: HTTP $CODE — bundle live='$LIVE'"
 
@@ -81,11 +75,7 @@ jobs:
             sleep 30
           done
 
-          # Verifica che l'asset principale risponda realmente.
           curl -sSf --max-time 20 -o /dev/null "https://impresasemplice.online/$ATTESO"
-
-          # Verifica minima del backend. Non prova il commit backend specifico,
-          # ma impedisce di dichiarare riuscito un deploy con servizio non sano.
           curl -sSf --max-time 20 https://impresasemplice.online/api/health | head -c 500
           echo ""
           echo "VERIFICA PRODUZIONE COMPLETATA"
