@@ -4,7 +4,7 @@
 > Totale **1115 endpoint** in **114 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 665 · ext esterni = 88 · — da verificare = 362
+**Riepilogo uso:** ✓ frontend = 670 · ext esterni = 88 · — da verificare = 357
 
 ## AI Parser  (11)
 
@@ -956,12 +956,12 @@
 | GET | `/api/iva/dashboard/{anno}/{mese}` | ✓ | iva |
 | GET | `/api/iva/fatture` | ✓ | iva |
 | GET | `/api/iva/fatture/non-utilizzate` | ✓ | iva |
-| POST | `/api/iva/fatture/{fid}/correggi-periodo` | — | iva |
-| POST | `/api/iva/fatture/{fid}/escludi` | — | iva |
-| POST | `/api/iva/fatture/{fid}/includi` | — | iva |
-| POST | `/api/iva/fatture/{fid}/indetraibile` | — | iva |
-| POST | `/api/iva/fatture/{fid}/recupero-annuale` | — | iva |
-| POST | `/api/iva/fatture/{fid}/rinvia` | — | iva |
+| POST | `/api/iva/fatture/{fid}/correggi-periodo` | ✓ | iva |
+| POST | `/api/iva/fatture/{fid}/escludi` | ✓ | iva |
+| POST | `/api/iva/fatture/{fid}/includi` | ✓ | iva |
+| POST | `/api/iva/fatture/{fid}/indetraibile` | ✓ | iva |
+| POST | `/api/iva/fatture/{fid}/recupero-annuale` | ✓ | iva |
+| POST | `/api/iva/fatture/{fid}/rinvia` | ✓ | iva |
 | GET | `/api/iva/liquidazioni` | ✓ | iva |
 | POST | `/api/iva/liquidazioni/calcola` | ✓ | iva |
 | POST | `/api/iva/liquidazioni/{liq_id}/conferma` | ✓ | iva |
@@ -969,7 +969,7 @@
 | POST | `/api/iva/liquidazioni/{liq_id}/riapri` | ✓ | iva |
 | GET | `/api/iva/liquidazioni/{periodo}` | ✓ | iva |
 | POST | `/api/iva/ricalcola-attribuzione` | ✓ | iva |
-| GET | `/api/iva/ricalcola-attribuzione/ultimo` | ✓ | iva |
+| GET | `/api/iva/ricalcola-attribuzione/ultimo` | — | iva |
 | GET | `/api/iva/riepilogo-annuale/{anno}` | ✓ | iva |
 | GET | `/api/iva/versamento/{anno}/{mese}` | — | iva |
 
