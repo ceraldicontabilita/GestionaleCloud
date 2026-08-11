@@ -2614,9 +2614,8 @@ export default function GestioneAssegni() {
             ) : (
               <div>
                 <p style={{ margin: '0 0 12px', fontSize: 13, color: COLORS.textMuted }}>
-                  Questi assegni non hanno ancora prove sufficienti. Completa beneficiario e
-                  importo: l'applicazione li collegherà automaticamente quando trova la fattura
-                  o il movimento nell'estratto conto.
+                  Questi assegni non hanno ancora prove sufficienti. Apri la riga nella tabella,
+                  scegli il fornitore e poi la fattura: nessun collegamento viene deciso dal solo importo.
                 </p>
                 <TableWrap>
                   <Table>
@@ -2635,7 +2634,7 @@ export default function GestioneAssegni() {
                               <Td style={{ fontWeight: 600 }}>{importo}</Td>
                               <Td mono>{numero}</Td>
                               <Td align="center">
-                                <Badge variant="info">Associazione automatica</Badge>
+                                <Badge variant="warning">Da classificare nella tabella</Badge>
                               </Td>
                             </tr>
                           ))
@@ -2970,12 +2969,19 @@ export default function GestioneAssegni() {
                         )}
                       </span>
                     ) : assegno.stato === 'incassato' ? (
-                      <span
-                        style={{ color: COLORS.warning, fontWeight: 700 }}
-                        title="Nessuna fattura con numero/importo compatibili; il controllo viene ripetuto a ogni nuovo XML"
-                      >
-                        Nessuna fattura compatibile
-                      </span>
+                      <div style={{ display: 'grid', gap: 5 }}>
+                        <span style={{ color: COLORS.warning, fontWeight: 700 }}>
+                          Nessuna fattura collegata
+                        </span>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => startEdit(assegno)}
+                          data-testid={`choose-invoice-${assegno.id}`}
+                        >
+                          Scegli fattura
+                        </Button>
+                      </div>
                     ) : (
                       '-'
                     )
@@ -3010,16 +3016,26 @@ export default function GestioneAssegni() {
                           </div>
                         )}
                         {!assegno.numero_fattura && !assegno.data_fattura && assegno.stato === 'incassato' && (
-                          <div
-                            style={{ color: COLORS.warning, fontWeight: 700 }}
-                            title="Nessuna fattura con numero/importo compatibili; il controllo viene ripetuto a ogni nuovo XML"
-                          >
-                            Nessuna fattura compatibile
+                          <div style={{ display: 'grid', gap: 5 }}>
+                            <div style={{ color: COLORS.warning, fontWeight: 700 }}>
+                              Nessuna fattura collegata
+                            </div>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={event => {
+                                event.stopPropagation();
+                                startEdit(assegno);
+                              }}
+                              data-testid={`choose-invoice-${assegno.id}`}
+                            >
+                              Scegli fattura
+                            </Button>
                           </div>
                         )}
                         {assegno.associazione_ambigua && (
                           <div style={{ color: COLORS.warning, fontWeight: 700 }}>
-                            Attende dati univoci
+                            Più candidati: scegli manualmente
                           </div>
                         )}
                         {assegno.associazione_conflittuale && (

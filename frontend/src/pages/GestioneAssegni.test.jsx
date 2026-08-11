@@ -161,7 +161,8 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     await waitFor(() => expect(lista.querySelector('table')).not.toBeNull());
     expect(screen.getByText('Da ricavare dalla fattura')).toBeInTheDocument();
     expect(screen.getByText('Data EC mancante')).toBeInTheDocument();
-    expect(screen.getByText('Nessuna fattura compatibile')).toBeInTheDocument();
+    expect(screen.getByText('Nessuna fattura collegata')).toBeInTheDocument();
+    expect(screen.getByTestId('choose-invoice-a1')).toHaveTextContent('Scegli fattura');
     expect(screen.getByText('Non calcolata')).toBeInTheDocument();
   });
 
@@ -223,7 +224,7 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     ));
   });
 
-  it('non propone scelte manuali e attende dati univoci nei casi ambigui', async () => {
+  it('espone la scelta manuale senza collegare in automatico i casi ambigui', async () => {
     api.get.mockImplementation(rispostaPagina([
       { id: 'auto', numero: '0208770649', stato: 'incassato', importo: 977.38 },
       {
@@ -235,10 +236,11 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     renderPagina();
 
     await screen.findByTestId('assegni-table');
-    expect(screen.queryByTestId('fatture-auto')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('fatture-ambiguo')).not.toBeInTheDocument();
-    expect(screen.queryByText("Collega Fatture all'Assegno")).not.toBeInTheDocument();
-    expect(screen.getByText('Attende dati univoci')).toBeInTheDocument();
+    expect(screen.getByTestId('choose-invoice-auto')).toHaveTextContent('Scegli fattura');
+    expect(screen.getByTestId('choose-invoice-ambiguo')).toHaveTextContent('Scegli fattura');
+    expect(screen.getByText('Più candidati: scegli manualmente')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('choose-invoice-auto'));
+    expect(await screen.findByLabelText('Cerca e seleziona fornitore')).toBeInTheDocument();
   });
 
   it('riprocessa estratto conto e fatture senza aprire una scelta manuale', async () => {
@@ -264,7 +266,7 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     expect(await screen.findByTestId('riprocessamento-result')).toHaveTextContent(
       'Collegati: 1'
     );
-    expect(screen.queryByText("Collega Fatture all'Assegno")).not.toBeInTheDocument();
+    expect(screen.getByTestId('choose-invoice-a1')).toBeInTheDocument();
   });
 
   it('segnala i collegamenti storici che superano il totale fattura', async () => {

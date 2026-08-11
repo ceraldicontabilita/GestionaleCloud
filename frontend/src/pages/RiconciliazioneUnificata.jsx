@@ -51,6 +51,27 @@ const RENTAL_RECONCILIATION_TERMS = [
   'leaseplan',
 ];
 
+const BANK_ANOMALY_LABELS = {
+  riconciliato_senza_target:
+    'Segnato come riconciliato, ma senza una fattura, un F24, uno stipendio o un altro destinatario collegato.',
+  fingerprint_duplicato:
+    'Possibile duplicato: esiste un altro movimento con la stessa impronta bancaria.',
+  allocazione_non_quadrata:
+    'Le quote collegate non coincidono al centesimo con l\'importo del movimento.',
+};
+
+export function descriviAnomaliaBanca(motivo = {}) {
+  const descrizione = BANK_ANOMALY_LABELS[motivo.codice]
+    || 'Anomalia bancaria da verificare nel dettaglio.';
+  if (motivo.codice === 'allocazione_non_quadrata' && motivo.differenza_cents) {
+    return `${descrizione} Differenza: ${formatEuro(motivo.differenza_cents / 100)}.`;
+  }
+  if (motivo.codice === 'fingerprint_duplicato' && motivo.record_conservato_id) {
+    return `${descrizione} Movimento conservato: ${motivo.record_conservato_id}.`;
+  }
+  return descrizione;
+}
+
 export function isRentalReconciliationMovement(movement) {
   const haystack = [
     movement?.descrizione,
@@ -90,6 +111,7 @@ export default function RiconciliazioneUnificata() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [processing, setProcessing] = useState(null);
   const [loadError, setLoadError] = useState(null);
+  const [anomalyReport, setAnomalyReport] = useState(null);
 
   // Aggiorna URL quando cambia tab. Usa sempre il prefisso "/riconciliazione":
   // è l'unico effettivamente instradato in main.jsx — "/riconciliazione-unificata"
@@ -499,14 +521,7 @@ export default function RiconciliazioneUnificata() {
       const response = await api.get(
         `/api/operazioni-da-confermare/smart/analizza-anomalie?anno=${anno}`
       );
-      const report = response.data || {};
-      const preview = (report.anomalie || []).slice(0, 5)
-        .map(item => `${item.movimento_id}: ${item.motivi.map(m => m.codice).join(', ')}`)
-        .join('\n');
-      window.alert(
-        `Analisi in sola lettura: ${report.totale_anomalie || 0} anomalie su ` +
-        `${report.righe_esaminate || 0} movimenti.${preview ? `\n\n${preview}` : ''}`
-      );
+      setAnomalyReport(response.data || {});
     } catch (e) {
       toast.error('Analisi anomalie non riuscita', {
         description: e.response?.data?.detail || e.message,
@@ -715,6 +730,77 @@ export default function RiconciliazioneUnificata() {
           🔍 Filtri {showFilters ? '▲' : '▼'}
         </button>
       </div>
+
+      {anomalyReport && (
+        <section
+          aria-label="Risultato analisi anomalie bancarie"
+          data-testid="bank-anomaly-report"
+          style={{
+            marginBottom: 16,
+            padding: 14,
+            background: '#fff7ed',
+            border: '1px solid #fed7aa',
+            borderRadius: 8,
+            color: '#7c2d12',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <strong>
+                {anomalyReport.totale_anomalie || 0} movimenti da verificare su{' '}
+                {anomalyReport.righe_esaminate || 0} esaminati
+              </strong>
+              <div style={{ marginTop: 3, fontSize: 12 }}>
+                Analisi in sola lettura: nessun movimento e nessun collegamento sono stati modificati.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAnomalyReport(null)}
+              aria-label="Chiudi risultato analisi"
+              style={{ border: 0, background: 'transparent', color: '#7c2d12', cursor: 'pointer' }}
+            >
+              Chiudi
+            </button>
+          </div>
+          {(anomalyReport.anomalie || []).length > 0 ? (
+            <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+              {(anomalyReport.anomalie || []).slice(0, 20).map(item => (
+                <div
+                  key={item.movimento_id}
+                  style={{ padding: 10, background: '#fff', border: '1px solid #ffedd5', borderRadius: 6 }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: 12 }}>
+                    {formatDateIT(item.data) || 'Data non disponibile'} · {item.movimento_id}
+                  </div>
+                  {(item.motivi || []).map((motivo, index) => (
+                    <div key={`${motivo.codice}-${index}`} style={{ marginTop: 4, fontSize: 12 }}>
+                      {descriviAnomaliaBanca(motivo)}
+                    </div>
+                  ))}
+                </div>
+              ))}
+              {(anomalyReport.anomalie || []).length > 20 && (
+                <div style={{ fontSize: 12 }}>
+                  Sono mostrate le prime 20 anomalie. Cerca il movimento nell'indice operazioni.
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => navigate('/riconciliazione/movimenti-banca')}
+                style={{
+                  justifySelf: 'start', padding: '7px 11px', borderRadius: 6,
+                  background: '#0f2744', color: '#fff', border: 0, cursor: 'pointer', fontWeight: 700,
+                }}
+              >
+                Apri indice operazioni
+              </button>
+            </div>
+          ) : (
+            <div style={{ marginTop: 10, fontSize: 12 }}>Nessuna anomalia rilevata nel campione esaminato.</div>
+          )}
+        </section>
+      )}
 
       {/* Pannello Filtri Avanzati */}
       {showFilters && (

@@ -28,6 +28,9 @@ describe('sicurezza della pagina Riconciliazione', () => {
 
   it('conserva la fonte bancaria e sostituisce le azioni di massa con analisi read-only', () => {
     expect(source).toContain('Analizza anomalie');
+    expect(source).toContain('bank-anomaly-report');
+    expect(source).toContain('Segnato come riconciliato, ma senza una fattura');
+    expect(source).not.toContain('`Analisi in sola lettura: ${report.totale_anomalie');
     expect(source).toContain('Escludi dalla coda');
     expect(source).not.toContain('btn-elimina-movimento');
     expect(source).not.toContain('/api/estratto-conto-movimenti/${movId}');
