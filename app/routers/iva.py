@@ -85,9 +85,17 @@ def _arricchisci_fattura_iva(doc: Dict[str, Any]) -> Dict[str, Any]:
     riga["iva_esposta"] = round(_float(doc.get("iva_documento") or doc.get("iva")), 2)
     riga["iva_detraibile"] = round(_iva_detraibile_fattura(doc), 2)
     riga["percentuale_detraibilita_iva"] = _percentuale_detraibilita_fattura(doc)
+    stato_classificazione = str(doc.get("stato_classificazione") or "").lower()
+    classificazione_esplicita = bool(doc.get("classificato_da")) or stato_classificazione in {
+        "classificata", "classificato", "confermata", "confermato", "verificata", "verificato",
+    }
     riga["detraibilita_valutata"] = (
-        doc.get("iva_detraibile") is not None
-        or doc.get("percentuale_detraibilita_iva") is not None
+        doc.get("percentuale_detraibilita_iva") is not None
+        or classificazione_esplicita
+        or (
+            doc.get("iva_detraibile") is not None
+            and doc.get("stato_detrazione_iva") not in {None, "DA_VERIFICARE"}
+        )
     )
     return riga
 
