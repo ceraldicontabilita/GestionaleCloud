@@ -37,6 +37,12 @@ export default function StrumentiHub() {
   );
 
   useEffect(() => {
+    if (location.pathname.includes('/strumenti/movimenti-banca')) {
+      navigate('/riconciliazione/movimenti-banca', { replace: true });
+    }
+  }, [location.pathname, navigate]);
+
+  useEffect(() => {
     const t = getTabFromPath(location.pathname);
     setActiveTab(t);
     setVisitedTabs(prev => {
