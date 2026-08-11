@@ -255,9 +255,13 @@ def categorizza_spesa(
         "riaddebito tassa automobilistic", "tassa regionale", "tassa automobilistica regionale"
     ]
     if any(kw in desc_lower for kw in bollo_keywords):
-        # Escludi il bollo fiscale sulle fatture (€2)
+        # Il bollo fiscale della fattura non e un canone di noleggio e non
+        # deve alterare il totale dei canoni. Resta un costo accessorio
+        # distinto dalla tassa automobilistica del veicolo.
         if "imposta di bollo" in desc_lower and importo <= 2.1:
-            return ("canoni", importo_finale, metadata)
+            metadata["tipo_costo"] = "bollo_fiscale_fattura"
+            metadata["descrizione_ricerca"] = "Bollo fiscale fattura"
+            return ("costi_extra", importo_finale, metadata)
         metadata["descrizione_ricerca"] = "Bollo Auto"
         return ("bollo", importo_finale, metadata)
     

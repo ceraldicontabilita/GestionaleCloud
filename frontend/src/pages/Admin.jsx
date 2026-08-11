@@ -63,11 +63,6 @@ export default function Admin() {
   const [paroleChiave, setParoleChiave] = useState({});
   const [newKeyword, setNewKeyword] = useState({ categoria: 'generale', parola: '' });
 
-  // Google Drive — import fatture
-  const [driveStatus, setDriveStatus] = useState(null);
-  const [syncingDrive, setSyncingDrive] = useState(false);
-  const [driveMsg, setDriveMsg] = useState(null);
-
   // Sincronizzazione dati
   const [syncStatus, setSyncStatus] = useState(null);
   const [syncLoading, setSyncLoading] = useState(false);
@@ -98,7 +93,6 @@ export default function Admin() {
     loadDashboardSummary(false);
     loadEmailAccounts();
     loadParoleChiave();
-    loadDriveStatus();
 
     // Polling silenzioso ogni 5 minuti
     const interval = setInterval(() => loadDashboardSummary(true), 5 * 60 * 1000);
@@ -144,74 +138,6 @@ export default function Admin() {
       setParoleChiave(r.data || {});
     } catch (e) {
       console.error('Error loading parole chiave:', e);
-    }
-  }
-
-  async function loadDriveStatus() {
-    try {
-      const r = await api.get('/api/fatture/drive/status');
-      setDriveStatus(r.data || null);
-    } catch (e) {
-      console.error('Error loading Drive status:', e);
-    }
-  }
-
-  async function syncDriveNow() {
-    setSyncingDrive(true);
-    setDriveMsg(null);
-    try {
-      // Il backend avvia il sync in background e risponde subito:
-      // qui si fa polling dello stato finché il giro non è finito
-      // (niente più timeout HTTP con tanti file da elaborare).
-      const r = await api.post('/api/fatture/drive/sync');
-      const d = r.data || {};
-      if (d.status === 'not_configured' || d.status === 'error') {
-        setDriveMsg({ ok: false, testo: d.message || 'Sincronizzazione non riuscita' });
-        return;
-      }
-      const inizio = Date.now();
-      let stato = null;
-      while (Date.now() - inizio < 15 * 60 * 1000) {
-        await new Promise(res => setTimeout(res, 4000));
-        try {
-          const s = await api.get('/api/fatture/drive/status');
-          stato = s.data || null;
-          if (stato && !stato.sync_running) break;
-        } catch {
-          // errore transitorio: riprova al prossimo giro
-        }
-      }
-      if (stato) setDriveStatus(stato);
-      if (stato?.last_error) {
-        setDriveMsg({ ok: false, testo: `Sincronizzazione fallita: ${stato.last_error}` });
-      } else if (stato?.sync_running) {
-        setDriveMsg({
-          ok: true,
-          testo: 'Sincronizzazione ancora in corso: la card si aggiornerà al prossimo caricamento.',
-        });
-      } else {
-        const lr = stato?.last_result || {};
-        const dettagliErrori = (lr.details || [])
-          .slice(0, 3)
-          .map(x => `${x.file}: ${x.error}`)
-          .join(' · ');
-        setDriveMsg({
-          ok: (lr.errors || 0) === 0,
-          testo:
-            `Sync completato: ${lr.imported || 0} importate, ${lr.duplicates || 0} già presenti, ${lr.errors || 0} errori (su ${lr.total || 0} file trovati)` +
-            (dettagliErrori ? ` — ${dettagliErrori}` : ''),
-        });
-      }
-    } catch (e) {
-      setDriveMsg({
-        ok: false,
-        testo:
-          e.response?.data?.detail ||
-          e.response?.data?.message ||
-          `Errore durante la sincronizzazione (${e.response?.status || e.message})`,
-      });
-    } finally {
-      setSyncingDrive(false);
     }
   }
 
@@ -838,144 +764,8 @@ export default function Admin() {
             )}
           </Card>
 
-          {/* Anno di importazione attivo — governa i canali Drive (fatture + corrispettivi) sotto */}
-          <AnnoImportazioneCard />
+          {/* In Admin resta soltanto lo stato tecnico: i dati operativi sono in Prima Nota. */}
           <PannelloSumUp />
-
-          {/* CARD GOOGLE DRIVE — import fatture */}
-          <div data-testid="drive-fatture-card">
-            <Card
-              title={
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  📂 Google Drive — Import Fatture XML
-                  {driveStatus?.configured ? (
-                    <Badge variant="success">Configurato</Badge>
-                  ) : (
-                    <Badge variant="warning">Non configurato</Badge>
-                  )}
-                </span>
-              }
-              actions={
-                <Button
-                  variant="primary"
-                  size="sm"
-                  data-testid="drive-sync-btn"
-                  onClick={syncDriveNow}
-                  disabled={syncingDrive || !driveStatus?.configured}
-                >
-                  {syncingDrive ? '⏳ Sincronizzazione...' : '🔄 Sincronizza ora'}
-                </Button>
-              }
-            >
-              <p style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 16 }}>
-                Importa automaticamente le fatture XML e P7M (firmate) dalla cartella Google Drive configurata
-                (anche ogni 15 minuti in automatico). Le credenziali (cartella + service account)
-                vanno impostate come variabili d'ambiente sul backend.
-              </p>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
-                  gap: 12,
-                  marginBottom: 16,
-                }}
-              >
-                <StatCard
-                  accent="none"
-                  label="Cartella (ID)"
-                  value={
-                    <span style={{ fontSize: 13, wordBreak: 'break-all' }}>
-                      {driveStatus?.folder_id || 'non impostata'}
-                    </span>
-                  }
-                />
-                <StatCard
-                  accent="none"
-                  label="Ultimo sync"
-                  value={
-                    <span style={{ fontSize: 14 }}>
-                      {driveStatus?.last_sync
-                        ? new Date(driveStatus.last_sync).toLocaleString('it-IT').replaceAll('/', '-')
-                        : 'mai eseguito'}
-                    </span>
-                  }
-                />
-                <StatCard
-                  accent="none"
-                  label="Fatture importate (totale)"
-                  value={<span style={{ fontSize: 14 }}>{driveStatus?.total_imported ?? 0}</span>}
-                />
-              </div>
-
-              {driveStatus?.credenziali_errore && (
-                <div
-                  style={{
-                    marginBottom: 12,
-                    padding: '8px 12px',
-                    borderRadius: BORDER_RADIUS.md,
-                    background: COLORS.dangerLight,
-                    border: `1px solid ${COLORS.dangerLight}`,
-                    fontSize: 13,
-                    color: COLORS.danger,
-                  }}
-                >
-                  ✗ Problema credenziali: {driveStatus.credenziali_errore}
-                </div>
-              )}
-
-              {driveStatus?.last_result && (
-                <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 12 }}>
-                  Ultimo giro: {driveStatus.last_result.total ?? 0} file trovati,{' '}
-                  {driveStatus.last_result.imported ?? 0} importati,{' '}
-                  {driveStatus.last_result.duplicates ?? 0} già presenti,{' '}
-                  {driveStatus.last_result.errors ?? 0} errori.
-                  {(driveStatus.last_result.details || []).length > 0 && (
-                    <ul style={{ margin: '6px 0 0', paddingLeft: 18, color: COLORS.danger }}>
-                      {driveStatus.last_result.details.map((d, i) => (
-                        <li key={i} style={{ wordBreak: 'break-all' }}>
-                          <code style={{ fontSize: 11 }}>{d.file}</code>: {d.error}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-
-              {driveMsg && (
-                <div
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: BORDER_RADIUS.md,
-                    background: driveMsg.ok ? COLORS.successLight : COLORS.dangerLight,
-                    border: `1px solid ${driveMsg.ok ? COLORS.successLight : COLORS.dangerLight}`,
-                    fontSize: 13,
-                    color: driveMsg.ok ? COLORS.success : COLORS.danger,
-                  }}
-                >
-                  {driveMsg.ok ? '✓ ' : '✗ '}
-                  {driveMsg.testo}
-                </div>
-              )}
-
-              {!driveStatus?.configured && (
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    background: COLORS.primarySoft,
-                    borderRadius: BORDER_RADIUS.md,
-                    fontSize: 12,
-                    color: COLORS.primary,
-                  }}
-                >
-                  Imposta <code>GOOGLE_DRIVE_FATTURE_FOLDER_ID</code> e{' '}
-                  <code>GOOGLE_DRIVE_SA_JSON</code> tra le variabili d'ambiente del backend, poi
-                  riavvia il servizio.
-                </div>
-              )}
-            </Card>
-          </div>
         </div>
       )}
 
@@ -1098,114 +888,6 @@ export default function Admin() {
 // flusso attivo (Prima Nota/scadenzario/alert/magazzino), gli altri anni
 // vengono archiviati per sola consultazione. Un'unica impostazione
 // condivisa (non una per canale), come scelto dall'utente.
-function AnnoImportazioneCard() {
-  const [anno, setAnno] = useState(null);
-  const [salvando, setSalvando] = useState(false);
-  const [caricando, setCaricando] = useState(true);
-  const [importando, setImportando] = useState(false);
-  const [esitoImport, setEsitoImport] = useState(null);
-
-  const annoCorrente = new Date().getFullYear();
-  const opzioniAnno = Array.from({ length: 6 }, (_, i) => annoCorrente - 4 + i);
-
-  useEffect(() => {
-    api
-      .get('/api/config-import/anno')
-      .then(res => setAnno(res.data.anno))
-      .catch(() => setAnno(annoCorrente))
-      .finally(() => setCaricando(false));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const salva = async nuovoAnno => {
-    setSalvando(true);
-    try {
-      await api.put('/api/config-import/anno', { anno: nuovoAnno });
-      setAnno(nuovoAnno);
-      toast.success(`Anno di importazione impostato su ${nuovoAnno}`);
-    } catch (e) {
-      toast.error('Errore salvataggio: ' + (e.response?.data?.detail || e.message));
-    } finally {
-      setSalvando(false);
-    }
-  };
-
-  const importaAnno = async () => {
-    setImportando(true);
-    setEsitoImport(null);
-    try {
-      const res = await api.post('/api/config-import/importa-anno', { anno });
-      setEsitoImport(res.data);
-      toast.success(`Import ${anno} completato`);
-    } catch (e) {
-      toast.error('Errore import: ' + (e.response?.data?.detail || e.message));
-    } finally {
-      setImportando(false);
-    }
-  };
-
-  return (
-    <Card title="📅 Import per anno (Drive)">
-      <p style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 12 }}>
-        Seleziona l'anno e premi "Importa": il sistema legge la data di ogni file nelle
-        cartelle Drive (fatture e corrispettivi) e importa nel flusso contabile attivo
-        (Prima Nota, scadenzario, alert) <strong>solo i documenti di quell'anno</strong>.
-        Gli altri anni vengono archiviati per sola consultazione; i documenti dell'anno
-        scelto già finiti in archivio in passato vengono ripresi e importati anche loro.
-        Non riguarda il caricamento manuale via UI, sempre attivo.
-      </p>
-      {caricando ? (
-        <span style={{ fontSize: 13, color: COLORS.textMuted }}>Caricamento...</span>
-      ) : (
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Select
-            value={anno ?? ''}
-            onChange={e => salva(parseInt(e.target.value, 10))}
-            disabled={salvando || importando}
-            data-testid="select-anno-importazione-attivo"
-            style={{ minWidth: 140 }}
-          >
-            {opzioniAnno.map(a => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </Select>
-          <Button
-            onClick={importaAnno}
-            disabled={salvando || importando || !anno}
-            data-testid="importa-anno-btn"
-          >
-            {importando ? `Import ${anno} in corso...` : `📥 Importa ${anno ?? ''} da Drive`}
-          </Button>
-        </div>
-      )}
-      {esitoImport && (
-        <div
-          style={{
-            marginTop: 12, fontSize: 12, background: '#f0fdf4',
-            border: '1px solid #bbf7d0', borderRadius: 8, padding: 10,
-          }}
-          data-testid="esito-import-anno"
-        >
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>Esito import {esitoImport.anno}</div>
-          <div>
-            Drive fatture: {esitoImport.sync_fatture?.importate ?? esitoImport.sync_fatture?.imported ?? esitoImport.sync_fatture?.skipped ?? JSON.stringify(esitoImport.sync_fatture)}
-          </div>
-          <div>
-            Drive corrispettivi: {esitoImport.sync_corrispettivi?.importati ?? esitoImport.sync_corrispettivi?.imported ?? esitoImport.sync_corrispettivi?.skipped ?? JSON.stringify(esitoImport.sync_corrispettivi)}
-          </div>
-          <div>
-            Ripresi dall'archivio: {esitoImport.promozione_archivio?.corrispettivi_promossi ?? 0} corrispettivi,{' '}
-            {esitoImport.promozione_archivio?.fatture_promosse ?? 0} fatture
-            {(esitoImport.promozione_archivio?.fatture_senza_xml ?? 0) > 0 &&
-              ` (${esitoImport.promozione_archivio.fatture_senza_xml} fatture senza XML salvato, non riprese)`}
-          </div>
-        </div>
-      )}
-    </Card>
-  );
-}
-
 function PuliziaDriveFattureCard() {
   const confirm = useConfirm();
   const [folder, setFolder] = useState('');

@@ -425,27 +425,6 @@ async def check_scadenze_f24_task():
         logger.error(f"📅 [SCHEDULER] Errore controllo scadenze F24: {e}")
 
 
-async def assistente_operativo_task():
-    """Aggiorna memoria, attese e anomalie senza toccare i domini contabili."""
-
-    async def _run():
-        from app.database import Database
-        from app.services.operational_learning_engine import OperationalLearningEngine
-
-        result = await OperationalLearningEngine(Database.get_db()).run_sentinel()
-        logger.info("[ASSISTENTE-OPERATIVO] scansione completata: %s", result)
-        return result
-
-    try:
-        return await _esegui_con_lease_distribuito(
-            "assistente_operativo_giornaliero",
-            _run,
-        )
-    except Exception:
-        logger.exception("[ASSISTENTE-OPERATIVO] scansione fallita")
-        return None
-
-
 async def check_fornitori_duplicati_task():
     """
     Task eseguito ogni giorno alle 6:00.
@@ -1284,16 +1263,6 @@ def start_scheduler():
         id="f24_scadenze_check",
         name="Controllo Scadenze F24 (ogni giorno ore 8:00)",
         replace_existing=True
-    )
-
-    # Memoria operativa e controlli attesi/reali. Il job e' idempotente e
-    # protetto da lease distribuita; non effettua pagamenti o riconciliazioni.
-    scheduler.add_job(
-        assistente_operativo_task,
-        CronTrigger(hour=8, minute=15),
-        id="assistente_operativo_giornaliero",
-        name="Assistente operativo fail-closed (ogni giorno ore 8:15)",
-        replace_existing=True,
     )
 
     # Task Verifica retroattiva trattenute verbali - ogni giorno alle 8:30.

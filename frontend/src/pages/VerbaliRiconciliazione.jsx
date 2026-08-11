@@ -19,7 +19,7 @@ import {
 
 const STATI_VERBALE = {
   da_scaricare: { label: 'Da Scaricare', variant: 'warning', icon: '📧' },
-  salvato: { label: 'Salvato', variant: 'primary', icon: '💾' },
+  salvato: { label: 'Documento salvato', variant: 'neutral', icon: '📄' },
   fattura_ricevuta: { label: 'Fattura Ricevuta', variant: 'info', icon: '📄' },
   pagato: { label: 'Pagato', variant: 'success', icon: '💳' },
   pagato_attesa_fattura: {
@@ -28,7 +28,8 @@ const STATI_VERBALE = {
     icon: '⏳',
   },
   riconciliato: { label: 'Riconciliato', variant: 'success', icon: '✅' },
-  sconosciuto: { label: 'Sconosciuto', variant: 'neutral', icon: '❓' },
+  da_verificare: { label: 'Da verificare', variant: 'warning', icon: '⚠️' },
+  sconosciuto: { label: 'Da verificare', variant: 'warning', icon: '⚠️' },
 };
 
 export default function VerbaliRiconciliazione() {
@@ -171,8 +172,35 @@ export default function VerbaliRiconciliazione() {
   };
 
   const handleRiconcilia = async numeroVerbale => {
+    setError('');
+    setSuccessMsg('');
     try {
-      const res = await api.post(`/api/verbali-riconciliazione/riconcilia/${numeroVerbale}`);
+      const encoded = encodeURIComponent(numeroVerbale);
+      const preview = await api.post(
+        `/api/verbali-riconciliazione/riconcilia/${encoded}?dry_run=true`
+      );
+      const proposte = preview.data.proposte || [];
+      const blocchi = preview.data.motivi_blocco || [];
+      if (proposte.length === 0) {
+        setError(
+          `Verbale ${numeroVerbale}: ${blocchi.join(' ') || 'nessuna prova univoca trovata; nessun dato modificato.'}`
+        );
+        return;
+      }
+      const confermato = await confirm({
+        title: `Conferma collegamenti ${numeroVerbale}`,
+        message: [
+          ...proposte.map(item => `• ${item.descrizione}`),
+          ...blocchi.map(item => `Blocco: ${item}`),
+          'Il documento originale e gli importi non verificati non saranno modificati.',
+        ].join('\n'),
+        variant: 'warning',
+      });
+      if (!confermato) return;
+
+      const res = await api.post(
+        `/api/verbali-riconciliazione/riconcilia/${encoded}?dry_run=false`
+      );
       setSuccessMsg(`Verbale ${numeroVerbale}: ${res.data.azioni?.join(', ') || 'Nessuna azione'}`);
       loadDashboard();
       loadVerbali();
@@ -224,6 +252,26 @@ export default function VerbaliRiconciliazione() {
   };
 
   const getStatoInfo = stato => STATI_VERBALE[stato] || STATI_VERBALE['sconosciuto'];
+
+  const renderImportoVerbale = verbale => {
+    if (verbale.importo_verificato && verbale.importo !== null && verbale.importo !== undefined) {
+      return formatEuro(verbale.importo);
+    }
+    if (verbale.importo_candidato_presente) {
+      return <Badge variant="warning">OCR da verificare</Badge>;
+    }
+    return '-';
+  };
+
+  const renderDataVerbale = verbale => {
+    if (verbale.data_verbale_verificata && verbale.data_verbale) {
+      return formatDateIT(verbale.data_verbale);
+    }
+    if (verbale.data_verbale_candidato_presente) {
+      return <Badge variant="warning">Data da verificare</Badge>;
+    }
+    return '-';
+  };
 
   return (
     <PageLayout
@@ -492,7 +540,12 @@ export default function VerbaliRiconciliazione() {
               value={dashboard.riepilogo?.per_stato?.riconciliato?.count || 0}
               accent="success"
             />
-            <StatCard label="Totale Importo" value={formatEuro(dashboard.riepilogo?.totale_importo)} accent="info" />
+            <StatCard
+              label="Importi verificati"
+              value={formatEuro(dashboard.riepilogo?.totale_importo)}
+              helper={`${dashboard.riepilogo?.importi_da_verificare || 0} importi OCR esclusi`}
+              accent="info"
+            />
           </div>
         )}
 
@@ -632,7 +685,7 @@ export default function VerbaliRiconciliazione() {
                           </Td>
                           <Td>
                             <span style={{ fontSize: 12, color: COLORS.gray[600] }}>
-                              {v.data_verbale ? formatDateIT(v.data_verbale) : '-'}
+                              {renderDataVerbale(v)}
                             </span>
                           </Td>
                           <Td>
@@ -668,7 +721,7 @@ export default function VerbaliRiconciliazione() {
                             )}
                           </Td>
                           <Td align="right" mono style={{ fontWeight: '600' }}>
-                            {v.importo ? formatEuro(v.importo) : '-'}
+                            {renderImportoVerbale(v)}
                           </Td>
                           <Td align="center">
                             <Badge variant={statoInfo.variant}>
@@ -686,7 +739,7 @@ export default function VerbaliRiconciliazione() {
                               disabled={v.stato === 'riconciliato'}
                               data-testid={`btn-riconcilia-${v.numero_verbale}`}
                             >
-                              🔄 Riconcilia
+                              🔎 Cerca prove
                             </Button>
                           </Td>
                         </tr>
@@ -753,7 +806,7 @@ export default function VerbaliRiconciliazione() {
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: COLORS.textMuted }}>Importo Verbale:</span>
                     <strong style={{ color: COLORS.danger }}>
-                      {selectedVerbale.importo ? formatEuro(selectedVerbale.importo) : '-'}
+                      {renderImportoVerbale(selectedVerbale)}
                     </strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -764,7 +817,7 @@ export default function VerbaliRiconciliazione() {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: COLORS.textMuted }}>Data Verbale:</span>
-                    <strong>{formatDateIT(selectedVerbale.data_verbale) || '-'}</strong>
+                    <strong>{renderDataVerbale(selectedVerbale)}</strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: COLORS.textMuted }}>Data Pagamento:</span>
@@ -820,7 +873,7 @@ export default function VerbaliRiconciliazione() {
                   disabled={selectedVerbale.stato === 'riconciliato'}
                   style={{ flex: 1 }}
                 >
-                  🔄 Riconcilia Automatico
+                  🔎 Cerca prove e proponi
                 </Button>
                 <Button
                   variant="secondary"

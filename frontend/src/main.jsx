@@ -45,7 +45,6 @@ const GestioneRiservata = lazy(() => import("./pages/GestioneRiservata.jsx"));
 const DettaglioVerbale = lazy(() => import("./pages/DettaglioVerbale.jsx"));
 const ImpostazioniF24Email = lazy(() => import("./pages/ImpostazioniF24Email.jsx"));
 const ImpostazioniAI = lazy(() => import("./pages/ImpostazioniAI.jsx"));
-const AssistenteCeraldi = lazy(() => import("./pages/AssistenteCeraldi.jsx"));
 const MappaGestionale = lazy(() => import("./pages/MappaGestionale.jsx"));
 const AgentiPage = lazy(() => import("./pages/Agenti.jsx"));
 const LearningMachine = lazy(() => import("./pages/LearningMachine.jsx"));
@@ -99,7 +98,6 @@ const router = createBrowserRouter([
       { path: "agenti", element: <LazyPage><AgentiPage /></LazyPage> },
       { path: "impostazioni-f24-email", element: <LazyPage><ImpostazioniF24Email /></LazyPage> },
       { path: "impostazioni-ai", element: <LazyPage><ImpostazioniAI /></LazyPage> },
-      { path: "assistente", element: <RequireAdmin><LazyPage><AssistenteCeraldi /></LazyPage></RequireAdmin> },
       { path: "integrazioni/*", element: <LazyPage><IntegrazioniHub /></LazyPage> },
       { path: "admin/*", element: <RequireAdmin><LazyPage><AdminHub /></LazyPage></RequireAdmin> },
       { path: "utenti", element: <RequireAdmin><LazyPage><Utenti /></LazyPage></RequireAdmin> },

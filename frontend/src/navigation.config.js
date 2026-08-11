@@ -57,7 +57,6 @@ export const NAV_ALTRO = [
   { to: '/salari', label: 'Cedolini paga', Icon: Users },
   { to: '/strumenti', label: 'Strumenti', Icon: Wrench },
   { to: null, href: APP_DIPENDENTI_URL, label: 'HR', Icon: Users, external: true },
-  { to: '/assistente', label: 'Assistente Ceraldi', Icon: Bot, adminOnly: true },
   { to: '/impostazioni-ai', label: 'Assistente AI', Icon: Bot, adminOnly: true },
   { to: '/utenti', label: 'Utenti', Icon: Users, adminOnly: true },
   { to: '/admin', label: 'Admin', Icon: Settings, adminOnly: true },
