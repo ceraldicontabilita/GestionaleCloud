@@ -10,6 +10,12 @@ import logging
 
 from app.database import Database, Collections
 from app.services.scritture_contabili import scrivi_movimento
+from app.services.prima_nota_sumup_projection import (
+    CATEGORIA_SUMUP_CASSA,
+    applica_proiezione_ai_movimenti,
+    giorno_corrente_negozio,
+    leggi_proiezione_sumup_cassa,
+)
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA,
     calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota, arricchisci_movimenti_fattura
@@ -60,6 +66,35 @@ async def list_prima_nota_cassa(
     # §6.4: saldo tramite la funzione UNICA (segno/riporto/saldo finale uniformi)
     saldi = await aggrega_saldo_prima_nota(db, COLLECTION_PRIMA_NOTA_CASSA, query, anno)
 
+    # La riga SumUp della giornata puo' essere uno snapshot registrato prima
+    # della chiusura. Sovrapponiamo in SOLA LETTURA l'evidenza API corrente,
+    # senza riscrivere il documento contabile. Con piu righe candidate la
+    # proiezione si blocca: nessun accorpamento per somiglianza/importo.
+    oggi = giorno_corrente_negozio()
+    giorno_compreso = (
+        (anno is None or int(oggi[:4]) == anno)
+        and (data_da is None or oggi >= data_da)
+        and (data_a is None or oggi <= data_a)
+    )
+    filtro_compreso = (
+        (tipo is None or tipo == "uscita")
+        and (categoria is None or categoria == CATEGORIA_SUMUP_CASSA)
+    )
+    proiezione_sumup = {
+        "data": oggi,
+        "stato": "fuori_filtro",
+        "applicabile": False,
+        "delta": 0.0,
+    }
+    if giorno_compreso and filtro_compreso:
+        proiezione_sumup = await leggi_proiezione_sumup_cassa(db, oggi)
+        if proiezione_sumup.get("applicabile"):
+            delta = round(float(proiezione_sumup.get("delta") or 0), 2)
+            movimenti = applica_proiezione_ai_movimenti(movimenti, proiezione_sumup)
+            saldi["totale_uscite"] = round(float(saldi["totale_uscite"]) + delta, 2)
+            saldi["saldo_anno"] = round(float(saldi["saldo_anno"]) - delta, 2)
+            saldi["saldo"] = round(float(saldi["saldo"]) - delta, 2)
+
     return {
         "movimenti": movimenti,
         "saldo": saldi["saldo"],
@@ -69,7 +104,8 @@ async def list_prima_nota_cassa(
         "totale_entrate": saldi["totale_entrate"],
         "totale_uscite": saldi["totale_uscite"],
         "count": len(movimenti),
-        "anno": anno
+        "anno": anno,
+        "sumup_live": proiezione_sumup,
     }
 
 

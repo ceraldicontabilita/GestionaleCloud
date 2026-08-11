@@ -69,6 +69,12 @@ describe('Conto SumUp separato dalla Banca', () => {
     expect(source).not.toContain('/api/prima-nota/sposta-movimento');
     expect(source).toContain("{tipo === 'cassa' && (");
   });
+
+  it('rende non modificabile la proiezione live SumUp', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/pages/PrimaNota.jsx'), 'utf8');
+    expect(source).toContain('mov.non_modificabile');
+    expect(source).toContain('Dato live');
+  });
 });
 
 describe('Icone categorie Prima Nota', () => {

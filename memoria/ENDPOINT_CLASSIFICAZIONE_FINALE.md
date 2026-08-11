@@ -901,7 +901,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `DELETE /api/prima-nota/banca/{movimento_id}` | prima_nota_module.banca | sì | — | — | — | sì | tenere | in uso: FE |
 | `PUT /api/prima-nota/banca/{movimento_id}` | prima_nota_module.banca | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/prima-nota/banca/{movimento_id}/fattura` | prima_nota_module.banca | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/prima-nota/cassa` | prima_nota_module.cassa | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/prima-nota/cassa` | prima_nota_module.cassa | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota/cassa` | prima_nota_module.cassa | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/prima-nota/cassa/analisi-movimenti-bancari-errati` | prima_nota_module.cassa | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/cassa/crea-entrata-da-corrispettivo` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
