@@ -3,16 +3,16 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 190
+**Totale file analizzati:** 196
 
 | Classificazione | File |
 |---|---:|
 | ENTRYPOINT | 3 |
-| ROUTE_ATTIVA | 29 |
-| COMPONENTE_USATO | 92 |
+| ROUTE_ATTIVA | 28 |
+| COMPONENTE_USATO | 93 |
 | MODALE_USATO | 3 |
 | HOOK_USATO | 3 |
-| TEST_ONLY | 38 |
+| TEST_ONLY | 44 |
 | DINAMICO_DA_VERIFICARE | 22 |
 | ORFANO_ELIMINABILE | 0 |
 
@@ -56,7 +56,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | File | Classificazione | Importato da (n. file) |
 |---|---|---:|
 | `frontend/src/App.jsx` | ENTRYPOINT | 1 |
-| `frontend/src/api.js` | COMPONENTE_USATO | 102 |
+| `frontend/src/api.js` | COMPONENTE_USATO | 103 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/AssociaAssegnoFattura.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/AssociaMovimentoBanca.jsx` | COMPONENTE_USATO | 1 |
@@ -65,6 +65,8 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/CopyLinkButton.jsx` | COMPONENTE_USATO | 5 |
 | `frontend/src/components/DocumentImportLink.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/DocumentViewerModal.jsx` | MODALE_USATO | 8 |
+| `frontend/src/components/DriveImportControls.jsx` | COMPONENTE_USATO | 2 |
+| `frontend/src/components/DriveImportControls.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/components/ErrorBoundary.jsx` | COMPONENTE_USATO | 3 |
 | `frontend/src/components/ErrorBoundary.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/components/ExportButton.jsx` | COMPONENTE_USATO | 1 |
@@ -74,7 +76,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/LinkedEvidencePanel.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ModalFattura.jsx` | MODALE_USATO | 7 |
 | `frontend/src/components/NotificationBell.jsx` | DINAMICO_DA_VERIFICARE | 0 |
-| `frontend/src/components/PageLayout.jsx` | COMPONENTE_USATO | 44 |
+| `frontend/src/components/PageLayout.jsx` | COMPONENTE_USATO | 43 |
 | `frontend/src/components/PannelloSumUp.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/PannelloSumUp.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/components/Portal.jsx` | COMPONENTE_USATO | 1 |
@@ -138,12 +140,13 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/main.jsx` | ENTRYPOINT | 0 |
 | `frontend/src/navigation.config.js` | ENTRYPOINT | 0 |
 | `frontend/src/pages/Admin.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/pages/AdminOperationalBoundary.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/Agenti.jsx` | ROUTE_ATTIVA | 2 |
 | `frontend/src/pages/Agenti.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/ArchivioBonifici.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/ArchivioFattureRicevute.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/pages/ArchivioFattureRicevute.test.jsx` | TEST_ONLY | 0 |
-| `frontend/src/pages/AssistenteCeraldi.jsx` | ROUTE_ATTIVA | 1 |
+| `frontend/src/pages/AssistenteCeraldiRemoved.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/BatchProcessor.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/BatchReprocessing.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/Bilancio.jsx` | COMPONENTE_USATO | 2 |
@@ -204,6 +207,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/MappaGestionale.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/MittentiEmail.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/Mutui.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/pages/NoleggioAuto.architecture.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/NoleggioAuto.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/PaginaNonTrovata.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/Pianificazione.jsx` | COMPONENTE_USATO | 1 |
@@ -216,7 +220,8 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/RegoleCategorizzazione.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/RiconciliazionePaypal.jsx` | COMPONENTE_USATO | 3 |
 | `frontend/src/pages/RiconciliazionePaypal.test.jsx` | TEST_ONLY | 0 |
-| `frontend/src/pages/RiconciliazioneUnificata.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/pages/RiconciliazioneUnificata.jsx` | COMPONENTE_USATO | 2 |
+| `frontend/src/pages/RiconciliazioneUnificata.rentalScope.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/RiconciliazioneUnificata.safety.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/Ritenute.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/Scadenze.jsx` | ROUTE_ATTIVA | 1 |
@@ -224,6 +229,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/pages/Utenti.jsx` | ROUTE_ATTIVA | 1 |
 | `frontend/src/pages/UtileObiettivo.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/VerbaliRiconciliazione.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/pages/VerbaliRiconciliazione.safety.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/pages/VerificaCoerenza.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/VerificaMovimentiBanca.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/pages/Visure.jsx` | COMPONENTE_USATO | 1 |

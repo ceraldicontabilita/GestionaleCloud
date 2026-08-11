@@ -1098,7 +1098,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/verbali-riconciliazione/dashboard` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `GET /api/verbali-riconciliazione/lista` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/verbali-riconciliazione/pulisci-duplicati` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
-| `POST /api/verbali-riconciliazione/riconcilia/{numero_verbale}` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `POST /api/verbali-riconciliazione/riconcilia/{numero_verbale}` | verbali_riconciliazione | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `POST /api/verbali-riconciliazione/scan-email` | verbali_riconciliazione | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/verbali-riconciliazione/scan-fatture-verbali` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/verbali-riconciliazione/scan-gmail-attendibili` | verbali_riconciliazione | — | sì | — | — | sì | tenere | in uso: scheduler |
