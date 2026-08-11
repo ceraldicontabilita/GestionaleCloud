@@ -1,6 +1,7 @@
 # Audit consolidamento ERP — 2026-08-11
 
 Branch di lavoro: `audit/consolidamento-erp-2026-08-11`
+PR draft: `#175`
 
 ## Obiettivi vincolanti
 
@@ -10,7 +11,7 @@ Branch di lavoro: `audit/consolidamento-erp-2026-08-11`
 4. Distinguere sempre documento, disposizione, pagamento, movimento bancario e riconciliazione.
 5. Nessuna associazione ambigua diventa definitiva: usare `Da verificare`/dati provvisori.
 6. Un evento economico non deve essere duplicato perché esistono più documenti collegati.
-7. Audit pagina-per-pagina di tutti i controlli UI e riduzione dell'architettura da circa 63 pagine a circa 40 pagine operative reali.
+7. Audit pagina-per-pagina di tutti i controlli UI e riduzione dell'architettura da circa 63 pagine/componenti operativi a circa 40 superfici funzionali reali.
 
 ## Classificazione di ogni controllo UI
 
@@ -35,15 +36,43 @@ Ogni pagina deve ricevere una classificazione:
 
 Per ogni azione: `Pagina -> controllo -> handler -> endpoint -> servizio -> database -> effetti secondari -> duplicazioni -> decisione -> test`.
 
-## Evidenze iniziali verificate
+## Baseline architetturale verificata
+
+### Router reale
+
+`frontend/src/main.jsx` mostra che il progetto ha già iniziato una strategia di consolidamento tramite HUB. Le route canoniche principali sono gestite da:
+
+- DashboardHub
+- FattureHub
+- FornitoriHub
+- PrimaNotaHub
+- VeicoliHub
+- ContabilitaHub
+- DocumentiHub
+- StrumentiHub
+- IntegrazioniHub
+- AdminHub
+- RiconciliazioneHub
+
+A queste si aggiungono pagine standalone ancora esposte direttamente, tra cui Inserimento Rapido, Scadenze, Ritenute, Gestione Riservata, Dettaglio Verbale, Impostazioni F24 Email, Impostazioni AI, Assistente Ceraldi, Mappa Gestionale, Agenti, Learning Machine, Gestione IVA, Fatture Estere Verifica, Cedolini e Situazione Fiscale.
+
+**Conclusione:** il numero "63 pagine" non coincide con 63 route top-level. Una parte rilevante sono componenti/pagine legacy caricati dentro gli HUB. La riduzione corretta deve quindi misurare le **superfici funzionali realmente visibili all'utente**, non soltanto il numero di file `.jsx`.
 
 ### Navigazione
 
 `frontend/src/navigation.config.js` è la fonte unica per desktop e mobile. La riduzione delle pagine va eseguita partendo da questa configurazione, senza creare menu paralleli.
 
+### Documenti / Drive
+
+`frontend/src/pages/hub/DocumentiHub.jsx` esponeva il bottone `Sincronizza Drive`, collegato a `POST /api/documenti/drive/sync`.
+
+**Correzione applicata:** rimosso il bottone e lo stato UI di sincronizzazione; all'apertura dell'hub viene caricato il catalogo Drive e, se sono presenti cartelle con parser automatico, viene avviata la sincronizzazione senza intervento utente.
+
 ### F24 Email Sync
 
-`frontend/src/App.jsx` importa `F24EmailSync`, mantiene `showF24Sync` e renderizza un popup. La ricerca di `setShowF24Sync` mostra al momento riferimenti solo nello stesso file; va verificato come infrastruttura potenzialmente morta e comunque incompatibile con la regola "sincronizzazione ordinaria senza bottone/popup".
+`frontend/src/App.jsx` importava `F24EmailSync`, manteneva lo stato `showF24Sync` e renderizzava un popup. La ricerca di `setShowF24Sync` trovava riferimenti soltanto nello stesso file e nessun punto che impostasse lo stato a `true`.
+
+**Correzione applicata:** rimossi import, stato e render del popup morto/manuale da `App.jsx`. Il servizio/componente non viene cancellato in questa fase perché va prima verificato se è richiamato da altri flussi amministrativi o scheduler.
 
 ### Import distribuiti
 
@@ -78,10 +107,11 @@ Sono già stati individuati riferimenti di sincronizzazione in: `DocumentiHub`, 
 | ID | Area | Problema | Decisione | Stato |
 |---|---|---|---|---|
 | A-001 | Import | Più punti UI di importazione | Centralizzare in `ImportDocumenti` | IN ANALISI |
-| A-002 | Sync | Sincronizzazioni manuali sparse | Automatizzare carico/scheduler | IN ANALISI |
-| A-003 | App | `F24EmailSync` popup/stato apparentemente non attivato | Verificare e rimuovere UI morta/manuale | CONFERMATO DA RICERCA |
-| A-004 | Navigazione | Troppe pagine operative | Consolidare a ~40 | IN ANALISI |
+| A-002 | Sync / Documenti | `Sincronizza Drive` manuale | Auto-sync all'apertura di `DocumentiHub` | APPLICATO, DA TESTARE |
+| A-003 | App / F24 | Popup `F24EmailSync` morto/manuale | Rimuovere infrastruttura UI non attivabile | APPLICATO, DA TESTARE |
+| A-004 | Navigazione | Troppe superfici operative/componenti legacy | Consolidare a ~40 superfici funzionali | IN ANALISI |
 | A-005 | Documenti | Rischio duplicazione evento economico tra documenti collegati | Audit end-to-end | IN ANALISI |
+| A-006 | Router | Molte pagine sono già componenti interni a HUB, non route autonome | Misurare pagine per funzione visibile | CONFERMATO |
 
 ## Criterio di chiusura
 
