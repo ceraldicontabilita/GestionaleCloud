@@ -1,356 +1,210 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../api';
 import { toast } from 'sonner';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { PageLayout } from '../components/PageLayout';
-import {
-  RefreshCw,
-  Play,
-  AlertTriangle,
-  CheckCircle,
-  Loader2,
-  FileText,
-  Users,
-} from 'lucide-react';
+import { AlertTriangle, CheckCircle, FileText, Loader2, Play, RefreshCw } from 'lucide-react';
+
+const etichetta = valore => String(valore || 'non_classificato')
+  .replaceAll('_', ' ')
+  .replaceAll('-', ' ')
+  .replace(/\b\w/g, c => c.toUpperCase());
 
 export default function BatchReprocessing() {
   const confirm = useConfirm();
-  const [preview, setPreview] = useState(null);
-  const [status, setStatus] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [polling, setPolling] = useState(false);
+  const [anteprima, setAnteprima] = useState(null);
+  const [stato, setStato] = useState(null);
+  const [categoria, setCategoria] = useState('');
+  const [caricamento, setCaricamento] = useState(false);
+  const [controlloStato, setControlloStato] = useState(false);
 
-  const loadPreview = useCallback(async () => {
+  const caricaAnteprima = useCallback(async () => {
     try {
       const res = await api.get('/api/batch-reprocess/preview');
-      setPreview(res.data);
+      setAnteprima(res.data);
     } catch (err) {
-      console.error('Errore caricamento preview:', err);
+      console.error('Errore caricamento anteprima rielaborazione:', err);
+      toast.error('Impossibile leggere i documenti disponibili per la rielaborazione');
     }
   }, []);
 
-  const loadStatus = useCallback(async () => {
+  const caricaStato = useCallback(async () => {
     try {
       const res = await api.get('/api/batch-reprocess/status');
-      setStatus(res.data);
+      setStato(res.data);
       return res.data;
     } catch (err) {
-      console.error('Errore caricamento status:', err);
+      console.error('Errore caricamento stato rielaborazione:', err);
       return null;
     }
   }, []);
 
   useEffect(() => {
-    loadPreview();
-    loadStatus();
-  }, [loadPreview, loadStatus]);
+    caricaAnteprima();
+    caricaStato();
+  }, [caricaAnteprima, caricaStato]);
 
-  // Polling quando il job è in corso
   useEffect(() => {
-    let interval;
-    if (polling) {
-      interval = setInterval(async () => {
-        const s = await loadStatus();
-        if (s && !s.running) {
-          setPolling(false);
-        }
-      }, 3000);
-    }
-    return () => clearInterval(interval);
-  }, [polling, loadStatus]);
+    if (!controlloStato) return undefined;
+    const timer = setInterval(async () => {
+      const s = await caricaStato();
+      if (s && !s.running) {
+        setControlloStato(false);
+        caricaAnteprima();
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [controlloStato, caricaStato, caricaAnteprima]);
 
-  const startReprocessing = async (dryRun = true, type = 'all') => {
-    setLoading(true);
+  const categorie = useMemo(
+    () => Object.entries(anteprima?.categorie || {}).sort((a, b) => b[1] - a[1]),
+    [anteprima],
+  );
+
+  const avvia = async (simulazione) => {
+    setCaricamento(true);
     try {
-      let endpoint = '/api/batch-reprocess/start';
-      if (type === 'f24') endpoint = '/api/batch-reprocess/f24-only';
-      if (type === 'cedolini') endpoint = '/api/batch-reprocess/cedolini-only';
-
-      await api.post(`${endpoint}?dry_run=${dryRun}`);
-      setPolling(true);
-      await loadStatus();
+      const params = new URLSearchParams({ dry_run: String(simulazione) });
+      if (categoria) params.set('categoria', categoria);
+      await api.post(`/api/batch-reprocess/start?${params.toString()}`);
+      toast.success(simulazione ? 'Simulazione avviata' : 'Rielaborazione avviata');
+      setControlloStato(true);
+      await caricaStato();
     } catch (err) {
-      console.error('Errore avvio:', err);
-      toast.error(err.response?.data?.detail || 'Errore avvio riprocessamento');
+      toast.error(err.response?.data?.detail || 'Errore avvio rielaborazione documenti');
     } finally {
-      setLoading(false);
+      setCaricamento(false);
     }
   };
 
+  const avviaReale = async () => {
+    const nome = categoria ? etichetta(categoria) : 'tutti i documenti';
+    const ok = await confirm({
+      title: 'Rielabora documenti',
+      message: `Rielaborare ${nome}? Il documento originale non viene sostituito; il nuovo esito viene salvato accanto all'originale.`,
+      variant: 'warning',
+    });
+    if (ok) avvia(false);
+  };
+
+  const risultato = stato?.result || null;
+
   return (
     <PageLayout
-      title="Riprocessamento Batch"
-      subtitle="Riprocessa F24 e Cedolini con il parser migliorato"
+      title="Rielaborazione documenti"
+      subtitle="Rilegge gli originali con i parser correnti, per tutte le categorie presenti in archivio"
       icon={<RefreshCw size={24} />}
     >
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Preview */}
-        {preview && (
-          <div className="bg-white rounded-xl shadow-sm border p-6">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <FileText size={20} />
-              Documenti da Riprocessare
-            </h3>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="bg-blue-50 rounded-lg p-4 text-center">
-                <div className="text-3xl font-bold text-blue-700">{preview.f24_totale || 0}</div>
-                <div className="text-gray-600">F24</div>
-              </div>
-              <div className="bg-green-50 rounded-lg p-4 text-center">
-                <div className="text-3xl font-bold text-green-700">
-                  {preview.cedolini_totale || 0}
-                </div>
-                <div className="text-gray-600">Cedolini</div>
-              </div>
-              <div className="bg-purple-50 rounded-lg p-4 text-center">
-                <div className="text-3xl font-bold text-purple-700">{preview.totale || 0}</div>
-                <div className="text-gray-600">Totale</div>
-              </div>
+      <div className="max-w-5xl mx-auto space-y-6">
+        <section className="bg-white rounded-xl shadow-sm border p-6">
+          <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
+            <div>
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <FileText size={20} /> Documenti disponibili
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Le categorie vengono lette dall'archivio: non esiste più una lista fissa limitata a F24 e cedolini.
+              </p>
             </div>
-
-            {/* Dettaglio collezioni */}
-            <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <h4 className="font-semibold text-gray-700 mb-1">F24 per collezione:</h4>
-                {Object.entries(preview.f24 || {}).map(([coll, count]) => (
-                  <div key={coll} className="flex justify-between text-gray-600">
-                    <span>{coll}</span>
-                    <span className="font-mono">{count}</span>
-                  </div>
-                ))}
-              </div>
-              <div>
-                <h4 className="font-semibold text-gray-700 mb-1">Cedolini per collezione:</h4>
-                {Object.entries(preview.cedolini || {}).map(([coll, count]) => (
-                  <div key={coll} className="flex justify-between text-gray-600">
-                    <span>{coll}</span>
-                    <span className="font-mono">{count}</span>
-                  </div>
-                ))}
-              </div>
+            <div className="text-right">
+              <div className="text-3xl font-bold text-slate-800">{anteprima?.totale || 0}</div>
+              <div className="text-xs text-gray-500">documenti rielaborabili</div>
             </div>
           </div>
-        )}
 
-        {/* Status */}
-        {status && (
-          <div
-            className={`rounded-xl border p-6 ${
-              status.running
-                ? 'bg-yellow-50 border-yellow-200'
-                : status.error
-                  ? 'bg-red-50 border-red-200'
-                  : status.result
-                    ? 'bg-green-50 border-green-200'
-                    : 'bg-white'
-            }`}
+          <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="categoria-rielaborazione">
+            Ambito
+          </label>
+          <select
+            id="categoria-rielaborazione"
+            value={categoria}
+            onChange={e => setCategoria(e.target.value)}
+            className="w-full min-h-11 border rounded-lg px-3 bg-white"
           >
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              {status.running ? (
-                <Loader2 size={20} className="animate-spin" />
-              ) : status.error ? (
-                <AlertTriangle size={20} className="text-red-500" />
-              ) : status.result ? (
-                <CheckCircle size={20} className="text-green-500" />
-              ) : (
-                <RefreshCw size={20} />
-              )}
-              Stato Job
-            </h3>
+            <option value="">Tutte le categorie ({anteprima?.totale || 0})</option>
+            {categorie.map(([nome, totale]) => (
+              <option key={nome} value={nome}>{etichetta(nome)} ({totale})</option>
+            ))}
+          </select>
 
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="font-medium">Stato:</span>
-                <span
-                  className={`px-2 py-1 rounded text-sm ${
-                    status.running
-                      ? 'bg-yellow-200 text-yellow-800'
-                      : status.error
-                        ? 'bg-red-200 text-red-800'
-                        : status.result
-                          ? 'bg-green-200 text-green-800'
-                          : 'bg-gray-200 text-gray-800'
-                  }`}
-                >
-                  {status.progress || 'Inattivo'}
-                </span>
-              </div>
-
-              {status.error && <div className="text-red-600 mt-2">Errore: {status.error}</div>}
-
-              {status.result && (
-                <div className="mt-4 space-y-3">
-                  <div className="text-sm text-gray-600">
-                    {status.result.dry_run && (
-                      <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded mr-2">
-                        DRY RUN - Nessuna modifica salvata
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-4 gap-4 text-center">
-                    <div className="bg-white rounded p-3 shadow-sm">
-                      <div className="text-xl font-bold text-blue-600">
-                        {status.result.f24_success || 0}
-                      </div>
-                      <div className="text-xs text-gray-500">F24 OK</div>
-                    </div>
-                    <div className="bg-white rounded p-3 shadow-sm">
-                      <div className="text-xl font-bold text-red-600">
-                        {status.result.f24_errors || 0}
-                      </div>
-                      <div className="text-xs text-gray-500">F24 Errori</div>
-                    </div>
-                    <div className="bg-white rounded p-3 shadow-sm">
-                      <div className="text-xl font-bold text-green-600">
-                        {status.result.cedolini_success || 0}
-                      </div>
-                      <div className="text-xs text-gray-500">Cedolini OK</div>
-                    </div>
-                    <div className="bg-white rounded p-3 shadow-sm">
-                      <div className="text-xl font-bold text-red-600">
-                        {status.result.cedolini_errors || 0}
-                      </div>
-                      <div className="text-xs text-gray-500">Cedolini Errori</div>
-                    </div>
-                  </div>
-
-                  <div className="text-center text-lg font-semibold mt-4">
-                    Totale: {status.result.totale_successi || 0} /{' '}
-                    {status.result.totale_processati || 0} processati con successo
-                  </div>
-
-                  {status.result.errors?.length > 0 && (
-                    <details className="mt-4">
-                      <summary className="cursor-pointer text-red-600 font-medium">
-                        Mostra {status.result.errors?.length || 0} errori
-                      </summary>
-                      <div className="mt-2 max-h-40 overflow-y-auto text-sm bg-red-50 p-3 rounded">
-                        {(status.result.errors || []).map((err, i) => (
-                          <div key={i} className="mb-1 pb-1 border-b border-red-100">
-                            [{err.type}] {err.collection}: {err.error}
-                          </div>
-                        ))}
-                      </div>
-                    </details>
-                  )}
-                </div>
-              )}
-            </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-4">
+            {categorie.map(([nome, totale]) => (
+              <button
+                type="button"
+                key={nome}
+                onClick={() => setCategoria(nome)}
+                className={`text-left rounded-lg border px-3 py-2 ${categoria === nome ? 'border-slate-700 bg-slate-50' : 'border-slate-200 bg-white'}`}
+              >
+                <span className="font-medium">{etichetta(nome)}</span>
+                <span className="float-right font-mono text-gray-500">{totale}</span>
+              </button>
+            ))}
           </div>
+        </section>
+
+        {stato && (
+          <section className={`rounded-xl border p-6 ${stato.running ? 'bg-yellow-50 border-yellow-200' : stato.error ? 'bg-red-50 border-red-200' : risultato ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
+            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+              {stato.running ? <Loader2 size={20} className="animate-spin" /> : stato.error ? <AlertTriangle size={20} /> : risultato ? <CheckCircle size={20} /> : <RefreshCw size={20} />}
+              Stato rielaborazione
+            </h3>
+            <div className="text-sm font-medium">{stato.progress || 'Inattiva'}</div>
+            {stato.error && <div className="mt-2 text-red-700">{stato.error}</div>}
+
+            {risultato && (
+              <div className="mt-4 space-y-3">
+                {risultato.dry_run && (
+                  <span className="inline-block px-2 py-1 rounded bg-orange-100 text-orange-800 text-xs font-semibold">
+                    SIMULAZIONE: nessun dato salvato
+                  </span>
+                )}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+                  <div className="bg-white rounded p-3"><b className="text-xl block">{risultato.totale_documenti || 0}</b><span className="text-xs text-gray-500">Trovati</span></div>
+                  <div className="bg-white rounded p-3"><b className="text-xl block">{risultato.totale_processati || 0}</b><span className="text-xs text-gray-500">Processati</span></div>
+                  <div className="bg-white rounded p-3"><b className="text-xl block text-green-700">{risultato.totale_successi || 0}</b><span className="text-xs text-gray-500">Riletti</span></div>
+                  <div className="bg-white rounded p-3"><b className="text-xl block text-red-700">{risultato.totale_errori || 0}</b><span className="text-xs text-gray-500">Da verificare</span></div>
+                </div>
+                {Object.keys(risultato.categorie || {}).length > 0 && (
+                  <details>
+                    <summary className="cursor-pointer font-medium">Risultati per categoria</summary>
+                    <div className="mt-2 grid gap-1 text-sm">
+                      {Object.entries(risultato.categorie).map(([nome, dati]) => (
+                        <div key={nome} className="flex justify-between bg-white rounded px-3 py-2">
+                          <span>{etichetta(nome)}</span>
+                          <span>{dati.successi || 0} riusciti · {dati.errori || 0} da verificare</span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+            )}
+          </section>
         )}
 
-        {/* Azioni */}
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <h3 className="text-lg font-semibold mb-4">Avvia Riprocessamento</h3>
-
-          <div className="space-y-4">
-            {/* Test Mode */}
-            <div className="p-4 bg-blue-50 rounded-lg">
-              <h4 className="font-medium text-blue-800 mb-2">Modalità Test (DRY RUN)</h4>
-              <p className="text-sm text-blue-600 mb-3">
-                Esegue il riprocessamento senza salvare le modifiche. Usa per verificare quanti
-                documenti verrebbero aggiornati.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => startReprocessing(true, 'all')}
-                  disabled={loading || status?.running}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                >
-                  <Play size={16} />
-                  Test Tutti
-                </button>
-                <button
-                  onClick={() => startReprocessing(true, 'f24')}
-                  disabled={loading || status?.running}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
-                >
-                  <FileText size={16} />
-                  Test F24
-                </button>
-                <button
-                  onClick={() => startReprocessing(true, 'cedolini')}
-                  disabled={loading || status?.running}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
-                >
-                  <Users size={16} />
-                  Test Cedolini
-                </button>
-              </div>
+        <section className="bg-white rounded-xl shadow-sm border p-6">
+          <h3 className="text-lg font-semibold mb-4">Azioni</h3>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="rounded-lg bg-blue-50 p-4">
+              <h4 className="font-semibold text-blue-900">Simulazione</h4>
+              <p className="text-sm text-blue-700 mt-1 mb-3">Rilegge i documenti e mostra l'esito senza salvare modifiche.</p>
+              <button onClick={() => avvia(true)} disabled={caricamento || stato?.running} className="flex items-center gap-2 px-4 py-2 bg-blue-700 text-white rounded-lg disabled:opacity-50">
+                <Play size={16} /> Simula rielaborazione
+              </button>
             </div>
-
-            {/* Production Mode */}
-            <div className="p-4 bg-orange-50 rounded-lg border border-orange-200">
-              <h4 className="font-medium text-orange-800 mb-2 flex items-center gap-2">
-                <AlertTriangle size={18} />
-                Modalità Produzione (MODIFICA DATI)
-              </h4>
-              <p className="text-sm text-orange-600 mb-3">
-                ⚠️ Attenzione: questa operazione modificherà permanentemente i dati nel database. I
-                nuovi dati estratti verranno salvati nei campi *_enhanced.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={async () => {
-                    if (
-                      await confirm({
-                        title: 'Riprocessa tutti i documenti',
-                        message: 'Questa operazione modificherà i dati nel database. Procedere?',
-                        variant: 'warning',
-                      })
-                    ) {
-                      startReprocessing(false, 'all');
-                    }
-                  }}
-                  disabled={loading || status?.running}
-                  className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
-                >
-                  <Play size={16} />
-                  Riprocessa Tutti
-                </button>
-                <button
-                  onClick={async () => {
-                    if (await confirm({ title: 'Riprocessa F24', message: 'Riprocessare tutti gli F24?' })) {
-                      startReprocessing(false, 'f24');
-                    }
-                  }}
-                  disabled={loading || status?.running}
-                  className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50"
-                >
-                  <FileText size={16} />
-                  Riprocessa F24
-                </button>
-                <button
-                  onClick={async () => {
-                    if (await confirm({ title: 'Riprocessa cedolini', message: 'Riprocessare tutti i Cedolini?' })) {
-                      startReprocessing(false, 'cedolini');
-                    }
-                  }}
-                  disabled={loading || status?.running}
-                  className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50"
-                >
-                  <Users size={16} />
-                  Riprocessa Cedolini
-                </button>
-              </div>
+            <div className="rounded-lg bg-orange-50 border border-orange-200 p-4">
+              <h4 className="font-semibold text-orange-900 flex items-center gap-2"><AlertTriangle size={17} /> Esecuzione</h4>
+              <p className="text-sm text-orange-700 mt-1 mb-3">Salva il nuovo esito accanto all'originale. Non crea un nuovo documento né un nuovo pagamento.</p>
+              <button onClick={avviaReale} disabled={caricamento || stato?.running} className="flex items-center gap-2 px-4 py-2 bg-orange-700 text-white rounded-lg disabled:opacity-50">
+                <Play size={16} /> Rielabora documenti
+              </button>
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* Info */}
-        <div className="text-sm text-gray-500 bg-gray-50 rounded-lg p-4">
-          <h4 className="font-medium text-gray-700 mb-2">Come funziona:</h4>
-          <ul className="list-disc list-inside space-y-1">
-            <li>Il sistema legge i PDF originali memorizzati nel database</li>
-            <li>Ogni documento viene riprocessato con il nuovo parser AI migliorato</li>
-            <li>
-              I nuovi dati vengono salvati in campi separati (*_enhanced) per non sovrascrivere i
-              dati originali
-            </li>
-            <li>Puoi confrontare i dati originali con quelli migliorati</li>
-          </ul>
-        </div>
+        <section className="text-sm text-gray-600 bg-gray-50 rounded-lg p-4">
+          <b>Regola:</b> la rielaborazione non sostituisce l'originale e non prova un pagamento. Serve a rieseguire classificazione ed estrazione con i parser correnti e a conservare il nuovo risultato per confronto e verifica.
+        </section>
       </div>
     </PageLayout>
   );
