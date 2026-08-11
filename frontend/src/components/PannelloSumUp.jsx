@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import api from '../api';
 import { toast } from 'sonner';
 import { Button, Badge, Card } from './ds';
@@ -8,9 +8,8 @@ import { COLORS } from '../lib/utils';
  * Pannello SumUp: stato delle credenziali, sincronizzazione incassi e
  * analisi delle righe POS storiche ricavate dall'XML.
  *
- * Esiste perché aprire gli endpoint a mano in una scheda nuova non porta
- * sempre con sé la sessione: da qui le chiamate partono dalla pagina già
- * autenticata e il problema non si pone.
+ * La sincronizzazione ordinaria è automatica all'apertura. Restano manuali
+ * soltanto le operazioni diagnostiche/correttive che possono modificare dati.
  */
 const euro = (v) =>
   new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' })
@@ -27,7 +26,7 @@ export default function PannelloSumUp() {
   const [bonifica, setBonifica] = useState(null);
   const [inCorso, setInCorso] = useState('');
 
-  const esegui = async (azione, chiamata, dopo) => {
+  const esegui = async (azione, chiamata, dopo, { silenzioso = false } = {}) => {
     setInCorso(azione);
     try {
       const { data } = await chiamata();
@@ -35,21 +34,23 @@ export default function PannelloSumUp() {
       return data;
     } catch (e) {
       const dettaglio = e?.response?.data?.detail || e?.message || 'errore';
-      toast.error(`SumUp: ${dettaglio}`);
+      if (!silenzioso) toast.error(`SumUp: ${dettaglio}`);
       return null;
     } finally {
       setInCorso('');
     }
   };
 
-  const verifica = () =>
+  const verifica = (silenzioso = false) =>
     esegui('stato', () => api.get('/sumup/stato'), (d) => {
       setStato(d);
-      if (d.connessione_ok) toast.success(`SumUp collegato: ${d.esercente || ''}`);
-      else toast.warning(d.messaggio || 'SumUp non collegato');
-    });
+      if (!silenzioso) {
+        if (d.connessione_ok) toast.success(`SumUp collegato: ${d.esercente || ''}`);
+        else toast.warning(d.messaggio || 'SumUp non collegato');
+      }
+    }, { silenzioso });
 
-  const sincronizza = (giorni) => {
+  const sincronizza = (giorni, silenzioso = false) => {
     const oggi = new Date();
     const dal = new Date(oggi);
     dal.setDate(dal.getDate() - (giorni - 1));
@@ -57,9 +58,19 @@ export default function PannelloSumUp() {
     return esegui('sync', () => api.post('/sumup/sincronizza',
       { dal: iso(dal), al: iso(oggi) }), (d) => {
       setSync(d);
-      toast.success(d.message || 'Sincronizzazione completata');
-    });
+      if (!silenzioso) toast.success(d.message || 'Sincronizzazione completata');
+    }, { silenzioso });
   };
+
+  useEffect(() => {
+    let attivo = true;
+    const inizializza = async () => {
+      await verifica(true);
+      if (attivo) await sincronizza(2, true);
+    };
+    inizializza();
+    return () => { attivo = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const analizza = () =>
     esegui('bonifica', () => api.get('/sumup/bonifica-pos-xml'), (d) => {
@@ -84,19 +95,10 @@ export default function PannelloSumUp() {
       <p style={{ color: COLORS.textSubtle, fontSize: 13, marginTop: 0 }}>
         Le transazioni SumUp non creano ricavi: il ricavo è già quello del
         corrispettivo. Qui si stabilisce quanta parte dell'incasso è passata
-        dal terminale SumUp.
+        dal terminale SumUp. Stato e incassi recenti si aggiornano automaticamente all'apertura.
       </p>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '12px 0' }}>
-        <Button onClick={verifica} disabled={occupato}>
-          {inCorso === 'stato' ? 'Verifico…' : 'Verifica connessione'}
-        </Button>
-        <Button variant="secondary" onClick={() => sincronizza(2)} disabled={occupato}>
-          {inCorso === 'sync' ? 'Sincronizzo…' : 'Sincronizza ieri e oggi'}
-        </Button>
-        <Button variant="secondary" onClick={() => sincronizza(30)} disabled={occupato}>
-          Sincronizza ultimi 30 giorni
-        </Button>
         <Button variant="ghost" onClick={analizza} disabled={occupato}>
           {inCorso === 'bonifica' ? 'Analizzo…' : 'Analizza POS da XML (sola lettura)'}
         </Button>
@@ -106,6 +108,12 @@ export default function PannelloSumUp() {
           </Button>
         )}
       </div>
+
+      {inCorso === 'stato' || inCorso === 'sync' ? (
+        <div style={{ fontSize: 13, color: COLORS.textSubtle, marginBottom: 12 }}>
+          Aggiornamento SumUp in corso…
+        </div>
+      ) : null}
 
       {stato && (
         <div style={{ marginBottom: 16 }}>
