@@ -170,6 +170,21 @@ async def confronto_iva_completo(anno: int) -> Dict[str, Any]:
                 "iva_debito_corrispettivi": debito,
                 "iva_debito_corrispettivi_cents": debito_cents,
                 "num_fatture": iva["iva_credito"]["num_fatture"],
+                "fatture_con_iva_competenza": (
+                    iva["iva_credito"].get("conteggi", {})
+                    .get("fatture_incluse_competenza", 0)
+                ),
+                "fatture_gia_liquidate": (
+                    iva["iva_credito"].get("conteggi", {})
+                    .get("fatture_gia_utilizzate", 0)
+                ),
+                "fatture_da_classificare": (
+                    iva["iva_credito"].get("conteggi", {})
+                    .get("detraibilita_da_verificare", 0)
+                ),
+                "iva_credito_ancora_disponibile": (
+                    iva["iva_credito"].get("ancora_disponibile")
+                ),
                 "num_corrispettivi": iva["iva_debito"]["num_corrispettivi"],
                 "saldo": euros(saldo_cents) if saldo_cents is not None else None,
                 "saldo_cents": saldo_cents,

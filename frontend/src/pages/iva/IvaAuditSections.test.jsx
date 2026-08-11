@@ -56,3 +56,38 @@ describe('Prospetti IVA: periodi non conclusi', () => {
     expect(within(scadenze).queryByText('Credito riportato')).not.toBeInTheDocument();
   });
 });
+
+describe('Confronto IVA: base completa del mese', () => {
+  it('distingue tutte le fatture, quelle con IVA e quelle già liquidate', () => {
+    render(
+      <ConfrontoIvaCommercialista
+        anno={2026}
+        loading={false}
+        error={null}
+        dati={{
+          mensile: [{
+            mese: 7,
+            mese_nome: 'Luglio',
+            stato_calcolo: 'CALCOLATA',
+            periodo_calcolato: true,
+            iva_debito_corrispettivi: 6211.86,
+            iva_credito_fatture: 3241.46,
+            saldo: 2970.40,
+            num_fatture: 108,
+            fatture_con_iva_competenza: 97,
+            fatture_gia_liquidate: 84,
+            fatture_da_classificare: 11,
+            importo_f24_commercialista: null,
+          }],
+          totali: {},
+        }}
+      />,
+    );
+
+    const confronto = screen.getByTestId('iva-confronto-commercialista');
+    expect(within(confronto).getByText('108')).toBeInTheDocument();
+    expect(within(confronto).getByText(/97 con IVA · 84 già liquidate · 11 da verificare/)).toBeInTheDocument();
+    expect(within(confronto).getByText('€ 3.241,46')).toBeInTheDocument();
+    expect(within(confronto).getByText(/indipendentemente da cassa, banca e stato del pagamento/)).toBeInTheDocument();
+  });
+});
