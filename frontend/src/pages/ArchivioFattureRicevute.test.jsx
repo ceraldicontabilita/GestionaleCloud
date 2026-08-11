@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { descriviPagamento } from './ArchivioFattureRicevute';
+import { descriviPagamento, puoAssociareAssegno } from './ArchivioFattureRicevute';
 
 describe('descriviPagamento', () => {
   it('non trasforma lo stato storico pagata in una prova di pagamento', () => {
@@ -51,5 +51,16 @@ describe('descriviPagamento', () => {
       verified: false,
       variant: 'danger',
     });
+  });
+});
+
+describe('puoAssociareAssegno', () => {
+  it('consente l azione soltanto su una fattura con debito positivo', () => {
+    expect(puoAssociareAssegno({ tipo_documento: 'TD01', total_amount: 100 })).toBe(true);
+    expect(puoAssociareAssegno({ tipo_documento: 'TD01', total_amount: 0 })).toBe(false);
+  });
+
+  it.each(['TD04', 'TD08'])('non mostra Abbina sulle note di credito %s', tipo => {
+    expect(puoAssociareAssegno({ tipo_documento: tipo, total_amount: 100 })).toBe(false);
   });
 });

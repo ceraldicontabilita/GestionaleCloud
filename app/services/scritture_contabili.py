@@ -370,8 +370,16 @@ async def registra_chiusura_pos_reale(
     fonte: str = FONTE_MANUALE,
     note: str = "",
     actor: Optional[Dict[str, Any]] = None,
+    solo_evidenza: bool = False,
 ) -> Dict[str, Any]:
-    """Salva il POS reale letto dal terminale e riallinea Prima Nota.
+    """Salva il POS reale letto dal terminale.
+
+    ``solo_evidenza`` separa l'acquisizione del fatto dalla contabilizzazione:
+    le API dei gestori (per esempio SumUp) possono certificare le vendite, ma
+    non provano che il denaro sia gia' transitato in banca. In questa modalita'
+    viene conservata soltanto la chiusura con la sua provenienza e non vengono
+    creati movimenti in Cassa, Banca o Prima Nota. L'eventuale payout resta un
+    evento distinto e viene gestito dal relativo servizio finanziario.
 
     Il dato manuale e' la fonte operativa canonica. L'elettronico XML resta
     invariato sul corrispettivo e viene usato soltanto per il confronto
@@ -444,7 +452,10 @@ async def registra_chiusura_pos_reale(
         "stato_dato": evidenza["stato_dato"],
         "valori_per_fonte": evidenza["valori_per_fonte"],
         "differenza_fonti": evidenza["differenza"],
-        "source": "inserimento_manuale_terminale",
+        "source": (
+            "api_gestore_pos" if fonte == FONTE_API
+            else "inserimento_manuale_terminale"
+        ),
         "note": note,
         "updated_at": now,
         "updated_by": user_id,
@@ -467,6 +478,48 @@ async def registra_chiusura_pos_reale(
     totale_giorno = await chiusura_pos_del_giorno(db, data)
     if totale_giorno is None:
         totale_giorno = importo
+
+    action = "created" if importo_precedente is None else (
+        "noop" if abs(importo_precedente - importo) < 0.01 else "updated"
+    )
+    if solo_evidenza:
+        if action != "noop":
+            try:
+                await db["pos_chiusure_audit"].insert_one({
+                    "id": str(uuid.uuid4()),
+                    "collection_target": "chiusure_pos_manuali",
+                    "data_riferimento": data,
+                    "gestore": gestore,
+                    "action": action,
+                    "importo_precedente": importo_precedente,
+                    "importo_nuovo": importo,
+                    "delta": round(importo - (importo_precedente or 0), 2),
+                    "user_id": user_id,
+                    "user_email": user_email,
+                    "user_name": user_name,
+                    "note": note,
+                    "origine": "evidenza_api_pos",
+                    "timestamp": now,
+                })
+            except Exception:
+                logger.exception("Audit evidenza POS fallito")
+        return {
+            "success": True,
+            "action": action,
+            "data": data,
+            "gestore": gestore,
+            "fonte_dato": evidenza["fonte_dato"],
+            "stato_dato": evidenza["stato_dato"],
+            "differenza_fonti": evidenza["differenza"],
+            "importo": importo,
+            "importo_precedente": importo_precedente,
+            "importo_totale_giorno": totale_giorno,
+            "chiusura_id": chiusura_id,
+            "prima_nota_cassa_id": None,
+            "prima_nota_banca_id": None,
+            "trasferimento_id": None,
+            "solo_evidenza": True,
+        }
 
     corr = await db["corrispettivi"].find_one(
         {"data": data}, {"_id": 0, "id": 1, "totale": 1,
@@ -669,9 +722,6 @@ async def registra_chiusura_pos_reale(
             }},
         )
 
-    action = "created" if importo_precedente is None else (
-        "noop" if abs(importo_precedente - importo) < 0.01 else "updated"
-    )
     if action != "noop":
         try:
             await db["pos_chiusure_audit"].insert_one({

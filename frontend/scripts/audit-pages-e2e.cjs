@@ -114,6 +114,50 @@ function uniqueProblems(problems) {
       if (await page.getByTestId('error-boundary').count()) {
         problems.push({ type: 'react', detail: 'ErrorBoundary visibile' });
       }
+      if (path === '/fatture') {
+        await page.getByRole('columnheader', { name: 'Documento' }).waitFor({ timeout: 10000 });
+        await page.getByRole('columnheader', { name: 'Azione' }).waitFor({ timeout: 10000 });
+        const rows = page.locator('tbody tr');
+        if (await rows.count() !== 3) {
+          problems.push({ type: 'fixture', detail: `Attese 3 fatture E2E, trovate ${await rows.count()}` });
+        }
+
+        const positions = await rows.evaluateAll(elements => elements.map(row => {
+          const view = [...row.querySelectorAll('button')].find(button => button.textContent.trim() === 'Vedi');
+          const link = [...row.querySelectorAll('button')].find(button => button.textContent.trim() === 'Abbina');
+          const viewRect = view?.getBoundingClientRect();
+          const linkRect = link?.getBoundingClientRect();
+          return {
+            type: row.textContent.includes('TD04') ? 'credit_note' : 'invoice',
+            viewX: viewRect?.x,
+            viewY: viewRect?.y,
+            linkX: linkRect?.x,
+            linkY: linkRect?.y,
+          };
+        }));
+        const invoices = positions.filter(position => position.type === 'invoice');
+        const credit = positions.find(position => position.type === 'credit_note');
+        const sameColumn = (values) => values.length > 0
+          && Math.max(...values) - Math.min(...values) <= 1;
+        if (positions.some(position => !Number.isFinite(position.viewX))) {
+          problems.push({ type: 'layout', detail: 'Una fattura non espone il pulsante Vedi' });
+        }
+        if (invoices.some(position => !Number.isFinite(position.linkX))) {
+          problems.push({ type: 'layout', detail: 'Una fattura pagabile non espone il pulsante Abbina' });
+        }
+        if (!sameColumn(positions.map(position => position.viewX).filter(Number.isFinite))) {
+          problems.push({ type: 'layout', detail: 'I pulsanti Vedi non sono allineati nella stessa colonna' });
+        }
+        if (!sameColumn(invoices.map(position => position.linkX).filter(Number.isFinite))) {
+          problems.push({ type: 'layout', detail: 'I pulsanti Abbina non sono allineati nella stessa colonna' });
+        }
+        if (invoices.some(position => Math.abs(position.viewY - position.linkY) > 1)) {
+          problems.push({ type: 'layout', detail: 'Vedi e Abbina non sono centrati sulla stessa riga' });
+        }
+        if (!credit || Number.isFinite(credit.linkX)) {
+          problems.push({ type: 'accounting', detail: 'La nota di credito espone ancora Abbina assegno' });
+        }
+      }
     } catch (error) {
       problems.push({ type: 'navigation', detail: String(error).slice(0, 240) });
     }
