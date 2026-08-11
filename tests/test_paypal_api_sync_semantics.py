@@ -23,6 +23,7 @@ def _api_row(balance_affecting="Y"):
             "transaction_status": "S",
             "transaction_initiation_date": "2026-07-12T10:00:00Z",
             "transaction_amount": {"value": "-42.62", "currency_code": "EUR"},
+            "fee_amount": {"value": "-1.20", "currency_code": "EUR"},
             "invoice_id": "FT-PP-42",
             "bank_reference_id": "BANK-REF-42",
             "balance_affecting": balance_affecting,
@@ -41,6 +42,9 @@ def test_extract_conserva_stato_evento_riferimento_banca_e_balance_affecting():
     assert doc["bank_reference_id"] == "BANK-REF-42"
     assert doc["balance_affecting"] == "Y"
     assert doc["invoice_id_fornitore"] == "FT-PP-42"
+    assert doc["gross_amount_cents"] == -4262
+    assert doc["gross_currency"] == "EUR"
+    assert doc["fee_amount_cents"] == -120
 
 
 def test_sync_scarto_riga_tecnica_duplicata_non_balance_affecting(monkeypatch):

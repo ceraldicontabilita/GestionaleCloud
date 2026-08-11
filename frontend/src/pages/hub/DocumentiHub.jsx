@@ -50,9 +50,8 @@ export default function DocumentiHub() {
     setVisitedTabs(previous => new Set([...previous, tab]));
   }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // La sincronizzazione ordinaria di Drive non richiede un'azione manuale:
-  // all'apertura dell'hub carichiamo il catalogo e avviamo automaticamente
-  // il sync delle cartelle che dispongono di parser.
+  // L'hub consulta soltanto il catalogo. Le sincronizzazioni massive non
+  // vengono mai avviate implicitamente all'apertura della pagina.
   useEffect(() => {
     let active = true;
 
@@ -63,11 +62,6 @@ export default function DocumentiHub() {
         const catalog = response.data;
         setDriveCatalog(catalog);
 
-        if (catalog?.automatic > 0) {
-          api.post('/api/documenti/drive/sync').catch(error => {
-            console.warn('Sincronizzazione automatica Drive non avviata:', error);
-          });
-        }
       } catch (error) {
         if (active) setDriveCatalog(null);
       }

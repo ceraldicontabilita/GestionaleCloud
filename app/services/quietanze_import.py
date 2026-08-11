@@ -8,7 +8,7 @@ Usato da:
 Per ogni PDF: parsing (f24_parser.parse_quietanza_f24), dedup per impronta
 md5 (`pdf_hash`), salvataggio in `quietanze_f24` e MATCHING AUTOMATICO con
 gli F24 del commercialista (confronto per codice tributo + periodo +
-importo, tolleranza €0.50, ravvedimenti esclusi dal confronto): match →
+importo esatto al centesimo e contribuente quando disponibile): match univoco →
 F24 segnato pagato; nessun match → alert.
 """
 import base64
@@ -124,6 +124,7 @@ def estrai_tributi_dettaglio(doc: dict) -> list:
             "codice": row["tax_code"],
             "periodo": row["reference_period"] or "",
             "importo": row["debit_amount"],
+            "importo_cents": row["debit_cents"],
         }
         for row in normalizza_righe_tributo(doc)
         if row["tax_code"] and row["debit_amount"] > 0
@@ -272,17 +273,42 @@ async def importa_quietanza_bytes(
     tributi_quietanza = estrai_tributi_dettaglio(parsed)
     quietanza_lookup = {}
     codici_ravv = []
-    importo_ravv = 0.0
+    importo_ravv = 0
     for t in tributi_quietanza:
-        quietanza_lookup[(t["codice"], t["periodo"])] = t["importo"]
+        quietanza_lookup[(t["codice"], t["periodo"])] = t["importo_cents"]
         if t["codice"] in CODICI_RAVVEDIMENTO:
             codici_ravv.append(t["codice"])
-            importo_ravv += t["importo"]
+            importo_ravv += t["importo_cents"]
 
     f24_da_pagare = await db[COLL_F24_COMMERCIALISTA].find({
         "status": "da_pagare",
         "riconciliato": False
     }, {"_id": 0}).to_list(1000)
+
+    # Il match automatico e' ammesso soltanto se il modello e' univoco. Il
+    # confronto usa centesimi interi, codice, periodo e identita' contribuente
+    # quando disponibile; nessuna tolleranza monetaria e nessun first-match.
+    cf_quietanza = str(codice_fiscale or "").strip().upper()
+
+    def _matches_exact(f24: dict) -> bool:
+        cf_f24 = str(
+            (f24.get("dati_generali") or {}).get("codice_fiscale")
+            or f24.get("codice_fiscale") or ""
+        ).strip().upper()
+        if cf_quietanza and cf_f24 and cf_quietanza != cf_f24:
+            return False
+        principali = [
+            item for item in estrai_tributi_dettaglio(f24)
+            if item["codice"] not in CODICI_RAVVEDIMENTO
+        ]
+        return bool(principali) and all(
+            quietanza_lookup.get((item["codice"], item["periodo"])) == item["importo_cents"]
+            for item in principali
+        )
+
+    f24_da_pagare_tutti = list(f24_da_pagare)
+    candidati_match = [item for item in f24_da_pagare_tutti if _matches_exact(item)]
+    f24_da_pagare = candidati_match if len(candidati_match) == 1 else []
 
     f24_matchati = []
     for f24 in f24_da_pagare:
@@ -294,7 +320,7 @@ async def importa_quietanza_bytes(
         tributi_trovati = 0
         for t in tributi_f24_principali:
             key = (t["codice"], t["periodo"])
-            if key in quietanza_lookup and abs(t["importo"] - quietanza_lookup[key]) <= 0.50:
+            if key in quietanza_lookup and t["importo_cents"] == quietanza_lookup[key]:
                 tributi_trovati += 1
 
         if tributi_trovati != len(tributi_f24_principali):
@@ -315,7 +341,8 @@ async def importa_quietanza_bytes(
         }
         if is_ravveduto:
             update_data["ravveduto"] = True
-            update_data["importo_ravvedimento"] = round(importo_ravv, 2)
+            update_data["importo_ravvedimento_cents"] = importo_ravv
+            update_data["importo_ravvedimento"] = importo_ravv / 100
             update_data["codici_ravvedimento"] = codici_ravv
 
         await db[COLL_F24_COMMERCIALISTA].update_one({"id": f24["id"]}, {"$set": update_data})
@@ -349,7 +376,7 @@ async def importa_quietanza_bytes(
             "importo_quietanza": saldo_quietanza,
             "tributi_matchati": f"{tributi_trovati}/{len(tributi_f24_principali)}",
             "ravveduto": is_ravveduto,
-            "importo_ravvedimento": round(importo_ravv, 2) if is_ravveduto else 0,
+            "importo_ravvedimento": importo_ravv / 100 if is_ravveduto else 0,
             "scadenze_completate": scadenze_completate,
         })
         break  # Un F24 per quietanza (one-to-one)
@@ -401,9 +428,13 @@ async def importa_quietanza_bytes(
         esiste_f24_soggetto = bool(cf_norm) and any(
             (((f.get("dati_generali", {}) or {}).get("codice_fiscale") or f.get("codice_fiscale") or "")
              .strip().upper() == cf_norm)
-            for f in f24_da_pagare
+            for f in f24_da_pagare_tutti
         )
-        if esiste_f24_soggetto:
+        if len(candidati_match) > 1:
+            warning = "Più F24 coincidono al centesimo: associazione automatica sospesa."
+            stato = "f24_ambiguo"
+            stato_canonico = "QUIETANZA_PRESENTE_F24_AMBIGUO"
+        elif esiste_f24_soggetto:
             warning = "F24 presente ma non corrispondente: verificare importi/periodo/codici."
             stato = "f24_non_corrispondente"
             # stato canonico del prompt §9.3: F24 del soggetto esiste ma non combacia

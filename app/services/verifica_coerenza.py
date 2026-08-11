@@ -54,57 +54,21 @@ class VerificaCoerenza:
         Verifica IVA Credito per un mese specifico.
         Confronta: Fatture ricevute vs Calcolo Liquidazione
         """
-        prefix = f"{anno}-{mese:02d}"
-        periodo = f"{MESI_NOMI[mese]} {anno}"
-        
-        # 1. IVA da Fatture Ricevute (collection invoices)
-        pipeline_fatture = [
-            {"$match": {
-                "$or": [
-                    {"data_ricezione": {"$regex": f"^{prefix}"}},
-                    {"invoice_date": {"$regex": f"^{prefix}"}}
-                ],
-                "tipo_documento": {"$nin": ["TD04", "TD08"]}  # Escludi note credito
-            }},
-            {"$group": {"_id": None, "totale_iva": {
-                "$sum": {"$ifNull": ["$iva_detraibile", 0]}
-            }}}
-        ]
-        result_fatture = await self.db[Collections.INVOICES].aggregate(pipeline_fatture).to_list(1)
-        iva_fatture = result_fatture[0]["totale_iva"] if result_fatture else 0
-        
-        # 2. IVA da Note di Credito Ricevute (da sottrarre)
-        pipeline_nc = [
-            {"$match": {
-                "$or": [
-                    {"data_ricezione": {"$regex": f"^{prefix}"}},
-                    {"invoice_date": {"$regex": f"^{prefix}"}}
-                ],
-                "tipo_documento": {"$in": ["TD04", "TD08"]}
-            }},
-            {"$group": {"_id": None, "totale_iva": {
-                "$sum": {"$ifNull": ["$iva_detraibile", 0]}
-            }}}
-        ]
-        result_nc = await self.db[Collections.INVOICES].aggregate(pipeline_nc).to_list(1)
-        iva_note_credito = result_nc[0]["totale_iva"] if result_nc else 0
-        
-        iva_credito_fatture = iva_fatture - iva_note_credito
-        
-        # 3. Conta fatture per dettaglio
-        count_fatture = await self.db[Collections.INVOICES].count_documents({
-            "$or": [
-                {"data_ricezione": {"$regex": f"^{prefix}"}},
-                {"invoice_date": {"$regex": f"^{prefix}"}}
-            ]
-        })
-        
+        from app.services.iva_liquidation_query import get_iva_period_snapshot
+
+        snapshot = await get_iva_period_snapshot(self.db, anno=anno, mese=mese)
+        count_fatture = snapshot["conteggi"]["fatture_periodo_attribuito"]
+        iva_credito_fatture = snapshot.get("iva_acquisti")
         return {
-            "iva_credito_fatture": round(iva_credito_fatture, 2),
-            "iva_fatture_lorde": round(iva_fatture, 2),
-            "iva_note_credito": round(iva_note_credito, 2),
+            "iva_credito_fatture": iva_credito_fatture,
+            "iva_credito_fatture_cents": snapshot.get("iva_acquisti_cents"),
+            "iva_fatture_lorde": iva_credito_fatture,
+            "iva_note_credito": 0.0 if iva_credito_fatture is not None else None,
             "num_fatture": count_fatture,
-            "periodo": periodo
+            "conteggi": snapshot["conteggi"],
+            "periodo": f"{MESI_NOMI[mese]} {anno}",
+            "stato_calcolo": snapshot["stato_calcolo"],
+            "fonte_calcolo": snapshot["fonte_calcolo"],
         }
     
     async def verifica_iva_debito_mensile(self, anno: int, mese: int) -> Dict[str, float]:
@@ -112,26 +76,16 @@ class VerificaCoerenza:
         Verifica IVA Debito per un mese specifico.
         Confronta: Corrispettivi vs Calcolo Liquidazione
         """
-        prefix = f"{anno}-{mese:02d}"
-        periodo = f"{MESI_NOMI[mese]} {anno}"
-        
-        # IVA da Corrispettivi
-        pipeline_corr = [
-            {"$match": {"data": {"$regex": f"^{prefix}"}}},
-            {"$group": {"_id": None, "totale_iva": {"$sum": "$totale_iva"}}}
-        ]
-        result_corr = await self.db["corrispettivi"].aggregate(pipeline_corr).to_list(1)
-        iva_corrispettivi = result_corr[0]["totale_iva"] if result_corr else 0
-        
-        # Conta corrispettivi
-        count_corr = await self.db["corrispettivi"].count_documents({
-            "data": {"$regex": f"^{prefix}"}
-        })
-        
+        from app.services.iva_liquidation_query import get_iva_period_snapshot
+
+        snapshot = await get_iva_period_snapshot(self.db, anno=anno, mese=mese)
         return {
-            "iva_debito_corrispettivi": round(iva_corrispettivi, 2),
-            "num_corrispettivi": count_corr,
-            "periodo": periodo
+            "iva_debito_corrispettivi": snapshot.get("iva_vendite"),
+            "iva_debito_corrispettivi_cents": snapshot.get("iva_vendite_cents"),
+            "num_corrispettivi": snapshot.get("corrispettivi_inclusi", 0),
+            "periodo": f"{MESI_NOMI[mese]} {anno}",
+            "stato_calcolo": snapshot["stato_calcolo"],
+            "fonte_calcolo": snapshot["fonte_calcolo"],
         }
 
     async def trova_f24_iva_mensile(self, anno: int, mese: int) -> Dict[str, Any]:
@@ -144,12 +98,13 @@ class VerificaCoerenza:
         """
         from app.routers.ritenute import _tributi_di
         from app.services.f24_payment_evidence import stato_evidenza_pagamento
+        from app.services.tax_payment_query import TaxPaymentQueryService
 
         periodo = f"{anno}-{mese:02d}"
         codice = str(6000 + mese)
         docs = getattr(self, "_f24_docs_cache", None)
         if docs is None:
-            docs = await self.db["f24_unificato"].find({}, {"_id": 0}).to_list(5000)
+            docs = await TaxPaymentQueryService(self.db).list_documents()
             self._f24_docs_cache = docs
         candidati = []
         for f24 in docs:
@@ -158,12 +113,23 @@ class VerificaCoerenza:
                 if riga.get("codice") != codice:
                     continue
                 periodo_riga = riga.get("periodo")
+                source = next((
+                    item for item in (f24.get("righe_tributo_normalizzate") or [])
+                    if item.get("ordinal") - 1 == riga.get("indice")
+                ), {})
+                source_fields = source.get("source_fields") or {}
+                explicit_year = str(
+                    source_fields.get("anno_riferimento") or source_fields.get("anno") or ""
+                )
+                periodo_verificato = periodo_riga == periodo or (
+                    not periodo_riga and explicit_year == str(anno)
+                )
                 if periodo_riga and periodo_riga != periodo:
                     continue
                 candidati.append({
                     "f24": f24,
                     "riga": riga,
-                    "periodo_verificato": periodo_riga == periodo,
+                    "periodo_verificato": periodo_verificato,
                     "altri_codici": sorted({
                         t.get("codice") for t in righe
                         if t.get("codice") and t.get("codice") != codice
@@ -205,11 +171,17 @@ class VerificaCoerenza:
         c = migliori[0]
         f24 = c["f24"]
         evidenza = stato_evidenza_pagamento(f24)
+        importo_cents = (
+            c["riga"].get("importo_cents") if c["periodo_verificato"] else None
+        )
         return {
             "codice_tributo": codice,
             "periodo": periodo,
             "stato": "f24_ricevuto" if c["periodo_verificato"] else "periodo_f24_da_verificare",
-            "importo_f24": c["riga"].get("importo"),
+            # Il valore numerico resta per compatibilita' della UI; ogni
+            # confronto usa esclusivamente l'intero in centesimi.
+            "importo_f24": importo_cents / 100 if importo_cents is not None else None,
+            "importo_f24_cents": importo_cents,
             "periodo_verificato": c["periodo_verificato"],
             "documenti_candidati": 1,
             "f24_multi_tributo": bool(c["altri_codici"]),
@@ -454,13 +426,25 @@ class VerificaCoerenza:
         risultati["verifiche"]["iva_mensile"] = iva_mensile
         
         # Calcola totali IVA annuali
-        totale_iva_credito = sum(m["iva_credito_fatture"] for m in iva_mensile)
-        totale_iva_debito = sum(m["iva_debito_corrispettivi"] for m in iva_mensile)
+        from app.services.iva_liquidation_query import euros
+
+        totale_iva_credito_cents = sum(
+            int(m.get("iva_credito_fatture_cents") or 0) for m in iva_mensile
+        )
+        totale_iva_debito_cents = sum(
+            int(m.get("iva_debito_corrispettivi_cents") or 0) for m in iva_mensile
+        )
         
         risultati["verifiche"]["iva_annuale"] = {
-            "iva_credito_totale": round(totale_iva_credito, 2),
-            "iva_debito_totale": round(totale_iva_debito, 2),
-            "saldo_iva": round(totale_iva_debito - totale_iva_credito, 2)
+            "iva_credito_totale": euros(totale_iva_credito_cents),
+            "iva_credito_totale_cents": totale_iva_credito_cents,
+            "iva_debito_totale": euros(totale_iva_debito_cents),
+            "iva_debito_totale_cents": totale_iva_debito_cents,
+            "saldo_iva": euros(totale_iva_debito_cents - totale_iva_credito_cents),
+            "saldo_iva_cents": totale_iva_debito_cents - totale_iva_credito_cents,
+            "mesi_non_calcolati": sum(
+                1 for item in iva_mensile if item.get("stato_calcolo") == "NON_CALCOLATO"
+            )
         }
         risultati["verifiche"]["f24_iva"] = {
             "mensile": f24_iva_mensile,
@@ -511,49 +495,27 @@ class VerificaCoerenza:
         Verifica specifica: confronta IVA tra diverse pagine/sezioni.
         Questa è la verifica principale richiesta dall'utente.
         """
+        from app.services.iva_liquidation_query import (
+            euros, get_iva_period_snapshot, money_cents,
+        )
+
         self.discrepanze = []
         periodo = f"{MESI_NOMI[mese]} {anno}"
-        prefix = f"{anno}-{mese:02d}"
-        
-        # === FONTI IVA CREDITO ===
-        
-        # 1. Da pagina Fatture (somma IVA fatture ricevute)
-        pipeline_fatture = [
-            {"$match": {
-                "$or": [
-                    {"data_ricezione": {"$regex": f"^{prefix}"}},
-                    {"invoice_date": {"$regex": f"^{prefix}"}}
-                ]
-            }},
-            {"$group": {"_id": None, "totale": {
-                "$sum": {"$ifNull": ["$iva_detraibile", 0]}
-            }, "count": {"$sum": 1}}}
-        ]
-        res_fatture = await self.db[Collections.INVOICES].aggregate(pipeline_fatture).to_list(1)
-        iva_credito_fatture = res_fatture[0]["totale"] if res_fatture else 0
-        count_fatture = res_fatture[0]["count"] if res_fatture else 0
-        
-        # 2. Da calcolo Liquidazione IVA (stessa logica ma potrebbe differire)
-        # Qui usiamo la stessa query per consistenza
-        iva_credito_liquidazione = iva_credito_fatture  # Stesso calcolo
-        
-        # === FONTI IVA DEBITO ===
-        
-        # 1. Da pagina Corrispettivi
-        pipeline_corr = [
-            {"$match": {"data": {"$regex": f"^{prefix}"}}},
-            {"$group": {"_id": None, "totale": {"$sum": "$totale_iva"}, "count": {"$sum": 1}}}
-        ]
-        res_corr = await self.db["corrispettivi"].aggregate(pipeline_corr).to_list(1)
-        iva_debito_corrispettivi = res_corr[0]["totale"] if res_corr else 0
-        count_corrispettivi = res_corr[0]["count"] if res_corr else 0
-
-        saldo_gestionale = round(iva_debito_corrispettivi - iva_credito_fatture, 2)
+        snapshot = await get_iva_period_snapshot(self.db, anno=anno, mese=mese)
+        iva_credito_fatture = snapshot.get("iva_acquisti")
+        iva_debito_corrispettivi = snapshot.get("iva_vendite")
+        saldo_gestionale = snapshot.get("saldo")
         f24_iva = await self.trova_f24_iva_mensile(anno, mese)
-        importo_f24 = f24_iva.get("importo_f24")
+        importo_f24_cents = f24_iva.get("importo_f24_cents")
+        saldo_gestionale_cents = snapshot.get("saldo_cents")
+        scostamento_f24_cents = (
+            int(importo_f24_cents) - max(int(saldo_gestionale_cents), 0)
+            if importo_f24_cents is not None and saldo_gestionale_cents is not None
+            else None
+        )
         scostamento_f24 = (
-            round(float(importo_f24) - max(saldo_gestionale, 0), 2)
-            if importo_f24 is not None else None
+            euros(scostamento_f24_cents)
+            if scostamento_f24_cents is not None else None
         )
         
         risultato = {
@@ -561,27 +523,36 @@ class VerificaCoerenza:
             "anno": anno,
             "mese": mese,
             "iva_credito": {
-                "da_fatture": round(iva_credito_fatture, 2),
-                "da_liquidazione": round(iva_credito_liquidazione, 2),
-                "num_fatture": count_fatture,
-                "coerente": abs(iva_credito_fatture - iva_credito_liquidazione) < self.tolleranza
+                "da_fatture": iva_credito_fatture,
+                "da_fatture_cents": snapshot.get("iva_acquisti_cents"),
+                "da_liquidazione": iva_credito_fatture,
+                "num_fatture": snapshot["conteggi"]["fatture_periodo_attribuito"],
+                "conteggi": snapshot["conteggi"],
+                "coerente": True if iva_credito_fatture is not None else None,
             },
             "iva_debito": {
-                "da_corrispettivi": round(iva_debito_corrispettivi, 2),
-                "num_corrispettivi": count_corrispettivi
+                "da_corrispettivi": iva_debito_corrispettivi,
+                "da_corrispettivi_cents": snapshot.get("iva_vendite_cents"),
+                "num_corrispettivi": snapshot.get("corrispettivi_inclusi", 0),
             },
             "saldo": {
-                "iva_da_versare": round(max(saldo_gestionale, 0), 2),
-                "iva_a_credito": round(max(-saldo_gestionale, 0), 2)
+                "iva_da_versare": None if saldo_gestionale is None else max(saldo_gestionale, 0),
+                "iva_a_credito": None if saldo_gestionale is None else max(-saldo_gestionale, 0),
+                "saldo_cents": snapshot.get("saldo_cents"),
             },
             "f24_commercialista": {
                 **f24_iva,
                 "scostamento_gestionale": scostamento_f24,
+                "scostamento_gestionale_cents": scostamento_f24_cents,
                 "coerente": (
-                    abs(scostamento_f24) <= self.tolleranza
-                    if scostamento_f24 is not None else None
+                    abs(scostamento_f24_cents) <= money_cents(self.tolleranza)
+                    if scostamento_f24_cents is not None else None
                 ),
             },
+            "stato_calcolo": snapshot["stato_calcolo"],
+            "fonte_calcolo": snapshot["fonte_calcolo"],
+            "scadenza_nominale": snapshot["scadenza_nominale"],
+            "scadenza_legale": snapshot["scadenza_legale"],
             "discrepanze": self.discrepanze
         }
         

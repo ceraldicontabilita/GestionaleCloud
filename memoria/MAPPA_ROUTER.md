@@ -1,7 +1,7 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **1113 endpoint** in **114 prefissi**.
+> Totale **1115 endpoint** in **114 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
@@ -84,7 +84,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/pagamenti-buoni` | 2 | — | pagamenti_buoni |
 | `/api/pagopa` | 8 | ✓ | pagopa |
 | `/api/partite-aperte` | 3 | — | partite_aperte_api |
-| `/api/paypal-api` | 11 | ✓ | paypal_api |
+| `/api/paypal-api` | 12 | ✓ | paypal_api |
 | `/api/paypal-statements` | 16 | ✓ | paypal_statements |
 | `/api/pianificazione` | 5 | ✓ | pianificazione, public_api |
 | `/api/piano-conti` | 12 | ✓ | accounting.piano_conti |
@@ -100,7 +100,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/ricerca-globale` | 1 | — | public_api |
 | `/api/riconciliazione` | 1 | — | riconciliazione_stats_api |
 | `/api/rifiuta` | 1 | — | dati_provvisori |
-| `/api/ritenute` | 3 | ✓ | ritenute |
+| `/api/ritenute` | 4 | ✓ | ritenute |
 | `/api/scadenzario-fornitori` | 6 | ✓ | scadenzario_fornitori |
 | `/api/scadenze` | 9 | ✓ | scadenze |
 | `/api/settings` | 15 | ✓ | settings, settings_router |

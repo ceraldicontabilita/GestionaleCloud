@@ -16,7 +16,6 @@ import {
   StatCard,
 } from '../components/ds';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { useAuth } from '../contexts/AuthContext';
 import {
   BORDER_RADIUS,
   COLORS,
@@ -71,6 +70,7 @@ const ANOMALY_LABELS = {
   classificazione_da_verificare: 'Categoria da verificare',
   collegamento_mancante: 'Collegamento mancante',
   duplicato_segnalato: 'Possibile duplicato',
+  periodo_da_verificare: 'Periodo documento da verificare',
 };
 
 const formatBytes = bytes => {
@@ -96,7 +96,6 @@ const categoryStyle = doc => CATEGORY_COLORS[doc.category] || CATEGORY_COLORS.al
 
 export default function Documenti() {
   const { anno } = useAnnoGlobale();
-  const { isAdmin } = useAuth();
   const isMobile = useIsMobile();
   const [documents, setDocuments] = useState([]);
   const [categories, setCategories] = useState({});
@@ -191,20 +190,6 @@ export default function Documenti() {
     setPage(0);
   };
 
-  const syncFiscalDrive = async () => {
-    try {
-      const response = await api.post('/api/documenti/drive/fiscal/sync');
-      toast.success('Sincronizzazione fiscale completata', {
-        description: `${response.data?.mode || response.data?.status || 'ok'}. I documenti restano da verificare.`,
-      });
-      await loadData();
-    } catch (requestError) {
-      toast.error('Sincronizzazione fiscale non riuscita', {
-        description: requestError.response?.data?.detail || requestError.message,
-      });
-    }
-  };
-
   return (
     <PageLayout
       title="Archivio documenti"
@@ -215,7 +200,6 @@ export default function Documenti() {
           <Button variant="secondary" onClick={loadData} disabled={loading}>
             {loading ? 'Aggiornamento…' : 'Aggiorna'}
           </Button>
-          {isAdmin && <Button variant="secondary" onClick={syncFiscalDrive}>Sincronizza Drive fiscale</Button>}
           <Link
             to="/documenti/import"
             style={{
@@ -381,11 +365,18 @@ export default function Documenti() {
                 render: doc => sourceLabel(doc),
               },
               {
-                key: 'archive_date',
-                label: 'Data',
+                key: 'periodo_documentale',
+                label: 'Periodo documento',
                 ruoloCard: 'dettaglio',
                 iconaCard: '📅',
-                render: doc => formatArchiveDate(doc.archive_date),
+                render: doc => doc.periodo_documentale || 'Da verificare',
+              },
+              {
+                key: 'acquired_at',
+                label: 'Acquisito il',
+                ruoloCard: 'dettaglio',
+                iconaCard: '📥',
+                render: doc => formatArchiveDate(doc.acquired_at),
               },
               {
                 key: 'size_bytes',

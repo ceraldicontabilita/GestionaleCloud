@@ -14,7 +14,8 @@ XML = """<FatturaElettronica><DatiGeneraliDocumento>
 
 def test_estrazione_dati_ritenuta():
     d = mod._estrai_dati_ritenuta(XML)
-    assert d == {"tipo": "RT01", "importo": 280.0, "aliquota": "20.00", "causale": "A"}
+    assert d == {"tipo": "RT01", "importo": "280.00", "importo_cents": 28000,
+                 "aliquota": "20.00", "causale": "A"}
     assert mod._estrai_dati_ritenuta("<FatturaElettronica/>") is None
 
 
@@ -37,7 +38,8 @@ def test_estrazione_dati_ritenuta_isola_il_body_giusto_in_file_raggruppato():
     )
 
     d0 = mod._estrai_dati_ritenuta(xml_raggruppato, 0)
-    assert d0 == {"tipo": "RT01", "importo": 280.0, "aliquota": "20.00", "causale": "A"}
+    assert d0 == {"tipo": "RT01", "importo": "280.00", "importo_cents": 28000,
+                  "aliquota": "20.00", "causale": "A"}
 
     d1 = mod._estrai_dati_ritenuta(xml_raggruppato, 1)
     assert d1 is None
@@ -190,7 +192,7 @@ def test_caso_reale_1040_giugno_284_quietanza_21_luglio_2026():
 
     assert upd["f24_id"] == "F24-1040-06-2026"
     assert upd["f24_periodo"] == "2026-06"
-    assert upd["f24_quota_ritenuta"] == 284.0
+    assert upd["f24_quota_ritenuta"] == "284.00"
     assert upd["data_pagamento"] == "2026-07-21"
     assert upd["stato"] == "pagata_con_ravvedimento"
     assert upd["stato_evidenza_pagamento"] == "QUIETANZA_PRESENTE_DA_VERIFICARE_BANCA"
@@ -212,8 +214,8 @@ def test_f24_multi_tributo_associa_solo_riga_1040_aggregata_del_periodo():
     ))
     assert upd["f24_id"] == "F-MULTI"
     assert upd["f24_associazione_tipo"] == "aggregata"
-    assert upd["f24_importo_tributo"] == 490.0
-    assert upd["f24_quota_ritenuta"] == 280.0
+    assert upd["f24_importo_tributo"] == "490.00"
+    assert upd["f24_quota_ritenuta"] == "280.00"
     assert upd["f24_multi_tributo"] is True
     assert upd["stato"] == "f24_associato_da_pagare"
 

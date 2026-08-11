@@ -151,4 +151,21 @@ describe('Import documenti - corrispettivo duplicato', () => {
     expect(config.headers['X-Document-Preview-Token']).toBe('token-archivio_zip');
     expect((await screen.findAllByText('Archivio ZIP')).length).toBeGreaterThan(0);
   });
+
+  it('esegue prima la simulazione delle classificazioni massive', async () => {
+    api.post
+      .mockResolvedValueOnce({ data: {
+        dry_run: true, totali: 12, classificati: { f24: 4 }, nessuna_categoria: 8,
+      } })
+      .mockResolvedValueOnce({ data: {
+        dry_run: false, totali: 12, classificati: { f24: 4 },
+        nessuna_categoria: 8, cedolini_associati: 0, f24_creati: 4,
+      } });
+    render(<ImportDocumenti />);
+
+    fireEvent.click(screen.getByTestId('auto-classify-btn'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+    expect(api.post.mock.calls[0][0]).toContain('dry_run=true');
+    expect(api.post.mock.calls[1][0]).toContain('dry_run=false');
+  });
 });

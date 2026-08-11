@@ -55,9 +55,10 @@ def test_servizio_associa_solo_il_codice_tributo_pagato_e_marca_la_prova_bancari
     assert f24["allocazioni_banca"][0]["codici_tributo"] == ["2001"]
     assert movimento["riconciliato"] is True
     assert movimento["tipo_riconciliazione"] == "f24_tributi"
-    assert len(relazioni) == 1
-    assert relazioni[0]["relation_type"] == "settles_f24_model"
-    assert relazioni[0]["amount_cents"] == 461350
+    assert {relation["relation_type"] for relation in relazioni} == {
+        "settles_f24_model", "settles_tax_row"
+    }
+    assert all(relation["amount_cents"] == 461350 for relation in relazioni)
 
 
 def test_servizio_non_sceglie_fra_due_f24_compatibili():

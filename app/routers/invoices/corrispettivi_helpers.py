@@ -18,6 +18,8 @@ from typing import Any, Dict, Optional
 import logging
 import uuid
 
+from app.services.payment_allocation_validator import to_cents
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,24 +51,56 @@ def _build_corrispettivo_doc(parsed: Dict[str, Any], filename: str, source: str)
     data = parsed.get("data", "") or ""
     anno = int(data[:4]) if data and len(data) >= 4 and data[:4].isdigit() else datetime.now().year
     mese = int(data[5:7]) if data and len(data) >= 7 and data[5:7].isdigit() else datetime.now().month
+    righe_iva = []
+    for row in parsed.get("riepilogo_iva", []) or []:
+        imponibile_cents = to_cents(row.get("ammontare", row.get("imponibile", 0)))
+        iva_cents = to_cents(row.get("imposta", 0))
+        righe_iva.append({
+            **row,
+            "imponibile_cents": imponibile_cents,
+            "iva_cents": iva_cents,
+            "totale_cents": imponibile_cents + iva_cents,
+        })
+
+    totale_cents = to_cents(parsed.get("totale", 0))
+    contanti_cents = to_cents(parsed.get("pagato_contanti", 0))
+    elettronico_cents = to_cents(parsed.get("pagato_elettronico", 0))
+    imponibile_cents = to_cents(parsed.get("totale_imponibile", 0))
+    iva_cents = to_cents(parsed.get("totale_iva", 0))
+    iva_printed = bool(righe_iva) and all(
+        bool(row.get("imposta_presente")) for row in parsed.get("riepilogo_iva", []) or []
+    )
+    if iva_printed:
+        quadratura_iva = "VERIFICATA" if imponibile_cents + iva_cents == totale_cents else "ERRORE"
+    else:
+        quadratura_iva = "NON_VERIFICABILE"
     return {
         "corrispettivo_key": parsed.get("corrispettivo_key", ""),
         "data": data,
         "matricola_rt": parsed.get("matricola_rt", ""),
         "numero_documento": parsed.get("numero_documento", ""),
         "partita_iva": parsed.get("partita_iva", ""),
-        "totale": _to_float(parsed.get("totale", 0)),
-        "pagato_contanti": _to_float(parsed.get("pagato_contanti", 0)),
-        "pagato_elettronico": _to_float(parsed.get("pagato_elettronico", 0)),
-        "totale_imponibile": _to_float(parsed.get("totale_imponibile", 0)),
-        "totale_iva": _to_float(parsed.get("totale_iva", 0)),
+        "totale": totale_cents / 100,
+        "totale_cents": totale_cents,
+        "pagato_contanti": contanti_cents / 100,
+        "pagato_contanti_cents": contanti_cents,
+        "pagato_elettronico": elettronico_cents / 100,
+        "pagato_elettronico_cents": elettronico_cents,
+        "totale_imponibile": imponibile_cents / 100,
+        "totale_imponibile_cents": imponibile_cents,
+        "totale_iva": iva_cents / 100,
+        "totale_iva_cents": iva_cents,
+        "quadratura_iva_status": quadratura_iva,
+        "iva_source": "XML_STAMPATO" if iva_printed else "NON_DISPONIBILE",
         "pagato_non_riscosso": _to_float(parsed.get("pagato_non_riscosso", 0)),
         "totale_ammontare_annulli": _to_float(parsed.get("totale_ammontare_annulli", 0)),
         "numero_documenti": int(_to_float(parsed.get("numero_documenti", 0))),
-        "riepilogo_iva": parsed.get("riepilogo_iva", []) or [],
+        "riepilogo_iva": righe_iva,
         "status": "imported",
         "source": source,
         "filename": filename,
+        "sha256": parsed.get("sha256") or parsed.get("document_hash"),
+        "parser_version": parsed.get("parser_version") or "corrispettivi_xml_v2_cents",
         "anno": anno,
         "mese": mese,
         "updated_at": datetime.now(timezone.utc).isoformat(),

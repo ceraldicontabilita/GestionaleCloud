@@ -28,6 +28,7 @@ def test_archivio_pagina_sul_server_e_non_espone_payload(monkeypatch):
             "status": "processato",
             "processed": True,
             "processed_to": "fatture",
+            "document_date": f"2026-07-{index + 1:02d}",
             "downloaded_at": f"2026-07-{index + 1:02d}T10:00:00+00:00",
             "pdf_data": "A" * 10_000,
             "file_base64": "B" * 10_000,
@@ -110,7 +111,7 @@ def test_archivio_espone_anomalie_senza_correggere_record(monkeypatch):
     result = _run(documenti.lista_documenti(
         categoria=None,
         status=None,
-        anno=2026,
+        anno=None,
         search=None,
         limit=50,
         skip=0,
@@ -121,6 +122,7 @@ def test_archivio_espone_anomalie_senza_correggere_record(monkeypatch):
         "errore_elaborazione",
         "classificazione_da_verificare",
         "collegamento_mancante",
+        "periodo_da_verificare",
     }
     persisted = _run(db.documents_inbox.find_one({"id": "errore-1"}))
     assert "anomalies" not in persisted

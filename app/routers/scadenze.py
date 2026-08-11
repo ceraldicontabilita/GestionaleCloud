@@ -269,32 +269,15 @@ async def get_scadenze_iva_mensile(anno: int) -> Dict[str, Any]:
     Per regime IVA mensile: versamento entro il 16 del mese successivo.
     """
     db = Database.get_db()
-    
+    from app.services.iva_liquidation_query import euros, get_iva_period_snapshot
+
     scadenze_mensili = []
     
     for mese in range(1, 13):
-        prefix = f"{anno}-{mese:02d}"
-        
-        # IVA Debito (corrispettivi)
-        result_debito = await db["corrispettivi"].aggregate([
-            {"$match": {"data": {"$regex": f"^{prefix}"}}},
-            {"$group": {"_id": None, "totale": {"$sum": "$totale_iva"}}}
-        ]).to_list(1)
-        iva_debito = result_debito[0]["totale"] if result_debito else 0
+        snapshot = await get_iva_period_snapshot(db, anno=anno, mese=mese)
         
         # IVA Credito (fatture) — motore ufficiale di liquidazione, vedi
         # _iva_acquisti_ufficiale.
-        esito_credito = await _iva_acquisti_ufficiale(db, prefix)
-        iva_credito = esito_credito["iva_acquisti"]
-
-        saldo = iva_debito - iva_credito
-        
-        # Data scadenza: 16 del mese successivo
-        if mese == 12:
-            data_scad = f"{anno + 1}-01-16"
-        else:
-            data_scad = f"{anno}-{mese + 1:02d}-16"
-        
         mesi_nomi = ['', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
                     'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre']
         
@@ -302,42 +285,71 @@ async def get_scadenze_iva_mensile(anno: int) -> Dict[str, Any]:
             "mese": mese,
             "mese_nome": mesi_nomi[mese],
             "periodo": f"{mesi_nomi[mese]} {anno}",
-            "data_scadenza": data_scad,
-            "iva_debito": round(iva_debito, 2),
-            "iva_credito": round(iva_credito, 2),
-            "saldo": round(saldo, 2),
-            "da_versare": saldo > 0,
-            "importo_versamento": round(max(saldo, 0), 2),
-            "a_credito": round(abs(min(saldo, 0)), 2),  # Importo a credito quando saldo < 0
-            "stato": "da_versare" if saldo > 0 else "a_credito",
-            "giorni_mancanti": _giorni_mancanti(data_scad),
-            "fonte": esito_credito["fonte"],
+            "data_scadenza": snapshot["scadenza_legale"],
+            "scadenza_nominale": snapshot["scadenza_nominale"],
+            "scadenza_legale": snapshot["scadenza_legale"],
+            "iva_debito": snapshot.get("iva_vendite"),
+            "iva_debito_cents": snapshot.get("iva_vendite_cents"),
+            "iva_credito": snapshot.get("iva_acquisti"),
+            "iva_credito_cents": snapshot.get("iva_acquisti_cents"),
+            "saldo": snapshot.get("saldo"),
+            "saldo_cents": snapshot.get("saldo_cents"),
+            "da_versare": bool(
+                snapshot.get("saldo_cents") is not None and snapshot["saldo_cents"] > 0
+            ),
+            "importo_versamento": snapshot.get("debito_periodo"),
+            "importo_versamento_cents": snapshot.get("debito_periodo_cents"),
+            "a_credito": snapshot.get("credito_periodo"),
+            "a_credito_cents": snapshot.get("credito_periodo_cents"),
+            "stato": snapshot["stato_calcolo"] if snapshot["stato_calcolo"] == "NON_CALCOLATO" else (
+                "da_versare" if (snapshot.get("saldo_cents") or 0) > 0 else "a_credito"
+            ),
+            "giorni_mancanti": _giorni_mancanti(snapshot["scadenza_legale"]),
+            "fonte": "stima" if snapshot["fonte"] == "calcolo_canonico" else snapshot["fonte"],
+            "fonte_calcolo": snapshot["fonte_calcolo"],
+            "conteggi": snapshot["conteggi"],
         })
 
-    totale_da_versare = sum(s["importo_versamento"] for s in scadenze_mensili)
-    totale_a_credito = sum(abs(s["saldo"]) for s in scadenze_mensili if s["saldo"] < 0)
+    calcolate = [s for s in scadenze_mensili if s["saldo_cents"] is not None]
+    totale_da_versare_cents = sum(s["importo_versamento_cents"] or 0 for s in calcolate)
+    totale_a_credito_cents = sum(s["a_credito_cents"] or 0 for s in calcolate)
     
     # Calcola saldo progressivo con riporto credito dal mese precedente
-    saldo_progressivo = 0.0
+    saldo_progressivo_cents = 0
     for s in scadenze_mensili:
-        saldo_progressivo = round(saldo_progressivo + s["saldo"], 2)
-        s["saldo_progressivo"] = saldo_progressivo
+        if s["saldo_cents"] is None:
+            s["saldo_progressivo"] = None
+            s["saldo_progressivo_cents"] = None
+            s["da_versare_effettivo"] = False
+            s["importo_versamento_effettivo"] = None
+            s["importo_versamento_effettivo_cents"] = None
+            continue
+        saldo_progressivo_cents += s["saldo_cents"]
+        s["saldo_progressivo_cents"] = saldo_progressivo_cents
+        s["saldo_progressivo"] = euros(saldo_progressivo_cents)
         # Il versamento F24 è dovuto solo se il progressivo è positivo
-        if saldo_progressivo > 0.005:
+        if saldo_progressivo_cents > 0:
             s["da_versare_effettivo"] = True
-            s["importo_versamento_effettivo"] = round(saldo_progressivo, 2)
+            s["importo_versamento_effettivo_cents"] = saldo_progressivo_cents
+            s["importo_versamento_effettivo"] = euros(saldo_progressivo_cents)
         else:
             s["da_versare_effettivo"] = False
+            s["importo_versamento_effettivo_cents"] = 0
             s["importo_versamento_effettivo"] = 0.0
     
     return {
         "anno": anno,
         "regime": "mensile",
         "scadenze": scadenze_mensili,
-        "totale_da_versare": round(totale_da_versare, 2),
-        "totale_a_credito": round(totale_a_credito, 2),
-        "saldo_annuale": round(totale_da_versare - totale_a_credito, 2),
-        "saldo_progressivo": round(saldo_progressivo, 2)
+        "totale_da_versare": euros(totale_da_versare_cents),
+        "totale_da_versare_cents": totale_da_versare_cents,
+        "totale_a_credito": euros(totale_a_credito_cents),
+        "totale_a_credito_cents": totale_a_credito_cents,
+        "saldo_annuale": euros(totale_da_versare_cents - totale_a_credito_cents),
+        "saldo_annuale_cents": totale_da_versare_cents - totale_a_credito_cents,
+        "saldo_progressivo": euros(saldo_progressivo_cents),
+        "saldo_progressivo_cents": saldo_progressivo_cents,
+        "fonte_calcolo": "iva_liquidation_query_v1",
     }
 
 

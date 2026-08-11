@@ -121,7 +121,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ui/tooltip.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/contexts/AnnoContext.jsx` | COMPONENTE_USATO | 50 |
 | `frontend/src/contexts/AnnoContext.test.jsx` | TEST_ONLY | 0 |
-| `frontend/src/contexts/AuthContext.jsx` | COMPONENTE_USATO | 8 |
+| `frontend/src/contexts/AuthContext.jsx` | COMPONENTE_USATO | 7 |
 | `frontend/src/contexts/AuthContext.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/contexts/UploadContext.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/domain/suppliers.js` | COMPONENTE_USATO | 2 |

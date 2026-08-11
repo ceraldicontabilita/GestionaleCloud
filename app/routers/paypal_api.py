@@ -8,7 +8,7 @@ import re
 
 from app.database import Database
 from app.config import settings
-from app.services.paypal_api_sync import sync_paypal_period
+from app.services.paypal_api_sync import sync_paypal_incremental, sync_paypal_period
 from app.services.paypal_api_client import paypal_client
 from app.services.paypal_riconciliazione import match_fornitore, normalize_string
 from app.services.paypal_invoice_matching import business_name_matches
@@ -127,15 +127,12 @@ async def ricevi_webhook(request: Request):
     end = (evento_dt + timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=0)
 
     result = await sync_paypal_period(db, start, end)
-    reconciliation = await _riconcilia_intervallo_paypal(db, start, end)
     await db["paypal_webhook_events"].update_one(
         {"event_id": event_id},
-        {"$set": {"processed": True, "sync_result": result,
-                  "link_result": reconciliation["collegamenti"],
-                  "bank_result": reconciliation["banca"]}},
+        {"$set": {"processed": True, "sync_result": result}},
     )
     return {"success": True, "processato": True, "sync": result,
-            **reconciliation}
+            "reconciliation_applied": False}
 
 
 @router.post("/sync")
@@ -148,8 +145,7 @@ async def sync_period(body: Dict[str, Any] = Body(...)):
 
     db = Database.get_db()
     result = await sync_paypal_period(db, start, end)
-    reconciliation = await _riconcilia_intervallo_paypal(db, start, end)
-    return {**result, **reconciliation}
+    return {**result, "reconciliation_applied": False}
 
 
 @router.post("/sync/month")
@@ -162,8 +158,15 @@ async def sync_current_month():
 
     db = Database.get_db()
     result = await sync_paypal_period(db, start, end)
-    reconciliation = await _riconcilia_intervallo_paypal(db, start, end)
-    return {**result, **reconciliation}
+    return {**result, "reconciliation_applied": False}
+
+
+@router.post("/sync/incremental")
+async def sync_incremental():
+    """Sync automatica idempotente usata all'apertura della pagina PayPal."""
+    db = Database.get_db()
+    result = await sync_paypal_incremental(db)
+    return {**result, "reconciliation_applied": False}
 
 
 @router.get("/status")

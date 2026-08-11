@@ -90,7 +90,14 @@ def data_pagamento_quietanza(f24: Dict[str, Any]) -> Optional[Any]:
 
 def stato_evidenza_pagamento(f24: Dict[str, Any]) -> Dict[str, Any]:
     """Classifica la prova di pagamento senza fidarsi dei flag legacy."""
-    if f24.get("allocazioni_banca") and float(f24.get("importo_residuo") or 0) > 0:
+    from app.services.payment_allocation_validator import to_cents
+
+    residual_cents = int(
+        f24.get("importo_residuo_cents")
+        if isinstance(f24.get("importo_residuo_cents"), int)
+        else to_cents(f24.get("importo_residuo"))
+    )
+    if f24.get("allocazioni_banca") and residual_cents > 0:
         return {
             "stato": STATO_PARZIALMENTE_PAGATO_BANCA,
             "pagato": False,
@@ -100,7 +107,8 @@ def stato_evidenza_pagamento(f24: Dict[str, Any]) -> Dict[str, Any]:
             "quietanza_presente": ha_quietanza(f24),
             "versato_documentalmente": False,
             "data_versamento_documentale": None,
-            "importo_residuo": float(f24.get("importo_residuo") or 0),
+            "importo_residuo_cents": residual_cents,
+            "importo_residuo": residual_cents / 100,
             "tributi_aperti": [
                 r.get("codice") for r in (f24.get("saldo_tributi") or {}).get("righe_aperte", [])
             ],

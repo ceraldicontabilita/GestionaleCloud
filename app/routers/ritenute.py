@@ -30,6 +30,7 @@ from app.database import Database
 from app.utils.error_handler import handle_errors
 from app.services.f24_payment_evidence import stato_evidenza_pagamento
 from app.services.f24_canonico import normalizza_righe_tributo
+from app.services.payment_allocation_validator import to_cents
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -58,12 +59,25 @@ LOGICA_RAVVEDIMENTO = (
 TIPI_RITENUTA = {"RT01": "Ritenuta persone fisiche", "RT02": "Ritenuta persone giuridiche"}
 
 
+def _euro_string(cents: int) -> str:
+    value = int(cents or 0)
+    sign = "-" if value < 0 else ""
+    value = abs(value)
+    return f"{sign}{value // 100}.{value % 100:02d}"
+
+
 def _scadenza_16_mese_successivo(data_iso: str) -> str:
     anno, mese = int(data_iso[:4]), int(data_iso[5:7])
     mese += 1
     if mese == 13:
         mese, anno = 1, anno + 1
     return f"{anno}-{mese:02d}-16"
+
+
+def _scadenze_ritenuta(data_iso: str) -> Dict[str, Any]:
+    from app.services.fiscal_deadlines import monthly_deadline
+
+    return monthly_deadline(int(data_iso[:4]), int(data_iso[5:7]))
 
 
 def _isola_body_xml(xml_raw: str, body_index: int) -> str:
@@ -108,15 +122,13 @@ def _estrai_dati_ritenuta(xml_raw, body_index: int = 0) -> Optional[Dict[str, An
         m = re.search(rf"<{tag}>\s*([^<]+?)\s*</{tag}>", b)
         return m.group(1) if m else None
 
-    try:
-        importo = float(campo("ImportoRitenuta") or 0)
-    except ValueError:
-        return None
-    if importo <= 0:
+    importo_cents = to_cents(campo("ImportoRitenuta") or 0)
+    if importo_cents <= 0:
         return None
     return {
         "tipo": campo("TipoRitenuta") or "RT01",
-        "importo": round(importo, 2),
+        "importo_cents": importo_cents,
+        "importo": _euro_string(importo_cents),
         "aliquota": campo("AliquotaRitenuta"),
         "causale": campo("CausalePagamento"),
     }
@@ -128,7 +140,8 @@ def _tributi_di(f24: Dict[str, Any]) -> List[Dict[str, Any]]:
         "indice": row["ordinal"] - 1,
         "sezione": row["section"],
         "codice": row["tax_code"],
-        "importo": row["debit_amount"],
+        "importo": _euro_string(row["debit_cents"]),
+        "importo_cents": row["debit_cents"],
         "periodo": row["reference_period"],
     } for row in normalizza_righe_tributo(f24)]
     codici_presenti = {row["codice"] for row in out}
@@ -139,7 +152,7 @@ def _tributi_di(f24: Dict[str, Any]) -> List[Dict[str, Any]]:
             codici_presenti.add(codice)
             out.append({
                 "indice": len(out), "sezione": "codici_tributo",
-                "codice": codice, "importo": None, "periodo": None,
+                "codice": codice, "importo": None, "importo_cents": None, "periodo": None,
             })
     return out
 
@@ -193,23 +206,32 @@ async def _riconcilia_ritenuta(
         "f24_tributo_sezione": None,
         "f24_periodo": None,
         "f24_importo_tributo": None,
+        "f24_importo_tributo_cents": None,
         "f24_associazione_tipo": None,
         "f24_quota_ritenuta": None,
+        "f24_quota_ritenuta_cents": None,
         "f24_multi_tributo": False,
         "stato_evidenza_pagamento": None,
         "movimento_bancario_f24_id": None,
         "data_pagamento": None,
         "f24_candidati": [],
+        "stato_obbligazione": "APERTA",
+        "stato_evidenza_documentale": "NON_PRESENTE",
+        "stato_banca": "NON_VERIFICATA",
+        "versata_documentalmente": False,
     }
     periodo = _periodo_ritenuta(rit)
     gruppo = [
         r for r in (ritenute_periodo or [rit])
         if _periodo_ritenuta(r) == periodo
     ] if periodo else [rit]
-    importo = round(float(rit.get("importo") or 0), 2)
-    totale_gruppo = round(sum(float(r.get("importo") or 0) for r in gruppo), 2)
+    importo_cents = int(rit.get("importo_cents") or to_cents(rit.get("importo")))
+    totale_gruppo_cents = sum(
+        int(r.get("importo_cents") or to_cents(r.get("importo"))) for r in gruppo
+    )
     stesso_importo = sum(
-        1 for r in gruppo if abs(float(r.get("importo") or 0) - importo) <= 0.01
+        1 for r in gruppo
+        if int(r.get("importo_cents") or to_cents(r.get("importo"))) == importo_cents
     )
 
     candidati = []
@@ -224,13 +246,13 @@ async def _riconcilia_ritenuta(
             tipo = None
             # Una riga senza periodo può essere usata solo per un importo
             # individuale univoco, mai per un'aggregazione mensile.
-            if abs(tributo["importo"] - importo) <= 0.01 and stesso_importo == 1:
+            if tributo["importo_cents"] == importo_cents and stesso_importo == 1:
                 tipo = "singola"
             if (
                 len(gruppo) > 1
                 and periodo
                 and periodo_riga == periodo
-                and abs(tributo["importo"] - totale_gruppo) <= 0.01
+                and tributo["importo_cents"] == totale_gruppo_cents
             ):
                 tipo = "aggregata"
             if not tipo:
@@ -244,7 +266,8 @@ async def _riconcilia_ritenuta(
             })
 
     if not candidati:
-        upd["stato"] = "scaduta_da_versare" if oggi > rit["scadenza"] else "da_pagare"
+        due = rit.get("scadenza_legale") or rit["scadenza"]
+        upd["stato"] = "scaduta_da_versare" if oggi > due else "da_pagare"
         upd["f24_id"] = None
         return upd
 
@@ -272,19 +295,29 @@ async def _riconcilia_ritenuta(
     upd["f24_tributo_sezione"] = tributo_1040["sezione"]
     upd["f24_periodo"] = tributo_1040.get("periodo")
     upd["f24_importo_tributo"] = tributo_1040["importo"]
+    upd["f24_importo_tributo_cents"] = tributo_1040["importo_cents"]
     upd["f24_associazione_tipo"] = scelto["tipo"]
-    upd["f24_quota_ritenuta"] = importo
+    upd["f24_quota_ritenuta_cents"] = importo_cents
+    upd["f24_quota_ritenuta"] = _euro_string(importo_cents)
     upd["f24_multi_tributo"] = len(_tributi_di(f24_match)) > 1
     upd["stato_evidenza_pagamento"] = evidenza["stato"]
     upd["movimento_bancario_f24_id"] = evidenza.get("movimento_bancario_id")
+    upd["stato_evidenza_documentale"] = (
+        "VERSATA_DOCUMENTALMENTE" if evidenza["versato_documentalmente"] else "NON_PRESENTE"
+    )
+    upd["stato_banca"] = "VERIFICATA" if evidenza["verificato_banca"] else "NON_VERIFICATA"
+    upd["versata_documentalmente"] = evidenza["versato_documentalmente"]
+    upd["payment_chain"] = f24_match.get("payment_chain")
 
     if not evidenza["versato_documentalmente"]:
         upd["stato"] = "f24_associato_da_pagare"
         return upd
 
-    data_pag = _data_pagamento_f24(f24_match) or rit["scadenza"]
+    due = rit.get("scadenza_legale") or rit["scadenza"]
+    data_pag = _data_pagamento_f24(f24_match) or due
     upd["data_pagamento"] = data_pag
-    if data_pag <= rit["scadenza"]:
+    upd["stato_obbligazione"] = "VERSATA"
+    if data_pag <= due:
         upd["stato"] = "pagata_puntuale"
     else:
         codici = {t["codice"] for t in _tributi_di(f24_match)}
@@ -300,6 +333,45 @@ async def _riconcilia_ritenuta(
         else:
             upd["stato"] = "pagata_in_ritardo_senza_ravvedimento"
     return upd
+
+
+async def upsert_ritenuta_da_fattura(db, fattura: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Aggiorna la proiezione Ritenute durante l'import canonico Documenti."""
+    dati = _estrai_dati_ritenuta(
+        fattura.get("xml_raw"), int(fattura.get("xml_body_index") or 0),
+    )
+    invoice_date = str(fattura.get("invoice_date") or fattura.get("data_fattura") or "")[:10]
+    fattura_id = fattura.get("id")
+    if not dati or not fattura_id or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", invoice_date):
+        return None
+    existing = await db[COLLECTION].find_one({"fattura_id": fattura_id})
+    now = datetime.now(timezone.utc).isoformat()
+    document = {
+        "id": existing.get("id") if existing else str(uuid.uuid4()),
+        "fattura_id": fattura_id,
+        "numero_fattura": fattura.get("invoice_number") or fattura.get("numero_fattura"),
+        "data_fattura": invoice_date,
+        "fornitore": fattura.get("supplier_name") or fattura.get("cedente_denominazione"),
+        "piva": fattura.get("supplier_vat") or fattura.get("cedente_piva"),
+        "tipo": dati["tipo"],
+        "tipo_label": TIPI_RITENUTA.get(dati["tipo"], dati["tipo"]),
+        "importo": dati["importo"],
+        "importo_cents": dati["importo_cents"],
+        "aliquota": dati["aliquota"],
+        "causale": dati["causale"],
+        "periodo_ritenuta": invoice_date[:7],
+        "scadenza": _scadenza_16_mese_successivo(invoice_date),
+        **_scadenze_ritenuta(invoice_date),
+        "source_document_id": fattura_id,
+        "projection_source": "documenti_import_auto",
+        "updated_at": now,
+    }
+    if existing:
+        await db[COLLECTION].update_one({"id": document["id"]}, {"$set": document})
+    else:
+        document["created_at"] = now
+        await db[COLLECTION].insert_one(dict(document))
+    return document
 
 
 async def riconcilia_ritenute_esistenti(db) -> Dict[str, Any]:
@@ -340,33 +412,11 @@ async def scan_ritenute(anno: int = Query(2026)) -> Dict[str, Any]:
 
     nuove = aggiornate = 0
     for f in fatture:
-        dati = _estrai_dati_ritenuta(f.get("xml_raw"), f.get("xml_body_index") or 0)
-        if not dati:
-            continue
-        base = {
-            "fattura_id": f["id"],
-            "numero_fattura": f.get("invoice_number"),
-            "data_fattura": (f.get("invoice_date") or "")[:10],
-            "fornitore": f.get("supplier_name"),
-            "piva": f.get("supplier_vat") or f.get("cedente_piva"),
-            "tipo": dati["tipo"],
-            "tipo_label": TIPI_RITENUTA.get(dati["tipo"], dati["tipo"]),
-            "importo": dati["importo"],
-            "aliquota": dati["aliquota"],
-            "causale": dati["causale"],
-            "periodo_ritenuta": (f.get("invoice_date") or "")[:7],
-            "scadenza": _scadenza_16_mese_successivo((f.get("invoice_date") or "")[:10]),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
         esistente = await db[COLLECTION].find_one({"fattura_id": f["id"]})
-        rit = {**base, "id": esistente["id"] if esistente else str(uuid.uuid4())}
-        if esistente:
-            await db[COLLECTION].update_one({"id": rit["id"]}, {"$set": rit})
-            aggiornate += 1
-        else:
-            rit["created_at"] = rit["updated_at"]
-            await db[COLLECTION].insert_one(dict(rit))
-            nuove += 1
+        result = await upsert_ritenuta_da_fattura(db, f)
+        if result:
+            aggiornate += int(bool(esistente))
+            nuove += int(not esistente)
 
     # Seconda fase: dopo aver acquisito tutte le ritenute, una singola riga
     # 1040 dell'F24 può essere riconosciuta come somma del periodo.
@@ -393,18 +443,32 @@ async def lista_ritenute(anno: int = Query(2026)) -> Dict[str, Any]:
     ritenute = await db[COLLECTION].find(
         {"data_fattura": {"$regex": f"^{anno}"}}, {"_id": 0}
     ).sort("scadenza", -1).to_list(2000)
+    f24_docs = await _carica_f24(db)
+    for row in ritenute:
+        row.update(await _riconcilia_ritenuta(
+            db, row, ritenute_periodo=ritenute, f24_docs=f24_docs,
+        ))
     oggi = datetime.now(timezone.utc).date().isoformat()
     per_stato: Dict[str, int] = {}
     for r in ritenute:
         # lo stato "da_pagare" scivola in "scaduta" col passare del tempo
-        if r.get("stato") == "da_pagare" and oggi > (r.get("scadenza") or "9999"):
+        if r.get("stato") == "da_pagare" and oggi > (
+            r.get("scadenza_legale") or r.get("scadenza") or "9999"
+        ):
             r["stato"] = "scaduta_da_versare"
         per_stato[r.get("stato") or "?"] = per_stato.get(r.get("stato") or "?", 0) + 1
     return {
         "anno": anno,
         "ritenute": ritenute,
-        "totale_importo": round(sum(r.get("importo", 0) for r in ritenute), 2),
+        "totale_importo_cents": sum(
+            int(r.get("importo_cents") or to_cents(r.get("importo"))) for r in ritenute
+        ),
+        "totale_importo": _euro_string(sum(
+            int(r.get("importo_cents") or to_cents(r.get("importo"))) for r in ritenute
+        )),
         "per_stato": per_stato,
+        "proiezione_sola_lettura": True,
+        "fonte_pagamenti": "tax_payment_query_service",
         "logica_ravvedimento": LOGICA_RAVVEDIMENTO,
     }
 
@@ -414,3 +478,57 @@ async def lista_ritenute(anno: int = Query(2026)) -> Dict[str, Any]:
 async def codici_ravvedimento() -> Dict[str, Any]:
     """Sezione codici tributo: i codici del ravvedimento e la logica."""
     return {"codici": CODICI_RAVVEDIMENTO_RITENUTE, "logica": LOGICA_RAVVEDIMENTO}
+
+
+@router.get("/verifica-caso-1040")
+@handle_errors
+async def verifica_caso_1040(
+    periodo: str = Query("2026-06", pattern=r"^\d{4}-\d{2}$"),
+    importo_cents: int = Query(28400, gt=0),
+    data_quietanza: str = Query("2026-07-21", pattern=r"^\d{4}-\d{2}-\d{2}$"),
+) -> Dict[str, Any]:
+    """Collaudo live in sola lettura del caso 1040 richiesto dall'audit."""
+    db = Database.get_db()
+    all_rows = await db[COLLECTION].find(
+        {"periodo_ritenuta": periodo}, {"_id": 0}
+    ).to_list(5000)
+    obligations = [
+        row for row in all_rows
+        if int(row.get("importo_cents") or to_cents(row.get("importo"))) == importo_cents
+    ]
+    docs = await _carica_f24(db)
+    matching_docs = []
+    for document in docs:
+        rows = [
+            row for row in _tributi_di(document)
+            if row.get("codice") == "1040"
+            and row.get("periodo") == periodo
+            and row.get("importo_cents") == importo_cents
+        ]
+        evidence = stato_evidenza_pagamento(document)
+        if rows and str(evidence.get("data_versamento_documentale") or "")[:10] == data_quietanza:
+            matching_docs.append(document)
+    unique = len(obligations) == 1 and len(matching_docs) == 1
+    document = matching_docs[0] if len(matching_docs) == 1 else None
+    evidence = stato_evidenza_pagamento(document) if document else None
+    return {
+        "caso": {
+            "codice_tributo": "1040",
+            "periodo": periodo,
+            "importo_cents": importo_cents,
+            "importo": _euro_string(importo_cents),
+            "data_quietanza": data_quietanza,
+        },
+        "certificato_live": unique,
+        "sola_lettura": True,
+        "ritenute_trovate": len(obligations),
+        "f24_quietanze_trovati": len(matching_docs),
+        "ritenuta_id": obligations[0].get("id") if len(obligations) == 1 else None,
+        "f24_id": document.get("id") if document else None,
+        "quietanza_id": document.get("quietanza_id") if document else None,
+        "evidenza_pagamento": evidence,
+        "payment_chain": document.get("payment_chain") if document else None,
+        "motivo_non_certificato": None if unique else (
+            "Il database live non contiene una catena univoca ritenuta-F24-quietanza con i valori richiesti."
+        ),
+    }
