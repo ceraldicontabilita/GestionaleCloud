@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1108 · tenere: 708 · verificare: 376 · admin-only (migrazione/manutenzione): 24
+**Totale endpoint:** 1108 · tenere: 706 · verificare: 378 · admin-only (migrazione/manutenzione): 24
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -91,8 +91,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/archivio-bonifici/dipendente/{dipendente_id}` | bonifici_module.associazioni | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `DELETE /api/archivio-bonifici/disassocia-fattura/{bonifico_id}` | bonifici_module.associazioni | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/archivio-bonifici/disassocia-salario/{bonifico_id}` | bonifici_module.associazioni | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/archivio-bonifici/download-zip/{year}` | bonifici_module.transfers | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/archivio-bonifici/export` | bonifici_module.transfers | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/archivio-bonifici/download-zip/{year}` | bonifici_module.transfers | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/archivio-bonifici/export` | bonifici_module.transfers | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/archivio-bonifici/fatture-compatibili/{bonifico_id}` | bonifici_module.associazioni | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/archivio-bonifici/jobs` | bonifici_module.jobs | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/archivio-bonifici/jobs` | bonifici_module.jobs | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
