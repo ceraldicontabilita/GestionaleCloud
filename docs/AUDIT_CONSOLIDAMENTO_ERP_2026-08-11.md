@@ -62,6 +62,64 @@ A queste si aggiungono pagine standalone ancora esposte direttamente, tra cui In
 
 `frontend/src/navigation.config.js` è la fonte unica per desktop e mobile. La riduzione delle pagine va eseguita partendo da questa configurazione, senza creare menu paralleli.
 
+**Correzione applicata:** rimosse dal menu principale le voci autonome `Assegni`, `PayPal`, `F24` e `Incassi POS`, perché sono già sezioni interne di `RiconciliazioneHub`. Rimossa anche `Mappa gestionale` dal menu operativo: la route resta disponibile finché non viene ricollocata nella diagnostica/admin.
+
+### Riconciliazione
+
+`RiconciliazioneHub` contiene già come sezioni interne:
+
+- Bancaria
+- F24
+- Archivio bonifici
+- Assegni
+- PayPal
+- Coerenza POS
+
+Queste non devono essere contate né presentate come sei pagine primarie indipendenti. Sono una sola superficie operativa con sottosezioni.
+
+### Prima Nota
+
+`PrimaNotaHub` carica `PrimaNota` e `PuliziaPrimaNota`. La stessa implementazione documenta che la Pulizia viene raggiunta dal pulsante interno "Pulisci duplicati" e che non serve una barra di navigazione autonoma.
+
+**Decisione:** `PuliziaPrimaNota` non è una pagina primaria; è uno strumento tecnico interno alla Prima Nota.
+
+### Fatture
+
+`FattureHub` contiene già `Archivio fatture` e `Corrispettivi` come due tab della stessa area.
+
+**Decisione:** Corrispettivi non va contato né mostrato come pagina primaria separata.
+
+### Contabilità
+
+`ContabilitaHub` contiene attualmente 15 sezioni: Piano dei Conti, Bilancio, Verifica Bilancio, Libro Giornale, Controllo Mensile, Calendario Fiscale, Cespiti, Finanziaria, Chiusura Esercizio, Budget, Mutui, Contabilità Avanzata, Utile Obiettivo, Previsioni Acquisti e Dati ISA.
+
+**Problema:** il consolidamento a HUB è avvenuto solo a livello di URL, ma l'hub contiene ancora troppe funzioni che possono essere accorpate semanticamente.
+
+Candidati forti:
+
+- `Bilancio + Verifica Bilancio + Controllo Mensile` -> area Bilancio con tab interni.
+- `Budget + Utile Obiettivo + Previsioni Acquisti` -> area Budget/Previsioni.
+- `Finanziaria + Mutui` -> area Finanza.
+- `Calendario Fiscale` -> Scadenze/Calendario, da evitare come doppione autonomo.
+
+### Strumenti
+
+`StrumentiHub` contiene `Verifica Coerenza`, `Movimenti Banca`, `Commercialista`, `Pianificazione`, `Visure`.
+
+**Problema confermato:** `Movimenti Banca` è collocato dentro Strumenti mentre la sua funzione appartiene alla Banca/Riconciliazione. È candidato a spostamento in `RiconciliazioneHub` e successiva rimozione da Strumenti.
+
+### Cedolini
+
+`CedoliniSalari` mostra ancora più ingressi utente verso l'importazione:
+
+- `Importa prospetto Excel in Documenti`
+- `Importa cedolino in Documenti`
+- `Importa bonifico in Documenti`
+
+La pagina contiene inoltre codice legacy di upload diretto (`importaBonifici`, `allegaDocumento`) e stati collegati, anche se l'interfaccia principale usa già `DocumentImportLink`.
+
+**Decisione:** Cedolini deve diventare consultazione/controllo. Tutti gli ingressi documentali vanno rimossi dalla pagina; l'utente deve importare esclusivamente da `Documenti > Carica documenti`.
+
 ### Documenti / Drive
 
 `frontend/src/pages/hub/DocumentiHub.jsx` esponeva il bottone `Sincronizza Drive`, collegato a `POST /api/documenti/drive/sync`.
@@ -85,21 +143,24 @@ Sono già stati individuati riferimenti di sincronizzazione in: `DocumentiHub`, 
 ## Accorpamenti candidati da validare sul codice
 
 - Dashboard Relazionale -> Dashboard (tab tecnico)
-- Pulizia Prima Nota -> Prima Nota (tab Controlli)
-- Verifica Movimenti Banca -> area Banca/Riconciliazione
-- Coerenza POS/Corrispettivi -> Corrispettivi (tab Controlli)
-- Archivio Bonifici -> Banca/Riconciliazione (tab Bonifici)
-- Riconciliazione PayPal -> Riconciliazione (sorgente PayPal)
-- PagoPA -> Pagamenti/Riconciliazione
+- Pulizia Prima Nota -> Prima Nota (strumento interno) — CONFERMATO
+- Verifica Movimenti Banca -> area Banca/Riconciliazione — CONFERMATO COME POSIZIONE INCOERENTE
+- Coerenza POS/Corrispettivi -> Corrispettivi/Riconciliazione incassi
+- Archivio Bonifici -> Banca/Riconciliazione (tab Bonifici) — GIÀ HUB
+- Riconciliazione PayPal -> Riconciliazione (sorgente PayPal) — GIÀ HUB
+- F24 -> Riconciliazione — GIÀ HUB
+- Assegni -> Riconciliazione — GIÀ HUB
 - Verifica Bilancio -> Bilancio (tab Verifica)
-- Controllo Contabilità -> Bilancio (tab Controlli)
+- Controllo Mensile -> Bilancio (tab Controlli)
 - Utile Obiettivo -> Budget/Previsionale
+- Previsioni Acquisti -> Budget/Previsionale
+- Finanziaria + Mutui -> Finanza
 - Costi Noleggio -> Flotta/Noleggi (tab Costi)
 - Dettaglio Verbale -> drawer/scheda della pagina Verbali
 - Batch Reprocessing -> Batch Processor
 - Impostazioni F24 Email -> Admin/Automazioni
 - Learning Machine -> Agenti/Automazioni
-- Mappa Gestionale -> Diagnostica, fuori dal menu operativo
+- Mappa Gestionale -> Diagnostica, fuori dal menu operativo — RIMOSSA DAL MENU
 - Inserimento Rapido -> modalità/pannello, non pagina primaria
 
 ## Registro problemi e modifiche
@@ -112,6 +173,11 @@ Sono già stati individuati riferimenti di sincronizzazione in: `DocumentiHub`, 
 | A-004 | Navigazione | Troppe superfici operative/componenti legacy | Consolidare a ~40 superfici funzionali | IN ANALISI |
 | A-005 | Documenti | Rischio duplicazione evento economico tra documenti collegati | Audit end-to-end | IN ANALISI |
 | A-006 | Router | Molte pagine sono già componenti interni a HUB, non route autonome | Misurare pagine per funzione visibile | CONFERMATO |
+| A-007 | Navigazione / Riconciliazione | Assegni, PayPal, F24 e POS duplicati nel menu | Lasciarli solo come tab Riconciliazione | APPLICATO, DA TESTARE |
+| A-008 | Navigazione / Diagnostica | Mappa Gestionale nel menu operativo | Rimuovere dal menu e ricollocare in Admin/Diagnostica | PARZIALMENTE APPLICATO |
+| A-009 | Cedolini | Tre accessi all'import e codice upload legacy | Rimuovere import dalla pagina; sola consultazione/controllo | CONFERMATO, DA APPLICARE |
+| A-010 | Strumenti | Movimenti Banca dentro Strumenti | Spostare in Riconciliazione/Banca | CONFERMATO, DA APPLICARE |
+| A-011 | Contabilità | 15 sottosezioni ancora troppo frammentate | Accorpare Bilancio, Budget e Finanza | CONFERMATO, DA PROGETTARE |
 
 ## Criterio di chiusura
 
