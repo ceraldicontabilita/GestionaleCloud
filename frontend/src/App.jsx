@@ -1,18 +1,17 @@
 import React, { useState, useEffect } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import api from "./api";
 import ErrorBoundary from "./components/ErrorBoundary";
 import TopNav from "./components/layout/TopNav";
 import { UploadProvider } from "./contexts/UploadContext";
 import { UploadStatusBar } from "./components/UploadStatusBar";
 import ChatIntelligente from "./components/ChatIntelligente";
-import F24EmailSync from "./components/F24EmailSync";
 import { useWebSocketNotifications } from "./hooks/useWebSocket";
 import "./styles/topnav.css";
 
 // Navigazione: FONTE UNICA in navigation.config.js, condivisa con TopNav.jsx.
 // Prima qui c'erano due elenchi mantenuti a mano (MOBILE_NAV/ALL_NAV_ITEMS)
-// gi\u00E0 andati fuori sincrono col desktop (voci ed etichette diverse).
+// già andati fuori sincrono col desktop (voci ed etichette diverse).
 import { NAV_TUTTE as NAV_TUTTE_RAW, NAV_MOBILE_BAR } from "./navigation.config";
 import { useAuth } from "./contexts/AuthContext.jsx";
 
@@ -22,9 +21,7 @@ export default function App() {
   const NAV_TUTTE = NAV_TUTTE_RAW.filter(i => !i.adminOnly || isAdmin);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [alertCommercialista, setAlertCommercialista] = useState(null);
-  const [showF24Sync, setShowF24Sync] = useState(false);
   const location = useLocation();
-  const navigate = useNavigate();
 
   // Connessione WebSocket real-time gestisce notifiche push dallo scheduler
   useWebSocketNotifications();
@@ -64,11 +61,6 @@ export default function App() {
 
         {/* Upload Status Bar */}
         <UploadStatusBar />
-
-        {/* F24 Email Sync Popup */}
-        {showF24Sync && (
-          <F24EmailSync onClose={() => setShowF24Sync(false)} />
-        )}
 
         {/* TOP NAVIGATION - Primary */}
         <TopNav />
@@ -321,5 +313,3 @@ export default function App() {
     </UploadProvider>
   );
 }
-
-
