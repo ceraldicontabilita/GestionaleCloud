@@ -46,6 +46,12 @@ const tipoDocumento = fattura => {
   return { codice, nome: fattura.tipo_documento_desc || NOMI_TIPO_DOCUMENTO[codice] || codice };
 };
 
+export const puoAssociareAssegno = fattura => {
+  const codice = tipoDocumento(fattura).codice;
+  const importo = Number(fattura.total_amount ?? fattura.importo_totale ?? 0);
+  return !['TD04', 'TD08'].includes(codice) && Number.isFinite(importo) && importo > 0;
+};
+
 const statoAllocazione = fattura => String(
   fattura.payment_allocation_status || (fattura.allocation_conflict_reason ? 'conflicting' : '') || ''
 ).toLowerCase();
@@ -735,13 +741,13 @@ export default function ArchivioFatture() {
             {fattureVisibili.map((f, idx) => {
               const isPaid = f.pagato || f.status === 'paid' || f.stato_pagamento === 'pagata';
               const tipoDoc = tipoDocumento(f);
-              const isCreditNote = ['TD04', 'TD08'].includes(tipoDoc.codice);
+              const assegnoAssociabile = puoAssociareAssegno(f);
               const allocationConflict = statoAllocazione(f) === 'conflicting';
               const isRiconciliata = f.riconciliato === true;
               const pagamento = descriviPagamento(f);
 
               const azioniButtons = (
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', width: '100%' }}>
                   {isRiconciliata && (
                     <Badge variant="success" style={{ fontSize: 11 }}>
                       🔗 RICONC.
@@ -751,19 +757,17 @@ export default function ArchivioFatture() {
                     variant="info"
                     size="sm"
                     onClick={() => setFatturaView({ id: f.id, numero: f.invoice_number || f.numero_documento || f.numero_fattura })}
-                    style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', gap: 7 }}
+                    style={{ minHeight: 40, flex: '0 0 82px', justifyContent: 'center', display: 'inline-flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap' }}
                   >
                     <Eye size={17} aria-hidden="true" /> Vedi
                   </Button>
-                  {!isPaid && !isRiconciliata && !isCreditNote && !allocationConflict && (
+                  {!isPaid && !isRiconciliata && assegnoAssociabile && !allocationConflict && (
                     <AssociaAssegnoFattura
                       fattura={f}
                       onSuccess={dopoAssociazioneAssegno}
+                      buttonStyle={{ flex: '1 1 auto', whiteSpace: 'nowrap' }}
                     />
                   )}
-                  <Badge variant={pagamento.variant} style={{ fontSize: 11 }} title={pagamento.title}>
-                    {pagamento.label}
-                  </Badge>
                 </div>
               );
 
@@ -863,6 +867,11 @@ export default function ArchivioFatture() {
                     </span>
                     <span style={{ whiteSpace: 'nowrap' }}>IVA {formatCurrency(f.iva)}</span>
                   </div>
+                  <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Badge variant={pagamento.variant} style={{ fontSize: 11 }} title={pagamento.title}>
+                      {pagamento.label}
+                    </Badge>
+                  </div>
                   {azioniButtons}
                 </div>
               );
@@ -871,7 +880,7 @@ export default function ArchivioFatture() {
         ) : (
           // VISTA DESKTOP: tabella classica
           <TableWrap>
-            <Table>
+            <Table style={{ minWidth: 1220 }}>
               <thead>
                 <tr>
                   <Th align="center" style={{ width: 36 }}>
@@ -884,8 +893,8 @@ export default function ArchivioFatture() {
                       data-testid="seleziona-tutte-fatture"
                     />
                   </Th>
-                  <Th>Data</Th>
-                  <Th>Numero</Th>
+                  <Th style={{ width: 104 }}>Data</Th>
+                  <Th style={{ width: 150 }}>Numero</Th>
                   <Th>Tipo</Th>
                   <Th>Fornitore</Th>
                   <Th align="right">Imponibile</Th>
@@ -894,8 +903,11 @@ export default function ArchivioFatture() {
                   <Th align="left" style={{ minWidth: 190 }}>
                     Pagamento / prova
                   </Th>
-                  <Th align="center" style={{ minWidth: 190 }}>
-                    Azioni
+                  <Th align="center" style={{ width: 86 }}>
+                    Documento
+                  </Th>
+                  <Th align="center" style={{ width: 112 }}>
+                    Azione
                   </Th>
                 </tr>
               </thead>
@@ -903,7 +915,7 @@ export default function ArchivioFatture() {
                 {fattureVisibili.map((f, idx) => {
                   const isPaid = f.pagato || f.status === 'paid' || f.stato_pagamento === 'pagata';
                   const tipoDoc = tipoDocumento(f);
-                  const isCreditNote = ['TD04', 'TD08'].includes(tipoDoc.codice);
+                  const assegnoAssociabile = puoAssociareAssegno(f);
                   const allocationConflict = statoAllocazione(f) === 'conflicting';
                   const isRiconciliata = f.riconciliato === true;
                   const pagamento = descriviPagamento(f);
@@ -919,6 +931,7 @@ export default function ArchivioFatture() {
                           ? `0 0 0 3px ${COLORS.accent} inset, 0 4px 12px rgba(184,134,11,0.2)`
                           : SHADOWS.sm,
                         transition: 'background 300ms, box-shadow 300ms',
+                        height: 58,
                       }}
                     >
                       <Td align="center">
@@ -930,8 +943,8 @@ export default function ArchivioFatture() {
                           data-testid={`seleziona-fattura-${f.id}`}
                         />
                       </Td>
-                      <Td>{formatDateIT(f.invoice_date || f.data_documento)}</Td>
-                      <Td style={{ fontWeight: 600, color: COLORS.primary }}>
+                      <Td style={{ whiteSpace: 'nowrap' }}>{formatDateIT(f.invoice_date || f.data_documento)}</Td>
+                      <Td style={{ fontWeight: 600, color: COLORS.primary, whiteSpace: 'nowrap' }}>
                         {f.invoice_number || f.numero_documento}
                       </Td>
                       <Td>
@@ -947,45 +960,43 @@ export default function ArchivioFatture() {
                           {f.supplier_vat || f.fornitore_partita_iva}
                         </div>
                       </Td>
-                      <Td align="right" mono>
+                      <Td align="right" mono style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                         {formatCurrency(f.imponibile)}
                       </Td>
-                      <Td align="right" mono style={{ color: COLORS.textMuted }}>
+                      <Td align="right" mono style={{ color: COLORS.textMuted, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                         {formatCurrency(f.iva)}
                       </Td>
-                      <Td align="right" mono style={{ fontWeight: 700, color: COLORS.primary }}>
+                      <Td align="right" mono style={{ fontWeight: 700, color: COLORS.primary, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                         {formatCurrency(f.total_amount || f.importo_totale)}
                       </Td>
-                      <Td>
-                        <Badge variant={pagamento.variant} title={pagamento.title}>
-                          {pagamento.label}
-                        </Badge>
+                      <Td style={{ whiteSpace: 'nowrap' }}>
+                        <span style={{ display: 'inline-flex', whiteSpace: 'nowrap' }}>
+                          <Badge variant={pagamento.variant} title={pagamento.title}>
+                            {pagamento.label}
+                          </Badge>
+                        </span>
                       </Td>
                       <Td align="center">
-                        <div
-                          style={{
-                            display: 'flex',
-                            gap: 8,
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            flexWrap: 'wrap',
-                          }}
+                        <Button
+                          variant="info"
+                          size="sm"
+                          onClick={() => setFatturaView({ id: f.id, numero: f.invoice_number || f.numero_documento || f.numero_fattura })}
+                          style={{ minHeight: 36, minWidth: 72, justifyContent: 'center', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
                         >
-                          <Button
-                            variant="info"
-                            size="sm"
-                            onClick={() => setFatturaView({ id: f.id, numero: f.invoice_number || f.numero_documento || f.numero_fattura })}
-                            style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', gap: 7 }}
-                          >
-                            <Eye size={17} aria-hidden="true" /> Vedi
-                          </Button>
-                          {!isPaid && !isRiconciliata && !isCreditNote && !allocationConflict && (
-                            <AssociaAssegnoFattura
-                              fattura={f}
-                              onSuccess={dopoAssociazioneAssegno}
-                            />
-                          )}
-                        </div>
+                          <Eye size={16} aria-hidden="true" /> Vedi
+                        </Button>
+                      </Td>
+                      <Td align="center" style={{ whiteSpace: 'nowrap' }}>
+                        {!isPaid && !isRiconciliata && assegnoAssociabile && !allocationConflict ? (
+                          <AssociaAssegnoFattura
+                            fattura={f}
+                            onSuccess={dopoAssociazioneAssegno}
+                            buttonLabel="Abbina"
+                            buttonStyle={{ minHeight: 36, minWidth: 82, whiteSpace: 'nowrap', padding: '4px 10px' }}
+                          />
+                        ) : (
+                          <span aria-label="Nessuna azione disponibile" style={{ color: COLORS.textSubtle }}>—</span>
+                        )}
                       </Td>
                     </tr>
                   );

@@ -241,10 +241,24 @@ def test_risincronizzare_non_duplica_nulla():
     assert chiusure[0]["fonte_dato"] == "api"
     assert chiusure[0]["stato_dato"] == "confermato"
 
-    uscite = _run(db.prima_nota_cassa.find(
-        {"source": "corrispettivo_import"}).to_list(50))
-    assert len(uscite) == 1
-    assert uscite[0]["importo"] == 100.0
+    # Una vendita SumUp e' un'evidenza commerciale, non un versamento in
+    # banca: senza payout non deve apparire alcuna riga in Prima Nota.
+    assert _run(db.prima_nota_cassa.find({}).to_list(50)) == []
+    assert _run(db.prima_nota_banca.find({}).to_list(50)) == []
+
+
+def test_vendita_sumup_116_90_non_diventa_un_falso_movimento_bancario():
+    db = _db()
+
+    esito = _sincronizza(db, [_tx("tx-11690", 116.90)])
+
+    assert esito["totale_netto"] == 116.90
+    chiusura = _run(db.chiusure_pos_manuali.find_one({"gestore": "sumup"}))
+    assert chiusura["importo"] == 116.90
+    assert chiusura["fonte_dato"] == "api"
+    assert chiusura["source"] == "api_gestore_pos"
+    assert _run(db.prima_nota_cassa.find({}).to_list(50)) == []
+    assert _run(db.prima_nota_banca.find({}).to_list(50)) == []
 
 
 def test_api_senza_transazioni_scrive_zero_esplicito_per_ogni_giorno():
@@ -281,7 +295,7 @@ def test_una_pagina_arrivata_prima_resta_nel_totale():
     assert chiusure[0]["importo"] == 100.0
 
 
-def test_l_api_sostituisce_la_chiusura_manuale_senza_secondo_movimento():
+def test_l_api_aggiorna_l_evidenza_senza_riscrivere_la_prima_nota_storica():
     from app.services.scritture_contabili import registra_chiusura_pos_reale
 
     db = _db()
@@ -295,7 +309,10 @@ def test_l_api_sostituisce_la_chiusura_manuale_senza_secondo_movimento():
     uscite = _run(db.prima_nota_cassa.find(
         {"source": "corrispettivo_import"}).to_list(50))
     assert len(uscite) == 1
-    assert uscite[0]["importo"] == 100.0
+    assert uscite[0]["importo"] == 95.0
+    assert _run(db.prima_nota_banca.find_one({
+        "source": "trasferimento_pos", "gestore": "sumup"
+    }))["importo"] == 95.0
 
 
 def test_nexi_e_sumup_nello_stesso_giorno_restano_distinti():
@@ -312,7 +329,7 @@ def test_nexi_e_sumup_nello_stesso_giorno_restano_distinti():
     uscite = _run(db.prima_nota_cassa.find(
         {"source": "corrispettivo_import"}).to_list(50))
     assert {u["circuito"]: u["importo"] for u in uscite} == {
-        "NUMIA": 500.0, "SUMUP": 100.0}
+        "NUMIA": 500.0}
 
 
 def test_senza_credenziali_si_ferma_invece_di_scrivere_a_vuoto(monkeypatch):

@@ -112,6 +112,10 @@ export default function AssociaAssegnoFattura({
         aria-label={`Associa assegno alla fattura ${dati.numero}`.trim()}
         style={{
           minHeight: 40,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          whiteSpace: 'nowrap',
           background: '#f5f3ff',
           color: '#6d28d9',
           border: '1px solid #c4b5fd',

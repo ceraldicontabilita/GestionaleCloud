@@ -62,6 +62,44 @@ async def lifespan(_app: FastAPI):
     await Database.db["learning_rules"].insert_one(
         {"id": "e2e-regola-protetta", "pattern": "solo test"}
     )
+    await Database.db["invoices"].insert_many([
+        {
+            "id": "e2e-fattura-a",
+            "invoice_number": "E2E-001",
+            "invoice_date": "2026-08-08",
+            "document_type": "TD01",
+            "supplier_name": "Fornitore E2E Alfa",
+            "supplier_vat": "00000000001",
+            "taxable_amount": 100.00,
+            "vat_amount": 22.00,
+            "total_amount": 122.00,
+            "status": "imported",
+        },
+        {
+            "id": "e2e-fattura-b",
+            "invoice_number": "E2E-002",
+            "invoice_date": "2026-08-07",
+            "document_type": "TD01",
+            "supplier_name": "Fornitore E2E Beta",
+            "supplier_vat": "00000000002",
+            "taxable_amount": 200.00,
+            "vat_amount": 44.00,
+            "total_amount": 244.00,
+            "status": "imported",
+        },
+        {
+            "id": "e2e-nota-credito",
+            "invoice_number": "NC-E2E-001",
+            "invoice_date": "2026-08-06",
+            "document_type": "TD04",
+            "supplier_name": "Fornitore E2E Gamma",
+            "supplier_vat": "00000000003",
+            "taxable_amount": 50.00,
+            "vat_amount": 11.00,
+            "total_amount": 61.00,
+            "status": "imported",
+        },
+    ])
     yield
     client.close()
     Database.client = None
