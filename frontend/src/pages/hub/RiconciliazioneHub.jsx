@@ -1,6 +1,7 @@
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { ArrowLeftRight, Banknote, CreditCard, Landmark, Receipt, ScrollText } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import api from '../../api';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { HubTabs, PageLoader } from '../../components/ds';
 
@@ -12,11 +13,25 @@ const AssegniContent = lazy(() => import('../GestioneAssegni.jsx'));
 const BonificiContent = lazy(() => import('../ArchivioBonifici.jsx'));
 const CoerenzaPOSContent = lazy(() => import('../CoerenzaPOSCorrispettivi.jsx'));
 
+function intervalloAnno(anno) {
+  const annoNumero = Number(anno);
+  const oggi = new Date();
+  const annoCorrente = oggi.getFullYear();
+  const start = `${annoNumero}-01-01`;
+  const end = annoNumero < annoCorrente
+    ? `${annoNumero}-12-31`
+    : annoNumero === annoCorrente
+      ? oggi.toISOString().slice(0, 10)
+      : `${annoNumero}-01-01`;
+  return { start, end };
+}
+
 export default function RiconciliazioneHub() {
   const { anno } = useAnnoGlobale();
   const location = useLocation();
   const navigate = useNavigate();
   const path = location.pathname;
+  const [paypalRefreshKey, setPaypalRefreshKey] = useState(0);
 
   const tabs = [
     { id: 'bancaria', label: 'Riconciliazione', Icon: Landmark, to: '/riconciliazione' },
@@ -45,6 +60,29 @@ export default function RiconciliazioneHub() {
                 ? 'coerenza-pos'
                 : 'bancaria';
 
+  useEffect(() => {
+    if (activeTab !== 'paypal') return undefined;
+    let annullato = false;
+
+    const sincronizzaPaypal = async () => {
+      try {
+        const stato = await api.get('/api/paypal-api/status');
+        if (stato.data?.api_configurata === false) return;
+        const { start, end } = intervalloAnno(anno);
+        if (end < start) return;
+        await api.post('/api/paypal-api/sync', { start_date: start, end_date: end });
+        if (!annullato) setPaypalRefreshKey(valore => valore + 1);
+      } catch (errore) {
+        // La pagina PayPal gestisce gia lo stato di errore dei servizi.
+        // La sincronizzazione automatica non deve impedire la consultazione.
+        console.error('Sincronizzazione automatica PayPal non riuscita', errore);
+      }
+    };
+
+    sincronizzaPaypal();
+    return () => { annullato = true; };
+  }, [activeTab, anno]);
+
   const getContent = () => {
     if (path.includes('/movimenti-banca')) {
       return <MovimentiBancaContent key={`movimenti-banca-${anno}`} />;
@@ -62,7 +100,7 @@ export default function RiconciliazioneHub() {
       return <AssegniContent key={`assegni-${anno}`} />;
     }
     if (path.includes('/paypal')) {
-      return <PaypalContent key={`paypal-${anno}`} />;
+      return <PaypalContent key={`paypal-${anno}-${paypalRefreshKey}`} />;
     }
     if (path.includes('/coerenza-pos')) {
       return <CoerenzaPOSContent key={`coerenza-pos-${anno}`} />;
@@ -72,6 +110,12 @@ export default function RiconciliazioneHub() {
 
   return (
     <div style={{ width: '100%' }}>
+      {activeTab === 'paypal' && (
+        <style>{`
+          [data-testid="sync-paypal-api-btn"] { display: none !important; }
+          select:has(+ [data-testid="sync-paypal-api-btn"]) { display: none !important; }
+        `}</style>
+      )}
       <HubTabs
         testIdPrefix="tab-riconciliazione"
         activeId={activeTab}
