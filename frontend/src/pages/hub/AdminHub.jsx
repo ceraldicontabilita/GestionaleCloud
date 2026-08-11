@@ -1,43 +1,45 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
-import { Activity, Settings, ShieldCheck, Workflow } from 'lucide-react';
+import { Settings, ShieldCheck, Workflow } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { HubTabs, PageLoader } from '../../components/ds';
 
 const AdminContent = lazy(() => import('../Admin.jsx'));
-const BatchContent = lazy(() => import('../BatchReprocessing.jsx'));
-const BatchProcContent = lazy(() => import('../BatchProcessor.jsx'));
+const ElaborazioniContent = lazy(() => import('./AdminElaborazioni.jsx'));
 const MFAContent = lazy(() => import('../MFAAdmin.jsx'));
-
 
 export default function AdminHub() {
   const navigate = useNavigate();
   const location = useLocation();
   const path = location.pathname;
 
-  const isBatch = path.includes('/admin/batch-reprocessing');
-  const isBatchProc = path.includes('/admin/batch-processor');
+  const isElaborazioni = path.includes('/admin/elaborazioni')
+    || path.includes('/admin/batch-reprocessing')
+    || path.includes('/admin/batch-processor');
   const isMfa = path.includes('/admin/mfa');
-  const isAdmin = !isBatch && !isBatchProc && !isMfa;
+  const isAdmin = !isElaborazioni && !isMfa;
 
   const [visitedAdmin, setVisitedAdmin] = useState(isAdmin);
-  const [visitedBatch, setVisitedBatch] = useState(isBatch);
-  const [visitedBatchProc, setVisitedBatchProc] = useState(isBatchProc);
+  const [visitedElaborazioni, setVisitedElaborazioni] = useState(isElaborazioni);
   const [visitedMfa, setVisitedMfa] = useState(isMfa);
 
   useEffect(() => {
-    if (isBatch) setVisitedBatch(true);
-    else if (isBatchProc) setVisitedBatchProc(true);
+    if (isElaborazioni) setVisitedElaborazioni(true);
     else if (isMfa) setVisitedMfa(true);
     else setVisitedAdmin(true);
-  }, [isBatch, isBatchProc, isMfa, isAdmin]);
+  }, [isElaborazioni, isMfa]);
+
+  useEffect(() => {
+    if (path.includes('/admin/batch-reprocessing') || path.includes('/admin/batch-processor')) {
+      navigate('/admin/elaborazioni', { replace: true });
+    }
+  }, [path, navigate]);
 
   const tabs = [
     { id: 'admin', label: 'Sistema', Icon: Settings, to: '/admin' },
     { id: 'mfa', label: 'Sicurezza MFA', Icon: ShieldCheck, to: '/admin/mfa' },
-    { id: 'batch-reprocessing', label: 'Batch Reprocessing', Icon: Activity, to: '/admin/batch-reprocessing' },
-    { id: 'batch-processor', label: 'Batch Processor', Icon: Workflow, to: '/admin/batch-processor' },
+    { id: 'elaborazioni', label: 'Elaborazioni', Icon: Workflow, to: '/admin/elaborazioni' },
   ];
-  const activeTab = isBatch ? 'batch-reprocessing' : isBatchProc ? 'batch-processor' : isMfa ? 'mfa' : 'admin';
+  const activeTab = isElaborazioni ? 'elaborazioni' : isMfa ? 'mfa' : 'admin';
 
   return (
     <div style={{ width: '100%' }}>
@@ -50,11 +52,8 @@ export default function AdminHub() {
       <div style={{ display: isAdmin ? 'block' : 'none' }}>
         <Suspense fallback={<PageLoader />}>{visitedAdmin && <AdminContent />}</Suspense>
       </div>
-      <div style={{ display: isBatch ? 'block' : 'none' }}>
-        <Suspense fallback={<PageLoader />}>{visitedBatch && <BatchContent />}</Suspense>
-      </div>
-      <div style={{ display: isBatchProc ? 'block' : 'none' }}>
-        <Suspense fallback={<PageLoader />}>{visitedBatchProc && <BatchProcContent />}</Suspense>
+      <div style={{ display: isElaborazioni ? 'block' : 'none' }}>
+        <Suspense fallback={<PageLoader />}>{visitedElaborazioni && <ElaborazioniContent />}</Suspense>
       </div>
       <div style={{ display: isMfa ? 'block' : 'none' }}>
         <Suspense fallback={<PageLoader />}>{visitedMfa && <MFAContent />}</Suspense>
