@@ -66,16 +66,19 @@ A queste si aggiungono pagine standalone ancora esposte direttamente, tra cui In
 
 ### Riconciliazione
 
-`RiconciliazioneHub` contiene già come sezioni interne:
+`RiconciliazioneHub` contiene ora come sezioni interne:
 
-- Bancaria
+- Riconciliazione bancaria
+- Movimenti Banca
 - F24
-- Archivio bonifici
+- Bonifici
 - Assegni
 - PayPal
 - Coerenza POS
 
-Queste non devono essere contate né presentate come sei pagine primarie indipendenti. Sono una sola superficie operativa con sottosezioni.
+**Correzione applicata:** `VerificaMovimentiBanca` è stato spostato da `StrumentiHub` a `RiconciliazioneHub` con route canonica `/riconciliazione/movimenti-banca`. I vecchi link `/strumenti/movimenti-banca` vengono reindirizzati alla nuova posizione.
+
+Queste funzioni non devono essere contate né presentate come pagine primarie indipendenti: costituiscono un'unica area Banca/Riconciliazione con sottosezioni.
 
 ### Prima Nota
 
@@ -104,9 +107,9 @@ Candidati forti:
 
 ### Strumenti
 
-`StrumentiHub` contiene `Verifica Coerenza`, `Movimenti Banca`, `Commercialista`, `Pianificazione`, `Visure`.
+`StrumentiHub` contiene ora soltanto `Verifica Coerenza`, `Commercialista`, `Pianificazione`, `Visure`.
 
-**Problema confermato:** `Movimenti Banca` è collocato dentro Strumenti mentre la sua funzione appartiene alla Banca/Riconciliazione. È candidato a spostamento in `RiconciliazioneHub` e successiva rimozione da Strumenti.
+**Correzione applicata:** `Movimenti Banca` è stato rimosso da Strumenti e trasferito nell'area Riconciliazione/Banca.
 
 ### Cedolini
 
@@ -130,7 +133,7 @@ La pagina contiene inoltre codice legacy di upload diretto (`importaBonifici`, `
 
 `frontend/src/App.jsx` importava `F24EmailSync`, manteneva lo stato `showF24Sync` e renderizzava un popup. La ricerca di `setShowF24Sync` trovava riferimenti soltanto nello stesso file e nessun punto che impostasse lo stato a `true`.
 
-**Correzione applicata:** rimossi import, stato e render del popup morto/manuale da `App.jsx`. Il servizio/componente non viene cancellato in questa fase perché va prima verificato se è richiamato da altri flussi amministrativi o scheduler.
+**Correzione applicata:** rimossi import, stato e render del popup da `App.jsx`; verificata l'assenza di utilizzi runtime residui e cancellato anche `frontend/src/components/F24EmailSync.jsx`. I servizi backend restano disponibili per scheduler/automazioni.
 
 ### Import distribuiti
 
@@ -138,13 +141,13 @@ Sono già stati individuati ingressi o riferimenti di import in pagine diverse d
 
 ### Sincronizzazioni distribuite
 
-Sono già stati individuati riferimenti di sincronizzazione in: `DocumentiHub`, `Documenti`, `Admin`, `ArchivioBonifici`, `RiconciliazionePaypal`, `RiconciliazioneUnificata`, `PuliziaPrimaNota`, `BatchProcessor`, `Pianificazione`, `Corrispettivi`, `Fornitori`, `ArchivioFattureRicevute` e nel componente `F24EmailSync`.
+Sono già stati individuati riferimenti di sincronizzazione in: `Documenti`, `Admin`, `ArchivioBonifici`, `RiconciliazionePaypal`, `RiconciliazioneUnificata`, `PuliziaPrimaNota`, `BatchProcessor`, `Pianificazione`, `Corrispettivi`, `Fornitori`, `ArchivioFattureRicevute`.
 
 ## Accorpamenti candidati da validare sul codice
 
 - Dashboard Relazionale -> Dashboard (tab tecnico)
 - Pulizia Prima Nota -> Prima Nota (strumento interno) — CONFERMATO
-- Verifica Movimenti Banca -> area Banca/Riconciliazione — CONFERMATO COME POSIZIONE INCOERENTE
+- Verifica Movimenti Banca -> area Banca/Riconciliazione — APPLICATO
 - Coerenza POS/Corrispettivi -> Corrispettivi/Riconciliazione incassi
 - Archivio Bonifici -> Banca/Riconciliazione (tab Bonifici) — GIÀ HUB
 - Riconciliazione PayPal -> Riconciliazione (sorgente PayPal) — GIÀ HUB
@@ -169,14 +172,14 @@ Sono già stati individuati riferimenti di sincronizzazione in: `DocumentiHub`, 
 |---|---|---|---|---|
 | A-001 | Import | Più punti UI di importazione | Centralizzare in `ImportDocumenti` | IN ANALISI |
 | A-002 | Sync / Documenti | `Sincronizza Drive` manuale | Auto-sync all'apertura di `DocumentiHub` | APPLICATO, DA TESTARE |
-| A-003 | App / F24 | Popup `F24EmailSync` morto/manuale | Rimuovere infrastruttura UI non attivabile | APPLICATO, DA TESTARE |
+| A-003 | App / F24 | Popup `F24EmailSync` morto/manuale | Rimuovere infrastruttura UI e componente morto | APPLICATO, DA TESTARE |
 | A-004 | Navigazione | Troppe superfici operative/componenti legacy | Consolidare a ~40 superfici funzionali | IN ANALISI |
 | A-005 | Documenti | Rischio duplicazione evento economico tra documenti collegati | Audit end-to-end | IN ANALISI |
 | A-006 | Router | Molte pagine sono già componenti interni a HUB, non route autonome | Misurare pagine per funzione visibile | CONFERMATO |
 | A-007 | Navigazione / Riconciliazione | Assegni, PayPal, F24 e POS duplicati nel menu | Lasciarli solo come tab Riconciliazione | APPLICATO, DA TESTARE |
 | A-008 | Navigazione / Diagnostica | Mappa Gestionale nel menu operativo | Rimuovere dal menu e ricollocare in Admin/Diagnostica | PARZIALMENTE APPLICATO |
 | A-009 | Cedolini | Tre accessi all'import e codice upload legacy | Rimuovere import dalla pagina; sola consultazione/controllo | CONFERMATO, DA APPLICARE |
-| A-010 | Strumenti | Movimenti Banca dentro Strumenti | Spostare in Riconciliazione/Banca | CONFERMATO, DA APPLICARE |
+| A-010 | Strumenti / Banca | Movimenti Banca dentro Strumenti | Spostare in Riconciliazione/Banca con redirect legacy | APPLICATO, DA TESTARE |
 | A-011 | Contabilità | 15 sottosezioni ancora troppo frammentate | Accorpare Bilancio, Budget e Finanza | CONFERMATO, DA PROGETTARE |
 
 ## Criterio di chiusura
