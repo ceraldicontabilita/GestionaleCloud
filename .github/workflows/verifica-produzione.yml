@@ -1,64 +1,91 @@
-# Verifica che la produzione (impresasemplice.online) serva ESATTAMENTE il
-# build committato in frontend/dist. Serve come conferma indipendente del
-# deploy quando l'ambiente di sviluppo non può raggiungere il sito.
+# Verifica persistente della produzione su impresasemplice.online.
+#
+# Obiettivo: dopo ogni modifica rilevante su main, ricostruire il frontend
+# esattamente dal sorgente del commit e aspettare che la produzione serva
+# lo stesso bundle. In questo modo la verifica non dipende da frontend/dist
+# committato e segue il comportamento reale di Render, che compila al deploy.
 name: Verifica produzione
 
 on:
   workflow_dispatch:
-  # Auto: ogni push su main che tocca il build verificato (o questo file)
-  # fa partire il controllo — il deploy si auto-verifica da solo.
   push:
     branches: [main]
     paths:
-      - "frontend/dist/**"
+      - "frontend/**"
+      - "app/**"
+      - "backend/**"
+      - "render.yaml"
       - ".github/workflows/verifica-produzione.yml"
+
+concurrency:
+  group: verifica-produzione-main
+  cancel-in-progress: true
 
 jobs:
   verifica:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
-      - name: Bundle atteso (dal repo) vs bundle servito (dal sito)
-        run: |
-          set -e
-          ATTESO=$(grep -o 'assets/index-[^"]*\.js' frontend/dist/index.html | head -1)
-          DASH=$(ls frontend/dist/assets | grep '^Dashboard-' | head -1)
-          echo "Bundle atteso: $ATTESO — chunk Dashboard: $DASH"
+      - name: Configura Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-          # NB: la route "/" del backend serve l'index.html SOLO con
-          # Accept: text/html (altrimenti risponde il JSON di stato API —
-          # è così che il controllo trovava sempre '' a sito funzionante).
-          # Verifichiamo /login, che passa dal catch-all SPA, e mandiamo
-          # comunque l'header Accept da browser.
+      - name: Ricostruisci il frontend del commit
+        run: |
+          set -euo pipefail
+          npm --prefix frontend install --include=dev --legacy-peer-deps
+          npm --prefix frontend run build
+
+      - name: Verifica bundle live e backend
+        run: |
+          set -euo pipefail
+
+          ATTESO=$(grep -o 'assets/index-[^"]*\.js' frontend/dist/index.html | head -1)
+          if [ -z "$ATTESO" ]; then
+            echo "ERRORE: bundle frontend atteso non trovato dopo la build"
+            exit 1
+          fi
+
+          echo "Commit verificato: $GITHUB_SHA"
+          echo "Bundle atteso: $ATTESO"
+
           UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
           URL="https://impresasemplice.online/login"
 
-          # Il deploy Render può richiedere qualche minuto: ritenta fino a ~10'
-          for i in $(seq 1 20); do
+          # Render può impiegare diversi minuti per installazione, build e riavvio.
+          # Ritentiamo fino a circa 15 minuti prima di dichiarare il deploy non aggiornato.
+          for i in $(seq 1 30); do
             BODY=$(curl -sS --compressed -A "$UA" -H 'Accept: text/html' --max-time 20 "$URL" || true)
             CODE=$(curl -sS -o /dev/null -w '%{http_code}' --compressed -A "$UA" -H 'Accept: text/html' --max-time 20 "$URL" || echo '000')
             LIVE=$(printf '%s' "$BODY" | grep -o 'assets/index-[^"]*\.js' | head -1 || true)
-            echo "Tentativo $i: HTTP $CODE — il sito serve '$LIVE'"
+
+            echo "Tentativo $i/30: HTTP $CODE — bundle live='$LIVE'"
+
             if [ "$LIVE" = "$ATTESO" ]; then
-              echo "OK: il sito serve il bundle atteso"
+              echo "OK: produzione serve il bundle del commit $GITHUB_SHA"
               break
             fi
-            if [ -z "$LIVE" ]; then
-              echo "  └ body (primi 300 caratteri): $(printf '%s' "$BODY" | head -c 300)"
+
+            if [ "$i" = "30" ]; then
+              echo "ERRORE: produzione non serve ancora il bundle del commit $GITHUB_SHA"
+              echo "Atteso: $ATTESO"
+              echo "Live:    $LIVE"
+              exit 1
             fi
-            if [ "$i" = "20" ]; then
-              echo "ERRORE: dopo 10 minuti il sito serve ancora un bundle diverso"; exit 1
-            fi
+
             sleep 30
           done
 
-          # Il chunk Dashboard corretto deve rispondere 200
-          curl -sSf --max-time 20 -o /dev/null "https://impresasemplice.online/assets/$DASH"
-          echo "OK: chunk Dashboard ($DASH) servito correttamente"
+          # Verifica che l'asset principale risponda realmente.
+          curl -sSf --max-time 20 -o /dev/null "https://impresasemplice.online/$ATTESO"
 
-          # Backend vivo
-          curl -sSf --max-time 20 https://impresasemplice.online/api/health | head -c 200
+          # Verifica minima del backend. Non prova il commit backend specifico,
+          # ma impedisce di dichiarare riuscito un deploy con servizio non sano.
+          curl -sSf --max-time 20 https://impresasemplice.online/api/health | head -c 500
           echo ""
           echo "VERIFICA PRODUZIONE COMPLETATA"
