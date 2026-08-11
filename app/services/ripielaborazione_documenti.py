@@ -14,7 +14,7 @@ from app.database import Database
 from app.services.ai_document_parser import parse_document_with_ai
 
 COLLEZIONE = "documents_inbox"
-VERSIONE_RIELABORAZIONE = "universale-v1"
+VERSIONE_RIELABORAZIONE = "universale-v2"
 
 
 def _categoria(doc: Dict[str, Any]) -> str:
@@ -56,6 +56,21 @@ def _contenuto(doc: Dict[str, Any]) -> Optional[bytes]:
 
 def _mime(doc: Dict[str, Any]) -> str:
     return str(doc.get("mime_type") or doc.get("content_type") or "application/pdf")
+
+
+def _esito_da_verificare(tipo_parser: str, risultato: Dict[str, Any]) -> bool:
+    """Un formato non ancora supportato dal parser non e un errore tecnico.
+
+    La rielaborazione deve includere tutti i documenti. Se il parser corrente
+    non sa interpretarli con sufficiente certezza, il documento resta
+    esplicitamente `da_verificare` e potra essere riprocessato quando il parser
+    verra esteso, senza perdere l'originale.
+    """
+    if tipo_parser != "auto" or risultato.get("success"):
+        return False
+    detected = str(risultato.get("detected_type") or "").strip().lower()
+    errore = str(risultato.get("error") or "").lower()
+    return detected not in {"fattura", "f24", "busta_paga", "verbale"} or "non supportato" in errore
 
 
 class RielaborazioneDocumentiService:
@@ -118,9 +133,11 @@ class RielaborazioneDocumentiService:
             "totale_documenti": 0,
             "totale_processati": 0,
             "totale_successi": 0,
+            "totale_da_verificare": 0,
             "totale_errori": 0,
             "categorie": {},
             "errors": [],
+            "da_verificare": [],
             "dry_run": dry_run,
             "categoria": categoria,
             "versione": VERSIONE_RIELABORAZIONE,
@@ -131,7 +148,9 @@ class RielaborazioneDocumentiService:
         async for doc in cursor:
             stats["totale_documenti"] += 1
             cat = _categoria(doc)
-            voce = stats["categorie"].setdefault(cat, {"totale": 0, "successi": 0, "errori": 0})
+            voce = stats["categorie"].setdefault(
+                cat, {"totale": 0, "successi": 0, "da_verificare": 0, "errori": 0}
+            )
             voce["totale"] += 1
             contenuto = _contenuto(doc)
             if not contenuto:
@@ -148,10 +167,18 @@ class RielaborazioneDocumentiService:
                     mime_type=_mime(doc),
                 )
                 success = bool(risultato.get("success"))
+                da_verificare = _esito_da_verificare(tipo_parser, risultato)
+
                 if success:
+                    stato = "rielaborato"
                     stats["totale_successi"] += 1
                     voce["successi"] += 1
+                elif da_verificare:
+                    stato = "da_verificare"
+                    stats["totale_da_verificare"] += 1
+                    voce["da_verificare"] += 1
                 else:
+                    stato = "errore"
                     stats["totale_errori"] += 1
                     voce["errori"] += 1
 
@@ -163,13 +190,22 @@ class RielaborazioneDocumentiService:
                                 "versione": VERSIONE_RIELABORAZIONE,
                                 "categoria_precedente": cat,
                                 "parser_usato": tipo_parser,
+                                "stato": stato,
                                 "success": success,
                                 "risultato": risultato,
                                 "rielaborato_at": datetime.now(timezone.utc).isoformat(),
                             }
                         }},
                     )
-                if not success and len(stats["errors"]) < 100:
+
+                if da_verificare and len(stats["da_verificare"]) < 100:
+                    stats["da_verificare"].append({
+                        "document_id": str(doc.get("id") or doc.get("_id")),
+                        "type": cat,
+                        "detected_type": risultato.get("detected_type"),
+                        "motivo": risultato.get("error") or "Parser specifico non ancora disponibile",
+                    })
+                elif not success and len(stats["errors"]) < 100:
                     stats["errors"].append({
                         "document_id": str(doc.get("id") or doc.get("_id")),
                         "type": cat,
