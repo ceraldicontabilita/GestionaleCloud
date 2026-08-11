@@ -35,7 +35,7 @@ export default function RiconciliazioneHub() {
 
   const tabs = [
     { id: 'bancaria', label: 'Riconciliazione', Icon: Landmark, to: '/riconciliazione' },
-    { id: 'movimenti-banca', label: 'Movimenti Banca', Icon: Banknote, to: '/riconciliazione/movimenti-banca' },
+    { id: 'movimenti-banca', label: 'Indice operazioni', Icon: Banknote, to: '/riconciliazione/movimenti-banca' },
     { id: 'f24', label: 'F24', Icon: Receipt, to: '/riconciliazione/f24' },
     { id: 'pagopa', label: 'PagoPA', Icon: Receipt, to: '/riconciliazione/pagopa' },
     { id: 'bonifici', label: 'Bonifici', Icon: ArrowLeftRight, to: '/riconciliazione/archivio-bonifici' },

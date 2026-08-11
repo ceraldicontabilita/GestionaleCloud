@@ -188,6 +188,7 @@ COLL_AGEVOLAZIONI_FISCALI = "agevolazioni_fiscali"
 COLL_RICONCILIAZIONI = "riconciliazioni"
 COLL_OPERAZIONI_DA_CONFERMARE = "operazioni_da_confermare"  # 277 docs
 COLL_ENTITY_RELATIONS = "entity_relations"
+COLL_BANK_OPERATION_INDEX = "bank_operation_manual_index"
 
 # ===========================================
 # MAGAZZINO E PRODOTTI

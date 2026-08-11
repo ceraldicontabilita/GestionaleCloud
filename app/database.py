@@ -426,6 +426,19 @@ class Database:
         # --- Operazioni da confermare ---
         await _safe_index("operazioni_da_confermare", [("created_at", -1)], name="idx_op_conf_data")
         await _safe_index("operazioni_da_confermare", "stato", name="idx_op_conf_stato")
+        # Indice umano dei movimenti bancari. Il movimento dell'estratto conto
+        # resta immutabile; qui vive soltanto la decisione manuale versionata.
+        await _safe_index(
+            "bank_operation_manual_index",
+            "movement_id",
+            unique=True,
+            name="idx_bank_manual_movement",
+        )
+        await _safe_index(
+            "bank_operation_manual_index",
+            [("status", 1), ("updated_at", -1)],
+            name="idx_bank_manual_status",
+        )
         # Registro relazioni contabili: una coppia di evidenze, due direzioni di lettura.
         await _safe_index("entity_relations", "relation_key", unique=True, name="idx_entity_rel_key")
         await _safe_index(

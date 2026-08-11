@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1105 endpoint** in **113 gruppi**.
+> Totale **1108 endpoint** in **113 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 666 · ext esterni = 88 · — da verificare = 351
+**Riepilogo uso:** ✓ frontend = 668 · ext esterni = 88 · — da verificare = 352
 
 ## AI Parser  (11)
 
@@ -1260,7 +1260,7 @@
 | GET | `/api/previsioni-acquisti/prodotti` | — | previsioni_acquisti |
 | GET | `/api/previsioni-acquisti/statistiche` | ✓ | previsioni_acquisti |
 
-## Prima Nota  (83)
+## Prima Nota  (86)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1309,9 +1309,12 @@
 | POST | `/api/prima-nota/fix-tipo-movimento` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/fix-versamenti-duplicati` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/import-batch` | — | prima_nota_module.sync |
+| GET | `/api/prima-nota/indice-operazioni` | ✓ | prima_nota_module.operation_index |
+| PUT | `/api/prima-nota/indice-operazioni/{movement_id}` | ✓ | prima_nota_module.operation_index |
+| GET | `/api/prima-nota/indice-operazioni/{movement_id}/candidati` | ✓ | prima_nota_module.operation_index |
 | POST | `/api/prima-nota/migra-pos-accrediti-reali` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/migrazione-pulisci-bancari-cassa` | — | prima_nota_module.manutenzione |
-| GET | `/api/prima-nota/movimenti-ec-non-in-prima-nota` | ✓ | prima_nota_module.manutenzione |
+| GET | `/api/prima-nota/movimenti-ec-non-in-prima-nota` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/movimento` | — | prima_nota_module.sync |
 | GET | `/api/prima-nota/provvisori` | ✓ | prima_nota_module.sync |
 | POST | `/api/prima-nota/provvisori/annulla-auto-conferma` | ✓ | prima_nota_module.sync |

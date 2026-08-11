@@ -62,6 +62,11 @@ from .manutenzione import (
     diagnostica_metodi_discordanti,
     annulla_associazione_fattura_banca,
 )
+from .operation_index import (
+    list_manual_operation_candidates,
+    list_manual_operation_index,
+    save_manual_operation_decision,
+)
 
 # === ROTTE STATICHE (devono venire PRIMA delle dinamiche) ===
 
@@ -134,6 +139,17 @@ router.add_api_route("/dedup-fatture", dedup_fatture_prima_nota, methods=["POST"
 router.add_api_route("/diagnostica-corrispettivi", diagnostica_corrispettivi_vs_cassa, methods=["GET"])
 router.add_api_route("/diagnostica-metodi", diagnostica_metodi_discordanti, methods=["GET"])
 router.add_api_route("/movimenti-ec-non-in-prima-nota", lista_movimenti_ec_non_in_prima_nota, methods=["GET"])
+router.add_api_route("/indice-operazioni", list_manual_operation_index, methods=["GET"])
+router.add_api_route(
+    "/indice-operazioni/{movement_id}/candidati",
+    list_manual_operation_candidates,
+    methods=["GET"],
+)
+router.add_api_route(
+    "/indice-operazioni/{movement_id}",
+    save_manual_operation_decision,
+    methods=["PUT"],
+)
 router.add_api_route(
     "/annulla-associazione-fattura-banca",
     annulla_associazione_fattura_banca,
