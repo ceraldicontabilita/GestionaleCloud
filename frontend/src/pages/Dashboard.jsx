@@ -13,6 +13,7 @@ import {
   Wallet,
   ShoppingCart,
   Banknote,
+  CreditCard,
   Landmark,
   Receipt,
   CalendarClock,
@@ -162,6 +163,7 @@ export default function Dashboard() {
   const margine = costiRicavi?.margine ?? null;
   const cassa = primaNota?.cassa ?? null;
   const banca = primaNota?.banca ?? null;
+  const sumup = primaNota?.sumup ?? null;
 
   // IVA: forma diversa fra mese (verifica) e anno (confronto completo).
   const ivaDaVersare = mese
@@ -180,11 +182,11 @@ export default function Dashboard() {
     () => [
       {
         id: 'incassato',
-        label: 'Quanto ho incassato?',
+        label: 'Quanti ricavi ho registrato?',
         Icon: Wallet,
         colore: COLORS.success,
         valore: ricavi,
-        testo: v => `Hai incassato ${formatEuro(v)} (${etichettaPeriodo}).`,
+        testo: v => `Ricavi imponibili registrati: ${formatEuro(v)} (${etichettaPeriodo}).`,
       },
       {
         id: 'speso',
@@ -207,7 +209,7 @@ export default function Dashboard() {
       },
       {
         id: 'cassa',
-        label: 'Quanto ho in cassa?',
+        label: 'Saldo movimenti cassa?',
         Icon: Banknote,
         colore: COLORS.success,
         valore: cassa?.saldo ?? null,
@@ -215,11 +217,11 @@ export default function Dashboard() {
       },
       {
         id: 'banca',
-        label: 'Quanto ho in banca?',
+        label: 'Saldo movimenti BPM?',
         Icon: Landmark,
         colore: COLORS.info,
         valore: banca?.saldo ?? null,
-        testo: v => `Saldo di banca ${formatEuro(v)} nel periodo (${etichettaPeriodo}).`,
+        testo: v => `Movimenti netti Banca BPM ${formatEuro(v)} nel periodo (${etichettaPeriodo}); nessun riporto storico presunto.`,
       },
       {
         id: 'iva',
@@ -336,7 +338,7 @@ export default function Dashboard() {
             {costiRicavi?.ricavi && (
               <Riga label="di cui corrispettivi" valore={costiRicavi.ricavi.corrispettivi} />
             )}
-            <Nota>Ricavi del periodo selezionato (corrispettivi incassati).</Nota>
+            <Nota>Ricavi imponibili del periodo; IVA esclusa.</Nota>
           </CardBox>
 
           {/* ACQUISTI / COSTI */}
@@ -345,8 +347,8 @@ export default function Dashboard() {
             {costi && (
               <>
                 <Riga label="Personale" valore={costi.personale} />
-                <Riga label="Acquisti merce" valore={costi.acquisti_merce} />
-                <Riga label="Altre uscite" valore={costi.altre_uscite} />
+                <Riga label="Fatture acquisto nette" valore={costi.acquisti_merce} />
+                <Riga label="Altri costi documentati" valore={costi.altre_uscite} />
               </>
             )}
           </CardBox>
@@ -381,7 +383,7 @@ export default function Dashboard() {
           </CardBox>
 
           {/* BANCA */}
-          <CardBox titolo="Banca" Icon={Landmark} colore={COLORS.info}>
+          <CardBox titolo="Banca BPM — movimenti periodo" Icon={Landmark} colore={COLORS.info}>
             <ValoreGrande valore={banca?.saldo} colore={COLORS.info} />
             {banca && (
               <>
@@ -390,7 +392,19 @@ export default function Dashboard() {
                 <Riga label="Movimenti" valore={banca.movimenti} raw />
               </>
             )}
-            <Nota>Saldo dei movimenti di banca nel periodo.</Nota>
+            <Nota>Entrate meno uscite BPM del periodo, senza riporti storici non certificati.</Nota>
+          </CardBox>
+
+          <CardBox titolo="Mastercard SumUp — movimenti periodo" Icon={CreditCard} colore={COLORS.primary}>
+            <ValoreGrande valore={sumup?.saldo} colore={COLORS.primary} />
+            {sumup && (
+              <>
+                <Riga label="Entrate" valore={sumup.entrate} />
+                <Riga label="Uscite" valore={sumup.uscite} />
+                <Riga label="Movimenti" valore={sumup.movimenti} raw />
+              </>
+            )}
+            <Nota>Conto Mastercard separato da Banca BPM e dai crediti verso SumUp.</Nota>
           </CardBox>
 
           {/* IVA */}

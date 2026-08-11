@@ -10,6 +10,7 @@ import io
 import uuid
 
 from app.database import Database
+from app.services import conti_pos
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA,
     COLLECTION_SALDI_INIZIALI,
@@ -140,12 +141,23 @@ async def get_prima_nota_stats(
     # ancora sommati, e le stats non tornavano con la Prima Nota.
     cassa_match = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_CASSA)
     banca_match = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_BANCA)
+    banca_match["$or"] = [
+        {"conto_contabile": conti_pos.CONTO_BPM},
+        {"conto_contabile": {"$in": [None, ""]}},
+        {"conto_contabile": {"$exists": False}},
+    ]
+    sumup_match = filtro_saldo_prima_nota(
+        COLLECTION_PRIMA_NOTA_BANCA,
+        conto_contabile=conti_pos.CONTO_SUMUP_MASTERCARD,
+    )
     if data_da:
         cassa_match["data"] = {"$gte": data_da}
         banca_match["data"] = {"$gte": data_da}
+        sumup_match["data"] = {"$gte": data_da}
     if data_a:
         cassa_match.setdefault("data", {})["$lte"] = data_a
         banca_match.setdefault("data", {})["$lte"] = data_a
+        sumup_match.setdefault("data", {})["$lte"] = data_a
 
     cassa_pipeline = [
         {"$match": cassa_match},
@@ -168,45 +180,57 @@ async def get_prima_nota_stats(
         }}
     ]
     banca_stats = await db[COLLECTION_PRIMA_NOTA_BANCA].aggregate(banca_pipeline).to_list(1)
+
+    sumup_pipeline = [
+        {"$match": sumup_match},
+        {"$group": {
+            "_id": None,
+            "entrate": {"$sum": {"$cond": [{"$eq": ["$tipo", "entrata"]}, "$importo", 0]}},
+            "uscite": {"$sum": {"$cond": [{"$eq": ["$tipo", "uscita"]}, "$importo", 0]}},
+            "count": {"$sum": 1},
+        }},
+    ]
+    sumup_stats = await db[COLLECTION_PRIMA_NOTA_BANCA].aggregate(sumup_pipeline).to_list(1)
     
     cassa = cassa_stats[0] if cassa_stats else {"entrate": 0, "uscite": 0, "count": 0}
     banca = banca_stats[0] if banca_stats else {"entrate": 0, "uscite": 0, "count": 0}
+    sumup = sumup_stats[0] if sumup_stats else {"entrate": 0, "uscite": 0, "count": 0}
 
-    # Riporto iniziale: se il periodo parte dal 1° gennaio, il saldo include
-    # il riporto dell'anno (manuale o cumulato) — come nella Prima Nota.
-    riporto_cassa = riporto_banca = 0.0
-    if data_da and data_da.endswith("-01-01"):
-        anno_riporto = int(data_da[:4])
-        from .common import get_saldo_iniziale_manuale, calcola_saldo_anni_precedenti
-        rc = await get_saldo_iniziale_manuale(db, COLLECTION_PRIMA_NOTA_CASSA, anno_riporto)
-        riporto_cassa = rc if rc is not None else await calcola_saldo_anni_precedenti(
-            db, COLLECTION_PRIMA_NOTA_CASSA, anno_riporto)
-        rb = await get_saldo_iniziale_manuale(db, COLLECTION_PRIMA_NOTA_BANCA, anno_riporto)
-        riporto_banca = rb if rb is not None else await calcola_saldo_anni_precedenti(
-            db, COLLECTION_PRIMA_NOTA_BANCA, anno_riporto)
-
-    saldo_cassa = riporto_cassa + cassa.get("entrate", 0) - cassa.get("uscite", 0)
-    saldo_banca = riporto_banca + banca.get("entrate", 0) - banca.get("uscite", 0)
+    # La Dashboard espone il saldo dei movimenti dell'intervallo richiesto.
+    # Non trascina automaticamente anni storici incompleti: un saldo di conto
+    # richiede un riporto certificato e resta consultabile in Prima Nota.
+    saldo_cassa = cassa.get("entrate", 0) - cassa.get("uscite", 0)
+    saldo_banca = banca.get("entrate", 0) - banca.get("uscite", 0)
+    saldo_sumup = sumup.get("entrate", 0) - sumup.get("uscite", 0)
     return {
         "cassa": {
             "saldo": round(saldo_cassa, 2),
-            "riporto": round(riporto_cassa, 2),
+            "riporto": 0.0,
             "entrate": cassa.get("entrate", 0),
             "uscite": cassa.get("uscite", 0),
             "movimenti": cassa.get("count", 0)
         },
         "banca": {
             "saldo": round(saldo_banca, 2),
-            "riporto": round(riporto_banca, 2),
+            "riporto": 0.0,
             "entrate": banca.get("entrate", 0),
             "uscite": banca.get("uscite", 0),
             "movimenti": banca.get("count", 0)
         },
+        "sumup": {
+            "saldo": round(saldo_sumup, 2),
+            "riporto": 0.0,
+            "entrate": sumup.get("entrate", 0),
+            "uscite": sumup.get("uscite", 0),
+            "movimenti": sumup.get("count", 0)
+        },
         "totale": {
-            "saldo": round(saldo_cassa + saldo_banca, 2),
-            "entrate": cassa.get("entrate", 0) + banca.get("entrate", 0),
-            "uscite": cassa.get("uscite", 0) + banca.get("uscite", 0)
-        }
+            "saldo": round(saldo_cassa + saldo_banca + saldo_sumup, 2),
+            "entrate": cassa.get("entrate", 0) + banca.get("entrate", 0) + sumup.get("entrate", 0),
+            "uscite": cassa.get("uscite", 0) + banca.get("uscite", 0) + sumup.get("uscite", 0)
+        },
+        "criterio": "movimenti_del_periodo_senza_riporti_storici",
+        "saldo_conto_certificato": False,
     }
 
 

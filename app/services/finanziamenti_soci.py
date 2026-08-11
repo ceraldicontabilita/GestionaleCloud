@@ -21,7 +21,6 @@ la prova bancaria non viene duplicata.
 import logging
 import re
 import uuid
-from difflib import SequenceMatcher
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -120,6 +119,17 @@ def classifica_finanziamento_ec(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]
         "data": data,
         "descrizione": descrizione,
         "estratto_conto_id": ec_id,
+        **{
+            campo: doc[campo]
+            for campo in (
+                "bank_fingerprint", "movement_fingerprint",
+                "source_fingerprint", "fingerprint", "duplicate_of",
+                "duplicato_di", "duplicate_group_id",
+                "source_document_hash", "document_hash",
+                "source_row_number", "row_number",
+            )
+            if doc.get(campo) is not None
+        },
     }
 
 
@@ -141,36 +151,45 @@ def _descrizione_semantica(testo: str) -> str:
     return " ".join(p for p in parole if len(p) > 1 and p not in _PAROLE_BANCA)
 
 
-def _stessa_operazione_semantica(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
+def _chiave_prova_bancaria(movimento: Dict[str, Any]) -> Optional[str]:
+    """Identita' immutabile della prova, mai dedotta da data/importo/testo."""
+    duplicato_di = movimento.get("duplicate_of") or movimento.get("duplicato_di")
+    if duplicato_di:
+        return f"ec:{duplicato_di}"
+    if movimento.get("duplicate_group_id"):
+        return f"gruppo:{movimento['duplicate_group_id']}"
+    for campo in (
+        "bank_fingerprint", "movement_fingerprint", "source_fingerprint",
+        "fingerprint",
+    ):
+        if movimento.get(campo):
+            return f"fingerprint:{movimento[campo]}"
+    documento = movimento.get("source_document_hash") or movimento.get("document_hash")
+    riga = movimento.get("source_row_number") or movimento.get("row_number")
+    if documento and riga is not None:
+        return f"riga:{documento}:{riga}"
+    ec_id = movimento.get("estratto_conto_id")
+    return f"ec:{ec_id}" if ec_id else None
+
+
+def _stessa_prova_bancaria(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
     if a.get("source") == "manuale" or b.get("source") == "manuale":
         return False
-    campi = ("socio_id", "tipo", "data")
-    if any(a.get(c) != b.get(c) for c in campi):
-        return False
-    if round(float(a.get("importo") or 0), 2) != round(float(b.get("importo") or 0), 2):
-        return False
-    if a.get("estratto_conto_id") and a.get("estratto_conto_id") == b.get("estratto_conto_id"):
-        return True
-    da = _descrizione_semantica(a.get("descrizione") or "")
-    db = _descrizione_semantica(b.get("descrizione") or "")
-    if not da or not db:
-        return False
-    ta, tb = set(da.split()), set(db.split())
-    unione = ta | tb
-    jaccard = len(ta & tb) / len(unione) if unione else 0
-    return jaccard >= 0.60 or SequenceMatcher(None, da, db).ratio() >= 0.72
+    chiave_a = _chiave_prova_bancaria(a)
+    chiave_b = _chiave_prova_bancaria(b)
+    return bool(chiave_a and chiave_a == chiave_b)
 
 
-def _accorpa_duplicati_semantici(movimenti: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], int]:
-    """Accorpa soltanto copie automatiche altamente compatibili.
+def _accorpa_duplicati_esatti(movimenti: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], int]:
+    """Accorpa soltanto record che provano la stessa identica riga bancaria.
 
-    Non elimina nulla dal database e non accorpa mai movimenti manuali. Il
-    record restituito conserva gli ID delle prove sorgente per l'audit.
+    Stessa data, importo e causale simile non bastano: possono esistere piu'
+    operazioni reali uguali nello stesso giorno.
     """
     unici: List[Dict[str, Any]] = []
     duplicati = 0
     for movimento in movimenti:
-        esistente = next((m for m in unici if _stessa_operazione_semantica(m, movimento)), None)
+        esistente = next((m for m in unici if _stessa_prova_bancaria(m, movimento)), None)
         if not esistente:
             copia = dict(movimento)
             copia["fonti_estratto_conto"] = [movimento.get("estratto_conto_id")] if movimento.get("estratto_conto_id") else []
@@ -193,7 +212,7 @@ async def scan_finanziamenti_da_ec(db, anno: Optional[int] = None) -> Dict[str, 
         "rimborsi_nuovi": 0,
         "gia_presenti": 0,
         "uscite_ignorate_causale": 0,
-        "duplicati_semantici_ignorati": 0,
+        "duplicati_esatti_ignorati": 0,
         "per_socio": {s["id"]: 0 for s in SOCI},
     }
 
@@ -237,8 +256,8 @@ async def scan_finanziamenti_da_ec(db, anno: Optional[int] = None) -> Dict[str, 
         }
         if movimento["importo"] <= 0 or not movimento["data"]:
             continue
-        if any(_stessa_operazione_semantica(esistente, movimento) for esistente in movimenti_esistenti):
-            stats["duplicati_semantici_ignorati"] += 1
+        if any(_stessa_prova_bancaria(esistente, movimento) for esistente in movimenti_esistenti):
+            stats["duplicati_esatti_ignorati"] += 1
             continue
         await db[COLLECTION].insert_one(movimento)
         movimenti_esistenti.append(movimento)
@@ -266,7 +285,7 @@ async def schede_soci(db, anno: Optional[int] = None) -> Dict[str, Any]:
     tot_apporti = tot_rimborsi = 0.0
     for s in SOCI:
         movs_raw = sorted(per_socio.get(s["id"], []), key=lambda m: m.get("data", ""), reverse=True)
-        movs, duplicati_accorpati = _accorpa_duplicati_semantici(movs_raw)
+        movs, duplicati_accorpati = _accorpa_duplicati_esatti(movs_raw)
         duplicati_accorpati_totale += duplicati_accorpati
         apporti = round(sum(m["importo"] for m in movs if m["tipo"] == "apporto"), 2)
         rimborsi = round(sum(m["importo"] for m in movs if m["tipo"] == "rimborso"), 2)

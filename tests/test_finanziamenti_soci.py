@@ -123,7 +123,7 @@ def test_scan_idempotente_non_duplica():
     assert stats2["gia_presenti"] == 1
 
 
-def test_due_import_della_stessa_operazione_sono_contati_una_volta():
+def test_movimenti_simili_ma_con_id_bancari_distinti_restano_distinti():
     db = _DB()
     db["estratto_conto_movimenti"].docs.extend([
         {
@@ -138,12 +138,12 @@ def test_due_import_della_stessa_operazione_sono_contati_una_volta():
         },
     ])
     stats = _run(scan_finanziamenti_da_ec(db, anno=2026))
-    assert stats["apporti_nuovi"] == 1
-    assert stats["duplicati_semantici_ignorati"] == 1
+    assert stats["apporti_nuovi"] == 2
+    assert stats["duplicati_esatti_ignorati"] == 0
     schede = _run(schede_soci(db, anno=2026))
     pane = next(s for s in schede["schede"] if s["socio_id"] == "giuseppina_pane")
-    assert pane["apporti"] == 14000.0
-    assert len(pane["movimenti"]) == 1
+    assert pane["apporti"] == 28000.0
+    assert len(pane["movimenti"]) == 2
 
 
 def test_duplicati_storici_vengono_accorpati_senza_cancellare_le_fonti():
@@ -152,11 +152,13 @@ def test_duplicati_storici_vengono_accorpati_senza_cancellare_le_fonti():
         {"id": "m1", "socio_id": "giuseppina_pane", "socio_nome": "Giuseppina Pane",
          "tipo": "apporto", "importo": 20000.0, "data": "2026-03-02",
          "descrizione": "BON.DA CERALDI MICHELE PANE GIUSEPPINA FINANZIAMENTO INFRUTTIFERO PER RISTRUTTU",
-         "estratto_conto_id": "ec1", "source": "estratto_conto_auto"},
+         "estratto_conto_id": "ec1", "bank_fingerprint": "bpm-riga-42",
+         "source": "estratto_conto_auto"},
         {"id": "m2", "socio_id": "giuseppina_pane", "socio_nome": "Giuseppina Pane",
          "tipo": "apporto", "importo": 20000.0, "data": "2026-03-02",
          "descrizione": "BONIF. VS. FAVORE - BON.DA CERALDI MICHELE PANE GIUSEPPINA - Finanziamento infruttifero per ristrutturazione",
-         "estratto_conto_id": "ec2", "source": "estratto_conto_auto"},
+         "estratto_conto_id": "ec2", "bank_fingerprint": "bpm-riga-42",
+         "source": "estratto_conto_auto"},
     ])
     schede = _run(schede_soci(db, anno=2026))
     pane = next(s for s in schede["schede"] if s["socio_id"] == "giuseppina_pane")

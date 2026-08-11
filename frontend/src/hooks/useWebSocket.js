@@ -15,13 +15,15 @@ const QUERY_INVALIDATIONS = {
 };
 
 function getWebSocketUrl() {
-  // Il backend accetta il WebSocket SOLO con ?token=JWT (middleware auth):
-  // senza token la connessione veniva rifiutata con 403 in loop continuo
+  // Il browser autentica il WebSocket con il cookie HttpOnly di sessione.
+  // Senza una sessione locale non avviamo riconnessioni inutili
   // (riempiva i log del server a ogni retry). Nessun token → nessun tentativo.
   const token = localStorage.getItem('auth_token');
   if (!token) return null;
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${window.location.host}/api/ws/notifications?token=${encodeURIComponent(token)}`;
+  // Il cookie HttpOnly di sessione autentica l'handshake. Non mettere il JWT
+  // nell'URL: proxy e access log registrano le query string.
+  return `${protocol}//${window.location.host}/api/ws/notifications`;
 }
 
 export function useWebSocketNotifications() {
@@ -60,7 +62,7 @@ export function useWebSocketNotifications() {
 
       ws.onopen = () => {
         retriesRef.current = 0;
-        console.info('[WS] Connesso'); // mai loggare l'URL: contiene il token
+        console.info('[WS] Connesso');
         // Ping ogni 20 secondi (proxy Kubernetes timeout: 30s — dobbiamo pingare prima)
         pingTimerRef.current = setInterval(() => {
           if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {

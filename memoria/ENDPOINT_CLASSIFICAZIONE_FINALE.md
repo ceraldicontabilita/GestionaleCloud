@@ -292,7 +292,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/contabilita/ricategorizza-fatture` | accounting.contabilita_avanzata | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/contabilita/statistiche-categorizzazione` | accounting.contabilita_avanzata | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/controllo-gestione/costi-per-categoria` | controllo_gestione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/controllo-gestione/costi-ricavi` | controllo_gestione | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/controllo-gestione/costi-ricavi` | controllo_gestione | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/controllo-gestione/kpi/{anno}` | controllo_gestione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/controllo-gestione/trend-mensile` | controllo_gestione | — | — | sì | — | — | tenere | in uso: chat |
 | `GET /api/corrispettivi` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
@@ -964,7 +964,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/prima-nota/sposta-cassa-pagate-in-banca` | prima_nota_module.sync | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/sposta-movimento` | prima_nota_module.manutenzione | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota/sposta-scrittura` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/prima-nota/stats` | prima_nota_module.stats | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/prima-nota/stats` | prima_nota_module.stats | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/prima-nota/sumup` | prima_nota_module.banca | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota/sync-corrispettivi` | prima_nota_module.sync | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/unifica-categorie` | prima_nota_module.manutenzione | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

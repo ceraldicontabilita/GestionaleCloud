@@ -12,9 +12,11 @@ import DocumentImportLink from '../components/DocumentImportLink';
 import FinanziamentoSoci from './FinanziamentoSoci';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import {
+  Banknote,
   CreditCard,
   Eye,
   FileText,
+  Landmark,
   Pencil,
   ReceiptText,
 } from 'lucide-react';
@@ -222,7 +224,7 @@ function FiltriFattura({
   );
 }
 
-function BadgeCategoria({ categoria }) {
+export function BadgeCategoria({ categoria }) {
   const testo = categoria || '—';
   const lower = testo.toLowerCase();
   let Icona = FileText;
@@ -282,10 +284,51 @@ function Card({ titolo, valore, colore, onEdit, testId }) {
 /* ------------------------- conto Mastercard SumUp ------------------------ */
 export function CartaSumUp({ dati, anno }) {
   const giorni = dati?.giorni || [];
+  const vendite = dati?.giornate_vendite || [];
   return (
     <section aria-labelledby="titolo-conto-sumup" style={{ display: 'grid', gap: 12 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 320px)', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+        <Card titolo={`Venduto con SumUp ${anno}`} valore={dati?.totale_netto_vendite || 0} colore={VERDE} />
+        <Card titolo="Credito verso SumUp" valore={dati?.credito_sumup_aperto || 0} colore="#d97706" />
         <Card titolo={`Ricevuto su Mastercard ${anno}`} valore={dati?.totale_ricevuto || 0} colore={BLU} />
+        <Card titolo="Saldo Mastercard SumUp" valore={dati?.saldo_mastercard || 0} colore="#7c3aed" />
+      </div>
+
+      <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 12px', color: '#1e3a8a', fontSize: 13 }}>
+        Vendita, credito verso SumUp e accredito Mastercard sono tre passaggi distinti. Una vendita di oggi compare subito qui; il payout compare soltanto quando SumUp lo accredita davvero.
+      </div>
+
+      <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid #e2e8f0' }}>
+          <h2 style={{ margin: 0, fontSize: 16, color: BLU }}>Vendite SumUp acquisite</h2>
+          <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 13 }}>
+            Transazioni archiviate dall'ultima sincronizzazione SumUp; non sono ancora accrediti bancari.
+          </p>
+        </div>
+        {vendite.length === 0 ? (
+          <div style={{ padding: 22, textAlign: 'center', color: '#64748b' }}>Nessuna vendita SumUp acquisita nel {anno}.</div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
+              <thead><tr style={{ background: '#f8fafc', color: '#475569', fontSize: 12 }}>
+                <th scope="col" style={{ padding: '9px 14px', textAlign: 'left' }}>Data vendita</th>
+                <th scope="col" style={{ padding: '9px 14px', textAlign: 'center' }}>Transazioni</th>
+                <th scope="col" style={{ padding: '9px 14px', textAlign: 'right' }}>Vendite</th>
+                <th scope="col" style={{ padding: '9px 14px', textAlign: 'right' }}>Rimborsi</th>
+                <th scope="col" style={{ padding: '9px 14px', textAlign: 'right' }}>Netto</th>
+              </tr></thead>
+              <tbody>{vendite.map(giorno => (
+                <tr key={giorno.data} style={{ borderTop: '1px solid #eef2f7', color: '#334155', fontSize: 13 }}>
+                  <td style={{ padding: '10px 14px' }}>{formatDateIT(giorno.data)}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'center' }}>{giorno.transazioni}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right' }}>{eur(giorno.vendite)}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right' }}>{eur(giorno.rimborsi)}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 800 }}>{eur(giorno.netto)}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
@@ -1889,7 +1932,10 @@ export default function PrimaNota() {
 
   const [cassa, setCassa] = useState({ movimenti: [], loaded: false });
   const [banca, setBanca] = useState({ movimenti: [], loaded: false });
-  const [sumup, setSumup] = useState({ giorni: [], totale_ricevuto: 0, numero_payout: 0 });
+  const [sumup, setSumup] = useState({
+    giorni: [], giornate_vendite: [], totale_ricevuto: 0,
+    totale_netto_vendite: 0, credito_sumup_aperto: 0, saldo_mastercard: 0,
+  });
   const [provvisori, setProvvisori] = useState([]);
   const [attesaBanca, setAttesaBanca] = useState([]);
   const [tutteFatture, setTutteFatture] = useState([]);
@@ -1930,7 +1976,10 @@ export default function PrimaNota() {
           richiestaInterattiva,
         );
         if (richiesta !== richiestaRef.current) return;
-        setSumup(risposta.data || { giorni: [], totale_ricevuto: 0, numero_payout: 0 });
+        setSumup(risposta.data || {
+          giorni: [], giornate_vendite: [], totale_ricevuto: 0,
+          totale_netto_vendite: 0, credito_sumup_aperto: 0, saldo_mastercard: 0,
+        });
       } else {
         const endpoint = sezione === 'banca' ? 'banca' : 'cassa';
         const risposta = await api.get(

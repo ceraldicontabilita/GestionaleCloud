@@ -129,6 +129,26 @@ def classifica_movimento_ec(
             "socio_nome": finanziamento["socio_nome"],
             "tipo_finanziamento": finanziamento["tipo"],
         }
+    causale = classify_bank_movement(doc)
+    if (
+        causale
+        and causale.get("tipo") == "commissione_bancaria"
+        and _verso(doc) == "uscita"
+    ):
+        # Commissioni e competenze sono costi bancari deterministici che non
+        # richiedono una fattura esterna. Possono quindi entrare nel registro
+        # con la riga EC come prova esatta; POS, SDD, F24 e versamenti restano
+        # invece solo classificati finche' manca il collegamento reciproco.
+        return {
+            "tipo": "uscita",
+            "categoria": "Commissioni bancarie",
+            "tipo_classificazione_contabile": (
+                f"commissione_bancaria:{causale['rule_id']}"
+            ),
+            "regola_bancaria": causale["rule_id"],
+            "regola_versione": causale["rule_version"],
+            "campi_estratti": causale.get("campi_estratti") or {},
+        }
     dipendente = _classifica_dipendente(doc, dipendenti)
     if dipendente:
         return dipendente
@@ -160,6 +180,7 @@ async def proietta_movimenti_bancari_semantici(
         "finanziamenti_soci": 0, "stipendi": 0, "tfr": 0,
         "paypal_sdd": 0, "non_classificati": 0,
         "causali_deterministiche": 0,
+        "commissioni_bancarie": 0,
     }
     cursore = db[Collections.BANK_STATEMENTS].find(query)
     async for movimento_ec in cursore:
@@ -249,6 +270,8 @@ async def proietta_movimenti_bancari_semantici(
             stats["proiettati"] += 1
         if tipo_classificazione.startswith("finanziamento_socio_"):
             stats["finanziamenti_soci"] += 1
+        elif tipo_classificazione.startswith("commissione_bancaria:"):
+            stats["commissioni_bancarie"] += 1
         elif tipo_classificazione in {"stipendio", "tfr", "paypal_sdd"}:
             chiave_statistica = {
                 "stipendio": "stipendi",
