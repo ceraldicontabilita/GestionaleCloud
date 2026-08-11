@@ -9,7 +9,7 @@ from app.engines import liquidazione_iva_engine as liq
 from app.services.fiscal_deadlines import monthly_deadline
 
 
-SERVICE_VERSION = "iva_liquidation_query_v1"
+SERVICE_VERSION = "iva_liquidation_query_v2"
 
 
 def money_cents(value: Any) -> int:
@@ -131,7 +131,17 @@ async def get_iva_period_snapshot(
     invoices = await db["invoices"].find(
         {"periodo_iva_attribuito": periodo}, {"_id": 0}
     ).to_list(20000)
-    included, excluded = liq.seleziona_fatture_per_liquidazione(invoices, periodo)
+    # Due grandezze diverse, che non devono mai essere confuse:
+    # - competenza: tutte le fatture fiscalmente attribuite al mese, anche se
+    #   gia' usate in quella liquidazione;
+    # - disponibilita': sole fatture ancora inseribili in una NUOVA
+    #   liquidazione, quindi al netto di iva_utilizzata.
+    competence_included, competence_excluded = liq.seleziona_fatture_per_competenza(
+        invoices, periodo,
+    )
+    available_included, available_excluded = liq.seleziona_fatture_per_liquidazione(
+        invoices, periodo,
+    )
     sales = await corrispettivi_periodo(db, periodo)
     previous = await db["liquidazioni_iva"].find_one(
         {"periodo": _previous_period(periodo),
@@ -139,7 +149,13 @@ async def get_iva_period_snapshot(
         {"_id": 0}, sort=[("versione", -1)],
     )
     previous_credit_cents = money_cents((previous or {}).get("credito_periodo"))
-    purchases_cents = sum(money_cents(item.get("iva_detraibile")) for item in included)
+    competence_purchases_cents = sum(
+        money_cents(item.get("iva_detraibile")) for item in competence_included
+    )
+    available_purchases_cents = sum(
+        money_cents(item.get("iva_detraibile")) for item in available_included
+    )
+    purchases_cents = available_purchases_cents
     sales_cents = sales["iva_vendite_cents"]
     balance_cents = sales_cents - purchases_cents - previous_credit_cents
     source = "calcolo_canonico"
@@ -157,8 +173,13 @@ async def get_iva_period_snapshot(
 
     counts = {
         "fatture_periodo_attribuito": len(invoices),
-        "fatture_incluse_calcolo": len(included),
-        "fatture_escluse_calcolo": len(excluded),
+        "fatture_incluse_competenza": len(competence_included),
+        "fatture_escluse_competenza": len(competence_excluded),
+        "fatture_incluse_calcolo": len(available_included),
+        "fatture_escluse_calcolo": len(available_excluded),
+        "fatture_gia_utilizzate": sum(
+            1 for item in invoices if item.get("iva_utilizzata") is True
+        ),
         "detraibilita_da_verificare": sum(
             1 for item in invoices
             if item.get("stato_detrazione_iva") in (None, "", "NON_VALUTATA", "DA_VERIFICARE")
@@ -173,12 +194,16 @@ async def get_iva_period_snapshot(
         "stato_calcolo": status,
         "iva_vendite_cents": sales_cents,
         "iva_acquisti_cents": purchases_cents,
+        "iva_acquisti_competenza_cents": competence_purchases_cents,
+        "iva_acquisti_disponibile_cents": available_purchases_cents,
         "credito_precedente_cents": previous_credit_cents,
         "saldo_cents": balance_cents,
         "debito_periodo_cents": max(balance_cents, 0),
         "credito_periodo_cents": max(-balance_cents, 0),
         "iva_vendite": euros(sales_cents),
         "iva_acquisti": euros(purchases_cents),
+        "iva_acquisti_competenza": euros(competence_purchases_cents),
+        "iva_acquisti_disponibile": euros(available_purchases_cents),
         "credito_precedente": euros(previous_credit_cents),
         "saldo": euros(balance_cents),
         "debito_periodo": euros(max(balance_cents, 0)),
@@ -186,7 +211,8 @@ async def get_iva_period_snapshot(
         "fonte": source,
         "fonte_calcolo": SERVICE_VERSION,
         "conteggi": counts,
-        "fatture_escluse": excluded,
+        "fatture_escluse": available_excluded,
+        "fatture_escluse_competenza": competence_excluded,
         **sales,
         **deadline,
     }

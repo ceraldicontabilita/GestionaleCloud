@@ -121,6 +121,59 @@ def seleziona_fatture_per_liquidazione(
     return incluse, escluse
 
 
+def seleziona_fatture_per_competenza(
+    fatture: List[Dict[str, Any]],
+    periodo: str,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Seleziona la base IVA di competenza del mese.
+
+    Questa vista risponde alla domanda *quanta IVA detraibile appartiene al
+    periodo?* e non alla domanda *quanta IVA posso ancora inserire in una
+    nuova liquidazione?*. Per questo ``iva_utilizzata`` e qualunque campo di
+    pagamento (cassa, banca, pagata/non pagata) non sono criteri di
+    esclusione. L'utilizzo viene esposto separatamente dal chiamante.
+
+    Restano escluse soltanto le posizioni che non possono contribuire come IVA
+    acquisti positiva: documenti annullati o duplicati, note di credito,
+    indetraibili esplicite e fatture senza IVA detraibile classificata.
+    """
+    incluse: List[Dict[str, Any]] = []
+    escluse: List[Dict[str, Any]] = []
+
+    for f in fatture:
+        if f.get("periodo_iva_attribuito") != periodo:
+            continue
+
+        def _escludi(motivo: str) -> None:
+            escluse.append({
+                "id": _id_fattura(f),
+                "invoice_number": f.get("invoice_number"),
+                "supplier_name": f.get("supplier_name"),
+                "iva": _iva_detraibile(f),
+                "motivo_esclusione": motivo,
+            })
+
+        if f.get("annullata") is True:
+            _escludi("Documento annullato")
+            continue
+        if f.get("duplicata") is True:
+            _escludi("Documento duplicato")
+            continue
+        if str(f.get("tipo_documento") or "").upper() in TIPI_NOTA_CREDITO:
+            _escludi("Nota di credito")
+            continue
+        if f.get("stato_detrazione_iva") == "INDETRAIBILE":
+            _escludi("IVA esplicitamente indetraibile")
+            continue
+        if _iva_detraibile(f) <= 0:
+            _escludi("IVA detraibile non classificata o nulla")
+            continue
+
+        incluse.append(f)
+
+    return incluse, escluse
+
+
 def calcola_totali(
     incluse: List[Dict[str, Any]],
     iva_vendite: float = 0.0,

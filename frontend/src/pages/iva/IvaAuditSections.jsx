@@ -62,6 +62,8 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
         Confronta la stima del gestionale con la sola riga IVA (codici 6001–6012)
         estratta dal modello F24 ricevuto via email. Gli altri tributi presenti nello stesso
         modello, ad esempio il 1040, restano distinti e non vengono sommati all’IVA.
+        Il calcolo comprende tutte le fatture fiscalmente attribuite al mese, indipendentemente
+        da cassa, banca e stato del pagamento.
       </p>
 
       {loading && <div style={{ padding: 20, color: COLORS.textMuted }}>Caricamento confronto F24…</div>}
@@ -79,7 +81,7 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
             <table className="iva-responsive-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead>
                 <tr>
-                  {['Mese', 'IVA debito', 'IVA credito', 'Fatture incluse', 'Saldo gestionale', 'F24 commercialista', 'Scostamento', 'Esito'].map((label) => (
+                  {['Mese', 'IVA debito', 'IVA credito', 'Fatture del mese', 'Saldo gestionale', 'F24 commercialista', 'Scostamento', 'Esito'].map((label) => (
                     <th key={label} style={{ padding: '10px 9px', textAlign: label === 'Mese' ? 'left' : 'right', color: COLORS.textMuted, background: COLORS.bgAlt, whiteSpace: 'nowrap' }}>
                       {label}
                     </th>
@@ -94,7 +96,18 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
                     <td data-label="Mese" style={{ padding: '10px 9px', fontWeight: 700 }}>{m.mese_nome}</td>
                     <td data-label="IVA debito" style={{ padding: '10px 9px', textAlign: 'right', color: nonCalcolato ? COLORS.textMuted : COLORS.danger }}>{nonCalcolato ? '—' : formatEuro(m.iva_debito_corrispettivi)}</td>
                     <td data-label="IVA credito" style={{ padding: '10px 9px', textAlign: 'right', color: nonCalcolato ? COLORS.textMuted : COLORS.success }}>{nonCalcolato ? '—' : formatEuro(m.iva_credito_fatture)}</td>
-                    <td data-label="Fatture incluse" style={{ padding: '10px 9px', textAlign: 'right' }}>{nonCalcolato ? '—' : (m.num_fatture || 0)}</td>
+                    <td data-label="Fatture del mese" style={{ padding: '10px 9px', textAlign: 'right' }}>
+                      {nonCalcolato ? '—' : (
+                        <span>
+                          <strong>{m.num_fatture || 0}</strong>
+                          <small style={{ display: 'block', color: COLORS.textMuted }}>
+                            {m.fatture_con_iva_competenza || 0} con IVA
+                            {m.fatture_gia_liquidate ? ` · ${m.fatture_gia_liquidate} già liquidate` : ''}
+                            {m.fatture_da_classificare ? ` · ${m.fatture_da_classificare} da verificare` : ''}
+                          </small>
+                        </span>
+                      )}
+                    </td>
                     <td data-label="Saldo gestionale" style={{ padding: '10px 9px', textAlign: 'right', fontWeight: 700, color: m.saldo > 0 ? COLORS.danger : COLORS.success }}>
                       {nonCalcolato ? '—' : <>{m.saldo > 0 ? '+' : ''}{formatEuro(m.saldo)}</>}
                     </td>

@@ -58,10 +58,13 @@ class VerificaCoerenza:
 
         snapshot = await get_iva_period_snapshot(self.db, anno=anno, mese=mese)
         count_fatture = snapshot["conteggi"]["fatture_periodo_attribuito"]
-        iva_credito_fatture = snapshot.get("iva_acquisti")
+        # Il confronto mensile usa la competenza fiscale completa. Non deve
+        # usare il residuo ancora disponibile per una nuova liquidazione:
+        # ``iva_utilizzata`` indica consumo, non esclusione dal mese.
+        iva_credito_fatture = snapshot.get("iva_acquisti_competenza")
         return {
             "iva_credito_fatture": iva_credito_fatture,
-            "iva_credito_fatture_cents": snapshot.get("iva_acquisti_cents"),
+            "iva_credito_fatture_cents": snapshot.get("iva_acquisti_competenza_cents"),
             "iva_fatture_lorde": iva_credito_fatture,
             "iva_note_credito": 0.0 if iva_credito_fatture is not None else None,
             "num_fatture": count_fatture,
@@ -502,12 +505,21 @@ class VerificaCoerenza:
         self.discrepanze = []
         periodo = f"{MESI_NOMI[mese]} {anno}"
         snapshot = await get_iva_period_snapshot(self.db, anno=anno, mese=mese)
-        iva_credito_fatture = snapshot.get("iva_acquisti")
+        iva_credito_fatture = snapshot.get("iva_acquisti_competenza")
         iva_debito_corrispettivi = snapshot.get("iva_vendite")
-        saldo_gestionale = snapshot.get("saldo")
+        iva_credito_cents = snapshot.get("iva_acquisti_competenza_cents")
+        iva_debito_cents = snapshot.get("iva_vendite_cents")
+        saldo_gestionale_cents = (
+            int(iva_debito_cents) - int(iva_credito_cents)
+            if iva_debito_cents is not None and iva_credito_cents is not None
+            else None
+        )
+        saldo_gestionale = (
+            euros(saldo_gestionale_cents)
+            if saldo_gestionale_cents is not None else None
+        )
         f24_iva = await self.trova_f24_iva_mensile(anno, mese)
         importo_f24_cents = f24_iva.get("importo_f24_cents")
-        saldo_gestionale_cents = snapshot.get("saldo_cents")
         scostamento_f24_cents = (
             int(importo_f24_cents) - max(int(saldo_gestionale_cents), 0)
             if importo_f24_cents is not None and saldo_gestionale_cents is not None
@@ -524,8 +536,10 @@ class VerificaCoerenza:
             "mese": mese,
             "iva_credito": {
                 "da_fatture": iva_credito_fatture,
-                "da_fatture_cents": snapshot.get("iva_acquisti_cents"),
+                "da_fatture_cents": iva_credito_cents,
                 "da_liquidazione": iva_credito_fatture,
+                "ancora_disponibile": snapshot.get("iva_acquisti_disponibile"),
+                "ancora_disponibile_cents": snapshot.get("iva_acquisti_disponibile_cents"),
                 "num_fatture": snapshot["conteggi"]["fatture_periodo_attribuito"],
                 "conteggi": snapshot["conteggi"],
                 "coerente": True if iva_credito_fatture is not None else None,
