@@ -166,6 +166,7 @@ def parse_corrispettivo_xml(xml_content: str) -> Dict[str, Any]:
         for riepilogo in find_all_elements(dati_rt, 'Riepilogo'):
             iva_el = find_element(riepilogo, 'IVA')
             aliquota = get_text(iva_el, 'AliquotaIVA', '0')
+            imposta_raw = get_text(iva_el, 'Imposta', '')
             imposta = get_float(iva_el, 'Imposta')
             ammontare = get_float(riepilogo, 'Ammontare')
             importo_parziale = get_float(riepilogo, 'ImportoParziale')
@@ -178,6 +179,7 @@ def parse_corrispettivo_xml(xml_content: str) -> Dict[str, Any]:
                 riepilogo_iva.append({
                     "aliquota_iva": aliquota,
                     "imposta": imposta,
+                    "imposta_presente": bool(imposta_raw),
                     "ammontare": ammontare,  # Imponibile
                     "importo_parziale": importo_parziale,
                     "importo_lordo": importo_lordo,
@@ -230,35 +232,9 @@ def parse_corrispettivo_xml(xml_content: str) -> Dict[str, Any]:
         totale_lordo_riepiloghi = sum(r.get('importo_lordo', 0) for r in riepilogo_iva)
         pagato_non_riscosso = max(0, round(totale_lordo_riepiloghi - totale_corrispettivi, 2))
         
-        # ========== CALCOLO IVA SE NON PRESENTE ==========
-        # Se l'IVA totale è 0 ma abbiamo un totale > 0, applichiamo scorporo al 10%
-        # Ristorazione tipicamente ha IVA al 10%
-        if totale_imposta == 0 and totale_corrispettivi > 0:
-            # Scorporo IVA al 10%: IVA = Totale - (Totale / 1.10)
-            totale_imposta = totale_corrispettivi - (totale_corrispettivi / 1.10)
-            totale_imponibile = totale_corrispettivi / 1.10
-            
-            # Aggiungi al riepilogo
-            if not riepilogo_iva:
-                riepilogo_iva.append({
-                    "aliquota_iva": "10.00",
-                    "imposta": round(totale_imposta, 2),
-                    "ammontare": round(totale_imponibile, 2),
-                    "importo_parziale": round(totale_corrispettivi, 2),
-                    "importo_lordo": round(totale_corrispettivi, 2),
-                    "natura": "",
-                    "calcolato_scorporo": True  # Flag che indica calcolo automatico
-                })
-            else:
-                # Aggiorna primo riepilogo con IVA calcolata
-                for riep in riepilogo_iva:
-                    if riep.get("imposta", 0) == 0:
-                        importo_lordo = riep.get("importo_lordo", 0) or riep.get("importo_parziale", 0)
-                        if importo_lordo > 0:
-                            riep["imposta"] = round(importo_lordo - (importo_lordo / 1.10), 2)
-                            riep["ammontare"] = round(importo_lordo / 1.10, 2)
-                            riep["aliquota_iva"] = "10.00"
-                            riep["calcolato_scorporo"] = True
+        # L'IVA assente non viene inventata mediante scorporo. Il documento
+        # resta importabile come evidenza RT, ma la quadratura IVA viene
+        # marcata NON_VERIFICABILE finche non esiste un valore XML stampato.
         
         # ========== GENERA CHIAVE UNIVOCA ==========
         # Formato: piva_data_idDispositivo_progressivo
@@ -306,9 +282,15 @@ def parse_corrispettivo_xml(xml_content: str) -> Dict[str, Any]:
             "totale_imponibile": totale_imponibile,
             "totale_iva": totale_imposta,
             "riepilogo_iva": riepilogo_iva,
+            "quadratura_iva_status": (
+                "VERIFICATA"
+                if riepilogo_iva and all(r.get("imposta_presente") for r in riepilogo_iva)
+                else "NON_VERIFICABILE"
+            ),
             
             # Metadata
             "raw_xml_parsed": True,
+            "parser_version": "corrispettivi_xml_v2_cents",
             "versione": get_text(root, 'versione') or "COR10",
             "periodo_inattivo": find_element(root, 'PeriodoInattivo') is not None,
         }

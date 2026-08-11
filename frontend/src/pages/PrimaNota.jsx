@@ -338,9 +338,6 @@ export function CartaSumUp({ dati, anno }) {
 // manca e mostriamo la quadratura (richiesta utente 18/07/2026).
 export function CartaNexi({ anno }) {
   const [stato, setStato] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [msg, setMsg] = useState('');
-  const fileRef = React.useRef(null);
   const richiestaRef = React.useRef(0);
 
   const carica = async () => {
@@ -360,29 +357,6 @@ export function CartaNexi({ anno }) {
 
   const v = stato?.verifica;
   if (!v || v.addebiti_trovati === 0) return null;
-
-  const upload = async e => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    setMsg('');
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const r = await api.post('/api/nexi/upload-pdf', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      setMsg(r.data.success
-        ? `✅ Caricate ${r.data.operazioni} operazioni.`
-        : `⚠️ ${r.data.message || 'Import non riuscito'}`);
-      carica();
-    } catch (e2) {
-      setMsg(`❌ ${e2.response?.data?.detail || e2.message}`);
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = '';
-    }
-  };
 
   const daCompletare = v.dettagli.filter(d => d.stato !== 'riconciliato');
   if (daCompletare.length === 0) return null;
@@ -421,9 +395,8 @@ export function CartaNexi({ anno }) {
           title="Acquisisci lo statement Nexi da Documenti: classificazione e provenienza centralizzate"
           style={{ background: '#d97706', color: 'white', border: 'none', borderRadius: 7, padding: '6px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
         >
-          {uploading ? '⏳ Caricamento…' : '📎 Allega estratto Nexi (PDF)'}
+          📎 Acquisisci statement Nexi da Documenti
         </DocumentImportLink>
-        {msg && <span style={{ fontSize: 12, color: '#475569' }}>{msg}</span>}
       </div>
     </div>
   );

@@ -1,110 +1,30 @@
 """
-Handler Corrispettivi — reagisce a corrispettivi.importati
-Scrive automaticamente in prima_nota_cassa per ogni giornata importata.
-Controlla anche la coerenza con i dati POS.
+Handler Corrispettivi: compatibilità eventi e controllo coerenza POS.
+
+La Prima Nota è gestita dal servizio canonico di ingestione; il vecchio
+evento non produce una seconda scrittura.
 """
 import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List
-from app.services.scritture_contabili import scrivi_movimento
 
 logger = logging.getLogger(__name__)
 
 
 async def handler_prima_nota_corrispettivi(payload: Dict[str, Any], db) -> Dict[str, Any]:
     """
-    Quando arrivano i corrispettivi XML del registratore telematico:
-    - Scrive entrata in prima_nota_cassa per ogni giorno
-    - Distingue contanti da pagamento elettronico
-    - Anti-duplicato su data + source
+    Compatibilita con il vecchio evento ``corrispettivi.importati``.
+
+    La scrittura di Prima Nota viene prodotta esclusivamente dal servizio
+    canonico di ingestione del corrispettivo. Questo handler non scrive piu
+    movimenti: mantenerlo read-only evita doppie registrazioni quando un evento
+    storico viene ripubblicato.
     """
-    if db is None:
-        return {"skipped": True, "reason": "db non disponibile"}
-
-    corrispettivi: List[Dict] = payload.get("corrispettivi") or []
-    if not corrispettivi:
-        # Potrebbe essere un singolo corrispettivo
-        if payload.get("data") and payload.get("totale"):
-            corrispettivi = [payload]
-        else:
-            return {"skipped": True, "reason": "nessun corrispettivo"}
-
-    scritti = 0
-    saltati = 0
-    errori  = []
-
-    for corr in corrispettivi:
-        try:
-            data    = (corr.get("data") or "")[:10]
-            totale  = float(corr.get("totale") or corr.get("importo") or 0)
-            corr_id = corr.get("id") or corr.get("corrispettivo_id") or ""
-
-            if totale <= 0 or not data:
-                continue
-
-            # Anti-duplicato: un solo movimento per data+source
-            esistente = await db["prima_nota_cassa"].find_one({
-                "data": data,
-                "source": "corrispettivo_import",
-                "categoria": "Corrispettivi",
-            })
-            if esistente:
-                saltati += 1
-                continue
-
-            # Contanti vs elettronico
-            contanti   = float(corr.get("totale_contanti")   or
-                               corr.get("importo_contanti")   or totale)
-            elettronico = float(corr.get("totale_elettronico") or
-                                corr.get("pagamento_elettronico") or 0)
-            imponibile  = float(corr.get("imponibile") or totale)
-            iva         = float(corr.get("iva")         or
-                                corr.get("totale_iva")  or 0)
-
-            # Movimento principale
-            movimento = {
-                "id":              str(uuid.uuid4()),
-                "corrispettivo_id": corr_id,
-                "data":            data,
-                "tipo":            "entrata",
-                "importo":         totale,
-                "imponibile":      imponibile,
-                "iva":             iva,
-                "contanti":        contanti,
-                "elettronico":     elettronico,
-                "descrizione":     f"Corrispettivo giornaliero {data}",
-                "categoria":       "Corrispettivi",
-                "source":          "corrispettivo_import",
-                "anno":            int(data[:4]) if len(data) >= 4 else datetime.now().year,
-                "mese":            int(data[5:7]) if len(data) >= 7 else datetime.now().month,
-                "created_at":      datetime.now(timezone.utc).isoformat(),
-            }
-
-            await scrivi_movimento(db, "cassa", movimento)
-            scritti += 1
-
-            # Se c'è quota elettronica significativa → segna per riconciliazione POS
-            if elettronico > 1:
-                await db["corrispettivi"].update_one(
-                    {"id": corr_id},
-                    {"$set": {
-                        "da_riconciliare_pos": True,
-                        "importo_elettronico_atteso": elettronico,
-                    }},
-                    upsert=False
-                )
-
-        except Exception as e:
-            errori.append(str(e))
-            logger.warning(f"[HandlerCorrispettivi] Errore su {corr.get('data')}: {e}")
-
-    logger.info(f"[HandlerCorrispettivi] {scritti} scritti | {saltati} saltati | {len(errori)} errori")
-
     return {
-        "prima_nota_scritti": scritti,
-        "saltati_duplicato":  saltati,
-        "errori":             errori,
+        "skipped": True,
+        "reason": "prima_nota_gestita_dal_servizio_canonico_corrispettivi",
+        "prima_nota_scritti": 0,
     }
 
 

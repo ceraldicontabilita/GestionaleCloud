@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
 import api from '../api';
 import { PageLayout } from '../components/PageLayout';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import { Button, Badge, Card, RowActionButton } from '../components/ds';
 import {
   Upload,
@@ -92,6 +93,7 @@ export function descriviProvaFiscale(data = {}) {
  */
 
 export default function ImportDocumenti() {
+  const confirm = useConfirm();
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, filename: '' });
@@ -100,6 +102,25 @@ export default function ImportDocumenti() {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
   const zipInputRef = useRef(null);
+
+  const previewAndApply = async ({ previewUrl, applyUrl, title, describe }) => {
+    try {
+      const preview = (await api.post(previewUrl)).data || {};
+      const approved = await confirm({
+        title,
+        message: describe(preview),
+        confirmText: 'Conferma operazione',
+        cancelText: 'Annulla',
+      });
+      if (!approved) return null;
+      return (await api.post(applyUrl)).data || {};
+    } catch (error) {
+      toast.error('Operazione non completata', {
+        description: error.response?.data?.detail || error.message,
+      });
+      return null;
+    }
+  };
 
   const handleDragOver = useCallback(e => {
     e.preventDefault();
@@ -463,11 +484,13 @@ export default function ImportDocumenti() {
             type="button"
             variant="info"
             onClick={async () => {
-              try {
-                const res = await api.post(
-                  '/api/documenti-inbox/auto-classify?solo_non_classificati=false'
-                );
-                const r = res.data || {};
+              const r = await previewAndApply({
+                previewUrl: '/api/documenti-inbox/auto-classify?solo_non_classificati=false&dry_run=true',
+                applyUrl: '/api/documenti-inbox/auto-classify?solo_non_classificati=false&dry_run=false',
+                title: 'Conferma classificazione documenti',
+                describe: p => `Analizzati ${p.totali || 0} documenti; classificabili ${Object.values(p.classificati || {}).reduce((a, b) => a + Number(b || 0), 0)}, da verificare ${p.nessuna_categoria || 0}. Nessuna modifica è stata ancora applicata.`,
+              });
+              if (r) {
                 const cats = Object.entries(r.classificati || {})
                   .map(([k, v]) => `${k}: ${v}`)
                   .join(' • ');
@@ -477,8 +500,6 @@ export default function ImportDocumenti() {
                     `Cedolini/CU associati a dipendente: ${r.cedolini_associati} • F24 creati in f24_tributi: ${r.f24_creati}` +
                     (cats ? ` • ${cats}` : ''),
                 });
-              } catch (e) {
-                toast.error('Errore', { description: e.response?.data?.detail || e.message });
               }
             }}
             data-testid="auto-classify-btn"
@@ -491,14 +512,16 @@ export default function ImportDocumenti() {
             type="button"
             variant="warning"
             onClick={async () => {
-              try {
-                const res = await api.post('/api/documenti-inbox/import-f24-from-inbox');
-                const r = res.data || {};
+              const r = await previewAndApply({
+                previewUrl: '/api/documenti-inbox/import-f24-from-inbox?dry_run=true',
+                applyUrl: '/api/documenti-inbox/import-f24-from-inbox?dry_run=false',
+                title: 'Conferma proiezione F24',
+                describe: p => `Analizzati ${p.f24_analizzati || 0} F24; ${p.tributi_creati || 0} righe tributo proposte. Nessuna riga è stata ancora creata.`,
+              });
+              if (r) {
                 toast.success('Import F24 completato', {
                   description: `F24 analizzati: ${r.f24_analizzati} • Tributi creati in f24_tributi: ${r.tributi_creati}`,
                 });
-              } catch (e) {
-                toast.error('Errore', { description: e.response?.data?.detail || e.message });
               }
             }}
             data-testid="import-f24-btn"
@@ -510,16 +533,18 @@ export default function ImportDocumenti() {
             type="button"
             variant="success"
             onClick={async () => {
-              try {
-                const res = await api.post('/api/documenti-inbox/import-dipendenti-from-cu');
-                const r = res.data || {};
+              const r = await previewAndApply({
+                previewUrl: '/api/documenti-inbox/import-dipendenti-from-cu?dry_run=true',
+                applyUrl: '/api/documenti-inbox/import-dipendenti-from-cu?dry_run=false',
+                title: 'Conferma proposte dipendenti da CU',
+                describe: p => `Analizzate ${p.cu_analizzate || 0} CU; ${p.dipendenti_creati || 0} nuove anagrafiche proposte, ${p.gia_presenti || 0} già presenti. Nessuna anagrafica è stata ancora creata.`,
+              });
+              if (r) {
                 toast.success('Import dipendenti da CU completato', {
                   description:
                     `CU analizzate: ${r.cu_analizzate} • Dipendenti creati: ${r.dipendenti_creati} • ` +
                     `Già presenti: ${r.gia_presenti} • Filename non riconosciuti: ${r.non_riconosciuti}`,
                 });
-              } catch (e) {
-                toast.error('Errore', { description: e.response?.data?.detail || e.message });
               }
             }}
             data-testid="import-dipendenti-cu-btn"

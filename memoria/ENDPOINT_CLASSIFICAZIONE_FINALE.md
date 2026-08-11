@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1113 · tenere: 716 · verificare: 373 · admin-only (migrazione/manutenzione): 24
+**Totale endpoint:** 1115 · tenere: 716 · verificare: 375 · admin-only (migrazione/manutenzione): 24
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -739,7 +739,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `PUT /api/mutui/{mutuo_id}/rate/{numero_rata}/riconcilia` | mutui | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/nexi/movimenti` | nexi_carta | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/nexi/stato` | nexi_carta | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/nexi/upload-pdf` | nexi_carta | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/nexi/upload-pdf` | nexi_carta | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/nexi/verifica` | nexi_carta | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/noleggio/associa-fornitore` | noleggio | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/noleggio/controllo-canoni` | noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -815,6 +815,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/paypal-api/smappa-fornitore` | paypal_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/paypal-api/status` | paypal_api | sì | sì | sì | — | sì | tenere | in uso: FE, scheduler, chat |
 | `POST /api/paypal-api/sync` | paypal_api | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/paypal-api/sync/incremental` | paypal_api | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/paypal-api/sync/month` | paypal_api | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/paypal-api/webhook` | paypal_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-statements/auto-associa` | paypal_statements | — | sì | — | — | sì | tenere | in uso: scheduler |
@@ -827,7 +828,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/paypal-statements/pulisci-match-solo-importo` | paypal_statements | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/paypal-statements/report` | paypal_statements | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/paypal-statements/riconcilia-banca` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/paypal-statements/riprocessa` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/paypal-statements/riprocessa` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/paypal-statements/statements` | paypal_statements | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/paypal-statements/transactions` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/paypal-statements/transazione/{transaction_id}/associa` | paypal_statements | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -991,6 +992,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/ritenute` | ritenute | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/ritenute/codici-ravvedimento` | ritenute | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/ritenute/scan` | ritenute | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/ritenute/verifica-caso-1040` | ritenute | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/scadenzario-fornitori/` | scadenzario_fornitori | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/scadenzario-fornitori/aggiorna-scadenza` | scadenzario_fornitori | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/scadenzario-fornitori/aging` | scadenzario_fornitori | sì | — | — | — | — | tenere | in uso: FE |

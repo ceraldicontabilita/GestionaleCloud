@@ -1,16 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { toast } from 'sonner';
 
 import api from '../api';
 import { PageLayout } from '../components/PageLayout';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { useIsMobile } from '../hooks/useData';
 
-const euro = valore => new Intl.NumberFormat('it-IT', {
-  style: 'currency',
-  currency: 'EUR',
-}).format(Number(valore || 0));
+const denaro = (valore, valuta = 'EUR') => {
+  const currency = String(valuta || 'EUR').toUpperCase();
+  try {
+    return new Intl.NumberFormat('it-IT', { style: 'currency', currency })
+      .format(Number(valore || 0));
+  } catch {
+    return `${Number(valore || 0).toFixed(2)} ${currency}`;
+  }
+};
 
 const dataIT = valore => {
   if (!valore) return '-';
@@ -30,6 +34,11 @@ const fonteLabel = fonte => (
     : (fonte.nome_file || fonte.tipo_documento || 'Fonte PayPal')
 );
 
+const compactId = valore => {
+  const text = String(valore || '');
+  return text.length > 10 ? `…${text.slice(-8)}` : (text || '-');
+};
+
 export default function RiconciliazionePaypal() {
   const { anno } = useAnnoGlobale();
   const isMobile = useIsMobile();
@@ -44,9 +53,10 @@ export default function RiconciliazionePaypal() {
   const [movimentiBanca, setMovimentiBanca] = useState([]);
   const [riepilogoBanca, setRiepilogoBanca] = useState({});
   const [fonti, setFonti] = useState([]);
-  const [ricerca, setRicerca] = useState('');
+  const transactionIdIniziale = new URLSearchParams(location.search).get('transaction_id') || '';
+  const [ricerca, setRicerca] = useState(transactionIdIniziale);
   const [statoCollegamento, setStatoCollegamento] = useState('tutti');
-  const [rielaborazione, setRielaborazione] = useState(false);
+  const [sincronizzazione, setSincronizzazione] = useState('in_attesa');
 
   const caricaDati = useCallback(async () => {
     const paramsTx = new URLSearchParams({ limit: '1000', solo_pagamenti: 'true' });
@@ -87,36 +97,50 @@ export default function RiconciliazionePaypal() {
   useEffect(() => {
     let attivo = true;
     setLoading(true);
-    caricaDati()
+    const avvia = async () => {
+      const status = await api.get('/api/paypal-api/status');
+      if (status.data?.api_configurata) {
+        setSincronizzazione('in_corso');
+        await api.post('/api/paypal-api/sync/incremental');
+        setSincronizzazione('completata');
+      } else {
+        setSincronizzazione('non_configurata');
+      }
+      await caricaDati();
+    };
+    avvia()
       .catch(() => {
-        if (attivo) setErrore('Alcuni dati PayPal non sono stati caricati. Riprova senza considerare certi i valori mancanti.');
+        if (attivo) {
+          setSincronizzazione('errore');
+          setErrore('Sincronizzazione PayPal non completata. I dati mostrati possono non essere aggiornati.');
+          caricaDati().catch(() => {});
+        }
       })
       .finally(() => { if (attivo) setLoading(false); });
     return () => { attivo = false; };
   }, [caricaDati]);
 
-  const riconciliaBanca = async () => {
-    setRielaborazione(true);
-    try {
-      await api.post(`/api/paypal-statements/riprocessa?anno=${anno}`);
-      await caricaDati();
-      toast.success('Riconciliazione PayPal aggiornata');
-    } catch (e) {
-      toast.error(e.response?.data?.detail || e.message || 'Riconciliazione non riuscita');
-    } finally {
-      setRielaborazione(false);
-    }
-  };
+  const transazioniConBanca = useMemo(() => {
+    const perId = new Map();
+    movimentiBanca.forEach(movimento => {
+      const id = String(movimento.paypal_transaction_id || '');
+      if (id) perId.set(id, movimento);
+    });
+    return transazioni.map(tx => ({
+      ...tx,
+      bank_movement: perId.get(String(tx.transaction_id || tx.id || '')) || null,
+    }));
+  }, [transazioni, movimentiBanca]);
 
   const righe = useMemo(() => {
     const termine = ricerca.trim().toLowerCase();
-    return transazioni.filter(tx => {
-      const compatibileTesto = !termine || `${tx.nome_controparte || ''} ${tx.descrizione || ''} ${tx.email_controparte || ''}`
+    return transazioniConBanca.filter(tx => {
+      const compatibileTesto = !termine || `${tx.transaction_id || tx.id || ''} ${tx.nome_controparte || ''} ${tx.descrizione || ''} ${tx.email_controparte || ''}`
         .toLowerCase().includes(termine);
       const compatibileStato = statoCollegamento === 'tutti' || tx.stato_collegamento_fattura === statoCollegamento;
       return compatibileTesto && compatibileStato;
     });
-  }, [transazioni, ricerca, statoCollegamento]);
+  }, [transazioniConBanca, ricerca, statoCollegamento]);
 
   const riconciliati = Number(riepilogoBanca.riconciliati ?? movimentiBanca.filter(m => m.riconciliato_paypal).length);
   const daVerificare = Number(riepilogoBanca.da_associare ?? Math.max(0, movimentiBanca.length - riconciliati));
@@ -131,9 +155,12 @@ export default function RiconciliazionePaypal() {
               Sincronizzazione automatica all'apertura. I documenti si acquisiscono solo da Documenti.
             </p>
           </div>
-          <button data-testid="reprocess-paypal-btn" type="button" onClick={riconciliaBanca} disabled={rielaborazione} style={buttonStyle}>
-            {rielaborazione ? 'Rielaborazione...' : 'Rielabora collegamenti'}
-          </button>
+          <span data-testid="paypal-sync-status" style={{ color: '#475569', fontSize: 13 }}>
+            {sincronizzazione === 'in_corso' ? 'Sincronizzazione incrementale…' :
+              sincronizzazione === 'completata' ? `Aggiornato${statoApi?.ultimo_sync ? ` alle ${new Date(statoApi.ultimo_sync).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}` : ''}` :
+                sincronizzazione === 'non_configurata' ? 'API non configurata' :
+                  sincronizzazione === 'errore' ? 'Sincronizzazione da verificare' : 'Verifica aggiornamenti…'}
+          </span>
         </div>
 
         {loading && <div role="status" style={messageStyle}>Caricamento dati PayPal...</div>}
@@ -151,6 +178,21 @@ export default function RiconciliazionePaypal() {
           <div style={card}><small>Da verificare</small><strong style={value}>{daVerificare}</strong></div>
         </section>
 
+        <section data-testid="paypal-relation-flow" aria-label="Stato collegamenti PayPal" style={{ ...card, gridTemplateColumns: 'repeat(5, minmax(120px, 1fr))', marginBottom: 16, overflowX: 'auto' }}>
+          {[
+            ['Transazioni', transazioni.length],
+            ['Controparte identificata', transazioni.filter(tx => tx.nome_controparte).length],
+            ['Fattura validata', transazioni.filter(tx => tx.stato_collegamento_fattura === 'associata_validata').length],
+            ['Banca verificata', riconciliati],
+            ['Eccezioni', transazioni.filter(tx => tx.stato_collegamento_fattura !== 'associata_validata').length + daVerificare],
+          ].map(([label, count], index) => (
+            <div key={label} style={{ minWidth: 120 }}>
+              <small>{index ? '→ ' : ''}{label}</small>
+              <strong style={value}>{count}</strong>
+            </div>
+          ))}
+        </section>
+
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
           {[
             ['transazioni', 'Transazioni'],
@@ -164,7 +206,7 @@ export default function RiconciliazionePaypal() {
         {!loading && tab === 'transazioni' && (
           <>
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 1fr) minmax(190px, 260px)', gap: 10, marginBottom: 12 }}>
-              <input value={ricerca} onChange={e => setRicerca(e.target.value)} placeholder="Cerca controparte, descrizione o email" style={inputStyle} />
+              <input value={ricerca} onChange={e => setRicerca(e.target.value)} placeholder="Cerca ID, controparte, descrizione o email" style={inputStyle} />
               <select aria-label="Stato collegamento fattura" value={statoCollegamento} onChange={e => setStatoCollegamento(e.target.value)} style={inputStyle}>
                 <option value="tutti">Tutti gli stati</option>
                 <option value="associata_validata">Associata validata</option>
@@ -191,20 +233,33 @@ export default function RiconciliazionePaypal() {
   );
 }
 
+function TransactionId({ value: id }) {
+  if (!id) return <span>-</span>;
+  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><code title={id}>{compactId(id)}</code><button type="button" aria-label={`Copia ID transazione ${id}`} title="Copia ID" onClick={() => navigator.clipboard?.writeText(String(id))} style={copyButton}>Copia</button></span>;
+}
+
+function TransactionAmount({ tx }) {
+  const gross = denaro(tx.gross_amount ?? tx.importo ?? tx.lordo, tx.gross_currency || tx.currency);
+  if (tx.settlement_amount != null && tx.settlement_currency) {
+    return <span>{gross} → {denaro(tx.settlement_amount, tx.settlement_currency)}</span>;
+  }
+  return <span>{gross}</span>;
+}
+
 function TransactionCards({ righe }) {
-  return <div data-testid="paypal-transaction-cards" style={cards}>{righe.map(tx => <article key={tx.transaction_id || tx.id} style={card}><strong>{tx.descrizione || '-'}</strong><span>{tx.nome_controparte || '-'}</span><span>{dataIT(tx.data || tx.date)} - {euro(tx.importo ?? tx.lordo)}</span><span>{statoFatturaLabel(tx.stato_collegamento_fattura)}</span></article>)}</div>;
+  return <div data-testid="paypal-transaction-cards" style={cards}>{righe.map(tx => <article key={tx.transaction_id || tx.id} style={card}><strong>{tx.descrizione || '-'}</strong><TransactionId value={tx.transaction_id || tx.id} /><span>{tx.nome_controparte || '-'}</span><span>{dataIT(tx.data || tx.date)} - <TransactionAmount tx={tx} /></span><span>{statoFatturaLabel(tx.stato_collegamento_fattura)}</span>{tx.bank_movement ? <a href={`/prima-nota?section=banca&selected=${encodeURIComponent(tx.bank_movement.id)}`}>Vedi prova bancaria {compactId(tx.bank_movement.id)}</a> : <span>Banca da verificare</span>}</article>)}</div>;
 }
 
 function TransactionTable({ righe }) {
-  return <div data-testid="paypal-transactions-table" style={tableWrap}><table style={table}><thead><tr>{['Data', 'Controparte', 'Descrizione', 'Importo', 'Fattura', 'Stato'].map(t => <th key={t} style={th}>{t}</th>)}</tr></thead><tbody>{righe.map(tx => <tr key={tx.transaction_id || tx.id}><td style={td}>{dataIT(tx.data || tx.date)}</td><td style={td}>{tx.nome_controparte || '-'}</td><td style={td}>{tx.descrizione || '-'}</td><td style={td}>{euro(tx.importo ?? tx.lordo)}</td><td style={td}>{tx.fattura_associata?.numero || tx.fattura_numero || '-'}</td><td style={td}>{statoFatturaLabel(tx.stato_collegamento_fattura)}</td></tr>)}</tbody></table></div>;
+  return <div data-testid="paypal-transactions-table" style={tableWrap}><table style={table}><thead><tr>{['Data', 'ID', 'Controparte', 'Descrizione', 'Importo/valuta', 'Fattura', 'Banca', 'Stato'].map(t => <th key={t} style={th}>{t}</th>)}</tr></thead><tbody>{righe.map(tx => <tr key={tx.transaction_id || tx.id}><td style={td}>{dataIT(tx.data || tx.date)}</td><td style={td}><TransactionId value={tx.transaction_id || tx.id} /></td><td style={td}>{tx.nome_controparte || '-'}</td><td style={td}>{tx.descrizione || '-'}</td><td style={td}><TransactionAmount tx={tx} /></td><td style={td}>{tx.fattura_associata?.numero || tx.fattura_numero || '-'}</td><td style={td}>{tx.bank_movement ? <a href={`/prima-nota?section=banca&selected=${encodeURIComponent(tx.bank_movement.id)}`}>Prova {compactId(tx.bank_movement.id)}</a> : 'Da verificare'}</td><td style={td}>{statoFatturaLabel(tx.stato_collegamento_fattura)}</td></tr>)}</tbody></table></div>;
 }
 
 function BankCards({ righe }) {
-  return <div data-testid="paypal-bank-cards" style={cards}>{righe.map(riga => <article key={riga.id} style={card}><strong>{riga.descrizione || '-'}</strong><span>{dataIT(riga.data)} - {euro(riga.importo)}</span><span>{riga.riconciliato_paypal ? 'Riconciliato' : 'Da associare'}</span></article>)}</div>;
+  return <div data-testid="paypal-bank-cards" style={cards}>{righe.map(riga => <article key={riga.id} style={card}><strong>{riga.descrizione || '-'}</strong><span>{dataIT(riga.data)} - {denaro(riga.importo, riga.valuta || 'EUR')}</span><span>{riga.riconciliato_paypal ? 'Riconciliato' : 'Da associare'}</span>{riga.paypal_transaction_id && <a href={`/riconciliazione/paypal?tab=transazioni&transaction_id=${encodeURIComponent(riga.paypal_transaction_id)}`}>Apri transazione {compactId(riga.paypal_transaction_id)}</a>}</article>)}</div>;
 }
 
 function BankTable({ righe }) {
-  return <div data-testid="paypal-bank-table" style={tableWrap}><table style={table}><thead><tr>{['Data', 'Descrizione', 'Importo', 'Stato'].map(t => <th key={t} style={th}>{t}</th>)}</tr></thead><tbody>{righe.map(riga => <tr key={riga.id}><td style={td}>{dataIT(riga.data)}</td><td style={td}>{riga.descrizione || '-'}</td><td style={td}>{euro(riga.importo)}</td><td style={td}>{riga.riconciliato_paypal ? 'Riconciliato' : 'Da associare'}</td></tr>)}</tbody></table></div>;
+  return <div data-testid="paypal-bank-table" style={tableWrap}><table style={table}><thead><tr>{['Data', 'Descrizione', 'Importo', 'Transazione', 'Stato'].map(t => <th key={t} style={th}>{t}</th>)}</tr></thead><tbody>{righe.map(riga => <tr key={riga.id}><td style={td}>{dataIT(riga.data)}</td><td style={td}>{riga.descrizione || '-'}</td><td style={td}>{denaro(riga.importo, riga.valuta || 'EUR')}</td><td style={td}>{riga.paypal_transaction_id ? <a href={`/riconciliazione/paypal?tab=transazioni&transaction_id=${encodeURIComponent(riga.paypal_transaction_id)}`}>{compactId(riga.paypal_transaction_id)}</a> : '-'}</td><td style={td}>{riga.riconciliato_paypal ? 'Riconciliato' : 'Da associare'}</td></tr>)}</tbody></table></div>;
 }
 
 function SourceDetails({ fonte }) {
@@ -229,3 +284,4 @@ const tableWrap = { overflowX: 'auto', background: '#fff', border: '1px solid #e
 const table = { width: '100%', borderCollapse: 'collapse', minWidth: 760 };
 const th = { padding: '10px 12px', textAlign: 'left', fontSize: 12, color: '#475569', background: '#f8fafc' };
 const td = { padding: '10px 12px', fontSize: 13, color: '#1e293b', borderTop: '1px solid #e2e8f0' };
+const copyButton = { minHeight: 28, padding: '2px 6px', border: '1px solid #cbd5e1', borderRadius: 5, background: '#fff', cursor: 'pointer', fontSize: 11 };

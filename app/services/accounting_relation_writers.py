@@ -25,6 +25,15 @@ def _entity_id(document: Dict[str, Any], *fields: str) -> str:
     return ""
 
 
+def _amount_from_cents(cents: Any) -> Optional[str]:
+    """Return an exact decimal string accepted by the relation registry."""
+    if not isinstance(cents, int):
+        return None
+    sign = "-" if cents < 0 else ""
+    absolute = abs(cents)
+    return f"{sign}{absolute // 100}.{absolute % 100:02d}"
+
+
 async def _write(db, specifications: Iterable[Dict[str, Any]]) -> List[str]:
     keys: List[str] = []
     for specification in specifications:
@@ -186,7 +195,7 @@ async def record_f24_receipt_link(
     f24_id = _entity_id(f24, "id")
     if not f24_id or not _text(receipt_id):
         return []
-    return await _write(db, [{
+    specifications: List[Dict[str, Any]] = [{
         "source_type": "f24_receipt",
         "source_id": _text(receipt_id),
         "relation_type": "documents_f24_model",
@@ -203,7 +212,49 @@ async def record_f24_receipt_link(
             "source_collection": "quietanze_f24",
             "target_collection": "f24_unificato",
         },
-    }])
+    }]
+    from app.services.f24_canonico import normalizza_righe_tributo
+
+    for row in normalizza_righe_tributo(f24):
+        tax_row_id = f"{f24_id}:tax:{row['ordinal']}"
+        row_evidence = [
+            {"type": "tax_code", "value": row.get("tax_code")},
+            {"type": "reference_period", "value": row.get("reference_period")},
+            {"type": "receipt_protocol", "value": protocol},
+        ]
+        row_amount = _amount_from_cents(
+            int(row.get("debit_cents") or row.get("credit_cents") or 0)
+        )
+        specifications.extend((
+            {
+                "source_type": "f24_model",
+                "source_id": f24_id,
+                "relation_type": "contains_tax_row",
+                "target_type": "tax_row",
+                "target_id": tax_row_id,
+                "status": "confirmed",
+                "rule": "riga_tributo_estratta_dal_modello_f24_quadrato",
+                "evidence": row_evidence,
+                "amount": row_amount,
+                "provenance": {"page_number": row.get("page_number")},
+            },
+            {
+                "source_type": "f24_receipt",
+                "source_id": _text(receipt_id),
+                "relation_type": "proves_tax_row_payment",
+                "target_type": "tax_row",
+                "target_id": tax_row_id,
+                "status": "confirmed",
+                "rule": "quietanza_univoca_per_modello_codice_periodo_e_importo",
+                "evidence": row_evidence,
+                "amount": row_amount,
+                "provenance": {
+                    "source_collection": "quietanze_f24",
+                    "f24_id": f24_id,
+                },
+            },
+        ))
+    return await _write(db, specifications)
 
 
 async def record_f24_bank_allocations(
@@ -212,13 +263,30 @@ async def record_f24_bank_allocations(
     f24: Dict[str, Any],
     allocations: Iterable[Dict[str, Any]],
 ) -> List[str]:
+    from app.services.f24_canonico import normalizza_righe_tributo
+
     f24_id = _entity_id(f24, "id")
     specifications: List[Dict[str, Any]] = []
+    tax_rows = normalizza_righe_tributo(f24)
     for allocation in allocations:
         movement_id = _entity_id(allocation, "movimento_id", "id", "fingerprint")
         if not f24_id or not movement_id:
             continue
-        codes = allocation.get("codici_tributo") or []
+        codes = {str(value).strip().upper() for value in (
+            allocation.get("codici_tributo") or []
+        ) if str(value).strip()}
+        tax_ids = {str(value).strip() for value in (
+            allocation.get("tributo_ids") or []
+        ) if str(value).strip()}
+        amount = (
+            _amount_from_cents(allocation.get("importo_cents"))
+            or allocation.get("importo")
+            or allocation.get("amount")
+        )
+        base_evidence = [
+            {"type": "tax_codes", "value": ",".join(sorted(codes))},
+            {"type": "bank_movement_id", "value": movement_id},
+        ]
         specifications.append({
             "source_type": "bank_movement",
             "source_id": movement_id,
@@ -227,17 +295,86 @@ async def record_f24_bank_allocations(
             "target_id": f24_id,
             "status": "confirmed",
             "rule": "movimento_bancario_allocato_a_totale_o_righe_tributo_f24",
-            "evidence": [
-                {"type": "tax_codes", "value": ",".join(map(str, codes))},
-                {"type": "bank_movement_id", "value": movement_id},
-            ],
-            "amount": allocation.get("importo") or allocation.get("amount"),
+            "evidence": base_evidence,
+            "amount": amount,
             "provenance": {
                 "source_collection": "estratto_conto_movimenti",
                 "target_collection": "f24_unificato",
-                "tributo_ids": allocation.get("tributo_ids") or [],
+                "tributo_ids": sorted(tax_ids),
             },
         })
+
+        # Una allocazione senza selezione esplicita salda l'intero modello;
+        # altrimenti collega soltanto le righe indicate da ID o codice.
+        selected_rows = []
+        for row in tax_rows:
+            canonical_id = f"{f24_id}:tax:{row['ordinal']}"
+            source_id = str((row.get("source_fields") or {}).get("id") or "").strip()
+            if not codes and not tax_ids:
+                selected_rows.append((row, canonical_id))
+            elif canonical_id in tax_ids or source_id in tax_ids or row.get("tax_code") in codes:
+                selected_rows.append((row, canonical_id))
+        for row, tax_row_id in selected_rows:
+            row_cents = int(row.get("debit_cents") or row.get("credit_cents") or 0)
+            row_evidence = base_evidence + [
+                {"type": "tax_code", "value": row.get("tax_code")},
+                {"type": "reference_period", "value": row.get("reference_period")},
+            ]
+            specifications.append({
+                "source_type": "bank_movement",
+                "source_id": movement_id,
+                "relation_type": "settles_tax_row",
+                "target_type": "tax_row",
+                "target_id": tax_row_id,
+                "status": "confirmed",
+                "rule": "movimento_bancario_allocato_alla_riga_tributo_f24",
+                "evidence": row_evidence,
+                "amount": _amount_from_cents(row_cents),
+                "provenance": {
+                    "source_collection": "estratto_conto_movimenti",
+                    "f24_id": f24_id,
+                    "page_number": row.get("page_number"),
+                },
+            })
+
+        prima_nota_id = _entity_id(
+            allocation, "prima_nota_banca_id", "prima_nota_id"
+        ) or _entity_id(f24, "prima_nota_banca_id", "prima_nota_id")
+        if not prima_nota_id:
+            movement = await db["estratto_conto_movimenti"].find_one(
+                {"$or": [{"id": movement_id}, {"fingerprint": movement_id}]},
+                {"_id": 0, "prima_nota_banca_id": 1, "prima_nota_id": 1},
+            )
+            prima_nota_id = _entity_id(
+                movement or {}, "prima_nota_banca_id", "prima_nota_id"
+            )
+        if prima_nota_id:
+            specifications.extend((
+                {
+                    "source_type": "bank_movement",
+                    "source_id": movement_id,
+                    "relation_type": "represented_by_prima_nota",
+                    "target_type": "prima_nota_entry",
+                    "target_id": prima_nota_id,
+                    "status": "confirmed",
+                    "rule": "movimento_ufficiale_proiettato_in_prima_nota_banca",
+                    "evidence": base_evidence,
+                    "amount": amount,
+                    "provenance": {"source_collection": "estratto_conto_movimenti"},
+                },
+                {
+                    "source_type": "f24_model",
+                    "source_id": f24_id,
+                    "relation_type": "posted_in_prima_nota",
+                    "target_type": "prima_nota_entry",
+                    "target_id": prima_nota_id,
+                    "status": "confirmed",
+                    "rule": "f24_collegato_al_movimento_ufficiale_di_prima_nota",
+                    "evidence": base_evidence,
+                    "amount": amount,
+                    "provenance": {"bank_movement_id": movement_id},
+                },
+            ))
     return await _write(db, specifications)
 
 

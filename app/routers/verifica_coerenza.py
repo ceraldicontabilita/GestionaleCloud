@@ -139,29 +139,43 @@ async def confronto_iva_completo(anno: int) -> Dict[str, Any]:
         verificatore = VerificaCoerenza(db)
         
         confronto_mensile = []
-        totale_credito_fatture = 0
-        totale_debito_corrispettivi = 0
+        from app.services.iva_liquidation_query import euros
+
+        totale_credito_fatture_cents = 0
+        totale_debito_corrispettivi_cents = 0
+        periodi_calcolati = 0
         
         for mese in range(1, 13):
             iva = await verificatore.verifica_coerenza_iva_tra_pagine(anno, mese)
             
             credito = iva["iva_credito"]["da_fatture"]
             debito = iva["iva_debito"]["da_corrispettivi"]
+            credito_cents = iva["iva_credito"].get("da_fatture_cents")
+            debito_cents = iva["iva_debito"].get("da_corrispettivi_cents")
             f24_iva = iva.get("f24_commercialista") or {}
-            
-            totale_credito_fatture += credito
-            totale_debito_corrispettivi += debito
+            periodo_calcolato = credito_cents is not None and debito_cents is not None
+            if periodo_calcolato:
+                totale_credito_fatture_cents += int(credito_cents)
+                totale_debito_corrispettivi_cents += int(debito_cents)
+                periodi_calcolati += 1
+            saldo_cents = (
+                int(debito_cents) - int(credito_cents) if periodo_calcolato else None
+            )
             
             confronto_mensile.append({
                 "mese": mese,
                 "mese_nome": MESI_NOMI[mese],
                 "iva_credito_fatture": credito,
+                "iva_credito_fatture_cents": credito_cents,
                 "iva_debito_corrispettivi": debito,
+                "iva_debito_corrispettivi_cents": debito_cents,
                 "num_fatture": iva["iva_credito"]["num_fatture"],
                 "num_corrispettivi": iva["iva_debito"]["num_corrispettivi"],
-                "saldo": round(debito - credito, 2),
-                "da_versare": max(debito - credito, 0),
-                "a_credito": max(credito - debito, 0),
+                "saldo": euros(saldo_cents) if saldo_cents is not None else None,
+                "saldo_cents": saldo_cents,
+                "da_versare": euros(max(saldo_cents, 0)) if saldo_cents is not None else None,
+                "a_credito": euros(max(-saldo_cents, 0)) if saldo_cents is not None else None,
+                "periodo_calcolato": periodo_calcolato,
                 "codice_tributo_iva": f24_iva.get("codice_tributo"),
                 "importo_f24_commercialista": f24_iva.get("importo_f24"),
                 "stato_f24": f24_iva.get("stato"),
@@ -175,9 +189,18 @@ async def confronto_iva_completo(anno: int) -> Dict[str, Any]:
             "anno": anno,
             "mensile": confronto_mensile,
             "totali": {
-                "iva_credito_totale": round(totale_credito_fatture, 2),
-                "iva_debito_totale": round(totale_debito_corrispettivi, 2),
-                "saldo_annuale": round(totale_debito_corrispettivi - totale_credito_fatture, 2)
+                "iva_credito_totale": euros(totale_credito_fatture_cents),
+                "iva_credito_totale_cents": totale_credito_fatture_cents,
+                "iva_debito_totale": euros(totale_debito_corrispettivi_cents),
+                "iva_debito_totale_cents": totale_debito_corrispettivi_cents,
+                "saldo_annuale": euros(
+                    totale_debito_corrispettivi_cents - totale_credito_fatture_cents
+                ),
+                "saldo_annuale_cents": (
+                    totale_debito_corrispettivi_cents - totale_credito_fatture_cents
+                ),
+                "periodi_calcolati": periodi_calcolati,
+                "periodi_non_calcolati": 12 - periodi_calcolati,
             },
             "discrepanze": verificatore.discrepanze
         }

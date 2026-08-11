@@ -11,6 +11,7 @@ from app.services.accounting_relation_writers import (
     record_salary_reconciliation,
 )
 from app.services.entity_relations import find_entity_relations
+from app.services.tax_payment_query import TaxPaymentQueryService
 
 
 def _run(coro):
@@ -80,7 +81,15 @@ def test_salario_parziale_conserva_centesimi_e_collega_il_cedolino():
 def test_quietanza_f24_non_diventa_prova_bancaria():
     async def scenario():
         db = AsyncMongoMockClient()["relations_f24"]
-        f24 = {"id": "F24-1"}
+        f24 = {"id": "F24-1", "sezione_erario": [{
+            "id": "TRIB-2001", "codice_tributo": "2001",
+            "periodo_riferimento": "06", "anno_riferimento": "2026",
+            "importo_debito_cents": 461350,
+        }]}
+        await db.estratto_conto_movimenti.insert_one({
+            "id": "EC-F24-1", "prima_nota_banca_id": "PN-F24-1",
+            "data_contabile": "2026-07-21",
+        })
         await record_f24_receipt_link(
             db, f24=f24, receipt_id="QUIET-1", protocol="P-1",
             amount=5362.52, matched_tributes=6, total_tributes=6,
@@ -94,13 +103,63 @@ def test_quietanza_f24_non_diventa_prova_bancaria():
                 "codici_tributo": ["2001"], "tributo_ids": ["TRIB-2001"],
             }],
         )
-        after_bank = await db.entity_relations.find({}, {"_id": 0}).to_list(length=10)
+        after_bank = await db.entity_relations.find({}, {"_id": 0}).to_list(length=20)
         return before_bank, after_bank
 
     before_bank, after_bank = _run(scenario())
-    assert [row["relation_type"] for row in before_bank] == ["documents_f24_model"]
+    assert {row["relation_type"] for row in before_bank} == {
+        "documents_f24_model", "contains_tax_row", "proves_tax_row_payment"
+    }
     assert {row["relation_type"] for row in after_bank} == {
-        "documents_f24_model", "settles_f24_model"
+        "documents_f24_model", "contains_tax_row", "proves_tax_row_payment",
+        "settles_f24_model", "settles_tax_row", "represented_by_prima_nota",
+        "posted_in_prima_nota",
+    }
+
+
+def test_vista_fiscale_ricostruisce_catena_completa_dalle_relazioni():
+    async def scenario():
+        db = AsyncMongoMockClient()["tax_payment_chain"]
+        f24 = {"id": "F24-CATENA", "sezione_erario": [{
+            "codice_tributo": "1040", "periodo_riferimento": "06",
+            "anno_riferimento": "2026", "importo_debito_cents": 28400,
+        }]}
+        await db.f24_unificato.insert_one(f24)
+        await db.quietanze_f24.insert_one({
+            "id": "QUIET-CATENA", "protocollo_telematico": "PROTO-1040",
+            "data_pagamento": "2026-07-21", "filename": "quietanza.pdf",
+        })
+        await db.estratto_conto_movimenti.insert_one({
+            "id": "EC-CATENA", "prima_nota_banca_id": "PN-CATENA",
+            "data_contabile": "2026-07-21",
+        })
+        await record_f24_receipt_link(
+            db, f24=f24, receipt_id="QUIET-CATENA", protocol="PROTO-1040",
+            amount="284.00", matched_tributes=1, total_tributes=1,
+        )
+        await record_f24_bank_allocations(
+            db, f24=f24, allocations=[{
+                "movimento_id": "EC-CATENA", "importo_cents": 28400,
+                "codici_tributo": ["1040"],
+            }],
+        )
+        return (await TaxPaymentQueryService(db).list_documents())[0]
+
+    document = _run(scenario())
+    chain = document["payment_chain"]
+    assert document["versato_documentalmente"] is True
+    assert document["banca_verificata"] is True
+    assert chain["receipt"]["id"] == "QUIET-CATENA"
+    assert chain["bank_movement"]["id"] == "EC-CATENA"
+    assert chain["prima_nota"]["id"] == "PN-CATENA"
+    assert chain["axes"] == {
+        "obligation": "F24_MODELLO_PRESENTE",
+        "document_evidence": "VERSATO_DOCUMENTALMENTE",
+        "bank": "VERIFICATA",
+    }
+    assert {relation["relation_type"] for relation in chain["relations"]} >= {
+        "documents_f24_model", "proves_tax_row_payment", "settles_tax_row",
+        "settles_f24_model", "posted_in_prima_nota",
     }
 
 

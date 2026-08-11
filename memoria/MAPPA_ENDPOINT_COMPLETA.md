@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1113 endpoint** in **114 gruppi**.
+> Totale **1115 endpoint** in **114 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 667 · ext esterni = 88 · — da verificare = 358
+**Riepilogo uso:** ✓ frontend = 665 · ext esterni = 88 · — da verificare = 362
 
 ## AI Parser  (11)
 
@@ -256,7 +256,7 @@
 |---|---|:-:|---|
 | GET | `/api/nexi/movimenti` | — | nexi_carta |
 | GET | `/api/nexi/stato` | ✓ | nexi_carta |
-| POST | `/api/nexi/upload-pdf` | ✓ | nexi_carta |
+| POST | `/api/nexi/upload-pdf` | — | nexi_carta |
 | POST | `/api/nexi/verifica` | — | nexi_carta |
 
 ## Cash  (8)
@@ -578,8 +578,8 @@
 | GET | `/api/documenti/drive/catalog` | ✓ | documenti |
 | POST | `/api/documenti/drive/fiscal/discover` | — | documenti |
 | GET | `/api/documenti/drive/fiscal/status` | — | documenti |
-| POST | `/api/documenti/drive/fiscal/sync` | ✓ | documenti |
-| POST | `/api/documenti/drive/sync` | ✓ | documenti |
+| POST | `/api/documenti/drive/fiscal/sync` | — | documenti |
+| POST | `/api/documenti/drive/sync` | — | documenti |
 | POST | `/api/documenti/elimina-processati` | — | documenti |
 | POST | `/api/documenti/fiscal/ingest` | — | documenti |
 | GET | `/api/documenti/lista` | ✓ | documenti |
@@ -1216,14 +1216,14 @@
 | POST | `/api/paypal-statements/pulisci-match-solo-importo` | — | paypal_statements |
 | GET | `/api/paypal-statements/report` | ✓ | paypal_statements |
 | POST | `/api/paypal-statements/riconcilia-banca` | — | paypal_statements |
-| POST | `/api/paypal-statements/riprocessa` | ✓ | paypal_statements |
+| POST | `/api/paypal-statements/riprocessa` | — | paypal_statements |
 | GET | `/api/paypal-statements/statements` | ✓ | paypal_statements |
 | GET | `/api/paypal-statements/transactions` | ✓ | paypal_statements |
 | POST | `/api/paypal-statements/transazione/{transaction_id}/associa` | — | paypal_statements |
 | GET | `/api/paypal-statements/transazione/{transaction_id}/cerca-gmail` | — | paypal_statements |
 | GET | `/api/paypal-statements/transazione/{transaction_id}/dettaglio` | — | paypal_statements |
 
-## PayPal API  (11)
+## PayPal API  (12)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1236,6 +1236,7 @@
 | POST | `/api/paypal-api/smappa-fornitore` | — | paypal_api |
 | GET | `/api/paypal-api/status` | ✓ | paypal_api |
 | POST | `/api/paypal-api/sync` | ✓ | paypal_api |
+| POST | `/api/paypal-api/sync/incremental` | ✓ | paypal_api |
 | POST | `/api/paypal-api/sync/month` | ✓ | paypal_api |
 | POST | `/api/paypal-api/webhook` | ext | paypal_api |
 
@@ -1454,13 +1455,14 @@
 |---|---|:-:|---|
 | GET | `/api/riconciliazione/stats` | — | riconciliazione_stats_api |
 
-## Ritenute  (3)
+## Ritenute  (4)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/ritenute` | ✓ | ritenute |
 | GET | `/api/ritenute/codici-ravvedimento` | ✓ | ritenute |
 | POST | `/api/ritenute/scan` | ✓ | ritenute |
+| GET | `/api/ritenute/verifica-caso-1040` | ✓ | ritenute |
 
 ## Scadenzario  (6)
 

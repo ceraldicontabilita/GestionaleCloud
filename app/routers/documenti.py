@@ -247,9 +247,9 @@ def _archive_query(
 ) -> Dict[str, Any]:
     """Costruisce filtri archivio senza interpretare la ricerca come regex.
 
-    Il periodo documentale ha precedenza, ma i documenti legacy possono avere
-    soltanto la data email/importazione. Tutti i campi restano alternative
-    esplicite: non si modifica il record per adattarlo al filtro.
+    L'anno filtra esclusivamente il periodo/data del documento. La data email
+    o di acquisizione non puo' attribuire silenziosamente un documento storico
+    all'esercizio corrente.
     """
     clauses: List[Dict[str, Any]] = []
     if categoria:
@@ -265,9 +265,6 @@ def _archive_query(
                 {"periodo": {"$regex": rf"^{year}"}},
                 {"document_date": {"$regex": year}},
                 {"data_documento": {"$regex": year}},
-                {"email_date": {"$regex": year}},
-                {"downloaded_at": {"$regex": rf"^{year}"}},
-                {"created_at": {"$regex": rf"^{year}"}},
             ]
         })
     if search:
@@ -304,13 +301,21 @@ def _archive_document_metadata(doc: Dict[str, Any]) -> Dict[str, Any]:
         or ("email" if item.get("email_from") else None)
         or "non_indicata"
     )
-    item["archive_date"] = (
+    item["document_date_display"] = (
         item.get("document_date")
         or item.get("data_documento")
-        or item.get("email_date")
+    )
+    item["periodo_documentale"] = (
+        item.get("periodo")
+        or item.get("anno")
+        or (str(item["document_date_display"])[:7] if item["document_date_display"] else None)
+    )
+    item["acquired_at"] = (
+        item.get("email_date")
         or item.get("downloaded_at")
         or item.get("created_at")
     )
+    item["archive_date"] = item["document_date_display"]
     item["size_bytes"] = item.get("size_bytes") or item.get("file_size") or 0
 
     anomalies: List[str] = []
@@ -324,6 +329,8 @@ def _archive_document_metadata(doc: Dict[str, Any]) -> Dict[str, Any]:
         anomalies.append("collegamento_mancante")
     if item.get("duplicate") or item.get("is_duplicate"):
         anomalies.append("duplicato_segnalato")
+    if not item.get("periodo_documentale"):
+        anomalies.append("periodo_da_verificare")
     item["anomalies"] = anomalies
     item["linked_to"] = item.get("processed_to") or item.get("destinazione")
     return item
@@ -2704,6 +2711,8 @@ async def upload_documento_automatico(
                     result["success"] = False
                     result["message"] = f"Errore parsing corrispettivo: {parsed['error']}"
                 else:
+                    parsed["sha256"] = hashlib.sha256(content).hexdigest()
+                    parsed["parser_version"] = "corrispettivi_xml_v2_cents"
                     ingest = await ingest_corrispettivo_parsed(db, parsed, filename=filename, source="xml")
                     result["action"] = ingest["action"]
                     result["corrispettivo_id"] = ingest.get("corrispettivo_id")

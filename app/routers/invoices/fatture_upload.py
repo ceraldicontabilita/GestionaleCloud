@@ -1306,6 +1306,19 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             invoice.get("invoice_number"),
         )
 
+    # Documenti e' l'unico ingresso: le Ritenute sono una proiezione
+    # automatica della fattura appena importata, non una seconda importazione
+    # avviata dalla pagina Ritenute.
+    try:
+        from app.routers.ritenute import upsert_ritenuta_da_fattura
+
+        await upsert_ritenuta_da_fattura(db, invoice)
+    except Exception:
+        logger.exception(
+            "Aggiornamento proiezione Ritenute fallito per %s",
+            invoice.get("invoice_number"),
+        )
+
     return invoice
 
 

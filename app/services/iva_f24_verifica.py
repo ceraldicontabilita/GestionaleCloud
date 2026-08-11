@@ -7,7 +7,7 @@ dell'addebito bancario.
 from __future__ import annotations
 
 import re
-from datetime import date, timedelta
+from datetime import date
 from typing import Any, Dict, Iterable, List, Optional
 
 from app.services.f24_payment_evidence import stato_evidenza_pagamento
@@ -26,18 +26,10 @@ def codice_iva_mensile(mese: int) -> str:
 
 
 def scadenza_iva_mensile(anno: int, mese: int) -> date:
-    """16 del mese successivo, spostato al lunedi se cade nel weekend."""
-    if mese == 12:
-        scadenza = date(anno + 1, 1, 16)
-    else:
-        scadenza = date(anno, mese + 1, 16)
-    # I versamenti con scadenza dal 1 al 20 agosto sono differiti al giorno
-    # 20 senza maggiorazione (quindi l'IVA di luglio non scade il 16).
-    if scadenza.month == 8 and scadenza.day == 16:
-        scadenza = scadenza.replace(day=20)
-    while scadenza.weekday() >= 5:
-        scadenza += timedelta(days=1)
-    return scadenza
+    """Compatibilita': restituisce la data legale dal calendario canonico."""
+    from app.services.fiscal_deadlines import monthly_deadline
+
+    return date.fromisoformat(monthly_deadline(anno, mese)["scadenza_legale"])
 
 
 def _float(value: Any) -> float:
@@ -84,7 +76,11 @@ def verifica_versamento_iva_da_documenti(
     oggi: Optional[date] = None,
 ) -> Dict[str, Any]:
     codice = codice_iva_mensile(mese)
-    scadenza = scadenza_iva_mensile(anno, mese)
+    from app.services.fiscal_deadlines import monthly_deadline
+    from app.services.iva_liquidation_query import euros, money_cents
+
+    deadline = monthly_deadline(anno, mese)
+    scadenza = date.fromisoformat(deadline["scadenza_legale"])
     oggi = oggi or date.today()
     candidati: List[Dict[str, Any]] = []
 
@@ -99,11 +95,18 @@ def verifica_versamento_iva_da_documenti(
                 continue
             evidenza = stato_evidenza_pagamento(f24)
             codici = _codici(f24)
+            importo_iva_cents = int(riga.get("debit_cents") or money_cents(riga.get("debit_amount")))
+            saldo_f24_cents = int(
+                (f24.get("totali") or {}).get("saldo_netto_cents")
+                or money_cents((f24.get("totali") or {}).get("saldo_netto") or f24.get("importo_totale"))
+            )
             candidati.append({
                 "f24_id": f24.get("id"),
                 "file": f24.get("file_name") or f24.get("filename"),
-                "importo_iva": round(_float(riga.get("debit_amount")), 2),
-                "saldo_f24": round(_float((f24.get("totali") or {}).get("saldo_netto") or f24.get("importo_totale")), 2),
+                "importo_iva_cents": importo_iva_cents,
+                "importo_iva": euros(importo_iva_cents),
+                "saldo_f24_cents": saldo_f24_cents,
+                "saldo_f24": euros(saldo_f24_cents),
                 "quietanza_id": f24.get("quietanza_id"),
                 "evidenza_pagamento": evidenza,
                 "ravvedimento": bool(codici & CODICI_RAVVEDIMENTO_IVA),
@@ -140,14 +143,21 @@ def verifica_versamento_iva_da_documenti(
         stato = principale["evidenza_pagamento"]["stato"]
 
     importo_f24 = principale["importo_iva"] if principale else None
+    importo_f24_cents = principale["importo_iva_cents"] if principale else None
+    debito_liquidazione_cents = (
+        money_cents(debito_liquidazione) if debito_liquidazione is not None else None
+    )
     scostamento = None
-    if importo_f24 is not None and debito_liquidazione is not None:
-        scostamento = round(importo_f24 - float(debito_liquidazione), 2)
+    scostamento_cents = None
+    if importo_f24_cents is not None and debito_liquidazione_cents is not None:
+        scostamento_cents = importo_f24_cents - debito_liquidazione_cents
+        scostamento = euros(scostamento_cents)
 
     return {
         "periodo": f"{anno}-{mese:02d}",
         "codice_tributo": codice,
         "scadenza": scadenza.isoformat(),
+        **deadline,
         "stato": stato,
         "pagato_banca": pagato_banca,
         "versato_documentalmente": versato_documentalmente,
@@ -157,10 +167,13 @@ def verifica_versamento_iva_da_documenti(
         "f24": principale,
         "candidati": candidati,
         "debito_liquidazione": (
-            round(float(debito_liquidazione), 2)
+            euros(debito_liquidazione_cents)
             if debito_liquidazione is not None else None
         ),
+        "debito_liquidazione_cents": debito_liquidazione_cents,
+        "importo_f24_cents": importo_f24_cents,
         "scostamento_f24_liquidazione": scostamento,
+        "scostamento_f24_liquidazione_cents": scostamento_cents,
         "ravvedimento": {
             "necessario": bool(
                 scaduto

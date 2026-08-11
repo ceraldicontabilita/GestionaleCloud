@@ -73,30 +73,10 @@ def _iva_corrispettivo(doc: Dict[str, Any]) -> float:
 
 
 async def _iva_vendite_corrispettivi(db, periodo: str) -> float:
-    """Somma l'IVA vendite mensile dai corrispettivi attivi, senza doppioni."""
-    docs = await db["corrispettivi"].find({
-        "data": {"$regex": f"^{periodo}"},
-        "entity_status": {"$ne": "deleted"},
-        "status": {"$nin": ["deleted", "archived"]},
-    }, {
-        "_id": 0, "corrispettivo_key": 1, "data": 1,
-        "matricola_rt": 1, "id_dispositivo": 1, "totale": 1,
-        "totale_complessivo": 1, "totale_iva": 1, "riepilogo_iva": 1,
-        "created_at": 1,
-    }).to_list(10000)
-    visti = set()
-    totale_iva = 0.0
-    for doc in sorted(docs, key=lambda d: d.get("created_at") or ""):
-        chiave = (
-            doc.get("corrispettivo_key")
-            or f"{doc.get('data') or ''}|{doc.get('matricola_rt') or doc.get('id_dispositivo') or ''}|"
-               f"{round(_float(doc.get('totale') or doc.get('totale_complessivo')), 2)}"
-        )
-        if chiave in visti:
-            continue
-        visti.add(chiave)
-        totale_iva += _iva_corrispettivo(doc)
-    return round(totale_iva, 2)
+    """Compatibilita': delega alla fonte unica dei calcoli IVA."""
+    from app.services.iva_liquidation_query import corrispettivi_periodo
+
+    return (await corrispettivi_periodo(db, periodo))["iva_vendite"]
 
 
 def _periodo_precedente(periodo: str) -> str:
@@ -743,15 +723,17 @@ async def dashboard_iva_mensile(anno: int, mese: int) -> Dict[str, Any]:
         if d.get("stato_detrazione_iva") in liq.STATI_DETRAZIONE_AMMESSI
     ]
 
+    from app.services.iva_liquidation_query import get_iva_period_snapshot
+    snapshot = await get_iva_period_snapshot(db, anno=anno, mese=mese)
     liq_doc = await db[COLL_LIQ].find_one({"periodo": periodo}, {"_id": 0}, sort=[("versione", -1)])
-    iva_vendite_corr = await _iva_vendite_corrispettivi(db, periodo)
+    iva_vendite_corr = snapshot.get("iva_vendite")
     from app.services.iva_f24_verifica import verifica_versamento_iva
 
     versamento = await verifica_versamento_iva(
         db,
         anno=anno,
         mese=mese,
-        debito_liquidazione=(liq_doc or {}).get("debito_periodo"),
+        debito_liquidazione=snapshot.get("debito_periodo"),
     )
 
     return {
@@ -762,12 +744,16 @@ async def dashboard_iva_mensile(anno: int, mese: int) -> Dict[str, Any]:
         "iva_non_utilizzata": _somma_iva(non_utilizzate),
         "iva_rinviata": _somma_iva(rinviate),
         "iva_indetraibile": _somma_iva(indetraibili),
-        "credito_precedente": (liq_doc or {}).get("credito_precedente", 0),
-        "iva_vendite": (liq_doc or {}).get("iva_vendite", iva_vendite_corr),
+        "credito_precedente": snapshot.get("credito_precedente"),
+        "iva_vendite": snapshot.get("iva_vendite"),
         "iva_vendite_corrispettivi": iva_vendite_corr,
-        "iva_vendite_fonte": (liq_doc or {}).get("iva_vendite_fonte", "corrispettivi_xml"),
-        "saldo": (liq_doc or {}).get("saldo"),
-        "stato_liquidazione": (liq_doc or {}).get("stato"),
+        "iva_vendite_fonte": snapshot.get("fonte"),
+        "saldo": snapshot.get("saldo"),
+        "stato_liquidazione": snapshot.get("stato_calcolo"),
+        "scadenza_nominale": snapshot.get("scadenza_nominale"),
+        "scadenza_legale": snapshot.get("scadenza_legale"),
+        "conteggi_iva": snapshot.get("conteggi"),
+        "fonte_calcolo": snapshot.get("fonte_calcolo"),
         "versamento_iva": versamento,
     }
 
@@ -778,18 +764,19 @@ async def verifica_versamento_iva_mensile(anno: int, mese: int) -> Dict[str, Any
     if mese not in range(1, 13):
         raise HTTPException(status_code=422, detail="Mese non valido")
     db = Database.get_db()
-    periodo = f"{anno}-{mese:02d}"
-    liq_doc = await db[COLL_LIQ].find_one(
-        {"periodo": periodo}, {"_id": 0}, sort=[("versione", -1)]
-    )
+    from app.services.iva_liquidation_query import get_iva_period_snapshot
+    snapshot = await get_iva_period_snapshot(db, anno=anno, mese=mese)
     from app.services.iva_f24_verifica import verifica_versamento_iva
 
-    return await verifica_versamento_iva(
+    result = await verifica_versamento_iva(
         db,
         anno=anno,
         mese=mese,
-        debito_liquidazione=(liq_doc or {}).get("debito_periodo"),
+        debito_liquidazione=snapshot.get("debito_periodo"),
     )
+    result["stato_calcolo_iva"] = snapshot.get("stato_calcolo")
+    result["fonte_calcolo_iva"] = snapshot.get("fonte_calcolo")
+    return result
 
 
 @router.get("/riepilogo-annuale/{anno}")

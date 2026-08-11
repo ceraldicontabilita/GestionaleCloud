@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useHashState } from '../hooks/useHashState';
 import { CopyLinkButton } from '../components/CopyLinkButton';
-import { Link } from 'react-router-dom';
 import api from '../api';
 import {
   formatDateIT,
@@ -12,7 +11,6 @@ import {
   useIsMobile,
 } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { useConfirm } from '../components/ui/ConfirmDialog';
 import {
   PageLayout,
   PageSection,
@@ -38,10 +36,26 @@ import {
   CreditCard,
   Percent,
   RefreshCw,
-  Upload,
-  Trash2,
   X,
 } from 'lucide-react';
+
+const asNumber = value => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value !== 'string') return 0;
+  const parsed = Number(value.trim().replace(/\./g, '').replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+const ivaRows = item => Array.isArray(item?.riepilogo_iva) ? item.riepilogo_iva : [];
+const imponibileItem = item => item?.totale_imponibile != null
+  ? asNumber(item.totale_imponibile)
+  : ivaRows(item).reduce((sum, row) => sum + asNumber(row.ammontare ?? row.imponibile), 0);
+const ivaItem = item => item?.totale_iva != null
+  ? asNumber(item.totale_iva)
+  : ivaRows(item).reduce((sum, row) => sum + asNumber(row.imposta), 0);
+const totaleItem = item => item?.totale != null
+  ? asNumber(item.totale)
+  : imponibileItem(item) + ivaItem(item);
+const sourceValue = (item, ...keys) => keys.map(key => item?.[key]).find(Boolean) || null;
 
 /**
  * PAGINA CORRISPETTIVI
@@ -54,7 +68,6 @@ export default function Corrispettivi() {
   const [corrispettivi, setCorrispettivi] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
-  const confirm = useConfirm();
   const dettaglioRef = useRef(null);
 
   // Deep link: item selezionato sincronizzato con hash (#selected=2026-04-08)
@@ -88,28 +101,18 @@ export default function Corrispettivi() {
     }
   }
 
-  async function handleDelete(id) {
-    const confirmed = await confirm({
-      title: 'Elimina corrispettivo',
-      message: "Eliminare questo corrispettivo? L'operazione non può essere annullata.",
-      confirmText: 'Elimina',
-      cancelText: 'Annulla',
-      variant: 'danger',
+  const openDetail = item => {
+    setHs('selected', item.data || '');
+    requestAnimationFrame(() => {
+      dettaglioRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
-    if (!confirmed) return;
-    try {
-      await api.delete(`/api/corrispettivi/${id}`);
-      loadCorrispettivi();
-    } catch (e) {
-      setErr('Errore eliminazione: ' + (e.response?.data?.detail || e.message));
-    }
-  }
+  };
 
-  const totaleGiornaliero = corrispettivi.reduce((sum, c) => sum + (c.totale || 0), 0);
-  const totaleCassa = corrispettivi.reduce((sum, c) => sum + (c.pagato_contanti || 0), 0);
-  const totaleElettronico = corrispettivi.reduce((sum, c) => sum + (c.pagato_elettronico || 0), 0);
-  const totaleIVA = corrispettivi.reduce((sum, c) => sum + (c.totale_iva || 0), 0);
-  const totaleImponibile = corrispettivi.reduce((sum, c) => sum + (c.totale_imponibile || 0), 0);
+  const totaleGiornaliero = corrispettivi.reduce((sum, c) => sum + totaleItem(c), 0);
+  const totaleCassa = corrispettivi.reduce((sum, c) => sum + asNumber(c.pagato_contanti), 0);
+  const totaleElettronico = corrispettivi.reduce((sum, c) => sum + asNumber(c.pagato_elettronico), 0);
+  const totaleIVA = corrispettivi.reduce((sum, c) => sum + ivaItem(c), 0);
+  const totaleImponibile = corrispettivi.reduce((sum, c) => sum + imponibileItem(c), 0);
 
   return (
     <PageLayout
@@ -118,23 +121,6 @@ export default function Corrispettivi() {
       subtitle={`Corrispettivi giornalieri dal registratore telematico - Anno ${selectedYear}`}
       actions={
         <div style={{ display: 'flex', gap: 10 }}>
-          <Link
-            to="/documenti/import"
-            style={{
-              padding: '10px 16px',
-              background: COLORS.success,
-              color: 'white',
-              fontWeight: 600,
-              borderRadius: BORDER_RADIUS.sm,
-              textDecoration: 'none',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: 13,
-            }}
-          >
-            <Upload size={16} /> Importa
-          </Link>
           <Button
             variant="secondary"
             onClick={loadCorrispettivi}
@@ -205,6 +191,7 @@ export default function Corrispettivi() {
                 size="sm"
                 onClick={() => setHs('selected', '')}
                 iconLeft={<X size={20} color={COLORS.textMuted} />}
+                aria-label="Chiudi dettaglio corrispettivo"
                 style={{ position: 'absolute', top: 16, right: 16, padding: 4 }}
               />
 
@@ -248,7 +235,7 @@ export default function Corrispettivi() {
                       💳 Elettronico: {formatEuro(selectedItem.pagato_elettronico)}
                     </div>
                     <div style={{ fontWeight: 700, marginTop: 8, fontSize: 15 }}>
-                      Totale: {formatEuro(selectedItem.totale)}
+                      Totale: {formatEuro(totaleItem(selectedItem))}
                     </div>
                   </div>
                 </div>
@@ -264,11 +251,19 @@ export default function Corrispettivi() {
                     IVA
                   </h4>
                   <div style={{ fontSize: 13, lineHeight: 2 }}>
-                    <div>Imponibile: {formatEuro(selectedItem.totale_imponibile)}</div>
-                    <div>Imposta: {formatEuro(selectedItem.totale_iva)}</div>
+                    <div>Imponibile: {formatEuro(imponibileItem(selectedItem))}</div>
+                    <div>Imposta: {formatEuro(ivaItem(selectedItem))}</div>
                   </div>
                 </div>
               </PageGrid>
+
+              <div style={{ marginTop: 18, padding: 12, background: COLORS.background, borderRadius: BORDER_RADIUS.sm, fontSize: 12.5, lineHeight: 1.8 }}>
+                <strong>Provenienza documento</strong>
+                <div>File: {sourceValue(selectedItem, 'filename', 'nome_file', 'source_filename') || 'non disponibile'}</div>
+                <div>SHA-256: {sourceValue(selectedItem, 'sha256', 'pdf_hash', 'file_hash') || 'non disponibile'}</div>
+                <div>Parser: {sourceValue(selectedItem, 'parser_version', 'versione_parser') || 'non disponibile'}</div>
+                <div>Stato fonte: {sourceValue(selectedItem, 'source_status', 'stato_documento', 'source') || 'non disponibile'}</div>
+              </div>
 
               {selectedItem.riepilogo_iva && selectedItem.riepilogo_iva.length > 0 && (
                 <div style={{ marginTop: 20 }}>
@@ -300,7 +295,7 @@ export default function Corrispettivi() {
                             </Td>
                             <Td align="right" mono>{formatEuro(r.ammontare)}</Td>
                             <Td align="right" mono>{formatEuro(r.imposta)}</Td>
-                            <Td align="right" mono>{formatEuro(r.importo_parziale)}</Td>
+                            <Td align="right" mono>{formatEuro(asNumber(r.ammontare ?? r.imponibile) + asNumber(r.imposta))}</Td>
                           </tr>
                         ))}
                       </tbody>
@@ -323,9 +318,9 @@ export default function Corrispettivi() {
               <div style={{ padding: 40 }}>
                 <PageEmpty icon="🧾" message="Nessun corrispettivo registrato per questo anno" />
                 <div style={{ textAlign: 'center', marginTop: 16 }}>
-                  <Link to="/documenti/import" style={{ color: COLORS.info, fontSize: 14 }}>
-                    Vai a Import Documenti per caricare i corrispettivi
-                  </Link>
+                  <span style={{ color: COLORS.textMuted, fontSize: 14 }}>
+                    I documenti vengono acquisiti esclusivamente dalla pagina Documenti.
+                  </span>
                 </div>
               </div>
             ) : (
@@ -388,7 +383,7 @@ export default function Corrispettivi() {
                       align: 'right',
                       mono: true,
                       ruoloCard: 'importo',
-                      render: c => formatEuro(c.totale),
+                      render: c => formatEuro(totaleItem(c)),
                       tdStyle: { fontWeight: 700 },
                     },
                     {
@@ -400,7 +395,7 @@ export default function Corrispettivi() {
                       iconaCard: null,
                       render: c => (
                         <span style={{ color: COLORS.warning, fontWeight: 500 }}>
-                          {formatEuro(c.totale_iva)}
+                          {formatEuro(ivaItem(c))}
                         </span>
                       ),
                     },
@@ -413,19 +408,12 @@ export default function Corrispettivi() {
                         <RowActions style={{ justifyContent: isMobile ? 'flex-end' : 'center' }}>
                           <RowActionButton
                             variant="info"
-                            onClick={() => setHs('selected', c.data || '')}
+                            onClick={() => openDetail(c)}
                             title="Vedi dettaglio"
                             aria-label={`Vedi corrispettivo ${c.data || ''}`}
                             style={{ width: 'auto', minWidth: 60, padding: '0 10px', fontWeight: 700 }}
                           >
-                            Vedi
-                          </RowActionButton>
-                          <RowActionButton
-                            variant="danger"
-                            onClick={() => handleDelete(c.id)}
-                            title="Elimina"
-                          >
-                            <Trash2 size={14} />
+                            {hs.selected === c.data ? 'Aperto' : 'Vedi'}
                           </RowActionButton>
                         </RowActions>
                       ),

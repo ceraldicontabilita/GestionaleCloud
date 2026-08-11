@@ -158,7 +158,7 @@ describe('Pagina PayPal: fonti, stati e filtri', () => {
     expect(screen.getByText('Nessun file: fonte API')).toBeInTheDocument();
   });
 
-  it('riprocessa automaticamente storico, banca e fatture per l anno globale', async () => {
+  it('sincronizza in modo incrementale all apertura senza pulsanti di riprocessamento', async () => {
     mockSuccessfulRequests();
     api.post.mockResolvedValue({ data: {
       collegamenti_prima: { associate: 1 },
@@ -166,12 +166,8 @@ describe('Pagina PayPal: fonti, stati e filtri', () => {
       collegamenti_dopo: { finalizzate: 1 },
     } });
     renderPage();
-
-    const button = await screen.findByTestId('reprocess-paypal-btn');
-    fireEvent.click(button);
-
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
-      '/api/paypal-statements/riprocessa?anno=2026'
-    ));
+    expect(await screen.findByTestId('paypal-sync-status')).toHaveTextContent('Aggiornato');
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/paypal-api/sync/incremental'));
+    expect(screen.queryByTestId('reprocess-paypal-btn')).not.toBeInTheDocument();
   });
 });

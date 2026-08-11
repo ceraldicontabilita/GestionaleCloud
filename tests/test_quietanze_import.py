@@ -99,9 +99,9 @@ def test_import_e_matching_automatico(monkeypatch):
         "file_name": "F24_giugno.pdf",
         "sezione_erario": [
             {"codice_tributo": "1001", "periodo_riferimento": "05/2026", "importo_debito": 1000.0},
-            {"codice_tributo": "1040", "periodo_riferimento": "05/2026", "importo_debito": 500.20},
+            {"codice_tributo": "1040", "periodo_riferimento": "05/2026", "importo_debito": 500.0},
         ],
-        "totali": {"saldo_netto": 1500.20},
+        "totali": {"saldo_netto": 1500.0},
     }))
 
     esito = asyncio.run(qi.importa_quietanza_bytes(db, b"%PDF-finto", "quietanza.pdf", fonte="test"))
