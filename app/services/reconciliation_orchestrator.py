@@ -17,6 +17,7 @@ async def riconcilia_documenti_e_pagamenti(
     from app.services.f24_bank_reconciliation import riconcilia_f24_tributi_banca
     from app.services.finanziamenti_soci import scan_finanziamenti_da_ec
     from app.services.proiezione_bancaria import proietta_movimenti_bancari_semantici
+    from app.services.bank_payment_allocations import reconcile_deterministic_invoice_allocations
     from app.services.stipendi_bonifici import associa_bonifici_stipendi
     from app.routers.pagopa import auto_associa_ricevute_db
     from app.routers.paypal_statements import (
@@ -44,6 +45,9 @@ async def riconcilia_documenti_e_pagamenti(
     proiezione_banca = await proietta_movimenti_bancari_semantici(
         db, anno=anno, movimento_ids=movimento_ids,
     )
+    allocazioni_fatture_banca = await reconcile_deterministic_invoice_allocations(
+        db, anno=anno, movement_ids=movimento_ids,
+    )
     return {
         "assegni_intenti": assegni_intenti,
         "assegni_auto": assegni_auto,
@@ -58,6 +62,7 @@ async def riconcilia_documenti_e_pagamenti(
         "cbill_pagopa": cbill,
         "finanziamenti_soci": finanziamenti_soci,
         "proiezione_banca": proiezione_banca,
+        "allocazioni_fatture_banca": allocazioni_fatture_banca,
     }
 
 

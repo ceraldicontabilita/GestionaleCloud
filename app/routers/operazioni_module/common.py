@@ -2,7 +2,7 @@
 Operazioni Module - Costanti e modelli condivisi.
 """
 from datetime import datetime, timezone
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
 import logging
 
@@ -59,7 +59,7 @@ class RiconciliaManuale(BaseModel):
     # frontend: ogni chiamata falliva con 422 prima di entrare nell'handler.
     movimento_id: str
     tipo: str
-    associazioni: List[Dict[str, Any]] = []
+    associazioni: List[Dict[str, Any]] = Field(default_factory=list)
     categoria: Optional[str] = None
     note: Optional[str] = None
 

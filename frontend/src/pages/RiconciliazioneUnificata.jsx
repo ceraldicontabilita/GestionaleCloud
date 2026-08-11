@@ -49,7 +49,6 @@ export default function RiconciliazioneUnificata() {
   const { anno } = useAnnoGlobale();
   const navigate = useNavigate();
   const location = useLocation();
-  const confirm = useConfirm();
 
   // Ottieni tab dall'URL (es. /riconciliazione-unificata/banca -> banca)
   const getTabFromPath = () => {
@@ -163,7 +162,7 @@ export default function RiconciliazioneUnificata() {
       const erroriCaricamento = [];
       const [analizzaRes, assegniRes, stipendiRes] = await Promise.all([
         api
-          .get(`/api/operazioni-da-confermare/smart/analizza?limit=${limit}`)
+          .get(`/api/operazioni-da-confermare/smart/analizza?limit=${limit}&anno=${anno}`)
           .catch(e => {
             erroriCaricamento.push(e.response?.data?.detail || e.message);
             return { data: { movimenti: [], stats: {} } };
@@ -199,7 +198,10 @@ export default function RiconciliazioneUnificata() {
           `Assegno ${a.numero || a.numero_assegno || ''}`,
       }));
 
-      setHasMore(movimenti.length >= limit);
+      const totalRows = Number(
+        analizzaRes.data?.stats?.totale_righe ?? assegniRes.data?.stats?.totale_righe ?? movimenti.length
+      );
+      setHasMore(movimenti.length < totalRows);
       setCurrentLimit(limit);
       setStats(assegniRes.data?.stats || analizzaRes.data?.stats || {});
 
@@ -217,8 +219,11 @@ export default function RiconciliazioneUnificata() {
 
       // Aggiorna stats iniziali (F24 caricato su richiesta)
       setStats({
-        totale: movimenti.length,
-        banca: movimenti.length,
+        ...(analizzaRes.data?.stats || {}),
+        totale: totalRows,
+        totale_righe: totalRows,
+        righe_caricate: movimenti.length,
+        banca: totalRows,
         assegni: assegniDaApi.length,
         f24: 0, // Caricato su richiesta manuale
         stipendi: stipendi.length,
@@ -230,6 +235,7 @@ export default function RiconciliazioneUnificata() {
       setReconciliationStats({
         matched: analizzaRes.data?.stats?.riconciliati || assegniRes.data?.stats?.riconciliati || 0,
         pending:
+          analizzaRes.data?.stats?.totale_righe ||
           analizzaRes.data?.stats?.non_riconciliati ||
           assegniRes.data?.stats?.non_riconciliati ||
           0,
@@ -271,28 +277,22 @@ export default function RiconciliazioneUnificata() {
     setLoadingMore(true);
     try {
       const bancaRes = await api.get(
-        `/api/operazioni-da-confermare/smart/banca-veloce?limit=${newLimit}`
+        `/api/operazioni-da-confermare/smart/analizza?limit=${newLimit}&anno=${anno}`
       );
       const movimenti = bancaRes.data?.movimenti || [];
-      const assegniDaApi = (bancaRes.data?.assegni || []).map(a => ({
-        ...a,
-        numero_assegno: a.numero_assegno || a.numero,
-        data: a.data || a.data_emissione,
-        descrizione:
-          a.descrizione ||
-          a.causale ||
-          a.beneficiario ||
-          `Assegno ${a.numero || a.numero_assegno || ''}`,
-      }));
-
-      setHasMore(movimenti.length >= newLimit);
+      const totalRows = Number(bancaRes.data?.stats?.totale_righe ?? movimenti.length);
+      setHasMore(movimenti.length < totalRows);
       setCurrentLimit(newLimit);
 
       setMovimentiBanca(
         movimenti.filter(m => !m.descrizione?.toUpperCase()?.includes('PRELIEVO ASSEGNO'))
       );
-      setAssegni(assegniDaApi);
-      setStats(bancaRes.data?.stats || {});
+      setStats(prev => ({
+        ...prev,
+        ...(bancaRes.data?.stats || {}),
+        banca: totalRows,
+        righe_caricate: movimenti.length,
+      }));
     } catch (e) {
       toast.error('Caricamento non riuscito: ' + (e.response?.data?.detail || e.message));
     } finally {
@@ -363,7 +363,41 @@ export default function RiconciliazioneUnificata() {
         : suggerimenti.length === 1
           ? [suggerimenti[0]]
           : [];
-      if (!scelte.length && suggerimenti.length > 1) {
+      const tipoFattura = ['fattura', 'fattura_sdd', 'fattura_bonifico'].includes(tipoEff);
+      if (!scelte.length && tipoFattura && suggerimenti.length > 1) {
+        const elencoQuote = suggerimenti.map((s, indice) => {
+          const quota = Number.isInteger(s.quota_cents) ? s.quota_cents / 100 : Number(s.importo || 0);
+          const prima = Number.isInteger(s.residuo_precedente_cents)
+            ? s.residuo_precedente_cents / 100 : quota;
+          const dopo = Number.isInteger(s.residuo_successivo_cents)
+            ? s.residuo_successivo_cents / 100 : Math.max(0, prima - quota);
+          return `${indice + 1}) ${s.numero || s.id} | fattura ${formatEuro(s.importo || 0)} | ` +
+            `residuo ${formatEuro(prima)} | quota ${formatEuro(quota)} | dopo ${formatEuro(dopo)}`;
+        }).join('\n');
+        if (movimento.quadratura?.stato === 'verificata') {
+          scelte = suggerimenti.map(s => ({
+            ...s,
+            quota_cents: Number.isInteger(s.quota_cents)
+              ? s.quota_cents : Math.round(Number(s.importo || 0) * 100),
+          }));
+        } else {
+          const selectedText = window.prompt(
+            `Seleziona le fatture (numeri separati da virgola) e poi indica le quote:\n${elencoQuote}`,
+            suggerimenti.map((_, indice) => indice + 1).join(','),
+          );
+          const indexes = (selectedText || '').split(',')
+            .map(value => Number.parseInt(value.trim(), 10) - 1)
+            .filter(index => Number.isInteger(index) && index >= 0 && index < suggerimenti.length);
+          scelte = indexes.map(index => {
+            const item = suggerimenti[index];
+            const defaultQuota = Number.isInteger(item.quota_cents)
+              ? (item.quota_cents / 100).toFixed(2) : Number(item.importo || 0).toFixed(2);
+            const quota = window.prompt(`Quota per fattura ${item.numero || item.id}:`, defaultQuota);
+            return { ...item, quota_cents: Math.round(Number(String(quota || '').replace(',', '.')) * 100) };
+          }).filter(item => Number.isInteger(item.quota_cents) && item.quota_cents > 0);
+        }
+      }
+      if (!scelte.length && suggerimenti.length > 1 && !tipoFattura) {
         const elenco = suggerimenti
           .map((s, indice) => `${indice + 1}) ${s.fornitore || s.nome || s.dipendente || 'candidato'} - ${formatEuro(s.importo || 0)}`)
           .join('\n');
@@ -375,7 +409,7 @@ export default function RiconciliazioneUnificata() {
           scelte = [suggerimenti[scelta - 1]];
         }
       }
-      if (scelte.length !== 1) {
+      if (!scelte.length || (!tipoFattura && scelte.length !== 1)) {
         toast.error('Selezione obbligatoria', {
           description: 'Con più candidati devi selezionare esplicitamente quello corretto.',
         });
@@ -407,14 +441,20 @@ export default function RiconciliazioneUnificata() {
     if (!codice) return;
     const motivo = window.prompt('Descrivi brevemente il motivo dell\'ignoramento:', codice);
     if (!motivo?.trim()) return;
+    const recordConservatoId = codice === 'duplicato'
+      ? window.prompt('ID del movimento originale da conservare:')?.trim()
+      : null;
+    if (codice === 'duplicato' && !recordConservatoId) return;
     setProcessing(movimento.movimento_id || movimento.id);
     try {
       await api.post('/api/operazioni-da-confermare/smart/ignora', {
         movimento_id: movimento.movimento_id || movimento.id,
         codice_motivo: codice,
         motivo: motivo.trim(),
+        record_conservato_id: recordConservatoId,
+        fingerprint: movimento.fingerprint,
       });
-      toast.success('Movimento ignorato');
+      toast.success('Movimento escluso dalla coda; la fonte bancaria resta conservata');
       loadAllData();
     } catch (e) {
       console.error('Errore ignora:', e);
@@ -426,37 +466,36 @@ export default function RiconciliazioneUnificata() {
     }
   };
 
-  // Elimina movimento (rimuove completamente dal database)
-  const handleElimina = async movimento => {
-    const movId = movimento.id || movimento.movimento_id;
-    if (!movId) {
-      toast.error('ID movimento non trovato');
-      return;
-    }
-
-    const confirmed = await confirm({
-      title: 'Elimina movimento',
-      message: 'Eliminare definitivamente questo movimento?',
-      confirmText: 'Elimina',
-      cancelText: 'Annulla',
-      variant: 'danger',
-    });
-    if (!confirmed) {
-      return;
-    }
-
-    setProcessing(movId);
+  const handleAnalizzaAnomalie = async () => {
+    setProcessing('analizza-anomalie');
     try {
-      await api.delete(`/api/estratto-conto-movimenti/${movId}`);
-      toast.success('Movimento eliminato');
-      loadAllData();
+      const response = await api.get(
+        `/api/operazioni-da-confermare/smart/analizza-anomalie?anno=${anno}`
+      );
+      const report = response.data || {};
+      const preview = (report.anomalie || []).slice(0, 5)
+        .map(item => `${item.movimento_id}: ${item.motivi.map(m => m.codice).join(', ')}`)
+        .join('\n');
+      window.alert(
+        `Analisi in sola lettura: ${report.totale_anomalie || 0} anomalie su ` +
+        `${report.righe_esaminate || 0} movimenti.${preview ? `\n\n${preview}` : ''}`
+      );
     } catch (e) {
-      toast.error('Eliminazione non riuscita', {
+      toast.error('Analisi anomalie non riuscita', {
         description: e.response?.data?.detail || e.message,
       });
     } finally {
       setProcessing(null);
     }
+  };
+
+  const handleVediProva = movimento => {
+    const rule = movimento.regola?.id || 'regola non disponibile';
+    const evidence = (movimento.evidenze || [])
+      .map(item => item.testo || item.valore || item.id)
+      .filter(Boolean)
+      .join('\n');
+    window.alert(`Regola: ${rule}\nDecisione: ${movimento.decisione || 'ambigua'}\n${evidence}`);
   };
 
   // Incassa assegno. Il backend collega l'evidenza bancaria esistente: questa
@@ -558,6 +597,18 @@ export default function RiconciliazioneUnificata() {
           gap: 8,
         }}
       >
+        <button
+          type="button"
+          onClick={handleAnalizzaAnomalie}
+          disabled={processing === 'analizza-anomalie'}
+          style={{
+            padding: '8px 14px', minHeight: 40, background: '#fff', color: '#0f2744',
+            border: '1px solid #0f2744', borderRadius: 6, cursor: 'pointer',
+            fontWeight: 700, whiteSpace: 'nowrap',
+          }}
+        >
+          {processing === 'analizza-anomalie' ? 'Analisi...' : 'Analizza anomalie'}
+        </button>
         <button
           onClick={() => loadAllData(currentLimit)}
           disabled={processing}
@@ -806,9 +857,10 @@ export default function RiconciliazioneUnificata() {
             movimenti={movimentiBancaFiltrati}
             onConferma={handleConferma}
             onIgnora={handleIgnora}
-            onElimina={handleElimina}
+            onVediProva={handleVediProva}
             processing={processing}
             title="Movimenti Bancari"
+            totalRows={stats.banca}
             emptyText="Tutti i movimenti sono stati riconciliati"
             tipo="banca"
             vistaLista
@@ -819,7 +871,6 @@ export default function RiconciliazioneUnificata() {
             movimenti={assegniFiltrati}
             onConferma={handleIncassaAssegno}
             onIgnora={handleIgnora}
-            onElimina={handleElimina}
             processing={processing}
             title="Prelievi Assegno"
             emptyText="Nessun assegno da riconciliare"
@@ -842,7 +893,6 @@ export default function RiconciliazioneUnificata() {
             movimenti={stipendiFiltrati}
             onConferma={handleConferma}
             onIgnora={handleIgnora}
-            onElimina={handleElimina}
             processing={processing}
             title="Stipendi"
             emptyText="Nessuno stipendio da riconciliare"
@@ -884,7 +934,7 @@ export default function RiconciliazioneUnificata() {
       </div>
 
       {/* Bottone Carica Altri */}
-      {hasMore && ['banca', 'assegni', 'stipendi'].includes(activeTab) && (
+      {hasMore && activeTab === 'banca' && (
         <div style={{ textAlign: 'center', marginTop: 20 }}>
           <button
             onClick={loadMore}
@@ -902,7 +952,9 @@ export default function RiconciliazioneUnificata() {
               transition: 'all 0.2s',
             }}
           >
-            {loadingMore ? '⏳ Caricamento...' : `📥 Carica altri (${currentLimit} caricati)`}
+            {loadingMore
+              ? 'Caricamento...'
+              : `Carica altri (${movimentiBanca.length} di ${stats.banca || movimentiBanca.length})`}
           </button>
         </div>
       )}
@@ -955,11 +1007,12 @@ function MovimentiTab({
   movimenti,
   onConferma,
   onIgnora,
-  onElimina,
+  onVediProva,
   processing,
   title,
   emptyText,
   showFattura,
+  totalRows,
   // vistaLista: solo la tab Banca usa ListaAdattiva (tabella su desktop,
   // card compatte su mobile); le altre tab restano su MovimentoCard.
   vistaLista = false,
@@ -978,10 +1031,18 @@ function MovimentiTab({
   // Azioni per riga: stessi bottoni (e stili) di MovimentoCard
   const renderAzioni = m => {
     const inCorso = processing === m.movimento_id || processing === m.id;
+    const automatic = m.decisione === 'automatica';
+    const primaryLabel = automatic
+      ? 'Vedi prova'
+      : m.decisione === 'proposta'
+        ? 'Scegli candidato'
+        : m.decisione === 'ambigua'
+          ? 'Risolvi differenza'
+          : 'Conferma';
     return (
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         <button
-          onClick={() => onConferma(m)}
+          onClick={() => automatic && onVediProva ? onVediProva(m) : onConferma(m)}
           disabled={inCorso}
           style={{
             padding: '8px 16px',
@@ -995,7 +1056,7 @@ function MovimentiTab({
             fontSize: 13,
           }}
         >
-          {inCorso ? '⏳' : '✓'} Conferma
+          {inCorso ? 'Attendi...' : primaryLabel}
         </button>
         <button
           onClick={() => onIgnora(m)}
@@ -1012,29 +1073,8 @@ function MovimentiTab({
             fontSize: 13,
           }}
         >
-          ✕
+          Escludi dalla coda
         </button>
-        {onElimina && (
-          <button
-            onClick={() => onElimina(m)}
-            disabled={inCorso}
-            data-testid="btn-elimina-movimento"
-            title="Elimina definitivamente"
-            style={{
-              padding: '8px 12px',
-              minHeight: 40,
-              minWidth: 40,
-              background: '#fee2e2',
-              color: '#dc2626',
-              border: 'none',
-              borderRadius: 6,
-              cursor: 'pointer',
-              fontSize: 13,
-            }}
-          >
-            🗑️
-          </button>
-        )}
       </div>
     );
   };
@@ -1050,7 +1090,7 @@ function MovimentiTab({
     <div>
       <div style={{ padding: 16, background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
         <h3 style={{ margin: 0, fontSize: 16, color: '#0f2744' }}>
-          {title} ({movimenti.length})
+          {title} ({movimenti.length}{Number(totalRows) > movimenti.length ? ` di ${totalRows}` : ''})
         </h3>
       </div>
       {vistaLista ? (
@@ -1109,6 +1149,17 @@ function MovimentiTab({
                           📄 Fattura: {numeroFattura}
                         </div>
                       )}
+                      {(m.suggerimenti || []).length > 1 && (
+                        <div style={{ marginTop: 4, fontSize: 11, color: '#334155' }}>
+                          {m.suggerimenti.map(item => (
+                            <div key={item.id}>
+                              {item.numero || item.id}: fattura {formatEuro(item.importo || 0)}, quota{' '}
+                              {formatEuro(Number.isInteger(item.quota_cents) ? item.quota_cents / 100 : item.importo || 0)}, residuo dopo{' '}
+                              {formatEuro(Number.isInteger(item.residuo_successivo_cents) ? item.residuo_successivo_cents / 100 : 0)}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       {m.beneficiario && (
                         <div style={{ fontSize: 11, color: '#d97706', marginTop: 2 }}>
                           👤 Beneficiario: {m.beneficiario}
@@ -1126,6 +1177,19 @@ function MovimentiTab({
                   const sugg = m.suggerimenti?.[0];
                   const hasMatch = m.associazione_automatica && sugg;
                   const datiIncompleti = m.dati_incompleti || m.stato === 'vuoto';
+                  if (m.decisione) {
+                    const labels = {
+                      automatica: ['Registrata automaticamente', '#dcfce7', '#166534'],
+                      proposta: ['Proposta da verificare', '#dbeafe', '#1d4ed8'],
+                      ambigua: ['Da decidere', '#fef3c7', '#92400e'],
+                    };
+                    const [label, background, color] = labels[m.decisione] || labels.ambigua;
+                    return (
+                      <span style={{ padding: '2px 8px', background, color, borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
+                        {label}
+                      </span>
+                    );
+                  }
                   if (hasMatch) {
                     return (
                       <span
@@ -1230,7 +1294,7 @@ function MovimentiTab({
               movimento={m}
               onConferma={onConferma}
               onIgnora={onIgnora}
-              onElimina={onElimina}
+              onVediProva={onVediProva}
               processing={processing === m.movimento_id || processing === m.id}
               showFattura={showFattura}
             />
@@ -1241,9 +1305,17 @@ function MovimentiTab({
   );
 }
 
-function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing, showFattura }) {
+function MovimentoCard({ movimento, onConferma, onIgnora, onVediProva, processing, showFattura }) {
   const suggerimento = movimento.suggerimenti?.[0];
   const hasMatch = movimento.associazione_automatica && suggerimento;
+  const automatic = movimento.decisione === 'automatica';
+  const primaryLabel = automatic
+    ? 'Vedi prova'
+    : movimento.decisione === 'proposta'
+      ? 'Scegli candidato'
+      : movimento.decisione === 'ambigua'
+        ? 'Risolvi differenza'
+        : 'Conferma';
 
   // Estrai info extra dal movimento
   const ragioneSociale =
@@ -1486,6 +1558,29 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
             </div>
           )}
 
+          {movimento.decisione && (
+            <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: '#0f2744' }}>
+              {movimento.decisione === 'automatica'
+                ? 'Registrata automaticamente'
+                : movimento.decisione === 'proposta'
+                  ? 'Proposta da verificare'
+                  : 'Da decidere'}
+              {movimento.motivo_blocco ? ` - ${movimento.motivo_blocco}` : ''}
+            </div>
+          )}
+
+          {(movimento.suggerimenti || []).length > 1 && (
+            <div style={{ marginTop: 8, padding: 8, background: '#f8fafc', borderRadius: 6, fontSize: 11 }}>
+              {movimento.suggerimenti.map(item => (
+                <div key={item.id} style={{ marginBottom: 3 }}>
+                  <b>{item.numero || item.id}</b>: fattura {formatEuro(item.importo || 0)}; quota{' '}
+                  {formatEuro(Number.isInteger(item.quota_cents) ? item.quota_cents / 100 : item.importo || 0)}; residuo dopo{' '}
+                  {formatEuro(Number.isInteger(item.residuo_successivo_cents) ? item.residuo_successivo_cents / 100 : 0)}
+                </div>
+              ))}
+            </div>
+          )}
+
           {hasMatch && suggerimento && (
             <div
               style={{
@@ -1505,7 +1600,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button
-            onClick={() => onConferma(movimento)}
+            onClick={() => automatic && onVediProva ? onVediProva(movimento) : onConferma(movimento)}
             disabled={processing}
             style={{
               padding: '8px 16px',
@@ -1519,7 +1614,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
               fontSize: 13,
             }}
           >
-            {processing ? '⏳' : '✓'} Conferma
+            {processing ? 'Attendi...' : primaryLabel}
           </button>
           <button
             onClick={() => onIgnora(movimento)}
@@ -1536,29 +1631,8 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
               fontSize: 13,
             }}
           >
-            ✕
+            Escludi dalla coda
           </button>
-          {onElimina && (
-            <button
-              onClick={() => onElimina(movimento)}
-              disabled={processing}
-              data-testid="btn-elimina-movimento"
-              title="Elimina definitivamente"
-              style={{
-                padding: '8px 12px',
-                minHeight: 40,
-                minWidth: 40,
-                background: '#fee2e2',
-                color: '#dc2626',
-                border: 'none',
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontSize: 13,
-              }}
-            >
-              🗑️
-            </button>
-          )}
         </div>
       </div>
     </div>

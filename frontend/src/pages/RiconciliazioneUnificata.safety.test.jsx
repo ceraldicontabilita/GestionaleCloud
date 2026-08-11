@@ -25,4 +25,17 @@ describe('sicurezza della pagina Riconciliazione', () => {
     expect(source).toContain('codice_motivo');
     expect(source).toContain('acconto, saldo, multiplo oppure errore');
   });
+
+  it('conserva la fonte bancaria e sostituisce le azioni di massa con analisi read-only', () => {
+    expect(source).toContain('Analizza anomalie');
+    expect(source).toContain('Escludi dalla coda');
+    expect(source).not.toContain('btn-elimina-movimento');
+    expect(source).not.toContain('/api/estratto-conto-movimenti/${movId}');
+  });
+
+  it('supporta prospetti uno-a-molti e mostra caricati di totale', () => {
+    expect(source).toContain("['fattura', 'fattura_sdd', 'fattura_bonifico']");
+    expect(source).toContain('quota_cents');
+    expect(source).toContain('stats.banca || movimentiBanca.length');
+  });
 });

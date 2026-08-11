@@ -64,7 +64,9 @@ async def banca_veloce(
         "assegni": assegni,
         "fatture_da_pagare": fatture_da_pagare,
         "stats": {
-            "totale": len(movimenti),
+            "totale": tot_non_ric + tot_ric,
+            "totale_righe": tot_non_ric if solo_non_riconciliati else tot_non_ric + tot_ric,
+            "righe_caricate": len(movimenti),
             "non_riconciliati": tot_non_ric,
             "riconciliati": tot_ric,
             "assegni_pendenti": len(assegni),
@@ -75,13 +77,14 @@ async def banca_veloce(
 
 async def analizza_movimenti_smart(
     limit: int = 100,
-    solo_non_riconciliati: bool = True
+    solo_non_riconciliati: bool = True,
+    anno: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Analizza movimenti estratto conto con suggerimenti riconciliazione."""
     from app.services.riconciliazione_smart import analizza_estratto_conto_batch
     
     try:
-        risultati = await analizza_estratto_conto_batch(limit, solo_non_riconciliati)
+        risultati = await analizza_estratto_conto_batch(limit, solo_non_riconciliati, anno=anno)
         return risultati
     except Exception as e:
         logger.error(f"Errore analisi smart: {e}")
@@ -104,7 +107,8 @@ async def analizza_singolo_movimento(movimento_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Movimento non trovato")
 
     try:
-        return await analizza_movimento(movimento)
+        from app.services.riconciliazione_smart import semanticizza_risultato
+        return semanticizza_risultato(await analizza_movimento(movimento), movimento)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -112,6 +116,45 @@ async def analizza_singolo_movimento(movimento_id: str) -> Dict[str, Any]:
 async def riconcilia_manuale(request: RiconciliaManuale) -> Dict[str, Any]:
     """Riconciliazione manuale movimento con entità."""
     db = Database.get_db()
+
+    # Fatture: percorso canonico a quote, uno-a-uno o uno-a-molti. Tutto il
+    # prospetto viene validato al centesimo prima della prima scrittura.
+    if request.tipo in {"fattura", "fattura_sdd", "fattura_bonifico"}:
+        associazioni_fatture = request.associazioni or []
+        if not associazioni_fatture:
+            raise HTTPException(status_code=409, detail="Selezionare almeno una fattura")
+        if len(associazioni_fatture) > 1 and any(
+            item.get("quota_cents") is None and item.get("quota") in (None, "")
+            for item in associazioni_fatture
+        ):
+            raise HTTPException(status_code=409, detail="Indicare la quota di ogni fattura")
+        if any(not str((item or {}).get("id") or "").strip() for item in associazioni_fatture):
+            raise HTTPException(status_code=409, detail="Un candidato non ha un identificativo")
+        movimento_fatture = await db.estratto_conto_movimenti.find_one({"id": request.movimento_id})
+        if not movimento_fatture:
+            raise HTTPException(status_code=404, detail="Movimento non trovato")
+        if movimento_fatture.get("riconciliato"):
+            ids_esistenti = {str(value) for value in movimento_fatture.get("fattura_ids") or [] if value}
+            ids_richiesti = {str(item.get("id")) for item in associazioni_fatture if item.get("id")}
+            if ids_esistenti == ids_richiesti and ids_esistenti:
+                return {
+                    "success": True,
+                    "idempotent": True,
+                    "movimento_id": request.movimento_id,
+                    "fattura_ids": sorted(ids_esistenti),
+                    "allocazioni": movimento_fatture.get("allocazioni_fatture") or [],
+                }
+            raise HTTPException(status_code=409, detail="Movimento gia' riconciliato con evidenze diverse")
+        from app.services.bank_payment_allocations import (
+            persist_bank_invoice_allocations,
+            validate_bank_invoice_allocations,
+        )
+        allocazioni = await validate_bank_invoice_allocations(
+            db, movimento_fatture, associazioni_fatture,
+        )
+        return await persist_bank_invoice_allocations(
+            db, movimento_fatture, allocazioni, actor="riconciliazione_ui",
+        )
 
     # Validare il candidato prima di leggere o mutare il movimento: il primo
     # suggerimento non e una scelta dell'operatore.
@@ -207,6 +250,55 @@ async def riconcilia_manuale(request: RiconciliaManuale) -> Dict[str, Any]:
     )
 
     return {"success": True, "movimento_id": request.movimento_id, "tipo": tipo_operazione}
+
+
+async def analizza_anomalie_banca(anno: Optional[int] = None, limit: int = 500) -> Dict[str, Any]:
+    """Report in sola lettura: non ripara, non riconcilia e non cancella."""
+    from app.services.payment_allocation_validator import to_cents
+
+    db = Database.get_db()
+    query: Dict[str, Any] = {**ESCLUDI_CARTA_CREDITO}
+    if anno:
+        query["data"] = {"$regex": f"^{anno}"}
+    rows = await db.estratto_conto_movimenti.find(
+        query, {"_id": 0},
+    ).sort("data", -1).limit(limit).to_list(limit)
+    anomalies = []
+    seen_fingerprints: Dict[str, str] = {}
+    for row in rows:
+        reasons = []
+        fingerprint = str(row.get("fingerprint") or "").strip()
+        if fingerprint and fingerprint in seen_fingerprints:
+            reasons.append({
+                "codice": "fingerprint_duplicato",
+                "record_conservato_id": seen_fingerprints[fingerprint],
+            })
+        elif fingerprint:
+            seen_fingerprints[fingerprint] = str(row.get("id") or "")
+        if row.get("riconciliato") and not any((
+            row.get("fattura_id"), row.get("fattura_ids"), row.get("f24_id"),
+            row.get("stipendio_id"), row.get("allocazioni_fatture"),
+        )):
+            reasons.append({"codice": "riconciliato_senza_target"})
+        if row.get("allocazioni_fatture"):
+            allocated = sum(int(item.get("quota_cents") or 0) for item in row["allocazioni_fatture"])
+            movement = abs(to_cents(row.get("importo")))
+            if allocated != movement:
+                reasons.append({
+                    "codice": "allocazione_non_quadrata",
+                    "differenza_cents": movement - allocated,
+                })
+        if reasons:
+            anomalies.append({
+                "movimento_id": row.get("id"), "data": row.get("data"), "motivi": reasons,
+            })
+    return {
+        "sola_lettura": True,
+        "righe_esaminate": len(rows),
+        "totale_anomalie": len(anomalies),
+        "anomalie": anomalies,
+        "nessun_dato_modificato": True,
+    }
 
 
 async def cerca_fatture_per_associazione(

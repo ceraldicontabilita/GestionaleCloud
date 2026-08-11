@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1112 endpoint** in **114 gruppi**.
+> Totale **1113 endpoint** in **114 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 671 · ext esterni = 88 · — da verificare = 353
+**Riepilogo uso:** ✓ frontend = 672 · ext esterni = 88 · — da verificare = 353
 
 ## AI Parser  (11)
 
@@ -1137,11 +1137,12 @@
 | GET | `/api/openapi/xbrl/status` | ext | openapi_it |
 | GET | `/api/openapi/xbrl/storico-richieste` | ext | openapi_it |
 
-## Operazioni  (10)
+## Operazioni  (11)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/operazioni-da-confermare/smart/analizza` | ✓ | operazioni_module.smart |
+| GET | `/api/operazioni-da-confermare/smart/analizza-anomalie` | ✓ | operazioni_module.smart |
 | GET | `/api/operazioni-da-confermare/smart/banca-veloce` | ✓ | operazioni_module.smart |
 | GET | `/api/operazioni-da-confermare/smart/cerca-f24` | ✓ | operazioni_module.smart |
 | GET | `/api/operazioni-da-confermare/smart/cerca-fatture` | — | operazioni_module.smart |

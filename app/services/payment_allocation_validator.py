@@ -78,8 +78,17 @@ def existing_invoice_allocations_cents(
         quota = to_cents(link.get("quota"))
         if quota > 0:
             linked += quota
-    # importo_pagato include anche bonifici/cassa. Le quote assegno confermate
-    # non vanno contate due volte.
+    bank_links = invoice.get("payment_allocations") or []
+    bank_linked = sum(
+        to_cents(link.get("quota_cents")) if not isinstance(link.get("quota_cents"), int)
+        else int(link.get("quota_cents"))
+        for link in bank_links
+        if isinstance(link, dict)
+        and (not exclude_allocation_id or str(link.get("allocation_id")) != str(exclude_allocation_id))
+        and str(link.get("status") or "confirmed").lower() not in {"stornata", "reversed", "annullata"}
+    )
+    # importo_pagato include anche bonifici/cassa. Le quote strumento gia'
+    # registrate non vanno contate due volte.
     confirmed_checks = sum(
         to_cents(link.get("quota"))
         for link in links
@@ -88,8 +97,8 @@ def existing_invoice_allocations_cents(
         and link.get("banca_confermata")
         and to_cents(link.get("quota")) > 0
     )
-    non_check_paid = max(0, invoice_paid_cents(invoice) - confirmed_checks)
-    return linked + non_check_paid
+    non_instrument_paid = max(0, invoice_paid_cents(invoice) - confirmed_checks - bank_linked)
+    return linked + bank_linked + non_instrument_paid
 
 
 def validate_invoice_allocation(

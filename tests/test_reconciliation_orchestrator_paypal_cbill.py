@@ -42,6 +42,9 @@ def test_orchestratore_include_paypal_fatture_banca_e_cbill(monkeypatch):
     async def proiezione(*args, **kwargs):
         return await record("proiezione", {"proiettati": 4}, *args, **kwargs)
 
+    async def allocazioni_fatture(*args, **kwargs):
+        return await record("allocazioni_fatture", {"allocati": 2}, *args, **kwargs)
+
     monkeypatch.setattr(
         "app.services.assegni_fattura_intent.riprocessa_intenti_assegni",
         assegni_intenti,
@@ -76,6 +79,10 @@ def test_orchestratore_include_paypal_fatture_banca_e_cbill(monkeypatch):
         "app.services.proiezione_bancaria.proietta_movimenti_bancari_semantici",
         proiezione,
     )
+    monkeypatch.setattr(
+        "app.services.bank_payment_allocations.reconcile_deterministic_invoice_allocations",
+        allocazioni_fatture,
+    )
 
     result = asyncio.run(
         riconcilia_documenti_e_pagamenti(object(), anno=2026)
@@ -86,6 +93,7 @@ def test_orchestratore_include_paypal_fatture_banca_e_cbill(monkeypatch):
     assert result["cbill_pagopa"] == {"associati": 1}
     assert result["finanziamenti_soci"] == {"apporti_nuovi": 1}
     assert result["proiezione_banca"] == {"proiettati": 4}
+    assert result["allocazioni_fatture_banca"] == {"allocati": 2}
     paypal_ranges = [
         kwargs for name, kwargs in calls if name == "paypal_fatture"
     ]

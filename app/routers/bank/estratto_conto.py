@@ -1106,20 +1106,25 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
 @handle_errors
 async def pulizia_movimenti_non_in_csv(
     file: UploadFile = File(...),
-    dry_run: bool = Query(True, description="Solo conteggio, non elimina"),
+    dry_run: bool = Query(True, description="Sola lettura; false è bloccato"),
     _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ) -> Dict[str, Any]:
-    """Richiesta utente 18/07/2026: l'export completo della banca è la fonte
-    di verità — "importa le operazioni mancanti, elimina i dati in memoria,
-    ripopola prima nota banca". Questo endpoint fa la parte distruttiva in
-    sicurezza: elimina i movimenti di estratto conto NON presenti nel CSV
-    (nel suo intervallo di date e SOLO per i segni presenti nel file: un
-    export di sole entrate non tocca mai le uscite), scollegando a cascata
-    le righe di Prima Nota e riportando "da pagare" le fatture coinvolte.
-    La parte additiva resta l'import standard (/api/estratto-conto/import),
-    che dopo l'inserimento riesegue tutta la pipeline (fatture, paghe,
-    assegni, sync banca+cassa)."""
+    """Confronta l'export ufficiale con la fonte importata, in sola lettura.
+
+    I movimenti bancari sono evidenze immutabili: l'assenza da un CSV non
+    autorizza cancellazioni, scollegamenti o riaperture automatiche. Il
+    risultato è un report di anomalie da esaminare puntualmente.
+    """
     from collections import Counter
+
+    if not dry_run:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Operazione bloccata: il confronto con il CSV è solo lettura; "
+                "i movimenti bancari e i collegamenti contabili restano immutati"
+            ),
+        )
 
     db = Database.get_db()
     contents = await file.read()
@@ -1195,50 +1200,18 @@ async def pulizia_movimenti_non_in_csv(
                                "descrizione": chiave[2][:60],
                                "riconciliato": bool(m.get("riconciliato"))})
 
-    prima_nota_scollegate = fatture_resettate = 0
-    if not dry_run and da_eliminare:
-        ids = [m["id"] for m in da_eliminare]
-        now = datetime.now(timezone.utc).isoformat()
-        for coll in ("prima_nota_banca", "prima_nota_cassa"):
-            legate = await db[coll].find(
-                {"estratto_conto_id": {"$in": ids},
-                 "status": {"$nin": ["deleted", "archived"]}},
-                {"_id": 0, "id": 1, "fattura_id": 1},
-            ).to_list(20000)
-            for pn in legate:
-                await db[coll].update_one(
-                    {"id": pn["id"]},
-                    {"$set": {"status": "deleted", "deleted": True,
-                              "deleted_reason": "movimento_ec_non_in_csv",
-                              "deleted_at": now}})
-                prima_nota_scollegate += 1
-                if pn.get("fattura_id"):
-                    await db["invoices"].update_one(
-                        {"id": pn["fattura_id"]},
-                        {"$set": {"pagato": False, "paid": False,
-                                  "stato_pagamento": "da_pagare",
-                                  "prima_nota_id": None, "prima_nota_tipo": None,
-                                  "prima_nota_banca_id": None,
-                                  "riconciliato_con_ec": None}})
-                    fatture_resettate += 1
-        r = await db["invoices"].update_many(
-            {"riconciliato_con_ec": {"$in": ids}},
-            {"$set": {"pagato": False, "paid": False, "stato_pagamento": "da_pagare",
-                      "prima_nota_id": None, "riconciliato_con_ec": None}})
-        fatture_resettate += r.modified_count
-        await db["estratto_conto_movimenti"].delete_many({"id": {"$in": ids}})
-
     mancanti_nel_db = sum(v for v in rimasti.values() if v > 0)
     return {
-        "dry_run": dry_run,
+        "dry_run": True,
+        "sola_lettura": True,
         "intervallo": [data_min, data_max],
         "segni_nel_csv": {"entrate": has_entrate, "uscite": has_uscite},
         "movimenti_csv": len(date_csv),
         "movimenti_db_in_scope": len(movimenti_db),
-        "eliminati" if not dry_run else "da_eliminare": len(da_eliminare),
+        "anomalie_non_presenti_nel_csv": len(da_eliminare),
         "esclusi_altra_banca_o_paypal": esclusi_altra_banca,
-        "prima_nota_scollegate": prima_nota_scollegate,
-        "fatture_resettate": fatture_resettate,
+        "movimenti_modificati": 0,
+        "collegamenti_modificati": 0,
         "mancanti_nel_db_da_importare": mancanti_nel_db,
         "esempi": esempi,
     }
@@ -1651,35 +1624,21 @@ async def get_riepilogo(
 @router.delete("/clear")
 @handle_errors
 async def clear_estratto_conto(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
-    """Elimina movimenti estratto conto."""
-    db = Database.get_db()
-    
-    query = {}
-    if anno:
-        query["data"] = {"$regex": f"^{anno}"}
-    
-    result = await db["estratto_conto_movimenti"].delete_many(query)
-    
-    return {"message": f"Eliminati {result.deleted_count} movimenti"}
+    """La fonte bancaria e' immutabile: lo svuotamento non e' consentito."""
+    raise HTTPException(
+        status_code=409,
+        detail="Operazione bloccata: i movimenti bancari non si cancellano; usare esclusione o archivio duplicato",
+    )
 
 
 @router.delete("/{movimento_id}")
 @handle_errors
 async def elimina_singolo_movimento(movimento_id: str) -> Dict[str, Any]:
-    """Elimina un singolo movimento dall'estratto conto."""
-    db = Database.get_db()
-    
-    # Verifica che esista
-    movimento = await db["estratto_conto_movimenti"].find_one({"id": movimento_id})
-    if not movimento:
-        raise HTTPException(status_code=404, detail="Movimento non trovato")
-    
-    result = await db["estratto_conto_movimenti"].delete_one({"id": movimento_id})
-    
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=500, detail="Errore durante l'eliminazione")
-    
-    return {"success": True, "message": "Movimento eliminato", "deleted_id": movimento_id}
+    """La fonte bancaria e' immutabile: nessuna cancellazione fisica."""
+    raise HTTPException(
+        status_code=409,
+        detail="Operazione bloccata: escludere il movimento dalla coda conservando la fonte",
+    )
 
 
 @router.get("/export-excel")

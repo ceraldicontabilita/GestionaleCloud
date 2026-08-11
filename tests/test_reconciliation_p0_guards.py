@@ -72,6 +72,8 @@ def test_ignore_requires_reason_and_stores_audit_fields(monkeypatch):
     result = _run(_ignora_movimento({
         "movimento_id": "M1",
         "codice_motivo": "duplicato",
+        "record_conservato_id": "M0",
+        "fingerprint": "sha256:example",
         "motivo": "duplicato già presente nell'estratto",
     }))
     assert result["movimento_id"] == "M1"
@@ -79,6 +81,8 @@ def test_ignore_requires_reason_and_stores_audit_fields(monkeypatch):
     assert update["ignorato"] is True
     assert update["codice_motivo_ignoramento"] == "duplicato"
     assert update["motivo_ignoramento"]
+    assert update["duplicate_of_id"] == "M0"
+    assert update["duplicate_fingerprint"] == "sha256:example"
 
 
 def test_salary_confirmation_requires_explicit_mode(monkeypatch):

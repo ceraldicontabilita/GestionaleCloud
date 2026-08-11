@@ -14,7 +14,7 @@ router = APIRouter()
 # Import functions from modules
 from .smart import (
     banca_veloce, analizza_movimenti_smart, analizza_singolo_movimento,
-    riconcilia_manuale, conferma_f24_batch,
+    riconcilia_manuale, conferma_f24_batch, analizza_anomalie_banca,
     cerca_fatture_per_associazione, cerca_stipendi_per_associazione, cerca_f24_per_associazione
 )
 from .common import RiconciliaManuale
@@ -25,6 +25,7 @@ from .common import RiconciliaManuale
 router.add_api_route("/smart/banca-veloce", banca_veloce, methods=["GET"])
 router.add_api_route("/smart/analizza", analizza_movimenti_smart, methods=["GET"])
 router.add_api_route("/smart/riconcilia-manuale", riconcilia_manuale, methods=["POST"])
+router.add_api_route("/smart/analizza-anomalie", analizza_anomalie_banca, methods=["GET"])
 router.add_api_route("/smart/conferma-f24", conferma_f24_batch, methods=["POST"])
 router.add_api_route("/smart/cerca-fatture", cerca_fatture_per_associazione, methods=["GET"])
 router.add_api_route("/smart/cerca-stipendi", cerca_stipendi_per_associazione, methods=["GET"])
@@ -83,7 +84,7 @@ router.add_api_route("/smart/riconcilia-stipendio", _riconcilia_stipendio, metho
 router.add_api_route("/smart/movimento/{movimento_id}", analizza_singolo_movimento, methods=["GET"])
 
 
-# Ignora movimento (marca come da non processare)
+# Esclude il movimento dalla coda senza eliminare la fonte bancaria.
 async def _ignora_movimento(data: dict = Body(...)):
     from app.database import Database
     from datetime import datetime, timezone
@@ -98,24 +99,37 @@ async def _ignora_movimento(data: dict = Body(...)):
         "da_verificare", "altro",
     }
     if not motivo:
-        raise HTTPException(status_code=400, detail="motivo richiesto per ignorare il movimento")
+        raise HTTPException(status_code=400, detail="motivo richiesto per escludere il movimento dalla coda")
     if codice not in codici_validi:
         raise HTTPException(status_code=400, detail="codice_motivo non valido")
     # Aggiorna in ENTRAMBE le collection (movimenti possono essere in una o l'altra)
     ts = datetime.now(timezone.utc).isoformat()
     update = {"$set": {
         "ignorato": True,
+        "escluso_dalla_coda": True,
         "motivo_ignoramento": motivo,
         "codice_motivo_ignoramento": codice,
         "ignorato_at": ts,
         "updated_at": ts,
     }}
+    if codice == "duplicato":
+        record_conservato_id = str(data.get("record_conservato_id") or "").strip()
+        if not record_conservato_id:
+            raise HTTPException(
+                status_code=400,
+                detail="record_conservato_id richiesto per archiviare un duplicato",
+            )
+        update["$set"].update({
+            "duplicate_of_id": record_conservato_id,
+            "duplicate_fingerprint": str(data.get("fingerprint") or "").strip() or None,
+            "duplicate_archived_at": ts,
+        })
     r1 = await db["estratto_conto_movimenti"].update_one({"id": mov_id}, update)
     r2 = await db["bank_movements"].update_one({"id": mov_id}, update)
     # anche le righe stipendio pendenti (tab Stipendi) si possono ignorare
     r3 = await db["prima_nota_salari"].update_one({"id": mov_id}, update)
     if r1.matched_count == 0 and r2.matched_count == 0 and r3.matched_count == 0:
         raise HTTPException(status_code=404, detail="Movimento non trovato")
-    return {"message": "Movimento ignorato", "movimento_id": mov_id}
+    return {"message": "Movimento escluso dalla coda; fonte bancaria conservata", "movimento_id": mov_id}
 
 router.add_api_route("/smart/ignora", _ignora_movimento, methods=["POST"])

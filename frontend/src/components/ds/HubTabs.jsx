@@ -18,7 +18,10 @@ import { useIsMobile } from '../../lib/utils';
  *
  * API invariata: tabs [{ id, label, Icon }], activeId, onSelect(tab).
  */
-export function HubTabs({ tabs = [], activeId, onSelect = () => {}, testIdPrefix = 'tab', style = {} }) {
+export function HubTabs({
+  tabs = [], activeId, onSelect = () => {}, testIdPrefix = 'tab', style = {},
+  mode = 'select',
+}) {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
 
@@ -65,7 +68,56 @@ export function HubTabs({ tabs = [], activeId, onSelect = () => {}, testIdPrefix
         Indietro
       </button>
 
-      {tabs.length > 1 && (
+      {tabs.length > 1 && mode === 'visible' && (
+        <div
+          role="tablist"
+          aria-label="Sezioni principali"
+          style={{
+            display: 'flex',
+            gap: 6,
+            overflowX: 'auto',
+            scrollSnapType: 'x mandatory',
+            flex: 1,
+            paddingBottom: 2,
+          }}
+        >
+          {tabs.map(t => {
+            const active = t.id === activeId;
+            const Icon = t.Icon;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                data-testid={`${testIdPrefix}-${t.id}`}
+                onClick={() => onSelect(t)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  flex: '0 0 auto',
+                  scrollSnapAlign: 'start',
+                  minHeight: 40,
+                  padding: '8px 12px',
+                  borderRadius: 6,
+                  border: `1px solid ${active ? '#0f2744' : '#cbd5e1'}`,
+                  background: active ? '#0f2744' : '#fff',
+                  color: active ? '#fff' : '#0f2744',
+                  fontWeight: active ? 700 : 600,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {Icon ? <Icon size={15} /> : null}
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {tabs.length > 1 && mode !== 'visible' && (
         <select
           value={valoreSelect}
           onChange={e => {

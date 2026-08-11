@@ -17,6 +17,7 @@ from app.routers.bonifici_module.classification import (
 )
 from app.services.finanziamenti_soci import classifica_finanziamento_ec
 from app.services.scritture_contabili import scrivi_movimento_se_assente
+from app.services.bank_reconciliation_rules import classify_bank_movement
 
 
 SOURCE = "proiezione_semantica_ec"
@@ -158,6 +159,7 @@ async def proietta_movimenti_bancari_semantici(
         "esaminati": 0, "proiettati": 0, "gia_presenti": 0,
         "finanziamenti_soci": 0, "stipendi": 0, "tfr": 0,
         "paypal_sdd": 0, "non_classificati": 0,
+        "causali_deterministiche": 0,
     }
     cursore = db[Collections.BANK_STATEMENTS].find(query)
     async for movimento_ec in cursore:
@@ -167,6 +169,27 @@ async def proietta_movimenti_bancari_semantici(
         stats["esaminati"] += 1
         ec_id = _id_ec(movimento_ec)
         importo = _importo(movimento_ec)
+        causale_classification = classify_bank_movement(movimento_ec)
+        if causale_classification and ec_id:
+            source_query = (
+                {"_id": movimento_ec["_id"]}
+                if movimento_ec.get("_id") is not None
+                else {"id": ec_id}
+            )
+            await db[Collections.BANK_STATEMENTS].update_one(
+                source_query,
+                {"$set": {
+                    "decisione_classificazione": "automatica",
+                    "classificazione_rule_id": causale_classification["rule_id"],
+                    "classificazione_rule_version": causale_classification["rule_version"],
+                    "classificazione_evidenze": causale_classification["evidenze"],
+                    "classificazione_campi_estratti": causale_classification["campi_estratti"],
+                    "classificazione_tipo": causale_classification["tipo"],
+                    "classificazione_categoria": causale_classification["categoria"],
+                    "classificato_at": datetime.now(timezone.utc).isoformat(),
+                }},
+            )
+            stats["causali_deterministiche"] += 1
         classificazione = classifica_movimento_ec(movimento_ec, dipendenti)
         if not classificazione or not ec_id or not data or importo <= 0:
             stats["non_classificati"] += 1

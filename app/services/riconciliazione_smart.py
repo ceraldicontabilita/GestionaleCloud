@@ -18,8 +18,74 @@ from rapidfuzz import fuzz
 
 from app.database import Database
 from app.utils.parsing import safe_float
+from app.services.bank_reconciliation_rules import classify_bank_movement
+from app.services.payment_allocation_validator import (
+    existing_invoice_allocations_cents,
+    invoice_total_cents,
+    to_cents,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def semanticizza_risultato(result: Dict[str, Any], movement: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggiunge il contratto decisionale comune richiesto dalla UI."""
+    classification = classify_bank_movement(movement)
+    if classification:
+        result["tipo"] = classification["tipo"]
+        result["categoria_suggerita"] = classification["categoria"]
+        result["regola"] = {
+            "id": classification["rule_id"],
+            "versione": classification["rule_version"],
+        }
+        result["campi_estratti"] = classification.get("campi_estratti") or {}
+        result["evidenze"] = classification.get("evidenze") or []
+    else:
+        result["regola"] = {"id": "bank.unclassified.v1", "versione": "2026.08.11.1"}
+        result["evidenze"] = [{
+            "tipo": "movimento_bancario", "id": str(movement.get("id") or ""),
+        }]
+
+    suggestions = [item for item in (result.get("suggerimenti") or []) if item.get("id")]
+    target_ids = [str(item["id"]) for item in suggestions]
+    movement_cents = abs(to_cents(movement.get("importo") or result.get("importo")))
+    allocated_cents = sum(
+        int(item["quota_cents"])
+        if isinstance(item.get("quota_cents"), int)
+        else abs(to_cents(item.get("quota") if item.get("quota") is not None else item.get("importo")))
+        for item in suggestions
+    )
+    exact = bool(target_ids) and movement_cents > 0 and allocated_cents == movement_cents
+    if not target_ids and classification:
+        decision = "automatica"
+        block_reason = None
+        square_status = "non_applicabile"
+    elif target_ids and result.get("associazione_automatica") and exact:
+        decision = "automatica"
+        block_reason = None
+        square_status = "verificata"
+    elif len(target_ids) == 1:
+        decision = "proposta"
+        block_reason = None if exact else "importo_non_quadrato"
+        square_status = "verificata" if exact else "errore"
+    else:
+        decision = "ambigua"
+        block_reason = "candidati_multipli" if target_ids else "target_non_identificato"
+        square_status = "errore" if target_ids and not exact else "non_verificabile"
+
+    result.update({
+        "decisione": decision,
+        "target_ids": target_ids,
+        "quadratura": {
+            "stato": square_status,
+            "movimento_cents": movement_cents,
+            "allocato_cents": allocated_cents,
+            "differenza_cents": movement_cents - allocated_cents,
+        },
+        "motivo_blocco": block_reason,
+        "richiede_conferma": decision != "automatica",
+    })
+    return result
 
 
 # ==================== PATTERN DEFINITIONS ====================
@@ -697,7 +763,11 @@ async def analizza_movimento(movimento: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-async def analizza_estratto_conto_batch(limit: int = 100, solo_non_riconciliati: bool = True) -> Dict[str, Any]:
+async def analizza_estratto_conto_batch(
+    limit: int = 100,
+    solo_non_riconciliati: bool = True,
+    anno: Optional[int] = None,
+) -> Dict[str, Any]:
     """
     Analizza in batch i movimenti dell'estratto conto.
     OTTIMIZZATO: Pre-carica dati per evitare N+1 query.
@@ -746,19 +816,20 @@ async def analizza_estratto_conto_batch(limit: int = 100, solo_non_riconciliati:
     query = {"tipo": {"$ne": "carta_credito"}}
     if solo_non_riconciliati:
         query["riconciliato"] = {"$ne": True}
+    if anno:
+        query["data"] = {"$regex": f"^{anno}"}
 
     # Escludi movimenti già elaborati
     if ids_da_escludere:
         query["id"] = {"$nin": list(ids_da_escludere)}
     
-    movimenti = await db.estratto_conto_movimenti.find(
-        query,
-        {"_id": 0}
-    ).sort("data", -1).limit(limit).to_list(limit)
+    movimenti = []
+    totale_righe = 0
     
     # Filtra ulteriormente: escludi movimenti di prelievo assegno se l'assegno è già elaborato
-    movimenti_filtrati = []
-    for mov in movimenti:
+    async for mov in db.estratto_conto_movimenti.find(
+        query, {"_id": 0},
+    ).sort("data", -1):
         desc = (mov.get("descrizione_originale") or mov.get("descrizione") or "").upper()
         # Se è un prelievo assegno, verifica se l'assegno è già elaborato
         if "PRELIEVO" in desc and "ASSEGNO" in desc:
@@ -771,9 +842,9 @@ async def analizza_estratto_conto_batch(limit: int = 100, solo_non_riconciliati:
                 if any(num_assegno[-8:] in na for na in numeri_assegni_elaborati):
                     logger.debug(f"Escludo prelievo assegno {num_assegno} - già elaborato")
                     continue
-        movimenti_filtrati.append(mov)
-    
-    movimenti = movimenti_filtrati
+        totale_righe += 1
+        if len(movimenti) < limit:
+            movimenti.append(mov)
     
     # === PRE-CARICA DATI PER EVITARE N+1 ===
     
@@ -795,9 +866,14 @@ async def analizza_estratto_conto_batch(limit: int = 100, solo_non_riconciliati:
     # Pre-carica fatture recenti (ultimi 3 mesi - OTTIMIZZATO per velocità)
     data_limite = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
     fatture = await db.invoices.find(
-        {"invoice_date": {"$gte": data_limite}},
+        {
+            "invoice_date": {"$gte": data_limite},
+            "pagato": {"$ne": True},
+            "stato_pagamento": {"$nin": ["pagata", "sospesa"]},
+        },
         {"_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1, "supplier_vat": 1, 
-         "total_amount": 1, "invoice_date": 1, "pagata": 1}
+         "total_amount": 1, "invoice_date": 1, "pagata": 1,
+         "importo_pagato": 1, "payment_allocations": 1, "assegni_collegati": 1}
     ).limit(1000).to_list(1000)
     
     # Pre-carica fornitori con metodo pagamento (usa collection corretta)
@@ -819,7 +895,9 @@ async def analizza_estratto_conto_batch(limit: int = 100, solo_non_riconciliati:
     
     risultati = []
     stats = {
-        "totale": len(movimenti),
+        "totale": totale_righe,
+        "totale_righe": totale_righe,
+        "righe_caricate": len(movimenti),
         "incasso_pos": 0,
         "commissione_pos": 0,
         "commissione_bancaria": 0,
@@ -834,14 +912,16 @@ async def analizza_estratto_conto_batch(limit: int = 100, solo_non_riconciliati:
     
     for mov in movimenti:
         try:
-            analisi = await analizza_movimento_con_cache(mov, cache)
+            analisi = semanticizza_risultato(
+                await analizza_movimento_con_cache(mov, cache), mov,
+            )
         except Exception as e:
             # Un singolo movimento con dati malformati (es. importo non numerico
             # su un doc legacy) non deve far fallire l'intera analisi: prima
             # bastava un record del genere per far tornare 500 tutta la pagina
             # Riconciliazione, mostrando tutti i tab vuoti senza spiegazione.
             logger.warning(f"Errore analisi movimento {mov.get('id')}: {e}")
-            analisi = {
+            analisi = semanticizza_risultato({
                 "movimento_id": mov.get("id"),
                 "descrizione": (mov.get("descrizione_originale") or mov.get("descrizione") or "-")[:100],
                 "importo": safe_float(mov.get("importo")),
@@ -852,7 +932,7 @@ async def analizza_estratto_conto_batch(limit: int = 100, solo_non_riconciliati:
                 "associazione_automatica": False,
                 "richiede_conferma": True,
                 "note": f"Errore analisi automatica: {e}",
-            }
+            }, mov)
         risultati.append(analisi)
 
         stats[analisi["tipo"]] = stats.get(analisi["tipo"], 0) + 1
@@ -1013,7 +1093,54 @@ async def analizza_movimento_con_cache(movimento: Dict[str, Any], cache: Dict[st
         if fornitore_leasing:
             result["tipo"] = "fattura_sdd"
             result["categoria_suggerita"] = "Fattura fornitore (SDD)"
-            
+
+            # I riferimenti espliciti in causale hanno precedenza sul matching
+            # per solo fornitore/importo. Supporta distinte anche oltre 3 righe.
+            numbers = estrai_numeri_fattura(descrizione)
+            numbers.extend(re.findall(r"\d{5,12}", str(numero_fattura or "")))
+            numbers = list(dict.fromkeys(numbers))
+            normalized_numbers = {
+                re.sub(r"[^A-Z0-9]", "", number.upper()) for number in numbers
+            }
+            referenced = []
+            for invoice in cache["fatture"]:
+                number = str(invoice.get("invoice_number") or invoice.get("numero_fattura") or "")
+                normalized = re.sub(r"[^A-Z0-9]", "", number.upper())
+                if normalized and normalized in normalized_numbers:
+                    referenced.append(invoice)
+            supplier_keys = {
+                str(invoice.get("supplier_vat") or invoice.get("supplier_name") or "").strip().upper()
+                for invoice in referenced
+            }
+            if numbers and len(referenced) == len(normalized_numbers) and len(supplier_keys) == 1:
+                result["numeri_fattura_estratti"] = numbers
+                result["suggerimenti"] = []
+                for invoice in referenced:
+                    total_invoice_cents = invoice_total_cents(invoice)
+                    residual_cents = max(
+                        0, total_invoice_cents - existing_invoice_allocations_cents(invoice),
+                    )
+                    result["suggerimenti"].append({
+                        "tipo": "fattura",
+                        "id": invoice.get("id"),
+                        "numero": invoice.get("invoice_number"),
+                        "importo": total_invoice_cents / 100,
+                        "quota_cents": residual_cents,
+                        "residuo_precedente_cents": residual_cents,
+                        "residuo_successivo_cents": 0,
+                        "fornitore": invoice.get("supplier_name"),
+                    })
+                total_cents = sum(item["quota_cents"] for item in result["suggerimenti"])
+                if total_cents == abs(to_cents(importo)):
+                    result["associazione_automatica"] = True
+                    result["richiede_conferma"] = False
+                else:
+                    result["note"] = (
+                        f"Riferimenti trovati ma differenza di "
+                        f"{abs(to_cents(importo)) - total_cents} centesimi"
+                    )
+                return result
+
             # Cerca fatture del fornitore dalla cache
             nome_fornitore = fornitore_leasing[0]
             fatture_match = [f for f in cache["fatture"] 

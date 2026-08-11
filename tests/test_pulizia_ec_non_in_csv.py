@@ -1,13 +1,9 @@
-"""Richiesta 18/07/2026: l'export bancario è la fonte di verità per
-l'estratto conto. pulizia-non-in-csv elimina i movimenti DB assenti dal
-CSV — solo nell'intervallo di date del file e SOLO per i segni presenti
-(un export di sole entrate non tocca mai le uscite) — scollegando la
-Prima Nota e riportando le fatture a "da pagare"."""
+"""Il confronto CSV segnala anomalie senza mutare la fonte bancaria."""
 import asyncio
 import io
 
 import pytest
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile
 
 from app.routers.bank.estratto_conto import pulizia_movimenti_non_in_csv
 
@@ -121,20 +117,21 @@ def _prepara_db(monkeypatch):
 def test_dry_run_conta_senza_eliminare(monkeypatch):
     db = _prepara_db(monkeypatch)
     r = _run(pulizia_movimenti_non_in_csv(file=_upload(CSV_ENTRATE), dry_run=True, _admin={}))
-    assert r["da_eliminare"] == 1
+    assert r["anomalie_non_presenti_nel_csv"] == 1
+    assert r["sola_lettura"] is True
+    assert r["movimenti_modificati"] == 0
+    assert r["collegamenti_modificati"] == 0
     assert r["esclusi_altra_banca_o_paypal"] == 1
     assert r["segni_nel_csv"] == {"entrate": True, "uscite": False}
     assert r["mancanti_nel_db_da_importare"] == 1  # il versamento del 05/04
     assert not db.colls["estratto_conto_movimenti"].deleted
 
 
-def test_apply_elimina_e_scollega(monkeypatch):
+def test_apply_e_bloccato_e_non_modifica_fonti(monkeypatch):
     db = _prepara_db(monkeypatch)
-    r = _run(pulizia_movimenti_non_in_csv(file=_upload(CSV_ENTRATE), dry_run=False, _admin={}))
-    assert r["eliminati"] == 1
-    assert r["prima_nota_scollegate"] == 1
-    assert r["fatture_resettate"] >= 1
-    assert db.colls["estratto_conto_movimenti"].deleted == [{"id": {"$in": ["E2"]}}]
-    # la riga di prima nota è stata soft-deletata, non cancellata
-    upd = db.colls["prima_nota_banca"].updated[0][1]["$set"]
-    assert upd["status"] == "deleted" and upd["deleted_reason"] == "movimento_ec_non_in_csv"
+    with pytest.raises(HTTPException) as exc:
+        _run(pulizia_movimenti_non_in_csv(file=_upload(CSV_ENTRATE), dry_run=False, _admin={}))
+    assert exc.value.status_code == 409
+    assert not db.colls["estratto_conto_movimenti"].deleted
+    assert not db.colls["prima_nota_banca"].updated
+    assert not db.colls["invoices"].updated
