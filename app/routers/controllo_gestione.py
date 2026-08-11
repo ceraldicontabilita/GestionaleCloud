@@ -44,20 +44,25 @@ async def get_analisi_costi_ricavi(
     if mese:
         data_inizio = f"{anno}-{mese:02d}-01"
         if mese == 12:
-            data_fine = f"{anno}-12-31"
+            data_fine = f"{anno + 1}-01-01"
         else:
             data_fine = f"{anno}-{mese+1:02d}-01"
         periodo = f"{mese:02d}/{anno}"
     else:
         data_inizio = f"{anno}-01-01"
-        data_fine = f"{anno}-12-31"
+        data_fine = f"{anno + 1}-01-01"
         periodo = str(anno)
     
     # === RICAVI ===
     # Corrispettivi
     corrispettivi = await db["corrispettivi"].aggregate([
-        {"$match": {"data": {"$gte": data_inizio, "$lt": data_fine}}},
-        {"$group": {"_id": None, "totale": {"$sum": "$totale"}}}
+        {"$match": {
+            "data": {"$gte": data_inizio, "$lt": data_fine},
+            "entity_status": {"$ne": "deleted"},
+        }},
+        {"$group": {"_id": None, "totale": {
+            "$sum": {"$ifNull": ["$totale_imponibile", 0]}
+        }}}
     ]).to_list(1)
     totale_corrispettivi = corrispettivi[0]["totale"] if corrispettivi else 0
     
@@ -87,32 +92,37 @@ async def get_analisi_costi_ricavi(
     acquisti = await db["invoices"].aggregate([
         {"$match": {
             "invoice_date": {"$gte": data_inizio, "$lt": data_fine},
-            "tipo_documento": {"$nin": ["TD04", "TD08"]}
+            "tipo_documento": {"$nin": ["TD04", "TD08"]},
+            "status": {"$nin": ["deleted", "archived"]},
         }},
-        {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
+        {"$group": {"_id": None, "totale": {"$sum": {
+            "$ifNull": ["$imponibile", {
+                "$subtract": ["$total_amount", {"$ifNull": ["$iva", 0]}]
+            }]
+        }}}}
     ]).to_list(1)
     totale_acquisti = acquisti[0]["totale"] if acquisti else 0
 
     note_credito = await db["invoices"].aggregate([
         {"$match": {
             "invoice_date": {"$gte": data_inizio, "$lt": data_fine},
-            "tipo_documento": {"$in": ["TD04", "TD08"]}
+            "tipo_documento": {"$in": ["TD04", "TD08"]},
+            "status": {"$nin": ["deleted", "archived"]},
         }},
-        {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
+        {"$group": {"_id": None, "totale": {"$sum": {
+            "$ifNull": ["$imponibile", {
+                "$subtract": ["$total_amount", {"$ifNull": ["$iva", 0]}]
+            }]
+        }}}}
     ]).to_list(1)
     totale_acquisti -= note_credito[0]["totale"] if note_credito else 0
     
-    # Prima nota cassa (uscite)
-    uscite_cassa = await db["prima_nota_cassa"].aggregate([
-        {"$match": {
-            "data": {"$gte": data_inizio, "$lt": data_fine},
-            "tipo": "uscita"
-        }},
-        {"$group": {"_id": None, "totale": {"$sum": "$importo"}}}
-    ]).to_list(1)
-    totale_uscite_cassa = uscite_cassa[0]["totale"] if uscite_cassa else 0
-    
-    costi_totali = totale_personale + totale_acquisti + totale_uscite_cassa
+    # I pagamenti in Prima Nota non sono nuovi costi: sommarli alle fatture
+    # contabilizzava due volte la stessa spesa e includeva anche trasferimenti
+    # Cassa/Banca/POS. Le altre uscite restano zero finche' non esiste un
+    # documento di costo classificato nel registro contabile canonico.
+    totale_altre_uscite = 0
+    costi_totali = totale_personale + totale_acquisti
     
     # Margine
     margine = ricavi_totali - costi_totali
@@ -129,14 +139,16 @@ async def get_analisi_costi_ricavi(
         "costi": {
             "personale": round(totale_personale, 2),
             "acquisti_merce": round(totale_acquisti, 2),
-            "altre_uscite": round(totale_uscite_cassa, 2),
+            "altre_uscite": round(totale_altre_uscite, 2),
             "totale": round(costi_totali, 2)
         },
         "margine": {
             "importo": round(margine, 2),
             "percentuale": round(margine_percentuale, 1),
             "tipo": "utile" if margine > 0 else "perdita"
-        }
+        },
+        "criterio": "competenza_imponibile_senza_doppio_conteggio_pagamenti",
+        "fonti": ["corrispettivi", "invoices", "cedolini/prima_nota_salari"],
     }
 
 

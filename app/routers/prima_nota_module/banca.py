@@ -8,14 +8,15 @@ from datetime import datetime, timezone
 import uuid
 
 from app.database import Database, Collections
-from app.services import conti_pos
+from app.services import conti_pos, sumup_sync
 from app.services.payment_document_links import payment_document_ref
 from app.services.payment_allocation_validator import allocation_summary
 from .common import (
     entra_in_prima_nota,
     COLLECTION_PRIMA_NOTA_BANCA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE,
     ESCLUSIONI_SALDO_REALE,
-    calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota, arricchisci_movimenti_fattura
+    calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota,
+    arricchisci_movimenti_fattura, saldi_finanziari,
 )
 
 
@@ -312,6 +313,27 @@ async def list_prima_nota_sumup(
         query, {"_id": 0}
     ).sort("data", -1).to_list(10000)
 
+    dal = f"{anno}-01-01" if anno else "0001-01-01"
+    al = f"{anno}-12-31" if anno else "9999-12-31"
+    transazioni = await sumup_sync.transazioni_del_periodo(db, dal, al)
+    vendite_per_giorno = sumup_sync.aggrega_per_giorno(transazioni)
+    giornate_vendite = [
+        vendite_per_giorno[data]
+        for data in sorted(vendite_per_giorno, reverse=True)
+    ]
+
+    tesoreria = await saldi_finanziari(db, anno)
+    conto_mastercard = next(
+        (conto for conto in tesoreria["conti_reali"]
+         if conto["codice"] == conti_pos.CONTO_SUMUP_MASTERCARD),
+        {"saldo": 0.0},
+    )
+    credito_sumup = next(
+        (credito for credito in tesoreria["crediti_pos"]
+         if credito.get("circuito") == conti_pos.SUMUP),
+        {"saldo": 0.0},
+    )
+
     per_giorno: Dict[str, Dict[str, Any]] = {}
     for movimento in movimenti:
         data = str(movimento.get("data") or "")[:10]
@@ -340,6 +362,16 @@ async def list_prima_nota_sumup(
         "totale_ricevuto": round(sum(giorno["importo"] for giorno in giorni), 2),
         "numero_payout": len(movimenti),
         "giorni": giorni,
+        # Le vendite del terminale e il payout sono fatti distinti. La pagina
+        # li espone insieme per spiegare perche' una vendita di oggi puo'
+        # esistere anche quando il relativo accredito non e' ancora arrivato.
+        "totale_venduto": round(sum(g["vendite"] for g in giornate_vendite), 2),
+        "totale_netto_vendite": round(sum(g["netto"] for g in giornate_vendite), 2),
+        "numero_transazioni": sum(int(g["transazioni"]) for g in giornate_vendite),
+        "giornate_vendite": giornate_vendite,
+        "credito_sumup_aperto": round(float(credito_sumup.get("saldo") or 0), 2),
+        "saldo_mastercard": round(float(conto_mastercard.get("saldo") or 0), 2),
+        "fonte_vendite": "sumup_transactions_archiviate",
     }
 
 

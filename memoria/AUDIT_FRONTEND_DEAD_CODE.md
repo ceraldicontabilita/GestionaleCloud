@@ -3,7 +3,7 @@
 > Generato da `scripts/audit_frontend_dead_code.py` seguendo il grafo di import reale a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici, `import()` dinamici, `lazy(() => import(...))`, re-export `export {X} from`/`export * from`).
 > NON modificare a mano: rilancia lo script.
 
-**Totale file analizzati:** 186
+**Totale file analizzati:** 187
 
 | Classificazione | File |
 |---|---:|
@@ -12,7 +12,7 @@
 | COMPONENTE_USATO | 92 |
 | MODALE_USATO | 3 |
 | HOOK_USATO | 3 |
-| TEST_ONLY | 34 |
+| TEST_ONLY | 35 |
 | DINAMICO_DA_VERIFICARE | 22 |
 | ORFANO_ELIMINABILE | 0 |
 
@@ -131,6 +131,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/hooks/useHashState.js` | HOOK_USATO | 8 |
 | `frontend/src/hooks/usePrimaNota.js` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/hooks/useWebSocket.js` | HOOK_USATO | 1 |
+| `frontend/src/hooks/useWebSocket.test.js` | TEST_ONLY | 0 |
 | `frontend/src/lib/queryClient.js` | COMPONENTE_USATO | 2 |
 | `frontend/src/lib/utils.js` | COMPONENTE_USATO | 99 |
 | `frontend/src/lib/utils.test.js` | TEST_ONLY | 0 |

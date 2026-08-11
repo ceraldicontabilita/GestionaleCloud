@@ -8,6 +8,7 @@ import api from '../api';
 import {
   CartaNexi,
   CartaSumUp,
+  BadgeCategoria,
   FattureAtteseNelRegistroBanca,
   MovimentoModal,
   Provvisori,
@@ -33,7 +34,13 @@ describe('Conto SumUp separato dalla Banca', () => {
       anno={2026}
       dati={{
         totale_ricevuto: 934.20,
+        totale_netto_vendite: 116.90,
+        credito_sumup_aperto: 116.90,
+        saldo_mastercard: 934.20,
         numero_payout: 3,
+        giornate_vendite: [
+          { data: '2026-08-11', vendite: 116.90, rimborsi: 0, netto: 116.90, transazioni: 2 },
+        ],
         giorni: [
           { data: '2026-08-10', importo: 834.20, numero_payout: 2, payout_ids: ['PID1', 'PID2'] },
           { data: '2026-08-09', importo: 100, numero_payout: 1, payout_ids: ['PID3'] },
@@ -46,6 +53,9 @@ describe('Conto SumUp separato dalla Banca', () => {
     expect(screen.getByText('PID3')).toBeInTheDocument();
     expect(screen.getByText('€ 834,20')).toBeInTheDocument();
     expect(screen.getByText('€ 100,00')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Vendite SumUp acquisite' })).toBeInTheDocument();
+    expect(screen.getByText('11-08-2026')).toBeInTheDocument();
+    expect(screen.getAllByText('€ 116,90').length).toBeGreaterThan(0);
   });
 
   it('non contiene piu il pannello di dettaglio entrate e la differenza POS fuorviante', () => {
@@ -58,6 +68,17 @@ describe('Conto SumUp separato dalla Banca', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/pages/PrimaNota.jsx'), 'utf8');
     expect(source).not.toContain('/api/prima-nota/sposta-movimento');
     expect(source).toContain("{tipo === 'cassa' && (");
+  });
+});
+
+describe('Icone categorie Prima Nota', () => {
+  it('rende le categorie Banca e Cassa senza errori runtime', () => {
+    render(<>
+      <BadgeCategoria categoria="Versamento Banca" />
+      <BadgeCategoria categoria="Pagamento in Cassa" />
+    </>);
+    expect(screen.getByText('Versamento Banca')).toBeInTheDocument();
+    expect(screen.getByText('Pagamento in Cassa')).toBeInTheDocument();
   });
 });
 
