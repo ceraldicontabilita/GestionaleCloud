@@ -98,7 +98,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/ds/Tabs.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ds/index.js` | COMPONENTE_USATO | 62 |
 | `frontend/src/components/layout/TopNav.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/components/ui/ConfirmDialog.jsx` | MODALE_USATO | 27 |
+| `frontend/src/components/ui/ConfirmDialog.jsx` | MODALE_USATO | 28 |
 | `frontend/src/components/ui/alert.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/ui/avatar.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/ui/badge.jsx` | COMPONENTE_USATO | 1 |
