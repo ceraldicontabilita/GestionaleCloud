@@ -50,8 +50,16 @@ def _run(coroutine):
 
 def test_percentuale_detraibilita_non_inventa_zero_percento():
     non_classificata = iva_router._arricchisci_fattura_iva({"iva": 22})
+    non_classificata_con_zero_tecnico = iva_router._arricchisci_fattura_iva(
+        {"iva": 22, "iva_detraibile": 0, "stato_detrazione_iva": "DA_VERIFICARE"}
+    )
     classificata_zero = iva_router._arricchisci_fattura_iva(
-        {"iva": 22, "iva_detraibile": 0}
+        {
+            "iva": 22,
+            "iva_detraibile": 0,
+            "stato_detrazione_iva": "DA_VERIFICARE",
+            "stato_classificazione": "classificata",
+        }
     )
     classificata_quaranta = iva_router._arricchisci_fattura_iva(
         {"iva": 220, "iva_detraibile": 88}
@@ -62,6 +70,8 @@ def test_percentuale_detraibilita_non_inventa_zero_percento():
 
     assert non_classificata["percentuale_detraibilita_iva"] is None
     assert non_classificata["detraibilita_valutata"] is False
+    assert non_classificata_con_zero_tecnico["percentuale_detraibilita_iva"] == 0
+    assert non_classificata_con_zero_tecnico["detraibilita_valutata"] is False
     assert classificata_zero["percentuale_detraibilita_iva"] == 0
     assert classificata_zero["detraibilita_valutata"] is True
     assert classificata_quaranta["percentuale_detraibilita_iva"] == 40
