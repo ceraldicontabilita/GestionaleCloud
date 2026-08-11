@@ -27,7 +27,15 @@ COLL_QUIETANZE = "quietanze_f24"
 def richiedi_quadratura_f24(parsed: Dict[str, Any]) -> Dict[str, Any]:
     """Rifiuta un PDF F24 privo di quadratura positiva esplicita."""
     validation = parsed.get("validazione") or {}
-    if validation.get("saldo_quadrato") is not True or validation.get("sezioni_quadrate") is False:
+    section_statuses = {
+        str(value.get("stato") or "")
+        for value in (validation.get("quadrature_sezioni") or {}).values()
+        if isinstance(value, dict)
+    }
+    if validation.get("saldo_quadrato") is not True or (
+        validation.get("sezioni_quadrate") is False
+        or "ERRORE" in section_statuses
+    ):
         difference = validation.get("differenza_saldo")
         raise ValueError(
             "F24 non quadrato o non validato: salvataggio bloccato"
@@ -95,6 +103,16 @@ async def importa_modello_bytes(
     )
     f24_id = await salva_f24(db, documento, source=source)
     rows = normalizza_righe_tributo(documento)
+    from app.services.fiscal_accounting_policy import build_journal_proposal
+
+    # Il modello viene conservato come fonte documentale, ma non produce mai
+    # una scrittura definitiva. La proposta e' calcolata in memoria e resa
+    # visibile all'operatore/commercialista.
+    journal_proposal = build_journal_proposal(
+        documento,
+        document_type="F24_MODELLO",
+        context={"source": source},
+    )
     return {
         "success": True,
         "duplicate": bool(existing),
@@ -103,6 +121,7 @@ async def importa_modello_bytes(
         "righe_tributo": len(rows),
         "righe_credito": sum(1 for row in rows if row["credit_amount"] > 0),
         "validazione": validation,
+        "journal_proposal": journal_proposal,
     }
 
 
@@ -132,6 +151,8 @@ def _periodo(doc: Dict[str, Any]) -> str:
         or doc.get("periodo_competenza")
         or doc.get("scadenza")
         or doc.get("data_scadenza")
+        or dg.get("data_stampa")
+        or dg.get("data_compilazione")
         or dg.get("data_versamento")
         or dg.get("data_scadenza")
         or ""
@@ -172,7 +193,13 @@ async def salva_f24(
     doc = dict(doc)
     doc.pop("_id", None)
     validation = doc.get("validazione")
-    if validation is not None and validation.get("saldo_quadrato") is not True:
+    if validation is not None and (
+        validation.get("saldo_quadrato") is not True
+        or any(
+            isinstance(value, dict) and value.get("stato") == "ERRORE"
+            for value in (validation.get("quadrature_sezioni") or {}).values()
+        )
+    ):
         richiedi_quadratura_f24(doc)
     chiave = chiave_f24(doc)
     doc["f24_dedup_key"] = chiave

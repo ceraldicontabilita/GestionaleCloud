@@ -1180,116 +1180,53 @@ Questo promemoria è stato generato automaticamente dal sistema.
 @router.post("/f24/registra")
 async def registra_f24(f24: F24Create) -> Dict[str, Any]:
     """
-    Registra versamento F24.
-    
-    Scrittura contabile:
-    - DARE: Debiti tributari/previdenziali (chiusura debito)
-    - AVERE: Banca (uscita denaro)
-    - Se compensazione: DARE Banca, AVERE Crediti tributari
-    """
-    db = Database.get_db()
-    
-    f24_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
-    
-    righe_contabili = []
-    
-    # Tributi versati (chiusura debiti)
-    for tributo in f24.tributi:
-        codice = tributo.get("codice_tributo", "")
-        importo = tributo.get("importo", 0)
-        
-        # Determina conto debito in base al codice tributo
-        if codice.startswith("10"):  # Ritenute
-            conto = "231200"
-            nome = "Debiti tributari"
-        elif codice.startswith("60"):  # IVA
-            conto = "231200"
-            nome = "Erario c/IVA"
-        elif codice.startswith("20"):  # IRES
-            conto = "231200"
-            nome = "Debiti IRES"
-        elif codice.startswith("38"):  # IRAP
-            conto = "231200"
-            nome = "Debiti IRAP"
-        elif codice in ["DM10", "DMRA"]:  # INPS
-            conto = "231300"
-            nome = "Debiti INPS"
-        else:
-            conto = "231200"
-            nome = "Altri debiti tributari"
-        
-        righe_contabili.append({
-            'conto': conto,
-            'nome_conto': nome,
-            'dare': importo,
-            'avere': 0,
-            'descrizione': f"F24 - {codice} - {tributo.get('periodo_riferimento', '')}"
-        })
-    
-    # Crediti compensati (se presenti)
-    totale_compensato = 0
-    if f24.crediti_compensati:
-        for credito in f24.crediti_compensati:
-            importo_comp = credito.get("importo", 0)
-            totale_compensato += importo_comp
-            
-            righe_contabili.append({
-                'conto': '140500',  # Crediti tributari
-                'nome_conto': 'Crediti tributari',
-                'dare': 0,
-                'avere': importo_comp,
-                'descrizione': f"Compensazione {credito.get('codice_tributo', '')}"
-            })
-    
-    # Uscita banca (netto versato)
-    netto_versato = f24.totale_versato
-    if netto_versato > 0:
-        righe_contabili.append({
-            'conto': '160100',
-            'nome_conto': 'Banca c/c',
-            'dare': 0,
-            'avere': netto_versato,
-            'descrizione': f"Versamento F24 {f24.data_versamento}"
-        })
-    
-    # Crea scrittura
-    move_id = await crea_scrittura(db, f24.data_versamento, f"F24/{f24.data_versamento}", righe_contabili, "bank")
-    
-    # Salva F24
-    doc = {
-        "id": f24_id,
-        "data_versamento": f24.data_versamento,
-        "data_scadenza": f24.data_scadenza,
-        "tributi": f24.tributi,
-        "crediti_compensati": f24.crediti_compensati,
-        "totale_tributi": sum(t.get("importo", 0) for t in f24.tributi),
-        "totale_compensato": totale_compensato,
-        "totale_versato": netto_versato,
-        "modalita": f24.modalita,
-        "note": f24.note,
-        "move_id": move_id,
-        "created_at": now
-    }
-    from app.services.f24_canonico import salva_f24
+    Restituisce una proposta contabile, senza registrare scritture.
 
-    await salva_f24(db, doc, source="fiscalita_italiana")
-    
-    # Aggiorna scadenze calendario
+    Il vecchio endpoint trasformava una richiesta manuale in una scrittura
+    ``posted`` usando la sola data/importo del modello. Un F24 modello non e'
+    prova di pagamento: la registrazione richiede quietanza/ricevuta e
+    riconciliazione bancaria in un passaggio successivo.
+    """
+    def cents(value: Any) -> int:
+        text = str(value or "0").strip()
+        text = text.replace(".", "").replace(",", ".") if "," in text else text
+        try:
+            return int((Decimal(text) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        except Exception:
+            return 0
+
+    rows = []
     for tributo in f24.tributi:
-        codice = tributo.get("codice_tributo", "")
-        await db["calendario_fiscale"].update_many(
-            {"codice_tributo": codice, "completato": False},
-            {"$set": {"completato": True, "f24_id": f24_id}}
-        )
-    
+        rows.append({
+            "codice_tributo": tributo.get("codice_tributo", ""),
+            "periodo_riferimento": tributo.get("periodo_riferimento") or tributo.get("anno"),
+            "importo_debito_cents": cents(tributo.get("importo")),
+        })
+    for credito in f24.crediti_compensati or []:
+        rows.append({
+            "codice_tributo": credito.get("codice_tributo", ""),
+            "periodo_riferimento": credito.get("periodo_riferimento") or credito.get("anno"),
+            "importo_credito_cents": cents(credito.get("importo")),
+        })
+    document = {
+        "tipo_documento": "F24_MODELLO",
+        "dati_generali": {
+            "data_stampa": f24.data_versamento,
+            "data_compilazione": f24.data_versamento,
+            "scadenza_nominale": f24.data_scadenza,
+        },
+        "sezione_erario": rows,
+        "totali": {"saldo_netto_cents": cents(f24.totale_versato)},
+    }
+    from app.services.fiscal_accounting_policy import build_journal_proposal
+
+    proposal = build_journal_proposal(document, document_type="F24_MODELLO")
     return {
-        "success": True,
-        "f24_id": f24_id,
-        "totale_tributi": doc["totale_tributi"],
-        "totale_compensato": totale_compensato,
-        "totale_versato": netto_versato,
-        "move_id": move_id
+        "success": False,
+        "blocked": True,
+        "action": "JOURNAL_PROPOSAL_ONLY",
+        "message": "Nessuna scrittura registrata: modello F24 senza prova di pagamento",
+        "journal_proposal": proposal,
     }
 
 

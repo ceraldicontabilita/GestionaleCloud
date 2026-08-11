@@ -343,6 +343,8 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
         # storiche, marcato esplicitamente come non probatorio.
         result["dati_generali"]["data_stampa"] = data_stampa
         result["dati_generali"]["data_compilazione"] = data_stampa
+        result["dati_generali"]["scadenza_nominale"] = data_stampa
+        result["dati_generali"]["data_pagamento"] = None
         result["dati_generali"]["data_versamento"] = data_stampa
         result["dati_generali"]["data_versamento_provenienza"] = "MODELLO_NON_PAGAMENTO"
     
@@ -1061,8 +1063,13 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
             "printed_available": False,
             "printed_debit_cents": None,
             "printed_credit_cents": None,
-            "quadrata": True,
+            # Il totale delle righe e' calcolato, ma il PDF non stampa un
+            # subtotale confrontabile per questa sezione. Non e' quindi una
+            # quadratura "verificata": lo stato resta esplicito.
+            "stato": "NON_VERIFICABILE",
+            "quadrata": None,
         }
+    section_states = {value["stato"] for value in section_quadratures.values()}
     result["validazione"] = {
         "righe_estratte": sum(len(result[name]) for name in (
             "sezione_erario", "sezione_inps", "sezione_regioni",
@@ -1078,7 +1085,14 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
             item["pagina"] for item in result["diagnostica_pagine"] if item["stato"] == "bianca"
         ],
         "quadrature_sezioni": section_quadratures,
-        "sezioni_quadrate": all(value["quadrata"] for value in section_quadratures.values()),
+        # Compatibilita' con i consumer legacy: True significa che non c'e'
+        # un errore aritmetico sulle righe. La verifica contro i totali
+        # stampati e' esposta separatamente in `sezioni_stato`.
+        "sezioni_quadrate": "ERRORE" not in section_states,
+        "sezioni_verificate": all(value["stato"] == "VERIFICATA" for value in section_quadratures.values()),
+        "sezioni_stato": "ERRORE" if "ERRORE" in section_states else (
+            "NON_VERIFICABILE" if "NON_VERIFICABILE" in section_states else "VERIFICATA"
+        ),
         "parser_version": "f24-coordinate-v4",
     }
     

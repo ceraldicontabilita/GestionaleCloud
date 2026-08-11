@@ -86,6 +86,12 @@ def _f24_preview(content: bytes, document_kind: str) -> dict[str, Any]:
     kind = PARSER_KIND_QUIETANZA if document_kind == "quietanza_f24" else PARSER_KIND_MODELLO
     parsed = parse_f24_evidence(content, document_kind=kind)
     rows = normalize_f24_evidence_rows(parsed)
+    from app.services.fiscal_accounting_policy import build_journal_proposal
+
+    proposal = build_journal_proposal(
+        parsed,
+        document_type="F24_QUIETANZA" if kind == PARSER_KIND_QUIETANZA else "F24_MODELLO",
+    )
     return {
         "dati_generali": parsed.get("dati_generali") or {},
         "totali": parsed.get("totali") or {},
@@ -93,6 +99,7 @@ def _f24_preview(content: bytes, document_kind: str) -> dict[str, Any]:
         "righe_tributo": len(rows),
         "righe_credito": sum(1 for row in rows if row.get("credit_amount", 0) > 0),
         "field_evidence": parsed.get("field_evidence") or {},
+        "journal_proposal": proposal,
     }
 
 
@@ -104,12 +111,29 @@ def _specialist_preview(content: bytes, filename: str, document_type: str) -> di
         "ricevuta_rav", "ricevuta_bollettino_postale", "esito_pagopa_negativo",
     }:
         from app.services.pagopa_receipts import parse_receipt_pdf
+        from app.services.fiscal_accounting_policy import build_journal_proposal
 
-        return parse_receipt_pdf(content, filename=filename)
+        parsed = parse_receipt_pdf(content, filename=filename)
+        return {
+            **parsed,
+            "journal_proposal": build_journal_proposal(
+                parsed,
+                document_type="AVVISO_PAGOPA"
+                if document_type == "avviso_pagopa"
+                else document_type.upper(),
+            ),
+        }
     if document_type == "nota_rettifica_inps":
         from app.services.inps_adjustment_parser import parse_nota_rettifica_inps
+        from app.services.fiscal_accounting_policy import build_journal_proposal
 
-        return parse_nota_rettifica_inps(content)
+        parsed = parse_nota_rettifica_inps(content)
+        return {
+            **parsed,
+            "journal_proposal": build_journal_proposal(
+                parsed, document_type="NOTA_RETTIFICA_INPS"
+            ),
+        }
     if document_type in {
         "tari_avviso", "tari_istanza_compensazione", "visura_camerale",
         "documento_identita", "ader_sospensione", "ader_definizione_agevolata",

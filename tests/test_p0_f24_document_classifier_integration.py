@@ -3,6 +3,7 @@ import io
 from pathlib import Path
 
 import fitz
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from mongomock_motor import AsyncMongoMockClient
@@ -114,6 +115,11 @@ def test_f24_multipagina_quadra_ogni_modello_e_registra_pagina_bianca():
     assert parsed["validazione"]["saldo_quadrato"] is True
     assert parsed["validazione"]["modelli_quadrati"] is True
     assert parsed["validazione"]["pagine_bianche"] == [2]
+    assert parsed["validazione"]["sezioni_stato"] == "NON_VERIFICABILE"
+    assert all(
+        value["stato"] == "NON_VERIFICABILE"
+        for value in parsed["validazione"]["quadrature_sezioni"].values()
+    )
     assert [item["saldo_quadrato"] for item in parsed["modelli"]] == [True, True]
     assert [item["numero_modello"] for item in parsed["modelli"]] == [1, 2]
     rows = parsed["sezione_erario"]
@@ -143,6 +149,7 @@ def test_classificatore_separa_rettifica_avviso_e_ricevuta():
     assert parsed["is_payment_receipt"] is True
     assert parsed["importo"] == 34.90
     assert parsed["data_pagamento"] == "2026-03-18"
+    assert parsed["page_count"] == 1
 
 
 def test_classificatore_f24_non_dipende_dal_nome_e_normalizza_grafica_spezzata():
@@ -160,7 +167,7 @@ def test_campioni_f24_reali_esercitano_imu_irap_centesimi_e_provenienza():
     imu_path = base / "IMU CERALDI GROUP.pdf"
     irap_path = base / "RAVV II ACC IRAP CERALDI.PDF"
     if not imu_path.exists() or not irap_path.exists():
-        return
+        pytest.skip("fixture reale IMU/IRAP non disponibile nel checkout")
     imu = parse_f24_commercialista(pdf_content=imu_path.read_bytes())
     irap = parse_f24_commercialista(pdf_content=irap_path.read_bytes())
     assert documenti.detect_document_type(imu_path.name, imu_path.read_bytes()) == "f24"
@@ -186,6 +193,8 @@ def test_data_modello_f24_e_data_pagamento_restano_eventi_distinti():
     )
     parsed = parse_f24_commercialista(pdf_content=content)
     assert parsed["dati_generali"]["data_stampa"] == "2026-05-16"
+    assert parsed["dati_generali"]["scadenza_nominale"] == "2026-05-16"
+    assert parsed["dati_generali"]["data_pagamento"] is None
     assert parsed["dati_generali"]["data_versamento_provenienza"] == "MODELLO_NON_PAGAMENTO"
 
 
@@ -196,7 +205,7 @@ def test_caso_reale_1040_giugno_2026_quietanza_21_luglio():
         r"\2026-07-21__F24_021__quietanza_AE__prot_26072135472143961-000001.pdf"
     )
     if not path.exists():
-        return
+        pytest.skip("fixture reale quietanza 1040 non disponibile nel checkout")
     parsed = parse_quietanza_f24(pdf_content=path.read_bytes())
     assert parsed["dati_generali"]["data_pagamento"] == "2026-07-21"
     row = next(
@@ -205,7 +214,9 @@ def test_caso_reale_1040_giugno_2026_quietanza_21_luglio():
     )
     assert row["periodo_riferimento"] == "06/2026"
     assert row["importo_debito"] == 284.0
+    assert row["importo_debito_cents"] == 28400
     assert parsed["totali"]["saldo_netto"] == 286.0
+    assert parsed["totali"]["saldo_netto_cents"] == 28600
 
 
 def test_upload_auto_campioni_reali_imu_e_avviso_solo_su_database_di_test(monkeypatch):
@@ -213,7 +224,7 @@ def test_upload_auto_campioni_reali_imu_e_avviso_solo_su_database_di_test(monkey
     imu_path = base / "IMU CERALDI GROUP.pdf"
     avviso_path = Path(r"C:\Users\ceral\Downloads\AvvisoDigitale_302000600008408304.pdf")
     if not imu_path.exists() or not avviso_path.exists():
-        return
+        pytest.skip("fixture reale IMU/avviso non disponibile nel checkout")
     db = AsyncMongoMockClient()["upload-auto-real-fixtures"]
     monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
     app = FastAPI()

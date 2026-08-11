@@ -327,8 +327,25 @@ def _extract_receipt_text(content: bytes) -> tuple[str, bool]:
     return text, False
 
 
+def _pdf_page_count(content: bytes) -> int | None:
+    """Numero pagine della fonte, mantenuto anche per PDF con OCR."""
+    try:
+        from pypdf import PdfReader
+
+        return len(PdfReader(io.BytesIO(content)).pages)
+    except Exception:
+        try:
+            import fitz
+
+            with fitz.open(stream=content, filetype="pdf") as document:
+                return document.page_count
+        except Exception:
+            return None
+
+
 def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, Any]:
     text, ocr_used = _extract_receipt_text(content)
+    page_count = _pdf_page_count(content)
     compact = re.sub(r"\s+", " ", text)
     upper = compact.upper()
     marker_text = re.sub(r"[^A-Z0-9]", "", upper)
@@ -469,6 +486,7 @@ def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, 
         "codici_fiscali_rilevati": codici_fiscali,
         "text_detected": bool(text.strip()),
         "ocr_used": ocr_used,
+        "page_count": page_count,
         "document_kind": document_kind,
         "is_payment_receipt": bool(
             bpm_payment.get("is_payment_receipt")

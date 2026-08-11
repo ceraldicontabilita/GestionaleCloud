@@ -366,6 +366,29 @@ async def importa_quietanza_bytes(
         "f24_matchati": f24_matchati,
         "riconciliazione_ader": riconciliazione_ader,
     }
+    # La quietanza e' una prova documentale distinta dal movimento banca. La
+    # policy restituisce solo una proposta; nessuna scrittura definitiva viene
+    # inserita dalla pipeline di import.
+    try:
+        from app.services.fiscal_accounting_policy import build_journal_proposal
+
+        risultato["journal_proposal"] = build_journal_proposal(
+            quietanza_doc,
+            document_type="F24_QUIETANZA",
+            evidence_state={
+                "quietanza_validata": True,
+                "pagato_documentalmente": True,
+            },
+            bank_state={"verified": False},
+        )
+    except Exception:
+        logger.exception("Errore generazione journal proposal quietanza %s", file_id)
+        risultato["journal_proposal"] = {
+            "journal_proposal_status": "BLOCKED_REVIEW",
+            "posting_allowed": False,
+            "definitive_posting_created": False,
+            "blockers": ["POLICY_CONTABILE_NON_DISPONIBILE"],
+        }
 
     if not f24_matchati:
         # CASO 3 della specifica (memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md):

@@ -102,6 +102,21 @@ def classifica_riga(sezione: str, codice: str) -> Dict[str, str]:
     sez = (sezione or "").lower()
     cod = (codice or "").strip().upper()
 
+    # Il registro ufficiale dell'Agenzia Entrate segnala il 1075 come
+    # inesistente. Non assegnare mai un conto o una natura contabile: la riga
+    # resta sospesa fino a verifica manuale dell'annualita'/fonte.
+    if cod == "1075":
+        return {
+            "codice": cod,
+            "sezione": sez or "erario",
+            "descrizione": "Codice tributo 1075 non validato dall'archivio ufficiale",
+            "natura": "non_validato",
+            "ente": "Erario",
+            "deducibilita": "da_verificare",
+            "nota": "Bloccato: verificare codice e annualita' con Agenzia Entrate/consulente",
+            "stato_codice": "INVALID_OFFICIAL_REGISTER",
+        }
+
     if sez in ("inps", "sezione_inps"):
         info = CAUSALI_INPS.get(cod)
         if info:

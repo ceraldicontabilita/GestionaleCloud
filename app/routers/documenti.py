@@ -2469,6 +2469,9 @@ async def _archive_non_payment_document(
         "relation_keys": parsed_metadata.get("relation_keys") or {},
         "parser_version": parsed_metadata.get("parser_version"),
         "association_candidates": association_candidates,
+        # La policy contabile e' pura: viene conservata come proposta/audit
+        # output, mai come scrittura nel registro definitivo.
+        "journal_proposal": parsed_metadata.get("journal_proposal"),
     }
     await db["documents_inbox"].insert_one(record.copy())
     return {
@@ -2477,6 +2480,7 @@ async def _archive_non_payment_document(
         "filename": filename, "workflow": "OBBLIGAZIONE_DOCUMENTALE",
         "payment_evidence": False,
         "association_candidates": association_candidates,
+        "journal_proposal": parsed_metadata.get("journal_proposal"),
         "message": labels.get(document_type, "Documento archiviato per verifica"),
     }
 
@@ -2839,9 +2843,13 @@ async def upload_documento_automatico(
             metadata = None
             if tipo_rilevato == "avviso_pagopa":
                 from app.services.pagopa_receipts import parse_receipt_pdf
+                from app.services.fiscal_accounting_policy import build_journal_proposal
 
                 metadata = parse_receipt_pdf(content, filename=filename)
                 metadata["obligation_status"] = "APERTO"
+                metadata["journal_proposal"] = build_journal_proposal(
+                    metadata, document_type="AVVISO_PAGOPA"
+                )
                 metadata["relation_keys"] = {
                     "codice_avviso": metadata.get("codice_avviso"),
                     "numero_verbale": metadata.get("numero_verbale"),
@@ -2850,8 +2858,12 @@ async def upload_documento_automatico(
                 }
             elif tipo_rilevato == "nota_rettifica_inps":
                 from app.services.inps_adjustment_parser import parse_nota_rettifica_inps
+                from app.services.fiscal_accounting_policy import build_journal_proposal
 
                 metadata = parse_nota_rettifica_inps(content)
+                metadata["journal_proposal"] = build_journal_proposal(
+                    metadata, document_type="NOTA_RETTIFICA_INPS"
+                )
 
             archived = await _archive_non_payment_document(
                 db, filename=filename, content=content,

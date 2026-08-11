@@ -6,6 +6,7 @@ import os
 import re
 import fitz  # PyMuPDF
 from datetime import datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Dict, Any, List, Optional
 import logging
 
@@ -179,6 +180,19 @@ def _coordinate_quietanza(doc) -> dict[str, Any]:
 def parse_importo(value: str) -> float:
     """Converte stringa importo italiano in float."""
     return parse_importo_ita(value)
+
+
+def _importo_cents(value: Any) -> int:
+    """Valore canonico in centesimi senza passare da aritmetica binaria."""
+    if value in (None, ""):
+        return 0
+    try:
+        text = str(value).strip()
+        if "," in text:
+            text = text.replace(".", "").replace(",", ".")
+        return int((Decimal(text) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    except (InvalidOperation, TypeError, ValueError):
+        return 0
 
 
 def parse_data(value: str) -> Optional[str]:
@@ -469,33 +483,49 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
         })
     if coordinate_data["sezione_tributi_locali"]:
         result["sezione_tributi_locali"] = coordinate_data["sezione_tributi_locali"]
+
+    # Da questo punto in poi il ledger usa esclusivamente centesimi interi.
+    # I float mantenuti nei campi storici sono solo una vista compatibile.
+    for section_name in _QUIETANZA_SECTION_LABELS.values():
+        for item in result[section_name]:
+            item["importo_debito_cents"] = _importo_cents(item.get("importo_debito"))
+            item["importo_credito_cents"] = _importo_cents(item.get("importo_credito"))
     
     # ============================================
     # CALCOLO TOTALI
     # ============================================
     
-    totale_debito = 0.0
-    totale_credito = 0.0
+    totale_debito_cents = 0
+    totale_credito_cents = 0
     
     for sezione in [result["sezione_erario"], result["sezione_inps"], 
                     result["sezione_inail"], result["sezione_regioni"], 
                     result["sezione_tributi_locali"]]:
         for item in sezione:
-            totale_debito += item.get("importo_debito", 0)
-            totale_credito += item.get("importo_credito", 0)
+            totale_debito_cents += item.get("importo_debito_cents", 0)
+            totale_credito_cents += item.get("importo_credito_cents", 0)
+
+    totale_debito = totale_debito_cents / 100
+    totale_credito = totale_credito_cents / 100
+    saldo_netto_cents = totale_debito_cents - totale_credito_cents
     
     result["totali"] = {
         "totale_debito": round(totale_debito, 2),
         "totale_credito": round(totale_credito, 2),
-        "saldo_netto": round(totale_debito - totale_credito, 2),
-        "saldo_delega": result["dati_generali"].get("saldo_delega", 0)
+        "saldo_netto": round(saldo_netto_cents / 100, 2),
+        "saldo_delega": result["dati_generali"].get("saldo_delega", 0),
+        "totale_debito_cents": totale_debito_cents,
+        "totale_credito_cents": totale_credito_cents,
+        "saldo_netto_cents": saldo_netto_cents,
+        "saldo_delega_cents": _importo_cents(result["dati_generali"].get("saldo_delega")),
     }
-    saldo_delega = result["totali"]["saldo_delega"]
-    difference = round(result["totali"]["saldo_netto"] - saldo_delega, 2)
+    saldo_delega_cents = result["totali"]["saldo_delega_cents"]
+    difference_cents = saldo_netto_cents - saldo_delega_cents
     result["validazione"] = {
         "righe_estratte": sum(len(result[name]) for name in _QUIETANZA_SECTION_LABELS.values()),
-        "saldo_quadrato": abs(difference) <= 0.01,
-        "differenza_saldo": difference,
+        "saldo_quadrato": difference_cents == 0,
+        "differenza_saldo": difference_cents / 100,
+        "differenza_saldo_cents": difference_cents,
         "parser_version": "quietanza-coordinate-v2",
     }
     
