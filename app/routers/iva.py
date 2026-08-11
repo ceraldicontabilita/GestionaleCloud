@@ -44,7 +44,52 @@ def _iva_detraibile_fattura(doc: Dict[str, Any]) -> float:
     credito pienamente detraibile. Un valore mancante resta quindi zero finche'
     il learning o una correzione fiscale non lo valorizzano esplicitamente.
     """
-    return _float(doc.get("iva_detraibile"))
+    if doc.get("iva_detraibile") is not None:
+        return _float(doc.get("iva_detraibile"))
+    percentuale = doc.get("percentuale_detraibilita_iva")
+    if percentuale is None:
+        return 0.0
+    pct = _float(percentuale)
+    if 0 <= pct <= 1:
+        pct *= 100
+    pct = max(0.0, min(100.0, pct))
+    iva_esposta = _float(doc.get("iva_documento") or doc.get("iva"))
+    return round(iva_esposta * pct / 100, 2)
+
+
+def _percentuale_detraibilita_fattura(doc: Dict[str, Any]) -> Optional[float]:
+    """Percentuale esplicita, oppure rapporto verificabile tra gli importi.
+
+    Un campo IVA detraibile assente/non valutato resta ``None``: la vista non
+    deve trasformarlo silenziosamente in 0% e quindi in una classificazione
+    fiscale certa. I valori storici 0..1 vengono normalizzati in percentuale.
+    """
+    raw = doc.get("percentuale_detraibilita_iva")
+    if raw is not None:
+        pct = _float(raw)
+        if 0 <= pct <= 1:
+            pct *= 100
+        return round(max(0.0, min(100.0, pct)), 2)
+
+    if doc.get("iva_detraibile") is None:
+        return None
+    iva_esposta = _float(doc.get("iva_documento") or doc.get("iva"))
+    if iva_esposta <= 0:
+        return None
+    pct = (_iva_detraibile_fattura(doc) / iva_esposta) * 100
+    return round(max(0.0, min(100.0, pct)), 2)
+
+
+def _arricchisci_fattura_iva(doc: Dict[str, Any]) -> Dict[str, Any]:
+    riga = dict(doc)
+    riga["iva_esposta"] = round(_float(doc.get("iva_documento") or doc.get("iva")), 2)
+    riga["iva_detraibile"] = round(_iva_detraibile_fattura(doc), 2)
+    riga["percentuale_detraibilita_iva"] = _percentuale_detraibilita_fattura(doc)
+    riga["detraibilita_valutata"] = (
+        doc.get("iva_detraibile") is not None
+        or doc.get("percentuale_detraibilita_iva") is not None
+    )
+    return riga
 
 
 def _utente_autenticato(current_user: Any, legacy_utente: Optional[str] = None) -> str:
@@ -203,11 +248,31 @@ async def fatture_iva(
         "data_documento": 1, "data_operazione": 1, "data_ricezione": 1,
         "data_registrazione": 1, "periodo_iva_attribuito": 1,
         "periodo_iva_utilizzato": 1, "regola_iva_applicata": 1,
-        "iva": 1, "iva_detraibile": 1, "iva_utilizzata": 1,
+        "iva": 1, "iva_documento": 1, "iva_detraibile": 1,
+        "percentuale_detraibilita_iva": 1, "iva_utilizzata": 1,
         "stato_detrazione_iva": 1, "tipo_documento": 1,
+        "stato_classificazione": 1, "classificato_da": 1,
     }
     docs = await db[COLL].find(query, proj).sort("data_documento", -1).to_list(limit)
-    return {"fatture": docs, "totale": len(docs)}
+    docs = [_arricchisci_fattura_iva(doc) for doc in docs]
+    disponibili = [
+        doc for doc in docs
+        if doc.get("iva_utilizzata") is not True
+        and doc.get("stato_detrazione_iva") in liq.STATI_DETRAZIONE_AMMESSI
+    ]
+    return {
+        "fatture": docs,
+        "totale": len(docs),
+        "totale_iva_esposta": round(sum(_float(doc.get("iva_esposta")) for doc in docs), 2),
+        "totale_iva_detraibile": round(sum(_iva_detraibile_fattura(doc) for doc in docs), 2),
+        "totale_iva_disponibile": round(sum(_iva_detraibile_fattura(doc) for doc in disponibili), 2),
+        "totale_iva_utilizzata": round(sum(
+            _iva_detraibile_fattura(doc) for doc in docs if doc.get("iva_utilizzata") is True
+        ), 2),
+        "totale_da_verificare": sum(
+            1 for doc in docs if doc.get("stato_detrazione_iva") == "DA_VERIFICARE"
+        ),
+    }
 
 
 @router.get("/fatture/non-utilizzate")
@@ -228,12 +293,13 @@ async def fatture_non_utilizzate(
     proj = {
         "_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1,
         "data_documento": 1, "data_ricezione": 1, "periodo_iva_attribuito": 1,
-        "regola_iva_applicata": 1, "iva": 1, "iva_detraibile": 1,
+        "regola_iva_applicata": 1, "iva": 1, "iva_documento": 1,
+        "iva_detraibile": 1, "percentuale_detraibilita_iva": 1,
         "stato_detrazione_iva": 1,
     }
     docs = await db[COLL].find(query, proj).sort("periodo_iva_attribuito", 1).to_list(limit)
     docs = [
-        d for d in docs
+        _arricchisci_fattura_iva(d) for d in docs
         if d.get("stato_detrazione_iva") in liq.STATI_DETRAZIONE_AMMESSI
         and _iva_detraibile_fattura(d) > 0
     ]
@@ -247,8 +313,10 @@ async def _fatture_del_periodo(db, periodo: str) -> List[Dict[str, Any]]:
     """Tutte le fatture attribuite al periodo (per selezione liquidazione)."""
     proj = {
         "_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1,
+        "data_documento": 1, "data_ricezione": 1,
         "periodo_iva_attribuito": 1, "periodo_iva_utilizzato": 1,
-        "iva": 1, "iva_detraibile": 1, "iva_utilizzata": 1,
+        "iva": 1, "iva_documento": 1, "iva_detraibile": 1,
+        "percentuale_detraibilita_iva": 1, "iva_utilizzata": 1,
         "stato_detrazione_iva": 1, "tipo_documento": 1,
         "annullata": 1, "duplicata": 1,
     }
@@ -292,7 +360,10 @@ async def _componi_liquidazione(
                 "id": f.get("id"),
                 "invoice_number": f.get("invoice_number"),
                 "supplier_name": f.get("supplier_name"),
+                "data_documento": f.get("data_documento"),
+                "iva_esposta": round(_float(f.get("iva_documento") or f.get("iva")), 2),
                 "iva": round(_iva_detraibile_fattura(f), 2),
+                "percentuale_detraibilita_iva": _percentuale_detraibilita_fattura(f),
             }
             for f in incluse
         ],

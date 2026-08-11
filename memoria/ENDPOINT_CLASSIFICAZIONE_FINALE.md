@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1115 · tenere: 716 · verificare: 375 · admin-only (migrazione/manutenzione): 24
+**Totale endpoint:** 1115 · tenere: 714 · verificare: 377 · admin-only (migrazione/manutenzione): 24
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -708,8 +708,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/iva/liquidazioni/{liq_id}/rettifica` | iva | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/iva/liquidazioni/{liq_id}/riapri` | iva | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/iva/liquidazioni/{periodo}` | iva | sì | — | — | — | sì | tenere | in uso: FE |
-| `POST /api/iva/ricalcola-attribuzione` | iva | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/iva/ricalcola-attribuzione/ultimo` | iva | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/iva/ricalcola-attribuzione` | iva | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/iva/ricalcola-attribuzione/ultimo` | iva | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/iva/riepilogo-annuale/{anno}` | iva | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/iva/versamento/{anno}/{mese}` | iva | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/learning-machine/dashboard` | learning_machine | sì | — | — | — | — | tenere | in uso: FE |

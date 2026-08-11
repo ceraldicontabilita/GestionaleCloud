@@ -46,12 +46,14 @@ export default function GestioneIVA() {
   const { anno } = useAnnoGlobale();
   const confirm = useConfirm();
   const [dati, setDati] = useState(null);
+  const [corrispettivi, setCorrispettivi] = useState([]);
   const [loading, setLoading] = useState(true);
   const [ricalcolo, setRicalcolo] = useState(false);
   const [msg, setMsg] = useState(null);
 
   // Liquidazione mensile (Fase 3)
-  const [mese, setMese] = useState(1);
+  const [mese, setMese] = useState(() => new Date().getMonth() + 1);
+  const [vistaAnnuale, setVistaAnnuale] = useState(false);
   const [liquidazione, setLiquidazione] = useState(null);
   const [busyLiq, setBusyLiq] = useState(false);
   const periodo = `${anno}-${String(mese).padStart(2, '0')}`;
@@ -62,9 +64,6 @@ export default function GestioneIVA() {
 
   // Dashboard IVA del mese (Fase 5)
   const [dashboard, setDashboard] = useState(null);
-
-  // Calcola pregresso: esito persistente dell'ultimo ricalcolo
-  const [ultimoRic, setUltimoRic] = useState(null);
 
   // Pagina IVA unica: confronto F24 commercialista e scadenze mensili.
   const [confrontoCommercialista, setConfrontoCommercialista] = useState(null);
@@ -90,16 +89,6 @@ export default function GestioneIVA() {
         : null,
     });
     setControlliLoading(false);
-  };
-
-  const caricaUltimoRic = async () => {
-    try {
-      const res = await api.get('/api/iva/ricalcola-attribuzione/ultimo');
-      setUltimoRic(res.data?.ultimo || null);
-    } catch (e) {
-      setUltimoRic(null);
-      setMsg({ tipo: 'errore', testo: 'Impossibile caricare l\'ultimo ricalcolo IVA: ' + (e.response?.data?.detail || e.message) });
-    }
   };
 
   const caricaRiepilogo = async () => {
@@ -193,8 +182,21 @@ export default function GestioneIVA() {
   const carica = async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/api/iva/fatture/non-utilizzate?anno=${anno}`);
-      setDati(res.data);
+      const start = vistaAnnuale
+        ? `${anno}-01-01`
+        : `${anno}-${String(mese).padStart(2, '0')}-01`;
+      const end = vistaAnnuale
+        ? `${anno}-12-31`
+        : `${anno}-${String(mese).padStart(2, '0')}-${String(new Date(anno, mese, 0).getDate()).padStart(2, '0')}`;
+      const fattureUrl = vistaAnnuale
+        ? `/api/iva/fatture?anno=${anno}&limit=5000`
+        : `/api/iva/fatture?periodo=${periodo}&limit=5000`;
+      const [fattureRes, corrispettiviRes] = await Promise.all([
+        api.get(fattureUrl),
+        api.get(`/api/corrispettivi?data_da=${start}&data_a=${end}&limit=5000`),
+      ]);
+      setDati(fattureRes.data);
+      setCorrispettivi(Array.isArray(corrispettiviRes.data) ? corrispettiviRes.data : []);
     } catch (e) {
       setMsg({ tipo: 'errore', testo: 'Errore: ' + (e.response?.data?.detail || e.message) });
     } finally {
@@ -204,7 +206,7 @@ export default function GestioneIVA() {
 
   useEffect(() => {
     carica();
-  }, [anno]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [anno, mese, vistaAnnuale]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     caricaLiquidazione();
@@ -212,7 +214,6 @@ export default function GestioneIVA() {
 
   useEffect(() => {
     caricaRiepilogo();
-    caricaUltimoRic();
     caricaControlliIva();
   }, [anno]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -237,7 +238,6 @@ export default function GestioneIVA() {
         testo: `Lette ${r.lette || 0} fatture: ${r.modificate || 0} aggiornate, `
           + `${r.con_periodo || 0} attribuite, ${r.da_verificare || 0} da verificare.`,
       });
-      setUltimoRic(r);
       await carica();
       await caricaRiepilogo();
     } catch (e) {
@@ -248,114 +248,138 @@ export default function GestioneIVA() {
   };
 
   const fatture = dati?.fatture || [];
+  const numero = valore => Number(valore || 0);
+  const totaliCorrispettivi = corrispettivi.reduce(
+    (acc, c) => {
+      const totale = numero(c.totale ?? c.totale_complessivo);
+      const iva = numero(c.totale_iva ?? c.iva);
+      acc.totale += totale;
+      acc.iva += iva;
+      acc.imponibile += numero(c.totale_imponibile ?? c.imponibile ?? (totale - iva));
+      acc.contanti += numero(c.pagato_contanti);
+      acc.elettronico += numero(c.pagato_elettronico ?? c.pagato_pos);
+      return acc;
+    },
+    { totale: 0, imponibile: 0, iva: 0, contanti: 0, elettronico: 0 }
+  );
+  const etichettaPercentuale = fattura => {
+    if (!fattura.detraibilita_valutata || fattura.percentuale_detraibilita_iva == null) {
+      return 'Da classificare';
+    }
+    return `${Number(fattura.percentuale_detraibilita_iva).toLocaleString('it-IT', {
+      maximumFractionDigits: 2,
+    })}%`;
+  };
+  const riepilogoAliquote = corrispettivo => {
+    const righe = corrispettivo.riepilogo_iva || corrispettivo.riepiloghi_iva || [];
+    if (Array.isArray(righe)) {
+      return righe
+        .map(r => {
+          const aliquota = r.aliquota_iva ?? r.aliquota;
+          const iva = r.imposta ?? r.iva;
+          return aliquota == null ? null : `${aliquota}%: ${formatEuro(iva || 0)}`;
+        })
+        .filter(Boolean)
+        .join(' · ');
+    }
+    if (righe && typeof righe === 'object') {
+      return Object.entries(righe)
+        .map(([aliquota, valore]) => `${aliquota}%: ${formatEuro(valore?.iva ?? valore?.imposta ?? valore)}`)
+        .join(' · ');
+    }
+    return '—';
+  };
 
   const aggiornaTutto = () => Promise.all([
     carica(),
     caricaLiquidazione(),
     caricaRiepilogo(),
-    caricaUltimoRic(),
     caricaControlliIva(),
   ]);
 
   return (
     <PageLayout title="Gestione IVA" icon="📊" subtitle={`Attribuzione, liquidazione, F24 e scadenze — ${anno}`}>
-      <nav aria-label="Percorso gestione IVA" style={STILI.percorso}>
-        <a href="#iva-attribuzione" style={STILI.percorsoLink}>1. Fatture e attribuzione</a>
-        <a href="#iva-liquidazione" style={STILI.percorsoLink}>2. Liquidazione mensile</a>
-        <a href="#iva-confronto-f24" style={STILI.percorsoLink}>3. F24 commercialista</a>
-        <a href="#iva-scadenze" style={STILI.percorsoLink}>4. Scadenze mensili</a>
+      <nav className="iva-period-tabs" role="tablist" aria-label="Periodo IVA">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={vistaAnnuale}
+          className={vistaAnnuale ? 'is-active' : ''}
+          onClick={() => setVistaAnnuale(true)}
+          data-testid="iva-tab-annuale"
+        >
+          Annuale
+        </button>
+        {MESI_FULL.slice(1).map((nome, indice) => {
+          const numeroMese = indice + 1;
+          const attivo = !vistaAnnuale && mese === numeroMese;
+          return (
+            <button
+              key={numeroMese}
+              type="button"
+              role="tab"
+              aria-selected={attivo}
+              className={attivo ? 'is-active' : ''}
+              onClick={() => {
+                setMese(numeroMese);
+                setVistaAnnuale(false);
+              }}
+              data-testid={`iva-tab-mese-${numeroMese}`}
+            >
+              {nome.slice(0, 3)}
+            </button>
+          );
+        })}
       </nav>
-      <div style={STILI.barra}>
-        <div style={STILI.totale} data-testid="iva-totale-disponibile">
-          <Wallet size={20} style={{ color: COLORS.primary }} />
-          <div>
-            <div style={{ fontSize: 12, color: COLORS.textMuted }}>IVA disponibile non utilizzata</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: COLORS.primary }}>
-              {formatEuro(dati?.totale_iva_disponibile || 0)}
-            </div>
-          </div>
-        </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <Button variant="secondary" onClick={aggiornaTutto} disabled={loading || controlliLoading}>
-            <RefreshCw size={16} className={loading || controlliLoading ? 'spin' : ''} /> Aggiorna tutto
-          </Button>
-        </div>
-      </div>
 
-      {/* ── Calcola pregresso (persistente) ───────────────────────────── */}
-      <div id="iva-attribuzione" style={STILI.sezione} data-testid="calcola-pregresso">
-        <h3 style={STILI.sezioneTitolo}>
-          <Calculator size={18} style={{ color: COLORS.primary }} /> Calcola pregresso
-        </h3>
-        <p style={{ fontSize: 13, color: COLORS.textMuted, margin: '0 0 10px' }}>
-          Rilegge tutte le fatture di acquisto e ricalcola l'IVA per competenza
-          (periodo, regola, stato). Non tocca l'IVA già usata in una liquidazione
-          confermata. L'esito qui sotto resta memorizzato: sai sempre quante
-          fatture sono state lette e attribuite.
-        </p>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-          <Button
-            variant="primary"
-            onClick={() => ricalcolaAttribuzione(true)}
-            disabled={ricalcolo}
-            data-testid="iva-ricalcola-tutto"
-          >
-            {ricalcolo ? 'Calcolo in corso…' : 'Calcola tutto il pregresso'}
+      <div className="iva-command-bar" data-testid="iva-command-bar">
+        <div>
+          <strong>{vistaAnnuale ? `Tutto il ${anno}` : `${MESI_FULL[mese]} ${anno}`}</strong>
+          <span>
+            {fatture.length} fatture · {corrispettivi.length} corrispettivi XML
+          </span>
+        </div>
+        <div className="iva-command-actions">
+          <Button variant="secondary" size="sm" onClick={aggiornaTutto} disabled={loading || controlliLoading}>
+            <RefreshCw size={15} className={loading || controlliLoading ? 'spin' : ''} /> Aggiorna
           </Button>
           <Button
             variant="secondary"
+            size="sm"
             onClick={() => ricalcolaAttribuzione(false)}
             disabled={ricalcolo}
             data-testid="iva-ricalcola-anno"
           >
-            Solo {anno}
+            <Calculator size={15} /> {ricalcolo ? 'Ricalcolo...' : `Ricalcola ${anno}`}
           </Button>
+          {!vistaAnnuale && (
+            <Button variant="primary" size="sm" onClick={calcolaLiq} disabled={busyLiq} data-testid="liq-calcola">
+              <Calculator size={15} /> Calcola mese
+            </Button>
+          )}
+          {!vistaAnnuale && liquidazione && !['CONFERMATA', 'TRASMESSA'].includes(liquidazione.stato) && (
+            <Button variant="success" size="sm" onClick={confermaLiq} disabled={busyLiq} data-testid="liq-conferma">
+              <CheckCircle2 size={15} /> Conferma
+            </Button>
+          )}
+          {!vistaAnnuale && liquidazione && ['CONFERMATA', 'TRASMESSA'].includes(liquidazione.stato) && (
+            <Button variant="secondary" size="sm" onClick={riapriLiq} disabled={busyLiq} data-testid="liq-riapri">
+              <Unlock size={15} /> Riapri
+            </Button>
+          )}
         </div>
-        {ultimoRic ? (
-          <div style={STILI.riepilogo} data-testid="ultimo-ricalcolo">
-            <div style={STILI.voce}>
-              <span style={STILI.voceLabel}>Fatture lette</span>
-              <strong>{ultimoRic.lette ?? 0}</strong>
-            </div>
-            <div style={STILI.voce}>
-              <span style={STILI.voceLabel}>Attribuite</span>
-              <strong>{ultimoRic.con_periodo ?? 0}</strong>
-            </div>
-            <div style={STILI.voce}>
-              <span style={STILI.voceLabel}>Da verificare</span>
-              <strong style={{ color: (ultimoRic.da_verificare || 0) > 0 ? COLORS.danger : COLORS.text }}>
-                {ultimoRic.da_verificare ?? 0}
-              </strong>
-            </div>
-            <div style={STILI.voce}>
-              <span style={STILI.voceLabel}>Aggiornate</span>
-              <strong>{ultimoRic.modificate ?? 0}</strong>
-            </div>
-            <div style={STILI.voce}>
-              <span style={STILI.voceLabel}>Già utilizzate</span>
-              <strong>{ultimoRic.gia_utilizzate ?? 0}</strong>
-            </div>
-            <div style={STILI.voce}>
-              <span style={STILI.voceLabel}>Ultimo calcolo</span>
-              <strong style={{ fontSize: 12 }}>{formatDateIT(ultimoRic.eseguito_il)}</strong>
-            </div>
-          </div>
-        ) : (
-          <div style={STILI.miniVuoto}>
-            Nessun ricalcolo eseguito finora. Premi «Calcola tutto il pregresso».
-          </div>
-        )}
-        {ultimoRic?.per_anno && Object.keys(ultimoRic.per_anno).length > 0 && (
-          <div style={{ marginTop: 8, fontSize: 12, color: COLORS.textMuted }}>
-            Attribuite per anno:{' '}
-            {Object.entries(ultimoRic.per_anno)
-              .sort()
-              .map(([a, n]) => `${a}: ${n}`)
-              .join(' · ')}
-          </div>
-        )}
       </div>
 
+      <div className="iva-kpi-grid">
+        <div><span>Fatture nel periodo</span><strong>{dati?.totale ?? fatture.length}</strong></div>
+        <div><span>IVA esposta</span><strong>{formatEuro(dati?.totale_iva_esposta || 0)}</strong></div>
+        <div><span>IVA detraibile</span><strong>{formatEuro(dati?.totale_iva_detraibile || 0)}</strong></div>
+        <div data-testid="iva-totale-disponibile"><span>Ancora disponibile</span><strong>{formatEuro(dati?.totale_iva_disponibile || 0)}</strong></div>
+        <div><span>IVA corrispettivi</span><strong>{formatEuro(totaliCorrispettivi.iva)}</strong></div>
+        <div><span>Da verificare</span><strong>{dati?.totale_da_verificare || 0}</strong></div>
+      </div>
+
+      {/* ── Calcola pregresso (persistente) ───────────────────────────── */}
       {msg && (
         <div
           role={msg.tipo === 'ok' ? 'status' : 'alert'}
@@ -366,101 +390,133 @@ export default function GestioneIVA() {
         </div>
       )}
 
-      {loading ? (
-        <div style={STILI.vuoto}>Caricamento…</div>
-      ) : fatture.length === 0 ? (
-        <div style={STILI.vuoto}>
-          Nessuna IVA disponibile non utilizzata per il {anno}. Se hai appena importato
-          fatture vecchie, premi «Ricalcola attribuzione».
+      <section className="iva-detail-section" aria-labelledby="iva-fatture-periodo">
+        <div className="iva-section-heading">
+          <div>
+            <h3 id="iva-fatture-periodo">Fatture di acquisto del periodo</h3>
+            <p>IVA esposta, percentuale di detraibilità e IVA effettivamente detraibile.</p>
+          </div>
+          <Badge variant="info">{dati?.totale ?? fatture.length} fatture</Badge>
         </div>
-      ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="iva-responsive-table" style={STILI.tabella} data-testid="iva-tabella">
-            <thead>
-              <tr>
-                <th style={STILI.th}>Fornitore</th>
-                <th style={STILI.th}>N. fattura</th>
-                <th style={STILI.th}>Data doc.</th>
-                <th style={STILI.th}>Ricezione</th>
-                <th style={STILI.th}>Periodo IVA</th>
-                <th style={STILI.th}>Regola</th>
-                <th style={{ ...STILI.th, textAlign: 'right' }}>IVA</th>
-                <th style={STILI.th}>Stato</th>
-              </tr>
-            </thead>
-            <tbody>
-              {fatture.map((f, i) => {
-                const st = STATO_LABEL[f.stato_detrazione_iva] || STATO_LABEL.DA_INSERIRE;
-                return (
-                  <tr key={f.id || i} style={{ borderTop: `1px solid ${COLORS.border}` }}>
-                    <td data-label="Fornitore" style={STILI.td}>{f.supplier_name || '—'}</td>
-                    <td data-label="N. fattura" style={STILI.td}>{f.invoice_number || '—'}</td>
-                    <td data-label="Data documento" style={STILI.td}>{formatDateIT(f.data_documento)}</td>
-                    <td data-label="Ricezione" style={STILI.td}>{formatDateIT(f.data_ricezione)}</td>
-                    <td data-label="Periodo IVA" style={STILI.td}>
-                      <strong>{f.periodo_iva_attribuito || '—'}</strong>
-                    </td>
-                    <td data-label="Regola" style={{ ...STILI.td, fontSize: 12, color: COLORS.textMuted }}>
-                      {REGOLA_LABEL[f.regola_iva_applicata] || f.regola_iva_applicata || '—'}
-                    </td>
-                    <td data-label="IVA detraibile" style={{ ...STILI.td, textAlign: 'right', fontWeight: 700 }}>
-                      {formatEuro(f.iva_detraibile ?? 0)}
-                    </td>
-                    <td data-label="Stato" style={STILI.td}>
-                      <Badge variant={st.variant}>{st.label}</Badge>
-                    </td>
+        {loading ? (
+          <div style={STILI.vuoto}>Caricamento…</div>
+        ) : fatture.length === 0 ? (
+          <div style={STILI.vuoto}>
+            Nessuna fattura attribuita a {vistaAnnuale ? `tutto il ${anno}` : `${MESI_FULL[mese]} ${anno}`}.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="iva-responsive-table" style={STILI.tabella} data-testid="iva-tabella">
+              <thead>
+                <tr>
+                  <th style={STILI.th}>Fornitore</th>
+                  <th style={STILI.th}>N. fattura</th>
+                  <th style={STILI.th}>Data doc.</th>
+                  <th style={STILI.th}>Periodo IVA</th>
+                  <th style={STILI.th}>Regola</th>
+                  <th style={{ ...STILI.th, textAlign: 'right' }}>IVA esposta</th>
+                  <th style={{ ...STILI.th, textAlign: 'right' }}>Detraibilità</th>
+                  <th style={{ ...STILI.th, textAlign: 'right' }}>IVA detraibile</th>
+                  <th style={STILI.th}>Stato</th>
+                </tr>
+              </thead>
+              <tbody>
+                {fatture.map((f, i) => {
+                  const st = STATO_LABEL[f.stato_detrazione_iva] || STATO_LABEL.DA_INSERIRE;
+                  return (
+                    <tr key={f.id || i} style={{ borderTop: `1px solid ${COLORS.border}` }}>
+                      <td data-label="Fornitore" style={STILI.td}>{f.supplier_name || '—'}</td>
+                      <td data-label="N. fattura" style={STILI.td}>{f.invoice_number || '—'}</td>
+                      <td data-label="Data documento" style={STILI.td}>{formatDateIT(f.data_documento)}</td>
+                      <td data-label="Periodo IVA" style={STILI.td}>
+                        <strong>{f.periodo_iva_attribuito || '—'}</strong>
+                      </td>
+                      <td data-label="Regola" style={{ ...STILI.td, fontSize: 12, color: COLORS.textMuted }}>
+                        {REGOLA_LABEL[f.regola_iva_applicata] || f.regola_iva_applicata || '—'}
+                      </td>
+                      <td data-label="IVA esposta" style={{ ...STILI.td, textAlign: 'right' }}>
+                        {formatEuro(f.iva_esposta ?? 0)}
+                      </td>
+                      <td data-label="Detraibilità IVA" style={{ ...STILI.td, textAlign: 'right', fontWeight: 700 }}>
+                        {etichettaPercentuale(f)}
+                      </td>
+                      <td data-label="IVA detraibile" style={{ ...STILI.td, textAlign: 'right', fontWeight: 700 }}>
+                        {formatEuro(f.iva_detraibile ?? 0)}
+                      </td>
+                      <td data-label="Stato" style={STILI.td}>
+                        <Badge variant={st.variant}>{st.label}</Badge>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="iva-detail-section" aria-labelledby="iva-corrispettivi-periodo">
+        <div className="iva-section-heading">
+          <div>
+            <h3 id="iva-corrispettivi-periodo">Corrispettivi del periodo</h3>
+            <p>Vendite, imponibile, IVA, contanti ed elettronico letti dagli XML.</p>
+          </div>
+          <Badge variant="info">{corrispettivi.length} XML</Badge>
+        </div>
+        {loading ? (
+          <div style={STILI.vuoto}>Caricamento…</div>
+        ) : corrispettivi.length === 0 ? (
+          <div style={STILI.vuoto}>Nessun corrispettivo XML nel periodo selezionato.</div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="iva-responsive-table" style={STILI.tabella} data-testid="iva-corrispettivi-tabella">
+              <thead>
+                <tr>
+                  <th style={STILI.th}>Data</th>
+                  <th style={STILI.th}>RT / invio</th>
+                  <th style={{ ...STILI.th, textAlign: 'right' }}>Imponibile</th>
+                  <th style={{ ...STILI.th, textAlign: 'right' }}>IVA</th>
+                  <th style={{ ...STILI.th, textAlign: 'right' }}>Totale</th>
+                  <th style={{ ...STILI.th, textAlign: 'right' }}>Contanti</th>
+                  <th style={{ ...STILI.th, textAlign: 'right' }}>Elettronico</th>
+                  <th style={STILI.th}>Aliquote IVA</th>
+                </tr>
+              </thead>
+              <tbody>
+                {corrispettivi.map((c, i) => (
+                  <tr key={c.id || c.id_invio || i} style={{ borderTop: `1px solid ${COLORS.border}` }}>
+                    <td data-label="Data" style={STILI.td}>{formatDateIT(c.data || c.data_rilevazione)}</td>
+                    <td data-label="RT / invio" style={STILI.td}>{c.matricola_rt || c.matricola || c.id_invio || '—'}</td>
+                    <td data-label="Imponibile" style={{ ...STILI.td, textAlign: 'right' }}>{formatEuro(c.totale_imponibile ?? c.imponibile ?? 0)}</td>
+                    <td data-label="IVA" style={{ ...STILI.td, textAlign: 'right', fontWeight: 700 }}>{formatEuro(c.totale_iva ?? c.iva ?? 0)}</td>
+                    <td data-label="Totale" style={{ ...STILI.td, textAlign: 'right', fontWeight: 700 }}>{formatEuro(c.totale ?? c.totale_complessivo ?? 0)}</td>
+                    <td data-label="Contanti" style={{ ...STILI.td, textAlign: 'right' }}>{formatEuro(c.pagato_contanti ?? c.contanti ?? 0)}</td>
+                    <td data-label="Elettronico" style={{ ...STILI.td, textAlign: 'right' }}>{formatEuro(c.pagato_elettronico ?? c.elettronico ?? c.pagato_pos ?? 0)}</td>
+                    <td data-label="Aliquote IVA" style={{ ...STILI.td, fontSize: 12, color: COLORS.textMuted }}>{riepilogoAliquote(c)}</td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan="2" style={STILI.th}>Totale periodo</td>
+                  <td style={{ ...STILI.th, textAlign: 'right' }}>{formatEuro(totaliCorrispettivi.imponibile)}</td>
+                  <td style={{ ...STILI.th, textAlign: 'right' }}>{formatEuro(totaliCorrispettivi.iva)}</td>
+                  <td style={{ ...STILI.th, textAlign: 'right' }}>{formatEuro(totaliCorrispettivi.totale)}</td>
+                  <td style={{ ...STILI.th, textAlign: 'right' }}>{formatEuro(totaliCorrispettivi.contanti)}</td>
+                  <td style={{ ...STILI.th, textAlign: 'right' }}>{formatEuro(totaliCorrispettivi.elettronico)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </section>
 
       {/* ── Liquidazione mensile (Fase 3) ─────────────────────────────── */}
-      <div id="iva-liquidazione" style={STILI.sezione} data-testid="liquidazione-mensile">
+      {!vistaAnnuale && <div id="iva-liquidazione" style={STILI.sezione} data-testid="liquidazione-mensile">
         <h3 style={STILI.sezioneTitolo}>
-          <Calculator size={18} style={{ color: COLORS.primary }} /> Liquidazione mensile
+          <Calculator size={18} style={{ color: COLORS.primary }} /> Liquidazione {MESI_FULL[mese]} {anno}
         </h3>
-        <div style={STILI.barra}>
-          <label style={STILI.campo}>
-            <span style={STILI.campoLabel}>Mese</span>
-            <select
-              value={mese}
-              onChange={(e) => setMese(Number(e.target.value))}
-              style={STILI.select}
-              data-testid="liq-mese"
-            >
-              {MESI_FULL.slice(1).map((m, i) => (
-                <option key={i + 1} value={i + 1}>{m}</option>
-              ))}
-            </select>
-          </label>
-          <label style={STILI.campo}>
-            <span style={STILI.campoLabel}>IVA vendite da corrispettivi XML</span>
-            <strong
-              style={{ ...STILI.input, display: 'flex', alignItems: 'center' }}
-              data-testid="liq-iva-vendite-auto"
-            >
-              {formatEuro(dashboard?.iva_vendite_corrispettivi || 0)}
-            </strong>
-          </label>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-            <Button variant="primary" onClick={calcolaLiq} disabled={busyLiq} data-testid="liq-calcola">
-              <Calculator size={16} /> Calcola
-            </Button>
-            {liquidazione && !['CONFERMATA', 'TRASMESSA'].includes(liquidazione.stato) && (
-              <Button variant="success" onClick={confermaLiq} disabled={busyLiq} data-testid="liq-conferma">
-                <CheckCircle2 size={16} /> Conferma
-              </Button>
-            )}
-            {liquidazione && ['CONFERMATA', 'TRASMESSA'].includes(liquidazione.stato) && (
-              <Button variant="secondary" onClick={riapriLiq} disabled={busyLiq} data-testid="liq-riapri">
-                <Unlock size={16} /> Riapri
-              </Button>
-            )}
-          </div>
-        </div>
 
         {dashboard && (
           <div style={{ ...STILI.riepilogo, borderBottom: 'none' }} data-testid="iva-dashboard-mese">
@@ -616,10 +672,10 @@ export default function GestioneIVA() {
             </div>
           </div>
         )}
-      </div>
+      </div>}
 
       {/* ── Riepilogo annuale + anomalie (Fase 4) ─────────────────────── */}
-      {riepilogo && (
+      {vistaAnnuale && riepilogo && (
         <div style={STILI.sezione} data-testid="riepilogo-annuale">
           <h3 style={STILI.sezioneTitolo}>
             <Wallet size={18} style={{ color: COLORS.primary }} /> Riepilogo annuale {anno}
