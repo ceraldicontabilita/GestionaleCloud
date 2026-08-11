@@ -8,14 +8,13 @@ import InAttesaDocumento from '../components/InAttesaDocumento';
 import AssociaMovimentoBanca from '../components/AssociaMovimentoBanca';
 import AssociaAssegnoFattura from '../components/AssociaAssegnoFattura';
 import DocumentViewerModal from '../components/DocumentViewerModal';
+import DocumentImportLink from '../components/DocumentImportLink';
 import FinanziamentoSoci from './FinanziamentoSoci';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import {
-  Banknote,
   CreditCard,
   Eye,
   FileText,
-  Landmark,
   Pencil,
   ReceiptText,
 } from 'lucide-react';
@@ -45,6 +44,7 @@ const VERDE = '#16a34a';
 const ROSSO = '#dc2626';
 const MESI = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
 const PER_PAGINA = 50;
+const CATEGORIA_STORICA = '__movimenti_storici__';
 
 const CATEGORIE = {
   cassa: ['Corrispettivi', 'POS Verso Banca', 'Versamento Banca', 'Prelevamento Banca',
@@ -54,6 +54,21 @@ const CATEGORIE = {
 };
 
 const eur = v => formatEuroD(v || 0);
+
+export function eCategoriaStorica(categoria) {
+  return /^\d{4}$/.test(String(categoria || '').trim());
+}
+
+export function normalizzaDescrizioneMovimento(descrizione) {
+  const testo = String(descrizione || '').replace(/\s+/g, ' ').trim();
+  if (!testo) return '';
+  const parole = testo.split(' ');
+  if (parole.length % 2 !== 0) return testo;
+  const meta = parole.length / 2;
+  const prima = parole.slice(0, meta).join(' ');
+  const seconda = parole.slice(meta).join(' ');
+  return prima === seconda ? prima : testo;
+}
 
 function parseImportoIT(input) {
   const v = parseFloat(String(input ?? '').replace(/\./g, '').replace(',', '.'));
@@ -264,130 +279,56 @@ function Card({ titolo, valore, colore, onEdit, testId }) {
   );
 }
 
-/* --------------------------- riparto entrate --------------------------- */
-// Distinzione delle ENTRATE per origine (richiesta utente 18/07/2026):
-// serve a vedere subito se la riconciliazione POS cassa→banca è coerente
-// e a separare versamenti, note di credito e finanziamenti dei soci.
-const SOCI_RE = /(vincenzo|antonietta|valerio)\s+ceraldi|ceraldi\s+(vincenzo|antonietta|valerio)|giuseppina\s+pane|pane\s+giuseppina|finanziament\w*\s+soc|apporto\s+soc/i;
-
-function tipoEntrataBanca(m) {
-  const t = `${m.categoria || ''} ${m.descrizione || ''} ${m.source || ''}`.toLowerCase();
-  // L'API esclude i crediti POS virtuali dal conto Banca. Qui restano solo
-  // accrediti effettivi, separati per circuito e quindi verificabili.
-  if (/sumup/.test(t) && /payout|accredito|incas|pos/.test(t)) return 'pos_sumup';
-  if (/numia|nexi/.test(t) && /accredito|incas|pos/.test(t)) return 'pos_numia';
-  if (m.source === 'accredito_payout' || /incas.*p\.o\.s|inc\.pos/.test(t)) return 'pos_altro';
-  if (/nota\s*d[i']\s*credito|storno|rimborso/.test(t)) return 'nc';
-  if (SOCI_RE.test(t)) return 'soci';
-  if (/versament/.test(t)) return 'versamenti';
-  if (/paypal/.test(t)) return 'paypal';
-  if (/amazon|ecommerce|marketplace/.test(t)) return 'ecommerce';
-  if (/chp\s+legal|risarciment|indennizz/.test(t)) return 'legale';
-  if (/^\s*\d{4}\b/.test(String(m.categoria || '')) || m.source === 'export_bancario_operativo') return 'storico';
-  return 'altro';
-}
-
-function tipoEntrataCassa(m) {
-  if (m.categoria === 'Corrispettivi') return 'corrispettivi';
-  const t = `${m.categoria || ''} ${m.descrizione || ''}`.toLowerCase();
-  if (SOCI_RE.test(t)) return 'soci';
-  if (/prelevament|prelievo/.test(t)) return 'prelievo';
-  return 'altro';
-}
-
-const RIGHE_RIPARTO = {
-  banca: [
-    ['pos_numia', 'Accrediti POS Numia/Nexi su BPM'],
-    ['pos_sumup', 'Payout POS SumUp su Mastercard'],
-    ['pos_altro', 'Altri accrediti POS su conto'],
-    ['versamenti', '💰 Versamenti contanti'],
-    ['nc', '↩️ Note di credito / rimborsi'],
-    ['soci', '👥 Finanziamento soci'],
-    ['paypal', 'Incassi e rimborsi PayPal'],
-    ['ecommerce', 'Incassi e rimborsi e-commerce'],
-    ['legale', 'Risarcimenti e indennizzi'],
-    ['storico', 'Movimenti storici importati da banca'],
-    ['altro', 'Entrate bancarie da classificare'],
-  ],
-  cassa: [
-    ['corrispettivi', '🧾 Corrispettivi'],
-    ['prelievo', '🏧 Prelievi da banca'],
-    ['soci', '👥 Apporto soci'],
-    ['altro', '📄 Altre entrate'],
-  ],
-};
-
-function RipartoEntrate({ sezione, cassa, banca, mese }) {
-  const delMese = lista => (mese === null
-    ? lista
-    : lista.filter(m => parseInt((m.data || '').slice(5, 7), 10) === mese + 1));
-
-  const dati = sezione === 'banca' ? banca : cassa;
-  const classifica = sezione === 'banca' ? tipoEntrataBanca : tipoEntrataCassa;
-
-  const { totali, posBanca, posCassa } = useMemo(() => {
-    const tot = {};
-    delMese(dati.movimenti || []).forEach(m => {
-      if (m.tipo !== 'entrata') return;
-      const k = classifica(m);
-      tot[k] = (tot[k] || 0) + Math.abs(m.importo || 0);
-    });
-    const pb = delMese(banca.movimenti || [])
-      .filter(m => m.tipo === 'entrata' && tipoEntrataBanca(m).startsWith('pos_'))
-      .reduce((s, m) => s + Math.abs(m.importo || 0), 0);
-    const pc = delMese(cassa.movimenti || [])
-      .filter(m => m.tipo === 'uscita' &&
-        (/pos(?:\s+(?:numia|nexi|sumup))?\s+verso\s+banca|battuto\s+pos/i.test(m.categoria || '')))
-      .reduce((s, m) => s + Math.abs(m.importo || 0), 0);
-    return { totali: tot, posBanca: pb, posCassa: pc };
-  }, [dati, banca, cassa, mese, sezione]);
-
-  const diffPos = posBanca - posCassa;
-  const posOk = Math.abs(diffPos) < 0.01;
-  const confrontoPosDisponibile = cassa.loaded === true && banca.loaded === true;
-  const righe = RIGHE_RIPARTO[sezione].filter(([k]) => (totali[k] || 0) > 0.004);
-  if (righe.length === 0 && (!confrontoPosDisponibile || (posCassa === 0 && posBanca === 0))) return null;
-
+/* ------------------------- conto Mastercard SumUp ------------------------ */
+export function CartaSumUp({ dati, anno }) {
+  const giorni = dati?.giorni || [];
   return (
-    <div
-      data-testid={`riparto-entrate-${sezione}`}
-      style={{
-        background: 'white', borderRadius: 12, border: '1px solid #e2e8f0',
-        borderLeft: `4px solid ${VERDE}`, padding: '10px 14px', marginTop: 10,
-      }}
-    >
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 }}>
-        Dettaglio entrate {mese !== null ? MESI[mese] : ''} per origine
+    <section aria-labelledby="titolo-conto-sumup" style={{ display: 'grid', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 320px)', gap: 10 }}>
+        <Card titolo={`Ricevuto su Mastercard ${anno}`} valore={dati?.totale_ricevuto || 0} colore={BLU} />
       </div>
-      <div style={{ display: 'grid', gap: 4 }}>
-        {righe.map(([k, label]) => (
-          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13 }}>
-            <span style={{ color: '#334155' }}>{label}</span>
-            <b style={{ fontFamily: 'ui-monospace, Menlo, monospace', color: VERDE, whiteSpace: 'nowrap' }}>
-              {eur(totali[k])}
-            </b>
-          </div>
-        ))}
-      </div>
-      {confrontoPosDisponibile && (posCassa > 0 || posBanca > 0) && (
-        <div
-          style={{
-            marginTop: 8, paddingTop: 8, borderTop: '1px dashed #e2e8f0',
-            fontSize: 12.5, display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap',
-          }}
-        >
-          <span style={{ color: '#334155' }}>
-            {posOk ? '↔️' : '⚠️'} POS reali: chiusure terminali <b>{eur(posCassa)}</b> · accrediti effettivi <b>{eur(posBanca)}</b>
-            {posOk && " (quadrati per importo complessivo; il dettaglio resta separato per circuito)"}
-          </span>
-          {!posOk && (
-            <b style={{ color: ROSSO, fontFamily: 'ui-monospace, Menlo, monospace' }}>
-              Credito POS ancora da incassare / differenza temporale {eur(posCassa - posBanca)}
-            </b>
-          )}
+
+      <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid #e2e8f0' }}>
+          <h2 id="titolo-conto-sumup" style={{ margin: 0, fontSize: 16, color: BLU }}>
+            Accrediti giornalieri Mastercard SumUp
+          </h2>
+          <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 13 }}>
+            Solo payout effettivamente ricevuti. Vendite, crediti verso SumUp e commissioni restano separati.
+          </p>
         </div>
-      )}
-    </div>
+        {giorni.length === 0 ? (
+          <div style={{ padding: 22, textAlign: 'center', color: '#64748b' }}>
+            Nessun payout SumUp ricevuto nel {anno}.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', color: '#475569', fontSize: 12 }}>
+                  <th scope="col" style={{ padding: '9px 14px', textAlign: 'left' }}>Data accredito</th>
+                  <th scope="col" style={{ padding: '9px 14px', textAlign: 'left' }}>Riferimenti payout</th>
+                  <th scope="col" style={{ padding: '9px 14px', textAlign: 'center' }}>Numero</th>
+                  <th scope="col" style={{ padding: '9px 14px', textAlign: 'right' }}>Ricevuto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {giorni.map(giorno => (
+                  <tr key={giorno.data} style={{ borderTop: '1px solid #eef2f7', color: '#334155', fontSize: 13 }}>
+                    <td style={{ padding: '10px 14px' }}>{formatDateIT(giorno.data)}</td>
+                    <td style={{ padding: '10px 14px' }}>{(giorno.payout_ids || []).join(', ') || '—'}</td>
+                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>{giorno.numero_payout}</td>
+                    <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 800, color: VERDE, fontFamily: 'ui-monospace, Menlo, monospace' }}>
+                      {eur(giorno.importo)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -474,13 +415,14 @@ export function CartaNexi({ anno }) {
         ))}
       </div>
       <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button
-          onClick={() => fileRef.current?.click()} disabled={uploading}
-          style={{ background: '#d97706', color: 'white', border: 'none', borderRadius: 7, padding: '6px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: uploading ? 0.6 : 1 }}
+        <DocumentImportLink
+          workflow="nexi"
+          aria-label="Allega estratto Nexi PDF"
+          title="Acquisisci lo statement Nexi da Documenti: classificazione e provenienza centralizzate"
+          style={{ background: '#d97706', color: 'white', border: 'none', borderRadius: 7, padding: '6px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
         >
           {uploading ? '⏳ Caricamento…' : '📎 Allega estratto Nexi (PDF)'}
-        </button>
-        <input ref={fileRef} type="file" accept="application/pdf" onChange={upload} style={{ display: 'none' }} />
+        </DocumentImportLink>
         {msg && <span style={{ fontSize: 12, color: '#475569' }}>{msg}</span>}
       </div>
     </div>
@@ -609,7 +551,6 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
   const [nuovo, setNuovo] = useState(false);
   const [fatturaView, setFatturaView] = useState(null);
   const [documentView, setDocumentView] = useState(null);
-  const [busy, setBusy] = useState(null);
 
   const movimenti = dati.movimenti || [];
   const riporto = dati.saldo_precedente || 0;
@@ -660,7 +601,11 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
   const visibili = useMemo(() => {
     let lista = movimenti;
     if (mese !== null) lista = lista.filter(m => parseInt((m.data || '').slice(5, 7), 10) === mese + 1);
-    if (fCategoria) lista = lista.filter(m => m.categoria === fCategoria);
+    if (fCategoria === CATEGORIA_STORICA) {
+      lista = lista.filter(m => eCategoriaStorica(m.categoria));
+    } else if (fCategoria) {
+      lista = lista.filter(m => m.categoria === fCategoria);
+    }
     if (fTipo) lista = lista.filter(m => m.tipo === fTipo);
     lista = filtraMovimentiPrimaNota(lista, {
       numeroFattura: fNumeroFattura,
@@ -679,20 +624,12 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
   const righe = visibili.slice((paginaCorrente - 1) * PER_PAGINA, paginaCorrente * PER_PAGINA);
   const ultimaPagina = paginaCorrente === totPagine;
 
-  const categorieUsate = useMemo(
-    () => [...new Set(movimenti.map(m => m.categoria).filter(Boolean))].sort(),
-    [movimenti]);
-
-  const sposta = async mov => {
-    const verso = tipo === 'cassa' ? 'banca' : 'cassa';
-    setBusy(mov.id);
-    try {
-      await api.post('/api/prima-nota/sposta-movimento', { movimento_id: mov.id, da: tipo, a: verso });
-      onRicarica();
-    } finally {
-      setBusy(null);
-    }
-  };
+  const categorieUsate = useMemo(() => {
+    const categorie = [...new Set(movimenti.map(m => m.categoria).filter(Boolean))];
+    const haStoriche = categorie.some(eCategoriaStorica);
+    const correnti = categorie.filter(categoria => !eCategoriaStorica(categoria)).sort();
+    return haStoriche ? [...correnti, CATEGORIA_STORICA] : correnti;
+  }, [movimenti]);
 
   // Evidenza di riconciliazione reale in Banca:
   // - per le fatture (caso Leasys: senza questo, una fattura registrata
@@ -715,6 +652,19 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
       verificata, automatica, match_score, tipo: tipoRic, accreditato_ec,
       importo_atteso, differenza_ec, accredito_trovato,
     } = mov.riconciliazione;
+    const allocationStatus = String(
+      mov.payment_allocation_status || mov.riconciliazione.payment_allocation_status || ''
+    ).toLowerCase();
+    if (allocationStatus === 'conflicting') {
+      return (
+        <span
+          title={mov.allocation_conflict_reason || 'Allocazione pagamenti eccedente o incoerente'}
+          style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', borderRadius: 6, padding: '3px 7px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}
+        >
+          ⚠ Conflitto da verificare
+        </span>
+      );
+    }
     const isPos = tipoRic === 'pos_trasferimento';
     const isPaypal = tipoRic === 'paypal';
     const isVersamento = tipoRic === 'versamento_contanti';
@@ -813,16 +763,8 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
     return null;
   };
 
-  const bottoniRiga = mov => (
+  const bottoniRiga = mov => tipo === 'cassa' ? (
     <span style={{ display: 'inline-flex', gap: 7, whiteSpace: 'nowrap', alignItems: 'center' }}>
-      <button
-        onClick={() => sposta(mov)} disabled={busy === mov.id}
-        title={tipo === 'cassa' ? 'Sposta in banca' : 'Sposta in cassa'}
-        aria-label={tipo === 'cassa' ? 'Sposta in banca' : 'Sposta in cassa'}
-        style={{ width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: BLU, color: 'white', border: 'none', borderRadius: 8, padding: 0, cursor: 'pointer', opacity: busy === mov.id ? 0.5 : 1 }}
-      >
-        {tipo === 'cassa' ? <Landmark size={19} /> : <Banknote size={19} />}
-      </button>
       <button
         onClick={() => setEditing(mov)}
         title="Modifica"
@@ -832,7 +774,7 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
         <Pencil size={18} />
       </button>
     </span>
-  );
+  ) : null;
 
   const rigaRiporto = (
     <div
@@ -895,19 +837,25 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
         />
         <select value={fCategoria} onChange={e => setFCategoria(e.target.value)} style={stileInput}>
           <option value="">Tutte le categorie</option>
-          {categorieUsate.map(c => <option key={c} value={c}>{c}</option>)}
+          {categorieUsate.map(c => (
+            <option key={c} value={c}>
+              {c === CATEGORIA_STORICA ? 'Movimenti storici importati' : c}
+            </option>
+          ))}
         </select>
         <select value={fTipo} onChange={e => setFTipo(e.target.value)} style={stileInput}>
           <option value="">Dare + Avere</option>
           <option value="entrata">Solo Dare ↑</option>
           <option value="uscita">Solo Avere ↓</option>
         </select>
-        <button
-          onClick={() => setNuovo(true)}
-          style={{ background: BLU, color: 'white', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
-        >
-          ➕ Nuovo
-        </button>
+        {tipo === 'cassa' && (
+          <button
+            onClick={() => setNuovo(true)}
+            style={{ background: BLU, color: 'white', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+          >
+            ➕ Nuovo
+          </button>
+        )}
       </div>
 
       {/* paginazione */}
@@ -983,7 +931,7 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
                       </span>
                     </div>
                     <div style={{ fontSize: 12.5, color: '#334155', margin: '5px 0', wordBreak: 'break-word' }}>
-                      {m.descrizione || '—'}
+                      {normalizzaDescrizioneMovimento(m.descrizione) || '—'}
                       {tipo === 'banca' && (m.numero_assegno || m.assegno_numero) && (
                         <div style={{ marginTop: 3, color: '#1d4ed8', fontWeight: 700 }}>
                           Assegno n. {m.numero_assegno || m.assegno_numero}
@@ -1035,7 +983,8 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
                 {[
                   ['Data', 'left'], ['Fornitore', 'left'], ['N. fattura', 'left'],
                   ['Categoria', 'left'], ['Descrizione', 'left'], ['Dare', 'right'],
-                  ['Avere', 'right'], ['Saldo', 'right'], ['Doc.', 'center'], ['Azioni', 'center'],
+                  ['Avere', 'right'], ['Saldo', 'right'], ['Doc.', 'center'],
+                  ...(tipo === 'cassa' ? [['Azioni', 'center']] : []),
                 ].map(([h, allineamento]) => (
                   <th
                     key={h}
@@ -1067,7 +1016,7 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
                     <BadgeCategoria categoria={m.categoria} />
                   </td>
                   <td style={{ padding: '7px 10px', minWidth: 210, maxWidth: 360, wordBreak: 'break-word' }}>
-                    {m.descrizione || '—'}
+                    {normalizzaDescrizioneMovimento(m.descrizione) || '—'}
                     {tipo === 'banca' && (m.numero_assegno || m.assegno_numero) && (
                       <div style={{ marginTop: 3, color: '#1d4ed8', fontWeight: 700, fontSize: 11 }}>
                         Assegno n. {m.numero_assegno || m.assegno_numero}
@@ -1089,7 +1038,9 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
                       {badgeRiconciliazione(m)}
                     </span>
                   </td>
-                  <td style={{ padding: '7px 10px', textAlign: 'center' }}>{bottoniRiga(m)}</td>
+                  {tipo === 'cassa' && (
+                    <td style={{ padding: '7px 10px', textAlign: 'center' }}>{bottoniRiga(m)}</td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -1149,8 +1100,10 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
   const [busyMultiplo, setBusyMultiplo] = useState(false);
   const [modalitaRapida, setModalitaRapida] = useState(false);
   const [vista, setVista] = useState('da_lavorare');
+  const [paginaDaLavorare, setPaginaDaLavorare] = useState(1);
   const [paginaTutte, setPaginaTutte] = useState(1);
   const righePerPagina = 100;
+  const righePerPaginaDaDecidere = 50;
   const filtriFattura = {
     numeroFattura: fNumeroFattura,
     numeroDdt: fNumeroDdt,
@@ -1161,9 +1114,15 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
     () => filtraFattureProvvisorie(provvisori, filtriFattura),
     [provvisori, fNumeroFattura, fNumeroDdt, fDataFattura, fFornitore],
   );
+  const pagineDaLavorare = Math.max(1, Math.ceil(provvisoriVisibili.length / righePerPaginaDaDecidere));
+  const paginaDaLavorareSicura = Math.min(paginaDaLavorare, pagineDaLavorare);
+  const provvisoriPagina = provvisoriVisibili.slice(
+    (paginaDaLavorareSicura - 1) * righePerPaginaDaDecidere,
+    paginaDaLavorareSicura * righePerPaginaDaDecidere,
+  );
   const idsProvvisoriVisibili = useMemo(
-    () => new Set(provvisoriVisibili.map(p => p.fattura_id).filter(Boolean)),
-    [provvisoriVisibili],
+    () => new Set(provvisoriPagina.map(p => p.fattura_id).filter(Boolean)),
+    [provvisoriPagina],
   );
   useEffect(() => {
     // Una fattura nascosta da anno o filtri non deve finire per errore nel
@@ -1189,6 +1148,9 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
     (paginaTutteSicura - 1) * righePerPagina,
     paginaTutteSicura * righePerPagina,
   );
+  useEffect(() => {
+    setPaginaDaLavorare(1);
+  }, [fNumeroFattura, fNumeroDdt, fDataFattura, fFornitore, provvisori.length]);
   useEffect(() => {
     setPaginaTutte(1);
   }, [fNumeroFattura, fNumeroDdt, fDataFattura, fFornitore, tutteFatture.length]);
@@ -1246,7 +1208,7 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
   const confermaMultipla = async metodo => {
     const ids = [...selezionate];
     if (ids.length === 0) return;
-    const totale = provvisoriVisibili
+      const totale = provvisoriVisibili
       .filter(p => selezionate.has(p.fattura_id))
       .reduce((somma, p) => somma + Number(p.importo || 0), 0);
     const testo = metodo === 'cassa'
@@ -1428,49 +1390,6 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
     }
   };
 
-  const riprocessaEstratto = async () => {
-    setBusy('riprocessa-estratto');
-    setErrore('');
-    setErroreRiga(null);
-    setEsito('');
-    try {
-      const avvio = await api.post('/api/operazioni-da-confermare/smart/riconcilia-auto');
-      const jobId = avvio.data?.job_id;
-      setEsito(avvio.data?.status === 'running'
-        ? 'Riconciliazione avviata in background. La pagina si aggiornera al termine.'
-        : 'Riconciliazione accodata.');
-
-      let stato = avvio.data || {};
-      const scadenzaPolling = Date.now() + (15 * 60 * 1000);
-      while (stato.status === 'running' && Date.now() < scadenzaPolling) {
-        await new Promise(resolve => setTimeout(resolve, 2500));
-        const response = await api.get('/api/operazioni-da-confermare/smart/riconcilia-auto/status');
-        stato = response.data || {};
-        if (jobId && stato.job_id && stato.job_id !== jobId) {
-          throw new Error('E in corso una nuova riconciliazione: ricarica la pagina per seguirla.');
-        }
-      }
-
-      if (stato.status === 'error') {
-        throw new Error(stato.error || 'Riconciliazione non completata.');
-      }
-      if (stato.status === 'running') {
-        setEsito('La riconciliazione continua in background. Puoi lasciare la pagina e tornare piu tardi.');
-        return;
-      }
-
-      const risultato = stato.result || {};
-      const riconciliati = Number(risultato.riconciliati || 0);
-      const analizzati = Number(risultato.analizzati || 0);
-      setEsito(`Estratto conto riprocessato: ${analizzati} movimenti esaminati, ${riconciliati} riconciliati.`);
-      await onRicarica();
-    } catch (e) {
-      setErrore(e.response?.data?.detail || e.response?.data?.message || e.message);
-    } finally {
-      setBusy(null);
-    }
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
       {completezza && (
@@ -1511,16 +1430,6 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
           Tutte le fatture ({tutteFatture.length})
         </button>
       </div>
-      {vista === 'da_lavorare' && <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button
-          type="button"
-          onClick={riprocessaEstratto}
-          disabled={busy === 'riprocessa-estratto'}
-          style={{ minHeight: 40, background: BLU, color: 'white', border: 0, borderRadius: 8, padding: '8px 13px', fontSize: 12.5, fontWeight: 800, cursor: busy === 'riprocessa-estratto' ? 'wait' : 'pointer' }}
-        >
-          {busy === 'riprocessa-estratto' ? 'Riprocessamento…' : 'Riprocessa estratto conto'}
-        </button>
-      </div>}
       <FiltriFattura
         numeroFattura={fNumeroFattura}
         numeroDdt={fNumeroDdt}
@@ -1619,14 +1528,14 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 700, color: '#334155', cursor: 'pointer' }}>
             <input
               type="checkbox"
-              checked={selezionate.size > 0 && provvisoriVisibili.every(p => selezionate.has(p.fattura_id))}
+              checked={selezionate.size > 0 && provvisoriPagina.every(p => selezionate.has(p.fattura_id))}
               onChange={e => setSelezionate(e.target.checked
-                ? new Set(provvisoriVisibili.map(p => p.fattura_id))
+                ? new Set(provvisoriPagina.map(p => p.fattura_id))
                 : new Set())}
               aria-label="Seleziona tutte le fatture visibili"
               style={{ width: 17, height: 17 }}
             />
-            Seleziona tutte ({provvisoriVisibili.length})
+            Seleziona pagina ({provvisoriPagina.length})
           </label>
           {selezionate.size > 0 && (
             <>
@@ -1667,7 +1576,23 @@ export function Provvisori({ provvisori, attesaBanca = [], tutteFatture = [], co
             : 'Nessuna fattura provvisoria corrisponde ai filtri.'}
         </div>
       )}
-      {provvisoriVisibili.map(p => (
+      {provvisoriVisibili.length > righePerPaginaDaDecidere && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', color: '#475569', fontSize: 12.5 }} data-testid="paginazione-da-decidere">
+          <span>
+            Documenti da associare: <b>{provvisoriVisibili.length}</b>. Righe{' '}
+            {(paginaDaLavorareSicura - 1) * righePerPaginaDaDecidere + 1}-
+            {Math.min(paginaDaLavorareSicura * righePerPaginaDaDecidere, provvisoriVisibili.length)}.
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <button type="button" aria-label="Prima pagina da decidere" onClick={() => setPaginaDaLavorare(1)} disabled={paginaDaLavorareSicura === 1} style={{ minWidth: 40, minHeight: 38, border: '1px solid #cbd5e1', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&laquo;</button>
+            <button type="button" aria-label="Pagina da decidere precedente" onClick={() => setPaginaDaLavorare(p => Math.max(1, p - 1))} disabled={paginaDaLavorareSicura === 1} style={{ minWidth: 40, minHeight: 38, border: '1px solid #cbd5e1', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&lsaquo;</button>
+            <b>Pagina {paginaDaLavorareSicura}/{pagineDaLavorare}</b>
+            <button type="button" aria-label="Pagina da decidere successiva" onClick={() => setPaginaDaLavorare(p => Math.min(pagineDaLavorare, p + 1))} disabled={paginaDaLavorareSicura === pagineDaLavorare} style={{ minWidth: 40, minHeight: 38, border: '1px solid #cbd5e1', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&rsaquo;</button>
+            <button type="button" aria-label="Ultima pagina da decidere" onClick={() => setPaginaDaLavorare(pagineDaLavorare)} disabled={paginaDaLavorareSicura === pagineDaLavorare} style={{ minWidth: 40, minHeight: 38, border: '1px solid #cbd5e1', borderRadius: 8, background: 'white', cursor: 'pointer' }}>&raquo;</button>
+          </span>
+        </div>
+      )}
+      {provvisoriPagina.map(p => (
         <div
           key={p.fattura_id || p.id}
           style={{
@@ -1991,6 +1916,7 @@ export default function PrimaNota() {
 
   const [cassa, setCassa] = useState({ movimenti: [], loaded: false });
   const [banca, setBanca] = useState({ movimenti: [], loaded: false });
+  const [sumup, setSumup] = useState({ giorni: [], totale_ricevuto: 0, numero_payout: 0 });
   const [provvisori, setProvvisori] = useState([]);
   const [attesaBanca, setAttesaBanca] = useState([]);
   const [tutteFatture, setTutteFatture] = useState([]);
@@ -2025,6 +1951,13 @@ export default function PrimaNota() {
         setAttesaBanca(p.data?.in_attesa_banca || []);
         setTutteFatture(p.data?.tutte_fatture || []);
         setCompletezzaProvvisori(p.data?.completezza || null);
+      } else if (sezione === 'sumup') {
+        const risposta = await api.get(
+          `/api/prima-nota/sumup?anno=${anno}`,
+          richiestaInterattiva,
+        );
+        if (richiesta !== richiestaRef.current) return;
+        setSumup(risposta.data || { giorni: [], totale_ricevuto: 0, numero_payout: 0 });
       } else {
         const endpoint = sezione === 'banca' ? 'banca' : 'cassa';
         const risposta = await api.get(
@@ -2036,18 +1969,6 @@ export default function PrimaNota() {
         if (endpoint === 'banca') setBanca(dati);
         else setCassa(dati);
 
-        // Il registro opposto serve solo al confronto POS. Lo carichiamo in
-        // background dopo aver gia' mostrato la pagina richiesta: non puo'
-        // piu' bloccare Cassa o Banca e non rende falsi i totali visualizzati.
-        const opposto = endpoint === 'banca' ? 'cassa' : 'banca';
-        api.get(`/api/prima-nota/${opposto}?${params}`, richiestaInterattiva)
-          .then((secondaria) => {
-            if (richiesta !== richiestaRef.current) return;
-            const altriDati = { ...(secondaria.data || { movimenti: [] }), loaded: true };
-            if (opposto === 'banca') setBanca(altriDati);
-            else setCassa(altriDati);
-          })
-          .catch((errore) => console.warn(`Prima nota ${opposto} (background):`, errore));
       }
     } catch (e) {
       if (richiesta !== richiestaRef.current) return;
@@ -2121,6 +2042,7 @@ export default function PrimaNota() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         {tab('cassa', `💵 Cassa ${anno}`)}
         {tab('banca', `🏦 Banca ${anno}`)}
+        {tab('sumup', `💳 SumUp ${anno}`)}
         {tab('soci', '👥 Soci')}
         {tab('provvisori', etichettaTabProvvisori(provvisori, attesaBanca))}
       </div>
@@ -2150,7 +2072,11 @@ export default function PrimaNota() {
 
       {sezione === 'soci' && <FinanziamentoSoci />}
 
-      {!loading && !loadError && sezione !== 'provvisori' && sezione !== 'soci' && (
+      {!loading && !loadError && sezione === 'sumup' && (
+        <CartaSumUp dati={sumup} anno={anno} />
+      )}
+
+      {!loading && !loadError && sezione !== 'provvisori' && sezione !== 'soci' && sezione !== 'sumup' && (
         <>
           {/* 4 numeri, nessuna card doppia */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
@@ -2163,7 +2089,6 @@ export default function PrimaNota() {
             <Card titolo="Saldo" valore={saldoFinale} colore={saldoFinale >= 0 ? BLU : ROSSO} />
           </div>
 
-          <RipartoEntrate sezione={sezione} cassa={cassa} banca={banca} mese={mese} />
           {sezione === 'banca' && <InAttesaDocumento anno={anno} onRicarica={carica} />}
           {sezione === 'banca' && <CartaNexi anno={anno} />}
 

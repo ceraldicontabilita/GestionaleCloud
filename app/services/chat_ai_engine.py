@@ -35,41 +35,83 @@ MAX_ITERAZIONI_TOOL = 10
 MAX_RISULTATI_DEFAULT = 25
 MAX_RISULTATI_TETTO = 100
 STORICO_MESSAGGI_CONTESTO = 10
+OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
+ANTHROPIC_DEFAULT_MODEL = "claude-sonnet-5"
 
 
 def is_configured() -> bool:
-    """True se la chiave Anthropic e' configurata nell'ambiente (env).
-    NB: non vede la chiave salvata nel DB — per quella usa `api_key_configurata`."""
-    return bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
+    """True se un provider AI e' configurato nell'ambiente.
+
+    La chiave cifrata in MongoDB viene verificata da ``api_key_configurata``.
+    """
+    return bool(
+        os.getenv("OPENAI_API_KEY", "").strip()
+        or os.getenv("ANTHROPIC_API_KEY", "").strip()
+    )
 
 
-async def risolvi_api_key(db=None) -> str:
-    """Chiave Anthropic da usare: prima la variabile d'ambiente, poi (se assente)
-    la chiave salvata cifrata in `settings` (chiave='anthropic') dalla pagina di
-    configurazione del gestionale. Cosi' l'utente puo' attivare l'AI senza toccare
-    le variabili d'ambiente."""
-    env = os.getenv("ANTHROPIC_API_KEY", "").strip()
-    if env:
-        return env
+async def risolvi_provider(db=None) -> Dict[str, Any]:
+    """Seleziona provider e chiave senza mai esporre la chiave nei log."""
+    env_openai = os.getenv("OPENAI_API_KEY", "").strip()
+    if env_openai:
+        return {"provider": "openai", "api_key": env_openai, "source": "env", "model": None}
+    env_anthropic = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    if env_anthropic:
+        return {"provider": "anthropic", "api_key": env_anthropic, "source": "env", "model": None}
     if db is None:
-        return ""
+        return {"provider": None, "api_key": "", "source": None, "model": None}
     try:
-        doc = await db["settings"].find_one({"chiave": "anthropic"}, {"_id": 0})
-        if doc and doc.get("api_key"):
-            from app.utils.crypto import decrypt_credential
-            return (decrypt_credential(doc["api_key"]) or "").strip()
+        from app.utils.crypto import decrypt_credential
+        for provider in ("openai", "anthropic"):
+            doc = await db["settings"].find_one({"chiave": provider}, {"_id": 0})
+            if doc and doc.get("api_key"):
+                key = (decrypt_credential(doc["api_key"]) or "").strip()
+                if key:
+                    return {
+                        "provider": provider,
+                        "api_key": key,
+                        "source": "database",
+                        "model": doc.get("modello"),
+                    }
     except Exception:
-        logger.exception("Lettura chiave Anthropic dal DB fallita")
-    return ""
+        logger.exception("Lettura provider AI dal DB fallita")
+    return {"provider": None, "api_key": "", "source": None, "model": None}
+
+
+async def risolvi_api_key(db=None, provider: Optional[str] = None) -> str:
+    """Restituisce la chiave del provider selezionato senza loggarla.
+
+    `provider` mantiene compatibilita' per i vecchi endpoint Anthropic; se
+    omesso usa la priorita' canonica della chat.
+    """
+    if provider:
+        env = os.getenv(f"{provider.upper()}_API_KEY", "").strip()
+        if env:
+            return env
+        if db is None:
+            return ""
+        try:
+            doc = await db["settings"].find_one({"chiave": provider}, {"_id": 0})
+            if doc and doc.get("api_key"):
+                from app.utils.crypto import decrypt_credential
+                return (decrypt_credential(doc["api_key"]) or "").strip()
+        except Exception:
+            logger.exception("Lettura chiave AI dal DB fallita per provider %s", provider)
+        return ""
+    return str((await risolvi_provider(db)).get("api_key") or "")
 
 
 async def api_key_configurata(db=None) -> bool:
-    """True se una chiave Anthropic e' disponibile da env o dal DB."""
-    return bool(await risolvi_api_key(db))
+    """True se una chiave di un provider chat e' disponibile."""
+    return bool((await risolvi_provider(db)).get("api_key"))
 
 
-def _model_name() -> str:
-    return os.getenv("ANTHROPIC_MODEL", "").strip() or "claude-sonnet-5"
+def _model_name(provider: Optional[str] = None) -> str:
+    """Modello del provider; senza argomento mantiene il default Anthropic
+    per i chiamanti legacy che usano ancora direttamente il client Anthropic."""
+    if provider == "openai":
+        return os.getenv("OPENAI_MODEL", "").strip() or OPENAI_DEFAULT_MODEL
+    return os.getenv("ANTHROPIC_MODEL", "").strip() or ANTHROPIC_DEFAULT_MODEL
 
 
 # ============================================================================
@@ -791,6 +833,149 @@ async def _log_tool_call(db, session_id: str, nome: str, params: Dict[str, Any],
 # AGENT LOOP
 # ============================================================================
 
+
+def _openai_tools_schema() -> List[Dict[str, Any]]:
+    """Adatta lo schema interno unico al formato OpenAI tools."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": tool["name"],
+                "description": tool.get("description", ""),
+                "parameters": tool.get("input_schema", {"type": "object", "properties": {}}),
+            },
+        }
+        for tool in TOOLS_SCHEMA
+    ]
+
+
+async def _rispondi_openai(domanda: str, session_id: str, db,
+                           storico: Optional[List[Dict[str, Any]]] = None,
+                           api_key: Optional[str] = None,
+                           model: Optional[str] = None) -> Dict[str, Any]:
+    """Agent loop OpenAI con gli stessi strumenti read-only della chat."""
+    import openai
+
+    key = api_key or await risolvi_api_key(db, "openai")
+    if not key:
+        raise RuntimeError("OPENAI_API_KEY non configurata")
+    client = openai.AsyncOpenAI(api_key=key)
+    messages: List[Dict[str, Any]] = [{"role": "system", "content": _system_prompt(domanda)}]
+    for voce in (storico or [])[-STORICO_MESSAGGI_CONTESTO:]:
+        if voce.get("domanda"):
+            messages.append({"role": "user", "content": str(voce["domanda"])[:2000]})
+        if voce.get("risposta"):
+            messages.append({"role": "assistant", "content": str(voce["risposta"])[:2000]})
+    messages.append({"role": "user", "content": domanda})
+
+    strumenti_usati: List[str] = []
+    documenti_citati: List[Dict[str, Any]] = []
+
+    def _aggiungi_citati(nuovi):
+        for d in nuovi:
+            if not any(c["tipo"] == d["tipo"] and c["id"] == d["id"] for c in documenti_citati):
+                documenti_citati.append(d)
+
+    for _ in range(MAX_ITERAZIONI_TOOL):
+        response = await client.chat.completions.create(
+            model=model or _model_name("openai"),
+            messages=messages,
+            tools=_openai_tools_schema(),
+            tool_choice="auto",
+            temperature=0.3,
+            max_tokens=2000,
+            timeout=60.0,
+        )
+        message = response.choices[0].message
+        tool_calls = list(getattr(message, "tool_calls", None) or [])
+        if not tool_calls:
+            testo = (getattr(message, "content", None) or "").strip()
+            return {
+                "risposta_testuale": testo or "Non sono riuscito a produrre una risposta.",
+                "livello_affidabilita": "dubbio",
+                "documenti_consultati": strumenti_usati,
+                "documenti_citati": documenti_citati,
+                "dati_mancanti": [], "anomalie": [], "azioni_proposte": [],
+                "richiede_conferma_utente": False,
+                "motore": "ai",
+            }
+
+        messages.append({
+            "role": "assistant",
+            "content": getattr(message, "content", None),
+            "tool_calls": [
+                {
+                    "id": call.id,
+                    "type": "function",
+                    "function": {
+                        "name": call.function.name,
+                        "arguments": call.function.arguments or "{}",
+                    },
+                }
+                for call in tool_calls
+            ],
+        })
+
+        for call in tool_calls:
+            nome = call.function.name
+            try:
+                args = json.loads(call.function.arguments or "{}")
+                if not isinstance(args, dict):
+                    args = {}
+            except (TypeError, ValueError):
+                args = {}
+            if nome == "componi_risposta":
+                strutturata = dict(args)
+                strutturata.setdefault("documenti_consultati", [])
+                strutturata["documenti_consultati"] = list(strutturata["documenti_consultati"]) + \
+                    [s for s in strumenti_usati if s not in strutturata["documenti_consultati"]]
+                strutturata.setdefault("livello_affidabilita", "dubbio")
+                strutturata.setdefault("dati_mancanti", [])
+                strutturata.setdefault("anomalie", [])
+                strutturata.setdefault("azioni_proposte", [])
+                strutturata.setdefault("richiede_conferma_utente", False)
+                strutturata["documenti_citati"] = documenti_citati
+                strutturata["motore"] = "ai"
+                return strutturata
+
+            executor = _TOOL_EXECUTORS.get(nome)
+            t0 = time.monotonic()
+            try:
+                if executor is None:
+                    risultato: Any = {"errore": f"strumento sconosciuto: {nome}"}
+                    esito = "sconosciuto"
+                else:
+                    risultato = await executor(db, args)
+                    esito = "ok"
+                    strumenti_usati.append(
+                        f"{nome}({len(risultato) if isinstance(risultato, list) else 1} risultati)"
+                    )
+                    _aggiungi_citati(_documenti_citati_da_tool(nome, risultato))
+            except Exception as exc:
+                logger.exception("Chat OpenAI: errore strumento %s", nome)
+                risultato = {"errore": str(exc)[:300]}
+                esito = "errore"
+            durata_ms = int((time.monotonic() - t0) * 1000)
+            await _log_tool_call(db, session_id, nome, args, esito, durata_ms)
+            messages.append({
+                "role": "tool",
+                "tool_call_id": call.id,
+                "name": nome,
+                "content": json.dumps(risultato, ensure_ascii=False, default=str)[:30000],
+            })
+
+    return {
+        "risposta_testuale": "Ho raggiunto il limite di ricerche senza arrivare a una "
+                              "conclusione affidabile. Prova a restringere la domanda "
+                              "(periodo, fornitore o dipendente specifico).",
+        "livello_affidabilita": "dubbio",
+        "documenti_consultati": strumenti_usati,
+        "documenti_citati": documenti_citati,
+        "dati_mancanti": ["conclusione non raggiunta entro il limite di iterazioni"],
+        "anomalie": [], "azioni_proposte": [], "richiede_conferma_utente": False,
+        "motore": "ai",
+    }
+
 async def rispondi(domanda: str, session_id: str, db,
                     storico: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Risponde a una domanda con il motore AI. Ritorna la risposta strutturata.
@@ -798,10 +983,19 @@ async def rispondi(domanda: str, session_id: str, db,
     `storico`: lista [{domanda, risposta}] dei turni precedenti della stessa
     sessione, per dare continuita' alla conversazione.
     """
+    provider_info = await risolvi_provider(db)
+    provider = provider_info.get("provider")
+    api_key = provider_info.get("api_key") or ""
+    if provider == "openai":
+        return await _rispondi_openai(
+            domanda, session_id, db, storico=storico, api_key=api_key,
+            model=provider_info.get("model")
+        )
+
     import anthropic
 
-    api_key = await risolvi_api_key(db)
     client = anthropic.AsyncAnthropic(api_key=api_key)
+    modello_anthropic = provider_info.get("model") or _model_name("anthropic")
     system = _system_prompt(domanda)
 
     messages: List[Dict[str, Any]] = []
@@ -824,7 +1018,7 @@ async def rispondi(domanda: str, session_id: str, db,
         # P2-7: timeout esplicito sulla chiamata LLM (evita attese indefinite
         # se il provider non risponde; oltre soglia si ricade sul motore keyword).
         response = await client.messages.create(
-            model=_model_name(),
+            model=modello_anthropic,
             max_tokens=2000,
             # Temperature bassa (scelta utente): risposte coerenti e
             # riproducibili, adatte a un assistente contabile-fiscale, ma con

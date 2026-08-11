@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1114 endpoint** in **114 gruppi**.
+> Totale **1112 endpoint** in **114 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 673 · ext esterni = 89 · — da verificare = 352
+**Riepilogo uso:** ✓ frontend = 671 · ext esterni = 88 · — da verificare = 353
 
 ## AI Parser  (11)
 
@@ -836,13 +836,12 @@
 | GET | `/api/fatture-estere/da-verificare` | ✓ | fatture_estera_verifica |
 | POST | `/api/fatture-estere/{fattura_id}/verifica` | ✓ | fatture_estera_verifica |
 
-## Fatture Ricevute  (24)
+## Fatture Ricevute  (23)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | POST | `/api/fatture-ricevute/aggiorna-metodi-pagamento` | — | fatture_module.pagamento |
 | GET | `/api/fatture-ricevute/archivio` | ✓ | fatture_module.crud |
-| POST | `/api/fatture-ricevute/auto-ricostruisci-dati` | ✓ | fatture_module.pagamento |
 | POST | `/api/fatture-ricevute/backfill-autoroute` | — | fatture_module.pagamento |
 | POST | `/api/fatture-ricevute/cambia-metodo-pagamento` | — | fatture_module.pagamento |
 | POST | `/api/fatture-ricevute/elimina-anni-vecchi` | — | fatture_module.crud |
@@ -1122,13 +1121,12 @@
 | GET | `/api/openapi-imprese/sdi/{partita_iva}` | ext | openapi_imprese |
 | GET | `/api/openapi-imprese/status` | ext | openapi_imprese |
 
-## OpenAPI.it  (12)
+## OpenAPI.it  (11)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | POST | `/api/openapi/aisp/connetti-conto` | ext | openapi_it |
 | GET | `/api/openapi/aisp/movimenti` | ext | openapi_it |
-| POST | `/api/openapi/aisp/riconcilia-automatica` | ext | openapi_it |
 | GET | `/api/openapi/aisp/status` | ext | openapi_it |
 | POST | `/api/openapi/visure/richiedi` | ext | openapi_it |
 | GET | `/api/openapi/xbrl/bilancio/{request_id}` | ext | openapi_it |
@@ -1139,12 +1137,11 @@
 | GET | `/api/openapi/xbrl/status` | ext | openapi_it |
 | GET | `/api/openapi/xbrl/storico-richieste` | ext | openapi_it |
 
-## Operazioni  (13)
+## Operazioni  (10)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/operazioni-da-confermare/smart/analizza` | ✓ | operazioni_module.smart |
-| POST | `/api/operazioni-da-confermare/smart/associa-stipendi-auto` | — | operazioni_module |
 | GET | `/api/operazioni-da-confermare/smart/banca-veloce` | ✓ | operazioni_module.smart |
 | GET | `/api/operazioni-da-confermare/smart/cerca-f24` | ✓ | operazioni_module.smart |
 | GET | `/api/operazioni-da-confermare/smart/cerca-fatture` | — | operazioni_module.smart |
@@ -1152,8 +1149,6 @@
 | POST | `/api/operazioni-da-confermare/smart/conferma-f24` | ✓ | operazioni_module.smart |
 | POST | `/api/operazioni-da-confermare/smart/ignora` | ✓ | operazioni_module |
 | GET | `/api/operazioni-da-confermare/smart/movimento/{movimento_id}` | — | operazioni_module.smart |
-| POST | `/api/operazioni-da-confermare/smart/riconcilia-auto` | ✓ | operazioni_module.smart |
-| GET | `/api/operazioni-da-confermare/smart/riconcilia-auto/status` | ✓ | operazioni_module.smart |
 | POST | `/api/operazioni-da-confermare/smart/riconcilia-manuale` | ✓ | operazioni_module.smart |
 | POST | `/api/operazioni-da-confermare/smart/riconcilia-stipendio` | ✓ | operazioni_module |
 
@@ -1350,7 +1345,6 @@
 | POST | `/api/prima-nota/ripristina-provvisori-metodo-errato` | — | prima_nota_module.manutenzione |
 | GET | `/api/prima-nota/salari` | — | prima_nota_module.salari |
 | POST | `/api/prima-nota/salari` | — | prima_nota_module.salari |
-| POST | `/api/prima-nota/salari/auto-ricostruisci-dati` | — | prima_nota_module |
 | GET | `/api/prima-nota/salari/stats` | — | prima_nota_module.salari |
 | DELETE | `/api/prima-nota/salari/{movimento_id}` | — | prima_nota_module.salari |
 | GET | `/api/prima-nota/saldi-finanziari` | — | prima_nota_module.stats |
@@ -1362,6 +1356,7 @@
 | POST | `/api/prima-nota/sposta-movimento` | ✓ | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/sposta-scrittura` | ✓ | prima_nota_module.sync |
 | GET | `/api/prima-nota/stats` | ✓ | prima_nota_module.stats |
+| GET | `/api/prima-nota/sumup` | ✓ | prima_nota_module.banca |
 | POST | `/api/prima-nota/sync-corrispettivi` | — | prima_nota_module.sync |
 | POST | `/api/prima-nota/unifica-categorie` | — | prima_nota_module.manutenzione |
 | GET | `/api/prima-nota/verifica-metodo-fattura/{fattura_id}` | — | prima_nota_module.manutenzione |
@@ -1491,16 +1486,19 @@
 | GET | `/api/scadenze/tutte` | ✓ | scadenze |
 | DELETE | `/api/scadenze/{notifica_id}` | ✓ | scadenze |
 
-## Settings  (6)
+## Settings  (9)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| GET | `/api/settings/anthropic` | ✓ | settings_router |
-| POST | `/api/settings/anthropic` | ✓ | settings_router |
-| POST | `/api/settings/anthropic/test` | ✓ | settings_router |
+| GET | `/api/settings/anthropic` | — | settings_router |
+| POST | `/api/settings/anthropic` | — | settings_router |
+| POST | `/api/settings/anthropic/test` | — | settings_router |
 | GET | `/api/settings/gmail` | ✓ | settings_router |
 | POST | `/api/settings/gmail` | ✓ | settings_router |
 | POST | `/api/settings/gmail/test` | ✓ | settings_router |
+| GET | `/api/settings/openai` | ✓ | settings_router |
+| POST | `/api/settings/openai` | ✓ | settings_router |
+| POST | `/api/settings/openai/test` | ✓ | settings_router |
 
 ## Settings Base  (6)
 

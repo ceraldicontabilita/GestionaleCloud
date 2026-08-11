@@ -30,7 +30,8 @@ from .banca import (
     list_prima_nota_banca, create_prima_nota_banca, update_prima_nota_banca,
     delete_movimento_banca, delete_all_prima_nota_banca, delete_banca_by_source,
     get_fattura_allegata_banca, movimenti_in_attesa_documento,
-    analisi_righe_grezze_storiche, candidati_banca_per_fattura
+    analisi_righe_grezze_storiche, candidati_banca_per_fattura,
+    list_prima_nota_sumup,
 )
 from .salari import (
     get_prima_nota_salari, create_prima_nota_salari, delete_prima_nota_salari, get_salari_stats
@@ -88,6 +89,7 @@ router.add_api_route("/cassa/fix-corrispettivi-importo", fix_corrispettivi_impor
 
 # Banca - Statiche
 router.add_api_route("/banca", list_prima_nota_banca, methods=["GET"])
+router.add_api_route("/sumup", list_prima_nota_sumup, methods=["GET"])
 router.add_api_route("/banca/in-attesa-documento", movimenti_in_attesa_documento, methods=["GET"])
 router.add_api_route("/banca/analisi-righe-grezze", analisi_righe_grezze_storiche, methods=["GET"])
 router.add_api_route("/banca/candidati-per-fattura", candidati_banca_per_fattura, methods=["GET"])
@@ -198,7 +200,8 @@ async def _auto_ricostruisci_salari():
             righe_pulite += 1
     return {"righe_pulite": righe_pulite, "correzioni": correzioni, "totale_salari": len(salari)}
 
-router.add_api_route("/salari/auto-ricostruisci-dati", _auto_ricostruisci_salari, methods=["POST"])
+# Il ricalcolo salari non e piu esposto come mutazione automatica: le righe
+# vengono corrette tramite import/revisione guidata e conferma operatore.
 
 
 # Template CSV per import

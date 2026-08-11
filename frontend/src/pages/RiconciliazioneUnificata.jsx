@@ -112,8 +112,9 @@ export default function RiconciliazioneUnificata() {
     search: '',
   });
 
-  // Auto-match stats
-  const [autoMatchStats, setAutoMatchStats] = useState({ matched: 0, pending: 0 });
+  // Riepilogo dei collegamenti già presenti: è informativo e non avvia
+  // correzioni o riconciliazioni automatiche.
+  const [reconciliationStats, setReconciliationStats] = useState({ matched: 0, pending: 0 });
 
   // Applica filtri ai movimenti
   const applyFilters = movimenti => {
@@ -146,38 +147,6 @@ export default function RiconciliazioneUnificata() {
   const movimentiBancaFiltrati = applyFilters(movimentiBanca);
   const assegniFiltrati = applyFilters(assegni);
   const stipendiFiltrati = applyFilters(stipendiPendenti);
-
-  // Stato per auto-riparazione
-  const [autoRepairStatus, setAutoRepairStatus] = useState(null);
-  const [autoRepairRunning, setAutoRepairRunning] = useState(false);
-
-  /**
-   * LOGICA INTELLIGENTE: Esegue auto-riparazione dei dati al caricamento.
-   * Questa funzione implementa la logica di un commercialista esperto.
-   */
-  const eseguiAutoRiparazione = async () => {
-    setAutoRepairRunning(true);
-    try {
-      const res = await api.post('/api/fatture-ricevute/auto-ricostruisci-dati');
-      if (res.data.riconciliazioni_auto > 0 || res.data.f24_corretti > 0) {
-        setAutoRepairStatus(res.data);
-        // Ricarica dati dopo riparazione
-        loadAllData();
-      } else {
-        toast.info('Auto-riparazione completata: niente da correggere.');
-      }
-    } catch (error) {
-      // Errore del servizio ≠ "niente da riparare": va segnalato.
-      toast.error('Auto-riparazione non riuscita: ' + (error.response?.data?.detail || error.message));
-    } finally {
-      setAutoRepairRunning(false);
-    }
-  };
-
-  // Auto-riparazione DISABILITATA per performance - eseguire manualmente
-  // useEffect(() => {
-  //   eseguiAutoRiparazione();
-  // }, []);
 
   useEffect(() => {
     loadAllData();
@@ -257,8 +226,8 @@ export default function RiconciliazioneUnificata() {
         fatture_da_pagare: assegniRes.data?.stats?.fatture_da_pagare || 0,
       });
 
-      // Auto-match stats (da analizza)
-      setAutoMatchStats({
+      // Conteggio read-only dei collegamenti già registrati.
+      setReconciliationStats({
         matched: analizzaRes.data?.stats?.riconciliati || assegniRes.data?.stats?.riconciliati || 0,
         pending:
           analizzaRes.data?.stats?.non_riconciliati ||
@@ -331,7 +300,6 @@ export default function RiconciliazioneUnificata() {
     }
   };
 
-  // Auto-riconcilia tutti i movimenti con match esatto
   const [f24Loading, setF24Loading] = useState(false);
 
   // Carica F24 solo su richiesta esplicita (evita il "reload visivo" da ~35s)
@@ -349,47 +317,32 @@ export default function RiconciliazioneUnificata() {
     }
   };
 
-  const handleAutoRiconcilia = async () => {
-    setProcessing('auto');
-    try {
-      // Le regole contabili appartengono al backend: numeri fattura
-      // espliciti, quadratura aggregata POS e PayPal biunivoco. La UI non
-      // conferma piu' in ciclo suggerimenti parziali o basati sull'importo.
-      const res = await api.post(
-        `/api/operazioni-da-confermare/smart/riconcilia-auto?limit=${currentLimit}`
-      );
-      const matched = res.data?.riconciliati || 0;
-      const errori = res.data?.errori || [];
-      setAutoMatchStats({ matched, pending: stats.totale - matched });
-      toast.success(`Auto-riconciliati ${matched} movimenti`, {
-        description:
-          errori.length > 0
-            ? `${errori.length} motori in errore: ${errori
-                .slice(0, 3)
-                .map(e => e.error || String(e))
-                .join('; ')}`
-            : undefined,
-      });
-      await loadAllData();
-    } catch (e) {
-      toast.error('Auto-riconciliazione non completata', {
-        description: e.message,
-      });
-    } finally {
-      setProcessing(null);
-    }
-  };
-
   // Conferma singolo movimento
-  const handleConferma = async (movimento, tipo, associazioni) => {
+  const handleConferma = async (movimento, tipo, associazioni, modalita) => {
     setProcessing(movimento.movimento_id || movimento.id);
     try {
       const tipoEff = tipo || movimento.tipo;
       if (tipoEff === 'stipendio' && !movimento.movimento_id) {
         // Riga stipendio pendente (prima_nota_salari): cerca in estratto
         // conto il bonifico "FAVORE <nome dipendente>" e associa (18/07/2026)
+        const atteso = Number(movimento.importo_busta ?? movimento.importo ?? 0);
+        const giaPagato = Number(movimento.importo_bonifico ?? 0);
+        const mismatch = atteso > 0 && giaPagato > 0 && Math.abs(atteso - giaPagato) > 0.01;
+        const modalitaEff = modalita || (mismatch
+          ? window.prompt(
+              'Importo stipendio e bonifici non coincidono. Scrivi acconto, saldo, multiplo oppure errore:',
+              'acconto',
+            )?.trim().toLowerCase()
+          : 'saldo');
+        if (!modalitaEff || modalitaEff === 'errore') {
+          toast.error('Conferma stipendio bloccata', {
+            description: 'Seleziona acconto, saldo o multiplo; un dato incoerente resta sospeso.',
+          });
+          return;
+        }
         const res = await api.post('/api/operazioni-da-confermare/smart/riconcilia-stipendio', {
           stipendio_id: movimento.id,
+          modalita: modalitaEff,
         });
         if (res.data?.success) {
           const d = res.data.dettaglio?.[0];
@@ -404,10 +357,34 @@ export default function RiconciliazioneUnificata() {
         loadAllData();
         return;
       }
+      const suggerimenti = Array.isArray(movimento.suggerimenti) ? movimento.suggerimenti : [];
+      let scelte = Array.isArray(associazioni)
+        ? associazioni
+        : suggerimenti.length === 1
+          ? [suggerimenti[0]]
+          : [];
+      if (!scelte.length && suggerimenti.length > 1) {
+        const elenco = suggerimenti
+          .map((s, indice) => `${indice + 1}) ${s.fornitore || s.nome || s.dipendente || 'candidato'} - ${formatEuro(s.importo || 0)}`)
+          .join('\n');
+        const scelta = Number.parseInt(window.prompt(
+          `Seleziona il candidato digitando il numero:\n${elenco}`,
+          '1',
+        ) || '', 10);
+        if (Number.isInteger(scelta) && scelta >= 1 && scelta <= suggerimenti.length) {
+          scelte = [suggerimenti[scelta - 1]];
+        }
+      }
+      if (scelte.length !== 1) {
+        toast.error('Selezione obbligatoria', {
+          description: 'Con più candidati devi selezionare esplicitamente quello corretto.',
+        });
+        return;
+      }
       await api.post('/api/operazioni-da-confermare/smart/riconcilia-manuale', {
         movimento_id: movimento.movimento_id,
         tipo: tipoEff,
-        associazioni: associazioni || movimento.suggerimenti?.slice(0, 1) || [],
+        associazioni: scelte,
         categoria: movimento.categoria,
       });
       toast.success('Movimento riconciliato');
@@ -423,10 +400,19 @@ export default function RiconciliazioneUnificata() {
 
   // Ignora movimento
   const handleIgnora = async movimento => {
+    const codice = window.prompt(
+      'Codice motivo (duplicato, gia_pagato, non_pertinente, movimento_non_bancario, da_verificare, altro):',
+      'da_verificare',
+    )?.trim().toLowerCase();
+    if (!codice) return;
+    const motivo = window.prompt('Descrivi brevemente il motivo dell\'ignoramento:', codice);
+    if (!motivo?.trim()) return;
     setProcessing(movimento.movimento_id || movimento.id);
     try {
       await api.post('/api/operazioni-da-confermare/smart/ignora', {
         movimento_id: movimento.movimento_id || movimento.id,
+        codice_motivo: codice,
+        motivo: motivo.trim(),
       });
       toast.success('Movimento ignorato');
       loadAllData();
@@ -572,61 +558,6 @@ export default function RiconciliazioneUnificata() {
           gap: 8,
         }}
       >
-        <button
-          onClick={eseguiAutoRiparazione}
-          disabled={autoRepairRunning}
-          data-testid="btn-auto-repair"
-          style={{
-            padding: '8px 14px',
-            minHeight: 40,
-            flex: isMobile ? '1 1 auto' : '0 1 auto',
-            background: autoRepairRunning ? '#9ca3af' : '#0f2744',
-            color: 'white',
-            border: '1px solid #0f2744',
-            borderRadius: 6,
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: autoRepairRunning ? 'wait' : 'pointer',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {autoRepairRunning ? '⏳ Riparazione...' : '🔧 Auto-Ripara'}
-        </button>
-        {autoRepairStatus && autoRepairStatus.riconciliazioni_auto > 0 && (
-          <span
-            style={{
-              padding: '6px 10px',
-              background: '#dcfce7',
-              color: '#16a34a',
-              borderRadius: 6,
-              fontSize: 11,
-              fontWeight: 600,
-            }}
-          >
-            ✓ {autoRepairStatus.riconciliazioni_auto} riparazioni
-          </span>
-        )}
-
-        {/* Pulsante Auto-Riconcilia */}
-        <button
-          onClick={handleAutoRiconcilia}
-          disabled={processing}
-          style={{
-            padding: '8px 14px',
-            minHeight: 40,
-            flex: isMobile ? '1 1 auto' : '0 1 auto',
-            background: '#0f2744',
-            color: 'white',
-            border: '1px solid #0f2744',
-            borderRadius: 6,
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {processing === 'auto' ? '⏳' : '⚡'} Auto-Riconcilia
-        </button>
         <button
           onClick={() => loadAllData(currentLimit)}
           disabled={processing}
@@ -868,7 +799,7 @@ export default function RiconciliazioneUnificata() {
         }}
       >
         {activeTab === 'dashboard' && (
-          <DashboardTab stats={stats} autoMatchStats={autoMatchStats} />
+          <DashboardTab stats={stats} reconciliationStats={reconciliationStats} />
         )}
         {activeTab === 'banca' && (
           <MovimentiTab
@@ -879,6 +810,7 @@ export default function RiconciliazioneUnificata() {
             processing={processing}
             title="Movimenti Bancari"
             emptyText="Tutti i movimenti sono stati riconciliati"
+            tipo="banca"
             vistaLista
           />
         )}
@@ -891,6 +823,7 @@ export default function RiconciliazioneUnificata() {
             processing={processing}
             title="Prelievi Assegno"
             emptyText="Nessun assegno da riconciliare"
+            tipo="assegno"
             showFattura
           />
         )}
@@ -907,12 +840,13 @@ export default function RiconciliazioneUnificata() {
         {activeTab === 'stipendi' && (
           <MovimentiTab
             movimenti={stipendiFiltrati}
-            onConferma={m => handleConferma(m, 'stipendio')}
+            onConferma={handleConferma}
             onIgnora={handleIgnora}
             onElimina={handleElimina}
             processing={processing}
             title="Stipendi"
             emptyText="Nessuno stipendio da riconciliare"
+            tipo="stipendio"
           />
         )}
         {activeTab === 'documenti' && (
@@ -980,7 +914,7 @@ export default function RiconciliazioneUnificata() {
 // TAB COMPONENTS
 // ============================================
 
-function DashboardTab({ stats, autoMatchStats }) {
+function DashboardTab({ stats, reconciliationStats }) {
   return (
     <div style={{ padding: 24, textAlign: 'center' }}>
       <div
@@ -998,7 +932,7 @@ function DashboardTab({ stats, autoMatchStats }) {
         <div style={{ fontSize: 14, opacity: 0.9, marginBottom: 16 }}>
           Seleziona una sezione dal menu per iniziare la riconciliazione
         </div>
-        {autoMatchStats.matched > 0 && (
+        {reconciliationStats.matched > 0 && (
           <div
             style={{
               fontSize: 13,
@@ -1009,7 +943,7 @@ function DashboardTab({ stats, autoMatchStats }) {
               display: 'inline-block',
             }}
           >
-            ✅ {autoMatchStats.matched} elementi auto-riconciliati
+            ✅ {reconciliationStats.matched} collegamenti già registrati
           </div>
         )}
       </div>

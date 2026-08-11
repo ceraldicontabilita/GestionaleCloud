@@ -180,7 +180,7 @@ def test_filtro_saldo_distingue_cassa_e_banca():
     banca = common.filtro_saldo_prima_nota("prima_nota_banca")
 
     assert "natura" not in cassa
-    assert banca["natura"] == {"$ne": common.NATURA_CREDITO_POS}
+    assert banca["natura"]["$nin"] == [common.NATURA_CREDITO_POS, "costo"]
     assert "corrispettivo_pos" not in cassa["source"]["$nin"]
     assert "corrispettivo_pos" in banca["source"]["$nin"]
     assert "trasferimento_pos" in banca["source"]["$nin"]

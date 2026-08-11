@@ -127,13 +127,38 @@ export default function AssociaAssegnoFattura({
       </button>
 
       {aperto && (
-        <div style={{
-          width: '100%', minWidth: 310, maxWidth: 760,
-          background: '#faf5ff', border: '1px solid #c4b5fd',
-          borderRadius: 9, padding: 10, textAlign: 'left',
-        }}>
-          <div style={{ color: '#5b21b6', fontWeight: 800, marginBottom: 7 }}>
-            Collega un assegno reale alla fattura {dati.numero || 'senza numero'}
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Collega un assegno reale alla fattura ${dati.numero || 'senza numero'}`}
+          onMouseDown={e => e.target === e.currentTarget && setAperto(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1200,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16, background: 'rgba(15, 39, 68, 0.52)',
+          }}
+        >
+          <div style={{
+            width: 'min(680px, 100%)', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto',
+            background: '#faf5ff', border: '1px solid #c4b5fd',
+            borderRadius: 12, padding: 16, textAlign: 'left',
+            boxShadow: '0 24px 70px rgba(15, 39, 68, 0.28)',
+          }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+            <div style={{ color: '#5b21b6', fontWeight: 800, flex: 1 }}>
+              Collega un assegno reale alla fattura {dati.numero || 'senza numero'}
+            </div>
+            <button
+              type="button"
+              onClick={() => setAperto(false)}
+              aria-label="Chiudi associazione assegno"
+              style={{
+                width: 36, height: 36, borderRadius: 8, border: '1px solid #ddd6fe',
+                background: 'white', color: '#5b21b6', fontWeight: 800, cursor: 'pointer',
+              }}
+            >
+              ×
+            </button>
           </div>
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
             <input
@@ -213,6 +238,7 @@ export default function AssociaAssegnoFattura({
               </div>
             );
           })}
+          </div>
         </div>
       )}
     </>

@@ -24,7 +24,7 @@ export default function ImpostazioniAI() {
 
   const carica = () => {
     api
-      .get('/api/settings/anthropic')
+      .get('/api/settings/openai')
       .then(r => {
         setCfg(r.data);
         setModello(r.data.modello || '');
@@ -37,7 +37,7 @@ export default function ImpostazioniAI() {
     setSaving(true);
     setMsg(null);
     try {
-      const res = await api.post('/api/settings/anthropic', {
+      const res = await api.post('/api/settings/openai', {
         api_key: apiKey.trim(),
         modello: modello.trim(),
       });
@@ -55,7 +55,7 @@ export default function ImpostazioniAI() {
     setTesting(true);
     setMsg(null);
     try {
-      const res = await api.post('/api/settings/anthropic/test');
+      const res = await api.post('/api/settings/openai/test');
       setMsg({ ok: res.data.ok, testo: res.data.messaggio || res.data.error });
     } catch {
       setMsg({ ok: false, testo: 'Errore durante il test' });
@@ -69,17 +69,17 @@ export default function ImpostazioniAI() {
       <div style={{ maxWidth: 760 }} data-testid="impostazioni-ai">
         <PageHeader
           title="Assistente AI"
-          subtitle="Attiva l'intelligenza artificiale della chat (Anthropic)"
+          subtitle="Attiva l'intelligenza artificiale della chat (OpenAI)"
           style={{ marginBottom: 20 }}
         />
 
-        <Card title="Chiave API Anthropic" icon={<Bot size={16} color={COLORS.info} />}>
+        <Card title="Chiave API OpenAI" icon={<Bot size={16} color={COLORS.info} />}>
           <p style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 16, lineHeight: 1.6 }}>
-            Incolla qui la tua chiave API Anthropic: la chat capirà le domande in
+            Incolla qui la tua chiave API OpenAI: la chat capirà le domande in
             linguaggio naturale (come parlare con un assistente) invece di rispondere
             solo a comandi fissi. La chiave viene salvata <strong>cifrata</strong> nel
             database, non nel codice. La ottieni da{' '}
-            <strong>console.anthropic.com → API Keys</strong>.
+            <strong>platform.openai.com → API keys</strong>.
           </p>
 
           {cfg && (
@@ -108,12 +108,12 @@ export default function ImpostazioniAI() {
 
           <div style={{ display: 'grid', gap: 12 }}>
             <div>
-              <label style={labelStyle}>Chiave API (inizia con sk-)</label>
+              <label style={labelStyle}>Chiave API OpenAI (inizia con sk-)</label>
               <div style={{ display: 'flex', gap: 8 }}>
                 <Input
                   value={apiKey}
                   onChange={e => setApiKey(e.target.value)}
-                  placeholder="sk-ant-..."
+                  placeholder="sk-proj-..."
                   type={showKey ? 'text' : 'password'}
                   style={{ flex: 1, fontFamily: FONT.mono }}
                 />
@@ -132,10 +132,10 @@ export default function ImpostazioniAI() {
               <Input
                 value={modello}
                 onChange={e => setModello(e.target.value)}
-                placeholder="claude-sonnet-5"
+                placeholder="gpt-4o-mini"
               />
               <p style={{ fontSize: 11, color: COLORS.textSubtle, margin: '4px 0 0' }}>
-                Lascia vuoto per usare il modello predefinito (claude-sonnet-5).
+                Lascia vuoto per usare il modello predefinito (gpt-4o-mini).
               </p>
             </div>
           </div>

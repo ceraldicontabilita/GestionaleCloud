@@ -1644,10 +1644,15 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
     # sia con segno negativo).
     movimenti_banca = {}
     movimenti_anno = []
+    # Una fattura di dicembre viene normalmente addebitata a gennaio. Il
+    # filtro storico sul solo anno fattura lasciava quindi molti documenti in
+    # "Da decidere" pur avendo una prova bancaria forte nell'anno successivo.
+    # Le regole di identita/importo/data sotto restano comunque bloccanti.
+    anni_movimenti = (anno - 1, anno, anno + 1)
     async for m in db["estratto_conto_movimenti"].find(
         {"$or": [
-             {"data": {"$regex": f"^{anno}"}},
-             {"data_contabile": {"$regex": f"/{anno}$"}},
+             *({"data": {"$regex": f"^{anno_movimento}"}} for anno_movimento in anni_movimenti),
+             *({"data_contabile": {"$regex": f"/{anno_movimento}$"}} for anno_movimento in anni_movimenti),
          ]},
         {
             "_id": 0, "id": 1, "importo": 1, "descrizione": 1,

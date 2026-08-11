@@ -659,7 +659,22 @@ export default function GestioneAssegni() {
     setAutoAssociating(true);
     setAutoAssocResult(null);
     try {
-      const res = await api.post(`/api/assegni/riprocessa-collegamenti?anno=${anno}`);
+      const anteprima = await api.post(`/api/assegni/riprocessa-collegamenti?anno=${anno}`);
+      let res = anteprima;
+      if (anteprima.data?.conferma_richiesta) {
+        const ok = await confirm({
+          title: 'Conferma riprocessamento',
+          message: 'Verranno applicati soltanto collegamenti univoci e idempotenti tra assegni, movimenti bancari e fatture. I casi ambigui resteranno da confermare. Procedere?',
+          confirmText: 'Applica collegamenti',
+          cancelText: 'Annulla',
+          variant: 'warning',
+        });
+        if (ok === false) {
+          setAutoAssocResult({ ...anteprima.data, _modalita_riprocessamento: true, _preview_only: true });
+          return;
+        }
+        res = await api.post(`/api/assegni/riprocessa-collegamenti?anno=${anno}&conferma=true`);
+      }
       setAutoAssocResult({ ...res.data, _modalita_riprocessamento: true });
       const collegati = res.data?.fatture?.collegati ?? 0;
       const ambigui = res.data?.fatture?.ambigui ?? 0;

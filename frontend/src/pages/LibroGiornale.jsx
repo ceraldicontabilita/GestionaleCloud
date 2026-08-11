@@ -3,6 +3,7 @@ import api from '../api';
 import { toast } from 'sonner';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { COLORS, useIsMobile } from '../lib/utils.js';
+import DocumentImportLink from '../components/DocumentImportLink';
 
 /**
  * Libro Giornale e Libro Mastro (art. 2216 c.c.) — registro UNICO
@@ -152,13 +153,11 @@ export default function LibroGiornale() {
           disabled={loading || !giornale}>
           📥 Esporta registro {anno}
         </button>
-        <button onClick={() => fileInputRef.current?.click()} data-testid="import-giornale"
+        <DocumentImportLink workflow="libro-giornale" data-testid="import-giornale"
           style={btnGhost} title="Ricostruzione da export precedente (solo Admin)"
-          disabled={loading}>
+          >
           ♻️ Reimporta
-        </button>
-        <input ref={fileInputRef} type="file" accept="application/json" hidden
-          onChange={e => { if (e.target.files?.[0]) importa(e.target.files[0]); e.target.value = ''; }} />
+        </DocumentImportLink>
       </div>
 
       <p style={{ color: COLORS.textMuted, fontSize: 12, margin: '0 0 14px' }}>

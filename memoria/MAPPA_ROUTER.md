@@ -1,7 +1,7 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **1114 endpoint** in **114 prefissi**.
+> Totale **1112 endpoint** in **114 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
@@ -61,7 +61,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/f24-riconciliazione` | 23 | ✓ | bank.riconciliazione_f24_banca, f24.f24_riconciliazione |
 | `/api/fatture` | 15 | ✓ | invoices.fatture_drive, invoices.fatture_upload |
 | `/api/fatture-estere` | 3 | ✓ | fatture_estera_verifica |
-| `/api/fatture-ricevute` | 24 | ✓ | fatture_module.crud, fatture_module.export_selezione, fatture_module.pagamento |
+| `/api/fatture-ricevute` | 23 | ✓ | fatture_module.crud, fatture_module.export_selezione, fatture_module.pagamento |
 | `/api/finanziamenti-soci` | 4 | ✓ | finanziamenti_soci |
 | `/api/finanziaria` | 4 | ✓ | finanziaria |
 | `/api/fiscal` | 20 | ✓ | fiscal_control |
@@ -76,10 +76,10 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/mutui` | 13 | ✓ | mutui, mutui_parser |
 | `/api/nexi` | 4 | ✓ | nexi_carta |
 | `/api/noleggio` | 13 | ✓ | noleggio |
-| `/api/openapi` | 12 | ext | openapi_it |
+| `/api/openapi` | 11 | ext | openapi_it |
 | `/api/openapi-automotive` | 5 | ext | openapi_automotive |
 | `/api/openapi-imprese` | 6 | ext | openapi_imprese |
-| `/api/operazioni-da-confermare` | 13 | ✓ | operazioni_module, operazioni_module.smart |
+| `/api/operazioni-da-confermare` | 10 | ✓ | operazioni_module, operazioni_module.smart |
 | `/api/pagamenti` | 6 | ✓ | multi_pagamento |
 | `/api/pagamenti-buoni` | 2 | — | pagamenti_buoni |
 | `/api/pagopa` | 8 | ✓ | pagopa |
@@ -103,7 +103,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/ritenute` | 3 | ✓ | ritenute |
 | `/api/scadenzario-fornitori` | 6 | ✓ | scadenzario_fornitori |
 | `/api/scadenze` | 9 | ✓ | scadenze |
-| `/api/settings` | 12 | ✓ | settings, settings_router |
+| `/api/settings` | 15 | ✓ | settings, settings_router |
 | `/api/sumup` | 7 | ✓ | sumup |
 | `/api/suppliers` | 33 | ✓ | public_api, suppliers_module.base, suppliers_module.bulk, suppliers_module.iban, suppliers_module.import_export, suppliers_module.validation |
 | `/api/suppliers-legacy` | 1 | ✓ | public_api |

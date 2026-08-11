@@ -392,18 +392,25 @@ async def chat_health() -> Dict[str, Any]:
     verrebbe usato. Utile quando 'la chat non risponde'."""
     from app.services import chat_ai_engine
     db = Database.get_db()
-    configurata = await chat_ai_engine.api_key_configurata(db)
-    fonte = "env" if chat_ai_engine.is_configured() else ("database" if configurata else None)
+    provider_info = await chat_ai_engine.risolvi_provider(db)
+    configurata = bool(provider_info.get("api_key"))
+    provider = provider_info.get("provider")
+    fonte = provider_info.get("source")
     return {
         "ai_configurata": configurata,
+        "provider": provider,
         "fonte_chiave": fonte,
-        "modello": chat_ai_engine._model_name() if configurata else None,
+        "modello": (
+            provider_info.get("model")
+            or chat_ai_engine._model_name(provider)
+            if configurata else None
+        ),
         "motore": "ai" if configurata else "solo_parole_chiave",
         "nota": (
             "Motore AI attivo." if configurata else
-            "Chiave Anthropic non configurata: la chat usa solo il motore a parole "
+            "Nessuna chiave AI configurata: la chat usa solo il motore a parole "
             "chiave. Incolla la chiave nella pagina di configurazione (Impostazioni "
-            "→ Assistente AI) oppure impostala come variabile d'ambiente ANTHROPIC_API_KEY."
+            "→ Assistente AI) oppure imposta OPENAI_API_KEY/ANTHROPIC_API_KEY."
         ),
     }
 
@@ -421,7 +428,7 @@ async def chat_history(request: Request, session_id: str = None) -> Dict[str, An
 async def chat_ask(request: Request, data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """Risponde a domande in linguaggio naturale sui dati reali del gestionale.
 
-    Con use_ai=true (default del widget) e ANTHROPIC_API_KEY configurata usa
+    Con use_ai=true (default del widget) e un provider AI configurato usa
     il motore AI con strumenti tipizzati (app/services/chat_ai_engine.py):
     risposta strutturata con affidabilita' certo/probabile/dubbio, fonti
     consultate, dati mancanti e azioni proposte. Senza chiave API (o con

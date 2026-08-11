@@ -32,6 +32,7 @@ from app.services.xml_invoice_processor import extract_xml_from_p7m, is_p7m_cont
 from app.utils.error_handler import handle_errors
 from app.utils.iban import valida_iban
 from app.utils.ruoli import richiedi_admin
+from app.services.supplier_data_quality import apply_supplier_quality
 
 logger = logging.getLogger(__name__)
 
@@ -439,8 +440,26 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
             update_data["id"] = supplier_id
 
         if update_data:
+            quality = apply_supplier_quality({**existing, **update_data})
             update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-            update_data["dati_incompleti"] = False
+            update_data.update(quality)
+            source_document_id = (
+                parsed_invoice.get("document_id")
+                or parsed_invoice.get("source_document_id")
+                or parsed_invoice.get("id")
+            )
+            source_hash = parsed_invoice.get("sha256") or parsed_invoice.get("document_hash")
+            parser_version = parsed_invoice.get("parser_version") or "fattura_xml"
+            if source_document_id or source_hash:
+                update_data.setdefault("provenienza_anagrafica", {})
+                for field in update_data:
+                    if field in {"updated_at", "dati_incompleti", "campi_fiscali_mancanti", "contatti_incompleti", "campi_contatto_mancanti", "provenienza_anagrafica"}:
+                        continue
+                    update_data["provenienza_anagrafica"][field] = {
+                        "source_document_id": source_document_id,
+                        "source_hash": source_hash,
+                        "parser_version": parser_version,
+                    }
             await db[Collections.SUPPLIERS].update_one(
                 {"_id": existing["_id"]},
                 {"$set": update_data},
@@ -448,6 +467,22 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
             )
             result["supplier_updated"] = True
             logger.info(f"Fornitore {supplier_name} aggiornato con dati XML: {list(update_data.keys())}")
+
+        if result["proposte_aggiornamento"]:
+            # La proposta resta auditabile senza sovrascrivere dati confermati.
+            await db["supplier_update_proposals"].update_one(
+                {"supplier_id": supplier_id, "source_document_id": parsed_invoice.get("document_id") or parsed_invoice.get("id")},
+                {"$set": {
+                    "supplier_id": supplier_id,
+                    "source_document_id": parsed_invoice.get("document_id") or parsed_invoice.get("id"),
+                    "source_hash": parsed_invoice.get("sha256") or parsed_invoice.get("document_hash"),
+                    "fields": result["proposte_aggiornamento"],
+                    "status": "da_confermare",
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }},
+                upsert=True,
+                session=session,
+            )
 
         return result
 
@@ -475,7 +510,20 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
         "rappresentante_fiscale": fornitore_data.get("rappresentante_fiscale") or None,
         "fatture_count": 1,
         "source": "auto_from_invoice",
-        "dati_incompleti": False,
+        # Il record appena creato può ancora mancare di contatti o comune:
+        # lo stato deriva sempre dalla stessa funzione del dominio.
+        **apply_supplier_quality({
+            "ragione_sociale": supplier_name,
+            "partita_iva": supplier_vat,
+            "comune": fornitore_data.get("comune") or "",
+            "email": fornitore_data.get("email") or "",
+            "telefono": fornitore_data.get("telefono") or "",
+        }),
+        "provenienza_anagrafica": {
+            "source_document_id": parsed_invoice.get("document_id") or parsed_invoice.get("id"),
+            "source_hash": parsed_invoice.get("sha256") or parsed_invoice.get("document_hash"),
+            "parser_version": parsed_invoice.get("parser_version") or "fattura_xml",
+        },
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "note": "Creato automaticamente da fattura — configurare metodo pagamento"

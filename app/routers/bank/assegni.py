@@ -23,6 +23,12 @@ from app.services.assegni_fattura_intent import (
     fattura_dichiara_assegno,
     importi_assegno_dichiarati,
 )
+from app.services.payment_allocation_validator import (
+    is_credit_note,
+    validate_invoice_allocation,
+    to_cents,
+    invoice_total_cents,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -401,6 +407,23 @@ async def list_assegni(
         ]
         assegno["associazione_conflittuale"] = bool(conflitti)
         assegno["fatture_conflittuali"] = conflitti
+        quote_collegate_cents = sum(
+            to_cents(link.get("quota"))
+            for link in (assegno.get("fatture_collegate") or [])
+            if isinstance(link, dict) and to_cents(link.get("quota")) > 0
+        )
+        totale_collegamenti_cents = sum(
+            invoice_total_cents(fattura) for fattura in uniche.values()
+        )
+        assegno["allocated_cents"] = quote_collegate_cents
+        assegno["residual_cents"] = max(0, totale_collegamenti_cents - quote_collegate_cents)
+        assegno["payment_allocation_status"] = (
+            "conflicting" if conflitti else
+            "ambiguous" if assegno["associazione_ambigua"] else
+            "valid" if uniche else "ambiguous"
+        )
+        if conflitti:
+            assegno["allocation_conflict_reason"] = "quota_supera_totale_fattura"
         dettagli = [{
             "fattura_id": fattura.get("id"),
             "numero_fattura": fattura.get("invoice_number") or fattura.get("numero_fattura"),
@@ -1464,6 +1487,28 @@ async def collega_fatture_assegno(assegno_id: str, body: FattureCollegateIn) -> 
     for quota_input in body.fatture:
         inv = fatture_map[quota_input.fattura_id]
         if quota_input.quota > 0:
+            if is_credit_note(inv):
+                numero = inv.get("invoice_number") or inv.get("numero_fattura") or quota_input.fattura_id
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Il documento {numero} è una nota di credito ({inv.get('tipo_documento') or inv.get('document_type')}); "
+                        "non può ricevere un'allocazione assegno. Usare compensazione o rimborso."
+                    ),
+                )
+            esito_allocazione = validate_invoice_allocation(
+                inv, to_cents(quota_input.quota),
+                allocation_id=str(assegno.get("id") or ""),
+            )
+            if not esito_allocazione["allowed"]:
+                numero = inv.get("invoice_number") or inv.get("numero_fattura") or quota_input.fattura_id
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Allocazione rifiutata per {numero}: {esito_allocazione['reason']} (fattura gia attribuita); "
+                        f"residuo EUR {esito_allocazione['residual_cents'] / 100:.2f}"
+                    ),
+                )
             disponibile, impegnato, totale_documento = capienza_assegno_fattura(
                 inv, assegno.get("id"), quota_input.quota,
             )
@@ -2474,6 +2519,7 @@ async def sync_assegni_da_estratto_conto(
 async def riprocessa_collegamenti_assegni(
     anno: Optional[int] = Query(None),
     limit: int = Query(10000, ge=1, le=50000),
+    conferma: bool = Query(False, description="Conferma esplicita delle mutazioni"),
 ) -> Dict[str, Any]:
     """Riprocessa in modo sicuro lo storico assegni -> EC -> fatture.
 
@@ -2485,6 +2531,20 @@ async def riprocessa_collegamenti_assegni(
     from app.services.assegni_fattura_intent import riprocessa_intenti_assegni
 
     db = Database.get_db()
+    if conferma is not True:
+        # Il vecchio endpoint mutava subito dati storici dal primo click. La
+        # prima chiamata ora è sempre read-only; il client deve mostrare il
+        # riepilogo e ripetere la richiesta con conferma esplicita.
+        from app.routers.bank.assegni_auto_match import run_auto_match
+        anteprima = await run_auto_match(db, dry_run=True, anno=anno)
+        return {
+            "success": True,
+            "preview": True,
+            "conferma_richiesta": True,
+            "mutazioni": "collegamenti assegno -> estratto conto -> fatture univoche",
+            "anteprima": anteprima,
+            "message": "Anteprima pronta: nessun dato è stato modificato",
+        }
     estratto = await sincronizza_assegni_da_estratto_conto(db)
     fatture = await riprocessa_intenti_assegni(db, anno=anno, limit=limit)
     return {

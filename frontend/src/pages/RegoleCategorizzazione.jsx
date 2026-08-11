@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 import { COLORS, BORDER_RADIUS, FONT } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
+import DocumentImportLink from '../components/DocumentImportLink';
 import {
   Button,
   Badge,
@@ -295,13 +296,16 @@ export default function RegoleCategorizzazione() {
           {/* Trigger upload file: deve restare un <label> nativo (wrappa l'<input type="file">
               nascosto che apre il file picker) — <Button> renderizza un <button>, non un <label>,
               quindi non può assolvere a questo ruolo. Stile tokenizzato. */}
-          <label
+          <DocumentImportLink
+            workflow="regole-categorizzazione"
+            aria-label="Carica Excel regole"
+            title="Acquisisci il file da Documenti: classificazione e deduplicazione centralizzate"
             style={{
               padding: '8px 16px',
-              background: uploading ? COLORS.gray[400] : COLORS.info,
+              background: COLORS.info,
               color: '#fff',
               borderRadius: BORDER_RADIUS.sm,
-              cursor: uploading ? 'wait' : 'pointer',
+              cursor: 'pointer',
               fontWeight: 600,
               fontSize: 13,
               fontFamily: FONT.family,
@@ -311,14 +315,7 @@ export default function RegoleCategorizzazione() {
             }}
           >
             📤 {uploading ? 'Caricamento...' : 'Carica Excel'}
-            <input
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={handleUploadExcel}
-              style={{ display: 'none' }}
-              disabled={uploading}
-            />
-          </label>
+          </DocumentImportLink>
 
           <Button variant="info" onClick={handleRicategorizza} disabled={ricategorizzando} iconLeft="🔄">
             {ricategorizzando ? 'Elaborazione...' : 'Applica alle Fatture'}

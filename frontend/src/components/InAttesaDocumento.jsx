@@ -96,7 +96,7 @@ export default function InAttesaDocumento({ anno, onRicarica }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <strong style={{ color: tuttoAPosto ? '#15803d' : '#92400e' }}>
           {tuttoAPosto
-            ? 'Nessun movimento realmente sospeso: la Prima Nota copre tutto l\'estratto conto.'
+            ? 'Nessun movimento presente nella coda documenti da collegare.'
             : `${quanti} movimenti dell'estratto conto aspettano il documento`}
         </strong>
         {!tuttoAPosto && (

@@ -15,6 +15,8 @@ from .common import (
     PAYMENT_METHODS, PAYMENT_TERMS, SUPPLIERS_CACHE_KEY, SUPPLIERS_CACHE_TTL,
     logger
 )
+from app.services.payment_allocation_validator import allocation_summary, is_credit_note
+from app.services.payment_evidence_projection import project_invoice_payment_evidence
 
 router = APIRouter()
 
@@ -1365,6 +1367,7 @@ async def get_fatture_fornitore(
             iva = float(f.get("iva") or f.get("importo_iva") or f.get("vat_amount") or 0)
             tipo_doc = f.get("tipo_documento", "TD01")
             is_nc = tipo_doc in ("TD04", "TD05", "TD08", "NC")
+            evidence = await project_invoice_payment_evidence(db, f)
             estratto.append({
                 "id": f.get("id"),
                 "data": f.get("data_documento") or f.get("invoice_date") or "",
@@ -1379,6 +1382,11 @@ async def get_fatture_fornitore(
                 "stato_pagamento": f.get("stato_pagamento", ""),
                 "metodo_pagamento": f.get("metodo_pagamento") or f.get("metodo_pagamento_effettivo") or fornitore.get("metodo_pagamento") or "-",
                 "data_pagamento": f.get("data_pagamento", ""),
+                "document_role": "credit_note" if is_credit_note(f) else "invoice",
+                **allocation_summary(f),
+                "assegni_collegati": f.get("assegni_collegati") or [],
+                "movimento_bancario_id": f.get("movimento_bancario_id"),
+                "payment_evidence": evidence,
             })
             totale_importo += importo
         

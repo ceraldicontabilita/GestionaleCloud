@@ -8,7 +8,9 @@ from datetime import datetime, timezone
 import uuid
 
 from app.database import Database, Collections
+from app.services import conti_pos
 from app.services.payment_document_links import payment_document_ref
+from app.services.payment_allocation_validator import allocation_summary
 from .common import (
     entra_in_prima_nota,
     COLLECTION_PRIMA_NOTA_BANCA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE,
@@ -106,7 +108,10 @@ async def _arricchisci_riconciliazione(db, movimenti: list) -> None:
         fatture = await db[Collections.INVOICES].find(
             {"$or": [{"id": {"$in": fattura_ids}}, {"invoice_key": {"$in": fattura_ids}}]},
             {"_id": 0, "id": 1, "invoice_key": 1, "riconciliato_con_ec": 1,
-             "movimento_bancario_id": 1, "riconciliato_automaticamente": 1, "match_score": 1},
+             "movimento_bancario_id": 1, "riconciliato_automaticamente": 1, "match_score": 1,
+             "payment_allocation_status": 1, "allocation_conflict_reason": 1,
+             "total_amount": 1, "importo_totale": 1, "importo_pagato": 1,
+             "assegni_collegati": 1, "prima_nota_banca_id": 1},
         ).to_list(len(fattura_ids))
         for f in fatture:
             for chiave in (f.get("id"), f.get("invoice_key")):
@@ -164,6 +169,7 @@ async def _arricchisci_riconciliazione(db, movimenti: list) -> None:
             continue
 
         fattura = fatture_by_key.get(fid)
+        allocation = allocation_summary(fattura or {}) if fattura else {}
         evidenza_fattura = bool(fattura and (fattura.get("riconciliato_con_ec") or fattura.get("movimento_bancario_id")))
         verificata = evidenza_fattura or bool(_evidenza_movimento(m))
         m["riconciliazione"] = {
@@ -172,6 +178,8 @@ async def _arricchisci_riconciliazione(db, movimenti: list) -> None:
             "automatica": bool(fattura and fattura.get("riconciliato_automaticamente")) if evidenza_fattura else False,
             "match_score": fattura.get("match_score") if evidenza_fattura else None,
             "accreditato_ec": None,
+            "payment_allocation_status": allocation.get("payment_allocation_status"),
+            "allocation_conflict_reason": allocation.get("allocation_conflict_reason"),
         }
 
 
@@ -233,6 +241,8 @@ async def list_prima_nota_banca(
         "status": {"$nin": ["deleted", "archived"]},
         "categoria": {"$nin": CATEGORIE_ESCLUSE},
         **ESCLUSIONI_SALDO_REALE,
+        # La Mastercard SumUp e' un conto distinto da Banco BPM.
+        "conto_contabile": {"$ne": conti_pos.CONTO_SUMUP_MASTERCARD},
     }
     query = dict(query_base)
 
@@ -277,6 +287,59 @@ async def list_prima_nota_banca(
         "totale_uscite": saldi["totale_uscite"],
         "count": len(movimenti),
         "anno": anno
+    }
+
+
+async def list_prima_nota_sumup(
+    anno: Optional[int] = Query(None, description="Anno (es. 2024, 2025)"),
+) -> Dict[str, Any]:
+    """Payout realmente ricevuti sul conto Mastercard SumUp, per giorno.
+
+    Vendite POS, crediti verso il gestore e commissioni sono fatti distinti:
+    questa vista espone soltanto la liquidita' effettivamente accreditata.
+    """
+    db = Database.get_db()
+    query: Dict[str, Any] = {
+        "status": {"$nin": ["deleted", "archived"]},
+        "conto_contabile": conti_pos.CONTO_SUMUP_MASTERCARD,
+        "source": "accredito_payout",
+        "tipo": "entrata",
+    }
+    if anno:
+        query["data"] = {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}
+
+    movimenti = await db[COLLECTION_PRIMA_NOTA_BANCA].find(
+        query, {"_id": 0}
+    ).sort("data", -1).to_list(10000)
+
+    per_giorno: Dict[str, Dict[str, Any]] = {}
+    for movimento in movimenti:
+        data = str(movimento.get("data") or "")[:10]
+        if not data:
+            continue
+        giorno = per_giorno.setdefault(data, {
+            "data": data,
+            "importo": 0.0,
+            "numero_payout": 0,
+            "payout_ids": [],
+        })
+        giorno["importo"] += abs(float(movimento.get("importo") or 0))
+        giorno["numero_payout"] += 1
+        payout_id = movimento.get("payout_id")
+        if payout_id and payout_id not in giorno["payout_ids"]:
+            giorno["payout_ids"].append(payout_id)
+
+    giorni = sorted(per_giorno.values(), key=lambda voce: voce["data"], reverse=True)
+    for giorno in giorni:
+        giorno["importo"] = round(giorno["importo"], 2)
+
+    return {
+        "anno": anno,
+        "conto": conti_pos.CONTO_SUMUP_MASTERCARD,
+        "conto_nome": conti_pos.descrizione_conto(conti_pos.CONTO_SUMUP_MASTERCARD),
+        "totale_ricevuto": round(sum(giorno["importo"] for giorno in giorni), 2),
+        "numero_payout": len(movimenti),
+        "giorni": giorni,
     }
 
 

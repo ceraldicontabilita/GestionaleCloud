@@ -27,8 +27,7 @@ from .pagamento import (
     paga_fattura_manuale, cambia_metodo_pagamento_fattura,
     riconcilia_fattura_con_estratto_conto, verifica_incoerenze_estratto_conto,
     aggiorna_metodi_pagamento_da_fornitori, backfill_autoroute_da_metodo_fornitore,
-    riconcilia_fatture_paypal,
-    auto_ricostruisci_dati, lista_fatture_paypal, import_paypal_file
+    riconcilia_fatture_paypal, lista_fatture_paypal, import_paypal_file
 )
 from app.services.invoice_payments import (
     InvoiceBankReconciliationResponse,
@@ -62,7 +61,6 @@ router.add_api_route("/verifica-incoerenze-estratto-conto", verifica_incoerenze_
 router.add_api_route("/aggiorna-metodi-pagamento", aggiorna_metodi_pagamento_da_fornitori, methods=["POST"])
 router.add_api_route("/backfill-autoroute", backfill_autoroute_da_metodo_fornitore, methods=["POST"])
 router.add_api_route("/riconcilia-paypal", riconcilia_fatture_paypal, methods=["POST"])
-router.add_api_route("/auto-ricostruisci-dati", auto_ricostruisci_dati, methods=["POST"])
 router.add_api_route("/lista-paypal", lista_fatture_paypal, methods=["GET"])
 router.add_api_route("/import-paypal", import_paypal_file, methods=["POST"])
 

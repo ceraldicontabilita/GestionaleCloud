@@ -1,10 +1,11 @@
 """Router Impostazioni — salva/leggi configurazioni da MongoDB."""
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, Depends
 from typing import Dict, Any
 from datetime import datetime, timezone
 
 from app.database import Database
 from app.utils.crypto import encrypt_credential, decrypt_credential
+from app.utils.dependencies import get_current_admin_user
 
 router = APIRouter(tags=["Impostazioni"])
 
@@ -113,7 +114,9 @@ async def _test_imap(host: str, user: str, password: str) -> Dict[str, Any]:
 # ============================================================
 
 @router.get("/anthropic")
-async def get_anthropic_settings() -> Dict[str, Any]:
+async def get_anthropic_settings(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
     """Stato della chiave Anthropic per l'assistente AI (mai in chiaro)."""
     import os
     db = Database.get_db()
@@ -129,7 +132,10 @@ async def get_anthropic_settings() -> Dict[str, Any]:
 
 
 @router.post("/anthropic")
-async def salva_anthropic_settings(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+async def salva_anthropic_settings(
+    data: Dict[str, Any] = Body(...),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
     """Salva (cifrata) la chiave API Anthropic per l'assistente AI. Facoltativo:
     `modello`. La chiave viene testata subito con una chiamata minima."""
     from fastapi import HTTPException
@@ -160,7 +166,9 @@ async def salva_anthropic_settings(data: Dict[str, Any] = Body(...)) -> Dict[str
 
 
 @router.post("/anthropic/test")
-async def test_anthropic_connection() -> Dict[str, Any]:
+async def test_anthropic_connection(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
     """Testa la chiave Anthropic attualmente in uso (env o DB)."""
     from app.services.chat_ai_engine import risolvi_api_key, _model_name
     db = Database.get_db()
@@ -168,6 +176,89 @@ async def test_anthropic_connection() -> Dict[str, Any]:
     if not key:
         return {"ok": False, "error": "Nessuna chiave configurata"}
     return await _test_anthropic(key, _model_name())
+
+
+@router.get("/openai")
+async def get_openai_settings(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Stato OpenAI per la chat, senza restituire la chiave."""
+    import os
+    db = Database.get_db()
+    doc = await db["settings"].find_one({"chiave": "openai"}, {"_id": 0})
+    env_presente = bool(os.environ.get("OPENAI_API_KEY", "").strip())
+    db_presente = bool(doc and doc.get("api_key"))
+    from app.services.chat_ai_engine import risolvi_provider, _model_name
+    attivo = await risolvi_provider(db)
+    return {
+        "configurata": env_presente or db_presente,
+        "fonte": "env" if env_presente else ("database" if db_presente else None),
+        "provider_attivo": attivo.get("provider"),
+        "modello": os.environ.get("OPENAI_MODEL", "").strip()
+                   or (doc.get("modello") if doc else None)
+                   or _model_name("openai"),
+        "aggiornato_il": doc.get("aggiornato_il") if doc else None,
+    }
+
+
+@router.post("/openai")
+async def salva_openai_settings(
+    data: Dict[str, Any] = Body(...),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Salva cifrata una chiave OpenAI e testa il modello scelto."""
+    from fastapi import HTTPException
+    api_key = (data.get("api_key") or "").strip()
+    if not api_key or not api_key.startswith("sk-"):
+        raise HTTPException(400, "Chiave OpenAI non valida (deve iniziare con 'sk-')")
+    modello = (data.get("modello") or "").strip() or "gpt-4o-mini"
+    db = Database.get_db()
+    await db["settings"].update_one(
+        {"chiave": "openai"},
+        {"$set": {
+            "chiave": "openai",
+            "api_key": encrypt_credential(api_key),
+            "modello": modello,
+            "aggiornato_il": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    test = await _test_openai(api_key, modello)
+    return {
+        "status": "ok" if test["ok"] else "salvato_con_errore",
+        "messaggio": "Chiave salvata: l'assistente AI e' attivo." if test["ok"]
+                     else f"Salvata, ma il test e' fallito: {test.get('error')}",
+        "test": test,
+    }
+
+
+@router.post("/openai/test")
+async def test_openai_connection(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Testa la chiave OpenAI attualmente in uso (env o DB)."""
+    from app.services.chat_ai_engine import risolvi_api_key, _model_name
+    db = Database.get_db()
+    key = await risolvi_api_key(db, "openai")
+    if not key:
+        return {"ok": False, "error": "Nessuna chiave OpenAI configurata"}
+    return await _test_openai(key, _model_name("openai"))
+
+
+async def _test_openai(api_key: str, modello: str = "gpt-4o-mini") -> Dict[str, Any]:
+    """Chiamata minima OpenAI; non restituisce contenuti o segreti."""
+    try:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=api_key)
+        await client.chat.completions.create(
+            model=modello,
+            messages=[{"role": "user", "content": "ping"}],
+            max_tokens=8,
+            timeout=20.0,
+        )
+        return {"ok": True, "messaggio": f"Chiave valida (modello {modello})"}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:200]}
 
 
 async def _test_anthropic(api_key: str, modello: str = None) -> Dict[str, Any]:

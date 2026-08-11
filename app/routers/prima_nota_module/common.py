@@ -95,7 +95,9 @@ FILTRO_CREDITO_POS = {"$or": [
 # Da unire con ** alle query dei saldi bancari reali.
 ESCLUSIONI_SALDO_REALE = {
     "categoria": {"$nin": CATEGORIE_ESCLUSE},
-    "natura": {"$ne": NATURA_CREDITO_POS},
+    # Un costo trattenuto dal gestore non e' mai transitato sul conto:
+    # resta in contabilita' economica, non nella tesoreria.
+    "natura": {"$nin": [NATURA_CREDITO_POS, "costo"]},
     "source": {"$nin": SOURCES_ESCLUSE + SOURCES_CREDITO_POS},
 }
 
@@ -110,7 +112,7 @@ def esclusioni_saldo_per_collection(collection: str) -> Dict[str, Any]:
     if collection == COLLECTION_PRIMA_NOTA_BANCA:
         return {
             "categoria": {"$nin": list(CATEGORIE_ESCLUSE)},
-            "natura": {"$ne": NATURA_CREDITO_POS},
+            "natura": {"$nin": [NATURA_CREDITO_POS, "costo"]},
             "source": {"$nin": list(SOURCES_ESCLUSE + SOURCES_CREDITO_POS)},
         }
     return {

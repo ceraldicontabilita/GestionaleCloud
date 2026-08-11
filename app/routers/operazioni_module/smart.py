@@ -1,9 +1,6 @@
 """
 Operazioni Module - Riconciliazione Smart (banca veloce, analisi, associazioni).
 """
-import asyncio
-import uuid
-
 from fastapi import HTTPException
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
@@ -21,81 +18,6 @@ from .common import RiconciliaManuale, ConfermaBatchRequest, logger, QUERY_FATTU
 # riconciliare" del tab Banca (bug 18/07/2026, segnalato dall'utente subito
 # dopo il primo import di uno statement Nexi reale).
 ESCLUDI_CARTA_CREDITO = {"tipo": {"$ne": "carta_credito"}}
-
-
-# La riconciliazione completa attraversa banca, PayPal, assegni, bonifici,
-# cedolini e F24. Su archivi reali puo' durare piu' del timeout HTTP del
-# browser: un solo job per processo viene quindi eseguito in background e la
-# pagina ne legge lo stato con polling. Il risultato contabile continua a
-# essere prodotto esclusivamente da ``riconcilia_automatico``.
-_riconciliazione_task: Optional[asyncio.Task] = None
-_riconciliazione_stato: Dict[str, Any] = {
-    "status": "idle",
-    "job_id": None,
-    "started_at": None,
-    "finished_at": None,
-    "result": None,
-    "error": None,
-}
-
-
-def _stato_riconciliazione_pubblico() -> Dict[str, Any]:
-    return dict(_riconciliazione_stato)
-
-
-async def _esegui_riconciliazione_background(
-    job_id: str,
-    tipo: Optional[str],
-    limit: int,
-) -> None:
-    try:
-        risultato = await riconcilia_automatico(tipo=tipo, limit=limit)
-        if _riconciliazione_stato.get("job_id") == job_id:
-            _riconciliazione_stato.update({
-                "status": "completed",
-                "finished_at": datetime.now(timezone.utc).isoformat(),
-                "result": risultato,
-                "error": None,
-            })
-    except Exception as exc:  # pragma: no cover - rete/DB, verificato via stato
-        logger.exception("Riconciliazione automatica in background fallita")
-        if _riconciliazione_stato.get("job_id") == job_id:
-            _riconciliazione_stato.update({
-                "status": "error",
-                "finished_at": datetime.now(timezone.utc).isoformat(),
-                "result": None,
-                "error": str(exc),
-            })
-
-
-async def avvia_riconciliazione_automatica(
-    tipo: Optional[str] = None,
-    limit: int = 100,
-) -> Dict[str, Any]:
-    """Accoda la riconciliazione completa senza trattenere la richiesta HTTP."""
-    global _riconciliazione_task
-
-    if _riconciliazione_task is not None and not _riconciliazione_task.done():
-        return _stato_riconciliazione_pubblico()
-
-    job_id = str(uuid.uuid4())
-    _riconciliazione_stato.update({
-        "status": "running",
-        "job_id": job_id,
-        "started_at": datetime.now(timezone.utc).isoformat(),
-        "finished_at": None,
-        "result": None,
-        "error": None,
-    })
-    _riconciliazione_task = asyncio.create_task(
-        _esegui_riconciliazione_background(job_id, tipo, limit)
-    )
-    return _stato_riconciliazione_pubblico()
-
-
-async def stato_riconciliazione_automatica() -> Dict[str, Any]:
-    """Stato leggero del job avviato da Prima Nota."""
-    return _stato_riconciliazione_pubblico()
 
 
 async def banca_veloce(
@@ -187,80 +109,24 @@ async def analizza_singolo_movimento(movimento_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def riconcilia_automatico(
-    tipo: Optional[str] = None,
-    limit: int = 100
-) -> Dict[str, Any]:
-    """Esegue i motori canonici; i casi ambigui restano aperti."""
-    db = Database.get_db()
-
-    errori = []
-    try:
-        # Prima del matching fatture/cedolini ripulisce il vecchio modello
-        # NUMIA: le componenti BNCMT/INTER/AMEX dello stesso giorno non sono
-        # rimborsi distinti, ma prove dell'unico trasferimento POS giornaliero.
-        from app.services.scritture_contabili import bonifica_accrediti_pos_numia
-        pos_numia = await bonifica_accrediti_pos_numia(
-            db, datetime.now().year, dry_run=False,
-            actor={"sub": "riconciliazione-automatica"},
-        )
-    except Exception as exc:
-        logger.exception("Errore bonifica automatica accrediti POS NUMIA")
-        pos_numia = {}
-        errori.append({"motore": "pos_numia", "error": str(exc)})
-    try:
-        from app.services.riconciliazione_bancaria import riconcilia_movimenti_banca
-        banca = await riconcilia_movimenti_banca()
-    except Exception as exc:
-        logger.exception("Errore motore canonico banca")
-        banca = {"totale_riconciliati": 0, "movimenti_analizzati": 0}
-        errori.append({"motore": "banca", "error": str(exc)})
-
-    try:
-        from app.routers.paypal_statements import _auto_riconcilia
-        paypal = await _auto_riconcilia(db, applica=True)
-    except Exception as exc:
-        logger.exception("Errore riconciliazione PayPal-banca")
-        paypal = {"riconciliati": 0, "ambigui": 0}
-        errori.append({"motore": "paypal", "error": str(exc)})
-
-    try:
-        from app.services.reconciliation_orchestrator import (
-            riconcilia_documenti_e_pagamenti,
-        )
-        documenti = await riconcilia_documenti_e_pagamenti(db)
-    except Exception as exc:
-        logger.exception("Errore orchestratore documenti/pagamenti")
-        documenti = {}
-        errori.append({"motore": "documenti_pagamenti", "error": str(exc)})
-
-    riconciliati_canonici = int(banca.get("totale_riconciliati") or 0) + int(
-        paypal.get("riconciliati") or 0
-    )
-    riconciliati_documenti = (
-        int((documenti.get("assegni_intenti") or {}).get("collegati") or 0)
-        + int((documenti.get("assegni_auto") or {}).get("fatture_aggiornate") or 0)
-        + int((documenti.get("bonifici_pdf") or {}).get("associati") or 0)
-        + int((documenti.get("salari") or {}).get("bonifici_associati") or 0)
-        + int((documenti.get("f24") or {}).get("movimenti_associati") or 0)
-        + int((((documenti.get("paypal") or {}).get("banca") or {}).get("riconciliati")) or 0)
-        + int((documenti.get("cbill_pagopa") or {}).get("associazioni_trovate") or 0)
-    )
-    return {
-        "success": not errori,
-        "riconciliati": riconciliati_canonici + riconciliati_documenti,
-        "analizzati": int(banca.get("movimenti_analizzati") or 0),
-        "banca": banca,
-        "pos_numia": pos_numia,
-        "paypal": paypal,
-        "documenti_pagamenti": documenti,
-        "errori": errori[:10],
-    }
-
-
 async def riconcilia_manuale(request: RiconciliaManuale) -> Dict[str, Any]:
     """Riconciliazione manuale movimento con entità."""
     db = Database.get_db()
+
+    # Validare il candidato prima di leggere o mutare il movimento: il primo
+    # suggerimento non e una scelta dell'operatore.
+    associazioni = request.associazioni or []
+    if len(associazioni) != 1:
+        raise HTTPException(
+            status_code=409,
+            detail="Conferma bloccata: selezionare un solo candidato identificato",
+        )
+    associazione = associazioni[0] or {}
+    if not str(associazione.get("id") or "").strip():
+        raise HTTPException(
+            status_code=409,
+            detail="Conferma bloccata: il candidato selezionato non ha un identificativo",
+        )
 
     movimento = await db.estratto_conto_movimenti.find_one({"id": request.movimento_id})
     if not movimento:
@@ -270,7 +136,7 @@ async def riconcilia_manuale(request: RiconciliaManuale) -> Dict[str, Any]:
     if movimento.get("riconciliato"):
         raise HTTPException(status_code=409, detail="Movimento già riconciliato")
 
-    entita_id = request.associazioni[0].get("id") if request.associazioni else None
+    entita_id = str(associazione["id"]).strip()
     # "fattura_sdd" è il sotto-tipo prodotto dall'analizzatore per gli SDD con
     # match su combinazione fatture: va saldato come una fattura normale,
     # altrimenti il movimento risulta riconciliato ma la fattura resta "da

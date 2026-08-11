@@ -16,6 +16,7 @@ import {
 import { toast } from 'sonner';
 import api from '../api';
 import { formatEuroD } from '../lib/utils';
+import DocumentImportLink from '../components/DocumentImportLink';
 
 const MESI = [
   '', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
@@ -113,11 +114,11 @@ function aggregaRighe(righe) {
   }).sort((a, b) => a.nome.localeCompare(b.nome, 'it'));
 }
 
-function BottoneUpload({ tipo, gruppo, inCorso, onUpload }) {
+function BottoneUpload({ tipo, gruppo }) {
   const nome = tipo === 'cedolino' ? 'cedolino' : 'bonifico';
-  const chiave = `${tipo}-${gruppo.rigaPrincipale?.id}`;
   return (
-    <label
+    <DocumentImportLink
+      workflow={tipo}
       title={`Allega ${nome} PDF`}
       style={{
         minHeight: 38,
@@ -127,24 +128,16 @@ function BottoneUpload({ tipo, gruppo, inCorso, onUpload }) {
         background: '#fff',
         color: '#0f2744',
         fontWeight: 750,
-        cursor: inCorso === chiave ? 'wait' : 'pointer',
+        cursor: 'pointer',
         display: 'inline-flex',
         alignItems: 'center',
         gap: 6,
         whiteSpace: 'nowrap',
       }}
     >
-      {inCorso === chiave ? <Loader2 size={16} className="spin" /> : <Upload size={16} />}
-      Allega {nome}
-      <input
-        type="file"
-        accept="application/pdf,.pdf"
-        aria-label={`Allega ${nome} ${gruppo.dipendente} ${MESI[gruppo.mese] || gruppo.mese} ${gruppo.anno}`}
-        disabled={inCorso === chiave || !gruppo.rigaPrincipale?.id}
-        onChange={evento => onUpload(tipo, gruppo, evento)}
-        style={{ display: 'none' }}
-      />
-    </label>
+      <Upload size={16} />
+      Importa {nome} in Documenti
+    </DocumentImportLink>
   );
 }
 
@@ -155,6 +148,8 @@ export default function CedoliniSalari() {
   const [annoFiltro, setAnnoFiltro] = useState('tutti');
   const [documentoInApertura, setDocumentoInApertura] = useState(null);
   const [uploadInCorso, setUploadInCorso] = useState(null);
+  // Compatibilita per i dati importati dal vecchio endpoint: l'acquisizione
+  // interattiva passa ora sempre da Documenti.
   const [importazioneInCorso, setImportazioneInCorso] = useState(false);
   const [exportInCorso, setExportInCorso] = useState(false);
 
@@ -302,18 +297,15 @@ export default function CedoliniSalari() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'end', flexWrap: 'wrap' }}>
-          <label style={{ minHeight: 42, borderRadius: 9, padding: '10px 14px', background: '#0f2744', color: '#fff', fontWeight: 750, cursor: importazioneInCorso ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-            {importazioneInCorso ? <Loader2 size={18} className="spin" /> : <FileSpreadsheet size={18} />}
-            {importazioneInCorso ? 'Importazione...' : 'Importa prospetto Excel'}
-            <input
-              type="file"
-              accept=".xlsx,.xls"
-              aria-label="Importa buste e bonifici Excel"
-              disabled={importazioneInCorso}
-              onChange={importaBonifici}
-              style={{ display: 'none' }}
-            />
-          </label>
+          <DocumentImportLink
+            workflow="cedolini-excel"
+            aria-label="Importa buste e bonifici Excel"
+            title="Acquisisci il prospetto da Documenti: classificazione e controllo centralizzati"
+            style={{ minHeight: 42, borderRadius: 9, padding: '10px 14px', background: '#0f2744', color: '#fff', fontWeight: 750, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7 }}
+          >
+            <FileSpreadsheet size={18} />
+            Importa prospetto Excel in Documenti
+          </DocumentImportLink>
           <button
             type="button"
             onClick={esportaAppDipendenti}

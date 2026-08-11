@@ -203,11 +203,14 @@ async def get_movimenti_bancari(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/aisp/riconcilia-automatica")
 async def riconcilia_automatica_aisp(iban: str = Query(...)) -> Dict[str, Any]:
     """
     Esegue la riconciliazione automatica tra movimenti AISP e fatture/assegni.
     """
+    raise HTTPException(
+        status_code=410,
+        detail="Riconciliazione AISP automatica disabilitata: usare preview e conferma manuale",
+    )
     db = Database.get_db()
     
     risultato = {

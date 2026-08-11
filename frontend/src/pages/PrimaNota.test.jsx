@@ -1,17 +1,22 @@
 import React from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../api';
 import {
   CartaNexi,
+  CartaSumUp,
   FattureAtteseNelRegistroBanca,
   MovimentoModal,
   Provvisori,
   etichettaTabProvvisori,
   filtraFattureProvvisorie,
   filtraMovimentiPrimaNota,
+  eCategoriaStorica,
   nomeFornitoreMovimento,
+  normalizzaDescrizioneMovimento,
 } from './PrimaNota';
 
 vi.mock('../api', () => ({
@@ -21,6 +26,40 @@ vi.mock('../api', () => ({
 const rispostaVuota = {
   data: { verifica: { addebiti_trovati: 0, dettagli: [] } },
 };
+
+describe('Conto SumUp separato dalla Banca', () => {
+  it('mostra tutti gli accrediti ricevuti raggruppati per giornata', () => {
+    render(<CartaSumUp
+      anno={2026}
+      dati={{
+        totale_ricevuto: 934.20,
+        numero_payout: 3,
+        giorni: [
+          { data: '2026-08-10', importo: 834.20, numero_payout: 2, payout_ids: ['PID1', 'PID2'] },
+          { data: '2026-08-09', importo: 100, numero_payout: 1, payout_ids: ['PID3'] },
+        ],
+      }}
+    />);
+
+    expect(screen.getByRole('heading', { name: 'Accrediti giornalieri Mastercard SumUp' })).toBeInTheDocument();
+    expect(screen.getByText('PID1, PID2')).toBeInTheDocument();
+    expect(screen.getByText('PID3')).toBeInTheDocument();
+    expect(screen.getByText('€ 834,20')).toBeInTheDocument();
+    expect(screen.getByText('€ 100,00')).toBeInTheDocument();
+  });
+
+  it('non contiene piu il pannello di dettaglio entrate e la differenza POS fuorviante', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/pages/PrimaNota.jsx'), 'utf8');
+    expect(source).not.toContain('Dettaglio entrate');
+    expect(source).not.toContain('Credito POS ancora da incassare / differenza temporale');
+  });
+
+  it('non offre creazione o spostamento diretto di righe nel registro Banca', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/pages/PrimaNota.jsx'), 'utf8');
+    expect(source).not.toContain('/api/prima-nota/sposta-movimento');
+    expect(source).toContain("{tipo === 'cassa' && (");
+  });
+});
 
 describe('Carta Nexi e anno globale', () => {
   beforeEach(() => {
@@ -178,6 +217,46 @@ describe('Fatture provvisorie in attesa banca', () => {
       '⚠️ Da decidere (2) · 🏦 Attesa banca (3)',
     );
   });
+
+  it('compatta soltanto descrizioni duplicate parola per parola', () => {
+    const descrizione = 'BONIF. VS. FAVORE - BON.DA CERALDI BONIF. VS. FAVORE - BON.DA CERALDI';
+    expect(normalizzaDescrizioneMovimento(descrizione)).toBe(
+      'BONIF. VS. FAVORE - BON.DA CERALDI',
+    );
+    expect(normalizzaDescrizioneMovimento('Bonifico fornitore non duplicato'))
+      .toBe('Bonifico fornitore non duplicato');
+  });
+
+  it('riconosce le categorie numeriche legacy senza confonderle con quelle operative', () => {
+    expect(eCategoriaStorica('5331')).toBe(true);
+    expect(eCategoriaStorica('5814')).toBe(true);
+    expect(eCategoriaStorica('F24')).toBe(false);
+  });
+
+  it('pagina la coda da decidere quando contiene centinaia di documenti', () => {
+    const provvisori = Array.from({ length: 51 }, (_, indice) => ({
+      fattura_id: `fatt-${indice}`,
+      fattura_numero: `F-${indice}`,
+      fattura_data: '2026-06-01',
+      fornitore: 'Fornitore Test',
+      importo: 10,
+      suggerimento: 'sospesa',
+    }));
+    render(<Provvisori
+      provvisori={provvisori}
+      attesaBanca={[]}
+      onRicarica={vi.fn().mockResolvedValue(undefined)}
+    />);
+
+    expect(screen.getByTestId('paginazione-da-decidere')).toHaveTextContent('Documenti da associare: 51');
+    expect(screen.getByText('Pagina 1/2')).toBeInTheDocument();
+    expect(screen.queryByText(/Fatt. F-50 del/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pagina da decidere successiva' }));
+
+    expect(screen.getByText('Pagina 2/2')).toBeInTheDocument();
+    expect(screen.getByText(/Fatt. F-50 del/)).toBeInTheDocument();
+  }, 15000);
 
   it('mostra nel registro Banca le fatture attese del mese selezionato', () => {
     render(<FattureAtteseNelRegistroBanca
@@ -379,24 +458,12 @@ describe('Fatture provvisorie in attesa banca', () => {
     expect(await screen.findByText(/Nessun movimento compatibile/)).toBeInTheDocument();
   });
 
-  it('riprocessa tutto lo storico aperto senza selezionare movimenti a mano', async () => {
-    api.post.mockResolvedValue({ data: {
-      status: 'completed',
-      job_id: 'job-test',
-      result: { analizzati: 3542, riconciliati: 17 },
-    } });
+  it('non espone un riprocessamento storico mutativo diretto', async () => {
     const onRicarica = vi.fn().mockResolvedValue(undefined);
     render(<Provvisori provvisori={[]} attesaBanca={[]} onRicarica={onRicarica} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Riprocessa estratto conto' }));
-
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
-      '/api/operazioni-da-confermare/smart/riconcilia-auto',
-    ));
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      '3542 movimenti esaminati, 17 riconciliati',
-    );
-    expect(onRicarica).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Riprocessa estratto conto' })).not.toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
   });
 
   it('evidenzia un dubbio sul metodo senza creare un pagamento', async () => {

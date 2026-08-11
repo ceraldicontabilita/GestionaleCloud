@@ -47,6 +47,11 @@ from app.services.assegni_fattura_intent import (
     fattura_dichiara_assegno,
     rate_assegno_dichiarate,
 )
+from app.services.payment_allocation_validator import (
+    is_credit_note,
+    to_cents,
+    validate_invoice_allocation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -441,6 +446,16 @@ async def _apply_match(
     now = datetime.now(timezone.utc).isoformat()
     movimenti_banca = 0
 
+    # Una nota di credito non è una fattura da pagare con assegno. Il filtro è
+    # qui, prima di ogni update, anche se una proposta legacy lo contiene.
+    if any(is_credit_note(f) for f in fatture_match):
+        return {
+            "error": "nota_di_credito_non_pagabile",
+            "payment_allocation_status": "conflicting",
+            "fatture": [f.get("id") for f in fatture_match],
+            "livello": livello,
+        }
+
     # Caso 1 assegno → 1+ fatture (L1 e L4)
     if len(assegni_match) == 1:
         assegno = assegni_match[0]
@@ -465,6 +480,20 @@ async def _apply_match(
                 "fornitore": f.get("supplier_name") or f.get("cedente_denominazione"),
             })
             quote_assegnate_totale = round(quote_assegnate_totale + quota, 2)
+
+        for fc in fatture_collegate:
+            target = next((f for f in fatture_match if str(f.get("id")) == str(fc.get("fattura_id"))), None)
+            if target is None:
+                continue
+            esito = validate_invoice_allocation(target, to_cents(fc.get("quota")))
+            if not esito["allowed"]:
+                return {
+                    "error": esito["reason"],
+                    "payment_allocation_status": "conflicting",
+                    "fattura_id": target.get("id"),
+                    "residual_cents": esito["residual_cents"],
+                    "livello": livello,
+                }
 
         if dry_run:
             return {
@@ -510,6 +539,19 @@ async def _apply_match(
         fattura = fatture_match[0]
         residuo_fatt = fattura["_residuo"]
         assegni_collegati_result = []
+
+        richiesta = sum(to_cents(a.get("importo")) for a in assegni_match)
+        esito = validate_invoice_allocation(
+            fattura, richiesta, allocation_id=None,
+        )
+        if not esito["allowed"]:
+            return {
+                "error": esito["reason"],
+                "payment_allocation_status": "conflicting",
+                "fattura_id": fattura.get("id"),
+                "residual_cents": esito["residual_cents"],
+                "livello": livello,
+            }
 
         if dry_run:
             return {

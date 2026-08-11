@@ -16,6 +16,11 @@ from typing import Any, Dict, Iterable, List, Optional
 from app.routers.bank.assegni_auto_match import TOLL, _f, _load_open_invoices_by_piva
 from app.services.scritture_contabili import scrivi_movimento
 from app.services.assegni_fattura_intent import capienza_assegno_fattura
+from app.services.payment_allocation_validator import (
+    is_credit_note,
+    to_cents,
+    validate_invoice_allocation,
+)
 from app.services.accounting_relation_writers import record_check_reconciliation
 
 
@@ -204,6 +209,12 @@ async def _collega_fattura_univoca(
     if not fid:
         return False
     importo = round(_f(quota_override if quota_override is not None else assegno.get("importo")), 2)
+    if is_credit_note(fattura):
+        return False
+    esito_allocazione = validate_invoice_allocation(
+        fattura, to_cents(importo),
+        allocation_id=str(assegno.get("id") or ""),
+    )
     totale = round(_f(fattura.get("total_amount") or fattura.get("importo_totale")), 2)
     pagato = round(_f(fattura.get("importo_pagato")), 2)
     link_esistente = next((
@@ -211,6 +222,8 @@ async def _collega_fattura_univoca(
         if isinstance(link, dict) and str(link.get("assegno_id")) == str(assegno["id"])
     ), None)
     pagamento_gia_applicato = bool(link_esistente and link_esistente.get("banca_confermata"))
+    if not pagamento_gia_applicato and not esito_allocazione["allowed"]:
+        return False
     if not pagamento_gia_applicato:
         disponibile, _, _ = capienza_assegno_fattura(
             fattura, assegno.get("id"), importo,
@@ -329,6 +342,32 @@ async def collega_assegno_riconciliato_a_fatture(
     totale_quote = round(sum(_f(item.get("quota")) for item in collegamenti), 2)
     if abs(totale_quote - importo_assegno) > TOLL:
         raise ValueError("La somma delle fatture deve coincidere al centesimo con l'assegno")
+
+    # Gate canonico prima di qualsiasi scrittura: una fattura non può essere
+    # sovra-attribuita e una nota di credito non è una destinazione di denaro.
+    richieste_per_fattura: Dict[str, int] = {}
+    fatture_per_id: Dict[str, Dict[str, Any]] = {}
+    for item in collegamenti:
+        fattura = item.get("fattura") or {}
+        fid = str(fattura.get("id") or "")
+        quota_cents = to_cents(item.get("quota"))
+        if not fid or quota_cents == 0:
+            raise ValueError("Fattura o quota non valida")
+        fatture_per_id[fid] = fattura
+        if quota_cents > 0:
+            richieste_per_fattura[fid] = richieste_per_fattura.get(fid, 0) + quota_cents
+            if is_credit_note(fattura):
+                raise ValueError("Una nota di credito non può essere pagata con un assegno")
+    for fid, quota_cents in richieste_per_fattura.items():
+        esito = validate_invoice_allocation(
+            fatture_per_id[fid], quota_cents,
+            allocation_id=str(assegno.get("id") or ""),
+        )
+        if not esito["allowed"]:
+            raise ValueError(
+                f"Allocazione rifiutata per {fid}: {esito['reason']} "
+                f"(residuo EUR {esito['residual_cents'] / 100:.2f})"
+            )
 
     now = datetime.now(timezone.utc).isoformat()
     data_movimento = _data_iso(movimento.get("data") or assegno.get("data_incasso"))

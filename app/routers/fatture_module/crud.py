@@ -12,6 +12,12 @@ import re
 from app.database import Database
 from .common import COL_FORNITORI, COL_FATTURE_RICEVUTE, COL_DETTAGLIO_RIGHE, COL_ALLEGATI, logger
 from .helpers import generate_invoice_html
+from app.services.payment_allocation_validator import (
+    allocation_summary,
+    is_credit_note,
+    invoice_total_cents,
+    existing_invoice_allocations_cents,
+)
 
 
 def _safe_year(value: Any) -> Optional[int]:
@@ -121,6 +127,13 @@ def _normalizza_da_invoices(doc: dict) -> dict:
         "created_at": created_at,
         "data_pagamento": doc.get("data_pagamento"),
         "fonte": doc.get("fonte", "aruba_pec"),
+        "document_role": "credit_note" if is_credit_note(doc) else "invoice",
+        **allocation_summary(doc),
+        "assegni_collegati": doc.get("assegni_collegati") or [],
+        "movimento_bancario_id": doc.get("movimento_bancario_id"),
+        "payment_evidence": doc.get("payment_evidence") or [],
+        "payment_document_ids": doc.get("payment_document_ids") or [],
+        "bonifico_ids": doc.get("bonifico_ids") or [],
         "_xml_filename": doc.get("xml_filename"),   # usato solo per dedup
     }
 
@@ -173,6 +186,13 @@ def _normalizza_da_fatture_passive(doc: dict) -> dict:
         "created_at": created_at,
         "data_pagamento": doc.get("data_pagamento"),
         "fonte": doc.get("source", "pec_auto"),
+        "document_role": "credit_note" if is_credit_note(doc) else "invoice",
+        **allocation_summary(doc),
+        "assegni_collegati": doc.get("assegni_collegati") or [],
+        "movimento_bancario_id": doc.get("movimento_bancario_id"),
+        "payment_evidence": doc.get("payment_evidence") or [],
+        "payment_document_ids": doc.get("payment_document_ids") or [],
+        "bonifico_ids": doc.get("bonifico_ids") or [],
         "_xml_filename": doc.get("xml_filename"),   # usato solo per dedup
     }
 
@@ -346,6 +366,12 @@ async def get_archivio_fatture(
     # Rimuovi il campo interno di dedup prima di rispondere
     for f in all_fatture:
         f.pop("_xml_filename", None)
+
+    # Proiezione unica delle prove, sempre derivata dagli stessi collegamenti
+    # canonici usati da Banca/Prima Nota. È read-only e non tocca il database.
+    from app.services.payment_evidence_projection import project_invoice_payment_evidence
+    for f in all_fatture:
+        f["payment_evidence"] = await project_invoice_payment_evidence(db, f)
 
     # ── Arricchisci con metodo_pagamento DEL FORNITORE ────────────────────────
     # Legge l'anagrafica fornitori per P.IVA e popola `fornitore_metodo_pagamento`.

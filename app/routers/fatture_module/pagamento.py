@@ -715,30 +715,6 @@ async def riconcilia_fatture_paypal() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def auto_ricostruisci_dati() -> Dict[str, Any]:
-    """
-    Auto-ripara e ricostruisce i dati delle fatture.
-    Aggiorna metodi pagamento dai fornitori e ricalcola statistiche.
-    """
-    db = Database.get_db()
-    
-    risultato = {
-        "metodi_aggiornati": 0,
-        "fatture_riparate": 0
-    }
-    
-    try:
-        # Aggiorna metodi pagamento
-        update_result = await aggiorna_metodi_pagamento_da_fornitori()
-        risultato["metodi_aggiornati"] = update_result.get("fatture_aggiornate", 0)
-        
-        return {"success": True, **risultato}
-    except Exception as e:
-        logger.error(f"Errore auto-ricostruzione: {e}")
-        return {"success": False, "error": str(e)}
-
-
-
 async def lista_fatture_paypal() -> Dict[str, Any]:
     """
     Restituisce la lista delle fatture riconciliate via PayPal.

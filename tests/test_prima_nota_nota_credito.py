@@ -500,6 +500,35 @@ def test_rimborso_di_un_doppio_bonifico_lascia_un_riscontro_netto(monkeypatch):
     assert attesa["evidenza_banca"]["rimborsi_ids"] == ["ec-refund"]
 
 
+def test_fattura_dicembre_trova_il_pagamento_forte_di_gennaio_successivo(monkeypatch):
+    db = _FakeDb()
+    db["invoices"].docs = [_fattura(
+        id="fatt-cross-year", invoice_number="2025/778",
+        invoice_date="2025-12-20", supplier_name="FORNITORE TEST S.R.L.",
+        supplier_vat="00123456789", total_amount=123.45,
+        metodo_pagamento_previsto="banca",
+        metodo_pagamento_override_source="operatore_prima_nota",
+    )]
+    db["estratto_conto_movimenti"].docs = [{
+        "id": "ec-gennaio", "data": "2026-01-08", "tipo": "uscita",
+        "importo": 123.45,
+        "descrizione": "BONIFICO FORNITORE TEST FATTURA 2025/778",
+    }]
+    _patch_db(monkeypatch, db)
+
+    async def _senza_pagamento(_db, fatture):
+        return fatture
+
+    monkeypatch.setattr(
+        sync_mod, "fatture_senza_pagamento_contabile_confermato", _senza_pagamento,
+    )
+
+    res = _run(sync_mod.get_fatture_provvisorie(anno=2025))
+
+    assert res["in_attesa_banca"][0]["movimento_banca"]["id"] == "ec-gennaio"
+    assert res["in_attesa_banca"][0]["evidenza_banca"] == "identita_fattura_importo"
+
+
 def test_assegno_cumulativo_trova_un_solo_lotto_di_fatture(monkeypatch):
     db = _FakeDb()
     db["invoices"].docs = [

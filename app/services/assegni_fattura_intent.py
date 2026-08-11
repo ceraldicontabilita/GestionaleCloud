@@ -12,6 +12,14 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.services.payment_allocation_validator import (
+    invoice_total_cents,
+    existing_invoice_allocations_cents,
+    to_cents,
+    validate_invoice_allocation,
+    is_credit_note,
+)
+
 
 TOLL = 0.005
 
@@ -131,27 +139,21 @@ def capienza_assegno_fattura(
     gli impegni degli altri assegni, inclusi quelli in attesa dell'estratto.
     Il link dello stesso assegno e escluso per mantenere l'idempotenza.
     """
-    totale = round(_f(invoice.get("total_amount") or invoice.get("importo_totale")), 2)
-    quota = round(_f(quota), 2)
-    if totale <= 0 or quota <= 0:
-        return False, 0.0, totale
-
-    links = [
-        link for link in (invoice.get("assegni_collegati") or [])
-        if isinstance(link, dict) and _f(link.get("quota")) > 0
-    ]
-    confermato_assegni = round(sum(
-        _f(link.get("quota")) for link in links if link.get("banca_confermata")
-    ), 2)
-    pagato_non_assegni = round(max(
-        0.0, _f(invoice.get("importo_pagato")) - confermato_assegni
-    ), 2)
-    quote_altri = round(sum(
-        _f(link.get("quota")) for link in links
-        if str(link.get("assegno_id") or "") != str(assegno_id or "")
-    ), 2)
-    impegnato = round(pagato_non_assegni + quote_altri, 2)
-    return impegnato + quota <= totale + TOLL, impegnato, totale
+    totale_cents = invoice_total_cents(invoice)
+    quota_cents = to_cents(quota)
+    # Manteniamo la firma legacy in euro per i chiamanti esistenti, ma la
+    # decisione è presa esclusivamente dal servizio canonico in centesimi.
+    esito = validate_invoice_allocation(
+        invoice, quota_cents, allocation_id=str(assegno_id or ""),
+    )
+    impegnato_cents = existing_invoice_allocations_cents(
+        invoice, exclude_allocation_id=str(assegno_id or ""),
+    )
+    return (
+        bool(esito["allowed"]),
+        impegnato_cents / 100,
+        totale_cents / 100,
+    )
 
 
 def _score(assegno: Dict[str, Any], invoice: Dict[str, Any]) -> int:
@@ -209,6 +211,12 @@ async def _collega(
     # tardivo deve chiudere la fattura e soprattutto non deve degradare
     # l'assegno da ``incassato`` a ``assegnato``.
     quota = round(_f(assegno.get("importo")), 2)
+    if is_credit_note(invoice):
+        return {
+            "collegato": False,
+            "motivo": "nota_di_credito_non_pagabile",
+            "payment_allocation_status": "conflicting",
+        }
     disponibile, impegnato, totale = capienza_assegno_fattura(
         invoice, assegno.get("id"), quota,
     )

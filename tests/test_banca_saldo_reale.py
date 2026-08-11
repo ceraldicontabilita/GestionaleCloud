@@ -51,6 +51,18 @@ def test_lista_banca_esclude_crediti_pos_virtuali_da_righe_e_saldo(monkeypatch):
             "categoria": "Bonifico", "source": "estratto_conto",
             "natura": "movimento_bancario_reale",
         },
+        {
+            "id": "sumup-mastercard", "data": "2026-08-10", "anno": 2026,
+            "tipo": "entrata", "importo": 834.20,
+            "categoria": "Accrediti POS", "source": "accredito_payout",
+            "natura": "liquidita", "conto_contabile": "19.01.05",
+        },
+        {
+            "id": "commissione-sumup", "data": "2026-08-10", "anno": 2026,
+            "tipo": "uscita", "importo": 7.70,
+            "categoria": "Commissioni e spese bancarie", "source": "commissioni_sumup",
+            "natura": "costo", "conto_contabile": "75.01.07.02",
+        },
     ]))
 
     risultato = _run(banca.list_prima_nota_banca(
@@ -64,3 +76,46 @@ def test_lista_banca_esclude_crediti_pos_virtuali_da_righe_e_saldo(monkeypatch):
     assert risultato["totale_entrate"] == 980.0
     assert risultato["totale_uscite"] == 80.0
     assert risultato["saldo_anno"] == 900.0
+
+
+def test_scheda_sumup_espone_solo_payout_ricevuti_aggregati_per_giorno(monkeypatch):
+    db = AsyncMongoMockClient()["conto_sumup_separato_test"]
+    monkeypatch.setattr(banca.Database, "get_db", staticmethod(lambda: db))
+    _run(db["prima_nota_banca"].insert_many([
+        {
+            "id": "p1", "data": "2026-08-10", "tipo": "entrata", "importo": 800.0,
+            "source": "accredito_payout", "conto_contabile": "19.01.05", "payout_id": "PID1",
+        },
+        {
+            "id": "p2", "data": "2026-08-10", "tipo": "entrata", "importo": 34.20,
+            "source": "accredito_payout", "conto_contabile": "19.01.05", "payout_id": "PID2",
+        },
+        {
+            "id": "p3", "data": "2026-08-09", "tipo": "entrata", "importo": 100.0,
+            "source": "accredito_payout", "conto_contabile": "19.01.05", "payout_id": "PID3",
+        },
+        {
+            "id": "vendita", "data": "2026-08-10", "tipo": "entrata", "importo": 999.0,
+            "source": "corrispettivi_sync", "conto_contabile": "15.07.02",
+        },
+        {
+            "id": "bpm", "data": "2026-08-10", "tipo": "entrata", "importo": 500.0,
+            "source": "estratto_conto", "conto_contabile": "19.01.01",
+        },
+    ]))
+
+    risultato = _run(banca.list_prima_nota_sumup(anno=2026))
+
+    assert risultato["conto"] == "19.01.05"
+    assert risultato["totale_ricevuto"] == 934.20
+    assert risultato["numero_payout"] == 3
+    assert risultato["giorni"] == [
+        {
+            "data": "2026-08-10", "importo": 834.20, "numero_payout": 2,
+            "payout_ids": ["PID1", "PID2"],
+        },
+        {
+            "data": "2026-08-09", "importo": 100.0, "numero_payout": 1,
+            "payout_ids": ["PID3"],
+        },
+    ]

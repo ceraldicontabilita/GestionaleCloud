@@ -64,43 +64,27 @@ describe('CedoliniSalari', () => {
     expect(screen.queryByText('Riconciliato con estratto conto')).not.toBeInTheDocument();
   });
 
-  it('importa il prospetto Excel e ricarica le righe', async () => {
-    api.post.mockResolvedValueOnce({ data: { created: 2, updated: 1, duplicates: 1 } });
+  it('indirizza il prospetto Excel alla porta unica Documenti', async () => {
     render(<CedoliniSalari />);
     await waitFor(() => expect(screen.getByText('Mario Rossi')).toBeInTheDocument());
-    const file = new File(['excel sintetico'], 'bonifici.xlsx', {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    });
-    fireEvent.change(screen.getByLabelText('Importa buste e bonifici Excel'), {
-      target: { files: [file] },
-    });
-    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
-    expect(api.post.mock.calls[0][0]).toBe('/api/prima-nota-salari/import-bonifici');
-    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('link', { name: 'Importa buste e bonifici Excel' }))
+      .toHaveAttribute('href', '/documenti/import?workflow=cedolini-excel');
+    expect(api.post).not.toHaveBeenCalled();
   });
 
-  it('allega manualmente il cedolino al mese selezionato', async () => {
-    api.post.mockResolvedValueOnce({ data: { message: 'Cedolino allegato' } });
+  it('indirizza il cedolino alla porta unica Documenti', async () => {
     render(<CedoliniSalari />);
     await waitFor(() => expect(screen.getByText('Mario Rossi')).toBeInTheDocument());
-    const file = new File(['%PDF-test'], 'cedolino.pdf', { type: 'application/pdf' });
-    fireEvent.change(screen.getByLabelText('Allega cedolino Mario Rossi Marzo 2026'), {
-      target: { files: [file] },
-    });
-    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
-    expect(api.post.mock.calls[0][0]).toBe('/api/prima-nota-salari/salari/1/cedolino-pdf');
+    const link = screen.getAllByRole('link', { name: /Importa cedolino in Documenti/ })[0];
+    expect(link).toHaveAttribute('href', '/documenti/import?workflow=cedolino');
+    expect(api.post).not.toHaveBeenCalled();
   });
 
-  it('allega il PDF bonifico senza dichiarare riconciliazione bancaria', async () => {
-    api.post.mockResolvedValueOnce({ data: { message: 'Bonifico allegato', riconciliato: false } });
+  it('indirizza il PDF bonifico alla porta unica Documenti', async () => {
     render(<CedoliniSalari />);
     await waitFor(() => expect(screen.getByText('Mario Rossi')).toBeInTheDocument());
-    const file = new File(['%PDF-test'], 'bonifico.pdf', { type: 'application/pdf' });
-    fireEvent.change(screen.getByLabelText('Allega bonifico Mario Rossi Marzo 2026'), {
-      target: { files: [file] },
-    });
-    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
-    expect(api.post.mock.calls[0][0]).toBe('/api/prima-nota-salari/salari/1/bonifico-pdf');
-    expect(screen.getAllByText('Da verificare in banca').length).toBeGreaterThan(0);
+    const link = screen.getAllByRole('link', { name: /Importa bonifico in Documenti/ })[0];
+    expect(link).toHaveAttribute('href', '/documenti/import?workflow=bonifico');
+    expect(api.post).not.toHaveBeenCalled();
   });
 });

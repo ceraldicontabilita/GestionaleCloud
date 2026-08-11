@@ -46,6 +46,119 @@ const tipoDocumento = fattura => {
   return { codice, nome: fattura.tipo_documento_desc || NOMI_TIPO_DOCUMENTO[codice] || codice };
 };
 
+const statoAllocazione = fattura => String(
+  fattura.payment_allocation_status || (fattura.allocation_conflict_reason ? 'conflicting' : '') || ''
+).toLowerCase();
+
+export const descriviPagamento = fattura => {
+  if (statoAllocazione(fattura) === 'conflicting') {
+    return {
+      variant: 'danger',
+      label: 'Conflitto da verificare',
+      title: fattura.allocation_conflict_reason || 'Le allocazioni superano il totale del documento.',
+      verified: false,
+    };
+  }
+
+  const prove = Array.isArray(fattura.payment_evidence) ? fattura.payment_evidence : [];
+  const provaConfermata = prove.find(prova =>
+    prova && (prova.status === 'confirmed' || prova.bank_movement_id)
+  );
+  const provaDocumentata = prove.find(prova => prova && prova.status === 'documented');
+  const prova = provaConfermata || provaDocumentata;
+
+  if (prova) {
+    const riferimento = String(prova.reference || '').trim();
+    const data = String(prova.date || '').slice(0, 10);
+    if (prova.type === 'assegno') {
+      return {
+        variant: provaConfermata ? 'success' : 'warning',
+        label: `Assegno${riferimento ? ` n. ${riferimento}` : ''}`,
+        title: provaConfermata
+          ? `Assegno collegato e riscontrato${data ? ` il ${formatDateIT(data)}` : ''}.`
+          : 'Assegno collegato, ancora in attesa del riscontro bancario.',
+        verified: !!provaConfermata,
+      };
+    }
+    if (prova.type === 'bonifico_pdf') {
+      return {
+        variant: provaConfermata ? 'success' : 'warning',
+        label: `Bonifico${riferimento ? ` · ${riferimento}` : ''}`,
+        title: provaConfermata
+          ? 'Documento di bonifico collegato al movimento bancario.'
+          : 'Documento di bonifico presente, ma movimento bancario non ancora riscontrato.',
+        verified: !!provaConfermata,
+      };
+    }
+    return {
+      variant: provaConfermata ? 'success' : 'warning',
+      label: provaConfermata ? 'Banca · riscontro EC' : 'Prova da riscontrare',
+      title: riferimento || 'Prova di pagamento collegata alla fattura.',
+      verified: !!provaConfermata,
+    };
+  }
+
+  if (fattura.prima_nota_cassa_id) {
+    return {
+      variant: 'success',
+      label: 'Cassa · Prima Nota',
+      title: 'Registrazione di cassa collegata alla fattura.',
+      verified: true,
+    };
+  }
+  if (fattura.prima_nota_banca_id && fattura.riconciliato === true) {
+    return {
+      variant: 'success',
+      label: 'Banca · riscontro EC',
+      title: 'Registrazione bancaria riconciliata con estratto conto.',
+      verified: true,
+    };
+  }
+  if (fattura.prima_nota_banca_id) {
+    return {
+      variant: 'warning',
+      label: 'Banca · da riscontrare',
+      title: 'Registrazione presente in Prima Nota, non ancora riscontrata con un movimento bancario.',
+      verified: false,
+    };
+  }
+
+  const dichiarataPagata = fattura.pagato || fattura.status === 'paid'
+    || fattura.stato_pagamento === 'pagata';
+  if (dichiarataPagata) {
+    return {
+      variant: 'warning',
+      label: 'Pagamento da verificare',
+      title: 'Lo stato storico indica pagata, ma non espone una prova collegata.',
+      verified: false,
+    };
+  }
+
+  const metodoFornitore = String(fattura.fornitore_metodo_pagamento || '').toLowerCase();
+  if (metodoFornitore.includes('contant') || metodoFornitore === 'cassa' || metodoFornitore.includes('cash')) {
+    return {
+      variant: 'neutral',
+      label: 'Previsto: Cassa',
+      title: 'Metodo previsto in anagrafica; non prova che la fattura sia stata pagata.',
+      verified: false,
+    };
+  }
+  if (['bonifico', 'banca', 'bank', 'sepa', 'rid', 'sdd', 'addebito'].some(x => metodoFornitore.includes(x))) {
+    return {
+      variant: 'neutral',
+      label: 'Previsto: Banca',
+      title: 'Metodo previsto in anagrafica; non prova che la fattura sia stata pagata.',
+      verified: false,
+    };
+  }
+  return {
+    variant: 'neutral',
+    label: 'Non documentato',
+    title: 'Nessuna prova di pagamento collegata.',
+    verified: false,
+  };
+};
+
 const MESI = [
   { value: '', label: 'Tutti i mesi' },
   { value: '1', label: 'Gennaio' },
@@ -92,6 +205,7 @@ export default function ArchivioFatture() {
   // Dati
   const [fatture, setFatture] = useState([]);
   const [fornitori, setFornitori] = useState([]);
+  const [ricercaFornitore, setRicercaFornitore] = useState('');
   const [statistiche, setStatistiche] = useState(null);
   const [loading, setLoading] = useState(true);
   const [pagina, setPagina] = useState(1);
@@ -270,6 +384,13 @@ export default function ArchivioFatture() {
     () => fatture.slice((pagina - 1) * PER_PAGINA, pagina * PER_PAGINA),
     [fatture, pagina]
   );
+  const fornitoriFiltrati = useMemo(() => {
+    const query = ricercaFornitore.trim().toLowerCase();
+    if (!query) return fornitori;
+    return fornitori.filter(f =>
+      `${f.ragione_sociale || ''} ${f.partita_iva || ''}`.toLowerCase().includes(query)
+    );
+  }, [fornitori, ricercaFornitore]);
 
   // ==================== HELPERS ====================
 
@@ -393,7 +514,7 @@ export default function ArchivioFatture() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+            gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(120px, 1fr))',
             gap: 12,
             marginBottom: 20,
           }}
@@ -444,10 +565,11 @@ export default function ArchivioFatture() {
             </div>
           </div>
           <div>
-            <label style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 2 }}>
+            <label htmlFor="filtro-mese-fatture" style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 2 }}>
               Mese
             </label>
             <Select
+              id="filtro-mese-fatture"
               value={mese}
               onChange={e => setHs('mese', e.target.value)}
               style={{ minWidth: isMobile ? 0 : 110, width: isMobile ? '100%' : undefined, fontSize: 13 }}
@@ -460,16 +582,24 @@ export default function ArchivioFatture() {
             </Select>
           </div>
           <div>
-            <label style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 2 }}>
+            <label htmlFor="filtro-fornitore-fatture" style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 2 }}>
               Fornitore
             </label>
+            <Input
+              aria-label="Filtra elenco fornitori"
+              placeholder={`Filtra ${fornitori.length} fornitori...`}
+              value={ricercaFornitore}
+              onChange={e => setRicercaFornitore(e.target.value)}
+              style={{ width: '100%', marginBottom: 6, fontSize: 12 }}
+            />
             <Select
+              id="filtro-fornitore-fatture"
               value={fornitore}
               onChange={e => setHs('fornitore', e.target.value)}
               style={{ minWidth: isMobile ? 0 : 180, width: isMobile ? '100%' : undefined, fontSize: 13 }}
             >
               <option value="">Tutti i fornitori</option>
-              {fornitori.map(f => (
+              {fornitoriFiltrati.map(f => (
                 <option key={f.partita_iva} value={f.partita_iva}>
                   {f.ragione_sociale} ({f.partita_iva})
                 </option>
@@ -477,10 +607,11 @@ export default function ArchivioFatture() {
             </Select>
           </div>
           <div>
-            <label style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 2 }}>
+            <label htmlFor="filtro-stato-fatture" style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 2 }}>
               Stato
             </label>
             <Select
+              id="filtro-stato-fatture"
               value={stato}
               onChange={e => setHs('stato', e.target.value)}
               style={{ minWidth: isMobile ? 0 : 100, width: isMobile ? '100%' : undefined, fontSize: 13 }}
@@ -493,11 +624,12 @@ export default function ArchivioFatture() {
             </Select>
           </div>
           <div style={isMobile ? { gridColumn: '1 / -1' } : { flex: 1, minWidth: 180 }}>
-            <label style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 2 }}>
+            <label htmlFor="ricerca-fatture" style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 2 }}>
               Ricerca
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
               <Input
+                id="ricerca-fatture"
                 type="text"
                 placeholder="Numero fattura, fornitore..."
                 value={search}
@@ -603,60 +735,10 @@ export default function ArchivioFatture() {
             {fattureVisibili.map((f, idx) => {
               const isPaid = f.pagato || f.status === 'paid' || f.stato_pagamento === 'pagata';
               const tipoDoc = tipoDocumento(f);
-              // Determina metodo EFFETTIVO del pagamento guardando:
-              // 1. prima_nota_cassa_id / prima_nota_banca_id (fonte primaria)
-              // 2. metodo_pagamento / metodo_pagamento_effettivo (fallback per dati legacy)
-              const hasCassaId = !!f.prima_nota_cassa_id;
-              const hasBancaId = !!f.prima_nota_banca_id;
-              const metodoSalvato = (
-                f.metodo_pagamento_effettivo ||
-                f.metodo_pagamento ||
-                ''
-              ).toLowerCase();
-              const isCassaByMetodo =
-                metodoSalvato.includes('contant') ||
-                metodoSalvato === 'cassa' ||
-                metodoSalvato.includes('cash');
-              const isBancaByMetodo =
-                metodoSalvato.includes('bonifico') ||
-                metodoSalvato === 'banca' ||
-                metodoSalvato.includes('bank') ||
-                metodoSalvato.includes('sepa') ||
-                metodoSalvato.includes('rid');
-
-              // Priorità: ID prima nota > metodo salvato > null
-              const metodoPagEffettivo = hasCassaId
-                ? 'cassa'
-                : hasBancaId
-                  ? 'banca'
-                  : isCassaByMetodo
-                    ? 'cassa'
-                    : isBancaByMetodo
-                      ? 'banca'
-                      : null;
-
-              // Metodo configurato nel fornitore (per default quando non pagato)
-              // NOTA: fallback NON deve usare metodo_pagamento della fattura XML,
-              // perché in XML il cedente dichiara il SUO modo di incasso, non
-              // come noi paghiamo. Usiamo SOLO il campo dell'anagrafica fornitore.
-              const metodoFornitore = (
-                f.fornitore_metodo_pagamento || ''
-              ).toLowerCase();
-              const isFornitoreCassa =
-                metodoFornitore.includes('contant') ||
-                metodoFornitore === 'cassa' ||
-                metodoFornitore.includes('cash');
-              const isFornitoreBanca =
-                metodoFornitore.includes('bonifico') ||
-                metodoFornitore === 'banca' ||
-                metodoFornitore.includes('bank') ||
-                metodoFornitore.includes('sepa') ||
-                metodoFornitore.includes('rid') ||
-                metodoFornitore.includes('sdd') ||
-                metodoFornitore.includes('addebito');
-
-              // BLOCCO: Se riconciliata, non permettere modifica
+              const isCreditNote = ['TD04', 'TD08'].includes(tipoDoc.codice);
+              const allocationConflict = statoAllocazione(f) === 'conflicting';
               const isRiconciliata = f.riconciliato === true;
+              const pagamento = descriviPagamento(f);
 
               const azioniButtons = (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -673,32 +755,15 @@ export default function ArchivioFatture() {
                   >
                     <Eye size={17} aria-hidden="true" /> Vedi
                   </Button>
-                  {!isPaid && !isRiconciliata && (
+                  {!isPaid && !isRiconciliata && !isCreditNote && !allocationConflict && (
                     <AssociaAssegnoFattura
                       fattura={f}
                       onSuccess={dopoAssociazioneAssegno}
                     />
                   )}
-                  {!isPaid && (isFornitoreBanca || isFornitoreCassa) && (
-                    <Badge
-                      variant={isFornitoreCassa ? 'success' : 'info'}
-                      title="Metodo del fornitore — la registrazione avviene in Prima Nota"
-                      style={{ fontSize: 12 }}
-                    >
-                      {isFornitoreCassa ? '💵 Cassa' : '🏦 Banca'}
-                    </Badge>
-                  )}
-                  {/* Se la fattura e pagata: mostra SOLO il bottone col check del metodo effettivo */}
-                  {isPaid && metodoPagEffettivo === 'cassa' && (
-                    <Badge variant="success" style={{ fontSize: 12 }}>
-                      💵 🔗 Cassa
-                    </Badge>
-                  )}
-                  {isPaid && metodoPagEffettivo === 'banca' && (
-                    <Badge variant="info" style={{ fontSize: 12 }}>
-                      🏦 🔗 Banca
-                    </Badge>
-                  )}
+                  <Badge variant={pagamento.variant} style={{ fontSize: 11 }} title={pagamento.title}>
+                    {pagamento.label}
+                  </Badge>
                 </div>
               );
 
@@ -826,7 +891,10 @@ export default function ArchivioFatture() {
                   <Th align="right">Imponibile</Th>
                   <Th align="right">IVA</Th>
                   <Th align="right">Totale</Th>
-                  <Th align="center" style={{ minWidth: 220 }}>
+                  <Th align="left" style={{ minWidth: 190 }}>
+                    Pagamento / prova
+                  </Th>
+                  <Th align="center" style={{ minWidth: 190 }}>
                     Azioni
                   </Th>
                 </tr>
@@ -835,51 +903,10 @@ export default function ArchivioFatture() {
                 {fattureVisibili.map((f, idx) => {
                   const isPaid = f.pagato || f.status === 'paid' || f.stato_pagamento === 'pagata';
                   const tipoDoc = tipoDocumento(f);
-                  const hasCassaId = !!f.prima_nota_cassa_id;
-                  const hasBancaId = !!f.prima_nota_banca_id;
-                  const metodoSalvato = (
-                    f.metodo_pagamento_effettivo ||
-                    f.metodo_pagamento ||
-                    ''
-                  ).toLowerCase();
-                  const isCassaByMetodo =
-                    metodoSalvato.includes('contant') ||
-                    metodoSalvato === 'cassa' ||
-                    metodoSalvato.includes('cash');
-                  const isBancaByMetodo =
-                    metodoSalvato.includes('bonifico') ||
-                    metodoSalvato === 'banca' ||
-                    metodoSalvato.includes('bank') ||
-                    metodoSalvato.includes('sepa') ||
-                    metodoSalvato.includes('rid');
-                  const metodoPagEffettivo = hasCassaId
-                    ? 'cassa'
-                    : hasBancaId
-                      ? 'banca'
-                      : isCassaByMetodo
-                        ? 'cassa'
-                        : isBancaByMetodo
-                          ? 'banca'
-                          : null;
-                  // Metodo dichiarato in ANAGRAFICA FORNITORE (non in XML).
-                  // Se presente, mostriamo solo il bottone corrispondente per evitare
-                  // di registrare un pagamento col metodo sbagliato.
-                  const metodoFornitoreDesk = (
-                    f.fornitore_metodo_pagamento || ''
-                  ).toLowerCase();
-                  const fornCassa =
-                    metodoFornitoreDesk.includes('contant') ||
-                    metodoFornitoreDesk === 'cassa' ||
-                    metodoFornitoreDesk.includes('cash');
-                  const fornBanca =
-                    metodoFornitoreDesk.includes('bonifico') ||
-                    metodoFornitoreDesk === 'banca' ||
-                    metodoFornitoreDesk.includes('bank') ||
-                    metodoFornitoreDesk.includes('sepa') ||
-                    metodoFornitoreDesk.includes('rid') ||
-                    metodoFornitoreDesk.includes('sdd') ||
-                    metodoFornitoreDesk.includes('addebito');
+                  const isCreditNote = ['TD04', 'TD08'].includes(tipoDoc.codice);
+                  const allocationConflict = statoAllocazione(f) === 'conflicting';
                   const isRiconciliata = f.riconciliato === true;
+                  const pagamento = descriviPagamento(f);
                   return (
                     <tr
                       key={f.id || `fattura-${idx}`}
@@ -929,6 +956,11 @@ export default function ArchivioFatture() {
                       <Td align="right" mono style={{ fontWeight: 700, color: COLORS.primary }}>
                         {formatCurrency(f.total_amount || f.importo_totale)}
                       </Td>
+                      <Td>
+                        <Badge variant={pagamento.variant} title={pagamento.title}>
+                          {pagamento.label}
+                        </Badge>
+                      </Td>
                       <Td align="center">
                         <div
                           style={{
@@ -947,36 +979,11 @@ export default function ArchivioFatture() {
                           >
                             <Eye size={17} aria-hidden="true" /> Vedi
                           </Button>
-                          {!isPaid && !isRiconciliata && (
+                          {!isPaid && !isRiconciliata && !isCreditNote && !allocationConflict && (
                             <AssociaAssegnoFattura
                               fattura={f}
                               onSuccess={dopoAssociazioneAssegno}
                             />
-                          )}
-                          {isPaid ? (
-                            <Badge
-                              variant={metodoPagEffettivo === 'cassa' ? 'success' : 'info'}
-                              title={isRiconciliata ? 'Riconciliata con estratto conto' : 'Pagata'}
-                            >
-                              {metodoPagEffettivo === 'cassa'
-                                ? 'Cassa'
-                                : 'Banca'}
-                              {isRiconciliata ? ' ✓ EC' : ''}
-                            </Badge>
-                          ) : fornBanca || fornCassa ? (
-                            <Badge
-                              variant={fornCassa ? 'success' : 'info'}
-                              title="Metodo del fornitore — la registrazione avviene in Prima Nota"
-                            >
-                              {fornCassa ? '💵 Cassa' : '🏦 Banca'}
-                            </Badge>
-                          ) : (
-                            <span
-                              title="Fornitore senza metodo di pagamento — impostalo in Fornitori; la registrazione si fa in Prima Nota"
-                              style={{ color: COLORS.textSubtle, fontSize: 12 }}
-                            >
-                              —
-                            </span>
                           )}
                         </div>
                       </Td>

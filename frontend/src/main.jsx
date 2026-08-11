@@ -59,12 +59,23 @@ const LazyPage = ({ children }) => (
   <Suspense fallback={<PageLoader />}>{children}</Suspense>
 );
 
+// L'anno operativo e' un dato autenticato: il provider non deve interrogare
+// endpoint protetti sulla pagina pubblica di login (prima produceva un 401 su
+// ogni apertura della SPA e rumore E2E/console).
+const AuthenticatedApp = () => (
+  <RequireAuth>
+    <AnnoProvider>
+      <App />
+    </AnnoProvider>
+  </RequireAuth>
+);
+
 const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
   { path: "/gestione-riservata", element: <LazyPage><GestioneRiservata /></LazyPage> },
   {
     path: "/",
-    element: <RequireAuth><App /></RequireAuth>,
+    element: <AuthenticatedApp />,
     children: [
       // Route canoniche: ogni hub gestisce internamente le proprie sottosezioni.
       { index: true, element: <LazyPage><DashboardHub /></LazyPage> },
@@ -110,12 +121,10 @@ ReactDOM.createRoot(document.getElementById("root")).render(
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <AnnoProvider>
-          <ConfirmProvider>
-            <RouterProvider router={router} />
-            <Toaster richColors position="top-right" />
-          </ConfirmProvider>
-        </AnnoProvider>
+        <ConfirmProvider>
+          <RouterProvider router={router} />
+          <Toaster richColors position="top-right" />
+        </ConfirmProvider>
       </AuthProvider>
     </QueryClientProvider>
   </ErrorBoundary>

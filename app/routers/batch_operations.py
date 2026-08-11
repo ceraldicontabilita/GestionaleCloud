@@ -7,7 +7,7 @@ Endpoints:
 - POST /api/batch/categorizza
 - POST /api/batch/auto-riconcilia-tutto
 """
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, HTTPException
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel
@@ -190,12 +190,17 @@ async def batch_chiudi_scadenze(
     return {"success": True, "modificati": result.modified_count}
 
 
-@router.post("/auto-riconcilia-tutto")
 async def auto_riconcilia_tutto(
     min_confidence: int = Body(90),
-    dry_run: bool = Body(True)
+    dry_run: bool = Body(True),
+    conferma: bool = Body(False),
 ) -> Dict[str, Any]:
     """Propone match; scrive solo con numero, centesimi e fornitore certi."""
+    if not dry_run and not conferma:
+        raise HTTPException(
+            status_code=409,
+            detail="Automazione bloccata: eseguire prima la preview e confermare esplicitamente",
+        )
     db = Database.get_db()
     
     movimenti = await db["estratto_conto_movimenti"].find(

@@ -112,6 +112,7 @@ def _candidati_univoci(
     righe: List[Dict[str, Any]],
     data_movimento: str = "",
     dipendente_id: Optional[str] = None,
+    allow_partial: bool = True,
 ) -> List[Dict[str, Any]]:
     """Nome completo + importo entro il residuo + periodo, se presente."""
     nome_favore = estrai_nome_favore(descrizione)
@@ -127,6 +128,10 @@ def _candidati_univoci(
             continue
         residuo = _importo_residuo(riga)
         if residuo <= 0 or importo - residuo > 0.009:
+            continue
+        # Un saldo deve coprire l'intero residuo. Acconto e multiplo sono
+        # ammessi soltanto quando l'operatore li ha scelti esplicitamente.
+        if not allow_partial and abs(importo - residuo) > 0.009:
             continue
         nome_riga = _nome_riga_stipendio(riga)
         nome_ok = (
@@ -164,7 +169,8 @@ def _candidati_univoci(
 
 
 async def associa_bonifici_stipendi(
-    db, stipendio_id: Optional[str] = None, anno: Optional[int] = None
+    db, stipendio_id: Optional[str] = None, anno: Optional[int] = None,
+    allow_partial: bool = True,
 ) -> Dict[str, Any]:
     """Riconcilia solo match bancari certi e univoci."""
     nomi_arricchiti = await arricchisci_nomi_salari_da_cedolini(db)
@@ -248,6 +254,7 @@ async def associa_bonifici_stipendi(
             righe,
             data_movimento=movimento.get("data") or "",
             dipendente_id=destinazione.get("dipendente_id"),
+            allow_partial=allow_partial,
         )
         if len(candidati) != 1:
             ambigui += int(len(candidati) > 1)

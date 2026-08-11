@@ -899,6 +899,10 @@ async def auto_ricostruisci_dati_corrispettivi() -> Dict[str, Any]:
     3. Verifica e corregge sincronizzazione con Prima Nota Cassa
     4. Rimuove duplicati evidenti
     """
+    raise HTTPException(
+        status_code=410,
+        detail="Ricostruzione automatica disabilitata: usare import/revisione guidata",
+    )
     db = Database.get_db()
     
     risultati = {

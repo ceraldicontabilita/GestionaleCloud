@@ -61,4 +61,16 @@ describe('Coda operativa Prima Nota Banca', () => {
     ));
     expect(onRicarica).toHaveBeenCalledWith({ silent: true });
   });
+
+  it('con coda vuota non dichiara una copertura completa dell estratto conto', async () => {
+    api.get.mockResolvedValue({
+      data: { totale: 0, effetto_sul_saldo: 0, movimenti: [] },
+    });
+
+    render(<InAttesaDocumento anno={2026} />);
+
+    expect(await screen.findByText('Nessun movimento presente nella coda documenti da collegare.'))
+      .toBeInTheDocument();
+    expect(screen.queryByText(/copre tutto l'estratto conto/i)).not.toBeInTheDocument();
+  });
 });

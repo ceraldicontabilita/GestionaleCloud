@@ -23,6 +23,7 @@ import {
   pagePad,
 } from '../lib/utils';
 import { useHashState } from '../hooks/useHashState';
+import { isSupplierIncomplete } from '../domain/suppliers';
 import { CopyLinkButton } from '../components/CopyLinkButton';
 import {
   Button,
@@ -1287,7 +1288,7 @@ function SupplierCard({
   const nome = supplier.ragione_sociale || supplier.denominazione || supplier.nome || 'Fornitore';
   const piva = supplier.partita_iva || supplier.piva || supplier.vat_number || 'Non disponibile';
   const esclusoFinanziario = supplier.esclude_cassa_banca || supplier.cessato;
-  const incompleto = !supplier.partita_iva || !supplier.comune;
+  const incompleto = isSupplierIncomplete(supplier);
   const anno = annoUltimaFattura(supplier);
 
   const labelStyle = {
@@ -1608,7 +1609,7 @@ export default function Fornitori() {
       if (!s.metodo_pagamento) return false;
       if (metodoCanonico(s) !== filterMetodo) return false;
     }
-    if (filterIncomplete && (s.partita_iva || s.piva) && s.email) return false;
+    if (filterIncomplete && !isSupplierIncomplete(s)) return false;
     if (filterSenzaMetodo) {
       // 'misto' è un metodo scelto esplicitamente (uno dei 4 di METODI_PAGAMENTO),
       // non equivale a "nessun metodo impostato".
@@ -1663,6 +1664,13 @@ export default function Fornitori() {
 
   // Cambio rapido metodo pagamento - salva SUBITO nel database
   const handleChangeMetodo = async (supplierId, newMetodo) => {
+    const ok = await confirm({
+      title: 'Conferma metodo pagamento',
+      message: `Impostare il metodo ${newMetodo} per questo fornitore?`,
+      confirmText: 'Salva',
+      cancelText: 'Annulla',
+    });
+    if (ok === false) return;
     const payload = { metodo_pagamento: newMetodo };
     try {
       await api.put(`/api/suppliers/${supplierId}`, payload);
@@ -1680,6 +1688,13 @@ export default function Fornitori() {
 
   // Toggle rapido "esclude_magazzino" dalla card (evita apertura modifica)
   const handleToggleEsclude = async (supplierId, nuovoValore) => {
+    const ok = await confirm({
+      title: nuovoValore ? 'Escludi dal magazzino' : 'Riattiva nel magazzino',
+      message: 'Confermi la modifica del collegamento del fornitore al magazzino?',
+      confirmText: 'Salva',
+      cancelText: 'Annulla',
+    });
+    if (ok === false) return;
     try {
       await api.put(`/api/suppliers/${supplierId}`, { esclude_magazzino: nuovoValore });
       setSuppliers(prev =>
@@ -1996,7 +2011,7 @@ export default function Fornitori() {
   const stats = {
     total: suppliers.length,
     withInvoices: suppliers.filter(s => (s.fatture_count || 0) > 0).length,
-    incomplete: suppliers.filter(s => !s.partita_iva || !s.comune).length,
+    incomplete: suppliers.filter(s => isSupplierIncomplete(s)).length,
     cash: suppliers.filter(s => canaleCanonico(s.metodo_pagamento) === 'cassa').length,
   };
 
@@ -2492,8 +2507,7 @@ export default function Fornitori() {
                   render: s => {
                     const nome =
                       s.ragione_sociale || s.denominazione || s.nome || s.name || 'Senza nome';
-                    const incompleto =
-                      !(s.partita_iva || s.piva) || !s.comune || !s.email || !s.telefono;
+                    const incompleto = isSupplierIncomplete(s);
                     return (
                       <span
                         style={{

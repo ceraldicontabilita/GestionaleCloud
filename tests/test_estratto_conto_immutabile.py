@@ -56,8 +56,15 @@ def test_sposta_in_cassa_non_cancella_l_originale_ec(monkeypatch):
          "descrizione": "PRELIEVO SPORTELLO"},
     ]
 
-    esito = _run(mod_man.sposta_movimento(mod_man.SpostaMovimentoRequest(
+    anteprima = _run(mod_man.sposta_movimento(mod_man.SpostaMovimentoRequest(
         movimento_id="ec-1", da="banca", a="cassa")))
+    assert anteprima["preview"] is True
+    assert db["prima_nota_cassa"].docs == []
+    assert "escluso_da_vista_banca" not in db["estratto_conto_movimenti"].docs[0]
+
+    esito = _run(mod_man.sposta_movimento(mod_man.SpostaMovimentoRequest(
+        movimento_id="ec-1", da="banca", a="cassa", conferma=True,
+        motivo="riclassificazione approvata dall'operatore")))
 
     assert esito["success"] is True
     # copia creata in cassa
@@ -82,3 +89,26 @@ def test_elimina_da_vista_banca_non_cancella_l_originale_ec(monkeypatch):
     originale = db["estratto_conto_movimenti"].docs[0]
     assert originale["id"] == "ec-2"  # mai eliminato
     assert originale["escluso_da_vista_banca"] is True
+
+
+def test_sposta_da_cassa_richiede_motivo_e_preview_non_scrive(monkeypatch):
+    db = _Db()
+    monkeypatch.setattr(mod_man.Database, "get_db", staticmethod(lambda: db))
+    db["prima_nota_cassa"].docs = [{
+        "id": "cassa-1", "data": "2026-03-03", "tipo": "uscita",
+        "importo": 40.0, "fattura_id": "F1",
+    }]
+
+    preview = _run(mod_man.sposta_movimento(mod_man.SpostaMovimentoRequest(
+        movimento_id="cassa-1", da="cassa", a="banca")))
+    assert preview["preview"] is True
+    assert len(db["prima_nota_banca"].docs) == 0
+    assert len(db["prima_nota_cassa"].docs) == 1
+
+    try:
+        _run(mod_man.sposta_movimento(mod_man.SpostaMovimentoRequest(
+            movimento_id="cassa-1", da="cassa", a="banca", conferma=True)))
+    except Exception as exc:
+        assert getattr(exc, "status_code", None) == 400
+    else:
+        raise AssertionError("una riclassificazione senza motivo deve essere rifiutata")

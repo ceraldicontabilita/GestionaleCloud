@@ -24,6 +24,8 @@ class SpostaMovimentoRequest(BaseModel):
     movimento_id: str
     da: str
     a: str
+    conferma: bool = False
+    motivo: Optional[str] = None
 
 
 class AnnullaAssociazioneFatturaBancaRequest(BaseModel):
@@ -1412,6 +1414,9 @@ async def sposta_movimento(req: SpostaMovimentoRequest) -> Dict:
 
     if da == a:
         raise HTTPException(status_code=400, detail="Origine e destinazione uguali")
+    motivo = str(req.motivo or "").strip()
+    if req.conferma and not motivo:
+        raise HTTPException(status_code=400, detail="motivo richiesto per confermare la riclassificazione")
 
     source_coll = COLLECTION_PRIMA_NOTA_CASSA if da == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
     dest_coll = COLLECTION_PRIMA_NOTA_CASSA if a == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
@@ -1424,15 +1429,35 @@ async def sposta_movimento(req: SpostaMovimentoRequest) -> Dict:
     if not mov and da == "banca":
         mov = await db["estratto_conto_movimenti"].find_one({"id": movimento_id})
         if mov:
+            if not req.conferma:
+                return {
+                    "success": True,
+                    "preview": True,
+                    "conferma_richiesta": True,
+                    "movimento_id": movimento_id,
+                    "da": da,
+                    "a": a,
+                    "fattura_id": mov.get("fattura_id"),
+                    "importo": mov.get("importo"),
+                    "data": mov.get("data"),
+                    "message": "Anteprima pronta: confermare esplicitamente per riclassificare",
+                }
             # Il movimento è nell'estratto conto: viene COPIATO in cassa e la
             # riga originale MARCATA come spostata — mai eliminata. L'estratto
             # conto è il documento bancario originale: cancellarlo perderebbe
             # per sempre l'origine documentale (audit 16/07/2026; prima qui
             # c'era una delete_one).
+            mov = dict(mov)
             mov.pop("_id", None)
             mov["moved_from"] = "banca_estratto_conto"
             mov["moved_at"] = datetime.now(timezone.utc).isoformat()
             mov["source"] = mov.get("source", "estratto_conto")
+            mov["prima_nota_riclassificazione"] = {
+                "da": da,
+                "a": a,
+                "motivo": motivo,
+                "confermato_at": datetime.now(timezone.utc).isoformat(),
+            }
             # Assicura che sia un'uscita (addebito) o entrata (accredito) coerente
             await db[dest_coll].insert_one(mov)
             await db["estratto_conto_movimenti"].update_one(
@@ -1441,6 +1466,7 @@ async def sposta_movimento(req: SpostaMovimentoRequest) -> Dict:
                     "escluso_da_vista_banca": True,
                     "spostato_in": a,
                     "spostato_at": datetime.now(timezone.utc).isoformat(),
+                    "spostamento_motivo": motivo,
                 }},
             )
 
@@ -1454,6 +1480,20 @@ async def sposta_movimento(req: SpostaMovimentoRequest) -> Dict:
     if not mov:
         raise HTTPException(status_code=404, detail=f"Movimento {movimento_id} non trovato in {da}")
 
+    if not req.conferma:
+        return {
+            "success": True,
+            "preview": True,
+            "conferma_richiesta": True,
+            "movimento_id": movimento_id,
+            "da": da,
+            "a": a,
+            "fattura_id": mov.get("fattura_id"),
+            "importo": mov.get("importo"),
+            "data": mov.get("data"),
+            "message": "Anteprima pronta: confermare esplicitamente per riclassificare",
+        }
+    mov = dict(mov)
     mov.pop("_id", None)
     mov["moved_from"] = da
     mov["moved_at"] = datetime.now(timezone.utc).isoformat()
@@ -1465,13 +1505,16 @@ async def sposta_movimento(req: SpostaMovimentoRequest) -> Dict:
     # seguire lo spostamento (prima restavano puntati alla collection vecchia)
     fattura_aggiornata = False
     if mov.get("fattura_id"):
-        metodo_label = "contanti" if a == "cassa" else "bonifico"
         upd = {
             "prima_nota_tipo": a,
-            "metodo_pagamento": metodo_label,
-            "payment_method": metodo_label,
             "prima_nota_cassa_id": movimento_id if a == "cassa" else None,
             "prima_nota_banca_id": movimento_id if a == "banca" else None,
+            "prima_nota_riclassificazione": {
+                "da": da,
+                "a": a,
+                "motivo": motivo,
+                "confermato_at": datetime.now(timezone.utc).isoformat(),
+            },
         }
         r = await db["invoices"].update_one({"id": mov["fattura_id"]}, {"$set": upd})
         fattura_aggiornata = r.modified_count > 0

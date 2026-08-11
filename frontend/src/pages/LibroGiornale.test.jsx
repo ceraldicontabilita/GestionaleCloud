@@ -110,22 +110,11 @@ describe('LibroGiornale', () => {
     expect(screen.getByTestId('alert-qualita-giornale')).toHaveTextContent('1 scritture sbilanciate');
   });
 
-  it('non invia il reimport senza conferma esplicita', async () => {
+  it('indirizza il reimport alla porta unica Documenti', async () => {
     render(<LibroGiornale />);
     await screen.findByText('1 scritture');
-    const file = {
-      name: 'libro.json',
-      size: 100,
-      text: vi.fn().mockResolvedValue(JSON.stringify({
-        tipo: 'libro_giornale_gestionalecloud', versione: 1, scritture: [],
-      })),
-    };
-
-    fireEvent.change(screen.getByTestId('import-giornale').parentElement.querySelector('input'), {
-      target: { files: [file] },
-    });
-
-    await waitFor(() => expect(window.confirm).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('import-giornale'))
+      .toHaveAttribute('href', '/documenti/import?workflow=libro-giornale');
     expect(api.post).not.toHaveBeenCalled();
   });
 });
