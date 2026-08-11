@@ -4,7 +4,7 @@
 > Totale **1108 endpoint** in **113 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 668 · ext esterni = 88 · — da verificare = 352
+**Riepilogo uso:** ✓ frontend = 666 · ext esterni = 88 · — da verificare = 354
 
 ## AI Parser  (11)
 
@@ -100,8 +100,8 @@
 |---|---|:-:|---|
 | POST | `/api/archivio-bonifici/associa-dipendenti` | — | bonifici_module.riconciliazione |
 | GET | `/api/archivio-bonifici/dashboard` | — | bonifici_module.riconciliazione |
-| GET | `/api/archivio-bonifici/download-zip/{year}` | ✓ | bonifici_module.transfers |
-| GET | `/api/archivio-bonifici/export` | ✓ | bonifici_module.transfers |
+| GET | `/api/archivio-bonifici/download-zip/{year}` | — | bonifici_module.transfers |
+| GET | `/api/archivio-bonifici/export` | — | bonifici_module.transfers |
 | POST | `/api/archivio-bonifici/jobs` | — | bonifici_module.jobs |
 | GET | `/api/archivio-bonifici/jobs` | — | bonifici_module.jobs |
 | GET | `/api/archivio-bonifici/jobs/{job_id}` | — | bonifici_module.jobs |

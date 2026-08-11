@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import {
@@ -41,7 +41,6 @@ export default function ArchivioBonifici() {
   const [riconciliando, setRiconciliando] = useState(false);
   const [editingNote, setEditingNote] = useState(null);
   const [noteText, setNoteText] = useState('');
-  const [downloadingZip, setDownloadingZip] = useState(false);
   const [associaDropdown, setAssociaDropdown] = useState(null);
   const [operazioniCompatibili, setOperazioniCompatibili] = useState([]);
   const [loadingOperazioni, setLoadingOperazioni] = useState(false);
@@ -50,6 +49,7 @@ export default function ArchivioBonifici() {
   const [loadingFatture, setLoadingFatture] = useState(false);
   const [fatturaView, setFatturaView] = useState(null);
   const [dipendenteIbanMatch, setDipendenteIbanMatch] = useState(null);
+  const [salaryBlockReason, setSalaryBlockReason] = useState('');
 
   const location = useLocation();
 
@@ -91,6 +91,7 @@ export default function ArchivioBonifici() {
         setAssociaFatturaDropdown(null);
         setOperazioniCompatibili([]);
         setFattureCompatibili([]);
+        setSalaryBlockReason('');
       }
     };
 
@@ -260,27 +261,6 @@ export default function ArchivioBonifici() {
     }
   };
 
-  // Export
-  const handleExport = format => {
-    const baseUrl = window.location.origin;
-    window.open(`${baseUrl}/api/archivio-bonifici/export?format=${format}`, '_blank');
-  };
-
-  // Download ZIP per anno
-  const handleDownloadZip = async year => {
-    setDownloadingZip(true);
-    try {
-      const baseUrl = window.location.origin;
-      window.open(`${baseUrl}/api/archivio-bonifici/download-zip/${year}`, '_blank');
-    } catch (error) {
-      toast.error('Download non riuscito', {
-        description: error.message,
-      });
-    } finally {
-      setTimeout(() => setDownloadingZip(false), 2000);
-    }
-  };
-
   // Salva nota bonifico
   const handleSaveNote = async id => {
     try {
@@ -314,9 +294,11 @@ export default function ArchivioBonifici() {
   const loadOperazioniCompatibili = async bonifico_id => {
     setLoadingOperazioni(true);
     setDipendenteIbanMatch(null);
+    setSalaryBlockReason('');
     try {
       const res = await api.get(`/api/archivio-bonifici/operazioni-salari/${bonifico_id}`);
       setOperazioniCompatibili(res.data.operazioni_compatibili || []);
+      setSalaryBlockReason(res.data.motivo_blocco || '');
       // Salva info dipendente trovato per IBAN
       if (res.data.dipendente_iban_match) {
         setDipendenteIbanMatch(res.data.dipendente_iban_match);
@@ -324,6 +306,7 @@ export default function ArchivioBonifici() {
     } catch (error) {
       console.error('Errore caricamento operazioni:', error);
       setOperazioniCompatibili([]);
+      setSalaryBlockReason(error.response?.data?.detail || 'Periodi salario non disponibili');
     }
     setLoadingOperazioni(false);
   };
@@ -338,6 +321,7 @@ export default function ArchivioBonifici() {
       setAssociaDropdown(null);
       setOperazioniCompatibili([]);
       setDipendenteIbanMatch(null);
+      setSalaryBlockReason('');
     } else {
       setAssociaDropdown(bonifico_id);
       loadOperazioniCompatibili(bonifico_id);
@@ -474,24 +458,6 @@ export default function ArchivioBonifici() {
           flexWrap: 'wrap',
         }}
       >
-        <Link
-          to="/import-export"
-          style={{
-            padding: '8px 14px',
-            minHeight: 40,
-            background: '#0f2744',
-            color: 'white',
-            fontWeight: 600,
-            fontSize: 13,
-            borderRadius: 6,
-            textDecoration: 'none',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-          }}
-        >
-          📥 Importa
-        </Link>
         <button
           onClick={handleSyncIbanToAnagrafica}
           style={{
@@ -680,7 +646,7 @@ export default function ArchivioBonifici() {
         </button>
       </div>
 
-      {/* Riepilogo per Anno con Download ZIP */}
+      {/* Riepilogo informativo per anno */}
       {Object.keys(summary).length > 0 && (
         <div
           style={{
@@ -692,7 +658,7 @@ export default function ArchivioBonifici() {
           }}
         >
           <h3 style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 12, color: '#0f2744' }}>
-            📅 Riepilogo per Anno (clicca per scaricare ZIP)
+            📅 Riepilogo per Anno
           </h3>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             {Object.entries(summary)
@@ -706,12 +672,7 @@ export default function ArchivioBonifici() {
                     minHeight: 40,
                     borderRadius: 6,
                     border: '1px solid #e2e8f0',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
                   }}
-                  onClick={() => handleDownloadZip(year)}
-                  onMouseOver={e => (e.currentTarget.style.borderColor = '#3b82f6')}
-                  onMouseOut={e => (e.currentTarget.style.borderColor = '#e2e8f0')}
                 >
                   <div
                     style={{
@@ -723,7 +684,6 @@ export default function ArchivioBonifici() {
                     }}
                   >
                     {year}
-                    <span style={{ fontSize: 12, color: '#3b82f6' }}>📥</span>
                   </div>
                   <div style={{ fontSize: 12, color: '#64748b' }}>
                     {data.count} bonifici • {formatEuro(data.total)}
@@ -731,11 +691,6 @@ export default function ArchivioBonifici() {
                 </div>
               ))}
           </div>
-          {downloadingZip && (
-            <div style={{ marginTop: 8, fontSize: 12, color: '#3b82f6' }}>
-              ⏳ Preparazione ZIP in corso...
-            </div>
-          )}
         </div>
       )}
 
@@ -855,40 +810,6 @@ export default function ArchivioBonifici() {
           </button>
         )}
 
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button
-            onClick={() => handleExport('xlsx')}
-            style={{
-              padding: '8px 16px',
-              minHeight: 40,
-              borderRadius: 6,
-              background: '#0f2744',
-              color: 'white',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: 13,
-              fontWeight: 600,
-            }}
-          >
-            📥 Export XLSX
-          </button>
-          <button
-            onClick={() => handleExport('csv')}
-            style={{
-              padding: '8px 16px',
-              minHeight: 40,
-              borderRadius: 6,
-              background: 'white',
-              color: '#1e293b',
-              border: '1px solid #e2e8f0',
-              cursor: 'pointer',
-              fontSize: 13,
-              fontWeight: 600,
-            }}
-          >
-            📥 Export CSV
-          </button>
-        </div>
       </div>
 
       {/* TABS */}
@@ -1133,7 +1054,7 @@ export default function ArchivioBonifici() {
                             }}
                             data-testid={`btn-associa-${t.id}`}
                           >
-                            {associaDropdown === t.id ? '▲ Seleziona' : '+ Associa'}
+                            {associaDropdown === t.id ? '▲ Chiudi periodi' : 'Scegli periodo'}
                           </button>
                           {/* Dropdown operazioni */}
                           {associaDropdown === t.id && (
@@ -1152,7 +1073,7 @@ export default function ArchivioBonifici() {
                                 overflowY: 'auto',
                               }}
                             >
-                              {/* Banner IBAN Match */}
+                              {/* Identita dipendente verificata prima di mostrare i periodi */}
                               {dipendenteIbanMatch && !loadingOperazioni && (
                                 <div
                                   style={{
@@ -1163,7 +1084,7 @@ export default function ArchivioBonifici() {
                                   }}
                                 >
                                   <div style={{ fontWeight: 600, color: '#16a34a' }}>
-                                    🏦 IBAN riconosciuto
+                                    Dipendente riconosciuto
                                   </div>
                                   <div style={{ color: '#166534', marginTop: 2 }}>
                                     Dipendente: <strong>{dipendenteIbanMatch.nome_display}</strong>
@@ -1185,7 +1106,7 @@ export default function ArchivioBonifici() {
                                 >
                                   {dipendenteIbanMatch
                                     ? `Nessuna operazione in Prima Nota Salari per ${dipendenteIbanMatch.nome_display}`
-                                    : 'Nessuna operazione salari compatibile trovata'}
+                                    : salaryBlockReason || 'Identifica prima il dipendente del bonifico'}
                                 </div>
                               ) : (
                                 operazioniCompatibili.map((op, idx) => (
@@ -1197,17 +1118,13 @@ export default function ArchivioBonifici() {
                                       borderBottom: '1px solid #f1f5f9',
                                       cursor: 'pointer',
                                       transition: 'background 0.1s',
-                                      background: op.iban_match ? '#ecfdf5' : 'white',
+                                      background: '#ecfdf5',
                                     }}
                                     onMouseOver={e =>
-                                      (e.currentTarget.style.background = op.iban_match
-                                        ? '#dcfce7'
-                                        : '#f0f9ff')
+                                      (e.currentTarget.style.background = '#dcfce7')
                                     }
                                     onMouseOut={e =>
-                                      (e.currentTarget.style.background = op.iban_match
-                                        ? '#ecfdf5'
-                                        : 'white')
+                                      (e.currentTarget.style.background = '#ecfdf5')
                                     }
                                   >
                                     <div
@@ -1218,51 +1135,22 @@ export default function ArchivioBonifici() {
                                       }}
                                     >
                                       <span style={{ fontWeight: 500, fontSize: 11 }}>
-                                        {op.iban_match && (
-                                          <span style={{ color: '#16a34a', marginRight: 4 }}>
-                                            🏦
-                                          </span>
-                                        )}
                                         {op.dipendente || op.descrizione || 'Operazione'}
                                       </span>
                                       <div
                                         style={{ display: 'flex', gap: 4, alignItems: 'center' }}
                                       >
-                                        {op.iban_match && (
-                                          <span
-                                            style={{
-                                              background: '#16a34a',
-                                              color: 'white',
-                                              padding: '2px 6px',
-                                              borderRadius: 4,
-                                              fontSize: 8,
-                                              fontWeight: 600,
-                                            }}
-                                          >
-                                            IBAN ✓
-                                          </span>
-                                        )}
                                         <span
                                           style={{
-                                            background:
-                                              op.compatibilita_score >= 70
-                                                ? '#dcfce7'
-                                                : op.compatibilita_score >= 40
-                                                  ? '#fef3c7'
-                                                  : '#fee2e2',
-                                            color:
-                                              op.compatibilita_score >= 70
-                                                ? '#16a34a'
-                                                : op.compatibilita_score >= 40
-                                                  ? '#d97706'
-                                                  : '#dc2626',
+                                            background: '#dcfce7',
+                                            color: '#166534',
                                             padding: '2px 6px',
                                             borderRadius: 4,
                                             fontSize: 9,
                                             fontWeight: 600,
                                           }}
                                         >
-                                          {op.compatibilita_score}%
+                                          Identita verificata
                                         </span>
                                       </div>
                                     </div>

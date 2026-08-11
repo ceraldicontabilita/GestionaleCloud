@@ -15,6 +15,7 @@ from app.services.payment_document_links import (
     valuta_fattura_bonifico,
 )
 from app.services.entity_relations import revoke_entity_relation
+from app.services.identity_matching import identita_coincide
 from .classification import classifica_bonifico_dipendente
 
 logger = logging.getLogger(__name__)
@@ -175,6 +176,33 @@ async def _trova_bonifico(db, bonifico_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _nome_salario(operazione: Dict[str, Any]) -> str:
+    return str(
+        operazione.get("dipendente")
+        or operazione.get("dipendente_nome")
+        or operazione.get("nome_dipendente")
+        or ""
+    ).strip()
+
+
+def _salario_appartiene_al_dipendente(
+    operazione: Dict[str, Any], destinazione: Dict[str, Any]
+) -> bool:
+    """Blocca i candidati basati sul solo importo: prima viene l'identita'."""
+    dipendente_id = str(destinazione.get("dipendente_id") or "").strip()
+    operazione_dipendente_id = str(
+        operazione.get("dipendente_id") or operazione.get("employee_id") or ""
+    ).strip()
+    if dipendente_id and operazione_dipendente_id:
+        return dipendente_id == operazione_dipendente_id
+
+    nome_destinazione = str(destinazione.get("dipendente_nome_rilevato") or "").strip()
+    nome_operazione = _nome_salario(operazione)
+    return bool(nome_destinazione and nome_operazione) and identita_coincide(
+        nome_destinazione, nome_operazione
+    )
+
+
 @router.post("/associa-salario")
 async def associa_salario_a_bonifico(
     bonifico_id: str = Query(...),
@@ -183,10 +211,37 @@ async def associa_salario_a_bonifico(
     """Associa un'operazione salario a un bonifico. Supporta sia bonifici_transfers (UUID) sia archivio_bonifici (ObjectId)."""
     db = Database.get_db()
 
+    bonifico = await _trova_bonifico(db, bonifico_id)
+    if not bonifico:
+        raise HTTPException(404, "Bonifico non trovato in nessuna collection")
+    destinazione = await classifica_bonifico_dipendente(db, bonifico)
+    if not destinazione.get("identita_univoca"):
+        raise HTTPException(
+            status_code=409,
+            detail="Dipendente non identificato in modo univoco dal bonifico.",
+        )
+
+    operazione = await db["prima_nota_salari"].find_one(
+        {"id": operazione_id}, {"_id": 0}
+    )
+    if not operazione:
+        raise HTTPException(404, "Periodo salario non trovato")
+    if not _salario_appartiene_al_dipendente(operazione, destinazione):
+        raise HTTPException(
+            status_code=409,
+            detail="Il periodo selezionato appartiene a un altro dipendente.",
+        )
+
     aggiornamento = {
         "operazione_salario_id": operazione_id,
         "stato_riconciliazione": "associato_salario",
-        "data_associazione": datetime.now(timezone.utc).isoformat()
+        "data_associazione": datetime.now(timezone.utc).isoformat(),
+        "dipendente_id": destinazione.get("dipendente_id"),
+        "dipendente_nome": destinazione.get("dipendente_nome_rilevato"),
+        "periodo_salario": {
+            "anno": operazione.get("anno"),
+            "mese": operazione.get("mese"),
+        },
     }
 
     result = await db["bonifici_transfers"].update_one({"id": bonifico_id}, {"$set": aggiornamento})
@@ -233,15 +288,6 @@ async def disassocia_salario(bonifico_id: str) -> Dict[str, Any]:
         pass
 
     raise HTTPException(404, "Bonifico non trovato in nessuna collection")
-
-
-def _compatibilita_score(importo_riferimento: float, importo_confronto: float) -> int:
-    """Punteggio 0-100 in base allo scostamento percentuale dall'importo del bonifico,
-    coerente con la tolleranza del ±5% usata per filtrare i risultati."""
-    if not importo_riferimento:
-        return 0
-    diff_pct = abs(importo_riferimento - importo_confronto) / importo_riferimento
-    return max(0, round((1 - diff_pct / 0.05) * 100))
 
 
 def _importo_fattura(fattura: Dict[str, Any]) -> float:
@@ -323,53 +369,56 @@ async def get_fatture_compatibili(bonifico_id: str) -> Dict[str, Any]:
 
 @router.get("/operazioni-salari/{bonifico_id}")
 async def get_operazioni_salari(bonifico_id: str) -> Dict[str, Any]:
-    """Trova operazioni salari compatibili con un bonifico."""
+    """Elenca soltanto i periodi del dipendente identificato dal bonifico."""
     db = Database.get_db()
-
     bonifico = await _trova_bonifico(db, bonifico_id)
     if not bonifico:
         raise HTTPException(404, "Bonifico non trovato")
 
-    importo = abs(bonifico.get("importo", 0))
-    beneficiario = bonifico.get("beneficiario") or {}
-    beneficiario_iban = (beneficiario.get("iban") or "").strip()
+    destinazione = await classifica_bonifico_dipendente(db, bonifico)
+    if not destinazione.get("identita_univoca"):
+        return {
+            "operazioni_compatibili": [],
+            "dipendente_iban_match": None,
+            "motivo_blocco": "Identita del dipendente non univoca: seleziona prima il dipendente.",
+        }
 
-    # Cerca in prima_nota_salari: l'importo può essere in importo_busta o importo_bonifico
-    # (il campo 'netto' non esiste in questa collection)
-    query = {}
-    if importo > 0:
-        tolerance = importo * 0.05
-        query["$or"] = [
-            {"importo_busta": {"$gte": importo - tolerance, "$lte": importo + tolerance}},
-            {"importo_bonifico": {"$gte": importo - tolerance, "$lte": importo + tolerance}},
-        ]
-
+    importo = abs(float(bonifico.get("importo") or 0))
     operazioni_raw = await db["prima_nota_salari"].find(
-        query, {"_id": 0}
-    ).to_list(50)
-
-    dipendente_iban_match = None
-    matched_nome = None
-    if beneficiario_iban:
-        emp = await db[Collections.EMPLOYEES].find_one({"iban": beneficiario_iban})
-        if emp:
-            nome_display = emp.get("nome_completo") or emp.get("cognome") or ""
-            dipendente_iban_match = {"nome_display": nome_display}
-            matched_nome = nome_display.strip().upper()
+        {"riconciliato": {"$ne": True}}, {"_id": 0}
+    ).to_list(5000)
+    operazioni_raw = [
+        op for op in operazioni_raw
+        if _salario_appartiene_al_dipendente(op, destinazione)
+    ]
 
     operazioni = []
     for op in operazioni_raw:
         importo_op = op.get("importo_busta") or op.get("importo_bonifico") or 0
-        dipendente_nome = (op.get("dipendente") or "").strip().upper()
         operazioni.append({
             **op,
             "importo_display": importo_op,
-            "compatibilita_score": _compatibilita_score(importo, importo_op),
-            "iban_match": bool(matched_nome) and matched_nome == dipendente_nome,
+            "identita_verificata": True,
+            "periodo": {"anno": op.get("anno"), "mese": op.get("mese")},
+            "differenza_importo": abs(float(importo_op or 0) - importo),
         })
-    operazioni.sort(key=lambda o: o["compatibilita_score"], reverse=True)
+    operazioni.sort(
+        key=lambda op: (
+            -(int(op.get("anno") or 0)),
+            -(int(op.get("mese") or 0)),
+            op.get("differenza_importo") or 0,
+        )
+    )
 
-    return {"operazioni_compatibili": operazioni, "dipendente_iban_match": dipendente_iban_match}
+    return {
+        "operazioni_compatibili": operazioni,
+        "dipendente_iban_match": {
+            "nome_display": destinazione.get("dipendente_nome_rilevato"),
+            "dipendente_id": destinazione.get("dipendente_id"),
+            "motivo": destinazione.get("motivo_destinazione"),
+        },
+        "motivo_blocco": None if operazioni else "Nessun periodo salario disponibile per questo dipendente.",
+    }
 
 
 @router.post("/sync-iban-anagrafica")
