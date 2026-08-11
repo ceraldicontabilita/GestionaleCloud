@@ -33,6 +33,9 @@ const metricStyle = {
 };
 
 function EsitoF24({ mese }) {
+  if (mese.periodo_calcolato === false || mese.stato_calcolo === 'NON_CALCOLATO') {
+    return <Badge variant="neutral">Non calcolato</Badge>;
+  }
   if ((mese.da_versare || 0) <= 0) {
     return <Badge variant="info">Credito {formatEuro(mese.a_credito || 0)}</Badge>;
   }
@@ -84,14 +87,16 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
                 </tr>
               </thead>
               <tbody>
-                {mesi.map((m) => (
+                {mesi.map((m) => {
+                  const nonCalcolato = m.periodo_calcolato === false || m.stato_calcolo === 'NON_CALCOLATO';
+                  return (
                   <tr key={m.mese} style={{ borderTop: `1px solid ${COLORS.border}` }}>
                     <td data-label="Mese" style={{ padding: '10px 9px', fontWeight: 700 }}>{m.mese_nome}</td>
-                    <td data-label="IVA debito" style={{ padding: '10px 9px', textAlign: 'right', color: COLORS.danger }}>{formatEuro(m.iva_debito_corrispettivi)}</td>
-                    <td data-label="IVA credito" style={{ padding: '10px 9px', textAlign: 'right', color: COLORS.success }}>{formatEuro(m.iva_credito_fatture)}</td>
-                    <td data-label="Fatture incluse" style={{ padding: '10px 9px', textAlign: 'right' }}>{m.num_fatture || 0}</td>
+                    <td data-label="IVA debito" style={{ padding: '10px 9px', textAlign: 'right', color: nonCalcolato ? COLORS.textMuted : COLORS.danger }}>{nonCalcolato ? '—' : formatEuro(m.iva_debito_corrispettivi)}</td>
+                    <td data-label="IVA credito" style={{ padding: '10px 9px', textAlign: 'right', color: nonCalcolato ? COLORS.textMuted : COLORS.success }}>{nonCalcolato ? '—' : formatEuro(m.iva_credito_fatture)}</td>
+                    <td data-label="Fatture incluse" style={{ padding: '10px 9px', textAlign: 'right' }}>{nonCalcolato ? '—' : (m.num_fatture || 0)}</td>
                     <td data-label="Saldo gestionale" style={{ padding: '10px 9px', textAlign: 'right', fontWeight: 700, color: m.saldo > 0 ? COLORS.danger : COLORS.success }}>
-                      {m.saldo > 0 ? '+' : ''}{formatEuro(m.saldo)}
+                      {nonCalcolato ? '—' : <>{m.saldo > 0 ? '+' : ''}{formatEuro(m.saldo)}</>}
                     </td>
                     <td data-label="F24 commercialista" style={{ padding: '10px 9px', textAlign: 'right' }}>
                       {m.importo_f24_commercialista == null ? '—' : (
@@ -108,7 +113,8 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
                     </td>
                     <td data-label="Esito" style={{ padding: '10px 9px', textAlign: 'right' }}><EsitoF24 mese={m} /></td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -150,23 +156,24 @@ export function ScadenzeIvaMensili({ anno, dati, loading, error }) {
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }}>
             {scadenze.map((s) => {
+              const nonCalcolato = s.stato === 'NON_CALCOLATO' || s.saldo_cents == null;
               const aDebito = Boolean(s.da_versare_effettivo ?? s.da_versare);
               const importo = s.importo_versamento_effettivo ?? s.importo_versamento ?? 0;
               return (
-                <article key={s.mese} style={{ padding: 12, border: `1px solid ${COLORS.border}`, borderLeft: `4px solid ${aDebito ? COLORS.warning : COLORS.success}`, borderRadius: 8, background: COLORS.bgAlt }}>
+                <article key={s.mese} style={{ padding: 12, border: `1px solid ${COLORS.border}`, borderLeft: `4px solid ${nonCalcolato ? COLORS.textMuted : aDebito ? COLORS.warning : COLORS.success}`, borderRadius: 8, background: COLORS.bgAlt }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
                     <strong>{s.mese_nome}</strong>
                     {s.fonte === 'stima' && <Badge variant="neutral">Stima</Badge>}
                   </div>
                   <div style={{ marginTop: 7, fontSize: 11, color: COLORS.textMuted }}>Scadenza {formatDateIT(s.data_scadenza)}</div>
                   <div style={{ marginTop: 8, display: 'grid', gap: 3, fontSize: 12 }}>
-                    <span>Debito: <strong>{formatEuro(s.iva_debito || 0)}</strong></span>
-                    <span>Credito: <strong>{formatEuro(s.iva_credito || 0)}</strong></span>
-                    <span>Saldo progressivo: <strong>{formatEuro(s.saldo_progressivo ?? s.saldo ?? 0)}</strong></span>
+                    <span>Debito: <strong>{nonCalcolato ? '—' : formatEuro(s.iva_debito)}</strong></span>
+                    <span>Credito: <strong>{nonCalcolato ? '—' : formatEuro(s.iva_credito)}</strong></span>
+                    <span>Saldo progressivo: <strong>{nonCalcolato ? '—' : formatEuro(s.saldo_progressivo ?? s.saldo)}</strong></span>
                   </div>
                   <div style={{ marginTop: 9 }}>
-                    <Badge variant={aDebito ? 'warning' : 'success'}>
-                      {aDebito ? `Da confrontare ${formatEuro(importo)}` : 'Credito riportato'}
+                    <Badge variant={nonCalcolato ? 'neutral' : aDebito ? 'warning' : 'success'}>
+                      {nonCalcolato ? 'Non calcolato' : aDebito ? `Da confrontare ${formatEuro(importo)}` : 'Credito riportato'}
                     </Badge>
                   </div>
                 </article>

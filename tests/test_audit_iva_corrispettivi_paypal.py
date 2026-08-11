@@ -47,6 +47,10 @@ def test_iva_annuale_non_somma_mesi_futuri(monkeypatch):
                 "num_corrispettivi": 1 if calculated else 0,
             },
             "f24_commercialista": {},
+            "stato_calcolo": "CALCOLATO" if calculated else "NON_CALCOLATO",
+            "fonte_calcolo": "test",
+            "scadenza_nominale": f"2026-{mese:02d}-16",
+            "scadenza_legale": f"2026-{mese:02d}-16",
         }
 
     monkeypatch.setattr(verifica_coerenza_router.Database, "get_db", lambda: object())
@@ -58,6 +62,7 @@ def test_iva_annuale_non_somma_mesi_futuri(monkeypatch):
     result = _run(verifica_coerenza_router.confronto_iva_completo(2026))
     assert result["mensile"][0]["saldo_cents"] == 1000
     assert result["mensile"][1]["saldo"] is None
+    assert result["mensile"][1]["stato_calcolo"] == "NON_CALCOLATO"
     assert result["totali"]["iva_credito_totale_cents"] == 1000
     assert result["totali"]["iva_debito_totale_cents"] == 2000
     assert result["totali"]["periodi_calcolati"] == 1
