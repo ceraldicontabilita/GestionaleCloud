@@ -1,7 +1,6 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Archive, RefreshCw, Upload } from 'lucide-react';
-import { toast } from 'sonner';
+import { Archive, Upload } from 'lucide-react';
 import api from '../../api';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { useHashState } from '../../hooks/useHashState';
@@ -44,7 +43,6 @@ export default function DocumentiHub() {
   const activeTab = getTabFromPath(location.pathname);
   const [visitedTabs, setVisitedTabs] = useState(() => new Set([initTab]));
   const [driveCatalog, setDriveCatalog] = useState(null);
-  const [driveSyncing, setDriveSyncing] = useState(false);
 
   useEffect(() => {
     const tab = getTabFromPath(location.pathname);
@@ -52,33 +50,36 @@ export default function DocumentiHub() {
     setVisitedTabs(previous => new Set([...previous, tab]));
   }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // La sincronizzazione ordinaria di Drive non richiede un'azione manuale:
+  // all'apertura dell'hub carichiamo il catalogo e avviamo automaticamente
+  // il sync delle cartelle che dispongono di parser.
   useEffect(() => {
     let active = true;
-    api.get('/api/documenti/drive/catalog')
-      .then(response => active && setDriveCatalog(response.data))
-      .catch(() => active && setDriveCatalog(null));
+
+    const loadAndSyncDrive = async () => {
+      try {
+        const response = await api.get('/api/documenti/drive/catalog');
+        if (!active) return;
+        const catalog = response.data;
+        setDriveCatalog(catalog);
+
+        if (catalog?.automatic > 0) {
+          api.post('/api/documenti/drive/sync').catch(error => {
+            console.warn('Sincronizzazione automatica Drive non avviata:', error);
+          });
+        }
+      } catch (error) {
+        if (active) setDriveCatalog(null);
+      }
+    };
+
+    loadAndSyncDrive();
     return () => { active = false; };
   }, []);
 
   const contents = {
     archivio: ArchivioContent,
     import: ImportContent,
-  };
-
-  const syncDriveNow = async () => {
-    setDriveSyncing(true);
-    try {
-      const response = await api.post('/api/documenti/drive/sync');
-      toast.success('Sincronizzazione Drive avviata', {
-        description: response.data?.message,
-      });
-    } catch (error) {
-      toast.error('Sincronizzazione Drive non avviata', {
-        description: error.response?.data?.detail || error.message,
-      });
-    } finally {
-      setDriveSyncing(false);
-    }
   };
 
   return (
@@ -109,17 +110,6 @@ export default function DocumentiHub() {
               <span>{driveCatalog.configured} cartelle censite, {driveCatalog.automatic} con parser disponibile</span>
             </div>
             <div className="documenti-hub__drive-controls">
-              {driveCatalog.automatic > 0 && (
-                <button
-                  className="documenti-hub__drive-sync"
-                  type="button"
-                  onClick={syncDriveNow}
-                  disabled={driveSyncing}
-                >
-                  <RefreshCw size={16} className={driveSyncing ? 'is-spinning' : ''} aria-hidden="true" />
-                  {driveSyncing ? 'Avvio in corso...' : 'Sincronizza Drive'}
-                </button>
-              )}
               <span className="documenti-hub__drive-total" title="Cartelle collegate">
                 {driveCatalog.total}
               </span>
