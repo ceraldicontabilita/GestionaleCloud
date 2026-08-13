@@ -306,8 +306,9 @@ def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_t
     # Estrai DatiFattureCollegate (riferimenti NC↔Fattura)
     # In FatturaPA, DatiFattureCollegate è dentro DatiGenerali (non DatiGeneraliDocumento)
     dati_generali_parent = find_element(body, 'DatiGenerali')
+    riferimenti_parent = dati_generali_parent if dati_generali_parent is not None else body
     dati_fatture_collegate = []
-    collegate_elements = find_all_elements(dati_generali_parent or body, 'DatiFattureCollegate')
+    collegate_elements = find_all_elements(riferimenti_parent, 'DatiFattureCollegate')
     for dfc in collegate_elements:
         riferimento = {
             "id_documento": get_text(dfc, 'IdDocumento'),
@@ -324,7 +325,7 @@ def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_t
 
     # Estrai anche DatiOrdineAcquisto per riferimenti aggiuntivi
     dati_ordine = []
-    for dao in find_all_elements(dati_generali_parent or body, 'DatiOrdineAcquisto'):
+    for dao in find_all_elements(riferimenti_parent, 'DatiOrdineAcquisto'):
         ordine = {
             "id_documento": get_text(dao, 'IdDocumento'),
             "data": get_text(dao, 'Data'),
@@ -341,7 +342,7 @@ def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_t
     # non soltanto il primo, per poterli mostrare e usare nei suggerimenti
     # senza affidarsi alla sola vicinanza delle date.
     dati_ddt = []
-    for ddt in find_all_elements(dati_generali_parent or body, 'DatiDDT'):
+    for ddt in find_all_elements(riferimenti_parent, 'DatiDDT'):
         riferimento = {
             "numero": get_text(ddt, 'NumeroDDT'),
             "data": get_text(ddt, 'DataDDT'),
@@ -357,7 +358,7 @@ def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_t
 
     # Estrai DatiContratto (es. numero contratto di noleggio/leasing)
     dati_contratto = []
-    for dc in find_all_elements(dati_generali_parent or body, 'DatiContratto'):
+    for dc in find_all_elements(riferimenti_parent, 'DatiContratto'):
         contratto = {
             "id_documento": get_text(dc, 'IdDocumento'),
             "data": get_text(dc, 'Data'),
@@ -447,14 +448,14 @@ def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_t
 
     # Compatibilita': il campo storico rappresenta soltanto la prima rata.
     dati_pagamento = find_element(body, 'DatiPagamento')
-    dettaglio_pagamento = find_element(dati_pagamento, 'DettaglioPagamento') if dati_pagamento else None
+    dettaglio_pagamento = find_element(dati_pagamento, 'DettaglioPagamento') if dati_pagamento is not None else None
     pagamento = {
-        "condizioni": get_text(dati_pagamento, 'CondizioniPagamento') if dati_pagamento else "",
-        "modalita": get_text(dettaglio_pagamento, 'ModalitaPagamento') if dettaglio_pagamento else "",
-        "data_scadenza": get_text(dettaglio_pagamento, 'DataScadenzaPagamento') if dettaglio_pagamento else "",
-        "importo": get_text(dettaglio_pagamento, 'ImportoPagamento', '0') if dettaglio_pagamento else "0",
-        "istituto_finanziario": get_text(dettaglio_pagamento, 'IstitutoFinanziario') if dettaglio_pagamento else "",
-        "iban": get_text(dettaglio_pagamento, 'IBAN') if dettaglio_pagamento else "",
+        "condizioni": get_text(dati_pagamento, 'CondizioniPagamento') if dati_pagamento is not None else "",
+        "modalita": get_text(dettaglio_pagamento, 'ModalitaPagamento') if dettaglio_pagamento is not None else "",
+        "data_scadenza": get_text(dettaglio_pagamento, 'DataScadenzaPagamento') if dettaglio_pagamento is not None else "",
+        "importo": get_text(dettaglio_pagamento, 'ImportoPagamento', '0') if dettaglio_pagamento is not None else "0",
+        "istituto_finanziario": get_text(dettaglio_pagamento, 'IstitutoFinanziario') if dettaglio_pagamento is not None else "",
+        "iban": get_text(dettaglio_pagamento, 'IBAN') if dettaglio_pagamento is not None else "",
     }
 
     # Calcola totali

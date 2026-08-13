@@ -1036,19 +1036,18 @@ def start_scheduler():
     # esattoriali, avvisi bonari) ogni ora. Ogni canale gira solo se acceso e
     # con la cartella configurata su Render (altrimenti no-op). ──
     async def _drive_documenti_job():
-        from app.database import Database
-        from app.services.drive_fiscal_registry import sync_incremental
+        from app.services.drive_document_index import get_status
         try:
-            result = await sync_incremental(Database.get_db())
-            logger.info(f"[SCHEDULER-DRIVE-DOCUMENTI] {result}")
+            result = await asyncio.to_thread(get_status)
+            logger.info(f"[SCHEDULER-DRIVE-INDICE] {result}")
         except Exception as e:
-            logger.error(f"[SCHEDULER-DRIVE-DOCUMENTI] errore: {e}")
+            logger.error(f"[SCHEDULER-DRIVE-INDICE] errore: {e}")
 
     scheduler.add_job(
         _drive_documenti_job,
         'interval', minutes=15,
         id="drive_documenti_ingest",
-        name="Import incrementale documenti fiscali da Drive (ogni 15 minuti)",
+        name="Verifica indice documentale Drive in sola lettura (ogni 15 minuti)",
         replace_existing=True,
     )
 

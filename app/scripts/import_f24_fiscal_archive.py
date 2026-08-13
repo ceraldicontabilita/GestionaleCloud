@@ -29,6 +29,7 @@ from app.services.f24_fiscal_evidence import (
 
 
 MANIFEST_NAME = "INDICE_UNICO_DOCUMENTI_F24.csv"
+XLSX_INDEX_SHEET = "INDICE_F24_PDF"
 
 
 def _kind(row: dict[str, str]) -> str:
@@ -43,6 +44,54 @@ def _year(value: str) -> int | None:
     return None
 
 
+def _xlsx_index_rows(content: bytes) -> tuple[list[dict[str, str]], int | None]:
+    """Converte l'indice Excel finale dello ZIP nel formato manifest interno."""
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    try:
+        if XLSX_INDEX_SHEET not in workbook.sheetnames:
+            return [], None
+        sheet = workbook[XLSX_INDEX_SHEET]
+        rows = sheet.iter_rows(values_only=True)
+        headers = [str(value or "").strip() for value in next(rows, ())]
+        required = {"Data", "Tipo", "Protocollo", "PDF", "SHA256"}
+        if not required.issubset(headers):
+            missing = ", ".join(sorted(required - set(headers)))
+            raise ValueError(f"Colonne mancanti in {XLSX_INDEX_SHEET}: {missing}")
+        indexes = {name: headers.index(name) for name in required}
+        result: list[dict[str, str]] = []
+        for values in rows:
+            relative = values[indexes["PDF"]]
+            if not relative:
+                continue
+            date_value = values[indexes["Data"]]
+            if hasattr(date_value, "strftime"):
+                date_value = date_value.strftime("%d/%m/%Y")
+            result.append({
+                "file": str(relative).strip(),
+                "sha256": str(values[indexes["SHA256"]] or "").strip(),
+                "tipo_documento": str(values[indexes["Tipo"]] or "").strip(),
+                "data_versamento": str(date_value or "").strip(),
+                "protocollo_telematico": str(
+                    values[indexes["Protocollo"]] or ""
+                ).strip(),
+            })
+        declared_f24_rows = None
+        if "F24_TUTTI" in workbook.sheetnames:
+            f24_rows = workbook["F24_TUTTI"].iter_rows(values_only=True)
+            f24_headers = [str(value or "").strip() for value in next(f24_rows, ())]
+            if "SHA256" in f24_headers:
+                sha_index = f24_headers.index("SHA256")
+                declared_f24_rows = sum(
+                    1 for values in f24_rows
+                    if values[sha_index] not in (None, "")
+                )
+        return result, declared_f24_rows
+    finally:
+        workbook.close()
+
+
 def _archive_reader(root: Path):
     """Restituisce manifest e loader sicuro per cartella estratta o ZIP."""
     if root.is_file() and root.suffix.casefold() == ".zip":
@@ -55,16 +104,40 @@ def _archive_reader(root: Path):
             name for name in archive.namelist()
             if Path(name).name == MANIFEST_NAME and not name.endswith("/")
         ]
-        if len(manifests) != 1:
+        if len(manifests) == 1:
+            manifest_name = manifests[0]
+            manifest_parent = Path(manifest_name).parent
+            source_rows = list(csv.DictReader(
+                io.StringIO(archive.read(manifest_name).decode("utf-8-sig")), delimiter=";",
+            ))
+            manifest_format = "csv"
+        elif not manifests:
+            indexed_workbooks: list[tuple[str, list[dict[str, str]], int | None]] = []
+            for name in archive.namelist():
+                if name.endswith("/") or Path(name).suffix.casefold() != ".xlsx":
+                    continue
+                rows, declared_f24_rows = _xlsx_index_rows(archive.read(name))
+                if rows:
+                    indexed_workbooks.append((name, rows, declared_f24_rows))
+            if len(indexed_workbooks) != 1:
+                archive.close()
+                raise FileNotFoundError(
+                    f"Atteso un solo {MANIFEST_NAME} o indice Excel "
+                    f"{XLSX_INDEX_SHEET}, trovati {len(indexed_workbooks)}"
+                )
+            manifest_name, source_rows, declared_f24_rows = indexed_workbooks[0]
+            workbook_parent = Path(manifest_name).parent
+            manifest_parent = (
+                workbook_parent.parent
+                if workbook_parent.name.casefold() == "01_excel"
+                else workbook_parent
+            )
+            manifest_format = "xlsx"
+        else:
             archive.close()
             raise FileNotFoundError(
                 f"Atteso un solo {MANIFEST_NAME} nello ZIP, trovati {len(manifests)}"
             )
-        manifest_name = manifests[0]
-        manifest_parent = Path(manifest_name).parent
-        source_rows = list(csv.DictReader(
-            io.StringIO(archive.read(manifest_name).decode("utf-8-sig")), delimiter=";",
-        ))
 
         def load(relative: Path) -> bytes:
             normalized = Path(*relative.parts)
@@ -73,17 +146,43 @@ def _archive_reader(root: Path):
             member = (manifest_parent / normalized).as_posix()
             return archive.read(member)
 
-        return source_rows, load, archive.close, f"zip:{root}"
+        if manifest_format == "csv":
+            declared_f24_rows = None
+        return (
+            source_rows, load, archive.close, f"zip:{root}", manifest_format,
+            declared_f24_rows,
+        )
 
     manifests = list(root.rglob(MANIFEST_NAME)) if root.is_dir() else []
-    if len(manifests) != 1:
+    if len(manifests) == 1:
+        manifest = manifests[0]
+        manifest_parent = manifest.parent.resolve()
+        with manifest.open("r", encoding="utf-8-sig", newline="") as stream:
+            source_rows = list(csv.DictReader(stream, delimiter=";"))
+        manifest_format = "csv"
+        declared_f24_rows = None
+    elif not manifests and root.is_dir():
+        indexed_workbooks: list[tuple[Path, list[dict[str, str]], int | None]] = []
+        for workbook_path in root.rglob("*.xlsx"):
+            rows, row_count = _xlsx_index_rows(workbook_path.read_bytes())
+            if rows:
+                indexed_workbooks.append((workbook_path, rows, row_count))
+        if len(indexed_workbooks) != 1:
+            raise FileNotFoundError(
+                f"Atteso un solo {MANIFEST_NAME} o indice Excel "
+                f"{XLSX_INDEX_SHEET} sotto {root}, trovati {len(indexed_workbooks)}"
+            )
+        manifest, source_rows, declared_f24_rows = indexed_workbooks[0]
+        manifest_parent = (
+            manifest.parent.parent
+            if manifest.parent.name.casefold() == "01_excel"
+            else manifest.parent
+        ).resolve()
+        manifest_format = "xlsx"
+    else:
         raise FileNotFoundError(
             f"Atteso un solo {MANIFEST_NAME} sotto {root}, trovati {len(manifests)}"
         )
-    manifest = manifests[0]
-    manifest_parent = manifest.parent.resolve()
-    with manifest.open("r", encoding="utf-8-sig", newline="") as stream:
-        source_rows = list(csv.DictReader(stream, delimiter=";"))
 
     def load(relative: Path) -> bytes:
         path = (manifest_parent / relative).resolve()
@@ -92,11 +191,17 @@ def _archive_reader(root: Path):
             raise FileNotFoundError("PDF non trovato")
         return path.read_bytes()
 
-    return source_rows, load, lambda: None, str(manifest_parent)
+    return (
+        source_rows, load, lambda: None, str(manifest_parent), manifest_format,
+        declared_f24_rows,
+    )
 
 
 def validate_archive(root: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    source_rows, load_content, close_archive, archive_source = _archive_reader(root)
+    (
+        source_rows, load_content, close_archive, archive_source, manifest_format,
+        declared_f24_rows,
+    ) = _archive_reader(root)
 
     validated: list[dict[str, Any]] = []
     errors: list[dict[str, str]] = []
@@ -157,13 +262,26 @@ def validate_archive(root: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     finally:
         close_archive()
 
+    normalized_rows = sum(by_year.values())
+    row_delta = (
+        normalized_rows - declared_f24_rows
+        if declared_f24_rows is not None else None
+    )
     summary = {
         "mode": "dry-run",
         "archive_source": archive_source,
+        "manifest_format": manifest_format,
         "manifest_rows": len(source_rows),
         "valid_documents": len(validated),
         "invalid_documents": len(errors),
-        "normalized_rows": sum(by_year.values()),
+        "normalized_rows": normalized_rows,
+        "archive_index_normalized_rows": declared_f24_rows,
+        "normalized_row_delta": row_delta,
+        "archive_index_reconciliation": (
+            "NOT_AVAILABLE"
+            if declared_f24_rows is None
+            else "MATCH" if row_delta == 0 else "REVIEW_REQUIRED_PDF_PARSER_DIFFERS"
+        ),
         "credit_rows": credit_rows,
         "total_debits": round(totals["debits"], 2),
         "total_credits": round(totals["credits"], 2),
@@ -190,6 +308,9 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
     validated, summary = validate_archive(root)
     if summary["invalid_documents"]:
         summary["write_status"] = "BLOCKED_ARCHIVE_VALIDATION"
+        return summary
+    if summary["archive_index_reconciliation"] == "REVIEW_REQUIRED_PDF_PARSER_DIFFERS":
+        summary["write_status"] = "BLOCKED_INDEX_RECONCILIATION"
         return summary
     if getattr(args, "check_db", False):
         from app.db_collections import COLL_FISCAL_DOCUMENT_VERSIONS

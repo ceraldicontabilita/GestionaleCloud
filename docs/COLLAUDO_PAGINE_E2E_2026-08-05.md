@@ -7,7 +7,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 ## Conteggio corrente verificato dal codice
 
 - 31 registrazioni `path:` nel router React principale (famiglie canoniche e wildcard).
-- 62 schermate funzionali distinte dopo la rimozione della pagina riepilogativa Assistente Ceraldi.
+- 63 schermate funzionali distinte, inclusa la pagina Indice documentale Drive.
 - 1 pagina tecnica 404, non operativa.
 - 51 redirect legacy esatti e 29 redirect per prefisso: sono compatibilita per vecchi link, non pagine aggiuntive.
 - 0 pagine autorizzate alla rimozione in questa fase: nessuna sara eliminata senza prova di inutilizzo e senza verificare i collegamenti.
@@ -111,6 +111,8 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 60 | [ ] | Gestione IVA — `/iva` | Unica pagina IVA: attribuzione fatture, liquidazione mensile, confronto F24 e scadenze. | TENERE COME PAGINA IVA UNICA |
 | 61 | [ ] | Verifica fatture estere — `/fatture-estere-verifica` | Verifica dati fiscali delle fatture estere acquisite da email/documenti. | TENERE |
 | 62 | [~] IN REVISIONE | Dati ISA — `/contabilita/dati-isa` | Raccoglie consumi e indicatori operativi necessari al confronto con i modelli ISA, mantenendo fonti e periodo. | CONTRATTO API E STATI ASSENTI PROVATI; COMPLETARE PROVENIENZA 2026 |
+
+| 63 | [~] IN REVISIONE | Indice documentale Drive — `/documenti/drive` | Consulta originali, F24, righe tributo e dichiarazioni tramite indice Excel senza salvare binari nel database. | COMPLETARE COLLAUDO LIVE IN SOLA LETTURA |
 
 ## Pagina tecnica
 

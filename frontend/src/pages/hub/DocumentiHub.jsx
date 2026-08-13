@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Archive, Upload } from 'lucide-react';
+import { Archive, Search, Upload } from 'lucide-react';
 import api from '../../api';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { useHashState } from '../../hooks/useHashState';
@@ -9,6 +9,7 @@ import './DocumentiHub.css';
 
 const ArchivioContent = lazy(() => import('../Documenti.jsx'));
 const ImportContent = lazy(() => import('../ImportDocumenti.jsx'));
+const DriveIndexContent = lazy(() => import('../DriveDocumentIndex.jsx'));
 
 const TABS = [
   {
@@ -25,9 +26,17 @@ const TABS = [
     to: '/documenti/archivio',
     Icon: Archive,
   },
+  {
+    id: 'drive',
+    label: 'Indice Google Drive',
+    description: 'Cerca gli originali su Drive senza copiarli nel database',
+    to: '/documenti/drive',
+    Icon: Search,
+  },
 ];
 
 const getTabFromPath = pathname => {
+  if (pathname.includes('/documenti/drive')) return 'drive';
   if (pathname.includes('/documenti/archivio')) return 'archivio';
   if (pathname.includes('/documenti/import') || pathname.includes('/import-documenti')) {
     return 'import';
@@ -74,6 +83,7 @@ export default function DocumentiHub() {
   const contents = {
     archivio: ArchivioContent,
     import: ImportContent,
+    drive: DriveIndexContent,
   };
 
   return (
