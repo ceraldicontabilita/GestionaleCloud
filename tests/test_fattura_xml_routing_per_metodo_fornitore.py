@@ -1,4 +1,4 @@
-"""Regola utente 03/08/2026: banca richiede un estratto conto reale."""
+"""Un metodo abituale instrada, ma non prova il pagamento della fattura."""
 import asyncio
 
 from app.routers.invoices import fatture_upload as mod
@@ -103,19 +103,15 @@ def _setup(monkeypatch, metodo, **supplier_extra):
     return db
 
 
-def test_fornitore_cassa_registra_subito_in_cassa(monkeypatch):
+def test_fornitore_cassa_resta_provvisoria_senza_prova(monkeypatch):
     db = _setup(monkeypatch, "contanti")
 
     update = _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
 
-    assert update is not None
-    assert update["prima_nota_tipo"] == "cassa"
-    assert update["pagato"] is True
-    assert len(db["prima_nota_cassa"].docs) == 1
-    assert db["prima_nota_cassa"].docs[0]["fattura_id"] == "fatt-1"
+    assert update is None
+    assert db["prima_nota_cassa"].docs == []
     assert db["prima_nota_banca"].docs == []
-    # persistito anche sulla fattura
-    assert db["invoices"].docs[0]["stato_pagamento"] == "pagata"
+    assert db["invoices"].docs[0].get("stato_pagamento") != "pagata"
 
 
 def test_fornitore_banca_senza_estratto_resta_provvisoria(monkeypatch):
@@ -147,13 +143,13 @@ def test_fornitore_senza_metodo_resta_provvisoria(monkeypatch):
     assert db["prima_nota_cassa"].docs == []
 
 
-def test_idempotente_su_reimport(monkeypatch):
+def test_reimport_cassa_non_crea_pagamenti(monkeypatch):
     db = _setup(monkeypatch, "contanti")
 
     _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
     _run(mod.auto_registra_prima_nota(db, dict(FATTURA), None))
 
-    assert len(db["prima_nota_cassa"].docs) == 1  # mai due movimenti per la stessa fattura
+    assert db["prima_nota_cassa"].docs == []
 
 
 def test_idempotente_banca_su_reimport(monkeypatch):

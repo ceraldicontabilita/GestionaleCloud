@@ -86,6 +86,17 @@ describe('Icone categorie Prima Nota', () => {
     expect(screen.getByText('Versamento Banca')).toBeInTheDocument();
     expect(screen.getByText('Pagamento in Cassa')).toBeInTheDocument();
   });
+
+  it('non presenta il credito SumUp come un versamento in banca', () => {
+    render(<BadgeCategoria categoria="POS SUMUP Verso Banca" />);
+    expect(screen.getByText('POS SUMUP → credito gestore')).toBeInTheDocument();
+  });
+
+  it('segnala un credito SumUp negativo senza compensarlo', () => {
+    render(<CartaSumUp anno={2026} dati={{ credito_sumup_aperto: -12.34 }} />);
+    expect(screen.getByRole('alert')).toHaveTextContent('12,34');
+    expect(screen.getByRole('alert')).toHaveTextContent('non compensa automaticamente');
+  });
 });
 
 describe('Carta Nexi e anno globale', () => {

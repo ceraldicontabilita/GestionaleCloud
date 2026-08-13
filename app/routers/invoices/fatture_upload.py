@@ -742,18 +742,24 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     if metodo_canonico not in ("cassa", "banca"):
         return None
 
+    # Il metodo abituale del fornitore e' un suggerimento di instradamento,
+    # non una prova che questa specifica fattura sia stata pagata. Per la
+    # cassa non esiste un'evidenza esterna equivalente alla riga di estratto
+    # conto: la fattura deve quindi restare da confermare nei Provvisori.
+    if metodo_canonico == "cassa":
+        return None
+
     movimento_bancario = None
-    if metodo_canonico == "banca":
-        movimento_bancario = await find_ec_match_for_invoice(
-            db,
-            float(invoice.get("total_amount") or invoice.get("importo_totale") or 0),
-            invoice.get("supplier_name") or invoice.get("cedente_denominazione") or "",
-            invoice.get("invoice_date") or invoice.get("data_fattura") or "",
-            invoice.get("invoice_number") or invoice.get("numero_fattura") or "",
-            session=session,
-        )
-        if not movimento_bancario:
-            return None
+    movimento_bancario = await find_ec_match_for_invoice(
+        db,
+        float(invoice.get("total_amount") or invoice.get("importo_totale") or 0),
+        invoice.get("supplier_name") or invoice.get("cedente_denominazione") or "",
+        invoice.get("invoice_date") or invoice.get("data_fattura") or "",
+        invoice.get("invoice_number") or invoice.get("numero_fattura") or "",
+        session=session,
+    )
+    if not movimento_bancario:
+        return None
 
     destinazione = decide_destinazione_fattura(
         metodo, evidenza_bancaria=bool(movimento_bancario)
