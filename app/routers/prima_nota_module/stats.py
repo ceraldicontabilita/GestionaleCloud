@@ -13,7 +13,7 @@ from app.database import Database
 from app.services import conti_pos
 from app.services.prima_nota_sumup_projection import (
     giorno_corrente_negozio,
-    leggi_proiezione_sumup_cassa,
+    leggi_proiezioni_sumup_cassa,
 )
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA,
@@ -201,23 +201,29 @@ async def get_prima_nota_stats(
     sumup = sumup_stats[0] if sumup_stats else {"entrate": 0, "uscite": 0, "count": 0}
 
     oggi = giorno_corrente_negozio()
-    oggi_compreso = (
-        (data_da is None or oggi >= data_da)
-        and (data_a is None or oggi <= data_a)
-    )
     proiezione_sumup = {
         "data": oggi,
         "stato": "fuori_filtro",
         "applicabile": False,
         "delta": 0.0,
     }
-    if oggi_compreso:
-        proiezione_sumup = await leggi_proiezione_sumup_cassa(db, oggi)
-        if proiezione_sumup.get("applicabile"):
-            delta = round(float(proiezione_sumup.get("delta") or 0), 2)
+    dal = data_da or "0001-01-01"
+    al = data_a or oggi
+    proiezioni_sumup = await leggi_proiezioni_sumup_cassa(db, dal, al)
+    if proiezioni_sumup:
+        for proiezione in proiezioni_sumup:
+            if not proiezione.get("applicabile"):
+                continue
+            delta = round(float(proiezione.get("delta") or 0), 2)
             cassa["uscite"] = round(float(cassa.get("uscite") or 0) + delta, 2)
-            if proiezione_sumup.get("numero_righe_persistite") == 0:
+            if proiezione.get("numero_righe_persistite") == 0:
                 cassa["count"] = int(cassa.get("count") or 0) + 1
+        proiezione_sumup = {
+            "stato": "periodo_sumup_archiviato",
+            "applicabile": True,
+            "giornate": proiezioni_sumup,
+            "delta": round(sum(float(p.get("delta") or 0) for p in proiezioni_sumup if p.get("applicabile")), 2),
+        }
 
     # La Dashboard espone il saldo dei movimenti dell'intervallo richiesto.
     # Non trascina automaticamente anni storici incompleti: un saldo di conto

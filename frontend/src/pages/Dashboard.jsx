@@ -119,13 +119,11 @@ export default function Dashboard() {
       : api
           .get(`/api/verifica-coerenza/confronto-iva-completo/${anno}`, { signal })
           .catch(conErrore('IVA'));
-    const scadReq = mese
-      ? api
-          .get(`/api/scadenze?anno=${anno}&mese=${mese}&include_passate=true&limit=30`, { signal })
-          .catch(conErrore('scadenze'))
-      : api
-          .get(`/api/scadenze/prossime?giorni=120&limit=12`, { signal })
-          .catch(conErrore('scadenze'));
+    // Anche la vista annuale deve rispettare l'anno globale. L'endpoint
+    // "prossime" e' relativo a oggi e contaminava il 2025 con scadenze 2026.
+    const scadReq = api
+      .get(`/api/scadenze?anno=${anno}${mese ? `&mese=${mese}` : ''}&include_passate=true&limit=30`, { signal })
+      .catch(conErrore('scadenze'));
 
     (async () => {
       setLoading(true);
