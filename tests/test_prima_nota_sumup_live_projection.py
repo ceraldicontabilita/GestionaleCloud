@@ -7,6 +7,7 @@ from app.services.prima_nota_sumup_projection import (
     applica_proiezione_ai_movimenti,
     giorno_corrente_negozio,
     leggi_proiezione_sumup_cassa,
+    leggi_proiezioni_sumup_cassa,
 )
 
 
@@ -123,5 +124,40 @@ def test_endpoint_cassa_mostra_il_totale_sumup_live_e_conserva_lo_snapshot(monke
     assert risultato["movimenti"][0]["importo_persistito"] == 116.90
     assert risultato["totale_uscite"] == 635.80
     assert risultato["saldo_anno"] == -635.80
-    assert risultato["sumup_live"]["stato"] == "aggiornato_live"
+    assert risultato["sumup_live"]["stato"] == "periodo_sumup_archiviato"
+    assert risultato["sumup_live"]["giornate"][0]["stato"] == "aggiornato_live"
+    assert persistita["importo"] == 116.90
+
+
+def test_periodo_sumup_corregge_11_e_aggiunge_12_senza_scrivere(monkeypatch):
+    db = AsyncMongoMockClient()["sumup_period_projection_test"]
+    _run(db["prima_nota_cassa"].insert_one(_riga_cassa(
+        "2026-08-11", ident="legacy-11", importo=116.90
+    )))
+    transazioni = [
+        {"data": "2026-08-11", "tipo": "PAYMENT", "stato": "SUCCESSFUL", "importo": 1407.10},
+        {"data": "2026-08-12", "tipo": "PAYMENT", "stato": "SUCCESSFUL", "importo": 1522.20},
+    ]
+
+    async def archiviate(*_args, **_kwargs):
+        return transazioni
+
+    from app.services import prima_nota_sumup_projection as projection
+    monkeypatch.setattr(projection.sumup_sync, "transazioni_del_periodo", archiviate)
+    monkeypatch.setattr(projection.sumup_sync, "TIPO_VENDITA", "PAYMENT")
+    monkeypatch.setattr(projection.sumup_sync, "STATO_VALIDO", "SUCCESSFUL")
+
+    proiezioni = _run(leggi_proiezioni_sumup_cassa(
+        db, "2026-08-11", "2026-08-12"
+    ))
+    movimenti = [_riga_cassa("2026-08-11", ident="legacy-11", importo=116.90)]
+    for proiezione in proiezioni:
+        movimenti = applica_proiezione_ai_movimenti(movimenti, proiezione)
+
+    per_data = {m["data"]: m for m in movimenti}
+    assert per_data["2026-08-11"]["importo"] == 1407.10
+    assert per_data["2026-08-11"]["importo_persistito"] == 116.90
+    assert per_data["2026-08-12"]["importo"] == 1522.20
+    assert per_data["2026-08-12"]["virtuale"] is True
+    persistita = _run(db["prima_nota_cassa"].find_one({"id": "legacy-11"}))
     assert persistita["importo"] == 116.90

@@ -15,6 +15,7 @@ from app.services.prima_nota_sumup_projection import (
     applica_proiezione_ai_movimenti,
     giorno_corrente_negozio,
     leggi_proiezione_sumup_cassa,
+    leggi_proiezioni_sumup_cassa,
 )
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA,
@@ -86,14 +87,24 @@ async def list_prima_nota_cassa(
         "applicabile": False,
         "delta": 0.0,
     }
-    if giorno_compreso and filtro_compreso:
-        proiezione_sumup = await leggi_proiezione_sumup_cassa(db, oggi)
-        if proiezione_sumup.get("applicabile"):
-            delta = round(float(proiezione_sumup.get("delta") or 0), 2)
-            movimenti = applica_proiezione_ai_movimenti(movimenti, proiezione_sumup)
+    if filtro_compreso:
+        dal = data_da or (f"{anno}-01-01" if anno else "0001-01-01")
+        al = data_a or (f"{anno}-12-31" if anno else oggi)
+        proiezioni = await leggi_proiezioni_sumup_cassa(db, dal, al)
+        for proiezione in proiezioni:
+            if not proiezione.get("applicabile"):
+                continue
+            delta = round(float(proiezione.get("delta") or 0), 2)
+            movimenti = applica_proiezione_ai_movimenti(movimenti, proiezione)
             saldi["totale_uscite"] = round(float(saldi["totale_uscite"]) + delta, 2)
             saldi["saldo_anno"] = round(float(saldi["saldo_anno"]) - delta, 2)
             saldi["saldo"] = round(float(saldi["saldo"]) - delta, 2)
+        proiezione_sumup = {
+            "stato": "periodo_sumup_archiviato",
+            "applicabile": True,
+            "giornate": proiezioni,
+            "delta": round(sum(float(p.get("delta") or 0) for p in proiezioni if p.get("applicabile")), 2),
+        }
 
     return {
         "movimenti": movimenti,
