@@ -225,7 +225,10 @@ function FiltriFattura({
 }
 
 export function BadgeCategoria({ categoria }) {
-  const testo = categoria || '—';
+  const etichette = {
+    'POS SUMUP Verso Banca': 'POS SUMUP → credito gestore',
+  };
+  const testo = etichette[categoria] || categoria || '—';
   const lower = testo.toLowerCase();
   let Icona = FileText;
   let colore = '#475569';
@@ -285,6 +288,7 @@ function Card({ titolo, valore, colore, onEdit, testId }) {
 export function CartaSumUp({ dati, anno }) {
   const giorni = dati?.giorni || [];
   const vendite = dati?.giornate_vendite || [];
+  const creditoNegativo = Number(dati?.credito_sumup_aperto || 0) < 0;
   return (
     <section aria-labelledby="titolo-conto-sumup" style={{ display: 'grid', gap: 12 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
@@ -297,6 +301,12 @@ export function CartaSumUp({ dati, anno }) {
       <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 12px', color: '#1e3a8a', fontSize: 13 }}>
         Vendita, credito verso SumUp e accredito Mastercard sono tre passaggi distinti. Una vendita di oggi compare subito qui; il payout compare soltanto quando SumUp lo accredita davvero.
       </div>
+
+      {creditoNegativo && (
+        <div role="alert" style={{ background: '#fff7ed', border: '1px solid #fdba74', borderRadius: 10, padding: '10px 12px', color: '#9a3412', fontSize: 13, fontWeight: 700 }}>
+          Controllo richiesto: gli accrediti SumUp superano le vendite archiviate di {eur(Math.abs(dati.credito_sumup_aperto))}. Verificare il riporto iniziale e la copertura delle sincronizzazioni; il sistema non compensa automaticamente la differenza.
+        </div>
+      )}
 
       <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '12px 14px', borderBottom: '1px solid #e2e8f0' }}>
