@@ -113,6 +113,66 @@ async def leggi_proiezione_sumup_cassa(
     }
 
 
+async def leggi_proiezioni_sumup_cassa(
+    db,
+    data_da: str,
+    data_a: str,
+) -> List[Dict[str, Any]]:
+    """Proietta tutte le giornate SumUp archiviate nel periodo.
+
+    Le transazioni SumUp sono la fonte canonica per le giornate chiuse. Per
+    oggi l'evidenza API di chiusura, se disponibile, prevale perche' puo'
+    essere piu' aggiornata dell'ultimo ciclo di archiviazione transazioni.
+    """
+    transazioni = await sumup_sync.transazioni_del_periodo(db, data_da, data_a)
+    giornate = sumup_sync.aggrega_per_giorno(transazioni)
+    oggi = giorno_corrente_negozio()
+    proiezioni: List[Dict[str, Any]] = []
+
+    # La giornata corrente puo' non essere ancora presente nell'archivio
+    # transazioni, mentre la prova API di chiusura e' gia' disponibile.
+    if data_da <= oggi <= data_a and oggi not in giornate:
+        live = await leggi_proiezione_sumup_cassa(db, oggi)
+        if live.get("applicabile"):
+            proiezioni.append(live)
+
+    for data in sorted(giornate):
+        righe = await db["prima_nota_cassa"].find(
+            filtro_movimento_sumup_cassa(data), {"_id": 0}
+        ).to_list(3)
+        corrente = round(float(giornate[data].get("netto") or 0), 2)
+        if data == oggi:
+            live = await leggi_proiezione_sumup_cassa(db, data)
+            if live.get("applicabile"):
+                proiezioni.append(live)
+                continue
+        base = {
+            "data": data,
+            "importo_corrente": corrente,
+            "fonte": "sumup_transactions_archiviate",
+            "numero_righe_persistite": len(righe),
+        }
+        if len(righe) > 1:
+            proiezioni.append({
+                **base,
+                "stato": "righe_persistite_ambigue",
+                "applicabile": False,
+                "delta": 0.0,
+                "movimento_ids": [r.get("id") for r in righe if r.get("id")],
+            })
+            continue
+        persistito = round(float(righe[0].get("importo") or 0), 2) if righe else 0.0
+        proiezioni.append({
+            **base,
+            "stato": "aggiornato_archivio" if righe else "riga_virtuale_archivio",
+            "applicabile": True,
+            "delta": round(corrente - persistito, 2),
+            "importo_persistito": persistito if righe else None,
+            "movimento_id": righe[0].get("id") if righe else None,
+        })
+    return proiezioni
+
+
 def applica_proiezione_ai_movimenti(
     movimenti: List[Dict[str, Any]],
     proiezione: Dict[str, Any],
@@ -126,7 +186,7 @@ def applica_proiezione_ai_movimenti(
     corrente = proiezione.get("importo_corrente", 0.0)
     descrizione = (
         f"POS SUMUP {proiezione['data']} -> credito SumUp "
-        "(dato live; accredito separato)"
+        f"({'dato live' if proiezione.get('fonte') == 'sumup_api_archiviata' else 'transazioni SumUp archiviate'}; accredito separato)"
     )
     if movimento_id:
         for indice, movimento in enumerate(risultato):
