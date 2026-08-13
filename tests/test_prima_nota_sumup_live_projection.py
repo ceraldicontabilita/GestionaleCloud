@@ -161,3 +161,30 @@ def test_periodo_sumup_corregge_11_e_aggiunge_12_senza_scrivere(monkeypatch):
     assert per_data["2026-08-12"]["virtuale"] is True
     persistita = _run(db["prima_nota_cassa"].find_one({"id": "legacy-11"}))
     assert persistita["importo"] == 116.90
+
+
+def test_dashboard_applica_tutte_le_giornate_sumup_del_periodo(monkeypatch):
+    db = AsyncMongoMockClient()["sumup_dashboard_period_test"]
+    monkeypatch.setattr(stats.Database, "get_db", staticmethod(lambda: db))
+    _run(db["prima_nota_cassa"].insert_one(_riga_cassa(
+        "2026-08-11", ident="legacy-dashboard-11", importo=116.90
+    )))
+
+    async def archiviate(*_args, **_kwargs):
+        return [
+            {"data": "2026-08-11", "tipo": "PAYMENT", "stato": "SUCCESSFUL", "importo": 773.40},
+            {"data": "2026-08-12", "tipo": "PAYMENT", "stato": "SUCCESSFUL", "importo": 646.40},
+        ]
+
+    from app.services import prima_nota_sumup_projection as projection
+    monkeypatch.setattr(projection.sumup_sync, "transazioni_del_periodo", archiviate)
+    monkeypatch.setattr(projection.sumup_sync, "TIPO_VENDITA", "PAYMENT")
+    monkeypatch.setattr(projection.sumup_sync, "STATO_VALIDO", "SUCCESSFUL")
+
+    risultato = _run(stats.get_prima_nota_stats(
+        data_da="2026-01-01", data_a="2026-12-31"
+    ))
+
+    assert risultato["cassa"]["uscite"] == 1419.80
+    assert risultato["cassa"]["movimenti"] == 2
+    assert risultato["sumup_cassa_live"]["delta"] == 1302.90

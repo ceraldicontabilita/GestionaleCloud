@@ -10,4 +10,10 @@ describe('Dashboard con fonti atomiche', () => {
     expect(source).toContain('sumup_cassa_live');
     expect(source).toContain('senza riscrivere la prova sorgente');
   });
+
+  it('filtra sempre le scadenze con l anno globale selezionato', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/pages/Dashboard.jsx'), 'utf8');
+    expect(source).toContain('/api/scadenze?anno=${anno}');
+    expect(source).not.toContain('/api/scadenze/prossime?');
+  });
 });
