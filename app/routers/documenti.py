@@ -40,6 +40,109 @@ async def catalogo_cartelle_drive() -> Dict[str, Any]:
     return get_public_catalog()
 
 
+@router.get("/drive/index/status")
+async def stato_indice_documentale_drive(
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Verifica l'indice Excel senza importare documenti nel database."""
+    import asyncio
+    from app.services.drive_document_index import get_status
+    try:
+        return await asyncio.to_thread(get_status)
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/drive/index/search")
+async def cerca_indice_documentale_drive(
+    q: Optional[str] = Query(None, max_length=200),
+    domain: Optional[str] = Query(None, max_length=100),
+    year: Optional[str] = Query(None, max_length=10),
+    extension: Optional[str] = Query(None, max_length=20),
+    status: Optional[str] = Query(None, max_length=100),
+    limit: int = Query(100, ge=1, le=500),
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Cerca nell'Excel Drive; non scarica i documenti trovati."""
+    import asyncio
+    from app.services.drive_document_index import search_catalog
+    try:
+        return await asyncio.to_thread(
+            search_catalog, q=q, domain=domain, year=year,
+            extension=extension, status=status, limit=limit,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/drive/index/overview")
+async def riepilogo_indice_documentale_drive(
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Quadrature e dimensioni del catalogo senza dati binari."""
+    import asyncio
+    from app.services.drive_document_index import get_overview
+    try:
+        return await asyncio.to_thread(get_overview)
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/drive/index/f24")
+async def elenco_f24_indice_drive(
+    q: Optional[str] = Query(None, max_length=200),
+    year: Optional[str] = Query(None, max_length=10),
+    tax_code: Optional[str] = Query(None, max_length=20),
+    limit: int = Query(200, ge=1, le=500),
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Modelli F24 e righe tributo, distinti dalla prova bancaria."""
+    import asyncio
+    from app.services.drive_document_index import list_f24_documents
+    try:
+        return await asyncio.to_thread(
+            list_f24_documents, q=q, year=year, tax_code=tax_code, limit=limit,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/drive/index/declarations")
+async def elenco_dichiarazioni_indice_drive(
+    q: Optional[str] = Query(None, max_length=200),
+    year: Optional[str] = Query(None, max_length=10),
+    declaration_type: Optional[str] = Query(None, max_length=100),
+    limit: int = Query(200, ge=1, le=500),
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Dichiarazioni collegate in modo univoco agli originali Drive."""
+    import asyncio
+    from app.services.drive_document_index import list_declarations
+    try:
+        return await asyncio.to_thread(
+            list_declarations, q=q, year=year,
+            declaration_type=declaration_type, limit=limit,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/drive/index/document/{document_id}")
+async def dettaglio_indice_documentale_drive(
+    document_id: str,
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Risolve il link del file originale verificandone il percorso su Drive."""
+    import asyncio
+    from app.services.drive_document_index import get_document
+    try:
+        return await asyncio.to_thread(get_document, document_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.post("/drive/sync")
 async def sincronizza_cartelle_drive(
     background_tasks: BackgroundTasks,
@@ -78,8 +181,18 @@ async def scopri_cartelle_drive_fiscali(
 async def sincronizza_drive_fiscale_incrementale(
     _admin: Dict[str, Any] = Depends(get_current_admin_mfa_user),
 ) -> Dict[str, Any]:
-    from app.services.drive_fiscal_registry import sync_incremental
-    return await sync_incremental(Database.get_db())
+    """Compatibilita': verifica l'indice senza importare binari in MongoDB."""
+    import asyncio
+    from app.services.drive_document_index import get_status
+    try:
+        result = await asyncio.to_thread(get_status)
+        return {
+            **result,
+            "legacy_import_disabled": True,
+            "message": "Import PDF disattivato: gli originali restano su Google Drive.",
+        }
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/tax-codes/status")

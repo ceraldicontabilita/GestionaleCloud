@@ -8,7 +8,7 @@ anti-doppia-detrazione (§10-13), conferma che marca l'IVA come utilizzata,
 riapertura e rettifica. Montato sotto /api/iva.
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import logging
@@ -207,7 +207,7 @@ async def ricalcola_attribuzione(
 
     report = {
         "id": str(uuid.uuid4()),
-        "eseguito_il": datetime.utcnow().isoformat(),
+        "eseguito_il": datetime.now(timezone.utc).isoformat(),
         "eseguito_da": _utente_autenticato(current_user, utente),
         "filtro_anno": anno,
         "lette": lette,
@@ -351,7 +351,7 @@ async def _componi_liquidazione(
     incluse, escluse = liq.seleziona_fatture_per_liquidazione(fatture, periodo)
     credito_prec = await _credito_precedente(db, periodo)
     totali = liq.calcola_totali(incluse, iva_vendite, credito_prec)
-    ora = datetime.utcnow().isoformat()
+    ora = datetime.now(timezone.utc).isoformat()
     return {
         "id": liq_id,
         "periodo": periodo,
@@ -467,7 +467,7 @@ async def conferma_liquidazione(
 
     periodo = doc["periodo"]
     actor = _utente_autenticato(current_user, utente)
-    ora = datetime.utcnow().isoformat()
+    ora = datetime.now(timezone.utc).isoformat()
     fatture_incluse = [f for f in doc.get("fatture_incluse", []) if f.get("id")]
     ids = [f["id"] for f in fatture_incluse]
 
@@ -627,7 +627,7 @@ async def riapri_liquidazione(
     if not motivo or not motivo.strip():
         raise HTTPException(status_code=422, detail="La motivazione della riapertura e obbligatoria")
     liberate = await _libera_fatture(db, liq_id, doc["periodo"], actor, motivo.strip())
-    ora = datetime.utcnow().isoformat()
+    ora = datetime.now(timezone.utc).isoformat()
     await db[COLL_LIQ].update_one(
         {"id": liq_id},
         {"$set": {"stato": liq.RIAPERTA, "motivo_rettifica": motivo.strip(),
@@ -639,7 +639,7 @@ async def riapri_liquidazione(
 
 async def _libera_fatture(db, liq_id: str, periodo: str, utente: str, motivo: str) -> int:
     """Sgancia dalle fatture l'utilizzo IVA di questa liquidazione."""
-    ora = datetime.utcnow().isoformat()
+    ora = datetime.now(timezone.utc).isoformat()
     liberate = 0
     async for inv in db[COLL].find({"liquidazione_id": liq_id}, {"_id": 0, "id": 1, "importo_iva_utilizzato": 1}):
         res = await db[COLL].update_one(
@@ -692,7 +692,7 @@ async def rettifica_liquidazione(
     if not motivo or not motivo.strip():
         raise HTTPException(status_code=422, detail="La motivazione della rettifica e obbligatoria")
     await _libera_fatture(db, liq_id, periodo, actor, motivo.strip())
-    ora = datetime.utcnow().isoformat()
+    ora = datetime.now(timezone.utc).isoformat()
     await db[COLL_LIQ].update_one(
         {"id": liq_id},
         {"$set": {"stato": liq.RETTIFICATA, "motivo_rettifica": motivo.strip(),
@@ -912,7 +912,7 @@ async def _azione_stato_fattura(
             status_code=409,
             detail="IVA già utilizzata in una liquidazione: riapri la liquidazione prima di modificarla.",
         )
-    ora = datetime.utcnow().isoformat()
+    ora = datetime.now(timezone.utc).isoformat()
     vecchio = inv.get("stato_detrazione_iva")
     campi = {"stato_detrazione_iva": nuovo_stato, "updated_at": ora}
     if extra_set:

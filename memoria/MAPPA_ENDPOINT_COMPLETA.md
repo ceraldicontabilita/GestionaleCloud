@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1108 endpoint** in **113 gruppi**.
+> Totale **1114 endpoint** in **113 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 666 · ext esterni = 88 · — da verificare = 354
+**Riepilogo uso:** ✓ frontend = 671 · ext esterni = 88 · — da verificare = 355
 
 ## AI Parser  (11)
 
@@ -547,7 +547,7 @@
 | POST | `/api/document-ai/process-classified-email` | — | document_ai |
 | POST | `/api/document-ai/reprocess-and-save` | — | document_ai |
 
-## Documenti  (38)
+## Documenti  (44)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -563,6 +563,12 @@
 | POST | `/api/documenti/drive/fiscal/discover` | — | documenti |
 | GET | `/api/documenti/drive/fiscal/status` | — | documenti |
 | POST | `/api/documenti/drive/fiscal/sync` | — | documenti |
+| GET | `/api/documenti/drive/index/declarations` | ✓ | documenti |
+| GET | `/api/documenti/drive/index/document/{document_id}` | — | documenti |
+| GET | `/api/documenti/drive/index/f24` | ✓ | documenti |
+| GET | `/api/documenti/drive/index/overview` | ✓ | documenti |
+| GET | `/api/documenti/drive/index/search` | ✓ | documenti |
+| GET | `/api/documenti/drive/index/status` | ✓ | documenti |
 | POST | `/api/documenti/drive/sync` | — | documenti |
 | POST | `/api/documenti/elimina-processati` | — | documenti |
 | POST | `/api/documenti/fiscal/ingest` | — | documenti |

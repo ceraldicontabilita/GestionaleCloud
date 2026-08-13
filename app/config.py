@@ -175,6 +175,9 @@ class Settings(BaseSettings):
     # soltanto la cartella contenitore: le sottocartelle operative vengono
     # scoperte e verificate via Drive API, mai create per supposizione.
     DRIVE_FISCAL_ROOT_FOLDER_ID: str = "1f48bounfoOyHL_kqpHAp2GAnFfEpHvVa"
+    # Archivio documentale esterno: il gestionale legge esclusivamente
+    # l'indice Excel e lascia i file originali su Google Drive.
+    DRIVE_DOCUMENT_INDEX_ROOT_FOLDER_ID: str = "1tmVu6fl7qhJbLcGCHT3wEQzrvFAElc9h"
     GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: Optional[str] = None
 
     # Service account DEDICATI per cartella (scelta utente: un account per

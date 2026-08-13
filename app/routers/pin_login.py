@@ -90,7 +90,7 @@ _clear_failures = login_lockout.clear_failures
 async def pin_login(
     request: Request,
     response: Response,
-    payload: Dict[str, Any] = Body(..., example={"pin": "<ADMIN_PIN>"}),
+    payload: Dict[str, Any] = Body(..., examples=[{"pin": "<ADMIN_PIN>"}]),
 ) -> Dict[str, Any]:
     ip = _client_ip(request)
 

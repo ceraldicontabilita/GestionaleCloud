@@ -41,13 +41,13 @@ Non deve creare una contabilità immaginaria per far quadrare i numeri.
 
 ## 3. Stato corrente e linguaggio di collaudo
 
-L'applicazione possiede 62 schermate funzionali distinte e una pagina tecnica 404. Redirect, alias, varianti con anno o mese e la rimossa Dashboard relazionale duplicata non sono pagine aggiuntive.
+L'applicazione possiede 63 schermate funzionali distinte e una pagina tecnica 404. Redirect, alias e varianti con anno o mese non sono pagine aggiuntive.
 
 Alla data di questa riscrittura il catalogo macchina registra:
 
 - 5 pagine `verified`;
-- 13 pagine `in_review`;
-- 45 pagine `unverified`.
+- 15 pagine `in_review`;
+- 43 pagine `unverified`.
 
 Il precedente test isolato aveva aperto 62/62 schermate senza 404, ErrorBoundary o errori API iniziali, ma non includeva Dati ISA. Il catalogo corretto richiede ora 63/63 aperture. Anche un passaggio completo dimostra il montaggio tecnico, non la correttezza contabile.
 

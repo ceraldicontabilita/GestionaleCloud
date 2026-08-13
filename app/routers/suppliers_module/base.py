@@ -558,7 +558,7 @@ async def list_suppliers_filtered(
     limit: int = Query(500, ge=1, le=1000),
     search: Optional[str] = Query(None, description="Ricerca per nome/ragione sociale/P.IVA"),
     esclude_magazzino: Optional[bool] = Query(None, description="True=esclusi da magazzino | False=popolano magazzino | None=tutti"),
-    stato_anagrafica: Optional[str] = Query(None, regex="^(nuovo|storico)$", description="nuovo | storico"),
+    stato_anagrafica: Optional[str] = Query(None, pattern="^(nuovo|storico)$", description="nuovo | storico"),
     giorni_nuovo: int = Query(90, ge=1, le=3650),
     prodotto: Optional[str] = Query(None, description="Cerca fornitori che vendono questo prodotto (match su nome/descrizione magazzino)"),
     attivo: Optional[bool] = Query(None),
