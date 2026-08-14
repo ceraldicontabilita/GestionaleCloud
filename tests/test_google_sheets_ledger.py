@@ -36,6 +36,17 @@ def test_fogli_dinamici_hanno_nome_e_prefisso_stabili():
     assert len(first.prefix) == 7
 
 
+def test_payload_grande_viene_diviso_e_ricostruito(monkeypatch):
+    monkeypatch.setattr(ledger, "MAX_SHEETS_CELL_CHARS", 80)
+    payload = {"id": "BIG-1", "contenuto": "".join(f"{i:08x}" for i in range(2000))}
+
+    chunks = ledger.payload_chunks(payload)
+
+    assert len(chunks) > 1
+    assert all(len(chunk) <= 80 for chunk in chunks)
+    assert ledger.decode_payload("".join(chunks)) == payload
+
+
 def test_progressivo_e_operation_id_restano_separati():
     document = {
         "id": "EC-2026-1", "data": "2026-08-14", "tipo": "entrata",

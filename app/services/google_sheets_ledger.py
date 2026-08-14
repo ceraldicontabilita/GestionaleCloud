@@ -24,12 +24,15 @@ from app.config import settings
 SCHEMA_VERSION = "1"
 WORKBOOK_TITLE = "Ceraldi ERP - Registro dati"
 LEDGER_FOLDER_TITLE = "Gestionale ERP - Registro dati"
-HEADERS = [
+BASE_HEADERS = [
     "progressivo", "canonical_id", "operation_id", "data", "anno", "tipo",
     "importo", "descrizione", "stato", "documento_id", "fattura_id",
     "movimento_bancario_id", "source", "file_hash", "updated_at", "payload_json",
 ]
 MAX_SHEETS_CELL_CHARS = 49000
+PAYLOAD_CHUNK_COUNT = 64
+HEADERS = BASE_HEADERS + [f"payload_json_{index:03d}" for index in range(2, PAYLOAD_CHUNK_COUNT + 1)]
+LAST_COLUMN = "CA"
 GZIP_PREFIX = "gzip+base64:"
 
 
@@ -96,11 +99,19 @@ def encode_payload(payload: Dict[str, Any]) -> str:
     compressed = GZIP_PREFIX + base64.b64encode(
         gzip.compress(raw.encode("utf-8"), compresslevel=9)
     ).decode("ascii")
-    if len(compressed) > MAX_SHEETS_CELL_CHARS:
+    if len(compressed) > MAX_SHEETS_CELL_CHARS * PAYLOAD_CHUNK_COUNT:
         raise ValueError(
-            "Payload troppo grande anche dopo compressione; conservare il documento originale su Drive"
+            "Payload troppo grande per il registro Sheets anche dopo compressione"
         )
     return compressed
+
+
+def payload_chunks(payload: Dict[str, Any]) -> List[str]:
+    encoded = encode_payload(payload)
+    return [
+        encoded[index:index + MAX_SHEETS_CELL_CHARS]
+        for index in range(0, len(encoded), MAX_SHEETS_CELL_CHARS)
+    ]
 
 
 def decode_payload(value: Any) -> Dict[str, Any]:
@@ -178,8 +189,7 @@ def row_for_document(document: Dict[str, Any], progressivo: str) -> List[Any]:
         _first(document, ("source", "fonte")),
         _first(document, ("file_hash", "pdf_hash", "fingerprint")),
         str(_first(document, ("updated_at", "created_at"))),
-        encode_payload(payload),
-    ]
+    ] + payload_chunks(payload)
 
 
 def next_progressive(prefix: str, values: Iterable[str]) -> int:
@@ -366,7 +376,7 @@ def _ensure_workbook_sync(
     # foglio rendevano la sincronizzazione live piu' lenta del timeout HTTP e
     # lasciavano un workbook formalmente creato ma privo di righe.
     header_updates = [
-        {"range": f"'{item.title}'!A1:P1", "values": [HEADERS]}
+        {"range": f"'{item.title}'!A1:{LAST_COLUMN}1", "values": [HEADERS]}
         for item in requested_sheets
     ]
     header_updates.append({
@@ -399,7 +409,7 @@ async def ensure_workbook(
 def _read_existing_sync(spreadsheet_id: str, sheet: LedgerSheet):
     sheets, _ = _services()
     values = sheets.spreadsheets().values().get(
-        spreadsheetId=spreadsheet_id, range=f"'{sheet.title}'!A2:P",
+        spreadsheetId=spreadsheet_id, range=f"'{sheet.title}'!A2:{LAST_COLUMN}",
     ).execute().get("values", [])
     return values
 
@@ -410,14 +420,14 @@ def _write_rows_sync(spreadsheet_id: str, sheet: LedgerSheet, rows: List[List[An
     # lasciava record fantasma quando l'archivio diminuiva.
     sheets.spreadsheets().values().clear(
         spreadsheetId=spreadsheet_id,
-        range=f"'{sheet.title}'!A2:P",
+        range=f"'{sheet.title}'!A2:{LAST_COLUMN}",
         body={},
     ).execute()
     if not rows:
         return
     sheets.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
-        range=f"'{sheet.title}'!A2:P{len(rows) + 1}",
+        range=f"'{sheet.title}'!A2:{LAST_COLUMN}{len(rows) + 1}",
         valueInputOption="RAW", body={"values": rows},
     ).execute()
 
@@ -564,7 +574,7 @@ async def restore_all(
             progressive = str(row[0] or "").strip()
             key = str(row[1] or "").strip()
             try:
-                payload = decode_payload(row[15])
+                payload = decode_payload("".join(str(part or "") for part in row[15:]))
             except (ValueError, json.JSONDecodeError, gzip.BadGzipFile, binascii.Error) as exc:
                 errors.append({"riga": index, "errore": f"payload_json non valido: {exc}"})
                 continue
