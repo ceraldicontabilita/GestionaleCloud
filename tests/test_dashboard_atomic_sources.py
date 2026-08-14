@@ -13,6 +13,9 @@ def _run(awaitable):
 def test_dashboard_separa_bpm_sumup_e_non_trascina_anni_storici(monkeypatch):
     db = AsyncMongoMockClient()["dashboard_financial_sources_test"]
     monkeypatch.setattr(stats.Database, "get_db", staticmethod(lambda: db))
+    async def nessun_riporto(*_args, **_kwargs):
+        return 0.0
+    monkeypatch.setattr(stats, "calcola_saldo_anni_precedenti", nessun_riporto)
     _run(db["prima_nota_cassa"].insert_many([
         {"id": "c-2025", "data": "2025-12-31", "tipo": "uscita", "importo": 1000.0},
         {"id": "c-2026", "data": "2026-01-02", "tipo": "entrata", "importo": 100.0},
