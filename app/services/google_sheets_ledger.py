@@ -469,14 +469,19 @@ def _write_batch_sync(
         valueInputOption="RAW", body={"values": rows},
     )
     last_error = None
-    for attempt in range(3):
+    for attempt in range(5):
         try:
             request().execute()
             return
         except Exception as exc:
             last_error = exc
-            if attempt < 2:
-                time.sleep(2 ** attempt)
+            if attempt < 4:
+                time.sleep(min(2 ** attempt, 8))
+    if len(rows) > 1:
+        midpoint = len(rows) // 2
+        _write_batch_sync(spreadsheet_id, sheet, rows[:midpoint], start_row)
+        _write_batch_sync(spreadsheet_id, sheet, rows[midpoint:], start_row + midpoint)
+        return
     raise last_error
 
 
