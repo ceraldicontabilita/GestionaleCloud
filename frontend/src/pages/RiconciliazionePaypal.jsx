@@ -57,6 +57,7 @@ export default function RiconciliazionePaypal() {
   const [ricerca, setRicerca] = useState(transactionIdIniziale);
   const [statoCollegamento, setStatoCollegamento] = useState('tutti');
   const [sincronizzazione, setSincronizzazione] = useState('in_attesa');
+  const [riprocessamento, setRiprocessamento] = useState('');
 
   const caricaDati = useCallback(async () => {
     const paramsTx = new URLSearchParams({ limit: '1000', solo_pagamenti: 'true' });
@@ -106,6 +107,11 @@ export default function RiconciliazionePaypal() {
       } else {
         setSincronizzazione('non_configurata');
       }
+      // Applica sempre il motore end-to-end anche allo storico gia' presente:
+      // la sincronizzazione API da sola non associa fattura e prova bancaria.
+      const riprocessato = await api.post(`/api/paypal-statements/riprocessa?anno=${anno}`);
+      const dopo = riprocessato.data?.collegamenti_dopo || {};
+      setRiprocessamento(`Associate ${dopo.associate || 0} · finalizzate ${dopo.finalizzate || 0} · ambigue ${dopo.ambigue || 0}`);
       await caricaDati();
     };
     avvia()
@@ -119,6 +125,22 @@ export default function RiconciliazionePaypal() {
       .finally(() => { if (attivo) setLoading(false); });
     return () => { attivo = false; };
   }, [caricaDati]);
+
+  const riprocessaStorico = async () => {
+    setLoading(true);
+    setRiprocessamento('Riprocessamento in corso…');
+    try {
+      const risposta = await api.post(`/api/paypal-statements/riprocessa?anno=${anno}`);
+      const dopo = risposta.data?.collegamenti_dopo || {};
+      setRiprocessamento(`Associate ${dopo.associate || 0} · finalizzate ${dopo.finalizzate || 0} · ambigue ${dopo.ambigue || 0}`);
+      await caricaDati();
+    } catch (e) {
+      setRiprocessamento('Riprocessamento non riuscito');
+      setErrore(e.response?.data?.detail || 'Riprocessamento PayPal non riuscito.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const transazioniConBanca = useMemo(() => {
     const perId = new Map();
@@ -155,13 +177,20 @@ export default function RiconciliazionePaypal() {
               Sincronizzazione automatica all'apertura. I documenti si acquisiscono solo da Documenti.
             </p>
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span data-testid="paypal-sync-status" style={{ color: '#475569', fontSize: 13 }}>
             {sincronizzazione === 'in_corso' ? 'Sincronizzazione incrementale…' :
               sincronizzazione === 'completata' ? `Aggiornato${statoApi?.ultimo_sync ? ` alle ${new Date(statoApi.ultimo_sync).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}` : ''}` :
                 sincronizzazione === 'non_configurata' ? 'API non configurata' :
                   sincronizzazione === 'errore' ? 'Sincronizzazione da verificare' : 'Verifica aggiornamenti…'}
           </span>
+          <button type="button" onClick={riprocessaStorico} disabled={loading} style={buttonStyle}>
+            Riprocessa {anno}
+          </button>
+          </div>
         </div>
+
+        {riprocessamento && <div data-testid="paypal-reprocess-result" style={{ ...messageStyle, background: '#ecfdf5', color: '#166534' }}>{riprocessamento}</div>}
 
         {loading && <div role="status" style={messageStyle}>Caricamento dati PayPal...</div>}
         {errore && <div role="alert" style={{ ...messageStyle, background: '#fef2f2', color: '#991b1b' }}>{errore}</div>}
