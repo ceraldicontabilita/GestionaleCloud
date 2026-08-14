@@ -244,6 +244,9 @@ async def collega_transazione_a_fattura(
         return {"collegata": False, "motivo": "fattura_gia_collegata_ad_altra_transazione"}
 
     now = datetime.now(timezone.utc).isoformat()
+    paypal_reference = str(
+        transaction.get("invoice_id_fornitore") or transaction.get("invoice_id") or ""
+    ).strip()
     link = {
         "fattura_id": invoice_id,
         "numero": invoice_number(invoice),
@@ -252,7 +255,11 @@ async def collega_transazione_a_fattura(
         "importo": invoice_amount(invoice),
         "view_url": f"/api/fatture-ricevute/fattura/{invoice_id}/view-assoinvoice",
         "auto": automatic,
-        "match": "fornitore_numero_importo_esatti" if automatic else "manuale_validato",
+        "match": (
+            "fornitore_numero_importo_esatti" if automatic and paypal_reference
+            else "fornitore_importo_data_univoci" if automatic
+            else "manuale_validato"
+        ),
         "evidenze": evaluation.get("evidenze") or [],
         "collegata_at": now,
     }

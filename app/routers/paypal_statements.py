@@ -92,11 +92,17 @@ def _stato_collegamento_fattura(transaction: Dict[str, Any]) -> str:
         return "non_associata"
     evidenze = set(link.get("evidenze") or [])
     match = str(link.get("match") or "")
-    if (
+    strict_reference_match = (
         match in SAFE_INVOICE_MATCHES
         and {"numero_fattura", "importo"}.issubset(evidenze)
         and bool(evidenze & SUPPLIER_EVIDENCE)
-    ):
+    )
+    unique_date_match = (
+        match == "fornitore_importo_data_univoci"
+        and {"importo", "data_entro_120_giorni"}.issubset(evidenze)
+        and bool(evidenze & SUPPLIER_EVIDENCE)
+    )
+    if strict_reference_match or unique_date_match:
         return "associata_validata"
     return "da_rivalidare"
 

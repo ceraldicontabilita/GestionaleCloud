@@ -110,6 +110,7 @@ def test_barbetta_senza_numero_fattura_collega_per_nome_importo_data_univoci():
 
         assert result["collegata"] is True
         assert result["fattura_id"] == "INV-BARBETTA"
+        assert result["fattura_associata"]["match"] == "fornitore_importo_data_univoci"
         assert "denominazione_fornitore" in result["fattura_associata"]["evidenze"]
         assert "data_entro_120_giorni" in result["fattura_associata"]["evidenze"]
 
