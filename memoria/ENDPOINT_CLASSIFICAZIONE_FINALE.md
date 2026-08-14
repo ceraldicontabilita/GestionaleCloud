@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1114 · tenere: 712 · verificare: 378 · admin-only (migrazione/manutenzione): 24
+**Totale endpoint:** 1118 · tenere: 716 · verificare: 378 · admin-only (migrazione/manutenzione): 24
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -31,6 +31,10 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/cedolini/drive/status` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/cedolini/drive/sync` | drive_cedolini | — | sì | — | — | sì | tenere | in uso: scheduler |
 | `POST /api/dati-provvisori/riconcilia-estratto-conto` | dati_provvisori | — | sì | — | — | — | tenere | in uso: scheduler |
+| `GET /api/admin/bank-supplier-rules` | admin | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/admin/bank-supplier-rules` | admin | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/admin/bank-supplier-rules/reprocess/{year}` | admin | sì | — | — | — | — | tenere | in uso: FE |
+| `DELETE /api/admin/bank-supplier-rules/{rule_id}` | admin | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/admin/cleanup-trattenute-disciplinari` | admin | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `GET /api/admin/collections` | admin | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/admin/dashboard-summary` | admin | sì | — | — | — | — | tenere | in uso: FE |

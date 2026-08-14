@@ -68,6 +68,39 @@ export default function Admin() {
   const [syncLoading, setSyncLoading] = useState(false);
   const [verificaCorrispettivi, setVerificaCorrispettivi] = useState(null);
   const [initialLoad, setInitialLoad] = useState(true);
+  const [bankRules, setBankRules] = useState([]);
+  const [bankRule, setBankRule] = useState({ reference_text: '', supplier_name: '', supplier_vat: '' });
+  const [bankRulesLoading, setBankRulesLoading] = useState(false);
+  const [bankReprocessResult, setBankReprocessResult] = useState(null);
+
+  const loadBankRules = useCallback(async () => {
+    const response = await api.get('/api/admin/bank-supplier-rules');
+    setBankRules(response.data || []);
+  }, []);
+
+  async function saveBankRule() {
+    try {
+      await api.post('/api/admin/bank-supplier-rules', bankRule);
+      setBankRule({ reference_text: '', supplier_name: '', supplier_vat: '' });
+      await loadBankRules();
+      toast.success('Riferimento bancario salvato');
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Salvataggio non riuscito');
+    }
+  }
+
+  async function reprocessBankRules() {
+    setBankRulesLoading(true);
+    try {
+      const response = await api.post(`/api/admin/bank-supplier-rules/reprocess/${anno}`);
+      setBankReprocessResult(response.data);
+      toast.success(`${response.data.linked_count} fatture associate e pagate`);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Riprocessamento non riuscito');
+    } finally {
+      setBankRulesLoading(false);
+    }
+  }
 
   // Carica tutti i dati dalla dashboard aggregata in un'unica chiamata
   const loadDashboardSummary = useCallback(async (silent = false) => {
@@ -93,11 +126,12 @@ export default function Admin() {
     loadDashboardSummary(false);
     loadEmailAccounts();
     loadParoleChiave();
+    loadBankRules().catch(e => console.error('Error loading bank rules:', e));
 
     // Polling silenzioso ogni 5 minuti
     const interval = setInterval(() => loadDashboardSummary(true), 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [loadDashboardSummary]);
+  }, [loadDashboardSummary, loadBankRules]);
 
   async function loadStats() {
     try {
@@ -322,6 +356,7 @@ export default function Admin() {
     { key: 'keywords', label: 'Parole Chiave', icon: '🔑' },
     { key: 'rollback', label: 'Rollback Dati', icon: '🗑️' },
     { key: 'collaudo', label: 'Collaudo', icon: '🧪' },
+    { key: 'bank-rules', label: 'Riferimenti bancari', icon: '🏦' },
   ];
 
   return (
@@ -862,6 +897,37 @@ export default function Admin() {
       {activeTab === 'rollback' && <RollbackDatiTab />}
 
       {activeTab === 'collaudo' && <CollaudoTab />}
+
+      {activeTab === 'bank-rules' && (
+        <Card title="Riferimenti bancari ricorrenti">
+          <p style={{ fontSize: 13, color: COLORS.textMuted }}>
+            Associa una dicitura certa dell'estratto conto a un fornitore. Il riprocessamento
+            collega solo importi identici al centesimo e fatture temporalmente compatibili.
+          </p>
+          <div style={{ display: 'grid', gap: 10, gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr 1fr auto' }}>
+            <Input value={bankRule.reference_text} onChange={e => setBankRule({ ...bankRule, reference_text: e.target.value })} placeholder="Dicitura bancaria completa" />
+            <Input value={bankRule.supplier_name} onChange={e => setBankRule({ ...bankRule, supplier_name: e.target.value })} placeholder="Fornitore (es. FASTWEB)" />
+            <Input value={bankRule.supplier_vat} onChange={e => setBankRule({ ...bankRule, supplier_vat: e.target.value })} placeholder="P.IVA facoltativa" />
+            <Button variant="primary" onClick={saveBankRule}>Salva</Button>
+          </div>
+          <div style={{ display: 'grid', gap: 8, marginTop: 16 }}>
+            {bankRules.map(rule => (
+              <div key={rule.id} style={{ padding: 10, border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.sm, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <span><strong>{rule.supplier_name}</strong><br /><small>{rule.reference_text}</small></span>
+                <Button variant="danger" size="sm" onClick={async () => { await api.delete(`/api/admin/bank-supplier-rules/${rule.id}`); await loadBankRules(); }}>Elimina</Button>
+              </div>
+            ))}
+          </div>
+          <Button style={{ marginTop: 16 }} variant="success" disabled={bankRulesLoading} onClick={reprocessBankRules}>
+            {bankRulesLoading ? 'Riprocessamento...' : `Riprocessa pagamenti ${anno}`}
+          </Button>
+          {bankReprocessResult && (
+            <div style={{ marginTop: 12, padding: 12, background: COLORS.bgAlt, borderRadius: BORDER_RADIUS.sm }}>
+              Associate: <strong>{bankReprocessResult.linked_count}</strong> · Ambigue: <strong>{bankReprocessResult.ambiguous_count}</strong> · Senza fattura: <strong>{bankReprocessResult.no_invoice_count}</strong>
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* TAB SINCRONIZZAZIONE */}
 

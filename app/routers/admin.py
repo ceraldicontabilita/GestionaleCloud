@@ -12,6 +12,27 @@ from app.utils.dependencies import get_current_user, get_current_admin_user
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+@router.get("/bank-supplier-rules")
+async def list_bank_supplier_rules() -> List[Dict[str, Any]]:
+    return await Database.get_db()["bank_supplier_rules"].find({}, {"_id": 0}).sort("supplier_name", 1).to_list(1000)
+
+@router.post("/bank-supplier-rules")
+async def upsert_bank_supplier_rule(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    from app.services.bank_supplier_rules import save_rule
+    return await save_rule(Database.get_db(), payload)
+
+@router.delete("/bank-supplier-rules/{rule_id}")
+async def delete_bank_supplier_rule(rule_id: str) -> Dict[str, Any]:
+    result = await Database.get_db()["bank_supplier_rules"].delete_one({"id": rule_id})
+    if not result.deleted_count:
+        raise HTTPException(status_code=404, detail="Regola non trovata")
+    return {"deleted": True, "id": rule_id}
+
+@router.post("/bank-supplier-rules/reprocess/{year}")
+async def reprocess_bank_supplier_rules(year: int) -> Dict[str, Any]:
+    from app.services.bank_supplier_rules import reprocess_rules
+    return await reprocess_rules(Database.get_db(), year)
+
 
 @router.get("/dashboard-summary", summary="Aggregated dashboard summary for admin page")
 async def get_dashboard_summary() -> Dict[str, Any]:

@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1114 endpoint** in **113 gruppi**.
+> Totale **1118 endpoint** in **113 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 671 · ext esterni = 88 · — da verificare = 355
+**Riepilogo uso:** ✓ frontend = 675 · ext esterni = 88 · — da verificare = 355
 
 ## AI Parser  (11)
 
@@ -22,10 +22,14 @@
 | GET | `/api/ai-parser/statistiche` | ext | ai_parser |
 | GET | `/api/ai-parser/test` | ext | ai_parser |
 
-## Admin  (8)
+## Admin  (12)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
+| GET | `/api/admin/bank-supplier-rules` | ✓ | admin |
+| POST | `/api/admin/bank-supplier-rules` | ✓ | admin |
+| POST | `/api/admin/bank-supplier-rules/reprocess/{year}` | ✓ | admin |
+| DELETE | `/api/admin/bank-supplier-rules/{rule_id}` | ✓ | admin |
 | DELETE | `/api/admin/cleanup-trattenute-disciplinari` | — | admin |
 | GET | `/api/admin/collections` | — | admin |
 | GET | `/api/admin/dashboard-summary` | ✓ | admin |
