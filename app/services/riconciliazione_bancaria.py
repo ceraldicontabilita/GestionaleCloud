@@ -346,7 +346,10 @@ async def _applica_pagamento_banca(db, fattura: Dict[str, Any], metodo_label: st
                     {"fattura_id": {"$exists": False}}, {"fattura_id": None},
                 ]},
             ],
-            "source": "estratto_conto_auto",
+            # Anche la proiezione semantica dell'SDD PayPal e' una copia
+            # contabile della stessa riga EC. Va promossa, non affiancata con
+            # una seconda uscita, quando il collegamento fattura e' univoco.
+            "source": {"$in": ["estratto_conto_auto", "proiezione_semantica_ec"]},
             "importo": {"$gte": quota - 0.01, "$lte": quota + 0.01},
             "status": {"$nin": ["deleted", "archived"]},
         }, {"_id": 0})

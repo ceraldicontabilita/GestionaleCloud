@@ -2127,6 +2127,7 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
         if not data or not importo:
             continue
         now_iso = datetime.now(timezone.utc).isoformat()
+        operation_id = f"trasferimento-contanti:{mid}"
 
         if versamento:
             # versamento: USCITA cassa (contante via dal cassetto),
@@ -2171,7 +2172,17 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
         })
         if esistente_cassa:
             gia_presenti_cassa += 1
-        elif versamento:
+            await db["prima_nota_cassa"].update_one(
+                {"id": esistente_cassa["id"]},
+                {"$set": {
+                    "estratto_conto_id": mid,
+                    "trasferimento_operation_id": operation_id,
+                    "riconciliato": True,
+                    "in_banca": True,
+                    "updated_at": now_iso,
+                }},
+            )
+        elif False and versamento:  # Compatibilita': ora la causale EC materializza entrambe le gambe.
             # L'estratto conto dimostra l'accredito in banca, non l'uscita
             # fisica del contante dalla cassa. La gamba cassa deve essere
             # registrata prima dall'utente e non può nascere da questo file.
@@ -2186,6 +2197,9 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
                 "descrizione": desc_cassa,
                 "categoria": cat,
                 "estratto_conto_id": mid,
+                "trasferimento_operation_id": operation_id,
+                "riconciliato": True,
+                "in_banca": True,
                 "source": "estratto_conto_auto_versamento_riparazione",
                 "created_at": now_iso,
             })
@@ -2206,6 +2220,15 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
         })
         if esistente_banca:
             gia_presenti_banca += 1
+            await db["prima_nota_banca"].update_one(
+                {"id": esistente_banca["id"]},
+                {"$set": {
+                    "estratto_conto_id": mid,
+                    "trasferimento_operation_id": operation_id,
+                    "riconciliato": True,
+                    "updated_at": now_iso,
+                }},
+            )
         else:
             await scrivi_movimento(db, "banca", {
                 "id": str(_uuid.uuid4()),
@@ -2215,6 +2238,8 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
                 "descrizione": desc_banca,
                 "categoria": cat,
                 "estratto_conto_id": mid,
+                "trasferimento_operation_id": operation_id,
+                "riconciliato": True,
                 "source": "estratto_conto_auto_versamento_riparazione",
                 "created_at": now_iso,
             })

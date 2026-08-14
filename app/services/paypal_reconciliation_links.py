@@ -202,6 +202,49 @@ async def finalizza_transazione_paypal_se_completa(
         {"id": movement_id}, {"movimento_bancario_id": movement_id},
         {"fattura_id": invoice_id},
     ]}, {"$set": {"payment_operation_id": operation_id}})
+    # Le vecchie sincronizzazioni potevano aver creato prima la proiezione
+    # grezza dell'SDD PayPal e poi una seconda riga per la fattura. Sono la
+    # stessa uscita bancaria: conserviamo la riga documentata e archiviamo
+    # soltanto le copie tecniche EC senza documento, a importo identico.
+    righe_operazione = await db["prima_nota_banca"].find({
+        "$and": [
+            {"$or": [
+                {"estratto_conto_id": movement_id},
+                {"movimento_estratto_conto_id": movement_id},
+                {"movimento_bancario_id": movement_id},
+                {"movimento_banca_id": movement_id},
+            ]},
+            {"status": {"$nin": ["deleted", "archived"]}},
+        ],
+    }, {"_id": 0}).to_list(20)
+    riga_documentata = next((
+        riga for riga in righe_operazione
+        if str(riga.get("fattura_id") or riga.get("invoice_id") or "") == invoice_id
+    ), None)
+    if riga_documentata:
+        importo_operazione = round(transaction_amount(transaction), 2)
+        for riga in righe_operazione:
+            if riga.get("id") == riga_documentata.get("id"):
+                continue
+            senza_documento = not (riga.get("fattura_id") or riga.get("invoice_id"))
+            copia_tecnica = riga.get("source") in {
+                "estratto_conto_auto", "proiezione_semantica_ec",
+            }
+            try:
+                stesso_importo = abs(round(float(riga.get("importo") or 0), 2) - importo_operazione) <= 0.005
+            except (TypeError, ValueError):
+                stesso_importo = False
+            if senza_documento and copia_tecnica and stesso_importo:
+                await db["prima_nota_banca"].update_one(
+                    {"id": riga["id"]},
+                    {"$set": {
+                        "status": "archived",
+                        "deleted_reason": "duplicato_proiezione_paypal_documentata",
+                        "canonical_prima_nota_banca_id": riga_documentata.get("id"),
+                        "payment_operation_id": operation_id,
+                        "updated_at": now,
+                    }},
+                )
     try:
         await record_paypal_bank_chain(
             db,

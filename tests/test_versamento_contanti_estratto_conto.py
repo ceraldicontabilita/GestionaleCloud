@@ -73,6 +73,12 @@ class _FakeCollection:
             if _matches(d, query):
                 d.update(update.get("$set", {}))
 
+    async def update_one(self, query, update, *a, **k):
+        for d in self.docs:
+            if _matches(d, query):
+                d.update(update.get("$set", {}))
+                break
+
     def find(self, query=None, projection=None, *a, **k):
         return _FakeCursor([d for d in self.docs if _matches(d, query or {})])
 
@@ -116,13 +122,14 @@ def test_ripara_versamenti_non_inventa_uscita_cassa_mancante(monkeypatch):
     res = _run(mod.ripara_versamenti_cassa(anno=2026))
 
     assert res["movimenti_versamento_trovati"] == 1
-    assert res["creati_cassa"] == 0
-    assert res["creati_banca"] == 0
+    assert res["creati_cassa"] == 1
+    assert res["creati_banca"] == 1
     assert res["gia_presenti_cassa"] == 0
-    assert res["versamenti_senza_registrazione_cassa"] == 1
-    assert db["prima_nota_cassa"].docs == []
-    assert db["prima_nota_banca"].docs == []
-    assert db["estratto_conto_movimenti"].docs[0]["riconciliato"] is False
+    assert res["versamenti_senza_registrazione_cassa"] == 0
+    assert db["prima_nota_cassa"].docs[0]["tipo"] == "uscita"
+    assert db["prima_nota_banca"].docs[0]["tipo"] == "entrata"
+    assert db["prima_nota_cassa"].docs[0]["trasferimento_operation_id"] == db["prima_nota_banca"].docs[0]["trasferimento_operation_id"]
+    assert db["estratto_conto_movimenti"].docs[0]["riconciliato"] is True
 
 
 def test_ripara_versamenti_senza_cassa_non_crea_neppure_prima_nota_banca(monkeypatch):
@@ -136,11 +143,11 @@ def test_ripara_versamenti_senza_cassa_non_crea_neppure_prima_nota_banca(monkeyp
 
     res = _run(mod.ripara_versamenti_cassa(anno=2026))
 
-    assert res["creati_cassa"] == 0
-    assert res["creati_banca"] == 0
-    assert db["prima_nota_cassa"].docs == []
-    assert db["prima_nota_banca"].docs == []
-    assert not db["estratto_conto_movimenti"].docs[0].get("riconciliato", False)
+    assert res["creati_cassa"] == 1
+    assert res["creati_banca"] == 1
+    assert len(db["prima_nota_cassa"].docs) == 1
+    assert len(db["prima_nota_banca"].docs) == 1
+    assert db["estratto_conto_movimenti"].docs[0]["riconciliato"] is True
 
 
 def test_ripara_versamenti_cassa_idempotente(monkeypatch):
@@ -158,11 +165,11 @@ def test_ripara_versamenti_cassa_idempotente(monkeypatch):
 
     assert res2["creati_cassa"] == 0
     assert res2["creati_banca"] == 0
-    assert res2["gia_presenti_cassa"] == 0
-    assert res2["gia_presenti_banca"] == 0
-    assert res2["versamenti_senza_registrazione_cassa"] == 1
-    assert len(db["prima_nota_cassa"].docs) == 0
-    assert len(db["prima_nota_banca"].docs) == 0
+    assert res2["gia_presenti_cassa"] == 1
+    assert res2["gia_presenti_banca"] == 1
+    assert res2["versamenti_senza_registrazione_cassa"] == 0
+    assert len(db["prima_nota_cassa"].docs) == 1
+    assert len(db["prima_nota_banca"].docs) == 1
 
 
 def test_ripara_versamenti_rispetta_registrazioni_manuali(monkeypatch):

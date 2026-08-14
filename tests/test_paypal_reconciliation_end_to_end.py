@@ -226,6 +226,51 @@ def test_fattura_prima_estratto_dopo_finalizza_appena_arriva_la_banca():
     _run(scenario())
 
 
+def test_finalizzazione_paypal_archivia_la_proiezione_ec_duplicata():
+    async def scenario():
+        db = AsyncMongoMockClient().db
+        await _seed_identity(db)
+        await db.invoices.insert_one(_invoice())
+        await db.paypal_transactions.insert_one({
+            **_transaction(),
+            "fattura_associata": {"fattura_id": "INV-DB-1"},
+            "riconciliato_banca": True,
+            "movimento_banca_id": "EC-PAY-DUP",
+        })
+        await db.estratto_conto_movimenti.insert_one({
+            "id": "EC-PAY-DUP", "data": "2026-07-14", "tipo": "uscita",
+            "importo": -100.0, "riconciliato": True,
+            "paypal_transaction_id": "PAY-TX-1",
+        })
+        await db.prima_nota_banca.insert_one({
+            "id": "PN-RAW", "data": "2026-07-14", "tipo": "uscita",
+            "importo": 100.0, "categoria": "Pagamento PayPal",
+            "source": "proiezione_semantica_ec",
+            "estratto_conto_id": "EC-PAY-DUP",
+        })
+        await db.prima_nota_banca.insert_one({
+            "id": "PN-DOC", "data": "2026-07-14", "tipo": "uscita",
+            "importo": 100.0, "categoria": "Fatture",
+            "source": "riconciliazione_paypal_end_to_end",
+            "estratto_conto_id": "EC-PAY-DUP", "fattura_id": "INV-DB-1",
+            "invoice_id": "INV-DB-1",
+        })
+
+        result = await finalizza_transazione_paypal_se_completa(db, "PAY-TX-1")
+
+        assert result["finalizzata"] is True
+        attive = await db.prima_nota_banca.find({
+            "status": {"$nin": ["deleted", "archived"]},
+        }).to_list(length=10)
+        assert len(attive) == 1
+        assert attive[0]["fattura_id"] == "INV-DB-1"
+        archiviata = await db.prima_nota_banca.find_one({"id": "PN-RAW"})
+        assert archiviata["status"] == "archived"
+        assert archiviata["deleted_reason"] == "duplicato_proiezione_paypal_documentata"
+
+    _run(scenario())
+
+
 def test_riprocessa_backfill_movimento_storico_collegato_solo_dal_lato_banca():
     async def scenario():
         db = AsyncMongoMockClient().db
