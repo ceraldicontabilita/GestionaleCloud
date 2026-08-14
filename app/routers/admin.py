@@ -25,6 +25,11 @@ async def _run_ledger_job(job_id: str, action: str) -> None:
         if action == "folder-audit":
             from app.services.google_sheets_ledger import drive_folder_duplicate_audit
             result = await drive_folder_duplicate_audit(job.get("folder_ids") or [])
+        elif action == "folder-cleanup":
+            from app.services.google_sheets_ledger import trash_exact_duplicates
+            result = await trash_exact_duplicates(
+                job.get("folder_ids") or [], apply=bool(job.get("apply")),
+            )
         elif action == "sync":
             from app.services.google_sheets_ledger import sync_all
             result = await sync_all(db, config)
@@ -135,6 +140,25 @@ async def google_drive_folders_duplicate_audit(payload: Dict[str, Any] = Body(..
     }
     _ledger_jobs[job_id] = job
     asyncio.create_task(_run_ledger_job(job_id, "folder-audit"))
+    return job
+
+
+@router.post("/google-sheets-ledger/duplicate-cleanup-folders")
+async def google_drive_folders_duplicate_cleanup(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Prepara o applica la pulizia recuperabile delle sole copie MD5."""
+    folder_ids = payload.get("folder_ids") or []
+    if not isinstance(folder_ids, list) or not folder_ids:
+        raise HTTPException(status_code=400, detail="Indicare almeno una cartella Drive")
+    apply = payload.get("apply") is True
+    job_id = str(uuid.uuid4())
+    job = {
+        "job_id": job_id, "action": "folder-cleanup", "status": "running",
+        "folder_ids": list(dict.fromkeys(str(value).strip() for value in folder_ids if str(value).strip())),
+        "apply": apply,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _ledger_jobs[job_id] = job
+    asyncio.create_task(_run_ledger_job(job_id, "folder-cleanup"))
     return job
 
 

@@ -244,6 +244,30 @@ def _services():
     )
 
 
+def _drive_cleanup_service():
+    """Client Drive con scrittura, usato solo dalla pulizia esplicita admin."""
+    from app.services.drive_invoice_ingest import _parse_sa_json
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+
+    raw = (
+        getattr(settings, "GOOGLE_SERVICE_ACCOUNT_JSON_FATTURE", None)
+        or getattr(settings, "GOOGLE_DRIVE_SA_JSON", None)
+        or getattr(settings, "GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON", None)
+    )
+    scopes = ["https://www.googleapis.com/auth/drive"]
+    if raw:
+        credentials = service_account.Credentials.from_service_account_info(
+            _parse_sa_json(raw), scopes=scopes,
+        )
+    else:
+        path = getattr(settings, "GOOGLE_DRIVE_SA_FILE", None)
+        if not path:
+            raise RuntimeError("Credenziali Google Drive non configurate")
+        credentials = service_account.Credentials.from_service_account_file(path, scopes=scopes)
+    return build("drive", "v3", credentials=credentials, cache_discovery=False)
+
+
 def _setting_value(config: Optional[Dict[str, Any]], name: str) -> Optional[str]:
     if name == "GOOGLE_SHEETS_LEDGER_ID" and (config or {}).get("GOOGLE_SHEETS_LEDGER_FORCE_NEW"):
         return None
@@ -498,7 +522,7 @@ def _drive_folder_duplicate_audit_sync(folder_ids: Iterable[str]) -> Dict[str, A
             while True:
                 response = drive.files().list(
                     q=f"'{folder_id}' in parents and trashed = false",
-                    fields="nextPageToken,files(id,name,mimeType,size,md5Checksum,createdTime,modifiedTime,webViewLink,parents)",
+                    fields="nextPageToken,files(id,name,mimeType,size,md5Checksum,createdTime,modifiedTime,webViewLink,parents,capabilities(canTrash))",
                     pageSize=1000, pageToken=page_token,
                     supportsAllDrives=True, includeItemsFromAllDrives=True,
                 ).execute()
@@ -544,6 +568,64 @@ def _drive_folder_duplicate_audit_sync(folder_ids: Iterable[str]) -> Dict[str, A
 
 async def drive_folder_duplicate_audit(folder_ids: Iterable[str]) -> Dict[str, Any]:
     return await asyncio.to_thread(_drive_folder_duplicate_audit_sync, tuple(folder_ids))
+
+
+def _canonical_duplicate_key(item: Dict[str, Any]) -> tuple:
+    """Preferisce un nome originale, poi la copia creata per prima."""
+    import re
+    name = str(item.get("name") or "")
+    stem = name.rsplit(".", 1)[0]
+    copy_marker = bool(re.search(r"(?:\bcopia\b|\bcopy\b|\(\d+\)\s*$)", stem, re.IGNORECASE))
+    return (copy_marker, len(name), str(item.get("createdTime") or "9999"), str(item.get("id") or ""))
+
+
+def _trash_exact_duplicates_sync(folder_ids: Iterable[str], apply: bool = False) -> Dict[str, Any]:
+    audit = _drive_folder_duplicate_audit_sync(tuple(folder_ids))
+    drive = _drive_cleanup_service() if apply else None
+    selected = []
+    skipped_no_permission = []
+    groups_processed = 0
+    for group in audit.get("duplicati", []):
+        if group.get("metodo") != "md5":
+            continue
+        files = sorted(group.get("file") or [], key=_canonical_duplicate_key)
+        if len(files) < 2:
+            continue
+        groups_processed += 1
+        canonical = files[0]
+        for duplicate in files[1:]:
+            row = {
+                "file_id": duplicate.get("id"),
+                "nome": duplicate.get("name"),
+                "radice_id": duplicate.get("radice_id"),
+                "cartella_id": duplicate.get("cartella_id"),
+                "canonical_id": canonical.get("id"),
+                "canonical_nome": canonical.get("name"),
+                "md5": duplicate.get("md5Checksum"),
+            }
+            if not duplicate.get("capabilities", {}).get("canTrash"):
+                skipped_no_permission.append(row)
+                continue
+            if apply:
+                drive.files().update(
+                    fileId=duplicate["id"], body={"trashed": True},
+                    supportsAllDrives=True, fields="id,trashed",
+                ).execute()
+            selected.append(row)
+    return {
+        "applicato": apply,
+        "radici_richieste": audit.get("radici_richieste", 0),
+        "gruppi_md5": groups_processed,
+        "copie_selezionate": len(selected),
+        "copie_senza_permesso": len(skipped_no_permission),
+        "spostate_nel_cestino": len(selected) if apply else 0,
+        "anteprima": selected[:100],
+        "senza_permesso": skipped_no_permission[:100],
+    }
+
+
+async def trash_exact_duplicates(folder_ids: Iterable[str], apply: bool = False) -> Dict[str, Any]:
+    return await asyncio.to_thread(_trash_exact_duplicates_sync, tuple(folder_ids), apply)
 
 
 def _read_existing_sync(spreadsheet_id: str, sheet: LedgerSheet):

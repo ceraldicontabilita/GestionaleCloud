@@ -187,3 +187,35 @@ def test_audit_migrazione_blocca_collezioni_non_coperte(monkeypatch):
         ]
 
     run(scenario())
+
+
+def test_copia_canonica_preferisce_nome_originale_e_piu_antico():
+    files = [
+        {"id": "COPY", "name": "Fattura (2).pdf", "createdTime": "2020-01-01"},
+        {"id": "NEW", "name": "Fattura.pdf", "createdTime": "2022-01-01"},
+        {"id": "OLD", "name": "Fattura.pdf", "createdTime": "2021-01-01"},
+    ]
+    assert sorted(files, key=ledger._canonical_duplicate_key)[0]["id"] == "OLD"
+
+
+def test_anteprima_pulizia_considera_solo_md5_e_permessi(monkeypatch):
+    monkeypatch.setattr(ledger, "_drive_folder_duplicate_audit_sync", lambda _ids: {
+        "radici_richieste": 1,
+        "duplicati": [
+            {"metodo": "md5", "file": [
+                {"id": "KEEP", "name": "Cedolino.pdf", "createdTime": "2020", "md5Checksum": "abc"},
+                {"id": "TRASH", "name": "Cedolino (2).pdf", "createdTime": "2021", "md5Checksum": "abc", "capabilities": {"canTrash": True}},
+                {"id": "LOCKED", "name": "Cedolino (3).pdf", "createdTime": "2022", "md5Checksum": "abc", "capabilities": {"canTrash": False}},
+            ]},
+            {"metodo": "nome_dimensione", "file": [
+                {"id": "A", "name": "stesso.pdf"}, {"id": "B", "name": "stesso.pdf"},
+            ]},
+        ],
+    })
+
+    result = ledger._trash_exact_duplicates_sync(["ROOT"], apply=False)
+
+    assert result["gruppi_md5"] == 1
+    assert result["copie_selezionate"] == 1
+    assert result["copie_senza_permesso"] == 1
+    assert result["anteprima"][0]["file_id"] == "TRASH"

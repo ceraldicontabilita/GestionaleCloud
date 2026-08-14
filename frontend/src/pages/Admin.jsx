@@ -1216,6 +1216,28 @@ function GoogleSheetsLedgerTab() {
     } finally { setBusy(false); }
   }
 
+  async function cleanupFolderDuplicates(apply = false) {
+    const folderIds = [...driveFolderLinks.matchAll(/folders\/([A-Za-z0-9_-]+)/g)].map(match => match[1]);
+    if (!folderIds.length) return toast.error('Incolla almeno un link cartella Drive');
+    setBusy(true);
+    try {
+      let job = (await api.post('/api/admin/google-sheets-ledger/duplicate-cleanup-folders', {
+        folder_ids: [...new Set(folderIds)], apply,
+      })).data;
+      while (job.status === 'running') {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        job = (await api.get(`/api/admin/google-sheets-ledger/jobs/${job.job_id}`)).data;
+      }
+      if (job.status === 'failed') throw new Error(job.error || 'Pulizia duplicati non riuscita');
+      setResult({ action: apply ? 'cleanup' : 'cleanup-preview', ...(job.result || {}) });
+      toast.success(apply
+        ? `${job.result?.spostate_nel_cestino || 0} copie spostate nel Cestino`
+        : `${job.result?.copie_selezionate || 0} copie MD5 eliminabili`);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || error.message || 'Pulizia duplicati non riuscita');
+    } finally { setBusy(false); }
+  }
+
   async function run(action) {
     setBusy(true);
     try {
@@ -1296,6 +1318,12 @@ function GoogleSheetsLedgerTab() {
         <Button variant="secondary" onClick={auditFolderDuplicates} disabled={busy || !driveFolderLinks.trim()} style={{ marginTop: 10 }}>
           Controlla ricorsivamente
         </Button>
+        <Button variant="secondary" onClick={() => cleanupFolderDuplicates(false)} disabled={busy || !driveFolderLinks.trim()} style={{ marginTop: 10, marginLeft: 10 }}>
+          Prepara pulizia MD5
+        </Button>
+        <Button variant="danger" onClick={() => cleanupFolderDuplicates(true)} disabled={busy || result?.action !== 'cleanup-preview'} style={{ marginTop: 10, marginLeft: 10 }}>
+          Sposta copie nel Cestino
+        </Button>
       </Card>
       <Card title={`Fogli previsti (${manifest.length})`}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 8 }}>
@@ -1326,6 +1354,12 @@ function GoogleSheetsLedgerTab() {
               <span>{item.collezione}</span><strong>{item.righe}</strong>
             </div>
           ))}
+        </Card>
+      )}
+      {result?.action?.startsWith('cleanup') && (
+        <Card title={result.action === 'cleanup' ? 'Pulizia duplicati completata' : 'Anteprima pulizia duplicati'}>
+          <div>{result.gruppi_md5 || 0} gruppi MD5 · {result.copie_selezionate || 0} copie selezionate · {result.copie_senza_permesso || 0} senza permesso</div>
+          {result.action === 'cleanup' && <strong>{result.spostate_nel_cestino || 0} file spostati nel Cestino Drive</strong>}
         </Card>
       )}
     </div>
