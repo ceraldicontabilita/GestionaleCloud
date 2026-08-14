@@ -442,7 +442,7 @@ def _ensure_row_capacity_sync(
         if item.get("properties", {}).get("title") == sheet.title
     )
     current = int(properties.get("gridProperties", {}).get("rowCount") or 0)
-    if current >= required_rows:
+    if current == required_rows:
         return
     sheets.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
@@ -454,6 +454,40 @@ def _ensure_row_capacity_sync(
             "fields": "gridProperties.rowCount",
         }}]},
     ).execute()
+
+
+def _resize_all_sheets_sync(
+    spreadsheet_id: str, definitions: Iterable[LedgerSheet], counts: Dict[str, int],
+) -> None:
+    """Elimina le celle vuote preallocate che concorrono al limite di 10M."""
+    sheets, _ = _services()
+    metadata = sheets.spreadsheets().get(
+        spreadsheetId=spreadsheet_id, fields="sheets.properties",
+    ).execute()
+    by_title = {
+        item["properties"]["title"]: item["properties"]
+        for item in metadata.get("sheets", [])
+    }
+    requests = []
+    for definition in definitions:
+        properties = by_title.get(definition.title)
+        if not properties:
+            continue
+        target_rows = max(int(counts.get(definition.collection) or 0) + 1, 2)
+        requests.append({"updateSheetProperties": {
+            "properties": {
+                "sheetId": properties["sheetId"],
+                "gridProperties": {
+                    "rowCount": target_rows,
+                    "columnCount": len(HEADERS),
+                },
+            },
+            "fields": "gridProperties(rowCount,columnCount)",
+        }})
+    if requests:
+        sheets.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id, body={"requests": requests},
+        ).execute()
 
 
 def _write_batch_sync(
@@ -576,7 +610,7 @@ async def sync_collection_streaming(db, sheet: LedgerSheet, spreadsheet_id: str)
     sequence = next_progressive(sheet.prefix, [row[0] for row in identities if row])
     source_count = await db[sheet.collection].count_documents({})
     await asyncio.to_thread(
-        _ensure_row_capacity_sync, spreadsheet_id, sheet, max(source_count + 1, 1001),
+        _ensure_row_capacity_sync, spreadsheet_id, sheet, max(source_count + 1, 2),
     )
     batch: List[List[Any]] = []
     written = len(progress_by_id)
@@ -614,6 +648,13 @@ async def sync_all(db, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any
     collections = await db.list_collection_names()
     workbook = await ensure_workbook(config, collections)
     definitions = workbook.pop("sheet_definitions")
+    source_counts = {
+        sheet.collection: await db[sheet.collection].count_documents({})
+        for sheet in definitions
+    }
+    await asyncio.to_thread(
+        _resize_all_sheets_sync, workbook["spreadsheet_id"], definitions, source_counts,
+    )
     semaphore = asyncio.Semaphore(1)
 
     async def _sync_bounded(sheet: LedgerSheet) -> Dict[str, Any]:
