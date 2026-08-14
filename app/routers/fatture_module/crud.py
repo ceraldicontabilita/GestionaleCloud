@@ -118,7 +118,9 @@ def _normalizza_da_invoices(doc: dict) -> dict:
         "metodo_pagamento": doc.get("payment_method") or doc.get("metodo_pagamento"),
         "metodo_pagamento_effettivo": _metodo_reale(doc),
         "pagato": pagato,
-        "riconciliato": bool(doc.get("riconciliato")),
+        "riconciliato": bool(
+            doc.get("riconciliato") or doc.get("paypal_riconciliato_banca")
+        ),
         "prima_nota_cassa_id": doc.get("prima_nota_cassa_id"),
         "prima_nota_banca_id": doc.get("prima_nota_banca_id"),
         "has_pdf": False,
