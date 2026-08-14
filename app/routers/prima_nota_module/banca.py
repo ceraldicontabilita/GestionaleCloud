@@ -328,32 +328,37 @@ async def list_prima_nota_sumup(
          if conto["codice"] == conti_pos.CONTO_SUMUP_MASTERCARD),
         {"saldo": 0.0},
     )
-    # Il credito operativo SumUp deriva dalle prove API, non dalle vecchie
-    # scritture materializzate di Cassa. Queste ultime possono contenere uno
-    # snapshot precedente mentre i payout sono gia' aggiornati, producendo un
-    # falso saldo negativo. Sommiamo quindi soltanto i payout riconciliati che
-    # dichiarano esplicitamente quali giornate di vendita coprono.
-    credito_coperto = 0.0
+    # Il credito operativo SumUp deriva dalle singole transazioni e dal loro
+    # payout_id, non dal confronto tra totali annuali. Un payout di gennaio puo'
+    # infatti coprire anche vendite di dicembre: sottrarre l'intero payout
+    # all'anno della vendita produce un falso credito negativo. Consideriamo
+    # chiusa soltanto la transazione il cui payout e' davvero riconciliato.
     payout_cursor = db[sumup_sync.COLL_PAYOUT].find(
         {
             "giorni": {"$elemMatch": {"$gte": dal, "$lte": al}},
             "stato_riconciliazione": {"$in": ["riconciliato", "rettifica_confermata"]},
         },
-        {"_id": 0, "payout_id": 1, "credito_coperto": 1},
+        {"_id": 0, "payout_id": 1},
     )
     payout_docs = (
         await payout_cursor.to_list(10000)
         if hasattr(payout_cursor, "to_list")
         else [p async for p in payout_cursor]
     )
-    payout_unici: Dict[str, float] = {}
-    for payout in payout_docs:
-        payout_id = str(payout.get("payout_id") or "")
-        if payout_id:
-            payout_unici[payout_id] = float(payout.get("credito_coperto") or 0)
-    credito_coperto = round(sum(payout_unici.values()), 2)
+    payout_riconciliati = {
+        str(payout.get("payout_id") or "") for payout in payout_docs
+        if payout.get("payout_id")
+    }
+    transazioni_aperte = [
+        transazione for transazione in transazioni
+        if str(transazione.get("payout_id") or "") not in payout_riconciliati
+    ]
+    giornate_aperte = sumup_sync.aggrega_per_giorno(transazioni_aperte)
     totale_netto_vendite = round(sum(g["netto"] for g in giornate_vendite), 2)
-    credito_sumup_aperto = round(totale_netto_vendite - credito_coperto, 2)
+    credito_sumup_aperto = round(
+        sum(g["netto"] for g in giornate_aperte.values()), 2
+    )
+    credito_coperto = round(totale_netto_vendite - credito_sumup_aperto, 2)
 
     per_giorno: Dict[str, Dict[str, Any]] = {}
     for movimento in movimenti:

@@ -2,7 +2,7 @@ import asyncio
 
 from mongomock_motor import AsyncMongoMockClient
 
-from app.routers.prima_nota_module import cassa, stats
+from app.routers.prima_nota_module import banca, cassa, stats
 from app.services.prima_nota_sumup_projection import (
     applica_proiezione_ai_movimenti,
     giorno_corrente_negozio,
@@ -188,3 +188,36 @@ def test_dashboard_applica_tutte_le_giornate_sumup_del_periodo(monkeypatch):
     assert risultato["cassa"]["uscite"] == 1419.80
     assert risultato["cassa"]["movimenti"] == 2
     assert risultato["sumup_cassa_live"]["delta"] == 1302.90
+
+
+def test_credito_sumup_esclude_solo_transazioni_con_payout_riconciliato(monkeypatch):
+    db = AsyncMongoMockClient()["sumup_open_credit_test"]
+    monkeypatch.setattr(banca.Database, "get_db", staticmethod(lambda: db))
+
+    transazioni = [
+        {"data": "2026-12-31", "tipo": "PAYMENT", "stato": "SUCCESSFUL",
+         "importo": 100.0, "payout_id": "payout-gennaio"},
+        {"data": "2026-08-14", "tipo": "PAYMENT", "stato": "SUCCESSFUL",
+         "importo": 40.0},
+    ]
+
+    async def archiviate(*_args, **_kwargs):
+        return transazioni
+
+    async def saldi(*_args, **_kwargs):
+        return {"conti_reali": []}
+
+    monkeypatch.setattr(banca.sumup_sync, "transazioni_del_periodo", archiviate)
+    monkeypatch.setattr(banca, "saldi_finanziari", saldi)
+    _run(db["sumup_payouts"].insert_one({
+        "payout_id": "payout-gennaio",
+        "giorni": ["2026-12-31", "2027-01-01"],
+        "credito_coperto": 250.0,
+        "stato_riconciliazione": "riconciliato",
+    }))
+
+    risultato = _run(banca.list_prima_nota_sumup(anno=2026))
+
+    assert risultato["totale_netto_vendite"] == 140.0
+    assert risultato["credito_sumup_coperto"] == 100.0
+    assert risultato["credito_sumup_aperto"] == 40.0
