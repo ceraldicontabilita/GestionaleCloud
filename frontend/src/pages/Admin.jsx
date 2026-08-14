@@ -394,6 +394,7 @@ export default function Admin() {
     { key: 'rollback', label: 'Rollback Dati', icon: '🗑️' },
     { key: 'collaudo', label: 'Collaudo', icon: '🧪' },
     { key: 'bank-rules', label: 'Riferimenti bancari', icon: '🏦' },
+    { key: 'drive-ledger', label: 'Registro Drive', icon: '📊' },
   ];
 
   return (
@@ -935,6 +936,8 @@ export default function Admin() {
 
       {activeTab === 'collaudo' && <CollaudoTab />}
 
+      {activeTab === 'drive-ledger' && <GoogleSheetsLedgerTab />}
+
       {activeTab === 'bank-rules' && (
         <Card title="Riferimenti bancari ricorrenti">
           <p style={{ fontSize: 13, color: COLORS.textMuted }}>
@@ -1152,6 +1155,98 @@ function PuliziaDriveFattureCard() {
     </div>
   );
 }
+
+function GoogleSheetsLedgerTab() {
+  const [config, setConfig] = useState({ spreadsheet_id: '', folder_id: '' });
+  const [manifest, setManifest] = useState([]);
+  const [result, setResult] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    const [cfg, man] = await Promise.all([
+      api.get('/api/admin/google-sheets-ledger/config'),
+      api.get('/api/admin/google-sheets-ledger/manifest'),
+    ]);
+    setConfig({ spreadsheet_id: cfg.data.spreadsheet_id || '', folder_id: cfg.data.folder_id || '' });
+    setManifest(man.data.fogli || []);
+  }, []);
+
+  useEffect(() => { load().catch(() => {}); }, [load]);
+
+  async function saveConfig() {
+    setBusy(true);
+    try {
+      await api.post('/api/admin/google-sheets-ledger/config', config);
+      toast.success('Registro Drive configurato');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Configurazione non riuscita');
+    } finally { setBusy(false); }
+  }
+
+  async function run(action) {
+    setBusy(true);
+    try {
+      const url = action === 'sync'
+        ? '/api/admin/google-sheets-ledger/sync'
+        : '/api/admin/google-sheets-ledger/restore?apply=false';
+      const response = await api.post(url);
+      setResult({ action, ...response.data });
+      setConfig(current => ({ ...current, spreadsheet_id: response.data.spreadsheet_id || current.spreadsheet_id }));
+      const errors = (response.data.fogli || []).reduce((sum, row) => sum + (row.numero_errori || 0), 0);
+      if (errors) toast.error(`${errors} errori nel registro`);
+      else toast.success(action === 'sync' ? 'Registro Google Sheets sincronizzato' : 'Registro ricostruibile');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Operazione non riuscita');
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 16 }}>
+      <Card title="Registro dati su Google Drive">
+        <p style={{ fontSize: 13, color: COLORS.textMuted, lineHeight: 1.6 }}>
+          Un solo file Google Sheets, un foglio per ogni archivio. Ogni foglio ha un
+          progressivo proprio; canonical_id conserva l'identità originale e operation_id
+          collega fattura, pagamento e movimento bancario. Il payload JSON permette la ricostruzione completa.
+        </p>
+        <div style={{ display: 'grid', gap: 10, gridTemplateColumns: '1fr 1fr auto' }}>
+          <Input value={config.spreadsheet_id} onChange={e => setConfig({ ...config, spreadsheet_id: e.target.value })} placeholder="ID file Google Sheets (se esiste)" />
+          <Input value={config.folder_id} onChange={e => setConfig({ ...config, folder_id: e.target.value })} placeholder="ID cartella Drive (per crearlo)" />
+          <Button onClick={saveConfig} disabled={busy || (!config.spreadsheet_id && !config.folder_id)}>Salva</Button>
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+          <Button variant="primary" onClick={() => run('sync')} disabled={busy || (!config.spreadsheet_id && !config.folder_id)}>
+            {busy ? 'Elaborazione...' : 'Sincronizza tutto'}
+          </Button>
+          <Button variant="secondary" onClick={() => run('validate')} disabled={busy || !config.spreadsheet_id}>
+            Verifica ricostruzione
+          </Button>
+          {result?.spreadsheet_url && <a href={result.spreadsheet_url} target="_blank" rel="noreferrer">Apri Google Sheets</a>}
+        </div>
+      </Card>
+      <Card title={`Fogli previsti (${manifest.length})`}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 8 }}>
+          {manifest.map(item => (
+            <div key={item.foglio} style={{ padding: 10, border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.sm }}>
+              <strong>{item.foglio}</strong><br />
+              <small>{item.prefisso}-00000001 · {item.collezione}</small>
+            </div>
+          ))}
+        </div>
+      </Card>
+      {result && (
+        <Card title={result.action === 'validate' ? 'Esito verifica ricostruzione' : 'Esito sincronizzazione'}>
+          {(result.fogli || []).map(item => (
+            <div key={item.foglio} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${COLORS.border}` }}>
+              <span>{item.foglio}</span>
+              <strong>{item.righe ?? item.valide ?? 0}{item.numero_errori ? ` · ${item.numero_errori} errori` : ''}</strong>
+            </div>
+          ))}
+        </Card>
+      )}
+    </div>
+  );
+}
+
 
 function RollbackDatiTab() {
   const [sezioni, setSezioni] = useState([]);

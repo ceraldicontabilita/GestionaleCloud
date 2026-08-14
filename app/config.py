@@ -134,6 +134,10 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_ESTRATTI_FOLDER_ID: Optional[str] = None      # estratti conto
     GOOGLE_DRIVE_ESTRATTI_FOLDER_IDS: Optional[str] = None     # piu radici, separate da virgola
     GOOGLE_DRIVE_BONIFICI_FOLDER_ID: Optional[str] = None      # bonifici effettuati: fornitori, stipendi e altri pagamenti
+    # Registro dati portabile: un Google Spreadsheet con un foglio per ogni
+    # entita canonica. ID diretto oppure cartella in cui crearlo/ritrovarlo.
+    GOOGLE_SHEETS_LEDGER_ID: Optional[str] = None
+    GOOGLE_SHEETS_LEDGER_FOLDER_ID: Optional[str] = None
     # Nuovi canali documentali (scelta utente 12-07-2026): cartelle Drive
     # dedicate. Gli ID vanno su Render; ogni cartella condivisa con la
     # client_email del service account che la legge.

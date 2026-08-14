@@ -12,6 +12,86 @@ from app.utils.dependencies import get_current_user, get_current_admin_user
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+
+@router.get("/google-sheets-ledger/manifest")
+async def google_sheets_ledger_manifest() -> Dict[str, Any]:
+    """Elenco stabile dei fogli e dei relativi progressivi."""
+    from app.services.google_sheets_ledger import HEADERS, sheet_manifest
+    return {"headers": HEADERS, "fogli": sheet_manifest()}
+
+
+@router.get("/google-sheets-ledger/config")
+async def google_sheets_ledger_config() -> Dict[str, Any]:
+    from app.services.google_sheets_ledger import default_folder_id
+    config = await Database.get_db()["system_settings"].find_one(
+        {"key": "google_sheets_ledger"}, {"_id": 0},
+    ) or {}
+    return {
+        "spreadsheet_id": config.get("GOOGLE_SHEETS_LEDGER_ID"),
+        "folder_id": default_folder_id(config),
+        "configured": bool(
+            config.get("GOOGLE_SHEETS_LEDGER_ID")
+            or default_folder_id(config)
+        ),
+    }
+
+
+@router.post("/google-sheets-ledger/config")
+async def save_google_sheets_ledger_config(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Configura il file o la cartella Drive senza esporre credenziali."""
+    spreadsheet_id = str(payload.get("spreadsheet_id") or "").strip() or None
+    folder_id = str(payload.get("folder_id") or "").strip() or None
+    if not spreadsheet_id and not folder_id:
+        raise HTTPException(status_code=400, detail="Indicare spreadsheet_id oppure folder_id")
+    now = datetime.now(timezone.utc).isoformat()
+    await Database.get_db()["system_settings"].update_one(
+        {"key": "google_sheets_ledger"},
+        {"$set": {
+            "key": "google_sheets_ledger",
+            "GOOGLE_SHEETS_LEDGER_ID": spreadsheet_id,
+            "GOOGLE_SHEETS_LEDGER_FOLDER_ID": folder_id,
+            "updated_at": now,
+        }},
+        upsert=True,
+    )
+    return {"saved": True, "spreadsheet_id": spreadsheet_id, "folder_id": folder_id}
+
+
+@router.post("/google-sheets-ledger/sync")
+async def sync_google_sheets_ledger() -> Dict[str, Any]:
+    """Sincronizza tutte le entita canoniche nel registro Drive."""
+    from app.services.google_sheets_ledger import sync_all
+    db = Database.get_db()
+    config = await db["system_settings"].find_one(
+        {"key": "google_sheets_ledger"}, {"_id": 0},
+    ) or {}
+    result = await sync_all(db, config)
+    if result.get("spreadsheet_id") and not config.get("GOOGLE_SHEETS_LEDGER_ID"):
+        await db["system_settings"].update_one(
+            {"key": "google_sheets_ledger"},
+            {"$set": {
+                "key": "google_sheets_ledger",
+                "GOOGLE_SHEETS_LEDGER_ID": result["spreadsheet_id"],
+                "GOOGLE_SHEETS_LEDGER_FOLDER_ID": result.get("folder_id") or config.get("GOOGLE_SHEETS_LEDGER_FOLDER_ID"),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
+    return result
+
+
+@router.post("/google-sheets-ledger/restore")
+async def restore_google_sheets_ledger(
+    apply: bool = Query(False, description="False valida soltanto; True esegue upsert"),
+) -> Dict[str, Any]:
+    """Controlla o ricostruisce il database dal registro Drive."""
+    from app.services.google_sheets_ledger import restore_all
+    db = Database.get_db()
+    config = await db["system_settings"].find_one(
+        {"key": "google_sheets_ledger"}, {"_id": 0},
+    ) or {}
+    return await restore_all(db, config, apply=apply)
+
 @router.get("/bank-supplier-rules")
 async def list_bank_supplier_rules() -> List[Dict[str, Any]]:
     return await Database.get_db()["bank_supplier_rules"].find({}, {"_id": 0}).sort("supplier_name", 1).to_list(1000)
