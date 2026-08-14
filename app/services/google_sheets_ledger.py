@@ -10,6 +10,7 @@ import asyncio
 import base64
 import binascii
 import gzip
+import hashlib
 import json
 import re
 from dataclasses import dataclass
@@ -59,6 +60,22 @@ SHEETS: tuple[LedgerSheet, ...] = (
     LedgerSheet("Scadenze fornitori", "scadenziario_fornitori", "SCA"),
     LedgerSheet("Relazioni", "entity_relations", "REL"),
 )
+
+
+def dynamic_sheet(collection: str) -> LedgerSheet:
+    """Definizione stabile per ogni collezione non inclusa nei fogli noti."""
+    safe_collection = str(collection).strip()
+    if not safe_collection:
+        raise ValueError("Nome collezione mancante")
+    title = f"DB_{safe_collection}"[:100]
+    prefix = "D" + hashlib.sha1(safe_collection.encode("utf-8")).hexdigest()[:6].upper()
+    return LedgerSheet(title, safe_collection, prefix)
+
+
+def sheet_definitions(collections: Iterable[str] = ()) -> tuple[LedgerSheet, ...]:
+    known = {sheet.collection for sheet in SHEETS}
+    extras = sorted({str(name) for name in collections if str(name) and str(name) not in known})
+    return SHEETS + tuple(dynamic_sheet(name) for name in extras)
 
 
 def _json_default(value: Any) -> str:
@@ -224,8 +241,12 @@ def default_folder_id(config: Optional[Dict[str, Any]] = None) -> Optional[str]:
     )
 
 
-def _ensure_workbook_sync(config: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+def _ensure_workbook_sync(
+    config: Optional[Dict[str, Any]] = None,
+    collections: Iterable[str] = (),
+) -> Dict[str, Any]:
     sheets, drive = _services()
+    requested_sheets = sheet_definitions(collections)
     spreadsheet_id = _setting_value(config, "GOOGLE_SHEETS_LEDGER_ID")
     configured_folder_id = _setting_value(config, "GOOGLE_SHEETS_LEDGER_FOLDER_ID")
     folder_id = default_folder_id(config)
@@ -284,7 +305,7 @@ def _ensure_workbook_sync(config: Optional[Dict[str, Any]] = None) -> Dict[str, 
         else:
             body = {
                 "properties": {"title": WORKBOOK_TITLE, "locale": "it_IT", "timeZone": "Europe/Rome"},
-                "sheets": [{"properties": {"title": item.title}} for item in SHEETS]
+                "sheets": [{"properties": {"title": item.title}} for item in requested_sheets]
                 + [{"properties": {"title": "_REGISTRO"}}],
             }
             created = sheets.spreadsheets().create(
@@ -296,7 +317,16 @@ def _ensure_workbook_sync(config: Optional[Dict[str, Any]] = None) -> Dict[str, 
         spreadsheetId=spreadsheet_id, fields="spreadsheetId,spreadsheetUrl,sheets.properties",
     ).execute()
     existing = {item["properties"]["title"] for item in metadata.get("sheets", [])}
-    missing = [item.title for item in SHEETS if item.title not in existing]
+    # I fogli dinamici gia presenti sono parte del database anche quando il
+    # chiamante non conosce ancora le collezioni (avvio in modalita Sheets).
+    existing_dynamic = [
+        dynamic_sheet(title[3:]) for title in existing if title.startswith("DB_")
+    ]
+    requested_sheets = sheet_definitions(
+        [item.collection for item in requested_sheets] +
+        [item.collection for item in existing_dynamic]
+    )
+    missing = [item.title for item in requested_sheets if item.title not in existing]
     if "_REGISTRO" not in existing:
         missing.append("_REGISTRO")
     if missing:
@@ -312,7 +342,7 @@ def _ensure_workbook_sync(config: Optional[Dict[str, Any]] = None) -> Dict[str, 
         for item in metadata.get("sheets", [])
     }
     format_requests = []
-    for item in SHEETS:
+    for item in requested_sheets:
         sheet_id = sheet_ids[item.title]
         format_requests.extend([
             {"updateSheetProperties": {
@@ -337,7 +367,7 @@ def _ensure_workbook_sync(config: Optional[Dict[str, Any]] = None) -> Dict[str, 
     # lasciavano un workbook formalmente creato ma privo di righe.
     header_updates = [
         {"range": f"'{item.title}'!A1:P1", "values": [HEADERS]}
-        for item in SHEETS
+        for item in requested_sheets
     ]
     header_updates.append({
         "range": "'_REGISTRO'!A1:B4",
@@ -355,11 +385,15 @@ def _ensure_workbook_sync(config: Optional[Dict[str, Any]] = None) -> Dict[str, 
         "spreadsheet_id": spreadsheet_id,
         "spreadsheet_url": metadata.get("spreadsheetUrl") or f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}",
         "folder_id": folder_id or "",
+        "sheet_definitions": requested_sheets,
     }
 
 
-async def ensure_workbook(config: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
-    return await asyncio.to_thread(_ensure_workbook_sync, config)
+async def ensure_workbook(
+    config: Optional[Dict[str, Any]] = None,
+    collections: Iterable[str] = (),
+) -> Dict[str, Any]:
+    return await asyncio.to_thread(_ensure_workbook_sync, config, tuple(collections))
 
 
 def _read_existing_sync(spreadsheet_id: str, sheet: LedgerSheet):
@@ -439,11 +473,16 @@ async def sync_collection(
 
 
 async def sync_all(db, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    workbook = await ensure_workbook(config)
-    results = await asyncio.gather(*(
-        sync_collection(db, sheet, workbook["spreadsheet_id"])
-        for sheet in SHEETS
-    ))
+    collections = await db.list_collection_names()
+    workbook = await ensure_workbook(config, collections)
+    definitions = workbook.pop("sheet_definitions")
+    semaphore = asyncio.Semaphore(5)
+
+    async def _sync_bounded(sheet: LedgerSheet) -> Dict[str, Any]:
+        async with semaphore:
+            return await sync_collection(db, sheet, workbook["spreadsheet_id"])
+
+    results = await asyncio.gather(*(_sync_bounded(sheet) for sheet in definitions))
     return {**workbook, "schema_version": SCHEMA_VERSION, "fogli": results}
 
 
@@ -454,7 +493,10 @@ async def migration_audit(db, config: Optional[Dict[str, Any]] = None) -> Dict[s
         item["collezione"]: item for item in verification.get("fogli", [])
     }
     checks = []
-    for sheet in SHEETS:
+    audited_definitions = sheet_definitions(
+        item.get("collezione") for item in verification.get("fogli", [])
+    )
+    for sheet in audited_definitions:
         source_count = await db[sheet.collection].count_documents({})
         verified = by_collection.get(sheet.collection, {})
         sheet_count = int(verified.get("valide") or 0)
@@ -468,7 +510,7 @@ async def migration_audit(db, config: Optional[Dict[str, Any]] = None) -> Dict[s
             "completo": source_count == sheet_count and errors == 0,
         })
 
-    migrated = {sheet.collection for sheet in SHEETS}
+    migrated = {sheet.collection for sheet in audited_definitions}
     non_migrated = []
     for name in await db.list_collection_names():
         if name in migrated:
@@ -486,10 +528,10 @@ async def migration_audit(db, config: Optional[Dict[str, Any]] = None) -> Dict[s
     }
 
 
-def sheet_manifest() -> List[Dict[str, str]]:
+def sheet_manifest(collections: Iterable[str] = ()) -> List[Dict[str, str]]:
     return [
         {"foglio": item.title, "collezione": item.collection, "prefisso": item.prefix}
-        for item in SHEETS
+        for item in sheet_definitions(collections)
     ]
 
 
@@ -506,8 +548,9 @@ async def restore_all(
     canonico e non cancella documenti presenti nel database.
     """
     workbook = await ensure_workbook(config)
+    definitions = workbook.pop("sheet_definitions")
     results = []
-    for sheet in SHEETS:
+    for sheet in definitions:
         rows = await asyncio.to_thread(
             _read_sheet_rows_sync, workbook["spreadsheet_id"], sheet,
         )
@@ -543,6 +586,7 @@ async def restore_all(
                 )
         results.append({
             "foglio": sheet.title, "collezione": sheet.collection,
+            "prefisso": sheet.prefix,
             "valide": valid, "errori": errors[:100], "numero_errori": len(errors),
         })
     return {

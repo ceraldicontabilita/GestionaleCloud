@@ -1254,7 +1254,7 @@ function GoogleSheetsLedgerTab() {
           {(result.fogli || []).map(item => (
             <div key={item.foglio} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${COLORS.border}` }}>
               <span>{item.foglio}</span>
-              <strong>{item.righe ?? item.valide ?? 0}{item.numero_errori ? ` · ${item.numero_errori} errori` : ''}</strong>
+              <strong>{result.action === 'audit' ? `${item.sorgente ?? 0} → ${item.drive ?? 0}` : (item.righe ?? item.valide ?? 0)}{(item.numero_errori || item.errori) ? ` · ${item.numero_errori || item.errori} errori` : ''}</strong>
             </div>
           ))}
           {result.action === 'audit' && (result.collezioni_non_migrate || []).map(item => (

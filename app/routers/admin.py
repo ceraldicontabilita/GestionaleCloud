@@ -17,7 +17,8 @@ router = APIRouter()
 async def google_sheets_ledger_manifest() -> Dict[str, Any]:
     """Elenco stabile dei fogli e dei relativi progressivi."""
     from app.services.google_sheets_ledger import HEADERS, sheet_manifest
-    return {"headers": HEADERS, "fogli": sheet_manifest()}
+    collections = await Database.get_db().list_collection_names()
+    return {"headers": HEADERS, "fogli": sheet_manifest(collections)}
 
 
 @router.get("/google-sheets-ledger/config")

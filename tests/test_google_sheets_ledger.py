@@ -25,6 +25,17 @@ def test_manifest_ha_fogli_collezioni_e_prefissi_unici():
     }
 
 
+def test_fogli_dinamici_hanno_nome_e_prefisso_stabili():
+    first = ledger.dynamic_sheet("sumup_transactions")
+    second = ledger.dynamic_sheet("sumup_transactions")
+
+    assert first == second
+    assert first.title == "DB_sumup_transactions"
+    assert first.collection == "sumup_transactions"
+    assert first.prefix.startswith("D")
+    assert len(first.prefix) == 7
+
+
 def test_progressivo_e_operation_id_restano_separati():
     document = {
         "id": "EC-2026-1", "data": "2026-08-14", "tipo": "entrata",
@@ -119,8 +130,9 @@ def test_restore_default_e_solo_validazione(monkeypatch):
         row = ledger.row_for_document(payload, "DOC-00000001")
         monkeypatch.setattr(
             ledger, "ensure_workbook",
-            lambda _config=None: asyncio.sleep(0, result={
+            lambda _config=None, _collections=(): asyncio.sleep(0, result={
                 "spreadsheet_id": "SHEET-1", "spreadsheet_url": "https://example.invalid/sheet",
+                "sheet_definitions": ledger.SHEETS,
             }),
         )
         monkeypatch.setattr(

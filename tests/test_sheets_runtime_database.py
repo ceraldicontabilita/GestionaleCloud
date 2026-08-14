@@ -16,7 +16,9 @@ def test_runtime_idrata_e_persistenza_write_through(monkeypatch):
         await db["invoices"].insert_one({"id": "INV-1", "total_amount": 10})
         return {
             "fogli": [
-                {"foglio": sheet.title, "valide": 1 if sheet.collection == "invoices" else 0,
+                {"foglio": sheet.title, "collezione": sheet.collection,
+                 "prefisso": sheet.prefix,
+                 "valide": 1 if sheet.collection == "invoices" else 0,
                  "numero_errori": 0}
                 for sheet in runtime_module.SHEETS
             ]

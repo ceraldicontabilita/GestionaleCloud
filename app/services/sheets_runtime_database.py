@@ -16,7 +16,9 @@ from typing import Any
 
 from mongomock_motor import AsyncMongoMockClient
 
-from app.services.google_sheets_ledger import SHEETS, restore_all, sync_collection
+from app.services.google_sheets_ledger import (
+    LedgerSheet, SHEETS, restore_all, sync_collection,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -69,6 +71,12 @@ class SheetsRuntimeDatabase:
             raise RuntimeError(
                 f"Registro Drive non avviabile: {errors} righe non valide"
             )
+        self._by_collection = {
+            item["collezione"]: LedgerSheet(
+                item["foglio"], item["collezione"], item["prefisso"],
+            )
+            for item in result["fogli"]
+        }
         self.hydration_result = result
         logger.info(
             "Archivio Sheets idratato: %s righe in %s fogli",
