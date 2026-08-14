@@ -66,7 +66,8 @@ def _json_default(value: Any) -> str:
 
 def canonical_id(document: Dict[str, Any]) -> str:
     return str(
-        document.get("id") or document.get("invoice_id")
+        document.get("id") or document.get("_mongo_id")
+        or document.get("invoice_id")
         or document.get("document_id") or document.get("cedolino_id")
         or document.get("movement_id") or document.get("bonifico_id")
         or document.get("quietanza_id") or document.get("estratto_id")
@@ -78,7 +79,7 @@ def canonical_id(document: Dict[str, Any]) -> str:
 
 def canonical_filter(document: Dict[str, Any]) -> Dict[str, Any]:
     for field in (
-        "id", "invoice_id", "document_id", "cedolino_id", "movement_id",
+        "id", "_mongo_id", "invoice_id", "document_id", "cedolino_id", "movement_id",
         "bonifico_id", "quietanza_id", "estratto_id", "invoice_key",
         "transaction_id", "file_hash", "pdf_hash", "fingerprint",
     ):
@@ -347,7 +348,13 @@ def _write_rows_sync(spreadsheet_id: str, sheet: LedgerSheet, rows: List[List[An
 
 
 async def sync_collection(db, sheet: LedgerSheet, spreadsheet_id: str) -> Dict[str, Any]:
-    documents = await db[sheet.collection].find({}, {"_id": 0}).to_list(100000)
+    documents = await db[sheet.collection].find({}).to_list(100000)
+    for document in documents:
+        mongo_id = document.pop("_id", None)
+        if mongo_id is not None and not canonical_id(document):
+            # Gli archivi storici talvolta hanno soltanto ObjectId. Lo rendiamo
+            # esplicito e portabile, senza affidare l'identita a importo/data.
+            document["_mongo_id"] = str(mongo_id)
     existing = await asyncio.to_thread(_read_existing_sync, spreadsheet_id, sheet)
     existing_progressives = [str(row[0]).strip() for row in existing if row and str(row[0]).strip()]
     existing_ids = [str(row[1]).strip() for row in existing if len(row) > 1 and str(row[1]).strip()]

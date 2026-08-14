@@ -80,6 +80,28 @@ def test_sync_mantiene_progressivi_e_righe_storiche(monkeypatch):
     run(scenario())
 
 
+def test_sync_esporta_anche_documenti_storici_con_solo_objectid(monkeypatch):
+    async def scenario():
+        db = AsyncMongoMockClient().db
+        inserted = await db.cedolini.insert_one({"periodo": "2026-07", "netto": 1000})
+        captured = {}
+        monkeypatch.setattr(ledger, "_read_existing_sync", lambda *_: [])
+        monkeypatch.setattr(
+            ledger, "_write_rows_sync",
+            lambda _sid, _sheet, rows: captured.setdefault("rows", rows),
+        )
+
+        result = await ledger.sync_collection(
+            db, next(item for item in ledger.SHEETS if item.title == "Cedolini"), "SHEET-1",
+        )
+
+        assert result["righe"] == 1
+        assert captured["rows"][0][1] == str(inserted.inserted_id)
+        assert json.loads(captured["rows"][0][15])["_mongo_id"] == str(inserted.inserted_id)
+
+    run(scenario())
+
+
 def test_restore_default_e_solo_validazione(monkeypatch):
     async def scenario():
         db = AsyncMongoMockClient().db
