@@ -1186,24 +1186,26 @@ function GoogleSheetsLedgerTab() {
   async function run(action) {
     setBusy(true);
     try {
+      const started = await api.post(`/api/admin/google-sheets-ledger/jobs/${action}`);
+      let job = started.data;
+      while (job.status === 'running') {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        job = (await api.get(`/api/admin/google-sheets-ledger/jobs/${job.job_id}`)).data;
+      }
+      if (job.status === 'failed') throw new Error(job.error || 'Elaborazione non riuscita');
+      const data = job.result || {};
+      setResult({ action, ...data });
+      setConfig(current => ({ ...current, spreadsheet_id: data.spreadsheet_id || current.spreadsheet_id }));
       if (action === 'audit') {
-        const response = await api.get('/api/admin/google-sheets-ledger/migration-audit');
-        setResult({ action, ...response.data });
-        if (response.data.pronto_cutover) toast.success('Archivio Drive pronto per il passaggio');
+        if (data.pronto_cutover) toast.success('Archivio Drive pronto per il passaggio');
         else toast.error('Passaggio bloccato: archivi mancanti o non coerenti');
         return;
       }
-      const url = action === 'sync'
-        ? '/api/admin/google-sheets-ledger/sync'
-        : '/api/admin/google-sheets-ledger/restore?apply=false';
-      const response = await api.post(url);
-      setResult({ action, ...response.data });
-      setConfig(current => ({ ...current, spreadsheet_id: response.data.spreadsheet_id || current.spreadsheet_id }));
-      const errors = (response.data.fogli || []).reduce((sum, row) => sum + (row.numero_errori || 0), 0);
+      const errors = (data.fogli || []).reduce((sum, row) => sum + (row.numero_errori || 0), 0);
       if (errors) toast.error(`${errors} errori nel registro`);
       else toast.success(action === 'sync' ? 'Registro Google Sheets sincronizzato' : 'Registro ricostruibile');
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Operazione non riuscita');
+      toast.error(error.response?.data?.detail || error.message || 'Operazione non riuscita');
     } finally { setBusy(false); }
   }
 

@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1125 · tenere: 723 · verificare: 377 · admin-only (migrazione/manutenzione): 25
+**Totale endpoint:** 1127 · tenere: 725 · verificare: 377 · admin-only (migrazione/manutenzione): 25
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -42,6 +42,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/admin/export/{filename}` | admin_export | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/admin/google-sheets-ledger/config` | admin | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/admin/google-sheets-ledger/config` | admin | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/admin/google-sheets-ledger/jobs/{action}` | admin | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/admin/google-sheets-ledger/jobs/{job_id}` | admin | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/admin/google-sheets-ledger/manifest` | admin | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/admin/google-sheets-ledger/migration-audit` | admin | sì | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/admin/google-sheets-ledger/restore` | admin | sì | — | — | — | — | tenere | in uso: FE |

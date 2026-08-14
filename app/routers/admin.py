@@ -11,6 +11,57 @@ from app.utils.dependencies import get_current_user, get_current_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+_ledger_jobs: Dict[str, Dict[str, Any]] = {}
+
+
+async def _run_ledger_job(job_id: str, action: str) -> None:
+    """Esegue migrazioni lunghe fuori dalla richiesta HTTP del browser."""
+    job = _ledger_jobs[job_id]
+    try:
+        db = Database.get_db()
+        config = await db["system_settings"].find_one(
+            {"key": "google_sheets_ledger"}, {"_id": 0},
+        ) or {}
+        if action == "sync":
+            from app.services.google_sheets_ledger import sync_all
+            result = await sync_all(db, config)
+        elif action == "audit":
+            from app.services.google_sheets_ledger import migration_audit
+            result = await migration_audit(db, config)
+        else:
+            from app.services.google_sheets_ledger import restore_all
+            result = await restore_all(db, config, apply=False)
+        job.update(status="completed", result=result)
+    except Exception as exc:
+        logger.exception("Lavoro registro Drive fallito: %s", action)
+        job.update(status="failed", error=str(exc))
+    finally:
+        job["finished_at"] = datetime.now(timezone.utc).isoformat()
+
+
+@router.post("/google-sheets-ledger/jobs/{action}")
+async def start_google_sheets_ledger_job(action: str = Path(...)) -> Dict[str, Any]:
+    if action not in {"sync", "audit", "validate"}:
+        raise HTTPException(status_code=400, detail="Operazione non valida")
+    running = next((item for item in _ledger_jobs.values() if item["status"] == "running"), None)
+    if running:
+        return running
+    job_id = str(uuid.uuid4())
+    job = {
+        "job_id": job_id, "action": action, "status": "running",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _ledger_jobs[job_id] = job
+    asyncio.create_task(_run_ledger_job(job_id, action))
+    return job
+
+
+@router.get("/google-sheets-ledger/jobs/{job_id}")
+async def get_google_sheets_ledger_job(job_id: str = Path(...)) -> Dict[str, Any]:
+    job = _ledger_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Elaborazione non trovata o server riavviato")
+    return job
 
 
 @router.get("/google-sheets-ledger/manifest")
