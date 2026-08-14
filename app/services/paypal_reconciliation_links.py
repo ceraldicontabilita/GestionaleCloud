@@ -381,6 +381,36 @@ async def riprocessa_collegamenti_paypal(
         try:
             association = transaction.get("fattura_associata") or {}
             if association.get("fattura_id"):
+                # Rivalida anche i link gia' presenti con le regole correnti.
+                # Serve per migrare le associazioni create prima che fosse
+                # ammessa la prova univoca nome+importo+data senza riferimento.
+                linked_invoice = await db[COLL_INVOICES].find_one(
+                    {"id": association.get("fattura_id")}, {"_id": 0}
+                )
+                if linked_invoice:
+                    mapping = await supplier_mapping_for_transaction(db, transaction)
+                    evaluation = evaluate_paypal_invoice_match(
+                        transaction, linked_invoice, mapping
+                    )
+                    if evaluation.get("associabile"):
+                        reference = str(
+                            transaction.get("invoice_id_fornitore")
+                            or transaction.get("invoice_id") or ""
+                        ).strip()
+                        migrated_match = (
+                            "fornitore_numero_importo_esatti" if reference
+                            else "fornitore_importo_data_univoci"
+                        )
+                        await db[COLL_TRANSACTIONS].update_one(
+                            {"$or": [
+                                {"transaction_id": _tx_id(transaction)},
+                                {"id": _tx_id(transaction)},
+                            ]},
+                            {"$set": {
+                                "fattura_associata.match": migrated_match,
+                                "fattura_associata.evidenze": evaluation.get("evidenze") or [],
+                            }},
+                        )
                 result["gia_collegate"] += 1
                 finalization = await finalizza_transazione_paypal_se_completa(db, _tx_id(transaction))
                 result["finalizzate"] += int(bool(finalization.get("finalizzata")))
