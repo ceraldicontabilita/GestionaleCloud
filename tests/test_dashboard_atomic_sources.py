@@ -38,6 +38,27 @@ def test_dashboard_separa_bpm_sumup_e_non_trascina_anni_storici(monkeypatch):
     assert risultato["criterio"] == "movimenti_del_periodo_senza_riporti_storici"
 
 
+def test_dashboard_annuale_include_il_riporto_manualizzato(monkeypatch):
+    db = AsyncMongoMockClient()["dashboard_annual_opening_balance_test"]
+    monkeypatch.setattr(stats.Database, "get_db", staticmethod(lambda: db))
+    _run(db["prima_nota_saldi_iniziali"].insert_one({
+        "id": "saldo-cassa-2026", "tipo": "cassa", "anno": 2026, "importo": -3426.67,
+    }))
+    _run(db["prima_nota_cassa"].insert_many([
+        {"id": "in", "data": "2026-01-02", "tipo": "entrata", "importo": 10000.0},
+        {"id": "out", "data": "2026-01-03", "tipo": "uscita", "importo": 1000.0},
+    ]))
+
+    risultato = _run(stats.get_prima_nota_stats(
+        data_da="2026-01-01", data_a="2026-12-31",
+    ))
+
+    assert risultato["cassa"]["riporto"] == -3426.67
+    assert risultato["cassa"]["saldo"] == 5573.33
+    assert risultato["criterio"] == "saldo_esercizio_con_riporto_manualizzato"
+    assert risultato["saldo_conto_certificato"] is True
+
+
 def test_dashboard_non_somma_fattura_iva_e_pagamento_cassa_due_volte(monkeypatch):
     db = AsyncMongoMockClient()["dashboard_economic_sources_test"]
     monkeypatch.setattr(controllo_gestione.Database, "get_db", staticmethod(lambda: db))

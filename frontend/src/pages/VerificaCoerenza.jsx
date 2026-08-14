@@ -41,13 +41,15 @@ export default function VerificaCoerenza() {
     setLoading(true);
     setError(null);
     try {
-      const completa = await api
-        .get(`/api/verifica-coerenza/completa/${anno}`)
-        .catch(() => ({ data: null }));
+      const completa = await api.get(`/api/verifica-coerenza/completa/${anno}`);
+      if (!completa.data?.stato_generale || !completa.data?.riepilogo) {
+        throw new Error('Risposta della verifica incompleta');
+      }
       setVerificaCompleta(completa.data);
     } catch (err) {
       console.error('Errore caricamento:', err);
-      setError('Errore nel caricamento dei dati');
+      setVerificaCompleta(null);
+      setError('Verifica non disponibile: i dati non possono essere dichiarati coerenti.');
     } finally {
       setLoading(false);
     }
@@ -66,7 +68,7 @@ export default function VerificaCoerenza() {
     }
   };
 
-  const stato = verificaCompleta?.stato_generale || 'OK';
+  const stato = verificaCompleta?.stato_generale || 'NON VERIFICATO';
   const statoColors = getStatoColor(stato);
 
   const cardStyle = {

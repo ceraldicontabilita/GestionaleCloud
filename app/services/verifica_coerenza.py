@@ -459,6 +459,23 @@ class VerificaCoerenza:
             ),
         }
 
+        mesi_non_calcolati = risultati["verifiche"]["iva_annuale"]["mesi_non_calcolati"]
+        if mesi_non_calcolati:
+            self.discrepanze.append({
+                "categoria": "IVA",
+                "sottocategoria": "Copertura annuale",
+                "severita": "warning",
+                "descrizione": (
+                    f"{mesi_non_calcolati} mesi su 12 non hanno un calcolo IVA completo; "
+                    "la verifica annuale non puo essere dichiarata OK."
+                ),
+                "periodo": str(anno),
+                "valore_atteso": 12,
+                "valore_trovato": 12 - mesi_non_calcolati,
+                "differenza": -mesi_non_calcolati,
+                "suggerimento": "Completa o classifica i documenti IVA dei mesi mancanti.",
+            })
+
         # Il vecchio confronto "Versamenti Cassa vs Banca" non rappresenta
         # l'IVA e produceva falsi allarmi. La pagina di coerenza usa ora le
         # righe IVA dei modelli F24 ricevuti dalla commercialista.

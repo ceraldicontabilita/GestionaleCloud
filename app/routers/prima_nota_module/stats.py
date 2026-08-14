@@ -19,7 +19,7 @@ from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA,
     COLLECTION_SALDI_INIZIALI,
     CATEGORIE_ESCLUSE, aggrega_saldo_prima_nota, filtro_saldo_prima_nota,
-    saldi_finanziari,
+    saldi_finanziari, get_saldo_iniziale_manuale,
 )
 
 
@@ -200,6 +200,28 @@ async def get_prima_nota_stats(
     banca = banca_stats[0] if banca_stats else {"entrate": 0, "uscite": 0, "count": 0}
     sumup = sumup_stats[0] if sumup_stats else {"entrate": 0, "uscite": 0, "count": 0}
 
+    # Per l'intero esercizio la Dashboard deve mostrare lo stesso saldo della
+    # Prima Nota, incluso il riporto al 01/01. Per un intervallo parziale
+    # mostra invece soltanto i movimenti del periodo.
+    riporto_cassa = 0.0
+    riporto_banca = 0.0
+    anno_intero = None
+    if (
+        data_da and data_a
+        and data_da.endswith("-01-01")
+        and data_a.endswith("-12-31")
+        and data_da[:4] == data_a[:4]
+    ):
+        anno_intero = int(data_da[:4])
+        cassa_manuale = await get_saldo_iniziale_manuale(
+            db, COLLECTION_PRIMA_NOTA_CASSA, anno_intero,
+        )
+        banca_manuale = await get_saldo_iniziale_manuale(
+            db, COLLECTION_PRIMA_NOTA_BANCA, anno_intero,
+        )
+        riporto_cassa = float(cassa_manuale or 0)
+        riporto_banca = float(banca_manuale or 0)
+
     oggi = giorno_corrente_negozio()
     proiezione_sumup = {
         "data": oggi,
@@ -228,20 +250,20 @@ async def get_prima_nota_stats(
     # La Dashboard espone il saldo dei movimenti dell'intervallo richiesto.
     # Non trascina automaticamente anni storici incompleti: un saldo di conto
     # richiede un riporto certificato e resta consultabile in Prima Nota.
-    saldo_cassa = cassa.get("entrate", 0) - cassa.get("uscite", 0)
-    saldo_banca = banca.get("entrate", 0) - banca.get("uscite", 0)
+    saldo_cassa = riporto_cassa + cassa.get("entrate", 0) - cassa.get("uscite", 0)
+    saldo_banca = riporto_banca + banca.get("entrate", 0) - banca.get("uscite", 0)
     saldo_sumup = sumup.get("entrate", 0) - sumup.get("uscite", 0)
     return {
         "cassa": {
             "saldo": round(saldo_cassa, 2),
-            "riporto": 0.0,
+            "riporto": round(riporto_cassa, 2),
             "entrate": cassa.get("entrate", 0),
             "uscite": cassa.get("uscite", 0),
             "movimenti": cassa.get("count", 0)
         },
         "banca": {
             "saldo": round(saldo_banca, 2),
-            "riporto": 0.0,
+            "riporto": round(riporto_banca, 2),
             "entrate": banca.get("entrate", 0),
             "uscite": banca.get("uscite", 0),
             "movimenti": banca.get("count", 0)
@@ -258,8 +280,8 @@ async def get_prima_nota_stats(
             "entrate": cassa.get("entrate", 0) + banca.get("entrate", 0) + sumup.get("entrate", 0),
             "uscite": cassa.get("uscite", 0) + banca.get("uscite", 0) + sumup.get("uscite", 0)
         },
-        "criterio": "movimenti_del_periodo_senza_riporti_storici",
-        "saldo_conto_certificato": False,
+        "criterio": "saldo_esercizio_con_riporto_manualizzato" if (riporto_cassa or riporto_banca) else "movimenti_del_periodo_senza_riporti_storici",
+        "saldo_conto_certificato": bool(riporto_cassa or riporto_banca),
         "sumup_cassa_live": proiezione_sumup,
     }
 
