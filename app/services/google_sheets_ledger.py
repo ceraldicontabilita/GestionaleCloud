@@ -430,6 +430,32 @@ def _clear_rows_sync(spreadsheet_id: str, sheet: LedgerSheet) -> None:
     ).execute()
 
 
+def _ensure_row_capacity_sync(
+    spreadsheet_id: str, sheet: LedgerSheet, required_rows: int,
+) -> None:
+    sheets, _ = _services()
+    metadata = sheets.spreadsheets().get(
+        spreadsheetId=spreadsheet_id, fields="sheets.properties",
+    ).execute()
+    properties = next(
+        item["properties"] for item in metadata.get("sheets", [])
+        if item.get("properties", {}).get("title") == sheet.title
+    )
+    current = int(properties.get("gridProperties", {}).get("rowCount") or 0)
+    if current >= required_rows:
+        return
+    sheets.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={"requests": [{"updateSheetProperties": {
+            "properties": {
+                "sheetId": properties["sheetId"],
+                "gridProperties": {"rowCount": required_rows},
+            },
+            "fields": "gridProperties.rowCount",
+        }}]},
+    ).execute()
+
+
 def _write_batch_sync(
     spreadsheet_id: str, sheet: LedgerSheet, rows: List[List[Any]], start_row: int,
 ) -> None:
@@ -543,6 +569,10 @@ async def sync_collection_streaming(db, sheet: LedgerSheet, spreadsheet_id: str)
         if len(progress_by_id) != len(valid):
             raise RuntimeError(f"Progressivi o canonical_id duplicati nel foglio {sheet.title}")
     sequence = next_progressive(sheet.prefix, [row[0] for row in identities if row])
+    source_count = await db[sheet.collection].count_documents({})
+    await asyncio.to_thread(
+        _ensure_row_capacity_sync, spreadsheet_id, sheet, max(source_count + 1, 1001),
+    )
     await asyncio.to_thread(_clear_rows_sync, spreadsheet_id, sheet)
 
     batch: List[List[Any]] = []
