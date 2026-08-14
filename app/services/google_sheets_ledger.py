@@ -13,6 +13,7 @@ import gzip
 import hashlib
 import json
 import re
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -436,11 +437,21 @@ def _write_batch_sync(
         return
     sheets, _ = _services()
     end_row = start_row + len(rows) - 1
-    sheets.spreadsheets().values().update(
+    request = lambda: sheets.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
         range=f"'{sheet.title}'!A{start_row}:{LAST_COLUMN}{end_row}",
         valueInputOption="RAW", body={"values": rows},
-    ).execute()
+    )
+    last_error = None
+    for attempt in range(3):
+        try:
+            request().execute()
+            return
+        except Exception as exc:
+            last_error = exc
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+    raise last_error
 
 
 def _write_rows_sync(spreadsheet_id: str, sheet: LedgerSheet, rows: List[List[Any]]) -> None:
@@ -551,7 +562,7 @@ async def sync_collection_streaming(db, sheet: LedgerSheet, spreadsheet_id: str)
             progressive = format_progressive(sheet.prefix, sequence)
             sequence += 1
         batch.append(row_for_document(document, progressive))
-        if len(batch) >= 500:
+        if len(batch) >= 100:
             await asyncio.to_thread(_write_batch_sync, spreadsheet_id, sheet, batch, written + 2)
             written += len(batch)
             batch = []
