@@ -289,17 +289,24 @@ def _ensure_workbook_sync(config: Optional[Dict[str, Any]] = None) -> Dict[str, 
     sheets.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id, body={"requests": format_requests},
     ).execute()
-    for item in SHEETS:
-        sheets.spreadsheets().values().update(
-            spreadsheetId=spreadsheet_id, range=f"'{item.title}'!A1:P1",
-            valueInputOption="RAW", body={"values": [HEADERS]},
-        ).execute()
-    sheets.spreadsheets().values().update(
-        spreadsheetId=spreadsheet_id, range="'_REGISTRO'!A1:B4",
-        valueInputOption="RAW", body={"values": [
+    # Una sola richiesta per tutte le intestazioni. Le chiamate seriali per
+    # foglio rendevano la sincronizzazione live piu' lenta del timeout HTTP e
+    # lasciavano un workbook formalmente creato ma privo di righe.
+    header_updates = [
+        {"range": f"'{item.title}'!A1:P1", "values": [HEADERS]}
+        for item in SHEETS
+    ]
+    header_updates.append({
+        "range": "'_REGISTRO'!A1:B4",
+        "values": [
             ["chiave", "valore"], ["schema_version", SCHEMA_VERSION],
-            ["titolo", WORKBOOK_TITLE], ["ultimo_aggiornamento", datetime.now(timezone.utc).isoformat()],
-        ]},
+            ["titolo", WORKBOOK_TITLE],
+            ["ultimo_aggiornamento", datetime.now(timezone.utc).isoformat()],
+        ],
+    })
+    sheets.spreadsheets().values().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={"valueInputOption": "RAW", "data": header_updates},
     ).execute()
     return {
         "spreadsheet_id": spreadsheet_id,
@@ -374,9 +381,10 @@ async def sync_collection(db, sheet: LedgerSheet, spreadsheet_id: str) -> Dict[s
 
 async def sync_all(db, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     workbook = await ensure_workbook(config)
-    results = []
-    for sheet in SHEETS:
-        results.append(await sync_collection(db, sheet, workbook["spreadsheet_id"]))
+    results = await asyncio.gather(*(
+        sync_collection(db, sheet, workbook["spreadsheet_id"])
+        for sheet in SHEETS
+    ))
     return {**workbook, "schema_version": SCHEMA_VERSION, "fogli": results}
 
 
