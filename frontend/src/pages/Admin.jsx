@@ -1202,8 +1202,15 @@ function GoogleSheetsLedgerTab() {
     setBusy(true);
     try {
       const response = await api.post('/api/admin/google-sheets-ledger/duplicate-audit-folders', { folder_ids: [...new Set(folderIds)] });
-      setDuplicateAudit(response.data);
-      toast.success(`Controllati ${response.data.totale_file || 0} file in ${response.data.cartelle_visitate || 0} cartelle`);
+      let job = response.data;
+      while (job.status === 'running') {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        job = (await api.get(`/api/admin/google-sheets-ledger/jobs/${job.job_id}`)).data;
+      }
+      if (job.status === 'failed') throw new Error(job.error || 'Audit cartelle non riuscito');
+      const data = job.result || {};
+      setDuplicateAudit(data);
+      toast.success(`Controllati ${data.totale_file || 0} file in ${data.cartelle_visitate || 0} cartelle`);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Audit cartelle non riuscito');
     } finally { setBusy(false); }

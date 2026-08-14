@@ -22,7 +22,10 @@ async def _run_ledger_job(job_id: str, action: str) -> None:
         config = await db["system_settings"].find_one(
             {"key": "google_sheets_ledger"}, {"_id": 0},
         ) or {}
-        if action == "sync":
+        if action == "folder-audit":
+            from app.services.google_sheets_ledger import drive_folder_duplicate_audit
+            result = await drive_folder_duplicate_audit(job.get("folder_ids") or [])
+        elif action == "sync":
             from app.services.google_sheets_ledger import sync_all
             result = await sync_all(db, config)
             if result.get("spreadsheet_id"):
@@ -112,11 +115,27 @@ async def google_sheets_ledger_duplicate_audit() -> Dict[str, Any]:
 @router.post("/google-sheets-ledger/duplicate-audit-folders")
 async def google_drive_folders_duplicate_audit(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """Audit ricorsivo metadata-only di cartelle Drive esplicitamente indicate."""
-    from app.services.google_sheets_ledger import drive_folder_duplicate_audit
     folder_ids = payload.get("folder_ids") or []
     if not isinstance(folder_ids, list) or not folder_ids:
         raise HTTPException(status_code=400, detail="Indicare almeno una cartella Drive")
-    return await drive_folder_duplicate_audit(folder_ids)
+    running = next(
+        (item for item in _ledger_jobs.values()
+         if item["status"] == "running" and item.get("action") == "folder-audit"),
+        None,
+    )
+    if running:
+        return running
+    job_id = str(uuid.uuid4())
+    job = {
+        "job_id": job_id,
+        "action": "folder-audit",
+        "status": "running",
+        "folder_ids": list(dict.fromkeys(str(value).strip() for value in folder_ids if str(value).strip())),
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _ledger_jobs[job_id] = job
+    asyncio.create_task(_run_ledger_job(job_id, "folder-audit"))
+    return job
 
 
 @router.post("/google-sheets-ledger/config")
