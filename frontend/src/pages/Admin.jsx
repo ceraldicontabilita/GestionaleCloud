@@ -73,6 +73,7 @@ export default function Admin() {
   const [bankRulesLoading, setBankRulesLoading] = useState(false);
   const [bankReprocessResult, setBankReprocessResult] = useState(null);
   const [bankImportResult, setBankImportResult] = useState(null);
+  const [bankCsvText, setBankCsvText] = useState('');
 
   const loadBankRules = useCallback(async () => {
     const response = await api.get('/api/admin/bank-supplier-rules');
@@ -118,6 +119,23 @@ export default function Admin() {
     } finally {
       setBankRulesLoading(false);
       event.target.value = '';
+    }
+  }
+
+  async function importBankCsvText() {
+    if (!bankCsvText.trim()) return;
+    setBankRulesLoading(true);
+    try {
+      const form = new FormData();
+      form.append('file', new File([bankCsvText], `estratto-${anno}.csv`, { type: 'text/csv' }));
+      const response = await api.post('/api/estratto-conto-movimenti/import', form);
+      setBankImportResult(response.data);
+      setBankCsvText('');
+      toast.success('Estratto conto acquisito');
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Importazione estratto non riuscita');
+    } finally {
+      setBankRulesLoading(false);
     }
   }
 
@@ -926,6 +944,8 @@ export default function Admin() {
           <div style={{ padding: 12, marginBottom: 14, background: COLORS.infoLight, borderRadius: BORDER_RADIUS.sm }}>
             <strong>1. Carica o aggiorna l'estratto conto</strong>
             <Input type="file" accept=".csv,.pdf" onChange={importBankStatement} disabled={bankRulesLoading} style={{ marginTop: 8 }} />
+            <textarea value={bankCsvText} onChange={e => setBankCsvText(e.target.value)} placeholder="Oppure incolla qui il contenuto CSV" rows={4} style={{ width: '100%', marginTop: 8, padding: 10, border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.sm }} />
+            <Button size="sm" variant="secondary" onClick={importBankCsvText} disabled={bankRulesLoading || !bankCsvText.trim()}>Importa CSV incollato</Button>
             {bankImportResult && <small>Importati: {bankImportResult.importati ?? bankImportResult.movimenti_importati ?? 0} · Duplicati: {bankImportResult.duplicati ?? 0}</small>}
           </div>
           <strong>2. Salva i riferimenti certi</strong>
