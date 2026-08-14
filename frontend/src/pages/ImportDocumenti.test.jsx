@@ -60,7 +60,7 @@ describe('Import documenti - corrispettivo duplicato', () => {
     fireEvent.change(screen.getByTestId('file-input'), { target: { files: [xml] } });
     fireEvent.click(await screen.findByTestId('upload-btn'));
 
-    expect(await screen.findByTestId('preview-summary')).toHaveTextContent('nessun dato salvato');
+    expect(await screen.findByTestId('preview-summary')).toHaveTextContent('i file sono pronti');
     expect(api.post).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByTestId('upload-btn'));
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
@@ -162,6 +162,24 @@ describe('Import documenti - corrispettivo duplicato', () => {
     expect(importUrl).toBe('/api/documenti/upload-auto');
     expect(config.headers['X-Document-Preview-Token']).toBe('token-archivio_zip');
     expect((await screen.findAllByText('Archivio ZIP')).length).toBeGreaterThan(0);
+  });
+
+  it('rende espliciti i due passaggi fino alla Prima Nota', async () => {
+    mockPreviewThenImport('archivio_zip', {
+      success: true,
+      tipo_rilevato: 'archivio_zip',
+      imported: 1,
+      message: 'ZIP elaborato',
+    });
+    render(<ImportDocumenti />);
+
+    const zip = new File(['PK-test'], 'corrispettivi.zip', { type: 'application/zip' });
+    fireEvent.change(screen.getByTestId('zip-file-input'), { target: { files: [zip] } });
+    expect(screen.getByTestId('upload-btn')).toHaveTextContent('1. Controlla e prepara importazione');
+
+    fireEvent.click(screen.getByTestId('upload-btn'));
+    await waitFor(() => expect(screen.getByTestId('upload-btn')).toHaveTextContent('2. Importa ora in Prima Nota'));
+    expect(screen.getByTestId('preview-summary')).toHaveTextContent('i file sono pronti');
   });
 
   it('esegue prima la simulazione delle classificazioni massive', async () => {

@@ -319,6 +319,7 @@ export default function ImportDocumenti() {
       verbale_codice_strada: 'warning',
       visura_camerale: 'neutral',
       documento_identita: 'neutral',
+      corrispettivo: 'success',
       corrispettivi: 'success',
       pos: 'accent',
       archivio_zip: 'warning',
@@ -352,6 +353,7 @@ export default function ImportDocumenti() {
       verbale_codice_strada: 'Verbale Codice della strada',
       visura_camerale: 'Visura camerale',
       documento_identita: 'Documento di identità',
+      corrispettivo: 'Corrispettivo',
       corrispettivi: 'Corrispettivi',
       pos: 'POS',
       archivio_zip: 'Archivio ZIP',
@@ -602,8 +604,8 @@ export default function ImportDocumenti() {
                   {uploading
                     ? 'Elaborazione...'
                     : canConfirm
-                      ? 'Conferma importazione'
-                      : 'Analizza senza salvare'}
+                      ? '2. Importa ora in Prima Nota'
+                      : '1. Controlla e prepara importazione'}
                 </Button>
               </div>
             </div>
@@ -775,8 +777,8 @@ export default function ImportDocumenti() {
               fontSize: 13,
             }}
           >
-            <strong>Anteprima completata: nessun dato salvato.</strong>{' '}
-            Controlla tipo, hash, quadratura e duplicati; poi usa "Conferma importazione".
+            <strong>Controllo completato: i file sono pronti.</strong>{' '}
+            Premi ora "2. Importa ora in Prima Nota" per salvare corrispettivi e scritture contabili.
           </div>
         )}
 

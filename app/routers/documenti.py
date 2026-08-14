@@ -2425,7 +2425,7 @@ async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
                 )
 
         dettagli: List[Dict[str, Any]] = []
-        importati = duplicati = errori = scartati = 0
+        importati = duplicati = errori = scartati = contabilita_ripristinata = 0
         for info in entries:
             clean_name = Path(info.filename).name
             suffix = Path(clean_name).suffix.lower()
@@ -2457,6 +2457,8 @@ async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
             )
             item = item if isinstance(item, dict) else {"success": False, "message": str(item)}
             duplicate = bool(item.get("duplicate") or item.get("action") == "duplicate")
+            if item.get("accounting_repaired"):
+                contabilita_ripristinata += 1
             if duplicate:
                 duplicati += 1
             elif item.get("success") is False:
@@ -2469,6 +2471,7 @@ async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
                 "tipo_rilevato": item.get("tipo_rilevato"),
                 "success": item.get("success", True),
                 "duplicate": duplicate,
+                "accounting_repaired": bool(item.get("accounting_repaired")),
                 "message": item.get("message"),
             })
 
@@ -2482,6 +2485,7 @@ async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
         "filename": filename,
         "imported": importati,
         "duplicates": duplicati,
+        "accounting_repaired": contabilita_ripristinata,
         "errors": errori,
         "skipped": scartati,
         "action": "duplicate" if duplicati and not importati and not errori else "processed",
@@ -2489,6 +2493,7 @@ async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
         "message": (
             f"ZIP elaborato: {importati} importati, {duplicati} duplicati, "
             f"{errori} errori, {scartati} ignorati"
+            + (f", {contabilita_ripristinata} scritture Prima Nota ripristinate" if contabilita_ripristinata else "")
         ),
         "details": dettagli,
     }
@@ -2831,13 +2836,18 @@ async def upload_documento_automatico(
                     result["corrispettivo_id"] = ingest.get("corrispettivo_id")
                     result["prima_nota_cassa_id"] = ingest.get("prima_nota_cassa_id")
                     result["prima_nota_banca_id"] = ingest.get("prima_nota_banca_id")
+                    result["accounting_repaired"] = bool(ingest.get("accounting_repaired"))
                     result["tipo_documento"] = "corrispettivo"
                     data_str = ingest.get("data", "N/A")
                     tot_str = f"{ingest.get('totale', 0):.2f}"
                     if ingest["action"] == "duplicate":
                         result["success"] = False
                         result["duplicate"] = True
-                        result["message"] = f"Corrispettivo duplicato ignorato: {data_str} — totale {tot_str}€"
+                        result["message"] = (
+                            f"Corrispettivo già presente; Prima Nota Cassa ripristinata: {data_str} — totale {tot_str}€"
+                            if ingest.get("accounting_repaired")
+                            else f"Corrispettivo duplicato ignorato: {data_str} — totale {tot_str}€"
+                        )
                         result["imported"] = 0
                     elif ingest["action"] == "updated":
                         result["message"] = f"Corrispettivo aggiornato: {data_str} — totale {tot_str}€"

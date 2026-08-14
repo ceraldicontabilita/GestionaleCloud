@@ -265,14 +265,39 @@ async def ingest_corrispettivo_parsed(
 
     if existing:
         if not update_if_exists:
-            # Duplicato: non toccare Prima Nota
+            # Un duplicato documentale puo' essere contabilmente incompleto:
+            # il record esiste ma la Prima Nota puo' mancare per una vecchia
+            # importazione interrotta. Il motore unico e' idempotente, quindi
+            # ripassa il record esistente senza duplicare le scritture sane.
+            pn = {
+                "prima_nota_cassa_id": existing.get("prima_nota_cassa_id"),
+                "prima_nota_banca_id": existing.get("prima_nota_banca_id"),
+            }
+            archivio_storico = (
+                existing.get("stato_import") == "archivio_storico"
+                or existing.get("status") in {"archiviata", "archived", "deleted"}
+                or existing.get("entity_status") == "deleted"
+            )
+            if not archivio_storico:
+                pn = await _create_prima_nota_movements(db, existing)
+                await db["corrispettivi"].update_one(
+                    {"id": existing.get("id")},
+                    {"$set": {
+                        "prima_nota_id": pn.get("prima_nota_cassa_id") or pn.get("prima_nota_banca_id"),
+                        "prima_nota_cassa_id": pn.get("prima_nota_cassa_id"),
+                        "prima_nota_banca_id": pn.get("prima_nota_banca_id"),
+                    }},
+                )
             return {
                 "action": "duplicate",
                 "corrispettivo_id": existing.get("id"),
                 "data": data_str,
                 "totale": totale,
-                "prima_nota_cassa_id": None,
-                "prima_nota_banca_id": None,
+                **pn,
+                "accounting_repaired": bool(
+                    pn.get("prima_nota_cassa_id")
+                    and not existing.get("prima_nota_cassa_id")
+                ),
             }
 
         # Update: mantieni l'id originale
