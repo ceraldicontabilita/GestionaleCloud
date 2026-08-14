@@ -120,6 +120,14 @@ def test_estratto_prima_fattura_dopo_chiude_catena_e_prima_nota_una_sola_volta()
         assert refreshed["stato_finanziario"] == "riconciliato"
         assert refreshed["paypal_movimento_banca_id"] == "EC-PAY-1"
         assert await db.prima_nota_banca.count_documents({}) == 1
+        operation_id = "paypal:PAY-TX-1"
+        assert refreshed["payment_operation_id"] == operation_id
+        stored_tx = await db.paypal_transactions.find_one({"transaction_id": "PAY-TX-1"})
+        stored_bank = await db.estratto_conto_movimenti.find_one({"id": "EC-PAY-1"})
+        stored_prima_nota = await db.prima_nota_banca.find_one({})
+        assert stored_tx["payment_operation_id"] == operation_id
+        assert stored_bank["payment_operation_id"] == operation_id
+        assert stored_prima_nota["payment_operation_id"] == operation_id
         relations = await db.entity_relations.find({}, {"_id": 0}).to_list(length=10)
         assert {row["relation_type"] for row in relations} == {
             "allocates_paypal_payment", "settles_paypal_transaction",

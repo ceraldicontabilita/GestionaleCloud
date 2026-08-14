@@ -158,6 +158,12 @@ async def finalizza_transazione_paypal_se_completa(
     from app.services.riconciliazione_bancaria import _applica_pagamento_banca
 
     now = datetime.now(timezone.utc).isoformat()
+    # Un solo identificativo attraversa fattura, pagamento PayPal, estratto
+    # conto e Prima Nota. Consente il deep-link tra le sezioni senza usare
+    # importo/data come identita' dell'operazione.
+    operation_id = str(
+        transaction.get("payment_operation_id") or f"paypal:{transaction_id}"
+    )
     payment_date = str(
         movement.get("data") or movement.get("data_contabile")
         or transaction.get("data_banca") or transaction.get("data") or ""
@@ -173,16 +179,27 @@ async def finalizza_transazione_paypal_se_completa(
         "paypal_riconciliato_banca": True,
         "paypal_transaction_id": transaction_id,
         "paypal_movimento_banca_id": movement_id,
+        "payment_operation_id": operation_id,
         "stato_finanziario": "riconciliato",
         "updated_at": now,
     }})
     await db[COLL_TRANSACTIONS].update_one(
         {"$or": [{"transaction_id": transaction_id}, {"id": transaction_id}]},
         {"$set": {
+            "payment_operation_id": operation_id,
             "fattura_pagamento_finalizzato": True,
             "fattura_pagamento_finalizzato_at": now,
         }},
     )
+    await db[COLL_BANK].update_one({"id": movement_id}, {"$set": {
+        "payment_operation_id": operation_id,
+        "invoice_id": invoice_id,
+        "paypal_transaction_id": transaction_id,
+    }})
+    await db["prima_nota_banca"].update_many({"$or": [
+        {"id": movement_id}, {"movimento_bancario_id": movement_id},
+        {"fattura_id": invoice_id},
+    ]}, {"$set": {"payment_operation_id": operation_id}})
     try:
         await record_paypal_bank_chain(
             db,
@@ -200,6 +217,7 @@ async def finalizza_transazione_paypal_se_completa(
         "transaction_id": transaction_id,
         "fattura_id": invoice_id,
         "movimento_banca_id": movement_id,
+        "payment_operation_id": operation_id,
     }
 
 
@@ -240,11 +258,15 @@ async def collega_transazione_a_fattura(
     }
     await db[COLL_TRANSACTIONS].update_one(
         {"$or": [{"transaction_id": transaction_id}, {"id": transaction_id}]},
-        {"$set": {"fattura_associata": link}},
+        {"$set": {
+            "fattura_associata": link,
+            "payment_operation_id": str(transaction.get("payment_operation_id") or f"paypal:{transaction_id}"),
+        }},
     )
     await db[COLL_INVOICES].update_one({"id": invoice_id}, {
         "$set": {
             "paypal_transaction_id": transaction_id,
+            "payment_operation_id": str(transaction.get("payment_operation_id") or f"paypal:{transaction_id}"),
             "paypal_fattura_collegata": True,
             "paypal_fattura_collegata_at": now,
             "metodo_pagamento_rilevato": "PayPal",

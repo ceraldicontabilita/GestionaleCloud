@@ -28,7 +28,7 @@ import {
   Th,
   Td,
 } from '../components/ds';
-import { ChevronLeft, ChevronRight, Eye, FileText } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Eye, FileText, ArrowLeftRight } from 'lucide-react';
 
 const PER_PAGINA = 50;
 
@@ -268,6 +268,7 @@ export default function ArchivioFatture() {
   const [highlightedId, setHighlightedId] = useState('');
   const [invoiceNotFoundWarning, setInvoiceNotFoundWarning] = useState(null);
   const [fatturaView, setFatturaView] = useState(null);
+  const [spostamentoInCorso, setSpostamentoInCorso] = useState('');
   const highlightedRowRef = useRef(null);
 
   useEffect(() => {
@@ -372,6 +373,24 @@ export default function ArchivioFatture() {
   const dopoAssociazioneAssegno = async data => {
     toast.success(data?.message || 'Assegno collegato alla fattura.');
     await Promise.all([fetchFatture(), fetchStatistiche()]);
+  };
+
+  const spostaPrimaNota = async (fattura, da, a) => {
+    const movimentoId = da === 'cassa' ? fattura.prima_nota_cassa_id : fattura.prima_nota_banca_id;
+    if (!movimentoId) return;
+    const numero = fattura.invoice_number || fattura.numero_documento || fattura.id;
+    const motivo = window.prompt(`Motivo dello spostamento della fattura ${numero} da ${da} a ${a}:`);
+    if (!motivo?.trim()) return;
+    setSpostamentoInCorso(fattura.id);
+    try {
+      await api.post('/api/prima-nota/sposta-movimento', { movimento_id: movimentoId, da, a, motivo: motivo.trim(), conferma: true });
+      toast.success(`Fattura ${numero} spostata in ${a === 'cassa' ? 'Cassa' : 'Banca'}.`);
+      await Promise.all([fetchFatture(), fetchStatistiche()]);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Spostamento non riuscito.');
+    } finally {
+      setSpostamentoInCorso('');
+    }
   };
 
   // ==================== EFFECTS ====================
@@ -987,7 +1006,22 @@ export default function ArchivioFatture() {
                         </Button>
                       </Td>
                       <Td align="center" style={{ whiteSpace: 'nowrap' }}>
-                        {!isPaid && !isRiconciliata && assegnoAssociabile && !allocationConflict ? (
+                        {f.prima_nota_cassa_id || f.prima_nota_banca_id ? (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={spostamentoInCorso === f.id}
+                            onClick={() => spostaPrimaNota(
+                              f,
+                              f.prima_nota_cassa_id ? 'cassa' : 'banca',
+                              f.prima_nota_cassa_id ? 'banca' : 'cassa'
+                            )}
+                            title="Riclassifica la scrittura conservando fattura e traccia di audit"
+                            style={{ minHeight: 36, minWidth: 92, justifyContent: 'center', gap: 5 }}
+                          >
+                            <ArrowLeftRight size={15} /> {f.prima_nota_cassa_id ? 'In Banca' : 'In Cassa'}
+                          </Button>
+                        ) : !isPaid && !isRiconciliata && assegnoAssociabile && !allocationConflict ? (
                           <AssociaAssegnoFattura
                             fattura={f}
                             onSuccess={dopoAssociazioneAssegno}

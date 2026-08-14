@@ -1035,6 +1035,23 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
             </thead>
             <tbody>
               {righe.map((m, i) => (
+                <React.Fragment key={m.id}>
+                {(i === 0 || righe[i - 1]?.data !== m.data) && (
+                  <tr data-testid={`giorno-${m.data}`}>
+                    <td colSpan={tipo === 'cassa' ? 10 : 9} style={{ padding: '10px 12px 6px', background: '#e8eef6' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: BLU, color: 'white', borderRadius: 9, padding: '8px 12px', fontWeight: 800 }}>
+                        <span>📅 {formatDateIT(m.data)}</span>
+                        <span style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>
+                          {(() => {
+                            const giornaliere = righe.filter(r => r.data === m.data);
+                            const netto = giornaliere.reduce((s, r) => s + (r.tipo === 'entrata' ? 1 : -1) * Math.abs(r.importo || 0), 0);
+                            return `${giornaliere.length} operazioni · ${netto >= 0 ? '+' : ''}${eur(netto)}`;
+                          })()}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                )}
                 <tr
                   key={m.id}
                   data-testid={`movimento-row-${m.id}`}
@@ -1077,6 +1094,7 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
                     <td style={{ padding: '7px 10px', textAlign: 'center' }}>{bottoniRiga(m)}</td>
                   )}
                 </tr>
+                </React.Fragment>
               ))}
             </tbody>
           </table>
