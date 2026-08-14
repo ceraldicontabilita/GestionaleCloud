@@ -425,11 +425,18 @@ def _write_rows_sync(spreadsheet_id: str, sheet: LedgerSheet, rows: List[List[An
     ).execute()
     if not rows:
         return
-    sheets.spreadsheets().values().update(
-        spreadsheetId=spreadsheet_id,
-        range=f"'{sheet.title}'!A2:{LAST_COLUMN}{len(rows) + 1}",
-        valueInputOption="RAW", body={"values": rows},
-    ).execute()
+    # Evita richieste monolitiche che saturano memoria e proxy con archivi da
+    # decine di migliaia di movimenti (POS, audit, magazzino).
+    batch_size = 500
+    for offset in range(0, len(rows), batch_size):
+        batch = rows[offset:offset + batch_size]
+        start_row = offset + 2
+        end_row = start_row + len(batch) - 1
+        sheets.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=f"'{sheet.title}'!A{start_row}:{LAST_COLUMN}{end_row}",
+            valueInputOption="RAW", body={"values": batch},
+        ).execute()
 
 
 async def sync_collection(
@@ -486,7 +493,7 @@ async def sync_all(db, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any
     collections = await db.list_collection_names()
     workbook = await ensure_workbook(config, collections)
     definitions = workbook.pop("sheet_definitions")
-    semaphore = asyncio.Semaphore(5)
+    semaphore = asyncio.Semaphore(1)
 
     async def _sync_bounded(sheet: LedgerSheet) -> Dict[str, Any]:
         async with semaphore:
