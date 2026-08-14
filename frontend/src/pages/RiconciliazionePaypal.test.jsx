@@ -33,6 +33,7 @@ const transactions = [
     descrizione: 'Servizio validato', nome_controparte: 'Fornitore Uno', lordo: -20.99,
     stato_collegamento_fattura: 'associata_validata',
     fattura_associata: { fattura_id: 'F1', numero: 'INV-1', fornitore: 'Fornitore Uno' },
+    bank_movement: { id: 'EC-2026-07-15-20.99-proof' },
   },
   {
     transaction_id: 'TX-OLD', data: '2026-07-13', tipo: 'pagamento_web',
@@ -128,6 +129,17 @@ describe('Pagina PayPal: fonti, stati e filtri', () => {
     expect(screen.queryByText('Servizio validato')).not.toBeInTheDocument();
     expect(screen.getByText('Collegamento storico')).toBeInTheDocument();
     expect(screen.getAllByText('Da rivalidare')).toHaveLength(2);
+  });
+
+  it('apre la prova nella sezione Banca e seleziona il movimento', async () => {
+    mockSuccessfulRequests();
+    renderPage('/riconciliazione/paypal?tab=transazioni');
+
+    const link = await screen.findByRole('link', { name: /Prova/ });
+    expect(link).toHaveAttribute(
+      'href',
+      '/prima-nota#sezione=banca&selected=BANK-1',
+    );
   });
 
   it('usa card e non la tabella transazioni su mobile', async () => {

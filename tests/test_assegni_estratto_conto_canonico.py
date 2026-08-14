@@ -151,6 +151,29 @@ def test_sync_limitata_non_riesamina_gli_assegni_storici():
     _run(scenario())
 
 
+def test_snapshot_fatture_aperte_caricata_una_volta_per_tutto_il_batch(monkeypatch):
+    import app.services.assegni_estratto_conto as modulo
+
+    async def scenario():
+        db = AsyncMongoMockClient().db
+        await db.estratto_conto_movimenti.insert_many([
+            _mov(numero="0208770981", idx=1),
+            _mov(numero="0208770982", idx=2),
+        ])
+        chiamate = 0
+
+        async def carica_una_volta(_db):
+            nonlocal chiamate
+            chiamate += 1
+            return {}
+
+        monkeypatch.setattr(modulo, "_load_open_invoices_by_piva", carica_una_volta)
+        await sincronizza_assegni_da_estratto_conto(db)
+        return chiamate
+
+    assert _run(scenario()) == 1
+
+
 def test_importo_ambiguo_non_marca_fatture_pagata_e_salva_proposte():
     async def scenario():
         db = AsyncMongoMockClient().db

@@ -2545,7 +2545,10 @@ async def riprocessa_collegamenti_assegni(
             "anteprima": anteprima,
             "message": "Anteprima pronta: nessun dato è stato modificato",
         }
-    estratto = await sincronizza_assegni_da_estratto_conto(db)
+    estratto = await sincronizza_assegni_da_estratto_conto(
+        db,
+        data_dal=f"{anno}-01-01" if anno else None,
+    )
     fatture = await riprocessa_intenti_assegni(db, anno=anno, limit=limit)
     return {
         "success": bool(fatture.get("success", True)) and not estratto.get("errori"),

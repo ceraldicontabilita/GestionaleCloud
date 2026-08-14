@@ -761,3 +761,18 @@ describe('Registro completo fatture in Prima Nota', () => {
     expect(screen.getByText(/Fatt. N-101 del/)).toBeInTheDocument();
   });
 });
+
+describe('Deep link tra sezioni contabili', () => {
+  it('trova il movimento anche tramite id della prova bancaria', () => {
+    const movimenti = [{
+      id: 'PN-BARBETTA',
+      movimento_estratto_conto_id: 'EC-2026-08-07-23.10-d2ef4678',
+      descrizione: 'Pagamento fattura Barbetta',
+      importo: 23.10,
+    }];
+
+    expect(filtraMovimentiPrimaNota(movimenti, {
+      testo: 'EC-2026-08-07-23.10-d2ef4678',
+    })).toHaveLength(1);
+  });
+});

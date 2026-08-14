@@ -103,13 +103,15 @@ async def _fattura_da_prima_nota(db, numero: str, importo: float) -> Optional[Di
 
 async def _fattura_da_numero_assegno_xml(
     db, numero: str, importo: float, data_movimento: str,
+    per_piva: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Trova la fattura che dichiara lo stesso assegno e la stessa quota.
 
     E' una prova forte anche quando il registro carnet non esiste ancora:
     numero assegno nell'XML + importo al centesimo + data compatibile.
     """
-    per_piva = await _load_open_invoices_by_piva(db)
+    if per_piva is None:
+        per_piva = await _load_open_invoices_by_piva(db)
     candidate: List[Dict[str, Any]] = []
     for fatture in per_piva.values():
         for fattura in fatture:
@@ -134,8 +136,12 @@ async def _fattura_da_numero_assegno_xml(
     return next(iter(uniche.values())) if len(uniche) == 1 else None
 
 
-async def _fatture_aperte_stesso_importo(db, importo: float, data_movimento: str) -> List[Dict[str, Any]]:
-    per_piva = await _load_open_invoices_by_piva(db)
+async def _fatture_aperte_stesso_importo(
+    db, importo: float, data_movimento: str,
+    per_piva: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+) -> List[Dict[str, Any]]:
+    if per_piva is None:
+        per_piva = await _load_open_invoices_by_piva(db)
     candidate = []
     for fatture in per_piva.values():
         for fattura in fatture:
@@ -578,6 +584,11 @@ async def sincronizza_assegni_da_estratto_conto(
     ]
     risultati["movimenti_analizzati"] = len(movimenti)
 
+    # Snapshot unica per tutta la run. Prima le fatture aperte venivano
+    # rilette da Mongo fino a due volte per ogni assegno, lasciando il
+    # riprocessamento live bloccato per minuti sullo storico reale.
+    fatture_aperte_per_piva = await _load_open_invoices_by_piva(db) if movimenti else {}
+
     for movimento in movimenti:
         try:
             descrizione = movimento.get("descrizione") or movimento.get("descrizione_originale") or ""
@@ -617,10 +628,12 @@ async def sincronizza_assegni_da_estratto_conto(
                 fattura = await _fattura_da_prima_nota(db, numero, importo)
             if not fattura:
                 fattura = await _fattura_da_numero_assegno_xml(
-                    db, numero, importo, data_movimento,
+                    db, numero, importo, data_movimento, fatture_aperte_per_piva,
                 )
             if not fattura:
-                candidate = await _fatture_aperte_stesso_importo(db, importo, data_movimento)
+                candidate = await _fatture_aperte_stesso_importo(
+                    db, importo, data_movimento, fatture_aperte_per_piva,
+                )
                 # L'importo, anche se individua una sola fattura aperta, non e'
                 # prova sufficiente. Il collegamento automatico richiede un
                 # intento assegno->fattura gia' esplicito oppure una Prima Nota

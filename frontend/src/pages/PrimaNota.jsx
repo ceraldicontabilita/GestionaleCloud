@@ -130,6 +130,9 @@ export function filtraMovimentiPrimaNota(movimenti = [], filtri = {}) {
         movimento.descrizione,
         movimento.numero_assegno || movimento.assegno_numero,
         movimento.importo,
+        movimento.id,
+        movimento.estratto_conto_id,
+        movimento.movimento_estratto_conto_id,
       ];
       if (!campi.some(campo => testoRicerca(campo).includes(generico))) return false;
     }
@@ -563,10 +566,10 @@ export function MovimentoModal({ tipo, movimento, onClose, onSaved }) {
 }
 
 /* ------------------------------- registro ------------------------------- */
-function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
+function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRiporto }) {
   const isMobile = useIsMobile();
   const [pagina, setPagina] = useState(1);
-  const [cerca, setCerca] = useState('');
+  const [cerca, setCerca] = useState(selectedId);
   const [fNumeroFattura, setFNumeroFattura] = useState('');
   const [fNumeroDdt, setFNumeroDdt] = useState('');
   const [fDataFattura, setFDataFattura] = useState('');
@@ -577,6 +580,10 @@ function Registro({ tipo, dati, mese, onRicarica, onModificaRiporto }) {
   const [nuovo, setNuovo] = useState(false);
   const [fatturaView, setFatturaView] = useState(null);
   const [documentView, setDocumentView] = useState(null);
+
+  useEffect(() => {
+    if (selectedId) setCerca(selectedId);
+  }, [selectedId]);
 
   const movimenti = dati.movimenti || [];
   const riporto = dati.saldo_precedente || 0;
@@ -2190,6 +2197,7 @@ export default function PrimaNota() {
             tipo={sezione}
             dati={datiAttivi}
             mese={mese}
+            selectedId={hs.selected || ''}
             onRicarica={carica}
             onModificaRiporto={() => modificaRiporto(sezione)}
           />
