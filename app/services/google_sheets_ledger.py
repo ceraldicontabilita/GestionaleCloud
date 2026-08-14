@@ -66,14 +66,22 @@ def _json_default(value: Any) -> str:
 
 def canonical_id(document: Dict[str, Any]) -> str:
     return str(
-        document.get("id") or document.get("invoice_key")
-        or document.get("transaction_id") or document.get("file_hash")
+        document.get("id") or document.get("invoice_id")
+        or document.get("document_id") or document.get("cedolino_id")
+        or document.get("movement_id") or document.get("bonifico_id")
+        or document.get("quietanza_id") or document.get("estratto_id")
+        or document.get("invoice_key") or document.get("transaction_id")
+        or document.get("file_hash")
         or document.get("pdf_hash") or document.get("fingerprint") or ""
     ).strip()
 
 
 def canonical_filter(document: Dict[str, Any]) -> Dict[str, Any]:
-    for field in ("id", "invoice_key", "transaction_id", "file_hash", "pdf_hash", "fingerprint"):
+    for field in (
+        "id", "invoice_id", "document_id", "cedolino_id", "movement_id",
+        "bonifico_id", "quietanza_id", "estratto_id", "invoice_key",
+        "transaction_id", "file_hash", "pdf_hash", "fingerprint",
+    ):
         value = document.get(field)
         if value not in (None, ""):
             return {field: value}

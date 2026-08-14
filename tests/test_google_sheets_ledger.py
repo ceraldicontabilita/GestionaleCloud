@@ -41,6 +41,16 @@ def test_progressivo_e_operation_id_restano_separati():
     assert ledger.next_progressive("ECM", ["ECM-00000002", "ALT-999", "ECM-00000009"]) == 10
 
 
+def test_identita_canonica_accetta_le_chiavi_reali_degli_archivi():
+    for field in (
+        "invoice_id", "document_id", "cedolino_id", "movement_id",
+        "bonifico_id", "quietanza_id", "estratto_id",
+    ):
+        document = {field: f"chiave-{field}"}
+        assert ledger.canonical_id(document) == f"chiave-{field}"
+        assert ledger.canonical_filter(document) == {field: f"chiave-{field}"}
+
+
 def test_sync_mantiene_progressivi_e_righe_storiche(monkeypatch):
     async def scenario():
         db = AsyncMongoMockClient().db
