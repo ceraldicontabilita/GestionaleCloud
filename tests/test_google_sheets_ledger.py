@@ -38,6 +38,7 @@ def test_fogli_dinamici_hanno_nome_e_prefisso_stabili():
 
 def test_payload_grande_viene_diviso_e_ricostruito(monkeypatch):
     monkeypatch.setattr(ledger, "MAX_SHEETS_CELL_CHARS", 80)
+    monkeypatch.setattr(ledger, "PAYLOAD_CHUNK_COUNT", 1000)
     payload = {"id": "BIG-1", "contenuto": "".join(f"{i:08x}" for i in range(2000))}
 
     chunks = ledger.payload_chunks(payload)
