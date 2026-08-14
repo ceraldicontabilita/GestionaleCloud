@@ -219,6 +219,11 @@ def _credentials():
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive.file",
+        # Necessario per l'audit ricorsivo, esclusivamente in lettura, delle
+        # cartelle Drive indicate dall'amministratore. ``drive.file`` da solo
+        # espone soltanto i file creati o gia' aperti dall'applicazione e puo'
+        # quindi produrre un falso archivio vuoto.
+        "https://www.googleapis.com/auth/drive.metadata.readonly",
     ]
     if raw:
         return service_account.Credentials.from_service_account_info(
