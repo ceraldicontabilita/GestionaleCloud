@@ -25,6 +25,16 @@ async def _run_ledger_job(job_id: str, action: str) -> None:
         if action == "sync":
             from app.services.google_sheets_ledger import sync_all
             result = await sync_all(db, config)
+            if result.get("spreadsheet_id"):
+                await db["system_settings"].update_one(
+                    {"key": "google_sheets_ledger"},
+                    {"$set": {
+                        "GOOGLE_SHEETS_LEDGER_ID": result["spreadsheet_id"],
+                        "GOOGLE_SHEETS_LEDGER_FORCE_NEW": False,
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }},
+                    upsert=True,
+                )
         elif action == "audit":
             from app.services.google_sheets_ledger import migration_audit
             result = await migration_audit(db, config)
@@ -102,6 +112,7 @@ async def save_google_sheets_ledger_config(payload: Dict[str, Any] = Body(...)) 
             "key": "google_sheets_ledger",
             "GOOGLE_SHEETS_LEDGER_ID": spreadsheet_id,
             "GOOGLE_SHEETS_LEDGER_FOLDER_ID": folder_id,
+            "GOOGLE_SHEETS_LEDGER_FORCE_NEW": not bool(spreadsheet_id),
             "updated_at": now,
         }},
         upsert=True,

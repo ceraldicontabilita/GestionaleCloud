@@ -240,6 +240,8 @@ def _services():
 
 
 def _setting_value(config: Optional[Dict[str, Any]], name: str) -> Optional[str]:
+    if name == "GOOGLE_SHEETS_LEDGER_ID" and (config or {}).get("GOOGLE_SHEETS_LEDGER_FORCE_NEW"):
+        return None
     return str((config or {}).get(name) or getattr(settings, name, None) or "").strip() or None
 
 
