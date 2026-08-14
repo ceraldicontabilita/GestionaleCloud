@@ -7,6 +7,9 @@ progressivo proprio e il payload JSON completo, senza perdere campi futuri.
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
+import gzip
 import json
 import re
 from dataclasses import dataclass
@@ -25,6 +28,8 @@ HEADERS = [
     "importo", "descrizione", "stato", "documento_id", "fattura_id",
     "movimento_bancario_id", "source", "file_hash", "updated_at", "payload_json",
 ]
+MAX_SHEETS_CELL_CHARS = 49000
+GZIP_PREFIX = "gzip+base64:"
 
 
 @dataclass(frozen=True)
@@ -62,6 +67,35 @@ def _json_default(value: Any) -> str:
     if isinstance(value, Decimal):
         return str(value)
     return str(value)
+
+
+def encode_payload(payload: Dict[str, Any]) -> str:
+    raw = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, default=_json_default,
+        separators=(",", ":"),
+    )
+    if len(raw) <= MAX_SHEETS_CELL_CHARS:
+        return raw
+    compressed = GZIP_PREFIX + base64.b64encode(
+        gzip.compress(raw.encode("utf-8"), compresslevel=9)
+    ).decode("ascii")
+    if len(compressed) > MAX_SHEETS_CELL_CHARS:
+        raise ValueError(
+            "Payload troppo grande anche dopo compressione; conservare il documento originale su Drive"
+        )
+    return compressed
+
+
+def decode_payload(value: Any) -> Dict[str, Any]:
+    raw = str(value or "{}")
+    if raw.startswith(GZIP_PREFIX):
+        raw = gzip.decompress(
+            base64.b64decode(raw[len(GZIP_PREFIX):].encode("ascii"))
+        ).decode("utf-8")
+    payload = json.loads(raw)
+    if not isinstance(payload, dict):
+        raise ValueError("payload_json non e' un oggetto")
+    return payload
 
 
 def canonical_id(document: Dict[str, Any]) -> str:
@@ -127,7 +161,7 @@ def row_for_document(document: Dict[str, Any], progressivo: str) -> List[Any]:
         _first(document, ("source", "fonte")),
         _first(document, ("file_hash", "pdf_hash", "fingerprint")),
         str(_first(document, ("updated_at", "created_at"))),
-        json.dumps(payload, ensure_ascii=False, sort_keys=True, default=_json_default),
+        encode_payload(payload),
     ]
 
 
@@ -337,9 +371,16 @@ def _read_existing_sync(spreadsheet_id: str, sheet: LedgerSheet):
 
 
 def _write_rows_sync(spreadsheet_id: str, sheet: LedgerSheet, rows: List[List[Any]]) -> None:
+    sheets, _ = _services()
+    # Rimuove anche le righe finali non piu' presenti. Un semplice update
+    # lasciava record fantasma quando l'archivio diminuiva.
+    sheets.spreadsheets().values().clear(
+        spreadsheetId=spreadsheet_id,
+        range=f"'{sheet.title}'!A2:P",
+        body={},
+    ).execute()
     if not rows:
         return
-    sheets, _ = _services()
     sheets.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
         range=f"'{sheet.title}'!A2:P{len(rows) + 1}",
@@ -347,7 +388,9 @@ def _write_rows_sync(spreadsheet_id: str, sheet: LedgerSheet, rows: List[List[An
     ).execute()
 
 
-async def sync_collection(db, sheet: LedgerSheet, spreadsheet_id: str) -> Dict[str, Any]:
+async def sync_collection(
+    db, sheet: LedgerSheet, spreadsheet_id: str, *, preserve_missing: bool = True,
+) -> Dict[str, Any]:
     documents = await db[sheet.collection].find({}).to_list(100000)
     for document in documents:
         mongo_id = document.pop("_id", None)
@@ -382,10 +425,11 @@ async def sync_collection(db, sheet: LedgerSheet, spreadsheet_id: str) -> Dict[s
         rows.append(row_for_document(document, progressive))
     # Una cancellazione o una collezione temporaneamente incompleta non deve
     # eliminare la copia Drive: le righe non piu' presenti restano recuperabili.
-    for existing_row in existing:
-        existing_key = str(existing_row[1] if len(existing_row) > 1 else "").strip()
-        if existing_key and existing_key not in current_keys:
-            rows.append(list(existing_row) + [""] * max(0, len(HEADERS) - len(existing_row)))
+    if preserve_missing:
+        for existing_row in existing:
+            existing_key = str(existing_row[1] if len(existing_row) > 1 else "").strip()
+            if existing_key and existing_key not in current_keys:
+                rows.append(list(existing_row) + [""] * max(0, len(HEADERS) - len(existing_row)))
     rows.sort(key=lambda row: row[0])
     await asyncio.to_thread(_write_rows_sync, spreadsheet_id, sheet, rows)
     return {
@@ -401,6 +445,45 @@ async def sync_all(db, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any
         for sheet in SHEETS
     ))
     return {**workbook, "schema_version": SCHEMA_VERSION, "fogli": results}
+
+
+async def migration_audit(db, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Confronta Mongo sorgente e registro Drive senza modificare dati."""
+    verification = await restore_all(db, config, apply=False)
+    by_collection = {
+        item["collezione"]: item for item in verification.get("fogli", [])
+    }
+    checks = []
+    for sheet in SHEETS:
+        source_count = await db[sheet.collection].count_documents({})
+        verified = by_collection.get(sheet.collection, {})
+        sheet_count = int(verified.get("valide") or 0)
+        errors = int(verified.get("numero_errori") or 0)
+        checks.append({
+            "foglio": sheet.title,
+            "collezione": sheet.collection,
+            "sorgente": source_count,
+            "drive": sheet_count,
+            "errori": errors,
+            "completo": source_count == sheet_count and errors == 0,
+        })
+
+    migrated = {sheet.collection for sheet in SHEETS}
+    non_migrated = []
+    for name in await db.list_collection_names():
+        if name in migrated:
+            continue
+        count = await db[name].count_documents({})
+        if count:
+            non_migrated.append({"collezione": name, "righe": count})
+    non_migrated.sort(key=lambda item: (-item["righe"], item["collezione"]))
+    return {
+        "pronto_cutover": all(item["completo"] for item in checks) and not non_migrated,
+        "fogli": checks,
+        "collezioni_non_migrate": non_migrated,
+        "totale_non_migrate": sum(item["righe"] for item in non_migrated),
+        "spreadsheet_id": verification.get("spreadsheet_id"),
+    }
 
 
 def sheet_manifest() -> List[Dict[str, str]]:
@@ -438,8 +521,8 @@ async def restore_all(
             progressive = str(row[0] or "").strip()
             key = str(row[1] or "").strip()
             try:
-                payload = json.loads(str(row[15] or "{}"))
-            except json.JSONDecodeError as exc:
+                payload = decode_payload(row[15])
+            except (ValueError, json.JSONDecodeError, gzip.BadGzipFile, binascii.Error) as exc:
                 errors.append({"riga": index, "errore": f"payload_json non valido: {exc}"})
                 continue
             if not progressive or not key or not isinstance(payload, dict):

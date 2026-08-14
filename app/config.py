@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     APP_VERSION: str = "2.0.0"
     DEBUG: bool = False
     ENVIRONMENT: str = "production"
+    # Archivio operativo: ``sheets`` usa Google Sheets/Drive come sorgente
+    # primaria mantenendo una API asincrona compatibile con il codice attuale.
+    DATA_BACKEND: str = "mongodb"
 
     # Server
     HOST: str = "0.0.0.0"
@@ -396,7 +399,11 @@ class Settings(BaseSettings):
     def validate_required_secrets(self) -> dict[str, bool]:
         """Validate required and optional secrets."""
         return {
-            'database': bool(self.MONGODB_ATLAS_URI or self.MONGO_URL),
+            'database': bool(
+                self.GOOGLE_SHEETS_LEDGER_ID
+                if self.DATA_BACKEND.strip().lower() == "sheets"
+                else (self.MONGODB_ATLAS_URI or self.MONGO_URL)
+            ),
             'auth': bool(self.SECRET_KEY),
             'google_oauth': bool(self.GOOGLE_CLIENT_ID and self.GOOGLE_CLIENT_SECRET),
             'openai': bool(self.OPENAI_API_KEY),
@@ -430,8 +437,18 @@ class Settings(BaseSettings):
             else:
                 logger.warning(f"⚠️ {msg}")
 
+        backend = self.DATA_BACKEND.strip().lower()
+        if backend not in {"mongodb", "sheets"}:
+            errors.append("DATA_BACKEND deve essere 'mongodb' oppure 'sheets'.")
+
         # Check database configuration
-        if not self.MONGODB_ATLAS_URI:
+        if backend == "sheets" and not self.GOOGLE_SHEETS_LEDGER_ID:
+            msg = "GOOGLE_SHEETS_LEDGER_ID non configurato per DATA_BACKEND=sheets."
+            if fail_fast:
+                errors.append(msg)
+            else:
+                logger.error(msg)
+        elif backend == "mongodb" and not self.MONGODB_ATLAS_URI:
             msg = (
                 "MONGODB_ATLAS_URI non configurata! "
                 "Il database non funzionerà correttamente."

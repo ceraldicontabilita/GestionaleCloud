@@ -3,7 +3,7 @@ Database configuration and connection management.
 Provides singleton Motor AsyncIOMotorClient for MongoDB Atlas.
 """
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from typing import Optional
+from typing import Any, Optional
 import logging
 from .config import settings
 from .db_collections import (
@@ -23,7 +23,7 @@ class Database:
     """MongoDB connection manager with singleton pattern."""
     
     client: Optional[AsyncIOMotorClient] = None
-    db: Optional[AsyncIOMotorDatabase] = None
+    db: Optional[Any] = None
 
     @classmethod
     async def connect_db(cls) -> None:
@@ -32,6 +32,22 @@ class Database:
         Called on application startup.
         """
         try:
+            if settings.DATA_BACKEND.strip().lower() == "sheets":
+                from app.services.sheets_runtime_database import SheetsRuntimeDatabase
+
+                runtime = SheetsRuntimeDatabase(settings.DB_NAME, {
+                    "GOOGLE_SHEETS_LEDGER_ID": settings.GOOGLE_SHEETS_LEDGER_ID,
+                    "GOOGLE_SHEETS_LEDGER_FOLDER_ID": settings.GOOGLE_SHEETS_LEDGER_FOLDER_ID,
+                })
+                await runtime.hydrate()
+                cls.client = runtime._client
+                cls.db = runtime
+                logger.info(
+                    "Connected to Google Sheets ledger %s; MongoDB esterno disattivato",
+                    settings.GOOGLE_SHEETS_LEDGER_ID,
+                )
+                return
+
             mongo_uri = settings.MONGODB_ATLAS_URI or settings.MONGO_URL
             if mongo_uri and mongo_uri.startswith("mongomock://"):
                 from mongomock_motor import AsyncMongoMockClient
@@ -749,12 +765,12 @@ class Database:
         Called on application shutdown.
         """
         if cls.client:
-            logger.info("Closing MongoDB connection...")
+            logger.info("Closing %s database runtime...", settings.DATA_BACKEND)
             cls.client.close()
             logger.info("✅ MongoDB connection closed")
 
     @classmethod
-    def get_db(cls) -> AsyncIOMotorDatabase:
+    def get_db(cls) -> Any:
         """
         Get database instance.
         

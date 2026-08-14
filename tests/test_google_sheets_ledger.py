@@ -51,6 +51,15 @@ def test_identita_canonica_accetta_le_chiavi_reali_degli_archivi():
         assert ledger.canonical_filter(document) == {field: f"chiave-{field}"}
 
 
+def test_payload_grande_viene_compresso_e_ricostruito_senza_perdite():
+    payload = {"id": "DOC-GRANDE", "testo": "documento fiscale " * 10000}
+    encoded = ledger.encode_payload(payload)
+
+    assert encoded.startswith(ledger.GZIP_PREFIX)
+    assert len(encoded) <= ledger.MAX_SHEETS_CELL_CHARS
+    assert ledger.decode_payload(encoded) == payload
+
+
 def test_sync_mantiene_progressivi_e_righe_storiche(monkeypatch):
     async def scenario():
         db = AsyncMongoMockClient().db
@@ -124,5 +133,33 @@ def test_restore_default_e_solo_validazione(monkeypatch):
         assert result["apply"] is False
         assert result["fogli"][0]["valide"] == 1
         assert await db.documents_inbox.count_documents({}) == 0
+
+    run(scenario())
+
+
+def test_audit_migrazione_blocca_collezioni_non_coperte(monkeypatch):
+    async def scenario():
+        db = AsyncMongoMockClient().db
+        await db.invoices.insert_one({"id": "INV-1"})
+        await db.users.insert_one({"id": "USR-1"})
+
+        async def fake_restore(*_args, **_kwargs):
+            return {
+                "spreadsheet_id": "SHEET-1",
+                "fogli": [
+                    {"collezione": sheet.collection,
+                     "valide": 1 if sheet.collection == "invoices" else 0,
+                     "numero_errori": 0}
+                    for sheet in ledger.SHEETS
+                ],
+            }
+
+        monkeypatch.setattr(ledger, "restore_all", fake_restore)
+        result = await ledger.migration_audit(db)
+
+        assert result["pronto_cutover"] is False
+        assert result["collezioni_non_migrate"] == [
+            {"collezione": "users", "righe": 1}
+        ]
 
     run(scenario())

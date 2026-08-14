@@ -92,6 +92,17 @@ async def restore_google_sheets_ledger(
     ) or {}
     return await restore_all(db, config, apply=apply)
 
+
+@router.get("/google-sheets-ledger/migration-audit")
+async def audit_google_sheets_migration() -> Dict[str, Any]:
+    """Gate read-only: indica se Mongo puo essere disattivato senza perdite."""
+    from app.services.google_sheets_ledger import migration_audit
+    db = Database.get_db()
+    config = await db["system_settings"].find_one(
+        {"key": "google_sheets_ledger"}, {"_id": 0},
+    ) or {}
+    return await migration_audit(db, config)
+
 @router.get("/bank-supplier-rules")
 async def list_bank_supplier_rules() -> List[Dict[str, Any]]:
     return await Database.get_db()["bank_supplier_rules"].find({}, {"_id": 0}).sort("supplier_name", 1).to_list(1000)
