@@ -578,10 +578,8 @@ async def sync_collection_streaming(db, sheet: LedgerSheet, spreadsheet_id: str)
     await asyncio.to_thread(
         _ensure_row_capacity_sync, spreadsheet_id, sheet, max(source_count + 1, 1001),
     )
-    await asyncio.to_thread(_clear_rows_sync, spreadsheet_id, sheet)
-
     batch: List[List[Any]] = []
-    written = 0
+    written = len(progress_by_id)
     skipped_without_id = 0
     cursor = db[sheet.collection].find({})
     async for document in cursor:
@@ -591,6 +589,8 @@ async def sync_collection_streaming(db, sheet: LedgerSheet, spreadsheet_id: str)
         key = canonical_id(document)
         if not key:
             skipped_without_id += 1
+            continue
+        if key in progress_by_id:
             continue
         progressive = progress_by_id.get(key)
         if not progressive:
