@@ -409,6 +409,64 @@ async def ensure_workbook(
     return await asyncio.to_thread(_ensure_workbook_sync, config, tuple(collections))
 
 
+def _drive_duplicate_audit_sync(folder_id: str) -> Dict[str, Any]:
+    _, drive = _services()
+    files = []
+    page_token = None
+    while True:
+        response = drive.files().list(
+            q=f"'{folder_id}' in parents and trashed = false",
+            fields="nextPageToken,files(id,name,mimeType,size,md5Checksum,createdTime,modifiedTime,webViewLink,parents)",
+            pageSize=1000,
+            pageToken=page_token,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        ).execute()
+        files.extend(response.get("files", []))
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            break
+
+    groups: Dict[str, List[Dict[str, Any]]] = {}
+    for item in files:
+        checksum = str(item.get("md5Checksum") or "").strip()
+        size = str(item.get("size") or "")
+        if checksum:
+            key = f"hash:{checksum}"
+            method = "md5"
+        else:
+            key = f"name-size:{item.get('name', '').casefold()}:{size}"
+            method = "nome_dimensione"
+        entry = {**item, "metodo": method}
+        groups.setdefault(key, []).append(entry)
+
+    duplicates = [
+        {"chiave": key, "metodo": items[0]["metodo"], "file": items}
+        for key, items in groups.items() if len(items) > 1
+    ]
+    duplicates.sort(key=lambda group: (-len(group["file"]), group["chiave"]))
+    duplicate_files = sum(len(group["file"]) - 1 for group in duplicates)
+    recoverable_bytes = sum(
+        int(item.get("size") or 0)
+        for group in duplicates for item in group["file"][1:]
+    )
+    return {
+        "folder_id": folder_id,
+        "totale_file": len(files),
+        "gruppi_duplicati": len(duplicates),
+        "file_duplicati_eccedenti": duplicate_files,
+        "spazio_recuperabile_bytes": recoverable_bytes,
+        "duplicati": duplicates,
+    }
+
+
+async def drive_duplicate_audit(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    folder_id = default_folder_id(config)
+    if not folder_id:
+        raise ValueError("Cartella Drive del registro non configurata")
+    return await asyncio.to_thread(_drive_duplicate_audit_sync, folder_id)
+
+
 def _read_existing_sync(spreadsheet_id: str, sheet: LedgerSheet):
     sheets, _ = _services()
     values = sheets.spreadsheets().values().get(

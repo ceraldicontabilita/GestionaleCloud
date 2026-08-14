@@ -1161,6 +1161,7 @@ function GoogleSheetsLedgerTab() {
   const [manifest, setManifest] = useState([]);
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [duplicateAudit, setDuplicateAudit] = useState(null);
 
   const load = useCallback(async () => {
     const [cfg, man] = await Promise.all([
@@ -1180,6 +1181,17 @@ function GoogleSheetsLedgerTab() {
       toast.success('Registro Drive configurato');
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Configurazione non riuscita');
+    } finally { setBusy(false); }
+  }
+
+  async function auditDuplicates() {
+    setBusy(true);
+    try {
+      const response = await api.get('/api/admin/google-sheets-ledger/duplicate-audit');
+      setDuplicateAudit(response.data);
+      toast.success(`Controllati ${response.data.totale_file || 0} file Drive`);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Audit duplicati non riuscito');
     } finally { setBusy(false); }
   }
 
@@ -1232,9 +1244,22 @@ function GoogleSheetsLedgerTab() {
           <Button variant="secondary" onClick={() => run('audit')} disabled={busy || !config.spreadsheet_id}>
             Audit migrazione
           </Button>
+          <Button variant="secondary" onClick={auditDuplicates} disabled={busy || !config.folder_id}>
+            Controlla duplicati Drive
+          </Button>
           {result?.spreadsheet_url && <a href={result.spreadsheet_url} target="_blank" rel="noreferrer">Apri Google Sheets</a>}
         </div>
       </Card>
+      {duplicateAudit && (
+        <Card title="Duplicati Drive (sola lettura)">
+          <div>{duplicateAudit.totale_file || 0} file · {duplicateAudit.gruppi_duplicati || 0} gruppi · {duplicateAudit.file_duplicati_eccedenti || 0} copie eccedenti · {((duplicateAudit.spazio_recuperabile_bytes || 0) / 1048576).toFixed(2)} MB recuperabili</div>
+          {(duplicateAudit.duplicati || []).map(group => (
+            <div key={group.chiave} style={{ padding: '8px 0', borderBottom: `1px solid ${COLORS.border}` }}>
+              <strong>{group.file?.[0]?.name || group.chiave}</strong> · {group.file?.length || 0} copie · {group.metodo}
+            </div>
+          ))}
+        </Card>
+      )}
       <Card title={`Fogli previsti (${manifest.length})`}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 8 }}>
           {manifest.map(item => (

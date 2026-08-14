@@ -98,6 +98,17 @@ async def google_sheets_ledger_config() -> Dict[str, Any]:
     }
 
 
+@router.get("/google-sheets-ledger/duplicate-audit")
+async def google_sheets_ledger_duplicate_audit() -> Dict[str, Any]:
+    """Inventario read-only dei duplicati nella cartella archivio Drive."""
+    from app.services.google_sheets_ledger import drive_duplicate_audit
+    db = Database.get_db()
+    config = await db["system_settings"].find_one(
+        {"key": "google_sheets_ledger"}, {"_id": 0},
+    ) or {}
+    return await drive_duplicate_audit(config)
+
+
 @router.post("/google-sheets-ledger/config")
 async def save_google_sheets_ledger_config(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """Configura il file o la cartella Drive senza esporre credenziali."""

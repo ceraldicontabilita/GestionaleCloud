@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1127 endpoint** in **113 gruppi**.
+> Totale **1128 endpoint** in **113 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 683 · ext esterni = 88 · — da verificare = 356
+**Riepilogo uso:** ✓ frontend = 684 · ext esterni = 88 · — da verificare = 356
 
 ## AI Parser  (11)
 
@@ -22,7 +22,7 @@
 | GET | `/api/ai-parser/statistiche` | ext | ai_parser |
 | GET | `/api/ai-parser/test` | ext | ai_parser |
 
-## Admin  (20)
+## Admin  (21)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -35,6 +35,7 @@
 | GET | `/api/admin/dashboard-summary` | ✓ | admin |
 | GET | `/api/admin/google-sheets-ledger/config` | ✓ | admin |
 | POST | `/api/admin/google-sheets-ledger/config` | ✓ | admin |
+| GET | `/api/admin/google-sheets-ledger/duplicate-audit` | ✓ | admin |
 | POST | `/api/admin/google-sheets-ledger/jobs/{action}` | ✓ | admin |
 | GET | `/api/admin/google-sheets-ledger/jobs/{job_id}` | ✓ | admin |
 | GET | `/api/admin/google-sheets-ledger/manifest` | ✓ | admin |
