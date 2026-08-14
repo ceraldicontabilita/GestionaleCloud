@@ -176,6 +176,8 @@ def test_estratto_prima_fattura_dopo_chiude_catena_e_prima_nota_una_sola_volta()
         assert refreshed["pagato"] is True
         assert refreshed["stato_finanziario"] == "riconciliato"
         assert refreshed["paypal_movimento_banca_id"] == "EC-PAY-1"
+        assert refreshed["riconciliato"] is True
+        assert refreshed["riconciliato_con_ec"] == "EC-PAY-1"
         assert await db.prima_nota_banca.count_documents({}) == 1
         operation_id = "paypal:PAY-TX-1"
         assert refreshed["payment_operation_id"] == operation_id

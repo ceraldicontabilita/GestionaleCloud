@@ -177,6 +177,8 @@ async def finalizza_transazione_paypal_se_completa(
     await db[COLL_INVOICES].update_one({"id": invoice_id}, {"$set": {
         "riconciliato_paypal": True,
         "paypal_riconciliato_banca": True,
+        "riconciliato": True,
+        "riconciliato_con_ec": movement_id,
         "paypal_transaction_id": transaction_id,
         "paypal_movimento_banca_id": movement_id,
         "payment_operation_id": operation_id,
