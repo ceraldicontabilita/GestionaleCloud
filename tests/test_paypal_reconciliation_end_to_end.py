@@ -91,7 +91,8 @@ def test_barbetta_senza_numero_fattura_collega_per_nome_importo_data_univoci():
             **_invoice("INV-BARBETTA"),
             "invoice_number": "5874-2026-FE",
             "invoice_date": "2026-08-05",
-            "supplier_name": "BARBETTA RICAMBI BAGNO di BARBETTA ROBERTO",
+            "supplier_name": "",
+            "fornitore_ragione_sociale": "BARBETTA RICAMBI BAGNO di BARBETTA ROBERTO",
             "supplier_vat": "02521360699",
             "total_amount": 23.10,
         })

@@ -52,6 +52,7 @@ def business_name_matches(left: Any, right: Any) -> bool:
 def invoice_supplier_name(invoice: Dict[str, Any]) -> str:
     return str(
         invoice.get("supplier_name")
+        or invoice.get("fornitore_ragione_sociale")
         or invoice.get("cedente_denominazione")
         or invoice.get("fornitore_denominazione")
         or invoice.get("ragione_sociale_fornitore")
@@ -69,7 +70,10 @@ def invoice_tax_ids(invoice: Dict[str, Any]) -> set[str]:
 
 
 def invoice_number(invoice: Dict[str, Any]) -> str:
-    return str(invoice.get("invoice_number") or invoice.get("numero_fattura") or "").strip()
+    return str(
+        invoice.get("invoice_number") or invoice.get("numero_fattura")
+        or invoice.get("numero_documento") or ""
+    ).strip()
 
 
 def invoice_amount(invoice: Dict[str, Any]) -> float:
