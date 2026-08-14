@@ -72,6 +72,7 @@ export default function Admin() {
   const [bankRule, setBankRule] = useState({ reference_text: '', supplier_name: '', supplier_vat: '' });
   const [bankRulesLoading, setBankRulesLoading] = useState(false);
   const [bankReprocessResult, setBankReprocessResult] = useState(null);
+  const [bankImportResult, setBankImportResult] = useState(null);
 
   const loadBankRules = useCallback(async () => {
     const response = await api.get('/api/admin/bank-supplier-rules');
@@ -99,6 +100,24 @@ export default function Admin() {
       toast.error(e.response?.data?.detail || 'Riprocessamento non riuscito');
     } finally {
       setBankRulesLoading(false);
+    }
+  }
+
+  async function importBankStatement(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setBankRulesLoading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const response = await api.post('/api/estratto-conto-movimenti/import', form);
+      setBankImportResult(response.data);
+      toast.success('Estratto conto acquisito');
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Importazione estratto non riuscita');
+    } finally {
+      setBankRulesLoading(false);
+      event.target.value = '';
     }
   }
 
@@ -904,6 +923,12 @@ export default function Admin() {
             Associa una dicitura certa dell'estratto conto a un fornitore. Il riprocessamento
             collega solo importi identici al centesimo e fatture temporalmente compatibili.
           </p>
+          <div style={{ padding: 12, marginBottom: 14, background: COLORS.infoLight, borderRadius: BORDER_RADIUS.sm }}>
+            <strong>1. Carica o aggiorna l'estratto conto</strong>
+            <Input type="file" accept=".csv,.pdf" onChange={importBankStatement} disabled={bankRulesLoading} style={{ marginTop: 8 }} />
+            {bankImportResult && <small>Importati: {bankImportResult.importati ?? bankImportResult.movimenti_importati ?? 0} · Duplicati: {bankImportResult.duplicati ?? 0}</small>}
+          </div>
+          <strong>2. Salva i riferimenti certi</strong>
           <div style={{ display: 'grid', gap: 10, gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr 1fr auto' }}>
             <Input value={bankRule.reference_text} onChange={e => setBankRule({ ...bankRule, reference_text: e.target.value })} placeholder="Dicitura bancaria completa" />
             <Input value={bankRule.supplier_name} onChange={e => setBankRule({ ...bankRule, supplier_name: e.target.value })} placeholder="Fornitore (es. FASTWEB)" />
@@ -919,7 +944,7 @@ export default function Admin() {
             ))}
           </div>
           <Button style={{ marginTop: 16 }} variant="success" disabled={bankRulesLoading} onClick={reprocessBankRules}>
-            {bankRulesLoading ? 'Riprocessamento...' : `Riprocessa pagamenti ${anno}`}
+            {bankRulesLoading ? 'Elaborazione...' : `3. Riprocessa pagamenti ${anno}`}
           </Button>
           {bankReprocessResult && (
             <div style={{ marginTop: 12, padding: 12, background: COLORS.bgAlt, borderRadius: BORDER_RADIUS.sm }}>
