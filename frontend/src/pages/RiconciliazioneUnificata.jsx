@@ -1815,6 +1815,7 @@ function TabellaAnalisiF24({ anno }) {
   const [loading, setLoading] = useState(false);
   const [errore, setErrore] = useState(null);
   const [soloAnno, setSoloAnno] = useState(true);
+  const [ricercaTributo, setRicercaTributo] = useState('');
 
   const carica = async filtraAnno => {
     setLoading(true);
@@ -1829,6 +1830,17 @@ function TabellaAnalisiF24({ anno }) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    carica(true);
+  }, [anno]);
+
+  const righeFiltrate = (righe || []).filter(r => {
+    const cerca = ricercaTributo.trim().toLowerCase();
+    if (!cerca) return true;
+    return `${(r.codici_tributo || []).join(' ')} ${(r.causali_inps || []).join(' ')} ${r.periodo_competenza || ''} ${r.file || ''}`
+      .toLowerCase().includes(cerca);
+  });
 
   const cellaTh = {
     padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11,
@@ -1858,6 +1870,13 @@ function TabellaAnalisiF24({ anno }) {
           <input type="checkbox" checked={soloAnno} onChange={e => setSoloAnno(e.target.checked)} />
           Solo anno {anno}
         </label>
+        <input
+          aria-label="Cerca codice tributo F24"
+          value={ricercaTributo}
+          onChange={e => setRicercaTributo(e.target.value)}
+          placeholder="Cerca codice tributo, periodo o file"
+          style={{ minWidth: 260, minHeight: 38, padding: '7px 10px', border: '1px solid #cbd5e1', borderRadius: 6 }}
+        />
         {righe && (
           <span style={{ fontSize: 12, color: '#64748b' }}>
             {righe.length} modelli · in ritardo:{' '}
@@ -1897,7 +1916,7 @@ function TabellaAnalisiF24({ anno }) {
               </tr>
             </thead>
             <tbody>
-              {righe.map((r, idx) => {
+              {righeFiltrate.map((r, idx) => {
                 const stato = STILI_STATO_F24[r.stato_pagamento] || STILI_STATO_F24.periodo_ignoto;
                 const dup = STILI_DUP_F24[r.possibile_duplicazione] || STILI_DUP_F24.no;
                 const inRitardo = r.stato_pagamento === 'pagato_in_ritardo';
@@ -1912,6 +1931,11 @@ function TabellaAnalisiF24({ anno }) {
                   >
                     <td style={{ ...cella, fontWeight: 700, whiteSpace: 'nowrap' }}>
                       {r.periodo_competenza || '—'}
+                      {(r.codici_tributo || []).length > 0 && (
+                        <div style={{ fontSize: 10.5, color: '#2563eb', fontFamily: 'monospace', marginTop: 2 }}>
+                          Codici: {r.codici_tributo.join(', ')}
+                        </div>
+                      )}
                       {r.file && (
                         <div style={{ fontSize: 10.5, color: '#94a3b8', fontWeight: 400, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {r.file}

@@ -648,6 +648,27 @@ async def get_paypal_transactions(
     }
 
 
+@router.put("/transactions/{transaction_id}/descrizione")
+async def aggiorna_descrizione_paypal(
+    transaction_id: str, body: Dict[str, Any] = Body(...)
+) -> Dict[str, Any]:
+    """Salva una memoria operativa senza alterare la descrizione PayPal originale."""
+    descrizione = str(body.get("descrizione_utente") or "").strip()
+    if len(descrizione) > 2000:
+        raise HTTPException(status_code=422, detail="Descrizione troppo lunga (massimo 2000 caratteri)")
+    db = Database.get_db()
+    result = await db[COLL_PAYPAL_TRANSACTIONS].update_one(
+        {"$or": [{"transaction_id": transaction_id}, {"id": transaction_id}]},
+        {"$set": {
+            "descrizione_utente": descrizione,
+            "descrizione_utente_updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Transazione PayPal non trovata")
+    return {"success": True, "transaction_id": transaction_id, "descrizione_utente": descrizione}
+
+
 @router.get("/dashboard")
 async def paypal_dashboard(
     anno: Optional[int] = None

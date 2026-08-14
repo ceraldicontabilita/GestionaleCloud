@@ -153,6 +153,12 @@ async def tabella_analisi(anno: Optional[int] = Query(None, ge=2000, le=2100)) -
             "stato_pagamento": a["stato"],
             "tipo_versamento": a["tipo_versamento"],
             "causali_inps": a["causali_inps"],
+            "codici_tributo": sorted({
+                str(r.get("codice_tributo") or r.get("causale") or "").strip()
+                for sezione in ("sezione_erario", "sezione_inps", "sezione_regioni", "sezione_imu")
+                for r in (d.get(sezione) or [])
+                if isinstance(r, dict) and (r.get("codice_tributo") or r.get("causale"))
+            }),
             "documento_collegato": {
                 "quietanza_id": d.get("quietanza_id"),
                 "protocollo_quietanza": d.get("protocollo_quietanza"),

@@ -142,6 +142,14 @@ export default function RiconciliazionePaypal() {
     }
   };
 
+  const salvaDescrizione = async (tx, descrizione_utente) => {
+    const id = tx.transaction_id || tx.id;
+    await api.put(`/api/paypal-statements/transactions/${encodeURIComponent(id)}/descrizione`, { descrizione_utente });
+    setTransazioni(prev => prev.map(item =>
+      (item.transaction_id || item.id) === id ? { ...item, descrizione_utente } : item
+    ));
+  };
+
   const transazioniConBanca = useMemo(() => {
     const perId = new Map();
     movimentiBanca.forEach(movimento => {
@@ -243,7 +251,7 @@ export default function RiconciliazionePaypal() {
                 <option value="non_associata">Non associata</option>
               </select>
             </div>
-            {isMobile ? <TransactionCards righe={righe} /> : <TransactionTable righe={righe} />}
+            {isMobile ? <TransactionCards righe={righe} onSaveDescription={salvaDescrizione} /> : <TransactionTable righe={righe} onSaveDescription={salvaDescrizione} />}
           </>
         )}
 
@@ -275,12 +283,23 @@ function TransactionAmount({ tx }) {
   return <span>{gross}</span>;
 }
 
-function TransactionCards({ righe }) {
-  return <div data-testid="paypal-transaction-cards" style={cards}>{righe.map(tx => <article key={tx.transaction_id || tx.id} style={card}><strong>{tx.descrizione || '-'}</strong><TransactionId value={tx.transaction_id || tx.id} /><span>{tx.nome_controparte || '-'}</span><span>{dataIT(tx.data || tx.date)} - <TransactionAmount tx={tx} /></span><span>{statoFatturaLabel(tx.stato_collegamento_fattura)}</span>{tx.bank_movement ? <a href={`/prima-nota#sezione=banca&selected=${encodeURIComponent(tx.bank_movement.id)}`}>Vedi prova bancaria {compactId(tx.bank_movement.id)}</a> : <span>Banca da verificare</span>}</article>)}</div>;
+function TransactionCards({ righe, onSaveDescription }) {
+  return <div data-testid="paypal-transaction-cards" style={cards}>{righe.map(tx => <article key={tx.transaction_id || tx.id} style={card}><strong>{tx.descrizione || '-'}</strong><UserDescription tx={tx} onSave={onSaveDescription} /><TransactionId value={tx.transaction_id || tx.id} /><span>{tx.nome_controparte || '-'}</span><span>{dataIT(tx.data || tx.date)} - <TransactionAmount tx={tx} /></span><span>{statoFatturaLabel(tx.stato_collegamento_fattura)}</span>{tx.bank_movement ? <a href={`/prima-nota#sezione=banca&selected=${encodeURIComponent(tx.bank_movement.id)}`}>Vedi prova bancaria {compactId(tx.bank_movement.id)}</a> : <span>Banca da verificare</span>}</article>)}</div>;
 }
 
-function TransactionTable({ righe }) {
-  return <div data-testid="paypal-transactions-table" style={tableWrap}><table style={table}><thead><tr>{['Data', 'ID', 'Controparte', 'Descrizione', 'Importo/valuta', 'Fattura', 'Banca', 'Stato'].map(t => <th key={t} style={th}>{t}</th>)}</tr></thead><tbody>{righe.map(tx => <tr key={tx.transaction_id || tx.id}><td style={td}>{dataIT(tx.data || tx.date)}</td><td style={td}><TransactionId value={tx.transaction_id || tx.id} /></td><td style={td}>{tx.nome_controparte || '-'}</td><td style={td}>{tx.descrizione || '-'}</td><td style={td}><TransactionAmount tx={tx} /></td><td style={td}>{tx.fattura_associata?.numero || tx.fattura_numero || '-'}</td><td style={td}>{tx.bank_movement ? <a href={`/prima-nota#sezione=banca&selected=${encodeURIComponent(tx.bank_movement.id)}`}>Prova {compactId(tx.bank_movement.id)}</a> : 'Da verificare'}</td><td style={td}>{statoFatturaLabel(tx.stato_collegamento_fattura)}</td></tr>)}</tbody></table></div>;
+function TransactionTable({ righe, onSaveDescription }) {
+  return <div data-testid="paypal-transactions-table" style={tableWrap}><table style={table}><thead><tr>{['Data', 'ID', 'Controparte', 'Descrizione PayPal', 'Descrizione utente', 'Importo/valuta', 'Fattura', 'Banca', 'Stato'].map(t => <th key={t} style={th}>{t}</th>)}</tr></thead><tbody>{righe.map(tx => <tr key={tx.transaction_id || tx.id}><td style={td}>{dataIT(tx.data || tx.date)}</td><td style={td}><TransactionId value={tx.transaction_id || tx.id} /></td><td style={td}>{tx.nome_controparte || '-'}</td><td style={td}>{tx.descrizione || '-'}</td><td style={{ ...td, minWidth: 240 }}><UserDescription tx={tx} onSave={onSaveDescription} /></td><td style={td}><TransactionAmount tx={tx} /></td><td style={td}>{tx.fattura_associata?.numero || tx.fattura_numero || '-'}</td><td style={td}>{tx.bank_movement ? <a href={`/prima-nota#sezione=banca&selected=${encodeURIComponent(tx.bank_movement.id)}`}>Prova {compactId(tx.bank_movement.id)}</a> : 'Da verificare'}</td><td style={td}>{statoFatturaLabel(tx.stato_collegamento_fattura)}</td></tr>)}</tbody></table></div>;
+}
+
+function UserDescription({ tx, onSave }) {
+  const [value, setValue] = useState(tx.descrizione_utente || '');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => setValue(tx.descrizione_utente || ''), [tx.descrizione_utente]);
+  const save = async () => {
+    setSaving(true);
+    try { await onSave(tx, value); } finally { setSaving(false); }
+  };
+  return <div style={{ display: 'grid', gap: 5 }}><textarea aria-label={`Descrizione utente ${tx.transaction_id || tx.id}`} value={value} onChange={e => setValue(e.target.value)} placeholder="Es. fattura al socio, pagata con carta bancaria" rows={2} style={{ ...inputStyle, minHeight: 54, resize: 'vertical' }} /><button type="button" onClick={save} disabled={saving || value === (tx.descrizione_utente || '')} style={{ ...copyButton, justifySelf: 'start' }}>{saving ? 'Salvo…' : 'Salva descrizione'}</button></div>;
 }
 
 function BankCards({ righe }) {

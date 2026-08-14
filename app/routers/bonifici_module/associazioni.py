@@ -234,6 +234,11 @@ async def associa_salario_a_bonifico(
 
     aggiornamento = {
         "operazione_salario_id": operazione_id,
+        "salario_associato": True,
+        "operazione_salario_desc": (
+            f"Cedolino {int(operazione.get('mese') or 0):02d}/"
+            f"{operazione.get('anno') or ''} - {_nome_salario(operazione)}"
+        ),
         "stato_riconciliazione": "associato_salario",
         "data_associazione": datetime.now(timezone.utc).isoformat(),
         "dipendente_id": destinazione.get("dipendente_id"),
@@ -267,11 +272,15 @@ async def disassocia_salario(bonifico_id: str) -> Dict[str, Any]:
     """Rimuove l'associazione salario da un bonifico. Supporta entrambe le collection."""
     db = Database.get_db()
 
-    rimozione = {"operazione_salario_id": "", "data_associazione": ""}
+    rimozione = {
+        "operazione_salario_id": "", "data_associazione": "",
+        "operazione_salario_desc": "", "periodo_salario": "",
+        "dipendente_id": "", "dipendente_nome": "",
+    }
 
     result = await db["bonifici_transfers"].update_one(
         {"id": bonifico_id},
-        {"$unset": rimozione, "$set": {"stato_riconciliazione": "non_riconciliato"}}
+        {"$unset": rimozione, "$set": {"salario_associato": False, "stato_riconciliazione": "non_riconciliato"}}
     )
     if result.modified_count > 0:
         return {"success": True, "message": "Associazione salario rimossa (transfers)"}
@@ -280,7 +289,7 @@ async def disassocia_salario(bonifico_id: str) -> Dict[str, Any]:
     try:
         result2 = await db["archivio_bonifici"].update_one(
             {"_id": ObjectId(bonifico_id)},
-            {"$unset": rimozione, "$set": {"stato_riconciliazione": "non_riconciliato"}}
+            {"$unset": rimozione, "$set": {"salario_associato": False, "stato_riconciliazione": "non_riconciliato"}}
         )
         if result2.modified_count > 0:
             return {"success": True, "message": "Associazione salario rimossa (archivio)"}
@@ -392,6 +401,18 @@ async def get_operazioni_salari(bonifico_id: str) -> Dict[str, Any]:
         if _salario_appartiene_al_dipendente(op, destinazione)
     ]
 
+    data_bonifico = str(bonifico.get("data") or "")[:10]
+    try:
+        data_dt = datetime.fromisoformat(data_bonifico)
+        if data_dt.day >= 25:
+            anno_atteso, mese_atteso = data_dt.year, data_dt.month
+        elif data_dt.month == 1:
+            anno_atteso, mese_atteso = data_dt.year - 1, 12
+        else:
+            anno_atteso, mese_atteso = data_dt.year, data_dt.month - 1
+    except ValueError:
+        anno_atteso, mese_atteso = 0, 0
+
     operazioni = []
     for op in operazioni_raw:
         importo_op = op.get("importo_busta") or op.get("importo_bonifico") or 0
@@ -401,9 +422,14 @@ async def get_operazioni_salari(bonifico_id: str) -> Dict[str, Any]:
             "identita_verificata": True,
             "periodo": {"anno": op.get("anno"), "mese": op.get("mese")},
             "differenza_importo": abs(float(importo_op or 0) - importo),
+            "periodo_consigliato": (
+                int(op.get("anno") or 0) == anno_atteso
+                and int(op.get("mese") or 0) == mese_atteso
+            ),
         })
     operazioni.sort(
         key=lambda op: (
+            not op.get("periodo_consigliato"),
             -(int(op.get("anno") or 0)),
             -(int(op.get("mese") or 0)),
             op.get("differenza_importo") or 0,
@@ -418,6 +444,11 @@ async def get_operazioni_salari(bonifico_id: str) -> Dict[str, Any]:
             "motivo": destinazione.get("motivo_destinazione"),
         },
         "motivo_blocco": None if operazioni else "Nessun periodo salario disponibile per questo dipendente.",
+        "regola_periodo": {
+            "anno": anno_atteso,
+            "mese": mese_atteso,
+            "descrizione": "Dal giorno 25: stesso mese; prima del 25: mese precedente.",
+        },
     }
 
 
