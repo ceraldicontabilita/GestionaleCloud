@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1118 endpoint** in **113 gruppi**.
+> Totale **1125 endpoint** in **113 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 675 · ext esterni = 88 · — da verificare = 355
+**Riepilogo uso:** ✓ frontend = 684 · ext esterni = 88 · — da verificare = 353
 
 ## AI Parser  (11)
 
@@ -22,7 +22,7 @@
 | GET | `/api/ai-parser/statistiche` | ext | ai_parser |
 | GET | `/api/ai-parser/test` | ext | ai_parser |
 
-## Admin  (12)
+## Admin  (18)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -33,6 +33,12 @@
 | DELETE | `/api/admin/cleanup-trattenute-disciplinari` | — | admin |
 | GET | `/api/admin/collections` | — | admin |
 | GET | `/api/admin/dashboard-summary` | ✓ | admin |
+| GET | `/api/admin/google-sheets-ledger/config` | ✓ | admin |
+| POST | `/api/admin/google-sheets-ledger/config` | ✓ | admin |
+| GET | `/api/admin/google-sheets-ledger/manifest` | ✓ | admin |
+| GET | `/api/admin/google-sheets-ledger/migration-audit` | ✓ | admin |
+| POST | `/api/admin/google-sheets-ledger/restore` | ✓ | admin |
+| POST | `/api/admin/google-sheets-ledger/sync` | ✓ | admin |
 | POST | `/api/admin/noleggio/backfill-dati-gestionali` | — | admin |
 | POST | `/api/admin/reset-collections` | — | admin |
 | GET | `/api/admin/stats` | ✓ | admin |
@@ -703,7 +709,7 @@
 | GET | `/api/estratto-conto-movimenti/export-excel` | — | bank.estratto_conto |
 | POST | `/api/estratto-conto-movimenti/force-reimport` | — | bank.estratto_conto |
 | GET | `/api/estratto-conto-movimenti/fornitori` | — | bank.estratto_conto |
-| POST | `/api/estratto-conto-movimenti/import` | — | bank.estratto_conto |
+| POST | `/api/estratto-conto-movimenti/import` | ✓ | bank.estratto_conto |
 | GET | `/api/estratto-conto-movimenti/movimenti` | — | bank.estratto_conto |
 | GET | `/api/estratto-conto-movimenti/movimenti-stipendi` | — | bank.estratto_conto |
 | POST | `/api/estratto-conto-movimenti/pulizia-non-in-csv` | — | bank.estratto_conto |
@@ -1197,7 +1203,7 @@
 | GET | `/api/partite-aperte/scadute` | — | partite_aperte_api |
 | GET | `/api/partite-aperte/stats` | — | partite_aperte_api |
 
-## PayPal  (16)
+## PayPal  (17)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1211,9 +1217,10 @@
 | POST | `/api/paypal-statements/pulisci-match-solo-importo` | — | paypal_statements |
 | GET | `/api/paypal-statements/report` | ✓ | paypal_statements |
 | POST | `/api/paypal-statements/riconcilia-banca` | — | paypal_statements |
-| POST | `/api/paypal-statements/riprocessa` | — | paypal_statements |
+| POST | `/api/paypal-statements/riprocessa` | ✓ | paypal_statements |
 | GET | `/api/paypal-statements/statements` | ✓ | paypal_statements |
 | GET | `/api/paypal-statements/transactions` | ✓ | paypal_statements |
+| PUT | `/api/paypal-statements/transactions/{transaction_id}/descrizione` | ✓ | paypal_statements |
 | POST | `/api/paypal-statements/transazione/{transaction_id}/associa` | — | paypal_statements |
 | GET | `/api/paypal-statements/transazione/{transaction_id}/cerca-gmail` | — | paypal_statements |
 | GET | `/api/paypal-statements/transazione/{transaction_id}/dettaglio` | — | paypal_statements |

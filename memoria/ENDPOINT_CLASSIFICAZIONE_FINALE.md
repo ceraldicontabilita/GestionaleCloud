@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1118 · tenere: 716 · verificare: 378 · admin-only (migrazione/manutenzione): 24
+**Totale endpoint:** 1125 · tenere: 723 · verificare: 377 · admin-only (migrazione/manutenzione): 25
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -40,6 +40,12 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/admin/dashboard-summary` | admin | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/admin/export` | admin_export | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/admin/export/{filename}` | admin_export | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/admin/google-sheets-ledger/config` | admin | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/admin/google-sheets-ledger/config` | admin | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/admin/google-sheets-ledger/manifest` | admin | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/admin/google-sheets-ledger/migration-audit` | admin | sì | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
+| `POST /api/admin/google-sheets-ledger/restore` | admin | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/admin/google-sheets-ledger/sync` | admin | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/admin/noleggio/backfill-dati-gestionali` | admin | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/admin/reset-collections` | admin | — | — | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/admin/rollback/drive-fatture/conta` | admin_rollback | sì | — | — | — | — | tenere | in uso: FE |
@@ -489,7 +495,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/estratto-conto-movimenti/export-excel` | bank.estratto_conto | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/estratto-conto-movimenti/force-reimport` | bank.estratto_conto | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `GET /api/estratto-conto-movimenti/fornitori` | bank.estratto_conto | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/estratto-conto-movimenti/import` | bank.estratto_conto | — | sì | — | — | sì | tenere | in uso: scheduler |
+| `POST /api/estratto-conto-movimenti/import` | bank.estratto_conto | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `GET /api/estratto-conto-movimenti/movimenti` | bank.estratto_conto | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/estratto-conto-movimenti/movimenti-stipendi` | bank.estratto_conto | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/estratto-conto-movimenti/pulizia-non-in-csv` | bank.estratto_conto | — | — | — | sì | sì | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
@@ -828,9 +834,10 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/paypal-statements/pulisci-match-solo-importo` | paypal_statements | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/paypal-statements/report` | paypal_statements | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/paypal-statements/riconcilia-banca` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/paypal-statements/riprocessa` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/paypal-statements/riprocessa` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/paypal-statements/statements` | paypal_statements | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/paypal-statements/transactions` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
+| `PUT /api/paypal-statements/transactions/{transaction_id}/descrizione` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/paypal-statements/transazione/{transaction_id}/associa` | paypal_statements | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/paypal-statements/transazione/{transaction_id}/cerca-gmail` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/paypal-statements/transazione/{transaction_id}/dettaglio` | paypal_statements | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

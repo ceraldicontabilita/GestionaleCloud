@@ -1,13 +1,13 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **1118 endpoint** in **113 prefissi**.
+> Totale **1125 endpoint** in **113 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
 | Prefisso | Endpoint | FE | Moduli (file router) |
 |---|---:|:-:|---|
-| `/api/admin` | 21 | ✓ | admin, admin_export, admin_rollback |
+| `/api/admin` | 27 | ✓ | admin, admin_export, admin_rollback |
 | `/api/agenti` | 16 | ext | agenti |
 | `/api/ai-parser` | 11 | ext | ai_parser |
 | `/api/alerts` | 7 | ✓ | alerts |
@@ -84,7 +84,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/pagopa` | 8 | ✓ | pagopa |
 | `/api/partite-aperte` | 3 | — | partite_aperte_api |
 | `/api/paypal-api` | 12 | ✓ | paypal_api |
-| `/api/paypal-statements` | 16 | ✓ | paypal_statements |
+| `/api/paypal-statements` | 17 | ✓ | paypal_statements |
 | `/api/pianificazione` | 5 | ✓ | pianificazione, public_api |
 | `/api/piano-conti` | 12 | ✓ | accounting.piano_conti |
 | `/api/portal` | 1 | ext | public_api |
