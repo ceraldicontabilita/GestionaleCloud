@@ -328,11 +328,32 @@ async def list_prima_nota_sumup(
          if conto["codice"] == conti_pos.CONTO_SUMUP_MASTERCARD),
         {"saldo": 0.0},
     )
-    credito_sumup = next(
-        (credito for credito in tesoreria["crediti_pos"]
-         if credito.get("circuito") == conti_pos.SUMUP),
-        {"saldo": 0.0},
+    # Il credito operativo SumUp deriva dalle prove API, non dalle vecchie
+    # scritture materializzate di Cassa. Queste ultime possono contenere uno
+    # snapshot precedente mentre i payout sono gia' aggiornati, producendo un
+    # falso saldo negativo. Sommiamo quindi soltanto i payout riconciliati che
+    # dichiarano esplicitamente quali giornate di vendita coprono.
+    credito_coperto = 0.0
+    payout_cursor = db[sumup_sync.COLL_PAYOUT].find(
+        {
+            "giorni": {"$elemMatch": {"$gte": dal, "$lte": al}},
+            "stato_riconciliazione": {"$in": ["riconciliato", "rettifica_confermata"]},
+        },
+        {"_id": 0, "payout_id": 1, "credito_coperto": 1},
     )
+    payout_docs = (
+        await payout_cursor.to_list(10000)
+        if hasattr(payout_cursor, "to_list")
+        else [p async for p in payout_cursor]
+    )
+    payout_unici: Dict[str, float] = {}
+    for payout in payout_docs:
+        payout_id = str(payout.get("payout_id") or "")
+        if payout_id:
+            payout_unici[payout_id] = float(payout.get("credito_coperto") or 0)
+    credito_coperto = round(sum(payout_unici.values()), 2)
+    totale_netto_vendite = round(sum(g["netto"] for g in giornate_vendite), 2)
+    credito_sumup_aperto = round(totale_netto_vendite - credito_coperto, 2)
 
     per_giorno: Dict[str, Dict[str, Any]] = {}
     for movimento in movimenti:
@@ -366,10 +387,12 @@ async def list_prima_nota_sumup(
         # li espone insieme per spiegare perche' una vendita di oggi puo'
         # esistere anche quando il relativo accredito non e' ancora arrivato.
         "totale_venduto": round(sum(g["vendite"] for g in giornate_vendite), 2),
-        "totale_netto_vendite": round(sum(g["netto"] for g in giornate_vendite), 2),
+        "totale_netto_vendite": totale_netto_vendite,
         "numero_transazioni": sum(int(g["transazioni"]) for g in giornate_vendite),
         "giornate_vendite": giornate_vendite,
-        "credito_sumup_aperto": round(float(credito_sumup.get("saldo") or 0), 2),
+        "credito_sumup_aperto": credito_sumup_aperto,
+        "credito_sumup_coperto": credito_coperto,
+        "fonte_credito_sumup": "transazioni_e_payout_riconciliati",
         "saldo_mastercard": round(float(conto_mastercard.get("saldo") or 0), 2),
         "fonte_vendite": "sumup_transactions_archiviate",
     }

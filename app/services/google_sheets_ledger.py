@@ -222,18 +222,32 @@ def _ensure_workbook_sync(config: Optional[Dict[str, Any]] = None) -> Dict[str, 
         if found:
             spreadsheet_id = found[0]["id"]
     if not spreadsheet_id:
-        body = {
-            "properties": {"title": WORKBOOK_TITLE, "locale": "it_IT", "timeZone": "Europe/Rome"},
-            "sheets": [{"properties": {"title": item.title}} for item in SHEETS]
-            + [{"properties": {"title": "_REGISTRO"}}],
-        }
-        created = sheets.spreadsheets().create(body=body, fields="spreadsheetId,spreadsheetUrl").execute()
-        spreadsheet_id = created["spreadsheetId"]
         if folder_id:
-            drive.files().update(
-                fileId=spreadsheet_id, addParents=folder_id,
-                fields="id,parents", supportsAllDrives=True,
+            # Un service account non dispone di quota Drive propria. Creare
+            # prima il foglio nella sua radice con Sheets API fallisce con
+            # PERMISSION_DENIED anche se la cartella aziendale e' condivisa.
+            # Drive API crea invece il file direttamente nella cartella
+            # autorizzata, mantenendo proprieta' e spazio sul Drive aziendale.
+            created = drive.files().create(
+                body={
+                    "name": WORKBOOK_TITLE,
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                    "parents": [folder_id],
+                },
+                fields="id,webViewLink,parents",
+                supportsAllDrives=True,
             ).execute()
+            spreadsheet_id = created["id"]
+        else:
+            body = {
+                "properties": {"title": WORKBOOK_TITLE, "locale": "it_IT", "timeZone": "Europe/Rome"},
+                "sheets": [{"properties": {"title": item.title}} for item in SHEETS]
+                + [{"properties": {"title": "_REGISTRO"}}],
+            }
+            created = sheets.spreadsheets().create(
+                body=body, fields="spreadsheetId,spreadsheetUrl"
+            ).execute()
+            spreadsheet_id = created["spreadsheetId"]
 
     metadata = sheets.spreadsheets().get(
         spreadsheetId=spreadsheet_id, fields="spreadsheetId,spreadsheetUrl,sheets.properties",

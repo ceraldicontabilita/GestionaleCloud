@@ -177,7 +177,31 @@ def _stessa_prova_bancaria(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
         return False
     chiave_a = _chiave_prova_bancaria(a)
     chiave_b = _chiave_prova_bancaria(b)
-    return bool(chiave_a and chiave_a == chiave_b)
+    if chiave_a and chiave_a == chiave_b:
+        return True
+
+    # Alcuni import storici dello stesso estratto hanno rigenerato l'ID riga
+    # senza conservare fingerprint/hash. In quel solo caso non basta data e
+    # importo: richiediamo anche socio, verso e causale bancaria normalizzata
+    # identici (o una causale completa contenuta nell'altra).
+    if any((a.get(campo) or b.get(campo)) for campo in (
+        "bank_fingerprint", "movement_fingerprint", "source_fingerprint",
+        "fingerprint", "source_document_hash", "document_hash",
+        "duplicate_group_id", "duplicate_of", "duplicato_di",
+    )):
+        return False
+    if (
+        a.get("data") != b.get("data")
+        or a.get("socio_id") != b.get("socio_id")
+        or a.get("tipo") != b.get("tipo")
+        or round(float(a.get("importo") or 0), 2) != round(float(b.get("importo") or 0), 2)
+    ):
+        return False
+    testo_a = _descrizione_semantica(a.get("descrizione") or "")
+    testo_b = _descrizione_semantica(b.get("descrizione") or "")
+    if not testo_a or not testo_b:
+        return False
+    return testo_a == testo_b or (len(testo_a) >= 24 and testo_a in testo_b) or (len(testo_b) >= 24 and testo_b in testo_a)
 
 
 def _accorpa_duplicati_esatti(movimenti: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], int]:

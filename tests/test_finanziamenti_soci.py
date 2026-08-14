@@ -123,7 +123,7 @@ def test_scan_idempotente_non_duplica():
     assert stats2["gia_presenti"] == 1
 
 
-def test_movimenti_simili_ma_con_id_bancari_distinti_restano_distinti():
+def test_stessa_riga_reimportata_con_id_diversi_viene_accorpata_semanticamente():
     db = _DB()
     db["estratto_conto_movimenti"].docs.extend([
         {
@@ -138,12 +138,25 @@ def test_movimenti_simili_ma_con_id_bancari_distinti_restano_distinti():
         },
     ])
     stats = _run(scan_finanziamenti_da_ec(db, anno=2026))
-    assert stats["apporti_nuovi"] == 2
-    assert stats["duplicati_esatti_ignorati"] == 0
+    assert stats["apporti_nuovi"] == 1
+    assert stats["duplicati_esatti_ignorati"] == 1
     schede = _run(schede_soci(db, anno=2026))
     pane = next(s for s in schede["schede"] if s["socio_id"] == "giuseppina_pane")
-    assert pane["apporti"] == 28000.0
-    assert len(pane["movimenti"]) == 2
+    assert pane["apporti"] == 14000.0
+    assert len(pane["movimenti"]) == 1
+
+
+def test_due_operazioni_reali_stesso_giorno_e_importo_non_sono_accorpate_senza_stessa_causale():
+    db = _DB()
+    db["estratto_conto_movimenti"].docs.extend([
+        {"id": "ec-a", "data_contabile": "2026-04-10", "tipo": "entrata", "importo": 5000,
+         "descrizione_originale": "BONIFICO GIUSEPPINA PANE FINANZIAMENTO RISTRUTTURAZIONE"},
+        {"id": "ec-b", "data_contabile": "2026-04-10", "tipo": "entrata", "importo": 5000,
+         "descrizione_originale": "BONIFICO GIUSEPPINA PANE FINANZIAMENTO ACQUISTO ATTREZZATURE"},
+    ])
+    stats = _run(scan_finanziamenti_da_ec(db, anno=2026))
+    assert stats["apporti_nuovi"] == 2
+    assert stats["duplicati_esatti_ignorati"] == 0
 
 
 def test_duplicati_storici_vengono_accorpati_senza_cancellare_le_fonti():
