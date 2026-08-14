@@ -415,7 +415,7 @@ def _drive_duplicate_audit_sync(folder_id: str) -> Dict[str, Any]:
     page_token = None
     while True:
         response = drive.files().list(
-            q=f"'{folder_id}' in parents and trashed = false",
+            q="trashed = false",
             fields="nextPageToken,files(id,name,mimeType,size,md5Checksum,createdTime,modifiedTime,webViewLink,parents)",
             pageSize=1000,
             pageToken=page_token,
@@ -452,6 +452,8 @@ def _drive_duplicate_audit_sync(folder_id: str) -> Dict[str, Any]:
     )
     return {
         "folder_id": folder_id,
+        "ambito": "tutti_i_file_visibili_account_servizio",
+        "file_nella_cartella_registro": sum(folder_id in item.get("parents", []) for item in files),
         "totale_file": len(files),
         "gruppi_duplicati": len(duplicates),
         "file_duplicati_eccedenti": duplicate_files,
