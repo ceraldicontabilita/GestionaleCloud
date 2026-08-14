@@ -469,6 +469,78 @@ async def drive_duplicate_audit(config: Optional[Dict[str, Any]] = None) -> Dict
     return await asyncio.to_thread(_drive_duplicate_audit_sync, folder_id)
 
 
+def _drive_folder_duplicate_audit_sync(folder_ids: Iterable[str]) -> Dict[str, Any]:
+    _, drive = _services()
+    mime_folder = "application/vnd.google-apps.folder"
+    queue = [(str(folder_id).strip(), str(folder_id).strip()) for folder_id in folder_ids if str(folder_id).strip()]
+    visited = set()
+    files: List[Dict[str, Any]] = []
+    errors = []
+    roots = []
+    while queue:
+        folder_id, root_id = queue.pop(0)
+        if folder_id in visited:
+            continue
+        visited.add(folder_id)
+        try:
+            if folder_id == root_id:
+                meta = drive.files().get(
+                    fileId=folder_id, fields="id,name,mimeType,webViewLink",
+                    supportsAllDrives=True,
+                ).execute()
+                roots.append(meta)
+            page_token = None
+            while True:
+                response = drive.files().list(
+                    q=f"'{folder_id}' in parents and trashed = false",
+                    fields="nextPageToken,files(id,name,mimeType,size,md5Checksum,createdTime,modifiedTime,webViewLink,parents)",
+                    pageSize=1000, pageToken=page_token,
+                    supportsAllDrives=True, includeItemsFromAllDrives=True,
+                ).execute()
+                for item in response.get("files", []):
+                    if item.get("mimeType") == mime_folder:
+                        queue.append((item["id"], root_id))
+                    else:
+                        item["radice_id"] = root_id
+                        item["cartella_id"] = folder_id
+                        files.append(item)
+                page_token = response.get("nextPageToken")
+                if not page_token:
+                    break
+        except Exception as exc:
+            errors.append({"folder_id": folder_id, "radice_id": root_id, "errore": str(exc)})
+
+    groups: Dict[str, List[Dict[str, Any]]] = {}
+    for item in files:
+        checksum = str(item.get("md5Checksum") or "").strip()
+        size = str(item.get("size") or "")
+        method = "md5" if checksum else "nome_dimensione"
+        key = f"hash:{checksum}" if checksum else f"name-size:{item.get('name', '').casefold()}:{size}"
+        groups.setdefault(key, []).append({**item, "metodo": method})
+    duplicates = [
+        {"chiave": key, "metodo": items[0]["metodo"], "file": items}
+        for key, items in groups.items() if len(items) > 1
+    ]
+    duplicates.sort(key=lambda group: (-len(group["file"]), group["chiave"]))
+    return {
+        "radici_richieste": len(set(str(value).strip() for value in folder_ids if str(value).strip())),
+        "radici_accessibili": roots,
+        "cartelle_visitate": len(visited),
+        "totale_file": len(files),
+        "gruppi_duplicati": len(duplicates),
+        "file_duplicati_eccedenti": sum(len(group["file"]) - 1 for group in duplicates),
+        "spazio_recuperabile_bytes": sum(
+            int(item.get("size") or 0) for group in duplicates for item in group["file"][1:]
+        ),
+        "duplicati": duplicates,
+        "errori": errors,
+    }
+
+
+async def drive_folder_duplicate_audit(folder_ids: Iterable[str]) -> Dict[str, Any]:
+    return await asyncio.to_thread(_drive_folder_duplicate_audit_sync, tuple(folder_ids))
+
+
 def _read_existing_sync(spreadsheet_id: str, sheet: LedgerSheet):
     sheets, _ = _services()
     values = sheets.spreadsheets().values().get(

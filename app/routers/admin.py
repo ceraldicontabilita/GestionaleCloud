@@ -109,6 +109,16 @@ async def google_sheets_ledger_duplicate_audit() -> Dict[str, Any]:
     return await drive_duplicate_audit(config)
 
 
+@router.post("/google-sheets-ledger/duplicate-audit-folders")
+async def google_drive_folders_duplicate_audit(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Audit ricorsivo metadata-only di cartelle Drive esplicitamente indicate."""
+    from app.services.google_sheets_ledger import drive_folder_duplicate_audit
+    folder_ids = payload.get("folder_ids") or []
+    if not isinstance(folder_ids, list) or not folder_ids:
+        raise HTTPException(status_code=400, detail="Indicare almeno una cartella Drive")
+    return await drive_folder_duplicate_audit(folder_ids)
+
+
 @router.post("/google-sheets-ledger/config")
 async def save_google_sheets_ledger_config(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """Configura il file o la cartella Drive senza esporre credenziali."""

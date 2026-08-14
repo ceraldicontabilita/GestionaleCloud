@@ -1162,6 +1162,7 @@ function GoogleSheetsLedgerTab() {
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [duplicateAudit, setDuplicateAudit] = useState(null);
+  const [driveFolderLinks, setDriveFolderLinks] = useState('');
 
   const load = useCallback(async () => {
     const [cfg, man] = await Promise.all([
@@ -1192,6 +1193,19 @@ function GoogleSheetsLedgerTab() {
       toast.success(`Controllati ${response.data.totale_file || 0} file Drive`);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Audit duplicati non riuscito');
+    } finally { setBusy(false); }
+  }
+
+  async function auditFolderDuplicates() {
+    const folderIds = [...driveFolderLinks.matchAll(/folders\/([A-Za-z0-9_-]+)/g)].map(match => match[1]);
+    if (!folderIds.length) return toast.error('Incolla almeno un link cartella Drive');
+    setBusy(true);
+    try {
+      const response = await api.post('/api/admin/google-sheets-ledger/duplicate-audit-folders', { folder_ids: [...new Set(folderIds)] });
+      setDuplicateAudit(response.data);
+      toast.success(`Controllati ${response.data.totale_file || 0} file in ${response.data.cartelle_visitate || 0} cartelle`);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Audit cartelle non riuscito');
     } finally { setBusy(false); }
   }
 
@@ -1260,6 +1274,12 @@ function GoogleSheetsLedgerTab() {
           ))}
         </Card>
       )}
+      <Card title="Controllo cartelle Drive indicate">
+        <textarea value={driveFolderLinks} onChange={e => setDriveFolderLinks(e.target.value)} placeholder="Incolla uno o più link di cartelle Drive" rows={5} style={{ width: '100%', padding: 10, border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.sm }} />
+        <Button variant="secondary" onClick={auditFolderDuplicates} disabled={busy || !driveFolderLinks.trim()} style={{ marginTop: 10 }}>
+          Controlla ricorsivamente
+        </Button>
+      </Card>
       <Card title={`Fogli previsti (${manifest.length})`}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 8 }}>
           {manifest.map(item => (
