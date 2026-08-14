@@ -2548,6 +2548,11 @@ async def riprocessa_collegamenti_assegni(
     estratto = await sincronizza_assegni_da_estratto_conto(
         db,
         data_dal=f"{anno}-01-01" if anno else None,
+        # Azione amministrativa esplicitamente confermata: materializza nel
+        # registro anche gli assegni presenti negli export Excel operativi.
+        # Il livello di evidenza resta salvato sull'assegno e non viene
+        # trasformato in quietanza/PDF ufficiale.
+        include_provvisori=True,
     )
     fatture = await riprocessa_intenti_assegni(db, anno=anno, limit=limit)
     return {

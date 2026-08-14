@@ -540,6 +540,7 @@ async def sincronizza_assegni_da_estratto_conto(
     db,
     movimento_ids: Optional[List[str]] = None,
     data_dal: Optional[str] = None,
+    include_provvisori: bool = False,
 ) -> Dict[str, Any]:
     from app.services.bank_evidence import filtro_solo_evidenza_ufficiale
     risultati: Dict[str, Any] = {
@@ -548,7 +549,6 @@ async def sincronizza_assegni_da_estratto_conto(
         "fatture_associate": 0, "proposte_ambigue": 0, "errori": [], "dettagli": [],
     }
     filtri_movimenti: List[Dict[str, Any]] = [
-            filtro_solo_evidenza_ufficiale(),
             {"$or": [
                 {"descrizione": {"$regex": "PRELIEVO.*ASSEGNO", "$options": "i"}},
                 {"descrizione_originale": {"$regex": "PRELIEVO.*ASSEGNO", "$options": "i"}},
@@ -557,6 +557,10 @@ async def sincronizza_assegni_da_estratto_conto(
             ]},
             {"$or": [{"tipo": "uscita"}, {"type": "uscita"}, {"importo": {"$lt": 0}}]},
     ]
+    if not include_provvisori:
+        filtri_movimenti.insert(0, filtro_solo_evidenza_ufficiale())
+    else:
+        risultati["include_provvisori"] = True
     ids_richiesti = list(dict.fromkeys(
         str(movimento_id).strip()
         for movimento_id in (movimento_ids or [])
@@ -616,6 +620,11 @@ async def sincronizza_assegni_da_estratto_conto(
                     "descrizione": descrizione, "movimento_id": movimento.get("id"),
                     "fonte": "estratto_conto", "banca": movimento.get("banca"),
                     "created_at": now, "updated_at": now,
+                    "livello_evidenza_bancaria": movimento.get("livello_evidenza") or "legacy",
+                    "evidenza_bancaria_ufficiale": bool(
+                        movimento.get("evidenza_bancaria_ufficiale")
+                        or movimento.get("livello_evidenza") in (None, "ufficiale")
+                    ),
                 }
                 await db["assegni"].insert_one(dict(assegno))
                 risultati["assegni_creati"] += 1

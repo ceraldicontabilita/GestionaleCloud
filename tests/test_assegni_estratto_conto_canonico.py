@@ -151,6 +151,30 @@ def test_sync_limitata_non_riesamina_gli_assegni_storici():
     _run(scenario())
 
 
+def test_export_excel_viene_materializzato_solo_nel_riprocessamento_confermato():
+    async def scenario():
+        db = AsyncMongoMockClient().db
+        movimento = _mov(numero="0208769433", importo=1608.96, idx=9433)
+        movimento.update({
+            "livello_evidenza": "provvisoria",
+            "evidenza_bancaria_ufficiale": False,
+        })
+        await db.estratto_conto_movimenti.insert_one(movimento)
+
+        normale = await sincronizza_assegni_da_estratto_conto(db)
+        confermato = await sincronizza_assegni_da_estratto_conto(
+            db, include_provvisori=True,
+        )
+        assegno = await db.assegni.find_one({"numero": "0208769433"}, {"_id": 0})
+        return normale, confermato, assegno
+
+    normale, confermato, assegno = _run(scenario())
+    assert normale["movimenti_analizzati"] == 0
+    assert confermato["assegni_creati"] == 1
+    assert assegno["livello_evidenza_bancaria"] == "provvisoria"
+    assert assegno["evidenza_bancaria_ufficiale"] is False
+
+
 def test_snapshot_fatture_aperte_caricata_una_volta_per_tutto_il_batch(monkeypatch):
     import app.services.assegni_estratto_conto as modulo
 
