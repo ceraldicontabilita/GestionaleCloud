@@ -414,6 +414,35 @@ def _read_existing_sync(spreadsheet_id: str, sheet: LedgerSheet):
     return values
 
 
+def _read_identities_sync(spreadsheet_id: str, sheet: LedgerSheet):
+    sheets, _ = _services()
+    return sheets.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id, range=f"'{sheet.title}'!A2:B",
+    ).execute().get("values", [])
+
+
+def _clear_rows_sync(spreadsheet_id: str, sheet: LedgerSheet) -> None:
+    sheets, _ = _services()
+    sheets.spreadsheets().values().clear(
+        spreadsheetId=spreadsheet_id,
+        range=f"'{sheet.title}'!A2:{LAST_COLUMN}", body={},
+    ).execute()
+
+
+def _write_batch_sync(
+    spreadsheet_id: str, sheet: LedgerSheet, rows: List[List[Any]], start_row: int,
+) -> None:
+    if not rows:
+        return
+    sheets, _ = _services()
+    end_row = start_row + len(rows) - 1
+    sheets.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id,
+        range=f"'{sheet.title}'!A{start_row}:{LAST_COLUMN}{end_row}",
+        valueInputOption="RAW", body={"values": rows},
+    ).execute()
+
+
 def _write_rows_sync(spreadsheet_id: str, sheet: LedgerSheet, rows: List[List[Any]]) -> None:
     sheets, _ = _services()
     # Rimuove anche le righe finali non piu' presenti. Un semplice update
@@ -489,6 +518,52 @@ async def sync_collection(
     }
 
 
+async def sync_collection_streaming(db, sheet: LedgerSheet, spreadsheet_id: str) -> Dict[str, Any]:
+    """Migrazione canonica a memoria costante, senza conservare righe fantasma."""
+    identities = await asyncio.to_thread(_read_identities_sync, spreadsheet_id, sheet)
+    progress_by_id = {
+        str(row[1]): str(row[0]) for row in identities
+        if len(row) > 1 and str(row[0]).strip() and str(row[1]).strip()
+    }
+    if len(progress_by_id) != len(identities):
+        # Le righe vuote finali non vengono restituite dall'API; ogni altra
+        # discrepanza segnala identita mancanti o duplicate.
+        valid = [row for row in identities if len(row) > 1 and str(row[0]).strip() and str(row[1]).strip()]
+        if len(progress_by_id) != len(valid):
+            raise RuntimeError(f"Progressivi o canonical_id duplicati nel foglio {sheet.title}")
+    sequence = next_progressive(sheet.prefix, [row[0] for row in identities if row])
+    await asyncio.to_thread(_clear_rows_sync, spreadsheet_id, sheet)
+
+    batch: List[List[Any]] = []
+    written = 0
+    skipped_without_id = 0
+    cursor = db[sheet.collection].find({})
+    async for document in cursor:
+        mongo_id = document.pop("_id", None)
+        if mongo_id is not None and not canonical_id(document):
+            document["_mongo_id"] = str(mongo_id)
+        key = canonical_id(document)
+        if not key:
+            skipped_without_id += 1
+            continue
+        progressive = progress_by_id.get(key)
+        if not progressive:
+            progressive = format_progressive(sheet.prefix, sequence)
+            sequence += 1
+        batch.append(row_for_document(document, progressive))
+        if len(batch) >= 500:
+            await asyncio.to_thread(_write_batch_sync, spreadsheet_id, sheet, batch, written + 2)
+            written += len(batch)
+            batch = []
+    if batch:
+        await asyncio.to_thread(_write_batch_sync, spreadsheet_id, sheet, batch, written + 2)
+        written += len(batch)
+    return {
+        "foglio": sheet.title, "collezione": sheet.collection,
+        "righe": written, "senza_id": skipped_without_id,
+    }
+
+
 async def sync_all(db, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     collections = await db.list_collection_names()
     workbook = await ensure_workbook(config, collections)
@@ -497,7 +572,7 @@ async def sync_all(db, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any
 
     async def _sync_bounded(sheet: LedgerSheet) -> Dict[str, Any]:
         async with semaphore:
-            return await sync_collection(db, sheet, workbook["spreadsheet_id"])
+            return await sync_collection_streaming(db, sheet, workbook["spreadsheet_id"])
 
     results = await asyncio.gather(*(_sync_bounded(sheet) for sheet in definitions))
     return {**workbook, "schema_version": SCHEMA_VERSION, "fogli": results}
