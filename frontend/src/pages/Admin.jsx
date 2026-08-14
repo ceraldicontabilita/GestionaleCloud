@@ -1186,6 +1186,13 @@ function GoogleSheetsLedgerTab() {
   async function run(action) {
     setBusy(true);
     try {
+      if (action === 'audit') {
+        const response = await api.get('/api/admin/google-sheets-ledger/migration-audit');
+        setResult({ action, ...response.data });
+        if (response.data.pronto_cutover) toast.success('Archivio Drive pronto per il passaggio');
+        else toast.error('Passaggio bloccato: archivi mancanti o non coerenti');
+        return;
+      }
       const url = action === 'sync'
         ? '/api/admin/google-sheets-ledger/sync'
         : '/api/admin/google-sheets-ledger/restore?apply=false';
@@ -1220,6 +1227,9 @@ function GoogleSheetsLedgerTab() {
           <Button variant="secondary" onClick={() => run('validate')} disabled={busy || !config.spreadsheet_id}>
             Verifica ricostruzione
           </Button>
+          <Button variant="secondary" onClick={() => run('audit')} disabled={busy || !config.spreadsheet_id}>
+            Audit migrazione
+          </Button>
           {result?.spreadsheet_url && <a href={result.spreadsheet_url} target="_blank" rel="noreferrer">Apri Google Sheets</a>}
         </div>
       </Card>
@@ -1234,11 +1244,22 @@ function GoogleSheetsLedgerTab() {
         </div>
       </Card>
       {result && (
-        <Card title={result.action === 'validate' ? 'Esito verifica ricostruzione' : 'Esito sincronizzazione'}>
+        <Card title={result.action === 'audit' ? 'Audit migrazione MongoDB → Drive' : (result.action === 'validate' ? 'Esito verifica ricostruzione' : 'Esito sincronizzazione')}>
+          {result.action === 'audit' && (
+            <div style={{ marginBottom: 12, color: result.pronto_cutover ? COLORS.success : COLORS.danger }}>
+              <strong>{result.pronto_cutover ? 'PRONTO AL PASSAGGIO' : 'PASSAGGIO BLOCCATO'}</strong>
+              <div>{(result.collezioni_non_migrate || []).length} collezioni non migrate · {result.totale_non_migrate || 0} righe</div>
+            </div>
+          )}
           {(result.fogli || []).map(item => (
             <div key={item.foglio} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${COLORS.border}` }}>
               <span>{item.foglio}</span>
               <strong>{item.righe ?? item.valide ?? 0}{item.numero_errori ? ` · ${item.numero_errori} errori` : ''}</strong>
+            </div>
+          ))}
+          {result.action === 'audit' && (result.collezioni_non_migrate || []).map(item => (
+            <div key={item.collezione} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${COLORS.border}` }}>
+              <span>{item.collezione}</span><strong>{item.righe}</strong>
             </div>
           ))}
         </Card>
