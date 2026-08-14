@@ -41,6 +41,9 @@ def test_dashboard_separa_bpm_sumup_e_non_trascina_anni_storici(monkeypatch):
 def test_dashboard_annuale_include_il_riporto_manualizzato(monkeypatch):
     db = AsyncMongoMockClient()["dashboard_annual_opening_balance_test"]
     monkeypatch.setattr(stats.Database, "get_db", staticmethod(lambda: db))
+    async def nessun_riporto(*_args, **_kwargs):
+        return 0.0
+    monkeypatch.setattr(stats, "calcola_saldo_anni_precedenti", nessun_riporto)
     _run(db["prima_nota_saldi_iniziali"].insert_one({
         "id": "saldo-cassa-2026", "tipo": "cassa", "anno": 2026, "importo": -3426.67,
     }))
@@ -55,7 +58,7 @@ def test_dashboard_annuale_include_il_riporto_manualizzato(monkeypatch):
 
     assert risultato["cassa"]["riporto"] == -3426.67
     assert risultato["cassa"]["saldo"] == 5573.33
-    assert risultato["criterio"] == "saldo_esercizio_con_riporto_manualizzato"
+    assert risultato["criterio"] == "saldo_esercizio_con_riporto"
     assert risultato["saldo_conto_certificato"] is True
 
 

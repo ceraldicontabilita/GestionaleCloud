@@ -19,7 +19,7 @@ from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA,
     COLLECTION_SALDI_INIZIALI,
     CATEGORIE_ESCLUSE, aggrega_saldo_prima_nota, filtro_saldo_prima_nota,
-    saldi_finanziari, get_saldo_iniziale_manuale,
+    saldi_finanziari, get_saldo_iniziale_manuale, calcola_saldo_anni_precedenti,
 )
 
 
@@ -221,6 +221,14 @@ async def get_prima_nota_stats(
         )
         riporto_cassa = float(cassa_manuale or 0)
         riporto_banca = float(banca_manuale or 0)
+        if cassa_manuale is None:
+            riporto_cassa = float(await calcola_saldo_anni_precedenti(
+                db, COLLECTION_PRIMA_NOTA_CASSA, anno_intero,
+            ))
+        if banca_manuale is None:
+            riporto_banca = float(await calcola_saldo_anni_precedenti(
+                db, COLLECTION_PRIMA_NOTA_BANCA, anno_intero,
+            ))
 
     oggi = giorno_corrente_negozio()
     proiezione_sumup = {
@@ -280,7 +288,7 @@ async def get_prima_nota_stats(
             "entrate": cassa.get("entrate", 0) + banca.get("entrate", 0) + sumup.get("entrate", 0),
             "uscite": cassa.get("uscite", 0) + banca.get("uscite", 0) + sumup.get("uscite", 0)
         },
-        "criterio": "saldo_esercizio_con_riporto_manualizzato" if (riporto_cassa or riporto_banca) else "movimenti_del_periodo_senza_riporti_storici",
+        "criterio": "saldo_esercizio_con_riporto" if (riporto_cassa or riporto_banca) else "movimenti_del_periodo_senza_riporti_storici",
         "saldo_conto_certificato": bool(riporto_cassa or riporto_banca),
         "sumup_cassa_live": proiezione_sumup,
     }
