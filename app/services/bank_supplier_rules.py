@@ -41,7 +41,7 @@ async def save_rule(db, payload: dict) -> dict:
 async def reprocess_rules(db, year: int) -> dict:
     rules = await db[COLLECTION].find({"active": True}, {"_id": 0}).to_list(1000)
     movements = await db["estratto_conto_movimenti"].find({
-        "data": {"$regex": f"^{int(year)}"}, "importo": {"$lt": 0}, "riconciliato": {"$ne": True},
+        "data": {"$regex": f"^{int(year)}"}, "tipo": "uscita", "riconciliato": {"$ne": True},
     }, {"_id": 0}).to_list(50000)
     invoices = await db["invoices"].find({
         "$or": [{"invoice_date": {"$regex": f"^{int(year)}"}}, {"data_fattura": {"$regex": f"^{int(year)}"}}],

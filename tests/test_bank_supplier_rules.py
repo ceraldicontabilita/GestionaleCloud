@@ -16,7 +16,7 @@ def test_regola_sdd_collega_solo_fornitore_importo_e_data_compatibili(monkeypatc
         "supplier_name": "HP Italy",
     }))
     run(db["estratto_conto_movimenti"].insert_one({
-        "id": "bank-1", "data": "2026-07-29", "importo": -1.79,
+        "id": "bank-1", "data": "2026-07-29", "importo": 1.79, "tipo": "uscita",
         "descrizione_originale": "ADDEBITO DIRETTO SDD - SDD CORE: M-100286973-3908993102489156 WORLDPAY",
         "riconciliato": False,
     }))
@@ -42,7 +42,7 @@ def test_regola_non_indovina_due_fatture_stessa_data(monkeypatch):
     db = AsyncMongoMockClient()["bank_supplier_rules_ambiguous"]
     run(rules.save_rule(db, {"reference_text": "SDD CORE: FASTWEB-REF FASTWEB", "supplier_name": "FASTWEB"}))
     run(db["estratto_conto_movimenti"].insert_one({
-        "id": "bank-2", "data": "2026-07-27", "importo": -43.86,
+        "id": "bank-2", "data": "2026-07-27", "importo": 43.86, "tipo": "uscita",
         "descrizione": "ADDEBITO DIRETTO SDD - SDD CORE: FASTWEB-REF FASTWEB", "riconciliato": False,
     }))
     run(db["invoices"].insert_many([
