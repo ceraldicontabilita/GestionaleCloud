@@ -1267,6 +1267,16 @@ function GoogleSheetsLedgerTab() {
       {duplicateAudit && (
         <Card title="Duplicati Drive (sola lettura)">
           <div>{duplicateAudit.totale_file || 0} file · {duplicateAudit.gruppi_duplicati || 0} gruppi · {duplicateAudit.file_duplicati_eccedenti || 0} copie eccedenti · {((duplicateAudit.spazio_recuperabile_bytes || 0) / 1048576).toFixed(2)} MB recuperabili</div>
+          {duplicateAudit.radici_richieste != null && (
+            <div style={{ marginTop: 6 }}>
+              {duplicateAudit.radici_accessibili?.length || 0}/{duplicateAudit.radici_richieste} cartelle radice accessibili · {duplicateAudit.errori?.length || 0} errori di accesso
+            </div>
+          )}
+          {(duplicateAudit.errori || []).map(item => (
+            <div key={`${item.radice_id}-${item.folder_id}`} style={{ padding: '6px 0', color: COLORS.danger }}>
+              Non accessibile: {item.folder_id}
+            </div>
+          ))}
           {(duplicateAudit.duplicati || []).map(group => (
             <div key={group.chiave} style={{ padding: '8px 0', borderBottom: `1px solid ${COLORS.border}` }}>
               <strong>{group.file?.[0]?.name || group.chiave}</strong> · {group.file?.length || 0} copie · {group.metodo}
