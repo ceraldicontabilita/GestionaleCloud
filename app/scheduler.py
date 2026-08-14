@@ -1186,6 +1186,41 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    async def _google_sheets_ledger_job():
+        from app.database import Database
+        from app.services.google_sheets_ledger import sync_all
+        db = Database.get_db()
+        config = await db["system_settings"].find_one(
+            {"key": "google_sheets_ledger"}, {"_id": 0},
+        ) or {}
+        try:
+            result = await sync_all(db, config)
+            if result.get("spreadsheet_id") and not config.get("GOOGLE_SHEETS_LEDGER_ID"):
+                await db["system_settings"].update_one(
+                    {"key": "google_sheets_ledger"},
+                    {"$set": {
+                        "key": "google_sheets_ledger",
+                        "GOOGLE_SHEETS_LEDGER_ID": result["spreadsheet_id"],
+                        "GOOGLE_SHEETS_LEDGER_FOLDER_ID": result.get("folder_id"),
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }},
+                    upsert=True,
+                )
+            logger.info(
+                "[SCHEDULER-SHEETS] sincronizzati %s fogli nel registro %s",
+                len(result.get("fogli") or []), result.get("spreadsheet_id"),
+            )
+        except Exception as exc:
+            logger.warning("[SCHEDULER-SHEETS] sincronizzazione saltata: %s", exc)
+
+    scheduler.add_job(
+        _google_sheets_ledger_job,
+        'interval', minutes=30,
+        id="google_sheets_ledger_sync",
+        name="Registro Google Sheets portabile (ogni 30 minuti)",
+        replace_existing=True,
+    )
+
     # Task Scan Verbali Email ogni ora
     scheduler.add_job(
         scan_verbali_email_task,
