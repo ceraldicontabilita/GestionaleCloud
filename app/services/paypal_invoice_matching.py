@@ -132,8 +132,10 @@ def evaluate_paypal_invoice_match(
     """Restituisce evidenze, punteggio e decisione di associazione sicura.
 
     Una fattura e' associabile solo se l'identita' del fornitore e' provata
-    (P.IVA/CF, denominazione o email), il numero fattura coincide e l'importo
-    coincide al centesimo. La data aumenta la qualita', ma non basta da sola.
+    (P.IVA/CF, denominazione o email) e l'importo coincide al centesimo.
+    Quando PayPal espone il numero fattura questo deve coincidere. Quando non
+    lo espone, una data entro 120 giorni abilita la candidatura; il chiamante
+    deve comunque accettarla soltanto se resta univoca.
     """
     mapping = supplier_mapping or {}
     evidenze: list[str] = []
@@ -187,7 +189,8 @@ def evaluate_paypal_invoice_match(
         evidenze.append("data_entro_120_giorni")
 
     supplier_identity = tax_match or name_match or email_match
-    associabile = supplier_identity and reference_match and amount_match and currency_match
+    reference_or_date = reference_match if reference else date_match
+    associabile = supplier_identity and reference_or_date and amount_match and currency_match
     score = (
         (60 if tax_match else 0)
         + (45 if name_match else 0)
@@ -204,7 +207,8 @@ def evaluate_paypal_invoice_match(
         "evidenze": evidenze,
         "scarto": None if associabile else (
             "identita_fornitore_non_verificata" if not supplier_identity
-            else "numero_fattura_mancante_o_non_coincidente" if not reference_match
+            else "numero_fattura_non_coincidente" if reference and not reference_match
+            else "data_non_compatibile" if not reference and not date_match
             else "importo_non_coincidente_al_centesimo" if not amount_match
             else "valuta_non_coincidente"
         ),

@@ -74,7 +74,7 @@ def test_stesso_fornitore_e_importo_senza_numero_non_bastano():
     }
     result = evaluate_paypal_invoice_match(tx, invoice)
     assert result["associabile"] is False
-    assert result["scarto"] == "numero_fattura_mancante_o_non_coincidente"
+    assert result["scarto"] == "data_non_compatibile"
 
 
 def test_un_centesimo_di_differenza_blocca_il_match():

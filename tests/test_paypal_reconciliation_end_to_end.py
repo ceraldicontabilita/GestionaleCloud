@@ -84,6 +84,61 @@ def test_importo_api_senza_lordo_collega_sui_due_lati_ma_attende_banca():
     _run(scenario())
 
 
+def test_barbetta_senza_numero_fattura_collega_per_nome_importo_data_univoci():
+    async def scenario():
+        db = AsyncMongoMockClient().db
+        await db.invoices.insert_one({
+            **_invoice("INV-BARBETTA"),
+            "invoice_number": "5874-2026-FE",
+            "invoice_date": "2026-08-05",
+            "supplier_name": "BARBETTA RICAMBI BAGNO di BARBETTA ROBERTO",
+            "supplier_vat": "02521360699",
+            "total_amount": 23.10,
+        })
+        tx = {
+            **_transaction("4817044P"),
+            "invoice_id_fornitore": "",
+            "paypal_account_id": "",
+            "nome_controparte": "Barbetta Roberto",
+            "importo": -23.10,
+            "data": "2026-08-05",
+        }
+        await db.paypal_transactions.insert_one(tx)
+
+        result = await associa_transazione_univoca(db, tx)
+
+        assert result["collegata"] is True
+        assert result["fattura_id"] == "INV-BARBETTA"
+        assert "denominazione_fornitore" in result["fattura_associata"]["evidenze"]
+        assert "data_entro_120_giorni" in result["fattura_associata"]["evidenze"]
+
+    _run(scenario())
+
+
+def test_paypal_senza_numero_non_sceglie_tra_due_fatture_compatibili():
+    async def scenario():
+        db = AsyncMongoMockClient().db
+        base = {
+            **_invoice(), "supplier_name": "Barbetta Roberto",
+            "total_amount": 23.10, "invoice_date": "2026-08-05",
+        }
+        await db.invoices.insert_many([
+            {**base, "id": "INV-A", "invoice_number": "A"},
+            {**base, "id": "INV-B", "invoice_number": "B"},
+        ])
+        tx = {
+            **_transaction("PAY-AMB"), "invoice_id_fornitore": "",
+            "paypal_account_id": "", "nome_controparte": "Barbetta Roberto",
+            "importo": -23.10, "data": "2026-08-05",
+        }
+
+        result = await associa_transazione_univoca(db, tx)
+
+        assert result == {"collegata": False, "motivo": "fatture_ambigue", "candidati": 2}
+
+    _run(scenario())
+
+
 def test_estratto_prima_fattura_dopo_chiude_catena_e_prima_nota_una_sola_volta():
     async def scenario():
         db = AsyncMongoMockClient().db

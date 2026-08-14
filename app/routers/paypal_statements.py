@@ -1426,8 +1426,10 @@ async def associa_transazione(transaction_id: str, body: Dict[str, Any] = Body(.
 @router.post("/auto-associa")
 async def auto_associa_transazioni() -> Dict[str, Any]:
     """Associa AUTOMATICAMENTE i pagamenti PayPal alle fatture del gestionale:
-    identita' fornitore, numero fattura e importo uguale al centesimo. Quando
-    entrambe le fonti dichiarano la valuta, anche la valuta deve coincidere.
+    identita' fornitore e importo uguale al centesimo. Il numero fattura e'
+    obbligatorio quando PayPal lo espone; in sua assenza servono data
+    compatibile e un solo candidato. Quando entrambe le fonti dichiarano la
+    valuta, anche la valuta deve coincidere.
     Le transazioni senza evidenze sufficienti restano da verificare."""
     db = Database.get_db()
     return {"success": True, **(await riprocessa_collegamenti_paypal(db))}

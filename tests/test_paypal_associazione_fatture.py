@@ -273,7 +273,7 @@ def test_pulisci_rimuove_match_senza_numero_fattura_anche_con_nome_e_importo(mon
     res = _run(pulisci_match_solo_importo(dry_run=False))
 
     assert res["trovate"] == 1
-    assert res["esempi"][0]["motivo"] == "numero_fattura_mancante_o_non_coincidente"
+    assert res["esempi"][0]["motivo"] == "data_non_compatibile"
     assert "fattura_associata" not in db["paypal_transactions"].docs[0]
 
 

@@ -334,8 +334,15 @@ async def associa_transazione_univoca(
     valid.sort(key=lambda item: item[0]["score"], reverse=True)
     if not valid:
         return {"collegata": False, "motivo": "nessuna_fattura_con_evidenze_complete"}
-    if len(valid) > 1 and valid[0][0]["score"] == valid[1][0]["score"]:
-        return {"collegata": False, "motivo": "fatture_ambigue", "candidati": len(valid)}
+    if len(valid) > 1:
+        # Senza un riferimento fattura esplicito, nome+importo+data producono
+        # una prova utilizzabile soltanto se esiste una singola fattura.
+        reference = str(
+            transaction.get("invoice_id_fornitore")
+            or transaction.get("invoice_id") or ""
+        ).strip()
+        if not reference or valid[0][0]["score"] == valid[1][0]["score"]:
+            return {"collegata": False, "motivo": "fatture_ambigue", "candidati": len(valid)}
     return await collega_transazione_a_fattura(
         db, transaction, valid[0][1], valid[0][0], automatic=automatic,
     )
@@ -411,8 +418,14 @@ async def collega_fattura_paypal_appena_importata(db, invoice: Dict[str, Any]) -
     valid.sort(key=lambda item: item[0]["score"], reverse=True)
     if not valid:
         return {"collegata": False, "motivo": "nessuna_transazione_con_evidenze_complete"}
-    if len(valid) > 1 and valid[0][0]["score"] == valid[1][0]["score"]:
-        return {"collegata": False, "motivo": "transazioni_ambigue", "candidati": len(valid)}
+    if len(valid) > 1:
+        # La fattura appena arrivata non deve essere assegnata a una delle
+        # molte transazioni prive di numero fattura solo per vicinanza.
+        with_reference = [item for item in valid if str(
+            item[1].get("invoice_id_fornitore") or item[1].get("invoice_id") or ""
+        ).strip()]
+        if not with_reference or valid[0][0]["score"] == valid[1][0]["score"]:
+            return {"collegata": False, "motivo": "transazioni_ambigue", "candidati": len(valid)}
     return await collega_transazione_a_fattura(
         db, valid[0][1], invoice, valid[0][0], automatic=True,
     )
