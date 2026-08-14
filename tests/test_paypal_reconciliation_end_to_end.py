@@ -226,6 +226,36 @@ def test_fattura_prima_estratto_dopo_finalizza_appena_arriva_la_banca():
     _run(scenario())
 
 
+def test_riprocessa_backfill_movimento_storico_collegato_solo_dal_lato_banca():
+    async def scenario():
+        db = AsyncMongoMockClient().db
+        await _seed_identity(db)
+        await db.invoices.insert_one(_invoice())
+        await db.paypal_transactions.insert_one({
+            **_transaction(),
+            "fattura_associata": {
+                "fattura_id": "INV-DB-1", "match": "fornitore_numero_importo_esatti",
+                "evidenze": ["denominazione_fornitore", "numero_fattura", "importo"],
+            },
+        })
+        await db.estratto_conto_movimenti.insert_one({
+            "id": "EC-STORICO", "data": "2026-07-14", "tipo": "uscita",
+            "importo": -100.0, "riconciliato": True,
+            "paypal_transaction_id": "PAY-TX-1",
+        })
+
+        result = await riprocessa_collegamenti_paypal(db)
+
+        invoice = await db.invoices.find_one({"id": "INV-DB-1"})
+        transaction = await db.paypal_transactions.find_one({"transaction_id": "PAY-TX-1"})
+        assert result["finalizzate"] == 1
+        assert transaction["movimento_banca_id"] == "EC-STORICO"
+        assert invoice["riconciliato"] is True
+        assert invoice["pagato"] is True
+
+    _run(scenario())
+
+
 def test_stessa_fattura_non_puo_essere_riutilizzata_da_due_transazioni():
     async def scenario():
         db = AsyncMongoMockClient().db

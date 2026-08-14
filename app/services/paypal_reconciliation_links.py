@@ -383,6 +383,32 @@ async def riprocessa_collegamenti_paypal(
         try:
             association = transaction.get("fattura_associata") or {}
             if association.get("fattura_id"):
+                transaction_id = _tx_id(transaction)
+                if not (
+                    transaction.get("movimento_banca_id")
+                    or transaction.get("estratto_conto_movimento_id")
+                ):
+                    historical_bank = await db[COLL_BANK].find_one(
+                        {"paypal_transaction_id": transaction_id}, {"_id": 0}
+                    )
+                    if historical_bank and historical_bank.get("riconciliato"):
+                        historical_bank_id = str(historical_bank.get("id") or "")
+                        if historical_bank_id:
+                            bank_backfill = {
+                                "riconciliato_banca": True,
+                                "riconciliato_con_estratto_banca": True,
+                                "movimento_banca_id": historical_bank_id,
+                                "estratto_conto_movimento_id": historical_bank_id,
+                                "data_banca": historical_bank.get("data"),
+                            }
+                            await db[COLL_TRANSACTIONS].update_one(
+                                {"$or": [
+                                    {"transaction_id": transaction_id},
+                                    {"id": transaction_id},
+                                ]},
+                                {"$set": bank_backfill},
+                            )
+                            transaction.update(bank_backfill)
                 # Rivalida anche i link gia' presenti con le regole correnti.
                 # Serve per migrare le associazioni create prima che fosse
                 # ammessa la prova univoca nome+importo+data senza riferimento.
@@ -414,7 +440,7 @@ async def riprocessa_collegamenti_paypal(
                             }},
                         )
                 result["gia_collegate"] += 1
-                finalization = await finalizza_transazione_paypal_se_completa(db, _tx_id(transaction))
+                finalization = await finalizza_transazione_paypal_se_completa(db, transaction_id)
                 result["finalizzate"] += int(bool(finalization.get("finalizzata")))
                 continue
             outcome = await associa_transazione_univoca(db, transaction)
