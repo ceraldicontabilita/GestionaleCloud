@@ -30,6 +30,9 @@ class DocumentType(StrEnum):
     DICHIARAZIONE_IVA = "DICHIARAZIONE_IVA"
     LIPE = "LIPE"
     MODELLO_770 = "MODELLO_770"
+    REDDITI_SC = "REDDITI_SC"
+    DICHIARAZIONE_IRAP = "DICHIARAZIONE_IRAP"
+    ELENCO_PERCIPIENTI = "ELENCO_PERCIPIENTI"
     CU = "CU"
     AVVISO_BONARIO = "AVVISO_BONARIO"
     COMUNICAZIONE_IRREGOLARITA = "COMUNICAZIONE_IRREGOLARITA"
@@ -117,8 +120,11 @@ _CLASSIFIERS: tuple[tuple[DocumentType, tuple[str, ...]], ...] = (
     (DocumentType.SGRAVIO, ("provvedimento di sgravio", "sgravio")),
     (DocumentType.QUIETANZA_F24, ("quietanza f24", "esito delega", "protocollo telematico")),
     (DocumentType.LIPE, ("liquidazioni periodiche iva", "comunicazione liquidazioni")),
-    (DocumentType.MODELLO_770, ("modello 770", "770/")),
-    (DocumentType.DICHIARAZIONE_IVA, ("dichiarazione iva", "modello iva")),
+    (DocumentType.MODELLO_770, ("modello 770", "770/", "770_")),
+    (DocumentType.REDDITI_SC, ("redditi societa di capitali", "redditi sc", "modello redditi sc", "760_")),
+    (DocumentType.DICHIARAZIONE_IRAP, ("dichiarazione irap", "modello irap", "irap_")),
+    (DocumentType.ELENCO_PERCIPIENTI, ("elenco percipienti", "percipienti")),
+    (DocumentType.DICHIARAZIONE_IVA, ("dichiarazione iva", "modello iva", "iva_")),
     (DocumentType.F24, ("modello f24", "f24")),
     (DocumentType.TARI_AVVISO, ("avviso di pagamento tari",)),
     (DocumentType.DIMISSIONI_TELEMATICHE, ("modulo recesso rapporto di lavoro", "recesso dal rapporto di lavoro")),

@@ -24,6 +24,7 @@ from app.db_collections import (
 from app.services.fiscal_agents import AdvisorBriefGenerator, FiscalControlAgent, buildTaxEvidencePackage, buildTaxReviewDossier, load_review_data
 from app.services.fiscal_domain import rebuild_vat_credit_chain, reconstruct_collection_state
 from app.services.fiscal_evidence import find_linked_evidence, now_iso, stable_id
+from app.services.declaration_registry import DECLARATION_TYPES, list_declaration_dossiers
 from app.services.ravvedimento_engine import RavvedimentoEngine
 from app.services.tax_collection_service import build_snapshot
 from app.services.ader_snapshot_import import apply_ader_archive_plan, build_ader_archive_plan
@@ -166,6 +167,21 @@ async def f24_rows(
         "limit": limit,
         "filters": {"tax_code": tax_code, "document_id": document_id, "year": year, "credits_only": credits_only},
     }
+
+
+@router.get("/declarations")
+async def declarations(
+    year: int | None = Query(None, ge=2000, le=2100),
+    declaration_type: str | None = None,
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    if declaration_type and declaration_type not in DECLARATION_TYPES:
+        raise HTTPException(400, "Tipo dichiarazione non valido")
+    items = await list_declaration_dossiers(
+        Database.get_db(), company_id=_company(), year=year,
+        declaration_type=declaration_type,
+    )
+    return {"items": items, "total": len(items), "year": year, "declaration_type": declaration_type}
 
 
 @router.get("/f24-documents")

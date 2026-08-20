@@ -1,7 +1,7 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **1137 endpoint** in **113 prefissi**.
+> Totale **1139 endpoint** in **113 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
@@ -44,8 +44,8 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/dipendenti` | 28 | ✓ | employees.dipendenti |
 | `/api/dizionario-articoli` | 11 | ✓ | warehouse.dizionario_articoli |
 | `/api/document-ai` | 10 | — | document_ai |
-| `/api/documenti` | 44 | ✓ | documenti |
-| `/api/documenti-fiscali` | 2 | — | documenti_fiscali |
+| `/api/documenti` | 45 | ✓ | documenti |
+| `/api/documenti-fiscali` | 2 | ✓ | documenti_fiscali |
 | `/api/documenti-inbox` | 5 | ✓ | documents_inbox_classify |
 | `/api/documenti-non-associati` | 9 | ✓ | documenti_non_associati |
 | `/api/email-download` | 41 | ✓ | email_download |
@@ -63,7 +63,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/fatture-ricevute` | 23 | ✓ | fatture_module.crud, fatture_module.export_selezione, fatture_module.pagamento |
 | `/api/finanziamenti-soci` | 4 | ✓ | finanziamenti_soci |
 | `/api/finanziaria` | 4 | ✓ | finanziaria |
-| `/api/fiscal` | 20 | ✓ | fiscal_control |
+| `/api/fiscal` | 21 | ✓ | fiscal_control |
 | `/api/fiscalita` | 11 | ✓ | fiscalita_italiana |
 | `/api/fornitori-learning` | 16 | ✓ | fornitori_learning |
 | `/api/genera-proposte` | 1 | — | dati_provvisori |

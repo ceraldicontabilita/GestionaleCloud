@@ -17,9 +17,9 @@ PAGES = CATALOG["pages"]
 MAIN = (ROOT / "frontend/src/main.jsx").read_text(encoding="utf-8")
 
 
-def test_catalogo_contiene_esattamente_le_63_schermate_numerate():
-    assert [page["id"] for page in PAGES] == list(range(1, 64))
-    assert len({page["path"] for page in PAGES}) == 63
+def test_catalogo_contiene_esattamente_le_64_schermate_numerate():
+    assert [page["id"] for page in PAGES] == list(range(1, 65))
+    assert len({page["path"] for page in PAGES}) == 64
     assert all(page["audit_status"] in {"unverified", "in_review", "verified"} for page in PAGES)
 
 
@@ -106,5 +106,5 @@ def test_il_registro_markdown_e_il_catalogo_macchina_non_divergono():
     report = (ROOT / "docs/COLLAUDO_PAGINE_E2E_2026-08-05.md").read_text(encoding="utf-8")
     rows = re.findall(r"^\|\s*(\d+)\s*\|.*?—\s*`([^`]+)`\s*\|", report, flags=re.MULTILINE)
     documented = {int(identifier): path for identifier, path in rows}
-    assert len(documented) == 63
+    assert len(documented) == 64
     assert documented == {page["id"]: page["path"] for page in PAGES}

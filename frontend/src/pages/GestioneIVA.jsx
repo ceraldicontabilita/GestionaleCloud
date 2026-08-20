@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { RefreshCw, Wallet, Calculator, CheckCircle2, Unlock } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuro, formatDateIT, COLORS, MESI_FULL } from '../lib/utils';
@@ -343,6 +344,9 @@ export default function GestioneIVA() {
           <Button variant="secondary" size="sm" onClick={aggiornaTutto} disabled={loading || controlliLoading}>
             <RefreshCw size={15} className={loading || controlliLoading ? 'spin' : ''} /> Aggiorna
           </Button>
+          <Link to={`/situazione-fiscale/dichiarazioni?year=${anno}&type=DICHIARAZIONE_IVA`} style={{ textDecoration: 'none' }}>
+            <Button variant="secondary" size="sm">Dichiarazioni IVA, F24 e quietanze</Button>
+          </Link>
           <Button
             variant="secondary"
             size="sm"

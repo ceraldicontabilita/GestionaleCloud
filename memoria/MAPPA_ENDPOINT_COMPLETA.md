@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1137 endpoint** in **113 gruppi**.
+> Totale **1139 endpoint** in **113 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 690 · ext esterni = 88 · — da verificare = 359
+**Riepilogo uso:** ✓ frontend = 693 · ext esterni = 88 · — da verificare = 358
 
 ## AI Parser  (11)
 
@@ -563,10 +563,11 @@
 | POST | `/api/document-ai/process-classified-email` | — | document_ai |
 | POST | `/api/document-ai/reprocess-and-save` | — | document_ai |
 
-## Documenti  (44)
+## Documenti  (45)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
+| GET | `/api/documenti/amministrativi` | ✓ | documenti |
 | GET | `/api/documenti/cartelle-email` | — | documenti |
 | GET | `/api/documenti/categorie` | — | documenti |
 | GET | `/api/documenti/documento/{doc_id}` | ✓ | documenti |
@@ -631,7 +632,7 @@
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/documenti-fiscali/lista` | — | documenti_fiscali |
-| POST | `/api/documenti-fiscali/upload` | — | documenti_fiscali |
+| POST | `/api/documenti-fiscali/upload` | ✓ | documenti_fiscali |
 
 ## Documents Inbox  (5)
 
@@ -1525,7 +1526,7 @@
 | GET | `/api/settings/user-preferences` | — | settings |
 | PUT | `/api/settings/user-preferences` | — | settings |
 
-## Situazione fiscale  (20)
+## Situazione fiscale  (21)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1538,6 +1539,7 @@
 | GET | `/api/fiscal/collections/{claim_id}` | ✓ | fiscal_control |
 | POST | `/api/fiscal/collections/{claim_id}/events` | ✓ | fiscal_control |
 | GET | `/api/fiscal/crosswalk` | ✓ | fiscal_control |
+| GET | `/api/fiscal/declarations` | ✓ | fiscal_control |
 | GET | `/api/fiscal/documents/{document_id}/content` | — | fiscal_control |
 | GET | `/api/fiscal/dossier.pdf` | ✓ | fiscal_control |
 | GET | `/api/fiscal/evidence-package.zip` | ✓ | fiscal_control |

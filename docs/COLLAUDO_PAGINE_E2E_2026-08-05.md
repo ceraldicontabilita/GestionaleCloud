@@ -113,6 +113,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 | 62 | [~] IN REVISIONE | Dati ISA — `/contabilita/dati-isa` | Raccoglie consumi e indicatori operativi necessari al confronto con i modelli ISA, mantenendo fonti e periodo. | CONTRATTO API E STATI ASSENTI PROVATI; COMPLETARE PROVENIENZA 2026 |
 
 | 63 | [~] IN REVISIONE | Indice documentale Drive — `/documenti/drive` | Consulta originali, F24, righe tributo e dichiarazioni tramite indice Excel senza salvare binari nel database. | COMPLETARE COLLAUDO LIVE IN SOLA LETTURA |
+| 64 | [~] IN REVISIONE | Atti amministrativi — `/documenti/atti` | Verbali, TARI, AdeR e dimissioni con provenienza documentale. | COMPLETARE COLLAUDO LIVE IN SOLA LETTURA |
 
 ## Pagina tecnica
 

@@ -12,6 +12,11 @@ router = APIRouter()
 COLL = "documents_inbox"
 CATEGORIE = {
     "dichiarazione_iva": "Dichiarazioni IVA",
+    "lipe": "LIPE",
+    "modello_770": "Modelli 770",
+    "redditi_sc": "Redditi società di capitali",
+    "dichiarazione_irap": "Dichiarazioni IRAP",
+    "elenco_percipienti": "Elenchi percipienti",
     "cartella_esattoriale": "Cartelle Esattoriali",
     "avviso_bonario": "Avvisi Bonari",
 }
@@ -23,7 +28,7 @@ async def upload_documento_fiscale(
     periodo: Optional[str] = Form(None), note: Optional[str] = Form(None),
     admin: Dict[str, Any] = Depends(get_current_admin_mfa_user),
 ) -> Dict[str, Any]:
-    if categoria not in CATEGORIE:
+    if categoria != "automatica" and categoria not in CATEGORIE:
         raise HTTPException(400, f"Categoria non valida. Ammesse: {', '.join(CATEGORIE)}")
     content = await file.read()
     if not content:
@@ -34,10 +39,11 @@ async def upload_documento_fiscale(
     try:
         result = await FiscalDocumentIngestionService(Database.get_db()).ingest(
             content=content, filename=file.filename or "documento.pdf",
-            source="upload_manuale", category_hint=categoria,
+            source="upload_automatico" if categoria == "automatica" else "upload_manuale",
+            category_hint=None if categoria == "automatica" else categoria,
             source_metadata={"periodo": periodo, "note": note,
                              "uploaded_by": actor,
-                             "declared_category": categoria},
+                             "declared_category": None if categoria == "automatica" else categoria},
         )
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
