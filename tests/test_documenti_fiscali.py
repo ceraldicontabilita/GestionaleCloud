@@ -100,7 +100,16 @@ def fake_db(monkeypatch):
             return {"status": "inserted", "document_id": fiscal_id,
                     "version_id": f"version-{fiscal_id}", "inbox_id": doc_id, "sha256": digest}
 
-    monkeypatch.setattr(df, "FiscalDocumentIngestionService", _FakeIngestion)
+    from app.services import drive_declaration_upload
+    uploaded = {}
+    def _fake_drive_upload(*, content, filename, category, filing_year, note=None):
+        digest = hashlib.sha256(content).hexdigest()
+        duplicate = digest in uploaded
+        document_id = uploaded.setdefault(digest, f"drive-{len(uploaded) + 1}")
+        return {"success": True, "duplicate": duplicate, "document_id": document_id,
+                "sha256": digest, "drive_path": f"01_DICHIARAZIONI_FISCALI/{filing_year}/{filename}",
+                "drive_url": f"https://drive.google.com/open?id={document_id}"}
+    monkeypatch.setattr(drive_declaration_upload, "upload_declaration", _fake_drive_upload)
     return db, inbox
 
 
@@ -125,29 +134,28 @@ def test_upload_dichiarazione_iva_ok(fake_db):
     up = _FakeUpload("dichiarazione_iva_2025.pdf", b"%PDF-1.4 contenuto")
     res = _run(df.upload_documento_fiscale(file=up, categoria="dichiarazione_iva", periodo="2025"))
     assert res["success"] and not res["duplicate"]
-    assert res["download_url"].endswith(f"/documento/{res['id']}/download")
-    # memorizzato con id, categoria e pdf
-    assert len(inbox.docs) == 1
-    d = inbox.docs[0]
-    assert d["category"] == "dichiarazione_iva" and d["periodo"] == "2025"
-    assert d["pdf_data"] and d["id"] == res["id"]
+    assert res["storage"] == "google_drive"
+    assert res["drive_url"].startswith("https://drive.google.com/")
+    assert len(inbox.docs) == 0
 
 
 def test_upload_dedup_stesso_file(fake_db):
     _db, inbox = fake_db
     up1 = _FakeUpload("a.pdf", b"%PDF-1.4 stesso")
-    r1 = _run(df.upload_documento_fiscale(file=up1, categoria="avviso_bonario"))
+    r1 = _run(df.upload_documento_fiscale(file=up1, categoria="avviso_bonario", periodo="2026"))
     up2 = _FakeUpload("b.pdf", b"%PDF-1.4 stesso")  # stesso contenuto, nome diverso
-    r2 = _run(df.upload_documento_fiscale(file=up2, categoria="avviso_bonario"))
+    r2 = _run(df.upload_documento_fiscale(file=up2, categoria="avviso_bonario", periodo="2026"))
     assert r2["duplicate"] is True
-    assert r2["id"] == r1["id"]
-    assert len(inbox.docs) == 1  # nessun doppione
+    assert r2["document_id"] == r1["document_id"]
+    assert len(inbox.docs) == 0  # nessuna copia Mongo
 
 
 def test_lista_filtra_per_categoria(fake_db):
     _db, inbox = fake_db
-    _run(df.upload_documento_fiscale(file=_FakeUpload("iva.pdf", b"%PDF iva"), categoria="dichiarazione_iva"))
-    _run(df.upload_documento_fiscale(file=_FakeUpload("cart.pdf", b"%PDF cart"), categoria="cartella_esattoriale"))
+    _run(inbox.insert_one({"id": "legacy-iva", "company_id": df.settings.FISCAL_COMPANY_ID,
+        "filename": "iva.pdf", "category": "dichiarazione_iva"}))
+    _run(inbox.insert_one({"id": "legacy-cart", "company_id": df.settings.FISCAL_COMPANY_ID,
+        "filename": "cart.pdf", "category": "cartella_esattoriale"}))
     res = _run(df.lista_documenti_fiscali(categoria="dichiarazione_iva", limit=200))
     assert res["totale"] == 1
     assert res["documenti"][0]["category"] == "dichiarazione_iva"

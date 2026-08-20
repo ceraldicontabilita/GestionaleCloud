@@ -39,7 +39,7 @@ describe('Situazione fiscale collegata all indice Drive', () => {
     expect(screen.getByText('320')).toBeInTheDocument();
     expect(screen.getByText('1297')).toBeInTheDocument();
     expect(screen.getByText('60')).toBeInTheDocument();
-    expect(screen.getByText(/indice Drive 1 · archivio transitorio DB 0/i)).toBeInTheDocument();
+    expect(screen.getByText((_content, node) => node?.textContent === 'Archivio canonico: Google Drive · indice 1')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Apri originale Drive' })).toBeEnabled();
   });
 });

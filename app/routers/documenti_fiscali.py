@@ -1,11 +1,11 @@
-"""Compatibilita upload fiscale, delegata alla pipeline unica di Documenti."""
+"""Consultazione legacy e upload dichiarazioni nell'archivio canonico Drive."""
 from typing import Any, Dict, Optional
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 
 from app.config import settings
 from app.database import Database
-from app.services.fiscal_document_ingestion import FiscalDocumentIngestionService
 from app.utils.dependencies import get_current_admin_mfa_user, get_current_admin_user
 
 router = APIRouter()
@@ -26,7 +26,7 @@ CATEGORIE = {
 async def upload_documento_fiscale(
     file: UploadFile = File(...), categoria: str = Form(...),
     periodo: Optional[str] = Form(None), note: Optional[str] = Form(None),
-    admin: Dict[str, Any] = Depends(get_current_admin_mfa_user),
+    _admin: Dict[str, Any] = Depends(get_current_admin_mfa_user),
 ) -> Dict[str, Any]:
     if categoria != "automatica" and categoria not in CATEGORIE:
         raise HTTPException(400, f"Categoria non valida. Ammesse: {', '.join(CATEGORIE)}")
@@ -35,29 +35,17 @@ async def upload_documento_fiscale(
         raise HTTPException(400, "File vuoto")
     if not (file.filename or "").lower().endswith(".pdf"):
         raise HTTPException(400, "Sono ammessi solo PDF")
-    actor = admin.get("user_id") if isinstance(admin, dict) else "direct-test"
     try:
-        result = await FiscalDocumentIngestionService(Database.get_db()).ingest(
-            content=content, filename=file.filename or "documento.pdf",
-            source="upload_automatico" if categoria == "automatica" else "upload_manuale",
-            category_hint=None if categoria == "automatica" else categoria,
-            source_metadata={"periodo": periodo, "note": note,
-                             "uploaded_by": actor,
-                             "declared_category": None if categoria == "automatica" else categoria},
-        )
+        import asyncio
+        from app.services.drive_declaration_upload import upload_declaration
+        result = await asyncio.to_thread(upload_declaration, content=content,
+            filename=file.filename or "documento.pdf", category=categoria,
+            filing_year=int(periodo or datetime.now().year), note=note)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    db = Database.get_db()
-    inbox = await db[COLL].find_one(
-        {"company_id": settings.FISCAL_COMPANY_ID, "sha256": result["sha256"]},
-        {"_id": 0, "id": 1},
-    )
-    if not inbox:
-        raise HTTPException(409, "Versione fiscale senza documento nell'archivio Documenti")
-    return {"success": True, "duplicate": result["status"] == "duplicate",
-            "id": inbox["id"], "categoria": categoria,
-            "fiscal_document_id": result["document_id"],
-            "download_url": f"/api/documenti/documento/{inbox['id']}/download"}
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    return {**result, "categoria": categoria, "storage": "google_drive"}
 
 
 @router.get("/lista")

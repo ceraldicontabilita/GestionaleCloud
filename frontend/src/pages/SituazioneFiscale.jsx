@@ -193,7 +193,7 @@ export default function SituazioneFiscale() {
       <Card bodyStyle={{ padding: 16 }}>
         <h3 style={{ marginTop: 0 }}>{activeLabel}</h3>
         {tabSources && (tab === 'f24' || tab === 'dichiarazioni') && <div style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 8, background: '#ecfdf5', color: '#166534' }}>
-          <strong>Fonti collegate:</strong> indice Drive {tabSources.drive_excel_index || 0} · archivio transitorio DB {tabSources.database || 0}
+          <strong>Archivio canonico:</strong> Google Drive · indice {tabSources.drive_excel_index || 0}
           {tabSources.drive_warning && <div style={{ color: '#92400e', marginTop: 4 }}>Drive non disponibile: {tabSources.drive_warning}</div>}
         </div>}
         {tab === 'f24' && <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end', marginBottom: 14 }}>
