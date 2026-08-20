@@ -1,5 +1,5 @@
 /**
- * Collaudo di apertura delle 62 schermate operative contro l'ERP isolato.
+ * Collaudo di apertura delle 64 schermate operative contro l'ERP isolato.
  *
  * Usa router backend reali e MongoDB in memoria (vedi
  * scripts/e2e_distruttivo_server.py). Non legge e non modifica dati aziendali.
@@ -83,10 +83,14 @@ function uniqueProblems(problems) {
     });
     page.on('console', message => {
       const detail = message.text();
-      // Le pagine di dettaglio possono dichiarare un 404 di fixture come
-      // stato vuoto atteso. Chromium emette anche un generico console error
-      // per la stessa risposta: non va contato due volte come difetto pagina.
-      if (allowedStatuses.has(404) && /Failed to load resource.*404/i.test(detail)) return;
+      // Una pagina può dichiarare uno stato API atteso nell'ambiente isolato
+      // (per esempio 404 di fixture o 503 Drive senza credenziali). Chromium
+      // emette anche un errore console per la stessa risposta: non va contato
+      // due volte come difetto pagina.
+      const allowedResourceError = [...allowedStatuses].some(status => (
+        new RegExp(`Failed to load resource.*${status}`, 'i').test(detail)
+      ));
+      if (allowedResourceError) return;
       if (message.type() === 'error' && !IGNORE_CONSOLE.some(pattern => pattern.test(detail))) {
         problems.push({ type: 'console', detail: detail.slice(0, 240) });
       }
