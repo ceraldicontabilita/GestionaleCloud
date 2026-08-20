@@ -66,6 +66,9 @@ class SheetsRuntimeDatabase:
 
     async def hydrate(self) -> dict[str, Any]:
         result = await restore_all(self._memory_db, self._config, apply=True)
+        discovered_spreadsheet_id = str(result.get("spreadsheet_id") or "").strip()
+        if discovered_spreadsheet_id:
+            self._config["GOOGLE_SHEETS_LEDGER_ID"] = discovered_spreadsheet_id
         errors = sum(int(item.get("numero_errori") or 0) for item in result["fogli"])
         if errors:
             raise RuntimeError(

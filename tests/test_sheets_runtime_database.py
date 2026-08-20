@@ -51,3 +51,33 @@ def test_runtime_blocca_collezione_non_migrata():
         assert "non ancora migrata" in str(exc)
     else:
         raise AssertionError("Una collezione fuori manifest non deve usare storage implicito")
+
+
+def test_runtime_memorizza_il_foglio_scoperto_per_le_scritture(monkeypatch):
+    calls = []
+
+    async def fake_restore(db, config, apply=False):
+        assert apply is True
+        return {
+            "spreadsheet_id": "SHEET-DISCOVERED",
+            "fogli": [
+                {"foglio": sheet.title, "collezione": sheet.collection,
+                 "prefisso": sheet.prefix, "valide": 0, "numero_errori": 0}
+                for sheet in runtime_module.SHEETS
+            ],
+        }
+
+    async def fake_sync(db, sheet, spreadsheet_id, *, preserve_missing=True):
+        calls.append((sheet.collection, spreadsheet_id, preserve_missing))
+        return {"foglio": sheet.title, "righe": 0}
+
+    monkeypatch.setattr(runtime_module, "restore_all", fake_restore)
+    monkeypatch.setattr(runtime_module, "sync_collection", fake_sync)
+    runtime = SheetsRuntimeDatabase("test", {
+        "GOOGLE_SHEETS_LEDGER_FOLDER_ID": "FOLDER-1",
+    })
+
+    run(runtime.hydrate())
+    run(runtime["invoices"].insert_one({"id": "INV-1"}))
+
+    assert calls == [("invoices", "SHEET-DISCOVERED", False)]
