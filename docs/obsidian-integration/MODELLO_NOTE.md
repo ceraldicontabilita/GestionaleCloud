@@ -1,5 +1,14 @@
 # Modello delle note
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 ## Convenzioni
 
 - Date ISO `YYYY-MM-DD`; timestamp ISO con timezone.
@@ -99,4 +108,3 @@ ricevuta_paypal_presente: false
 bonifico_documentale_presente: false
 movimento_bancario_verificato: false
 ```
-

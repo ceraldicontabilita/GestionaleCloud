@@ -3,7 +3,7 @@
     "schema_version": 2,
     "document_type": "page_source_map",
     "updated_at": "2026-08-20",
-    "source_revision": "26d23d8652d25dbe1f49734a66f24d0a61846513",
+    "source_revision": "916d6d18ec8271f441fe3a3013ded3ace6664614",
     "generator": "scripts/refresh_json_docs.py",
     "verification": "static_source_map"
   },
@@ -122,8 +122,7 @@
       "/api/verbali-riconciliazione",
       "/api/verifica-coerenza",
       "/api/verifica-coerenza/completa/{param}",
-      "/api/voci-bilancio",
-      "/api/whatsapp"
+      "/api/voci-bilancio"
     ]
   },
   "archivio_dati": {

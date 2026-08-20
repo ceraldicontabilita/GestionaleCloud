@@ -1,11 +1,13 @@
 # Obsidian Knowledge Architecture — GestionaleCloud
 
 <!-- gestionalecloud-doc
-status: draft
+status: historical
 reviewed_at: 2026-08-20
 storage_architecture: drive-only
-source: attachment Pasted text #1
 -->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
 
 ## Obiettivo
 

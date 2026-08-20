@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1140 · tenere: 737 · verificare: 376 · admin-only (migrazione/manutenzione): 27
+**Totale endpoint:** 1135 · tenere: 737 · verificare: 371 · admin-only (migrazione/manutenzione): 27
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -1154,11 +1154,6 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/warehouse/products` | public_api | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/warehouse/products/{product_id}` | public_api | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/warehouse/products/{product_id}` | public_api | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/whatsapp/send` | whatsapp_webhook | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/whatsapp/send-test` | whatsapp_webhook | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/whatsapp/status` | whatsapp_webhook | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/whatsapp/webhook` | whatsapp_webhook | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/whatsapp/webhook` | whatsapp_webhook | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /data-deletion` | legal_pages | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /privacy` | legal_pages | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /terms` | legal_pages | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

@@ -1,5 +1,14 @@
 # Piano di implementazione
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 ## Fase 0 — Analisi e inventario
 
 - sincronizzare il repository canonico;
@@ -114,4 +123,3 @@
 3. scollegare il vault dal server;
 4. ripristinare il vault da backup oppure rigenerarlo;
 5. verificare che Gestionale e Drive/Sheets non abbiano subito mutazioni.
-

@@ -1,5 +1,14 @@
 # Sicurezza e governance
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 ## Classificazione
 
 | Classe | Esempi | Destinazione |
@@ -53,4 +62,3 @@ Può:
 ## Conservazione
 
 La durata delle note segue le regole della sorgente. L’eliminazione nel Gestionale non comporta cancellazione silenziosa: la proiezione viene marcata archiviata o rimossa con evento di audit secondo la policy applicabile.
-

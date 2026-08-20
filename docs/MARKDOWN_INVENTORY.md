@@ -23,14 +23,19 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 - Correnti: **16**
 - Riferimento: **25**
 - Generati: **5**
-- Storici: **27**
-- Totale: **73**
+- Storici: **42**
+- Totale: **88**
 
 ## Elenco completo
 
 | File | Stato | Uso |
 |---|---|---|
+| `.github/agents/mcp-gateway.agent.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `.github/agents/ogni-pagina.agent.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `.github/copilot-instructions.md` | `current` | Autorità operativa corrente |
+| `.github/instructions/pagine-erp.instructions.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `.github/skills/mcp-gateway/SKILL.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `.github/skills/pagina-erp/SKILL.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `CLAUDE.md` | `current` | Autorità operativa corrente |
 | `DESIGN.md` | `current` | Autorità operativa corrente |
 | `LOGICA_FUNZIONAMENTO.md` | `current` | Autorità operativa corrente |
@@ -60,8 +65,18 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `docs/MATRICE_SEMANTICA_ZIP_MAIN_2026-08-10.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/MCP_GESTIONALE_RUNBOOK.md` | `current` | Autorità operativa corrente |
 | `docs/MCP_GESTIONALE_SPEC.md` | `current` | Autorità operativa corrente |
+| `docs/OBSIDIAN_KNOWLEDGE_ARCHITECTURE_2026-08-20.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/PIANO_OPERATIVO_GESTIONALE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/SPECIFICA_OPERATIVA_GESTIONALECLOUD.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/obsidian-integration/ARCHITETTURA.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/obsidian-integration/MAPPA_COLLEGAMENTI.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/obsidian-integration/MODELLO_NOTE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/obsidian-integration/PIANO_IMPLEMENTAZIONE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/obsidian-integration/PROMPT_IMPLEMENTAZIONE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/obsidian-integration/README.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/obsidian-integration/SICUREZZA_E_GOVERNANCE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/obsidian-integration/templates/ENTITA.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/obsidian-integration/templates/RUN_GIORNALIERO.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/porting-private-cloud-2026-08-08.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/rt-locale-drive.md` | `current` | Autorità operativa corrente |
 | `frontend/README.md` | `current` | Autorità operativa corrente |
