@@ -265,10 +265,10 @@ export default function PuliziaPrimaNota() {
           <div style={{ fontSize: 14, color: '#78350f', lineHeight: 1.5 }}>
             <strong>Come si usa questa pagina.</strong>
             <br />
-            I pulsanti vanno premuti <em>nell'ordine in cui appaiono</em>. Prima controlli
-            cosa c'è da sistemare (1 e 2), poi esegui la pulizia (3), infine risincronizzi
-            eventuali corrispettivi mancanti (4). Nessun dato viene cancellato davvero:
-            i duplicati vengono solo <em>nascosti</em> e restano recuperabili dal database.
+            Ogni controllo mostra sempre l'elenco delle operazioni coinvolte. Il passo 2
+            corregge da solo esclusivamente i duplicati con identità fattura certa e mostra
+            separatamente i casi dubbi. Nessun dato viene cancellato definitivamente: le copie
+            certe vengono solo <em>nascoste</em> e restano recuperabili.
           </div>
         </div>
 
