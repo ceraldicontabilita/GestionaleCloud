@@ -2,6 +2,7 @@
 from app.services.noleggio.controlli import (
     contiene_segnali_cessazione,
     driver_alla_data,
+    _testo_fattura,
 )
 from app.services.noleggio.parsers import (
     estrai_breakdown_linea,
@@ -31,6 +32,14 @@ def test_targa_strutturata_arval_identifica_mazda_cx60_e_anno():
     }
     assert estrai_veicolo_strutturato(linea) == atteso
     assert estrai_breakdown_linea(linea).items() >= atteso.items()
+
+
+def test_testo_fattura_include_targa_negli_altri_dati_gestionali():
+    fattura = {"linee": [{
+        "descrizione": "Canone locazione",
+        "altri_dati_gestionali": [{"tipo_dato": "TARGA", "riferimento_testo": "GW980EP"}],
+    }]}
+    assert "GW980EP" in _testo_fattura(fattura)
 
 
 class TestSegnaliCessazione:

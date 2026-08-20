@@ -245,17 +245,17 @@ export default function PuliziaPrimaNota() {
     }
   };
 
-  // Collega i versamenti dell'estratto conto alle uscite di cassa già
-  // registrate dall'utente. Non crea mai un'uscita di cassa dal solo EC.
+  // Materializza e collega entrambe le gambe Cassa/Banca dei versamenti
+  // provati dall'estratto conto, con deduplica sull'identificativo EC.
   const [risultatoVersamenti, setRisultatoVersamenti] = useState(null);
 
   const lanciaRiparaVersamenti = async () => {
     const conferma = await confirm({
       title: `Riconcilia versamenti Cassa/Banca — anno ${anno}`,
       message:
-        'Cerca nell\'estratto conto le causali di versamento contanti e le collega ' +
-        'soltanto alle uscite "Versamento Banca" già registrate in Prima Nota Cassa. ' +
-        'Se manca la registrazione manuale, non crea alcun movimento di cassa.',
+        'Cerca nell\'estratto conto le causali di versamento e prelievo contanti, ' +
+        'crea le gambe mancanti in Prima Nota Cassa e Banca e collega quelle già presenti, ' +
+        'senza duplicare i movimenti.',
       confirmText: 'Riconcilia',
       variant: 'warning',
     });

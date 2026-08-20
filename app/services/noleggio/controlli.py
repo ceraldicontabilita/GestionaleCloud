@@ -31,6 +31,24 @@ from .constants import FORNITORI_NOLEGGIO, TARGA_PATTERN, COLLECTION
 
 logger = logging.getLogger(__name__)
 
+
+def _solo_cifre(value: Any) -> str:
+    return re.sub(r"\D", "", str(value or ""))
+
+
+def _testo_fattura(invoice: Dict[str, Any]) -> str:
+    """Testo indicizzabile completo, incluse targhe negli ADG XML."""
+    parti = [str(invoice.get("descrizione") or "")]
+    for linea in invoice.get("linee") or []:
+        parti.append(str(linea.get("descrizione") or linea.get("Descrizione") or ""))
+        for dato in linea.get("altri_dati_gestionali") or []:
+            if isinstance(dato, dict):
+                parti.extend(str(v) for v in dato.values() if v is not None)
+            else:
+                parti.append(str(dato))
+    parti.extend(str(c) for c in (invoice.get("causali") or []))
+    return " ".join(parti).upper()
+
 # Diciture di chiusura contratto (specifica utente, minuscole per confronto)
 DICITURE_CESSAZIONE = [
     "cessazione contratto",
@@ -93,18 +111,23 @@ def driver_alla_data(veicolo: Dict[str, Any], data_evento: Optional[str]) -> Dic
 async def _ultima_fattura_per_targa(db, targa: str, fornitore_piva: Optional[str]) -> Optional[Dict[str, Any]]:
     """Ultima fattura (per data) di un noleggiatore che cita la targa."""
     pive = [fornitore_piva] if fornitore_piva else list(FORNITORI_NOLEGGIO.values())
+    pive_norm = {_solo_cifre(p) for p in pive if p}
     targa_up = targa.upper()
     cursor = db["invoices"].find(
-        {"supplier_vat": {"$in": pive}},
+        # I dati storici contengono P.IVA sia normalizzate sia formattate:
+        # filtrare qui per uguaglianza esatta nascondeva fatture realmente
+        # caricate. La selezione del noleggiatore viene fatta sotto dopo la
+        # normalizzazione, su un insieme comunque limitato.
+        {},
         {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1,
-         "supplier_name": 1, "linee.descrizione": 1, "linee.altri_dati_gestionali": 1,
-         "causali": 1},
-    ).sort("invoice_date", -1).limit(300)
+         "supplier_name": 1, "supplier_vat": 1, "descrizione": 1,
+         "linee.descrizione": 1, "linee.altri_dati_gestionali": 1, "causali": 1},
+    ).sort("invoice_date", -1).limit(5000)
     fallback = None
     async for inv in cursor:
-        testo = " ".join(
-            str(l.get("descrizione") or "") for l in (inv.get("linee") or [])
-        ).upper()
+        if _solo_cifre(inv.get("supplier_vat")) not in pive_norm:
+            continue
+        testo = _testo_fattura(inv)
         if targa_up in testo:
             return inv
         # Fornitore con un solo veicolo: qualunque sua fattura vale
@@ -157,6 +180,8 @@ async def controlla_regolarita_canoni(db) -> Dict[str, Any]:
             continue
         giorni_passati = (oggi - data_ultima).days
         if giorni_passati <= soglia_giorni:
+            from app.services.alert_engine import risolvi_alert
+            await risolvi_alert("NOL_FATTURA_MANCANTE", targa, db, "fattura_recente_rilevata")
             continue
 
         esiti["senza_fattura_recente"] += 1

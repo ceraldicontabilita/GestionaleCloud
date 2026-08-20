@@ -2080,12 +2080,11 @@ async def ricategorizza_batch_movimenti() -> Dict[str, Any]:
 @router.post("/ripara-versamenti-cassa")
 @handle_errors
 async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opzionale). Se omesso ripara tutti gli anni")) -> Dict[str, Any]:
-    """Riconcilia i versamenti solo quando la gamba Cassa esiste già.
+    """Materializza e riconcilia le due gambe dei trasferimenti di contante.
 
-    L'estratto conto prova l'accredito bancario, ma non autorizza a creare
-    un'uscita di cassa. Se l'utente non ha prima registrato "Versamento
-    Banca", il movimento resta da verificare e nessuna scrittura di prima
-    nota viene generata automaticamente.
+    La causale esplicita dell'estratto conto prova il trasferimento: un
+    versamento genera uscita Cassa + entrata Banca, un prelievo il contrario.
+    Gli ID del movimento EC e dell'operazione rendono l'operazione idempotente.
     """
     import uuid as _uuid
     db = Database.get_db()

@@ -485,13 +485,9 @@ export default function NoleggioAuto() {
         >
           🔄 Aggiorna
         </Button>
-        <Button
-          onClick={() => setShowAddVeicolo(true)}
-          variant="primary"
-          data-testid="noleggio-add-btn"
-        >
-          ➕ Aggiungi Veicolo
-        </Button>
+        <span style={{ fontSize: 13, color: COLORS.textMuted }}>
+          I veicoli vengono compilati automaticamente dalle fatture di noleggio.
+        </span>
       </div>
 
       {err && (

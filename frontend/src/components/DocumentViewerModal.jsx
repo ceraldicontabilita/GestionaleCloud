@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import api from '../api';
 
 /**
@@ -200,7 +201,7 @@ export default function DocumentViewerModal({
             background: '#f8fafc',
           };
 
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       data-testid={`${testIdPrefix}-overlay`}
@@ -211,7 +212,10 @@ export default function DocumentViewerModal({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 2000,
+        // Deve stare sopra anche ai modali contenitori (es. Estratto
+        // Fatture fornitori, z-index 10000). Il portal evita inoltre gli
+        // stacking context creati dai pannelli della pagina.
+        zIndex: 20000,
         padding: 12,
       }}
     >
@@ -347,6 +351,7 @@ export default function DocumentViewerModal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
