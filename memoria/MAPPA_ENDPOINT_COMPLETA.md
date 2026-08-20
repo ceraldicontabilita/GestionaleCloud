@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1134 endpoint** in **113 gruppi**.
+> Totale **1135 endpoint** in **113 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 689 · ext esterni = 88 · — da verificare = 357
+**Riepilogo uso:** ✓ frontend = 689 · ext esterni = 88 · — da verificare = 358
 
 ## AI Parser  (11)
 
@@ -1650,11 +1650,12 @@
 | GET | `/api/verbali-noleggio/dettaglio/{numero_verbale:path}` | ✓ | verbali_noleggio_api |
 | POST | `/api/verbali-noleggio/{verbale_id}/upload-quietanza` | — | verbali_noleggio_api |
 
-## Verbali Noleggio  (5)
+## Verbali Noleggio  (6)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | POST | `/api/verbali-noleggio/associa-pdf/{numero_verbale:path}` | — | verbali_noleggio |
+| POST | `/api/verbali-noleggio/correggi-importo/{numero_verbale:path}` | — | verbali_noleggio |
 | GET | `/api/verbali-noleggio/dettaglio/{numero_verbale}` | ✓ | verbali_noleggio |
 | GET | `/api/verbali-noleggio/pdf/{numero_verbale:path}` | ✓ | verbali_noleggio |
 | POST | `/api/verbali-noleggio/ricalcola-pdf/{numero_verbale:path}` | — | verbali_noleggio |

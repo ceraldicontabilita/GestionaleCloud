@@ -70,6 +70,7 @@ describe('DettaglioVerbale viewer PDF', () => {
     render(<DettaglioVerbale />);
     expect(await screen.findByRole('button', { name: 'Associa PDF verbale' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Rileggi importo dal PDF' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Importo corretto dal PDF' })).toBeInTheDocument();
     expect(screen.getByText('Associazione targa e driver')).toBeInTheDocument();
   });
 });
