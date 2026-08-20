@@ -29,6 +29,7 @@ REGOLA CANONICA POS (utente, 18/07/2026 — confermata a voce e definitiva):
   con saldo progressivo in Coerenza POS per recuperarlo nei giorni dopo.
 """
 import logging
+import hashlib
 import re
 import uuid
 from contextlib import asynccontextmanager
@@ -71,6 +72,51 @@ REGISTRI = {"cassa": "prima_nota_cassa", "banca": "prima_nota_banca"}
 # gia' sul conto. Serve a tenerle fuori dai saldi bancari reali senza doverle
 # riconoscere dal codice di conto, che puo' cambiare.
 NATURA_CREDITO_POS = "credito_pos"
+
+_OPERATION_ID_FIELDS = (
+    "operation_id", "idempotency_key", "estratto_conto_id",
+    "movimento_bancario_id", "assegno_id", "transazione_paypal_id",
+    "paypal_transaction_id", "sumup_transaction_id", "corrispettivo_id",
+    "bonifico_id", "f24_id", "quietanza_id", "documento_id",
+)
+
+
+def calcola_operation_hash(registro: str, mov: Dict[str, Any]) -> Optional[str]:
+    """Identita stabile della singola operazione, non del documento collegato.
+
+    ``fattura_id`` e' intenzionalmente escluso: una fattura puo' essere
+    saldata da piu' assegni, bonifici o rate. Senza una prova originaria
+    immutabile non inventiamo un hash e non deduplichiamo automaticamente.
+    """
+    source = str(mov.get("source") or mov.get("fonte") or "").strip().lower()
+    external = None
+    external_field = None
+    for field in _OPERATION_ID_FIELDS:
+        value = mov.get(field)
+        if value not in (None, ""):
+            external_field, external = field, str(value).strip()
+            break
+
+    # Gli archivi assegni storici spesso espongono il numero solo nella
+    # descrizione. Il numero assegno e' identita dell'operazione; data/importo
+    # e fattura non lo sono.
+    if external is None and "assegn" in source:
+        text = str(mov.get("descrizione") or mov.get("description") or "")
+        match = re.search(r"(?:ASSEGNO\s*(?:N\.?|NUM(?:ERO)?[:.]?)?\s*)(\d{6,})", text, re.I)
+        if match:
+            external_field, external = "numero_assegno", match.group(1)
+
+    if external is None:
+        return None
+    # Una prova bancaria puo' essere ripartita su piu' fatture: le righe di
+    # allocazione condividono l'operation ID, ma hanno target contabili
+    # diversi e non devono collassare tra loro.
+    allocation_target = str(
+        mov.get("invoice_id") or mov.get("fattura_id")
+        or mov.get("allocation_id") or mov.get("quota_id") or ""
+    ).strip()
+    raw = f"v1|{registro}|{source}|{external_field}|{external}|target:{allocation_target}"
+    return "OP-" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 class ScritturaNonValida(ValueError):
@@ -115,6 +161,20 @@ async def scrivi_movimento(db, registro: str, mov: Dict[str, Any]) -> str:
     if registro not in REGISTRI:
         raise ScritturaNonValida(f"registro sconosciuto: {registro}")
     doc = _prepara_documento(mov)
+    operation_hash = doc.get("operation_hash") or calcola_operation_hash(registro, doc)
+    if operation_hash:
+        doc["operation_hash"] = operation_hash
+        collection = db[REGISTRI[registro]]
+        query = {"operation_hash": operation_hash, "status": {"$nin": ["deleted", "archived"]}}
+        if hasattr(collection, "find_one_and_update"):
+            precedente = await collection.find_one_and_update(
+                query, {"$setOnInsert": doc}, upsert=True,
+            )
+        else:  # fake minimali dei test storici
+            precedente = await collection.find_one(query)
+            if precedente is None:
+                await collection.insert_one(dict(doc))
+        return (precedente or doc).get("id")
     await db[REGISTRI[registro]].insert_one(dict(doc))
     return doc["id"]
 

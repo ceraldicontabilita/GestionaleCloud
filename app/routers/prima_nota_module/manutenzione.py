@@ -1778,25 +1778,28 @@ async def dedup_fatture_prima_nota(
         False,
         description="Rimuove automaticamente solo i duplicati con identita fattura certa",
     ),
+    ripristina_regola_errata: bool = Query(
+        False,
+        description="Ripristina le righe nascoste dalla precedente regola basata su fattura_id",
+    ),
     anno: Optional[int] = Query(None, description="Limita al singolo anno")
 ) -> Dict[str, Any]:
-    """Elimina i duplicati di fatture in Prima Nota Cassa e Banca.
+    """Deduplica esclusivamente la stessa operazione originaria.
 
-    Due movimenti sono duplicati se hanno:
-      - stesso fattura_id (se presente), OPPURE
-      - stesso riferimento (es. FATT-xxx), OPPURE
-      - stesso numero_fattura + stesso importo + stessa data
-    Viene tenuto il movimento più VECCHIO (created_at minimo),
-    gli altri vengono marchiati deleted (soft delete, recuperabili).
-
-    USO: chiamare prima con ?applica=false per vedere cosa farebbe,
-    poi ?applica=true per eseguire.
+    Una relazione comune (per esempio lo stesso ``fattura_id``) non rende
+    duplicate due operazioni: una fattura puo' avere piu' assegni o rate.
     """
     db = Database.get_db()
+    from app.services.scritture_contabili import calcola_operation_hash
+
+    ripristino = None
+    if ripristina_regola_errata:
+        ripristino = await ripristina_dedup_fatture_errato()
 
     report: Dict[str, Any] = {
         "cassa": {}, "banca": {}, "applica": applica,
         "auto_risolvi_certi": auto_risolvi_certi,
+        "ripristino_regola_errata": ripristino,
     }
 
     def dettaglio_movimento(m: Dict[str, Any]) -> Dict[str, Any]:
@@ -1826,53 +1829,13 @@ async def dedup_fatture_prima_nota(
         if len(movimenti) >= 50000:
             logger.warning("manutenzione prima nota %s: raggiunto il tetto di 50000 documenti, possibile troncamento", label)
 
-        # Raggruppamento per chiave di dedup
+        # Raggruppamento solo per identita della singola prova/operazione.
         gruppi: Dict[str, list] = {}
         for m in movimenti:
-            # Considera solo movimenti che sembrano collegati a fatture
-            fid = m.get("fattura_id")
-            rif = m.get("riferimento") or ""
-            num = m.get("numero_fattura") or ""
-
-            chiave = None
-            if fid:
-                chiave = f"fid:{fid}"
-            elif rif and rif.startswith("FATT-"):
-                # STESSA chiave del ramo fattura_id: "FATT-<id>" e
-                # fattura_id=<id> sono la stessa fattura (il vecchio
-                # sync_fatture scriveva solo il riferimento — caso GB FOOD
-                # 02/01/2026 doppia, segnalato dall'utente 18/07).
-                chiave = f"fid:{rif[5:]}"
-            elif num:
-                # fallback: numero + importo + data (protegge da omonimie)
-                chiave = f"num:{num}|imp:{m.get('importo')}|d:{m.get('data')}"
-            else:
-                continue  # non fattura, ignoro (le anonime sono gestite sotto)
-
+            chiave = m.get("operation_hash") or calcola_operation_hash(label, m)
+            if not chiave:
+                continue
             gruppi.setdefault(chiave, []).append(m)
-
-        # Righe ANONIME (senza fattura_id/riferimento/numero, es. vecchio
-        # sync_fatture: "Fattura  - GB FOOD SRL"): sono duplicati se esiste
-        # una riga IDENTIFICATA con stessa data, stesso importo e lo stesso
-        # fornitore citato nella descrizione (caso GB FOOD 02/01/2026,
-        # segnalato dall'utente 18/07: la stessa fattura appariva due volte).
-        identificate: Dict[tuple, list] = {}
-        for m in movimenti:
-            if m.get("fattura_id") or (m.get("riferimento") or "").startswith("FATT-") or m.get("numero_fattura"):
-                k = (m.get("data"), round(float(m.get("importo") or 0), 2))
-                identificate.setdefault(k, []).append((m.get("descrizione") or "").upper())
-        anonime_dup = []
-        for m in movimenti:
-            if m.get("fattura_id") or (m.get("riferimento") or "").startswith("FATT-") or m.get("numero_fattura"):
-                continue
-            if m.get("categoria") != "Fatture" and "FATT" not in (m.get("descrizione") or "").upper():
-                continue
-            nome = (m.get("descrizione") or "").split(" - ")[-1].strip().upper()
-            if len(nome) < 4:
-                continue
-            k = (m.get("data"), round(float(m.get("importo") or 0), 2))
-            if any(nome in d for d in identificate.get(k, [])):
-                anonime_dup.append(m)
 
         duplicati_trovati = []
         ids_certi = []
@@ -1884,12 +1847,8 @@ async def dedup_fatture_prima_nota(
             mov_list.sort(key=lambda x: x.get("created_at") or "9999")
             tenuto = mov_list[0]
             da_eliminare = mov_list[1:]
-            certezza = "certo" if chiave.startswith("fid:") else "da_verificare"
-            motivo = (
-                "Stessa identita canonica della fattura (fattura_id/riferimento FATT)"
-                if certezza == "certo" else
-                "Stesso numero, data e importo: verificare il fornitore prima di rimuovere"
-            )
+            certezza = "certo"
+            motivo = "Stesso hash della prova originaria della singola operazione"
             duplicati_trovati.append({
                 "chiave": chiave,
                 "certezza": certezza,
@@ -1904,22 +1863,6 @@ async def dedup_fatture_prima_nota(
             })
             destinazione = ids_certi if certezza == "certo" else ids_da_verificare
             destinazione.extend(d.get("id") for d in da_eliminare if d.get("id"))
-
-        for m in anonime_dup:
-            duplicati_trovati.append({
-                "chiave": f"anonima:{m.get('data')}|{m.get('importo')}",
-                "certezza": "da_verificare",
-                "motivo": "Somiglianza per data, importo e fornitore nella descrizione; identita fattura assente",
-                "tenuto_id": "(la riga identificata con fattura)",
-                "tenuto_importo": m.get("importo"),
-                "tenuto_data": m.get("data"),
-                "tenuto": None,
-                "eliminati_count": 1,
-                "eliminati_ids": [m.get("id")],
-                "duplicati": [dettaglio_movimento(m)],
-            })
-            if m.get("id"):
-                ids_da_verificare.append(m["id"])
 
         # Soft delete (reversibile)
         deleted = 0
@@ -1955,6 +1898,34 @@ async def dedup_fatture_prima_nota(
         "Duplicati marchiati come deleted (soft delete, recuperabili da DB)."
     )
     return report
+
+
+async def ripristina_dedup_fatture_errato() -> Dict[str, Any]:
+    """Ripristina le righe nascoste dalla vecchia regola basata su fattura_id.
+
+    La regola era semanticamente errata: piu' operazioni possono pagare la
+    stessa fattura. Il ripristino e' idempotente e conserva la traccia.
+    """
+    db = Database.get_db()
+    report = {}
+    totale = 0
+    now = datetime.now(timezone.utc).isoformat()
+    for collection_name in [COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA]:
+        label = "cassa" if "cassa" in collection_name else "banca"
+        result = await db[collection_name].update_many(
+            {"status": "deleted", "deleted_reason": "dedup_fatture_prima_nota"},
+            {
+                "$set": {
+                    "status": "active",
+                    "restored_at": now,
+                    "restored_reason": "rollback_dedup_basato_su_fattura_id",
+                },
+                "$unset": {"deleted_at": "", "deleted_reason": ""},
+            },
+        )
+        report[label] = result.modified_count
+        totale += result.modified_count
+    return {"success": True, "ripristinati": totale, **report}
 
 
 async def diagnostica_corrispettivi_vs_cassa(

@@ -50,7 +50,7 @@ export default function PuliziaPrimaNota() {
     azzeraErrori();
     setLoading('anteprima');
     try {
-      const res = await api.post(`/api/prima-nota/dedup-fatture?applica=false&auto_risolvi_certi=true&anno=${anno}`);
+      const res = await api.post(`/api/prima-nota/dedup-fatture?applica=false&auto_risolvi_certi=true&ripristina_regola_errata=true&anno=${anno}`);
       setAnteprima(res.data);
       setRisultatoPulizia(res.data);
     } catch (e) {
@@ -343,18 +343,18 @@ export default function PuliziaPrimaNota() {
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Prima Nota Cassa</div>
                   <Stat label="Gruppi duplicati" value={anteprima.cassa?.gruppi_duplicati || 0} />
-                  <Stat label="Movimenti da rimuovere" value={anteprima.cassa?.movimenti_da_eliminare || 0} color="#dc2626" />
+                  <Stat label="Operazioni corrette automaticamente" value={anteprima.cassa?.eliminati_effettivi || 0} color="#059669" />
                   <Stat label="Casi da verificare" value={anteprima.cassa?.movimenti_da_verificare || 0} color="#d97706" />
                 </div>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Prima Nota Banca</div>
                   <Stat label="Gruppi duplicati" value={anteprima.banca?.gruppi_duplicati || 0} />
-                  <Stat label="Movimenti da rimuovere" value={anteprima.banca?.movimenti_da_eliminare || 0} color="#dc2626" />
+                  <Stat label="Operazioni corrette automaticamente" value={anteprima.banca?.eliminati_effettivi || 0} color="#059669" />
                   <Stat label="Casi da verificare" value={anteprima.banca?.movimenti_da_verificare || 0} color="#d97706" />
                 </div>
               </div>
-              <DuplicateList title="Dettaglio Cassa" groups={anteprima.cassa?.dettagli || []} />
-              <DuplicateList title="Dettaglio Banca" groups={anteprima.banca?.dettagli || []} />
+              <DuplicateList title="Dettaglio Cassa" registro="cassa" groups={anteprima.cassa?.dettagli || []} />
+              <DuplicateList title="Dettaglio Banca" registro="banca" groups={anteprima.banca?.dettagli || []} />
               <div style={{ marginTop: 12, fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>
                 {anteprima.nota}
               </div>
@@ -704,7 +704,7 @@ export default function PuliziaPrimaNota() {
   );
 }
 
-function DuplicateList({ title, groups }) {
+function DuplicateList({ title, registro, groups }) {
   if (!groups.length) return (
     <div style={{ marginTop: 12, fontSize: 13, color: '#059669' }}><strong>{title}:</strong> nessun duplicato.</div>
   );
@@ -718,8 +718,8 @@ function DuplicateList({ title, groups }) {
               <strong>{g.certezza === 'certo' ? 'Corretto automaticamente' : 'Da verificare'}</strong>
               <span style={{ fontSize: 12 }}>{g.motivo}</span>
             </div>
-            {g.tenuto && <MovementRow label="Conservato" movement={g.tenuto} />}
-            {(g.duplicati || []).map((m, i) => <MovementRow key={m.id || i} label={g.certezza === 'certo' ? 'Copia nascosta' : 'Possibile copia'} movement={m} />)}
+            {g.tenuto && <MovementRow label="Conservato" registro={registro} movement={g.tenuto} />}
+            {(g.duplicati || []).map((m, i) => <MovementRow key={m.id || i} registro={registro} label={g.certezza === 'certo' ? 'Copia nascosta' : 'Possibile copia'} movement={m} />)}
           </div>
         ))}
       </div>
@@ -727,12 +727,17 @@ function DuplicateList({ title, groups }) {
   );
 }
 
-function MovementRow({ label, movement }) {
+function MovementRow({ label, registro, movement }) {
   return (
     <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #dbe3ee', fontSize: 12, lineHeight: 1.55 }}>
       <strong>{label}:</strong> {movement.data || 'data assente'} · {formatEuroD(movement.importo || 0)} · {movement.numero_fattura || movement.fattura_id || movement.riferimento || 'senza riferimento'}
       <br />{movement.descrizione || 'descrizione assente'}
       <br /><span style={{ color: '#64748b' }}>ID {movement.id || 'assente'} · fonte {movement.source || 'non indicata'}</span>
+      {movement.id && (
+        <a href={`/prima-nota#sezione=${registro}&selected=${encodeURIComponent(movement.id)}`} style={{ marginLeft: 12, color: '#1d4ed8', fontWeight: 700 }}>
+          Apri operazione
+        </a>
+      )}
     </div>
   );
 }
