@@ -76,3 +76,7 @@ Queste istruzioni valgono per il repository canonico
   header.
 - Prima della pubblicazione controllare diff e file staged; dopo il push
   verificare CI, commit distribuito e comportamento reale della pagina.
+# Autorità normativa
+
+Prima di modificare il repository leggere `PROMPT_MASTER.md`: contiene in un
+solo documento regole, divieti, fonti, pagine, variabili, router ed endpoint.

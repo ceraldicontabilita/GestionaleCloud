@@ -12,6 +12,9 @@ configurazione di produzione prevalgono sui report storici.
 
 ## 1. Principio generale
 
+Questa è una guida di lettura. La specifica normativa unica e atomica è
+`PROMPT_MASTER.md`; ogni modifica di logica deve aggiornare prima il master.
+
 Il gestionale trasforma documenti e fonti esterne in un grafo di fatti
 consultabile:
 

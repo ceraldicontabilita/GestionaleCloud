@@ -9,6 +9,9 @@ storage_architecture: drive-only
 ERP interno di Ceraldi Group S.R.L. per documenti, fatture, fornitori, Prima
 Nota, riconciliazioni, fisco, personale e flotta.
 
+La specifica normativa unica, completa e atomica è [`PROMPT_MASTER.md`](PROMPT_MASTER.md).
+Gli altri documenti sono guide di lettura, riferimenti di dominio o mappe generate.
+
 - Produzione: [impresasemplice.online](https://impresasemplice.online)
 - Repository: `ceraldicontabilita/GestionaleCloud`
 - Branch operativo: `main`
@@ -225,6 +228,8 @@ di considerare pubblicata una modifica:
 
 ## Documentazione
 
+- `PROMPT_MASTER.md` — unica autorità normativa: prodotto, dati, Gmail, Drive,
+  variabili, pagine, router, endpoint, divieti e gate.
 - `CLAUDE.md` — regole vincolanti per lavorare nel repository.
 - `PRODUCT.md` — visione, flussi e albero funzionale.
 - `LOGICA_FUNZIONAMENTO.md` — comportamento operativo per gli utenti.
@@ -232,6 +237,27 @@ di considerare pubblicata una modifica:
 - `memoria/JSON_INVENTORY.json` — inventario e politica dei file JSON.
 - `memoria/pagine/*.json` — mappe tecniche delle pagine.
 - `memoria/popup/*.json` — mappe tecniche dei popup.
+
+### Kit completo per la ricostruzione pulita
+
+Per generare un unico ZIP autosufficiente con Prompt Master, architettura,
+65 schede Markdown e 65 contratti JSON con la logica specifica di ogni pagina,
+36 popup, contratti API, variabili senza segreti,
+modello Drive/Sheets e matrice di accettazione:
+
+```powershell
+python scripts\genera_kit_ricostruzione.py
+```
+
+Il comando crea in `Documents`:
+
+- `GestionaleCloud_REBUILD_KIT_2026-08-20.zip`;
+- `GestionaleCloud_REBUILD_KIT_2026-08-20.zip.sha256`.
+
+Il generatore verifica una sola cartella radice, manifest e hash interni,
+conteggi canonici e firme compatibili con credenziali. Lo ZIP non viene
+versionato: non contiene dati aziendali, allegati, segreti o una copia del
+codice applicativo; viene rigenerato dalle fonti correnti del repository.
 
 ## Licenza
 

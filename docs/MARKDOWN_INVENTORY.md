@@ -23,8 +23,8 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 - Correnti: **16**
 - Riferimento: **25**
 - Generati: **5**
-- Storici: **42**
-- Totale: **88**
+- Storici: **18**
+- Totale: **64**
 
 ## Elenco completo
 
@@ -40,34 +40,15 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `DESIGN.md` | `current` | Autorità operativa corrente |
 | `LOGICA_FUNZIONAMENTO.md` | `current` | Autorità operativa corrente |
 | `PRODUCT.md` | `current` | Autorità operativa corrente |
+| `PROMPT_MASTER.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `README.md` | `current` | Autorità operativa corrente |
 | `archive/legacy-audit/README.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/AUDIT_CONSOLIDAMENTO_ERP_2026-08-11.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/AUDIT_CONSOLIDAMENTO_ERP_BLOCCO2_2026-08-11.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/AUDIT_CONTABILITA_END_TO_END_2026-08-05.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/AUDIT_DRIVE_FISCALE_CODICI_TRIBUTO_2026-08-10.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/AUDIT_DRIVE_SICUREZZA_DUPLICATI_2026-08-05.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/AUDIT_INGEGNERISTICO_ESTREMO_2026-08-08.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/AUDIT_PAGINA_23_FINANZIARIA_2026-08-06.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/AUDIT_PAGINA_24_CHIUSURA_ESERCIZIO_2026-08-06.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/AUDIT_PAGINE_CONTABILITA_PAYPAL_ASSEGNI_2026-08-05.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/AUDIT_PAGINE_CONTROLLI_2026-08-11.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/AUDIT_PDF_IVA_QUALITA_DATI.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/CODE_LIFECYCLE_AUDIT_2026-08-11.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/COLLAUDO_PAGINE_E2E_2026-08-05.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/FISCAL_ACCOUNTING_POLICY.md` | `current` | Autorità operativa corrente |
-| `docs/GESTIONALECLOUD_CONSOLIDATION_AUDIT.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/GESTIONALECLOUD_DATA_IMPORT_STATUS.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/GESTIONALECLOUD_FISCAL_IMPLEMENTATION_REPORT.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/GESTIONALECLOUD_MISSING_WORK.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/IMPLEMENTATION_PLAN_DRIVE_FISCALE_2026-08-10.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/MARKDOWN_INVENTORY.md` | `current` | Autorità operativa corrente |
-| `docs/MATRICE_SEMANTICA_ZIP_MAIN_2026-08-10.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/MCP_GESTIONALE_RUNBOOK.md` | `current` | Autorità operativa corrente |
 | `docs/MCP_GESTIONALE_SPEC.md` | `current` | Autorità operativa corrente |
 | `docs/OBSIDIAN_KNOWLEDGE_ARCHITECTURE_2026-08-20.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/PIANO_OPERATIVO_GESTIONALE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/SPECIFICA_OPERATIVA_GESTIONALECLOUD.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/obsidian-integration/ARCHITETTURA.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/obsidian-integration/MAPPA_COLLEGAMENTI.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/obsidian-integration/MODELLO_NOTE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
@@ -77,19 +58,16 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `docs/obsidian-integration/SICUREZZA_E_GOVERNANCE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/obsidian-integration/templates/ENTITA.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/obsidian-integration/templates/RUN_GIORNALIERO.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/porting-private-cloud-2026-08-08.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/rt-locale-drive.md` | `current` | Autorità operativa corrente |
 | `frontend/README.md` | `current` | Autorità operativa corrente |
 | `memoria/AUDIT_FRONTEND_DEAD_CODE.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
 | `memoria/AUDIT_STATIC_REPORT.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
-| `memoria/BACKLOG.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `memoria/DISASTER_RECOVERY_DRIVE.md` | `current` | Autorità operativa corrente |
 | `memoria/DRIVE_ESTRATTI_CONTO.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
 | `memoria/FORNITORI_REGOLA_CANONICA.md` | `current` | Autorità operativa corrente |
 | `memoria/INDEX.md` | `current` | Autorità operativa corrente |
 | `memoria/LOGICA_LIBRO_MASTRO.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
-| `memoria/LOGICA_OPERATIVA.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `memoria/MAPPA_ENDPOINT_COMPLETA.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
 | `memoria/MAPPA_MODULI.md` | `current` | Autorità operativa corrente |
 | `memoria/MAPPA_ROUTER.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
@@ -104,9 +82,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `memoria/endpoints/06-documenti-email-ai.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/endpoints/07-hr-noleggio-verbali.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/endpoints/08-sistema-admin.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
-| `memoria/endpoints/09-frontend-fatture-riconciliazione-audit.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `memoria/endpoints/README.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
-| `memoria/endpoints/RICONCILIAZIONE_AUDIT.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `memoria/moduli/CEDOLINI.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/moduli/DIPENDENTI.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
 | `memoria/moduli/DOCUMENTI_INBOX.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |

@@ -1074,7 +1074,7 @@ async def auto_match_assegni(
 ) -> Dict[str, Any]:
     """
     🤖 Auto-matcher Assegni ↔ Fatture (4 livelli, N:M, tolleranza ±0,005€).
-    Vedi /app/memoria/LOGICA_OPERATIVA.md per i dettagli.
+    Vedi PROMPT_MASTER.md, sezioni 6, 10 e 12, per i dettagli.
     """
     if not dry_run:
         raise HTTPException(
@@ -1385,7 +1385,7 @@ async def update_assegno(
 class FatturaQuotaIn(BaseModel):
     fattura_id: str
     # Positiva per una fattura normale, negativa per una nota di credito (TD04)
-    # che netta l'importo dovuto — vedi Caso F in memoria/LOGICA_OPERATIVA.md.
+    # che netta l'importo dovuto — vedi PROMPT_MASTER.md, sezione 10.
     quota: float
 
 
@@ -1428,7 +1428,7 @@ async def _aggiorna_stato_intento_fattura(db, fattura_id: str, now: str) -> None
 async def collega_fatture_assegno(assegno_id: str, body: FattureCollegateIn) -> Dict[str, Any]:
     """
     Collega/scollega fatture a un assegno con il modello a quote N:M
-    documentato in memoria/LOGICA_OPERATIVA.md: ogni collegamento ha una
+    documentato in PROMPT_MASTER.md: ogni collegamento ha una
     quota in euro (parte dell'importo dell'assegno che paga quella fattura).
     L'importo nominale dell'assegno NON viene mai modificato da qui.
 

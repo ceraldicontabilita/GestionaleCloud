@@ -84,4 +84,4 @@ duplicate/shadowate contate una volta per modulo che le implementa).
 
 - **Prima di modificare un endpoint**: cerca il suo prefisso qui, leggi la sezione — ti dice subito se è shadowato/morto, quali collezioni tocca davvero, e se il docstring è affidabile.
 - **Prima di "consolidare" due router che sembrano fare la stessa cosa**: controlla la sezione Note di entrambi — spesso uno dei due contiene la logica corretta (es. metodo dal fornitore, dedup più robusto) e l'altro è quello da eliminare, ma la scelta va verificata caso per caso confrontando anche i chiamanti reali nel frontend.
-- Questi file **descrivono lo stato del codice**, non prescrivono come dovrebbe essere: per la logica di business corretta vedi `memoria/LOGICA_OPERATIVA.md`.
+- Questi file **descrivono lo stato del codice**, non prescrivono come dovrebbe essere: la specifica normativa unica è `PROMPT_MASTER.md`.

@@ -12,6 +12,9 @@ spiega come usarli senza creare varianti locali.
 
 ## Obiettivo
 
+Questo documento è una vista UI sintetica. Regole, divieti e criteri completi
+sono definiti una sola volta in `PROMPT_MASTER.md`.
+
 L'interfaccia deve sembrare un gestionale contabile, non una plancia di
 comandi. Ogni pagina deve aiutare a capire subito:
 

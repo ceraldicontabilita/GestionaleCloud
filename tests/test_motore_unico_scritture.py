@@ -39,7 +39,7 @@ _RE_WRITE = re.compile(r'\b(?:prima_nota_cassa|prima_nota_banca)"?\]\s*\.\s*inse
 # anche se non copre ancora l'accesso tramite variabile calcolata
 # (es. coll = db[nome_variabile]; coll.insert_one(...)), il bypass più
 # diffuso oggi (rapido.py, prima_nota_module/sync.py e manutenzione.py,
-# data_propagation.py, cassa.py, banca.py — vedi memoria/BACKLOG.md):
+# data_propagation.py, cassa.py, banca.py — vedi PROMPT_MASTER.md, sezione 10):
 # richiede analisi AST, non ancora fatta.
 _RE_WRITE_ATTR = re.compile(r'\.\s*(?:prima_nota_cassa|prima_nota_banca)\s*\.\s*insert_(?:one|many)')
 

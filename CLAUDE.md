@@ -9,6 +9,9 @@ storage_architecture: drive-only
 Aggiornato il 20/08/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
+Prima di ogni intervento leggere `PROMPT_MASTER.md`: è la specifica normativa
+unica. Questo file è soltanto il punto di ingresso operativo per Claude.
+
 Questo file contiene le regole operative per chi modifica il progetto. Il
 codice corrente, i test e la configurazione effettiva di produzione hanno
 precedenza sui report storici.
@@ -28,7 +31,7 @@ precedenza sui report storici.
 - Repository: `https://github.com/ceraldicontabilita/GestionaleCloud`.
 - Checkout canonico Windows: `C:\Users\ceral\Documents\GESTIONALE CLOUD 2`.
 - Branch operativo: `main`.
-- Non usare `GestionaleCloud-Private`, ZIP o vecchi checkout come autorità.
+- Non usare repository privati non canonici, ZIP o vecchi checkout come autorità.
 - Prima di intervenire confronta sempre `HEAD` con `origin/main`.
 - Il worktree può contenere modifiche dell'utente: non cancellarle, non
   ripristinarle e non includerle nei commit.
@@ -36,12 +39,10 @@ precedenza sui report storici.
 
 ## Fonti di verità
 
-1. Codice e test correnti.
-2. Configurazione realmente attiva in produzione.
-3. `page_catalog.json` per le 65 schermate operative.
-4. `PRODUCT.md` per obiettivi e confini del prodotto.
-5. `LOGICA_FUNZIONAMENTO.md` e specifiche in `memoria/` per le regole di
-   dominio ancora confermate dal codice.
+1. Originali Drive e identificatori delle fonti esterne.
+2. Codice, test e configurazione live correnti.
+3. `PROMPT_MASTER.md` per tutte le regole normative e i divieti.
+4. `page_catalog.json` e mappe generate per la superficie tecnica.
 
 I JSON in `memoria/pagine/` e `memoria/popup/` sono mappe tecniche generate:
 si aggiornano con `scripts/refresh_json_docs.py`, non a mano.
