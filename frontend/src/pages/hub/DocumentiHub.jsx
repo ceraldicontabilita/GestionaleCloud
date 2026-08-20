@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Archive, Search, Upload } from 'lucide-react';
+import { Archive, FileWarning, Search, Upload } from 'lucide-react';
 import api from '../../api';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { useHashState } from '../../hooks/useHashState';
@@ -10,8 +10,16 @@ import './DocumentiHub.css';
 const ArchivioContent = lazy(() => import('../Documenti.jsx'));
 const ImportContent = lazy(() => import('../ImportDocumenti.jsx'));
 const DriveIndexContent = lazy(() => import('../DriveDocumentIndex.jsx'));
+const AttiAmministrativiContent = lazy(() => import('../AttiAmministrativi.jsx'));
 
 const TABS = [
+  {
+    id: 'atti',
+    label: 'Atti amministrativi',
+    description: 'Verbali, TARI, AdeR e dimissioni con provenienza',
+    to: '/documenti/atti',
+    Icon: FileWarning,
+  },
   {
     id: 'import',
     label: 'Carica documenti',
@@ -36,6 +44,7 @@ const TABS = [
 ];
 
 const getTabFromPath = pathname => {
+  if (pathname.includes('/documenti/atti')) return 'atti';
   if (pathname.includes('/documenti/drive')) return 'drive';
   if (pathname.includes('/documenti/archivio')) return 'archivio';
   if (pathname.includes('/documenti/import') || pathname.includes('/import-documenti')) {
@@ -84,6 +93,7 @@ export default function DocumentiHub() {
     archivio: ArchivioContent,
     import: ImportContent,
     drive: DriveIndexContent,
+    atti: AttiAmministrativiContent,
   };
 
   return (

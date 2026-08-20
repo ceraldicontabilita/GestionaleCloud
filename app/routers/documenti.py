@@ -507,6 +507,90 @@ async def lista_documenti(
     }
 
 
+_ADMINISTRATIVE_CATEGORIES = {
+    "verbali": {"verbale_codice_strada", "avviso_pagopa", "esito_pagopa_negativo"},
+    "tributi_locali": {"tari_avviso", "tari_istanza_compensazione"},
+    "riscossione": {"ader_sospensione", "ader_definizione_agevolata", "cartella_esattoriale"},
+    "personale": {"dimissioni_telematiche"},
+}
+
+
+@router.get("/amministrativi")
+@handle_errors
+async def lista_atti_amministrativi(
+    area: Optional[str] = Query(None),
+    anno: Optional[int] = Query(None, ge=2018, le=2100),
+    search: Optional[str] = Query(None, max_length=120),
+    limit: int = Query(200, ge=1, le=500),
+) -> Dict[str, Any]:
+    """Vista documentale di verbali, TARI/AdeR e cessazioni.
+
+    Gli atti restano evidenze documentali: nessun avviso o modulo viene
+    promosso implicitamente a pagamento, chiusura o variazione del dipendente.
+    """
+    if area and area not in _ADMINISTRATIVE_CATEGORIES:
+        raise HTTPException(status_code=400, detail="Area amministrativa non valida")
+
+    categories = (
+        _ADMINISTRATIVE_CATEGORIES[area]
+        if area
+        else set().union(*_ADMINISTRATIVE_CATEGORIES.values())
+    )
+    clauses: List[Dict[str, Any]] = [{"category": {"$in": sorted(categories)}}]
+    if anno:
+        year = str(anno)
+        clauses.append({"$or": [
+            {"parsed_metadata.anno_tributo": anno},
+            {"parsed_metadata.data_trasmissione": {"$regex": f"^{year}"}},
+            {"parsed_metadata.data_decorrenza_recesso": {"$regex": f"^{year}"}},
+            {"document_date": {"$regex": year}},
+            {"source_context.email_date": {"$regex": f"^{year}"}},
+            {"downloaded_at": {"$regex": f"^{year}"}},
+        ]})
+    if search and search.strip():
+        matcher = {"$regex": re.escape(search.strip()), "$options": "i"}
+        clauses.append({"$or": [
+            {"filename": matcher}, {"category_label": matcher},
+            {"parsed_metadata.lavoratore_cf": matcher},
+            {"parsed_metadata.protocollo": matcher},
+            {"parsed_metadata.codice_contribuente": matcher},
+            {"parsed_metadata.numeri_cartella": matcher},
+            {"source_context.archive_path": matcher},
+        ]})
+
+    query: Dict[str, Any] = {"$and": clauses}
+    projection = {"_id": 0, **_ARCHIVE_PAYLOAD_FIELDS}
+    db = Database.get_db()
+    documents = await db["documents_inbox"].find(query, projection).sort(
+        [("downloaded_at", -1), ("id", -1)]
+    ).limit(limit).to_list(limit)
+    documents = [_archive_document_metadata(item) for item in documents]
+
+    category_to_area = {
+        category: group
+        for group, group_categories in _ADMINISTRATIVE_CATEGORIES.items()
+        for category in group_categories
+    }
+    counts = {key: 0 for key in _ADMINISTRATIVE_CATEGORIES}
+    requires_review = 0
+    for item in documents:
+        item["administrative_area"] = category_to_area.get(item.get("category"))
+        group = item.get("administrative_area")
+        if group:
+            counts[group] += 1
+        if (item.get("parsed_metadata") or {}).get("requires_review"):
+            requires_review += 1
+
+    return {
+        "items": documents,
+        "counts": counts,
+        "total": len(documents),
+        "requires_review": requires_review,
+        "payment_evidence_count": sum(bool(item.get("is_payment_evidence")) for item in documents),
+        "areas": {key: sorted(value) for key, value in _ADMINISTRATIVE_CATEGORIES.items()},
+    }
+
+
 # Store per tracciare task in background
 import asyncio
 
@@ -2084,6 +2168,7 @@ from app.utils.error_handler import handle_errors
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 MAX_INBOX_BYTES = 10 * 1024 * 1024
+MAX_ZIP_UPLOAD_BYTES = 100 * 1024 * 1024
 MAX_ZIP_FILES = 1000
 MAX_ZIP_UNCOMPRESSED_BYTES = 250 * 1024 * 1024
 MAX_ZIP_COMPRESSION_RATIO = 200
@@ -2636,8 +2721,16 @@ async def anteprima_upload_documento_automatico(
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail=f"File vuoto: {filename}")
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail=f"File oltre il limite di 50 MB: {filename}")
+    upload_limit = MAX_ZIP_UPLOAD_BYTES if filename.lower().endswith(".zip") else MAX_UPLOAD_BYTES
+    if len(content) > upload_limit:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Archivio ZIP oltre il limite di 100 MB: {filename}"
+                if filename.lower().endswith(".zip")
+                else f"File oltre il limite di 50 MB: {filename}"
+            ),
+        )
     if filename.lower().endswith(".pdf"):
         from app.utils.upload_validation import verifica_pdf_reale
 
@@ -2678,10 +2771,15 @@ async def upload_documento_automatico(
 
     if not content:
         raise HTTPException(status_code=400, detail=f"File vuoto: {filename}")
-    if len(content) > MAX_UPLOAD_BYTES:
+    upload_limit = MAX_ZIP_UPLOAD_BYTES if filename.lower().endswith(".zip") else MAX_UPLOAD_BYTES
+    if len(content) > upload_limit:
         raise HTTPException(
             status_code=413,
-            detail=f"File oltre il limite di 50 MB: {filename}",
+            detail=(
+                f"Archivio ZIP oltre il limite di 100 MB: {filename}"
+                if filename.lower().endswith(".zip")
+                else f"File oltre il limite di 50 MB: {filename}"
+            ),
         )
     if filename.lower().endswith(".pdf"):
         from app.utils.upload_validation import verifica_pdf_reale
