@@ -17,7 +17,7 @@ from typing import Any
 from mongomock_motor import AsyncMongoMockClient
 
 from app.services.google_sheets_ledger import (
-    LedgerSheet, SHEETS, restore_all, sync_collection,
+    LedgerSheet, SHEETS, ensure_collection_sheet, restore_all, sync_collection,
 )
 
 
@@ -45,6 +45,7 @@ class SheetsRuntimeCollection:
 
         async def write_through(*args, **kwargs):
             async with self._owner.lock_for(self._name):
+                await self._owner.ensure_collection(self._name)
                 result = await target(*args, **kwargs)
                 await self._owner.flush_collection(self._name)
                 return result
@@ -62,6 +63,7 @@ class SheetsRuntimeDatabase:
         self._by_collection = {sheet.collection: sheet for sheet in SHEETS}
         self._collections: dict[str, SheetsRuntimeCollection] = {}
         self._locks: dict[str, asyncio.Lock] = {}
+        self._schema_lock = asyncio.Lock()
         self.hydration_result: dict[str, Any] | None = None
 
     async def hydrate(self) -> dict[str, Any]:
@@ -98,12 +100,27 @@ class SheetsRuntimeDatabase:
     def lock_for(self, collection_name: str) -> asyncio.Lock:
         return self._locks.setdefault(collection_name, asyncio.Lock())
 
-    async def flush_collection(self, collection_name: str) -> dict[str, Any]:
+    async def ensure_collection(self, collection_name: str) -> LedgerSheet:
         sheet = self._by_collection.get(collection_name)
-        if sheet is None:
-            raise RuntimeError(
-                f"La collezione {collection_name} non ha un foglio Drive configurato"
+        if sheet is not None:
+            return sheet
+        async with self._schema_lock:
+            sheet = self._by_collection.get(collection_name)
+            if sheet is not None:
+                return sheet
+            spreadsheet_id = str(self._config.get("GOOGLE_SHEETS_LEDGER_ID") or "")
+            if not spreadsheet_id:
+                raise RuntimeError("GOOGLE_SHEETS_LEDGER_ID mancante")
+            sheet = await ensure_collection_sheet(spreadsheet_id, collection_name)
+            self._by_collection[collection_name] = sheet
+            logger.info(
+                "Foglio Drive dinamico predisposto: %s -> %s",
+                collection_name, sheet.title,
             )
+            return sheet
+
+    async def flush_collection(self, collection_name: str) -> dict[str, Any]:
+        sheet = await self.ensure_collection(collection_name)
         spreadsheet_id = str(self._config.get("GOOGLE_SHEETS_LEDGER_ID") or "")
         if not spreadsheet_id:
             raise RuntimeError("GOOGLE_SHEETS_LEDGER_ID mancante")
@@ -112,10 +129,6 @@ class SheetsRuntimeDatabase:
         )
 
     def __getitem__(self, collection_name: str):
-        if collection_name not in self._by_collection:
-            raise RuntimeError(
-                f"Collezione {collection_name} non ancora migrata nel registro Drive"
-            )
         return self._collections.setdefault(
             collection_name, SheetsRuntimeCollection(self, collection_name)
         )

@@ -35,6 +35,19 @@ _sync_lock = asyncio.Lock()
 _bg_task: Optional[asyncio.Task] = None
 
 
+def _batch_size() -> int:
+    """Numero massimo di XML per ciclo, con limiti sicuri anche se l'env e' errata."""
+    try:
+        configured = int(settings.DRIVE_FATTURE_BATCH_SIZE)
+    except (TypeError, ValueError):
+        configured = 10
+    return max(1, min(configured, 100))
+
+
+def _select_batch(files: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return list(files[:_batch_size()])
+
+
 def is_sync_running() -> bool:
     return _sync_lock.locked()
 
@@ -269,8 +282,11 @@ async def _do_sync(db) -> Dict[str, Any]:
         error_id = _get_or_create_error_folder(service, parent_id)
         source_id = inbox_id or parent_id
         xml_files = _list_xml_files(service, source_id)
+        batch = _select_batch(xml_files)
         result["total"] = len(xml_files)
-        for f in xml_files:
+        result["attempted"] = len(batch)
+        result["pending"] = max(len(xml_files) - len(batch), 0)
+        for f in batch:
             fid, fname = f["id"], f["name"]
             try:
                 content = _download_bytes(service, fid)
@@ -324,7 +340,10 @@ async def _do_sync(db) -> Dict[str, Any]:
         return {"status": "error", "message": str(e)}
 
     prev = await db[_SYNC_STATE_COLLECTION].find_one({"_id": _SYNC_STATE_ID}) or {}
-    last_result = {k: result[k] for k in ("total", "imported", "duplicates", "archiviate", "errors", "moved")}
+    last_result = {k: result[k] for k in (
+        "total", "attempted", "pending", "imported", "duplicates",
+        "archiviate", "errors", "moved",
+    )}
     # Persisti i primi errori per-file: senza, la card Admin mostra solo il
     # conteggio e la diagnosi è impossibile.
     last_result["details"] = result["details"][:5]

@@ -44,14 +44,28 @@ def test_runtime_idrata_e_persistenza_write_through(monkeypatch):
     assert calls == [("invoices", "SHEET-1", 2)]
 
 
-def test_runtime_blocca_collezione_non_migrata():
+def test_runtime_predispone_foglio_drive_per_collezione_operativa(monkeypatch):
+    ensured = []
+    synced = []
+
+    async def fake_ensure(spreadsheet_id, collection):
+        ensured.append((spreadsheet_id, collection))
+        return runtime_module.LedgerSheet("DB_users", collection, "D123456")
+
+    async def fake_sync(db, sheet, spreadsheet_id, *, preserve_missing=True):
+        synced.append((sheet.collection, spreadsheet_id, preserve_missing))
+        return {"foglio": sheet.title, "righe": 1}
+
+    monkeypatch.setattr(runtime_module, "ensure_collection_sheet", fake_ensure)
+    monkeypatch.setattr(runtime_module, "sync_collection", fake_sync)
     runtime = SheetsRuntimeDatabase("test", {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"})
-    try:
-        runtime["users"]
-    except RuntimeError as exc:
-        assert "non ancora migrata" in str(exc)
-    else:
-        raise AssertionError("Una collezione fuori manifest non deve usare storage implicito")
+
+    assert run(runtime["users"].find_one({})) is None
+    run(runtime["users"].insert_one({"id": "USR-1"}))
+
+    assert ensured == [("SHEET-1", "users")]
+    assert synced == [("users", "SHEET-1", False)]
+    assert run(runtime["users"].count_documents({})) == 1
 
 
 def test_runtime_espone_stato_sistema_per_checkpoint_import():

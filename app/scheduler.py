@@ -967,16 +967,15 @@ def start_scheduler():
         id="link_verbali_fatture", name="Link Verbali ↔ Fatture (ogni 60 min)",
         replace_existing=True,
     )
-    # Scelta utente (13/07/2026): ogni ORA (allineata al manuale) + un controllo
-    # dopo l'avvio del server. Gli offset distinti evitano la concorrenza fra
-    # parser XML, PDF/OCR e ricostruzione contabile.
+    # Le fatture lavorano a lotti piccoli: un ciclo ogni 15 minuti smaltisce
+    # l'arretrato senza superare la memoria del servizio web.
     scheduler.add_job(
         _drive_ingest_job,
-        'interval', hours=1,
+        'interval', minutes=15,
         next_run_time=avvio + timedelta(minutes=1),
         misfire_grace_time=300,
         coalesce=True,
-        id="drive_fatture_ingest", name="Import Fatture da Google Drive (ogni ora)",
+        id="drive_fatture_ingest", name="Import Fatture da Google Drive (ogni 15 min)",
         replace_existing=True,
     )
 
