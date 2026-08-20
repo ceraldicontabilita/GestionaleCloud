@@ -22,6 +22,15 @@ from app.services.fiscal_evidence import register_document
 
 MAX_EXTRACTED_PAGE_CHARS = 40_000
 
+CATEGORY_DOCUMENT_TYPES = {
+    "dichiarazione_iva": "DICHIARAZIONE_IVA",
+    "lipe": "LIPE",
+    "modello_770": "MODELLO_770",
+    "redditi_sc": "REDDITI_SC",
+    "dichiarazione_irap": "DICHIARAZIONE_IRAP",
+    "elenco_percipienti": "ELENCO_PERCIPIENTI",
+}
+
 
 def extract_pdf_pages(content: bytes) -> list[dict[str, Any]]:
     try:
@@ -83,6 +92,13 @@ class FiscalDocumentIngestionService:
         pages = extract_pdf_pages(content)
         full_text = "\n".join(page["text"] for page in pages)
         classification = classify_document(filename, full_text)
+        if category_hint in CATEGORY_DOCUMENT_TYPES:
+            classification = {
+                "document_type": CATEGORY_DOCUMENT_TYPES[category_hint],
+                "confidence": 1.0,
+                "reasons": [f"categoria_manuale:{category_hint}"],
+                "requires_review": False,
+            }
         source_metadata = dict(source_metadata or {})
         source_key = source_metadata.get("drive_file_id") or digest
         registered = await register_document(

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import api from '../api';
@@ -9,6 +9,7 @@ import { Badge, Button, Card, StatCard } from '../components/ds';
 const TABS = [
   ['tributi', 'Tributi'],
   ['tributi-pagati', 'Tributi pagati'],
+  ['dichiarazioni', 'Dichiarazioni'],
   ['f24', 'F24 e crediti'],
   ['codici-tributo', 'Codici tributo'],
   ['crosswalk-riscossione', 'Crosswalk riscossione'],
@@ -17,6 +18,12 @@ const TABS = [
 ];
 
 const endpointFor = (tab, f24Filters = {}) => {
+  if (tab === 'dichiarazioni') {
+    const params = new URLSearchParams();
+    if (f24Filters.year) params.set('year', f24Filters.year);
+    if (f24Filters.declarationType) params.set('declaration_type', f24Filters.declarationType);
+    return `/api/fiscal/declarations?${params.toString()}`;
+  }
   if (tab === 'f24') {
     const params = new URLSearchParams();
     if (f24Filters.year) params.set('year', f24Filters.year);
@@ -51,13 +58,20 @@ export default function SituazioneFiscale() {
   const [f24Year, setF24Year] = useState('');
   const [f24TaxCode, setF24TaxCode] = useState('');
   const [f24CreditsOnly, setF24CreditsOnly] = useState(false);
+  const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const [declarationYear, setDeclarationYear] = useState(() => query.get('year') || '');
+  const [declarationType, setDeclarationType] = useState(() => query.get('type') || '');
+  const [uploadCategory, setUploadCategory] = useState('automatica');
+  const [uploading, setUploading] = useState(false);
+  const declarationInput = useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [summaryResponse, dataResponse, reviewResponse] = await Promise.all([
         api.get('/api/fiscal/summary'), api.get(endpointFor(tab, {
-          year: f24Year, taxCode: f24TaxCode, creditsOnly: f24CreditsOnly,
+          year: tab === 'dichiarazioni' ? declarationYear : f24Year,
+          declarationType, taxCode: f24TaxCode, creditsOnly: f24CreditsOnly,
         })), api.get('/api/fiscal/review'),
       ]);
       setSummary(summaryResponse.data);
@@ -70,7 +84,7 @@ export default function SituazioneFiscale() {
       setItems([]);
       toast.error('Situazione fiscale non disponibile', { description: error.response?.data?.detail || error.message });
     } finally { setLoading(false); }
-  }, [tab, f24Year, f24TaxCode, f24CreditsOnly]);
+  }, [tab, f24Year, f24TaxCode, f24CreditsOnly, declarationYear, declarationType]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -94,6 +108,24 @@ export default function SituazioneFiscale() {
     } catch (error) {
       toast.error('Prova documentale non disponibile', { description: error.response?.data?.detail || error.message });
     }
+  };
+
+  const uploadDeclaration = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const data = new FormData();
+    data.append('file', file);
+    data.append('categoria', uploadCategory);
+    data.append('periodo', declarationYear || String(new Date().getFullYear()));
+    setUploading(true);
+    try {
+      const response = await api.post('/api/documenti-fiscali/upload', data, { headers: { 'Content-Type': 'multipart/form-data' } });
+      toast.success(response.data?.duplicate ? 'Dichiarazione già presente' : 'Dichiarazione acquisita');
+      await load();
+    } catch (error) {
+      toast.error('Caricamento non riuscito', { description: error.response?.data?.detail || error.message });
+    } finally { setUploading(false); }
   };
 
   const counts = summary?.counts || {};
@@ -131,6 +163,21 @@ export default function SituazioneFiscale() {
           </select></label>
           <label>Codice tributo<br /><input value={f24TaxCode} onChange={event => setF24TaxCode(event.target.value.trim())} placeholder="es. 1704" style={{ padding: 8, width: 130 }} /></label>
           <label style={{ paddingBottom: 8 }}><input type="checkbox" checked={f24CreditsOnly} onChange={event => setF24CreditsOnly(event.target.checked)} /> Solo righe a credito</label>
+        </div>}
+        {tab === 'dichiarazioni' && <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end', marginBottom: 14 }}>
+          <label>Anno<br /><select value={declarationYear} onChange={event => setDeclarationYear(event.target.value)} style={{ padding: 8 }}>
+            <option value="">Tutti</option>{[2026, 2025, 2024, 2023, 2022, 2021, 2020].map(year => <option key={year}>{year}</option>)}
+          </select></label>
+          <label>Tipo<br /><select value={declarationType} onChange={event => setDeclarationType(event.target.value)} style={{ padding: 8 }}>
+            <option value="">Tutte</option><option value="MODELLO_770">770</option><option value="DICHIARAZIONE_IVA">IVA</option>
+            <option value="LIPE">LIPE</option><option value="REDDITI_SC">Redditi SC</option><option value="DICHIARAZIONE_IRAP">IRAP</option><option value="ELENCO_PERCIPIENTI">Percipienti</option>
+          </select></label>
+          <label>Classificazione nuovo PDF<br /><select value={uploadCategory} onChange={event => setUploadCategory(event.target.value)} style={{ padding: 8 }}>
+            <option value="automatica">Automatica</option><option value="modello_770">770 manuale</option><option value="dichiarazione_iva">IVA manuale</option>
+            <option value="lipe">LIPE manuale</option><option value="redditi_sc">Redditi SC manuale</option><option value="dichiarazione_irap">IRAP manuale</option><option value="elenco_percipienti">Percipienti manuale</option>
+          </select></label>
+          <input ref={declarationInput} type="file" accept="application/pdf,.pdf" hidden onChange={uploadDeclaration} disabled={uploading} />
+          <Button variant="primary" disabled={uploading} onClick={() => declarationInput.current?.click()}>{uploading ? 'Caricamento…' : 'Inserisci dichiarazione'}</Button>
         </div>}
         {tab === 'ader' && tabMeta && <div style={{ margin: '0 0 14px', padding: '12px 14px', borderRadius: 10, background: '#eef6ff', border: '1px solid #bfdbfe' }}>
           <strong>Ultimo archivio verificato:</strong> snapshot {tabMeta.snapshot_date || 'data non disponibile'} · {tabMeta.analytic_count || 0} posizioni · SHA-256 {String(tabMeta.dataset_sha256 || '').slice(0, 16)}…
@@ -173,13 +220,25 @@ export default function SituazioneFiscale() {
         {items.map((item, index) => {
           const entityId = item.id || item.collection_number || item.code || `row-${index}`;
           return <div key={entityId} style={{ padding: '12px 0', borderTop: '1px solid #e2e8f0' }}>
-            <strong>{tab === 'f24' ? `${item.tax_code || item.section || 'Riga F24'} · ${item.reference_period || 'periodo non indicato'}` : (labelForClaim(item) || item.code || item.version_id || 'Record fiscale')}</strong>{' '}
+            <strong>{tab === 'f24' ? `${item.tax_code || item.section || 'Riga F24'} · ${item.reference_period || 'periodo non indicato'}` : tab === 'dichiarazioni' ? `${item.document_type} · ${item.filing_year || 'anno da verificare'}` : (labelForClaim(item) || item.code || item.version_id || 'Record fiscale')}</strong>{' '}
             {(item.calculated_business_status || item.business_status || item.payment_status || item.status) && <Badge variant={item.requires_review ? 'warning' : 'info'}>{item.calculated_business_status || item.business_status || item.payment_status || item.status}</Badge>}
             {item.official_description && <span style={{ marginLeft: 8 }}>{item.official_description}</span>}
             {tab === 'f24' && <div style={{ marginTop: 6, color: '#475569' }}>
               Debito {euro(item.debit_amount)} · Credito {euro(item.credit_amount)} · {item.payment_date || 'data non indicata'}
               {item.protocol && <> · protocollo {item.protocol}</>}
               {item.filename && <div style={{ marginTop: 4 }}>{item.filename}</div>}
+            </div>}
+            {tab === 'dichiarazioni' && <div style={{ marginTop: 8, color: '#475569' }}>
+              <div>Anno d'imposta {item.tax_year || 'da verificare'}{item.protocol && <> · protocollo {item.protocol}</>}</div>
+              <div>{item.filename}</div>
+              <Button size="sm" variant="secondary" style={{ marginTop: 8 }} onClick={() => openDocument(item.id)}>Apri dichiarazione</Button>
+              {(item.f24_links || []).map(link => <div key={link.f24_id} style={{ marginTop: 10, padding: 10, border: '1px solid #cbd5e1', borderRadius: 8 }}>
+                <strong>F24 {link.filename || link.f24_id}</strong>{' '}<Badge variant={link.link_status === 'CONFIRMED' ? 'success' : 'warning'}>{link.link_status === 'CONFIRMED' ? 'Collegato' : 'Candidato da verificare'}</Badge>
+                <div>{(link.tax_rows || []).map(row => `${row.tax_code} ${row.reference_period || ''}`).join(' · ')}</div>
+                <div>Quietanza: {link.documentary_payment_status} · Banca: {link.bank_status}</div>
+                {link.quietanza && <div>Protocollo quietanza: {link.quietanza.protocol || link.quietanza.id}</div>}
+              </div>)}
+              {(item.f24_links || []).length === 0 && <div style={{ marginTop: 8 }}>Nessun F24 compatibile trovato. Non viene creato alcun pagamento per inferenza.</div>}
             </div>}
             {tab === 'ader' && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 8, marginTop: 10, color: '#334155' }}>
               <span><small>Stato portale</small><br /><strong>{item.portal_status || 'Non indicato'}</strong></span>

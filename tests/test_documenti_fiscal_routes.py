@@ -18,6 +18,7 @@ def test_endpoint_fiscali_documenti_sono_realmente_montati():
         ("/api/fiscal/summary", "GET"),
         ("/api/fiscal/obligations", "GET"),
         ("/api/fiscal/f24-rows", "GET"),
+        ("/api/fiscal/declarations", "GET"),
         ("/api/fiscal/f24-documents", "GET"),
         ("/api/fiscal/evidence/{entity_type}/{entity_id}", "GET"),
         ("/api/fiscal/collections", "GET"),
