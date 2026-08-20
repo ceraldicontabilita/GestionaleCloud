@@ -3,1109 +3,2388 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Validazione pagine GestionaleCloud</title>
+  <title>Gestione pagine - GestionaleCloud</title>
   <style>
     :root {
-      --bg: #f4f7fb;
-      --card: #ffffff;
-      --primary: #113a5d;
-      --accent: #2d7dd2;
-      --text: #1d2430;
-      --muted: #5a6472;
-      --border: #d9e2ec;
-      --good: #dff7e9;
-      --warn: #fff1d6;
-      --bad: #fde2e2;
+      --bg:#f3f7fb; --card:#ffffff; --primary:#123a5b; --accent:#2a7ce2; --text:#1a2430; --muted:#58687b; --line:#dfe9f4; --soft:#edf4ff; --shadow:0 10px 28px rgba(18,58,91,0.08);
     }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: Arial, Helvetica, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-    }
-    .wrap {
-      max-width: 1100px;
-      margin: 24px auto;
-      padding: 0 16px 40px;
-    }
-    .topbar {
-      background: var(--primary);
-      color: white;
-      border-radius: 16px;
-      padding: 18px 20px;
-      box-shadow: 0 8px 20px rgba(17,58,93,0.12);
-      margin-bottom: 20px;
-    }
-    .topbar h1 { margin: 0 0 8px; font-size: 28px; }
-    .topbar p { margin: 0; color: #dfeeff; line-height: 1.5; }
-    .actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin: 18px 0 24px;
-    }
-    button {
-      border: none;
-      border-radius: 10px;
-      padding: 10px 16px;
-      font-weight: 700;
-      cursor: pointer;
-      background: var(--accent);
-      color: white;
-    }
-    button.secondary { background: #5b7186; }
-    button.warn { background: #a85d2a; }
-    .panel {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      box-shadow: 0 6px 18px rgba(0,0,0,0.03);
-      padding: 16px;
-    }
-    .rows {
-      display: grid;
-      gap: 12px;
-    }
-    .row {
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 12px;
-      background: #fbfdff;
-    }
-    .page-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-size: 15px;
-      margin-bottom: 10px;
-    }
-    .page-header strong {
-      display: inline-flex;
-      justify-content: center;
-      align-items: center;
-      min-width: 42px;
-      height: 32px;
-      border-radius: 8px;
-      background: #edf4ff;
-      color: var(--primary);
-      font-weight: 800;
-    }
-    .controls {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      margin-bottom: 10px;
-    }
-    .controls label {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: #f1f5f9;
-      border-radius: 8px;
-      padding: 8px 10px;
-      font-weight: 600;
-    }
-    textarea {
-      width: 100%;
-      min-height: 56px;
-      resize: vertical;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 10px 12px;
-      font: inherit;
-      background: white;
-    }
-    .summary {
-      margin-top: 18px;
-      border-top: 1px solid var(--border);
-      padding-top: 16px;
-      color: var(--muted);
-      font-size: 14px;
-    }
-    @media (max-width: 700px) {
-      .controls { flex-direction: column; }
-      .topbar h1 { font-size: 22px; }
-    }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:Arial,Helvetica,sans-serif; background:var(--bg); color:var(--text); }
+    .wrap { max-width:1200px; margin:0 auto; padding:24px 16px 50px; }
+    .hero { background:linear-gradient(135deg, var(--primary), #1d5f8d); color:white; padding:24px 20px; border-radius:18px; box-shadow:var(--shadow); margin-bottom:18px; }
+    .hero h1 { margin:0 0 10px; font-size:30px; }
+    .hero p { margin:0; line-height:1.6; color:#e6f0ff; }
+    .cards { display:grid; gap:18px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; box-shadow:var(--shadow); }
+    .topline { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+    .badge { display:inline-flex; min-width:42px; height:32px; align-items:center; justify-content:center; background:var(--soft); color:var(--primary); border-radius:8px; font-weight:800; }
+    .topline h3 { margin:0; font-size:18px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+    .box { background:#fafcff; border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+    .label { font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); font-weight:700; margin-bottom:6px; }
+    .box p, .plain { margin:0; line-height:1.55; }
+    .line { font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); font-weight:700; margin:14px 0 6px; }
+    .reply { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-start; margin-top:12px; }
+    .reply label { display:inline-flex; align-items:center; gap:6px; padding:8px 10px; border-radius:8px; background:#f3f6fb; font-weight:700; }
+    textarea { flex:1 1 100%; min-height:60px; resize:vertical; border:1px solid var(--line); border-radius:10px; padding:10px 12px; font:inherit; }
+    .foot { margin-top:18px; padding-top:14px; border-top:1px solid var(--line); color:var(--muted); font-size:14px; }
+    @media (max-width:700px) { .hero h1 { font-size:24px; } .reply { flex-direction:column; } }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="topbar">
-      <h1>Validazione pagine - GestionaleCloud</h1>
-      <p>Usa questa checklist per confermare, negare o correggere la logica delle 65 pagine. I risultati vengono salvati localmente nel browser e possono essere scaricati come file JSON o TXT.</p>
+    <div class="hero">
+      <h1>Gestione funzionale del GestionaleCloud</h1>
+      <p>Questa pagina spiega, pagina per pagina, come nasce il dato, dove arriva, cosa usa e cosa alimenta. Non è una checklist vuota: è la mappa di funzionamento del sistema.</p>
     </div>
 
-    <div class="actions">
-      <button id="downloadJson">Scarica JSON</button>
-      <button id="downloadTxt" class="secondary">Scarica TXT</button>
-      <button id="reset" class="warn">Reset</button>
+    <div class="cards">
+      
+    <div class="card">
+      <div class="topline">
+        <span class="badge">01</span>
+        <h3>Login</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Permette all’utente di autenticarsi e accedere al sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dal login dell’utente e dal profilo assegnato.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Username, password, sessione, profilo, ruoli e permessi.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Apre il resto del gestionale e determina quali aree dell’applicazione sono accessibili.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dal login dell’utente e dal profilo assegnato. e li usa per apre il resto del gestionale e determina quali aree dell’applicazione sono accessibili.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_1" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_1" value="NO"> NO</label>
+        <label><input type="radio" name="ans_1" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Login"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">02</span>
+        <h3>Gestione riservata</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Gestisce utenti, ruoli e autorizzazioni del sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle configurazioni di sicurezza e dai profili assegnati.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Utenti, ruoli, privilegi, configurazioni e permessi.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Definisce chi può usare quali pagine e quali azioni sono consentite.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle configurazioni di sicurezza e dai profili assegnati. e li usa per definisce chi può usare quali pagine e quali azioni sono consentite.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_2" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_2" value="NO"> NO</label>
+        <label><input type="radio" name="ans_2" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Gestione riservata"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">03</span>
+        <h3>Dashboard</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Mostra lo stato operativo del giorno: scadenze, movimenti, documenti e alert.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dai dati del sistema aggregati e aggiornati nel tempo.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Documenti, movimenti, banche, fatture, pagamenti e scadenze.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Guida il lavoro quotidiano e indica le priorità da controllare.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dai dati del sistema aggregati e aggiornati nel tempo. e li usa per guida il lavoro quotidiano e indica le priorità da controllare.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_3" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_3" value="NO"> NO</label>
+        <label><input type="radio" name="ans_3" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Dashboard"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">04</span>
+        <h3>Inserimento rapido</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Permette di creare un documento o un movimento in modo veloce.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalla scelta rapida dell’utente e dal modello già noto.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Dati già noti: cliente, fornitore, importo, documento, contesto.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Genera un nuovo record che poi viene elaborato in contabilità, banca o documenti.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalla scelta rapida dell’utente e dal modello già noto. e li usa per genera un nuovo record che poi viene elaborato in contabilità, banca o documenti.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_4" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_4" value="NO"> NO</label>
+        <label><input type="radio" name="ans_4" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Inserimento rapido"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">05</span>
+        <h3>Archivio fatture</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Archivia e consulta le fatture ricevute e i relativi dati fiscali.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dall’importazione della fattura o dall’XML ricevuto.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Fornitore, numero, data, importo, IVA, scadenza, XML/P7M.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta pagamenti, scadenze, contabilità e riconciliazione.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dall’importazione della fattura o dall’xml ricevuto. e li usa per alimenta pagamenti, scadenze, contabilità e riconciliazione.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_5" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_5" value="NO"> NO</label>
+        <label><input type="radio" name="ans_5" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Archivio fatture"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">06</span>
+        <h3>Corrispettivi</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Mostra i ricavi e i flussi monetari da corrispettivi e forme di pagamento.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dai movimenti elettronici, bancari e dai corrispettivi.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>RT, POS, accrediti, commissioni, movimenti bancari.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta la contabilità dei ricavi e la dashboard di tesoreria.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dai movimenti elettronici, bancari e dai corrispettivi. e li usa per alimenta la contabilità dei ricavi e la dashboard di tesoreria.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_6" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_6" value="NO"> NO</label>
+        <label><input type="radio" name="ans_6" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Corrispettivi"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">07</span>
+        <h3>Fornitori</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Tiene l’anagrafica dei fornitori e il loro storico di documenti.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dall’anagrafica e dai documenti ricevuti.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>P.IVA, codice fiscale, nome, alias, fatture e documenti associati.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta fatture, scadenze, controlli e relazioni con la contabilità.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dall’anagrafica e dai documenti ricevuti. e li usa per alimenta fatture, scadenze, controlli e relazioni con la contabilità.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_7" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_7" value="NO"> NO</label>
+        <label><input type="radio" name="ans_7" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Fornitori"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">08</span>
+        <h3>Prima Nota</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Mostra le scritture contabili e il loro impiego nella contabilità.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle registrazioni contabili generate dai fatti economici.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Movimenti di cassa, banca, fatture, cedolini, F24, ricavi e costi.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta bilancio, giornale, verifiche e report contabili.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle registrazioni contabili generate dai fatti economici. e li usa per alimenta bilancio, giornale, verifiche e report contabili.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_8" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_8" value="NO"> NO</label>
+        <label><input type="radio" name="ans_8" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Prima Nota"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">09</span>
+        <h3>Pulizia Prima Nota</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Mostra le scritture contabili e il loro impiego nella contabilità.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle registrazioni contabili generate dai fatti economici.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Movimenti di cassa, banca, fatture, cedolini, F24, ricavi e costi.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta bilancio, giornale, verifiche e report contabili.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle registrazioni contabili generate dai fatti economici. e li usa per alimenta bilancio, giornale, verifiche e report contabili.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_9" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_9" value="NO"> NO</label>
+        <label><input type="radio" name="ans_9" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Pulizia Prima Nota"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">10</span>
+        <h3>Cedolini e salari</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Gestisce stipendi, ritenute e pagamenti del personale.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dai cedolini e dalle rilevazioni del personale.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Dipendenti, cedolini, trattenute, rate, periodi e assegni.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta Prima Nota, cassa, ritenute e report fiscali.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dai cedolini e dalle rilevazioni del personale. e li usa per alimenta prima nota, cassa, ritenute e report fiscali.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_10" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_10" value="NO"> NO</label>
+        <label><input type="radio" name="ans_10" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Cedolini e salari"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">11</span>
+        <h3>Flotta noleggio</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Traccia veicoli, verbali, costi e relazioni nel settore noleggio.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dai contratti, dai verbali e dai documenti della flotta.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Targa, veicolo, driver, verbale, importi, ricevute e pagamento.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta flotta, costi, riconciliazione e stato di ciascun verbale.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dai contratti, dai verbali e dai documenti della flotta. e li usa per alimenta flotta, costi, riconciliazione e stato di ciascun verbale.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_11" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_11" value="NO"> NO</label>
+        <label><input type="radio" name="ans_11" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Flotta noleggio"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">12</span>
+        <h3>Verbali noleggio</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Traccia veicoli, verbali, costi e relazioni nel settore noleggio.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dai contratti, dai verbali e dai documenti della flotta.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Targa, veicolo, driver, verbale, importi, ricevute e pagamento.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta flotta, costi, riconciliazione e stato di ciascun verbale.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dai contratti, dai verbali e dai documenti della flotta. e li usa per alimenta flotta, costi, riconciliazione e stato di ciascun verbale.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_12" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_12" value="NO"> NO</label>
+        <label><input type="radio" name="ans_12" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Verbali noleggio"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">13</span>
+        <h3>Costi noleggio</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Traccia veicoli, verbali, costi e relazioni nel settore noleggio.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dai contratti, dai verbali e dai documenti della flotta.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Targa, veicolo, driver, verbale, importi, ricevute e pagamento.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta flotta, costi, riconciliazione e stato di ciascun verbale.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dai contratti, dai verbali e dai documenti della flotta. e li usa per alimenta flotta, costi, riconciliazione e stato di ciascun verbale.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_13" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_13" value="NO"> NO</label>
+        <label><input type="radio" name="ans_13" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Costi noleggio"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">14</span>
+        <h3>Dettaglio verbale</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Traccia veicoli, verbali, costi e relazioni nel settore noleggio.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dai contratti, dai verbali e dai documenti della flotta.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Targa, veicolo, driver, verbale, importi, ricevute e pagamento.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta flotta, costi, riconciliazione e stato di ciascun verbale.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dai contratti, dai verbali e dai documenti della flotta. e li usa per alimenta flotta, costi, riconciliazione e stato di ciascun verbale.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_14" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_14" value="NO"> NO</label>
+        <label><input type="radio" name="ans_14" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Dettaglio verbale"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">15</span>
+        <h3>Piano dei Conti</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Pagina operativa del gestionale.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Dati del dominio, documenti, movimenti e relazioni del sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta lo stato del modulo e le pagine collegate del sistema.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale. e li usa per alimenta lo stato del modulo e le pagine collegate del sistema.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_15" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_15" value="NO"> NO</label>
+        <label><input type="radio" name="ans_15" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Piano dei Conti"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">16</span>
+        <h3>Bilancio</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Raccoglie la contabilità di base e la sintesi economica dell’azienda.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalla Prima Nota e dai conti di contabilità.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Scritture, saldi, movimenti e conti.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Genera bilancio, verifiche, conti e report di controllo.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalla prima nota e dai conti di contabilità. e li usa per genera bilancio, verifiche, conti e report di controllo.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_16" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_16" value="NO"> NO</label>
+        <label><input type="radio" name="ans_16" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Bilancio"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">17</span>
+        <h3>Verifica Bilancio</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Raccoglie la contabilità di base e la sintesi economica dell’azienda.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalla Prima Nota e dai conti di contabilità.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Scritture, saldi, movimenti e conti.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Genera bilancio, verifiche, conti e report di controllo.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalla prima nota e dai conti di contabilità. e li usa per genera bilancio, verifiche, conti e report di controllo.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_17" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_17" value="NO"> NO</label>
+        <label><input type="radio" name="ans_17" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Verifica Bilancio"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">18</span>
+        <h3>Libro Giornale</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Raccoglie la contabilità di base e la sintesi economica dell’azienda.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalla Prima Nota e dai conti di contabilità.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Scritture, saldi, movimenti e conti.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Genera bilancio, verifiche, conti e report di controllo.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalla prima nota e dai conti di contabilità. e li usa per genera bilancio, verifiche, conti e report di controllo.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_18" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_18" value="NO"> NO</label>
+        <label><input type="radio" name="ans_18" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Libro Giornale"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">19</span>
+        <h3>Controllo mensile</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Pagina operativa del gestionale.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Dati del dominio, documenti, movimenti e relazioni del sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta lo stato del modulo e le pagine collegate del sistema.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale. e li usa per alimenta lo stato del modulo e le pagine collegate del sistema.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_19" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_19" value="NO"> NO</label>
+        <label><input type="radio" name="ans_19" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Controllo mensile"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">20</span>
+        <h3>Calendario fiscale</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Ricorda le scadenze fiscali, di pagamento e di controllo.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle date dei documenti e dalle regole di pagamento.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Date, scadenze, documenti e obblighi.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta alert, dashboard e pianificazione.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle date dei documenti e dalle regole di pagamento. e li usa per alimenta alert, dashboard e pianificazione.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_20" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_20" value="NO"> NO</label>
+        <label><input type="radio" name="ans_20" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Calendario fiscale"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">21</span>
+        <h3>Cespiti</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Gestisce pianificazione, finanziamenti, budget e analisi strategica.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce da dati di bilancio, pianificazione e dati di struttura.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Cespiti, mutui, budget, previsioni, dati economici.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce da dati di bilancio, pianificazione e dati di struttura. e li usa per alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_21" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_21" value="NO"> NO</label>
+        <label><input type="radio" name="ans_21" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Cespiti"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">22</span>
+        <h3>Finanziaria</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Gestisce pianificazione, finanziamenti, budget e analisi strategica.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce da dati di bilancio, pianificazione e dati di struttura.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Cespiti, mutui, budget, previsioni, dati economici.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce da dati di bilancio, pianificazione e dati di struttura. e li usa per alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_22" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_22" value="NO"> NO</label>
+        <label><input type="radio" name="ans_22" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Finanziaria"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">23</span>
+        <h3>Chiusura esercizio</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Pagina operativa del gestionale.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Dati del dominio, documenti, movimenti e relazioni del sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta lo stato del modulo e le pagine collegate del sistema.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale. e li usa per alimenta lo stato del modulo e le pagine collegate del sistema.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_23" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_23" value="NO"> NO</label>
+        <label><input type="radio" name="ans_23" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Chiusura esercizio"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">24</span>
+        <h3>Budget</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Gestisce pianificazione, finanziamenti, budget e analisi strategica.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce da dati di bilancio, pianificazione e dati di struttura.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Cespiti, mutui, budget, previsioni, dati economici.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce da dati di bilancio, pianificazione e dati di struttura. e li usa per alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_24" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_24" value="NO"> NO</label>
+        <label><input type="radio" name="ans_24" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Budget"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">25</span>
+        <h3>Mutui</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Gestisce pianificazione, finanziamenti, budget e analisi strategica.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce da dati di bilancio, pianificazione e dati di struttura.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Cespiti, mutui, budget, previsioni, dati economici.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce da dati di bilancio, pianificazione e dati di struttura. e li usa per alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_25" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_25" value="NO"> NO</label>
+        <label><input type="radio" name="ans_25" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Mutui"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">26</span>
+        <h3>Contabilita avanzata</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Pagina operativa del gestionale.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Dati del dominio, documenti, movimenti e relazioni del sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta lo stato del modulo e le pagine collegate del sistema.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale. e li usa per alimenta lo stato del modulo e le pagine collegate del sistema.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_26" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_26" value="NO"> NO</label>
+        <label><input type="radio" name="ans_26" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Contabilita avanzata"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">27</span>
+        <h3>Utile obiettivo</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Gestisce pianificazione, finanziamenti, budget e analisi strategica.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce da dati di bilancio, pianificazione e dati di struttura.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Cespiti, mutui, budget, previsioni, dati economici.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce da dati di bilancio, pianificazione e dati di struttura. e li usa per alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_27" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_27" value="NO"> NO</label>
+        <label><input type="radio" name="ans_27" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Utile obiettivo"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">28</span>
+        <h3>Previsioni acquisti</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Gestisce pianificazione, finanziamenti, budget e analisi strategica.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce da dati di bilancio, pianificazione e dati di struttura.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Cespiti, mutui, budget, previsioni, dati economici.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce da dati di bilancio, pianificazione e dati di struttura. e li usa per alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_28" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_28" value="NO"> NO</label>
+        <label><input type="radio" name="ans_28" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Previsioni acquisti"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">29</span>
+        <h3>Learning Machine</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Configura automatismi, AI, import email e integrazioni esterne.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle impostazioni del sistema e dalle regole di automazione.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Regole, canali, email, endpoint, classificazioni e settings.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta classificazione, import, alert, AI e integrazioni.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle impostazioni del sistema e dalle regole di automazione. e li usa per alimenta classificazione, import, alert, ai e integrazioni.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_29" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_29" value="NO"> NO</label>
+        <label><input type="radio" name="ans_29" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Learning Machine"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">30</span>
+        <h3>Scadenze</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Ricorda le scadenze fiscali, di pagamento e di controllo.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle date dei documenti e dalle regole di pagamento.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Date, scadenze, documenti e obblighi.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta alert, dashboard e pianificazione.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle date dei documenti e dalle regole di pagamento. e li usa per alimenta alert, dashboard e pianificazione.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_30" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_30" value="NO"> NO</label>
+        <label><input type="radio" name="ans_30" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Scadenze"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">31</span>
+        <h3>Ritenute</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Registra le trattenute fiscali e previdenziali.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dal dato del cedolino e dalle regole fiscali applicate.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Cedolini, trattenute, contributi, importi e dipendenti.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta la contabilità, i pagamenti e le dichiarazioni.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dal dato del cedolino e dalle regole fiscali applicate. e li usa per alimenta la contabilità, i pagamenti e le dichiarazioni.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_31" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_31" value="NO"> NO</label>
+        <label><input type="radio" name="ans_31" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Ritenute"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">32</span>
+        <h3>Riconciliazione dashboard</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Mostra lo stato operativo del giorno: scadenze, movimenti, documenti e alert.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dai dati del sistema aggregati e aggiornati nel tempo.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Documenti, movimenti, banche, fatture, pagamenti e scadenze.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Guida il lavoro quotidiano e indica le priorità da controllare.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dai dati del sistema aggregati e aggiornati nel tempo. e li usa per guida il lavoro quotidiano e indica le priorità da controllare.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_32" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_32" value="NO"> NO</label>
+        <label><input type="radio" name="ans_32" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Riconciliazione dashboard"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">33</span>
+        <h3>Riconciliazione banca</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_33" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_33" value="NO"> NO</label>
+        <label><input type="radio" name="ans_33" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Riconciliazione banca"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">34</span>
+        <h3>Riconciliazione F24</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_34" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_34" value="NO"> NO</label>
+        <label><input type="radio" name="ans_34" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Riconciliazione F24"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">35</span>
+        <h3>Riconciliazione stipendi</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_35" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_35" value="NO"> NO</label>
+        <label><input type="radio" name="ans_35" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Riconciliazione stipendi"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">36</span>
+        <h3>Riconciliazione documenti</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_36" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_36" value="NO"> NO</label>
+        <label><input type="radio" name="ans_36" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Riconciliazione documenti"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">37</span>
+        <h3>Archivio bonifici</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_37" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_37" value="NO"> NO</label>
+        <label><input type="radio" name="ans_37" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Archivio bonifici"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">38</span>
+        <h3>Assegni</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_38" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_38" value="NO"> NO</label>
+        <label><input type="radio" name="ans_38" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Assegni"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">39</span>
+        <h3>PayPal</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_39" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_39" value="NO"> NO</label>
+        <label><input type="radio" name="ans_39" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per PayPal"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">40</span>
+        <h3>Coerenza POS</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_40" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_40" value="NO"> NO</label>
+        <label><input type="radio" name="ans_40" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Coerenza POS"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">41</span>
+        <h3>Import documenti</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Contiene i documenti originali, il loro indice e la loro consultazione nel sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dall’importazione o dalla scansione del documento originale.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>File, PDF, XML, P7M, ZIP, Drive IDs, path, hash e metadata.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta l’archivio, la classificazione, il tracking e la relazione con le pratiche.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dall’importazione o dalla scansione del documento originale. e li usa per alimenta l’archivio, la classificazione, il tracking e la relazione con le pratiche.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_41" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_41" value="NO"> NO</label>
+        <label><input type="radio" name="ans_41" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Import documenti"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">42</span>
+        <h3>Archivio documenti</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Contiene i documenti originali, il loro indice e la loro consultazione nel sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dall’importazione o dalla scansione del documento originale.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>File, PDF, XML, P7M, ZIP, Drive IDs, path, hash e metadata.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta l’archivio, la classificazione, il tracking e la relazione con le pratiche.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dall’importazione o dalla scansione del documento originale. e li usa per alimenta l’archivio, la classificazione, il tracking e la relazione con le pratiche.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_42" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_42" value="NO"> NO</label>
+        <label><input type="radio" name="ans_42" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Archivio documenti"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">43</span>
+        <h3>Verifica coerenza</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Supporta controllo, amministrazione, sicurezza e gestione del sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle amministrazioni del sistema e dai controlli di qualità.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Dati di sistema, utenti, regole, verifiche, imposte e parametri.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle amministrazioni del sistema e dai controlli di qualità. e li usa per alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_43" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_43" value="NO"> NO</label>
+        <label><input type="radio" name="ans_43" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Verifica coerenza"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">44</span>
+        <h3>Movimenti banca</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_44" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_44" value="NO"> NO</label>
+        <label><input type="radio" name="ans_44" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Movimenti banca"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">45</span>
+        <h3>Commercialista</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Supporta controllo, amministrazione, sicurezza e gestione del sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle amministrazioni del sistema e dai controlli di qualità.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Dati di sistema, utenti, regole, verifiche, imposte e parametri.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle amministrazioni del sistema e dai controlli di qualità. e li usa per alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_45" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_45" value="NO"> NO</label>
+        <label><input type="radio" name="ans_45" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Commercialista"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">46</span>
+        <h3>Pianificazione</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Supporta controllo, amministrazione, sicurezza e gestione del sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle amministrazioni del sistema e dai controlli di qualità.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Dati di sistema, utenti, regole, verifiche, imposte e parametri.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle amministrazioni del sistema e dai controlli di qualità. e li usa per alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_46" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_46" value="NO"> NO</label>
+        <label><input type="radio" name="ans_46" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Pianificazione"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">47</span>
+        <h3>Visure</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Supporta controllo, amministrazione, sicurezza e gestione del sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle amministrazioni del sistema e dai controlli di qualità.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Dati di sistema, utenti, regole, verifiche, imposte e parametri.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle amministrazioni del sistema e dai controlli di qualità. e li usa per alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_47" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_47" value="NO"> NO</label>
+        <label><input type="radio" name="ans_47" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Visure"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">48</span>
+        <h3>Agenti AI</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Configura automatismi, AI, import email e integrazioni esterne.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle impostazioni del sistema e dalle regole di automazione.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Regole, canali, email, endpoint, classificazioni e settings.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta classificazione, import, alert, AI e integrazioni.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle impostazioni del sistema e dalle regole di automazione. e li usa per alimenta classificazione, import, alert, ai e integrazioni.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_48" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_48" value="NO"> NO</label>
+        <label><input type="radio" name="ans_48" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Agenti AI"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">49</span>
+        <h3>Impostazioni F24 email</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Configura automatismi, AI, import email e integrazioni esterne.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle impostazioni del sistema e dalle regole di automazione.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Regole, canali, email, endpoint, classificazioni e settings.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta classificazione, import, alert, AI e integrazioni.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle impostazioni del sistema e dalle regole di automazione. e li usa per alimenta classificazione, import, alert, ai e integrazioni.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_49" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_49" value="NO"> NO</label>
+        <label><input type="radio" name="ans_49" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Impostazioni F24 email"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">50</span>
+        <h3>Impostazioni AI</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Configura automatismi, AI, import email e integrazioni esterne.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle impostazioni del sistema e dalle regole di automazione.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Regole, canali, email, endpoint, classificazioni e settings.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta classificazione, import, alert, AI e integrazioni.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle impostazioni del sistema e dalle regole di automazione. e li usa per alimenta classificazione, import, alert, ai e integrazioni.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_50" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_50" value="NO"> NO</label>
+        <label><input type="radio" name="ans_50" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Impostazioni AI"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">51</span>
+        <h3>Integrazione OpenAPI</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Configura automatismi, AI, import email e integrazioni esterne.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle impostazioni del sistema e dalle regole di automazione.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Regole, canali, email, endpoint, classificazioni e settings.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta classificazione, import, alert, AI e integrazioni.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle impostazioni del sistema e dalle regole di automazione. e li usa per alimenta classificazione, import, alert, ai e integrazioni.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_51" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_51" value="NO"> NO</label>
+        <label><input type="radio" name="ans_51" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Integrazione OpenAPI"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">52</span>
+        <h3>Riconciliazione PagoPA</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_52" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_52" value="NO"> NO</label>
+        <label><input type="radio" name="ans_52" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Riconciliazione PagoPA"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">53</span>
+        <h3>Mittenti Email attendibili</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Configura automatismi, AI, import email e integrazioni esterne.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle impostazioni del sistema e dalle regole di automazione.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Regole, canali, email, endpoint, classificazioni e settings.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta classificazione, import, alert, AI e integrazioni.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle impostazioni del sistema e dalle regole di automazione. e li usa per alimenta classificazione, import, alert, ai e integrazioni.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_53" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_53" value="NO"> NO</label>
+        <label><input type="radio" name="ans_53" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Mittenti Email attendibili"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">54</span>
+        <h3>Admin sistema</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Supporta controllo, amministrazione, sicurezza e gestione del sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle amministrazioni del sistema e dai controlli di qualità.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Dati di sistema, utenti, regole, verifiche, imposte e parametri.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle amministrazioni del sistema e dai controlli di qualità. e li usa per alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_54" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_54" value="NO"> NO</label>
+        <label><input type="radio" name="ans_54" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Admin sistema"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">55</span>
+        <h3>Admin MFA</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Supporta controllo, amministrazione, sicurezza e gestione del sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle amministrazioni del sistema e dai controlli di qualità.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Dati di sistema, utenti, regole, verifiche, imposte e parametri.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle amministrazioni del sistema e dai controlli di qualità. e li usa per alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_55" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_55" value="NO"> NO</label>
+        <label><input type="radio" name="ans_55" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Admin MFA"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">56</span>
+        <h3>Elaborazioni amministrative</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Pagina operativa del gestionale.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Dati del dominio, documenti, movimenti e relazioni del sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta lo stato del modulo e le pagine collegate del sistema.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale. e li usa per alimenta lo stato del modulo e le pagine collegate del sistema.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_56" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_56" value="NO"> NO</label>
+        <label><input type="radio" name="ans_56" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Elaborazioni amministrative"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">57</span>
+        <h3>Elaborazioni legacy</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Pagina operativa del gestionale.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Dati del dominio, documenti, movimenti e relazioni del sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta lo stato del modulo e le pagine collegate del sistema.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale. e li usa per alimenta lo stato del modulo e le pagine collegate del sistema.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_57" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_57" value="NO"> NO</label>
+        <label><input type="radio" name="ans_57" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Elaborazioni legacy"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">58</span>
+        <h3>Utenti</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Supporta controllo, amministrazione, sicurezza e gestione del sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle amministrazioni del sistema e dai controlli di qualità.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Dati di sistema, utenti, regole, verifiche, imposte e parametri.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle amministrazioni del sistema e dai controlli di qualità. e li usa per alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_58" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_58" value="NO"> NO</label>
+        <label><input type="radio" name="ans_58" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Utenti"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">59</span>
+        <h3>Mappa gestionale</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Supporta controllo, amministrazione, sicurezza e gestione del sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle amministrazioni del sistema e dai controlli di qualità.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Dati di sistema, utenti, regole, verifiche, imposte e parametri.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle amministrazioni del sistema e dai controlli di qualità. e li usa per alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_59" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_59" value="NO"> NO</label>
+        <label><input type="radio" name="ans_59" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Mappa gestionale"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">60</span>
+        <h3>Gestione IVA</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Supporta controllo, amministrazione, sicurezza e gestione del sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dalle amministrazioni del sistema e dai controlli di qualità.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Dati di sistema, utenti, regole, verifiche, imposte e parametri.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dalle amministrazioni del sistema e dai controlli di qualità. e li usa per alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_60" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_60" value="NO"> NO</label>
+        <label><input type="radio" name="ans_60" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Gestione IVA"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">61</span>
+        <h3>Verifica fatture estere</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Archivia e consulta le fatture ricevute e i relativi dati fiscali.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dall’importazione della fattura o dall’XML ricevuto.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Fornitore, numero, data, importo, IVA, scadenza, XML/P7M.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta pagamenti, scadenze, contabilità e riconciliazione.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dall’importazione della fattura o dall’xml ricevuto. e li usa per alimenta pagamenti, scadenze, contabilità e riconciliazione.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_61" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_61" value="NO"> NO</label>
+        <label><input type="radio" name="ans_61" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Verifica fatture estere"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">62</span>
+        <h3>Dati ISA</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Gestisce pianificazione, finanziamenti, budget e analisi strategica.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce da dati di bilancio, pianificazione e dati di struttura.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>Cespiti, mutui, budget, previsioni, dati economici.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce da dati di bilancio, pianificazione e dati di struttura. e li usa per alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_62" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_62" value="NO"> NO</label>
+        <label><input type="radio" name="ans_62" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Dati ISA"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">63</span>
+        <h3>Indice documentale Drive</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Contiene i documenti originali, il loro indice e la loro consultazione nel sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dall’importazione o dalla scansione del documento originale.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>File, PDF, XML, P7M, ZIP, Drive IDs, path, hash e metadata.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta l’archivio, la classificazione, il tracking e la relazione con le pratiche.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dall’importazione o dalla scansione del documento originale. e li usa per alimenta l’archivio, la classificazione, il tracking e la relazione con le pratiche.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_63" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_63" value="NO"> NO</label>
+        <label><input type="radio" name="ans_63" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Indice documentale Drive"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">64</span>
+        <h3>Atti amministrativi</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Contiene i documenti originali, il loro indice e la loro consultazione nel sistema.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dall’importazione o dalla scansione del documento originale.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>File, PDF, XML, P7M, ZIP, Drive IDs, path, hash e metadata.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta l’archivio, la classificazione, il tracking e la relazione con le pratiche.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dall’importazione o dalla scansione del documento originale. e li usa per alimenta l’archivio, la classificazione, il tracking e la relazione con le pratiche.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_64" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_64" value="NO"> NO</label>
+        <label><input type="radio" name="ans_64" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Atti amministrativi"></textarea>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="topline">
+        <span class="badge">65</span>
+        <h3>Situazione fiscale</h3>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">Funzione</div>
+          <p>Riepiloga lo stato fiscale dell’azienda e i suoi adempimenti.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dove nasce</div>
+          <p>Nasce dall’aggregazione dei fatti fiscali e delle prove disponibili.</p>
+        </div>
+        <div class="box">
+          <div class="label">Dati in entrata</div>
+          <p>IVA, F24, dichiarazioni, scadenze, pagamenti e documenti fiscali.</p>
+        </div>
+        <div class="box">
+          <div class="label">Cosa alimenta</div>
+          <p>Alimenta il controllo fiscale finale e la vista di sintesi aziendale.</p>
+        </div>
+      </div>
+
+      <div class="line">Come funziona in pratica</div>
+      <p class="plain">La pagina prende i dati da nasce dall’aggregazione dei fatti fiscali e delle prove disponibili. e li usa per alimenta il controllo fiscale finale e la vista di sintesi aziendale.</p>
+
+      <div class="reply">
+        <label><input type="radio" name="ans_65" value="SÌ" checked> SÌ</label>
+        <label><input type="radio" name="ans_65" value="NO"> NO</label>
+        <label><input type="radio" name="ans_65" value="MODIFICA"> MODIFICA</label>
+        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Situazione fiscale"></textarea>
+      </div>
+    </div>
+    
     </div>
 
-    <div class="panel">
-      <div class="rows">
-        
-        <div class="row" data-id="1" data-label="Login">
-          <div class="page-header">
-            <strong>01</strong>
-            <span>Login</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_1" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_1" value="NO"> NO</label>
-            <label><input type="radio" name="ans_1" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="1"></textarea>
-        </div>
-    
-        <div class="row" data-id="2" data-label="Gestione riservata">
-          <div class="page-header">
-            <strong>02</strong>
-            <span>Gestione riservata</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_2" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_2" value="NO"> NO</label>
-            <label><input type="radio" name="ans_2" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="2"></textarea>
-        </div>
-    
-        <div class="row" data-id="3" data-label="Dashboard">
-          <div class="page-header">
-            <strong>03</strong>
-            <span>Dashboard</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_3" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_3" value="NO"> NO</label>
-            <label><input type="radio" name="ans_3" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="3"></textarea>
-        </div>
-    
-        <div class="row" data-id="4" data-label="Inserimento rapido">
-          <div class="page-header">
-            <strong>04</strong>
-            <span>Inserimento rapido</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_4" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_4" value="NO"> NO</label>
-            <label><input type="radio" name="ans_4" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="4"></textarea>
-        </div>
-    
-        <div class="row" data-id="5" data-label="Archivio fatture">
-          <div class="page-header">
-            <strong>05</strong>
-            <span>Archivio fatture</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_5" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_5" value="NO"> NO</label>
-            <label><input type="radio" name="ans_5" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="5"></textarea>
-        </div>
-    
-        <div class="row" data-id="6" data-label="Corrispettivi">
-          <div class="page-header">
-            <strong>06</strong>
-            <span>Corrispettivi</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_6" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_6" value="NO"> NO</label>
-            <label><input type="radio" name="ans_6" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="6"></textarea>
-        </div>
-    
-        <div class="row" data-id="7" data-label="Fornitori">
-          <div class="page-header">
-            <strong>07</strong>
-            <span>Fornitori</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_7" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_7" value="NO"> NO</label>
-            <label><input type="radio" name="ans_7" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="7"></textarea>
-        </div>
-    
-        <div class="row" data-id="8" data-label="Prima Nota">
-          <div class="page-header">
-            <strong>08</strong>
-            <span>Prima Nota</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_8" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_8" value="NO"> NO</label>
-            <label><input type="radio" name="ans_8" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="8"></textarea>
-        </div>
-    
-        <div class="row" data-id="9" data-label="Pulizia Prima Nota">
-          <div class="page-header">
-            <strong>09</strong>
-            <span>Pulizia Prima Nota</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_9" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_9" value="NO"> NO</label>
-            <label><input type="radio" name="ans_9" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="9"></textarea>
-        </div>
-    
-        <div class="row" data-id="10" data-label="Cedolini e salari">
-          <div class="page-header">
-            <strong>10</strong>
-            <span>Cedolini e salari</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_10" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_10" value="NO"> NO</label>
-            <label><input type="radio" name="ans_10" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="10"></textarea>
-        </div>
-    
-        <div class="row" data-id="11" data-label="Flotta noleggio">
-          <div class="page-header">
-            <strong>11</strong>
-            <span>Flotta noleggio</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_11" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_11" value="NO"> NO</label>
-            <label><input type="radio" name="ans_11" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="11"></textarea>
-        </div>
-    
-        <div class="row" data-id="12" data-label="Verbali noleggio">
-          <div class="page-header">
-            <strong>12</strong>
-            <span>Verbali noleggio</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_12" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_12" value="NO"> NO</label>
-            <label><input type="radio" name="ans_12" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="12"></textarea>
-        </div>
-    
-        <div class="row" data-id="13" data-label="Costi noleggio">
-          <div class="page-header">
-            <strong>13</strong>
-            <span>Costi noleggio</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_13" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_13" value="NO"> NO</label>
-            <label><input type="radio" name="ans_13" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="13"></textarea>
-        </div>
-    
-        <div class="row" data-id="14" data-label="Dettaglio verbale">
-          <div class="page-header">
-            <strong>14</strong>
-            <span>Dettaglio verbale</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_14" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_14" value="NO"> NO</label>
-            <label><input type="radio" name="ans_14" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="14"></textarea>
-        </div>
-    
-        <div class="row" data-id="15" data-label="Piano dei Conti">
-          <div class="page-header">
-            <strong>15</strong>
-            <span>Piano dei Conti</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_15" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_15" value="NO"> NO</label>
-            <label><input type="radio" name="ans_15" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="15"></textarea>
-        </div>
-    
-        <div class="row" data-id="16" data-label="Bilancio">
-          <div class="page-header">
-            <strong>16</strong>
-            <span>Bilancio</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_16" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_16" value="NO"> NO</label>
-            <label><input type="radio" name="ans_16" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="16"></textarea>
-        </div>
-    
-        <div class="row" data-id="17" data-label="Verifica Bilancio">
-          <div class="page-header">
-            <strong>17</strong>
-            <span>Verifica Bilancio</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_17" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_17" value="NO"> NO</label>
-            <label><input type="radio" name="ans_17" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="17"></textarea>
-        </div>
-    
-        <div class="row" data-id="18" data-label="Libro Giornale">
-          <div class="page-header">
-            <strong>18</strong>
-            <span>Libro Giornale</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_18" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_18" value="NO"> NO</label>
-            <label><input type="radio" name="ans_18" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="18"></textarea>
-        </div>
-    
-        <div class="row" data-id="19" data-label="Controllo mensile">
-          <div class="page-header">
-            <strong>19</strong>
-            <span>Controllo mensile</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_19" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_19" value="NO"> NO</label>
-            <label><input type="radio" name="ans_19" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="19"></textarea>
-        </div>
-    
-        <div class="row" data-id="20" data-label="Calendario fiscale">
-          <div class="page-header">
-            <strong>20</strong>
-            <span>Calendario fiscale</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_20" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_20" value="NO"> NO</label>
-            <label><input type="radio" name="ans_20" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="20"></textarea>
-        </div>
-    
-        <div class="row" data-id="21" data-label="Cespiti">
-          <div class="page-header">
-            <strong>21</strong>
-            <span>Cespiti</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_21" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_21" value="NO"> NO</label>
-            <label><input type="radio" name="ans_21" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="21"></textarea>
-        </div>
-    
-        <div class="row" data-id="22" data-label="Finanziaria">
-          <div class="page-header">
-            <strong>22</strong>
-            <span>Finanziaria</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_22" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_22" value="NO"> NO</label>
-            <label><input type="radio" name="ans_22" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="22"></textarea>
-        </div>
-    
-        <div class="row" data-id="23" data-label="Chiusura esercizio">
-          <div class="page-header">
-            <strong>23</strong>
-            <span>Chiusura esercizio</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_23" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_23" value="NO"> NO</label>
-            <label><input type="radio" name="ans_23" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="23"></textarea>
-        </div>
-    
-        <div class="row" data-id="24" data-label="Budget">
-          <div class="page-header">
-            <strong>24</strong>
-            <span>Budget</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_24" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_24" value="NO"> NO</label>
-            <label><input type="radio" name="ans_24" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="24"></textarea>
-        </div>
-    
-        <div class="row" data-id="25" data-label="Mutui">
-          <div class="page-header">
-            <strong>25</strong>
-            <span>Mutui</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_25" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_25" value="NO"> NO</label>
-            <label><input type="radio" name="ans_25" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="25"></textarea>
-        </div>
-    
-        <div class="row" data-id="26" data-label="Contabilita avanzata">
-          <div class="page-header">
-            <strong>26</strong>
-            <span>Contabilita avanzata</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_26" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_26" value="NO"> NO</label>
-            <label><input type="radio" name="ans_26" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="26"></textarea>
-        </div>
-    
-        <div class="row" data-id="27" data-label="Utile obiettivo">
-          <div class="page-header">
-            <strong>27</strong>
-            <span>Utile obiettivo</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_27" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_27" value="NO"> NO</label>
-            <label><input type="radio" name="ans_27" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="27"></textarea>
-        </div>
-    
-        <div class="row" data-id="28" data-label="Previsioni acquisti">
-          <div class="page-header">
-            <strong>28</strong>
-            <span>Previsioni acquisti</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_28" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_28" value="NO"> NO</label>
-            <label><input type="radio" name="ans_28" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="28"></textarea>
-        </div>
-    
-        <div class="row" data-id="29" data-label="Learning Machine">
-          <div class="page-header">
-            <strong>29</strong>
-            <span>Learning Machine</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_29" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_29" value="NO"> NO</label>
-            <label><input type="radio" name="ans_29" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="29"></textarea>
-        </div>
-    
-        <div class="row" data-id="30" data-label="Scadenze">
-          <div class="page-header">
-            <strong>30</strong>
-            <span>Scadenze</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_30" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_30" value="NO"> NO</label>
-            <label><input type="radio" name="ans_30" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="30"></textarea>
-        </div>
-    
-        <div class="row" data-id="31" data-label="Ritenute">
-          <div class="page-header">
-            <strong>31</strong>
-            <span>Ritenute</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_31" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_31" value="NO"> NO</label>
-            <label><input type="radio" name="ans_31" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="31"></textarea>
-        </div>
-    
-        <div class="row" data-id="32" data-label="Riconciliazione dashboard">
-          <div class="page-header">
-            <strong>32</strong>
-            <span>Riconciliazione dashboard</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_32" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_32" value="NO"> NO</label>
-            <label><input type="radio" name="ans_32" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="32"></textarea>
-        </div>
-    
-        <div class="row" data-id="33" data-label="Riconciliazione banca">
-          <div class="page-header">
-            <strong>33</strong>
-            <span>Riconciliazione banca</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_33" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_33" value="NO"> NO</label>
-            <label><input type="radio" name="ans_33" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="33"></textarea>
-        </div>
-    
-        <div class="row" data-id="34" data-label="Riconciliazione F24">
-          <div class="page-header">
-            <strong>34</strong>
-            <span>Riconciliazione F24</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_34" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_34" value="NO"> NO</label>
-            <label><input type="radio" name="ans_34" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="34"></textarea>
-        </div>
-    
-        <div class="row" data-id="35" data-label="Riconciliazione stipendi">
-          <div class="page-header">
-            <strong>35</strong>
-            <span>Riconciliazione stipendi</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_35" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_35" value="NO"> NO</label>
-            <label><input type="radio" name="ans_35" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="35"></textarea>
-        </div>
-    
-        <div class="row" data-id="36" data-label="Riconciliazione documenti">
-          <div class="page-header">
-            <strong>36</strong>
-            <span>Riconciliazione documenti</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_36" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_36" value="NO"> NO</label>
-            <label><input type="radio" name="ans_36" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="36"></textarea>
-        </div>
-    
-        <div class="row" data-id="37" data-label="Archivio bonifici">
-          <div class="page-header">
-            <strong>37</strong>
-            <span>Archivio bonifici</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_37" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_37" value="NO"> NO</label>
-            <label><input type="radio" name="ans_37" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="37"></textarea>
-        </div>
-    
-        <div class="row" data-id="38" data-label="Assegni">
-          <div class="page-header">
-            <strong>38</strong>
-            <span>Assegni</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_38" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_38" value="NO"> NO</label>
-            <label><input type="radio" name="ans_38" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="38"></textarea>
-        </div>
-    
-        <div class="row" data-id="39" data-label="PayPal">
-          <div class="page-header">
-            <strong>39</strong>
-            <span>PayPal</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_39" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_39" value="NO"> NO</label>
-            <label><input type="radio" name="ans_39" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="39"></textarea>
-        </div>
-    
-        <div class="row" data-id="40" data-label="Coerenza POS">
-          <div class="page-header">
-            <strong>40</strong>
-            <span>Coerenza POS</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_40" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_40" value="NO"> NO</label>
-            <label><input type="radio" name="ans_40" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="40"></textarea>
-        </div>
-    
-        <div class="row" data-id="41" data-label="Import documenti">
-          <div class="page-header">
-            <strong>41</strong>
-            <span>Import documenti</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_41" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_41" value="NO"> NO</label>
-            <label><input type="radio" name="ans_41" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="41"></textarea>
-        </div>
-    
-        <div class="row" data-id="42" data-label="Archivio documenti">
-          <div class="page-header">
-            <strong>42</strong>
-            <span>Archivio documenti</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_42" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_42" value="NO"> NO</label>
-            <label><input type="radio" name="ans_42" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="42"></textarea>
-        </div>
-    
-        <div class="row" data-id="43" data-label="Verifica coerenza">
-          <div class="page-header">
-            <strong>43</strong>
-            <span>Verifica coerenza</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_43" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_43" value="NO"> NO</label>
-            <label><input type="radio" name="ans_43" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="43"></textarea>
-        </div>
-    
-        <div class="row" data-id="44" data-label="Movimenti banca">
-          <div class="page-header">
-            <strong>44</strong>
-            <span>Movimenti banca</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_44" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_44" value="NO"> NO</label>
-            <label><input type="radio" name="ans_44" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="44"></textarea>
-        </div>
-    
-        <div class="row" data-id="45" data-label="Commercialista">
-          <div class="page-header">
-            <strong>45</strong>
-            <span>Commercialista</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_45" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_45" value="NO"> NO</label>
-            <label><input type="radio" name="ans_45" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="45"></textarea>
-        </div>
-    
-        <div class="row" data-id="46" data-label="Pianificazione">
-          <div class="page-header">
-            <strong>46</strong>
-            <span>Pianificazione</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_46" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_46" value="NO"> NO</label>
-            <label><input type="radio" name="ans_46" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="46"></textarea>
-        </div>
-    
-        <div class="row" data-id="47" data-label="Visure">
-          <div class="page-header">
-            <strong>47</strong>
-            <span>Visure</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_47" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_47" value="NO"> NO</label>
-            <label><input type="radio" name="ans_47" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="47"></textarea>
-        </div>
-    
-        <div class="row" data-id="48" data-label="Agenti AI">
-          <div class="page-header">
-            <strong>48</strong>
-            <span>Agenti AI</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_48" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_48" value="NO"> NO</label>
-            <label><input type="radio" name="ans_48" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="48"></textarea>
-        </div>
-    
-        <div class="row" data-id="49" data-label="Impostazioni F24 email">
-          <div class="page-header">
-            <strong>49</strong>
-            <span>Impostazioni F24 email</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_49" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_49" value="NO"> NO</label>
-            <label><input type="radio" name="ans_49" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="49"></textarea>
-        </div>
-    
-        <div class="row" data-id="50" data-label="Impostazioni AI">
-          <div class="page-header">
-            <strong>50</strong>
-            <span>Impostazioni AI</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_50" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_50" value="NO"> NO</label>
-            <label><input type="radio" name="ans_50" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="50"></textarea>
-        </div>
-    
-        <div class="row" data-id="51" data-label="Integrazione OpenAPI">
-          <div class="page-header">
-            <strong>51</strong>
-            <span>Integrazione OpenAPI</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_51" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_51" value="NO"> NO</label>
-            <label><input type="radio" name="ans_51" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="51"></textarea>
-        </div>
-    
-        <div class="row" data-id="52" data-label="Riconciliazione PagoPA">
-          <div class="page-header">
-            <strong>52</strong>
-            <span>Riconciliazione PagoPA</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_52" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_52" value="NO"> NO</label>
-            <label><input type="radio" name="ans_52" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="52"></textarea>
-        </div>
-    
-        <div class="row" data-id="53" data-label="Mittenti Email attendibili">
-          <div class="page-header">
-            <strong>53</strong>
-            <span>Mittenti Email attendibili</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_53" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_53" value="NO"> NO</label>
-            <label><input type="radio" name="ans_53" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="53"></textarea>
-        </div>
-    
-        <div class="row" data-id="54" data-label="Admin sistema">
-          <div class="page-header">
-            <strong>54</strong>
-            <span>Admin sistema</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_54" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_54" value="NO"> NO</label>
-            <label><input type="radio" name="ans_54" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="54"></textarea>
-        </div>
-    
-        <div class="row" data-id="55" data-label="Admin MFA">
-          <div class="page-header">
-            <strong>55</strong>
-            <span>Admin MFA</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_55" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_55" value="NO"> NO</label>
-            <label><input type="radio" name="ans_55" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="55"></textarea>
-        </div>
-    
-        <div class="row" data-id="56" data-label="Elaborazioni amministrative">
-          <div class="page-header">
-            <strong>56</strong>
-            <span>Elaborazioni amministrative</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_56" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_56" value="NO"> NO</label>
-            <label><input type="radio" name="ans_56" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="56"></textarea>
-        </div>
-    
-        <div class="row" data-id="57" data-label="Elaborazioni legacy">
-          <div class="page-header">
-            <strong>57</strong>
-            <span>Elaborazioni legacy</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_57" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_57" value="NO"> NO</label>
-            <label><input type="radio" name="ans_57" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="57"></textarea>
-        </div>
-    
-        <div class="row" data-id="58" data-label="Utenti">
-          <div class="page-header">
-            <strong>58</strong>
-            <span>Utenti</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_58" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_58" value="NO"> NO</label>
-            <label><input type="radio" name="ans_58" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="58"></textarea>
-        </div>
-    
-        <div class="row" data-id="59" data-label="Mappa gestionale">
-          <div class="page-header">
-            <strong>59</strong>
-            <span>Mappa gestionale</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_59" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_59" value="NO"> NO</label>
-            <label><input type="radio" name="ans_59" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="59"></textarea>
-        </div>
-    
-        <div class="row" data-id="60" data-label="Gestione IVA">
-          <div class="page-header">
-            <strong>60</strong>
-            <span>Gestione IVA</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_60" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_60" value="NO"> NO</label>
-            <label><input type="radio" name="ans_60" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="60"></textarea>
-        </div>
-    
-        <div class="row" data-id="61" data-label="Verifica fatture estere">
-          <div class="page-header">
-            <strong>61</strong>
-            <span>Verifica fatture estere</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_61" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_61" value="NO"> NO</label>
-            <label><input type="radio" name="ans_61" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="61"></textarea>
-        </div>
-    
-        <div class="row" data-id="62" data-label="Dati ISA">
-          <div class="page-header">
-            <strong>62</strong>
-            <span>Dati ISA</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_62" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_62" value="NO"> NO</label>
-            <label><input type="radio" name="ans_62" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="62"></textarea>
-        </div>
-    
-        <div class="row" data-id="63" data-label="Indice documentale Drive">
-          <div class="page-header">
-            <strong>63</strong>
-            <span>Indice documentale Drive</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_63" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_63" value="NO"> NO</label>
-            <label><input type="radio" name="ans_63" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="63"></textarea>
-        </div>
-    
-        <div class="row" data-id="64" data-label="Atti amministrativi">
-          <div class="page-header">
-            <strong>64</strong>
-            <span>Atti amministrativi</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_64" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_64" value="NO"> NO</label>
-            <label><input type="radio" name="ans_64" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="64"></textarea>
-        </div>
-    
-        <div class="row" data-id="65" data-label="Situazione fiscale">
-          <div class="page-header">
-            <strong>65</strong>
-            <span>Situazione fiscale</span>
-          </div>
-          <div class="controls">
-            <label><input type="radio" name="ans_65" value="SÌ" checked> SÌ</label>
-            <label><input type="radio" name="ans_65" value="NO"> NO</label>
-            <label><input type="radio" name="ans_65" value="MODIFICA"> MODIFICA</label>
-          </div>
-          <textarea placeholder="Nota breve (opzionale)" data-note="65"></textarea>
-        </div>
-    
-      </div>
-      <div class="summary">
-        <div>Totale pagine: <strong id="totPages">65</strong></div>
-        <div>Completate: <strong id="filled">0</strong></div>
-      </div>
+    <div class="foot">
+      Totale pagine: <strong>65</strong> · Risposte salvate nel browser · Puoi modificare ogni voce e scaricare il risultato come JSON/TXT.
     </div>
   </div>
-
-  <script>
-    const storageKey = 'gestionalecloud-validazione-pagine';
-    const rows = [...document.querySelectorAll('.row')];
-    const filledEl = document.getElementById('filled');
-
-    function loadState() {
-      try {
-        const raw = localStorage.getItem(storageKey);
-        return raw ? JSON.parse(raw) : {};
-      } catch (e) {
-        return {};
-      }
-    }
-
-    function saveState() {
-      const data = {};
-      rows.forEach(row => {
-        const id = row.dataset.id;
-        const checked = row.querySelector('input[type="radio"]:checked');
-        const note = row.querySelector('textarea').value.trim();
-        data[id] = {
-          id: Number(id),
-          label: row.dataset.label,
-          response: checked ? checked.value : '',
-          note
-        };
-      });
-      localStorage.setItem(storageKey, JSON.stringify(data));
-      updateSummary();
-    }
-
-    function restoreState() {
-      const state = loadState();
-      rows.forEach(row => {
-        const id = row.dataset.id;
-        const entry = state[id];
-        if (!entry) return;
-        const radio = row.querySelector(`input[value="${entry.response}"]`);
-        if (radio) radio.checked = true;
-        row.querySelector('textarea').value = entry.note || '';
-      });
-      updateSummary();
-    }
-
-    function updateSummary() {
-      const count = rows.filter(row => {
-        const checked = row.querySelector('input[type="radio"]:checked');
-        const note = row.querySelector('textarea').value.trim();
-        return !!checked || !!note;
-      }).length;
-      filledEl.textContent = count;
-    }
-
-    rows.forEach(row => {
-      row.querySelectorAll('input').forEach(input => input.addEventListener('change', saveState));
-      row.querySelector('textarea').addEventListener('input', saveState);
-    });
-
-    document.getElementById('reset').addEventListener('click', () => {
-      if (confirm('Vuoi cancellare tutte le risposte salvate?')) {
-        localStorage.removeItem(storageKey);
-        rows.forEach(row => {
-          row.querySelectorAll('input').forEach(r => r.checked = r.value === 'SÌ');
-          row.querySelector('textarea').value = '';
-        });
-        updateSummary();
-      }
-    });
-
-    function downloadBlob(filename, content, type) {
-      const blob = new Blob([content], { type });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-
-    document.getElementById('downloadJson').addEventListener('click', () => {
-      const data = {
-        generated_at: new Date().toISOString(),
-        application: 'GestionaleCloud',
-        pages: rows.map(row => {
-          const checked = row.querySelector('input[type="radio"]:checked');
-          const note = row.querySelector('textarea').value.trim();
-          return {
-            id: Number(row.dataset.id),
-            label: row.dataset.label,
-            response: checked ? checked.value : '',
-            note
-          };
-        })
-      };
-      downloadBlob('validazione-pagine-gestionalecloud.json', JSON.stringify(data, null, 2), 'application/json');
-    });
-
-    document.getElementById('downloadTxt').addEventListener('click', () => {
-      const lines = rows.map(row => {
-        const checked = row.querySelector('input[type="radio"]:checked');
-        const note = row.querySelector('textarea').value.trim();
-        return `${String(row.dataset.id).padStart(2, '0')} ${row.dataset.label} = ${checked ? checked.value : 'NON COMPILATO'}${note ? ' | ' + note : ''}`;
-      });
-      downloadBlob('validazione-pagine-gestionalecloud.txt', lines.join('
-'), 'text/plain;charset=utf-8');
-    });
-
-    restoreState();
-  </script>
 </body>
 </html>
