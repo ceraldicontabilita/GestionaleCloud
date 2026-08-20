@@ -1,5 +1,14 @@
 # Specifica operativa canonica di GestionaleCloud
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Ultimo riallineamento: 6 agosto 2026
 
 Repository canonico: `https://github.com/ceraldicontabilita/GestionaleCloud`

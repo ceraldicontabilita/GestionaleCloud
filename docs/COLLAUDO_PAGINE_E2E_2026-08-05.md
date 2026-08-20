@@ -1,5 +1,14 @@
 # Registro numerato collaudo pagine GestionaleCloud
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Data avvio: 2026-08-05
 Repository canonico: `ceraldicontabilita/GestionaleCloud`
 Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route React, API/backend, test automatici e collaudo live con dati reali in sola lettura.

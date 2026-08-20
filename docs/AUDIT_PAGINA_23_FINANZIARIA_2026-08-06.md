@@ -1,5 +1,14 @@
 # Audit pagina 23 - Finanziaria
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Data: 2026-08-06
 Percorso: `/contabilita/finanziaria`
 Endpoint canonico: `GET /api/finanziaria/summary?anno={anno}`

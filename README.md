@@ -1,5 +1,11 @@
 # GestionaleCloud — Ceraldi ERP
 
+<!-- gestionalecloud-doc
+status: current
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
 ERP interno di Ceraldi Group S.R.L. per documenti, fatture, fornitori, Prima
 Nota, riconciliazioni, fisco, personale e flotta.
 

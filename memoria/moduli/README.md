@@ -1,5 +1,14 @@
 # Logica Operativa per Moduli — indice
 
+<!-- gestionalecloud-doc
+status: reference
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!IMPORTANT]
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+
 Gap-analysis dei 10 documenti di specifica forniti dall'utente
 (`LOGICA OPERATIVA PER MODULI`), confrontati con il codice reale di GestionaleCloud.
 Ogni file segue la stessa struttura: correzione di canale (dove applicabile), tabella

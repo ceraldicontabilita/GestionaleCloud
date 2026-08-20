@@ -1,5 +1,14 @@
 # Audit Drive: sicurezza e duplicati
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Data controllo: 5 agosto 2026
 Perimetro: 26 cartelle Drive indicate dal titolare
 

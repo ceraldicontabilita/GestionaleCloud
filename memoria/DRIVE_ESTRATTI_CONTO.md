@@ -1,5 +1,14 @@
 # Area Drive "Estratti conto" — cartelle e fonti (07/08/2026)
 
+<!-- gestionalecloud-doc
+status: reference
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!IMPORTANT]
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+
 Scelta dell'utente, definitiva: **una sola cartella di ingresso**, non una
 per fonte. Testuale: *"ho messo in elaborare tutti i documenti degli estratti
 conto pdf ed excel, csv per non perdere la testa tra pos bnl, pos bpm,

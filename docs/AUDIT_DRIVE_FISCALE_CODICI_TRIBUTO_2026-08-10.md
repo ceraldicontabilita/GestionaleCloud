@@ -1,5 +1,14 @@
 # Audit Drive fiscale e codici tributo — 10 agosto 2026
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 ## Esito iniziale
 
 - Le cartelle fiscali erano risolte da ID statici senza verifica della radice.

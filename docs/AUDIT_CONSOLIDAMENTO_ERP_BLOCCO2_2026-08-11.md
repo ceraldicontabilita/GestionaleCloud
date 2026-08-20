@@ -1,5 +1,14 @@
 # Audit consolidamento ERP — Blocco 2 — 2026-08-11
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Branch: `audit/consolidamento-erp-blocco2-2026-08-11`
 PR: `#176`
 

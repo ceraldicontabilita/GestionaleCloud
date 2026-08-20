@@ -1,5 +1,14 @@
 # Audit del ciclo di vita del codice — 2026-08-11
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 ## Perimetro e regola di sicurezza
 
 Audit eseguito sul checkout canonico `C:\Users\ceral\Documents\GESTIONALE CLOUD 2`

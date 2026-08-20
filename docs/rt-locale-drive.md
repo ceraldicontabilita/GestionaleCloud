@@ -1,5 +1,11 @@
 # Acquisizione serale RT locale
 
+<!-- gestionalecloud-doc
+status: current
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
 Render non puo raggiungere `192.168.1.19`, perche e un indirizzo della rete privata del locale.
 Il raccoglitore deve girare su un PC collegato alla stessa LAN e deve solo trasferire i file
 originali nella cartella Drive `Corrispettivi/Da elaborare`.

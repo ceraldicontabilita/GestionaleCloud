@@ -1,5 +1,11 @@
 # Runbook — GestionaleCloud MCP
 
+<!-- gestionalecloud-doc
+status: current
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
 ## Installazione isolata
 
 L'SDK MCP 2.0 usa dipendenze ASGI più recenti di quelle del backend FastAPI 0.110. Per questo il gateway deve avere un ambiente Python separato.

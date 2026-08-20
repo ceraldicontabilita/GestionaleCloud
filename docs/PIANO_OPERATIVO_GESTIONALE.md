@@ -1,5 +1,14 @@
 # Piano operativo Gestionale Ceraldi
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Questo documento riassume lo stato del gestionale e il piano di completamento tecnico, separando cio che esiste, cio che e gia automatico, cio che e parziale e cio che va costruito davvero.
 
 ## 1. Cosa fa gia il gestionale

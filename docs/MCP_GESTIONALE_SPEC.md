@@ -1,5 +1,11 @@
 # GestionaleCloud MCP — specifica di produzione
 
+<!-- gestionalecloud-doc
+status: current
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
 ## Scopo e confine architetturale
 
 `gestionale_cloud_mcp` espone agli agenti AI tutte le aree operative del GestionaleCloud senza creare un secondo ERP.

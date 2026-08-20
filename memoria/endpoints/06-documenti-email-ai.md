@@ -1,5 +1,14 @@
 # Endpoint — Documenti, Email, AI (blocco 06)
 
+<!-- gestionalecloud-doc
+status: reference
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!IMPORTANT]
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+
 Documentazione dei router: email_download, documenti, documenti_non_associati, documents_inbox_classify, document_ai, ai_parser, enhanced_parser, email_scanner, email_mongodb, import_manuale, import_templates, chat_router, learning_machine, learning_universal, learning_machine_cdc.
 
 Contesto: l'import fatture da email è stato unificato su `fatture_upload.process_xml_bytes`; il fix del 502 sul "Vedi" documenti è la decodifica base64 a chunk in `documenti.py /documento/{id}/download`. Gli altri punti che decodificano base64 interi in RAM sono segnalati nelle Note.

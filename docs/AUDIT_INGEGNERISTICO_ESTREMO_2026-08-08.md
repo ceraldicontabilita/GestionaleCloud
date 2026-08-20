@@ -1,5 +1,14 @@
 # Audit ingegneristico estremo — GestionaleCloud
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Data: 8 agosto 2026
 Repository canonico: `ceraldicontabilita/GestionaleCloud`
 Base verificata: `main` commit `656e08c5705d220891d47b77853eaee94291055c`

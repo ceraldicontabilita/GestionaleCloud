@@ -1,5 +1,14 @@
 # Audit riconciliazione — mappa completa prima dell'unificazione
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Richiesto dall'utente dopo la scoperta che i "4 gruppi" segnalati inizialmente
 (`/api/riconciliazione`, `/api/riconciliazione-auto`, `/api/riconciliazione-intelligente`,
 `/api/operazioni-da-confermare`) non erano l'intero quadro: durante l'audit sono emersi

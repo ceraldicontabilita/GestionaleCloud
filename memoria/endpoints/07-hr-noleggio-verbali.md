@@ -1,5 +1,14 @@
 # Endpoint HR / Paghe / TFR / Noleggio / Verbali (07)
 
+<!-- gestionalecloud-doc
+status: reference
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!IMPORTANT]
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+
 Moduli: dipendenti, paghe (distinte BPM + parser F24 + Libro Unico), TFR, INPS documenti,
 verbali noleggio (2 router), verbali riconciliazione, noleggio, veicoli, alert verbali, ADR.
 Contesto: la gestione HR "viva" è su AppDipendenti (stesso Atlas, collezioni `employees`/`cedolini`

@@ -1,6 +1,13 @@
 # PRODUCT.md — GestionaleCloud / Ceraldi ERP
 
-Aggiornato il 20/08/2026 sul commit `21660b3d` di `main`.
+<!-- gestionalecloud-doc
+status: current
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+Aggiornato il 20/08/2026 sul codice corrente di `main`. Il commit esatto della
+release viene verificato in CI e in produzione, senza fissarlo in questo file.
 
 ## Prodotto
 

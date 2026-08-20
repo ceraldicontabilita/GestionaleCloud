@@ -1,5 +1,14 @@
 # Audit pagine frontend — Fatture e Riconciliazione (post-consolidamento router)
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Richiesto dall'utente dopo il consolidamento dei router backend di fatture e riconciliazione
 bancaria, per verificare se anche le pagine frontend fossero frammentate/duplicate allo stesso
 modo. Investigazione a sola lettura, poi applicati i fix concreti trovati.

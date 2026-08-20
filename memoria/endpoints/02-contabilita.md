@@ -1,5 +1,14 @@
 # Endpoint Contabilità — Modulo 02
 
+<!-- gestionalecloud-doc
+status: reference
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!IMPORTANT]
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+
 Documentazione generata dalla lettura diretta del codice (luglio 2026). Prefissi reali da `app/router_registry.py`.
 
 Convenzioni ricorrenti:

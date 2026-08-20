@@ -1,5 +1,14 @@
 # 03 — Fatture Fornitori, Corrispettivi, Fornitori e moduli collegati
 
+<!-- gestionalecloud-doc
+status: reference
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!IMPORTANT]
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+
 Documentazione operativa degli endpoint dei moduli: invoices (`/api/invoices`), fatture (`/api/fatture`), corrispettivi (`/api/corrispettivi`), fatture-ricevute (`/api/fatture-ricevute`), suppliers (`/api/suppliers` + alias `/api/fornitori`), fornitori-learning, scadenzario-fornitori, schede-tecniche, previsioni-acquisti.
 
 **Ordine di registrazione (router_registry.py) — determina chi vince sui path uguali:**

@@ -1,5 +1,14 @@
 # Specifica definitiva — Gestione IVA mensile, fatture ricevute entro il 15, controllo annuale e Chat intelligente
 
+<!-- gestionalecloud-doc
+status: reference
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!IMPORTANT]
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+
 ## 1. Obiettivo
 
 Realizzare nel gestionale contabile un motore IVA capace di:

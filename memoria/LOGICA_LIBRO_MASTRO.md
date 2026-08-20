@@ -1,5 +1,14 @@
 # LOGICA — Libro Giornale, Libro Mastro e ricostruzione della contabilità
 
+<!-- gestionalecloud-doc
+status: reference
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!IMPORTANT]
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+
 > Fonte concettuale: contabilità generale italiana in **partita doppia** (metodo
 > Fibonacci/Pacioli, recepito dal Codice Civile artt. 2214-2220 e principi OIC).
 > Ricerca web di riferimento in fondo.

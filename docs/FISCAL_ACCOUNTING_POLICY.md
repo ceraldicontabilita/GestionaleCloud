@@ -1,5 +1,11 @@
 # Policy contabile fiscale documentale
 
+<!-- gestionalecloud-doc
+status: current
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
 Questa policy non registra scritture definitive. Dal PDF costruisce una
 `journal_proposal` con fonte, versione parser, righe in centesimi, sezione di
 bilancio candidata e stato di deducibilita'. La registrazione richiede

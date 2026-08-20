@@ -1,118 +1,74 @@
-# Ceraldi ERP — Scheda rapida
+# GestionaleCloud — Indice tecnico rapido
 
-DB MongoDB: `Gestionale` · P.IVA 04523831214 · riscritta 07/08/2026
-(le regole vincolanti stanno in `CLAUDE.md`; qui i fatti tecnici).
+<!-- gestionalecloud-doc
+status: current
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
 
-## Stack
+- Repository canonico: `ceraldicontabilita/GestionaleCloud`
+- Produzione: `https://impresasemplice.online`
+- Branch operativo: `main`
 
-| Layer    | Tecnologia |
-|----------|------------|
-| Frontend | React 18 + Vite (inline styles da `src/lib/utils.js`, no Tailwind) |
-| Backend  | FastAPI + Motor (async) |
-| DB       | MongoDB Atlas (`Gestionale`) |
-| Deploy   | Render, servizio `GestionaleCloud`, autoDeploy da `main` |
-| Schedule | APScheduler (Drive/email ogni ora) |
+## Architettura
 
-## Documenti di riferimento (tutti vivi, il resto è in git)
-
-| File | Cosa contiene |
+| Livello | Tecnologia/fonte |
 |---|---|
-| `CLAUDE.md` | Regole vincolanti in vigore |
-| `LOGICA_FUNZIONAMENTO.md` (root) | Comportamento del sistema per gli utenti |
-| `PIANO_CONTI_UFFICIALE_CERALDI.md` | Piano dei conti CEE del commercialista |
-| `SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md` | Fonte di verità paghe/fisco |
-| `SPECIFICA_IVA.md` | Attribuzione per competenza e liquidazioni |
-| `FORNITORI_REGOLA_CANONICA.md` | Anagrafica fornitori |
-| `LOGICA_LIBRO_MASTRO.md` | Libro giornale/mastro |
-| `LOGICA_OPERATIVA.md` | Dettaglio funzionale operativo |
-| `DRIVE_ESTRATTI_CONTO.md` | Cartella unica estratti conto |
-| `DISASTER_RECOVERY_MONGODB.md` | Ripristino DB |
-| `BACKLOG.md` | Lavoro pendente reale |
-| `MAPPA_MODULI.md` / `MAPPA_COLLEZIONI.md` | Mappa narrativa moduli e collezioni |
+| Frontend | React 18 + Vite 5 |
+| Backend | FastAPI asincrono |
+| Originali | Google Drive |
+| Registro operativo di destinazione | Google Sheets/Excel collegato a Drive |
+| Compatibilità transitoria | MongoDB, solo fino al cutover Drive/Sheets verificato |
+| Deploy | Render, `render.yaml` |
 
-**Generati dagli script, verificati dalla CI — mai a mano:**
-`MAPPA_ROUTER.md`, `MAPPA_ENDPOINT_COMPLETA.md` (→ `scripts/genera_mappa.py`),
-`ENDPOINT_CLASSIFICAZIONE_FINALE.md` (→ `genera_classificazione_endpoint.py`),
-`AUDIT_FRONTEND_DEAD_CODE.md` (→ `audit_frontend_dead_code.py`),
-`AUDIT_STATIC_REPORT.md` (→ `audit_static.py`).
+Il backend di persistenza è selezionato da `DATA_BACKEND`. La destinazione è
+`sheets`; il default del codice resta temporaneamente `mongodb` finché copia,
+ricostruzione, scrittura e verifica end-to-end non sono concluse.
 
-## Collezioni canoniche
+## Documenti correnti
 
-```
-invoices (~3856)                  → Fatture SDI TD01+TD04      [UNICA fatture passive]
-fornitori (~268)                  → Anagrafica fornitori       [NON suppliers]
-dipendenti (~30)                  → HR anagrafica              [NON employees]
-cedolini (~916)                   → Buste paga Zucchetti v2
-corrispettivi (~1051)             → UNICA fonte ricavi
-prima_nota_cassa / prima_nota_banca
-estratto_conto_movimenti (~4261)  → Movimenti bancari          [UNICA]
-f24_unificato (~83)               → Modelli F24                [NON f24_models]
-assegni (~210)                    → Assegni per carnet
-scadenziario_fornitori (~903)     → Scadenze fornitori
-chiusure_pos_manuali              → POS reale per giorno/gestore
-sumup_transactions / sumup_payouts→ Circuito SumUp da API
-warehouse_inventory (~5372)       → Giacenze                   [NON warehouse_stocks]
-documents_inbox / documenti_classificati / documenti_non_associati
-partite_aperte · riconciliazioni_match · audit_log · alerts
-verbali_noleggio (~165) · veicoli_noleggio (~4)
-```
+| Documento | Scopo |
+|---|---|
+| `../README.md` | Installazione, architettura, test e deploy |
+| `../PRODUCT.md` | Prodotto e albero funzionale |
+| `../CLAUDE.md` | Regole operative per gli agenti |
+| `../DESIGN.md` | Design system UI |
+| `../LOGICA_FUNZIONAMENTO.md` | Regole di dominio e flussi end-to-end |
+| `../docs/MARKDOWN_INVENTORY.md` | Stato e autorità di tutti i Markdown |
+| `MAPPA_MODULI.md` | Mappa dei moduli applicativi |
+| `DISASTER_RECOVERY_DRIVE.md` | Backup, ricostruzione e ripristino Drive-only |
+| `DRIVE_ESTRATTI_CONTO.md` | Regole del canale estratti conto |
+| `FORNITORI_REGOLA_CANONICA.md` | Identità anagrafica fornitori |
+| `LOGICA_LIBRO_MASTRO.md` | Regole del libro mastro |
+| `SPECIFICA_IVA.md` | Regole IVA |
+| `SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md` | Specifiche fiscali/personale di dettaglio |
 
-## Route principali
+## Artefatti generati
 
-```
-/                dashboard          /prima-nota      cassa+banca+provvisori
-/fatture         fatture ricevute   /riconciliazione riconciliazione unificata
-/fornitori       fornitori          /contabilita     piano conti · bilancio · IVA
-/noleggio        flotta+verbali     /magazzino       giacenze
-/documenti       archivio+import    /admin           email · SumUp · sistema
-```
+Non modificare manualmente:
 
-## Servizi core (app/services/)
+- `MAPPA_ROUTER.md`
+- `MAPPA_ENDPOINT_COMPLETA.md`
+- `ENDPOINT_CLASSIFICAZIONE_FINALE.md`
+- `AUDIT_FRONTEND_DEAD_CODE.md`
+- `AUDIT_STATIC_REPORT.md`
 
-```
-scritture_contabili.py   → MOTORE UNICO Prima Nota (mai insert diretti)
-conti_pos.py             → circuiti POS → conti (Numia/SumUp/PayPal)
-sumup_sync.py / sumup_payout.py → circuito SumUp
-stato_coerenza_pos.py    → catene di controllo POS indipendenti
-classificazione_estratti.py → fonte dei documenti in cartella unica
-dedup_causali_ec.py      → doppioni EC da causali prefissate
-event_bus.py · alert_engine.py · audit_logger.py · deduplica.py
-partite_aperte_engine.py · riconciliazione_engine.py
-```
+Lo script di rigenerazione è indicato nell'header del relativo file. I report
+datati sono prove storiche, non istruzioni correnti.
 
-## Regole tecniche (da non dimenticare)
+## Regole non negoziabili
 
-1. Nomi collezioni SEMPRE da `app/db_collections.py`, mai stringhe.
-2. Ricavi SOLO da `corrispettivi`; le `invoices` sono costi.
-3. Note credito TD04 → importo negativo.
-4. Metodo pagamento fattura: dal FORNITORE (anagrafica), mai dall'XML SDI;
-   il metodo REALE del pagamento è `_metodo_reale()` (fatture_module/crud).
-5. IMAP sempre dentro `asyncio.to_thread()`.
-6. Settings: il file `.env` ha priorità sull'ambiente OS (intenzionale —
-   ricordarlo quando "le variabili su Render non arrivano").
-7. Ogni CRUD significativo chiama `propagate_event()`.
-8. Alert solo dal catalogo di `alert_engine.py`.
-9. Design: `src/lib/utils.js` unica fonte (navy #0f2744, oro #b8860b).
-10. HACCP rimosso (app esterna Tracciabilità); HR nell'app AppDipendenti.
+- originali mai eliminati o spostati automaticamente;
+- import idempotenti e deduplicazione prima della scrittura;
+- progressivo per foglio, `canonical_id`, `operation_id`, hash e provenienza;
+- fattura, quietanza, banca e Prima Nota restano fatti distinti;
+- associazioni definitive automatiche solo quando univoche;
+- importo uguale non prova identità;
+- ogni alert apre la lista dei record;
+- nessuna dismissione MongoDB prima del cutover Drive/Sheets verificato.
 
-## Mittenti email autorizzati
+## Verifica
 
-| Mittente | Tipo | Destinazione |
-|---|---|---|
-| `grazia.studioferrantini@email.it` | Cedolino/F24 | `cedolini` |
-| `rosaria.marotta@email.it` | F24 | `cedolini` |
-| `f.ferrantini@email.it` | Cedolino/F24 | `cedolini` |
-| `ricevuta.pagaonline@agenziariscossione.gov.it` | Cartella | `documenti_non_associati` |
-| `notifica.acc.campania@pec.agenziariscossione.gov.it` | Cartella | `documenti_non_associati` |
-| `no_reply@agenziariscossione.gov.it` | Cartella | `documenti_non_associati` |
-| `inpscomunica@postacert.inps.gov.it` | INPS | `documenti_non_associati` |
-| `auto_napoli@massivo.pec.inail.it` | INAIL | `documenti_non_associati` |
-| `partenopay@ext.comune.napoli.it` | PagoPA | `verbali` |
-| `noreply-checkout@ricevute.pagopa.it` | PagoPA | `documenti_non_associati` |
-| `tari.avvisibonari@pec.comune.napoli.it` | TARI | `documenti_non_associati` |
-| `entrate.tari-tares-tarsu@pec.comune.napoli.it` | TARI | `documenti_non_associati` |
-| `assistenza@paypal.it` | PayPal | `documenti_non_associati` |
-| `@pec.fatturapa.it` (PEC) | Fattura XML SDI | `invoices` |
-
-Fatture SOLO da Drive/PEC, mai da Gmail. Corrispettivi: solo XML del
-registratore telematico.
+Per una release documentare test, build, CI, commit pubblicato e prova live.
+Un report statico o un HTTP 200 non sostituisce il controllo dei dati e delle
+relazioni.

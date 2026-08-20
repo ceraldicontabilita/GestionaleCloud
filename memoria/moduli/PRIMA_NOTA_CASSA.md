@@ -1,5 +1,14 @@
 # Prima Nota Cassa — stato reale vs specifica
 
+<!-- gestionalecloud-doc
+status: reference
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!IMPORTANT]
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+
 Fonte specifica: `Prima Nota Cassa — Flussi automatici.txt` (fornita dall'utente).
 Verificato leggendo il codice attuale (post-consolidamento router del 2026-07-07).
 

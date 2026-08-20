@@ -1,5 +1,14 @@
 # GestionaleCloud - stato importazione dati
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Data verifica: 2026-08-10. `NON_VERIFICATO_CORRENTE` significa che la produzione e il DB rispondono, ma la sessione amministrativa necessaria per leggere conteggi e record non era disponibile durante l'audit.
 
 | DATASET | PRESENTE_NEI_FILE | IMPORTATO_DB | RICONCILIATO | PROVE | AZIONE |

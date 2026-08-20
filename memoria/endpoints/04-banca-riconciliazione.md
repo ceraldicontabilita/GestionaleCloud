@@ -1,5 +1,14 @@
 # Endpoint — Banca e Riconciliazione (area 04)
 
+<!-- gestionalecloud-doc
+status: reference
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!IMPORTANT]
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+
 Documentazione operativa degli endpoint dei moduli banca/riconciliazione (FastAPI + MongoDB).
 Collezione canonica movimenti banca: `estratto_conto_movimenti`. Schema canonico collegamento assegno↔fatture: `fatture_collegate=[{fattura_id, quota, data_collegamento}]` (max 4 fatture, stesso fornitore, tolleranza ±0,005€).
 

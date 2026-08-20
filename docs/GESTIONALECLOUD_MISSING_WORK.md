@@ -1,5 +1,14 @@
 # GestionaleCloud - lavoro mancante o incompleto
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Questo documento contiene soltanto gli esiti `PARZIALE`, `ASSENTE` o `DIVERGENTE` dell'audit del 2026-08-10.
 
 ## Bloccanti di prova

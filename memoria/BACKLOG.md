@@ -1,5 +1,14 @@
 # Ceraldi ERP — Backlog operativo
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 Riscritto il 07/08/2026: solo lavoro davvero pendente. Ultimo aggiornamento
 della versione precedente: aprile 2026 — era diventata archeologia.
 

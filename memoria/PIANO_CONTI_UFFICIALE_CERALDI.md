@@ -1,5 +1,14 @@
 # Piano dei conti UFFICIALE (CEE) — Ceraldi 2025
 
+<!-- gestionalecloud-doc
+status: reference
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!IMPORTANT]
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+
 > Fonte: bilancio ufficiale del commercialista. Questo è **IL** piano dei conti
 > canonico del sistema (scelta utente: *il piano dei conti è solo CEE*).
 > Dati in `app/services/piano_conti_ufficiale.py` (rigenerati dal PDF, non a mano).
@@ -350,4 +359,3 @@
 | `84.01.37.03` | Sanz.e int.inded.imposte dirette correnti |
 | `84.01.39` | Sopr.pass.int.sanz.imp.dirette es.prec. |
 | `84.01.39.03` | Sopr.pass.sanz.int.ind.imp.dir.es.prec. |
-

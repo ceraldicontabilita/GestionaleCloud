@@ -1,5 +1,14 @@
 # Audit PDF, IVA e qualità dei dati
 
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
+
 ## Scopo
 
 Questa guida descrive il collaudo end-to-end dei documenti contabili, i controlli introdotti e il flusso operativo da usare per nuove importazioni. Non contiene nomi, importi di dettaglio, credenziali o copie dei documenti aziendali.
