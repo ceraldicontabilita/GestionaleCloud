@@ -42,24 +42,36 @@ class Database:
         Called on application startup.
         """
         try:
+            mongo_uri = settings.MONGODB_ATLAS_URI or settings.MONGO_URL
+
             if settings.DATA_BACKEND.strip().lower() == "sheets":
                 from app.services.sheets_runtime_database import SheetsRuntimeDatabase
 
-                scrub_mongo_runtime_configuration()
-                runtime = SheetsRuntimeDatabase(settings.DB_NAME, {
-                    "GOOGLE_SHEETS_LEDGER_ID": settings.GOOGLE_SHEETS_LEDGER_ID,
-                    "GOOGLE_SHEETS_LEDGER_FOLDER_ID": settings.GOOGLE_SHEETS_LEDGER_FOLDER_ID,
-                })
-                await runtime.hydrate()
-                cls.client = runtime._client
-                cls.db = runtime
-                logger.info(
-                    "Connected to Google Sheets ledger %s; MongoDB esterno disattivato",
-                    settings.GOOGLE_SHEETS_LEDGER_ID,
-                )
-                return
+                try:
+                    runtime = SheetsRuntimeDatabase(settings.DB_NAME, {
+                        "GOOGLE_SHEETS_LEDGER_ID": settings.GOOGLE_SHEETS_LEDGER_ID,
+                        "GOOGLE_SHEETS_LEDGER_FOLDER_ID": settings.GOOGLE_SHEETS_LEDGER_FOLDER_ID,
+                    })
+                    await runtime.hydrate()
+                    cls.client = runtime._client
+                    cls.db = runtime
+                    # Solo dopo hydrate riuscito rimuoviamo le credenziali Mongo
+                    # dal processo: prima serve per eventuale fallback runtime.
+                    scrub_mongo_runtime_configuration()
+                    logger.info(
+                        "Connected to Google Sheets ledger %s; MongoDB esterno disattivato",
+                        settings.GOOGLE_SHEETS_LEDGER_ID,
+                    )
+                    return
+                except Exception as sheets_error:
+                    if mongo_uri:
+                        logger.warning(
+                            "Sheets backend non disponibile (%s). Fallback su MongoDB transitorio.",
+                            sheets_error,
+                        )
+                    else:
+                        raise
 
-            mongo_uri = settings.MONGODB_ATLAS_URI or settings.MONGO_URL
             if mongo_uri and mongo_uri.startswith("mongomock://"):
                 from mongomock_motor import AsyncMongoMockClient
 
