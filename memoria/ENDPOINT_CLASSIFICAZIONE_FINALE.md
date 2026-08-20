@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1136 · tenere: 732 · verificare: 377 · admin-only (migrazione/manutenzione): 27
+**Totale endpoint:** 1137 · tenere: 733 · verificare: 377 · admin-only (migrazione/manutenzione): 27
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -1117,6 +1117,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/v1/stats` | public_api | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/verbali-noleggio/associa-pdf/{numero_verbale:path}` | verbali_noleggio | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/verbali-noleggio/correggi-importo/{numero_verbale:path}` | verbali_noleggio | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/verbali-noleggio/correggi-trasgressore/{numero_verbale:path}` | verbali_noleggio | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/verbali-noleggio/dettaglio/{numero_verbale:path}` | verbali_noleggio_api | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `GET /api/verbali-noleggio/dettaglio/{numero_verbale}` | verbali_noleggio | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/verbali-noleggio/pdf/{numero_verbale:path}` | verbali_noleggio | sì | — | — | — | sì | tenere | in uso: FE |

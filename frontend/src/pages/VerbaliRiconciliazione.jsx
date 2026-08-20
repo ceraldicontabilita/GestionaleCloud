@@ -168,7 +168,7 @@ export default function VerbaliRiconciliazione() {
     try {
       const res = await api.post('/api/verbali-riconciliazione/collega-driver-massivo');
       setSuccessMsg(
-        `Driver collegati: ${res.data.collegati_a_driver} verbali associati su ${res.data.verbali_analizzati} analizzati`
+        `Driver: ${res.data.collegati_a_driver || 0} collegati su ${res.data.verbali_analizzati || 0}; ${res.data.non_trovati_count || 0} senza assegnazione storica certa.`
       );
       loadDashboard();
       loadVerbali();
@@ -341,7 +341,7 @@ export default function VerbaliRiconciliazione() {
             disabled={checkingEmail}
             data-testid="btn-controlla-email"
           >
-            {checkingEmail ? '⏳ Controllo posta...' : '📧 Controlla adesso'}
+            {checkingEmail ? '⏳ Controllo posta...' : '📧 Controlla posta e quietanze'}
           </Button>
           <Button
             variant="danger"
@@ -350,7 +350,7 @@ export default function VerbaliRiconciliazione() {
             disabled={scanning}
             data-testid="btn-scan-fatture"
           >
-            {scanning ? '⏳ Scanning...' : '🔍 Scan Fatture Noleggiatori'}
+            {scanning ? '⏳ Ricerca...' : '🔍 Cerca verbali nelle fatture'}
           </Button>
           <Button
             variant="info"
@@ -359,7 +359,7 @@ export default function VerbaliRiconciliazione() {
             disabled={collegandoDriver}
             data-testid="btn-collega-driver"
           >
-            {collegandoDriver ? '⏳ Collegando...' : '👤 Associa Driver'}
+            {collegandoDriver ? '⏳ Ricerca...' : '👤 Proponi driver dallo storico'}
           </Button>
           <Button
             variant="success"
