@@ -1,61 +1,44 @@
 {
-  "nome_popup": "Modal 'Collega Fatture all'Assegno' (draggable)",
-  "file_sorgente": "/home/user/GestionaleCloud/frontend/src/pages/GestioneAssegni.jsx (righe ~3258-3732; stato showFattureModal/editingAssegnoForFatture/selectedFatture/fatture/modalPosition/isDragging/dragOffset dichiarato righe ~72-82; logica in openFattureModal riga ~281, toggleFattura riga ~325, saveFattureCollegate riga ~375, loadFatture riga ~147)",
-  "pagine_da_cui_si_apre": ["Assegni (/riconciliazione/assegni)"],
-  "come_si_apre": "openFattureModal(assegno) viene invocata da almeno tre punti della pagina: (1) bottone '📄 Fatture / Collega Fatture' (data-testid=fatture-{id}) su ogni riga della tabella/carnet principale; (2) bottone '🔗 Associa Fattura' nella sezione 'Assegni Senza Beneficiario' (cerca l'assegno completo nell'array `assegni` per numero — se non trovato per via dei filtri attivi, mostra alert e NON apre il modale); (3) indirettamente ogni volta che si vuole modificare le fatture già collegate a un assegno esistente (il modale precarica anche i collegamenti presenti). All'apertura: setEditingAssegnoForFatture(assegno), setSelectedFatture([]) (reset), setShowFattureModal(true), poi in parallelo loadFatture(assegno.beneficiario) e, se assegno.fatture_collegate non è vuoto, un arricchimento asincrono che chiama GET /api/invoices/{fattura_id} per ciascuna fattura già collegata per popolare selectedFatture con i dettagli reali (numero, fornitore, importo/quota, data, tipo_documento). È un overlay fisso (position:fixed, sfondo rgba(0,0,0,0.3), zIndex 1000) contenente un riquadro posizionato in absolute che può essere trascinato con il mouse tramite l'header (cursor:'grab'/'grabbing'): il trascinamento aggiorna modalPosition {x,y} tramite eventi onMouseDown/onMouseMove/onMouseUp/onMouseLeave sull'header stesso (non un drag globale su tutto il documento, quindi se il mouse esce troppo velocemente dall'header il trascinamento si interrompe).",
-  "scopo": "Permettere di collegare da 0 a 4 fatture passive dello stesso fornitore a un singolo assegno, distribuendo l'importo dell'assegno tra le fatture tramite un sistema di 'quote' in euro (non necessariamente uguali all'importo pieno della fattura: può essere un pagamento parziale). Gestisce anche le note di credito (TD04), mostrate con importo negativo.",
-  "dati_mostrati": "Header: numero assegno (editingAssegnoForFatture.numero, monospace) e importo assegno (formatEuro). Blocco informativo blu: 'Puoi collegare fino a 4 fatture a un singolo assegno'. Blocco 'Fatture Selezionate (N/4)' (verde, visibile solo se selectedFatture.length>0): per ciascuna fattura selezionata mostra numero+fornitore (rosso con badge 'NC' se nota di credito), importo (negativo per NC), totale complessivo delle quote (TOTALE FATTURE = somma di f.quota??f.importo) e la Differenza rispetto all'importo dell'assegno (verde se |differenza|<1, arancione altrimenti). Blocco 'Fatture Disponibili (esclusi pagamenti in contanti)': lista scrollabile (max-height 270px) delle fatture caricate da loadFatture, raggruppate visivamente per fornitore con header sticky '🏢 {fornitore}' quando il fornitore cambia rispetto alla riga precedente; ogni riga mostra numero fattura, badge 'Nota Credito' se TD04, fornitore + data, importo (rosso e negativo per NC, blu scuro altrimenti), e un mini-bottone '📄 Vedi' che apre ModalFattura senza selezionare la riga (stopPropagation).",
-  "campi_e_bottoni": [
-    {
-      "elemento": "Riga fattura nella lista 'Fatture Disponibili' (click sull'intera riga tranne il bottone Vedi)",
-      "cosa_fa": "toggleFattura(fattura): se la fattura è già in selectedFatture la rimuove; altrimenti, se selectedFatture.length < 4, verifica che il fornitore della nuova fattura coincida (case-insensitive) con quello della prima fattura già selezionata — se diverso, blocca con alert e non aggiunge nulla. Se il vincolo fornitore è rispettato, calcola l'importo (negativo se tipo_documento==='TD04', valore assoluto altrimenti) e aggiunge un oggetto {id, numero, importo, quota:importo, data, fornitore, ...} a selectedFatture.",
-      "endpoint_chiamato": "nessuno (solo stato locale)",
-      "validazioni": "Blocco cross-fornitore: alert '⚠️ Non puoi collegare fatture di fornitori diversi allo stesso assegno!' con i due nomi fornitore a confronto. Limite 4: se selectedFatture.length già a 4, il click su una nuova riga non aggiunge nulla (il ramo else-if `< 4` semplicemente non scatta, nessun messaggio esplicito per questo caso specifico nel codice letto)."
-    },
-    {
-      "elemento": "Mini-bottone '📄 Vedi' dentro ogni riga fattura",
-      "cosa_fa": "setFatturaView({id: f.id, numero: f.invoice_number||f.numero_fattura}), che apre il componente <ModalFattura> sovrapposto (zIndex 2000, più alto del modale Collega Fatture) senza deselezionare/selezionare la riga sottostante (stopPropagation sul click).",
-      "endpoint_chiamato": "nessuno al click (ModalFattura carica un iframe verso GET /api/fatture-ricevute/fattura/{id}/view-assoinvoice)",
-      "validazioni": "nessuna"
-    },
-    {
-      "elemento": "Header draggable (barra blu scura #0f2744 con titolo '📄 Collega Fatture all'Assegno' e sottotitolo 'Trascina per spostare')",
-      "cosa_fa": "onMouseDown avvia isDragging=true e calcola l'offset del mouse rispetto all'angolo del riquadro; onMouseMove (finché isDragging) aggiorna modalPosition={x,y} seguendo il cursore; onMouseUp/onMouseLeave terminano il drag.",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "Il bottone di chiusura dentro l'header ha onMouseDown con stopPropagation per non avviare accidentalmente un drag quando si vuole solo chiudere il modale."
-    },
-    {
-      "elemento": "Bottone '✕' nell'header (aria-label=Chiudi, data-testid=close-fatture-modal-btn)",
-      "cosa_fa": "setShowFattureModal(false) + setSelectedFatture([]) + setModalPosition({x:0,y:0}) (resetta anche la posizione trascinata, così la prossima apertura riparte centrata).",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "nessuna"
-    },
-    {
-      "elemento": "Click sull'overlay scuro esterno al riquadro",
-      "cosa_fa": "setShowFattureModal(false) (SENZA azzerare selectedFatture né modalPosition, a differenza del bottone '✕' e di 'Annulla': se si riapre il modale sullo stesso assegno l'array selectedFatture potrebbe contenere ancora selezioni della sessione precedente finché openFattureModal non lo resetta esplicitamente all'apertura successiva).",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "nessuna"
-    },
-    {
-      "elemento": "Bottone 'Annulla' nel footer (grigio #64748b)",
-      "cosa_fa": "setShowFattureModal(false) + setSelectedFatture([]) + setModalPosition({x:0,y:0}).",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "nessuna"
-    },
-    {
-      "elemento": "Bottone '✓ Collega N Fatture' nel footer (verde #10b981 se almeno 1 selezionata, grigio disabilitato #9ca3af se selectedFatture.length===0, data-testid=salva-fatture-btn)",
-      "cosa_fa": "saveFattureCollegate(): invia l'INTERO set selectedFatture come [{fattura_id, quota}] (quota = f.quota ?? f.importo) sostituendo tutti i collegamenti esistenti dell'assegno.",
-      "endpoint_chiamato": "PUT /api/assegni/{assegno_id}/fatture-collegate",
-      "validazioni": "Lato server (collega_fatture_assegno in assegni.py): 400 se più di 4 fatture (MAX_RATE); 400 se una quota ha |quota|<0.005 ('Le quote non possono essere zero' — permette quote negative per note di credito, purché non ~0); 404 se una fattura referenziata non esiste; 400 se le fatture selezionate non condividono tutte la stessa P.IVA fornitore ('Tutte le fatture collegate a uno stesso assegno devono essere dello stesso fornitore'); 400 se somma_quote - importo_assegno > TOLL(0.005€) ('La somma delle quote supera l'importo dell'assegno') — la somma PUÒ essere minore dell'importo assegno senza errori (quota parziale)."
-    }
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "popup_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "popup": "Modal 'Collega Fatture all'Assegno' (draggable)",
+  "scopo": "Mappa tecnica del popup «Modal 'Collega Fatture all'Assegno' (draggable)». Il comportamento e le mutazioni reali devono essere verificati nei sorgenti correnti.",
+  "aperto_da": [
+    "Assegni (/riconciliazione/assegni)"
   ],
-  "cosa_succede_alla_conferma": "Il backend (collega_fatture_assegno) esegue, in un'unica transazione logica: 1) ANNULLA i vecchi collegamenti: per ogni fattura precedentemente collegata a questo assegno applica un delta negativo (-quota) su importo_pagato/importo_residuo/payment_status della fattura, fa $pull su invoices.assegni_collegati per questo assegno_id, e cancella (delete_many) i movimenti in prima_nota_banca con source='assegno_manuale' legati a questo assegno. 2) APPLICA i nuovi collegamenti: per ciascuna fattura selezionata applica un delta positivo (+quota, anche negativo per NC) su importo_pagato/importo_residuo/payment_status, fa $push su invoices.assegni_collegati, e SOLO se quota>0 crea un nuovo movimento in prima_nota_banca (tipo uscita, categoria 'Assegni', source='assegno_manuale') — le quote negative (note di credito) non generano movimento banca perché non rappresentano un'uscita di denaro reale. 3) Aggiorna l'assegno: fatture_collegate (con fattura_id, quota, data_collegamento), importo_assegnato=somma_quote, fornitore_piva/ragione_sociale/beneficiario/numero_fattura dedotti dalla prima fattura, stato = 'assegnato' se |somma_quote-importo_assegno|<=0.005 altrimenti 'parzialmente_assegnato' (o 'compilato'/'vuoto' se la lista fatture inviata è vuota, cioè l'utente ha deselezionato tutto), match_auto=false, updated_at. L'importo NOMINALE dell'assegno (campo 'importo') non viene mai modificato da questa operazione. Il frontend, in caso di successo, chiude il modale (setShowFattureModal(false)), azzera editingAssegnoForFatture e selectedFatture, e richiama loadData().",
-  "come_si_chiude": [
-    "Bottone '✕' nell'header (reset completo di selezione e posizione)",
-    "Bottone 'Annulla' nel footer (reset completo di selezione e posizione)",
-    "Click sull'overlay scuro esterno (chiude ma NON resetta selectedFatture/modalPosition)",
-    "Automaticamente dopo un salvataggio riuscito con '✓ Collega N Fatture' (reset completo)",
-    "In caso di errore del salvataggio il modale resta aperto e mostra alert('Errore: ' + detail); l'utente può correggere la selezione e ritentare"
+  "file_verificati": [
+    "frontend/src/pages/GestioneAssegni.jsx"
   ],
-  "effetto_su_pagina_sottostante": "Dopo un salvataggio riuscito, loadData() ricarica la tabella assegni: la riga dell'assegno mostra il nuovo stato (assegnato/parzialmente_assegnato/compilato/vuoto) e le fatture collegate aggiornate nella colonna Fattura/Data. Le fatture toccate risultano aggiornate anche nella pagina Fatture (importo_pagato, payment_status, assegni_collegati) e in Prima Nota Banca compaiono/spariscono i relativi movimenti con source='assegno_manuale'. Se l'apertura era avvenuta dalla sezione 'Assegni Senza Beneficiario', dopo il salvataggio l'assegno normalmente esce da quella lista (perché ora ha un beneficiario dedotto dalla prima fattura collegata), ma quella sezione non si auto-aggiorna: va ricaricata manualmente con il bottone '🔄 Aggiorna' della sezione stessa."
+  "endpoint_rilevati_nei_sorgenti": [
+    "/api/assegni",
+    "/api/assegni/ambigui",
+    "/api/assegni/auto-match",
+    "/api/assegni/auto-match/conferma",
+    "/api/assegni/cerca-combinazioni-assegni",
+    "/api/assegni/clear-generated",
+    "/api/assegni/genera",
+    "/api/assegni/learning/associa-intelligente",
+    "/api/assegni/learning/learn",
+    "/api/assegni/learning/pulizia-duplicati",
+    "/api/assegni/learning/stats-avanzate",
+    "/api/assegni/riprocessa-collegamenti",
+    "/api/assegni/senza-associazione",
+    "/api/assegni/stats",
+    "/api/assegni/supporto/fatture-disponibili",
+    "/api/assegni/{param}",
+    "/api/assegni/{param}/fatture-collegate",
+    "/api/assegni/{param}/risolvi-ambiguo",
+    "/api/invoices/{param}"
+  ],
+  "regole_ux": [
+    "Il popup deve avere chiusura visibile e non restare sovrapposto al documento.",
+    "Le azioni distruttive o definitive richiedono una conferma esplicita.",
+    "Le associazioni ambigue mostrano candidati e non vengono applicate automaticamente."
+  ]
 }

@@ -1,273 +1,52 @@
 {
-  "pagina": "Documenti - Archivio",
-  "url": "https://impresasemplice.online/documenti",
-  "file_sorgente_frontend": [
-    "frontend/src/pages/hub/DocumentiHub.jsx (wrapper con 2 tab a livello URL: 'archivio' su /documenti, 'import' su /documenti/import — il tab attivo è determinato dal path della route, non da uno stato locale; monta i due componenti con React.lazy e li tiene entrambi nel DOM una volta visitati, nascosti con display:none, per non perdere lo stato al cambio tab)",
-    "frontend/src/pages/Documenti.jsx (1957 righe — è il contenuto reale del tab 'archivio'; al suo interno ha 3 sotto-tab client-side gestiti con lo stato locale activeTab: 'categorie' → Per Mittente, 'email' → Tutti i Documenti, 'ai' → AI Estratti)"
-  ],
-  "file_sorgente_backend": [
-    "app/routers/documenti.py (2525 righe, prefix /api/documenti — lista/statistiche/download email, CRUD sul singolo documento, monitor automatico, sync F24/estratti conto/buste paga, upload-auto — quest'ultimo è usato dal tab Import, non da questa pagina)",
-    "app/routers/documenti_non_associati.py (prefix /api/documenti-non-associati — usato SOLO dal sotto-tab 'Per Mittente' tramite /categorie-mittente; legge dalla collection 'documenti_non_associati', DIVERSA da 'documents_inbox' usata dal sotto-tab 'Tutti i Documenti')",
-    "app/routers/document_ai.py (prefix /api/document-ai — usato dal sotto-tab 'AI Estratti': extract, process-all-classified, classified-documents-stats, extracted-documents, delete)",
-    "app/services/email_document_downloader.py (motore di download IMAP + categorizzazione documenti, chiamato dal bottone 'Scarica da Email')",
-    "app/services/email_classifier_service.py (process_documents_with_ai — logica dietro 'Processa Allegati Email con AI', legge dalla collection 'documents_classified', DIVERSA sia da 'documents_inbox' che da 'extracted_documents')",
-    "app/services/document_data_saver.py (save_extracted_data_to_gestionale — instrada i dati estratti dall'AI verso la collection gestionale corretta in base al document_type: f24→f24_models, busta_paga→cedolini, bonifico→archivio_bonifici, estratto_conto→estratto_conto_movimenti, verbale→verbali_noleggio, cartella_esattoriale→adr_definizione_agevolata, delibera_inps→delibere_fonsi, fattura→invoices)",
-    "app/services/document_ai_extractor.py (process_document / process_document_from_base64 — chiamata LLM che estrae i campi strutturati dal PDF, non letto riga per riga in questo audit)",
-    "app/services/email_monitor_service.py (motore di sync automatico in background, condivide download_documents_from_email con questa pagina ma non è azionato da alcun bottone qui — è collegato solo a /api/documenti/monitor/* e a run_full_sync)"
-  ],
-  "scopo_generale": "Pagina di consultazione dell'archivio documenti scaricati automaticamente dalle email (o caricati manualmente) e classificati per categoria (F24, fatture, buste paga, estratti conto, quietanze, bonifici, cartelle esattoriali, satispay, INPS, certificazioni uniche, altro). Non è un unico elenco: la pagina giustappone TRE viste che leggono da TRE collection MongoDB diverse e quindi possono mostrare numeri diversi e non sincronizzati fra loro: 'Per Mittente' (collection documenti_non_associati, raggruppa per mittente attendibile es. INPS/Agenzia Entrate/Commercialista), 'Tutti i Documenti' (collection documents_inbox, l'archivio email 'classico' con filtri categoria/stato e azioni di download/cambio categoria/eliminazione), 'AI Estratti' (collection documents_classified + extracted_documents, dove un motore AI estrae dati strutturati dai PDF e li propaga automaticamente nelle collection operative del gestionale).",
-  "sezioni_tab": [
-    {
-      "nome": "Per Mittente (activeTab='categorie', tab di default all'apertura pagina nonostante l'etichetta visiva del bottone dica '🏛️ Per Mittente' e non sia la prima nella barra)",
-      "descrizione": "Griglia di card, una per ciascuna 'categoria mittente' (es. INPS, Agenzia Entrate, Comune di Napoli, Consulente Lavoro, Commercialista, PayPal, INAIL, Assicurazione, SDI Fatture), con conteggio documenti e anteprima dei primi 2 file di esempio. Dati letti da GET /api/documenti-non-associati/categorie-mittente all'avvio della pagina (useEffect al mount, non ricaricato al cambio tab). Il filtro alla base include SOLO documenti con associato=false/assente E provenienti da un mittente presente nella collection 'mittenti_email' con attivo=true (oppure con una category già nota tra f24/cedolino/busta_paga/fattura/estratto_conto/quietanza/bonifico/verbale/cartella_esattoriale/inps/pagopa/fiscale/assicurazione)."
-    },
-    {
-      "nome": "Tutti i Documenti (activeTab='email')",
-      "descrizione": "Vista tabellare classica sulla collection 'documents_inbox': statistiche in testa (totale, da processare, processati, spazio disco), riquadro blu 'Scarica Documenti da Email' con pannello Impostazioni comprimibile (periodo, parole chiave), badge popup di avanzamento download in background, filtri categoria/stato, badge contatore per categoria (cliccabili per filtrare), tabella documenti con azioni per riga (Vedi PDF, Scarica, Carica in..., Cambia categoria, Elimina)."
-    },
-    {
-      "nome": "AI Estratti (activeTab='ai')",
-      "descrizione": "Vista sulla collection 'extracted_documents' (documenti processati da Document AI) con: stats card (documenti totali/AI processati/da processare — questi contatori arrivano però da /classified-documents-stats che aggrega sulla collection 'documents_classified', NON su 'extracted_documents' mostrata sotto: le due fonti sono disallineate), bottone 'Processa Allegati Email con AI', box di upload manuale drag&click per estrazione AI, tabella dei documenti estratti con filtro tipo, descrizione sintetica generata client-side per tipo documento, e visualizzatore PDF inline (decodifica base64 lato client)."
-    }
-  ],
-  "bottoni_azioni": [
-    {
-      "etichetta": "🔄 Aggiorna (header PageLayout)",
-      "cosa_fa_al_click": "Se activeTab === 'email' richiama loadData(), altrimenti richiama SEMPRE loadAiDocuments() (quindi anche quando il tab attivo è 'categorie' il bottone in realtà ricarica i documenti AI, mai le categorie mittente — bug di targeting).",
-      "endpoint_chiamato": "GET /api/documenti/lista?categoria=&status=&limit=200 + GET /api/documenti/statistiche (tab email) OPPURE GET /api/document-ai/extracted-documents?limit=100&include_file=true + GET /api/document-ai/classified-documents-stats (altri tab)",
-      "logica_backend": "lista_documenti in documenti.py: query su documents_inbox con filtri categoria/status, più due aggregation pipeline $group per calcolare by_category e by_status (documenti totali per categoria/stato, sganciate dai filtri applicati alla lista). statistiche_documenti: count_documents su nuovo/processato, aggregation per categoria, somma byte dei file fisici nelle sottocartelle di DOCUMENTS_DIR (/tmp/documents) — MA i file PDF veri sono salvati in MongoDB come base64 (pdf_data), quindi questo calcolo di 'spazio_disco_mb' su filesystem è quasi sempre 0 in produzione (le cartelle vengono create vuote a ogni avvio, mai popolate).",
-      "formula_matematica": "spazio_disco_mb = somma(size in bytes dei file in /tmp/documents/<categoria>/) / (1024*1024), arrotondato a 2 decimali — calcolo sostanzialmente morto nell'architettura MongoDB-only attuale.",
-      "aggiornamento_ui": "setDocuments/setCategories/setStats oppure setAiDocuments/setAiStats.",
-      "casi_errore": "catch → console.error silenzioso, nessun messaggio a video."
-    },
-    {
-      "etichetta": "Card categoria mittente (click su una card in 'Per Mittente')",
-      "cosa_fa_al_click": "Imposta filtroMittente=cat.nome, passa activeTab a 'email', richiama loadData().",
-      "endpoint_chiamato": "GET /api/documenti/lista?limit=200 (stessa chiamata del tab 'Tutti i Documenti')",
-      "logica_backend": "N/A lato backend: loadData() costruisce la query solo con filtroCategoria/filtroStatus. filtroMittente NON viene mai aggiunto ai parametri della richiesta né usato per filtrare l'array in memoria.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Il tab passa a 'Tutti i Documenti' ma la lista mostrata è quella COMPLETA e non filtrata per il mittente scelto — comportamento osservato nel codice: filtroMittente è uno stato dichiarato e mai consumato, quindi il click sulla card produce solo un cambio di tab, non un filtro reale.",
-      "casi_errore": "N/A"
-    },
-    {
-      "etichetta": "🏛️ Per Mittente / 📧 Tutti i Documenti / 🤖 AI Estratti (selettore sotto-tab)",
-      "cosa_fa_al_click": "setActiveTab(id); per il tab 'ai' chiama anche esplicitamente loadAiDocuments() (per gli altri due tab non c'è un caricamento dedicato al click: 'categorie' si basa sui dati già caricati al mount, 'email' mostra i dati già in stato da loadData() del mount iniziale).",
-      "endpoint_chiamato": "GET /api/document-ai/extracted-documents?limit=100&include_file=true + GET /api/document-ai/classified-documents-stats (solo per il tab 'ai')",
-      "logica_backend": "Vedi sopra.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Cambio contenuto visualizzato tramite render condizionale su activeTab.",
-      "casi_errore": "N/A"
-    },
-    {
-      "etichetta": "⚙️ Impostazioni (toggle pannello import email)",
-      "cosa_fa_al_click": "setShowImportSettings(!showImportSettings) — apre/chiude il pannello con selezione periodo e parole chiave.",
-      "endpoint_chiamato": "Nessuna chiamata di rete diretta.",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Mostra/nasconde il pannello impostazioni.",
-      "casi_errore": "N/A"
-    },
-    {
-      "etichetta": "📥 Scarica da Email",
-      "cosa_fa_al_click": "handleDownloadFromEmail(): costruisce la lista keywordsToSearch a partire dagli id selezionati in paroleChiaveSelezionate, sia dai DEFAULT_KEYWORDS predefiniti (f24, fattura, busta_paga, estratto_conto, cartella_esattoriale, bonifico — ciascuno con più varianti separate da virgola) sia dalle customKeywords salvate dall'utente. Se emailLocked è true blocca l'azione con un alert e non chiama l'API. Mostra un messaggio di conferma testuale (solo informativo, nessun window.confirm bloccante — il testo composto non viene mai effettivamente mostrato a video prima dell'avvio).",
-      "endpoint_chiamato": "POST /api/documenti/scarica-da-email?giorni={giorniDownload}&background=true[&parole_chiave=...]",
-      "logica_backend": "scarica_documenti_email in documenti.py: 1) verifica is_email_operation_running() (lock globale asyncio.Lock condiviso da qualsiasi altra operazione email/DB) → 423 Locked se occupato; 2) recupera credenziali con get_gmail_credentials(db) (prima da 'email_accounts' in DB, poi fallback a env EMAIL_USER/EMAIL_APP_PASSWORD) → 400 se assenti; 3) con background=true crea un task_id, salva lo stato in un dizionario in-memory _download_tasks e lancia _execute_email_download come asyncio.create_task, ritornando subito {task_id}; 4) _execute_email_download acquisisce il lock (_current_operation='download_documenti_email') e chiama download_documents_from_email() del service — vedi operazione di registrazione dedicata più sotto.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Salva backgroundTask/task_id, avvia setInterval ogni 2s che chiama pollTaskStatus (GET /api/documenti/task/{task_id}). Quando lo stato passa a 'completed', ferma il polling, richiama loadData() e mostra un alert riepilogativo (email controllate, documenti trovati, nuovi documenti, duplicati saltati); se 'error', mostra alert con l'errore.",
-      "casi_errore": "423 → alert 'Operazione bloccata'; altri errori → alert con il detail; in ogni caso downloading torna false e checkEmailLock() viene richiamato per riallineare lo stato del lucchetto."
-    },
-    {
-      "etichetta": "Periodo di ricerca (select giorni)",
-      "cosa_fa_al_click": "Aggiorna giorniDownload (valori predefiniti: 10/30/60/90/180/365/730/1460 giorni) usato come parametro giorni nella chiamata di download.",
-      "endpoint_chiamato": "Nessuna chiamata diretta — usato solo al successivo click su 'Scarica da Email'.",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "N/A",
-      "casi_errore": "N/A"
-    },
-    {
-      "etichetta": "Chip parole chiave predefinite (F24 / Fattura / Busta Paga / Estratto Conto / Cartella Esattoriale / Bonifico)",
-      "cosa_fa_al_click": "toggleKeyword(id) aggiunge/rimuove l'id dall'array paroleChiaveSelezionate.",
-      "endpoint_chiamato": "Nessuna chiamata diretta.",
-      "logica_backend": "N/A — solo al submit di 'Scarica da Email' le keyword selezionate vengono espanse nelle rispettive varianti (es. 'f24' → 'f24,modello f24,tributi') e unite in una stringa CSV passata come parola_chiave.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Evidenzia il chip selezionato.",
-      "casi_errore": "N/A"
-    },
-    {
-      "etichetta": "➕ Aggiungi (nuova parola chiave personalizzata)",
-      "cosa_fa_al_click": "addCustomKeyword(): crea un oggetto {id: custom_<timestamp>, label, keywords: testo in minuscolo, custom:true}, lo aggiunge a customKeywords e lo persiste subito lato server.",
-      "endpoint_chiamato": "PUT /api/settings/user-preferences {document_keywords: [...]}",
-      "logica_backend": "Endpoint generico di preferenze utente (non nei file letti in questo audit, appartiene al modulo settings) — salva l'array così com'è.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "La nuova keyword compare nella lista 'Le tue parole chiave personalizzate' con checkbox di selezione e bottone di rimozione.",
-      "casi_errore": "catch silenzioso → console.error, nessun alert."
-    },
-    {
-      "etichetta": "✕ (rimuovi keyword personalizzata)",
-      "cosa_fa_al_click": "removeCustomKeyword(id): filtra l'array locale e lo salva, e la deseleziona se era selezionata.",
-      "endpoint_chiamato": "PUT /api/settings/user-preferences {document_keywords: [...]}",
-      "logica_backend": "Come sopra.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Rimuove il chip dalla lista.",
-      "casi_errore": "catch silenzioso."
-    },
-    {
-      "etichetta": "Filtro categoria / Filtro stato (select)",
-      "cosa_fa_al_click": "Aggiorna filtroCategoria/filtroStatus, triggera il useEffect che richiama loadData().",
-      "endpoint_chiamato": "GET /api/documenti/lista?categoria=&status=&limit=200",
-      "logica_backend": "Vedi lista_documenti sopra.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Ricarica la tabella filtrata.",
-      "casi_errore": "N/A"
-    },
-    {
-      "etichetta": "Badge contatore per categoria (es. '📋 F24: 12 (3 nuovi)')",
-      "cosa_fa_al_click": "Imposta/toglie filtroCategoria a quella categoria (toggle).",
-      "endpoint_chiamato": "GET /api/documenti/lista (via useEffect su filtroCategoria)",
-      "logica_backend": "Vedi sopra.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Ricarica lista filtrata per categoria.",
-      "casi_errore": "N/A"
-    },
-    {
-      "etichetta": "Vedi (visualizza PDF, riga documento)",
-      "cosa_fa_al_click": "handleViewPdf(doc): scarica il blob e apre il visualizzatore PDF modale.",
-      "endpoint_chiamato": "GET /api/documenti/documento/{id}/download",
-      "logica_backend": "download_documento in documenti.py: legge doc.pdf_data (base64) da documents_inbox, lo decodifica a chunk di 1MB con un generatore (_decode_chunks) per evitare di tenere in RAM sia la stringa base64 sia i bytes decodificati insieme (fix di un OOM/502 su Render con file grandi), lo restituisce come StreamingResponse application/pdf.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "setSelectedPdfDoc({...doc, pdfUrl}) apre il modale con iframe che punta all'object URL creato client-side.",
-      "casi_errore": "502/504 → alert 'documento troppo grande o servizio non disponibile'; altri errori → alert generico."
-    },
-    {
-      "etichetta": "📥 (scarica file, riga documento)",
-      "cosa_fa_al_click": "handleDownloadFile(doc): scarica il blob e lo salva via link temporaneo con download=doc.filename.",
-      "endpoint_chiamato": "GET /api/documenti/documento/{id}/download",
-      "logica_backend": "Stesso endpoint del bottone 'Vedi'.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Download nativo del browser.",
-      "casi_errore": "alert generico con error.message."
-    },
-    {
-      "etichetta": "Carica in... (select, solo su documenti non ancora processati)",
-      "cosa_fa_al_click": "handleProcessDocument(doc, destinazione) alla selezione di una voce (f24/fatture/buste_paga/estratto_conto/quietanze).",
-      "endpoint_chiamato": "POST /api/documenti/documento/{id}/processa?destinazione={destinazione}",
-      "logica_backend": "processa_documento in documenti.py: verifica che il doc esista e abbia pdf_data, mappa la destinazione a un nome interno (es. 'fatture'→'invoices'), e si LIMITA ad aggiornare status='processato', processed=true, processed_to=destinazione, processed_at su documents_inbox. NON crea alcun record nelle collection reali (f24_unificato, invoices, cedolini, ecc.): la risposta stessa include la nota esplicita 'Usa l'endpoint di upload specifico per completare il caricamento' — quindi questo bottone marca solo il documento come 'gestito' senza spostare davvero i dati.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "alert '✅ Documento processato e spostato in {destinazione}' (messaggio fuorviante rispetto al comportamento reale, che non sposta nulla) e loadData().",
-      "casi_errore": "alert con detail/message."
-    },
-    {
-      "etichetta": "Select cambia categoria (riga documento)",
-      "cosa_fa_al_click": "handleChangeCategory(docId, newCategory) alla selezione di un valore diverso da quello corrente.",
-      "endpoint_chiamato": "POST /api/documenti/documento/{id}/cambia-categoria?nuova_categoria={categoria}",
-      "logica_backend": "cambia_categoria_documento: valida che la categoria sia tra quelle note in CATEGORIES (400 altrimenti), aggiorna category e category_label su documents_inbox con updated_at. Nessuna operazione su filesystem.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "loadData().",
-      "casi_errore": "alert con detail/message."
-    },
-    {
-      "etichetta": "🗑️ Elimina (riga documento)",
-      "cosa_fa_al_click": "handleDeleteDocument(docId) — nessuna conferma preventiva (window.confirm) prima della cancellazione.",
-      "endpoint_chiamato": "DELETE /api/documenti/documento/{id}",
-      "logica_backend": "elimina_documento: verifica esistenza (404 altrimenti) ed elimina il record da documents_inbox (delete_one). Cancellazione fisica e definitiva, nessun soft-delete.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "loadData().",
-      "casi_errore": "alert con detail/message."
-    },
-    {
-      "etichetta": "🚀 Processa Allegati Email (tab AI Estratti)",
-      "cosa_fa_al_click": "Chiamata diretta senza conferma.",
-      "endpoint_chiamato": "POST /api/document-ai/process-all-classified?save_to_gestionale=true",
-      "logica_backend": "process_all_classified_documents → email_classifier_service.process_documents_with_ai: interroga la collection 'documents_classified' (query su ai_processed non true, tipo opzionale, richiede pdf_base64 presente — max 500 documenti a batch). Per ciascun documento: chiama process_document_from_base64 (Document AI/LLM) per estrarre i dati strutturati; se ha successo aggiorna il documento con ai_processed=true, ai_document_type, ai_extracted_data; se save_to_gestionale=true chiama save_extracted_data_to_gestionale che instrada i dati nella collection gestionale corretta in base al document_type rilevato (f24→f24_models, busta_paga→cedolini con aggiornamento anagrafica dipendente, bonifico→archivio_bonifici con controllo duplicati su CRO/TRN, estratto_conto→estratto_conto_movimenti, verbale→verbali_noleggio, cartella_esattoriale→adr_definizione_agevolata, delibera_inps→delibere_fonsi, fattura→invoices), ciascuna con un proprio controllo duplicati e ritorno status saved/duplicate/error.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "alert riepilogativo (documenti analizzati/estratti/salvati/duplicati/errori) e loadAiDocuments() — MA loadAiDocuments legge da /api/document-ai/extracted-documents, che è una collection DIVERSA ('extracted_documents') da quella appena aggiornata da questo bottone ('documents_classified'): la tabella sotto quindi NON mostra i risultati di questa azione, che restano visibili solo tramite classified-documents-stats.",
-      "casi_errore": "alert con detail/message."
-    },
-    {
-      "etichetta": "Carica per estrazione AI (input file nascosto, box drag&click)",
-      "cosa_fa_al_click": "Alla selezione di un file (.pdf/.png/.jpg/.jpeg) invia subito il FormData con save_to_db=true.",
-      "endpoint_chiamato": "POST /api/document-ai/extract (multipart/form-data: file, save_to_db=true)",
-      "logica_backend": "extract_from_file in document_ai.py: legge il file (max 20MB, 400 se vuoto o troppo grande), chiama process_document (LLM) con auto-detect del tipo se non specificato. Se save_to_db e l'estrazione ha successo: controlla duplicati per filename esatto su 'extracted_documents' (se già presente ritorna saved_to_db=false, duplicate=true, senza salvare nulla) — controllo debole perché basato solo sul nome file, non su hash contenuto; altrimenti inserisce un documento in 'extracted_documents' con filename, document_type, extracted_data, text_preview (primi 1000 caratteri), ocr_used, model_used, file_base64 (il file intero in base64, per la visualizzazione successiva), created_at. Poi chiama SEMPRE anche save_extracted_data_to_gestionale per instradare i dati nella collection operativa corretta (stessa logica del bottone 'Processa Allegati Email').",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "alert con tipo documento e collection di salvataggio gestionale, poi loadAiDocuments() (che stavolta legge correttamente dalla stessa collection extracted_documents appena scritta).",
-      "casi_errore": "Se structured_data.success è false, alert con l'errore di estrazione ma il file resta comunque caricato/processato lato server; su eccezione di rete, alert generico."
-    },
-    {
-      "etichetta": "Filtro tipo (select, tabella AI Estratti)",
-      "cosa_fa_al_click": "Aggiorna aiFilterTipo, filtro applicato CLIENT-SIDE sull'array già caricato (nessuna nuova chiamata di rete).",
-      "endpoint_chiamato": "Nessuno.",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Filtra le righe visibili in tabella.",
-      "casi_errore": "N/A"
-    },
-    {
-      "etichetta": "Vedi (PDF, riga documento AI estratto)",
-      "cosa_fa_al_click": "Decodifica client-side il campo file_base64 del documento (già presente in memoria, nessuna chiamata di rete) e apre il modale PDF.",
-      "endpoint_chiamato": "Nessuno (dato già caricato con include_file=true).",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Apre il modale visualizzatore.",
-      "casi_errore": "try/catch → alert 'PDF non disponibile' se la decodifica base64 fallisce."
-    },
-    {
-      "etichetta": "Elimina documento (riga documento AI estratto)",
-      "cosa_fa_al_click": "Chiamata diretta, nessuna conferma preventiva.",
-      "endpoint_chiamato": "DELETE /api/document-ai/extracted-documents/{doc._id || doc.id}",
-      "logica_backend": "delete_extracted_document: converte l'id in ObjectId ed esegue delete_one su 'extracted_documents' (404 se non trovato). Cancella SOLO il record dell'estrazione AI, non tocca l'eventuale record già propagato nella collection gestionale (es. la fattura in 'invoices' resta anche se l'estrazione viene eliminata qui).",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "loadAiDocuments().",
-      "casi_errore": "alert con detail/message."
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Download documenti da email (POST /api/documenti/scarica-da-email, in background)",
-      "sequenza_esatta": "1) Lock check + credenziali (vedi bottone 'Scarica da Email'). 2) download_documents_from_email() in email_document_downloader.py: calcola since_date da since_days, apre connessione IMAP; carica da 'email_message_index' i Message-ID già visti (dizionario anti-riscarico); cerca le email con search_emails_with_attachments (filtro SINCE + parole chiave nell'oggetto, oppure allowed_senders/keyword_senders se passati da altri chiamanti come il monitor automatico), ordina i risultati per data reale (fetch INTERNALDATE) più recente-prima; per ogni email NON ancora nel dizionario scarica gli allegati con estensione consentita (.pdf/.xml/.xlsx/.xls/.csv/.p7m), calcola l'hash MD5 del contenuto, categorizza il documento con categorize_document() (prima le search_keywords esplicite, poi pattern su oggetto/mittente in ordine: cartella_esattoriale → contributi_inps → f24 → quietanza → fattura → busta_paga → certificazione_unica (anche via regex sul filename tipo 'CF - ANNO') → satispay → estratto_conto → bonifico → altro), e — solo per i PDF — tenta di estrarre un periodo (mese/anno) dal testo con extract_document_period (9 pattern regex differenti a cascata: mese/anno testuale, MM/YYYY, scadenza F24, intervallo estratto conto, date Nexi, IVA mensile/trimestrale, date bonifico, data generica, anno da filename). 3) Per ogni allegato scaricato, il documento viene scartato come duplicato se: (a) esiste già un record con lo stesso file_hash, oppure (b) esiste un record con stessa categoria e identificatore_periodo e filename simile (via regex) E la differenza di dimensione file è <10% (size_ratio<0.1) — quest'ultimo è un controllo euristico per rilevare lo STESSO documento periodico scaricato due volte con nome leggermente diverso. 4) I documenti non duplicati vengono inseriti in 'documents_inbox' con status='nuovo', processed=false; per ciascuno viene propagato un evento EventTypes.DOCUMENTO_ACQUISITO sull'event bus (best-effort, in try/except) e viene aggiornato il dizionario email_message_index. 5) Al termine, per i documenti nuovi il servizio tenta un parsing automatico via process_document_with_ai (se il modulo ai_integration_service è disponibile — import protetto, se assente questo step viene silenziosamente saltato) con doc_type dedotto dalla categoria (fattura/f24/busta_paga/auto).",
-      "collezioni_coinvolte": ["documents_inbox", "email_message_index"],
-      "campi_scritti": {
-        "documents_inbox": "id, filename, filename_saved, pdf_data (base64), category, category_label, size_bytes, file_hash, periodo_mese, periodo_anno, periodo_raw, identificatore_periodo, email_subject, email_from, email_date, email_message_id, downloaded_at, status='nuovo', processed=false, processed_to=null",
-        "email_message_index": "message_id, seen_at, allegati (count), subject, from — upsert per ogni email controllata, anche se senza allegati, per evitare di ri-scansionarla ai sync successivi"
-      },
-      "effetti_collaterali": "Evento documento.acquisito propagato sull'event bus per ogni nuovo documento (consumato da altri moduli, es. Learning Machine); eventuale tentativo di parsing AI automatico best-effort che non blocca il flusso in caso di errore."
-    },
-    {
-      "nome": "Marcatura 'processato' di un documento verso una destinazione (POST /api/documenti/documento/{id}/processa)",
-      "sequenza_esatta": "Verifica esistenza documento e presenza di pdf_data (404 altrimenti) → mappa la destinazione richiesta a un nome interno → aggiorna SOLO i metadati del documento in documents_inbox (status, processed, processed_to, processed_at). Non viene creato alcun record nella collection di destinazione reale (f24_unificato, invoices, cedolini, ecc.): il caricamento effettivo va fatto altrove con l'endpoint di upload specifico per quel tipo di documento.",
-      "collezioni_coinvolte": ["documents_inbox"],
-      "campi_scritti": {"documents_inbox": "status='processato', processed=true, processed_to=<destinazione>, processed_at"},
-      "effetti_collaterali": "Nessuno sulle collection operative — questa è la discrepanza principale rilevata in questa pagina: il messaggio mostrato all'utente ('processato e spostato in ...') non corrisponde a un reale spostamento dei dati."
-    },
-    {
-      "nome": "Processamento AI di allegati email classificati (POST /api/document-ai/process-all-classified)",
-      "sequenza_esatta": "Legge fino a 500 documenti da 'documents_classified' (non ancora ai_processed, con pdf_base64 presente). Per ciascuno: estrae i dati strutturati via LLM (process_document_from_base64); se riuscito, aggiorna il documento con ai_processed=true e i dati estratti; se save_to_gestionale=true, instrada i dati nella collection gestionale corretta con controllo duplicati specifico per tipo documento (es. F24 per file_name, cedolino per CF+mese+anno, bonifico per CRO/TRN, fattura per numero+fornitore) tramite save_extracted_data_to_gestionale.",
-      "collezioni_coinvolte": ["documents_classified", "f24_models", "cedolini", "archivio_bonifici", "estratto_conto_movimenti", "verbali_noleggio", "adr_definizione_agevolata", "delibere_fonsi", "invoices"],
-      "campi_scritti": {
-        "documents_classified": "ai_processed, ai_processed_at, ai_model, ai_document_type, ai_extracted_data, ai_ocr_used (oppure ai_processed=false + ai_last_attempt + ai_error se l'estrazione fallisce)",
-        "collection di destinazione (dipende dal document_type)": "record completo con i dati estratti dall'LLM più i metadati email_subject/email_sender/email_date/filename/documents_classified_id come tracciabilità della fonte"
-      },
-      "effetti_collaterali": "Se il documento risulta duplicato nella collection target, il record in documents_classified viene comunque marcato ai_processed=true (viene 'consumato' anche se non produce un nuovo record operativo)."
-    },
-    {
-      "nome": "Upload manuale con estrazione AI (POST /api/document-ai/extract, save_to_db=true)",
-      "sequenza_esatta": "Legge il file (max 20MB) → process_document (LLM, auto-detect tipo) → se success: controllo duplicati per filename esatto su 'extracted_documents' (se duplicato, si ferma qui senza salvare) → insert in 'extracted_documents' con file_base64 completo → chiamata SEMPRE eseguita a save_extracted_data_to_gestionale per propagare anche nella collection operativa corretta.",
-      "collezioni_coinvolte": ["extracted_documents", "collection operativa dipendente dal document_type rilevato"],
-      "campi_scritti": {
-        "extracted_documents": "filename, document_type, extracted_data, text_preview, ocr_used, model_used, file_base64, created_at"
-      },
-      "effetti_collaterali": "Il controllo duplicati per SOLO nome file (non hash contenuto) può far passare due file omonimi ma diversi come 'stesso documento', oppure può bloccare erroneamente due documenti realmente diversi che hanno per caso lo stesso nome."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Import Documenti (tab 'import' dello stesso hub /documenti/import) — flusso di caricamento manuale/automatico alternativo, con endpoint e logica documentati in memoria/pagine/documenti-import.json.",
-    "Learning Machine (tab 'Classificazione Documenti', /learning-machine/documenti) — mostra statistiche generali di classificazione documenti (dashboard e regole apprese) su una collection separata (documenti_classificati) e linka a /classificazione-email (pagina non oggetto di questo audit).",
-    "F24 / Fatture / Buste Paga / Estratto Conto — destinazioni concettuali del bottone 'Carica in...', mai realmente raggiunte dall'endpoint /processa (vedi discrepanza sopra); i dati reali arrivano invece dagli endpoint di sync dedicati in documenti.py (/sync-f24-automatico, /sync-estratti-conto, /sync-buste-paga, non azionati da bottoni in questa pagina) o dal flusso AI Estratti."
-  ],
-  "popup_e_modali_presenti": [
-    "PDF Viewer Modal — visualizzatore inline con iframe, header con nome file/categoria/dimensione, bottoni Scarica e chiudi; usato sia dal tab 'Tutti i Documenti' (fetch remoto) sia da 'AI Estratti' (decodifica locale del base64 già in memoria).",
-    "Popup di stato download in background — card con spinner, messaggio di stato (pending/in_progress/completed/error) aggiornato dal polling ogni 2 secondi.",
-    "Pannello Impostazioni Importazione (comprimibile, non un vero modale) — periodo di ricerca, parole chiave predefinite/personalizzate.",
-    "alert()/confirm() nativi del browser per tutti i messaggi di esito (successo/errore) delle azioni — nessun modale custom di conferma per le azioni distruttive (Elimina documento non chiede conferma)."
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Archivio documenti",
+  "route": "/documenti/archivio",
+  "catalog_id": 42,
+  "modulo": "documenti",
+  "accesso": "authenticated",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Archivio documenti». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/Documenti.jsx",
+    "entry": "frontend/src/pages/hub/DocumentiHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/Documenti.jsx",
+      "frontend/src/pages/hub/DocumentiHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/routers/document_ai.py",
+      "app/routers/documenti.py",
+      "app/routers/documenti_non_associati.py",
+      "app/services/document_ai_extractor.py",
+      "app/services/document_data_saver.py",
+      "app/services/email_classifier_service.py",
+      "app/services/email_document_downloader.py",
+      "app/services/email_monitor_service.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/documenti/documento/{param}/download",
+      "/api/documenti/drive/catalog",
+      "/api/documenti/lista"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

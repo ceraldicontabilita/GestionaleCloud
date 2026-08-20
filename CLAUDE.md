@@ -1,104 +1,178 @@
 # Istruzioni per Claude — GestionaleCloud (Ceraldi ERP)
 
-Riscritto il 07/08/2026 su richiesta dell'utente: solo regole IN VIGORE.
-La storia sta in git, non qui.
+Aggiornato il 20/08/2026 sul codice di `main` del repository canonico
+`ceraldicontabilita/GestionaleCloud`.
 
-- Rispondi sempre in italiano, in ogni sessione su questo repo.
-- `LOGICA_FUNZIONAMENTO.md` descrive il comportamento reale del sistema per
-  gli utenti: tienilo aggiornato quando cambi la logica.
-- Scheda rapida (stack, collezioni canoniche, mappa dei documenti):
-  `memoria/INDEX.md`.
+Questo file contiene le regole operative per chi modifica il progetto. Il
+codice corrente, i test e la configurazione effettiva di produzione hanno
+precedenza sui report storici.
 
-## Metodo di lavoro
+## Lingua e risultato atteso
 
-- **UNA COSA ALLA VOLTA** (utente, 07/08/2026): non aprire un lavoro nuovo
-  finché quello in corso non è finito, testato e verificato. Una pagina
-  chiusa vale più di cinque iniziate.
-- REGOLA PARAMETRI: ogni valore parametrico/configurabile — frequenze di
-  scansione, mittenti attendibili, tolleranze e soglie (euro, giorni),
-  cartelle Drive, canali accesi/spenti — NON si modifica di propria
-  iniziativa: proponi all'utente una domanda con più opzioni (fino a 5,
-  es. AskUserQuestion) oppure descrivi cosa fa oggi il codice più fino a 5
-  possibili correzioni, e aspetta la sua scelta.
-- Porta in produzione (merge in `main`, autoDeploy Render) solo su richiesta
-  esplicita dell'utente. Quando la chiede, CI verde prima del merge.
+- Rispondi e documenta in italiano.
+- Porta a termine una funzione alla volta: analisi, modifica, test, verifica
+  e pubblicazione richiesta dall'utente.
+- Non dichiarare completato un flusso basandoti soltanto su HTTP 200, build o
+  presenza della pagina. Verifica dati, relazioni, deduplica e risultato live.
+- Esponi all'utente il risultato e gli eventuali blocchi, non una sequenza di
+  pulsanti tecnici da premere.
 
-## Contabilità (regole vincolanti)
+## Autorità del repository
 
-- **PIANO DEI CONTI**: SOLO il CEE ufficiale del commercialista,
-  `app/services/piano_conti_ufficiale.py` (dettaglio in
-  `memoria/PIANO_CONTI_UFFICIALE_CERALDI.md`). Ogni altro schema (operativo
-  05.01.01, numerico 400100) si converte SEMPRE con
-  `app/services/mapping_piano_conti.py` (OPERATIVO_A_UFFICIALE). Non chiedere
-  quale schema usare: è il CEE.
-- **REGOLA CANONICA POS** (18/07/2026, estesa 07/08/2026): cassa DARE =
-  corrispettivo totale XML; cassa AVERE "POS … Verso Banca" = POS REALE della
-  chiusura serale (mai ricavato dall'XML); dal 07/08 il POS reale è la SOMMA
-  dei gestori (Numia + SumUp), campo `gestore` sulle chiusure, righe storiche
-  senza campo = Numia; banca DARE = stessa cifra come puro TRASFERIMENTO
-  (source `trasferimento_pos`, un trasferimento per circuito, mai fusioni);
-  l'accredito dell'estratto conto NON crea entrate — riconcilia il
-  trasferimento del giorno di vendita (causale NUMIA, righe accorpate per
-  `DEL gg/mm/aa`, vale anche dal CSV); XML = dato fiscale: differenza col
-  reale = "non battuto". SumUp accredita il NETTO sulla Mastercard SumUp
-  (19.01.05), mai su BPM; Numia accredita il LORDO su BPM e le commissioni
-  arrivano fatturate a parte. Conti e circuiti in
-  `app/services/conti_pos.py`; NUMIA è il gestore POS, NEXI è la carta di
-  credito aziendale.
-- **PRIMA NOTA BANCA** (07/08/2026): non è una copia dell'estratto conto.
-  Un pagamento entra quando si sa A COSA si riferisce — fattura, cedolino,
-  F24, assegno, trasferimento POS. Ciò che non si aggancia resta nella coda
-  da riconciliare (`in_attesa_documento`). Uniche eccezioni: le operazioni
-  della banca stessa (`CATEGORIE_SENZA_DOCUMENTO` in
-  `prima_nota_module/common.py` — commissioni e prelievi), perché quel
-  denaro è uscito davvero e senza di loro il saldo sarebbe sbagliato.
-- **MOTORE UNICO**: ogni scrittura di Prima Nota passa da
-  `app/services/scritture_contabili.py`. MAI insert diretti nuovi
-  (test-guardia in `tests/test_motore_unico_scritture.py`).
-- **AGGANCIO DOCUMENTI**: numero fattura + importo al centesimo è la regola
-  primaria. L'importo da solo non produce mai un'associazione certa;
-  l'ambiguità diventa proposta da confermare, mai registrazione definitiva.
-  L'associazione manuale confermata da una persona vale come prova.
-- **F24/cedolini/IRES/IRAP**: fonte di verità
-  `memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md` (motori in
-  `app/engines/tributi_engine.py` e `fiscale_engine.py`). Cardini: il saldo
-  F24 non è mai automaticamente costo deducibile; RC01 = regolarizzazione di
-  periodo precedente, mai imputata al mese corrente; associazione
-  F24-cedolini solo a periodo/causale/posizione/soggetto coerenti; quietanza
-  senza F24 = alert bloccante, mai ricostruire il modello in automatico.
-- **IVA**: `memoria/SPECIFICA_IVA.md`.
-- **Fornitori**: `memoria/FORNITORI_REGOLA_CANONICA.md`.
-- Date SEMPRE in formato italiano (gg/mm/aaaa) in tutto ciò che l'utente
-  legge: descrizioni, pagine, export.
+- Repository: `https://github.com/ceraldicontabilita/GestionaleCloud`.
+- Checkout canonico Windows: `C:\Users\ceral\Documents\GESTIONALE CLOUD 2`.
+- Branch operativo: `main`.
+- Non usare `GestionaleCloud-Private`, ZIP o vecchi checkout come autorità.
+- Prima di intervenire confronta sempre `HEAD` con `origin/main`.
+- Il worktree può contenere modifiche dell'utente: non cancellarle, non
+  ripristinarle e non includerle nei commit.
+- Mai `git add -A`: aggiungere solo i file pertinenti e verificati.
 
-## Documenti e Drive
+## Fonti di verità
 
-- Le fatture arrivano SOLO da Drive, mai da Gmail né PEC. Una fattura via
-  email genera un'anomalia, non un import.
-- Estratti conto: UNA sola cartella `Estratti conto/Da elaborare` per tutte
-  le fonti (banca, carta Nexi, PayPal, mutuo, export POS). La fonte si
-  riconosce dal nome o dal contenuto (`classificazione_estratti.py`); un
-  documento non riconosciuto va in `Errori` col motivo, mai indovinato.
-  Arretrato fermo sotto `DRIVE_ESTRATTI_ANNO_MINIMO`. Dettaglio:
-  `memoria/DRIVE_ESTRATTI_CONTO.md`.
-- Nessuna cancellazione di documenti o dati reali. Nessuna modifica
-  automatica se il collegamento non è certo. Conservare sempre fonte, hash,
-  data d'importazione e log di audit. I doppioni si marcano, non si
-  cancellano.
+1. Codice e test correnti.
+2. Configurazione realmente attiva in produzione.
+3. `page_catalog.json` per le 65 schermate operative.
+4. `PRODUCT.md` per obiettivi e confini del prodotto.
+5. `LOGICA_FUNZIONAMENTO.md` e specifiche in `memoria/` per le regole di
+   dominio ancora confermate dal codice.
 
-## Sicurezza e git
+I JSON in `memoria/pagine/` e `memoria/popup/` sono mappe tecniche generate:
+si aggiornano con `scripts/refresh_json_docs.py`, non a mano.
 
-- Segreti SOLO nelle variabili d'ambiente (Render → Environment): mai in
-  chat, mai in un file, mai nel repo, mai stampati. Un segreto passato per
-  un canale sbagliato è bruciato: va ruotato.
-- Mai `git add -A`: sempre file espliciti. Mai perdere o sovrascrivere
-  modifiche locali.
-- Repo di lavoro: SOLO `GestionaleCloud`. `GestionaleCloud-Private` è
-  storico e non si usa.
-- File da non aggiungere mai in automatico: `README.md`,
-  `docs/AUDIT_DRIVE_SICUREZZA_DUPLICATI_2026-08-05.md`, `tmp/`.
-- Le mappe in `memoria/` (MAPPA_ROUTER, MAPPA_ENDPOINT_COMPLETA,
-  ENDPOINT_CLASSIFICAZIONE_FINALE, AUDIT_FRONTEND_DEAD_CODE,
-  AUDIT_STATIC_REPORT) sono GENERATE dagli script in `scripts/` e verificate
-  dalla CI: si rigenerano, non si modificano a mano. Endpoint nuovi →
-  rilanciare gli script e committare il risultato.
+## Archivio dati: stato reale e destinazione
+
+### Stato attuale
+
+- Il default del codice è ancora `DATA_BACKEND=mongodb`.
+- MongoDB è un archivio transitorio, non la destinazione finale.
+- Il supporto Google Sheets/Drive esiste, ma il cutover non è completato finché
+  non risultano positivi sincronizzazione, conteggi, hash, lettura, scrittura e
+  ricostruzione di tutte le collezioni.
+
+### Destinazione Drive-only
+
+La radice operativa deve contenere:
+
+```text
+REGISTRO DATI/
+  Ceraldi ERP - Registro dati
+PARTENOPAY/
+CODICI TRIBUTO/
+QUIETANZE/
+DICHIARAZIONI/
+```
+
+Il registro usa un foglio per archivio logico. Ogni riga conserva almeno:
+
+- progressivo stabile del foglio;
+- `canonical_id` dell'entità;
+- `operation_id` per collegare fattura, pagamento, banca e Prima Nota;
+- payload completo e ricostruibile;
+- hash del payload e provenienza;
+- data di acquisizione e versione del parser.
+
+Regole del cutover:
+
+1. deduplicare la sorgente per identità canonica e hash;
+2. bloccare ID uguali con payload differenti;
+3. copiare il dataset completo nel registro Drive;
+4. confrontare conteggi unici e digest sorgente/destinazione;
+5. ricostruire il runtime dai fogli e provarne la scrittura;
+6. impostare `DATA_BACKEND=sheets` e verificare la produzione;
+7. solo dopo disabilitare MongoDB e rimuoverne variabili e dati.
+
+Mai cancellare MongoDB prima del punto 6. In modalità Sheets il database in
+memoria è soltanto una cache di compatibilità del processo: Drive/Sheets resta
+la sorgente persistente.
+
+## Identità, duplicati e relazioni
+
+- Nessuna entità si associa per solo importo.
+- Una relazione certa richiede identità/provenienza coerente e importo esatto
+  al centesimo quando l'importo fa parte della prova.
+- Nei casi ambigui mostra i candidati (`Scegli fattura`, `Scegli driver`,
+  `Scegli verbale`) e non applicare il collegamento.
+- Gli import sono idempotenti: stesso hash o stessa identità canonica non crea
+  una seconda operazione.
+- Fattura, disposizione, ricevuta, quietanza e movimento bancario sono prove
+  distinte, collegate da `operation_id`, mai fuse in un solo record.
+- I documenti originali restano immutabili. Conservare hash, fonte, versione,
+  timestamp e log. I duplicati documentali si marcano; non si eliminano in
+  modo permanente.
+
+## Ingresso documenti e Drive
+
+- `Documenti > Import` è l'unico ingresso manuale operativo.
+- Le fatture elettroniche arrivano dal canale Drive/SDI configurato. Una
+  fattura italiana trovata per email è un'anomalia, non una seconda fonte.
+- Gmail/IMAP può acquisire F24, quietanze, cedolini e verbali soltanto dai
+  mittenti/canali autorizzati.
+- Le ricerche email complete usano `in:anywhere`, preservano message ID,
+  thread ID e SHA-256 e non spostano né cancellano gli originali.
+- Gli estratti conto confluiscono nell'area unica configurata; la fonte si
+  determina da nome e contenuto. Se non è riconoscibile, il file va in errore
+  con motivazione, mai classificato per supposizione.
+- Gli ZIP vengono prima validati, deduplicati e inventariati; poi i documenti
+  riconosciuti entrano nei rispettivi flussi.
+
+## Regole contabili vincolanti
+
+- Piano dei conti: solo CEE ufficiale in
+  `app/services/piano_conti_ufficiale.py`; conversioni tramite
+  `app/services/mapping_piano_conti.py`.
+- Motore unico Prima Nota: `app/services/scritture_contabili.py`. Non creare
+  nuovi `insert_one` diretti per scritture contabili.
+- Ricavi: solo corrispettivi RT. Le fatture ricevute sono costi; gli accrediti
+  POS e i payout non sono nuovi ricavi.
+- POS: corrispettivo XML, chiusura terminale e accredito bancario sono tre
+  fatti distinti. Numia e SumUp restano circuiti separati.
+- Un versamento contanti genera uscita Cassa e corrispondente entrata Banca con
+  lo stesso `operation_id`; l'estratto conto riconcilia il trasferimento.
+- Prima Nota Banca non è la copia dell'estratto conto: una riga entra quando è
+  nota la causale contabile oppure appartiene alle categorie bancarie senza
+  documento ammesse dal codice.
+- F24, singole righe tributo, quietanza e movimento bancario sono entità
+  distinte. La quietanza documenta il pagamento ma non sostituisce la prova
+  bancaria.
+- Cedolini e bonifici salario si associano per dipendente, periodo e regole
+  temporali; non si richiedono importi identici quando esistono acconti o
+  trattenute.
+- Date mostrate all'utente: `gg/mm/aaaa`.
+
+## PartenoPay, verbali e flotta
+
+- Conservare email, verbale, avviso, ricevuta PagoPA/PayPal e movimento banca
+  come prove separate.
+- Associazione automatica driver: targa normalizzata + data/ora infrazione +
+  storico assegnazioni del veicolo.
+- Se targa, driver, verbale o pagamento non sono univoci, conservare il
+  documento e chiedere una scelta manuale.
+- Lo stato corretto dopo un pagamento privo di ricevuta ufficiale è
+  `attesa quietanza`, non `attesa fattura`.
+- Nessun pagamento automatico è autorizzato.
+
+## Sicurezza
+
+- Segreti solo nelle variabili d'ambiente/secret store di Render.
+- Non stampare, committare o trasferire credenziali nei documenti.
+- Non spostare né cancellare email e documenti originali.
+- Eliminazioni reali, pagamenti e associazioni definitive ambigue richiedono
+  conferma esplicita al momento dell'azione.
+
+## Verifica e pubblicazione
+
+Per ogni modifica pertinente:
+
+1. test mirati;
+2. `python -m pytest -q` quando il cambiamento backend lo richiede;
+3. `yarn test` e `yarn build` in `frontend/` quando coinvolge il frontend;
+4. `git diff --check`;
+5. commit dei soli file pertinenti;
+6. push su `main` solo quando richiesto;
+7. CI verde e verifica `/api/health` sul commit pubblicato;
+8. controllo live del flusso interessato senza mutare dati non autorizzati.
+
+Un alert deve sempre mostrare l'elenco dei record coinvolti. Un comando di
+manutenzione che l'utente deve ripetere per correggere duplicati prevedibili è
+un difetto: la prevenzione per ID/hash deve stare nel flusso di importazione.

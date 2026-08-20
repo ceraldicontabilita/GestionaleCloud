@@ -1,68 +1,51 @@
 {
-  "pagina": "Elaborazione Batch Automatica",
-  "url": "https://impresasemplice.online/batch-processor",
-  "file_sorgente_frontend": [
-    "frontend/src/pages/hub/AdminHub.jsx",
-    "frontend/src/pages/BatchProcessor.jsx"
-  ],
-  "file_sorgente_backend": [
-    "app/routers/email_download.py (montato su /api/email-download) — task 'Download Email' e 'Auto-Associazione'",
-    "app/routers/ai_parser.py (montato su /api/ai-parser) — task 'Elaborazione AI'",
-    "app/routers/f24/f24_riconciliazione.py (montato su /api/f24-riconciliazione) — task 'Riconciliazione F24'",
-    "app/routers/bank/estratto_conto.py (montato su /api/estratto-conto-movimenti) — task 'Categorizzazione'"
-  ],
-  "scopo_generale": "Cruscotto che esegue AUTOMATICAMENTE, alla sola apertura della pagina (nessun click richiesto), una catena sequenziale di 5 task di sincronizzazione: scarica nuove email con PDF allegati, le elabora con l'AI, prova ad auto-associarle a fatture/F24/cedolini esistenti, riconcilia le quietanze F24 con i versamenti, e ricategorizza i movimenti bancari senza categoria. Mostra un log console-like in tempo reale, lo stato di ogni task (in attesa/in corso/OK/errore) e statistiche aggregate (documenti processati, documenti creati, errori, ultimo aggiornamento). Il pulsante 'Avvia Elaborazione' permette di ripetere manualmente l'intera sequenza.",
-  "bottoni_azioni": [
-    {
-      "etichetta": "Avvia automatico all'apertura pagina (nessun click - AUTO_TASKS con autoRun:true, hasRunRef)",
-      "cosa_fa_al_click": "Al mount del componente, se autoMode=true (sempre, non c'è un toggle nell'interfaccia per disattivarlo) e non è già partito in questa sessione di montaggio (hasRunRef.current), dopo 1 secondo di delay chiama runAllTasks() automaticamente.",
-      "endpoint_chiamato": "vedi elenco 5 task sotto",
-      "logica_backend": "vedi elenco 5 task sotto",
-      "formula_matematica": "nessuna",
-      "aggiornamento_ui": "Popola log, progress bar e stato dei task man mano che vengono eseguiti in sequenza.",
-      "casi_errore": "Un errore in un singolo task non blocca gli altri: executeTask() cattura l'eccezione, la registra in taskResults[task.id]={success:false,error} e in un log rosso, incrementa stats.errorsCount, e il ciclo prosegue con il task successivo."
-    },
-    {
-      "etichetta": "▶ Avvia Elaborazione (pulsante header, disabilitato mentre isRunning=true)",
-      "cosa_fa_al_click": "runAllTasks(): se isRunning è già true esce subito (no-op). Altrimenti resetta progress=0, taskResults={}, logs=[], poi esegue in SEQUENZA (non in parallelo) i 5 task con autoRun=true, con una pausa di 500ms tra un task e l'altro; aggiorna la progress bar in percentuale (i / totale_task * 100) prima di ogni task.",
-      "endpoint_chiamato": "in ordine: 1) POST /api/email-download/start-full-download?days_back=30  2) POST /api/ai-parser/process-email-batch?limit=100  3) POST /api/email-download/auto-associa  4) POST /api/f24-riconciliazione/riconcilia-tutto  5) POST /api/estratto-conto-movimenti/ricategorizza-batch",
-      "logica_backend": "1) Download Email — start_full_download() in email_download.py: se un download è già 'in_progress' risponde HTTP 400 ('Download già in corso'); altrimenti avvia lo scaricamento email in BACKGROUND (BackgroundTasks di FastAPI) e imposta download_status. NOTA: il default days_back del router è 1, ma il frontend lo sovrascrive esplicitamente a 30 (?days_back=30). 2) Elaborazione AI — process_email_documents(limit=100) in ai_parser.py: chiama process_email_documents_batch(db, limit=100) (servizio app/services/ai_integration_service.py, non incluso in questo audit) e risponde con {success, message, processed, ...}. 3) Auto-Associazione — auto_associa_documenti() in email_download.py: chiama smart_auto_associate(db) (NOTA: usa la versione 'v1', esiste anche un endpoint /auto-associa-v2 con logica più estesa — popola pdf_data nei payslips dal filesystem, associa da documents_inbox — ma il BatchProcessor chiama la v1). 4) Riconciliazione F24 — riconcilia_tutto() in f24_riconciliazione.py: per ogni F24 estrae i singoli codici tributo (codice, periodo, importo_debito) e cerca una quietanza che li contenga TUTTI con stesso periodo/importo, ignorando nel confronto i codici di ravvedimento/interessi (8901,8902,8903,8904,8906,8907,8911,1989,1990,1991,1992,1993,1994); se la quietanza ha un importo maggiore dell'F24 la marca come 'ravveduto'. 5) Categorizzazione — ricategorizza_batch_movimenti() in estratto_conto.py: legge i movimenti della collection bank_movements senza categoria (null/vuota/assente) e assegna una categoria in base a pattern testuali nella descrizione/causale (es. 'stipend'/'salary'→stipendi, 'inps'→contributi, 'f24'/'erario'→tributi, 'affitto'/'canone'→affitto, 'enel'/'telecom'/'vodafone'→utenze, 'assicuraz'→assicurazioni).",
-      "formula_matematica": "Riconciliazione F24: match = insieme(codici_tributo_F24) ⊆ insieme(codici_quietanza) al netto dei codici di ravvedimento/interessi, con uguaglianza di periodo e importo per ciascun codice; se importo_quietanza > importo_F24 ⇒ flag 'ravveduto'.",
-      "aggiornamento_ui": "Per ogni task: log '▶ Avvio: {nome}' poi, in caso di successo, log '✓ {nome}: completato' + eventuali righe di dettaglio (Processati, Fatture create, Riconciliati, N errori) lette da result.processed / result.fatture_create / result.riconciliati / result.errors.length; aggiorna stats.totalProcessed (somma di result.processed || result.emails_processate || result.riconciliati || 0), stats.documentsCreated (result.fatture_create || result.created || 0), stats.errorsCount (result.errors?.length || 0). Al termine dei 5 task: progress=100%, stats.lastRunTime=ora, log '✅ Elaborazione batch completata!'.",
-      "casi_errore": "Per ogni task fallito: log '✗ {nome}: {messaggio errore}' (da error.response?.data?.detail || error.message), taskResults[id]={success:false, error}, stats.errorsCount incrementato di 1. Il pulsante icona di stato del task diventa una X rossa (XCircle); il task successivo parte comunque dopo la pausa di 500ms."
-    },
-    {
-      "etichetta": "Pulisci Log",
-      "cosa_fa_al_click": "setLogs([]) — svuota solo il pannello di log a schermo.",
-      "endpoint_chiamato": "nessuno",
-      "logica_backend": "N/A",
-      "formula_matematica": "nessuna",
-      "aggiornamento_ui": "Il pannello 'Log Elaborazione' torna al messaggio 'In attesa dell'avvio dell'elaborazione...'.",
-      "casi_errore": "nessuno — non tocca statistiche né stato dei task, solo il log visivo."
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Sequenza automatica dei 5 task (eseguita sia all'apertura pagina sia al click su 'Avvia Elaborazione')",
-      "sequenza_esatta": "1) Download Email (POST /api/email-download/start-full-download?days_back=30): avvia in background il download IMAP di nuove email con allegati PDF degli ultimi 30 giorni. 2) Elaborazione AI (POST /api/ai-parser/process-email-batch?limit=100): elabora fino a 100 documenti scaricati via email non ancora processati, classificandoli/estraendone i dati con AI. 3) Auto-Associazione (POST /api/email-download/auto-associa): collega i PDF elaborati a fatture/F24/cedolini già esistenti nel gestionale tramite logica euristica (smart_auto_associate). 4) Riconciliazione F24 (POST /api/f24-riconciliazione/riconcilia-tutto): confronta ogni F24 non riconciliato con le quietanze di pagamento disponibili, codice tributo per codice tributo, marcandoli come riconciliati (o 'ravveduti' se pagati con interessi/sanzioni aggiuntive). 5) Categorizzazione (POST /api/estratto-conto-movimenti/ricategorizza-batch): assegna una categoria (stipendi/contributi/tributi/affitto/utenze/assicurazioni) ai movimenti bancari non ancora categorizzati, tramite pattern matching testuale sulla descrizione. Ogni task attende il completamento del precedente prima di partire (esecuzione strettamente sequenziale, non parallela), con 500ms di pausa tra un task e l'altro.",
-      "collezioni_coinvolte": [
-        "collection email/documenti scaricati (gestita da email_download.py, nome esatto non nel set di file di questo audit)",
-        "documenti processati da AI (ai_integration_service, non nel set file di questo audit)",
-        "invoices / f24_models (o equivalenti) per l'auto-associazione",
-        "f24_unificato e collection quietanze per la riconciliazione F24",
-        "bank_movements per la categorizzazione"
-      ],
-      "campi_scritti": {
-        "nota_generale": "Il dettaglio esatto dei campi scritti da download email, elaborazione AI e auto-associazione non è determinabile con precisione dai soli router richiesti per questo audit (i servizi sottostanti — ai_integration_service, smart_auto_associate — non erano nel set di file da leggere). Per la Categorizzazione: campo 'categoria' impostato sui documenti della collection bank_movements in base al primo pattern testuale che matcha nella descrizione/causale. Per la Riconciliazione F24: aggiorna lo stato di riconciliazione/ravvedimento sui documenti F24 coinvolti (dettaglio implementativo oltre la porzione di file letta)."
-      },
-      "effetti_collaterali": "Il task 'Download Email' avvia un processo IMAP potenzialmente lungo in background: se un download è già in corso (download_status['in_progress']=true), il tentativo successivo fallisce con HTTP 400 'Download già in corso' — questo errore viene catturato da executeTask e mostrato come task fallito in rosso, senza bloccare i 4 task successivi. Poiché l'intera sequenza riparte automaticamente ad ogni apertura della pagina (comportamento 'auto-avvio' voluto, vedi commento nel file sorgente: 'Nessun click manuale richiesto'), navigare più volte su /batch-processor in sequenza ravvicinata può generare più cicli di elaborazione sovrapposti lato server."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Condivide l'Hub 'Admin' (AdminHub.jsx) con Admin.jsx (/admin) e BatchReprocessing.jsx (/batch-reprocessing).",
-    "I 5 task richiamano funzionalità che esistono anche come pulsanti singoli in altre pagine dell'app: Download Email è collegato alla configurazione account email della pagina Admin (tab Email); Riconciliazione F24 è la stessa logica della pagina Scadenze/F24; Categorizzazione movimenti è correlata alla pagina Verifica Movimenti Banca / Archivio Bonifici."
-  ],
-  "popup_e_modali_presenti": [
-    "Nessun modale né alert nativo: tutto il feedback (successo/errore per task) avviene tramite il pannello di log integrato nella pagina e le icone di stato per ogni task (Clock=in attesa, Loader2 animato=in corso, CheckCircle verde=OK, XCircle rosso=errore)."
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Elaborazioni legacy",
+  "route": "/admin/batch-processor",
+  "catalog_id": 57,
+  "modulo": "admin",
+  "accesso": "admin",
+  "stato_audit": "in_review",
+  "scopo": "Mappa tecnica della schermata «Elaborazioni legacy». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/hub/AdminElaborazioni.jsx",
+    "entry": "frontend/src/pages/hub/AdminHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/BatchProcessor.jsx",
+      "frontend/src/pages/hub/AdminElaborazioni.jsx",
+      "frontend/src/pages/hub/AdminHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/routers/ai_parser.py",
+      "app/routers/bank/estratto_conto.py",
+      "app/routers/email_download.py",
+      "app/routers/f24/f24_riconciliazione.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/ai-parser/process-email-batch",
+      "/api/email-download/auto-associa",
+      "/api/email-download/start-full-download",
+      "/api/estratto-conto-movimenti/ricategorizza-batch",
+      "/api/f24-riconciliazione/riconcilia-tutto"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

@@ -1,151 +1,58 @@
 {
-  "pagina": "Documenti - Import Documenti",
-  "url": "https://impresasemplice.online/documenti/import",
-  "file_sorgente_frontend": [
-    "frontend/src/pages/hub/DocumentiHub.jsx (wrapper 2 tab: 'archivio' su /documenti, 'import' su /documenti/import — il tab attivo è determinato dal path, non da uno stato locale)",
-    "frontend/src/pages/ImportDocumenti.jsx (862 righe — contenuto reale del tab 'Import Documenti': upload drag&drop/click con riconoscimento automatico del tipo, più 3 bottoni di importazione massiva da documenti già presenti in inbox)"
-  ],
-  "file_sorgente_backend": [
-    "app/routers/documenti.py (funzione detect_document_type + endpoint POST /upload-auto — riconoscimento automatico e instradamento per singolo file caricato)",
-    "app/routers/documents_inbox_classify.py (prefix /api/documenti-inbox — auto-classify, import-f24-from-inbox, import-dipendenti-from-cu: azionano i 3 bottoni blu/marrone/verde della pagina, che agiscono sui documenti GIÀ presenti in documents_inbox, non su nuovi file caricati)",
-    "app/routers/invoices/corrispettivi_helpers.py + app/parsers/corrispettivi_parser.py (ramo 'corrispettivo' dell'upload-auto)",
-    "app/routers/invoices/fatture_upload.py (ramo 'fattura' XML dell'upload-auto)",
-    "app/routers/f24_parser.py (ramo 'f24' — import_f24, workflow completo)",
-    "app/services/parser_f24.py (ramo 'quietanza_f24' — parse_f24_pdf_bytes)",
-    "app/routers/libro_unico_parser.py (ramo 'cedolino' — import_libro_unico, workflow completo LUL)",
-    "app/routers/distinte_bpm.py (ramo 'distinte_bpm')",
-    "app/routers/bank/estratto_conto.py (ramo 'estratto_conto' CSV Banco BPM)"
-  ],
-  "scopo_generale": "Pagina di caricamento file 'senza scelte da parte dell'utente' (come dichiarato nel commento in testa al componente React): l'utente trascina o seleziona uno o più file (anche uno o più .zip, estratti automaticamente lato client incluso lo scasso di zip annidati) e per ciascun file il backend riconosce autonomamente il tipo di documento analizzando nome file e contenuto binario, poi lo instrada al workflow di importazione completo specifico (F24, Libro Unico/cedolini, fattura XML, estratto conto, corrispettivo telematico, distinte BPM, bonifici) oppure lo mette in una coda di classificazione manuale se non riconosciuto. Accanto all'area di upload, tre bottoni aggiuntivi permettono di rielaborare in blocco i documenti già scaricati automaticamente dalle caselle Gmail/PEC (collection documents_inbox) senza doverli ricaricare manualmente.",
-  "bottoni_azioni": [
-    {
-      "etichetta": "Area drop/click (drag&drop o selezione multipla file)",
-      "cosa_fa_al_click": "onDrop/handleFileSelect → processIncomingFiles(): per ogni file selezionato, se l'estensione è .zip lo estrae ricorsivamente con JSZip (extractFromZip, gestisce anche zip annidati richiamandosi ricorsivamente su eventuali .zip trovati dentro un altro zip), assegnando il mime-type in base all'estensione (.xml/.pdf/.csv/.xlsx o octet-stream); altrimenti aggiunge il file così com'è. Tutti i file (estratti o originali) vengono accodati in stato 'pending' nella lista files, NESSUNA chiamata di rete a questo punto — solo dopo va premuto 'Carica Tutti'.",
-      "endpoint_chiamato": "Nessuno in questa fase.",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Aggiunge righe alla lista file in coda, con nome e dimensione.",
-      "casi_errore": "extractFromZip: try/catch che in caso di fallimento nell'estrarre lo zip lo aggiunge com'è (come singolo file .zip) invece di fermare l'intero processo."
-    },
-    {
-      "etichetta": "Carica ZIP (bottone dedicato, alternativo all'area drop)",
-      "cosa_fa_al_click": "Apre un secondo input file nascosto (accept .zip, multiple) e richiama handleZipSelect → processIncomingFiles() con la stessa logica di estrazione dell'area drop.",
-      "endpoint_chiamato": "Nessuno in questa fase.",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Aggiunge i file estratti alla coda.",
-      "casi_errore": "Come sopra."
-    },
-    {
-      "etichetta": "🧠 Auto-classifica Gmail/PEC",
-      "cosa_fa_al_click": "Chiamata diretta, nessuna conferma preventiva.",
-      "endpoint_chiamato": "POST /api/documenti-inbox/auto-classify?solo_non_classificati=false",
-      "logica_backend": "auto_classify in documents_inbox_classify.py: con solo_non_classificati=false rielabora TUTTI i documenti in documents_inbox (fino a 10000), non solo quelli senza categoria. Per ciascun documento: classify_by_text(filename, subject, sender) applica in ordine 16 pattern regex (f24, cu/cud, cedolino, verbale, contributi_inps, pec_notifica, cartella_esattoriale, bonifico, scontrino, satispay, fattura_servizi, fattura_estera, ricevuta_estera, estratto_conto, xml_sdi, qr_pagamento, rimborso) sulla stringa concatenata filename+subject+sender, ritorna la prima categoria che matcha (o nessuna). Se una categoria è trovata: se è 'cedolino' o 'cu', prova ad associare il documento a un dipendente esistente in 'dipendenti' via codice fiscale esatto estratto da filename/testo (regex CF italiano) oppure via miglior punteggio testuale su cognome (peso 3) + nome (peso 1), soglia minima 3; se è 'f24', estrae con regex importo (pattern 'totale...€NN,NN' o 'importo €NN,NN' o generico '€NN,NN') e data di scadenza dal testo del PDF (se estraibile con pypdf, max 3 pagine) e, se trova sia importo che scadenza e non è dry_run, crea un nuovo record in 'f24_tributi' con stato='da_verificare' SOLO se non esiste già un record con la stessa coppia (data_scadenza, importo). Aggiorna sempre il documento con categoria e auto_classified_at.",
-      "formula_matematica": "Match dipendente: score = 3 se cognome trovato nel testo, +1 se anche il nome è trovato; associazione accettata solo se score>=3 (quindi il solo match sul nome, senza cognome, non è mai sufficiente).",
-      "aggiornamento_ui": "alert riepilogativo con: documenti totali, non classificabili, cedolini/CU associati a dipendente, F24 creati in f24_tributi, e conteggio per ciascuna categoria rilevata.",
-      "casi_errore": "alert con detail/message in caso di eccezione di rete."
-    },
-    {
-      "etichetta": "📧 Importa F24 da inbox",
-      "cosa_fa_al_click": "Chiamata diretta, nessuna conferma preventiva.",
-      "endpoint_chiamato": "POST /api/documenti-inbox/import-f24-from-inbox",
-      "logica_backend": "import_f24_from_inbox: legge da documents_inbox tutti i documenti con categoria='f24' e totale_versato>0 (quindi presuppone che siano già stati arricchiti da un parsing precedente con AI, non fa parsing PDF da sé qui). Per ciascuno, se ha data_pagamento e una lista tributi non vuota, crea un nuovo record in 'f24_tributi' PER OGNI RIGA TRIBUTO (importo = importo_debito - importo_credito, scartata se <=0), con chiave di deduplica (data_scadenza, importo arrotondato a 2 decimali, codice_tributo) confrontata contro tutti i tributi già esistenti in f24_tributi.",
-      "formula_matematica": "importo_tributo = importo_debito - importo_credito; riga scartata se importo_tributo <= 0.",
-      "aggiornamento_ui": "alert con F24 analizzati e tributi creati in f24_tributi.",
-      "casi_errore": "alert con detail/message."
-    },
-    {
-      "etichetta": "👤 Importa dipendenti da CU",
-      "cosa_fa_al_click": "Chiamata diretta, nessuna conferma preventiva.",
-      "endpoint_chiamato": "POST /api/documenti-inbox/import-dipendenti-from-cu",
-      "logica_backend": "import_dipendenti_from_cu: legge tutti i documenti in documents_inbox con categoria='cu' (fino a 5000), applica al filename una regex che estrae Codice Fiscale, anno e nome completo dal pattern tipico '<CF> - <ANNO> - <COGNOME NOME> (<CF>-<progressivo>).pdf'. Se il CF è già presente in 'dipendenti' lo salta (gia_presenti++); altrimenti divide il nome completo estratto in cognome/nome con una euristica: se le parole sono >3 usa la metà come cognome e l'altra metà come nome (per nomi stranieri molto lunghi), altrimenti la prima parola è cognome e il resto è nome. Crea un nuovo record dipendente con stato/attivo=true e fonte='cu_auto_import'.",
-      "formula_matematica": "Split cognome/nome: se num_parole(nome_completo) > 3 → mid = num_parole // 2, cognome = prime mid parole, nome = restanti; altrimenti cognome = prima parola, nome = parole restanti.",
-      "aggiornamento_ui": "alert con CU analizzate, dipendenti creati, già presenti, filename non riconosciuti.",
-      "casi_errore": "alert con detail/message."
-    },
-    {
-      "etichetta": "Svuota",
-      "cosa_fa_al_click": "handleReset(): azzera sia files sia results.",
-      "endpoint_chiamato": "Nessuno.",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Svuota la lista file in coda e i risultati precedenti.",
-      "casi_errore": "N/A"
-    },
-    {
-      "etichetta": "Carica Tutti",
-      "cosa_fa_al_click": "handleUpload(): itera sequenzialmente (non in parallelo) ogni file in coda, con una pausa di 100ms tra un file e il successivo; aggiorna la progress bar (current/total/filename) e lo stato per-riga (uploading → success/duplicate/error) man mano.",
-      "endpoint_chiamato": "POST /api/documenti/upload-auto (multipart/form-data: file) — chiamata singola per ciascun file in coda",
-      "logica_backend": "upload_documento_automatico in documenti.py: legge il contenuto del file, chiama detect_document_type(filename, content) che applica in ordine: 1) per .xml/.p7m analizza il testo decodificato cercando marker di corrispettivo telematico COR10 (DatiRT/DataOraRilevazione/CodiceFiscaleEsercente/PIVAEsercente/RegistratoreTelematicoComp) → 'corrispettivo', altrimenti marker FatturaElettronica → 'fattura', altrimenti fattura generica di default; 2) pattern sul NOME FILE: 'estratto'/'conto'/'movimenti'/'bpm'/'banco' → estratto_conto; 'quietanza'/'ricevuta'/'pagamento_f24'/'receipt' → quietanza_f24; 'f24'/'delega' → f24; 'cedolin'/'busta'/'paga'/'libro_unico'/'lul'/'payslip' → cedolino; 'bonifico'/'bonifici'/'sepa'/'transfer' → bonifici; 'fattura'/'invoice'/'ft_' → fattura; 3) se .pdf e nessun pattern sul nome ha matchato, analizza le prime 5000 byte del contenuto (latin-1) cercando le stringhe QUIETANZA/RICEVUTA DI VERSAMENTO → quietanza_f24, DELEGA F24/MODELLO DI PAGAMENTO/AGENZIA DELLE ENTRATE → f24, CEDOLINO/BUSTA PAGA/LIBRO UNICO → cedolino, ESTRATTO CONTO/SALDO INIZIALE → estratto_conto; 4) se .xlsx/.xls/.csv e il nome contiene 'distint'/'stipend'/'elenco', verifica intestazioni tipiche di una distinta stipendi BPM (Beneficiario + Importo/IBAN) → distinte_bpm, altrimenti default estratto_conto; 5) se nessuna regola matcha → 'auto' (non riconosciuto). In base al tipo rilevato, il backend fa il redirect interno al workflow specifico (vedi operazioni di registrazione).",
-      "formula_matematica": "N/A (classificazione euristica a regole, non statistica).",
-      "aggiornamento_ui": "Per ogni file: badge con tipo rilevato e colore dedicato (rosso F24, viola Libro Unico, rosa Fattura XML, verde Estratto Conto, arancio Quietanza F24, ciano Bonifici, lime Corrispettivi, viola chiaro POS); al termine mostra il riepilogo (successi/duplicati/errori) con dettaglio per riga (workflow usato, messaggio del backend).",
-      "casi_errore": "Se il messaggio d'errore (detail o message) contiene 'duplicat' o 'esiste già', oppure lo status HTTP è 409, la riga viene marcata 'duplicate' (giallo) invece di 'error' (rosso)."
-    },
-    {
-      "etichetta": "× (rimuovi singolo file dalla coda, solo se status='pending')",
-      "cosa_fa_al_click": "removeFile(index): filtra l'array files.",
-      "endpoint_chiamato": "Nessuno.",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Rimuove la riga dalla lista.",
-      "casi_errore": "N/A"
-    },
-    {
-      "etichetta": "Chiudi (pannello risultati)",
-      "cosa_fa_al_click": "setResults([]).",
-      "endpoint_chiamato": "Nessuno.",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Nasconde il pannello risultati (i file restano visibili con i badge tipo/stato già assegnati).",
-      "casi_errore": "N/A"
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Upload automatico di un file — instradamento per tipo rilevato (POST /api/documenti/upload-auto)",
-      "sequenza_esatta": "detect_document_type determina il tipo (vedi bottone 'Carica Tutti'). Se 'auto' (non riconosciuto): calcola hash MD5, genera un doc_id 'upload_<timestamp>_<hash8>', codifica il contenuto in base64 e lo inserisce in 'documents_inbox' con category='altro', category_label='Da classificare', status='nuovo', source='upload_automatico', poi propaga un evento documento.acquisito (best-effort) e risponde con azione_richiesta='Classifica manualmente il documento da Strumenti > Documenti Email'. Se un tipo è stato riconosciuto, il backend fa un redirect interno al workflow dedicato: 'corrispettivo' → decodifica con vari encoding (utf-8/utf-8-sig/latin-1/iso-8859-1), parse_corrispettivo_xml, poi ingest_corrispettivo_parsed che gestisce anti-duplicato rigoroso e propaga automaticamente il movimento a Prima Nota Cassa/Banca (azioni: imported/updated/duplicate); 'fattura' → parse_fattura_xml + process_fattura_to_db (import diretto in invoices); 'f24' → import_f24(aggiorna_esistente=True) del workflow F24 completo (tributi, scadenze, ecc.); 'quietanza_f24' → parse_f24_pdf_bytes(is_quietanza=True), insert diretto in 'quietanze_f24'; 'cedolino' → import_libro_unico(aggiorna_esistenti=True), workflow LUL completo (buste paga + presenze + anagrafica); 'distinte_bpm' → import_distinte_bpm(solo_anteprima=False), riconciliazione pagamenti stipendi; 'estratto_conto' → import_estratto_conto (parsing CSV Banco BPM diretto in estratto_conto_movimenti); 'bonifici' → salvataggio diretto in 'documents_inbox' con category='bonifico', status='da_processare' (da completare manualmente da Banca > Archivio Bonifici, NESSUN parsing automatico qui a differenza degli altri rami).",
-      "collezioni_coinvolte": ["documents_inbox", "invoices", "f24_unificato/f24_tributi (via workflow F24)", "quietanze_f24", "cedolini/hr (via workflow LUL)", "estratto_conto_movimenti", "prima_nota_cassa", "prima_nota_banca", "corrispettivi"],
-      "campi_scritti": {
-        "documents_inbox (ramo non riconosciuto)": "id, filename, pdf_data (base64), category='altro', category_label='Da classificare', status='nuovo', processed=false, file_hash, file_size, downloaded_at, source='upload_automatico'",
-        "documents_inbox (ramo bonifici)": "id, filename, pdf_data (base64), category='bonifico', status='da_processare', processed=false, source='upload_manuale', created_at"
-      },
-      "effetti_collaterali": "Ogni ramo ha una propria logica anti-duplicato indipendente (per hash file, per numero fattura/CRO, per data+importo F24, ecc. — non descritta in dettaglio qui perché appartiene ai rispettivi workflow specifici); evento documento.acquisito propagato solo per il ramo 'non riconosciuto'."
-    },
-    {
-      "nome": "Auto-classificazione documenti già in inbox (POST /api/documenti-inbox/auto-classify)",
-      "sequenza_esatta": "Vedi bottone '🧠 Auto-classifica Gmail/PEC' sopra per la sequenza completa (classificazione testuale a 16 pattern, associazione dipendente per cedolino/CU, creazione tributo F24 con controllo duplicati).",
-      "collezioni_coinvolte": ["documents_inbox", "f24_tributi", "dipendenti (solo lettura per il match)"],
-      "campi_scritti": {
-        "documents_inbox": "categoria, auto_classified_at, ed eventualmente dipendente_id/dipendente_nominativo/codice_fiscale (cedolino/cu) oppure importo/data_scadenza (f24)",
-        "f24_tributi": "id, data_scadenza, importo, origine='documents_inbox_auto', documento_id, stato='da_verificare', created_at"
-      },
-      "effetti_collaterali": "Nessuno oltre agli aggiornamenti descritti; operazione idempotente se rilanciata (i controlli di esistenza prevengono duplicati)."
-    },
-    {
-      "nome": "Import massivo F24 da inbox (POST /api/documenti-inbox/import-f24-from-inbox)",
-      "sequenza_esatta": "Vedi bottone '📧 Importa F24 da inbox' sopra.",
-      "collezioni_coinvolte": ["documents_inbox (sola lettura)", "f24_tributi"],
-      "campi_scritti": {
-        "f24_tributi": "id, data_scadenza, data_pagamento, importo, codice_tributo, descrizione, rateazione, periodo_riferimento, codice_fiscale, ragione_sociale, origine='documents_inbox_import', documento_id, filename, stato='da_verificare', created_at"
-      },
-      "effetti_collaterali": "Nessuno."
-    },
-    {
-      "nome": "Import massivo anagrafica dipendenti da CU (POST /api/documenti-inbox/import-dipendenti-from-cu)",
-      "sequenza_esatta": "Vedi bottone '👤 Importa dipendenti da CU' sopra.",
-      "collezioni_coinvolte": ["documents_inbox (sola lettura, categoria='cu')", "dipendenti"],
-      "campi_scritti": {
-        "dipendenti": "id, codice_fiscale, cognome, nome, nome_completo, stato='attivo', attivo=true, fonte='cu_auto_import', anno_cu, created_at"
-      },
-      "effetti_collaterali": "Nessun controllo di qualità sul nome estratto oltre l'euristica di split cognome/nome — può produrre split errati per nominativi non standard (segnalato dallo stesso commento nel codice backend: 'approccio prudente — l'utente potrà correggere')."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Documenti - Archivio (tab 'archivio' dello stesso hub /documenti) — mostra i documenti scaricati automaticamente dalle email che possono poi essere rielaborati con i 3 bottoni di questa pagina (Auto-classifica, Importa F24, Importa dipendenti da CU); i documenti caricati manualmente con esito 'non riconosciuto' finiscono anch'essi in documents_inbox e sono quindi visibili lì con category='altro'.",
-    "F24, Fatture, Buste Paga (Libro Unico), Estratto Conto, Corrispettivi, Archivio Bonifici — destinazioni reali dei workflow completi attivati dall'upload automatico in base al tipo rilevato.",
-    "Learning Machine — le keyword/pattern di classificazione usati qui (detect_document_type, classify_by_text) sono indipendenti e non condivisi con i pattern/regole gestiti nella pagina Learning Machine (nessuna sincronizzazione tra i due sistemi di classificazione)."
-  ],
-  "popup_e_modali_presenti": [
-    "Nessun modale dedicato: la pagina usa solo alert() nativi del browser per i 3 bottoni di import massivo, e un pannello inline (non modale) per la lista file in coda con progress bar e per il riepilogo risultati dopo 'Carica Tutti'."
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Import documenti",
+  "route": "/documenti/import",
+  "catalog_id": 41,
+  "modulo": "documenti",
+  "accesso": "authenticated",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Import documenti». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/ImportDocumenti.jsx",
+    "entry": "frontend/src/pages/hub/DocumentiHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/ImportDocumenti.jsx",
+      "frontend/src/pages/hub/DocumentiHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/parsers/corrispettivi_parser.py",
+      "app/routers/bank/estratto_conto.py",
+      "app/routers/distinte_bpm.py",
+      "app/routers/documenti.py",
+      "app/routers/documents_inbox_classify.py",
+      "app/routers/f24_parser.py",
+      "app/routers/invoices/corrispettivi_helpers.py",
+      "app/routers/invoices/fatture_upload.py",
+      "app/routers/libro_unico_parser.py",
+      "app/services/parser_f24.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/documenti-inbox/auto-classify",
+      "/api/documenti-inbox/import-dipendenti-from-cu",
+      "/api/documenti-inbox/import-f24-from-inbox",
+      "/api/documenti/drive/catalog",
+      "/api/documenti/upload-auto",
+      "/api/documenti/upload-auto/preview",
+      "/api/fatture-estere/da-verificare"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

@@ -1,77 +1,58 @@
 {
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
   "pagina": "Agenti AI",
-  "url": "https://impresasemplice.online/agenti",
-  "file_sorgente_frontend": [
-    "frontend/src/pages/Agenti.jsx (458 righe: componente AgentiPage con 4 sotto-componenti — AgenteCard, SegnalazioneCard, PatternCard — più i tab)",
-    "frontend/src/components/WidgetAgenti.jsx (widget contatori riassuntivi mostrato nella Dashboard, con link di navigazione verso questa pagina)",
-    "frontend/src/hooks/useHashState.js (gestisce il tab attivo tramite hash dell'URL, per permettere di condividere il link diretto a un tab specifico con CopyLinkButton)"
-  ],
-  "file_sorgente_backend": [
-    "app/routers/agenti.py (montato su /api/agenti: segnalazioni, segnalazioni/count, segnalazioni/summary, segnalazioni/{id}/letta, segnalazioni/{id}/risolta, stato, run, pattern-appresi)",
-    "app/agents/orchestrator.py (funzione run_agenti, orchestratore invocato da POST /api/agenti/run e dallo scheduler)",
-    "app/agents/fiscale_sentinella.py (classe FiscaleSentinella: analizza email/documenti fiscali in arrivo e controlla scadenze F24)",
-    "app/agents/learning_brain.py (classe LearningCervello: genera suggerimenti/pattern appresi dall'attività del gestionale)",
-    "app/agents/notifier.py (funzione crea_segnalazione, usata da entrambi gli agenti per scrivere su agenti_segnalazioni)",
-    "app/scheduler.py (probabile innesco periodico automatico degli agenti, non letto in dettaglio in questa analisi)"
-  ],
-  "scopo_generale": "È il pannello di controllo del sistema di 'intelligenza automatica' del gestionale: due agenti — FiscaleSentinella (sorveglianza fiscale: rileva avvisi bonari, controlla scadenze F24) e LearningCervello (apprendimento pattern: individua es. fatture non pagate da troppo tempo e impara chiave→valore da conferme ripetute) — girano periodicamente (FiscaleSentinella ogni 10 minuti, LearningCervello ogni ora, secondo SCHEDULE in orchestrator.py) o su richiesta manuale, e producono 'segnalazioni' testuali categorizzate (urgente, anomalia, avviso, info, suggerimento) che l'operatore può leggere, ignorare o segnare come risolte. La pagina mostra anche lo stato di salute di ciascun agente (ultima esecuzione, stato completato/errore/in_esecuzione, ultimo errore) e i 'pattern appresi' dalla Learning Machine con relativa % di confidenza.",
-  "bottoni_azioni": [
-    {
-      "etichetta": "▶ Esegui tutti ora",
-      "cosa_fa_al_click": "eseguiOra(): imposta running=true (bottone disabilitato, testo '⏳ Esecuzione...'), poi al termine ricarica stati e segnalazioni con loadAll().",
-      "endpoint_chiamato": "POST /api/agenti/run",
-      "logica_backend": "run_agenti_manuale (agenti.py) chiama run_agenti(db) dell'orchestrator SENZA rispettare lo SCHEDULE (a differenza dell'esecuzione automatica programmata, che salta un agente se non è ancora trascorso l'intervallo minimo — 600s per FiscaleSentinella, 3600s per LearningCervello — questa chiamata manuale forza comunque il loop su entrambi gli agenti, ma il codice di orchestrator.run_agenti stesso RICONTROLLA 'ultima_esecuzione' prima di girare: se un agente è già stato eseguito di recente all'interno dell'intervallo, NON viene rieseguito nemmeno da questo pulsante — quindi 'Esegui tutti ora' in pratica esegue solo gli agenti effettivamente scaduti). Per ogni agente scaduto: esegue agente.run(db) e aggiorna agenti_stato con ultima_esecuzione, stato='completato', ultimo_errore=None (o stato='errore' + ultimo_errore=str(e) se lancia eccezione, senza interrompere gli altri agenti).",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "setMsg('Agenti eseguiti con successo!') oppure 'Errore durante esecuzione agenti'; ricarica GET /api/agenti/stato e GET /api/agenti/segnalazioni?limit=100.",
-      "casi_errore": "Il messaggio di errore mostrato è generico lato frontend anche se il backend restituisce sempre {status:'ok'} con eventuale campo error interno per singolo agente (la POST /run non lancia mai un errore HTTP visibile — cattura tutto internamente); il catch del frontend scatta solo per errori di rete/HTTP reali."
-    },
-    {
-      "etichetta": "Esegui ora (per singolo agente, sulla AgenteCard)",
-      "cosa_fa_al_click": "Richiama la STESSA funzione onRun=eseguiOra passata come prop — NON esiste un endpoint per eseguire un singolo agente isolatamente: il bottone su ogni card, nonostante sembri specifico per quell'agente, in realtà lancia sempre POST /api/agenti/run che tenta di eseguire TUTTI gli agenti scaduti.",
-      "endpoint_chiamato": "POST /api/agenti/run (identico al bottone globale)",
-      "logica_backend": "Vedi sopra.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Vedi sopra.",
-      "casi_errore": "Vedi sopra."
-    },
-    {
-      "etichetta": "Segna risolto (su ogni SegnalazioneCard non ancora risolta)",
-      "cosa_fa_al_click": "risolviSegnalazione(id).",
-      "endpoint_chiamato": "PUT /api/agenti/segnalazioni/{id}/risolta",
-      "logica_backend": "segna_risolta (agenti.py): update_one su agenti_segnalazioni, imposta risolta=True e risolta_at=timestamp ISO UTC.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Aggiornamento OTTIMISTICO: setSegnalazioni mappa l'array locale marcando risolta=True sull'id interessato SENZA rifare la GET — la card resta visibile ma con opacity ridotta (0.55) e senza più il bottone 'Segna risolto'.",
-      "casi_errore": "catch silenzioso (nessun messaggio, nessun rollback se la PUT fallisce — la card apparirà risolta in UI anche se il backend non l'ha effettivamente salvata, fino al prossimo reload)."
-    },
-    {
-      "etichetta": "Tab bar (Agenti / Urgenti / Avvisi / Info / Suggerimenti / Pattern appresi)",
-      "cosa_fa_al_click": "setActiveTab(key) tramite useHashState — il tab attivo è riflesso nell'hash dell'URL, quindi condivisibile/bookmarkabile con CopyLinkButton. Il tab 'pattern' innesca un secondo effect che chiama loadPattern() solo la prima volta che viene aperto.",
-      "endpoint_chiamato": "GET /api/agenti/pattern-appresi (solo per il tab Pattern appresi, on-demand)",
-      "logica_backend": "get_pattern_appresi (agenti.py): query su agenti_apprendimenti con confidenza >= 0.3 (filtro fisso lato server, indipendente da eventuale query param categoria non usato da questa pagina), ordina per occorrenze decrescenti, limit 100.",
-      "formula_matematica": "Confidenza calcolata dall'agente LearningCervello (non da questo endpoint): confidenza = MIN(1.0, occorrenze/10) — quindi servono almeno 10 conferme dello stesso pattern per raggiungere confidenza 100%. Sul frontend, pct = round(confidenza*100); pColor verde se pct>=70, giallo se >=40, grigio altrimenti.",
-      "aggiornamento_ui": "I tab 'urgente' (che aggrega segnalazioni di tipo urgente + anomalia), 'avviso', 'info', 'suggerimento' filtrano client-side l'array segnalazioni già caricato da loadAll(); il tab 'urgente' mostra un puntino rosso lampeggiante sul tab se ci sono elementi. Il tab Pattern mostra prima i badge di tutte le categorie uniche trovate, poi la lista di PatternCard con barra di progresso proporzionale alla confidenza.",
-      "casi_errore": "loadPattern ha un catch silenzioso (nessuna segnalazione visibile in caso di fallimento, l'elenco resta vuoto mostrando il messaggio 'Nessun pattern appreso')."
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Creazione automatica di una segnalazione (lato agenti, non un'azione utente)",
-      "sequenza_esatta": "1) Un agente (FiscaleSentinella o LearningCervello) rileva una condizione durante il proprio run() (es. un documento in documents_inbox categorizzato 'fisco' con pattern testuali tipici di un avviso bonario ADE, oppure N fatture non pagate da oltre 60 giorni). 2) L'agente chiama crea_segnalazione(db, agente, tipo, titolo, descrizione, azione, dati) del modulo notifier.py, che tipicamente fa un upsert/insert su agenti_segnalazioni evitando duplicati sullo stesso titolo/agente non ancora risolto (verificato esplicitamente in LearningCervello con una find_one preventiva). 3) La segnalazione appare nella tab corrispondente al suo 'tipo' non appena l'utente ricarica la pagina Agenti o apre il tab.",
-      "collezioni_coinvolte": ["agenti_segnalazioni", "documents_inbox (letta/aggiornata da FiscaleSentinella con agente_fiscale_processato=True)", "f24_unificato (letta da FiscaleSentinella per verificare se l'avviso bonario risulta già pagato/ravveduto)"],
-      "campi_scritti": {
-        "agenti_segnalazioni": "id, agente, tipo (urgente/anomalia/avviso/info/suggerimento), titolo, descrizione, azione_suggerita, dati (payload extra es. documento_id/codice_tributo/periodo/importo), created_at, letta=False, risolta=False"
-      },
-      "effetti_collaterali": "Per FiscaleSentinella, il documento sorgente in documents_inbox viene marcato agente_fiscale_processato=True così non viene rianalizzato nei run successivi. Il tipo di segnalazione per un avviso bonario dipende dalla logica: se esiste un F24 con has_ravvedimento=True e stesso codice tributo → tipo='info' ('già ravveduto, ignorabile'); se esiste un F24 pagato per lo stesso codice/periodo → tipo='avviso' ('probabile ritardo ADE nel registrare il pagamento'); altrimenti tipo='urgente' se la scadenza è entro 15 giorni, 'avviso' altrimenti."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Dashboard (/): il WidgetAgenti mostra i contatori sommari di agenti.get('/api/agenti/segnalazioni/summary') e ogni contatore, se cliccato, naviga verso /agenti (questa pagina)."
-  ],
-  "popup_e_modali_presenti": [
-    "Nessun modale: tutte le interazioni sono inline nelle card (AgenteCard, SegnalazioneCard, PatternCard) e nei tab."
-  ],
-  "note_tecniche": [
-    "Il pulsante 'Esegui ora' su ogni singola AgenteCard è FUORVIANTE: nel codice non esiste alcun parametro per eseguire un agente specifico — chiama sempre lo stesso endpoint globale /api/agenti/run che internamente valuta lo SCHEDULE per decidere quali agenti far girare davvero.",
-    "Gli agenti attualmente implementati sono solo 2 (FiscaleSentinella, LearningCervello), nonostante l'interfaccia sia generica e pensata per ospitarne altri in futuro (la mappa 'agenti_stato' in Mongo è popolata dinamicamente ad ogni esecuzione, quindi il numero di AgenteCard mostrate cresce se in futuro vengono aggiunti nuovi agenti allo SCHEDULE dell'orchestrator)."
+  "route": "/agenti",
+  "catalog_id": 48,
+  "modulo": "strumenti",
+  "accesso": "authenticated",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Agenti AI». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/Agenti.jsx",
+    "entry": "frontend/src/main.jsx",
+    "file_verificati": [
+      "frontend/src/hooks/useHashState.js",
+      "frontend/src/main.jsx",
+      "frontend/src/pages/Agenti.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/agents/fiscale_sentinella.py",
+      "app/agents/learning_brain.py",
+      "app/agents/notifier.py",
+      "app/agents/orchestrator.py",
+      "app/routers/agenti.py",
+      "app/scheduler.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/agenti/automazioni/stato",
+      "/api/agenti/automazioni/{param}",
+      "/api/agenti/cash-flow-13-settimane",
+      "/api/agenti/decisioni",
+      "/api/agenti/decisioni/{param}/{param}",
+      "/api/agenti/pattern-appresi",
+      "/api/agenti/run{param}",
+      "/api/agenti/segnalazioni",
+      "/api/agenti/segnalazioni/{param}/risolta",
+      "/api/agenti/stato"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

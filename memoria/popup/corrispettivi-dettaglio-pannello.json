@@ -1,35 +1,26 @@
 {
-  "nome_popup": "Pannello 'Dettaglio Corrispettivo' (inline, non è un vero overlay/modale)",
-  "file_sorgente": "frontend/src/pages/Corrispettivi.jsx (righe 195-323)",
-  "pagine_da_cui_si_apre": ["Corrispettivi (Corrispettivi.jsx)"],
-  "come_si_apre": "Click sull'icona occhio (Eye, lucide-react) nella colonna AZIONI di una riga della tabella corrispettivi (riga 480: onClick={() => setHs('selected', c.data || '')}). Usa l'hook useHashState per scrivere la data selezionata nel fragment dell'URL (#selected=YYYY-MM-DD), quindi NON è un vero popup/overlay in stile 'position:fixed': è una sezione (PageSection) che si apre INLINE nel flusso della pagina, subito sopra la tabella elenco, quando selectedItem non è null. selectedItem è calcolato client-side cercando nell'array corrispettivi già in memoria l'elemento con c.data===hs.selected — nessuna nuova chiamata di rete all'apertura.",
-  "scopo": "Mostrare il dettaglio completo di UN corrispettivo giornaliero (una singola giornata di incasso) senza uscire dalla pagina elenco: dati generali del registratore telematico, ripartizione del pagamento (cassa/elettronico), e riepilogo IVA per aliquota.",
-  "dati_mostrati": "Tutto proviene dall'oggetto già caricato in memoria con GET /api/corrispettivi?anno={anno}&limit=2500 (nessuna fetch aggiuntiva all'apertura): data, matricola_rt, partita_iva, numero_documenti (colonna 'Dati Generali'); pagato_contanti, pagato_elettronico, totale (colonna 'Pagamenti'); totale_imponibile, totale_iva (colonna 'IVA'); e, se presente, l'array riepilogo_iva (aliquota_iva, natura, ammontare, imposta, importo_parziale) mostrato in una tabella aggiuntiva sotto le 3 colonne.",
-  "campi_e_bottoni": [
-    {
-      "elemento": "Icona 'X' (lucide-react) in alto a destra del pannello",
-      "cosa_fa": "onClick={() => setHs('selected', '')}: svuota il parametro hash 'selected', facendo sparire il pannello (selectedItem torna null).",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "n/d"
-    },
-    {
-      "elemento": "CopyLinkButton (nell'header della sezione 'Elenco Corrispettivi', non dentro il pannello dettaglio stesso)",
-      "cosa_fa": "Copia negli appunti l'URL corrente, comprensivo dell'hash #selected=... se un dettaglio è aperto: permette di condividere/salvare un link diretto a quella specifica giornata.",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "n/d"
-    },
-    {
-      "elemento": "Tabella 'Riepilogo per Aliquota IVA' (sola lettura, visibile solo se riepilogo_iva.length>0)",
-      "cosa_fa": "Mostra un elenco read-only, nessuna interazione.",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "n/d"
-    }
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "popup_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "popup": "Pannello 'Dettaglio Corrispettivo' (inline, non è un vero overlay/modale)",
+  "scopo": "Mappa tecnica del popup «Pannello 'Dettaglio Corrispettivo' (inline, non è un vero overlay/modale)». Il comportamento e le mutazioni reali devono essere verificati nei sorgenti correnti.",
+  "aperto_da": [
+    "Corrispettivi (Corrispettivi.jsx)"
   ],
-  "cosa_succede_alla_conferma": "Non esiste un'azione di conferma/submit: è un pannello di sola consultazione, nessuna scrittura viene mai effettuata da qui.",
-  "come_si_chiude": [
-    "Icona 'X' in alto a destra (setHs('selected', ''))",
-    "Navigazione diretta che rimuove/cambia l'hash #selected= dall'URL (es. cambio anno globale, che ricarica la lista e potenzialmente invalida la selezione se la data non è più nell'anno corrente)",
-    "Nessuna gestione di overlay/click-fuori o tasto ESC, perché non è un vero overlay ma un blocco inline nel documento"
+  "file_verificati": [
+    "frontend/src/pages/Corrispettivi.jsx"
   ],
-  "effetto_su_pagina_sottostante": "Nessun refresh dei dati: il pannello legge solo dall'array già caricato in memoria (corrispettivi). L'apertura/chiusura è puramente uno stato di visualizzazione (hash URL) e non innesca alcuna chiamata GET/POST/PUT/DELETE."
+  "endpoint_rilevati_nei_sorgenti": [
+    "/api/corrispettivi"
+  ],
+  "regole_ux": [
+    "Il popup deve avere chiusura visibile e non restare sovrapposto al documento.",
+    "Le azioni distruttive o definitive richiedono una conferma esplicita.",
+    "Le associazioni ambigue mostrano candidati e non vengono applicate automaticamente."
+  ]
 }

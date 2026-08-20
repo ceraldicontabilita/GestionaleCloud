@@ -1,162 +1,56 @@
 {
-  "pagina": "Cespiti & TFR (tab Cespiti)",
-  "url": "https://impresasemplice.online/contabilita/cespiti",
-  "file_sorgente_frontend": [
-    "/home/user/GestionaleCloud/frontend/src/pages/GestioneCespiti.jsx"
-  ],
-  "file_sorgente_backend": [
-    "/home/user/GestionaleCloud/app/routers/cespiti.py",
-    "/home/user/GestionaleCloud/app/routers/tfr.py",
-    "/home/user/GestionaleCloud/app/routers/scadenzario_fornitori.py"
-  ],
-  "scopo_generale": "Pagina 'Cespiti & TFR' (componente GestioneCespiti.jsx) che raggruppa in un'unica vista a 3 sotto-tab la gestione dei beni ammortizzabili dell'azienda (cespiti/immobilizzazioni), il fondo TFR dei dipendenti e lo scadenzario dei debiti verso fornitori. Il tab 'Cespiti' è quello principale: permette di registrare un nuovo cespite (macchinari, arredi, automezzi, software, ecc.), vedere il riepilogo per categoria (valore di acquisto, fondo ammortamento accumulato, valore netto contabile), calcolare e registrare la quota di ammortamento annuale secondo i coefficienti fiscali del DM 31/12/1988 (settore ristorazione), e lanciare una scansione automatica delle fatture XML per individuare beni acquistati che dovrebbero essere capitalizzati come cespiti invece di essere spesati come costi correnti. I tab 'TFR' e 'Scadenzario' sono di sola consultazione e riepilogano dati gestiti altrove (rispettivamente dal modulo Personale/TFR e dal modulo Fatture Fornitori).",
-  "bottoni_azioni": [
-    {
-      "etichetta": "Nuovo (apre form 'Nuovo Cespite')",
-      "cosa_fa_al_click": "Toggle di uno stato locale showForm che mostra/nasconde un mini-form inline con campi Descrizione, Categoria (select popolata da /api/cespiti/categorie), Data Acquisto, Valore, Fornitore.",
-      "endpoint_chiamato": "n/a (nessuna chiamata al click, solo UI)",
-      "logica_backend": "n/a",
-      "formula_matematica": "n/a",
-      "aggiornamento_ui": "Mostra/nasconde il formCard con i campi di input.",
-      "casi_errore": "n/a"
-    },
-    {
-      "etichetta": "Salva (dentro il form Nuovo Cespite)",
-      "cosa_fa_al_click": "handleCreaCespite(): valida che descrizione, categoria e valore_acquisto siano valorizzati (altrimenti alert 'Campi obbligatori'), poi chiama la POST con valore_acquisto convertito a float.",
-      "endpoint_chiamato": "POST /api/cespiti/",
-      "logica_backend": "Router cespiti.crea_cespite(): verifica che la categoria sia una chiave valida di CATEGORIE_CESPITI (11 categorie fisse hard-coded: fabbricati, impianti_generici, impianti_cucina, attrezzature, mobili_arredi, automezzi, macchine_ufficio, software, insegne, frigoriferi, forni), altrimenti HTTP 400. Estrae anno_acquisto dai primi 4 caratteri di data_acquisto. Costruisce il documento cespite con id=uuid4, valore_residuo=valore_acquisto, fondo_ammortamento=0, stato='attivo', ammortamento_completato=False, piano_ammortamento=[] (array vuoto che verrà popolato dalle registrazioni annuali). Inserisce in db['cespiti'] con insert_one.",
-      "formula_matematica": "quota_annua_ordinaria = valore_acquisto * coefficiente / 100 (es. attrezzature coeff=15% -> 15% del valore ogni anno); quota_primo_anno = valore_acquisto * coefficiente / 200 (quota dimezzata per il primo anno, prassi fiscale del 'pro-rata' al 50% indipendentemente dal mese di acquisto). Questi due valori sono restituiti solo come 'dettaglio' informativo nella risposta, non sono ancora registrati come quote effettive: la quota reale viene calcolata/registrata solo con l'endpoint /registra/{anno}.",
-      "aggiornamento_ui": "Chiude il form, resetta i campi, richiama loadCespiti() per ricaricare lista e riepilogo.",
-      "casi_errore": "alert('Errore: ' + dettaglio) se la POST fallisce (es. categoria non valida -> HTTP 400)."
-    },
-    {
-      "etichetta": "Annulla (dentro il form Nuovo Cespite)",
-      "cosa_fa_al_click": "Chiude il form senza salvare (setShowForm(false)).",
-      "endpoint_chiamato": "n/a",
-      "logica_backend": "n/a",
-      "formula_matematica": "n/a",
-      "aggiornamento_ui": "Nasconde il form.",
-      "casi_errore": "n/a"
-    },
-    {
-      "etichetta": "Ammort. {anno}",
-      "cosa_fa_al_click": "handleCalcolaAmm(): chiama direttamente la POST di registrazione (nonostante il nome suggerisca solo 'calcolo', il bottone esegue subito la registrazione contabile definitiva, senza passare da una preview/conferma visibile all'utente in questa pagina — la preview esiste come endpoint separato GET /api/cespiti/calcolo/{anno} ma NON risulta invocata da questo componente).",
-      "endpoint_chiamato": "POST /api/cespiti/registra/{anno}",
-      "logica_backend": "Router cespiti.registra_ammortamenti_anno(anno): 1) chiama internamente calcola_ammortamenti_anno(anno) per ottenere la lista delle quote da registrare; 2) se non ci sono ammortamenti da registrare, ritorna messaggio 'Nessun ammortamento da registrare' senza scrivere nulla; 3) altrimenti, per ciascun cespite in calcolo['ammortamenti']: aggiorna il documento cespite in db['cespiti'] con $set (fondo_ammortamento=nuovo_fondo, valore_residuo=nuovo_residuo, ammortamento_completato=bool) e $push nel piano_ammortamento di un record {anno, quota, fondo_dopo, residuo_dopo, primo_anno, data_registrazione}; 4) crea un unico movimento contabile riepilogativo in db['movimenti_contabili'] con tipo='ammortamento', importo=totale_ammortamenti, dettaglio=lista descrizioni+quote per cespite. NOTA ESPLICITA nel codice (commento): l'ammortamento NON viene registrato in prima_nota_cassa come uscita, perché è un costo non monetario — questo era un bug corretto in passato (bug #9) che gonfiava artificialmente le uscite di cassa.",
-      "formula_matematica": "Per ciascun cespite attivo con ammortamento_completato=False e NON già ammortizzato per l'anno richiesto (verifica su piano_ammortamento se esiste già un record con quello stesso 'anno'): quota_ordinaria = valore_acquisto * coefficiente_ammortamento / 100. Se anno == anno_acquisto del cespite: quota = quota_ordinaria / 2 (dimezzata, primo anno). Altrimenti: quota = quota_ordinaria (piena). La quota viene poi limitata (min) al valore_residuo corrente (valore_acquisto - fondo_ammortamento_attuale) per non superare mai il valore del bene: quota = min(quota, valore_residuo). Se quota <= 0 il cespite viene escluso. nuovo_fondo = fondo_precedente + quota; nuovo_residuo = valore_residuo - quota; completato = (nuovo_residuo <= 0.01, tolleranza di arrotondamento). totale_ammortamenti = somma delle quote di tutti i cespiti processati nell'anno.",
-      "aggiornamento_ui": "alert() con il messaggio di risposta (es. 'Ammortamenti {anno} registrati in contabilità' oppure 'Nessun ammortamento da registrare'), poi loadCespiti() ricarica lista e riepilogo aggiornati.",
-      "casi_errore": "alert('Errore') generico se la chiamata fallisce (nessun dettaglio dell'errore mostrato all'utente in questo handler)."
-    },
-    {
-      "etichetta": "Scan Fatture XML",
-      "cosa_fa_al_click": "handleScanFatture(): imposta loading=true e chiama la POST di scansione con soglia_valore=200 e dry_run=false (quindi salva SUBITO i cespiti trovati, senza fase di preview per l'utente in questa UI).",
-      "endpoint_chiamato": "POST /api/cespiti/scan-fatture?soglia_valore=200&dry_run=false",
-      "logica_backend": "Router cespiti.scan_fatture_per_cespiti(): 1) legge tutti i cespiti esistenti per costruire un set di dedup (coppie descrizione+valore_acquisto); 2) itera sulle collection 'invoices' e 'fatture_passive' (se esistono), filtrando fatture con entity_status != 'deleted' e importo (total_amount o importo_totale) > soglia_valore; 3) per ogni fattura estrae le righe (campo righe/linee/lines); se non ci sono righe dettagliate usa l'importo totale della fattura come riga unica con descrizione 'Fornitore — Fatt. N.'; 4) per ogni riga con descrizione non vuota e prezzo >= soglia, chiama classify_asset(descrizione, prezzo) per determinare la categoria cespite tramite euristica a parole chiave; 5) se la riga matcha una EXCLUDE_KEYWORDS (caffè, capsule, canoni, noleggio, manutenzione ordinaria, telefonia, ecc.) viene scartata a priori; altrimenti si cerca un match nelle KEYWORD_CATEGORY_MAP (es. 'forno'->forni, 'frigo'/'congelator'/'abbattitore'->frigoriferi, 'computer'/'stampante'/'monitor'/'notebook'/'tablet'->macchine_ufficio, 'sfogliatric'/'planetaria'/'impastatric'->impianti_cucina, 'lavastoviglie'/'lavapiatti'->attrezzature, 'mobile'/'arredo'/'sedia'/'tavol'/'banco'/'vetrina'->mobili_arredi, 'impianto'/'climatizz'/'condizionat'->impianti_generici, 'insegn'/'pubblicita'->insegne, 'software'/'licenz'->software); se il prezzo è >= 2000 EUR c'è un fallback aggiuntivo che classifica come 'attrezzature' anche descrizioni con 'supporto'/'cappa'/'scaffal'/'contenitor'; se nessuna categoria matcha, la riga viene scartata (return None); 6) dedup: chiave (descrizione troncata a 100 char, prezzo arrotondato) confrontata sia con i nuovi cespiti già raccolti in questa run sia con quelli già esistenti in DB; 7) per ogni riga superstite crea un documento cespite completo (id uuid4, categoria/coefficiente/vita_utile dedotti da CATEGORIE_CESPITI, data_acquisto/anno_acquisto dalla data fattura, valore_acquisto=prezzo, valore_residuo=prezzo, fondo_ammortamento=0, fornitore dal cedente, fattura_id di riferimento, note='Auto-estratto da fattura XML', stato='attivo'); 8) se dry_run=true ritorna solo una preview (primi 100 risultati) SENZA scrivere nulla; se dry_run=false (come nel bottone della UI) esegue insert_many su db['cespiti'] con tutti i nuovi cespiti trovati.",
-      "formula_matematica": "n/a (classificazione euristica per parole chiave, non un calcolo numerico; l'unico filtro numerico è prezzo >= soglia_valore, default 200 EUR)",
-      "aggiornamento_ui": "Se cespiti_creati > 0: alert con messaggio e valore totale formattato in EUR (it-IT); altrimenti alert 'Nessun nuovo cespite trovato nelle fatture XML.'. In ogni caso richiama loadCespiti() al termine (blocco finally) per aggiornare tabella e riepilogo.",
-      "casi_errore": "alert('Errore scan: ' + dettaglio) se la chiamata fallisce."
-    },
-    {
-      "etichetta": "Icona matita (Modifica) su riga cespite",
-      "cosa_fa_al_click": "handleEditCespite(c): entra in modalità inline-edit sulla riga della tabella, precompilando editData con descrizione, fornitore, note, valore_acquisto, data_acquisto del cespite selezionato.",
-      "endpoint_chiamato": "n/a al click (la PUT parte solo al successivo salvataggio)",
-      "logica_backend": "n/a",
-      "formula_matematica": "n/a",
-      "aggiornamento_ui": "La riga passa in modalità editing con input per descrizione e valore, più icone Check (salva) e X (annulla) al posto di matita/cestino.",
-      "casi_errore": "n/a"
-    },
-    {
-      "etichetta": "Icona Check (Salva modifica)",
-      "cosa_fa_al_click": "handleSaveEdit(): invia i campi modificati (editData) via PUT.",
-      "endpoint_chiamato": "PUT /api/cespiti/{cespite_id}",
-      "logica_backend": "Router cespiti.aggiorna_cespite(): verifica esistenza del cespite (404 se non trovato), applica solo i campi passati e non-null (model_dump(exclude_unset=True)) tramite $set. NON permette la modifica di categoria o coefficiente_ammortamento (campi non presenti nel modello CespiteUpdate: descrizione, fornitore, numero_fattura, ubicazione, note, valore_acquisto, data_acquisto). Se viene aggiornato valore_acquisto, ricalcola automaticamente valore_residuo = nuovo_valore - fondo_ammortamento_attuale (NB: questo NON ricalcola il piano_ammortamento già registrato, solo il residuo corrente). Se viene aggiornata data_acquisto, ricalcola anno_acquisto dai primi 4 caratteri.",
-      "formula_matematica": "valore_residuo (ricalcolato solo se si modifica valore_acquisto) = nuovo_valore_acquisto - fondo_ammortamento_corrente.",
-      "aggiornamento_ui": "Esce dalla modalità editing (editingCespite=null) e richiama loadCespiti().",
-      "casi_errore": "alert('Errore: ' + dettaglio) se la PUT fallisce (es. cespite non più esistente -> 404)."
-    },
-    {
-      "etichetta": "Icona X (Annulla modifica)",
-      "cosa_fa_al_click": "handleCancelEdit(): esce dalla modalità editing senza salvare nulla.",
-      "endpoint_chiamato": "n/a",
-      "logica_backend": "n/a",
-      "formula_matematica": "n/a",
-      "aggiornamento_ui": "Riga torna in modalità sola-lettura.",
-      "casi_errore": "n/a"
-    },
-    {
-      "etichetta": "Icona cestino (Elimina)",
-      "cosa_fa_al_click": "handleDeleteCespite(c): elimina direttamente il cespite senza popup di conferma nel frontend (nessun window.confirm). Il bottone è disabilitato via prop disabled={c.piano_ammortamento?.length > 0} se il cespite ha già almeno una quota di ammortamento registrata.",
-      "endpoint_chiamato": "DELETE /api/cespiti/{cespite_id}",
-      "logica_backend": "Router cespiti.elimina_cespite(): verifica esistenza (404 se assente); verifica che piano_ammortamento sia vuoto — se ha almeno una quota registrata, ritorna HTTP 400 'Impossibile eliminare: N quote di ammortamento già registrate. Usare la dismissione invece.' (questo controllo è ridondante con il disabled lato client, ma è comunque applicato lato server come guardia definitiva). Se ok, esegue delete_one — eliminazione fisica e irreversibile del documento (non è un soft-delete/cambio stato).",
-      "formula_matematica": "n/a",
-      "aggiornamento_ui": "Richiama loadCespiti() per aggiornare la lista.",
-      "casi_errore": "alert('Errore: ' + dettaglio) — es. 400 se ci sono quote di ammortamento già registrate."
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Registrazione ammortamento annuale (POST /api/cespiti/registra/{anno})",
-      "sequenza_esatta": "1) Richiama internamente GET-equivalente calcola_ammortamenti_anno(anno) per ottenere, per ogni cespite attivo con ammortamento_completato=False e senza già una voce per 'anno' nel piano_ammortamento, la quota da registrare (quota_ordinaria=valore*coeff/100; dimezzata se anno==anno_acquisto; troncata al valore_residuo). 2) Se la lista è vuota, ritorna subito senza scrivere nulla. 3) Per ogni cespite con quota>0: update_one su db['cespiti'] con $set su fondo_ammortamento, valore_residuo, ammortamento_completato e $push di un record dettagliato nell'array piano_ammortamento. 4) Crea UN SOLO documento riepilogativo in db['movimenti_contabili'] (tipo='ammortamento') con il totale e il dettaglio per cespite. 5) NON viene creato alcun movimento in prima_nota_cassa/banca (commento esplicito nel codice: l'ammortamento è un costo non monetario, quindi non deve toccare la cassa).",
-      "collezioni_coinvolte": ["cespiti", "movimenti_contabili"],
-      "campi_scritti": {
-        "cespiti.fondo_ammortamento": "float, nuovo totale fondo ammortamento accumulato",
-        "cespiti.valore_residuo": "float, valore netto contabile residuo dopo la quota",
-        "cespiti.ammortamento_completato": "bool, true se il residuo è sceso a <= 0.01",
-        "cespiti.piano_ammortamento[]": "array di record {anno, quota, fondo_dopo, residuo_dopo, primo_anno, data_registrazione} — append (push), storico immutabile delle quote registrate",
-        "movimenti_contabili.tipo": "'ammortamento'",
-        "movimenti_contabili.importo": "float, somma di tutte le quote registrate nell'anno",
-        "movimenti_contabili.dettaglio[]": "lista {descrizione, quota} per ciascun cespite ammortizzato"
-      },
-      "effetti_collaterali": "Non tocca prima_nota_cassa/banca. Contribuisce ai 'costi.ammortamenti' nel bilancino di chiusura esercizio (query su movimenti_contabili con tipo='ammortamento' e anno=X — vedi ChiusuraEsercizio). Aggiorna il riepilogo cespiti (GET /api/cespiti/riepilogo) che si basa su un'aggregazione live sui documenti cespiti."
-    },
-    {
-      "nome": "Creazione nuovo cespite (POST /api/cespiti/)",
-      "sequenza_esatta": "Valida categoria contro CATEGORIE_CESPITI; costruisce il documento con coefficiente e vita_utile presi dalla categoria, valore_residuo=valore_acquisto, fondo_ammortamento=0, piano_ammortamento=[]; insert_one in db['cespiti'].",
-      "collezioni_coinvolte": ["cespiti"],
-      "campi_scritti": {
-        "id": "uuid4 stringa",
-        "descrizione, categoria, categoria_descrizione, coefficiente_ammortamento, vita_utile_anni": "dai dati input + lookup categoria",
-        "data_acquisto, anno_acquisto": "dai dati input",
-        "valore_acquisto, valore_residuo": "= valore_acquisto (fondo=0 all'inizio)",
-        "fondo_ammortamento": "0",
-        "stato": "'attivo'",
-        "ammortamento_completato": "false",
-        "piano_ammortamento": "[]"
-      },
-      "effetti_collaterali": "Nessuna scrittura contabile immediata; l'ammortamento parte solo con la successiva registrazione annuale."
-    },
-    {
-      "nome": "Scan automatico fatture per cespiti (POST /api/cespiti/scan-fatture)",
-      "sequenza_esatta": "Descritta in dettaglio nel bottone 'Scan Fatture XML' sopra: euristica su descrizione+prezzo delle righe fattura, dedup, insert_many dei nuovi cespiti se dry_run=false.",
-      "collezioni_coinvolte": ["cespiti", "invoices", "fatture_passive"],
-      "campi_scritti": {
-        "cespiti (nuovi documenti)": "stessa struttura della creazione manuale, con note='Auto-estratto da fattura XML' e fattura_id di riferimento"
-      },
-      "effetti_collaterali": "Nessuna modifica alle fatture di origine (non le marca come 'processate'); rieseguire lo scan più volte è protetto dal dedup su (descrizione, valore_acquisto) ma solo per corrispondenze esatte — descrizioni leggermente diverse potrebbero generare duplicati."
-    },
-    {
-      "nome": "Dismissione cespite (POST /api/cespiti/dismissione — endpoint presente nel backend ma NON richiamato dal frontend GestioneCespiti.jsx, nessun bottone/form dedicato individuato nel JSX)",
-      "sequenza_esatta": "Verifica esistenza e stato 'attivo' del cespite. Calcola plus/minusvalenza: se tipo='vendita', plusminusvalenza = prezzo_vendita - valore_residuo; altrimenti (eliminazione/permuta) = -valore_residuo (perdita totale del residuo). Aggiorna il cespite con stato='dismesso' e un record dismissione{data, tipo, prezzo_vendita, valore_residuo_al_momento, plusminusvalenza, tipo_risultato}. Inserisce un movimento riepilogativo in movimenti_contabili (tipo='dismissione_cespite_{plusvalenza|minusvalenza|pareggio}'). Se plusminusvalenza != 0, inserisce ANCHE un movimento in prima_nota_banca (se vendita con incasso) o prima_nota_cassa (altrimenti) con tipo entrata (plusvalenza) o uscita (minusvalenza), categoria 'Plusvalenza/Minusvalenza cespiti'.",
-      "collezioni_coinvolte": ["cespiti", "movimenti_contabili", "prima_nota_banca", "prima_nota_cassa"],
-      "campi_scritti": {
-        "cespiti.stato": "'dismesso'",
-        "cespiti.dismissione": "oggetto con dettaglio dismissione e plus/minusvalenza",
-        "movimenti_contabili": "movimento con importo=abs(plusminusvalenza), segno dare/avere",
-        "prima_nota_banca/cassa": "movimento entrata/uscita con importo=abs(plusminusvalenza), categoria Plus/Minusvalenza cespiti"
-      },
-      "effetti_collaterali": "Endpoint funzionante e completo nel backend ma orfano lato UI: non esiste alcun pulsante 'Dismetti' nella pagina GestioneCespiti.jsx analizzata."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Sotto-tab TFR della stessa pagina (GET /api/tfr/riepilogo-aziendale?anno=): mostra fondo TFR totale, accantonamenti e liquidazioni dell'anno per dipendente attivo — dati gestiti dal modulo Personale/TFR, qui solo in lettura.",
-    "Sotto-tab Scadenzario della stessa pagina (GET /api/scadenzario-fornitori/?anno= e GET /api/scadenzario-fornitori/urgenti): mostra fatture fornitori non pagate, scadute/in scadenza entro 7 giorni, riepilogo per fornitore — dati gestiti dal modulo Fatture Fornitori, qui solo in lettura.",
-    "Chiusura Esercizio (contabilita/chiusura): il bilancino di chiusura legge da movimenti_contabili i record con tipo='ammortamento' e anno=X per calcolare i costi dell'esercizio; la verifica preliminare della chiusura controlla se ci sono cespiti attivi senza ammortamento registrato per l'anno e suggerisce di usare POST /api/cespiti/registra/{anno}.",
-    "Modulo Fatture Fornitori/XML (invoices, fatture_passive): fonte dati per lo scan automatico dei cespiti."
-  ],
-  "popup_e_modali_presenti": [
-    "Form inline 'Nuovo Cespite' (non un vero modale, è una card che appare/scompare nel flusso della pagina) con campi Descrizione, Categoria, Data Acquisto, Valore, Fornitore.",
-    "Editing inline a riga di tabella (icona matita) per modificare descrizione/valore di un cespite esistente, con icone Check/X per salvare/annullare.",
-    "Nessun modale di conferma (window.confirm) per l'eliminazione cespite: il click sul cestino elimina immediatamente (protetto solo lato UI dal disabled se piano_ammortamento non vuoto, e lato server dalla stessa condizione).",
-    "Tutti i feedback di esito (successo/errore) usano semplici alert() del browser, non componenti modali dedicati."
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Cespiti",
+  "route": "/contabilita/cespiti",
+  "catalog_id": 21,
+  "modulo": "contabilita",
+  "accesso": "authenticated",
+  "stato_audit": "in_review",
+  "scopo": "Mappa tecnica della schermata «Cespiti». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/GestioneCespiti.jsx",
+    "entry": "frontend/src/pages/hub/ContabilitaHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/GestioneCespiti.jsx",
+      "frontend/src/pages/hub/ContabilitaHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/routers/cespiti.py",
+      "app/routers/scadenzario_fornitori.py",
+      "app/routers/tfr.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/cespiti",
+      "/api/cespiti/calcolo/{param}",
+      "/api/cespiti/categorie",
+      "/api/cespiti/registra/{param}",
+      "/api/cespiti/riepilogo",
+      "/api/cespiti/scan-fatture",
+      "/api/cespiti/verifica/{param}",
+      "/api/cespiti/{param}",
+      "/api/scadenzario-fornitori",
+      "/api/scadenzario-fornitori/urgenti",
+      "/api/tfr/riepilogo-aziendale",
+      "/api/tfr/situazione/{param}"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

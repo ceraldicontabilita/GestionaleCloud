@@ -1,139 +1,150 @@
 {
-  "pagina": "Strumenti → Commercialista",
-  "url": "https://impresasemplice.online/strumenti/commercialista",
-  "file_sorgente_frontend": [
-    "/home/user/GestionaleCloud/frontend/src/pages/hub/StrumentiHub.jsx",
-    "/home/user/GestionaleCloud/frontend/src/pages/Commercialista.jsx"
-  ],
-  "file_sorgente_backend": [
-    "/home/user/GestionaleCloud/app/routers/commercialista.py",
-    "/home/user/GestionaleCloud/app/routers/public_api.py (endpoint GET /api/assegni usato per i carnet)",
-    "/home/user/GestionaleCloud/app/router_registry.py (riga 248: include_router(commercialista.router, prefix=\"/api/commercialista\"))"
-  ],
-  "scopo_generale": "Pagina per generare e inviare via email al commercialista i tre documenti mensili/puntuali richiesti per la tenuta della contabilità: Prima Nota Cassa del mese, elenco delle Fatture pagate per cassa del mese, e riepilogo dei Carnet Assegni (raggruppati automaticamente per le prime 8 cifre del numero assegno). I PDF sono generati interamente lato client con jsPDF/jspdf-autotable — il backend non genera mai i PDF, li riceve già pronti in base64 e li allega alle email che invia via SMTP. La pagina espone anche un banner di alert che ricorda entro il giorno 2 del mese di inviare la Prima Nota Cassa del mese precedente se non è ancora stata inviata (o segnata come inviata), uno storico degli invii, e un pulsante di export Excel multi-foglio generato interamente sul server.",
-  "bottoni_azioni": [
-    {
-      "etichetta": "Vai al mese (nel banner di alert arancione, visibile solo se alertStatus.show_alert è true)",
-      "cosa_fa_al_click": "Imposta l'anno globale (setAnno) e il mese selezionato (selectedMonth) sui valori del periodo pendente restituiti dal backend (alertStatus.anno_pendente / mese_pendente - 1); è puro cambio di stato client-side che fa scattare il successivo useEffect di loadData",
-      "endpoint_chiamato": "Nessuna chiamata diretta (indirettamente scatena poi GET prima-nota-cassa/{anno}/{mese} e GET fatture-cassa/{anno}/{mese} tramite l'useEffect su selectedYear/selectedMonth)",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Selettore periodo e le card Prima Nota/Fatture si aggiornano sul mese pendente",
-      "casi_errore": "Nessuno"
-    },
-    {
-      "etichetta": "Segna come inviata (nel banner di alert)",
-      "cosa_fa_al_click": "handleSegnaComeInviata(): POST verso il backend con anno/mese pendenti e l'email correntemente in config.email (che se non è mai stata salvata con PUT /config resta quella caricata da GET /config, tipicamente il default hardcoded)",
-      "endpoint_chiamato": "POST /api/commercialista/segna-inviata  Body: { anno, mese, email }",
-      "logica_backend": "segna_prima_nota_inviata: valida anno/mese (400 se mancanti), inserisce un log_doc in commercialista_log con tipo='prima_nota_cassa', success=True e note='Segnata manualmente come inviata'. NON invia realmente nessuna email: si limita a marcare come 'fatto' l'invio, così l'alert non ricompare più per quel mese (get_alert_status cerca proprio un log con tipo=prima_nota_cassa, anno, mese, success=True).",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Mostra un messaggio di successo verde e richiama loadConfig() che ricarica config/alert-status/log, facendo sparire il banner arancione",
-      "casi_errore": "Qualunque eccezione mostra un messaggio rosso generico 'Errore nel segnare come inviata.'"
-    },
-    {
-      "etichetta": "📊 Export Excel Commercialista (data-testid=export-excel-btn, sotto il selettore periodo)",
-      "cosa_fa_al_click": "window.open('/api/commercialista/export-excel/{anno}/{mese+1}', '_blank') — apre direttamente l'URL in una nuova scheda, il browser scarica il file restituito",
-      "endpoint_chiamato": "GET /api/commercialista/export-excel/{anno}/{mese}",
-      "logica_backend": "export_excel_commercialista: costruisce un file .xlsx (libreria openpyxl) con 5 fogli: 1) 'Fatture Acquisto' (da invoices del mese, con totali imponibile/IVA/totale); 2) 'Corrispettivi' (da corrispettivi del mese, con totali contante/elettronico); 3) 'Prima Nota Cassa' (da prima_nota_cassa del mese, ordinata per data poi categoria, con totale entrate/uscite/saldo); 4) 'Riepilogo IVA' (IVA a debito stimata dai corrispettivi al 10%, IVA a credito dalle fatture, saldo IVA); 5) 'Riepilogo' generale con tutti gli aggregati. Streaming come application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.",
-      "formula_matematica": "iva_vendite_stimata = totale_corrispettivi_mese * 0.10 / 1.10 (aliquota 10% ipotizzata, scorporo dal lordo) ; saldo_iva_export = iva_vendite_stimata - totale_iva_fatture_acquisto ; saldo_cassa = totale_entrate_prima_nota - totale_uscite_prima_nota",
-      "aggiornamento_ui": "Nessun aggiornamento nella pagina stessa: il file scaricato appare nella nuova scheda/nel gestore download del browser",
-      "casi_errore": "Se il mese non ha dati, i fogli vengono comunque generati ma vuoti (solo intestazioni e riga totali a zero); errori interni ritornano un 500 gestito da @handle_errors"
-    },
-    {
-      "etichetta": "📥 Scarica PDF (card Prima Nota Cassa, data-testid=download-prima-nota-pdf)",
-      "cosa_fa_al_click": "downloadPDF('prima_nota') → genera il PDF client-side con generatePrimaNotaPDF() (jsPDF): intestazione azienda, box Entrate (Corrispettivi/Finanziamento Soci/Altre entrate) e box Uscite (Pagamento Fatture/Pag. Elettronico→Banca/Versamenti/Altre uscite), riquadro Saldo Cassa, tabella movimenti ordinata cronologicamente ASC con saldo progressivo riga per riga. Nessuna chiamata di rete: usa solo i dati già caricati in primaNotaData.",
-      "endpoint_chiamato": "Nessuno (generazione 100% client-side)",
-      "logica_backend": "N/A",
-      "formula_matematica": "saldo_progressivo_riga_i = saldo_progressivo_riga_(i-1) + importo se tipo='entrata', altrimenti - importo ; saldo_cassa_finale = totale_entrate - totale_uscite ; totalePOS (informativo) = SOMMA(pagato_elettronico) dei movimenti Corrispettivi",
-      "aggiornamento_ui": "Il browser scarica il file Prima_Nota_Cassa_{Mese}_{Anno}.pdf e mostra un messaggio di successo temporaneo (5s)",
-      "casi_errore": "Se primaNotaData è null la funzione ritorna undefined silenziosamente (nessun file scaricato, nessun errore visibile)"
-    },
-    {
-      "etichetta": "📧 Invia Email (card Prima Nota Cassa, data-testid=send-prima-nota-email; disabilitato se smtp_configured=false o durante l'invio)",
-      "cosa_fa_al_click": "sendEmail('prima_nota'): rigenera lo stesso PDF client-side, lo converte in base64 (doc.output('datauristring')), e lo invia al backend insieme ad anno/mese/email",
-      "endpoint_chiamato": "POST /api/commercialista/invia-prima-nota  Body: { email, anno, mese, pdf_base64 }",
-      "logica_backend": "invia_prima_nota_cassa: valida anno/mese, richiama internamente get_prima_nota_cassa_mensile(anno,mese) per costruire il corpo HTML dell'email con il riepilogo (movimenti totali, entrate, uscite, saldo), decodifica il pdf_base64 ricevuto e lo allega, invia via smtplib.SMTP con STARTTLS usando le credenziali da variabili d'ambiente (SMTP_HOST/PORT/USER/PASSWORD, con vari alias EMAIL_USER/EMAIL_PASSWORD), poi registra un log_doc in commercialista_log (tipo='prima_nota_cassa', anno, mese, email, success).",
-      "formula_matematica": "Stesse formule del PDF (saldo = entrate - uscite)",
-      "aggiornamento_ui": "Bottone mostra '⏳ Invio...' durante la chiamata; al termine mostra messaggio verde con il testo restituito dal backend e richiama loadConfig() per aggiornare lo storico invii e l'alert-status",
-      "casi_errore": "Se SMTP non è configurato (manca host/user/password nelle env) → 500 'Configurazione SMTP mancante'; se l'invio SMTP fallisce per qualunque motivo (auth, rete) → 500 con dettaglio, mostrato in rosso come '❌ Errore invio: ...'"
-    },
-    {
-      "etichetta": "📥 Scarica PDF (card Fatture Pagate per Cassa, data-testid=download-fatture-cassa-pdf)",
-      "cosa_fa_al_click": "downloadPDF('fatture_cassa') → genera un PDF con l'elenco delle fatture pagate in contanti nel mese (Data Fattura, Fornitore, N. Fattura, Importo, Data Pagamento, Modalità) e il totale",
-      "endpoint_chiamato": "Nessuno (client-side)",
-      "logica_backend": "N/A",
-      "formula_matematica": "totale_fatture_cassa = SOMMA(total_amount o importo_totale) delle fatture con metodo di pagamento contanti/cassa del mese",
-      "aggiornamento_ui": "Download del file Fatture_Cassa_{Mese}_{Anno}.pdf",
-      "casi_errore": "Se fattureCassaData è null non fa nulla"
-    },
-    {
-      "etichetta": "📧 Invia Email (card Fatture Pagate per Cassa, data-testid=send-fatture-cassa-email)",
-      "cosa_fa_al_click": "sendEmail('fatture_cassa'): genera PDF, converte in base64, POST al backend",
-      "endpoint_chiamato": "POST /api/commercialista/invia-fatture-cassa  Body: { email, anno, mese, pdf_base64 }",
-      "logica_backend": "invia_fatture_cassa: richiama get_fatture_pagate_cassa(anno,mese) per il riepilogo email, invia con allegato PDF via SMTP, logga in commercialista_log (tipo='fatture_cassa')",
-      "formula_matematica": "totale_importo = SOMMA(total_amount o importo_totale) delle fatture filtrate per metodo pagamento contanti/cassa/cash E data (pagamento/fattura) nel mese",
-      "aggiornamento_ui": "Come sopra per prima nota",
-      "casi_errore": "Come sopra (SMTP non configurato → 500; errore invio → 500)"
-    },
-    {
-      "etichetta": "📥 Scarica PDF (N) / 📧 Invia Email (N) (card Carnet Assegni, data-testid=download-carnet-pdf / send-carnet-email; N = numero carnet selezionati con checkbox, disabilitati se N=0)",
-      "cosa_fa_al_click": "L'utente cerca/filtra i carnet con la barra di ricerca (che matcha su ID carnet, numero assegno, numero fattura, beneficiario, fornitore, importo — tutto client-side sull'array 'carnets' costruito raggruppando gli assegni per le prime 8 cifre del loro numero) e seleziona uno o più carnet con checkbox. 'Scarica PDF' genera generateCarnetMultiPDF() client-side con tutti gli assegni dei carnet selezionati (eventualmente ristretti ai soli assegni che matchano la ricerca attiva) e lo scarica. 'Invia Email' fa lo stesso ma poi invia il PDF al backend.",
-      "endpoint_chiamato": "POST /api/commercialista/invia-carnet  Body: { email, carnet_id (id multipli separati da ', '), assegni_count, totale_importo, pdf_base64 }",
-      "logica_backend": "invia_carnet: valida carnet_id (400 se assente), costruisce l'email con Numero Assegni e Totale Importo ricevuti così come calcolati dal FRONTEND (il backend non ricalcola nulla sugli assegni, si fida dei totali passati nel body), allega il PDF, invia via SMTP, logga in commercialista_log (tipo='carnet_assegni', carnet_id)",
-      "formula_matematica": "carnet_id (raggruppamento) = numero_assegno.substring(0,8) ; totale_carnet = SOMMA(importo) degli assegni del carnet ; se filtro ricerca attivo, il totale viene ricalcolato solo sugli assegni che matchano",
-      "aggiornamento_ui": "Riepilogo selezione (Carnet Selezionati / Totale Assegni / Importo Totale) sopra i due bottoni; bottone Invia mostra '⏳ Invio...' durante la chiamata",
-      "casi_errore": "carnet_id mancante → 400; SMTP non configurato → 500; qualunque errore rete/SMTP → messaggio rosso con dettaglio"
-    },
-    {
-      "etichetta": "Selettore Mese / Anno (globale, in alto)",
-      "cosa_fa_al_click": "Cambia selectedMonth (locale alla pagina) o selectedYear (context globale useAnnoGlobale, condiviso con tutto il gestionale); un useEffect ricarica automaticamente i dati del nuovo periodo",
-      "endpoint_chiamato": "GET /api/commercialista/prima-nota-cassa/{anno}/{mese} ; GET /api/commercialista/fatture-cassa/{anno}/{mese} ; GET /api/assegni?anno={anno}",
-      "logica_backend": "get_prima_nota_cassa_mensile: interroga prima_nota_cassa filtrando data che inizia con {anno}-{mese:02d} (con fallback a prima_nota_cassa con tipo_conto='cassa' e poi alla collection 'cash' se le prime query non trovano nulla), ordina per data poi categoria, somma entrate/uscite in base al campo tipo/type. get_fatture_pagate_cassa: interroga invoices con metodo_pagamento/payment_method/modalita_pagamento che contiene 'contant' o 'cassa'/'cash' E data (pagamento/fattura) nel mese. GET /api/assegni (router public_api.py): lista assegni non soft-deleted, filtrabile per anno su data_emissione/created_at/data/numero_assegno.",
-      "formula_matematica": "totale_entrate = SOMMA(|importo|) dei movimenti con tipo in [entrata, income, in] ; totale_uscite = SOMMA(|importo|) degli altri ; saldo = totale_entrate - totale_uscite",
-      "aggiornamento_ui": "Ricostruisce le card Prima Nota Cassa, Fatture Pagate per Cassa e la lista Carnet Assegni",
-      "casi_errore": "Errori loggati in console, nessun banner visibile all'utente per queste due GET (solo lo stato loading a schermo intero)"
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Invio email al commercialista (Prima Nota / Fatture Cassa / Carnet)",
-      "sequenza_esatta": "1) Utente clicca uno dei tre bottoni 'Invia Email' → 2) Frontend rigenera il PDF pertinente interamente in memoria con jsPDF e lo converte in stringa base64 → 3) POST al relativo endpoint (/invia-prima-nota, /invia-fatture-cassa, /invia-carnet) con email destinatario, dati di contesto e pdf_base64 → 4) Backend ricostruisce (o riceve) i dati di riepilogo, compone un corpo HTML e allega il PDF decodificato → 5) Invio SMTP sincrono (smtplib, STARTTLS, timeout 30s) verso l'indirizzo indicato → 6) Se l'invio ha successo, inserisce un documento in commercialista_log con esito e timestamp → 7) Risposta {success, message} → 8) Frontend mostra il messaggio e ricarica config/log/alert-status.",
-      "collezioni_coinvolte": [
-        "commercialista_log (insert_one per ogni invio, sia riuscito che... in realtà solo se send_email_with_attachment non solleva eccezione: se l'SMTP fallisce viene sollevata HTTPException 500 PRIMA del logging, quindi gli invii falliti per errore SMTP NON vengono loggati)"
-      ],
-      "campi_scritti": {
-        "commercialista_log.tipo": "'prima_nota_cassa' | 'fatture_cassa' | 'carnet_assegni'",
-        "commercialista_log.anno / mese": "presenti per prima_nota_cassa e fatture_cassa, assenti per carnet_assegni",
-        "commercialista_log.carnet_id": "presente solo per carnet_assegni (può contenere più ID separati da virgola se sono stati inviati carnet multipli)",
-        "commercialista_log.email": "indirizzo destinatario usato per l'invio",
-        "commercialista_log.data_invio": "datetime.now(timezone.utc).isoformat()",
-        "commercialista_log.success": "esito booleano restituito da send_email_with_attachment"
-      },
-      "effetti_collaterali": "Se il tipo è prima_nota_cassa e l'invio ha successo, la voce compare nello storico invii della pagina e — soprattutto — soddisfa la condizione controllata da GET /alert-status (log con tipo=prima_nota_cassa, stesso anno/mese, success=True), quindi il banner di sollecito sparisce automaticamente al prossimo caricamento."
-    },
-    {
-      "nome": "Segnare manualmente la Prima Nota Cassa come 'inviata' (senza inviare email)",
-      "sequenza_esatta": "1) Utente clicca 'Segna come inviata' nel banner di alert → 2) POST /api/commercialista/segna-inviata {anno, mese, email} → 3) Backend inserisce direttamente un log_doc in commercialista_log con success=True e note='Segnata manualmente come inviata', SENZA inviare alcuna email → 4) Risposta di conferma → 5) Frontend ricarica config, l'alert-status torna show_alert=false.",
-      "collezioni_coinvolte": ["commercialista_log (insert_one)"],
-      "campi_scritti": {
-        "commercialista_log.tipo": "'prima_nota_cassa'",
-        "commercialista_log.anno": "dal body",
-        "commercialista_log.mese": "dal body",
-        "commercialista_log.email": "dal body (config.email correntemente in memoria)",
-        "commercialista_log.data_invio": "now UTC",
-        "commercialista_log.success": "True (sempre, indipendentemente da qualunque verifica reale)",
-        "commercialista_log.note": "'Segnata manualmente come inviata'"
-      },
-      "effetti_collaterali": "È una scorciatoia puramente amministrativa: non c'è alcuna verifica che l'invio sia davvero avvenuto (ad esempio se il commercialista l'ha ricevuta per altra via, es. PEC manuale). Nessun controllo di autorizzazione o conferma a doppio click prima di questa operazione."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Prima Nota Cassa: fonte dei movimenti mostrati/esportati in questa pagina",
-    "Fatture / invoices: fonte delle fatture pagate per cassa",
-    "Gestione Assegni: fonte degli assegni raggruppati automaticamente in 'carnet'",
-    "NOTA IMPORTANTE: esiste un endpoint PUT /api/commercialista/config nel backend (aggiorna email/nome/alert_giorni/invio_automatico in DB) ma NON viene mai chiamato dal frontend attuale — gli input Email/Nome Commercialista nella card di configurazione modificano solo lo state React locale (usato subito dopo come mittente per gli invii della sessione corrente) e NON vengono mai persistiti; a ogni refresh della pagina si ricarica sempre il valore salvato in precedenza in DB (o il default 'rosaria.marotta@email.it' se mai stato aggiornato)."
-  ],
-  "popup_e_modali_presenti": [
-    "Nessun vero modale. C'è un banner di alert non bloccante (arancione) per il sollecito Prima Nota Cassa e un banner di messaggio (verde/rosso) per esito operazioni, entrambi inline nella pagina, non overlay."
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Commercialista",
+  "route": "/strumenti/commercialista",
+  "catalog_id": 45,
+  "modulo": "strumenti",
+  "accesso": "authenticated",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Commercialista». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/Commercialista.jsx",
+    "entry": "frontend/src/pages/hub/StrumentiHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/Commercialista.jsx",
+      "frontend/src/pages/hub/StrumentiHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/router_registry.py",
+      "app/routers/commercialista.py",
+      "app/routers/public_api.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/admin",
+      "/api/agenti",
+      "/api/ai-parser",
+      "/api/alerts",
+      "/api/anagrafica-fornitori",
+      "/api/archivio-bonifici",
+      "/api/assegni",
+      "/api/assegni/learning",
+      "/api/auth",
+      "/api/auth/api/auth/verify",
+      "/api/auth/login",
+      "/api/auth/verify",
+      "/api/auto-repair",
+      "/api/bank-statement",
+      "/api/batch-reprocess",
+      "/api/bilancio",
+      "/api/cash",
+      "/api/cedolini",
+      "/api/centri-costo",
+      "/api/cespiti",
+      "/api/chiusura-esercizio",
+      "/api/collaudo",
+      "/api/commercialista",
+      "/api/commercialista/alert-status",
+      "/api/commercialista/config",
+      "/api/commercialista/export-completo/{param}/{param}",
+      "/api/commercialista/export-excel/{param}/{param}",
+      "/api/commercialista/fatture-cassa/{param}/{param}",
+      "/api/commercialista/invia-carnet",
+      "/api/commercialista/invia-fatture-cassa",
+      "/api/commercialista/invia-prima-nota",
+      "/api/commercialista/log",
+      "/api/commercialista/prima-nota-cassa/{param}/{param}",
+      "/api/commercialista/riepilogo/{param}/{param}",
+      "/api/commercialista/segna-inviata",
+      "/api/config",
+      "/api/config-import",
+      "/api/contabilita",
+      "/api/contabilita-gestionale",
+      "/api/controllo-gestione",
+      "/api/corrispettivi",
+      "/api/dashboard",
+      "/api/dati-isa",
+      "/api/dipendenti",
+      "/api/dizionario-articoli",
+      "/api/document-ai",
+      "/api/documenti",
+      "/api/documenti-fiscali",
+      "/api/documenti-inbox",
+      "/api/documenti-non-associati",
+      "/api/email-download",
+      "/api/email-scanner",
+      "/api/erp/ponte",
+      "/api/estratto-conto-movimenti",
+      "/api/f24",
+      "/api/f24-analisi",
+      "/api/f24-email",
+      "/api/f24-email-settings",
+      "/api/f24-public",
+      "/api/f24-riconciliazione",
+      "/api/f24/quietanze",
+      "/api/fatture",
+      "/api/fatture-estere",
+      "/api/fatture-ricevute",
+      "/api/finanziamenti-soci",
+      "/api/finanziaria",
+      "/api/fiscal",
+      "/api/fiscalita",
+      "/api/fornitori-learning",
+      "/api/gestione-riservata",
+      "/api/invoices",
+      "/api/invoices/emesse",
+      "/api/iva",
+      "/api/learning-machine",
+      "/api/learning-universal",
+      "/api/mutui",
+      "/api/nexi",
+      "/api/noleggio",
+      "/api/openapi",
+      "/api/openapi-automotive",
+      "/api/openapi-imprese",
+      "/api/operazioni-da-confermare",
+      "/api/pagamenti",
+      "/api/pagamenti-buoni",
+      "/api/pagopa",
+      "/api/paypal-api",
+      "/api/paypal-statements",
+      "/api/pianificazione",
+      "/api/piano-conti",
+      "/api/previsioni-acquisti",
+      "/api/prima-nota",
+      "/api/prima-nota-salari",
+      "/api/rapido",
+      "/api/regole",
+      "/api/ritenute",
+      "/api/scadenzario-fornitori",
+      "/api/scadenze",
+      "/api/settings",
+      "/api/sumup",
+      "/api/suppliers",
+      "/api/tfr",
+      "/api/verbali-noleggio",
+      "/api/verbali-riconciliazione",
+      "/api/verifica-coerenza",
+      "/api/voci-bilancio",
+      "/api/whatsapp"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

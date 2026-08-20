@@ -1,22 +1,38 @@
 {
-  "nome_popup": "Modal 'Associa Targa a Driver' (Associazione Manuale)",
-  "pagine_da_cui_si_apre": ["Noleggio > Verbali Noleggio (tab 'verbali', componente VerbaliRiconciliazione.jsx montato dentro VeicoliHub.jsx alla route /noleggio/verbali)"],
-  "come_si_apre": "Click sul pulsante header '🔗 Associazione Manuale' (data-testid=btn-associa-manuale), che chiama setShowAssociaModal(true). Stato controllato: showAssociaModal (boolean).",
-  "scopo": "Collegare manualmente una targa veicolo a un dipendente (driver) quando le strategie automatiche di associazione (veicoli_noleggio, storico assegnazioni, contratti, ricerca testuale) non sono riuscite a determinare chi guidava quel veicolo. Il collegamento si applica retroattivamente a tutti i verbali esistenti con quella targa privi di driver.",
-  "dati_mostrati": "Testo esplicativo: 'Seleziona una targa e un driver per creare l'associazione. Tutti i verbali con questa targa verranno automaticamente collegati al driver.'. Select 'Targa Veicolo' popolato SOLO con le targhe distinte presenti nei verbali attualmente caricati in lista che NON hanno ancora un driver_id (funzione locale getTargheSenzaDriver(), calcolata sui dati già in memoria, ordinate alfabeticamente). Select 'Driver (Dipendente)' popolato da GET /api/dipendenti (stato dipendenti, caricato al mount della pagina), con etichetta d.name oppure fallback '{nome} {cognome}'.",
-  "campi_e_bottoni": [
-    {"elemento": "Select 'Targa Veicolo' (data-testid=select-targa-assoc)", "cosa_fa": "Imposta selectedTargaForAssoc tra le targhe senza driver nei verbali correnti", "endpoint_chiamato": "nessuno", "validazioni": "Nessuna al cambio; obbligatorio per abilitare il bottone di conferma."},
-    {"elemento": "Select 'Driver (Dipendente)' (data-testid=select-driver-assoc)", "cosa_fa": "Imposta selectedDriverId tra i dipendenti disponibili", "endpoint_chiamato": "nessuno", "validazioni": "Nessuna al cambio; obbligatorio per abilitare il bottone di conferma."},
-    {"elemento": "Pulsante '✕' (header, carattere ×) / click sull'overlay scuro", "cosa_fa": "Chiude il modal senza salvare: setShowAssociaModal(false)", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
-    {"elemento": "Pulsante 'Annulla' (footer)", "cosa_fa": "Chiude il modal senza salvare", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
-    {"elemento": "Pulsante '✅ Associa' (footer, colore verde, testo esatto dipende dallo stile ma azione è handleAssociaTargaDriver)", "cosa_fa": "Se targa o driver mancanti, setError('Seleziona sia la targa che il driver') senza chiamare il backend; altrimenti imposta associating=true e invia la richiesta", "endpoint_chiamato": "POST /api/auto-repair/collega-targa-driver?targa={targa}&driver_id={id}", "validazioni": "Client: pulsante disabled se !selectedTargaForAssoc || !selectedDriverId || associating. Server (collega_targa_driver): 404 se il dipendente non esiste in 'dipendenti'."}
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "popup_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "popup": "Modal 'Associa Targa a Driver' (Associazione Manuale)",
+  "scopo": "Mappa tecnica del popup «Modal 'Associa Targa a Driver' (Associazione Manuale)». Il comportamento e le mutazioni reali devono essere verificati nei sorgenti correnti.",
+  "aperto_da": [
+    "Noleggio > Verbali Noleggio (tab 'verbali', componente VerbaliRiconciliazione.jsx montato dentro VeicoliHub.jsx alla route /noleggio/verbali)"
   ],
-  "cosa_succede_alla_conferma": "Il backend verifica che il dipendente esista, calcola nome_completo, poi esegue un update_many su TUTTI i verbali con quella targa che non hanno ancora driver_id (o è null/stringa vuota), impostando driver_id, driver_nome, auto_repaired=true. Il frontend mostra setSuccessMsg('Targa {targa} associata a {driver}. {N} verbali aggiornati.'), chiude il modal, resetta selectedTargaForAssoc e selectedDriverId, e richiama loadDashboard() + loadVerbali() per aggiornare i contatori e la lista. In caso di errore, setError mostra il messaggio del backend (es. 404 dipendente non trovato) e il modal resta aperto; il blocco finally azzera comunque associating.",
-  "come_si_chiude": [
-    "Pulsante '✕' nell'header",
-    "Click sull'overlay semi-trasparente di sfondo",
-    "Pulsante 'Annulla'",
-    "Submit riuscito tramite il pulsante di conferma (chiusura automatica dopo la POST)"
+  "file_verificati": [
+    "frontend/src/pages/VerbaliRiconciliazione.jsx",
+    "frontend/src/pages/hub/VeicoliHub.jsx"
   ],
-  "effetto_su_pagina_sottostante": "Dopo la chiusura con successo, la dashboard riepilogativa (card Totale Verbali/Da Riconciliare/Riconciliati/Totale Importo) e la tabella lista verbali si ricaricano: i verbali con quella targa ora mostrano il driver associato e possono uscire dal conteggio 'da riconciliare' se questo era l'unico dato mancante. Se il pannello di dettaglio verbale (selectedVerbale) era aperto su uno dei verbali toccati, non viene aggiornato automaticamente da questa azione (a differenza della riconciliazione singola che aggiorna esplicitamente selectedVerbale)."
+  "endpoint_rilevati_nei_sorgenti": [
+    "/api/auto-repair/collega-targa-driver",
+    "/api/dipendenti",
+    "/api/noleggio/export-pdf-costi",
+    "/api/noleggio/veicoli",
+    "/api/verbali-riconciliazione/collega-driver-massivo",
+    "/api/verbali-riconciliazione/dashboard",
+    "/api/verbali-riconciliazione/lista",
+    "/api/verbali-riconciliazione/migra-attesa-quietanza",
+    "/api/verbali-riconciliazione/pulisci-duplicati",
+    "/api/verbali-riconciliazione/riconcilia/{param}",
+    "/api/verbali-riconciliazione/scan-email",
+    "/api/verbali-riconciliazione/scan-fatture-verbali"
+  ],
+  "regole_ux": [
+    "Il popup deve avere chiusura visibile e non restare sovrapposto al documento.",
+    "Le azioni distruttive o definitive richiedono una conferma esplicita.",
+    "Le associazioni ambigue mostrano candidati e non vengono applicate automaticamente."
+  ]
 }

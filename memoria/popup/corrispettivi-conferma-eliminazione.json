@@ -1,23 +1,26 @@
 {
-  "nome_popup": "window.confirm() nativo — conferma eliminazione corrispettivo",
-  "file_sorgente": "frontend/src/pages/Corrispettivi.jsx (funzione handleDelete, righe 64-73)",
-  "pagine_da_cui_si_apre": ["Corrispettivi (Corrispettivi.jsx)"],
-  "come_si_apre": "Click sull'icona cestino (Trash2, lucide-react) nella colonna AZIONI di una riga della tabella corrispettivi (riga 495: onClick={() => handleDelete(c.id)}). NON è un componente React custom: è la finestra di dialogo nativa del browser invocata con window.confirm(\"Eliminare questo corrispettivo? L'operazione non può essere annullata.\").",
-  "scopo": "Evitare l'eliminazione accidentale di un corrispettivo con un solo click, chiedendo una conferma esplicita prima di procedere con una richiesta irreversibile (soft-delete lato server, ma senza possibilità di 'undo' nell'interfaccia).",
-  "dati_mostrati": "Solo il testo fisso del messaggio di conferma; nessun dato specifico della riga (es. data o importo del corrispettivo) viene interpolato nel messaggio — il testo è identico per qualsiasi riga.",
-  "campi_e_bottoni": [
-    {
-      "elemento": "Bottone 'OK' / 'Annulla' della finestra nativa del browser (non stilizzabili, gestiti dal sistema operativo/browser)",
-      "cosa_fa": "Se l'utente clicca Annulla (o l'equivalente 'Cancel'), window.confirm ritorna false e la funzione handleDelete esegue return immediato SENZA alcuna chiamata di rete. Se clicca OK, window.confirm ritorna true e prosegue con la DELETE.",
-      "endpoint_chiamato": "DELETE /api/corrispettivi/{id} (solo se l'utente conferma con OK; nessun parametro force passato, quindi il backend usa force=False di default)",
-      "validazioni": "Nessuna validazione applicativa nel confirm stesso; le regole di blocco vere e proprie sono lato backend (vedi sotto)."
-    }
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "popup_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "popup": "window.confirm() nativo — conferma eliminazione corrispettivo",
+  "scopo": "Mappa tecnica del popup «window.confirm() nativo — conferma eliminazione corrispettivo». Il comportamento e le mutazioni reali devono essere verificati nei sorgenti correnti.",
+  "aperto_da": [
+    "Corrispettivi (Corrispettivi.jsx)"
   ],
-  "cosa_succede_alla_conferma": "Alla conferma (OK), il frontend chiama DELETE /api/corrispettivi/{id}. Il backend (delete_corrispettivo in app/routers/invoices/corrispettivi.py) recupera il documento (404 se assente) e applica BusinessRules.can_delete_corrispettivo: BLOCCA con HTTP 400 {message:'Eliminazione non consentita', errors:[...]} se status=='sent_ade' (già inviato all'Agenzia delle Entrate) oppure se il documento ha un campo prima_nota_id già valorizzato (già registrato in Prima Nota) — dato che l'ingest XML valorizza sempre prima_nota_id, in pratica quasi ogni corrispettivo importato da XML risulta bloccato a questo punto, perché il frontend non ripropone mai un secondo tentativo con force=true. Se la validazione passa, esegue un SOFT-DELETE: db['corrispettivi'].update_one({id}, {$set: {entity_status:'deleted', deleted_at: now}}). Se il corrispettivo aveva un prima_nota_id, annulla anche il movimento collegato in prima_nota_cassa (update_one su quell'id con {$set:{stato:'annullato'}}) — tocca SOLO prima_nota_cassa, mai prima_nota_banca, anche se il corrispettivo aveva una quota elettronica con un movimento POS collegato in prima_nota_banca.",
-  "come_si_chiude": [
-    "Click su 'OK' (procede con la DELETE)",
-    "Click su 'Annulla'/'Cancel' (nessuna azione)",
-    "Tasto ESC (equivalente ad Annulla nella maggior parte dei browser)"
+  "file_verificati": [
+    "frontend/src/pages/Corrispettivi.jsx"
   ],
-  "effetto_su_pagina_sottostante": "Se la DELETE va a buon fine, il frontend richiama loadCorrispettivi() per ricaricare l'intera lista dal server (la riga eliminata sparisce, i 4 KPI si ricalcolano). Se la DELETE fallisce (tipicamente 400 per corrispettivo già registrato in Prima Nota), viene mostrato un banner PageError in cima alla pagina con setErr('Errore eliminazione: ' + dettaglio) — l'utente NON ha, da questa pagina, un modo diretto per forzare l'eliminazione (nessun secondo window.confirm con force=true, a differenza di quanto avviene per l'eliminazione fornitore in Fornitori.jsx)."
+  "endpoint_rilevati_nei_sorgenti": [
+    "/api/corrispettivi"
+  ],
+  "regole_ux": [
+    "Il popup deve avere chiusura visibile e non restare sovrapposto al documento.",
+    "Le azioni distruttive o definitive richiedono una conferma esplicita.",
+    "Le associazioni ambigue mostrano candidati e non vengono applicate automaticamente."
+  ]
 }

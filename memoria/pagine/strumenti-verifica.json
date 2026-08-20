@@ -1,60 +1,139 @@
 {
-  "pagina": "Strumenti → Verifica Coerenza",
-  "url": "https://impresasemplice.online/strumenti (tab di default dell'hub Strumenti; internamente la pagina gestisce anche le sotto-rotte /verifica-coerenza/riepilogo, /verifica-coerenza/iva, /verifica-coerenza/discrepanze)",
-  "file_sorgente_frontend": [
-    "/home/user/GestionaleCloud/frontend/src/pages/hub/StrumentiHub.jsx",
-    "/home/user/GestionaleCloud/frontend/src/pages/VerificaCoerenza.jsx"
-  ],
-  "file_sorgente_backend": [
-    "/home/user/GestionaleCloud/app/routers/verifica_coerenza.py",
-    "/home/user/GestionaleCloud/app/services/verifica_coerenza.py",
-    "/home/user/GestionaleCloud/app/router_registry.py (riga 253: include_router(verifica_coerenza.router, prefix=\"/api/verifica-coerenza\"))"
-  ],
-  "scopo_generale": "Pagina di sola lettura (nessuna scrittura sul database) che esegue controlli incrociati automatici tra le varie sezioni del gestionale, per far emergere errori di inserimento prima che diventino un problema in dichiarazione IVA o in bilancio. Mostra uno stato generale semaforico (OK / ATTENZIONE / CRITICO) calcolato dal backend in base alla gravità delle discrepanze trovate, poi tre viste di dettaglio: il riepilogo dell'IVA annuale e dei versamenti Cassa vs Banca, il confronto IVA mese per mese, e l'elenco puntuale delle discrepanze rilevate con relativo suggerimento operativo. Il codice contiene un commento esplicito che ricorda che i vecchi riquadri 'Prima Nota vs Estratto Conto' e 'Bonifici vs Banca' sono stati rimossi perché fuorvianti (restituivano sempre zero o numeri incomprensibili) e sostituiti dalla scheda dedicata 'Movimenti Banca' (vedi pagina collegata) che elenca i singoli movimenti mancanti invece di un aggregato muto.",
-  "bottoni_azioni": [
-    {
-      "etichetta": "🔄 Ricarica (data-testid=btn-ricarica-verifica, in alto a destra nel PageLayout)",
-      "cosa_fa_al_click": "Richiama loadAll(), che lancia in parallelo (Promise.all) le due chiamate GET necessarie a tutta la pagina; ciascuna ha un .catch locale che restituisce {data:null} in caso di errore, così un fallimento di una chiamata non blocca l'altra.",
-      "endpoint_chiamato": "GET /api/verifica-coerenza/completa/{anno} ; GET /api/verifica-coerenza/confronto-iva-completo/{anno}",
-      "logica_backend": "completa/{anno} istanzia VerificaCoerenza(db) e chiama verifica_completa(anno): per ciascuno dei 12 mesi calcola iva_credito_fatture (somma campo 'iva' dei documenti in collection invoices con data_ricezione o invoice_date nel mese, ESCLUSE le fatture con tipo_documento TD04/TD08 dal calcolo principale) meno iva_note_credito (somma 'iva' delle sole TD04/TD08, che vengono sottratte), e iva_debito_corrispettivi (somma campo 'totale_iva' della collection corrispettivi filtrata per mese). Poi chiama verifica_versamenti_vs_banca(anno) che confronta il totale di prima_nota_cassa con categoria in ['Versamenti','Versamento','versamento','versamenti'] (status non deleted/archived) contro il totale assoluto dei movimenti in estratto_conto_movimenti con descrizione_originale che contiene 'versamento' (case-insensitive) o tipo_movimento='versamento'; se la differenza supera 0.01€ genera una discrepanza con severità 'warning' (o 'critical' se |differenza|>=100). Infine chiama verifica_f24_vs_pagamenti(anno) che confronta il totale saldo_finale degli F24 con stato='pagato' (collection f24_unificato) contro i movimenti in uscita di estratto_conto_movimenti la cui descrizione contiene 'F24'/'ERARIO'/'INPS'/'tribut' (case-insensitive); differenza >1€ genera discrepanza 'warning'. NOTA: la verifica del saldo Prima Nota Banca vs Estratto Conto (metodo verifica_saldo_cassa_vs_banca) esiste ancora nel codice ma è stata volutamente disattivata (non viene più chiamata da verifica_completa) perché il confronto aggregato non indicava quale movimento mancasse; è stata sostituita dal tab 'Movimenti Banca'. confronto-iva-completo/{anno} ricalcola, mese per mese, iva_credito_fatture e iva_debito_corrispettivi tramite verifica_coerenza_iva_tra_pagine(anno,mese) e restituisce sia il dettaglio mensile sia i totali annuali.",
-      "formula_matematica": "saldo_iva_mensile = iva_debito_corrispettivi - iva_credito_fatture ; da_versare = max(saldo_iva_mensile, 0) ; a_credito = max(-saldo_iva_mensile, 0) ; saldo_iva_annuale = SOMMA(iva_debito_totale) - SOMMA(iva_credito_totale) su tutti i 12 mesi ; differenza_versamenti = versamenti_manuali(prima_nota_cassa) - versamenti_banca(estratto_conto_movimenti) ; stato_generale = 'CRITICO' se almeno una discrepanza ha severità critical, altrimenti 'ATTENZIONE' se almeno una è warning, altrimenti 'OK'",
-      "aggiornamento_ui": "Aggiorna verificaCompleta e confrontoIva nello state; ricolora la card 'Stato Generale' (verde/giallo/rosso) in base a stato_generale, aggiorna i contatori Critiche/Avvisi/Info, e ricostruisce le tre tab sottostanti con i nuovi dati",
-      "casi_errore": "Se ENTRAMBE le richieste falliscono il catch esterno imposta error='Errore nel caricamento dei dati' mostrato in un banner rosso sopra i contenuti; se fallisce solo una, quella sezione mostra semplicemente dati vuoti (i .catch interni restituiscono {data:null}) senza bloccare l'altra"
-    },
-    {
-      "etichetta": "📋 Riepilogo / 📈 IVA Mensile / ⚠️ Discrepanze (tab interne sotto la card Stato Generale)",
-      "cosa_fa_al_click": "Cambia lo state locale activeTab e naviga a /verifica-coerenza/{tabId} (nessuna nuova chiamata API: i dati sono già in memoria dal caricamento iniziale)",
-      "endpoint_chiamato": "Nessuno",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Mostra/nasconde le tre sezioni: Riepilogo (card IVA Annuale + card Versamenti Cassa vs Banca), IVA Mensile (tabella 12 righe + riga totale), Discrepanze (lista dettagliata o messaggio 'Tutti i Dati sono Coerenti!')",
-      "casi_errore": "Nessuno, è puro routing/state client-side"
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Nessuna. Questa pagina non scrive mai sul database.",
-      "sequenza_esatta": "Tutte le chiamate esposte dal router verifica_coerenza.py sono GET e producono solo aggregazioni MongoDB in lettura (pipeline $match/$group su invoices, corrispettivi, prima_nota_cassa, estratto_conto_movimenti, f24_unificato, bonifici_transfers). Nessun insert_one/update_one viene mai eseguito da questo modulo.",
-      "collezioni_coinvolte": [
-        "invoices (lettura)",
-        "corrispettivi (lettura)",
-        "prima_nota_cassa (lettura)",
-        "estratto_conto_movimenti (lettura)",
-        "f24_unificato (lettura)",
-        "bonifici_transfers (lettura, solo nell'endpoint non usato dal frontend /verifica-bonifici-vs-banca)"
-      ],
-      "campi_scritti": {},
-      "effetti_collaterali": "Nessuno lato database. L'unico 'effetto' è la generazione temporanea (in RAM, non persistita) dell'array self.discrepanze dentro l'istanza VerificaCoerenza, restituito nella risposta HTTP e scartato subito dopo."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Tab 'Movimenti Banca' dello stesso hub Strumenti: sostituisce il vecchio controllo saldi aggregato con l'elenco puntuale dei movimenti bancari mancanti in Prima Nota (vedi memoria/pagine/strumenti-movimenti-banca.json)",
-    "Pagina Fatture (invoices) e Corrispettivi: fonti dei dati IVA credito/debito confrontati qui",
-    "Prima Nota Cassa: fonte dei 'versamenti manuali' confrontati con la banca",
-    "Estratto Conto / Prima Nota Banca: fonte dei movimenti bancari usati in tutti i confronti",
-    "F24 (f24_unificato): fonte dei pagamenti tributari confrontati con i movimenti bancari"
-  ],
-  "popup_e_modali_presenti": [
-    "Nessun popup o modale. La pagina è interamente a schermo intero con tre tab statiche e uno stato di caricamento a spinner."
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Verifica coerenza",
+  "route": "/strumenti",
+  "catalog_id": 43,
+  "modulo": "strumenti",
+  "accesso": "authenticated",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Verifica coerenza». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/VerificaCoerenza.jsx",
+    "entry": "frontend/src/pages/hub/StrumentiHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/VerificaCoerenza.jsx",
+      "frontend/src/pages/hub/StrumentiHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/router_registry.py",
+      "app/routers/verifica_coerenza.py",
+      "app/services/verifica_coerenza.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/admin",
+      "/api/agenti",
+      "/api/ai-parser",
+      "/api/alerts",
+      "/api/anagrafica-fornitori",
+      "/api/archivio-bonifici",
+      "/api/assegni",
+      "/api/assegni/learning",
+      "/api/auth",
+      "/api/auth/api/auth/verify",
+      "/api/auth/login",
+      "/api/auth/verify",
+      "/api/auto-repair",
+      "/api/bank-statement",
+      "/api/batch-reprocess",
+      "/api/bilancio",
+      "/api/cash",
+      "/api/cedolini",
+      "/api/centri-costo",
+      "/api/cespiti",
+      "/api/chiusura-esercizio",
+      "/api/collaudo",
+      "/api/commercialista",
+      "/api/config",
+      "/api/config-import",
+      "/api/contabilita",
+      "/api/contabilita-gestionale",
+      "/api/controllo-gestione",
+      "/api/corrispettivi",
+      "/api/dashboard",
+      "/api/dati-isa",
+      "/api/dipendenti",
+      "/api/dizionario-articoli",
+      "/api/document-ai",
+      "/api/documenti",
+      "/api/documenti-fiscali",
+      "/api/documenti-inbox",
+      "/api/documenti-non-associati",
+      "/api/email-download",
+      "/api/email-scanner",
+      "/api/erp/ponte",
+      "/api/estratto-conto-movimenti",
+      "/api/f24",
+      "/api/f24-analisi",
+      "/api/f24-email",
+      "/api/f24-email-settings",
+      "/api/f24-public",
+      "/api/f24-riconciliazione",
+      "/api/f24/quietanze",
+      "/api/fatture",
+      "/api/fatture-estere",
+      "/api/fatture-ricevute",
+      "/api/finanziamenti-soci",
+      "/api/finanziaria",
+      "/api/fiscal",
+      "/api/fiscalita",
+      "/api/fornitori-learning",
+      "/api/gestione-riservata",
+      "/api/invoices",
+      "/api/invoices/emesse",
+      "/api/iva",
+      "/api/learning-machine",
+      "/api/learning-universal",
+      "/api/mutui",
+      "/api/nexi",
+      "/api/noleggio",
+      "/api/openapi",
+      "/api/openapi-automotive",
+      "/api/openapi-imprese",
+      "/api/operazioni-da-confermare",
+      "/api/pagamenti",
+      "/api/pagamenti-buoni",
+      "/api/pagopa",
+      "/api/paypal-api",
+      "/api/paypal-statements",
+      "/api/pianificazione",
+      "/api/piano-conti",
+      "/api/previsioni-acquisti",
+      "/api/prima-nota",
+      "/api/prima-nota-salari",
+      "/api/rapido",
+      "/api/regole",
+      "/api/ritenute",
+      "/api/scadenzario-fornitori",
+      "/api/scadenze",
+      "/api/settings",
+      "/api/sumup",
+      "/api/suppliers",
+      "/api/tfr",
+      "/api/verbali-noleggio",
+      "/api/verbali-riconciliazione",
+      "/api/verifica-coerenza",
+      "/api/verifica-coerenza/completa/{param}",
+      "/api/voci-bilancio",
+      "/api/whatsapp"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

@@ -1,77 +1,143 @@
 {
-  "pagina": "Strumenti → Movimenti Banca",
-  "url": "https://impresasemplice.online/strumenti/movimenti-banca",
-  "file_sorgente_frontend": [
-    "/home/user/GestionaleCloud/frontend/src/pages/hub/StrumentiHub.jsx",
-    "/home/user/GestionaleCloud/frontend/src/pages/VerificaMovimentiBanca.jsx"
-  ],
-  "file_sorgente_backend": [
-    "/home/user/GestionaleCloud/app/routers/prima_nota_module/__init__.py (registra le due route su router con prefix /api/prima-nota)",
-    "/home/user/GestionaleCloud/app/routers/prima_nota_module/manutenzione.py (funzioni lista_movimenti_ec_non_in_prima_nota e importa_movimento_ec_in_prima_nota)",
-    "/home/user/GestionaleCloud/app/router_registry.py (riga 103: include_router(prima_nota_router, prefix=\"/api/prima-nota\"))"
-  ],
-  "scopo_generale": "Sostituto moderno (introdotto nella PR fix/strumenti-pulizia-e-importa-ec, come indicato nel commento in testa al file JSX) dei vecchi riquadri aggregati 'Prima Nota vs Estratto Conto' e 'Bonifici vs Banca', giudicati fuorvianti perché mostravano solo numeri incomprensibili sempre a zero. Questa pagina elenca invece uno per uno i movimenti presenti nell'Estratto Conto bancario che NON risultano ancora registrati in Prima Nota Banca, permettendo all'utente di decidere, riga per riga, se importarli. Se un movimento simile esiste già in Prima Nota ma non è stato collegato (stesso importo e data ±1 giorno) viene segnalato con un'icona di attenzione, per suggerire che serva solo una riconciliazione e non un nuovo inserimento.",
-  "bottoni_azioni": [
-    {
-      "etichetta": "Tutti / Entrate / Uscite (toggle nella toolbar)",
-      "cosa_fa_al_click": "Imposta filtroTipo ('all'|'entrata'|'uscita'); un useEffect osserva filtroTipo/anno e richiama automaticamente caricaDati()",
-      "endpoint_chiamato": "GET /api/prima-nota/movimenti-ec-non-in-prima-nota?anno={anno}&tipo={entrata|uscita} (il parametro tipo è omesso quando il filtro è 'all')",
-      "logica_backend": "lista_movimenti_ec_non_in_prima_nota: interroga estratto_conto_movimenti dell'anno con filtro riconciliato != True (o campo assente), opzionalmente filtrato per tipo; carica anche TUTTI i movimenti di prima_nota_banca dell'anno (status non deleted/archived) per un doppio controllo di sicurezza (\"safety net\"). Costruisce un indice di chiavi importo|tipo|data±1giorno dai movimenti di prima nota e, per ogni movimento EC candidato, verifica se esiste già un riferimento diretto (estratto_conto_ref) oppure se una chiave importo/data coincide (in tal caso lo marca possibile_match_esistente=true, ma lo include comunque nella lista perché non è un collegamento certo).",
-      "formula_matematica": "Un movimento EC è 'mancante' se: (1) riconciliato è false/assente E (2) non è referenziato da nessun documento prima_nota_banca tramite il campo estratto_conto_ref. totale_mancanti = count(movimenti) ; importo_totale_entrate = SOMMA(importo) dei mancanti con tipo='entrata' ; importo_totale_uscite = SOMMA(importo) dei mancanti con tipo='uscita'. La 'chiave di sospetto' per il match approssimato è: importo_arrotondato_2decimali|tipo|data(±1 giorno)",
-      "aggiornamento_ui": "Ricostruisce la tabella con la nuova lista di movimenti e aggiorna il contatore 'Trovati N movimenti mancanti · Entrate: € X · Uscite: € Y' nella toolbar",
-      "casi_errore": "Se la GET fallisce, error viene impostato con e.response.data.detail (o e.message) e mostrato in un banner rosso; la tabella resta vuota"
-    },
-    {
-      "etichetta": "Ricarica (icona RefreshCw, accanto ai filtri)",
-      "cosa_fa_al_click": "Richiama manualmente caricaDati() con i filtri correnti (stesso comportamento del cambio filtro)",
-      "endpoint_chiamato": "GET /api/prima-nota/movimenti-ec-non-in-prima-nota?anno={anno}[&tipo=...]",
-      "logica_backend": "Identica al punto precedente",
-      "formula_matematica": "Identica al punto precedente",
-      "aggiornamento_ui": "Icona sostituita da uno spinner (Loader2) durante il caricamento, poi tabella aggiornata",
-      "casi_errore": "Identico al punto precedente"
-    },
-    {
-      "etichetta": "Importa in Prima Nota (bottone dorato #b8860b su ogni riga della tabella)",
-      "cosa_fa_al_click": "Chiama importaSingolo(m.id): imposta importing[ec_id]=true, poi effettua la POST. In caso di successo marca imported[ec_id]='ok' e, dopo 1500ms (setTimeout, puro effetto visivo per far vedere la spunta verde), rimuove la riga dall'array movimenti e decrementa totale_mancanti di 1 nello state locale (nessuna nuova fetch dal server). In caso di fallimento marca imported[ec_id]='err' e mostra un alert() nativo del browser con il messaggio di errore.",
-      "endpoint_chiamato": "POST /api/prima-nota/importa-da-ec  Body: { ec_id }",
-      "logica_backend": "importa_movimento_ec_in_prima_nota: legge ec_id dal body (400 se assente); cerca il documento in estratto_conto_movimenti con id=ec_id (404 se non trovato); CONTROLLO DI IDEMPOTENZA: cerca in prima_nota_banca un documento con estratto_conto_ref=ec_id e status non deleted/archived — se esiste già, restituisce success:true, duplicato:true senza creare nulla di nuovo. Altrimenti genera un nuovo id (uuid4) e inserisce in prima_nota_banca un documento con: data=ec.data, tipo=ec.tipo (default 'uscita' se assente), importo=round(ec.importo,2), descrizione=body.descrizione se fornita altrimenti ec.descrizione, categoria=body.categoria se fornita altrimenti ec.categoria altrimenti 'Da categorizzare', riferimento=f'EC-{ec_id[:8]}', source='import_da_ec', estratto_conto_ref=ec_id, created_at=now(UTC). Subito dopo AGGIORNA il documento originale in estratto_conto_movimenti impostando riconciliato=True, prima_nota_id=<nuovo id>, riconciliato_at=now.",
-      "formula_matematica": "importo_prima_nota = round(importo_estratto_conto, 2) (nessuna trasformazione di segno: l'importo dell'EC, già positivo per convenzione, viene copiato as-is)",
-      "aggiornamento_ui": "Il bottone viene sostituito da uno spinner durante la chiamata, poi da un badge verde 'Importato' con icona di spunta; la riga passa a sfondo verde chiaro (#f0fdf4) per 1.5s prima di sparire dalla lista",
-      "casi_errore": "ec_id mancante → 400 'ec_id richiesto' ; movimento EC non trovato → 404 'Movimento estratto conto non trovato' ; qualunque altra eccezione → alert() con il messaggio dal backend o da axios; il badge diventa 'err' invece di 'ok' (anche se nella UI attuale lo stato 'err' non ha un rendering dedicato esplicito, il bottone torna comunque disponibile per un nuovo tentativo)"
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Importazione di un movimento Estratto Conto in Prima Nota Banca",
-      "sequenza_esatta": "1) Utente clicca 'Importa in Prima Nota' su una riga → 2) Frontend invia POST /api/prima-nota/importa-da-ec {ec_id} → 3) Backend recupera il movimento originale da estratto_conto_movimenti → 4) Backend verifica idempotenza (se un prima_nota_banca con estratto_conto_ref=ec_id esiste già e non è deleted/archived, si ferma e segnala 'duplicato') → 5) Se non esiste, crea un nuovo documento in prima_nota_banca (id, data, tipo, importo, descrizione, categoria, riferimento='EC-xxxxxxxx', source='import_da_ec', estratto_conto_ref=ec_id, created_at) → 6) Backend aggiorna il documento originale in estratto_conto_movimenti impostando riconciliato=True, prima_nota_id=<id nuovo record>, riconciliato_at → 7) Risposta {success, prima_nota_id, ec_id, duplicato} → 8) Frontend marca la riga come importata e la rimuove dalla lista dopo 1.5s.",
-      "collezioni_coinvolte": [
-        "estratto_conto_movimenti (lettura del sorgente + scrittura update_one per riconciliato/prima_nota_id/riconciliato_at)",
-        "prima_nota_banca (lettura per idempotenza + insert_one del nuovo movimento)"
-      ],
-      "campi_scritti": {
-        "prima_nota_banca.id": "uuid4 generato lato server",
-        "prima_nota_banca.data": "copiato da estratto_conto_movimenti.data",
-        "prima_nota_banca.tipo": "copiato da estratto_conto_movimenti.tipo, default 'uscita'",
-        "prima_nota_banca.importo": "round(estratto_conto_movimenti.importo, 2)",
-        "prima_nota_banca.descrizione": "body.descrizione oppure estratto_conto_movimenti.descrizione",
-        "prima_nota_banca.categoria": "body.categoria oppure estratto_conto_movimenti.categoria oppure 'Da categorizzare'",
-        "prima_nota_banca.riferimento": "'EC-' + primi 8 caratteri di ec_id",
-        "prima_nota_banca.source": "'import_da_ec' (costante)",
-        "prima_nota_banca.estratto_conto_ref": "ec_id (usato per idempotenza)",
-        "prima_nota_banca.created_at": "datetime.now(timezone.utc).isoformat()",
-        "estratto_conto_movimenti.riconciliato": "True",
-        "estratto_conto_movimenti.prima_nota_id": "id del nuovo documento prima_nota_banca",
-        "estratto_conto_movimenti.riconciliato_at": "datetime.now(timezone.utc).isoformat()"
-      },
-      "effetti_collaterali": "Il movimento scompare dalla lista 'mancanti' di questa stessa pagina al prossimo caricamento (perché ora riconciliato=True) e compare in Prima Nota Banca con categoria 'Da categorizzare' se non ne è stata assegnata una esplicitamente (il frontend attuale NON passa mai categoria/descrizione custom nel body: chiama sempre api.post('/api/prima-nota/importa-da-ec', { ec_id }) senza altri campi, quindi in pratica ogni importazione da questa pagina eredita automaticamente categoria e descrizione originali dell'estratto conto)."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Tab 'Verifica Coerenza' dello stesso hub: la vecchia verifica saldo Prima Nota vs Estratto Conto è stata disattivata proprio a favore di questa pagina",
-    "Prima Nota Banca: destinazione dei movimenti importati",
-    "Estratto Conto / Import EC: origine dei movimenti mostrati qui"
-  ],
-  "popup_e_modali_presenti": [
-    "Nessun popup/modale. L'unico feedback bloccante è un alert() nativo del browser in caso di errore durante l'importazione."
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Movimenti banca",
+  "route": "/riconciliazione/movimenti-banca",
+  "catalog_id": 44,
+  "modulo": "riconciliazione",
+  "accesso": "authenticated",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Movimenti banca». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/VerificaMovimentiBanca.jsx",
+    "entry": "frontend/src/pages/hub/RiconciliazioneHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/VerificaMovimentiBanca.jsx",
+      "frontend/src/pages/hub/RiconciliazioneHub.jsx",
+      "frontend/src/pages/hub/StrumentiHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/router_registry.py",
+      "app/routers/prima_nota_module/__init__.py",
+      "app/routers/prima_nota_module/manutenzione.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/admin",
+      "/api/agenti",
+      "/api/ai-parser",
+      "/api/alerts",
+      "/api/anagrafica-fornitori",
+      "/api/archivio-bonifici",
+      "/api/assegni",
+      "/api/assegni/learning",
+      "/api/auth",
+      "/api/auth/api/auth/verify",
+      "/api/auth/login",
+      "/api/auth/verify",
+      "/api/auto-repair",
+      "/api/bank-statement",
+      "/api/batch-reprocess",
+      "/api/bilancio",
+      "/api/cash",
+      "/api/cedolini",
+      "/api/centri-costo",
+      "/api/cespiti",
+      "/api/chiusura-esercizio",
+      "/api/collaudo",
+      "/api/commercialista",
+      "/api/config",
+      "/api/config-import",
+      "/api/contabilita",
+      "/api/contabilita-gestionale",
+      "/api/controllo-gestione",
+      "/api/corrispettivi",
+      "/api/dashboard",
+      "/api/dati-isa",
+      "/api/dipendenti",
+      "/api/dizionario-articoli",
+      "/api/document-ai",
+      "/api/documenti",
+      "/api/documenti-fiscali",
+      "/api/documenti-inbox",
+      "/api/documenti-non-associati",
+      "/api/email-download",
+      "/api/email-scanner",
+      "/api/erp/ponte",
+      "/api/estratto-conto-movimenti",
+      "/api/f24",
+      "/api/f24-analisi",
+      "/api/f24-email",
+      "/api/f24-email-settings",
+      "/api/f24-public",
+      "/api/f24-riconciliazione",
+      "/api/f24/quietanze",
+      "/api/fatture",
+      "/api/fatture-estere",
+      "/api/fatture-ricevute",
+      "/api/finanziamenti-soci",
+      "/api/finanziaria",
+      "/api/fiscal",
+      "/api/fiscalita",
+      "/api/fornitori-learning",
+      "/api/gestione-riservata",
+      "/api/invoices",
+      "/api/invoices/emesse",
+      "/api/iva",
+      "/api/learning-machine",
+      "/api/learning-universal",
+      "/api/mutui",
+      "/api/nexi",
+      "/api/noleggio",
+      "/api/openapi",
+      "/api/openapi-automotive",
+      "/api/openapi-imprese",
+      "/api/operazioni-da-confermare",
+      "/api/pagamenti",
+      "/api/pagamenti-buoni",
+      "/api/pagopa",
+      "/api/paypal-api",
+      "/api/paypal-api/status",
+      "/api/paypal-api/sync",
+      "/api/paypal-statements",
+      "/api/pianificazione",
+      "/api/piano-conti",
+      "/api/previsioni-acquisti",
+      "/api/prima-nota",
+      "/api/prima-nota-salari",
+      "/api/prima-nota/indice-operazioni",
+      "/api/prima-nota/indice-operazioni/{param}",
+      "/api/rapido",
+      "/api/regole",
+      "/api/ritenute",
+      "/api/scadenzario-fornitori",
+      "/api/scadenze",
+      "/api/settings",
+      "/api/sumup",
+      "/api/suppliers",
+      "/api/tfr",
+      "/api/verbali-noleggio",
+      "/api/verbali-riconciliazione",
+      "/api/verifica-coerenza",
+      "/api/voci-bilancio",
+      "/api/whatsapp"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

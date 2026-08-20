@@ -1,19 +1,30 @@
 {
-  "nome_popup": "Drawer laterale 'Dettaglio Conto'",
-  "pagine_da_cui_si_apre": ["Contabilità > Piano dei Conti (tab 'Piano dei Conti', PianoDeiConti.jsx)"],
-  "come_si_apre": "Click su una riga conto nella tabella del Piano dei Conti raggruppato per categoria: chiama openContoDetail(conto), che imposta selectedConto=conto, azzera contoDetail e chiama l'API di dettaglio. Non è un modal centrale ma un pannello overlay fissato sul lato destro dello schermo (position:fixed, width min(580px,100%), height 100vh) con un overlay semi-trasparente dietro.",
-  "scopo": "Mostrare il dettaglio dei movimenti che compongono il saldo di un singolo conto del Piano dei Conti, calcolati al volo dalle collezioni operative pertinenti (non da scritture salvate).",
-  "dati_mostrati": "Header colorato per categoria (icona+nome categoria, codice conto in monospace, nome conto). Riga di 3 box: Saldo (colorato verde/rosso in base al segno), Natura (economico/finanziario), Stato (Attivo/Inattivo). Corpo: durante il caricamento 'Caricamento movimenti…'; poi riepilogo con 'Movimenti' (contoDetail.totale_movimenti) e 'Totale periodo' (contoDetail.totale_importo formattato euro); etichetta 'Fonte: <nome collezione>' se presente e diversa da 'nessuna'; tabella movimenti (Data, Descrizione con eventuale categoria sotto, Importo con segno +/- colorato verde/rosso in base a mov.tipo) fino a 40 righe; se non ci sono movimenti mostra il testo esplicativo contoDetail.nota o 'Nessun movimento disponibile per questo conto.'.",
-  "campi_e_bottoni": [
-    {"elemento": "Pulsante '✕' nell'header del drawer (data-testid close-conto-drawer)", "cosa_fa": "Chiude il drawer: closeDrawer() → setSelectedConto(null), setContoDetail(null)", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
-    {"elemento": "Click sull'overlay semi-trasparente di sfondo", "cosa_fa": "Chiude il drawer allo stesso modo del pulsante ✕ (onClick={closeDrawer})", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
-    {"elemento": "Righe della tabella movimenti", "cosa_fa": "Sola visualizzazione, nessuna interazione/click gestito", "endpoint_chiamato": "nessuno", "validazioni": "n/a"}
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "popup_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "popup": "Drawer laterale 'Dettaglio Conto'",
+  "scopo": "Mappa tecnica del popup «Drawer laterale 'Dettaglio Conto'». Il comportamento e le mutazioni reali devono essere verificati nei sorgenti correnti.",
+  "aperto_da": [
+    "Contabilità > Piano dei Conti (tab 'Piano dei Conti', PianoDeiConti.jsx)"
   ],
-  "endpoint_apertura": "GET /api/piano-conti/conto/{codice}/movimenti?limit=40&anno={annoGlobale} — eseguita automaticamente all'apertura, non da un bottone interno al drawer. Logica backend (get_movimenti_per_conto): instrada per codice conto in modo semantico — 01.01.01 Cassa → prima_nota_cassa; 01.01.02/01.01.03 Banca → prima_nota_banca con fallback su estratto_conto_movimenti; 01.02.* Crediti → invoices_emesse; 02.01.* Debiti fornitori → invoices non pagate; categoria 'costi' → invoices filtrate per anno; categoria 'ricavi' → solo 04.01.01 mostra i corrispettivi; 03.03.01/03.03.02 (Utile/Perdita) → calcolo Ricavi-Costi del periodo; altri conti Patrimonio Netto → nessun movimento (dati statutari non tracciati). Se la chiamata fallisce, il catch è silenzioso e il drawer resta aperto con contoDetail=null mostrando 'Nessun dettaglio disponibile'.",
-  "cosa_succede_alla_conferma": "Non è un form: non esiste un'azione di conferma/submit. È un pannello di sola lettura che si limita a mostrare dati.",
-  "come_si_chiude": [
-    "Pulsante '✕' nell'header del drawer",
-    "Click sull'overlay semi-trasparente di sfondo"
+  "file_verificati": [
+    "frontend/src/pages/PianoDeiConti.jsx"
   ],
-  "effetto_su_pagina_sottostante": "Nessuno: la chiusura del drawer non ricarica né modifica la tabella del Piano dei Conti sottostante, dato che il drawer non altera alcun dato (è puramente informativo)."
+  "endpoint_rilevati_nei_sorgenti": [
+    "/api/dizionario-articoli/articolo/{param}",
+    "/api/dizionario-articoli/riclassifica-completo",
+    "/api/piano-conti",
+    "/api/piano-conti/conto/{param}/movimenti",
+    "/api/piano-conti/regole"
+  ],
+  "regole_ux": [
+    "Il popup deve avere chiusura visibile e non restare sovrapposto al documento.",
+    "Le azioni distruttive o definitive richiedono una conferma esplicita.",
+    "Le associazioni ambigue mostrano candidati e non vengono applicate automaticamente."
+  ]
 }

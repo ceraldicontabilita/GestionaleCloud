@@ -1,310 +1,183 @@
 {
-  "pagina": "Archivio Bonifici",
-  "url": "https://impresasemplice.online/riconciliazione/archivio-bonifici",
-  "file_sorgente_frontend": [
-    "/home/user/GestionaleCloud/frontend/src/pages/ArchivioBonifici.jsx",
-    "/home/user/GestionaleCloud/frontend/src/pages/hub/RiconciliazioneHub.jsx",
-    "/home/user/GestionaleCloud/frontend/src/main.jsx",
-    "/home/user/GestionaleCloud/frontend/src/pages/PrimaNota.jsx",
-    "/home/user/GestionaleCloud/frontend/src/pages/ImportDocumenti.jsx"
-  ],
-  "file_sorgente_backend": [
-    "/home/user/GestionaleCloud/app/routers/bonifici_module/__init__.py",
-    "/home/user/GestionaleCloud/app/routers/bonifici_module/jobs.py",
-    "/home/user/GestionaleCloud/app/routers/bonifici_module/pdf_parser.py",
-    "/home/user/GestionaleCloud/app/routers/bonifici_module/associazioni.py",
-    "/home/user/GestionaleCloud/app/routers/bonifici_module/riconciliazione.py",
-    "/home/user/GestionaleCloud/app/routers/bonifici_module/transfers.py",
-    "/home/user/GestionaleCloud/app/routers/bonifici_module/common.py",
-    "/home/user/GestionaleCloud/app/routers/bank/bonifici_import_unificato.py",
-    "/home/user/GestionaleCloud/app/router_registry.py",
-    "/home/user/GestionaleCloud/app/routers/documenti.py"
-  ],
-  "note_metodologiche": "Documento scritto leggendo per intero tutti i file elencati sopra (backend e frontend), riga per riga. Include anche discrepanze reali riscontrate nel codice (endpoint richiamati dal frontend ma inesistenti lato backend, contratti dati disallineati, collezioni Mongo doppie/legacy, mancanza di conferme utente) perché fanno parte del comportamento effettivo della pagina in produzione: non sono ipotesi, sono stati verificati leggendo entrambi i lati (chiamata JS e handler FastAPI).",
-  "scopo_generale": "Archivio Bonifici è la pagina che raccoglie tutti i bonifici bancari usciti dall'azienda (in origine estratti da PDF/distinte bancarie) e permette di associarli manualmente a un'operazione di Prima Nota Salari (per i pagamenti agli stipendi) o a una fattura fornitore, oltre a riconciliarli con i movimenti dell'estratto conto per verificare che il pagamento sia realmente transitato in banca. È montata dentro l'hub di navigazione RiconciliazioneHub, condiviso con Riconciliazione Bancaria, PayPal, Assegni e Coerenza POS: la scheda che appare dipende dal segmento di URL /riconciliazione/archivio-bonifici. La pagina è divisa in due viste (tab) puramente client-side — 'Da Associare' e 'Associati' — che filtrano in memoria la stessa lista di bonifici già caricata. A differenza di quanto suggerisce il nome del modulo backend (bonifici_module con jobs.py e pdf_parser.py per l'upload massivo di PDF/ZIP), la UI attuale di questa pagina NON contiene alcun widget di caricamento file: il bottone 'Importa' porta fuori pagina, verso l'importatore documenti generico. Il vero cuore della pagina è la tabella dei bonifici già presenti in archivio, con le azioni di ricerca, associazione, disassociazione, nota, eliminazione, export e riconciliazione con l'estratto conto.",
-  "sezioni_tab": [
-    {
-      "nome": "Da Associare",
-      "descrizione": "Tab di default (data-testid=tab-da-associare). Mostra, filtrando lato client l'array 'transfers' già scaricato, tutti i bonifici con salario_associato non true E fattura_associata non true. Il badge numerico accanto al nome tab è bonificiDaAssociare.length, calcolato in render, non con una query separata."
-    },
-    {
-      "nome": "Associati",
-      "descrizione": "Tab (data-testid=tab-associati) che mostra i bonifici con salario_associato=true OPPURE fattura_associata=true. Anche qui il filtro è puramente in memoria sull'array già caricato da /transfers, nessuna chiamata API dedicata al cambio tab."
-    }
-  ],
-  "bottoni_azioni": [
-    {
-      "etichetta": "📥 Importa",
-      "dove_si_trova": "Barra azioni in alto a destra (Link, non bottone)",
-      "cosa_fa_al_click": "Naviga (react-router Link) verso /import-export, che è configurato in main.jsx come redirect automatico (<Navigate replace>) verso /documenti/import, cioè la pagina generica ImportDocumenti.jsx.",
-      "endpoint_chiamato": "Nessuna chiamata diretta da questo bottone; la pagina di destinazione (ImportDocumenti.jsx) invia i file a POST /api/documenti/upload-auto",
-      "logica_backend": "In app/routers/documenti.py l'endpoint upload-auto classifica il file (funzione di detection tipo documento). Se rileva parole chiave tipo 'bonifico'/'bonifici'/'sepa'/'transfer' nel testo, imposta tipo_rilevato='bonifici' e SALVA IL PDF (base64) come nuovo documento nella collection 'documents_inbox' con status='da_processare', senza inserirlo in bonifici_transfers e senza invocare in alcun modo la pipeline jobs.py/pdf_parser.py del bonifici_module. Il messaggio restituito all'utente è testuale: 'File bonifici salvato in MongoDB. Usa Archivio Bonifici per processarlo.' + azione_richiesta='Vai a Banca > Archivio Bonifici'.",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Nessuno in questa pagina: si esce da Archivio Bonifici. Sulla pagina di destinazione compare l'esito dell'upload-auto.",
-      "casi_errore": "GAP FUNZIONALE REALE riscontrato nel codice: la pagina ArchivioBonifici.jsx non legge mai la collection 'documents_inbox' né espone un bottone/azione per 'processare' i documenti bonifici lì salvati. Il messaggio del backend ('Usa Archivio Bonifici per processarlo') indica un flusso che nel frontend attuale non esiste: non c'è alcuna funzione in ArchivioBonifici.jsx che interroghi documents_inbox o che chiami POST /api/archivio-bonifici/jobs oppure /api/archivio-bonifici/jobs/{id}/upload. La pipeline a job con parsing PDF (jobs.py, pdf_parser.py, il wrapper bonifici_import_unificato.py con /api/archivio-bonifici/jobs/import) esiste ed è funzionante lato backend ma risulta ORFANA: nessun componente React nel repository la richiama (verificato con ricerca testuale su tutto frontend/src per 'archivio-bonifici/jobs')."
-    },
-    {
-      "etichetta": "🏦 Sync IBAN",
-      "dove_si_trova": "Barra azioni in alto",
-      "cosa_fa_al_click": "handleSyncIbanToAnagrafica(): chiama l'endpoint di sincronizzazione IBAN e mostra un alert con l'esito.",
-      "endpoint_chiamato": "POST /api/archivio-bonifici/sync-iban-anagrafica",
-      "logica_backend": "sync_iban_anagrafica() in associazioni.py legge TUTTI i documenti della collection legacy 'archivio_bonifici' (non 'bonifici_transfers'!) che hanno il campo iban_beneficiario valorizzato. Per ciascuno prova un match su 'dipendenti' (Collections.EMPLOYEES) tramite regex case-insensitive su nome_completo oppure sull'ultima parola del beneficiario contro il campo cognome; se trova un dipendente senza IBAN già impostato, gli scrive iban_beneficiario. Prova poi un match analogo su 'fornitori' (Collections.SUPPLIERS) confrontando denominazione con i primi 10 caratteri del nome beneficiario; se il fornitore non ha ancora un IBAN lo aggiorna.",
-      "formula_matematica": "Match per substring/regex case-insensitive, non fuzzy-score: nome_completo o cognome del dipendente cercato come regex dentro la stringa beneficiario; per i fornitori regex sui primi 10 caratteri del beneficiario contro denominazione.",
-      "aggiornamento_ui": "Solo un alert() con i conteggi: 'Dipendenti aggiornati: X' e 'Bonifici analizzati: Y'. Nessun refresh della tabella.",
-      "casi_errore": "DISALLINEAMENTO DATI REALE: la funzione legge dalla collection 'archivio_bonifici' (legacy, ObjectId), che nel flusso attivo di import (jobs.py) non viene MAI scritta — i nuovi bonifici finiscono in 'bonifici_transfers'. Quindi in un sistema dove tutti i bonifici sono stati caricati con la pipeline moderna, questo bottone analizza 0 documenti reali e restituisce sempre 'bonifici_analizzati: 0'. INOLTRE mismatch di contratto dati: il frontend legge res.data.totale_bonifici_analizzati (undefined, il campo backend si chiama bonifici_analizzati), quindi l'alert mostra letteralmente 'undefined' al posto del numero di bonifici analizzati. Il campo dipendenti_aggiornati invece combacia correttamente. In caso di errore HTTP, alert('Errore: ' + detail)."
-    },
-    {
-      "etichetta": "🔄 Aggiorna",
-      "dove_si_trova": "Barra azioni in alto",
-      "cosa_fa_al_click": "Richiama in sequenza loadTransfers(), loadSummary(), loadCount() per ricaricare tabella, riepilogo per anno e contatore totale.",
-      "endpoint_chiamato": "GET /api/archivio-bonifici/transfers, GET /api/archivio-bonifici/transfers/summary, GET /api/archivio-bonifici/transfers/count",
-      "logica_backend": "list_transfers/transfers_summary/count_transfers in transfers.py, tutte lette dalla collection 'bonifici_transfers'.",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Ricarica tabella, stats card e riepilogo anno con i dati più recenti dal DB.",
-      "casi_errore": "In caso di errore di rete la promise fallisce silenziosamente (solo console.error), la UI resta con i dati precedenti."
-    },
-    {
-      "etichetta": "🚀 Avvia Riconciliazione",
-      "dove_si_trova": "Banner blu scuro 'Riconciliazione con Estratto Conto' (data-testid=riconcilia-bonifici-btn)",
-      "cosa_fa_al_click": "handleRiconcilia(): chiama l'endpoint di riconciliazione in modalità background, poi fa polling ogni 2 secondi (max 60 tentativi = 2 minuti) sullo stato del task fino a status='completed' o 'error'.",
-      "endpoint_chiamato": "POST /api/archivio-bonifici/riconcilia?background=true, poi GET /api/archivio-bonifici/riconcilia/task/{task_id} in polling",
-      "logica_backend": "riconcilia_bonifici_con_estratto(background=True) in riconciliazione.py crea un task_id (uuid4) e lo salva in un DIZIONARIO PYTHON IN MEMORIA (_riconciliazione_task = {}), NON in MongoDB — nonostante common.py definisca una costante COL_RICONCILIAZIONE_TASKS='bonifici_riconciliazione_tasks' mai usata. Avvia poi asyncio.create_task(_execute_riconciliazione_batch). Quest'ultima carica tutti i bonifici con riconciliato != True da 'bonifici_transfers' e tutti i movimenti da 'estratto_conto_movimenti', poi per ogni bonifico cerca il primo movimento non ancora usato con importo uguale (tolleranza 0.01€) e data entro 1 giorno di differenza; se trovato marca il bonifico con riconciliato=True, data_riconciliazione, movimento_estratto_conto_id e lo segna come 'usato' (movimenti_usati) così non può essere riassegnato a un altro bonifico. Aggiorna lo stato del task ogni 50 bonifici processati.",
-      "formula_matematica": "Match: |importo_bonifico| - |importo_movimento| <= 0.01 AND |giorni(data_bonifico, data_movimento)| <= 1. Algoritmo greedy first-match (non cerca il match migliore, prende il primo movimento libero compatibile in ordine di scansione); ogni movimento può essere usato una sola volta.",
-      "aggiornamento_ui": "Bottone disabilitato con testo '⏳ Riconciliazione in corso...' durante il polling. Al completamento: alert con conteggio riconciliati/non trovati, poi ricarica loadTransfers() e loadRiconciliazioneStats() (righe riconciliate evidenziate in verde chiaro in tabella, icona ✅ nella prima colonna).",
-      "casi_errore": "Se il task va in errore: alert('❌ Errore: ' + message). Se supera 60 tentativi (2 minuti): alert('⚠️ Timeout raggiunto. Verifica lo stato manualmente.'). RISCHIO ARCHITETTURALE REALE: poiché lo stato del task vive in un dizionario Python in-process (non persistito), se il backend gira con più worker/processi (es. gunicorn con più workers, o restart durante il polling) la richiesta GET di stato può arrivare a un processo diverso da quello che ha creato il task e ricevere 404 'Task non trovato' anche se la riconciliazione sta effettivamente girando altrove."
-    },
-    {
-      "etichetta": "Card anno (es. '2025') nel riquadro 'Riepilogo per Anno'",
-      "dove_si_trova": "Sezione '📊 Riepilogo per Anno (clicca per scaricare ZIP)', visibile solo se summary ha almeno un anno",
-      "cosa_fa_al_click": "handleDownloadZip(year): apre in una nuova scheda l'URL di download ZIP per l'anno cliccato.",
-      "endpoint_chiamato": "GET /api/archivio-bonifici/download-zip/{year}",
-      "logica_backend": "ENDPOINT INESISTENTE: verificato con ricerca su tutto il backend (grep di 'download-zip' e 'download_zip' in app/), non esiste alcuna route registrata con questo path in nessun router. Il bottone è quindi rotto: apre una nuova scheda che riceve un 404 dal server (o dal router SPA del frontend se il path non combacia con nessuna route API).",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Mostra temporaneamente '⏳ Preparazione ZIP in corso...' per 2 secondi (setTimeout fisso, indipendente dall'esito reale della richiesta, dato che window.open non restituisce lo stato HTTP).",
-      "casi_errore": "BOTTONE NON FUNZIONANTE: qualunque click produce un 404 nella nuova scheda aperta. Non c'è gestione d'errore visibile nella pagina originale perché window.open non intercetta la risposta."
-    },
-    {
-      "etichetta": "🔍 Cerca (input + bottone, data-testid=bonifici-search / bonifici-search-btn)",
-      "dove_si_trova": "Barra filtri sopra le tab",
-      "cosa_fa_al_click": "Aggiorna lo stato 'search'; il click sul bottone (o Invio nell'input) forza loadTransfers(); esiste anche un effect con debounce di 300ms che rilancia loadTransfers() automaticamente quando search/yearFilter/ordinanteFilter/beneficiarioFilter/anno cambiano.",
-      "endpoint_chiamato": "GET /api/archivio-bonifici/transfers?search=...&year=...&ordinante=...&beneficiario=...",
-      "logica_backend": "list_transfers() in transfers.py costruisce un filtro Mongo $and con regex case-insensitive (re.escape applicato al termine) su ordinante.nome, beneficiario.nome, causale, cro_trn (per 'search'), più filtri diretti separati per ordinante.nome, beneficiario.nome e su data (regex '^{year}-' per il filtro anno). Risultato ordinato per 'data' decrescente, limit di default 1000.",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Ricarica la tabella con i risultati filtrati; le stats card 'Bonifici Filtrati' e 'Totale Importi Filtrati' si ricalcolano lato client sull'array transfers ricevuto.",
-      "casi_errore": "Errore di rete: solo console.error, tabella resta con i dati precedenti; loading spinner '⏳ Caricamento...' visibile durante il fetch."
-    },
-    {
-      "etichetta": "Filtro Anno (input testo, placeholder 'Anno (default: {anno globale})')",
-      "dove_si_trova": "Barra filtri",
-      "cosa_fa_al_click": "Se valorizzato sovrascrive l'anno globale (contesto AnnoContext) per la sola tabella transfers; se vuoto la tabella segue l'anno selezionato in alto nell'app (anno globale). NOTA: summary, count e stato-riconciliazione seguono SEMPRE l'anno globale, non yearFilter, quindi tabella e stats-card possono riferirsi ad anni diversi se si usa questo override.",
-      "endpoint_chiamato": "Incluso nella stessa GET /api/archivio-bonifici/transfers?year=...",
-      "logica_backend": "Vedi 'Cerca' sopra: query['$and'] include {'data': {'$regex': '^{year}-'}}",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Ricarica tabella con debounce 300ms",
-      "casi_errore": "Nessuna validazione sul formato anno lato client o server: un valore non numerico produce semplicemente zero risultati (nessun bonifico con 'data' che inizia con quella stringa)."
-    },
-    {
-      "etichetta": "✕ Reset",
-      "dove_si_trova": "Barra filtri, visibile solo se almeno un filtro è valorizzato",
-      "cosa_fa_al_click": "Azzera search, ordinanteFilter, beneficiarioFilter, yearFilter (stato locale React); l'effect di debounce fa scattare automaticamente un nuovo loadTransfers() senza filtri (tranne l'anno globale).",
-      "endpoint_chiamato": "GET /api/archivio-bonifici/transfers (nessun parametro tranne year=anno globale)",
-      "logica_backend": "list_transfers() con query vuota tranne year",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Tabella torna a mostrare tutti i bonifici dell'anno globale",
-      "casi_errore": "Nessuno particolare"
-    },
-    {
-      "etichetta": "📥 Export XLSX",
-      "dove_si_trova": "Barra filtri, allineato a destra",
-      "cosa_fa_al_click": "handleExport('xlsx'): apre in nuova scheda l'URL di export, il browser scarica direttamente il file restituito come attachment.",
-      "endpoint_chiamato": "GET /api/archivio-bonifici/export?format=xlsx",
-      "logica_backend": "export_transfers() in transfers.py legge TUTTI i bonifici (fino a 10000, ignora i filtri di ricerca applicati in pagina — non riceve search/ordinante/beneficiario/year, solo job_id opzionale che qui non viene passato) e genera un file XLSX con pandas+openpyxl con colonne data, importo, valuta, ordinante, ordinante_iban, beneficiario, beneficiario_iban, causale, cro_trn.",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Nessuna: si apre/scarica un file in una nuova scheda",
-      "casi_errore": "Se pandas non è installato sul server: HTTPException 500 'pandas non installato'. IMPORTANTE: l'export ESPORTA SEMPRE TUTTO L'ARCHIVIO, non rispetta i filtri di ricerca/anno attivi nella tabella visualizzata — comportamento potenzialmente sorprendente per l'utente che si aspetta l'export dei soli risultati filtrati."
-    },
-    {
-      "etichetta": "📥 Export CSV",
-      "dove_si_trova": "Barra filtri, allineato a destra",
-      "cosa_fa_al_click": "handleExport('csv'): stessa logica di Export XLSX ma format=csv",
-      "endpoint_chiamato": "GET /api/archivio-bonifici/export?format=csv",
-      "logica_backend": "Stesso export_transfers() ma ramo CSV: csv.writer con delimitatore ';', stesse colonne dell'XLSX, restituito come text/csv attachment 'bonifici_export.csv'.",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Nessuna",
-      "casi_errore": "Stessa limitazione: ignora i filtri correnti della pagina, esporta l'intero archivio (fino a 10000 righe)."
-    },
-    {
-      "etichetta": "Tab 'Da Associare' / '✅ Associati'",
-      "dove_si_trova": "Sopra la tabella (data-testid=tab-da-associare, tab-associati)",
-      "cosa_fa_al_click": "handleTabChange(tabId): imposta lo stato hash 'tab' (via useHashState, sincronizzato con l'URL hash per deep-link) e filtra client-side l'array transfers già in memoria.",
-      "endpoint_chiamato": "Nessuna chiamata API: filtro puramente client-side",
-      "logica_backend": "Nessuna: bonificiDaAssociare/bonificiAssociati sono calcolati con Array.filter in render sul risultato dell'ultima GET /transfers.",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Cambia la lista mostrata in tabella e le colonne 'Associa Salario'/'Associa Fattura' vs 'Salario Associato'/'Fattura Associata' in intestazione.",
-      "casi_errore": "Nessuno particolare; se i filtri di ricerca (search/ordinante/beneficiario) sono attivi, il conteggio dei tab riflette solo i risultati filtrati già scaricati, non i totali reali dell'archivio."
-    },
-    {
-      "etichetta": "+ Associa (colonna Associa Salario, riga bonifico non associato)",
-      "dove_si_trova": "Tabella, colonna 'Associa Salario' (data-testid=btn-associa-{id})",
-      "cosa_fa_al_click": "toggleAssociaDropdown(bonifico_id): apre un dropdown posizionato in absolute sotto il bottone e carica le operazioni salario compatibili; un secondo click sullo stesso bottone lo richiude.",
-      "endpoint_chiamato": "GET /api/archivio-bonifici/operazioni-salari/{bonifico_id}",
-      "logica_backend": "get_operazioni_salari() in associazioni.py: cerca il bonifico prima in 'bonifici_transfers' (id UUID) poi in 'archivio_bonifici' (ObjectId, fallback legacy) tramite _trova_bonifico(). Calcola importo=abs(bonifico.importo) e interroga 'prima_nota_salari' con netto compreso tra importo-5% e importo+5%, restituendo FINO A 50 documenti GREZZI (List[Dict], nessun wrapping, nessuno score, nessun flag iban_match).",
-      "formula_matematica": "Tolleranza salario: netto ∈ [importo - importo*0.05, importo + importo*0.05]",
-      "aggiornamento_ui": "Mostra la lista nel dropdown; ogni riga mostra dipendente/descrizione, punteggio di compatibilità colorato (verde ≥70%, giallo ≥40%, rosso <40%) e badge 'IBAN ✓' se op.iban_match è true, più eventuale banner verde 'IBAN riconosciuto' se dipendenteIbanMatch è valorizzato.",
-      "casi_errore": "MISMATCH CONTRATTO DATI REALE: il frontend legge res.data.operazioni_compatibili e res.data.dipendente_iban_match, ma il backend restituisce una LISTA semplice (non un oggetto con quelle chiavi) senza i campi compatibilita_score e iban_match usati per colorare/ordinare le righe. Di fatto res.data.operazioni_compatibili è undefined → il fallback `|| []` fa sì che il dropdown mostri sempre 'Nessuna operazione salari compatibile trovata', anche quando il backend ha trovato operazioni valide. Questa funzionalità risulta quindi rotta nel suo stato attuale nel repository."
-    },
-    {
-      "etichetta": "Riga operazione salario nel dropdown",
-      "dove_si_trova": "Dentro il dropdown aperto da '+ Associa'",
-      "cosa_fa_al_click": "handleAssocia(bonifico_id, operazione_id): associa il bonifico all'operazione salario scelta, chiude il dropdown e ricarica la tabella.",
-      "endpoint_chiamato": "POST /api/archivio-bonifici/associa-salario?bonifico_id=...&operazione_id=...",
-      "logica_backend": "associa_salario_a_bonifico() in associazioni.py: prova update_one su 'bonifici_transfers' {id: bonifico_id} impostando operazione_salario_id, stato_riconciliazione='associato_salario', data_associazione; se non trova nulla (modified_count=0) tenta fallback su 'archivio_bonifici' con ObjectId. IMPORTANTE: NON imposta il flag salario_associato=true qui (lo fa solo il percorso di auto-associazione in jobs.py), quindi dopo un'associazione MANUALE da questa dropdown il bonifico continua a comparire nel tab 'Da Associare' (che filtra su salario_associato/fattura_associata) finché non viene aggiornato manualmente anche quel flag altrove.",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Chiude il dropdown, richiama loadTransfers()",
-      "casi_errore": "alert('Errore associazione: ' + detail) in caso di fallimento."
-    },
-    {
-      "etichetta": "✗ (rimuovi associazione salario)",
-      "dove_si_trova": "Tabella, accanto al badge verde '✓ {operazione}' quando salario_associato=true",
-      "cosa_fa_al_click": "handleDisassocia(bonifico_id, dipendente_nome): richiede DOPPIA CONFERMA con due window.confirm() in sequenza prima di procedere.",
-      "endpoint_chiamato": "DELETE /api/archivio-bonifici/disassocia-salario/{bonifico_id}",
-      "logica_backend": "disassocia_salario() in associazioni.py: $unset di operazione_salario_id e data_associazione, $set stato_riconciliazione='non_riconciliato', prima su 'bonifici_transfers' poi fallback 'archivio_bonifici'. NOTA: non tocca il flag salario_associato né l'eventuale record collegato in prima_nota_salari (che in fase di auto-associazione riceve salario_associato=true e bonifico_id) — la disassociazione manuale quindi lascia il record di prima_nota_salari ancora marcato come associato, creando un disallineamento se l'associazione originale era quella automatica.",
-      "formula_matematica": null,
-      "aggiornamento_ui": "loadTransfers() ricarica la tabella",
-      "casi_errore": "Se l'utente annulla una delle due conferme, nessuna richiesta viene inviata. In caso di errore HTTP: alert('Errore: ' + message)."
-    },
-    {
-      "etichetta": "📄 Fattura (colonna Associa Fattura, riga bonifico non associato)",
-      "dove_si_trova": "Tabella, colonna 'Associa Fattura' (data-testid=btn-associa-fattura-{id})",
-      "cosa_fa_al_click": "toggleAssociaFatturaDropdown(bonifico_id): apre il dropdown e carica le fatture compatibili.",
-      "endpoint_chiamato": "GET /api/archivio-bonifici/fatture-compatibili/{bonifico_id}",
-      "logica_backend": "get_fatture_compatibili() in associazioni.py: risolve il bonifico con _trova_bonifico (transfers poi legacy archivio), calcola importo=abs(bonifico.importo) e interroga la collection 'invoices' (Collections.INVOICES) con $or su totale o importo_totale entro ±5%. Restituisce FINO A 50 documenti grezzi con soli i campi id, fornitore, totale, importo_totale, invoice_number, invoice_date, fornitore_denominazione — nessun filtro per nome fornitore/beneficiario, nessuno score.",
-      "formula_matematica": "Tolleranza fattura: totale (o importo_totale) ∈ [importo - importo*0.05, importo + importo*0.05]",
-      "aggiornamento_ui": "Dropdown con lista fatture, punteggio colorato, link '📄 Vedi' verso /api/fatture-ricevute/fattura/{id}/view-assoinvoice",
-      "casi_errore": "MISMATCH CONTRATTO DATI REALE: il frontend legge res.data.fatture_compatibili (il backend restituisce una lista semplice, quindi undefined → dropdown sempre vuoto con messaggio 'Nessuna fattura compatibile trovata'), e per ogni riga si aspetta f.numero_fattura, f.fornitore, f.compatibilita_score, f.data_fattura, f.importo, f.collection — campi che il backend NON restituisce (i nomi reali sono invoice_number, fornitore/fornitore_denominazione, totale/importo_totale, nessun collection/score/data_fattura). Anche questa funzionalità risulta rotta nello stato attuale del codice."
-    },
-    {
-      "etichetta": "Riga fattura nel dropdown",
-      "dove_si_trova": "Dentro il dropdown aperto da '📄 Fattura'",
-      "cosa_fa_al_click": "handleAssociaFattura(bonifico_id, fattura_id, collection): associa il bonifico alla fattura scelta.",
-      "endpoint_chiamato": "POST /api/archivio-bonifici/associa-fattura?bonifico_id=...&fattura_id=...&collection=...",
-      "logica_backend": "associa_fattura_a_bonifico() in associazioni.py: valida che fattura_id non sia vuoto (422 altrimenti). Controlla che il bonifico non sia già associato a un'altra fattura diversa (409 con messaggio 'Disassocia prima' se sì). Aggiorna 'bonifici_transfers' {id: bonifico_id} con fattura_associata_id, fattura_collection, stato_riconciliazione='associato', data_associazione; fallback su 'archivio_bonifici' con ObjectId se non trovato. NON aggiorna in alcun modo il documento fattura nella collection invoices (nessuna scrittura su stato_pagamento, nessun bonifico_associato sull'invoice) — a differenza dell'auto-associazione eseguita a fine job di import, che invece scrive bonifico_associato=true e bonifico_id sulla fattura stessa. NON imposta nemmeno il flag fattura_associata=true sul bonifico (lo fa solo l'auto-associazione), quindi il bonifico può restare visibile nel tab 'Da Associare' anche dopo un'associazione manuale riuscita.",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Chiude il dropdown, loadTransfers()",
-      "casi_errore": "409 se il bonifico è già associato a un'altra fattura (messaggio mostrato via alert), 422 se fattura_id vuoto, 404 se il bonifico non è trovato in nessuna delle due collection."
-    },
-    {
-      "etichetta": "✗ (rimuovi associazione fattura)",
-      "dove_si_trova": "Tabella, accanto al badge blu '📄 {numero fattura}' quando fattura_associata=true",
-      "cosa_fa_al_click": "handleDisassociaFattura(bonifico_id, fattura_numero): il codice COSTRUISCE due messaggi di conferma (msg1, msg2) ma NON chiama mai window.confirm() su di essi — a differenza della funzione gemella per il salario. La chiamata DELETE parte quindi IMMEDIATAMENTE al click, senza alcuna conferma utente.",
-      "endpoint_chiamato": "DELETE /api/archivio-bonifici/disassocia-fattura/{bonifico_id}",
-      "logica_backend": "disassocia_fattura() in associazioni.py: $unset di fattura_associata_id, fattura_collection, data_associazione; $set stato_riconciliazione='non_riconciliato'; su 'bonifici_transfers' poi fallback 'archivio_bonifici'.",
-      "formula_matematica": null,
-      "aggiornamento_ui": "loadTransfers()",
-      "casi_errore": "BUG DI UX REALE: il tooltip del bottone recita 'Rimuovi associazione (doppia conferma)' (stessa label copiata da quello del salario) ma per la fattura non esiste ALCUNA conferma: un click accidentale disassocia immediatamente e senza avviso. In caso di errore HTTP: alert('Errore: ' + message)."
-    },
-    {
-      "etichetta": "+ Nota / testo nota esistente",
-      "dove_si_trova": "Tabella, colonna 'Note'",
-      "cosa_fa_al_click": "Click sul testo entra in modalità editing (editingNote=id, popola noteText); poi ✓ salva con handleSaveNote, ✗ annulla senza salvare.",
-      "endpoint_chiamato": "PUT /api/archivio-bonifici/transfers/{id} body {note: noteText}",
-      "logica_backend": "update_transfer() in transfers.py: filtra i soli campi consentiti (allowed_fields = causale, importo, data, note, categoria, salario_associato, operazione_salario_id, fattura_associata, fattura_id) presenti nel body e li scrive con $set più updated_at, sulla collection 'bonifici_transfers'.",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Chiude l'editor, loadTransfers() per mostrare la nota aggiornata",
-      "casi_errore": "alert('Errore: ' + detail) se il bonifico non esiste (404) o altro errore HTTP."
-    },
-    {
-      "etichetta": "🗑️ (elimina bonifico)",
-      "dove_si_trova": "Ultima colonna della tabella, ogni riga",
-      "cosa_fa_al_click": "handleDelete(id): chiama direttamente la DELETE, SENZA alcun window.confirm() di conferma preventiva.",
-      "endpoint_chiamato": "DELETE /api/archivio-bonifici/transfers/{id}",
-      "logica_backend": "delete_transfer() in transfers.py: db.bonifici_transfers.delete_one({'id': transfer_id}); 404 se deleted_count=0. Cancellazione fisica e definitiva del documento (incluso il PDF originale in base64 se presente in pdf_data): nessun soft-delete, nessun backup.",
-      "formula_matematica": null,
-      "aggiornamento_ui": "loadTransfers() e loadCount() dopo la cancellazione",
-      "casi_errore": "RISCHIO DATI REALE: nessuna conferma prima dell'eliminazione definitiva — un click accidentale sull'icona cestino cancella il bonifico (e il suo PDF allegato) senza possibilità di annullamento immediato lato UI. In caso di errore: alert('Errore: ' + detail)."
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Import bonifici da PDF/ZIP tramite pipeline a job (bonifici_module/jobs.py) — flusso backend esistente ma non collegato alla UI di questa pagina",
-      "sequenza_esatta": "1) POST /api/archivio-bonifici/jobs crea un documento in 'bonifici_jobs' con status='created' e un uuid come id. 2) POST /api/archivio-bonifici/jobs/{job_id}/upload riceve una lista di file (PDF singoli o ZIP): i PDF vengono salvati su disco in /tmp/bonifici_uploads/{job_id}/, gli ZIP vengono estratti (solo i .pdf al loro interno, rinominati NNNN_nomefile.pdf); lo status del job passa a 'queued' con total_files valorizzato, poi viene schedulato un BackgroundTasks che esegue process_files_background. 3) process_files_background imposta status='processing', carica in memoria l'insieme di tutti i dedup_key già presenti in 'bonifici_transfers' (fino a 50000 documenti) per la deduplicazione. 4) Per ogni PDF: estrae il testo con pdfminer (fallback PyMuPDF/fitz se pdfminer fallisce o produce testo vuoto), poi extract_transfers_from_text() cerca con regex importo, CRO/TRN, causale, IBAN beneficiario/ordinante, nomi 'beneficiario'/'ordinante' nelle righe di testo. 5) Se non emerge un importo dal testo, tenta un fallback parsando il NOME FILE con pattern IBAN_IMPORTO_DATA_CAUSALE.pdf (parse_filename_data). 6) Il PDF originale viene letto e codificato in base64 (campo pdf_data, 'architettura MongoDB-only': niente file persistiti su disco oltre l'elaborazione). 7) Per ogni bonifico estratto viene calcolato dedup_key = md5('|'.join([iban_beneficiario, importo:.2f, data_esecuzione:YYYYMMDD, causale[:50]])) usando SOLO i campi che esistono a livello radice del dict — cosa che avviene realmente solo nel ramo di fallback da nome-file, perché il parsing normale da testo PDF produce beneficiario come oggetto annidato {nome, iban} e il campo data (non 'data_esecuzione'): quando il parsing da testo ha successo, dedup_key finisce quindi calcolata SOLO su importo e causale. 8) Se dedup_key è già nel set esistente, il bonifico viene scartato come duplicato (contatore duplicates_skipped) SENZA essere inserito: bug potenziale, due bonifici diversi con stesso importo e stessa causale (o entrambi senza causale) nello stesso giorno vengono trattati come lo stesso bonifico e solo il primo viene salvato. 9) Altrimenti insert_one in 'bonifici_transfers' con id (uuid4), source_file, job_id, created_at. 10) Ogni 10 file processati (o all'ultimo) il job viene aggiornato con processed_files/errors/imported_files/duplicates_skipped. 11) A fine ciclo la directory temporanea del job viene rimossa (shutil.rmtree). 12) Se sono stati importati bonifici (imported>0), viene eseguita _auto_associate_bonifici(): per ogni nuovo bonifico non ancora associato, cerca in 'prima_nota_salari' un record con importo_busta o importo_bonifico entro ±2% dell'importo del bonifico E il cui campo 'dipendente' compaia (case-insensitive, substring) nel nome beneficiario o nella causale (o viceversa); se trovato marca il bonifico con salario_associato=true, operazione_salario_id, auto_associated=true e marca il record salario con salario_associato=true, bonifico_id. Se nessun match salario, cerca allo stesso modo in 'invoices' (±2% su total_amount o importo_totale, substring su supplier_name) e, se trovato, marca il bonifico con fattura_associata=true, fattura_id, auto_associated=true e la fattura con bonifico_associato=true, bonifico_id (MA non tocca mai stato_pagamento della fattura). 13) status del job → 'completed', con completed_at, auto_associated_salari, auto_associated_fatture.",
-      "collezioni_coinvolte": ["bonifici_jobs", "bonifici_transfers", "prima_nota_salari", "invoices"],
-      "campi_scritti": {
-        "bonifici_jobs": "id, status (created→queued→processing→completed), created_at, updated_at, total_files, processed_files, errors, imported_files, zip_errors, duplicates_skipped, completed_at, auto_associated_salari, auto_associated_fatture",
-        "bonifici_transfers": "id (uuid4), data, importo, valuta, ordinante{nome,iban}, beneficiario{nome,iban}, causale, cro_trn, banca, note, source_file, job_id, dedup_key, pdf_data (base64), created_at, e dopo eventuale auto-associazione: salario_associato/operazione_salario_id oppure fattura_associata/fattura_id, auto_associated=true",
-        "prima_nota_salari (solo se auto-associato)": "salario_associato=true, bonifico_id",
-        "invoices (solo se auto-associato)": "bonifico_associato=true, bonifico_id"
-      },
-      "effetti_collaterali": "Nessun aggiornamento di stato_pagamento sulla fattura in nessun punto del modulo. Questa intera pipeline (jobs create/upload/process) non risulta invocata da alcun componente React nel repository attuale: è raggiungibile solo chiamando direttamente gli endpoint REST (es. da Postman/script) o tramite il wrapper compatibile /api/archivio-bonifici/jobs/import (in bonifici_import_unificato.py) che crea il job ma richiede comunque una successiva chiamata upload manuale, anch'essa non cablata a nessuna UI trovata."
-    },
-    {
-      "nome": "Associazione manuale bonifico → operazione Prima Nota Salari",
-      "sequenza_esatta": "1) Utente apre il dropdown '+ Associa' su un bonifico non associato. 2) Frontend chiama GET /api/archivio-bonifici/operazioni-salari/{bonifico_id}. 3) Utente clicca una riga (nessuna selezione visibile funzionante, vedi bug di contratto dati sopra) → handleAssocia chiama POST /api/archivio-bonifici/associa-salario. 4) Backend scrive su 'bonifici_transfers' (o fallback 'archivio_bonifici'): operazione_salario_id, stato_riconciliazione='associato_salario', data_associazione. 5) Il flag salario_associato NON viene impostato da questo endpoint (resta come era, quindi il bonifico può restare nel tab 'Da Associare').",
-      "collezioni_coinvolte": ["bonifici_transfers", "archivio_bonifici (legacy, fallback)"],
-      "campi_scritti": {"bonifici_transfers": "operazione_salario_id, stato_riconciliazione, data_associazione"},
-      "effetti_collaterali": "Non aggiorna 'prima_nota_salari' (a differenza dell'auto-associazione di jobs.py, che invece marca anche il lato salario). Non imposta salario_associato=true sul bonifico."
-    },
-    {
-      "nome": "Associazione manuale bonifico → fattura fornitore",
-      "sequenza_esatta": "1) Utente apre il dropdown '📄 Fattura' su un bonifico non associato. 2) Frontend chiama GET /api/archivio-bonifici/fatture-compatibili/{bonifico_id}. 3) Click su una riga fattura → handleAssociaFattura chiama POST /api/archivio-bonifici/associa-fattura?bonifico_id=...&fattura_id=...&collection=.... 4) Backend blocca (409) se il bonifico è già associato a un'altra fattura diversa da quella richiesta. 5) Scrive su bonifici_transfers (o archivio_bonifici legacy): fattura_associata_id, fattura_collection, stato_riconciliazione='associato', data_associazione.",
-      "collezioni_coinvolte": ["bonifici_transfers", "archivio_bonifici (legacy, fallback)"],
-      "campi_scritti": {"bonifici_transfers": "fattura_associata_id, fattura_collection, stato_riconciliazione, data_associazione"},
-      "effetti_collaterali": "NON scrive nulla sul documento fattura (collection invoices): nessun stato_pagamento, nessun bonifico_associato/bonifico_id sull'invoice — al contrario dell'auto-associazione a fine job, che invece aggiorna anche la fattura. Non imposta fattura_associata=true sul bonifico, quindi resta visibile nel tab 'Da Associare' anche dopo l'associazione manuale."
-    },
-    {
-      "nome": "Riconciliazione bonifici con estratto conto",
-      "sequenza_esatta": "Vedi bottone 'Avvia Riconciliazione' sopra per l'algoritmo di match. In sintesi: legge bonifici non riconciliati da 'bonifici_transfers' e tutti i movimenti da 'estratto_conto_movimenti', abbina per importo esatto (tolleranza 1 centesimo) e data (±1 giorno), greedy first-match con movimenti non riutilizzabili, scrive riconciliato=true, data_riconciliazione, movimento_estratto_conto_id (e in modalità sincrona anche movimento_data, movimento_descrizione) sul bonifico.",
-      "collezioni_coinvolte": ["bonifici_transfers", "estratto_conto_movimenti"],
-      "campi_scritti": {"bonifici_transfers": "riconciliato=true, data_riconciliazione, movimento_estratto_conto_id, movimento_data, movimento_descrizione (solo modalità sincrona)"},
-      "effetti_collaterali": "Il task di riconciliazione in background è tracciato in un dizionario Python in memoria (non persistito in Mongo nonostante esista una costante COL_RICONCILIAZIONE_TASKS mai usata), con i rischi descritti nella sezione bottoni."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    {
-      "pagina": "RiconciliazioneHub (/riconciliazione)",
-      "relazione": "Archivio Bonifici è una delle 'schede' montate dentro questo hub (insieme a Riconciliazione Bancaria/Unificata, PayPal, Assegni, Coerenza POS/Corrispettivi): il contenuto cambia in base al segmento URL dopo /riconciliazione/, senza vere route separate a livello di router (tutte puntano allo stesso componente RiconciliazioneHub)."
-    },
-    {
-      "pagina": "Prima Nota (/prima-nota) — PrimaNotaSalariTab e vista movimenti",
-      "relazione": "Prima Nota Salari è la fonte delle 'operazioni salario' proposte per l'associazione ai bonifici (collection prima_nota_salari). Inoltre in PrimaNota.jsx, quando un movimento ha bonifico_pdf_id, viene mostrato un link '📄' che apre GET /api/archivio-bonifici/transfers/{bonifico_pdf_id}/pdf per visualizzare il PDF originale del bonifico direttamente da Prima Nota."
-    },
-    {
-      "pagina": "Fatture Ricevute",
-      "relazione": "Le fatture proposte nel dropdown 'Associa Fattura' provengono dalla collection invoices; ogni riga del dropdown ha un link '📄 Vedi' verso /api/fatture-ricevute/fattura/{id}/view-assoinvoice per aprire la fattura in una nuova scheda."
-    },
-    {
-      "pagina": "Documenti / Import Documenti (/documenti/import, raggiunta da 'Importa' → redirect da /import-export)",
-      "relazione": "È il vero punto di ingresso per caricare file bonifici nel sistema (endpoint generico upload-auto), ma come descritto sopra il file viene solo depositato in 'documents_inbox' con un messaggio che rimanda ad Archivio Bonifici, dove però non esiste alcuna funzione che lo recuperi: il collegamento è quindi rotto/incompleto nel codice attuale."
-    },
-    {
-      "pagina": "Verifica Movimenti Banca / Estratto Conto",
-      "relazione": "La riconciliazione bonifici usa la collection estratto_conto_movimenti, la stessa alimentata dall'import dell'estratto conto bancario (vedi app/routers/bank/estratto_conto.py), condividendo quindi i dati con le pagine di riconciliazione bancaria/estratto conto."
-    },
-    {
-      "pagina": "Anagrafica Dipendenti / Fornitori",
-      "relazione": "Il bottone 'Sync IBAN' scrive IBAN mancanti sulle collection dipendenti (Collections.EMPLOYEES) e fornitori (Collections.SUPPLIERS) a partire dai beneficiari dei bonifici, sebbene — come segnalato — legga dalla collection legacy 'archivio_bonifici' invece che da quella attiva 'bonifici_transfers'."
-    }
-  ],
-  "popup_e_modali_presenti": [
-    {
-      "nome": "Dropdown 'Associa Salario'",
-      "descrizione": "Non è un vero modale ma un pannello posizionato in absolute sotto il bottone '+ Associa' della riga; si chiude cliccando fuori dalla tabella (handler globale mousedown su dropdownRef) o ricliccando lo stesso bottone. Mostra operazioni salario compatibili, banner IBAN se presente, punteggio colorato per riga (attualmente sempre vuoto per il mismatch di contratto dati descritto sopra)."
-    },
-    {
-      "nome": "Dropdown 'Associa Fattura'",
-      "descrizione": "Analogo al precedente ma per le fatture compatibili; si escludono a vicenda (aprire l'uno chiude l'altro)."
-    },
-    {
-      "nome": "Editor inline nota",
-      "descrizione": "Non è un modale: sostituisce il testo della cella 'Note' con un input + due bottoni ✓/✗ quando si clicca sulla nota esistente o su '+ Nota'."
-    },
-    {
-      "nome": "window.confirm() doppia conferma disassocia salario",
-      "descrizione": "Due finestre di conferma native del browser in sequenza prima di eseguire DELETE /disassocia-salario. Presente SOLO per il salario, non per la fattura (vedi bug sopra)."
-    },
-    {
-      "nome": "window.alert() vari",
-      "descrizione": "Usati per comunicare esiti di: riconciliazione (successo/errore/timeout), sync IBAN, errori di associazione/disassociazione salario e fattura, errori di salvataggio nota, errori di eliminazione. Nessun toast o notifica in-app: sono tutti alert nativi bloccanti."
-    }
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Archivio bonifici",
+  "route": "/riconciliazione/archivio-bonifici",
+  "catalog_id": 37,
+  "modulo": "riconciliazione",
+  "accesso": "authenticated",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Archivio bonifici». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/ArchivioBonifici.jsx",
+    "entry": "frontend/src/pages/hub/RiconciliazioneHub.jsx",
+    "file_verificati": [
+      "frontend/src/main.jsx",
+      "frontend/src/pages/ArchivioBonifici.jsx",
+      "frontend/src/pages/ImportDocumenti.jsx",
+      "frontend/src/pages/PrimaNota.jsx",
+      "frontend/src/pages/hub/RiconciliazioneHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/router_registry.py",
+      "app/routers/bank/bonifici_import_unificato.py",
+      "app/routers/bonifici_module/__init__.py",
+      "app/routers/bonifici_module/associazioni.py",
+      "app/routers/bonifici_module/common.py",
+      "app/routers/bonifici_module/jobs.py",
+      "app/routers/bonifici_module/pdf_parser.py",
+      "app/routers/bonifici_module/riconciliazione.py",
+      "app/routers/bonifici_module/transfers.py",
+      "app/routers/documenti.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/admin",
+      "/api/agenti",
+      "/api/ai-parser",
+      "/api/alerts",
+      "/api/anagrafica-fornitori",
+      "/api/archivio-bonifici",
+      "/api/archivio-bonifici/associa-fattura",
+      "/api/archivio-bonifici/associa-salario",
+      "/api/archivio-bonifici/disassocia-fattura/{param}",
+      "/api/archivio-bonifici/disassocia-salario/{param}",
+      "/api/archivio-bonifici/fatture-compatibili/{param}",
+      "/api/archivio-bonifici/operazioni-salari/{param}",
+      "/api/archivio-bonifici/riconcilia",
+      "/api/archivio-bonifici/riconcilia/task/{param}",
+      "/api/archivio-bonifici/stato-riconciliazione",
+      "/api/archivio-bonifici/sync-iban-anagrafica",
+      "/api/archivio-bonifici/transfers",
+      "/api/archivio-bonifici/transfers/count",
+      "/api/archivio-bonifici/transfers/summary",
+      "/api/archivio-bonifici/transfers/{param}",
+      "/api/assegni",
+      "/api/assegni/learning",
+      "/api/auth",
+      "/api/auth/api/auth/verify",
+      "/api/auth/login",
+      "/api/auth/verify",
+      "/api/auto-repair",
+      "/api/bank-statement",
+      "/api/batch-reprocess",
+      "/api/bilancio",
+      "/api/cash",
+      "/api/cedolini",
+      "/api/centri-costo",
+      "/api/cespiti",
+      "/api/chiusura-esercizio",
+      "/api/collaudo",
+      "/api/commercialista",
+      "/api/config",
+      "/api/config-import",
+      "/api/contabilita",
+      "/api/contabilita-gestionale",
+      "/api/controllo-gestione",
+      "/api/corrispettivi",
+      "/api/corrispettivi/view-by-filename",
+      "/api/corrispettivi/{param}/view",
+      "/api/dashboard",
+      "/api/dati-isa",
+      "/api/dipendenti",
+      "/api/dizionario-articoli",
+      "/api/document-ai",
+      "/api/documenti",
+      "/api/documenti-fiscali",
+      "/api/documenti-inbox",
+      "/api/documenti-inbox/auto-classify",
+      "/api/documenti-inbox/import-dipendenti-from-cu",
+      "/api/documenti-inbox/import-f24-from-inbox",
+      "/api/documenti-non-associati",
+      "/api/documenti/upload-auto",
+      "/api/documenti/upload-auto/preview",
+      "/api/email-download",
+      "/api/email-scanner",
+      "/api/erp/ponte",
+      "/api/estratto-conto-movimenti",
+      "/api/f24",
+      "/api/f24-analisi",
+      "/api/f24-email",
+      "/api/f24-email-settings",
+      "/api/f24-public",
+      "/api/f24-riconciliazione",
+      "/api/f24/quietanze",
+      "/api/fatture",
+      "/api/fatture-estere",
+      "/api/fatture-ricevute",
+      "/api/finanziamenti-soci",
+      "/api/finanziaria",
+      "/api/fiscal",
+      "/api/fiscalita",
+      "/api/fornitori-learning",
+      "/api/gestione-riservata",
+      "/api/invoices",
+      "/api/invoices/emesse",
+      "/api/iva",
+      "/api/learning-machine",
+      "/api/learning-universal",
+      "/api/mutui",
+      "/api/nexi",
+      "/api/nexi/stato",
+      "/api/noleggio",
+      "/api/openapi",
+      "/api/openapi-automotive",
+      "/api/openapi-imprese",
+      "/api/operazioni-da-confermare",
+      "/api/pagamenti",
+      "/api/pagamenti-buoni",
+      "/api/pagopa",
+      "/api/paypal-api",
+      "/api/paypal-api/status",
+      "/api/paypal-api/sync",
+      "/api/paypal-statements",
+      "/api/pianificazione",
+      "/api/piano-conti",
+      "/api/previsioni-acquisti",
+      "/api/prima-nota",
+      "/api/prima-nota-salari",
+      "/api/prima-nota/provvisori",
+      "/api/prima-nota/provvisori/attendi-banca",
+      "/api/prima-nota/provvisori/conferma",
+      "/api/prima-nota/provvisori/conferma-divisione",
+      "/api/prima-nota/provvisori/conferma-multipla",
+      "/api/prima-nota/provvisori/da-decidere",
+      "/api/prima-nota/provvisori/segnala-dubbio",
+      "/api/prima-nota/saldo-iniziale",
+      "/api/prima-nota/sumup",
+      "/api/prima-nota/{param}",
+      "/api/prima-nota/{param}/{param}",
+      "/api/rapido",
+      "/api/regole",
+      "/api/ritenute",
+      "/api/scadenzario-fornitori",
+      "/api/scadenze",
+      "/api/settings",
+      "/api/sumup",
+      "/api/suppliers",
+      "/api/tfr",
+      "/api/verbali-noleggio",
+      "/api/verbali-riconciliazione",
+      "/api/verifica-coerenza",
+      "/api/voci-bilancio",
+      "/api/whatsapp"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

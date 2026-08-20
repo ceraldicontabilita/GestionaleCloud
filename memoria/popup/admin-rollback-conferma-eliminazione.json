@@ -1,46 +1,56 @@
 {
-  "nome_popup": "Modale di conferma \"Confermi l'eliminazione?\" (rollback dati per periodo)",
-  "file_sorgente": "frontend/src/pages/Admin.jsx (componente RollbackDatiTab, righe 1438-1684; overlay del modale righe 1594-1681)",
-  "pagine_da_cui_si_apre": ["Admin (Admin.jsx) — tab '🗑️ Rollback Dati' (activeTab === 'rollback')"],
-  "come_si_apre": "Nel tab Rollback Dati, per ogni combinazione sezione×periodo (es. 'Corrispettivi' × '1 settimana', 'Fatture' × 'Anno 2024') è presente un bottone rosso con l'etichetta del periodo. Click su uno di questi bottoni chiama chiediConferma(sezioneChiave, sezioneLabel, periodoChiave, periodoLabel): imposta contando=`${sezione}:${periodo}` (mostra uno spinner sul bottone cliccato) ed esegue una GET di sola conta; al ritorno imposta lo stato conferma={sezioneChiave, sezioneLabel, periodoChiave, periodoLabel, totale, dettaglio, dataDa, dataA}, che fa comparire il modale (reso condizionalmente con {conferma && (...)}). Overlay scuro fisso a tutto schermo (position:'fixed', inset:0, background rgba(15,23,42,0.55), zIndex:2000) con riquadro bianco centrato (role='dialog' aria-modal='true').",
-  "scopo": "È un vero strumento di cancellazione dati reali (non un rollback da backup): permette all'admin di eliminare in modo irreversibile tutti i documenti di una sezione del gestionale (Corrispettivi, Fatture, PayPal, Cedolini, Prima Nota Cassa/Banca, F24, Assegni, Verbali Noleggio, Archivio Bonifici, Magazzino) che ricadono in un periodo scelto (ultimo giorno/settimana/mese, oppure un intero anno solare 2023/2024/2025). Il caso d'uso dichiarato nel commento del router backend è il controllo di precisione: si cancellano i dati recenti di un periodo, si re-importano e si verifica che i calcoli tornino corretti. Il modale esiste per mostrare all'utente il numero ESATTO di record che verranno persi prima di chiedere una conferma esplicita, evitando cancellazioni alla cieca.",
-  "dati_mostrati": "Header con icona triangolo di attenzione (AlertTriangle) e titolo \"Confermi l'eliminazione?\". Corpo: frase con il numero totale di record (conferma.totale, in grassetto), la sezione (conferma.sezioneLabel) e il periodo (conferma.periodoLabel) coinvolti, più l'intervallo di date esatto (dal conferma.dataDa al conferma.dataA, formato YYYY-MM-DD calcolato dal backend). Se conferma.dettaglio è presente (array per collezione, alcune sezioni come 'paypal' o 'prima_nota_banca' coprono più collezioni), viene mostrato un riquadro con una riga per ogni collezione coinvolta e il relativo conteggio (es. 'estratto_conto_movimenti — 42'). Se il totale è 0, al posto dei bottoni di conferma appare solo il testo 'Nessun record da eliminare in questo periodo.' (nessuna eliminazione possibile in quel caso).",
-  "campi_e_bottoni": [
-    {
-      "elemento": "Bottone '✕' in alto a destra (aria-label='Chiudi')",
-      "cosa_fa": "Se non è in corso un'eliminazione (!eliminando), chiama setConferma(null) e chiude il modale senza eliminare nulla.",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "disabilitato solo logicamente (il click viene ignorato) mentre eliminando=true, per non interrompere una DELETE in corso"
-    },
-    {
-      "elemento": "Bottone 'Annulla'",
-      "cosa_fa": "onClick => setConferma(null); disabled={eliminando}. Chiude il modale senza alcuna chiamata di rete.",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "n/d"
-    },
-    {
-      "elemento": "Bottone 'Elimina definitivamente' (visibile solo se conferma.totale > 0; label sostituita da spinner mentre eliminando=true)",
-      "cosa_fa": "Chiama confermaEliminazione(): setEliminando(true), poi DELETE verso il backend con il periodo come query param; al successo mostra un banner verde di esito e chiude il modale (setConferma(null)); in caso di errore mostra un banner rosso e lascia il modale chiuso comunque (il catch non riapre il modale, solo popola 'esito').",
-      "endpoint_chiamato": "DELETE /api/admin/rollback/{sezioneChiave}?periodo={periodoChiave}",
-      "logica_backend": "elimina_periodo() in app/routers/admin_rollback.py, protetto da get_current_admin_user (solo ruolo admin). Ricalcola l'intervallo [data_da, data_a] dal periodo (stessa funzione _range_periodo usata dalla conta, quindi coerente con quanto mostrato nel modale) e per ogni collezione configurata per la sezione esegue delete_many() con una query $or sui campi data candidati (es. per 'fatture': invoice_date, data_documento, data_ricezione su invoices; per sezioni con convenzione mese/anno come 'cedolini' aggiunge anche condizioni {anno, mese}). Somma i deleted_count di tutte le collezioni in totale_eliminati, logga un WARNING con utente/sezione/periodo/dettaglio (audit trail), e ritorna {totale_eliminati, dettaglio, data_da, data_a}. È un hard delete fisico (delete_many), non un soft delete: non esiste alcun modo per recuperare i record dopo la conferma.",
-      "formula_matematica": "totale_eliminati = Σ (delete_many(query_periodo_collezione_i).deleted_count) per ogni collezione i configurata nella sezione scelta",
-      "validazioni": "Il bottone è visibile solo se il conteggio preliminare (conferma.totale) è > 0, quindi non è possibile lanciare una DELETE su un periodo/sezione senza record. Il backend richiede sempre un periodo esplicito tra quelli enumerati in PERIODI (1g/1s/1m/2023/2024/2025): un periodo non valido produce HTTP 400 sia sulla conta sia sulla delete, prima ancora di arrivare al modale.",
-      "casi_errore": "Se la DELETE fallisce (es. sessione admin scaduta → 401/403, o errore di rete), il catch imposta setEsito({tipo:'errore', messaggio:'Errore durante l'eliminazione: ' + dettaglio}) mostrato come banner rosso SOPRA la lista sezioni (non dentro al modale, che nel frattempo NON viene chiuso automaticamente in caso di errore — resta aperto perché setConferma(null) è dentro al try, eseguito solo se la chiamata ha successo), permettendo di ritentare con lo stesso bottone."
-    },
-    {
-      "elemento": "Click sull'overlay scuro di sfondo",
-      "cosa_fa": "onClick sull'overlay esterno => !eliminando && setConferma(null): chiude il modale come 'Annulla', ma solo se non è in corso un'eliminazione. Il click dentro il riquadro bianco non chiude (stopPropagation).",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "n/d"
-    }
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "popup_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "popup": "Modale di conferma \"Confermi l'eliminazione?\" (rollback dati per periodo)",
+  "scopo": "Mappa tecnica del popup «Modale di conferma \"Confermi l'eliminazione?\" (rollback dati per periodo)». Il comportamento e le mutazioni reali devono essere verificati nei sorgenti correnti.",
+  "aperto_da": [
+    "Admin (Admin.jsx) — tab '🗑️ Rollback Dati' (activeTab === 'rollback')"
   ],
-  "cosa_succede_alla_conferma": "1) L'utente clicca sul bottone periodo di una sezione → GET /api/admin/rollback/{sezione}/conta?periodo={periodo} (sola lettura, nessun ruolo richiesto) conta i documenti coinvolti per ciascuna collezione della sezione e apre il modale con questi numeri. 2) L'utente clicca 'Elimina definitivamente' → DELETE /api/admin/rollback/{sezione}?periodo={periodo} (richiede ruolo admin) esegue delete_many() fisico su tutte le collezioni della sezione, nell'intervallo di date ricalcolato dal periodo. 3) Il backend risponde con totale_eliminati e dettaglio per collezione; il frontend chiude il modale e mostra un banner verde con il riepilogo ('Eliminati N record da \"{sezione}\" ({periodo}, dal {dataDa} al {dataA})'). L'operazione non tocca altre collezioni collegate (nessuna cascata verso movimenti di prima nota derivati, riconciliazioni, ecc.) né crea un log applicativo visibile all'utente oltre al banner e al log WARNING lato server.",
-  "come_si_chiude": [
-    "Bottone '✕' in alto a destra (se non in corso un'eliminazione)",
-    "Bottone 'Annulla' (se non in corso un'eliminazione)",
-    "Click sull'overlay scuro fuori dal riquadro (se non in corso un'eliminazione)",
-    "Conferma riuscita: chiusura automatica dopo il successo della DELETE",
-    "Nessuna chiusura con tasto Esc gestita esplicitamente nel codice"
+  "file_verificati": [
+    "frontend/src/pages/Admin.jsx"
   ],
-  "effetto_su_pagina_sottostante": "Se l'eliminazione va a buon fine, il modale si chiude e sopra la lista delle sezioni compare un banner verde di esito con il conteggio eliminato; la lista sezioni/periodi non viene ricaricata (è statica, proviene da GET /api/admin/rollback/sezioni caricata una sola volta al mount) e nessun'altra parte della UI (es. altri tab Admin, dashboard) si aggiorna automaticamente — i dati cancellati spariranno dalle altre pagine del gestionale solo al loro prossimo caricamento/refresh. In caso di errore, il banner rosso di esito compare nello stesso punto e il modale resta chiuso solo se l'errore è avvenuto durante la sola conta (in tal caso il modale non arriva mai ad aprirsi); se l'errore avviene sulla DELETE dentro al modale, il modale resta aperto permettendo di ritentare 'Elimina definitivamente' senza dover rifare la conta."
+  "endpoint_rilevati_nei_sorgenti": [
+    "/api/admin/bank-supplier-rules",
+    "/api/admin/bank-supplier-rules/reprocess/{param}",
+    "/api/admin/bank-supplier-rules/{param}",
+    "/api/admin/dashboard-summary",
+    "/api/admin/google-sheets-ledger/config",
+    "/api/admin/google-sheets-ledger/duplicate-audit",
+    "/api/admin/google-sheets-ledger/duplicate-audit-folders",
+    "/api/admin/google-sheets-ledger/duplicate-cleanup-folders",
+    "/api/admin/google-sheets-ledger/jobs/{param}",
+    "/api/admin/google-sheets-ledger/manifest",
+    "/api/admin/rollback/drive-fatture/{param}",
+    "/api/admin/rollback/sezioni",
+    "/api/admin/rollback/{param}",
+    "/api/admin/rollback/{param}/conta",
+    "/api/admin/stats",
+    "/api/collaudo/esegui",
+    "/api/collaudo/storico",
+    "/api/collaudo/ultimo",
+    "/api/config/email-accounts",
+    "/api/config/email-accounts/{param}",
+    "/api/config/email-accounts/{param}/test",
+    "/api/config/parole-chiave",
+    "/api/config/parole-chiave/aggiungi",
+    "/api/config/parole-chiave/rimuovi",
+    "/api/estratto-conto-movimenti/import",
+    "/api/health",
+    "/api/prima-nota/cassa/fix-corrispettivi-importo",
+    "/api/prima-nota/cassa/verifica-entrate-corrispettivi",
+    "/api/sync/match-fatture-banca",
+    "/api/sync/match-fatture-cassa",
+    "/api/sync/stato-sincronizzazione"
+  ],
+  "regole_ux": [
+    "Il popup deve avere chiusura visibile e non restare sovrapposto al documento.",
+    "Le azioni distruttive o definitive richiedono una conferma esplicita.",
+    "Le associazioni ambigue mostrano candidati e non vengono applicate automaticamente."
+  ]
 }

@@ -1,123 +1,170 @@
 {
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
   "pagina": "Corrispettivi",
-  "url": "https://impresasemplice.online/fatture/corrispettivi",
-  "file_sorgente_frontend": [
-    "frontend/src/pages/Corrispettivi.jsx",
-    "frontend/src/pages/hub/FattureHub.jsx (contenitore/tab-switcher: monta Corrispettivi.jsx come lazy component quando l'URL contiene /corrispettivi, alternandolo con ArchivioFattureRicevute.jsx tramite display:none/block, senza smontarlo)",
-    "frontend/src/pages/CoerenzaPOSCorrispettivi.jsx (pagina DIVERSA, non fa parte dell'hub Fatture, ma è l'unico consumer reale dell'endpoint POST /api/corrispettivi/manuale che gestisce l'inserimento serale provvisorio)",
-    "frontend/src/pages/PrimaNota.jsx (consumer di GET /api/corrispettivi/{id}/view e /view-by-filename per mostrare lo 'scontrino' HTML)"
-  ],
-  "file_sorgente_backend": [
-    "app/routers/invoices/corrispettivi.py",
-    "app/routers/invoices/corrispettivi_helpers.py",
-    "app/services/business_rules.py (BusinessRules.can_delete_corrispettivo / can_modify_corrispettivo, righe 195-227)",
-    "app/handlers/corrispettivi.py (check coerenza POS, righe 110+)",
-    "app/router_registry.py:180 (mount app.include_router(corrispettivi.router, prefix=\"/api/corrispettivi\"))"
-  ],
-  "scopo_generale": "Questa pagina mostra, in sola consultazione, l'elenco dei corrispettivi giornalieri già importati nel gestionale a partire dagli XML del registratore telematico (scontrino fiscale elettronico). Serve al titolare/commercialista per verificare rapidamente quanto è stato incassato ogni giorno (totale, quota contanti, quota elettronico/POS, IVA), aprire il dettaglio di una singola giornata e, se necessario, eliminare un corrispettivo importato per errore o duplicato. Non è la pagina dove si 'chiude la cassa' manualmente la sera: quella funzione (inserimento provvisorio con eventuale POS reale) vive in una pagina diversa, CoerenzaPOSCorrispettivi.jsx, che consuma un endpoint dedicato dello stesso backend. L'import vero e proprio dei file XML/ZIP dei corrispettivi avviene dalla pagina 'Import Documenti', richiamata dal link 'Importa' presente in alto.",
-  "sezioni_tab": [
-    {
-      "nome": "Corrispettivi (tab unico)",
-      "descrizione": "Non ci sono sotto-tab interni: è un'unica vista con 4 KPI riepilogativi in alto (Totale Giornaliero, Totale Cassa, Totale Elettronico, Totale IVA/Imponibile calcolati con reduce() lato client sull'array caricato), una barra filtri/azioni (Importa, Aggiorna, ricerca via CopyLinkButton), la tabella/lista dei corrispettivi per data, e un pannello di Dettaglio Corrispettivo che si apre sotto quando si clicca l'icona occhio su una riga (sincronizzato con l'hash URL #selected=YYYY-MM-DD)."
-    }
-  ],
-  "bottoni_azioni": [
-    {
-      "etichetta": "Importa",
-      "dove_si_trova": "Barra superiore della pagina Corrispettivi.jsx",
-      "cosa_fa_al_click": "Non è un handler React: è un <Link to=\"/import-documenti\"> di react-router-dom. Porta l'utente sulla pagina 'Import Documenti', dove avviene realmente l'upload di file XML/ZIP dei corrispettivi (endpoint POST /api/corrispettivi/upload-xml, /upload-xml-bulk, /upload-zip).",
-      "endpoint_chiamato": "Nessuna chiamata diretta da questo bottone (solo navigazione client-side).",
-      "logica_backend": "N/A da questa pagina — vedi 'operazioni_di_registrazione' per la logica di ingest XML eseguita quando l'upload avviene realmente da Import Documenti.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Cambio di route verso /import-documenti.",
-      "casi_errore": "N/A"
-    },
-    {
-      "etichetta": "Aggiorna",
-      "dove_si_trova": "Barra superiore, data-testid=\"corrispettivi-refresh-btn\"",
-      "cosa_fa_al_click": "Richiama la funzione loadCorrispettivi() (righe 47-62 di Corrispettivi.jsx).",
-      "endpoint_chiamato": "GET /api/corrispettivi?anno={selectedYear}&limit=2500",
-      "logica_backend": "Funzione list_corrispettivi in corrispettivi.py (righe 21-49). Collection: corrispettivi. Se è presente il parametro anno, filtro Mongo {\"data\": {\"$regex\": f\"^{anno}\"}}; se sono presenti data_da/data_a, filtro a range su \"data\"; se nessun filtro è passato, default anno = anno corrente. Query eseguita: db[\"corrispettivi\"].find(query, {\"_id\": 0}).sort(\"data\", -1).skip(skip).limit(limit).",
-      "formula_matematica": "Nessun calcolo lato backend in questa chiamata; i 4 KPI in testa pagina sono ricalcolati lato client con reduce() sull'array ricevuto (righe 75-79 del componente): totaleGiornaliero = somma di c.totale, totaleCassa = somma di c.pagato_contanti, totaleElettronico = somma di c.pagato_elettronico, totaleIVA/totaleImponibile = somma dei rispettivi campi.",
-      "aggiornamento_ui": "setCorrispettivi(array) dopo un sort client-side per data decrescente; i 5 KPI si ricalcolano automaticamente perché derivati dallo stato.",
-      "casi_errore": "try/catch: setErr('Errore caricamento: ' + (e.response?.data?.detail || e.message)), mostrato tramite componente PageError con pulsante 'Retry' che richiama di nuovo loadCorrispettivi."
-    },
-    {
-      "etichetta": "👁 Vedi dettaglio (icona occhio, per riga)",
-      "dove_si_trova": "Colonna azioni di ogni riga della tabella/lista corrispettivi",
-      "cosa_fa_al_click": "onClick={() => setHs('selected', c.data || '')} — usa l'hook useHashState per scrivere la data selezionata nell'hash dell'URL (#selected=YYYY-MM-DD). Nessuna chiamata API: il dettaglio (selectedItem) è ricavato client-side cercando nell'array già caricato in memoria (corrispettivi.find(c => c.data === hs.selected)).",
-      "endpoint_chiamato": "Nessuno (dati già in memoria dal precedente GET /api/corrispettivi)",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Si apre il pannello 'Dettaglio Corrispettivo' con 3 colonne: Dati Generali (data, matricola RT, P.IVA, numero documenti), Pagamenti (cassa, elettronico, totale), IVA (imponibile, imposta) più una tabella per aliquota se è presente riepilogo_iva. Un bottone 'X' (onClick setHs('selected','')) chiude il pannello. Un CopyLinkButton in testa alla lista permette di copiare il link diretto (con hash) al dettaglio aperto.",
-      "casi_errore": "N/A (nessuna chiamata di rete coinvolta)"
-    },
-    {
-      "etichetta": "🗑 Elimina (icona cestino, per riga)",
-      "dove_si_trova": "Colonna azioni di ogni riga della tabella/lista corrispettivi",
-      "cosa_fa_al_click": "onClick={() => handleDelete(c.id)}. Prima mostra window.confirm(\"Eliminare questo corrispettivo? L'operazione non può essere annullata.\"); se l'utente annulla, la funzione ritorna subito senza fare nulla.",
-      "endpoint_chiamato": "DELETE /api/corrispettivi/{id} (senza il parametro force, quindi il backend usa force=False di default)",
-      "logica_backend": "Funzione delete_corrispettivo in corrispettivi.py (righe 436-489). Recupera il documento con db[\"corrispettivi\"].find_one({\"id\": corrispettivo_id}) — 404 se non trovato. Applica BusinessRules.can_delete_corrispettivo (business_rules.py righe 195-214): blocca con errore se status == 'sent_ade' (già inviato all'Agenzia delle Entrate) oppure se il documento ha già un campo prima_nota_id valorizzato (già registrato in Prima Nota) — in quel caso ritorna HTTP 400 con {message:'Eliminazione non consentita', errors:[...]}. Dato che l'ingest XML popola sempre prima_nota_id (vedi operazione di registrazione sotto), in pratica quasi tutti i corrispettivi importati da XML risultano bloccati alla cancellazione da questa regola, perché il bottone frontend non passa mai force=true. Se la validazione passa, esegue un SOFT-DELETE: db[\"corrispettivi\"].update_one({\"id\": id}, {\"$set\": {\"entity_status\": \"deleted\", \"deleted_at\": now}}). Se il corrispettivo aveva un prima_nota_id, annulla anche il movimento collegato in prima_nota_cassa: update_one({\"id\": corr[\"prima_nota_id\"]}, {\"$set\": {\"stato\": \"annullato\"}}) — nota: tocca solo prima_nota_cassa, non prima_nota_banca, anche se il corrispettivo aveva una quota elettronica con relativo movimento in prima_nota_banca.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Dopo la risposta positiva, richiama loadCorrispettivi() per ricaricare l'intera lista dal server.",
-      "casi_errore": "catch → setErr('Errore eliminazione: ' + (e.response?.data?.detail || e.message)) mostrato in un banner PageError in cima alla pagina. Nella pratica l'errore più comune è il 400 'corrispettivo già registrato in Prima Nota', che il frontend non gestisce con un secondo tentativo force=true (a differenza di quanto avviene per l'eliminazione fornitore in Fornitori.jsx): l'utente vede l'errore ma non ha un modo diretto da questa pagina per forzare l'eliminazione."
-    },
-    {
-      "etichetta": "Cerca / CopyLinkButton",
-      "dove_si_trova": "Intestazione lista corrispettivi",
-      "cosa_fa_al_click": "Copia negli appunti l'URL corrente (comprensivo di hash con eventuale #selected=...) — componente condiviso, nessuna chiamata API.",
-      "endpoint_chiamato": "Nessuno",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Toast/feedback di copia riuscita (comportamento del componente condiviso CopyLinkButton).",
-      "casi_errore": "N/A"
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Import corrispettivo XML (singolo, bulk o da ZIP) — ingest da registratore telematico",
-      "sequenza_esatta": "Punto d'ingresso unico condiviso da /api/corrispettivi/upload-xml, /upload-xml-bulk e /upload-zip: la funzione ingest_corrispettivo_parsed in corrispettivi_helpers.py (righe 229-359). 1) Il parser XML del registratore telematico (app/parsers/corrispettivi_parser.py) estrae già pronti i campi totale, pagato_contanti, pagato_elettronico, totale_imponibile, totale_iva, pagato_non_riscosso — NON viene fatto alcuno split proporzionale lato gestionale: i valori arrivano già suddivisi dal riepilogo del registratore di cassa. 2) Anti-duplicato a 3 livelli (_find_existing_corrispettivo, righe 76-114), sempre escludendo i soft-deleted: livello 1 match su corrispettivo_key (chiave naturale XML); livello 2 match su data+matricola_rt uguali; livello 3 match su data uguale e totale con tolleranza ±0.01€. 3) Se non trovato nessun duplicato, viene costruito il documento con _build_corrispettivo_doc e inserito in corrispettivi. 4) FALLBACK split 'tutto contanti': se il parser non ha estratto alcun dettaglio pagamento (contanti=0 e elettronico=0) ma esiste un totale>0, l'intero importo viene trattato come contante (unica 'formula di ripartizione' presente nel codice, non una vera divisione proporzionale). 5) Scrittura Prima Nota (_create_prima_nota_movements, righe 144-226): se contanti>0 viene creato UN movimento in prima_nota_cassa (categoria 'Corrispettivi', source 'corrispettivo_import'); se elettronico>0 viene creato UN movimento SEPARATO in prima_nota_banca (categoria 'Corrispettivi POS', source 'corrispettivo_pos', riconciliato:False, in attesa di riconciliazione con l'accredito POS reale). Un solo corrispettivo giornaliero genera quindi fino a DUE movimenti distinti, mai uno aggregato; l'intero importo IVA/imponibile viene copiato per intero nel movimento cassa anche se parte dell'incasso è elettronico (nessuna ripartizione proporzionale dell'IVA tra i due movimenti). 6) Il documento corrispettivi viene aggiornato con i riferimenti prima_nota_id (= id cassa se presente, altrimenti id banca), prima_nota_cassa_id, prima_nota_banca_id — questi campi sono poi ciò che blocca la cancellazione dalla UI (vedi bottone Elimina). 7) Se update_if_exists=True (default su upload singolo, False su bulk/zip) e il corrispettivo esiste già, i vecchi movimenti Prima Nota collegati vengono prima cancellati (_delete_prima_nota_for_corrispettivo) e poi ricreati da zero, per evitare duplicazioni ad ogni reimport dello stesso XML. 8) Promozione automatica: se esiste un corrispettivo 'manuale' provvisorio per la stessa data (stato provvisorio/manca_xml, source manuale_serale/manuale/manual_entry) e arriva l'XML definitivo, il documento viene aggiornato con stato='definitivo_xml', totale_xml=totale, forzando sempre l'update anche se update_if_exists era False. 9) Check di coerenza POS (fail-safe, non blocca mai l'import): confronta pagato_elettronico dichiarato con un eventuale accredito Nexi in estratto_conto_movimenti (finestra ±1/+2 giorni, tolleranza ±5€); se la differenza supera 1€ crea un alert in agenti_segnalazioni.",
-      "collezioni_coinvolte": ["corrispettivi", "prima_nota_cassa", "prima_nota_banca", "estratto_conto_movimenti (solo lettura per il check coerenza)", "agenti_segnalazioni"],
-      "campi_scritti": {
-        "corrispettivi": "id, data, matricola_rt, numero_documento, partita_iva, totale, pagato_contanti, pagato_elettronico, totale_imponibile, totale_iva, pagato_non_riscosso, numero_documenti, riepilogo_iva[], status, entity_status, source, filename, anno, mese, stato, prima_nota_id, prima_nota_cassa_id, prima_nota_banca_id, created_at, updated_at",
-        "prima_nota_cassa (se contanti>0)": "id, corrispettivo_id, data, tipo:'entrata', importo=contanti, descrizione='Corrispettivo contanti {data}', categoria='Corrispettivi', source='corrispettivo_import', imponibile, iva, contanti, elettronico, non_riscosso, dettaglio{...}",
-        "prima_nota_banca (se elettronico>0)": "id, corrispettivo_id, data, tipo:'entrata', importo=elettronico, descrizione='POS corrispettivo {data}', categoria='Corrispettivi POS', source='corrispettivo_pos', riconciliato:False"
-      },
-      "effetti_collaterali": "Genera fino a due movimenti contabili provvisori/non riconciliati (POS) per ogni giornata; blocca la successiva cancellazione del corrispettivo dalla UI perché valorizza prima_nota_id; può generare un alert di scostamento POS in agenti_segnalazioni se l'accredito Nexi non coincide."
-    },
-    {
-      "nome": "Inserimento manuale serale provvisorio (chiusura di cassa 'a caldo' prima che arrivi l'XML fiscale)",
-      "sequenza_esatta": "Endpoint POST /api/corrispettivi/manuale (corrispettivi.py righe 1531-1676). NON è raggiungibile da Corrispettivi.jsx: l'unico consumer è la pagina frontend/src/pages/CoerenzaPOSCorrispettivi.jsx. Input: data (obbligatoria, formato %Y-%m-%d), totale (obbligatorio, deve essere >0), pos_reale_serale (opzionale), note (opzionale). Validazioni: 400 se data mancante o non parsabile; 400 se totale non numerico o <=0; 409 Conflict se esiste già per quella data un corrispettivo con stato='definitivo_xml' (non si può sovrascrivere un dato ufficiale XML con uno manuale). Se non esiste un definitivo, crea/aggiorna il documento con stato='provvisorio', totale_manuale=totale, totale=totale_manuale (campo attivo finché non arriva l'XML), pagato_contanti=None e pagato_elettronico=None (ignoti finché non arriva l'XML fiscale — quindi qui NON avviene alcuno split contanti/elettronico, solo un totale aggregato). Se viene fornito pos_reale_serale (>=0), viene scritto/aggiornato un movimento in prima_nota_banca con source='chiusura_pos_mobile', categoria='Corrispettivi POS', riconciliato:False — questo è l'unico punto dove l'utente può registrare manualmente la quota POS reale della serata, ma resta un dato indipendente dal campo totale del corrispettivo: non esiste alcuna formula che li leghi né una validazione che pos_reale_serale <= totale.",
-      "collezioni_coinvolte": ["corrispettivi", "prima_nota_banca"],
-      "campi_scritti": {
-        "corrispettivi": "stato='provvisorio', totale_manuale, totale=totale_manuale, pagato_contanti=None, pagato_elettronico=None, note",
-        "prima_nota_banca (solo se pos_reale_serale fornito)": "source='chiusura_pos_mobile', categoria='Corrispettivi POS', riconciliato:False"
-      },
-      "effetti_collaterali": "Quando arriverà successivamente l'XML ufficiale per la stessa data, il documento verrà promosso automaticamente a stato='definitivo_xml' (vedi operazione di import XML sopra, punto 8), sostituendo i valori provvisori con quelli reali del registratore telematico."
-    },
-    {
-      "nome": "Scorporo IVA automatico (ricalcolo aliquota 10% per i corrispettivi senza IVA valorizzata)",
-      "sequenza_esatta": "Endpoint POST /api/corrispettivi/ricalcola-iva (righe 52-82), applicato solo ai documenti dove totale_iva è 0 o None e totale>0. Formula di scorporo dal totale lordo: imponibile = totale / 1.10; iva = totale - (totale / 1.10). La stessa identica formula (aliquota 10%, tipica della ristorazione/somministrazione) è ripetuta anche in GET /totals e nel job di manutenzione /auto-ricostruisci-dati.",
-      "collezioni_coinvolte": ["corrispettivi"],
-      "campi_scritti": {"corrispettivi": "totale_imponibile, totale_iva"},
-      "effetti_collaterali": "Nessuno oltre all'aggiornamento dei campi sul singolo documento; non ricrea/aggiorna i movimenti di Prima Nota già scritti."
-    },
-    {
-      "nome": "Calcolo 'pagato non riscosso' (scontrini emessi ma non ancora incassati, es. fatture differite)",
-      "sequenza_esatta": "Endpoint POST /api/corrispettivi/ricalcola-annulli-non-riscosso (righe 85-132). totale_lordo = somma di riepilogo_iva[].importo_parziale se >0, altrimenti somma(ammontare)+somma(imposta) dei riepiloghi. pagato_non_riscosso = max(0, round(totale_lordo - (pagato_contanti + pagato_elettronico), 2)).",
-      "collezioni_coinvolte": ["corrispettivi"],
-      "campi_scritti": {"corrispettivi": "pagato_non_riscosso"},
-      "effetti_collaterali": "Nessuno, solo campo informativo aggiornato."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Import Documenti (/import-documenti) — bottone 'Importa' porta qui, dove avviene realmente l'upload XML/ZIP dei corrispettivi.",
-    "CoerenzaPOSCorrispettivi.jsx — pagina indipendente che usa POST /api/corrispettivi/manuale per l'inserimento serale provvisorio e il confronto con l'incasso POS reale; non è raggiungibile da un bottone dentro Corrispettivi.jsx.",
-    "PrimaNota.jsx — mostra lo 'scontrino' HTML del singolo corrispettivo tramite GET /api/corrispettivi/{id}/view o /view-by-filename, e riflette i movimenti prima_nota_cassa/prima_nota_banca generati dall'ingest.",
-    "FattureHub.jsx — è il contenitore/tab-switcher che monta questa pagina insieme ad ArchivioFattureRicevute.jsx sotto lo stesso hub 'Fatture'."
-  ],
-  "popup_e_modali_presenti": [
-    "Pannello 'Dettaglio Corrispettivo' (non un vero modale, si apre inline sotto la lista quando si clicca l'icona occhio di una riga): 3 colonne — Dati Generali, Pagamenti, IVA — più tabella riepilogo IVA per aliquota se presente; sincronizzato con l'hash URL #selected=YYYY-MM-DD, quindi condivisibile/deep-linkabile tramite CopyLinkButton.",
-    "window.confirm() nativo del browser prima dell'eliminazione di un corrispettivo (nessun modale custom)."
+  "route": "/fatture/corrispettivi",
+  "catalog_id": 6,
+  "modulo": "fatture",
+  "accesso": "authenticated",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Corrispettivi». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/Corrispettivi.jsx",
+    "entry": "frontend/src/pages/hub/FattureHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/ArchivioFattureRicevute.jsx",
+      "frontend/src/pages/CoerenzaPOSCorrispettivi.jsx",
+      "frontend/src/pages/Corrispettivi.jsx",
+      "frontend/src/pages/PrimaNota.jsx",
+      "frontend/src/pages/hub/FattureHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/handlers/corrispettivi.py",
+      "app/router_registry.py",
+      "app/routers/invoices/corrispettivi.py",
+      "app/routers/invoices/corrispettivi_helpers.py",
+      "app/services/business_rules.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/admin",
+      "/api/agenti",
+      "/api/ai-parser",
+      "/api/alerts",
+      "/api/anagrafica-fornitori",
+      "/api/archivio-bonifici",
+      "/api/assegni",
+      "/api/assegni/learning",
+      "/api/auth",
+      "/api/auth/api/auth/verify",
+      "/api/auth/login",
+      "/api/auth/verify",
+      "/api/auto-repair",
+      "/api/bank-statement",
+      "/api/batch-reprocess",
+      "/api/bilancio",
+      "/api/cash",
+      "/api/cedolini",
+      "/api/centri-costo",
+      "/api/cespiti",
+      "/api/chiusura-esercizio",
+      "/api/collaudo",
+      "/api/commercialista",
+      "/api/config",
+      "/api/config-import",
+      "/api/contabilita",
+      "/api/contabilita-gestionale",
+      "/api/controllo-gestione",
+      "/api/corrispettivi",
+      "/api/corrispettivi/manuale",
+      "/api/corrispettivi/view-by-filename",
+      "/api/corrispettivi/{param}/view",
+      "/api/dashboard",
+      "/api/dati-isa",
+      "/api/dipendenti",
+      "/api/dizionario-articoli",
+      "/api/document-ai",
+      "/api/documenti",
+      "/api/documenti-fiscali",
+      "/api/documenti-inbox",
+      "/api/documenti-non-associati",
+      "/api/email-download",
+      "/api/email-scanner",
+      "/api/erp/ponte",
+      "/api/estratto-conto-movimenti",
+      "/api/f24",
+      "/api/f24-analisi",
+      "/api/f24-email",
+      "/api/f24-email-settings",
+      "/api/f24-public",
+      "/api/f24-riconciliazione",
+      "/api/f24/quietanze",
+      "/api/fatture",
+      "/api/fatture-estere",
+      "/api/fatture-ricevute",
+      "/api/fatture-ricevute/archivio",
+      "/api/fatture-ricevute/export-selezione",
+      "/api/fatture-ricevute/fattura/{param}",
+      "/api/fatture-ricevute/fornitori",
+      "/api/fatture-ricevute/statistiche{param}",
+      "/api/finanziamenti-soci",
+      "/api/finanziaria",
+      "/api/fiscal",
+      "/api/fiscalita",
+      "/api/fornitori-learning",
+      "/api/gestione-riservata",
+      "/api/invoices",
+      "/api/invoices/emesse",
+      "/api/iva",
+      "/api/learning-machine",
+      "/api/learning-universal",
+      "/api/mutui",
+      "/api/nexi",
+      "/api/nexi/stato",
+      "/api/noleggio",
+      "/api/openapi",
+      "/api/openapi-automotive",
+      "/api/openapi-imprese",
+      "/api/operazioni-da-confermare",
+      "/api/pagamenti",
+      "/api/pagamenti-buoni",
+      "/api/pagopa",
+      "/api/paypal-api",
+      "/api/paypal-statements",
+      "/api/pianificazione",
+      "/api/piano-conti",
+      "/api/pos-corrispettivi/chiusura-giornaliera",
+      "/api/pos-corrispettivi/chiusure-giornaliere/batch",
+      "/api/pos-corrispettivi/controllo-due-fasi",
+      "/api/pos-corrispettivi/riepilogo-mensile",
+      "/api/pos-corrispettivi/verifica-coerenza",
+      "/api/previsioni-acquisti",
+      "/api/prima-nota",
+      "/api/prima-nota-salari",
+      "/api/prima-nota/provvisori",
+      "/api/prima-nota/provvisori/attendi-banca",
+      "/api/prima-nota/provvisori/conferma",
+      "/api/prima-nota/provvisori/conferma-divisione",
+      "/api/prima-nota/provvisori/conferma-multipla",
+      "/api/prima-nota/provvisori/da-decidere",
+      "/api/prima-nota/provvisori/segnala-dubbio",
+      "/api/prima-nota/saldo-iniziale",
+      "/api/prima-nota/sposta-movimento",
+      "/api/prima-nota/sumup",
+      "/api/prima-nota/{param}",
+      "/api/prima-nota/{param}/{param}",
+      "/api/rapido",
+      "/api/regole",
+      "/api/ritenute",
+      "/api/scadenzario-fornitori",
+      "/api/scadenze",
+      "/api/settings",
+      "/api/sumup",
+      "/api/sumup/riepilogo",
+      "/api/suppliers",
+      "/api/tfr",
+      "/api/verbali-noleggio",
+      "/api/verbali-riconciliazione",
+      "/api/verifica-coerenza",
+      "/api/voci-bilancio",
+      "/api/whatsapp"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

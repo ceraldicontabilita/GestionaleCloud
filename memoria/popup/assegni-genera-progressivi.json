@@ -1,48 +1,44 @@
 {
-  "nome_popup": "Modal 'Genera 10 Assegni Progressivi'",
-  "file_sorgente": "/home/user/GestionaleCloud/frontend/src/pages/GestioneAssegni.jsx (righe ~3147-3256, stato showGenerate/generateForm/generating dichiarato riga ~63-66)",
-  "pagine_da_cui_si_apre": ["Assegni (/riconciliazione/assegni)"],
-  "come_si_apre": "Click sul bottone '+ Genera Assegni' (data-testid=genera-assegni-btn) nella barra azioni principale della pagina Assegni: imposta setShowGenerate(true). È un overlay fisso non draggable, centrato con flexbox (position:fixed, inset:0, sfondo rgba(0,0,0,0.5), zIndex 1000).",
-  "scopo": "Creare in blocco N assegni vuoti progressivi appartenenti allo stesso carnet fisico, a partire da un numero di partenza nel formato PREFISSO-NUMERO. Il titolo del modale è fisso ('Genera 10 Assegni Progressivi') ma il valore reale inviato è generateForm.quantita, inizializzato a 10 nello stato React: NON esiste nel JSX alcun campo input per modificare la quantità, quindi nella pratica operativa il modale genera SEMPRE e SOLO 10 assegni per click, nonostante il backend (POST /api/assegni/genera) accetti un parametro quantita libero da 1 a 100.",
-  "dati_mostrati": "Nessun dato precaricato da backend: il modale è un form vuoto, non mostra assegni esistenti né anteprima dei numeri che verranno generati.",
-  "campi_e_bottoni": [
-    {
-      "elemento": "Input testo 'Numero Primo Assegno' (data-testid=numero-primo-input, placeholder '0208769182-11')",
-      "cosa_fa": "Aggiorna generateForm.numero_primo in stato locale React; nessuna validazione di formato lato client mentre si digita.",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "Nessuna in tempo reale; solo al submit si controlla che il campo non sia vuoto (alert('Inserisci il numero del primo assegno') se vuoto)."
-    },
-    {
-      "elemento": "Bottone 'Annulla' (grigio #9e9e9e)",
-      "cosa_fa": "setShowGenerate(false): chiude il modale senza inviare nulla e senza resettare generateForm (il valore digitato resta in memoria fino a una nuova apertura o a un salvataggio riuscito).",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "nessuna"
-    },
-    {
-      "elemento": "Bottone '✕' in alto a destra (aria-label='Chiudi', data-testid=close-generate-btn)",
-      "cosa_fa": "Identico ad 'Annulla': setShowGenerate(false).",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "nessuna"
-    },
-    {
-      "elemento": "Click sull'overlay scuro fuori dal riquadro bianco",
-      "cosa_fa": "onClick sull'elemento fixed esterno chiama setShowGenerate(false) (il riquadro interno ha onClick con e.stopPropagation() per non chiudersi quando si clicca dentro).",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "nessuna"
-    },
-    {
-      "elemento": "Bottone 'Genera e Salva' (verde #4caf50, data-testid=genera-salva-btn, testo diventa 'Generazione...' mentre generating=true)",
-      "cosa_fa": "handleGenerate(): se numero_primo è vuoto mostra alert e interrompe; altrimenti invia generateForm ({numero_primo, quantita:10}) al backend.",
-      "endpoint_chiamato": "POST /api/assegni/genera",
-      "validazioni": "Lato server (app/routers/bank/assegni.py::genera_assegni): 400 se numero_primo non contiene '-'; 400 se la parte dopo il trattino non è un intero (int(parts[1])); il backend verifica PRIMA di scrivere, per ogni numero da generare (prefix-{start_num+i} per i in range(quantita)), se esiste già in collezione assegni — se anche uno solo esiste già, ritorna 400 con l'elenco dei numeri duplicati (max 5 mostrati, '...' se di più) e NON crea nulla (tutto o niente)."
-    }
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "popup_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "popup": "Modal 'Genera 10 Assegni Progressivi'",
+  "scopo": "Mappa tecnica del popup «Modal 'Genera 10 Assegni Progressivi'». Il comportamento e le mutazioni reali devono essere verificati nei sorgenti correnti.",
+  "aperto_da": [
+    "Assegni (/riconciliazione/assegni)"
   ],
-  "cosa_succede_alla_conferma": "Se la POST ha successo, il backend crea `quantita` (sempre 10 nella UI attuale) documenti nella collezione 'assegni': id (uuid4), numero=f'{prefix}-{start_num+i}', stato='vuoto', importo=None, beneficiario=None, causale=None, date=None, fattura_collegata=None, fatture_collegate=[], fornitore_piva=None, note=None, created_at/updated_at=now. Il frontend chiude il modale (setShowGenerate(false)), resetta generateForm a {numero_primo:'', quantita:10} e richiama loadData() per ricaricare tabella e statistiche.",
-  "come_si_chiude": [
-    "Bottone '✕' in alto a destra",
-    "Bottone 'Annulla' nel footer",
-    "Click sull'overlay scuro esterno al riquadro",
-    "Automaticamente dopo un salvataggio riuscito (nessuna chiusura automatica in caso di errore: il modale resta aperto e mostra un alert con il detail dell'errore, l'utente può correggere e riprovare)"
+  "file_verificati": [
+    "frontend/src/pages/GestioneAssegni.jsx"
   ],
-  "effetto_su_pagina_sottostante": "Dopo un salvataggio riuscito, loadData() ricarica la lista assegni: i 10 nuovi assegni 'vuoto' compaiono nella tabella/carnet raggruppati per il prefisso comune (il carnet appena creato), pronti per essere compilati (beneficiario+importo) e poi collegati a fatture. In caso di annullamento o errore, la tabella sottostante non cambia."
+  "endpoint_rilevati_nei_sorgenti": [
+    "/api/assegni",
+    "/api/assegni/ambigui",
+    "/api/assegni/auto-match",
+    "/api/assegni/auto-match/conferma",
+    "/api/assegni/cerca-combinazioni-assegni",
+    "/api/assegni/clear-generated",
+    "/api/assegni/genera",
+    "/api/assegni/learning/associa-intelligente",
+    "/api/assegni/learning/learn",
+    "/api/assegni/learning/pulizia-duplicati",
+    "/api/assegni/learning/stats-avanzate",
+    "/api/assegni/riprocessa-collegamenti",
+    "/api/assegni/senza-associazione",
+    "/api/assegni/stats",
+    "/api/assegni/supporto/fatture-disponibili",
+    "/api/assegni/{param}",
+    "/api/assegni/{param}/fatture-collegate",
+    "/api/assegni/{param}/risolvi-ambiguo",
+    "/api/invoices/{param}"
+  ],
+  "regole_ux": [
+    "Il popup deve avere chiusura visibile e non restare sovrapposto al documento.",
+    "Le azioni distruttive o definitive richiedono una conferma esplicita.",
+    "Le associazioni ambigue mostrano candidati e non vengono applicate automaticamente."
+  ]
 }

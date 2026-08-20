@@ -1,25 +1,35 @@
 {
-  "nome_popup": "Modal 'Aggiungi Veicolo'",
-  "pagine_da_cui_si_apre": ["Noleggio > Flotta Auto (tab 'flotta', NoleggioAuto.jsx)"],
-  "come_si_apre": "Click sul pulsante header '➕ Aggiungi Veicolo' (setShowAddVeicolo(true)), oppure dal modal 'Fatture Non Associate' tramite il bottone '➕ Associa' su una singola fattura (che precompila nuovoVeicolo.fornitore_piva col piva della fattura, chiude quel modal e apre questo). Stato controllato: showAddVeicolo (boolean).",
-  "scopo": "Associare manualmente una targa a un fornitore di noleggio quando il sistema non riesce a estrarre automaticamente la targa dalle fatture XML del fornitore (tipicamente LeasePlan, che non include la targa in fattura): senza questo passaggio le fatture di quel fornitore resterebbero permanentemente 'non associate'.",
-  "dati_mostrati": "Nessun dato precaricato dal server: form con stato locale nuovoVeicolo = {targa:'', marca:'', modello:'', fornitore_piva:'', contratto:''} (eventualmente con fornitore_piva già precompilato se aperto da 'Fatture Non Associate'). Testo esplicativo: 'Usa questo form per aggiungere veicoli di fornitori che non includono la targa nelle fatture (es: LeasePlan).'. Il select Fornitore è popolato da GET /api/noleggio/fornitori (già caricato al mount pagina), con icona ⚠️ accanto ai fornitori che non includono la targa in fattura (f.targa_in_fattura === false).",
-  "campi_e_bottoni": [
-    {"elemento": "Input testo 'Targa *'", "cosa_fa": "Imposta nuovoVeicolo.targa, forzato in maiuscolo (toUpperCase), massimo 7 caratteri, font monospace, placeholder 'AB123CD'", "endpoint_chiamato": "nessuno", "validazioni": "Obbligatorio, controllato al submit (client)."},
-    {"elemento": "Select 'Fornitore *'", "cosa_fa": "Imposta nuovoVeicolo.fornitore_piva tra i fornitori restituiti da /api/noleggio/fornitori", "endpoint_chiamato": "nessuno", "validazioni": "Obbligatorio, controllato al submit (client). Server: 400 se la piva non è tra i 4 fornitori noti (ALD, ARVAL, Leasys, LeasePlan)."},
-    {"elemento": "Input testo 'Marca'", "cosa_fa": "Imposta nuovoVeicolo.marca (placeholder 'BMW')", "endpoint_chiamato": "nessuno", "validazioni": "Facoltativo."},
-    {"elemento": "Input testo 'Modello'", "cosa_fa": "Imposta nuovoVeicolo.modello (placeholder 'X3 xDrive')", "endpoint_chiamato": "nessuno", "validazioni": "Facoltativo."},
-    {"elemento": "Input testo 'Numero Contratto'", "cosa_fa": "Imposta nuovoVeicolo.contratto", "endpoint_chiamato": "nessuno", "validazioni": "Facoltativo."},
-    {"elemento": "Pulsante '✕' (header) / click sull'overlay scuro", "cosa_fa": "Chiude il modal senza salvare: setShowAddVeicolo(false)", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
-    {"elemento": "Pulsante 'Annulla' (footer)", "cosa_fa": "Chiude il modal senza salvare", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
-    {"elemento": "Pulsante '➕ Aggiungi' (footer)", "cosa_fa": "handleAddVeicolo(): se targa o fornitore_piva mancanti, setErr('Targa e Fornitore sono obbligatori') senza chiamare il backend; altrimenti invia il form", "endpoint_chiamato": "POST /api/noleggio/associa-fornitore", "validazioni": "Client: targa e fornitore_piva obbligatori. Server (associa_fornitore): 400 se targa/fornitore_piva mancanti, 400 se piva non tra i fornitori noti."}
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "popup_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "popup": "Modal 'Aggiungi Veicolo'",
+  "scopo": "Mappa tecnica del popup «Modal 'Aggiungi Veicolo'». Il comportamento e le mutazioni reali devono essere verificati nei sorgenti correnti.",
+  "aperto_da": [
+    "Noleggio > Flotta Auto (tab 'flotta', NoleggioAuto.jsx)"
   ],
-  "cosa_succede_alla_conferma": "Il backend esegue un upsert su veicoli_noleggio con targa, fornitore_piva, fornitore_noleggio (nome derivato dalla piva), marca, modello, contratto: se esiste già un veicolo con quella targa viene sovrascritto, altrimenti creato ex novo. Il frontend chiude il modal, resetta nuovoVeicolo ai valori vuoti e richiama fetchVeicoli(). Al successivo scan delle fatture, quelle del fornitore selezionato prive di targa esplicita verranno agganciate a questa targa tramite scegli_veicolo_per_fattura() (con certezza se è l'unico veicolo di quel fornitore). In caso di errore, setErr mostra il messaggio del backend e il modal resta aperto.",
-  "come_si_chiude": [
-    "Pulsante '✕' nell'header",
-    "Click sull'overlay semi-trasparente di sfondo",
-    "Pulsante 'Annulla'",
-    "Submit riuscito tramite '➕ Aggiungi'"
+  "file_verificati": [
+    "frontend/src/pages/NoleggioAuto.jsx"
   ],
-  "effetto_su_pagina_sottostante": "Il nuovo veicolo compare nella tabella 'Elenco Veicoli' dopo il refetch. Le fatture del fornitore selezionato precedentemente conteggiate come 'non associate' (badge in header) possono sparire dal conteggio se l'associazione diventa certa. Non riassocia retroattivamente in modo persistente: l'associazione è ricalcolata dinamicamente ad ogni GET /veicoli, quindi basta ricaricare la pagina per vederne l'effetto sulle fatture già mostrate come 'senza targa'."
+  "endpoint_rilevati_nei_sorgenti": [
+    "/api/noleggio/associa-fornitore",
+    "/api/noleggio/drivers",
+    "/api/noleggio/fatture-non-associate{param}",
+    "/api/noleggio/fatture/{param}/associa-veicolo",
+    "/api/noleggio/fornitori",
+    "/api/noleggio/riepilogo-controlli{param}",
+    "/api/noleggio/veicoli",
+    "/api/noleggio/veicoli/{param}",
+    "/api/openapi-automotive/aggiorna-veicolo",
+    "/api/openapi-automotive/info/{param}"
+  ],
+  "regole_ux": [
+    "Il popup deve avere chiusura visibile e non restare sovrapposto al documento.",
+    "Le azioni distruttive o definitive richiedono una conferma esplicita.",
+    "Le associazioni ambigue mostrano candidati e non vengono applicate automaticamente."
+  ]
 }

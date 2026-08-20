@@ -1,32 +1,37 @@
 {
-  "nome_popup": "Modal 'Modifica Veicolo'",
-  "pagine_da_cui_si_apre": ["Noleggio > Flotta Auto (tab 'flotta', componente NoleggioAuto.jsx montato dentro VeicoliHub.jsx alla route /noleggio)"],
-  "come_si_apre": "Click sull'icona ✏️ Modifica su una riga della tabella veicoli (setEditingVeicolo({...v})) oppure sul bottone Modifica nel pannello di dettaglio veicolo selezionato (setEditingVeicolo({...selectedVeicolo})). Stato controllato: editingVeicolo (oggetto veicolo o null).",
-  "scopo": "Correggere/integrare a mano i dati anagrafici di un veicolo a noleggio che il sistema ha scoperto automaticamente dalle fatture XML (driver, contratto, canone, dati tecnici), oltre a poter interrogare il servizio esterno OpenAPI Automotive per precompilare marca/modello/anno/alimentazione/potenza/cilindrata dalla targa.",
-  "dati_mostrati": "Precompilato con l'intero oggetto veicolo passato (editingVeicolo = {...v}), che è il risultato del merge lato backend tra i dati calcolati dalle fatture e i dati salvati manualmente in veicoli_noleggio. Sezione 'Dati da OpenAPI Automotive' con box verde che mostra, dopo una ricerca, i campi restituiti (Marca, Modello, Anno, Alimentazione, Potenza kW, Cilindrata cc) in lookupResult.campi_mappati.",
-  "campi_e_bottoni": [
-    {"elemento": "Pulsante '🔍 Cerca Dati'", "cosa_fa": "handleLookupVeicolo(editingVeicolo.targa): interroga il servizio esterno SENZA salvare nulla, solo per anteprima; disabilitato se lookupLoading o targa vuota", "endpoint_chiamato": "GET /api/openapi-automotive/info/{targa}", "validazioni": "nessuna lato client oltre a targa non vuota"},
-    {"elemento": "Pulsante '✓ Applica questi dati' (visibile solo dopo una ricerca riuscita)", "cosa_fa": "Copia i campi trovati (marca, modello, anno_immatricolazione, alimentazione, potenza_kw, cilindrata) nello stato locale editingVeicolo SENZA chiamare il backend, poi azzera lookupResult e mostra toast.success('Dati applicati!')", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
-    {"elemento": "Input 'Marca' / 'Modello'", "cosa_fa": "Aggiornano editingVeicolo.marca / .modello", "endpoint_chiamato": "nessuno", "validazioni": "nessuna"},
-    {"elemento": "Campo 'Driver'", "cosa_fa": "Select popolato da GET /api/noleggio/drivers (option value=d.id, label=d.nome_completo) se la lista drivers è disponibile, altrimenti input testo libero 'Nome e Cognome' come fallback; aggiorna editingVeicolo.driver (o driver_id a seconda dell'implementazione del select)", "endpoint_chiamato": "nessuno al cambio (i drivers sono già caricati al mount della pagina)", "validazioni": "nessuna"},
-    {"elemento": "Input 'N° Contratto' / 'Codice Cliente'", "cosa_fa": "Aggiornano editingVeicolo.contratto / .codice_cliente", "endpoint_chiamato": "nessuno", "validazioni": "nessuna"},
-    {"elemento": "Input numerico 'Canone mensile'", "cosa_fa": "Aggiorna editingVeicolo.canone_mensile", "endpoint_chiamato": "nessuno", "validazioni": "nessuna esplicita lato client (type=number)"},
-    {"elemento": "Campi 'Anno immatricolazione', 'Alimentazione', 'Potenza (kW)', 'Cilindrata (cc)'", "cosa_fa": "Aggiornano i rispettivi campi tecnici di editingVeicolo", "endpoint_chiamato": "nessuno", "validazioni": "nessuna"},
-    {"elemento": "Input 'Centro Fatturazione'", "cosa_fa": "Aggiorna editingVeicolo.centro_fatturazione", "endpoint_chiamato": "nessuno", "validazioni": "nessuna"},
-    {"elemento": "Date 'Inizio Noleggio' / 'Fine Noleggio'", "cosa_fa": "Aggiornano editingVeicolo.data_inizio / .data_fine", "endpoint_chiamato": "nessuno", "validazioni": "nessuna"},
-    {"elemento": "Textarea 'Note'", "cosa_fa": "Aggiorna editingVeicolo.note", "endpoint_chiamato": "nessuno", "validazioni": "nessuna"},
-    {"elemento": "Pulsante '✕' (header) / click sull'overlay scuro", "cosa_fa": "Chiude il modal senza salvare: setEditingVeicolo(null)", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
-    {"elemento": "Pulsante '🗑️ Elimina' (footer, sinistra)", "cosa_fa": "Chiama IMMEDIATAMENTE handleDelete(editingVeicolo.targa) e poi setEditingVeicolo(null) — NESSUN window.confirm o conferma intermedia prima della cancellazione", "endpoint_chiamato": "DELETE /api/noleggio/veicoli/{targa}", "validazioni": "nessuna lato client; il backend risponde 404 se il veicolo non esiste"},
-    {"elemento": "Pulsante 'Annulla' (footer)", "cosa_fa": "Chiude il modal senza salvare: setEditingVeicolo(null)", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
-    {"elemento": "Pulsante '💾 Salva' (footer)", "cosa_fa": "handleSaveVeicolo(): invia l'intero oggetto editingVeicolo", "endpoint_chiamato": "PUT /api/noleggio/veicoli/{targa}", "validazioni": "Server (update_veicolo): se è presente driver_id verifica che il dipendente esista in 'dipendenti' (400 se non trovato); solo i campi della whitelist (driver, driver_id, marca, modello, contratto, codice_cliente, centro_fatturazione, data_inizio, data_fine, note, fornitore_noleggio, fornitore_piva, canone_mensile, anno_immatricolazione, alimentazione, potenza_kw, cilindrata) vengono effettivamente salvati, gli altri campi dell'oggetto sono ignorati silenziosamente."}
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "popup_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "popup": "Modal 'Modifica Veicolo'",
+  "scopo": "Mappa tecnica del popup «Modal 'Modifica Veicolo'». Il comportamento e le mutazioni reali devono essere verificati nei sorgenti correnti.",
+  "aperto_da": [
+    "Noleggio > Flotta Auto (tab 'flotta', componente NoleggioAuto.jsx montato dentro VeicoliHub.jsx alla route /noleggio)"
   ],
-  "cosa_succede_alla_conferma": "PUT effettua un upsert su veicoli_noleggio filtrato per targa, aggiornando solo i campi della whitelist descritta sopra; se driver_id è passato, il campo driver viene ricalcolato come 'nome cognome' dal documento dipendenti. In caso di successo il frontend chiude il modal (setEditingVeicolo(null)) e richiama fetchVeicoli() che ricarica veicoli/drivers/fornitori: i dati salvati a mano hanno priorità sui dati derivati dalle fatture nel merge fatto dal backend. In caso di errore, setErr mostra un banner con il messaggio e il modal resta aperto con i dati inseriti.",
-  "come_si_chiude": [
-    "Pulsante '✕' nell'header",
-    "Click sull'overlay semi-trasparente di sfondo",
-    "Pulsante 'Annulla'",
-    "Pulsante '🗑️ Elimina' (chiude dopo aver eseguito la DELETE)",
-    "Pulsante '💾 Salva' riuscito (chiude dopo la PUT)"
+  "file_verificati": [
+    "frontend/src/pages/NoleggioAuto.jsx",
+    "frontend/src/pages/hub/VeicoliHub.jsx"
   ],
-  "effetto_su_pagina_sottostante": "Se salvato: la riga del veicolo nella tabella e l'eventuale pannello di dettaglio (se lo stesso veicolo è selezionato) si aggiornano con i nuovi dati anagrafici dopo il refetch. Se eliminato: il veicolo scompare dalla gestione manuale, selectedVeicolo torna null nel pannello dettaglio; se esistono ancora fatture con quella targa in 'invoices', il veicolo ricomparirà 'al volo' al prossimo scan ma senza i dati anagrafici salvati a mano (driver, contratto, date, canone)."
+  "endpoint_rilevati_nei_sorgenti": [
+    "/api/noleggio/associa-fornitore",
+    "/api/noleggio/drivers",
+    "/api/noleggio/export-pdf-costi",
+    "/api/noleggio/fatture-non-associate{param}",
+    "/api/noleggio/fatture/{param}/associa-veicolo",
+    "/api/noleggio/fornitori",
+    "/api/noleggio/riepilogo-controlli{param}",
+    "/api/noleggio/veicoli",
+    "/api/noleggio/veicoli/{param}",
+    "/api/openapi-automotive/aggiorna-veicolo",
+    "/api/openapi-automotive/info/{param}"
+  ],
+  "regole_ux": [
+    "Il popup deve avere chiusura visibile e non restare sovrapposto al documento.",
+    "Le azioni distruttive o definitive richiedono una conferma esplicita.",
+    "Le associazioni ambigue mostrano candidati e non vengono applicate automaticamente."
+  ]
 }

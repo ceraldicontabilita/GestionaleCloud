@@ -1,111 +1,145 @@
 {
-  "pagina": "Gestione PagoPA",
-  "url": "https://impresasemplice.online/pagopa",
-  "file_sorgente_frontend": [
-    "frontend/src/pages/hub/IntegrazioniHub.jsx",
-    "frontend/src/pages/GestionePagoPA.jsx"
-  ],
-  "file_sorgente_backend": [
-    "app/routers/pagopa.py (montato su prefix /api/pagopa in app/router_registry.py riga ~278)",
-    "app/routers/bank/bank_statement_import.py (montato su prefix /api/bank-statement, per la sola chiamata di supporto GET /movements)"
-  ],
-  "scopo_generale": "Pagina per gestire le ricevute di pagamento PagoPA (es. rateizzazioni INPS, Agenzia Entrate-Riscossione/AdER, TARI, COSAP/TOSAP, IMU, bollo auto) e associarle automaticamente ai movimenti dell'estratto conto bancario usando il codice CBILL/identificativo bolletta presente sia nella ricevuta sia nella descrizione del movimento bancario. Mostra statistiche (ricevute totali, associate, da associare, importo totale), un pannello informativo sulle tipologie di pagamenti CBILL gestibili, filtri di ricerca/stato e la tabella delle ricevute caricate.",
-  "nota_bug_recente_corretto": "Commit 'efb45f5 - fix: 3 bug verificati (GestionePagoPA, apertura esercizio, budget vs consuntivo)' del 2026-07-08 ha corretto un disallineamento di nomi di campo tra frontend e backend che rendeva la pagina sostanzialmente non funzionante: le 4 card statistiche mostravano sempre 0/€0 (leggevano stats.totale_ricevute/associate/da_associare/importo_totale, campi mai esistiti nella risposta di GET /api/pagopa/stats, invece dei reali ricevute_caricate/ricevute_associate/totale_pagato), ogni ricevuta risultava sempre 'non associata' (leggeva ricevuta.movimento_banca_id invece del reale movimento_id), il filtro Associati/Non associati non funzionava per lo stesso motivo, la colonna 'Codice CBILL' era sempre vuota (leggeva r.codice_cbill invece di r.identificativo_bolletta) e il toast dopo Auto-Associa diceva sempre 'Associati 0 ricevute' (leggeva response.data.associazioni_effettuate, campo mai restituito, invece di associazioni_trovate). Questo file documenta lo STATO ATTUALE del codice, già corretto: tutti i nomi campo sotto sono quelli realmente allineati al backend.",
-  "bottoni_azioni": [
-    {
-      "etichetta": "🔄 Aggiorna (header, data-testid=refresh-pagopa-btn)",
-      "cosa_fa_al_click": "Richiama in sequenza fetchStats() e fetchRicevute().",
-      "endpoint_chiamato": "GET /api/pagopa/stats  +  GET /api/pagopa/ricevute",
-      "logica_backend": "stats_pagopa(anno=None): conta i movimenti in 'estratto_conto_movimenti' la cui descrizione_originale matcha la regex 'CBILL|PAGOPA|AGENZIA.DELLE.ENTRATE.*R' (case-insensitive) → tot_movimenti; ricalcola con filtro aggiuntivo ricevuta_pagopa_id esistente → con_ricevuta; conta i documenti in 'ricevute_pagopa' → tot_ricevute; con filtro movimento_id esistente → ricevute_associate; aggrega con pipeline $sum $abs su importo (regex CBILL|AGENZIA.DELLE.ENTRATE.*R) → totale_pagato. list_ricevute(): find su 'ricevute_pagopa' ordinato per data_pagamento decrescente, limit 100 (default della query, il frontend non passa parametri quindi usa i default della funzione: anno=None, associata=None, limit=100).",
-      "formula_matematica": "Card 'Da Associare' (calcolata lato FRONTEND, non dal backend): (stats.ricevute_caricate || 0) - (stats.ricevute_associate || 0).",
-      "aggiornamento_ui": "Aggiorna le 4 card statistiche (Ricevute Totali, Associate, Da Associare, Importo Totale) e la tabella ricevute sottostante.",
-      "casi_errore": "fetchStats: solo console.error silenzioso. fetchRicevute: toast.error('Errore nel caricamento ricevute') via componenti ui/sonner."
-    },
-    {
-      "etichetta": "🔗 Auto-Associa (header, data-testid=auto-associa-pagopa-btn)",
-      "cosa_fa_al_click": "handleAutoAssocia(): imposta autoAssociaLoading=true, chiama l'endpoint di associazione automatica, mostra un toast con il numero di ricevute associate, poi ricarica stats e lista ricevute.",
-      "endpoint_chiamato": "POST /api/pagopa/auto-associa",
-      "logica_backend": "auto_associa_ricevute(): cerca in 'ricevute_pagopa' tutte le ricevute con movimento_id assente/nullo/vuoto E identificativo_bolletta presente (fino a 1000 record). Per ognuna chiama cerca_movimento_per_bolletta(db, codice), che cerca in 'estratto_conto_movimenti' un documento la cui descrizione_originale o descrizione contenga (via regex) quell'esatto codice bolletta. Se trovato: UPDATE della ricevuta con movimento_id, movimento_data, movimento_importo, associazione_automatica=true, updated_at; UPDATE del movimento bancario con ricevuta_pagopa_id, ricevuta_filename, updated_at. Se non trovato, il codice viene aggiunto all'array 'non_trovate'. Restituisce {timestamp, ricevute_analizzate, associazioni_trovate, gia_associate, non_trovate[], errori[]}.",
-      "formula_matematica": "nessuna (matching testuale via regex sul codice bolletta, non numerico)",
-      "aggiornamento_ui": "toast.success(`Associati ${response.data?.associazioni_trovate || 0} ricevute`); poi fetchStats() e fetchRicevute() per rinfrescare card e tabella.",
-      "casi_errore": "toast.error(\"Errore nell'associazione automatica\") + console.error, se la POST fallisce."
-    },
-    {
-      "etichetta": "Filtro testo 'Cerca per codice CBILL o beneficiario...' (data-testid=search-pagopa-input)",
-      "cosa_fa_al_click": "Filtro CLIENT-SIDE, nessuna chiamata API: setFiltro(valore); la lista ricevuteFiltrate applica .filter() su r.identificativo_bolletta e r.beneficiario (case-insensitive, substring).",
-      "endpoint_chiamato": "nessuno",
-      "logica_backend": "N/A (filtro solo in memoria sui dati già caricati)",
-      "formula_matematica": "nessuna",
-      "aggiornamento_ui": "Ricalcola ricevuteFiltrate e aggiorna la tabella + il contatore 'N ricevute (filtrate per ...)'.",
-      "casi_errore": "nessuno"
-    },
-    {
-      "etichetta": "Tutti / ✅ Associati / ⏳ Da Associare (pulsanti filtro stato)",
-      "cosa_fa_al_click": "setStatoFiltro('tutti'|'associati'|'non_associati'), filtro CLIENT-SIDE su ricevuta.movimento_id (presente/assente).",
-      "endpoint_chiamato": "nessuno",
-      "logica_backend": "N/A",
-      "formula_matematica": "nessuna",
-      "aggiornamento_ui": "Cambia lo stile del pulsante attivo e ricalcola la lista filtrata.",
-      "casi_errore": "nessuno"
-    },
-    {
-      "etichetta": "👁️ (icona occhio, per riga, data-testid=view-ricevuta-{idx})",
-      "cosa_fa_al_click": "Nessun handler onClick collegato nel codice letto: il pulsante è presente nel markup ma non ha alcuna azione (bottone 'morto').",
-      "endpoint_chiamato": "nessuno",
-      "logica_backend": "N/A",
-      "formula_matematica": "nessuna",
-      "aggiornamento_ui": "nessuno",
-      "casi_errore": "N/A — funzionalità non implementata, solo segnaposto visivo."
-    },
-    {
-      "etichetta": "📥 (link download PDF, per riga, visibile solo se ricevuta.pdf_url è valorizzato)",
-      "cosa_fa_al_click": "Apre ricevuta.pdf_url in una nuova scheda (link <a target=\"_blank\">).",
-      "endpoint_chiamato": "nessuna chiamata API diretta, è un link statico al valore del campo.",
-      "logica_backend": "N/A. Nota: né POST /ricevute/upload né nessun altro endpoint del router pagopa.py scrivono un campo 'pdf_url' sul documento ricevuta — il campo 'filename' viene salvato ma non un URL pubblico. Di conseguenza questo link, allo stato attuale del backend, non compare mai per le ricevute create tramite l'endpoint di upload (a meno che il campo venga popolato da un altro processo/import non incluso in questo router).",
-      "formula_matematica": "nessuna",
-      "aggiornamento_ui": "nessuno",
-      "casi_errore": "N/A"
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Caricamento manuale di una ricevuta PagoPA (endpoint disponibile lato backend, NON esposto da un pulsante in questa pagina)",
-      "sequenza_esatta": "1) POST /api/pagopa/ricevute/upload con multipart file + parametri opzionali (importo, data_pagamento, identificativo_bolletta, beneficiario, note). 2) Il backend legge il file, genera un id UUID, costruisce il documento ricevuta con beneficiario di default 'AGENZIA DELLE ENTRATE - RISCOSSIONE' se non specificato e movimento_id=None. 3) Se è stato passato identificativo_bolletta, chiama subito cerca_movimento_per_bolletta: se trova un movimento in 'estratto_conto_movimenti' con quel codice nella descrizione, imposta movimento_id/movimento_data/movimento_importo/associazione_automatica=true sulla ricevuta E aggiorna il movimento con ricevuta_pagopa_id/ricevuta_filename. 4) INSERT del documento ricevuta nella collection 'ricevute_pagopa'. 5) Risposta con id, filename, associata (bool), movimento_id, movimento_importo.",
-      "collezioni_coinvolte": ["ricevute_pagopa", "estratto_conto_movimenti"],
-      "campi_scritti": {
-        "ricevute_pagopa": "id, filename, content_type, size, importo, data_pagamento, identificativo_bolletta, beneficiario, note, movimento_id, associazione_automatica, created_at",
-        "estratto_conto_movimenti (solo se associazione riuscita)": "ricevuta_pagopa_id, ricevuta_filename, updated_at"
-      },
-      "effetti_collaterali": "NOTA IMPORTANTE: questo endpoint di upload esiste nel router backend (app/routers/pagopa.py) ma NON risulta chiamato da nessun bottone/form in GestionePagoPA.jsx — la pagina attuale non ha un form di caricamento file. Il testo informativo in pagina ('Carica le ricevute PDF dalla sezione Documenti o importa da email') suggerisce che le ricevute PagoPA arrivino in questa collection tramite un altro flusso (import email/documenti) non coperto da questo file."
-    },
-    {
-      "nome": "Associazione manuale ricevuta-movimento (endpoint disponibile lato backend, NON esposto da un pulsante in questa pagina)",
-      "sequenza_esatta": "1) POST /api/pagopa/ricevute/associa-manuale con body {ricevuta_id, movimento_id}. 2) Se uno dei due manca: HTTP 400. 3) UPDATE della ricevuta in 'ricevute_pagopa' con movimento_id, associazione_automatica=false, associazione_manuale=true, updated_at. Se nessun documento modificato: HTTP 404. 4) UPDATE del movimento in 'estratto_conto_movimenti' con ricevuta_pagopa_id, updated_at.",
-      "collezioni_coinvolte": ["ricevute_pagopa", "estratto_conto_movimenti"],
-      "campi_scritti": {
-        "ricevute_pagopa": "movimento_id, associazione_automatica=false, associazione_manuale=true, updated_at",
-        "estratto_conto_movimenti": "ricevuta_pagopa_id, updated_at"
-      },
-      "effetti_collaterali": "Nel testo informativo della pagina si legge 'Puoi anche associare manualmente cliccando su una ricevuta non associata', ma NESSUN handler di click sulla riga della tabella richiama questo endpoint nel codice attuale di GestionePagoPA.jsx: il pulsante 👁️ non ha azione (vedi sopra). Questa è quindi una funzionalità di backend pronta ma non collegata alla UI di questa pagina."
-    },
-    {
-      "nome": "Auto-associazione massiva (unica azione di scrittura realmente raggiungibile da questa pagina)",
-      "sequenza_esatta": "Vedi bottone '🔗 Auto-Associa' sopra: POST /api/pagopa/auto-associa → per ogni ricevuta non associata con codice bolletta, cerca match testuale nei movimenti bancari e, se trovato, aggiorna entrambi i documenti.",
-      "collezioni_coinvolte": ["ricevute_pagopa", "estratto_conto_movimenti"],
-      "campi_scritti": {
-        "ricevute_pagopa": "movimento_id, movimento_data, movimento_importo, associazione_automatica=true, updated_at",
-        "estratto_conto_movimenti": "ricevuta_pagopa_id, ricevuta_filename, updated_at"
-      },
-      "effetti_collaterali": "Operazione ripetibile/idempotente (rielabora solo le ricevute ancora senza movimento_id); non elimina né sovrascrive associazioni manuali già presenti."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Condivide l'Hub 'Integrazioni' con IntegrazioniOpenAPI.jsx (stesso IntegrazioniHub.jsx, sotto-vista raggiunta con path che include '/pagopa').",
-    "Dipende dai dati della collection 'estratto_conto_movimenti', alimentata dall'import/parsing degli estratti conto bancari (pagina Archivio Bonifici / Verifica Movimenti Banca), tramite il campo condiviso 'descrizione_originale'.",
-    "Effettua una chiamata GET /api/bank-statement/movements?tipo=pagopa&limit=100 (fetchMovimentiBanca) verso il router app/routers/bank/bank_statement_import.py, MA quell'endpoint accetta solo i parametri data_da, data_a, limit — NON esiste un parametro 'tipo': viene quindi ignorato silenziosamente da FastAPI e la chiamata restituisce semplicemente gli ultimi movimenti bancari (non filtrati per PagoPA). Inoltre lo stato risultante (movimentiBanca) viene salvato con setMovimentiBanca() ma non risulta MAI utilizzato/renderizzato in nessuna parte del JSX della pagina: è una chiamata e uno stato attualmente senza effetto visibile per l'utente (probabile funzionalità futura non completata)."
-  ],
-  "popup_e_modali_presenti": [
-    "Nessun modale (dialog) presente nella pagina.",
-    "Feedback tramite toast (componente ui/sonner): toast.success/toast.error per Auto-Associa e per errori di caricamento ricevute/associazione."
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Riconciliazione PagoPA",
+  "route": "/riconciliazione/pagopa",
+  "catalog_id": 52,
+  "modulo": "riconciliazione",
+  "accesso": "authenticated",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Riconciliazione PagoPA». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/GestionePagoPA.jsx",
+    "entry": "frontend/src/pages/hub/RiconciliazioneHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/GestionePagoPA.jsx",
+      "frontend/src/pages/hub/IntegrazioniHub.jsx",
+      "frontend/src/pages/hub/RiconciliazioneHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/router_registry.py",
+      "app/routers/bank/bank_statement_import.py",
+      "app/routers/pagopa.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/admin",
+      "/api/agenti",
+      "/api/ai-parser",
+      "/api/alerts",
+      "/api/anagrafica-fornitori",
+      "/api/archivio-bonifici",
+      "/api/assegni",
+      "/api/assegni/learning",
+      "/api/auth",
+      "/api/auth/api/auth/verify",
+      "/api/auth/login",
+      "/api/auth/verify",
+      "/api/auto-repair",
+      "/api/bank-statement",
+      "/api/batch-reprocess",
+      "/api/bilancio",
+      "/api/cash",
+      "/api/cedolini",
+      "/api/centri-costo",
+      "/api/cespiti",
+      "/api/chiusura-esercizio",
+      "/api/collaudo",
+      "/api/commercialista",
+      "/api/config",
+      "/api/config-import",
+      "/api/contabilita",
+      "/api/contabilita-gestionale",
+      "/api/controllo-gestione",
+      "/api/corrispettivi",
+      "/api/dashboard",
+      "/api/dati-isa",
+      "/api/dipendenti",
+      "/api/dizionario-articoli",
+      "/api/document-ai",
+      "/api/documenti",
+      "/api/documenti-fiscali",
+      "/api/documenti-inbox",
+      "/api/documenti-non-associati",
+      "/api/email-download",
+      "/api/email-scanner",
+      "/api/erp/ponte",
+      "/api/estratto-conto-movimenti",
+      "/api/f24",
+      "/api/f24-analisi",
+      "/api/f24-email",
+      "/api/f24-email-settings",
+      "/api/f24-public",
+      "/api/f24-riconciliazione",
+      "/api/f24/quietanze",
+      "/api/fatture",
+      "/api/fatture-estere",
+      "/api/fatture-ricevute",
+      "/api/finanziamenti-soci",
+      "/api/finanziaria",
+      "/api/fiscal",
+      "/api/fiscalita",
+      "/api/fornitori-learning",
+      "/api/gestione-riservata",
+      "/api/invoices",
+      "/api/invoices/emesse",
+      "/api/iva",
+      "/api/learning-machine",
+      "/api/learning-universal",
+      "/api/mutui",
+      "/api/nexi",
+      "/api/noleggio",
+      "/api/openapi",
+      "/api/openapi-automotive",
+      "/api/openapi-imprese",
+      "/api/operazioni-da-confermare",
+      "/api/pagamenti",
+      "/api/pagamenti-buoni",
+      "/api/pagopa",
+      "/api/pagopa/auto-associa",
+      "/api/pagopa/ricevute",
+      "/api/pagopa/ricevute/{param}/pdf",
+      "/api/pagopa/stats",
+      "/api/paypal-api",
+      "/api/paypal-api/status",
+      "/api/paypal-api/sync",
+      "/api/paypal-statements",
+      "/api/pianificazione",
+      "/api/piano-conti",
+      "/api/previsioni-acquisti",
+      "/api/prima-nota",
+      "/api/prima-nota-salari",
+      "/api/rapido",
+      "/api/regole",
+      "/api/ritenute",
+      "/api/scadenzario-fornitori",
+      "/api/scadenze",
+      "/api/settings",
+      "/api/sumup",
+      "/api/suppliers",
+      "/api/tfr",
+      "/api/verbali-noleggio",
+      "/api/verbali-riconciliazione",
+      "/api/verifica-coerenza",
+      "/api/voci-bilancio",
+      "/api/whatsapp"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

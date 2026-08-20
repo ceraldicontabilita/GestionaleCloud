@@ -1,35 +1,31 @@
 {
-  "nome_popup": "Banner deep-link 'Fattura non trovata / anno diverso' (pannello inline, non un vero overlay/modale)",
-  "file_sorgente": "frontend/src/pages/ArchivioFattureRicevute.jsx (stato e logica righe 144-196, rendering righe 348-413)",
-  "pagine_da_cui_si_apre": ["Fatture / Archivio Fatture Ricevute (ArchivioFattureRicevute.jsx)"],
-  "come_si_apre": "Non è aperto da un click dell'utente, ma automaticamente da un useEffect quando la pagina viene raggiunta con un parametro querystring ?invoice_id=<id> (o ?id=<id>, usato ad es. dal modale PayPal o da altri link esterni verso una fattura specifica) e, dopo il caricamento della lista fatture (fetchFatture completato), la fattura richiesta NON viene trovata nell'array fatture attualmente caricato (filtrato per l'anno globale corrente). In quel caso il componente fa una GET diretta di dettaglio per determinare se la fattura esiste in un anno diverso o non esiste affatto, poi imposta lo stato invoiceNotFoundWarning che fa comparire il banner.",
-  "scopo": "Evitare che un link diretto a una fattura (es. da un pagamento PayPal o da un'altra pagina) sembri 'rotto' quando in realtà la fattura esiste ma è filtrata fuori perché appartiene a un anno diverso da quello globale selezionato; oppure informare esplicitamente l'utente che la fattura non esiste più / è stata eliminata.",
-  "dati_mostrati": "Se la fattura esiste ma in un anno diverso: numero fattura (invoice_number/numero_documento), fornitore (supplier_name/fornitore_ragione_sociale) e anno reale della fattura (dedotto da invoice_date/data_documento), ottenuti da GET /api/fatture-ricevute/fattura/{invoiceIdFromUrl}. Se anche questa chiamata fallisce (catch), il banner mostra solo il messaggio 'la fattura non esiste più o è stata eliminata' con l'id richiesto.",
-  "campi_e_bottoni": [
-    {
-      "elemento": "Link '📄 Vedi la fattura adesso' (solo quando la fattura esiste ma in un anno diverso, non quando notExist=true)",
-      "cosa_fa": "Tag <a target=\"_blank\"> statico (non un handler JS) che apre in una nuova scheda del browser il documento della fattura.",
-      "endpoint_chiamato": "GET /api/fatture-ricevute/fattura/{id}/view-assoinvoice",
-      "validazioni": "n/d"
-    },
-    {
-      "elemento": "Testo 'oppure cambia l'anno globale (in alto a destra)...'",
-      "cosa_fa": "Solo testo informativo, nessuna azione cliccabile diretta: indica all'utente di usare il selettore Anno globale della UI (fuori da questo componente) per vedere la fattura in elenco.",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "n/d"
-    },
-    {
-      "elemento": "Bottone '✕' (chiudi banner)",
-      "cosa_fa": "onClick: setInvoiceNotFoundWarning(null) e rimuove i parametri invoice_id/id dall'URL corrente tramite setSearchParams (con {replace:true}, quindi non aggiunge una voce nella cronologia del browser).",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "n/d"
-    }
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "popup_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "popup": "Banner deep-link 'Fattura non trovata / anno diverso' (pannello inline, non un vero overlay/modale)",
+  "scopo": "Mappa tecnica del popup «Banner deep-link 'Fattura non trovata / anno diverso' (pannello inline, non un vero overlay/modale)». Il comportamento e le mutazioni reali devono essere verificati nei sorgenti correnti.",
+  "aperto_da": [
+    "Fatture / Archivio Fatture Ricevute (ArchivioFattureRicevute.jsx)"
   ],
-  "cosa_succede_alla_conferma": "Non c'è un'azione di 'conferma'/submit: è un banner puramente informativo, nessuna scrittura viene mai effettuata. Se invece la fattura VIENE trovata nell'anno correntemente filtrato (percorso alternativo, non quello che genera il banner), il componente evidenzia la riga corrispondente per 4 secondi (background diverso via highlightedId), fa uno scroll automatico verso di essa (scrollIntoView smooth) e infine rimuove da solo i parametri invoice_id/id dall'URL allo scadere del timeout.",
-  "come_si_chiude": [
-    "Bottone '✕' esplicito",
-    "Automaticamente non si chiude da solo col tempo (a differenza dell'evidenziazione riga a 4 secondi, che è un caso diverso): resta visibile finché l'utente non lo chiude o non naviga altrove",
-    "Cambiando manualmente l'anno globale e poi ricaricando/filtrando di nuovo la lista può implicitamente risolvere la situazione, ma il banner stesso non si autochiude in quel momento — richiede comunque il click su '✕' per sparire, salvo refresh completo della pagina che azzera lo stato React"
+  "file_verificati": [
+    "frontend/src/pages/ArchivioFattureRicevute.jsx"
   ],
-  "effetto_su_pagina_sottostante": "Nessun refresh dei dati fatture viene innescato dalla chiusura del banner: viene solo pulito l'URL (rimozione di invoice_id/id) e azzerato lo stato locale invoiceNotFoundWarning. La lista fatture sottostante non cambia in alcun modo per effetto della chiusura del banner."
+  "endpoint_rilevati_nei_sorgenti": [
+    "/api/fatture-ricevute/archivio",
+    "/api/fatture-ricevute/export-selezione",
+    "/api/fatture-ricevute/fattura/{param}",
+    "/api/fatture-ricevute/fornitori",
+    "/api/fatture-ricevute/statistiche{param}",
+    "/api/prima-nota/sposta-movimento"
+  ],
+  "regole_ux": [
+    "Il popup deve avere chiusura visibile e non restare sovrapposto al documento.",
+    "Le azioni distruttive o definitive richiedono una conferma esplicita.",
+    "Le associazioni ambigue mostrano candidati e non vengono applicate automaticamente."
+  ]
 }

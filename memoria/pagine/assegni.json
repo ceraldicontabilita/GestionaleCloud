@@ -1,471 +1,166 @@
 {
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
   "pagina": "Assegni",
-  "url": "https://impresasemplice.online/riconciliazione/assegni",
-  "file_sorgente_frontend": [
-    "/home/user/GestionaleCloud/frontend/src/pages/GestioneAssegni.jsx",
-    "/home/user/GestionaleCloud/frontend/src/pages/hub/RiconciliazioneHub.jsx",
-    "/home/user/GestionaleCloud/frontend/src/App.jsx",
-    "/home/user/GestionaleCloud/frontend/src/components/ModalFattura.jsx"
-  ],
-  "file_sorgente_backend": [
-    "/home/user/GestionaleCloud/app/routers/bank/assegni.py",
-    "/home/user/GestionaleCloud/app/routers/bank/assegni_auto_match.py",
-    "/home/user/GestionaleCloud/app/routers/bank/assegni_learning.py",
-    "/home/user/GestionaleCloud/app/routers/bank/estratto_conto.py",
-    "/home/user/GestionaleCloud/app/router_registry.py"
-  ],
-  "scopo_generale": "La pagina Assegni (montata dentro l'hub di navigazione RiconciliazioneHub, che sceglie il contenuto in base al pathname) gestisce l'intero ciclo di vita degli assegni emessi da Ceraldi Group: generazione progressiva dei numeri di un carnet, compilazione (beneficiario/importo), collegamento N:M con le fatture passive tramite un sistema di quote in euro, e riconciliazione con l'estratto conto bancario quando l'assegno viene effettivamente addebitato. Il cuore della pagina è il motore di auto-matching a 4 livelli (assegni_auto_match.py) che prova a collegare automaticamente assegni e fatture aperte dello stesso fornitore con tolleranza di mezzo centesimo, lasciando all'utente solo i casi realmente ambigui. Accanto all'auto-matcher 'rigoroso' convivono, per compatibilità storica, diversi endpoint di associazione euristica più permissivi (auto-associa, associa-intelligente, cerca-combinazioni-assegni, associa-beneficiari-robusto) nati in fasi diverse dello sviluppo e ancora richiamabili dal menu 'Altro'. La UI non ha tab veri e propri in stile SPA-router: è un'unica vista con pannelli collassabili (ambigui da risolvere, assegni senza beneficiario), un pannello filtri, badge statistiche/health-score e la tabella degli assegni raggruppati per carnet, con azioni sia bulk (selezione multipla, stampa PDF) sia per singolo assegno (modifica inline, collega fatture, elimina, stampa)."
-  ,
-  "sezioni_tab": [
-    {
-      "nome": "Barra azioni principale",
-      "descrizione": "In alto: 'Genera Assegni', 'Auto-collega' (auto-match rigoroso), 'Filtri' (toggle pannello filtri), menu 'Altro' (azioni secondarie), selettore Anno (segue il selettore globale dell'app, non locale alla pagina)."
-    },
-    {
-      "nome": "Pannello 'Assegni ambigui — serve la tua decisione'",
-      "descrizione": "Sezione collassabile (toggle da menu Altro > 'Risolvi ambigui') che mostra gli assegni per cui l'auto-matcher ha trovato più fatture candidate con lo stesso importo. Per ciascuno mostra livello (L1-L4), fornitore, importo, data emissione, e la lista di fatture candidate selezionabili con checkbox; bottone 'Collega selezionati' per risolvere manualmente."
-    },
-    {
-      "nome": "Badge statistiche avanzate",
-      "descrizione": "Riga di indicatori (Health Score %, Con Beneficiario, Con Fattura, Duplicati, Da Associare) calcolati da GET /api/assegni/learning/stats-avanzate; cliccando 'Da Associare' si attiva il filtro client-side filterSoloDaAssociare."
-    },
-    {
-      "nome": "Pannello Filtri",
-      "descrizione": "Pannello fisso (position fixed) con campi: Fornitore/Beneficiario, Importo Min, Importo Max, N. Assegno, N. Fattura, più bottone Reset. Il filtraggio è interamente lato client su filteredAssegni (nessuna chiamata API dedicata)."
-    },
-    {
-      "nome": "Sezione 'Assegni Senza Beneficiario'",
-      "descrizione": "Pannello collassabile alimentato da GET /api/assegni/senza-associazione: elenca gli assegni con importo ma senza beneficiario reale, raggruppati per importo, con bottone 'Associa Fattura' per riga che apre il modale Collega Fatture sull'assegno selezionato."
-    },
-    {
-      "nome": "Lista Assegni (tabella/carnet)",
-      "descrizione": "Tabella principale (desktop) o card (mobile) con gli assegni raggruppati per carnet (prefisso prima del trattino nel numero). Colonne: checkbox selezione, N. Assegno, Stato, Beneficiario/Note, Importo, Fattura/Data, Azioni (modifica inline, collega fatture, stampa singolo PDF, elimina). Nota: NON esistono tab separati 'Da collegare' / 'Parzialmente assegnati' / 'Addebitati ma non riconciliati' come suggerito dalla documentazione operativa generale: nel codice reale questi stati sono navigabili solo tramite i filtri lato client (es. filterSoloDaAssociare) o osservando la colonna Stato/badge colorato, non tramite tab veri."
-    }
-  ],
-  "bottoni_azioni": [
-    {
-      "etichetta": "+ Genera Assegni",
-      "dove_si_trova": "Barra azioni principale (data-testid=genera-assegni-btn)",
-      "cosa_fa_al_click": "Apre il modale 'Genera 10 Assegni Progressivi' (setShowGenerate(true)) dove si inserisce il numero del primo assegno nel formato PREFISSO-NUMERO (es. 0208769182-11) e la quantità.",
-      "endpoint_chiamato": "POST /api/assegni/genera",
-      "logica_backend": "genera_assegni(): fa il parsing di numero_primo su rsplit('-',1) in prefix + start_num (intero). Verifica preventivamente che nessuno dei numeri prefix-(start_num+i) esista già in db.assegni (altrimenti 400 con l'elenco dei numeri duplicati, max 5 mostrati). Se libero, crea `quantita` documenti in collezione 'assegni' con stato='vuoto', importo=None, beneficiario=None, fatture_collegate=[] e tutti i campi nulli.",
-      "formula_matematica": "numero_i = f\"{prefix}-{start_num + i}\" per i in range(quantita)",
-      "aggiornamento_ui": "Chiude il modale, resetta il form, richiama loadData() per ricaricare la lista e le stats.",
-      "casi_errore": "400 se il formato numero non contiene '-'; 400 se la parte numerica non è un intero; 400 se uno o più numeri esistono già (lista dei duplicati nel detail). Il frontend mostra alert('Errore: ' + detail)."
-    },
-    {
-      "etichetta": "🤖 Auto-collega",
-      "dove_si_trova": "Barra azioni principale (data-testid=auto-match-btn)",
-      "cosa_fa_al_click": "handleAutoMatch(false): invoca l'auto-matcher rigoroso a 4 livelli in modalità scrittura (non dry-run).",
-      "endpoint_chiamato": "POST /api/assegni/auto-match (dry_run=false)",
-      "logica_backend": "auto_match_assegni() chiama run_auto_match(db, dry_run=False) in assegni_auto_match.py: esegue in sequenza L1→L2→L3→L4 (vedi sezione livelli_auto_matching sotto), scrive i collegamenti su DB tramite _apply_match, e ritorna un report con match_l1..l4, ambigui, non_trovati, movimenti_banca_creati.",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Mostra il pannello risultato 'Auto-Match completato' con i conteggi per livello (L1..L4, ambigui, non trovati), dettaglio espandibile per L2/L3 (quali assegni compongono la somma di ogni fattura) e per gli ambigui; richiama loadData() per rinfrescare la tabella.",
-      "casi_errore": "In caso di eccezione lato client, alert('Errore Auto-Match: ' + detail); il pulsante è disabilitato (autoAssociating=true) durante l'esecuzione."
-    },
-    {
-      "etichetta": "👁️ Anteprima auto-match",
-      "dove_si_trova": "Menu '⚙️ Altro' (data-testid=auto-match-preview-btn)",
-      "cosa_fa_al_click": "handleAutoMatch(true): stessa funzione del pulsante Auto-collega ma con dry_run=true.",
-      "endpoint_chiamato": "POST /api/assegni/auto-match?dry_run=true",
-      "logica_backend": "run_auto_match(db, dry_run=True): esegue tutta la logica di matching ma _apply_match ritorna subito {\"dry_run\": true, ...} senza eseguire alcuna update_one sul DB — nessuna scrittura.",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Mostra lo stesso pannello risultato ma con etichetta '(ANTEPRIMA)' e NON richiama loadData() (nessun dato è cambiato).",
-      "casi_errore": "Come sopra."
-    },
-    {
-      "etichetta": "🔍 Filtri",
-      "dove_si_trova": "Barra azioni principale (data-testid=toggle-filters-btn)",
-      "cosa_fa_al_click": "Toggle showFilters; apre/chiude il pannello filtri fisso con i campi Fornitore, Importo Min/Max, N. Assegno, N. Fattura.",
-      "endpoint_chiamato": null,
-      "logica_backend": "Nessuna chiamata backend: il filtro è applicato lato client su filteredAssegni (array derivato da assegni con i predicati dei filtri).",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Mostra/nasconde il pannello; un pallino '●' accanto al testo indica che almeno un filtro è attivo. Riepilogo 'Risultati: N assegni trovati su M totali' quando ci sono filtri attivi.",
-      "casi_errore": null
-    },
-    {
-      "etichetta": "⚙️ Altro (menu)",
-      "dove_si_trova": "Barra azioni principale (data-testid=altro-menu-btn)",
-      "cosa_fa_al_click": "Apre un dropdown con le azioni secondarie: Auto-Associa, Anteprima auto-match, Risolvi ambigui, Combinazioni, Stampa Selezionati, Learn, Smart (Associa Intelligente), Pulizia (duplicati), link Dashboard Learning, Svuota (assegni vuoti).",
-      "endpoint_chiamato": null,
-      "logica_backend": "Solo gestione stato UI (showAltroMenu); si chiude automaticamente al click fuori dal menu (listener mousedown su altroMenuRef).",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Mostra/nasconde il dropdown.",
-      "casi_errore": null
-    },
-    {
-      "etichetta": "🔁 Auto-Associa",
-      "dove_si_trova": "Menu Altro (data-testid=auto-associa-btn)",
-      "cosa_fa_al_click": "handleAutoAssocia(): invoca l'algoritmo di associazione euristica 'legacy' (più permissivo del match rigoroso a 4 livelli).",
-      "endpoint_chiamato": "POST /api/assegni/auto-associa",
-      "logica_backend": "auto_associa_assegni(): carica assegni senza beneficiario/fattura e fatture non pagate SOLO di fornitori con metodo_pagamento in ['assegno','misto'] (i fornitori senza metodo configurato NON sono considerati candidati, a differenza di versioni precedenti). Usa una pipeline a 4 fasi: FASE 1 match esatto per importo (tolleranza 0.5€, se più assegni compatibili è marcato 'esatto_ambiguo' con confidenza 0.5 invece di 1.0); FASE 2 match via learning storico (fornitore noto associato allo stesso importo, similarity SequenceMatcher > 0.7, tolleranza 1€, confidenza 0.85); FASE 3 match multiplo N assegni uguali = 1 fattura (tolleranza max(2, importo_target*0.5%), confidenza 0.8); FASE 4 match fuzzy per nome in causale/note (tolleranza 2% sull'importo, similarity > 0.6, confidenza 0.6). Solo le associazioni con confidenza >= MIN_CONFIDENCE_AUTO=0.80 vengono applicate direttamente sull'assegno (senza inventare un beneficiario fittizio se non già presente); le altre sono salvate come proposte in 'proposte_associazione_assegni' con stato='da_confermare'.",
-      "formula_matematica": "tolleranza_fase3 = max(2, importo_target * 0.005); importo_target = importo_assegno * n (n = numero di assegni uguali)",
-      "aggiornamento_ui": "Mostra pannello risultato (legacy, sfondo verde/arancio) con message, elenco associazioni effettuate (primi 10) e loadData().",
-      "casi_errore": "alert('Errore: ' + detail) in caso di eccezione."
-    },
-    {
-      "etichetta": "⚠️ Risolvi ambigui / Nascondi ambigui",
-      "dove_si_trova": "Menu Altro (data-testid=ambigui-toggle-btn)",
-      "cosa_fa_al_click": "toggleAmbiguiSection(): apre/chiude il pannello ambigui; se è la prima apertura e la lista è vuota, chiama loadAmbigui().",
-      "endpoint_chiamato": "GET /api/assegni/ambigui",
-      "logica_backend": "lista_ambigui(): richiama run_auto_match(db, dry_run=True) e per ogni voce in report['ambigui'] arricchisce i dati (numero assegno, importo, data emissione, fornitore, carnet, e per ogni fattura candidata: numero, data, importo_totale, importo_pagato, importo_residuo, fornitore, payment_status).",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Popola ambiguiList e imposta selezione di default (prima fattura candidata) per ciascun ambiguo in ambiguiSelections.",
-      "casi_errore": "alert('Errore caricamento ambigui: ' + detail)."
-    },
-    {
-      "etichetta": "✓ Collega selezionati (per riga ambiguo)",
-      "dove_si_trova": "Pannello Ambigui, per ogni assegno ambiguo (data-testid=risolvi-{assegnoId})",
-      "cosa_fa_al_click": "resolveAmbiguo(assegnoId): prende le fatture selezionate con checkbox in ambiguiSelections e le invia per risolvere manualmente l'ambiguità.",
-      "endpoint_chiamato": "POST /api/assegni/{assegno_id}/risolvi-ambiguo",
-      "logica_backend": "risolvi_ambiguo(): valida che fattura_ids non sia vuoto e che l'assegno non abbia già fatture_collegate (altrimenti 400 'Assegno già collegato'). Carica le fatture, calcola _residuo per ciascuna, e chiama _apply_match(db, [assegno], fatture, livello='MANUAL', dry_run=False) — la stessa funzione usata dall'auto-matcher, quindi stessa logica di calcolo quote (vedi operazioni_di_registrazione).",
-      "formula_matematica": "quota_fattura_i = min(residuo_fattura_i, importo_assegno - quote_già_assegnate)",
-      "aggiornamento_ui": "Rimuove l'assegno risolto da ambiguiList e richiama loadData().",
-      "casi_errore": "400 se nessuna fattura selezionata (alert client 'Seleziona almeno una fattura'); 404 se assegno o fattura non trovati; 400 se l'assegno ha già fatture collegate."
-    },
-    {
-      "etichetta": "🔗 Combinazioni",
-      "dove_si_trova": "Menu Altro (data-testid=associa-combinazioni-btn)",
-      "cosa_fa_al_click": "handleAssociaCombinazioni(): cerca combinazioni di 2-4 assegni senza beneficiario la cui somma corrisponde a una fattura non pagata.",
-      "endpoint_chiamato": "POST /api/assegni/cerca-combinazioni-assegni (max_assegni=4 default, tolleranza=1.0€ default)",
-      "logica_backend": "cerca_combinazioni_assegni(): carica assegni senza beneficiario e fatture non pagate (escluse RID/SDD/addebito diretto). Genera tutte le combinazioni da 2 a max_assegni elementi con itertools.combinations, escludendo quelle i cui assegni hanno date di emissione troppo distanti tra loro (> MAX_GIORNI_TRA_ASSEGNI_COMBO=60 giorni). Per ogni combinazione calcola la somma e cerca fatture con importo corrispondente (con più delta di tolleranza: 0, ±0.01, ±0.02, ±0.5, ±1) E con data fattura compatibile (_fattura_compatibile_per_data: -5 <= (data_assegno - data_fattura).days <= MAX_GIORNI_ASSEGNO_DOPO_FATTURA=180, cioè la fattura deve essere emessa prima o al più 5 giorni dopo l'assegno di riferimento, non oltre 180 giorni prima). Se più fatture superano entrambi i filtri, la combinazione è 'ambigua' e NON viene associata (va in combinazioni_ambigue); se una sola, applica l'associazione a tutti gli assegni della combinazione (beneficiario, fattura_id, pagamento_combinato=true).",
-      "formula_matematica": "somma = round(sum(importo_assegno_i for i in combo), 2); match se |importo_fattura - somma| <= tolleranza E -5 <= (data_riferimento - data_fattura).days <= 180",
-      "aggiornamento_ui": "Mostra pannello risultato con combinazioni trovate, dettaglio assegni+importi per combinazione, combinazioni ambigue e assegni non associabili; loadData() se assegni_associati > 0.",
-      "casi_errore": "alert('Errore: ' + detail); se meno di 2 assegni senza beneficiario ritorna message 'nessuna combinazione possibile' senza errore."
-    },
-    {
-      "etichetta": "🖨️ Stampa Selezionati (N)",
-      "dove_si_trova": "Menu Altro (data-testid=stampa-selezionati-btn), disabilitato se nessun assegno selezionato",
-      "cosa_fa_al_click": "generateSelectedPDF(): genera un PDF client-side (jsPDF + jspdf-autotable) con l'elenco degli assegni selezionati (checkbox in tabella), intestazione aziendale Ceraldi Group SRL, riepilogo totale importo, tabella (N.Assegno, Stato, Beneficiario, Importo, Data Fattura, N.Fattura), footer con data/ora e paginazione.",
-      "endpoint_chiamato": null,
-      "logica_backend": "Nessuna chiamata backend: generazione PDF interamente lato client dai dati già caricati in stato React.",
-      "formula_matematica": "totale = sum(parseFloat(a.importo)||0 for a in selectedList)",
-      "aggiornamento_ui": "Scarica il file Assegni_Selezionati_{data}.pdf e svuota la selezione (setSelectedAssegni(new Set())).",
-      "casi_errore": "alert('Seleziona almeno un assegno') se selectedAssegni.size === 0."
-    },
-    {
-      "etichetta": "🧠 Learn",
-      "dove_si_trova": "Menu Altro (data-testid=learn-btn)",
-      "cosa_fa_al_click": "handleLearn(): fa apprendere al sistema pattern fornitore→importi dai dati storici già associati.",
-      "endpoint_chiamato": "POST /api/assegni/learning/learn",
-      "logica_backend": "learn_associazioni() (assegni_learning.py): carica assegni con beneficiario valorizzato e (importo>0 o fattura_id). Raggruppa per beneficiario normalizzato (normalizza_nome_fornitore: uppercase, rimuove forme giuridiche/caratteri speciali) e calcola per ciascuno: importo_min/max/medio, importi_frequenti (Counter top 5), keywords estratte dalle descrizioni (estrai_keywords, esclude stopword italiane e termini generici come 'ASSEGNO'/'PAGAMENTO'). Fa upsert nella collezione 'assegni_learning' (id = learn_{fornitore[:30]}) e aggiorna anche 'fornitori_keywords' per i fornitori con almeno 2 assegni.",
-      "formula_matematica": "importo_medio = sum(importi) / len(importi)",
-      "aggiornamento_ui": "Mostra pannello 'Learning Completato: N pattern appresi da M assegni' con top 5 fornitori riconosciuti (nome, count, range importi); richiama loadStatsAvanzate().",
-      "casi_errore": "alert('Errore Learning: ' + detail)."
-    },
-    {
-      "etichetta": "🤖 Smart (Associa Intelligente)",
-      "dove_si_trova": "Menu Altro (data-testid=associa-intelligente-btn)",
-      "cosa_fa_al_click": "handleAssociaIntelligente(): usa i pattern appresi da 'Learn' per associare in modo più mirato.",
-      "endpoint_chiamato": "POST /api/assegni/learning/associa-intelligente (tolleranza_importo=5.0€, tolleranza_giorni=60, usa_learning=true default)",
-      "logica_backend": "associa_intelligente(): carica assegni senza beneficiario/fattura e TUTTE le fatture con importo>0 (nessun filtro su status). Prova in ordine: STRATEGIA 1 match esatto per importo scandendo delta da 0 a tolleranza_importo a step di 0.01€ (sia + che -), match solo se un'unica fattura ha quell'importo; STRATEGIA 2 match per pattern learning (cerca il nome fornitore normalizzato nella descrizione dell'assegno, verifica che l'importo sia nel range [importo_min,importo_max] del pattern, poi cerca fattura dello stesso fornitore con |importo_fattura - importo| <= tolleranza_importo*2); STRATEGIA 3 match per keyword overlap (>=2 parole in comune tra keywords della descrizione e nome fornitore, tolleranza importo*3). Applica direttamente su DB tutti i match trovati (nessuna soglia minima di confidenza qui, a differenza di auto-associa).",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Mostra pannello risultato auto-associazione (match_esatti/match_learning/match_pattern/non_associati, dettagli) e loadData().",
-      "casi_errore": "alert('Errore: ' + detail)."
-    },
-    {
-      "etichetta": "🧹 Pulizia (duplicati)",
-      "dove_si_trova": "Menu Altro (data-testid=pulizia-duplicati-btn)",
-      "cosa_fa_al_click": "handlePuliziaDuplicati(true): prima esegue sempre in modalità anteprima (dry_run=true).",
-      "endpoint_chiamato": "POST /api/assegni/learning/pulizia-duplicati?dry_run=true (poi false se confermato)",
-      "logica_backend": "pulizia_duplicati(): raggruppa tutti gli assegni per numero. Per numeri vuoti: ordina il gruppo per completezza (ha beneficiario, ha importo, updated_at) e mantiene solo il primo, marcando gli altri come da eliminare. Per numeri duplicati non vuoti: calcola un completeness_score (beneficiario +3, importo +2, fattura_id/numero_fattura +2, stato=='pagato' +1) e mantiene il record con score più alto (a parità, il più recente). Include anche i record 'totalmente vuoti' (senza numero, importo, beneficiario). Se dry_run=false, esegue le delete_one effettive.",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Mostra pannello risultato (giallo se dry_run, rosso se eseguito) con conteggi (record vuoti, duplicati per numero, record eliminati) e, se dry_run, un bottone '⚠️ Conferma Eliminazione' che richiama la stessa azione con dryRun=false; se record_eliminati>0 richiama loadData().",
-      "casi_errore": "alert('Errore: ' + detail)."
-    },
-    {
-      "etichetta": "📊 Dashboard Learning",
-      "dove_si_trova": "Menu Altro (link, non bottone)",
-      "cosa_fa_al_click": "Naviga (React Router Link) a /learning-machine?tab=assegni — pagina esterna alla sezione Assegni.",
-      "endpoint_chiamato": null,
-      "logica_backend": null,
-      "formula_matematica": null,
-      "aggiornamento_ui": "Cambia route.",
-      "casi_errore": null
-    },
-    {
-      "etichetta": "🗑️ Svuota (assegni vuoti)",
-      "dove_si_trova": "Menu Altro, in rosso (data-testid=svuota-btn)",
-      "cosa_fa_al_click": "handleClearEmpty(): elimina definitivamente (hard delete, non soft) tutti gli assegni con stato='vuoto'.",
-      "endpoint_chiamato": "DELETE /api/assegni/clear-generated?stato=vuoto",
-      "logica_backend": "clear_generated_assegni(): valida che 'stato' sia uno stato ammesso (altrimenti 400), poi esegue db.assegni.delete_many({\"stato\": stato}) — cancellazione fisica, non soft-delete come per il singolo assegno.",
-      "formula_matematica": null,
-      "aggiornamento_ui": "alert(res.data.message) con il conteggio eliminati, poi loadData().",
-      "casi_errore": "alert('Errore: ' + detail); 400 se stato non valido (ma nel frontend è fisso a 'vuoto')."
-    },
-    {
-      "etichetta": "🔄 Aggiorna (sezione Assegni Senza Beneficiario)",
-      "dove_si_trova": "Header della sezione 'Assegni Senza Beneficiario'",
-      "cosa_fa_al_click": "loadAssegniNonAssociati(): ricarica manualmente l'elenco.",
-      "endpoint_chiamato": "GET /api/assegni/senza-associazione",
-      "logica_backend": "get_assegni_senza_associazione_v2(): trova assegni con beneficiario in [None,'','N/A'] e importo>0; raggruppa per importo arrotondato e ritorna {totale, per_importo: {\"€X.XX\": {count, numeri (primi 10)}}}.",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Aggiorna assegniNonAssociati; mostra spinner durante il caricamento.",
-      "casi_errore": "console.error silenzioso, nessun alert."
-    },
-    {
-      "etichetta": "🔗 Associa Fattura (riga assegno senza beneficiario)",
-      "dove_si_trova": "Tabella 'Assegni Senza Beneficiario', colonna Azioni",
-      "cosa_fa_al_click": "Cerca l'assegno completo nell'array `assegni` per numero e apre il modale Collega Fatture (openFattureModal) su quell'assegno; se non trovato (perché filtrato) mostra alert.",
-      "endpoint_chiamato": null,
-      "logica_backend": null,
-      "formula_matematica": null,
-      "aggiornamento_ui": "Apre il modale 'Collega Fatture all'Assegno'.",
-      "casi_errore": "alert(`Assegno ${numero} non trovato nella lista. Prova a rimuovere i filtri.`)"
-    },
-    {
-      "etichetta": "✏️ Modifica (riga assegno)",
-      "dove_si_trova": "Tabella/Card assegno, colonna Azioni (data-testid=edit-{id})",
-      "cosa_fa_al_click": "startEdit(assegno): attiva editingId e popola editForm (beneficiario, importo, data_fattura, numero_fattura, note, fatture_collegate) per la modifica inline della riga.",
-      "endpoint_chiamato": null,
-      "logica_backend": null,
-      "formula_matematica": null,
-      "aggiornamento_ui": "La riga passa in modalità editing con input inline; sostituisce i bottoni Modifica/Fatture/Stampa/Elimina con Salva (✓) e Annulla (✕).",
-      "casi_errore": null
-    },
-    {
-      "etichetta": "✓ Salva (riga in editing)",
-      "dove_si_trova": "Tabella, riga in editing",
-      "cosa_fa_al_click": "handleSaveEdit(): invia editForm con stato calcolato automaticamente.",
-      "endpoint_chiamato": "PUT /api/assegni/{assegno_id}",
-      "logica_backend": "update_assegno(): rimuove id/numero/created_at dal payload (non modificabili), valida che 'stato' (se presente) sia in ASSEGNO_STATI, e se importo+beneficiario sono valorizzati e lo stato corrente era 'vuoto' lo promuove automaticamente a 'compilato'. Aggiorna updated_at e fa l'update_one sull'assegno (match per id o numero).",
-      "formula_matematica": "stato = (importo && beneficiario) ? 'compilato' : 'vuoto' (calcolato lato frontend prima dell'invio, poi ri-validato lato server)",
-      "aggiornamento_ui": "Chiude la modalità editing (editingId=null) e loadData().",
-      "casi_errore": "404 se assegno non trovato; 400 se stato non valido; alert('Errore: ' + detail) lato client."
-    },
-    {
-      "etichetta": "✕ Annulla (riga in editing)",
-      "dove_si_trova": "Tabella, riga in editing",
-      "cosa_fa_al_click": "cancelEdit(): resetta editingId a null ed editForm a {} senza salvare.",
-      "endpoint_chiamato": null,
-      "logica_backend": null,
-      "formula_matematica": null,
-      "aggiornamento_ui": "Esce dalla modalità editing ripristinando la vista normale della riga.",
-      "casi_errore": null
-    },
-    {
-      "etichetta": "📄 Fatture / Collega Fatture",
-      "dove_si_trova": "Tabella/Card assegno, colonna Azioni (data-testid=fatture-{id})",
-      "cosa_fa_al_click": "openFattureModal(assegno): apre il modale 'Collega Fatture all'Assegno'. Carica le fatture disponibili dello stesso fornitore (loadFatture(assegno.beneficiario)) e arricchisce le fatture già collegate (assegno.fatture_collegate) con i dettagli recuperati via GET /api/invoices/{id} per ciascuna.",
-      "endpoint_chiamato": "GET /api/invoices?status=imported&fornitore={beneficiario}&limit=200 (lista fatture disponibili) + GET /api/invoices/{fattura_id} per ciascuna fattura già collegata",
-      "logica_backend": "Endpoint invoices standard (non nel file assegni.py): filtra fatture status='imported', esclude quelle già pagate e quelle di fornitori con metodo di pagamento 'contanti'/'cash'. Il filtro per fornitore è fatto anche via fuzzy-match lato client (substring/parola in comune) oltre che dal parametro fornitore lato server.",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Apre il modale draggable con: riepilogo assegno (numero, importo), elenco fatture selezionate con totale e differenza rispetto all'importo assegno, elenco fatture disponibili raggruppate per fornitore (header sticky), note credito (TD04) evidenziate in rosso con importo negativo.",
-      "casi_errore": "console.error silenzioso su fallimento caricamento fatture (setFatture([]))."
-    },
-    {
-      "etichetta": "Riga fattura nel modale Collega Fatture (click per selezionare/deselezionare)",
-      "dove_si_trova": "Modale Collega Fatture, lista Fatture Disponibili",
-      "cosa_fa_al_click": "toggleFattura(fattura): se già selezionata la rimuove; altrimenti, se selectedFatture.length < 4, verifica che il fornitore della nuova fattura coincida (case-insensitive) con quello delle fatture già selezionate (altrimenti alert bloccante 'Non puoi collegare fatture di fornitori diversi allo stesso assegno!'), poi la aggiunge con importo negativo se è una nota di credito (tipo_documento TD04).",
-      "endpoint_chiamato": null,
-      "logica_backend": null,
-      "formula_matematica": "importo_visualizzato = tipoDoc === 'TD04' ? -Math.abs(importoRaw) : importoRaw",
-      "aggiornamento_ui": "Aggiorna selectedFatture, ricalcola il totale e la differenza rispetto all'importo dell'assegno mostrati nel riquadro 'Fatture Selezionate'.",
-      "casi_errore": "alert se fornitore diverso da quello già selezionato; alert('Puoi collegare massimo 4 fatture per assegno') se si supera il limite di 4."
-    },
-    {
-      "etichetta": "✓ Collega N Fatture (salva)",
-      "dove_si_trova": "Modale Collega Fatture, footer (data-testid=salva-fatture-btn)",
-      "cosa_fa_al_click": "saveFattureCollegate(): invia le fatture selezionate (fattura_id + quota) all'endpoint di collegamento.",
-      "endpoint_chiamato": "PUT /api/assegni/{assegno_id}/fatture-collegate",
-      "logica_backend": "collega_fatture_assegno() — vedi dettaglio completo in operazioni_di_registrazione. In sintesi: valida max 4 fatture, quote non nulle (>=0.005 abs), tutte le fatture dello stesso fornitore (altrimenti 400), che la somma delle quote non superi l'importo dell'assegno oltre TOLL=0.005€ (altrimenti 400). Poi: 1) annulla i vecchi collegamenti (sottrae le vecchie quote dalle fatture, rimuove i vecchi movimenti prima_nota_banca con source='assegno_manuale'); 2) applica i nuovi collegamenti (aggiunge quota a ciascuna fattura, crea movimento prima_nota_banca solo per quote positive); 3) aggiorna l'assegno con fatture_collegate, importo_assegnato, fornitore, stato ('assegnato' se somma_quote≈importo_assegno, altrimenti 'parzialmente_assegnato' se ci sono fatture, o torna a 'compilato'/'vuoto' se la lista è vuota).",
-      "formula_matematica": "somma_quote = round(sum(quota_i), 2); vincolo: somma_quote - importo_assegno <= TOLL(0.005); stato = |somma_quote - importo_assegno| <= TOLL ? 'assegnato' : 'parzialmente_assegnato'",
-      "aggiornamento_ui": "Chiude il modale, resetta selectedFatture ed editingAssegnoForFatture, richiama loadData().",
-      "casi_errore": "400 se più di 4 fatture; 400 se una quota è ~0; 404 se assegno o una fattura non esiste; 400 se le fatture appartengono a fornitori diversi; 400 se la somma delle quote supera l'importo dell'assegno oltre tolleranza — alert('Errore: ' + detail) lato client. Il bottone è disabilitato se selectedFatture.length===0."
-    },
-    {
-      "etichetta": "🖨️ Stampa (singolo assegno)",
-      "dove_si_trova": "Tabella, colonna Azioni (data-testid=print-{id})",
-      "cosa_fa_al_click": "Genera un PDF con generateCarnetPDF(carnetId, [assegno]) contenente solo quel singolo assegno, poi doc.save(`Assegno_${numero}.pdf`).",
-      "endpoint_chiamato": null,
-      "logica_backend": null,
-      "formula_matematica": null,
-      "aggiornamento_ui": "Download del PDF, nessun cambiamento di stato.",
-      "casi_errore": null
-    },
-    {
-      "etichetta": "🗑️ Elimina (singolo assegno)",
-      "dove_si_trova": "Tabella/Card, colonna Azioni (data-testid=delete-{id})",
-      "cosa_fa_al_click": "handleDelete(assegno): chiama la delete senza conferma preventiva lato UI (nessun window.confirm nel codice letto).",
-      "endpoint_chiamato": "DELETE /api/assegni/{assegno_id}",
-      "logica_backend": "delete_assegno(): recupera l'assegno (404 se non esiste), chiama BusinessRules.can_delete_assegno(assegno) che impedisce l'eliminazione di assegni emessi/incassati o collegati a fatture (regole definite in app/services/business_rules.py, non incluso nei file letti direttamente ma richiamato qui). Se valido, esegue un SOFT-DELETE impostando entity_status='deleted' e deleted_at, non una delete_many fisica.",
-      "formula_matematica": null,
-      "aggiornamento_ui": "loadData() per rimuovere l'assegno (ora filtrato dalla query per entity_status != 'deleted') dalla lista.",
-      "casi_errore": "400 con {message, errors} se la validazione business fallisce (es. assegno emesso/incassato o con fatture collegate); 404 se non trovato; alert('Errore: ' + detail) lato client."
-    },
-    {
-      "etichetta": "Checkbox seleziona/deseleziona tutti",
-      "dove_si_trova": "Header tabella desktop (data-testid=select-all-checkbox)",
-      "cosa_fa_al_click": "toggleSelectAll(): se tutti i filtrati sono già selezionati, svuota la selezione; altrimenti seleziona tutti gli id di filteredAssegni.",
-      "endpoint_chiamato": null,
-      "logica_backend": null,
-      "formula_matematica": null,
-      "aggiornamento_ui": "Aggiorna selectedAssegni (Set), evidenzia le righe selezionate in verde chiaro.",
-      "casi_errore": null
-    },
-    {
-      "etichetta": "Vedi 📄 (fattura collegata)",
-      "dove_si_trova": "Colonna Fattura/Data in tabella, righe con fatture ambigue, dettaglio match L2/L3",
-      "cosa_fa_al_click": "Apre setFatturaView({id, numero}) che monta il componente <ModalFattura> in-page invece di navigare a una nuova pagina/scheda.",
-      "endpoint_chiamato": null,
-      "logica_backend": "Il dettaglio della fattura è caricato dal componente ModalFattura (non incluso nei file letti per intero in questo task).",
-      "formula_matematica": null,
-      "aggiornamento_ui": "Mostra il modale dettaglio fattura sovrapposto.",
-      "casi_errore": null
-    }
-  ],
-  "livelli_auto_matching": [
-    {
-      "livello": "L1",
-      "nome": "Match secco 1 assegno = 1 fattura",
-      "funzione": "_try_l1(assegno, fatture)",
-      "logica_esatta": "Per ogni assegno non ancora collegato di un dato fornitore, filtra le fatture aperte dello stesso fornitore con |fattura._residuo - importo_assegno| <= TOLL (0.005€). Applica _dedup_candidates: se i 'candidati' sono in realtà lo stesso documento duplicato (stesso invoice_number + P.IVA + residuo), tiene solo il più vecchio (per invoice_date/created_at) e lo considera match unico anche se in DB ci sono più righe fisiche. Se dopo il dedup resta 1 sola candidata → 'ok' (match applicato); se ne restano >1 → 'ambiguous' (va in report['ambigui']); se 0 → 'miss'."
-    },
-    {
-      "livello": "L2",
-      "nome": "Match di gruppo: N assegni uguali (stesso fornitore, stesso importo) = 1 fattura divisa in parti uguali",
-      "funzione": "_try_l2(assegni_gruppo, fatture) — orchestrato nel loop principale raggruppando gli assegni non ancora matchati per (fornitore, importo arrotondato a 2 decimali)",
-      "logica_esatta": "Vincoli sul gruppo: 2 <= N <= MAX_RATE(4); tutti gli assegni devono avere lo stesso carnet_id (len(set(carnet_id))<=1, altrimenti 'miss'); la finestra tra la prima e l'ultima data_emissione deve essere <= 125 giorni (~4 mesi, funzione _within_4_months). Calcola somma = round(sum(importi),2) e cerca fatture aperte dello stesso fornitore con |residuo - somma| <= TOLL*N (tolleranza cumulativa che assorbe l'arrotondamento delle N rate). Nel loop principale il matcher prova prima con il gruppo intero (n=len(grp) fino a MAX_RATE) e via via con sottogruppi più piccoli (range(min(len(grp),4), 1, -1)) finché non trova un match 'ok' o 'ambiguous' (in tal caso interrompe il for su quel gruppo). Se 'ambiguous', calcola comunque il dettaglio delle fatture candidate residue per il report."
-    },
-    {
-      "livello": "L3",
-      "nome": "Match di somma: 2-4 assegni di importi DIVERSI dello stesso fornitore = 1 fattura",
-      "funzione": "_try_l3(assegni_forn, fatture)",
-      "logica_esatta": "Prova combinazioni da N=4 a N=2 (range(MAX_RATE,1,-1), quindi preferisce prima le combinazioni più grandi 'per assorbire meglio'). Con itertools.combinations genera tutti i sottoinsiemi di N assegni non ancora usati in questo run (used_ids); scarta le combinazioni dove tutti gli importi sono uguali (perché quel caso è L2, non L3); scarta le combinazioni la cui finestra temporale (max-min data_emissione) supera 60 giorni. Calcola somma e cerca fatture con |residuo - somma| <= TOLL(0.005€, NON moltiplicato per N a differenza di L2). Se trova esattamente 1 fattura candidata, marca gli assegni della combinazione come usati e passa alla fattura successiva (break dal loop combinazioni per quella fattura)."
-    },
-    {
-      "livello": "L4",
-      "nome": "Match inverso: 1 assegno = 2-4 fatture dello stesso fornitore",
-      "funzione": "_try_l4(assegno, fatture)",
-      "logica_esatta": "Ordina le fatture aperte del fornitore per residuo decrescente e prende le prime 10 (ottimizzazione per limitare l'esplosione combinatoria). Per n da 2 a MAX_RATE(4), genera tutte le combinazioni di n fatture tra le top 10 e cerca quella/e con |somma_residui - importo_assegno| <= TOLL(0.005€). Se ne trova più di una compatibile per lo stesso n, segna 'ambiguous' e interrompe subito (break) senza provare n maggiori; se ne trova esattamente una, ritorna 'ok' con quella combinazione."
-    }
-  ],
-  "orchestrazione_auto_matcher": {
-    "funzione": "run_auto_match(db, dry_run) in assegni_auto_match.py, esposta da POST /api/assegni/auto-match",
-    "sequenza": [
-      "1) _load_assegni_to_match: carica assegni con importo>0, stato NON in ['annullato'], senza fatture_collegate (vuoto/assente). Nota: lo stato 'incassato' è considerato ancora processabile (indica solo che la banca ha addebitato, non che sia collegato a una fattura).",
-      "2) _enrich_assegni_con_piva: per gli assegni privi di fornitore_piva ma con beneficiario, prova a risolvere la P.IVA cercando nel DB 'fornitori' per ragione_sociale/denominazione/name normalizzati (rimuove suffissi srl/spa/ecc.); se trova, scrive fornitore_piva e fornitore_ragione_sociale direttamente sull'assegno (persistente, anche in dry-run) e sul dict in memoria.",
-      "3) _load_open_invoices_by_piva: carica fatture aperte/parziali raggruppate per P.IVA fornitore, escludendo pagate/cancellate/entity_status=deleted, fornitori con metodo_pagamento esplicito in ['banca','cassa','certo'] (non compatibili con assegno), residuo <= TOLL, e importo totale negativo (note credito escluse dal pool candidati diretto).",
-      "4) Costruisce assegni_by_piva; gli assegni senza P.IVA risolta finiscono direttamente in report['non_trovati'] con motivo 'P.IVA fornitore mancante sull'assegno' (non vengono processati dai livelli).",
-      "5) LIVELLO 1 su tutti gli assegni non ancora matchati, per ciascuna P.IVA.",
-      "6) LIVELLO 2 sui rimanenti, raggruppati per importo uguale.",
-      "7) LIVELLO 3 sui rimanenti.",
-      "8) LIVELLO 4 sui rimanenti.",
-      "9) Tutti gli assegni non entrati in nessun match né segnalati come ambigui finiscono in report['non_trovati'].",
-      "10) fatture_aggiornate = len(match_l1)+len(match_l2)+len(match_l3)+len(match_l4)."
-    ],
-    "note_di_sicurezza": [
-      "Vincolo rigido: P.IVA fornitore assegno deve combaciare con P.IVA fattura (_norm_piva rimuove spazi).",
-      "Tolleranza standard TOLL=0.005€ (mezzo centesimo) in L1/L3/L4; L2 usa TOLL*N per compensare l'arrotondamento della divisione in N rate.",
-      "MAX_RATE=4: limite massimo di assegni/fatture per combinazione in L2/L3/L4.",
-      "Conservativo: se un livello trova più candidate valide, non decide da solo — la voce finisce in report['ambigui'] con livello, assegno, e le fatture candidate (visibili poi nel pannello 'Da confermare' della UI e in GET /api/assegni/ambigui).",
-      "_used_invoice_ids(report) raccoglie tutte le fatture già assegnate nei livelli precedenti dello stesso run, così i livelli successivi (L2→L3→L4) non ripropongono una fattura già chiusa da un match precedente.",
-      "Idempotente: gli assegni con fatture_collegate non vuoto sono esclusi a monte da _load_assegni_to_match, quindi rilanciare il matcher non duplica i collegamenti già fatti."
+  "route": "/riconciliazione/assegni",
+  "catalog_id": 38,
+  "modulo": "riconciliazione",
+  "accesso": "authenticated",
+  "stato_audit": "in_review",
+  "scopo": "Mappa tecnica della schermata «Assegni». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/GestioneAssegni.jsx",
+    "entry": "frontend/src/pages/hub/RiconciliazioneHub.jsx",
+    "file_verificati": [
+      "frontend/src/App.jsx",
+      "frontend/src/components/ModalFattura.jsx",
+      "frontend/src/pages/GestioneAssegni.jsx",
+      "frontend/src/pages/hub/RiconciliazioneHub.jsx"
     ]
   },
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Applicazione di un match (auto o risoluzione ambiguo) — _apply_match in assegni_auto_match.py",
-      "sequenza_esatta": "1) Determina il caso: se len(assegni_match)==1 → collega 1 assegno a 1+ fatture (usato da L1, L4, e da 'risolvi-ambiguo'); se len(fatture_match)==1 → collega N assegni a 1 fattura (usato da L2, L3). 2) Caso 1 assegno→N fatture: per ciascuna fattura calcola quota = round(min(residuo_fattura, importo_assegno - quote_già_assegnate_finora), 2); scarta quote <= TOLL; costruisce fatture_collegate[] con match_auto=true, match_livello, e dati denormalizzati (numero_fattura, fornitore) solo per il report. Se dry_run, ritorna subito senza scrivere. Altrimenti: aggiorna assegno (fatture_collegate, importo_assegnato=somma quote, fornitore_piva/ragione_sociale dedotti dalla prima fattura, stato='assegnato' se |quote_totali-importo_assegno|<=TOLL altrimenti 'parzialmente_assegnato', match_auto=true). Per ciascuna fattura collegata: chiama _aggiorna_fattura (incrementa importo_pagato, ricalcola importo_residuo, payment_status paid/partial/aperta, push su assegni_collegati) e _crea_mov_banca (crea un movimento prima_nota_banca tipo 'uscita_assegno', idempotente su assegno_id+invoice_id+source='assegno_auto_match'). 3) Caso N assegni→1 fattura: per ciascun assegno calcola quota = round(min(importo_assegno, residuo_fattura - quota_già_accumulata), 2); aggiorna ogni singolo assegno con fatture_collegate=[la fattura], importo_assegnato=quota, stato assegnato/parzialmente_assegnato; poi aggiorna la fattura cumulando tutte le quote in un colpo solo (_aggiorna_fattura_bulk, con $push {$each: [...]}).",
-      "collezioni_coinvolte": ["assegni", "invoices", "prima_nota_banca"],
-      "campi_scritti": {
-        "assegni": "fatture_collegate:[{fattura_id, quota, data_collegamento, match_auto, match_livello, numero_fattura, fornitore}], importo_assegnato, fornitore_piva, fornitore_ragione_sociale, stato ('assegnato'|'parzialmente_assegnato'), match_auto, match_livello, updated_at",
-        "invoices": "importo_pagato (incrementale), importo_residuo, payment_status ('paid'|'partial'|'aperta'), pagato (bool), updated_at, assegni_collegati (push: {assegno_id, numero, quota, data_collegamento, match_auto})",
-        "prima_nota_banca": "id, data/date, tipo='uscita', importo/amount=quota, descrizione='Assegno n. {numero} - {fornitore}', categoria='Assegni', assegno_id, assegno_numero, invoice_id, source='assegno_auto_match', riconciliato=false, created_at"
-      },
-      "effetti_collaterali": "Idempotenza garantita a livello di prima_nota_banca tramite lookup su (assegno_id, invoice_id, source) prima dell'insert. Nessuna quota negativa/nota di credito gestita in questo percorso auto (le fatture con total<0 sono escluse a monte in _load_open_invoices_by_piva)."
-    },
-    {
-      "nome": "Collegamento manuale fatture↔assegno (modale 'Collega Fatture')",
-      "sequenza_esatta": "1) Validazioni preliminari: max 4 fatture (altrimenti 400), nessuna quota con |quota|<0.005 (altrimenti 400 'Le quote non possono essere zero' — questo permette quote NEGATIVE per note di credito, purché non ~0). 2) Carica tutte le fatture referenziate (404 se una non esiste) e verifica che condividano tutte la stessa P.IVA (piva_set con al massimo 1 elemento valorizzato, altrimenti 400 'Tutte le fatture collegate a uno stesso assegno devono essere dello stesso fornitore'). 3) Calcola somma_quote = round(sum(quota_i),2); se somma_quote - importo_assegno > TOLL(0.005€) → 400 'La somma delle quote supera l'importo dell'assegno' (nota: la somma PUO' essere < importo assegno senza errori — quota non ancora completamente assegnata; e note credito a quota negativa abbassano la somma). 4) Rimuove i vecchi collegamenti: per ciascuna fattura precedentemente collegata applica un delta negativo (-quota) a importo_pagato/importo_residuo/payment_status via _applica_delta_quota_fattura, fa $pull su invoices.assegni_collegati per quell'assegno_id, e cancella (delete_many) i movimenti prima_nota_banca con source='assegno_manuale' per quell'assegno. 5) Applica i nuovi collegamenti: per ciascuna fattura selezionata, applica un delta positivo (+quota, anche se negativa per NC) via _applica_delta_quota_fattura, fa $push su invoices.assegni_collegati, e SOLO se quota>0 crea un movimento prima_nota_banca (source='assegno_manuale') — le quote negative (note credito) non generano movimento banca perché non sono un'uscita di denaro reale. 6) Aggiorna l'assegno: fatture_collegate, importo_assegnato=somma_quote, fornitore_piva/ragione_sociale/beneficiario/numero_fattura dedotti dalla prima fattura, stato = 'assegnato' se |somma_quote-importo_assegno|<=TOLL altrimenti 'parzialmente_assegnato' (o 'compilato'/'vuoto' se la lista fatture è vuota), match_auto=false.",
-      "collezioni_coinvolte": ["assegni", "invoices", "prima_nota_banca"],
-      "campi_scritti": {
-        "assegni": "fatture_collegate:[{fattura_id, quota, data_collegamento}], importo_assegnato, fornitore_piva, fornitore_ragione_sociale, beneficiario, numero_fattura (concatenazione ', '-separated), stato, match_auto=false, updated_at",
-        "invoices": "importo_pagato (delta +/-), importo_residuo, payment_status, pagato, updated_at, assegni_collegati ($pull sui vecchi + $push sui nuovi)",
-        "prima_nota_banca": "come nel match automatico ma source='assegno_manuale'; creato solo per quota>0 (le note credito, quota<0, non generano movimento banca)"
-      },
-      "effetti_collaterali": "L'endpoint sostituisce sempre l'INTERO set di collegamenti dell'assegno (non è un'aggiunta incrementale): il frontend invia sempre la selezione finale completa. Questo significa che ogni salvataggio prima annulla e poi riapplica anche i collegamenti invariati. L'importo nominale dell'assegno (campo 'importo') non viene mai modificato da questa operazione."
-    },
-    {
-      "nome": "Emissione assegno (cambia stato a 'emesso')",
-      "sequenza_esatta": "POST /api/assegni/{id}/emetti. 1) Verifica che l'assegno non sia in stato 'vuoto' (altrimenti 400 'Impossibile emettere un assegno vuoto. Compilarlo prima.'). 2) Imposta stato='emesso', data_emissione (default oggi se non fornita). 3) Se l'assegno ha un importo, crea un movimento in prima_nota_banca (categoria 'Addebito assegno', source='assegno_emesso') con descrizione che include numero, eventuale numero_fattura e beneficiario; salva l'id del movimento su assegno.prima_nota_banca_id per poterlo riconciliare più avanti.",
-      "collezioni_coinvolte": ["assegni", "prima_nota_banca"],
-      "campi_scritti": {
-        "assegni": "stato='emesso', data_emissione, updated_at, prima_nota_banca_id",
-        "prima_nota_banca": "id, tipo='uscita', importo, data, descrizione, categoria='Addebito assegno', source='assegno_emesso', riferimento_id, assegno_numero, fattura_id, fornitore_piva, riconciliato=false, anno, created_at"
-      },
-      "effetti_collaterali": "Questo è un percorso distinto dal collegamento fatture: qui il movimento è creato per l'INTERO importo dell'assegno indipendentemente dalle quote fattura (è la scrittura contabile dell'uscita dell'assegno stesso, non della singola quota fattura)."
-    },
-    {
-      "nome": "Incasso assegno / riconciliazione con estratto conto (POST /api/assegni/{id}/incassa)",
-      "sequenza_esatta": "1) Imposta stato='incassato', data_incasso, incassato_confermato_banca=bool(movimento_estratto_conto_id) — distingue un riscontro reale in banca da un semplice 'segna come incassato' manuale. 2) Se l'assegno ha prima_nota_banca_id, marca quel movimento come riconciliato=true con data_riconciliazione e movimento_estratto_conto_id. 3) Se l'assegno ha un fattura_collegata (campo legacy singolare, non fatture_collegate[]), marca la fattura pagato=true/data_pagamento/metodo_pagamento_effettivo='assegno' e chiude le righe collegate in scadenziario_fornitori (pagato=true). 4) Propaga un evento EventTypes.FATTURA_PAGATA sull'event bus (propagate_event) per notificare altri moduli. 5) Se fornito movimento_estratto_conto_id, marca quel movimento in estratto_conto_movimenti come riconciliato=true, riconciliato_con='assegno', assegno_id.",
-      "collezioni_coinvolte": ["assegni", "prima_nota_banca", "invoices", "scadenziario_fornitori", "estratto_conto_movimenti"],
-      "campi_scritti": {
-        "assegni": "stato='incassato', data_incasso, incassato_confermato_banca, movimento_estratto_conto_id, updated_at",
-        "prima_nota_banca": "riconciliato=true, data_riconciliazione, movimento_estratto_conto_id, updated_at",
-        "invoices": "pagato=true, data_pagamento, metodo_pagamento_effettivo='assegno', assegno_numero, updated_at",
-        "scadenziario_fornitori": "pagato=true, data_pagamento, metodo_pagamento='assegno', updated_at",
-        "estratto_conto_movimenti": "riconciliato=true, riconciliato_con='assegno', assegno_id, riconciliato_at"
-      },
-      "effetti_collaterali": "Nota: questo endpoint usa il modello legacy a singola fattura (fattura_collegata) e non il modello a quote N:M (fatture_collegate[]) — sembra un percorso più vecchio, parallelo a quello principale del modale Collega Fatture."
-    },
-    {
-      "nome": "Sincronizzazione automatica assegni da estratto conto (riconciliazione con estratto_conto.py)",
-      "sequenza_esatta": "sync_assegni_da_estratto_conto() (in assegni.py, richiamata da estratto_conto.py sia dopo ogni import di un nuovo estratto conto, sia — in passato — da un bottone manuale ora rimosso). 1) Cerca in estratto_conto_movimenti i movimenti con descrizione che matcha pattern 'PRELIEVO/VOSTRO/VS./PAGAMENTO ... ASSEGNO' (regex case-insensitive), importo negativo (uscita), escludendo 'RILASCIO CARNET ASSEGNI'. 2) Estrae il numero assegno dalla descrizione con una cascata di pattern regex, dando priorità al gruppo dopo 'NUM:' (il formato bancario tipico è 'PRELIEVO ASSEGNO - DM 06230 CRA: ... NUM: 0208767182' dove il numero vero è dopo NUM, non CRA). 3) Se un assegno con quel numero (o con quel movimento_id) esiste già, salta. 4) Cerca nel carnet un assegno già compilato/emesso con numero simile (ultime 8 cifre): se trovato, lo marca 'incassato' con incassato_confermato_banca=true e propaga la chiusura della fattura collegata (stesso pattern di /incassa) — altrimenti CREA un nuovo record assegno con stato='emesso', fonte='estratto_conto', per tracciare assegni scoperti solo dal movimento bancario ma mai registrati manualmente nel carnet.",
-      "collezioni_coinvolte": ["assegni", "estratto_conto_movimenti", "invoices", "scadenziario_fornitori", "prima_nota_banca"],
-      "campi_scritti": {
-        "assegni (match trovato)": "stato='incassato', data_incasso, movimento_estratto_conto_id, incassato_confermato_banca=true, updated_at",
-        "assegni (nessun match, nuovo record)": "id, numero, importo, data/data_emissione, stato='emesso', beneficiario, descrizione, movimento_id, fonte='estratto_conto', banca, confermato=false, created_at/updated_at"
-      },
-      "effetti_collaterali": "Questo è il meccanismo concreto dietro il concetto di 'Addebitati ma non riconciliati' citato nella documentazione operativa generale: se il pattern regex non estrae un numero valido, il sistema genera comunque un assegno con numero fittizio 'AUTO-{primi 8 char id movimento}' pur di non perdere la traccia del movimento — non esiste però un tab dedicato nella UI per visualizzare separatamente questi casi, vanno cercati tra gli assegni con fonte='estratto_conto' o beneficiario mancante."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    {
-      "pagina": "Fatture (pagina Fatture/Fatture Passive)",
-      "relazione": "Il collegamento assegno↔fattura scrive direttamente sulla collezione 'invoices' condivisa con la pagina Fatture (importo_pagato, payment_status, assegni_collegati); la vista dettaglio fattura è mostrata in-page tramite il componente <ModalFattura> richiamato da vari bottoni 'Vedi 📄' della pagina Assegni, senza navigare via."
-    },
-    {
-      "pagina": "Prima Nota (Banca/Cassa)",
-      "relazione": "Ogni collegamento (auto o manuale) con quota positiva genera un movimento in 'prima_nota_banca' (tipo uscita, categoria Assegni); l'emissione dell'assegno genera un ulteriore movimento (categoria 'Addebito assegno'). La quota cassa manuale descritta nella documentazione operativa (pagamento misto assegni+contanti) genererebbe un movimento in 'prima_nota_cassa', ma NON è stata trovata alcuna implementazione di 'quota cassa' nel codice letto di GestioneAssegni.jsx/assegni.py/assegni_auto_match.py: il modale Collega Fatture gestisce solo quote su fatture (positive o negative per NC), senza un campo dedicato per contanti. Per registrare un pagamento in contanti va usata la pagina Fatture (bottone dedicato)."
-    },
-    {
-      "pagina": "Fornitori",
-      "relazione": "Il vincolo 'stesso fornitore' tra assegno e fatture è applicato sia lato client (fuzzy match nome in loadFatture/toggleFattura) sia lato server (confronto P.IVA in collega_fatture_assegno e in tutto l'auto-matcher). La collezione 'fornitori' viene letta per risolvere la P.IVA mancante di un assegno dal solo beneficiario (_enrich_assegni_con_piva) e per escludere dal matching i fornitori con metodo_pagamento esplicito 'banca'/'cassa'/'certo'."
-    },
-    {
-      "pagina": "Riconciliazione Bancaria / Estratto Conto (Strumenti → Verifica Coerenza)",
-      "relazione": "estratto_conto.py richiama sync_assegni_da_estratto_conto() ad ogni import di estratto conto per intercettare automaticamente i movimenti 'ASSEGNO' e riconciliarli col registro assegni (o crearne uno nuovo se mancante). Gli assegni con importo/numero non corrispondenti a nessun record nel registro restano visibili come record 'fonte=estratto_conto' senza controparte, il caso descritto genericamente come 'Assegno non registrato' nella pagina di verifica coerenza."
-    },
-    {
-      "pagina": "Learning Machine (/learning-machine?tab=assegni)",
-      "relazione": "Link diretto dal menu 'Altro'; la dashboard esterna presumibilmente consuma gli stessi endpoint di assegni_learning.py (stats-avanzate, learn) per mostrare un quadro più ampio dei pattern appresi, cross-modulo rispetto alla sola pagina Assegni."
-    },
-    {
-      "pagina": "Scadenzario Fornitori",
-      "relazione": "L'incasso di un assegno collegato (via /incassa o via sync da estratto conto) chiude automaticamente le righe collegate in 'scadenziario_fornitori' (pagato=true)."
-    }
-  ],
-  "popup_e_modali_presenti": [
-    {
-      "nome": "Modal 'Genera N Assegni Progressivi'",
-      "scopo": "Form con campo numero_primo (formato PREFISSO-NUMERO) e quantità; alla conferma chiama POST /api/assegni/genera per creare un blocco di assegni vuoti progressivi appartenenti allo stesso carnet."
-    },
-    {
-      "nome": "Modal 'Collega Fatture all'Assegno'",
-      "scopo": "Modale draggable (trascinabile via mouse) con: riepilogo assegno (numero, importo), elenco fatture già selezionate con totale e differenza vs importo assegno, elenco fatture disponibili del fornitore raggruppate per intestazione fornitore (sticky header), evidenziazione note di credito TD04 in rosso con importo negativo, limite 4 fatture, blocco cross-fornitore. Salva tramite PUT /api/assegni/{id}/fatture-collegate."
-    },
-    {
-      "nome": "Pannello 'Assegni ambigui — serve la tua decisione'",
-      "scopo": "Non è un vero modale (è un pannello inline collassabile) ma funge da interfaccia di risoluzione: per ciascun assegno ambiguo (report auto-matcher) elenca le fatture candidate con checkbox multi-selezione e un bottone 'Collega selezionati' che chiama POST /api/assegni/{id}/risolvi-ambiguo."
-    },
-    {
-      "nome": "ModalFattura (in-page)",
-      "scopo": "Componente condiviso (importato da components/ModalFattura) usato ovunque nella pagina per mostrare il dettaglio di una fattura senza aprire una nuova scheda del browser; attivato da fatturaView({id, numero}) impostato da decine di punti diversi della UI (righe tabella, ambigui, dettaglio match L2/L3/combinazioni)."
-    },
-    {
-      "nome": "Pannelli di risultato non modali (banner inline)",
-      "scopo": "Non sono popup ma banner a piena larghezza mostrati dopo ogni azione asincrona: risultato Auto-Match (nuovo, 4 livelli), risultato Auto-Associazione legacy, risultato Learning, risultato Pulizia Duplicati, risultato Associazione Combinata — tutti con bottone di chiusura (✕) che resetta lo stato React corrispondente."
-    }
+  "backend": {
+    "file_verificati": [
+      "app/router_registry.py",
+      "app/routers/bank/assegni.py",
+      "app/routers/bank/assegni_auto_match.py",
+      "app/routers/bank/assegni_learning.py",
+      "app/routers/bank/estratto_conto.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/admin",
+      "/api/agenti",
+      "/api/ai-parser",
+      "/api/alerts",
+      "/api/anagrafica-fornitori",
+      "/api/archivio-bonifici",
+      "/api/assegni",
+      "/api/assegni/ambigui",
+      "/api/assegni/auto-match",
+      "/api/assegni/auto-match/conferma",
+      "/api/assegni/cerca-combinazioni-assegni",
+      "/api/assegni/clear-generated",
+      "/api/assegni/genera",
+      "/api/assegni/learning",
+      "/api/assegni/learning/associa-intelligente",
+      "/api/assegni/learning/learn",
+      "/api/assegni/learning/pulizia-duplicati",
+      "/api/assegni/learning/stats-avanzate",
+      "/api/assegni/riprocessa-collegamenti",
+      "/api/assegni/senza-associazione",
+      "/api/assegni/stats",
+      "/api/assegni/supporto/fatture-disponibili",
+      "/api/assegni/{param}",
+      "/api/assegni/{param}/fatture-collegate",
+      "/api/assegni/{param}/risolvi-ambiguo",
+      "/api/auth",
+      "/api/auth/api/auth/verify",
+      "/api/auth/login",
+      "/api/auth/verify",
+      "/api/auto-repair",
+      "/api/bank-statement",
+      "/api/batch-reprocess",
+      "/api/bilancio",
+      "/api/cash",
+      "/api/cedolini",
+      "/api/centri-costo",
+      "/api/cespiti",
+      "/api/chiusura-esercizio",
+      "/api/collaudo",
+      "/api/commercialista",
+      "/api/commercialista/alert-status",
+      "/api/config",
+      "/api/config-import",
+      "/api/contabilita",
+      "/api/contabilita-gestionale",
+      "/api/controllo-gestione",
+      "/api/corrispettivi",
+      "/api/dashboard",
+      "/api/dati-isa",
+      "/api/dipendenti",
+      "/api/dizionario-articoli",
+      "/api/document-ai",
+      "/api/documenti",
+      "/api/documenti-fiscali",
+      "/api/documenti-inbox",
+      "/api/documenti-non-associati",
+      "/api/email-download",
+      "/api/email-scanner",
+      "/api/erp/ponte",
+      "/api/estratto-conto-movimenti",
+      "/api/f24",
+      "/api/f24-analisi",
+      "/api/f24-email",
+      "/api/f24-email-settings",
+      "/api/f24-public",
+      "/api/f24-riconciliazione",
+      "/api/f24/quietanze",
+      "/api/fatture",
+      "/api/fatture-estere",
+      "/api/fatture-ricevute",
+      "/api/fatture-ricevute/fattura/{param}/documenti-pagamento",
+      "/api/fatture-ricevute/fattura/{param}/view-assoinvoice",
+      "/api/fatture-ricevute/fattura/{param}/xml-originale",
+      "/api/finanziamenti-soci",
+      "/api/finanziaria",
+      "/api/fiscal",
+      "/api/fiscalita",
+      "/api/fornitori-learning",
+      "/api/gestione-riservata",
+      "/api/invoices",
+      "/api/invoices/emesse",
+      "/api/invoices/{param}",
+      "/api/iva",
+      "/api/learning-machine",
+      "/api/learning-universal",
+      "/api/mutui",
+      "/api/nexi",
+      "/api/noleggio",
+      "/api/openapi",
+      "/api/openapi-automotive",
+      "/api/openapi-imprese",
+      "/api/operazioni-da-confermare",
+      "/api/pagamenti",
+      "/api/pagamenti-buoni",
+      "/api/pagopa",
+      "/api/paypal-api",
+      "/api/paypal-api/status",
+      "/api/paypal-api/sync",
+      "/api/paypal-statements",
+      "/api/pianificazione",
+      "/api/piano-conti",
+      "/api/previsioni-acquisti",
+      "/api/prima-nota",
+      "/api/prima-nota-salari",
+      "/api/rapido",
+      "/api/regole",
+      "/api/ritenute",
+      "/api/scadenzario-fornitori",
+      "/api/scadenze",
+      "/api/settings",
+      "/api/sumup",
+      "/api/suppliers",
+      "/api/tfr",
+      "/api/verbali-noleggio",
+      "/api/verbali-riconciliazione",
+      "/api/verifica-coerenza",
+      "/api/voci-bilancio",
+      "/api/whatsapp"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

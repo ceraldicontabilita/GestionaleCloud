@@ -1,70 +1,48 @@
 {
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
   "pagina": "Bilancio",
-  "url": "https://impresasemplice.online/contabilita/bilancio",
-  "file_sorgente_frontend": [
-    "/home/user/GestionaleCloud/frontend/src/pages/Bilancio.jsx",
-    "/home/user/GestionaleCloud/frontend/src/pages/hub/ContabilitaHub.jsx"
-  ],
-  "file_sorgente_backend": [
-    "/home/user/GestionaleCloud/app/routers/accounting/bilancio.py"
-  ],
-  "scopo_generale": "Pagina di reportistica contabile che mostra il Bilancio d'esercizio secondo i principi contabili italiani, diviso in due viste (tab): 'Stato Patrimoniale' (fotografia di Attivo/Passivo/Patrimonio Netto a una data) e 'Conto Economico' (flusso di Ricavi/Costi/Risultato di un periodo). Permette di filtrare per anno (selettore globale) e per mese specifico, e di esportare il bilancio in PDF (singolo anno o confronto tra due anni). Il backend NON legge da un piano dei conti con scritture di partita doppia salvate: ricalcola tutto al volo con aggregazioni MongoDB dalle collezioni operative (corrispettivi per i ricavi, invoices per i costi, prima_nota_cassa/prima_nota_banca per liquidità, fatture_emesse per crediti). Regola cardine documentata nel codice: i Ricavi derivano SOLO dai corrispettivi (le fatture emesse a clienti non sono ricavi aggiuntivi, sono già conteggiate negli scontrini).",
-  "bottoni_azioni": [
-    {
-      "etichetta": "Select 'Anno intero / Gennaio…Dicembre' (filtro mese)",
-      "cosa_fa_al_click": "Cambia lo stato 'mese' (null o 1-12); l'useEffect ricarica automaticamente stato patrimoniale e conto economico per anno+mese selezionati.",
-      "endpoint_chiamato": "GET /api/bilancio/stato-patrimoniale?anno=&mese= e GET /api/bilancio/conto-economico?anno=&mese=",
-      "logica_backend": "get_stato_patrimoniale: se mese è passato tramite data_a non viene usato qui (usa il parametro mese per calcolare l'ultimo giorno del mese con calendar.monthrange e usarlo come data_fine cumulativa dall'inizio anno); get_conto_economico: se mese è passato, restringe il periodo dal 1° al ultimo giorno di quel mese invece che all'intero anno.",
-      "formula_matematica": "STATO PATRIMONIALE (cumulativo fino a data_fine = ultimo giorno del mese scelto, o 31/12 se 'Anno intero'): saldo_cassa = Σentrate_prima_nota_cassa − Σuscite_prima_nota_cassa (data ≤ data_fine); saldo_banca = Σentrate_prima_nota_banca − Σuscite_prima_nota_banca (data ≤ data_fine); totale_crediti = Σ importo fatture_emesse non pagate (status non in STATI_PAGATI, pagato≠True, data ≤ data_fine); totale_attivo = saldo_cassa + saldo_banca + totale_crediti; totale_debiti = Σ total_amount invoices non pagate (tipo_documento non TD04/TD08, status non in STATI_PAGATI+deleted+archived, pagato≠True, data ≤ data_fine); totale_passivo = totale_debiti; patrimonio_netto = totale_attivo − totale_passivo (per costruzione il totale_passivo esposto = totale_debiti + patrimonio_netto = sempre uguale a totale_attivo, quindi lo Stato Patrimoniale quadra sempre per definizione). CONTO ECONOMICO (periodo [1° giorno mese, ultimo giorno mese] o [01-01,12-31] se 'Anno intero'): totale_ricavi = Σ totale_imponibile corrispettivi non deleted nel periodo; totale_acquisti = Σ imponibile invoices (tipo_documento non TD04/TD08, status non deleted/archived) nel periodo; totale_note_credito = Σ imponibile invoices TD04/TD08 nel periodo; costi_netti = totale_acquisti − totale_note_credito; totale_costi = costi_netti; utile_perdita = totale_ricavi − totale_costi; margine_percentuale = (utile_perdita / totale_ricavi) × 100 se totale_ricavi>0, altrimenti 0.",
-      "aggiornamento_ui": "Ricarica entrambe le viste con i nuovi dati per il periodo selezionato (mostra PageLoading durante il fetch).",
-      "casi_errore": "In caso di errore di rete/backend, console.error('Errore caricamento bilancio') e i dati restano quelli precedenti o null (schermata vuota)."
-    },
-    {
-      "etichetta": "PDF {anno} (Download icon)",
-      "cosa_fa_al_click": "Apre in una nuova scheda del browser l'URL di export PDF per l'anno correntemente selezionato (window.open).",
-      "endpoint_chiamato": "GET /api/bilancio/export-pdf?anno=",
-      "logica_backend": "export_bilancio_pdf(): richiede la libreria reportlab (500 se non installata); carica i dati con le funzioni helper interne _get_stato_patrimoniale_data(anno) e _get_conto_economico_data(anno) (non le funzioni endpoint dirette); costruisce un documento PDF (A4) con reportlab: tabella Stato Patrimoniale (Attivo vs Passivo affiancati, con Totale Attivo verde e Totale Passivo rosso) e tabella Conto Economico (Ricavi, Costi, Risultato) con celle colorate; restituisce uno StreamingResponse con media_type application/pdf e header Content-Disposition attachment; filename bilancio_{anno}.pdf.",
-      "formula_matematica": "Stesse formule di Stato Patrimoniale e Conto Economico (vedi sotto); il totale passivo nel PDF è ricalcolato come sp['passivo']['debiti']['totale'] + sp['passivo']['patrimonio_netto'].",
-      "aggiornamento_ui": "Nessun aggiornamento della pagina corrente: il PDF si apre/scarica in una nuova scheda del browser.",
-      "casi_errore": "Se reportlab non è installato sul server: HTTP 500 'reportlab non installato'. Errori generici gestiti dal decorator @handle_errors."
-    },
-    {
-      "etichetta": "Confronto {anno-1}/{anno} (FileText icon)",
-      "cosa_fa_al_click": "Apre in una nuova scheda l'URL di export PDF comparativo tra l'anno selezionato e l'anno precedente (window.open).",
-      "endpoint_chiamato": "GET /api/bilancio/export/pdf/confronto?anno_corrente=&anno_precedente=",
-      "logica_backend": "export_confronto_pdf(): se anno_precedente non passato usa anno_corrente-1; chiama internamente get_confronto_annuale(anno_corrente, anno_precedente) (endpoint GET /api/bilancio/confronto-annuale) che ricalcola Conto Economico e Stato Patrimoniale per entrambi gli anni e calcola variazione assoluta e percentuale voce per voce; costruisce un PDF con reportlab con due tabelle comparative (Conto Economico e Stato Patrimoniale) colorate con simboli di trend (▲/▼/=).",
-      "formula_matematica": "variazione = valore_attuale - valore_precedente; variazione_pct = (variazione / valore_precedente) * 100 (calcolata in get_confronto_annuale, non mostrata nel range letto ma referenziata dai campi 'variazione'/'variazione_pct' consumati dal PDF)",
-      "aggiornamento_ui": "Nessun aggiornamento della pagina corrente: il PDF comparativo si apre/scarica in una nuova scheda.",
-      "casi_errore": "500 'reportlab non installato' se la libreria manca sul server."
-    },
-    {
-      "etichetta": "Tab 'Stato Patrimoniale' / 'Conto Economico'",
-      "cosa_fa_al_click": "handleTabChange(tabId): cambia activeTab e naviga a /bilancio/{tabId} (URL sincronizzato col tab).",
-      "endpoint_chiamato": "n/a (nessuna nuova chiamata API: entrambi i dataset sono già stati caricati insieme da loadBilancio)",
-      "logica_backend": "n/a",
-      "formula_matematica": "n/a",
-      "aggiornamento_ui": "Mostra StatoPatrimonialeView oppure ContoEconomicoView in base al tab attivo.",
-      "casi_errore": "n/a"
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Nessuna operazione di scrittura",
-      "sequenza_esatta": "Questa pagina è puramente di lettura/reportistica: tutti gli endpoint usati (stato-patrimoniale, conto-economico, export-pdf, export/pdf/confronto) eseguono solo query e aggregazioni MongoDB in lettura (find/aggregate) e non scrivono, aggiornano o cancellano documenti in nessuna collezione.",
-      "collezioni_coinvolte": [],
-      "campi_scritti": {},
-      "effetti_collaterali": "Nessuno sul database. Gli export PDF generano file in memoria (BytesIO) restituiti come download, non salvati sul server."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Piano dei Conti (tab 'piano-conti'): condivide le stesse fonti dati grezze (invoices, corrispettivi, prima_nota_cassa, prima_nota_banca) anche se con endpoint e logica di calcolo separata (piano_conti.py usa _calcola_saldi_piano_conti, bilancio.py usa query dedicate in get_stato_patrimoniale/get_conto_economico); i totali possono quindi differire leggermente tra le due pagine per via di filtri diversi (es. gestione note di credito, esclusione soft-delete).",
-    "Verifica Bilancio (tab 'verifica'): fornisce il dettaglio dare/avere conto per conto che sta 'sotto' ai totali aggregati mostrati qui.",
-    "Fatture Ricevute (modulo Ciclo Passivo, collection invoices): fonte dei Costi nel Conto Economico e dei Debiti vs Fornitori nello Stato Patrimoniale.",
-    "Corrispettivi: fonte esclusiva dei Ricavi nel Conto Economico.",
-    "Prima Nota Cassa/Banca: fonte di Cassa e Banca nello Stato Patrimoniale.",
-    "Confronto Annuale (endpoint GET /api/bilancio/confronto-annuale, non ha una pagina dedicata separata individuata in questa analisi ma alimenta l'export PDF comparativo)."
-  ],
-  "popup_e_modali_presenti": [
-    "Nessun modal o popup React nella pagina: i pulsanti di export PDF aprono direttamente una nuova scheda del browser (window.open) verso l'endpoint di download, senza dialog di conferma."
+  "route": "/contabilita/bilancio",
+  "catalog_id": 16,
+  "modulo": "contabilita",
+  "accesso": "authenticated",
+  "stato_audit": "in_review",
+  "scopo": "Mappa tecnica della schermata «Bilancio». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/Bilancio.jsx",
+    "entry": "frontend/src/pages/hub/ContabilitaHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/Bilancio.jsx",
+      "frontend/src/pages/hub/ContabilitaHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/routers/accounting/bilancio.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/bilancio/conto-economico",
+      "/api/bilancio/stato-patrimoniale",
+      "/api/cespiti/calcolo-rateo/{param}/{param}",
+      "/api/voci-bilancio",
+      "/api/voci-bilancio/codici-disponibili",
+      "/api/voci-bilancio/{param}"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

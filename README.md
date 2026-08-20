@@ -1,155 +1,207 @@
-# Ceraldi ERP
+# GestionaleCloud — Ceraldi ERP
 
-Gestionale web interno di Ceraldi Group S.R.L. (Napoli).
-Unifica contabilita', ciclo passivo, prima nota, HR, magazzino, noleggio auto,
-riconciliazione bancaria e tracciabilita' HACCP — con acquisizione automatica
-da PEC e Gmail e sistema relazionale a eventi.
+ERP interno di Ceraldi Group S.R.L. per documenti, fatture, fornitori, Prima
+Nota, riconciliazioni, fisco, personale e flotta.
 
-Repository GitHub: `ceraldicontabilita/gestionale2`
-Branch di riferimento: `main`
+- Produzione: [impresasemplice.online](https://impresasemplice.online)
+- Repository: `ceraldicontabilita/GestionaleCloud`
+- Branch operativo: `main`
+- Catalogo UI: 65 schermate in `page_catalog.json`
 
-## Stack
+## Stato aggiornato al 20/08/2026
 
-- Frontend: React 18 + Vite (porta 3000) — design inline via `src/lib/utils.js`
-- Backend: FastAPI + Motor async (porta 8001)
-- Database: MongoDB Atlas, DB `Gestionale`, cluster `cluster0.vofh7iz`
-- Scheduler: APScheduler (PEC orario, Gmail 10 min)
-- Servizi core: `app/services/` — event bus, alert engine, riconciliazione, partite aperte
+La produzione usa ancora MongoDB come backend transitorio. Il supporto per il
+registro operativo Google Sheets/Drive è presente e pubblicato, ma il cutover
+Drive-only richiede ancora la sincronizzazione completa e l'audit di
+ricostruzione. Non considerare MongoDB rimosso finché questi controlli non sono
+stati superati e `DATA_BACKEND=sheets` non è attivo in produzione.
 
-## Regola canonica fornitori
-
-La collection MongoDB primaria dell'anagrafica fornitori e' **`fornitori`**.
-
-`suppliers` resta solo nome tecnico/inglese per moduli, servizi, route API e retrocompatibilita'.
-Non deve essere usato come collection Mongo separata.
-
-Fonti di verita':
-
-- `app/db_collections.py`: `COLL_SUPPLIERS = "fornitori"`, `COLL_FORNITORI = "fornitori"`
-- `app/database/collections.py`: `Collections.FORNITORI = "fornitori"`, `Collections.SUPPLIERS = "fornitori"`
-- `app/database.py`: `Collections.SUPPLIERS = "fornitori"`
-- `memoria/FORNITORI_REGOLA_CANONICA.md`: regola operativa dettagliata
-
-Le API frontend restano compatibili su `/api/suppliers`, ma leggono/scrivono la collection `fornitori` tramite costanti backend.
-
-## Deploy (Render)
-
-`render.yaml` documenta build/start command dei due servizi Render (backend
-FastAPI + static site frontend). Non si applica da solo alle risorse Render
-già esistenti (vedi commento in testa al file) — è un riferimento versionato
-per non dipendere solo dalla configurazione nella dashboard. Le variabili
-d'ambiente reali restano impostate solo su Render, mai nel repo.
-
-Il sito statico viene compilato da Render direttamente da `frontend/`; non è
-necessario pubblicare bundle `dist` creati su una macchina locale.
-
-## Avvio rapido
-
-I servizi sono gestiti da Supervisor e si avviano da soli:
-
-```bash
-sudo supervisorctl status
-sudo supervisorctl restart backend
-sudo supervisorctl restart frontend
-```
-
-Frontend: http://localhost:3000 (esterno: valore di `REACT_APP_BACKEND_URL` in `frontend/.env`)
-Backend API: http://localhost:8001/api
-Health: `curl -s http://localhost:8001/api/health`
-
-Per una demo locale isolata, senza collegarsi ai dati reali né avviare gli
-scheduler, usare `ENVIRONMENT=testing` e `MONGO_URL=mongomock://localhost`.
-
-## Struttura
+Il registro Drive crea questa struttura:
 
 ```text
-/app
-├── backend/            Entry point FastAPI (server.py) + .env
-├── app/                Codice applicativo backend
-│   ├── routers/        Router FastAPI organizzati per modulo
-│   ├── services/       Servizi core condivisi
-│   ├── models/         Modelli dati e stati
-│   ├── parsers/        Parser XML, PDF
-│   ├── database.py     Connessione MongoDB + indici
-│   ├── db_collections.py        Costanti collection principali
-│   └── database/collections.py  Costanti collection class-based
-├── frontend/           React + Vite
-├── memoria/            Documentazione viva
-├── claude-patches/     Patch di sviluppo
-├── PIANO_LAVORO_RELAZIONALE.md
-├── DIARIO.md
-└── README.md
+REGISTRO DATI/
+PARTENOPAY/
+CODICI TRIBUTO/
+QUIETANZE/
+DICHIARAZIONI/
 ```
 
-## Dove leggere la documentazione
-
-- `memoria/INDEX.md` — scheda rapida: stack, collections, route, regole critiche
-- `memoria/FORNITORI_REGOLA_CANONICA.md` — regola definitiva `fornitori`/`suppliers`
-- `memoria/PRD.md` — product requirements, stato implementazione, backlog
-- `memoria/LOGICA_OPERATIVA.md` — funzionamento pagina per pagina
-- `memoria/BACKLOG.md` — backlog operativo con priorita'
-- `PIANO_LAVORO_RELAZIONALE.md` — architettura relazionale, catalogo alert, piano 8 fasi
-- `docs/AUDIT_PDF_IVA_QUALITA_DATI.md` — audit end-to-end, regole IVA, import documenti e recovery
-- `docs/SPECIFICA_OPERATIVA_GESTIONALECLOUD.md` — specifica canonica, stato verificato e piano prioritario
-- `docs/MCP_GESTIONALE_SPEC.md` — contratto proposto per strumenti AI riusabili e autorizzati
-
-## Architettura relazionale
-
-Il gestionale usa un sistema a eventi sincroni per far comunicare i moduli.
-Quando un'entita' cambia stato, il cambio si propaga automaticamente:
+## Architettura
 
 ```text
-Fattura XML -> crea/aggiorna Fornitore -> crea Partita Aperta -> genera Alert se incompleta
-Movimento Banca -> cerca Match con Partite -> Riconcilia -> aggiorna Fattura/F24/Stipendio
-Cedolino importato -> aggiorna Dipendente -> crea Prima Nota Salari -> crea Partita Stipendio
+Browser React/Vite
+  -> API FastAPI same-origin
+     -> servizi di dominio e motore unico Prima Nota
+        -> backend dati selezionato da DATA_BACKEND
+           ├── mongodb  (transitorio)
+           └── sheets   (Google Sheets/Drive, destinazione)
+
+Google Drive / Gmail autorizzato / API esterne
+  -> import, parser, deduplica, identità canonica
+     -> fatture, F24, quietanze, banca, PartenoPay, cedolini
 ```
 
-I servizi core in `app/services/`:
+### Stack
 
-- `event_bus.py` — dispatcher eventi sincrono tra moduli
-- `alert_engine.py` — codici alert standardizzati con trigger e chiusura
-- `audit_logger.py` — log unificato di ogni cambio stato
-- `deduplica.py` — verifica duplicati per tutte le entita'
-- `partite_aperte_engine.py` — scadenziario materializzato
-- `riconciliazione_engine.py` — scoring match a 4 livelli
+- Backend: Python 3.12, FastAPI, Motor-compatible async API, APScheduler.
+- Frontend: React 18, Vite 5, React Router 6, TanStack Query, Zustand.
+- Persistenza: MongoDB transitorio; Google Sheets/Drive disponibile per il
+  registro portabile.
+- Deploy: un servizio Render avviato con `python -m app.process_supervisor`.
+- CI: pytest, Vitest, build Vite, audit statici, runtime smoke ed E2E isolato.
 
-## Principi
+## Avvio locale
 
-1. I ricavi arrivano solo da `corrispettivi`. Le `invoices` sono costi.
-2. Il metodo di pagamento di una fattura viene sempre dall'anagrafica del fornitore, mai dall'XML SDI.
-3. Collezioni canoniche: `fornitori`, `dipendenti`, `warehouse_inventory`.
-4. `suppliers` e' alias tecnico/API, non collection primaria.
-5. Design system: una sola fonte di verita' in `src/lib/utils.js`. Niente Tailwind, niente Shadcn.
-6. Full-frame e responsive: layout 100% width, niente `max-width` fisso, tabelle con wrapper scrollabile.
-7. Nomi collezioni: importare sempre da `app/db_collections.py` o `app/database/collections.py`, mai stringhe hardcoded.
-8. Patch Claude: mai push diretto su main, sempre in `claude-patches/chat-N-descrizione/` con `ISTRUZIONI.md`.
-9. Ogni operazione CRUD significativa chiama `propagate_event()` o pubblica evento quando previsto.
+Prerequisiti: Python 3.12, Node.js e Yarn.
 
-## Package management
-
-- Python: `pip install <pkg> && pip freeze > /app/backend/requirements.txt`
-- Node: `cd /app/frontend && yarn add <pkg>` (mai npm)
-
-## Ambiente
-
-- `frontend/.env`
-  - `REACT_APP_BACKEND_URL`
-  - `VITE_BACKEND_URL`
-- `backend/.env`
-  - `MONGO_URL`, `DB_NAME=Gestionale`
-  - credenziali PEC / Gmail / OpenAPI
-
-Non rimuovere le variabili protette (`MONGO_URL`, `DB_NAME`, `REACT_APP_BACKEND_URL`).
-
-## Log utili
-
-```bash
-tail -n 100 /var/log/supervisor/backend.err.log
-tail -n 100 /var/log/supervisor/frontend.err.log
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r backend\requirements.txt
+yarn --cwd frontend install --frozen-lockfile
 ```
+
+Configurare le variabili in un ambiente locale non versionato. Per una prova
+isolata non usare credenziali o dati di produzione.
+
+```powershell
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+yarn --cwd frontend dev
+```
+
+Se l'entrypoint applicativo cambia, il riferimento definitivo è il comando di
+avvio in `render.yaml` e il lifecycle importato dai test correnti.
+
+## Configurazione essenziale
+
+### Applicazione
+
+- `ENVIRONMENT`
+- `SECRET_KEY`
+- `CORS_ALLOWED_ORIGINS`
+- `DATA_BACKEND=mongodb|sheets`
+
+### Backend MongoDB transitorio
+
+- `MONGODB_ATLAS_URI` oppure `MONGO_URL`
+- `DB_NAME`
+
+### Registro Google Sheets/Drive
+
+- `GOOGLE_SHEETS_LEDGER_ID` oppure la cartella configurata per scoprirlo
+- `GOOGLE_SHEETS_LEDGER_FOLDER_ID`
+- `GOOGLE_DRIVE_SA_JSON` / `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`
+- ID delle cartelle documentali abilitate
+
+Le credenziali restano nel secret store di Render. Non inserire JSON di
+service account, token o password nel repository.
+
+## Migrazione Drive-only
+
+La procedura amministrativa deve essere eseguita in quest'ordine:
+
+1. inventario delle collezioni sorgente;
+2. deduplica per `canonical_id` e hash del payload;
+3. blocco dei conflitti ID uguale/payload diverso;
+4. sincronizzazione completa nel registro Sheets;
+5. confronto di conteggi e digest per ogni foglio;
+6. ricostruzione del runtime dai fogli e prova di scrittura;
+7. attivazione `DATA_BACKEND=sheets`;
+8. verifica live del commit in produzione;
+9. disattivazione e successiva rimozione controllata di MongoDB.
+
+I documenti originali su Drive non vengono spostati o eliminati dalla
+migrazione del registro.
+
+## Albero del repository
+
+```text
+app/
+├── routers/                    API FastAPI per dominio
+├── services/                   logica condivisa e riconciliazioni
+├── parsers/                    XML, PDF, CSV e formati fiscali
+├── knowledge/                  base di conoscenza della chat
+├── config.py                   configurazione e feature flag
+└── database.py                 selezione backend MongoDB/Sheets
+backend/
+└── requirements.txt
+frontend/
+├── src/main.jsx                router principale
+├── src/pages/                  schermate
+├── src/pages/hub/              alberi di navigazione per modulo
+├── src/components/             modali e componenti condivisi
+└── package.json
+gestionale_mcp/                 gateway AI di sola lettura
+scripts/                        audit, mappe e manutenzione verificabile
+tests/                          test backend e guardie architetturali
+memoria/                        specifiche e mappe tecniche
+page_catalog.json               catalogo macchina delle 65 pagine
+CLAUDE.md                       istruzioni operative per gli agenti
+PRODUCT.md                      obiettivi e confini del prodotto
+```
+
+## Moduli applicativi
+
+- Dashboard e inserimento rapido
+- Fatture, corrispettivi e fornitori
+- Prima Nota Cassa/Banca, salari e ritenute
+- Flotta, verbali e costi noleggio
+- Contabilità, bilancio, IVA, F24 e situazione fiscale
+- Riconciliazione banca, bonifici, assegni, PayPal, PagoPA e POS
+- Import, archivio e indice documentale Drive
+- Strumenti, integrazioni, agenti e amministrazione
+
+L'elenco completo e verificabile delle route è in `page_catalog.json`.
+
+## Regole dati fondamentali
+
+1. `canonical_id` identifica l'entità; `operation_id` collega le prove della
+   stessa operazione.
+2. Stesso hash/identità non crea un duplicato.
+3. L'importo da solo non autorizza un'associazione.
+4. Fattura, quietanza e movimento bancario restano entità distinte.
+5. I ricavi provengono dai corrispettivi, non dagli accrediti POS.
+6. Le scritture di Prima Nota passano da
+   `app/services/scritture_contabili.py`.
+7. I documenti originali sono immutabili e tracciati con fonte e hash.
+
+## Test
+
+```powershell
+python -m pytest -q
+yarn --cwd frontend test
+yarn --cwd frontend build
+python scripts\audit_static.py
+git diff --check
+```
+
+Test mirati del catalogo e del registro Drive:
+
+```powershell
+python -m pytest tests\test_page_catalog.py -q
+python -m pytest tests\test_google_sheets_ledger.py tests\test_sheets_runtime_database.py -q
+```
+
+## Deploy
+
+`render.yaml` documenta il servizio Render con auto-deploy da `main`. Prima
+di considerare pubblicata una modifica:
+
+1. CI verde;
+2. `HEAD == origin/main`;
+3. `/api/health` deve riportare il commit atteso;
+4. controllo live del flusso interessato.
+
+## Documentazione
+
+- `CLAUDE.md` — regole vincolanti per lavorare nel repository.
+- `PRODUCT.md` — visione, flussi e albero funzionale.
+- `LOGICA_FUNZIONAMENTO.md` — comportamento operativo per gli utenti.
+- `page_catalog.json` — route/componenti/accessi/stato audit.
+- `memoria/JSON_INVENTORY.json` — inventario e politica dei file JSON.
+- `memoria/pagine/*.json` — mappe tecniche delle pagine.
+- `memoria/popup/*.json` — mappe tecniche dei popup.
 
 ## Licenza
 
 Uso interno Ceraldi Group S.R.L. Tutti i diritti riservati.
-
-<!-- deploy trigger 10:38:38 -->

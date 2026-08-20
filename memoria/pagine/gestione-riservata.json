@@ -1,117 +1,46 @@
 {
-  "pagina": "Gestione Riservata",
-  "url": "https://impresasemplice.online/gestione-riservata",
-  "file_sorgente_frontend": [
-    "frontend/src/pages/GestioneRiservata.jsx (contiene sia il sotto-componente di login LoginGestioneRiservata sia la dashboard DashboardGestioneRiservata; il componente esportato di default sceglie quale mostrare in base a un flag salvato in localStorage)"
-  ],
-  "file_sorgente_backend": [
-    "app/routers/gestione_riservata.py"
-  ],
-  "scopo_generale": "Area riservata, protetta da un secondo codice di accesso INDIPENDENTE dal login principale dell'app (il PIN di Login.jsx), pensata per registrare incassi e spese 'non fatturati' — cioè movimenti di cassa reali che l'azienda vuole tracciare internamente ma che non transitano dalla fatturazione ufficiale (es. mance, vendite extra, catering, piccoli acquisti in contanti). Serve a calcolare il 'volume d'affari reale' dell'azienda (fatturato ufficiale/corrispettivi + incassi extra − spese extra), un dato riservato che non deve comparire nella contabilità visibile a tutti.",
-  "bottoni_azioni": [
-    {
-      "etichetta": "Accedi (submit login codice)",
-      "cosa_fa_al_click": "handleSubmit(e) nel componente LoginGestioneRiservata: invia il codice digitato (nessuna validazione client-side sul formato).",
-      "endpoint_chiamato": "POST /api/gestione-riservata/login { code }",
-      "logica_backend": "gestione_riservata_login(): confronta il codice ricevuto (str, trim) con la variabile d'ambiente GESTIONE_RISERVATA_CODE. Se vuoto in input -> 400 'Inserire il codice di accesso'. Se diverso -> 401 'Codice di accesso non valido' (con un logger.warning che registra il tentativo fallito, INCLUSO il codice sbagliato in chiaro nei log). Se corretto -> 200 {success:true, message:'Accesso autorizzato', portal:'gestione_riservata'} — NON viene emesso alcun token/JWT.",
-      "formula_matematica": "Confronto stringa esatto: code.strip() == GESTIONE_RISERVATA_CODE (nessun hashing, il codice è in chiaro sia in env sia nel confronto).",
-      "aggiornamento_ui": "Se success:true, il frontend scrive localStorage.setItem('gestione_riservata_session', 'active') e chiama onLogin() per far comparire la DashboardGestioneRiservata.",
-      "casi_errore": "setError(err.response?.data?.detail || 'Codice non valido') mostrato sopra il form con icona AlertTriangle."
-    },
-    {
-      "etichetta": "Esci (header dashboard)",
-      "cosa_fa_al_click": "handleLogout(): rimuove localStorage.removeItem('gestione_riservata_session') e chiama onLogout() per tornare al form di login.",
-      "endpoint_chiamato": "Nessuna chiamata di rete.",
-      "logica_backend": "-",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Torna a mostrare LoginGestioneRiservata.",
-      "casi_errore": "-"
-    },
-    {
-      "etichetta": "Nuovo Movimento (apre il form)",
-      "cosa_fa_al_click": "Imposta showForm=true e editingId=null, mostrando un form vuoto (data odierna, tipo='incasso', categoria='altro').",
-      "endpoint_chiamato": "Nessuna chiamata di rete.",
-      "logica_backend": "-",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Mostra il pannello 'Nuovo Movimento' sopra la tabella.",
-      "casi_errore": "-"
-    },
-    {
-      "etichetta": "Salva / Aggiorna (submit form movimento)",
-      "cosa_fa_al_click": "handleSave(): se editingId è valorizzato esegue un aggiornamento, altrimenti una creazione. Nessuna validazione client-side sui campi (importo può essere lasciato vuoto/non numerico, descrizione può essere vuota).",
-      "endpoint_chiamato": "POST /api/gestione-riservata/movimenti { data, tipo, descrizione, importo, categoria, note } (creazione) oppure PUT /api/gestione-riservata/movimenti/{editingId} con lo stesso body (modifica)",
-      "logica_backend": "create_movimento(): estrae anno/mese dalla data (fallback su anno/mese correnti se il parsing fallisce), genera un id uuid4, forza tipo di default 'incasso' se assente, importo=float(...) con fallback 0, entity_status='active', poi insert_one su gestione_riservata. update_movimento(): aggiorna solo i campi effettivamente presenti nel body (whitelist: data/tipo/descrizione/importo/categoria/note), ricalcola anno/mese se la data cambia, 404 se l'id non esiste.",
-      "formula_matematica": "importo = float(data.importo o 0) o 0 (creazione); in update non c'è coercizione esplicita a float, il valore passa così com'è dal form (stringa se l'input number non è stato toccato) — possibile incoerenza di tipo tra creazione e modifica.",
-      "aggiornamento_ui": "Chiude il form, azzera i campi, richiama loadData() che ricarica sia la lista movimenti sia il riepilogo (le 3 card in alto).",
-      "casi_errore": "alert('Errore: ' + dettaglio) se la chiamata fallisce."
-    },
-    {
-      "etichetta": "Modifica (icona matita, per riga in tabella)",
-      "cosa_fa_al_click": "handleEdit(mov): precompila il form con i dati del movimento selezionato e apre il pannello in modalità modifica (editingId = mov.id).",
-      "endpoint_chiamato": "Nessuna chiamata di rete (usa i dati già in memoria dalla GET /movimenti).",
-      "logica_backend": "-",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Mostra il form con titolo 'Modifica Movimento' e i campi già valorizzati.",
-      "casi_errore": "-"
-    },
-    {
-      "etichetta": "Elimina (icona cestino, per riga in tabella)",
-      "cosa_fa_al_click": "handleDelete(id): elimina il movimento SENZA alcuna richiesta di conferma (nessun window.confirm, a differenza di altre pagine del gestionale come RiconciliazioneUnificata).",
-      "endpoint_chiamato": "DELETE /api/gestione-riservata/movimenti/{id}",
-      "logica_backend": "delete_movimento(): soft-delete, imposta entity_status='deleted' e deleted_at=ora tramite update_one (il documento NON viene rimosso fisicamente dalla collezione); 404 se l'id non esiste.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "loadData() ricarica; il movimento sparisce dalla lista (perché GET /movimenti filtra entity_status != 'deleted') e dal riepilogo.",
-      "casi_errore": "alert('Errore: ' + dettaglio) se la chiamata fallisce."
-    },
-    {
-      "etichetta": "Selettore mese (dropdown filtro)",
-      "cosa_fa_al_click": "Cambia lo stato locale 'mese' (1-12 o null per 'Tutti i mesi'), che insieme all'anno globale (dal contesto AnnoContext, mostrato ma non modificabile da questa pagina) rifiltra i dati.",
-      "endpoint_chiamato": "GET /api/gestione-riservata/movimenti?anno=Y&mese=M, GET /api/gestione-riservata/riepilogo?anno=Y&mese=M (in Promise.all)",
-      "logica_backend": "get_movimenti(): query su gestione_riservata con entity_status != 'deleted', filtrata per anno/mese/tipo se passati, ordinata per data desc. get_riepilogo(): aggregation $group per tipo (incasso/spesa) con somma importo e count, poi calcola saldo_netto = incassi.totale - spese.totale.",
-      "formula_matematica": "saldo_netto = totale_incassi − totale_spese",
-      "aggiornamento_ui": "Ricarica le 3 card di riepilogo (Incassi Non Fatturati, Spese Non Fatturate, Saldo Netto Extra) e la tabella movimenti.",
-      "casi_errore": "console.error('Errore caricamento:', e), nessun messaggio visibile."
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Registrazione nuovo movimento (incasso o spesa non fatturato)",
-      "sequenza_esatta": "1) Utente compila il form (data, tipo incasso/spesa, importo, descrizione, categoria tra mance/vendita_extra/catering/acquisti/altro, note libere). 2) POST /api/gestione-riservata/movimenti. 3) Il backend calcola anno/mese dalla data e genera un id uuid4, poi insert_one su gestione_riservata con entity_status='active'. 4) loadData() ricarica lista + riepilogo.",
-      "collezioni_coinvolte": ["gestione_riservata (scrittura)"],
-      "campi_scritti": {
-        "gestione_riservata": "id (uuid4), data, anno, mese, tipo, descrizione, importo (float), categoria, note, created_at, entity_status='active'"
-      },
-      "effetti_collaterali": "Il totale di questi movimenti confluisce nel calcolo del 'volume d'affari reale' esposto da GET /api/gestione-riservata/volume-affari-reale (fatturato_ufficiale=corrispettivi + incassi_non_fatturati − spese_non_fatturate), un endpoint di riepilogo probabilmente consumato da un'altra pagina (dashboard direzionale) più che da questa stessa."
-    },
-    {
-      "nome": "Modifica movimento esistente",
-      "sequenza_esatta": "PUT /api/gestione-riservata/movimenti/{id} con i soli campi presenti nel form (whitelist lato backend); se cambia la data, anno/mese vengono ricalcolati.",
-      "collezioni_coinvolte": ["gestione_riservata (scrittura)"],
-      "campi_scritti": {"gestione_riservata": "data, tipo, descrizione, importo, categoria, note, anno/mese (se data cambiata), updated_at"},
-      "effetti_collaterali": "Nessuno storicizzato: la modifica sovrascrive direttamente il documento, non esiste versionamento/audit trail visibile in questa pagina."
-    },
-    {
-      "nome": "Eliminazione (soft-delete) movimento",
-      "sequenza_esatta": "DELETE /api/gestione-riservata/movimenti/{id} -> update_one con entity_status='deleted', deleted_at=ora. Il record resta fisicamente nel database ma sparisce da tutte le query che filtrano entity_status != 'deleted' (lista, riepilogo, volume affari reale).",
-      "collezioni_coinvolte": ["gestione_riservata (scrittura)"],
-      "campi_scritti": {"gestione_riservata": "entity_status='deleted', deleted_at"},
-      "effetti_collaterali": "Recuperabile in teoria via accesso diretto al database (non c'è una UI di 'cestino'/ripristino in questa pagina)."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Nessun link diretto in uscita verso altre pagine del gestionale all'interno di GestioneRiservata.jsx: è una sezione isolata, raggiungibile solo digitando/navigando direttamente all'URL.",
-    "Il contesto AnnoContext (anno globale selezionato altrove nell'header dell'app) determina il filtro anno di questa pagina, mostrato in un box 'X (globale)' non modificabile da qui.",
-    "L'endpoint GET /api/gestione-riservata/volume-affari-reale (non chiamato da questa pagina) combina i dati di gestione_riservata con la collezione corrispettivi — probabile collegamento con una dashboard direzionale/riservata separata non ancora individuata in questo audit."
-  ],
-  "popup_e_modali_presenti": [
-    {
-      "nome": "Form Nuovo/Modifica Movimento (non un vero modale, pannello in-page sopra la tabella)",
-      "trigger": "bottone 'Nuovo Movimento' oppure icona matita su una riga",
-      "contenuto": "Data, Tipo (Incasso/Spesa), Importo (€), Descrizione, Categoria (Mance/Vendita Extra/Catering/Acquisti/Altro), Note. Bottoni Salva/Aggiorna e X per chiudere."
-    }
-  ],
-  "note_tecniche_aggiuntive": [
-    "Doppio livello di autenticazione: questa pagina è raggiungibile solo se si è già autenticati nel gestionale principale (RequireAuth della route), ma richiede POI un secondo codice indipendente (GESTIONE_RISERVATA_CODE via env) gestito interamente in localStorage lato client, senza alcun token/sessione lato server — non esiste scadenza automatica: la sessione 'gestione_riservata_session' resta 'active' finché l'utente non preme Esci o non viene manualmente rimossa (es. svuotando i dati del browser).",
-    "Il controllo di accesso è quindi puramente client-side per la SESSIONE (una volta ottenuto success:true dal login, qualunque chiamata successiva a GET/POST/PUT/DELETE /api/gestione-riservata/* NON richiede di ripassare il codice — l'unica protezione sulle API stesse è l'autenticazione JWT standard del gestionale, condivisa con tutte le altre pagine): un utente già loggato nel gestionale generale potrebbe in teoria chiamare direttamente questi endpoint senza mai passare dal form del codice, se conoscesse gli URL."
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Gestione riservata",
+  "route": "/gestione-riservata",
+  "catalog_id": 2,
+  "modulo": "accesso",
+  "accesso": "reserved",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Gestione riservata». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/GestioneRiservata.jsx",
+    "entry": "frontend/src/main.jsx",
+    "file_verificati": [
+      "frontend/src/main.jsx",
+      "frontend/src/pages/GestioneRiservata.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/routers/gestione_riservata.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/gestione-riservata/login",
+      "/api/gestione-riservata/movimenti",
+      "/api/gestione-riservata/movimenti/{param}",
+      "/api/gestione-riservata/riepilogo"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

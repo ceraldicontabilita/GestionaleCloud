@@ -1,245 +1,72 @@
 {
-  "pagina": "Riconciliazione Bancaria (Riconciliazione Unificata) - contenuto di default dell'hub /riconciliazione",
-  "url": "https://impresasemplice.online/riconciliazione",
-  "note_routing": "RiconciliazioneHub.jsx (frontend/src/pages/hub/RiconciliazioneHub.jsx) è il componente montato sulla route /riconciliazione e sceglie quale figlio renderizzare in base al pathname: se contiene '/archivio-bonifici' monta ArchivioBonifici, se contiene '/gestione-assegni' o '/assegni' monta GestioneAssegni, se contiene '/paypal' monta RiconciliazionePaypal, se contiene '/coerenza-pos' monta CoerenzaPOSCorrispettivi. In TUTTI gli altri casi (compreso il path esatto '/riconciliazione' senza sotto-tab) il default è RiconciliazioneUnificata.jsx, cioè QUESTA pagina. RiconciliazioneUnificata.jsx è a sua volta un componente con tab interne gestite via URL (/riconciliazione/banca, /riconciliazione/assegni, /riconciliazione/f24, /riconciliazione/stipendi, /riconciliazione/documenti, /riconciliazione/paypal): se il path non specifica un sotto-tab valido, la tab attiva iniziale è 'dashboard' (una card riepilogativa senza dati operativi); il contenuto con l'estratto conto/movimenti bancari vero e proprio è nella tab 'banca', raggiungibile cliccando il tab 🏦 Banca o navigando a /riconciliazione/banca.",
-  "file_sorgente_frontend": [
-    "frontend/src/pages/hub/RiconciliazioneHub.jsx",
-    "frontend/src/pages/RiconciliazioneUnificata.jsx"
-  ],
-  "file_sorgente_backend": [
-    "app/routers/operazioni_module/__init__.py (registra le rotte /api/operazioni-da-confermare/smart/*)",
-    "app/routers/operazioni_module/smart.py (logica banca-veloce, analizza, riconcilia-manuale, riconcilia-auto, cerca-f24/fatture/stipendi, conferma-f24)",
-    "app/routers/operazioni_module/common.py (costanti QUERY_FATTURA_NON_PAGATA, set_fattura_pagata, modelli pydantic)",
-    "app/routers/bank/estratto_conto.py (DELETE /api/estratto-conto-movimenti/{id})",
-    "app/routers/documenti_non_associati.py (tab Documenti: /api/documenti-non-associati/*)",
-    "app/routers/bank/assegni.py (POST /api/assegni/{id}/incassa, usato dal tab Prelievi Assegno)",
-    "app/routers/fatture_module/pagamento.py (POST /api/fatture-ricevute/auto-ricostruisci-dati, bottone 🔧 Auto-Ripara)",
-    "app/routers/prima_nota_module/sync.py (registra_pagamento_fattura, chiamato da riconcilia-manuale e riconcilia-auto per scrivere in Prima Nota Banca)",
-    "app/services/event_bus.py (propagate_event/EventTypes.FATTURA_PAGATA, propagato dopo ogni riconciliazione fattura)"
-  ],
-  "scopo_generale": "Pagina 'hub' di riconciliazione: mette in un'unica interfaccia a tab tutti i flussi di abbinamento tra i movimenti dell'estratto conto bancario (collezione estratto_conto_movimenti) e le entità che quei movimenti pagano (fatture ricevute, F24, stipendi, prelievi assegno). La tab di default utile all'operatore è 🏦 Banca: mostra i movimenti bancari non ancora riconciliati con, per ciascuno, i suggerimenti di match calcolati dal motore smart (app.services.riconciliazione_smart, invocato da GET /smart/analizza) — fornitore/importo fattura suggerita, eventuale scostamento importo, informazioni su pagamenti rateali. Le altre tab (Prelievi Assegno, F24, Stipendi, Documenti, PayPal) condividono lo stesso impianto UI (lista + bottoni Conferma/Ignora/Elimina) ma lavorano su collezioni diverse. Ogni volta che una riconciliazione fattura va a buon fine, la pagina propaga l'evento in tutto il gestionale: segna la fattura pagata (invoices), crea/aggiorna il movimento in Prima Nota Banca e chiude la relativa partita nello scadenziario fornitori tramite l'event bus (EventTypes.FATTURA_PAGATA).",
-  "bottoni_azioni": [
-    {
-      "etichetta": "🔧 Auto-Ripara",
-      "cosa_fa_al_click": "eseguiAutoRiparazione(): chiama l'endpoint di manutenzione automatica dei dati fattura, poi ricarica tutti i dati SOLO se la risposta segnala riparazioni effettuate.",
-      "endpoint_chiamato": "POST /api/fatture-ricevute/auto-ricostruisci-dati",
-      "logica_backend": "auto_ricostruisci_dati(): chiama aggiorna_metodi_pagamento_da_fornitori() per ricopiare il metodo di pagamento dal fornitore sulle fatture che non ce l'hanno, e restituisce {success, metodi_aggiornati, fatture_riparate}.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "BUG rilevato nel codice: il frontend controlla `res.data.riconciliazioni_auto > 0 || res.data.f24_corretti > 0` per decidere se mostrare il badge '✓ N riparazioni' e ricaricare i dati, ma il backend NON restituisce mai questi due campi (restituisce metodi_aggiornati/fatture_riparate). Di conseguenza il bottone esegue sempre la chiamata e la riparazione lato server avviene, ma l'interfaccia non mostra mai il badge di conferma né ricarica automaticamente la pagina: l'utente non vede alcun feedback visibile del risultato.",
-      "casi_errore": "In caso di eccezione, console.warn('Auto-riparazione non riuscita:', error) — nessun messaggio visibile all'utente."
-    },
-    {
-      "etichetta": "⚡ Auto-Riconcilia",
-      "cosa_fa_al_click": "handleAutoRiconcilia(): auto-conferma in sequenza (1) tutti i movimenti bancari con associazione_automatica=true già presenti in memoria (POS/commissioni riconosciuti dall'analizzatore smart), e (2) tutti gli assegni il cui primo suggerimento ha importo identico (tolleranza 0.01) all'assegno. Per ciascuno invoca la stessa POST di conferma manuale.",
-      "endpoint_chiamato": "POST /api/operazioni-da-confermare/smart/riconcilia-manuale (una chiamata per ogni movimento/assegno da confermare)",
-      "logica_backend": "riconcilia_manuale() in smart.py: cerca il movimento in estratto_conto_movimenti; se tipo=='fattura' (o 'fattura_sdd', normalizzato a 'fattura'), recupera la fattura, imposta pagato/paid/stato_pagamento='pagata'/status='pagata'/data_pagamento su invoices tramite set_fattura_pagata(), crea (idempotente) il movimento equivalente in Prima Nota Banca via registra_pagamento_fattura(), poi propaga l'evento FATTURA_PAGATA sull'event bus (aggiorna scadenziario fornitori collegato). Se tipo=='stipendio' o 'f24', si limita a marcare stipendio_id/f24_id sul movimento. In tutti i casi imposta sul movimento riconciliato=true, tipo_riconciliazione='manuale', data_riconciliazione, note_riconciliazione.",
-      "formula_matematica": "Match esatto assegno: abs(abs(importo_assegno) - abs(importo_suggerimento)) < 0.01",
-      "aggiornamento_ui": "alert() riassuntivo con conteggio riconciliati e, se presenti, i primi 3 errori; poi loadAllData() ricarica tutte le tab.",
-      "casi_errore": "Ogni singola chiamata fallita viene raccolta in un array errori e mostrata nell'alert finale; il conteggio matched/pending viene comunque aggiornato con i soli successi."
-    },
-    {
-      "etichetta": "🔄 Aggiorna",
-      "cosa_fa_al_click": "Richiama loadAllData(currentLimit) per ricaricare tutte le sorgenti dati mantenendo il limite di paginazione corrente.",
-      "endpoint_chiamato": "GET /api/operazioni-da-confermare/smart/analizza?limit=N, GET /api/operazioni-da-confermare/smart/banca-veloce?limit=50&anno=Y, GET /api/operazioni-da-confermare/smart/cerca-stipendi (in parallelo con Promise.all)",
-      "logica_backend": "analizza_movimenti_smart() -> analizza_estratto_conto_batch() (servizio riconciliazione_smart, calcola suggerimenti per ogni movimento non riconciliato). banca_veloce() -> query diretta su estratto_conto_movimenti (non riconciliati, filtrati per anno) + assegni pendenti + fatture da pagare con metodo diverso da contanti, più conteggi stats. cerca_stipendi_per_associazione() -> query su prima_nota_salari non riconciliati.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Aggiorna stats, movimentiBanca (esclusi i 'PRELIEVO ASSEGNO', che finiscono nel tab Assegni), assegni, stipendiPendenti, autoMatchStats; carica in background (senza bloccare la UI) documenti non associati e relative statistiche. Se anche solo una delle 3 chiamate primarie fallisce, mostra un banner rosso con 'Alcuni dati non si sono caricati correttamente (X/3 sorgenti in errore)' e bottone Riprova.",
-      "casi_errore": "Ogni sorgente ha un .catch() silenzioso che restituisce dati vuoti; solo se TUTTE e 3 falliscono la UI resta effettivamente vuota (ma il banner di errore compare già con 1 sola sorgente fallita)."
-    },
-    {
-      "etichetta": "🔍 Filtri (toggle pannello filtri avanzati)",
-      "cosa_fa_al_click": "Mostra/nasconde un pannello con filtri lato client (non chiama il backend): Data Da, Data A, Importo Min, Importo Max, Cerca (testo libero su descrizione/tipo). Il bottone Reset (✕ Reset) azzera tutti i filtri.",
-      "endpoint_chiamato": "Nessuna chiamata di rete: applyFilters() filtra in memoria gli array movimentiBanca/assegni/stipendiPendenti già caricati.",
-      "logica_backend": "-",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Ricalcola movimentiBancaFiltrati/assegniFiltrati/stipendiFiltrati ad ogni render; le liste mostrate nelle tab Banca/Assegni/Stipendi riflettono i filtri attivi (il conteggio nel badge del tab invece mostra sempre il totale non filtrato, preso da stats).",
-      "casi_errore": "-"
-    },
-    {
-      "etichetta": "✓ Conferma (per riga, tab Banca/Stipendi)",
-      "cosa_fa_al_click": "handleConferma(movimento): conferma il movimento usando il primo suggerimento disponibile (o quello passato esplicitamente) come associazione.",
-      "endpoint_chiamato": "POST /api/operazioni-da-confermare/smart/riconcilia-manuale { movimento_id, tipo, associazioni: [primo_suggerimento], categoria }",
-      "logica_backend": "Vedi riconcilia_manuale() sopra (stesso endpoint di Auto-Riconcilia, ma per un solo movimento).",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "loadAllData() ricarica tutto; la card del movimento sparisce dalla lista non riconciliati.",
-      "casi_errore": "alert('Errore: ' + dettaglio) se la POST fallisce (es. 404 fattura/movimento non trovato)."
-    },
-    {
-      "etichetta": "✕ Ignora (per riga)",
-      "cosa_fa_al_click": "handleIgnora(movimento): marca il movimento come ignorato senza riconciliarlo (utile per movimenti che non richiedono abbinamento, es. commissioni bancarie minori).",
-      "endpoint_chiamato": "POST /api/operazioni-da-confermare/smart/ignora { movimento_id }",
-      "logica_backend": "_ignora_movimento() in operazioni_module/__init__.py: imposta ignorato=true su entrambe le collezioni estratto_conto_movimenti e bank_movements (uno dei due update può fallire silenziosamente, ma se ENTRAMBI falliscono risponde 404).",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "loadAllData() ricarica; il movimento sparisce dalla lista (il filtro di banca-veloce/analizza non esclude esplicitamente gli ignorati lato query, ma la card scompare comunque al refresh perché tipicamente il flusso a valle li considera chiusi).",
-      "casi_errore": "Errore solo loggato in console (console.error), nessun alert visibile all'utente."
-    },
-    {
-      "etichetta": "🗑️ Elimina (per riga, icona cestino)",
-      "cosa_fa_al_click": "handleElimina(movimento): richiede conferma con window.confirm('Eliminare definitivamente questo movimento?') poi cancella il record fisicamente dal database.",
-      "endpoint_chiamato": "DELETE /api/estratto-conto-movimenti/{movimento_id}",
-      "logica_backend": "elimina_singolo_movimento(): verifica che il movimento esista (404 altrimenti) poi esegue delete_one({id: movimento_id}) sulla collezione estratto_conto_movimenti. Operazione irreversibile, nessun soft-delete.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "loadAllData() ricarica; il movimento sparisce definitivamente da tutte le viste che leggono estratto_conto_movimenti.",
-      "casi_errore": "alert('Errore eliminazione: ' + dettaglio) se la DELETE fallisce; se movId è mancante mostra alert('ID movimento non trovato') senza nemmeno chiamare il backend."
-    },
-    {
-      "etichetta": "✓ Conferma (tab Prelievi Assegno, testo bottone identico ma callback diversa)",
-      "cosa_fa_al_click": "handleIncassaAssegno(assegno): segna l'assegno come incassato.",
-      "endpoint_chiamato": "POST /api/assegni/{assegno_id}/incassa (body vuoto: data_incasso e movimento_estratto_conto_id non vengono passati da questa UI, quindi restano None/oggi)",
-      "logica_backend": "incassa_assegno() in bank/assegni.py: 1) imposta stato='incassato', data_incasso=oggi, incassato_confermato_banca=false (perché non è stato passato un movimento_estratto_conto_id, quindi non c'è un riscontro reale in banca) sull'assegno; 2) se l'assegno ha un prima_nota_banca_id collegato, lo marca riconciliato=true; 3) se ha una fattura_collegata, la marca pagato=true con metodo_pagamento_effettivo='assegno', chiude le righe collegate in scadenziario_fornitori, propaga l'evento FATTURA_PAGATA; 4) se fosse stato passato un movimento_estratto_conto_id (non il caso da questa pagina) lo marcherebbe riconciliato.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "loadAllData() ricarica; l'assegno sparisce dalla lista dei prelievi da riconciliare.",
-      "casi_errore": "alert('Errore: ' + dettaglio) se la POST fallisce (es. 404 assegno non trovato)."
-    },
-    {
-      "etichetta": "📥 Carica altri (N caricati)",
-      "cosa_fa_al_click": "loadMore(): aumenta il limite di paginazione di 25 e ricarica SOLO la sorgente banca-veloce (non analizza né stipendi), visibile in coda alle tab Banca/Assegni/Stipendi quando hasMore=true.",
-      "endpoint_chiamato": "GET /api/operazioni-da-confermare/smart/banca-veloce?limit={currentLimit+25}",
-      "logica_backend": "banca_veloce() (vedi sopra), stessa funzione della card Aggiorna ma con limite crescente.",
-      "formula_matematica": "hasMore = movimenti.length >= newLimit (euristica: se la risposta è piena al limite richiesto, si assume che ce ne siano altri)",
-      "aggiornamento_ui": "Sostituisce movimentiBanca/assegni/stats con i nuovi risultati (non fa append, ma refetch completo con limite maggiore).",
-      "casi_errore": "console.error se la chiamata fallisce, nessun messaggio visibile."
-    },
-    {
-      "etichetta": "🔍 Carica F24 pendenti (tab F24, mostrato solo se la lista è vuota)",
-      "cosa_fa_al_click": "loadF24OnDemand(): la ricerca F24 NON viene eseguita al caricamento automatico della pagina (commentata via codice, perché impiegava ~35s e causava un reload visivo indesiderato) — va richiesta esplicitamente aprendo il tab F24 e premendo questo bottone.",
-      "endpoint_chiamato": "GET /api/operazioni-da-confermare/smart/cerca-f24?anno={anno}",
-      "logica_backend": "cerca_f24_per_associazione(): query su f24_commercialista con riconciliato != true, filtrabile per importo/data.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Popola f24Pendenti e stats.f24; mostra la lista F24 con checkbox di selezione multipla.",
-      "casi_errore": "console.warn('F24 non caricati:', e), nessun messaggio visibile all'utente."
-    },
-    {
-      "etichetta": "☑ Seleziona tutti / ☐ Deseleziona (tab F24)",
-      "cosa_fa_al_click": "toggleTutti(): seleziona o deseleziona in blocco tutti gli F24 con importo > 0 attualmente visibili.",
-      "endpoint_chiamato": "Nessuna chiamata di rete (stato locale Set selezionati).",
-      "logica_backend": "-",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Mostra il riquadro azioni batch (🏦 Pagamento Banca + bottone Conferma) quando almeno un F24 è selezionato, con totale selezionato calcolato in tempo reale.",
-      "casi_errore": "-"
-    },
-    {
-      "etichetta": "✅ Conferma N (€ totale) — conferma batch F24",
-      "cosa_fa_al_click": "confermaBatch(): conferma in un'unica chiamata tutti gli F24 selezionati, con metodo di pagamento fisso 'banca' (l'unica opzione disponibile in questa UI, la label mostra '🏦 Pagamento Banca').",
-      "endpoint_chiamato": "POST /api/operazioni-da-confermare/smart/conferma-f24 { operazioni: [{operazione_id, metodo_pagamento:'banca', tipo:'f24'}, ...] }",
-      "logica_backend": "conferma_f24_batch(): per ogni operazione aggiorna il documento f24_commercialista corrispondente con riconciliato=true, status='pagato', pagato_manualmente=true, metodo_pagamento, tipo_riconciliazione='manuale', data_riconciliazione/updated_at. Se un id non esiste, lo registra come errore ma continua con gli altri (non è transazionale).",
-      "formula_matematica": "totaleSelezionati = somma di (importo_totale || importo) degli F24 con id in selezionati",
-      "aggiornamento_ui": "alert('✅ Confermati N F24'); svuota la selezione; onRefresh() ricarica dashboard/tab (tramite loadAllData passato come prop).",
-      "casi_errore": "alert('Errore: ' + dettaglio) se la chiamata fallisce completamente; eventuali fallimenti parziali (F24 non trovato) restano silenti lato UI perché l'array 'errori' della risposta non viene ispezionato dal frontend."
-    },
-    {
-      "etichetta": "🏦 Paga con Banca (per singolo F24 in lista)",
-      "cosa_fa_al_click": "confermaF24Singolo(f24Item, 'banca'): conferma un solo F24 senza passare dalla selezione multipla.",
-      "endpoint_chiamato": "POST /api/operazioni-da-confermare/smart/conferma-f24 { operazioni: [{operazione_id, metodo_pagamento:'banca', tipo:'f24'}] }",
-      "logica_backend": "Stessa conferma_f24_batch() di cui sopra, con un solo elemento nell'array.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "onRefresh() ricarica; l'F24 sparisce dalla lista pendenti.",
-      "casi_errore": "alert('Errore: ' + dettaglio)."
-    },
-    {
-      "etichetta": "👁️ Vedi PDF (per singolo F24)",
-      "cosa_fa_al_click": "Apre in una nuova scheda il PDF dell'F24, se disponibile (pdf_url o file_path); altrimenti mostra un alert.",
-      "endpoint_chiamato": "GET /api/download/{file_path} (se f.pdf_url non è impostato, altrimenti apre direttamente f.pdf_url)",
-      "logica_backend": "Endpoint generico di download file (non incluso in questo audit, fuori dal modulo Riconciliazione).",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Apertura nuova scheda con il PDF, oppure alert('PDF non disponibile. Carica il PDF F24 dalla sezione Import.') se manca sia pdf_url che file_path.",
-      "casi_errore": "-"
-    },
-    {
-      "etichetta": "👁️ Apri PDF (tab Documenti, pannello dettaglio)",
-      "cosa_fa_al_click": "handleViewPdf(doc): apre in nuova scheda il documento email scaricato (PDF, immagine o file firmato P7S).",
-      "endpoint_chiamato": "GET /api/documenti-non-associati/pdf/{documento_id}",
-      "logica_backend": "visualizza_pdf_documento(): legge pdf_data dal documento (base64 o bytes), se il file è .p7s/.p7m/.p7c ne estrae il PDF interno cercando i marker %PDF-/%%EOF nel contenuto binario; rileva il media type dall'estensione o dal magic number; risponde con Content-Disposition inline.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Apertura nuova scheda con il file.",
-      "casi_errore": "404 se il documento non esiste o non ha un file allegato; 422 se un file .p7s non contiene un PDF estraibile o un PDF dichiarato non ha la firma %PDF valida."
-    },
-    {
-      "etichetta": "✓ Associa (tab Documenti, form associazione)",
-      "cosa_fa_al_click": "handleAssocia(): richiede una collezione target selezionata; se presente un JSON nei 'campi aggiuntivi' lo fa il parse (errore bloccante se non valido); aggiunge automaticamente anno/mese suggeriti dalla proposta AI se non già specificati manualmente.",
-      "endpoint_chiamato": "POST /api/documenti-non-associati/associa { documento_id, collezione_target, crea_nuovo: true, campi_associazione }",
-      "logica_backend": "associa_documento(): recupera il documento (404 se assente o senza pdf_data), con crea_nuovo=true crea un nuovo record nella collezione target con pdf_data/pdf_filename/pdf_hash/source='associazione_manuale' + i campi passati, poi marca il documento originale come associato=true/associato_a/associato_id/associato_at.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "setMessage success 'Documento associato!'; chiude il pannello dettaglio, azzera il form, ricarica (onRefresh -> loadAllData).",
-      "casi_errore": "setMessage error se manca la collezione, se il JSON dei campi aggiuntivi non è valido, o se la POST fallisce."
-    },
-    {
-      "etichetta": "🗑️ Elimina documento (tab Documenti, icona cestino nel pannello dettaglio)",
-      "cosa_fa_al_click": "handleDelete(docId): richiede conferma con window.confirm('Eliminare questo documento?') poi elimina il documento non associato.",
-      "endpoint_chiamato": "DELETE /api/documenti-non-associati/{documento_id}",
-      "logica_backend": "elimina_documento(): delete_one({id: documento_id}) sulla collezione documenti_non_associati; 404 se non trovato.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "setMessage success 'Documento eliminato'; chiude il pannello dettaglio; onRefresh() ricarica.",
-      "casi_errore": "setMessage error 'Errore eliminazione' se la chiamata fallisce."
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Riconciliazione fattura da movimento bancario (manuale o batch auto)",
-      "sequenza_esatta": "1) POST /smart/riconcilia-manuale con tipo='fattura' (o 'fattura_sdd', normalizzato) e l'id fattura nel primo elemento di 'associazioni'. 2) Il backend carica la fattura da invoices (404 se assente). 3) Applica set_fattura_pagata() su invoices: pagato=true, paid=true, stato_pagamento='pagata', status='pagata', data_pagamento=oggi, più movimento_bancario_id. 4) Chiama registra_pagamento_fattura(fattura, 'banca') (app.routers.prima_nota_module.sync) per creare/aggiornare il movimento equivalente in Prima Nota Banca (idempotente); se creato, salva prima_nota_id/prima_nota_tipo/prima_nota_banca_id sulla fattura. 5) Propaga EventTypes.FATTURA_PAGATA sull'event bus con fattura_id/importo/metodo_pagamento/data_pagamento — questo chiude eventuali partite aperte collegate nello scadenziario fornitori. 6) Aggiorna il movimento in estratto_conto_movimenti: riconciliato=true, tipo_riconciliazione='manuale', data_riconciliazione, fattura_id, note_riconciliazione.",
-      "collezioni_coinvolte": ["estratto_conto_movimenti (scrittura)", "invoices (scrittura)", "prima_nota_banca (scrittura, tramite registra_pagamento_fattura)", "scadenziario_fornitori (scrittura indiretta, via event bus)"],
-      "campi_scritti": {
-        "estratto_conto_movimenti": "riconciliato=true, tipo_riconciliazione, data_riconciliazione, fattura_id (o stipendio_id/f24_id), note_riconciliazione",
-        "invoices": "pagato, paid, stato_pagamento, status, data_pagamento, movimento_bancario_id, prima_nota_id, prima_nota_tipo, prima_nota_banca_id"
-      },
-      "effetti_collaterali": "La fattura risulta pagata ovunque nel gestionale (Dashboard, Fatture, Prima Nota) grazie a set_fattura_pagata() e alla propagazione dell'evento — questo era un bug corretto in passato (un campo proprietario 'pagata' mai letto da nessun'altra pagina rendeva la riconciliazione 'invisibile' altrove, vedi commento in common.py)."
-    },
-    {
-      "nome": "Riconciliazione automatica per importo esatto (POST /smart/riconcilia-auto, non collegato direttamente a un bottone in questa versione della UI ma disponibile come endpoint)",
-      "sequenza_esatta": "Per ogni movimento non riconciliato (fino a 'limit'): cerca una fattura non pagata con total_amount o importo_totale entro ±1% dell'importo del movimento; se trovata applica lo stesso flusso di set_fattura_pagata + registra_pagamento_fattura + propagazione evento del punto precedente. Se non trova fattura e la descrizione contiene 'I24' (probabile F24), cerca un F24 con importo_totale entro ±1% e lo marca riconciliato con tipo_riconciliazione='auto_f24' (senza toccare Prima Nota in questo ramo).",
-      "collezioni_coinvolte": ["estratto_conto_movimenti (scrittura)", "invoices (scrittura)", "f24_commercialista (scrittura)", "prima_nota_banca (scrittura, solo ramo fattura)"],
-      "campi_scritti": {
-        "estratto_conto_movimenti": "riconciliato, fattura_id o f24_id, tipo_riconciliazione ('auto_importo' o 'auto_f24'), data_riconciliazione"
-      },
-      "effetti_collaterali": "Tolleranza del ±1% sull'importo può produrre falsi positivi se due fatture hanno importi molto vicini nello stesso periodo."
-    },
-    {
-      "nome": "Conferma batch F24 (tab F24)",
-      "sequenza_esatta": "POST /smart/conferma-f24 con la lista di operazione_id selezionati e metodo_pagamento='banca' fisso. Per ciascuno: update_one su f24_commercialista con riconciliato=true, status='pagato', pagato_manualmente=true, metodo_pagamento, tipo_riconciliazione='manuale', data_riconciliazione/updated_at=ora.",
-      "collezioni_coinvolte": ["f24_commercialista (scrittura)"],
-      "campi_scritti": {"f24_commercialista": "riconciliato, status, pagato_manualmente, metodo_pagamento, tipo_riconciliazione, data_riconciliazione, updated_at"},
-      "effetti_collaterali": "Non collegato a Prima Nota Banca né a event bus in questo endpoint: l'F24 pagato NON genera automaticamente un movimento di prima nota (a differenza delle fatture)."
-    },
-    {
-      "nome": "Incasso assegno (tab Prelievi Assegno)",
-      "sequenza_esatta": "POST /api/assegni/{id}/incassa senza body esplicito da questa pagina (data_incasso=oggi implicito, movimento_estratto_conto_id assente). Aggiorna l'assegno a stato='incassato' con incassato_confermato_banca=false (nessun riscontro bancario diretto passato da questa UI); se l'assegno ha una fattura_collegata la marca pagato con metodo_pagamento_effettivo='assegno' e chiude lo scadenziario collegato, propagando FATTURA_PAGATA.",
-      "collezioni_coinvolte": ["assegni (scrittura)", "invoices (scrittura condizionale)", "scadenziario_fornitori (scrittura condizionale)", "prima_nota_banca (scrittura condizionale se l'assegno aveva già un prima_nota_banca_id)"],
-      "campi_scritti": {
-        "assegni": "stato='incassato', data_incasso, incassato_confermato_banca=false, updated_at"
-      },
-      "effetti_collaterali": "Poiché questa UI non passa mai movimento_estratto_conto_id, il campo incassato_confermato_banca resta sempre false per gli incassi effettuati da qui — la conferma 'con riscontro bancario reale' richiede un flusso diverso (probabilmente nella pagina Gestione Assegni dedicata)."
-    },
-    {
-      "nome": "Associazione manuale documento non classificato (tab Documenti)",
-      "sequenza_esatta": "POST /api/documenti-non-associati/associa con crea_nuovo=true: crea un nuovo record nella collezione target (fatture->invoices, f24->f24_commercialista, cedolini->payslips, verbali->verbali_multe, cartelle->cartelle_esattoriali, estratti->estratto_conto_movimenti, bonifici->bonifici, quietanze->quietanze, contratti->contratti, certificati->certificati_medici) copiando il PDF e i campi extra passati (incluso anno/mese suggeriti dalla proposta AI), poi marca il documento originale come associato.",
-      "collezioni_coinvolte": ["documenti_non_associati (scrittura)", "<collezione target selezionata> (scrittura, nuovo record)"],
-      "campi_scritti": {
-        "documenti_non_associati": "associato=true, associato_a, associato_id, associato_at",
-        "<collezione target>": "id (nuovo uuid), pdf_data, pdf_filename, pdf_hash, source='associazione_manuale', documento_originale_id, created_at, + campi_associazione passati dal form"
-      },
-      "effetti_collaterali": "genera_proposta_associazione() (lato GET /lista) applica pattern regex su filename+subject per suggerire automaticamente tipo documento, anno, mese, targa (per i verbali) e importo — la proposta è solo un suggerimento, l'utente deve comunque scegliere/confermare manualmente la collezione e può modificare i campi via textarea JSON libera prima di salvare."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Tab PayPal di questa stessa pagina (/riconciliazione/paypal) — monta RiconciliazionePaypal.jsx via lazy import, coperto da memoria/pagine/riconciliazione-paypal.json.",
-    "Tab Prelievi Assegno — sovrappone concettualmente la pagina Gestione Assegni (/riconciliazione/gestione-assegni o /assegni), montata invece da RiconciliazioneHub come componente separato AssegniContent (GestioneAssegni.jsx), non da RiconciliazioneUnificata.",
-    "/riconciliazione/archivio-bonifici — montato da RiconciliazioneHub come componente separato (ArchivioBonifici.jsx), fuori da RiconciliazioneUnificata.",
-    "/riconciliazione/coerenza-pos — montato da RiconciliazioneHub come componente separato (CoerenzaPOSCorrispettivi.jsx).",
-    "Fatture (pagina Fatture Ricevute) — ogni fattura riconciliata qui appare come 'pagata' anche in quella pagina, grazie a set_fattura_pagata().",
-    "Prima Nota Banca — riceve un movimento equivalente ogni volta che una fattura viene riconciliata da qui (registra_pagamento_fattura).",
-    "Scadenze/Scadenziario Fornitori — le partite aperte collegate alla fattura pagata vengono chiuse tramite l'event bus (EventTypes.FATTURA_PAGATA).",
-    "Import Documenti / Documenti Archivio — il tab Documenti di questa pagina è la coda di lavorazione manuale per ciò che l'import automatico da email non è riuscito a classificare da solo."
-  ],
-  "popup_e_modali_presenti": [
-    {
-      "nome": "Pannello Filtri Avanzati (non modale, sezione espandibile in-page)",
-      "trigger": "🔍 Filtri",
-      "contenuto": "Data Da, Data A, Importo Min (€), Importo Max (€), campo di ricerca testo libero (descrizione/tipo), bottone ✕ Reset. Applicato lato client alle tab Banca/Assegni/Stipendi."
-    },
-    {
-      "nome": "Pannello dettaglio documento (tab Documenti, colonna laterale in-page, non un vero modale)",
-      "trigger": "click su un documento nella lista",
-      "contenuto": "Bottone 👁️ Apri PDF, info file (nome/categoria/dimensione), box 'Proposta Intelligente' (tipo/anno/mese suggeriti), select 'Associa a collezione', textarea JSON per campi aggiuntivi, bottoni ✓ Associa e 🗑️ elimina."
-    }
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Riconciliazione dashboard",
+  "route": "/riconciliazione",
+  "catalog_id": 32,
+  "modulo": "riconciliazione",
+  "accesso": "authenticated",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Riconciliazione dashboard». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/RiconciliazioneUnificata.jsx",
+    "entry": "frontend/src/pages/hub/RiconciliazioneHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/RiconciliazioneUnificata.jsx",
+      "frontend/src/pages/hub/RiconciliazioneHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/routers/bank/assegni.py",
+      "app/routers/bank/estratto_conto.py",
+      "app/routers/documenti_non_associati.py",
+      "app/routers/fatture_module/pagamento.py",
+      "app/routers/operazioni_module/__init__.py",
+      "app/routers/operazioni_module/common.py",
+      "app/routers/operazioni_module/smart.py",
+      "app/routers/prima_nota_module/sync.py",
+      "app/services/event_bus.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/assegni/{param}/incassa",
+      "/api/documenti-non-associati/associa",
+      "/api/documenti-non-associati/associati-di-recente",
+      "/api/documenti-non-associati/collezioni-disponibili",
+      "/api/documenti-non-associati/de-associa",
+      "/api/documenti-non-associati/lista",
+      "/api/documenti-non-associati/pdf/{param}",
+      "/api/documenti-non-associati/statistiche",
+      "/api/documenti-non-associati/{param}",
+      "/api/download/{param}",
+      "/api/f24-analisi/tabella{param}",
+      "/api/operazioni-da-confermare/smart/analizza",
+      "/api/operazioni-da-confermare/smart/analizza-anomalie",
+      "/api/operazioni-da-confermare/smart/banca-veloce",
+      "/api/operazioni-da-confermare/smart/cerca-f24",
+      "/api/operazioni-da-confermare/smart/cerca-stipendi",
+      "/api/operazioni-da-confermare/smart/conferma-f24",
+      "/api/operazioni-da-confermare/smart/ignora",
+      "/api/operazioni-da-confermare/smart/riconcilia-manuale",
+      "/api/operazioni-da-confermare/smart/riconcilia-stipendio",
+      "/api/paypal-api/status",
+      "/api/paypal-api/sync"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

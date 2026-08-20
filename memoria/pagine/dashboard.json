@@ -1,132 +1,75 @@
 {
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
   "pagina": "Dashboard",
-  "url": "https://impresasemplice.online/ (e alias /dashboard, /dashboard/:anno, /analytics, /analytics/:periodo)",
-  "file_sorgente_frontend": [
-    "frontend/src/pages/hub/DashboardHub.jsx (wrapper: React.lazy + Suspense che carica ../Dashboard.jsx, nessuna logica propria, solo spinner di caricamento)",
-    "frontend/src/pages/Dashboard.jsx (2499 righe: componente principale con tutti i widget, più i componenti interni POSCalendarWidget, ScadenzeWidget con relativo modale di pagamento, e AlertPagamentiWidget)",
-    "frontend/src/components/WidgetVerificaCoerenza.jsx (widget alert coerenza dati, incluso in cima alla pagina)",
-    "frontend/src/components/WidgetAgenti.jsx (widget contatori segnalazioni Agenti AI, incluso subito sotto)",
-    "frontend/src/api.js (funzioni health() e dashboardSummary(anno) usate all'avvio)"
-  ],
-  "file_sorgente_backend": [
-    "app/routers/reports/dashboard.py (montato su /api/dashboard: summary, kpi, stats, trend-mensile, spese-per-categoria, confronto-annuale, stato-riconciliazione, bilancio-istantaneo)",
-    "app/routers/bank/pos_accredito.py (montato su /api/pos-accredito: calendario-mensile/{anno}/{mese}, festivi/{anno})",
-    "app/routers/scadenze.py (montato su /api/scadenze: prossime)",
-    "app/routers/gestione_riservata.py (montato su /api/gestione-riservata: volume-affari-reale)",
-    "app/routers/accounting/contabilita_avanzata.py (montato su /api/contabilita: calcolo-imposte)",
-    "app/routers/f24/__init__.py e app/routers/public_api.py (montati su /api/f24-public: scadenze-prossime)",
-    "app/routers/fornitori_learning.py (montato su /api/fornitori-learning: stats)",
-    "app/routers/employees/dipendenti.py (montato su /api/paghe: buste-paga?stato=DA_PAGARE)",
-    "app/routers/f24_parser.py (montato su /api/paghe: distinte-f24?stato=DA_PAGARE)",
-    "app/routers/noleggio.py (montato su /api/noleggio: veicoli)",
-    "app/routers/email_download.py (montato su /api/email-download: statistiche)",
-    "app/routers/fatture_module/pagamento.py (funzioni paga_fattura_manuale e auto_ricostruisci_dati, montate in app/routers/fatture_module/__init__.py su /api/fatture-ricevute/paga-manuale e /auto-ricostruisci-dati)",
-    "app/routers/batch_operations.py (montato su /api/batch: auto-riconcilia-tutto)",
-    "app/routers/verifica_coerenza.py (montato su /api/verifica-coerenza: widget — usato da WidgetVerificaCoerenza)",
-    "app/routers/agenti.py (montato su /api/agenti: segnalazioni/summary — usato da WidgetAgenti)"
-  ],
-  "scopo_generale": "È la home page del gestionale (route '/'): un cruscotto di sola lettura che aggrega in tempo reale i dati prodotti da tutti gli altri moduli (corrispettivi, fatture, banca, salari, F24, noleggio auto) per dare una fotografia immediata della situazione economico-finanziaria dell'anno selezionato (l'anno è globale, gestito da AnnoContext e non da questa pagina). Oltre alla semplice visualizzazione, offre alcune azioni operative dirette: un pulsante di 'auto-riparazione' dei dati, il pagamento rapido delle scadenze imminenti dalla stessa vista, e un toggle per rivelare il 'Volume Affari Reale' (dati riservati che includono incassi/spese extra-contabili). Il caricamento è organizzato in due fasi per percepire la pagina come veloce: prima i dati 'primari' (health, summary, trend mensile, calendario POS, scadenze, bilancio istantaneo) bloccano lo spinner iniziale; poi, in background e senza bloccare la UI, arrivano i grafici avanzati (spese per categoria, confronto annuale, stato riconciliazione, imposte, scadenze F24, learning machine, alert pagamenti) e infine le statistiche di noleggio/verbali.",
-  "bottoni_azioni": [
-    {
-      "etichetta": "🔧 Auto-Ripara Dati",
-      "cosa_fa_al_click": "Chiama eseguiAutoRiparazione(): esegue in parallelo (Promise.all) due POST, ciascuno con .catch(() => ({data:{}})) così un fallimento dell'uno non blocca l'altro. Durante l'esecuzione il pulsante mostra '⏳ Riparazione...' ed è disabilitato.",
-      "endpoint_chiamato": "POST /api/fatture-ricevute/auto-ricostruisci-dati e POST /api/batch/auto-riconcilia-tutto",
-      "logica_backend": "auto_ricostruisci_dati (app/routers/fatture_module/pagamento.py) richiama aggiorna_metodi_pagamento_da_fornitori() che ripropaga il metodo di pagamento salvato in anagrafica fornitore sulle fatture collegate, e ritorna {success, metodi_aggiornati}. In parallelo auto_riconcilia_tutto (app/routers/batch_operations.py, chiamato qui SENZA body quindi con i default min_confidence=90, dry_run=False) cerca tra i movimenti di estratto_conto_movimenti non ancora riconciliati (riconciliato non in ['riconciliato','parziale'], importo negativo cioè uscite) le fatture in invoices con status in [da_pagare, pending, in_scadenza, scaduto] e importo entro ±2€: calcola uno score (90 se differenza <0.5€, 70 se <2€, 50 altrimenti, +20 se il nome del fornitore compare nella descrizione del movimento) e, se lo score raggiunge min_confidence, applica la riconciliazione (dry_run=False significa che le proposte vengono effettivamente scritte, non solo simulate).",
-      "formula_matematica": "totaleCorrezioni = fatRes.data.campi_corretti + fatRes.data.fornitori_associati + ricRes.data.riconciliazioni_auto (i primi due campi in pratica non sono restituiti dall'endpoint corrente, che ritorna solo metodi_aggiornati/fatture_riparate, quindi nella pratica il conteggio proviene quasi solo da riconciliazioni_auto del batch).",
-      "aggiornamento_ui": "setAutoRepairStatus({fatture, riconciliazione, totale}); se totale>0 appare un badge verde '✓ N correzioni' accanto al pulsante. Viene poi incrementato reloadKey, che essendo nella dependency-list dello useEffect principale fa ripartire l'intero fetch della pagina (senza reload fisico del browser).",
-      "casi_errore": "Se una delle due chiamate lancia un'eccezione non gestita dal .catch interno, il blocco try/catch esterno imposta setAutoRepairStatus({error:true, totale:0}) e stampa un console.warn, senza alert visibile all'utente."
-    },
-    {
-      "etichetta": "Mostra/Nascondi Volume Affari (toggle riservato)",
-      "cosa_fa_al_click": "handleToggleVolumeReale() inverte showVolumeReale; quando viene attivato per la prima volta (o quando l'anno cambia rispetto ai dati già in cache locale) chiama loadVolumeReale().",
-      "endpoint_chiamato": "GET /api/gestione-riservata/volume-affari-reale?anno={anno}",
-      "logica_backend": "get_volume_affari_reale (app/routers/gestione_riservata.py): fatturato_ufficiale = somma di 'totale' sulla collezione corrispettivi filtrata per anno (le fatture emesse sono considerate già incluse nei corrispettivi, quindi NON vengono sommate separatamente); poi aggrega la collezione dei movimenti riservati (gestione_riservata, con entity_status != deleted) raggruppando per tipo: 'incasso' → incassi_non_fatturati, 'spesa' → spese_non_fatturate.",
-      "formula_matematica": "totale_ufficiale = fatturato_ufficiale + corrispettivi (nel codice sono lo stesso valore sommato due volte concettualmente, essendo corrispettivi=fatturato_ufficiale); saldo_extra = incassi_non_fatturati - spese_non_fatturate; volume_affari_reale = totale_ufficiale + saldo_extra.",
-      "aggiornamento_ui": "Mostra 4 riquadri (Fatturato Ufficiale, Corrispettivi, +Incassi Extra in verde, -Spese Extra in rosso) più una card rossa totalizzante 'VOLUME AFFARI REALE {anno}' con il saldo extra evidenziato in verde/rosso a seconda del segno. Se non ci sono dati, mostra un messaggio con link a /gestione-riservata per aggiungere movimenti.",
-      "casi_errore": "catch imposta setVolumeRealeData(null); la UI ricade nel ramo 'Nessun dato disponibile'."
-    },
-    {
-      "etichetta": "✓ (icona Paga, riga Scadenze)",
-      "cosa_fa_al_click": "Apre il modale ScadenzeWidget interno impostando pagaModal=scadenza. Nel modale l'utente sceglie CASSA o BANCA; handlePaga(scadenza, metodo) invia la richiesta con processing=true.",
-      "endpoint_chiamato": "POST /api/fatture-ricevute/paga-manuale",
-      "logica_backend": "paga_fattura_manuale (app/routers/fatture_module/pagamento.py) registra il pagamento manuale: inserisce un movimento (deduplicato per fattura_id) nella collection prima_nota_cassa o prima_nota_banca a seconda del metodo, con stato='confermato', provvisorio=False e riconciliato=False SEMPRE (anche se il metodo è banca, la riconciliazione resta un processo separato legato all'import dell'estratto conto). Se è presente scadenza_id aggiorna lo scadenzario (stato='pagato', pagato=True). Aggiorna infine la fattura in invoices con status='paid', pagato=True, stato_pagamento='pagata', metodo_pagamento_effettivo.",
-      "formula_matematica": "N/A (registrazione contabile diretta, nessun calcolo)",
-      "aggiornamento_ui": "Chiude il modale (setPagaModal(null)) e rimuove OTTIMISTICAMENTE la scadenza dalla lista locale aggiungendo il suo id a paidIds (nessun refetch della pagina) — se la chiamata fallisce viene mostrato alert('Errore pagamento: ' + dettaglio).",
-      "casi_errore": "In caso di eccezione, alert bloccante con il messaggio di errore del backend o e.message; il modale resta aperto e processing torna a false."
-    },
-    {
-      "etichetta": "Link 'Vai a Paghe →' (widget Alert Pagamenti)",
-      "cosa_fa_al_click": "Navigazione client-side React Router verso /riconciliazione/stipendi.",
-      "endpoint_chiamato": "Nessuno (solo navigazione); i dati mostrati nel widget provengono da GET /api/paghe/buste-paga?stato=DA_PAGARE e GET /api/paghe/distinte-f24?stato=DA_PAGARE caricati in background insieme agli altri grafici avanzati.",
-      "logica_backend": "N/A lato click; il widget si popola sommando netto_mese delle buste paga e riepilogo.totale_generale delle distinte F24 con stato DA_PAGARE, e appare solo se almeno uno dei due elenchi non è vuoto.",
-      "formula_matematica": "totStip = Σ netto_mese; totF24 = Σ riepilogo.totale_generale; totale = totStip + totF24.",
-      "aggiornamento_ui": "Nessun aggiornamento oltre alla navigazione.",
-      "casi_errore": "N/A"
-    },
-    {
-      "etichetta": "Link su riga Scadenza F24 con icona 📄 (view-assoinvoice)",
-      "cosa_fa_al_click": "Apre in una nuova scheda (target=_blank) l'anteprima della fattura collegata.",
-      "endpoint_chiamato": "GET /api/fatture-ricevute/fattura/{id}/view-assoinvoice",
-      "logica_backend": "Non appartiene a questa pagina (endpoint del modulo Fatture); qui è solo un link diretto disponibile quando la scadenza ha fattura_id o source='fattura'.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "N/A (nuova scheda del browser)",
-      "casi_errore": "N/A"
-    },
-    {
-      "etichetta": "Report PDF (4 bottoni: Dichiarazione IRES/IRAP, Report Mensile, Report Scadenze, Report Magazzino)",
-      "cosa_fa_al_click": "Sono tag <a> con target=_blank che aprono direttamente l'URL del PDF generato lato server.",
-      "endpoint_chiamato": "GET /api/contabilita/export/pdf-dichiarazione?anno=&regione=campania · GET /api/report-pdf/mensile?anno=&mese= · GET /api/report-pdf/scadenze?giorni=30 · GET /api/report-pdf/magazzino",
-      "logica_backend": "Non fa parte dei router letti in dettaglio per questo documento (moduli report-pdf / export dedicati); il browser scarica/visualizza direttamente il PDF restituito.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "N/A (nuova scheda)",
-      "casi_errore": "Se il backend restituisce un errore HTTP, il browser mostra la pagina di errore standard nella nuova scheda; nessuna gestione lato React."
-    },
-    {
-      "etichetta": "Quick Actions (7 card di navigazione: IRES/IRAP, Regole Categorie, Import/Export, Bilancio, Controllo Mensile, F24/Tributi, Commercialista)",
-      "cosa_fa_al_click": "Sono <Link> React Router verso rispettivamente /contabilita, /regole-categorizzazione, /import-export, /bilancio, /controllo-mensile, /riconciliazione/f24, /commercialista.",
-      "endpoint_chiamato": "Nessuno (solo navigazione)",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "N/A",
-      "casi_errore": "N/A"
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Pagamento manuale scadenza (Cassa o Banca) dal widget Scadenze",
-      "sequenza_esatta": "1) L'utente clicca ✓ su una riga dello ScadenzeWidget → si apre il modale con riepilogo (tipo, fornitore, scadenza, importo). 2) L'utente sceglie CASSA (pagato subito) o BANCA (da riconciliare). 3) Il frontend chiama POST /api/fatture-ricevute/paga-manuale con {fattura_id, scadenza_id, importo, metodo, data_pagamento: oggi, fornitore, numero_fattura}. 4) Il backend verifica se esiste già un movimento con quel fattura_id nella collezione target (dedup); se non esiste inserisce un nuovo documento in prima_nota_cassa o prima_nota_banca con riconciliato=False in ogni caso. 5) Se presente scadenza_id, aggiorna lo scadenzario a stato='pagato', pagato=True. 6) Aggiorna la fattura in invoices a status='paid'/pagato=True/stato_pagamento='pagata'. 7) Il frontend chiude il modale e rimuove la riga localmente (nessun refetch).",
-      "collezioni_coinvolte": ["prima_nota_cassa oppure prima_nota_banca", "scadenzario (se scadenza_id presente)", "invoices"],
-      "campi_scritti": {
-        "prima_nota_cassa/banca": "id, data, descrizione (Pagamento Fatt. X - fornitore), causale, importo, tipo='uscita', categoria='fornitori', stato='confermato', fattura_id, fattura_collegata, fattura_numero, fornitore, metodo_pagamento, provvisorio=False, riconciliato=False, created_at, source='pagamento_manuale'",
-        "scadenzario": "stato='pagato', pagato=True, data_pagamento, metodo_effettivo, movimento_id, updated_at",
-        "invoices": "status='paid', pagato=True, stato_pagamento='pagata', riconciliato=False, data_pagamento, metodo_pagamento_effettivo, metodo_pagamento, updated_at"
-      },
-      "effetti_collaterali": "La fattura sparisce dallo Scadenzario (fuori dai filtri aperti); il movimento resta 'non riconciliato' finché la riconciliazione bancaria non lo abbina all'estratto conto reale (per i pagamenti in banca) — questo per design: il pagamento manuale NON marca mai automaticamente riconciliato=True."
-    },
-    {
-      "nome": "Auto-Riparazione Dati (pulsante dedicato)",
-      "sequenza_esatta": "1) Click su 'Auto-Ripara Dati'. 2) Il frontend lancia in parallelo POST /api/fatture-ricevute/auto-ricostruisci-dati e POST /api/batch/auto-riconcilia-tutto (senza body, quindi min_confidence=90 e dry_run=False). 3) Il primo endpoint ripropaga il metodo di pagamento salvato sul fornitore alle sue fatture. 4) Il secondo endpoint scandisce i movimenti bancari non riconciliati (uscite) e li abbina automaticamente alle fatture aperte con importo compatibile e score >= 90 (score aumentato se il nome fornitore compare nella descrizione del movimento), scrivendo la riconciliazione. 5) Il frontend somma i contatori disponibili nelle risposte e mostra un badge di conferma, poi ricarica l'intera dashboard incrementando reloadKey.",
-      "collezioni_coinvolte": ["invoices", "estratto_conto_movimenti", "riconciliazioni (scritte dal batch auto-riconcilia-tutto)"],
-      "campi_scritti": {
-        "invoices": "metodo_pagamento (ripropagato da anagrafica fornitore)",
-        "estratto_conto_movimenti / riconciliazioni": "riconciliato=True/'riconciliato' e collegamento alla fattura corrispondente, per i match con score >= 90"
-      },
-      "effetti_collaterali": "Operazione potenzialmente 'silenziosa': può riconciliare automaticamente movimenti con falsi positivi se due fatture hanno importi molto simili nello stesso periodo (lo score massimo di sicurezza è 90+20=110 solo se il nome fornitore compare nella descrizione bancaria)."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "/gestione-riservata (link dal box Volume Affari quando non ci sono dati)",
-    "/contabilita (link 'Dettaglio →' del widget Imposte, e Quick Action IRES/IRAP)",
-    "/riconciliazione/f24 (link 'Vedi tutti →' del widget Scadenze F24, e Quick Action F24/Tributi)",
-    "/noleggio (link 'Gestisci →' del widget Noleggio Auto & Verbali)",
-    "/riconciliazione (link 'Vai a Riconciliazione →' del widget Stato Riconciliazione)",
-    "/learning-machine (link 'Gestisci Learning Machine →' del widget Learning Machine)",
-    "/scadenze (link 'Vedi tutte le N scadenze →' se ce ne sono più di 6)",
-    "/riconciliazione/stipendi (link 'Vai a Paghe →' del widget Alert Pagamenti)",
-    "/regole-categorizzazione, /import-export, /bilancio, /controllo-mensile, /commercialista (Quick Actions)",
-    "/agenti (click sui contatori del WidgetAgenti incluso in testa alla pagina)"
-  ],
-  "popup_e_modali_presenti": [
-    "Modale 'Registra Pagamento' (interno a ScadenzeWidget): riepilogo scadenza + due grandi bottoni CASSA/BANCA con testo esplicativo sulla differenza (pagato subito vs da riconciliare), e bottone Annulla."
+  "route": "/",
+  "catalog_id": 3,
+  "modulo": "dashboard",
+  "accesso": "authenticated",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Dashboard». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/Dashboard.jsx",
+    "entry": "frontend/src/pages/hub/DashboardHub.jsx",
+    "file_verificati": [
+      "frontend/src/api.js",
+      "frontend/src/pages/Dashboard.jsx",
+      "frontend/src/pages/hub/DashboardHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/routers/accounting/contabilita_avanzata.py",
+      "app/routers/agenti.py",
+      "app/routers/bank/pos_accredito.py",
+      "app/routers/batch_operations.py",
+      "app/routers/email_download.py",
+      "app/routers/employees/dipendenti.py",
+      "app/routers/f24/__init__.py",
+      "app/routers/f24_parser.py",
+      "app/routers/fatture_module/__init__.py",
+      "app/routers/fatture_module/pagamento.py",
+      "app/routers/fornitori_learning.py",
+      "app/routers/gestione_riservata.py",
+      "app/routers/noleggio.py",
+      "app/routers/public_api.py",
+      "app/routers/reports/dashboard.py",
+      "app/routers/scadenze.py",
+      "app/routers/verifica_coerenza.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/bank/statements",
+      "/api/cash",
+      "/api/controllo-gestione/costi-ricavi",
+      "/api/dashboard/fascia-energia",
+      "/api/dashboard/summary{param}",
+      "/api/dashboard/trend-mensile",
+      "/api/exports/{param}",
+      "/api/f24",
+      "/api/health",
+      "/api/invoices",
+      "/api/prima-nota/stats",
+      "/api/scadenze",
+      "/api/suppliers",
+      "/api/verifica-coerenza/confronto-iva-completo/{param}",
+      "/api/verifica-coerenza/iva/{param}/{param}",
+      "/api/warehouse/products"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

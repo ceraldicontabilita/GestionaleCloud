@@ -1,36 +1,44 @@
 {
-  "nome_popup": "Pannello 'Assegni ambigui — serve la tua decisione' (NON è un vero modale)",
-  "nota_tipologia": "IMPORTANTE: non è un popup/overlay ma un pannello inline collassabile (data-testid=ambigui-panel) che si apre e chiude sotto la barra filtri, spingendo verso il basso il resto della pagina — non copre nulla con un overlay e non ha z-index elevato. Viene documentato qui perché funziona come interfaccia di risoluzione equivalente a un modale (interrompe il flusso 'automatico' e richiede una decisione dell'utente prima di proseguire), ma tecnicamente è JSX condizionale sempre montato nel flusso della pagina (righe ~1259-1259+ di GestioneAssegni.jsx), non un overlay fixed/absolute.",
-  "file_sorgente": "/home/user/GestionaleCloud/frontend/src/pages/GestioneAssegni.jsx (pannello righe ~1259-1420 circa; logica loadAmbigui riga 484, toggleAmbiguiSection riga 502, resolveAmbiguo riga 520)",
-  "pagine_da_cui_si_apre": ["Assegni (/riconciliazione/assegni)"],
-  "come_si_apre": "toggleAmbiguiSection(), chiamata dal bottone '⚠️ Risolvi ambigui / Nascondi ambigui' nel menu '⚙️ Altro' (data-testid=ambigui-toggle-btn): inverte ambiguiOpen; se si sta aprendo E la lista è ancora vuota, chiama automaticamente loadAmbigui() (GET /api/assegni/ambigui). Riaperture successive nella stessa sessione NON ricaricano automaticamente (bisogna usare il bottone '↻ Ricarica' interno al pannello per un refresh esplicito).",
-  "scopo": "Mostrare gli assegni per cui l'auto-matcher a 4 livelli (run_auto_match, dry_run implicito lato GET /ambigui) ha trovato più fatture candidate con importo compatibile per lo stesso assegno, senza riuscire a decidere da solo (regola conservativa: mai indovinare, sempre chiedere all'utente in caso di ambiguità), e permettere di risolvere manualmente selezionando la o le fatture corrette.",
-  "dati_mostrati": "Header del pannello con conteggio implicito (lista ambiguiList) e bottone '↻ Ricarica'. Se in caricamento: 'Caricamento ambigui…'. Se lista vuota: '✅ Nessun assegno ambiguo da risolvere.'. Per ciascun ambiguo (riga bianca dentro il pannello giallo, data-testid=ambiguo-{assegnoId}): livello di match che ha generato l'ambiguità ([L1]/[L2]/[L3]/[L4]), numero assegno, fornitore/ragione sociale + P.IVA, importo assegno, data di emissione; sotto, l'elenco delle fatture candidate (a.candidates) ciascuna con checkbox, numero fattura (o primi 8 char dell'id se mancante), data, fornitore.",
-  "campi_e_bottoni": [
-    {
-      "elemento": "Bottone '↻ Ricarica'",
-      "cosa_fa": "Richiama loadAmbigui() esplicitamente, sovrascrivendo ambiguiList con i dati freschi e reimpostando ambiguiSelections al default (prima fattura candidata pre-selezionata per ciascun ambiguo).",
-      "endpoint_chiamato": "GET /api/assegni/ambigui",
-      "validazioni": "nessuna; disabilitato (ambiguiLoading) mentre in corso"
-    },
-    {
-      "elemento": "Checkbox per ogni fattura candidata",
-      "cosa_fa": "setAmbiguiSelection(assegnoId, fatturaId, checked): aggiunge/rimuove quella fattura dall'array di selezione multipla ambiguiSelections[assegnoId] (permette di selezionare PIÙ fatture candidate per lo stesso assegno ambiguo, non solo una).",
-      "endpoint_chiamato": "nessuno (solo stato locale)",
-      "validazioni": "nessuna a questo livello"
-    },
-    {
-      "elemento": "Bottone '✓ Collega selezionati' per riga (data-testid=risolvi-{assegnoId})",
-      "cosa_fa": "resolveAmbiguo(assegnoId): legge ambiguiSelections[assegnoId] (fattura_ids); se vuoto mostra alert 'Seleziona almeno una fattura' e interrompe. Altrimenti invia la lista al backend.",
-      "endpoint_chiamato": "POST /api/assegni/{assegno_id}/risolvi-ambiguo {fattura_ids}",
-      "validazioni": "Lato server (risolvi_ambiguo in assegni.py): 400 se fattura_ids è vuoto; 400 se l'assegno ha già fatture_collegate non vuoto ('Assegno già collegato' — non è possibile ri-risolvere un ambiguo già chiuso); 404 se assegno o una delle fatture non esistono. Se valido, calcola il residuo di ciascuna fattura e chiama _apply_match(db, [assegno], fatture, livello='MANUAL', dry_run=False) — la stessa funzione di applicazione usata dall'auto-matcher automatico, quindi stesse regole di calcolo quote (quota_fattura_i = min(residuo_fattura_i, importo_assegno - quote_già_assegnate))."
-    }
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "popup_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "popup": "Pannello 'Assegni ambigui — serve la tua decisione' (NON è un vero modale)",
+  "scopo": "Mappa tecnica del popup «Pannello 'Assegni ambigui — serve la tua decisione' (NON è un vero modale)». Il comportamento e le mutazioni reali devono essere verificati nei sorgenti correnti.",
+  "aperto_da": [
+    "Assegni (/riconciliazione/assegni)"
   ],
-  "cosa_succede_alla_conferma": "_apply_match scrive sull'assegno fatture_collegate[] (con match_auto=true, match_livello='MANUAL'), importo_assegnato, fornitore_piva/ragione_sociale dedotti, stato ('assegnato' o 'parzialmente_assegnato'); aggiorna ciascuna fattura collegata (importo_pagato incrementale, importo_residuo, payment_status, push su assegni_collegati); crea un movimento in prima_nota_banca (tipo uscita, categoria 'Assegni', source='assegno_auto_match', idempotente su assegno_id+invoice_id+source). Il frontend rimuove l'assegno risolto da ambiguiList (sparisce dal pannello senza bisogno di ricaricare tutto) e richiama loadData() per aggiornare la tabella principale.",
-  "come_si_chiude": [
-    "Bottone '⚠️ Risolvi ambigui / Nascondi ambigui' nel menu Altro (toggle, richiude il pannello lasciando ambiguiList in memoria per una riapertura istantanea senza nuova fetch)",
-    "Non esiste un bottone di chiusura dedicato dentro il pannello stesso (niente 'X'): la chiusura passa sempre dal toggle nel menu Altro",
-    "Non si chiude automaticamente dopo la risoluzione di un singolo ambiguo: resta aperto mostrando gli ambigui rimanenti finché non è vuoto o l'utente lo richiude manualmente"
+  "file_verificati": [
+    "frontend/src/pages/GestioneAssegni.jsx"
   ],
-  "effetto_su_pagina_sottostante": "Ogni risoluzione riuscita aggiorna in tempo reale sia il pannello (righe che spariscono) sia, dopo loadData(), la tabella principale degli assegni (stato, fattura collegata) e le statistiche (badge Con Fattura/Da Associare). Non influisce sul pannello 'Assegni Senza Beneficiario', che resta indipendente e va aggiornato a parte."
+  "endpoint_rilevati_nei_sorgenti": [
+    "/api/assegni",
+    "/api/assegni/ambigui",
+    "/api/assegni/auto-match",
+    "/api/assegni/auto-match/conferma",
+    "/api/assegni/cerca-combinazioni-assegni",
+    "/api/assegni/clear-generated",
+    "/api/assegni/genera",
+    "/api/assegni/learning/associa-intelligente",
+    "/api/assegni/learning/learn",
+    "/api/assegni/learning/pulizia-duplicati",
+    "/api/assegni/learning/stats-avanzate",
+    "/api/assegni/riprocessa-collegamenti",
+    "/api/assegni/senza-associazione",
+    "/api/assegni/stats",
+    "/api/assegni/supporto/fatture-disponibili",
+    "/api/assegni/{param}",
+    "/api/assegni/{param}/fatture-collegate",
+    "/api/assegni/{param}/risolvi-ambiguo",
+    "/api/invoices/{param}"
+  ],
+  "regole_ux": [
+    "Il popup deve avere chiusura visibile e non restare sovrapposto al documento.",
+    "Le azioni distruttive o definitive richiedono una conferma esplicita.",
+    "Le associazioni ambigue mostrano candidati e non vengono applicate automaticamente."
+  ]
 }

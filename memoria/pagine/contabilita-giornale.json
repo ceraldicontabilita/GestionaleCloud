@@ -1,0 +1,44 @@
+{
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Libro Giornale",
+  "route": "/contabilita/giornale",
+  "catalog_id": 18,
+  "modulo": "contabilita",
+  "accesso": "authenticated",
+  "stato_audit": "in_review",
+  "scopo": "Mappa tecnica della schermata «Libro Giornale». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/LibroGiornale.jsx",
+    "entry": "frontend/src/pages/hub/ContabilitaHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/LibroGiornale.jsx",
+      "frontend/src/pages/hub/ContabilitaHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/contabilita-gestionale/libro-giornale",
+      "/api/contabilita-gestionale/libro-giornale/controllo-60-giorni",
+      "/api/contabilita-gestionale/libro-giornale/export",
+      "/api/contabilita-gestionale/libro-mastro"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
+  ]
+}

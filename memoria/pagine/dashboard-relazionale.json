@@ -1,68 +1,16 @@
 {
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "embedded_or_legacy_page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "not_in_canonical_page_catalog"
+  },
   "pagina": "Dashboard Relazionale",
-  "url": "https://impresasemplice.online/dashboard-relazionale",
-  "file_sorgente_frontend": [
-    "frontend/src/pages/DashboardRelazionale.jsx (722 righe: componente unico con 4 tab interni — Panoramica, Alert, Partite Aperte, Riconciliazione — tutti definiti nello stesso file)"
-  ],
-  "file_sorgente_backend": [
-    "app/routers/alerts.py (montato su /api/alerts: lista, summary, segna-letto, risolvi, delete, fornitori-senza-metodo, risolvi-fornitore/{piva})",
-    "app/routers/partite_aperte_api.py (montato su /api/partite-aperte: stats, lista, scadute)",
-    "app/routers/riconciliazione_stats_api.py (montato su /api/riconciliazione: stats)"
-  ],
-  "scopo_generale": "È la 'vista di sistema' del gestionale relazionale: a differenza della Dashboard classica (che mostra KPI economici), questa pagina mette a fuoco lo STATO di salute dei processi — quanti alert sono aperti e di che gravità, quante partite (fatture, F24, stipendi, POS attesi, trasferimenti) sono ancora da chiudere e per quale importo, e a che punto è la riconciliazione bancaria automatica. Serve per capire in un colpo d'occhio 'cosa c'è ancora da fare' prima di poter considerare chiuso un periodo, incrociando dati che nella Dashboard normale sono sparsi in widget diversi. Il caricamento dati (caricaDati) usa Promise.allSettled così un fallimento di una sola chiamata non blocca le altre due.",
-  "sezioni_tab": [
-    "📊 Panoramica — KPI aggregati + riepilogo partite/riconciliazione + alert critici + conteggio per modulo",
-    "🔔 Alert — lista completa filtrabile per modulo, con badge del numero di alert non risolti",
-    "📋 Partite Aperte — dettaglio per tipo con tabella filtrabile",
-    "🔗 Riconciliazione — stato dei match (confermato/candidato/respinto) con relativi importi"
-  ],
-  "bottoni_azioni": [
-    {
-      "etichetta": "🔄 Aggiorna",
-      "cosa_fa_al_click": "Richiama caricaDati(), disabilitato (testo '⏳ Caricamento...') durante il fetch.",
-      "endpoint_chiamato": "GET /api/alerts/lista?risolto=false&limit=200 · GET /api/partite-aperte/stats · GET /api/riconciliazione/stats (in parallelo con Promise.allSettled)",
-      "logica_backend": "lista_alerts (alerts.py) filtra sulla collezione 'alerts' per risolto=False (schema legacy), ordina per created_at decrescente, limit 200, e calcola anche stats aggregate (totale, non_letti, non_risolti, per_tipo) SULL'INTERA collezione (non filtrate) — quindi i contatori stats possono includere alert già risolti. stats_partite (partite_aperte_api.py) aggrega la collezione 'partite_aperte' per tipo, solo stato in [aperta, parziale], sommando count e residuo. stats_riconciliazione (riconciliazione_stats_api.py) aggrega 'riconciliazioni_match' per stato, sommando count e importo_riconciliato.",
-      "formula_matematica": "N/A (solo aggregazioni $group)",
-      "aggiornamento_ui": "setData({alerts, partite, match}) con fallback a oggetti vuoti per ogni chiamata fallita (status !== 'fulfilled'); ricalcola alertPerModulo, critici/warning/info raggruppando lato client sull'array alerts.",
-      "casi_errore": "catch generico → console.error; nessun messaggio visibile, i pannelli mostrano semplicemente 'Nessun dato' se i dati sono vuoti."
-    },
-    {
-      "etichetta": "Tab bar principale (📊 Panoramica / 🔔 Alert / 📋 Partite Aperte / 🔗 Riconciliazione)",
-      "cosa_fa_al_click": "setTabAttiva(id) — cambia solo lo stato locale, nessuna nuova chiamata di rete (i dati sono già tutti caricati da caricaDati).",
-      "endpoint_chiamato": "Nessuno per il cambio tab in sé; il tab 'Partite Aperte' innesca però un secondo effect interno (vedi sotto).",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Cambia il contenuto renderizzato; il tab Alert mostra un badge rosso con alertStats.non_risolti (dal summary calcolato server-side) o, in fallback, alerts.length.",
-      "casi_errore": "N/A"
-    },
-    {
-      "etichetta": "Filtri modulo (tab Alert: bottoni per ogni modulo trovato negli alert)",
-      "cosa_fa_al_click": "setFilter(m) nel componente TabAlert — filtra client-side l'array alertPerModulo[modulo] già in memoria.",
-      "endpoint_chiamato": "Nessuno (filtro puramente client-side sui dati già caricati)",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Rilista gli AlertRow filtrati; ogni AlertRow mostra icona per severità (🚨 critical, ⚠️ warning, ℹ️ info), modulo (se filtro='tutti'), titolo, dettaglio, codice e data formattata.",
-      "casi_errore": "N/A"
-    },
-    {
-      "etichetta": "KPI/Filtro tipo partita (tab Partite Aperte: click su una card KPI o sui bottoni tipo)",
-      "cosa_fa_al_click": "setTipoFiltro(tipo) → innesca un useEffect che richiama caricaPartite(tipoFiltro).",
-      "endpoint_chiamato": "GET /api/partite-aperte/lista?tipo={tipo}&stato=aperta&limit=50 (oppure senza tipo se 'Tutte')",
-      "logica_backend": "lista_partite (partite_aperte_api.py): query sulla collezione partite_aperte con filtro tipo esatto e stato passato (qui sempre 'aperta' da questa pagina, quindi NON include le 'parziale' nonostante le stats sopra le contino insieme), ordina per data_scadenza crescente, limit 50.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "setPartite(res.partite || res || []) — la tabella mostra tipo (badge colorato), controparte, importo originale, residuo (rosso se >0, verde se saldato), scadenza, stato (badge success/warning/neutral).",
-      "casi_errore": "catch → console.error(e), nessun messaggio visibile; la tabella resta con i dati precedenti o vuota."
-    }
-  ],
-  "operazioni_di_registrazione": [],
-  "collegamenti_con_altre_pagine": [
-    "Nessun link diretto <Link> ad altre pagine presente nel codice di questa pagina: è un cruscotto di sola consultazione senza call-to-action di navigazione verso altri moduli (a differenza della Dashboard classica). L'unico modo per agire sui dati mostrati è tornare ai moduli sorgente (Fornitori, Fatture, F24, Riconciliazione) tramite il menu principale."
-  ],
-  "popup_e_modali_presenti": [
-    "Nessun modale: tutte le interazioni (filtri, tab) avvengono inline nella stessa pagina."
-  ],
-  "note_tecniche": [
-    "Nessuna delle azioni presenti in questa pagina scrive dati: è puramente una vista aggregata in lettura. Le uniche 'azioni' sono richieste GET di refresh/filtro.",
-    "C'è una potenziale disallineamento nel filtro stato: le card KPI/stats (stats_partite) aggregano stato in [aperta, parziale], mentre il default della lista dettagliata (lista_partite senza tipoFiltro='') usa stato='aperta' esplicito passato dal frontend — quindi il totale mostrato nelle card può non coincidere esattamente col numero di righe elencabili con lo stesso filtro tipo se esistono partite 'parziale'."
-  ]
+  "route_storica_o_interna": "/",
+  "catalog_status": "non_canonical",
+  "scopo": "Componente incorporato o percorso storico; non è una delle 65 schermate canoniche.",
+  "file_verificati": [],
+  "endpoint_rilevati_nei_sorgenti": []
 }

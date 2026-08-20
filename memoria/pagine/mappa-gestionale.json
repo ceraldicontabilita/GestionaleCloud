@@ -1,69 +1,39 @@
 {
-  "pagina": "Mappa Gestionale",
-  "url": "https://impresasemplice.online/mappa-gestionale",
-  "file_sorgente_frontend": [
-    "frontend/src/pages/MappaGestionale.jsx (1975 righe: pagina interamente statica/documentale, nessun router backend viene mai chiamato tranne un link di download diretto)"
-  ],
-  "file_sorgente_backend": [
-    "Nessuno specifico per questa pagina: l'unica interazione col server è il link statico di download '/api/download/ceraldi_erp_flussi_completo.md' (tag <a download>, non un fetch/axios — il backend che serve quel file non è stato identificato/letto in questa analisi, ma non esegue nessuna logica applicativa, serve presumibilmente un file markdown statico o generato)."
-  ],
-  "scopo_generale": "È una pagina puramente didattica/documentale, pensata per far capire (a un umano, non per operare dati) come funziona l'intero flusso dati del gestionale Ceraldi ERP: da dove arriva ogni informazione, cosa fa ciascun modulo, cosa alimenta a valle e cosa aspetta per potersi considerare 'riconciliato'. Tutti i contenuti (16 sezioni FLUSSI: Prima Nota Cassa, Prima Nota Banca, Prima Nota Salari, Corrispettivi RT, Fatture Ricevute, Fornitori, Riconciliazione, Fisco & IVA, Bilancio, Cespiti, Dipendenti, Cedolini, Dashboard, Scadenze, Import Documenti, Strumenti) sono testo statico scritto direttamente nel codice React (oggetto costante FLUSSI), NON letto da nessun database. La pagina include anche un diagramma Mermaid.js interattivo e modificabile (editor di testo con debounce di 900ms) che rappresenta graficamente lo stesso flusso, e una sezione finale 'Stack Tecnologico' anch'essa hard-coded (elenco librerie backend/frontend/collezioni MongoDB con conteggi di record scritti a mano nel codice, quindi potenzialmente disallineati dai dati reali attuali del database).",
-  "bottoni_azioni": [
-    {
-      "etichetta": "✏️ Modifica Diagramma / ✕ Chiudi Editor",
-      "cosa_fa_al_click": "Toggle di showEditor: mostra/nasconde un pannello laterale con una <textarea> per editare il codice sorgente Mermaid del diagramma.",
-      "endpoint_chiamato": "Nessuno",
-      "logica_backend": "N/A — tutta la logica è client-side: la libreria 'mermaid' (import dinamico, caricata una sola volta con getMermaidInstance/mermaidImportPromise) compila il testo in SVG tramite mermaidInstance.render() e il risultato viene iniettato con dangerouslySetInnerHTML.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Il pannello editor appare/scompare; la modifica del testo (handleCodiceChange) applica un debounce di 900ms prima di aggiornare 'codice' e far ripartire il render del diagramma.",
-      "casi_errore": "Se il testo Mermaid non è sintatticamente valido, il catch imposta setErrore('Errore nel diagramma: ' + messaggio troncato a 120 caratteri) mostrato in rosso sotto la textarea; il diagramma precedente resta visibile (nessun crash della pagina)."
-    },
-    {
-      "etichetta": "▶ Applica (nell'editor)",
-      "cosa_fa_al_click": "handleApplica(): cancella eventuali timeout pendenti del debounce e applica immediatamente codiceInput come nuovo 'codice' da renderizzare.",
-      "endpoint_chiamato": "Nessuno",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Il diagramma si ridisegna subito; vengono anche ricalcolate le 'sezioniAttive' (parseNodiDiagramma) cercando nel testo del diagramma le keyword mappate in KEYWORD_MAP per capire quali card di sezione mostrare come 'presenti nel diagramma corrente'.",
-      "casi_errore": "Stesso gestore errori del render automatico."
-    },
-    {
-      "etichetta": "Reset (nell'editor)",
-      "cosa_fa_al_click": "handleReset(): riporta sia codiceInput che codice al DIAGRAMMA_DEFAULT hard-coded, e resetta activeSezione a 'PRIMA_NOTA_CASSA'.",
-      "endpoint_chiamato": "Nessuno",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Il diagramma torna a quello di default; la sezione attiva torna a Prima Nota Cassa.",
-      "casi_errore": "N/A"
-    },
-    {
-      "etichetta": "⬇ Scarica Documento",
-      "cosa_fa_al_click": "Tag <a href='/api/download/ceraldi_erp_flussi_completo.md' download>: il browser scarica direttamente il file, senza passare da axios/fetch né da alcuna gestione di stato React.",
-      "endpoint_chiamato": "GET /api/download/ceraldi_erp_flussi_completo.md",
-      "logica_backend": "Non identificato nei router letti in questa analisi (nessun match trovato tra i router di dashboard/agenti/mappa); presumibilmente serve un file statico o generato da un modulo di export non coperto da questo documento.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "N/A (download gestito dal browser)",
-      "casi_errore": "Se l'endpoint non esiste o fallisce, il browser mostra il proprio errore standard di download; nessuna gestione lato React."
-    },
-    {
-      "etichetta": "Tab di navigazione sezione (pulsanti pillola per ciascun modulo, es. '💵 Prima Nota', '🏦 Prima Nota', ecc.)",
-      "cosa_fa_al_click": "setActiveSezione(chiave) — cambia quale FlowCard viene mostrata espansa in cima, con tutti i dettagli (isActive=true mostra anche i paragrafi descrittivi lunghi, altrimenti restano nascosti nella vista compatta della griglia sottostante).",
-      "endpoint_chiamato": "Nessuno",
-      "logica_backend": "N/A — la card mostra 4 blocchi statici per ogni sezione: 📥 ENTRA DA (fonti dati in ingresso), ⚙️ COSA FA (elenco puntato delle funzioni del modulo), 📤 ALIMENTA/POPOLA (a quali altri moduli passa i dati e perché), ⏳ ASPETTA/RICONCILIA CON (cosa deve succedere perché il modulo si consideri 'chiuso', con etichetta di urgenza critica/alta/media/bassa colorata).",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "La card selezionata si sposta/espande in testa alla pagina; le altre restano sotto in griglia compatta cliccabile (onClick su ogni card apre quella sezione).",
-      "casi_errore": "N/A"
-    }
-  ],
-  "operazioni_di_registrazione": [],
-  "collegamenti_con_altre_pagine": [
-    "Nessun collegamento <Link>/navigate verso altre pagine del gestionale: è una pagina 'a sé stante', puramente informativa, priva di call-to-action operative verso i moduli che descrive."
-  ],
-  "popup_e_modali_presenti": [
-    "Nessun modale. Il pannello editor Mermaid (showEditor) è un pannello laterale inline, non un overlay/modale."
-  ],
-  "note_tecniche": [
-    "Questa pagina NON legge alcun dato reale dal database: tutti i numeri citati nella sezione 'Stack Tecnologico → Database' (es. 'estratto_conto_movimenti — 7.800+ record', 'corrispettivi — 1.051 record', 'invoices — 74 record', 'dipendenti — 34 dipendenti', 'cedolini — 841 record', 'cespiti — 21 cespiti') sono stringhe scritte a mano nel codice sorgente e possono NON corrispondere ai conteggi reali attuali del database — vanno considerate indicative/storiche, non un KPI live.",
-    "Il rendering del diagramma usa mermaid.initialize() una sola volta per sessione di navigazione (flag di modulo mermaidInitialized) con tema custom (colore primario #1a40b5)."
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Mappa gestionale",
+  "route": "/mappa-gestionale",
+  "catalog_id": 59,
+  "modulo": "strumenti",
+  "accesso": "authenticated",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Mappa gestionale». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/MappaGestionale.jsx",
+    "entry": "frontend/src/main.jsx",
+    "file_verificati": [
+      "frontend/src/main.jsx",
+      "frontend/src/pages/MappaGestionale.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [],
+    "endpoint_rilevati_nei_sorgenti": []
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

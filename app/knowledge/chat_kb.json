@@ -1,8 +1,8 @@
 {
   "meta": {
     "nome": "Ceraldi ERP — Logica completa per la chat intelligente",
-    "versione": "3.0-definitiva",
-    "aggiornato_al": "2026-07-10",
+    "versione": "4.0-drive-transition",
+    "aggiornato_al": "2026-08-20",
     "azienda": {
       "nome": "Ceraldi Caffe / Ceraldi Group SRL",
       "settore": "bar/caffetteria",
@@ -18,7 +18,9 @@
       "La chat deve conservare memoria delle decisioni e delle verifiche gia effettuate.",
       "Ogni risposta deve includere stato, motivazione, fonti interne utilizzate e livello di affidabilita."
     ],
-    "nota_implementazione": "La base di conoscenza è distinta dal motore operativo della chat. La sezione implementazione_chat_intelligente definisce backend, strumenti, memoria, frontend e sicurezza."
+    "nota_implementazione": "La base di conoscenza è distinta dal motore operativo della chat. La sezione implementazione_chat_intelligente definisce backend, strumenti, memoria, frontend e sicurezza.",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "repository": "ceraldicontabilita/GestionaleCloud"
   },
   "regola_decisionale_globale": {
     "certo": {
@@ -791,11 +793,12 @@
   },
   "implementazione_chat_intelligente": {
     "stato_attuale": {
-      "roadmap_punto": 19,
-      "voce_menu": "Chat intelligente",
-      "stato": "non_implementata",
-      "frontend": "pagina_vuota",
-      "nota": "Questo file costituisce la base di conoscenza e descrive il comportamento atteso, ma non rappresenta il motore operativo della chat."
+      "stato": "implementata_con_strumenti_controllati",
+      "frontend": "frontend/src/components/ChatIntelligente.jsx",
+      "backend": "app/routers/chat_router.py e app/services/chat_ai_engine.py",
+      "endpoint": "POST /api/chat/ask",
+      "mcp": "gestionale_mcp espone strumenti di sola lettura",
+      "nota": "Le azioni con effetti restano fuori dagli strumenti di risposta automatica."
     },
     "architettura_generale": {
       "flusso": [
@@ -805,7 +808,7 @@
         "Il backend carica le regole pertinenti della base di conoscenza.",
         "Il modello AI riceve domanda, contesto e strumenti autorizzati.",
         "Il modello richiede al backend i dati necessari tramite strumenti controllati.",
-        "Il backend interroga MongoDB e, quando necessario, legge i documenti originali.",
+        "Il backend interroga l'archivio operativo selezionato da DATA_BACKEND e legge gli originali autorizzati da Drive.",
         "Il modello costruisce una risposta motivata con fonti, affidabilità e dati mancanti.",
         "Il backend salva domanda, risposta, strumenti usati e decisioni.",
         "Il frontend mostra la risposta e le eventuali azioni proposte."
@@ -840,14 +843,14 @@
         ]
       },
       "strumenti_dati": {
-        "principio": "Il modello AI non deve avere accesso diretto e illimitato a MongoDB. Il backend deve esporre strumenti autorizzati, tipizzati e validati.",
+        "principio": "Il modello AI non accede direttamente allo storage. Il backend espone strumenti autorizzati, tipizzati, paginati e registrati.",
         "regole": [
           "Ogni strumento deve applicare i permessi dell'utente.",
           "Ogni strumento deve limitare i campi restituiti.",
           "Ogni chiamata deve essere registrata.",
           "Gli strumenti di lettura devono essere separati da quelli con effetti sui dati.",
           "Gli strumenti con effetti devono richiedere conferma esplicita dell'utente.",
-          "Il modello non può costruire query MongoDB libere."
+          "Il modello non può costruire query libere contro MongoDB, Sheets o Drive."
         ],
         "strumenti_minimi": [
           "cerca_documenti",
@@ -1082,6 +1085,18 @@
       "La chiave Anthropic non è esposta al frontend o al repository.",
       "La pagina frontend non è più vuota ed è collegata agli endpoint backend.",
       "Le risposte rispettano le regole specifiche di ogni dominio."
+    ]
+  },
+  "storage_operativo": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "regola": "La chat interroga soltanto strumenti backend autorizzati. Dopo il cutover verificato, Drive/Sheets è la sorgente persistente esclusiva.",
+    "cartelle_canoniche": [
+      "REGISTRO DATI",
+      "PARTENOPAY",
+      "CODICI TRIBUTO",
+      "QUIETANZE",
+      "DICHIARAZIONI"
     ]
   }
 }

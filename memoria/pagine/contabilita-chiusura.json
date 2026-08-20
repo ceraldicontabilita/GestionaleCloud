@@ -1,102 +1,48 @@
 {
-  "pagina": "Chiusura Esercizio",
-  "url": "https://impresasemplice.online/contabilita/chiusura",
-  "file_sorgente_frontend": [
-    "/home/user/GestionaleCloud/frontend/src/pages/ChiusuraEsercizio.jsx"
-  ],
-  "file_sorgente_backend": [
-    "/home/user/GestionaleCloud/app/routers/chiusura_esercizio.py"
-  ],
-  "scopo_generale": "Wizard guidato a 4 step (Verifica Preliminare -> Bilancino Verifica -> Chiusura -> Nuovo Esercizio) per chiudere formalmente un esercizio contabile annuale e aprire il successivo. La pagina aggrega automaticamente lo stato di chiusura, una checklist di completezza dei dati (fatture, corrispettivi, salari, TFR, ammortamenti, estratto conto), un 'bilancino' con ricavi/costi/risultato d'esercizio, il bottone per eseguire la chiusura vera e propria (che genera scritture e blocca concettualmente l'anno) e, una volta chiuso, il bottone per aprire il nuovo esercizio riportando i saldi. È l'operazione più delicata del modulo Contabilità perché determina l'utile/perdita ufficiale dell'anno e i saldi di apertura dell'anno successivo.",
-  "bottoni_azioni": [
-    {
-      "etichetta": "Aggiorna (icona RefreshCw in alto a destra)",
-      "cosa_fa_al_click": "Richiama loadData(), che ricarica in parallelo (Promise.all) i 4 endpoint di stato/verifica/bilancino/storico per l'anno correntemente selezionato (contesto globale AnnoGlobale).",
-      "endpoint_chiamato": "GET /api/chiusura-esercizio/stato/{anno} + GET /api/chiusura-esercizio/verifica-preliminare/{anno} + GET /api/chiusura-esercizio/bilancino-verifica/{anno} + GET /api/chiusura-esercizio/storico",
-      "logica_backend": "Vedi dettaglio nei singoli endpoint sotto 'operazioni_di_registrazione' e nella descrizione step-by-step.",
-      "formula_matematica": "n/a (solo refresh)",
-      "aggiornamento_ui": "Ricalcola anche l'activeStep: se stato='chiuso' -> step 4; altrimenti se verifica.pronto_per_chiusura -> step 2; altrimenti step 1.",
-      "casi_errore": "setError('Errore nel caricamento dei dati') se una delle chiamate fallisce."
-    },
-    {
-      "etichetta": "Chiudi Esercizio {anno} (bottone principale, abilitato solo se verifica.pronto_per_chiusura=true)",
-      "cosa_fa_al_click": "eseguiChiusura(): invia POST con {anno, conferma_scritture: true, note: note||null} dove 'note' è il contenuto della textarea opzionale.",
-      "endpoint_chiamato": "POST /api/chiusura-esercizio/esegui-chiusura",
-      "logica_backend": "Vedi sequenza dettagliata sotto in operazioni_di_registrazione — 'Esecuzione chiusura esercizio'.",
-      "formula_matematica": "Vedi formula del bilancino riportata sotto (risultato = ricavi - costi).",
-      "aggiornamento_ui": "setSuccess('Chiusura esercizio {anno} completata con successo!') e ricarica tutti i dati con loadData() (che sposterà lo stato su 'chiuso' e lo step a 4, mostrando poi la sezione 'Apertura Nuovo Esercizio').",
-      "casi_errore": "setError(err.response?.data?.detail || 'Errore durante la chiusura'). Cause possibili lato server: conferma_scritture non true (400: 'Devi confermare le scritture...'); presenza di problemi_bloccanti dalla verifica preliminare (400: 'Impossibile procedere: N problemi bloccanti')."
-    },
-    {
-      "etichetta": "Apri Esercizio {anno+1} (visibile solo quando stato='chiuso')",
-      "cosa_fa_al_click": "apriNuovoEsercizio(): calcola nuovoAnno = anno + 1 e invia la POST senza body, con anno_nuovo come query param.",
-      "endpoint_chiamato": "POST /api/chiusura-esercizio/apertura-nuovo-esercizio?anno_nuovo={anno+1}",
-      "logica_backend": "Vedi sequenza dettagliata sotto in operazioni_di_registrazione — 'Apertura nuovo esercizio'.",
-      "formula_matematica": "saldo_cassa = somma(entrate anno precedente) - somma(uscite anno precedente) su prima_nota_cassa; stesso calcolo per saldo_banca su prima_nota_banca; debiti_fornitori = somma(total_amount) di TUTTE le fatture con pagato != true (non filtrate per anno: rappresentano il debito aperto complessivo, anche di anni precedenti non ancora saldato); assegni_da_incassare = somma(importo) assegni con stato in [emesso, consegnato] e incassato != true; tfr_accantonato = somma(importo) di TUTTI i documenti in tfr_accantonamenti (anche qui senza filtro anno, quindi è il fondo TFR complessivo cumulato, non solo quello dell'anno appena chiuso).",
-      "aggiornamento_ui": "setSuccess('Esercizio {anno+1} aperto con successo!') e loadData() ricarica lo stato (che però resta ancora sull'anno corrente selezionato nel contesto globale, finché l'utente non cambia manualmente l'anno).",
-      "casi_errore": "setError(err.response?.data?.detail || \"Errore durante l'apertura\"). Causa bloccante lato server: l'esercizio anno_precedente (anno_nuovo - 1) deve risultare già chiuso in chiusure_esercizio, altrimenti HTTP 400 'L'esercizio {anno_precedente} non è ancora stato chiuso'."
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Step 1 — Verifica preliminare (GET /api/chiusura-esercizio/verifica-preliminare/{anno})",
-      "sequenza_esatta": "Esegue 6 controlli indipendenti sui dati dell'anno, ciascuno classificato come 'problema bloccante' (impedisce la chiusura), 'avviso' (non blocca ma segnala rischio) o 'completamento' (ok):\n1) FATTURE NON CONTABILIZZATE (bloccante): count_documents su invoices con invoice_date che inizia per l'anno e contabilizzata != true; se >0 -> problema bloccante gravità 'alta'.\n2) CORRISPETTIVI MANCANTI (avviso): aggregazione su corrispettivi raggruppando per mese (substr della data); se manca almeno un mese da 1 a 12 -> avviso gravità 'media'.\n3) CEDOLINI/SALARI (avviso): count su cedolini(anno=anno) e prima_nota_salari(anno=anno); se entrambi 0 -> avviso gravità 'media'.\n4) TFR ACCANTONATO (avviso): find_one su tfr_accantonamenti(anno=anno); se assente -> avviso gravità 'media' con indicazione di usare /api/tfr/calcola-batch/{anno}.\n5) AMMORTAMENTI (avviso): conta cespiti attivi con almeno una voce in piano_ammortamento per l'anno vs cespiti attivi non ancora completati; se ci sono cespiti attivi senza ammortamento registrato per l'anno -> avviso gravità 'media' con indicazione di usare /api/cespiti/registra/{anno}.\n6) RICONCILIAZIONE BANCARIA (avviso): count su estratto_conto_movimenti con data dell'anno; se 0 -> avviso gravità 'bassa'.\nCalcola punteggio_completezza = completamenti / (completamenti + problemi + avvisi) * 100. pronto_per_chiusura = (numero di problemi bloccanti == 0) — GLI AVVISI NON BLOCCANO LA CHIUSURA, solo i 'problemi_bloccanti' (attualmente solo il controllo #1 fatture non contabilizzate genera un problema bloccante vero e proprio; tutti gli altri controlli producono solo avvisi).",
-      "collezioni_coinvolte": ["invoices", "corrispettivi", "cedolini", "prima_nota_salari", "tfr_accantonamenti", "cespiti", "estratto_conto_movimenti"],
-      "campi_scritti": {},
-      "effetti_collaterali": "Nessuna scrittura: endpoint puramente di lettura/diagnostica."
-    },
-    {
-      "nome": "Step 2 — Bilancino di verifica (GET /api/chiusura-esercizio/bilancino-verifica/{anno})",
-      "sequenza_esatta": "Calcola ricavi e costi dell'anno solare (dal 1 gennaio al 31 dicembre) leggendo dati già registrati altrove, SENZA scrivere nulla:\nRICAVI = somma di corrispettivi.totale nell'intervallo di date dell'anno (la collection invoices NON viene mai usata per i ricavi: contiene solo fatture RICEVUTE dai fornitori — commento nel codice chiarisce che trattarle come ricavi era un bug storico, #10 audit).\nCOSTI = (somma di invoices.total_amount nell'anno con tipo_documento NON IN [TD04, TD08] cioè escludendo le note di credito) MENO (somma di invoices.total_amount nell'anno con tipo_documento IN [TD04, TD08], cioè le note di credito, che vengono sottratte dagli acquisti) PIÙ (somma di prima_nota_salari.costo_azienda per l'anno) PIÙ (somma di movimenti_contabili.importo con tipo='ammortamento' e anno=X — gli stessi movimenti creati da POST /api/cespiti/registra/{anno}) PIÙ (somma di movimenti_contabili.importo con tipo='tfr_accantonamento' e anno=X).\nRISULTATO D'ESERCIZIO = utile_perdita = totale_ricavi - totale_costi. tipo = 'utile' se >0 altrimenti 'perdita'. margine_percentuale = utile_perdita / totale_ricavi * 100 (0 se ricavi=0).",
-      "collezioni_coinvolte": ["corrispettivi", "invoices", "prima_nota_salari", "movimenti_contabili"],
-      "campi_scritti": {},
-      "effetti_collaterali": "Nessuna scrittura: endpoint di sola lettura/calcolo, richiamato anche internamente da esegui-chiusura per congelare il risultato al momento della chiusura."
-    },
-    {
-      "nome": "Step 3 — Esecuzione chiusura esercizio (POST /api/chiusura-esercizio/esegui-chiusura) — OPERAZIONE CENTRALE",
-      "sequenza_esatta": "1) Verifica conferma_scritture=true nel body, altrimenti HTTP 400. 2) Rilancia internamente verifica_preliminare_chiusura(anno): se pronto_per_chiusura=false (cioè ci sono problemi bloccanti, tipicamente fatture non contabilizzate), solleva HTTP 400 'Impossibile procedere: N problemi bloccanti' — la chiusura NON avviene. 3) Rilancia internamente get_bilancino_verifica(anno) per ottenere ricavi/costi/risultato aggiornati al momento esatto della chiusura (stesso calcolo dello step 2, ricalcolato fresh, non cache). 4) Crea un documento 'scrittura di chiusura' in db['chiusure_esercizio'] con id=uuid4, anno, data='{anno}-12-31', tipo='chiusura_esercizio', l'intero oggetto bilancino (ricavi/costi/risultato dettagliati), risultato_esercizio=utile_perdita, tipo_risultato ('utile'/'perdita'), note dell'utente, created_by='sistema'. 5) Crea UN movimento contabile riepilogativo in db['movimenti_contabili'] con tipo='risultato_esercizio', importo=abs(utile_perdita), segno='avere' se utile positivo altrimenti 'dare' (convenzione contabile: un utile va in avere, una perdita in dare), anno, riferimento chiusura_id. 6) Ritorna esito con risultato (tipo+importo) e step_successivo='apertura_nuovo_esercizio'.\nIMPORTANTE — cosa NON fa questa operazione (verificato leggendo tutto il file): NON calcola/registra IRES o IRAP (nessuna menzione di imposte nel codice); NON crea alcuna scrittura di girocontabilizzazione dei singoli conti economici verso il conto di patrimonio netto (nessuna scrittura di 'epilogo' per ciascun mastro, viene creato un solo movimento riepilogativo con il risultato netto già calcolato); NON impone un vero e proprio blocco tecnico/lock sulle altre collection (fatture, prima nota, ecc.) per impedire nuove scritture sull'anno chiuso — l'unico controllo esistente è che GET /api/chiusura-esercizio/stato/{anno} restituirà stato='chiuso' se esiste un documento in chiusure_esercizio per quell'anno, cosa che il frontend usa per disabilitare/nascondere il bottone di chiusura, ma non risultano guardie lato backend che impediscano scritture successive in prima_nota_cassa/banca o fatture con data nell'anno già chiuso.",
-      "collezioni_coinvolte": ["chiusure_esercizio", "movimenti_contabili"],
-      "campi_scritti": {
-        "chiusure_esercizio.id": "uuid4",
-        "chiusure_esercizio.anno": "int",
-        "chiusure_esercizio.data": "'{anno}-12-31'",
-        "chiusure_esercizio.tipo": "'chiusura_esercizio'",
-        "chiusure_esercizio.bilancino": "oggetto completo ricavi/costi/risultato",
-        "chiusure_esercizio.risultato_esercizio": "float, utile_perdita",
-        "chiusure_esercizio.tipo_risultato": "'utile' | 'perdita'",
-        "chiusure_esercizio.note": "testo libero opzionale inserito dall'utente",
-        "movimenti_contabili.tipo": "'risultato_esercizio'",
-        "movimenti_contabili.importo": "abs(utile_perdita)",
-        "movimenti_contabili.segno": "'avere' (utile) | 'dare' (perdita)"
-      },
-      "effetti_collaterali": "Rende GET /api/chiusura-esercizio/stato/{anno} 'chiuso' (idempotenza NON verificata esplicitamente nel codice: rieseguire esegui-chiusura sullo stesso anno con conferma_scritture=true e senza problemi bloccanti creerebbe una SECONDA voce in chiusure_esercizio e un secondo movimento_contabili, potenzialmente duplicando il risultato d'esercizio — non c'è un controllo 'anno già chiuso' prima dell'insert)."
-    },
-    {
-      "nome": "Step 4 — Apertura nuovo esercizio (POST /api/chiusura-esercizio/apertura-nuovo-esercizio?anno_nuovo=X)",
-      "sequenza_esatta": "1) anno_precedente = anno_nuovo - 1. 2) Verifica che esista una chiusura per anno_precedente in chiusure_esercizio, altrimenti HTTP 400. 3) Calcola i saldi da riportare (vedi formula sotto). 4) Crea un documento 'scrittura di apertura' in db['aperture_esercizio'] con id, anno=anno_nuovo, data='{anno_nuovo}-01-01', tipo='apertura_esercizio', saldi_riportati={saldo_cassa, saldo_banca, debiti_fornitori, assegni_da_incassare, tfr_accantonato}, anno_precedente. 5) Se saldo_cassa != 0, crea un movimento in prima_nota_cassa datato 1 gennaio del nuovo anno, tipo='entrata' se saldo>0 altrimenti 'uscita', importo=abs(saldo_cassa), categoria='Riporto', source='apertura_esercizio'. 6) Stesso identico meccanismo per saldo_banca su prima_nota_banca. 7) Logga l'esito e ritorna i saldi riportati.",
-      "collezioni_coinvolte": ["chiusure_esercizio", "aperture_esercizio", "prima_nota_cassa", "prima_nota_banca", "invoices", "assegni", "tfr_accantonamenti"],
-      "campi_scritti": {
-        "aperture_esercizio.saldi_riportati.saldo_cassa": "float = entrate_cassa(anno_prec) - uscite_cassa(anno_prec)",
-        "aperture_esercizio.saldi_riportati.saldo_banca": "float = entrate_banca(anno_prec) - uscite_banca(anno_prec)",
-        "aperture_esercizio.saldi_riportati.debiti_fornitori": "float = somma total_amount di TUTTE le fatture con pagato != true (non filtrato per anno)",
-        "aperture_esercizio.saldi_riportati.assegni_da_incassare": "float = somma importo assegni stato in [emesso, consegnato] e incassato != true",
-        "aperture_esercizio.saldi_riportati.tfr_accantonato": "float = somma importo su TUTTI i tfr_accantonamenti (cumulato, non solo anno precedente)",
-        "prima_nota_cassa (nuovo movimento, condizionale)": "entrata/uscita 'Saldo iniziale da esercizio {anno_precedente}', categoria 'Riporto'",
-        "prima_nota_banca (nuovo movimento, condizionale)": "idem per il conto banca"
-      },
-      "effetti_collaterali": "Crediti clienti NON vengono calcolati né riportati nonostante il docstring della funzione li citi esplicitamente tra gli obiettivi ('Riporta: ... Crediti clienti (fatture non pagate) ...') — il codice effettivo calcola solo debiti_fornitori, non un equivalente 'crediti verso clienti' (probabilmente perché il gestionale non emette fatture attive tracciate separatamente, coerente con l'assenza di ricavi da fatture nel bilancino). Come per la chiusura, non c'è un controllo che impedisca di rieseguire l'apertura più volte per lo stesso anno_nuovo, il che duplicherebbe i movimenti di riporto in prima nota."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Gestione Cespiti (contabilita/cespiti): la verifica preliminare rimanda a POST /api/cespiti/registra/{anno} se ci sono cespiti attivi senza ammortamento registrato; il bilancino legge da movimenti_contabili i record tipo='ammortamento' generati da quell'endpoint.",
-    "TFR (modulo Personale/TFR): la verifica preliminare rimanda a /api/tfr/calcola-batch/{anno} se manca l'accantonamento TFR dell'anno; il bilancino legge da movimenti_contabili i record tipo='tfr_accantonamento'.",
-    "Fatture Fornitori / Corrispettivi: fonti primarie di costi e ricavi lette da verifica preliminare e bilancino (collections invoices e corrispettivi).",
-    "Prima Nota Cassa/Banca: destinazione dei movimenti di riporto saldi generati dall'apertura nuovo esercizio; fonte per il calcolo di saldo_cassa e saldo_banca.",
-    "Estratto Conto: la verifica preliminare segnala (avviso a bassa gravità) se mancano movimenti bancari importati per l'anno."
-  ],
-  "popup_e_modali_presenti": [
-    "Nessun vero modale/dialog: la pagina è un wizard a step visualizzato su un'unica schermata a due colonne (Verifica a sinistra, Bilancino+Azioni a destra).",
-    "Banner inline di errore (rosso, XCircle) e di successo (verde, CheckCircle) mostrati sopra la card di stato, non come popup ma come sezioni condizionali della pagina.",
-    "Nessun window.confirm/alert nativo per confermare l'operazione irreversibile di chiusura: il click sul bottone 'Chiudi Esercizio' esegue la POST direttamente (l'unica salvaguardia è il disabled legato a verifica.pronto_per_chiusura e il testo di avviso 'Risolvi i problemi bloccanti prima di procedere' mostrato sotto il bottone quando non è pronto)."
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Chiusura esercizio",
+  "route": "/contabilita/chiusura",
+  "catalog_id": 23,
+  "modulo": "contabilita",
+  "accesso": "authenticated",
+  "stato_audit": "verified",
+  "scopo": "Mappa tecnica della schermata «Chiusura esercizio». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/ChiusuraEsercizio.jsx",
+    "entry": "frontend/src/pages/hub/ContabilitaHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/ChiusuraEsercizio.jsx",
+      "frontend/src/pages/hub/ContabilitaHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/routers/chiusura_esercizio.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/chiusura-esercizio/apertura-nuovo-esercizio",
+      "/api/chiusura-esercizio/bilancino-verifica/{param}",
+      "/api/chiusura-esercizio/esegui-chiusura",
+      "/api/chiusura-esercizio/stato/{param}",
+      "/api/chiusura-esercizio/storico",
+      "/api/chiusura-esercizio/verifica-preliminare/{param}"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

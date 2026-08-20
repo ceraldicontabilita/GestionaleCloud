@@ -1,0 +1,47 @@
+{
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Indice documentale Drive",
+  "route": "/documenti/drive",
+  "catalog_id": 63,
+  "modulo": "documenti",
+  "accesso": "authenticated",
+  "stato_audit": "in_review",
+  "scopo": "Mappa tecnica della schermata «Indice documentale Drive». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/DriveDocumentIndex.jsx",
+    "entry": "frontend/src/pages/hub/DocumentiHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/DriveDocumentIndex.jsx",
+      "frontend/src/pages/hub/DocumentiHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/documenti/drive/catalog",
+      "/api/documenti/drive/index/declarations",
+      "/api/documenti/drive/index/document/{param}",
+      "/api/documenti/drive/index/f24",
+      "/api/documenti/drive/index/overview",
+      "/api/documenti/drive/index/search",
+      "/api/documenti/drive/index/status"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
+  ]
+}

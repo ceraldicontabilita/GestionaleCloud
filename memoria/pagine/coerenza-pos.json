@@ -1,217 +1,53 @@
 {
-  "pagina": "Coerenza POS Corrispettivi",
-  "url": "https://impresasemplice.online/coerenza-pos",
-  "file_sorgente_frontend": [
-    "/home/user/GestionaleCloud/frontend/src/pages/CoerenzaPOSCorrispettivi.jsx",
-    "/home/user/GestionaleCloud/frontend/src/pages/hub/RiconciliazioneHub.jsx"
-  ],
-  "file_sorgente_backend": [
-    "/home/user/GestionaleCloud/app/routers/pos_corrispettivi_check.py",
-    "/home/user/GestionaleCloud/app/routers/bank/pos_accredito.py",
-    "/home/user/GestionaleCloud/app/routers/invoices/corrispettivi.py"
-  ],
-  "scopo_generale": "Questa pagina verifica che la parte elettronica dei corrispettivi giornalieri (i pagamenti con carta/POS registrati sul registratore telematico) coincida, con lo sfasamento temporale tipico del circuito bancario, con quanto viene realmente accreditato sul conto corrente dal gestore POS. Nasce per prevenire due problemi distinti: errori di battitura al registratore di cassa (l'operatore digita un importo elettronico diverso da quello realmente passato al POS fisico) e mancati o errati accrediti bancari rispetto a quanto incassato. Dal 1° gennaio 2026 la normativa impone l'abbinamento tra RT (registratore telematico) e POS, quindi la pagina serve anche a evitare segnalazioni dall'Agenzia delle Entrate. Il modulo è evoluto in due generazioni di logica: una prima versione (tab 'Giornaliero'/'Mensile'/'Anomalie', endpoint verifica-coerenza) che confrontava direttamente il dato XML dei corrispettivi con gli accrediti bancari, giudicata dal codice stesso 'approccio sbagliato'; e una seconda versione (tab 'Controllo 2 Fasi', di gran lunga la vista predefinita) che scompone il controllo in due fasi sequenziali — RT vs POS reale battuto in cassa, e POS reale vs accredito bancario — per capire con precisione in quale dei due punti nasce lo scostamento. La pagina fa parte dell'hub di Riconciliazione Bancaria e permette anche l'inserimento manuale della 'chiusura serale' quando l'XML ufficiale dei corrispettivi non è ancora arrivato.",
-  "sezioni_tab": [
-    {
-      "nome": "Controllo 2 Fasi (⚡, tab di default, valore interno 'due_fasi')",
-      "descrizione": "Vista principale introdotta nella logica v2/v3/v4 (aprile 2026). Mostra, giorno per giorno, lo stato del corrispettivo (provvisorio/definitivo XML/manca XML), la FASE 1 (RT XML vs POS reale battuto in chiusura serale, per scovare errori di battitura) e la FASE 2 (POS reale vs accredito banca, raggruppato per data di accredito quando più giorni confluiscono nello stesso bonifico, es. venerdì+sabato+domenica che arrivano tutti il lunedì). Contiene: box statistiche riassuntive, box 'Cose da sistemare oggi' con gli alert attivi, toggle Giornaliero/Settimanale, filtro Tutti/Solo problemi/Solo OK, tabella dettaglio con righe espandibili per i gruppi di accredito multi-giorno, bottone per aprire il modale di inserimento chiusura serale."
-    },
-    {
-      "nome": "Giornaliero",
-      "descrizione": "Vista storica (logica v1): tabella con una riga per ogni giorno che mostra Elettronico da XML, POS Banca (accreditato), Differenza e Stato (ok/mancante/differenza/extra), ordinata dal più recente. Dati presi dall'endpoint /api/pos-corrispettivi/verifica-coerenza, che confronta direttamente pagato_elettronico XML con gli accrediti bancari, senza passare dal dato del POS reale serale."
-    },
-    {
-      "nome": "Mensile",
-      "descrizione": "Riepilogo aggregato mese per mese (12 righe per l'anno selezionato) con Corrispettivi totali, Contanti, Elettronico XML, POS Banca, Differenza e Stato (ok/warning/error), più riga di totale annuo. Dati dall'endpoint /api/pos-corrispettivi/riepilogo-mensile."
-    },
-    {
-      "nome": "Anomalie",
-      "descrizione": "Elenco delle sole giornate con stato diverso da 'ok' secondo la logica v1 (verifica-coerenza): mostra messaggio esplicativo, importo XML, importo POS accreditato, differenza e un bottone 'Riconcilia' per giorno. Se non ci sono anomalie mostra un messaggio di conferma positivo."
-    }
-  ],
-  "bottoni_azioni": [
-    {
-      "etichetta": "Tab '⚡ Controllo 2 Fasi' / 'Giornaliero' / 'Mensile' / 'Anomalie (N)'",
-      "dove_si_trova": "Barra di navigazione sotto le KPI card, in alto nella pagina",
-      "cosa_fa_al_click": "Cambia lo state locale 'tab' (nessuna nuova chiamata API: tutti i dati sono già stati caricati al mount tramite Promise.all). Il badge rosso sul tab '2 Fasi' mostra la somma di alertOggi.num_alert_compensazione + alertOggi.num_alert_banca quando > 0; il badge sul tab 'Anomalie' mostra dati.anomalie_count.",
-      "endpoint_chiamato": "Nessuno (solo cambio di stato client-side)",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Sostituisce il contenuto sottostante con la sezione corrispondente al tab selezionato",
-      "casi_errore": "Nessuno, è puro state React"
-    },
-    {
-      "etichetta": "Aggiorna (icona RefreshCw)",
-      "dove_si_trova": "Estrema destra della barra dei tab",
-      "cosa_fa_al_click": "Richiama loadDati(), che rilancia in parallelo le 4 chiamate GET usate al mount della pagina",
-      "endpoint_chiamato": "GET /api/pos-corrispettivi/verifica-coerenza?anno={anno} ; GET /api/pos-corrispettivi/riepilogo-mensile?anno={anno} ; GET /api/pos-corrispettivi/controllo-due-fasi?anno={anno} ; GET /api/pos-corrispettivi/alert-oggi",
-      "logica_backend": "Rilegge da zero corrispettivi, prima_nota_banca e chiusure_pos_manuali per l'anno corrente (vedi dettaglio nelle operazioni di registrazione/algoritmi sotto) e ricalcola tutti gli aggregati",
-      "formula_matematica": "Vedi formule delle singole verifiche sotto",
-      "aggiornamento_ui": "Aggiorna dati, riepilogoMensile, dueFasi, alertOggi; se una chiamata fallisce mostra un banner di errore rosso con bottone 'Riprova'",
-      "casi_errore": "Se una delle 4 richieste fallisce, il catch imposta setErr('Errore caricamento: ' + dettaglio) e la UI mostra il banner di errore invece del contenuto"
-    },
-    {
-      "etichetta": "+ Inserisci chiusura serale",
-      "dove_si_trova": "Toolbar in cima al tab 'Controllo 2 Fasi', sfondo dorato (#b8860b)",
-      "cosa_fa_al_click": "Apre il modale ModalChiusuraSerale (setModalAperta(true)), che permette di inserire il totale corrispettivo provvisorio e/o il POS reale della giornata",
-      "endpoint_chiamato": "Nessuna chiamata immediata: l'apertura è solo state locale. La chiamata avviene al submit del modale (vedi sotto 'Salva chiusura')",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Mostra il modale in overlay",
-      "casi_errore": "N/A"
-    },
-    {
-      "etichetta": "Giornaliero / Settimana per settimana",
-      "dove_si_trova": "Sotto le statistiche, dentro al tab 'Controllo 2 Fasi'",
-      "cosa_fa_al_click": "Cambia lo state 'vista' che decide se mostrare la tabella giornaliera (RigaGiornaliera per ogni giorno) o la TabellaSettimanale aggregata",
-      "endpoint_chiamato": "Nessuno, i dati settimanali (dati.riepilogo_settimanale) arrivano già precalcolati dentro la risposta di /api/pos-corrispettivi/controllo-due-fasi",
-      "logica_backend": "Il raggruppamento settimanale (per settimana ISO del giorno di INCASSO, non di accredito) è fatto lato backend nell'endpoint controllo-due-fasi",
-      "formula_matematica": "diff_totale_settimana = accredito_totale - pos_totale ; stato = 'in_attesa' se almeno un giorno capogruppo è in attesa, altrimenti 'mancante' se almeno un giorno è mancante, altrimenti 'differenza' se abs(diff_totale) > tolleranza_euro (default 0.5), altrimenti 'ok'",
-      "aggiornamento_ui": "Scambia la tabella visualizzata",
-      "casi_errore": "Se non ci sono settimane, mostra 'Nessun dato settimanale disponibile per il periodo selezionato.'"
-    },
-    {
-      "etichetta": "Tutti / Solo problemi / Solo OK",
-      "dove_si_trova": "Accanto al toggle Giornaliero/Settimanale, visibile solo in vista Giornaliero",
-      "cosa_fa_al_click": "Filtra client-side l'array 'giorni' già caricato in base allo state filtroStato. 'ok' = stato_serale ok AND stato_accredito ok AND stato_corrispettivo diverso da manca_xml. 'problemi' = almeno una delle tre condizioni non soddisfatta (stato_serale non ok/no_dati/in_attesa_xml, oppure stato_accredito non ok/in_attesa/no_pos_manuale, oppure stato_corrispettivo=manca_xml)",
-      "endpoint_chiamato": "Nessuno, filtro locale su array già in memoria",
-      "logica_backend": "N/A (filtro client-side)",
-      "formula_matematica": "Vedi condizioni sopra",
-      "aggiornamento_ui": "Aggiorna il conteggio 'N / totale giorni' e la tabella mostrata",
-      "casi_errore": "Se il filtro non produce righe, mostra 'Nessun giorno da mostrare con questo filtro.'"
-    },
-    {
-      "etichetta": "gruppo N gg: €importo ▼/▲ (link testuale dentro una riga con accredito multi-giorno)",
-      "dove_si_trova": "Colonna FASE 2 'POS reale' della riga capogruppo, visibile solo se g.capogruppo && g.giorni_gruppo > 1",
-      "cosa_fa_al_click": "Espande/collassa (toggle state locale 'espansa' del componente RigaGiornaliera) una riga di dettaglio che elenca giorno per giorno quanto ha contribuito ciascuna giornata all'accredito raggruppato (es. venerdì+sabato+domenica confluiti nel bonifico del lunedì)",
-      "endpoint_chiamato": "Nessuno, il dettaglio (g.dettaglio_gruppo) è già presente nella risposta di controllo-due-fasi",
-      "logica_backend": "Calcolato server-side raggruppando per data_accredito_attesa: gruppi_accr[data_accredito] = somma dei pos_manuale dei giorni che confluiscono in quell'accredito",
-      "formula_matematica": "pos_gruppo = Σ pos_manuale dei giorni del gruppo ; diff_accredito_gruppo = accredito_banca - pos_gruppo",
-      "aggiornamento_ui": "Mostra/nasconde riga aggiuntiva con tabella: elenco giorni→importo, Totale incassato, Accreditato in banca, Differenza (verde se >=0, rosso se <0)",
-      "casi_errore": "N/A"
-    },
-    {
-      "etichetta": "Riconcilia",
-      "dove_si_trova": "Tab 'Anomalie', su ogni card di anomalia (logica v1)",
-      "cosa_fa_al_click": "Chiama handleRiconcilia(data) che invoca l'endpoint di riconciliazione automatica per quel giorno, mostra un alert() col messaggio di esito e ricarica tutti i dati con loadDati()",
-      "endpoint_chiamato": "POST /api/pos-corrispettivi/riconcilia-pos-giorno?data={data}",
-      "logica_backend": "Legge il corrispettivo del giorno da 'corrispettivi' e il valore pagato_elettronico. Se <= 0 ritorna errore. Calcola le date possibili di accredito (Lun-Gio: +1 e +2 giorni; Ven-Dom: giorni fino al lunedì e +1 oltre). Cerca in 'prima_nota_banca' un movimento con quella data, source diverso da import_manuale_pos, categoria in [POS, pos, Incasso POS] oppure descrizione che matcha regex 'POS|NEXI|SUMUP', e importo compreso tra elettronico*0.95 e elettronico*1.05 (tolleranza ±5%). Se trovato, aggiorna il documento in 'corrispettivi' impostando pos_riconciliato=True, pos_data_accredito, pos_importo_accredito.",
-      "formula_matematica": "Range di match: importo ∈ [elettronico_xml * 0.95, elettronico_xml * 1.05]",
-      "aggiornamento_ui": "Mostra alert() con messaggio di successo/fallimento, poi ricarica interamente i dati della pagina",
-      "casi_errore": "'Nessun corrispettivo per questa data' se non esiste il documento; 'Nessun pagamento elettronico per questa data' se pagato_elettronico<=0; se nessun accredito trovato nelle date possibili, ritorna success:false con messaggio 'Accredito POS non trovato. Cercato in: ...' e le date cercate"
-    },
-    {
-      "etichetta": "Riprova (nel banner di errore generale)",
-      "dove_si_trova": "Sotto il messaggio di errore rosso, mostrato quando loadDati() fallisce",
-      "cosa_fa_al_click": "Richiama loadDati()",
-      "endpoint_chiamato": "Le stesse 4 GET dell'azione 'Aggiorna'",
-      "logica_backend": "Come sopra",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Ritenta il caricamento completo della pagina",
-      "casi_errore": "Se fallisce di nuovo, resta il banner di errore"
-    },
-    {
-      "etichetta": "Salva chiusura (nel modale 'Chiusura serale')",
-      "dove_si_trova": "Footer del modale ModalChiusuraSerale, bottone dorato in basso a destra",
-      "cosa_fa_al_click": "Valida i campi (data obbligatoria, totale corrispettivo numerico > 0, POS reale opzionale numerico >= 0), poi invia i dati; in caso di successo chiude il modale e ricarica i dati della pagina tramite onReload",
-      "endpoint_chiamato": "POST /api/corrispettivi/manuale",
-      "logica_backend": "Definito in app/routers/invoices/corrispettivi.py (montato con prefix /api/corrispettivi). Se esiste già un corrispettivo per quella data con stato='definitivo_xml', ritorna HTTP 409 (non si può sovrascrivere un dato fiscale ufficiale con uno manuale). Se esiste ma non è definitivo, aggiorna totale_manuale, totale (=manuale finché non arriva XML) e stato='provvisorio'. Se non esiste, crea un nuovo documento in 'corrispettivi' con id, data, anno, mese, totale=totale_manuale, totale_xml=None, pagato_contanti/pagato_elettronico=None, stato='provvisorio', source='manuale_serale'. Se pos_reale_serale è fornito, scrive/aggiorna anche un movimento in 'prima_nota_banca' con categoria='Corrispettivi POS', source='chiusura_pos_mobile', importo=pos_reale_serale (stessa logica dell'endpoint PUT /api/pos-corrispettivi/chiusura-giornaliera).",
-      "formula_matematica": "Nessuna formula di confronto in questo step: è pura scrittura del dato di input grezzo (il confronto avviene poi nel tab Controllo 2 Fasi)",
-      "aggiornamento_ui": "Chiude il modale e richiama onReload → loadDati() della pagina principale",
-      "casi_errore": "'Inserisci la data' se manca la data; 'Il totale corrispettivo deve essere un numero maggiore di 0' se il totale non è valido; 'Il POS reale deve essere un numero >= 0' se il POS non è valido; in caso di errore HTTP (es. 409 per corrispettivo già definitivo) mostra e.response.data.detail nel box errore del modale"
-    },
-    {
-      "etichetta": "Annulla (nel modale 'Chiusura serale')",
-      "dove_si_trova": "Footer del modale, accanto a 'Salva chiusura'",
-      "cosa_fa_al_click": "Chiude il modale senza salvare (onClose)",
-      "endpoint_chiamato": "Nessuno",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Chiude il modale",
-      "casi_errore": "N/A"
-    },
-    {
-      "etichetta": "✕ (chiudi modale)",
-      "dove_si_trova": "Header del modale 'Chiusura serale', in alto a destra; anche il click sull'overlay scuro chiude il modale",
-      "cosa_fa_al_click": "Chiude il modale (onClose), identico ad Annulla",
-      "endpoint_chiamato": "Nessuno",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "Chiude il modale",
-      "casi_errore": "N/A"
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Inserimento chiusura serale (corrispettivo manuale provvisorio + POS reale)",
-      "sequenza_esatta": "1. L'utente apre il modale con '+ Inserisci chiusura serale' e compila Data (default oggi, non può essere futura), Totale corrispettivo (obbligatorio, > 0), POS reale dalla chiusura serale (opzionale, >= 0), Note (opzionale). 2. Al click su 'Salva chiusura' il frontend valida i campi lato client. 3. Chiama POST /api/corrispettivi/manuale con body {data, totale, pos_reale_serale, note}. 4. Il backend cerca un documento esistente in 'corrispettivi' per quella data: se trova stato='definitivo_xml' rifiuta con HTTP 409. 5. Se il record non è definitivo, lo crea (stato='provvisorio', source='manuale_serale', totale_xml=None) o lo aggiorna (totale_manuale=totale, totale=totale, stato='provvisorio', data_inserimento_manuale=now). 6. Se pos_reale_serale è stato fornito, il backend cerca in 'prima_nota_banca' un movimento con quella data e source in [chiusura_pos_mobile, corrispettivo_pos]: se esiste lo aggiorna (importo/amount=pos_reale_serale), altrimenti ne crea uno nuovo con categoria='Corrispettivi POS', source='chiusura_pos_mobile', tipo='entrata'. 7. Il frontend chiude il modale e ricarica tutti i dati della pagina (loadDati). 8. In un momento successivo, quando arriva l'import XML ufficiale dei corrispettivi (altro flusso, gestito da app/routers/invoices/corrispettivi.py in fase di import), se esisteva un provvisorio per quella data il sistema lo promuove automaticamente a stato='definitivo_xml' sovrascrivendo totale/totale_xml con i dati fiscali reali, mantenendo però lo storico di totale_manuale e data_inserimento_manuale. 9. Uno scheduler giornaliero (non in questo file, citato nei commenti) marca come 'manca_xml' i corrispettivi provvisori più vecchi di 7 giorni (GIORNI_PRIMA_ALERT_XML_MANCANTE=7), il che fa comparire l'alert 'XML mancante' nella sezione 'Cose da sistemare oggi'.",
-      "collezioni_coinvolte": ["corrispettivi", "prima_nota_banca"],
-      "campi_scritti": {
-        "corrispettivi": "id, data, anno, mese, totale, totale_manuale, totale_xml (null), pagato_contanti (null), pagato_elettronico (null), stato ('provvisorio'), source ('manuale_serale'), data_inserimento_manuale, data_import_xml (null), created_at, updated_at, note_manuale (se fornita)",
-        "prima_nota_banca (se pos_reale_serale fornito)": "id, data, date, tipo/type ('entrata'), importo/amount (=pos_reale_serale), descrizione/description ('POS reale serale {data} (da inserimento corrispettivo manuale)'), categoria/category ('Corrispettivi POS'), source ('chiusura_pos_mobile'), anno, mese, riconciliato (false), created_at, updated_at"
-      },
-      "effetti_collaterali": "Il nuovo dato entra immediatamente nel calcolo del tab 'Controllo 2 Fasi': il pos_manuale del giorno viene letto da _carica_pos_manuale_per_data() (che unisce chiusure_pos_manuali e prima_nota_banca con source chiusura_pos_mobile/corrispettivo_pos, dando priorità a prima_nota_banca) e confrontato con xml_elettronico per la FASE 1, e con l'accredito banca atteso per la FASE 2. Finché il corrispettivo resta 'provvisorio' o 'manca_xml', la FASE 1 mostra stato_serale='in_attesa_xml' anziché un vero confronto numerico."
-    },
-    {
-      "nome": "Chiusura POS giornaliera via API dedicata (endpoint distinto, non richiamato direttamente dai bottoni di questa pagina ma stessa area funzionale)",
-      "sequenza_esatta": "1. Chiamata PUT /api/pos-corrispettivi/chiusura-giornaliera con body {data, importo, note}, richiede utente autenticato (get_current_user). 2. Il backend valida data (formato YYYY-MM-DD) e importo (numero >= 0). 3. Cerca in 'prima_nota_banca' un movimento esistente con quella data e (source='corrispettivo_pos' OR source='chiusura_pos_mobile' OR categoria='Corrispettivi POS'). 4. Se esiste e l'importo è invariato (differenza < 0.01) → azione 'noop', nessuna scrittura. 5. Se esiste ma l'importo cambia → aggiorna importo/amount, aggiunge campi di audit (modificato_da_mobile, modificato_il, modificato_da_user_id/email/name, updated_at) e, alla prima modifica, salva importo_originale. 6. Se non esiste → crea un nuovo movimento con id UUID, source='chiusura_pos_mobile', categoria='Corrispettivi POS', tipo='entrata'. 7. Se l'azione non è 'noop', scrive una riga di audit nella collezione 'pos_chiusure_audit' con user_id/email/name, importo_precedente, importo_nuovo, delta, timestamp, origine='mobile_app'.",
-      "collezioni_coinvolte": ["prima_nota_banca", "pos_chiusure_audit"],
-      "campi_scritti": {
-        "prima_nota_banca": "id, data, date, tipo/type, importo/amount, descrizione/description, categoria/category ('Corrispettivi POS'), source ('chiusura_pos_mobile'), anno, mese, riconciliato, created_at/updated_at, più campi di audit su update (modificato_da_*, importo_originale)",
-        "pos_chiusure_audit": "id, collection_target ('prima_nota_banca'), movimento_id, data_riferimento, action ('created'|'updated'), importo_precedente, importo_nuovo, delta, user_id, user_email, user_name, note, origine ('mobile_app'), timestamp, timestamp_epoch"
-      },
-      "effetti_collaterali": "Aggiorna il valore usato come pos_manuale nel controllo a 2 fasi; esiste anche un endpoint di sola lettura GET /api/pos-corrispettivi/chiusura-giornaliera/audit per consultare lo storico delle modifiche."
-    },
-    {
-      "nome": "Riconciliazione automatica giorno singolo (logica v1, tab Anomalie)",
-      "sequenza_esatta": "1. Click su 'Riconcilia' su una card di anomalia. 2. POST /api/pos-corrispettivi/riconcilia-pos-giorno?data={data}. 3. Il backend legge il corrispettivo del giorno, calcola le date possibili di accredito secondo il calendario POS (Lun-Gio → +1/+2 giorni; Ven-Dom → fino al lunedì e il giorno dopo), cerca in prima_nota_banca un accredito compatibile (categoria/descrizione POS e importo entro ±5% dell'elettronico XML). 4. Se trovato, aggiorna il documento 'corrispettivi' di quel giorno impostando pos_riconciliato=True, pos_data_accredito, pos_importo_accredito. 5. Il frontend mostra un alert() col risultato e ricarica tutta la pagina.",
-      "collezioni_coinvolte": ["corrispettivi", "prima_nota_banca (sola lettura)"],
-      "campi_scritti": {
-        "corrispettivi": "pos_riconciliato (true), pos_data_accredito, pos_importo_accredito"
-      },
-      "effetti_collaterali": "Non genera nuovi movimenti bancari, marca solo il corrispettivo come riconciliato collegandolo all'accredito trovato. Non influenza direttamente il tab 'Controllo 2 Fasi' (che usa una logica di matching indipendente basata su gruppi di accredito, non sul flag pos_riconciliato)."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    {
-      "pagina": "Prima Nota (Cassa/Banca) — /prima-nota",
-      "relazione": "In Prima Nota Cassa, la voce 'Uscite POS → Banca' rappresenta la parte elettronica del corrispettivo che transita verso la banca. In Prima Nota Banca, gli 'Accrediti POS' (dall'incasso del giorno precedente) sono proprio i movimenti confrontati in questa pagina. Le scritture generate dal modale 'Chiusura serale' e dall'endpoint chiusura-giornaliera finiscono in prima_nota_banca con categoria 'Corrispettivi POS'."
-    },
-    {
-      "pagina": "Inserimento Rapido — /inserimento-rapido (InserimentoRapido.jsx)",
-      "relazione": "Contiene un form 'Incasso POS Serale' con testo esplicito: 'Inserisci qui l'incasso POS reale in chiusura cassa, per confrontarlo con gli accrediti in banca (vedi Coerenza POS Corrispettivi)' — è un secondo punto di ingresso per lo stesso tipo di dato inserito dal modale ModalChiusuraSerale di questa pagina."
-    },
-    {
-      "pagina": "Estratto Conto / Riconciliazione Bancaria — /riconciliazione (RiconciliazioneUnificata.jsx, stesso hub)",
-      "relazione": "Condivide lo stesso hub di navigazione (RiconciliazioneHub.jsx) insieme a Paypal, Assegni, Bonifici. La riconciliazione bancaria generale legge gli stessi movimenti di 'prima_nota_banca' (provenienti dall'estratto conto BPM) usati qui per identificare gli accrediti POS."
-    },
-    {
-      "pagina": "Mappa Gestionale — /mappa-gestionale (MappaGestionale.jsx)",
-      "relazione": "Pagina di documentazione interna che descrive esplicitamente il flusso: Prima Nota Cassa 'alimenta' → 'Coerenza POS / Corrispettivi' (isolamento pagamenti carta per confronto con l'accredito del giorno lavorativo successivo); e Prima Nota Banca 'alimenta' → 'Verifica Coerenza POS' (gli accrediti confermano o smentiscono quanto registrato in Prima Nota Cassa)."
-    },
-    {
-      "pagina": "Corrispettivi / Import XML (invoices/corrispettivi.py)",
-      "relazione": "È la fonte primaria del dato 'elettronico XML': quando arriva il file telematico dei corrispettivi, il record in 'corrispettivi' viene creato o promosso da 'provvisorio' a 'definitivo_xml', sovrascrivendo il dato inserito manualmente dal modale di questa pagina."
-    },
-    {
-      "pagina": "Magazzino (citata in memoria/LOGICA_OPERATIVA.md riga ~194 con una tab 'Coerenza POS')",
-      "relazione": "Verificato nel codice sorgente attuale: non esiste alcun file frontend Magazzino*.jsx nel repository e nessuna occorrenza di 'warehouse_stocks' o di una tab 'Coerenza POS' fuori da questa pagina. Il riferimento in LOGICA_OPERATIVA.md risulta quindi obsoleto/non più corrispondente al codice: l'unica pagina reale di coerenza POS è CoerenzaPOSCorrispettivi.jsx su /coerenza-pos."
-    },
-    {
-      "pagina": "Endpoint POS Accredito (app/routers/bank/pos_accredito.py, montato su /api/pos-accredito)",
-      "relazione": "Espone utility di calendario (calcola-accredito, calendario-mensile, festivi, accrediti-attesi, riconciliazione-pos mensile) con la stessa regola di sfasamento Lun-Gio +1g / Ven-Dom → Lunedì (con eccezione festivi), ma NON risulta chiamato da CoerenzaPOSCorrispettivi.jsx: la pagina reimplementa la stessa logica di calendario internamente (_data_accredito_attesa in pos_corrispettivi_check.py). Verosimilmente pensato per altre viste (calendario) o rimasto non ancora integrato nel frontend."
-    }
-  ],
-  "popup_e_modali_presenti": [
-    {
-      "nome": "ModalChiusuraSerale",
-      "titolo_mostrato": "Chiusura serale",
-      "scopo": "Form compatto per inserire in un colpo solo il totale del corrispettivo giornaliero (provvisorio, in attesa dell'XML ufficiale AdE) e il POS reale letto dall'hardware, usati rispettivamente per la FASE 0/1 del controllo a 2 fasi.",
-      "campi": ["Data (input type=date, default oggi, max=oggi)", "Totale corrispettivo € (obbligatorio, testo con parsing decimale, accetta virgola)", "POS reale dalla chiusura serale € (opzionale)", "Note (testo libero opzionale)"],
-      "come_si_apre": "Bottone '+ Inserisci chiusura serale' nella toolbar del tab Controllo 2 Fasi",
-      "come_si_chiude": "Bottone ✕, bottone Annulla, click sull'overlay scuro, oppure automaticamente dopo un salvataggio riuscito",
-      "endpoint_collegato": "POST /api/corrispettivi/manuale",
-      "validazioni": "Data obbligatoria; totale deve essere numero > 0; POS reale se presente deve essere numero >= 0; mostra errori inline in un box rosso sopra i bottoni"
-    }
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Coerenza POS",
+  "route": "/riconciliazione/coerenza-pos",
+  "catalog_id": 40,
+  "modulo": "riconciliazione",
+  "accesso": "authenticated",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Coerenza POS». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/CoerenzaPOSCorrispettivi.jsx",
+    "entry": "frontend/src/pages/hub/RiconciliazioneHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/CoerenzaPOSCorrispettivi.jsx",
+      "frontend/src/pages/hub/RiconciliazioneHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/routers/bank/pos_accredito.py",
+      "app/routers/invoices/corrispettivi.py",
+      "app/routers/pos_corrispettivi_check.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/corrispettivi/manuale",
+      "/api/paypal-api/status",
+      "/api/paypal-api/sync",
+      "/api/pos-corrispettivi/chiusura-giornaliera",
+      "/api/pos-corrispettivi/chiusure-giornaliere/batch",
+      "/api/pos-corrispettivi/controllo-due-fasi",
+      "/api/pos-corrispettivi/riepilogo-mensile",
+      "/api/pos-corrispettivi/verifica-coerenza",
+      "/api/sumup/riepilogo"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

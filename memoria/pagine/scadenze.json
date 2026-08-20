@@ -1,186 +1,53 @@
 {
-  "pagina": "Scadenze e Notifiche",
-  "url": "https://impresasemplice.online/scadenze",
-  "file_sorgente_frontend": [
-    "frontend/src/pages/Scadenze.jsx"
-  ],
-  "file_sorgente_backend": [
-    "app/routers/scadenze.py",
-    "app/routers/scadenzario_fornitori.py (router alternativo /api/scadenzario-fornitori, NON usato da questa pagina ma tratta lo stesso dominio — vedi nota sotto)",
-    "app/routers/fatture_module/pagamento.py (endpoint paga-manuale, richiamato dal bottone Paga)",
-    "app/routers/email_scanner.py (statistiche/associa per il widget Documenti da Riconciliare)"
-  ],
-  "scopo_generale": "Cruscotto unico di tutte le scadenze economico-fiscali dell'azienda: scadenze fiscali fisse italiane (F24 mensile il 16, IVA trimestrale/mensile), fatture fornitori da pagare (scadenza calcolata a 30 giorni dalla data fattura se non altrimenti indicata), e notifiche personalizzate create manualmente dall'utente (promemoria custom). La pagina aggrega inoltre due widget di riepilogo: un Alert Widget (conteggio F24 in scadenza 30gg + scadenze fiscali prossime, con link rapido al calendario contabilità) e un box 'Documenti da Riconciliare' che segnala verbali/PDF scaricati dalla posta ancora da abbinare a fatture. NOTA IMPORTANTE: esiste in parallelo un secondo router con logica simile ma dati diversi (app/routers/scadenzario_fornitori.py, prefix /api/scadenzario-fornitori) che lavora sulla stessa collezione 'invoices' con filtri leggermente diversi (usa il campo booleano 'pagato' e 'status' invece di 'stato_pagamento') più una collezione dedicata 'scadenziario_fornitori' popolata dall'integrazione ciclo passivo — QUESTA pagina (Scadenze.jsx) NON lo utilizza: chiama esclusivamente gli endpoint sotto /api/scadenze (app/routers/scadenze.py).",
-  "bottoni_azioni": [
-    {
-      "etichetta": "➕ Nuova Scadenza",
-      "cosa_fa_al_click": "Apre il modal per creare una notifica/scadenza personalizzata (setShowModal(true)).",
-      "endpoint_chiamato": "POST /api/scadenze/crea (al submit, tramite handleCreaScadenza)",
-      "logica_backend": "crea_notifica_scadenza(): valida che data_scadenza e descrizione siano presenti (400 altrimenti), poi inserisce in notifiche_scadenze un documento con id (uuid), data_scadenza, descrizione, tipo (CUSTOM/FATTURA/F24/IVA/INPS), importo (float, default 0), priorita (bassa/media/alta/critica, default 'media'), note, completata=false, created_at.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Chiude il modal, resetta il form, ricarica loadData() (che rifà tutte e 5 le chiamate della pagina).",
-      "casi_errore": "Validazione client-side: alert('Compila data e descrizione') se mancano i campi obbligatori prima ancora di chiamare l'API. Errore server: alert('Errore: ' + dettaglio)."
-    },
-    {
-      "etichetta": "✓ (segna come completata, solo su scadenze source='custom')",
-      "cosa_fa_al_click": "handleCompleta(id): marca una notifica personalizzata come completata, senza eliminarla.",
-      "endpoint_chiamato": "PUT /api/scadenze/completa/{notifica_id}",
-      "logica_backend": "completa_notifica(): update_one su notifiche_scadenze impostando completata=true e completata_at; 404 se non trovata (o se modified_count==0, quindi anche se già completata in precedenza restituisce comunque 404 perché non c'è nulla da modificare).",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "loadData() ricarica la lista; poiché di default include_passate=false e la query /tutte esclude le notifiche completata:true, la riga sparisce dalla vista.",
-      "casi_errore": "alert('Errore: ' + dettaglio)."
-    },
-    {
-      "etichetta": "🗑️ (elimina, solo su scadenze source='custom')",
-      "cosa_fa_al_click": "handleElimina(id): richiede conferma con window.confirm('Eliminare questa scadenza?'), poi cancella definitivamente la notifica personalizzata.",
-      "endpoint_chiamato": "DELETE /api/scadenze/{notifica_id}",
-      "logica_backend": "elimina_notifica(): delete_one su notifiche_scadenze; 404 se non trovata.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "loadData() ricarica la lista.",
-      "casi_errore": "alert('Errore: ' + dettaglio). Nessun undo disponibile dopo la conferma."
-    },
-    {
-      "etichetta": "👁️ (Visualizza Dettagli Fattura, solo su righe tipo FATTURA)",
-      "cosa_fa_al_click": "Carica e mostra in un modal (InvoiceXMLViewer) il dettaglio strutturato della fattura XML collegata alla scadenza.",
-      "endpoint_chiamato": "GET /api/fatture/{fattura_id}",
-      "logica_backend": "Fuori scope di questo file (router fatture generico, non incluso nell'audit): restituisce il documento fattura completo.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Se trovata, apre il componente InvoiceXMLViewer con i dati; se assente, alert('Fattura non trovata'). Pulsante disabilitato durante il caricamento (icona ⏳).",
-      "casi_errore": "alert('Errore nel caricamento della fattura') su eccezione."
-    },
-    {
-      "etichetta": "📄 (Visualizza PDF Fattura, link diretto)",
-      "cosa_fa_al_click": "Apre in nuova scheda il PDF/visualizzatore AssoInvoice della fattura.",
-      "endpoint_chiamato": "GET /api/fatture-ricevute/fattura/{fattura_id}/view-assoinvoice (link <a target=_blank>)",
-      "logica_backend": "Fuori scope (router fatture_module), rende il PDF/HTML della fattura elettronica.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Nuova scheda del browser.",
-      "casi_errore": "-"
-    },
-    {
-      "etichetta": "💰 Paga (per righe con tipo FATTURA / source='fattura' / importo>0, nascosto una volta pagato)",
-      "cosa_fa_al_click": "Apre il modal 'Registra Pagamento' con i due bottoni CASSA/BANCA (setPagaModal(s)).",
-      "endpoint_chiamato": "-",
-      "logica_backend": "-",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Mostra fornitore/descrizione, eventuale link PDF fattura, importo in grande, due bottoni 🏪 Paga in CASSA / 🏦 Paga in BANCA.",
-      "casi_errore": "-"
-    },
-    {
-      "etichetta": "🏪 Paga in CASSA / 🏦 Paga in BANCA (dentro il modal Registra Pagamento)",
-      "cosa_fa_al_click": "handlePagaScadenza(scadenza, metodo): registra il pagamento della fattura collegata alla scadenza con il metodo scelto.",
-      "endpoint_chiamato": "POST /api/fatture-ricevute/paga-manuale  { fattura_id, scadenza_id, importo: Math.abs(scadenza.importo), metodo: 'cassa'|'banca', data_pagamento: oggi, fornitore, numero_fattura }",
-      "logica_backend": "paga_fattura_manuale() in app/routers/fatture_module/pagamento.py: valida fattura_id e importo>0 (400 altrimenti), metodo deve essere 'cassa' o 'banca' (400 altrimenti). Sceglie la collezione prima_nota_cassa o prima_nota_banca in base al metodo. Deduplica: se esiste già un movimento con quel fattura_id nella collezione, non ne crea uno nuovo (riusa l'id esistente); altrimenti inserisce un movimento con tipo='uscita', categoria='fornitori', stato='confermato', provvisorio=false, riconciliato=false (il pagamento manuale NON marca automaticamente la fattura come riconciliata in banca: la riconciliazione vera è un processo separato basato sull'estratto conto). Se è passato scadenza_id, aggiorna anche il documento in scadenziario_fornitori impostando stato='pagato', pagato=true, data_pagamento, metodo_effettivo, movimento_id. Aggiorna infine la fattura sia in 'indice_documenti' sia in 'invoices' (retrocompatibilità) con status='paid', pagato=true, stato_pagamento='pagata', data_pagamento, metodo_pagamento(_effettivo), e prima_nota_cassa_id/prima_nota_banca_id (uno dei due, l'altro azzerato a null). Emette infine un evento sull'event bus interno (EventTypes.FATTURA_PAGATA) per notificare altri moduli.",
-      "formula_matematica": "importo movimento = |scadenza.importo| (valore assoluto, sempre positivo, indipendentemente dal segno mostrato in tabella).",
-      "aggiornamento_ui": "Chiude il modal, aggiunge l'id della scadenza a paidIds (mostra subito il badge verde '✓ Pagato' e nasconde il bottone 💰 Paga senza aspettare il refresh), poi comunque richiama loadData() per risincronizzare.",
-      "casi_errore": "alert('Errore pagamento: ' + dettaglio); i bottoni si disabilitano (cursore 'wait', opacità ridotta) durante processing per evitare doppio click/doppia scrittura."
-    },
-    {
-      "etichetta": "📊 Trimestrale / 📅 Mensile (toggle vista IVA)",
-      "cosa_fa_al_click": "setVistaIva('trimestrale'|'mensile'): cambia solo la vista locale, nessuna nuova chiamata di rete (i dati di entrambe le viste sono già stati caricati al mount).",
-      "endpoint_chiamato": "-",
-      "logica_backend": "-",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Mostra le card per trimestre (Q1..Q4) oppure per mese (Gennaio..Dicembre) con Debito/Credito/importo da versare o a credito e giorni mancanti.",
-      "casi_errore": "-"
-    },
-    {
-      "etichetta": "🔄 Riconcilia Automaticamente (dentro il box 'Documenti da Riconciliare', visibile solo se ci sono verbali/documenti pendenti)",
-      "cosa_fa_al_click": "Prova ad associare automaticamente i documenti scaricati dalla posta (verbali PDF, esattoriali, F24) ai record corrispondenti nel sistema.",
-      "endpoint_chiamato": "POST /api/email-scanner/associa",
-      "logica_backend": "associa_documenti() -> chiama associa_documenti_a_verbali() del servizio app.services.email_scanner_completo (fuori scope di questo audit): tenta di collegare i documenti email scaricati (collezione documenti_email) ai verbali/fatture esistenti.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "alert('Associazione completata!'), poi loadData() ricarica tutto compreso il box 'Documenti da Riconciliare'.",
-      "casi_errore": "alert('Errore: ' + dettaglio)."
-    },
-    {
-      "etichetta": "🔄 Aggiorna (filtri)",
-      "cosa_fa_al_click": "Richiama manualmente loadData() (le stesse 5 chiamate parallele del caricamento iniziale).",
-      "endpoint_chiamato": "GET /api/scadenze/tutte, GET /api/scadenze/iva/{anno}, GET /api/scadenze/iva-mensile/{anno}, GET /api/scadenze/dashboard-widget, GET /api/email-scanner/statistiche",
-      "logica_backend": "Vedi operazioni di registrazione sotto per il dettaglio di ciascun endpoint.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Ricarica l'intera pagina con i dati più recenti.",
-      "casi_errore": "console.error, nessun banner visibile (solo lo spinner di loading)."
-    },
-    {
-      "etichetta": "Select tipo / checkbox 'Mostra scadenze passate'",
-      "cosa_fa_al_click": "Cambiano filtroTipo e includePassate, che triggerano un useEffect -> loadData() con i nuovi query params.",
-      "endpoint_chiamato": "GET /api/scadenze/tutte?anno=&tipo=&include_passate=&limit=50",
-      "logica_backend": "Vedi 'Caricamento scadenze aggregate' sotto.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Filtra/riordina la tabella scadenze.",
-      "casi_errore": "-"
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Caricamento scadenze aggregate (GET /api/scadenze/tutte)",
-      "sequenza_esatta": "get_tutte_scadenze(): 1) genera le scadenze fiscali fisse del mese corrente/scelto tramite _genera_scadenze_fiscali(anno, mese, include_passate): F24 mensile (giorno 16 di ogni mese, sempre generato se >= oggi o include_passate), più IVA trimestrale SOLO nei mesi 5 (Q1, scad. 16/05), 8 (Q2, scad. 20/08 — attenzione: eccezione, non 16), 11 (Q3, scad. 16/11), 3 (Q4 anno precedente, scad. 16/03). 2) se il filtro tipo lo consente, aggiunge le fatture in scadenza tramite _get_fatture_in_scadenza(db, anno, include_passate): query su 'invoices' con pagato!=true, status!=paid, stato_pagamento non in [pagata,pagato], filtrate per anno su data_ricezione o invoice_date; per ciascuna calcola data_scadenza = data_fattura + 30 giorni (FISSO, non usa un eventuale campo data_scadenza salvato sulla fattura), scarta quelle già scadute se include_passate=false, o oltre il limite (default 60 giorni per questa funzione salvo override). 3) aggiunge le notifiche custom da notifiche_scadenze (solo completata=false se include_passate=false). 4) ordina tutto per data crescente, filtra le passate se richiesto, calcola per ognuna giorni_mancanti (oggi-data) e urgente (giorni<=3). 5) calcola statistiche: urgenti (giorni<=3), prossimi_7_giorni, totale_importo (somma solo delle voci con importo valorizzato).",
-      "collezioni_coinvolte": ["invoices (lettura)", "notifiche_scadenze (lettura)"],
-      "campi_scritti": {},
-      "effetti_collaterali": "Solo lettura. La risposta è limitata a 'limit' elementi (default 20, la pagina chiede limit=50) pur calcolando 'totale' su TUTTE le scadenze trovate."
-    },
-    {
-      "nome": "Calcolo scadenze IVA trimestrali (GET /api/scadenze/iva/{anno})",
-      "sequenza_esatta": "Per ciascuno dei 4 trimestri, somma su ogni mese del trimestre: iva_debito = sum(corrispettivi.totale_iva) per i corrispettivi con data nel prefisso mese; iva_credito = sum(invoices.iva) per le fatture con data_ricezione O invoice_date nel prefisso mese.",
-      "collezioni_coinvolte": ["corrispettivi (lettura, aggregation)", "invoices (lettura, aggregation)"],
-      "campi_scritti": {},
-      "effetti_collaterali": "saldo = iva_debito - iva_credito; se saldo>0 'da_versare' con importo_versamento=saldo; se saldo<=0 'a_credito' con a_credito=|saldo|. Date di scadenza fisse per regime trimestrale: Q1->16/05, Q2->20/08, Q3->16/11, Q4(anno prec.)->16/03 anno successivo. Nessuna scrittura, nessun riporto di credito da un trimestre all'altro (a differenza della vista mensile)."
-    },
-    {
-      "nome": "Calcolo scadenze IVA mensili (GET /api/scadenze/iva-mensile/{anno})",
-      "sequenza_esatta": "Per ciascuno dei 12 mesi: stesso calcolo debito(corrispettivi)/credito(invoices) del trimestrale ma mese per mese; scadenza = 16 del mese successivo (o 16/01 anno+1 per dicembre). In più, calcola un saldo_progressivo cumulativo mese su mese (riporto credito): saldo_progressivo += saldo del mese corrente; se il progressivo è >0.005 il versamento F24 è effettivamente dovuto (da_versare_effettivo=true, importo_versamento_effettivo=saldo_progressivo), altrimenti il credito residuo assorbe il debito e non c'è nulla da versare quel mese.",
-      "collezioni_coinvolte": ["corrispettivi (lettura, aggregation)", "invoices (lettura, aggregation)"],
-      "campi_scritti": {},
-      "effetti_collaterali": "totale_da_versare = somma di importo_versamento (NON quello 'effettivo' col riporto) su tutti i mesi; totale_a_credito = somma dei |saldo| negativi; saldo_annuale = totale_da_versare - totale_a_credito. Nessuna scrittura."
-    },
-    {
-      "nome": "Widget dashboard scadenze (GET /api/scadenze/dashboard-widget)",
-      "sequenza_esatta": "Conta in parallelo: fatture_urgenti (invoices con data_scadenza<=oggi+30gg e stato_pagamento in [non_pagata,da_pagare,None] — NOTA: usa il campo data_scadenza SALVATO sulla fattura, diverso dal calcolo 'data fattura + 30gg' usato in /tutte), contratti_dipendenti in scadenza 60gg con stato='attivo', libretti_sanitari scaduti e in scadenza 30gg, F24 da pagare sommando DUE collezioni separate — f24_unificato (upload manuale, campi data_scadenza/pagato) e f24_commercialista (scansione email automatica, campi scadenza/status) — perché sono due archivi alimentati da percorsi diversi con schema diverso, e infine le scadenze fiscali fisse del mese corrente entro 15 giorni.",
-      "collezioni_coinvolte": ["invoices (count)", "contratti_dipendenti (count)", "libretti_sanitari (count, x2)", "f24_unificato (count)", "f24_commercialista (count)"],
-      "campi_scritti": {},
-      "effetti_collaterali": "totale_alert = somma di tutti i flag booleani/conteggi (1 se fatture_urgenti>0, 1 se contratti_scadenza>0, 1 se libretti_scaduti>0, 1 se libretti_in_scadenza>0, 1 se f24_da_pagare>0, + numero di scadenze fiscali urgenti). Alimenta il banner rosso in alto nella pagina (visibile solo se totale_alert>0), con il box '📋 F24 da Pagare' cliccabile che naviga a /contabilita/calendario."
-    },
-    {
-      "nome": "Creazione/gestione notifiche personalizzate (custom)",
-      "sequenza_esatta": "Vedi bottoni ➕ Nuova Scadenza (POST /crea), ✓ Completa (PUT /completa/{id}), 🗑️ Elimina (DELETE /{id}) sopra.",
-      "collezioni_coinvolte": ["notifiche_scadenze"],
-      "campi_scritti": {
-        "notifiche_scadenze": "id, data_scadenza, descrizione, tipo, importo, priorita, note, completata, created_at, completata_at (solo al completamento)"
-      },
-      "effetti_collaterali": "Le notifiche custom sono l'unico tipo di scadenza gestibile completamente a mano in questa pagina (le fatture e le scadenze fiscali sono generate/lette, non modificabili qui)."
-    },
-    {
-      "nome": "Registrazione pagamento fattura da scadenzario (bottone 💰 Paga)",
-      "sequenza_esatta": "Vedi dettaglio completo nel bottone '🏪 Paga in CASSA / 🏦 Paga in BANCA' sopra: crea movimento in prima_nota_cassa o prima_nota_banca, aggiorna eventuale scadenziario_fornitori, aggiorna la fattura in indice_documenti e invoices, emette evento FATTURA_PAGATA.",
-      "collezioni_coinvolte": ["prima_nota_cassa o prima_nota_banca (scrittura)", "scadenziario_fornitori (scrittura, se scadenza_id presente)", "indice_documenti (scrittura)", "invoices (scrittura)"],
-      "campi_scritti": {
-        "invoices/indice_documenti": "status='paid', pagato=true, stato_pagamento='pagata', riconciliato=false, data_pagamento, metodo_pagamento(_effettivo), prima_nota_cassa_id/prima_nota_banca_id, updated_at"
-      },
-      "effetti_collaterali": "Il pagamento manuale NON equivale a riconciliazione bancaria: riconciliato resta false finché un processo separato di match con l'estratto conto non lo conferma. Deduplicazione automatica se un movimento per quella fattura esiste già."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Calendario Contabilità (/contabilita/calendario) — raggiunto cliccando la card '📋 F24 da Pagare' nell'Alert Widget.",
-    "Tab 'Flotta Auto' (/noleggio) — raggiunta cliccando le card 'Verbali in Attesa Fattura' e 'Fatture in Attesa Verbale' nel box Documenti da Riconciliare.",
-    "Modulo Fatture Ricevute (view-assoinvoice, GET /api/fatture/{id}) — visualizzazione dettaglio/PDF fattura dai bottoni 👁️ e 📄.",
-    "Modulo Verbali/Email Scanner (email-scanner) — il box Documenti da Riconciliare e il bottone Riconcilia Automaticamente dipendono dal servizio di scansione posta condiviso col modulo Verbali Noleggio."
-  ],
-  "popup_e_modali_presenti": [
-    {
-      "nome": "Modal Nuova Scadenza",
-      "trigger": "➕ Nuova Scadenza (header)",
-      "contenuto": "Data Scadenza* (date picker), Descrizione* (testo), Tipo (select: Personalizzata/Fattura/F24/IVA/INPS), Priorità (select: Bassa/Media/Alta/Critica), Importo (opzionale, numero), Note (opzionale, textarea). Footer Annulla / Salva Scadenza."
-    },
-    {
-      "nome": "Modal Visualizzazione Fattura (InvoiceXMLViewer)",
-      "trigger": "👁️ su una riga di tipo FATTURA",
-      "contenuto": "Componente esterno condiviso (frontend/src/components/InvoiceXMLViewer.jsx) che mostra il dettaglio strutturato della fattura XML caricata."
-    },
-    {
-      "nome": "Modal Registra Pagamento",
-      "trigger": "💰 Paga su una riga",
-      "contenuto": "Fornitore/descrizione con eventuale link PDF, importo in evidenza, due bottoni grandi 🏪 Paga in CASSA / 🏦 Paga in BANCA, e Annulla."
-    }
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Scadenze",
+  "route": "/scadenze",
+  "catalog_id": 30,
+  "modulo": "contabilita",
+  "accesso": "authenticated",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Scadenze». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/Scadenze.jsx",
+    "entry": "frontend/src/main.jsx",
+    "file_verificati": [
+      "frontend/src/main.jsx",
+      "frontend/src/pages/Scadenze.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/routers/email_scanner.py",
+      "app/routers/fatture_module/pagamento.py",
+      "app/routers/scadenzario_fornitori.py",
+      "app/routers/scadenze.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/email-scanner/associa",
+      "/api/email-scanner/statistiche",
+      "/api/fatture-ricevute/paga-manuale",
+      "/api/scadenze/completa/{param}",
+      "/api/scadenze/crea",
+      "/api/scadenze/dashboard-widget",
+      "/api/scadenze/tutte",
+      "/api/scadenze/{param}"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

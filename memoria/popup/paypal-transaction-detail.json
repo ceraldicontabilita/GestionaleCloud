@@ -1,91 +1,34 @@
 {
-  "nome_popup": "PaypalTransactionDetailModal (modale dettaglio transazione PayPal)",
-  "file_sorgente": "/home/user/GestionaleCloud/frontend/src/components/PaypalTransactionDetailModal.jsx (656 righe, componente riusabile con props open/onClose/transactionId); montato in /home/user/GestionaleCloud/frontend/src/pages/RiconciliazionePaypal.jsx riga ~1502",
-  "pagine_da_cui_si_apre": ["Riconciliazione PayPal (/riconciliazione/paypal)"],
-  "come_si_apre": "In RiconciliazionePaypal.jsx, ogni azione che deve mostrare il dettaglio imposta modalTxId = transaction_id (o id) della transazione: (1) click su qualunque riga della tabella Transazioni (tab 'Transazioni'); (2) click su una voce transazione nell'elenco espanso a fisarmonica per fornitore nel tab 'Report Spese'; (3) deep-link diretto se un altro componente imposta modalTxId dall'esterno. Il componente <PaypalTransactionDetailModal open={!!modalTxId} transactionId={modalTxId} onClose={()=>setModalTxId(null)} /> è sempre montato nel JSX della pagina PayPal e ritorna null se open=false. All'apertura (useEffect su [open, transactionId]) chiama subito GET /api/paypal-statements/transazione/{transaction_id}/dettaglio, mostrando uno spinner 'Caricamento dettagli…' nel frattempo.",
-  "scopo": "Mostrare in un'unica vista tutti i collegamenti già risolti per una specifica transazione PayPal: dati PayPal grezzi, eventuale verbale di multa PagoPA collegato, dipendente e trattenuta in busta paga collegati al verbale, fornitore mappato e fatture correlate, più uno strumento di ricerca su Gmail per le fatture esterne (SaaS/fornitori esteri) che non passano dal Sistema di Interscambio.",
-  "dati_mostrati": "Risposta di GET /api/paypal-statements/transazione/{id}/dettaglio (dettaglio_transazione_paypal in app/routers/paypal_statements.py), organizzata in 4 sezioni collassabili a blocchi (Section): (1) 'Dettagli PayPal' — transaction ID (monospace), data, importo (colorato rosso se negativo/verde se positivo), controparte, email, tipo (tradotto da PAYPAL_TIPO_LABELS, mapping locale dei codici evento T0000-T1201 PayPal, es. T0003='Pagamento a fornitore SaaS'), stato (tradotto da PAYPAL_STATO_LABELS, es. S='Successo'/P='In sospeso'), descrizione, account PayPal controparte (se presente), riferimento fattura PayPal (invoice_id_fornitore, se presente), oggetto/campo personalizzato transazione, badge 'Riconciliato in banca' Sì/No; (2) 'Verbale collegato' — se data.verbale è valorizzato mostra numero verbale, targa, ente emittente, data, importo, stato (badge verde 'Pagato' o arancio con lo stato grezzo), altrimenti messaggio vuoto 'Nessun verbale associato a questa transazione.'; (3) 'Dipendente associato' — mostrata SOLO se data.dipendente è presente (cioè il verbale ha un driver_id): nome+cognome, codice fiscale, ruolo, ed eventuale box 'Trattenuta in busta paga' (verde se stato='applicata', giallo altrimenti) con importo e mese/anno, oppure — se c'è un verbale ma nessuna trattenuta — un avviso rosso 'collegata al dipendente ma non c'è ancora una trattenuta in busta paga'; (4) 'Fornitore e fatture' — nome del fornitore mappato (mapping_fornitore) o avviso arancio 'Account PayPal non mappato a un fornitore' con link 'Mappa fornitore'; elenco fino a 6 fatture correlate (data.fatture_collegate), ciascuna con badge oro se importo uguale alla transazione (tolleranza 0.06€) o match esplicito per riferimento ('✓ fattura indicata da PayPal' se f.match==='riferimento'), numero, data, importo, bottone inline '📄 Vedi'; se nessuna fattura trovata, spiegazione del criterio di ricerca (P.IVA fornitore mappato, parole nel nome controparte, email) e bottone 'Cerca fattura manualmente'. Sezione aggiuntiva sempre presente: 'Cerca su Gmail (fatture esterne)' con eventuali risultati già trovati automaticamente (tx.gmail_candidati) o bottone per lanciare la ricerca on-demand.",
-  "campi_e_bottoni": [
-    {
-      "elemento": "Bottone 'Apri PDF verbale' (icona Download, mostrato solo se data.has_pdf_verbale)",
-      "cosa_fa": "handleOpenVerbalePdf(): scarica il PDF in base64, lo decodifica in un Blob application/pdf, crea un object URL e lo apre in una nuova scheda (window.open), poi rilascia l'URL con URL.revokeObjectURL dopo 30 secondi.",
-      "endpoint_chiamato": "GET /api/verbali-noleggio/pdf/{numero_verbale}",
-      "validazioni": "Se r.data.content_base64 è assente: alert('PDF non disponibile'). In caso di errore HTTP: alert('Errore apertura PDF: ' + detail)."
-    },
-    {
-      "elemento": "Bottone 'Vai alla scheda verbale' (icona ExternalLink, variant secondary)",
-      "cosa_fa": "handleGoToVerbale(): naviga a /verbali-noleggio/{numero_verbale} (react-router) e chiude il modale (onClose()).",
-      "endpoint_chiamato": "nessuno (solo navigazione client-side)",
-      "validazioni": "Nessuna azione se verbale.numero_verbale è assente."
-    },
-    {
-      "elemento": "Bottone 'Scheda dipendente' (icona ExternalLink, variant secondary, sezione dipendente)",
-      "cosa_fa": "handleGoToDipendente(): naviga a /dipendenti?id={dipendente.id} e chiude il modale.",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "Nessuna azione se dipendente.id è assente."
-    },
-    {
-      "elemento": "Link inline 'Mappa fornitore' (mostrato solo se mapping è assente)",
-      "cosa_fa": "handleMapFornitore(): naviga a /riconciliazione/paypal?tab=mapping e chiude il modale — è un deep-link che fa scattare il cambio tab nella pagina genitore (RiconciliazionePaypal.jsx gestisce ?tab= all'avvio/on-change).",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "nessuna"
-    },
-    {
-      "elemento": "Riga fattura collegata (click sull'intera riga, tranne il bottone Vedi)",
-      "cosa_fa": "handleGoToFattura(f.id): naviga a /fatture?invoice_id={id} e chiude il modale.",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "nessuna"
-    },
-    {
-      "elemento": "Bottone inline '📄 Vedi' dentro la riga fattura (stopPropagation)",
-      "cosa_fa": "window.open diretto sulla view PDF della fattura in una nuova scheda, SENZA chiudere il modale (a differenza del click sulla riga stessa).",
-      "endpoint_chiamato": "GET f.view_url oppure fallback /api/fatture-ricevute/fattura/{id}/view-assoinvoice",
-      "validazioni": "nessuna"
-    },
-    {
-      "elemento": "Bottone 'Cerca fattura manualmente' (mostrato solo se nessuna fattura trovata automaticamente)",
-      "cosa_fa": "Naviga a /fatture?fornitore=...&importo=... precompilando i filtri con nome controparte e importo assoluto della transazione (2 decimali), poi chiude il modale.",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "nessuna"
-    },
-    {
-      "elemento": "Bottone '✉️ Cerca su Gmail' (mostrato solo se non ci sono già risultati automatici gmailShown)",
-      "cosa_fa": "Chiama l'endpoint di ricerca email con importo e controparte della transazione come chiave di ricerca; mostra spinner 'Ricerca in corso…' durante l'attesa.",
-      "endpoint_chiamato": "GET /api/paypal-statements/transazione/{transaction_id}/cerca-gmail",
-      "validazioni": "In caso di errore, setGmailData({ok:false, risultati:[], errore: detail}) mostrato come testo rosso al posto dei risultati (nessun account Gmail configurato, errore IMAP, ecc.)."
-    },
-    {
-      "elemento": "Link risultato email Gmail (uno per ciascun messaggio trovato)",
-      "cosa_fa": "Apre m.gmail_link (o fallback https://mail.google.com) in una nuova scheda; mostra oggetto, mittente, icona 📎 se has_attachment, data troncata a 22 caratteri.",
-      "endpoint_chiamato": "nessuno (link statico)",
-      "validazioni": "nessuna"
-    },
-    {
-      "elemento": "Bottone 'X' nell'header e bottone 'Chiudi' nel footer",
-      "cosa_fa": "Entrambi chiamano onClose().",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "nessuna"
-    },
-    {
-      "elemento": "Tasto ESC (listener keydown su window, attivo solo mentre open=true)",
-      "cosa_fa": "Chiama onClose().",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "nessuna"
-    },
-    {
-      "elemento": "Click sull'overlay scuro esterno al riquadro",
-      "cosa_fa": "onClick con controllo `e.target === e.currentTarget` chiama onClose() solo se il click è avvenuto esattamente sull'overlay (non su un figlio, grazie a stopPropagation sul riquadro interno).",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "nessuna"
-    }
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "popup_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "popup": "PaypalTransactionDetailModal (modale dettaglio transazione PayPal)",
+  "scopo": "Mappa tecnica del popup «PaypalTransactionDetailModal (modale dettaglio transazione PayPal)». Il comportamento e le mutazioni reali devono essere verificati nei sorgenti correnti.",
+  "aperto_da": [
+    "Riconciliazione PayPal (/riconciliazione/paypal)"
   ],
-  "cosa_succede_alla_conferma": "Il modale è prevalentemente di sola consultazione/navigazione: non esiste un'azione di 'salvataggio' dentro il modale stesso (a differenza di CreaFornitorePaypalModal). Le uniche scritture che il modale può innescare sono indirette e avvengono in pagine di destinazione dopo la navigazione (es. mappatura fornitore fatta poi nel tab Mapping, associazione fattura fatta poi nella pagina Fatture). L'unica vera chiamata di scrittura/ricerca dal modale stesso è '✉️ Cerca su Gmail', che non modifica dati ma popola tx.gmail_candidati lato UI locale (stato React del modale, non persistito lato server in questa chiamata).",
-  "come_si_chiude": [
-    "Bottone 'X' nell'header",
-    "Bottone 'Chiudi' nel footer",
-    "Tasto ESC",
-    "Click sull'overlay scuro esterno al riquadro",
-    "Automaticamente dopo ciascuna delle navigazioni interne (Vai al verbale, Scheda dipendente, Mappa fornitore, click su riga fattura, Cerca fattura manualmente) — tutte chiudono il modale con onClose() prima o durante la navigate()"
+  "file_verificati": [
+    "frontend/src/pages/RiconciliazionePaypal.jsx"
   ],
-  "effetto_su_pagina_sottostante": "La chiusura per navigazione porta l'utente FUORI dalla pagina Riconciliazione PayPal (verso /verbali-noleggio/{...}, /dipendenti?id=..., /fatture?..., o al tab 'mapping' della stessa pagina PayPal). La semplice chiusura (X/ESC/overlay/Chiudi) senza navigazione riporta alla vista PayPal esattamente come era prima dell'apertura, senza ricaricare la tabella transazioni (nessuna scrittura effettuata, nessun bisogno di refresh)."
+  "endpoint_rilevati_nei_sorgenti": [
+    "/api/paypal-api/status",
+    "/api/paypal-api/sync/incremental",
+    "/api/paypal-statements/bank-movements",
+    "/api/paypal-statements/dashboard",
+    "/api/paypal-statements/report",
+    "/api/paypal-statements/riprocessa",
+    "/api/paypal-statements/statements",
+    "/api/paypal-statements/transactions",
+    "/api/paypal-statements/transactions/{param}"
+  ],
+  "regole_ux": [
+    "Il popup deve avere chiusura visibile e non restare sovrapposto al documento.",
+    "Le azioni distruttive o definitive richiedono una conferma esplicita.",
+    "Le associazioni ambigue mostrano candidati e non vengono applicate automaticamente."
+  ]
 }

@@ -1,76 +1,143 @@
 {
-  "pagina": "Riprocessamento Batch (F24 e Cedolini)",
-  "url": "https://impresasemplice.online/batch-reprocessing",
-  "file_sorgente_frontend": [
-    "frontend/src/pages/hub/AdminHub.jsx",
-    "frontend/src/pages/BatchReprocessing.jsx"
-  ],
-  "file_sorgente_backend": [
-    "app/routers/batch_reprocessing.py (montato su prefix /api/batch-reprocess in app/router_registry.py riga ~266)",
-    "app/services/batch_reprocessing.py (BatchReprocessingService, logica effettiva)",
-    "app/services/enhanced_document_parser.py (parse_f24_enhanced / parse_cedolino_enhanced, non incluso nel set file richiesto — solo referenziato)"
-  ],
-  "scopo_generale": "Strumento di manutenzione per riprocessare in blocco tutti gli F24 e i cedolini paga già presenti nel database (con PDF già salvato in base64) usando una versione più recente/migliorata del parser AI, SENZA sovrascrivere i dati originali: i nuovi valori estratti vengono salvati in campi separati con suffisso _enhanced, in modo da poter confrontare vecchio e nuovo prima di decidere. Offre una modalità 'Test' (dry_run=true, non scrive nulla) e una modalità 'Produzione' (dry_run=false, scrive davvero), entrambe disponibili per 'Tutti', solo F24, o soli Cedolini.",
-  "bottoni_azioni": [
-    {
-      "etichetta": "Test Tutti / Test F24 / Test Cedolini (box blu 'Modalità Test (DRY RUN)')",
-      "cosa_fa_al_click": "startReprocessing(dryRun=true, type). Nessuna finestra di conferma (a differenza della modalità Produzione). Determina l'endpoint in base a type ('all'→/start, 'f24'→/f24-only, 'cedolini'→/cedolini-only) e fa POST con query string ?dry_run=true. Dopo la POST attiva il polling dello stato (setPolling(true)).",
-      "endpoint_chiamato": "POST /api/batch-reprocess/start?dry_run=true  |  POST /api/batch-reprocess/f24-only?dry_run=true  |  POST /api/batch-reprocess/cedolini-only?dry_run=true",
-      "logica_backend": "Il router controlla lo stato globale in-memory _job_state['running']: se un job è già in corso restituisce subito {detail:'Job gia in corso'} senza avviarne un altro (protezione da doppio avvio, ma NON restituisce un errore HTTP, solo un messaggio — il frontend non distingue questo caso da un avvio riuscito). Altrimenti crea un BatchReprocessingService() e lancia asyncio.create_task(_run_job(...)) in BACKGROUND, rispondendo subito 'Riprocessamento avviato'/'Riprocessamento F24 avviato'/'Riprocessamento Cedolini avviato'. Il job vero e proprio (_run_job) imposta _job_state['running']=true, richiama service.reprocess_all_f24 / reprocess_all_cedolini / reprocess_all(dry_run) e infine imposta result/progress='Completato' oppure error/progress='Errore'.",
-      "formula_matematica": "nessuna nel router; il servizio calcola solo conteggi (vedi sotto).",
-      "aggiornamento_ui": "Nessun feedback immediato oltre l'attivazione del polling: ogni 3 secondi il frontend richiama loadStatus() (GET /api/batch-reprocess/status) finché s.running diventa false, poi interrompe il polling. La card 'Stato Job' mostra un'icona diversa (spinner/warning/check) e i contatori risultato quando disponibili.",
-      "casi_errore": "Se la POST fallisce (es. errore di rete): alert(err.response?.data?.detail || 'Errore avvio riprocessamento'). Se il job fallisce internamente, l'errore compare come testo rosso nella card di stato (status.error), non come alert."
-    },
-    {
-      "etichetta": "Riprocessa Tutti / Riprocessa F24 / Riprocessa Cedolini (box arancione 'Modalità Produzione (MODIFICA DATI)')",
-      "cosa_fa_al_click": "Richiede PRIMA una window.confirm() con testo specifico per ciascun pulsante ('Sei sicuro? Questa operazione modificherà i dati nel database.' per Tutti, 'Riprocessare tutti gli F24?' per F24, 'Riprocessare tutti i Cedolini?' per Cedolini). Solo se l'utente conferma, chiama startReprocessing(false, type).",
-      "endpoint_chiamato": "POST /api/batch-reprocess/start?dry_run=false  |  POST /api/batch-reprocess/f24-only?dry_run=false  |  POST /api/batch-reprocess/cedolini-only?dry_run=false",
-      "logica_backend": "Identica al caso Test, ma con dry_run=False: il BatchReprocessingService SCRIVE realmente sui documenti trovati (vedi 'operazioni_di_registrazione').",
-      "formula_matematica": "nessuna",
-      "aggiornamento_ui": "Come sopra (polling ogni 3s); il badge 'DRY RUN - Nessuna modifica salvata' NON compare quando dry_run=false.",
-      "casi_errore": "Come sopra. Nessuna seconda conferma oltre al window.confirm() nativo; nessun ruolo/permesso verificato lato backend (l'endpoint /start non ha dependency di autenticazione/admin nel router letto)."
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Riprocessamento F24 (dry_run=false)",
-      "sequenza_esatta": "1) Per ciascuna delle collezioni f24_models, f24, f24_uploaded: trova tutti i documenti con pdf_data valorizzato (fino a 5000 per collezione). 2) Per ogni documento: decodifica il PDF da base64, chiama parse_f24_enhanced(pdf_bytes, 'application/pdf'). 3) Se result.success=true: se dry_run=false, esegue update_one sul documento aggiungendo enhanced_parsing (intero risultato), enhanced_parsing_date, enhanced_parser_version='v2', e — solo se presenti nel risultato — sezione_erario_enhanced, sezione_inps_enhanced, sezione_regioni_enhanced, sezione_imu_enhanced, totali_enhanced, validazione_enhanced. 4) Se result.success=false: incrementa f24_errors e accoda un dettaglio in errors[] (type, collection, doc_id, error). 5) Al termine aggrega le statistiche in un unico oggetto.",
-      "collezioni_coinvolte": ["f24_models", "f24", "f24_uploaded"],
-      "campi_scritti": {
-        "enhanced_parsing": "intero oggetto risultato del parser",
-        "enhanced_parsing_date": "timestamp ISO UTC",
-        "enhanced_parser_version": "'v2'",
-        "sezione_erario_enhanced / sezione_inps_enhanced / sezione_regioni_enhanced / sezione_imu_enhanced / totali_enhanced / validazione_enhanced": "copiati dal risultato del parser SOLO se il relativo campo è presente (nessuna sovrascrittura dei campi originali senza suffisso _enhanced)"
-      },
-      "effetti_collaterali": "Nessuna eliminazione, solo aggiunta di campi paralleli. Documenti già in errore non bloccano gli altri (try/except per documento). Il job è unico e globale (stato _job_state condiviso a livello di processo): un secondo avvio mentre uno è in corso viene rifiutato in modo silenzioso ('Job gia in corso')."
-    },
-    {
-      "nome": "Riprocessamento Cedolini (dry_run=false)",
-      "sequenza_esatta": "1) Per ciascuna delle collezioni cedolini, payslips, buste_paga, extracted_documents: trova documenti con pdf_data O file_base64 O pdf_base64 valorizzato (fino a 5000 per collezione). 2) Per ogni documento: prende il primo campo PDF disponibile tra i tre, lo decodifica e chiama parse_cedolino_enhanced. 3) Se successo e dry_run=false: update_one con enhanced_parsing, enhanced_parsing_date, enhanced_parser_version='v2'; netto_enhanced (da importi_finali.netto_in_busta oppure netto_da_pagare); lordo_enhanced (da importi_finali.totale_competenze); trattenute_enhanced (da importi_finali.totale_trattenute); tfr_retribuzione_utile_enhanced e tfr_quota_mese_enhanced (da tfr.*); ferie_permessi_enhanced (intero blocco ferie_permessi se presente); validazione_enhanced.",
-      "collezioni_coinvolte": ["cedolini", "payslips", "buste_paga", "extracted_documents"],
-      "campi_scritti": {
-        "enhanced_parsing / enhanced_parsing_date / enhanced_parser_version": "come per F24",
-        "netto_enhanced / lordo_enhanced / trattenute_enhanced": "estratti da importi_finali del parser, solo se presenti (>0/truthy)",
-        "tfr_retribuzione_utile_enhanced / tfr_quota_mese_enhanced": "estratti dal blocco tfr del parser",
-        "ferie_permessi_enhanced": "copiato se presente",
-        "validazione_enhanced": "copiato se presente"
-      },
-      "effetti_collaterali": "Come per F24: nessuna sovrascrittura distruttiva, campi aggiuntivi con suffisso _enhanced."
-    },
-    {
-      "nome": "Riprocessamento completo ('Tutti')",
-      "sequenza_esatta": "Esegue in sequenza reprocess_all_f24(dry_run) e poi reprocess_all_cedolini(dry_run) sullo stesso oggetto statistiche condiviso, poi calcola i totali aggregati: totale_documenti, totale_processati, totale_successi, totale_errori (somma dei rispettivi valori F24+Cedolini) e imposta dry_run nel risultato finale.",
-      "collezioni_coinvolte": ["f24_models", "f24", "f24_uploaded", "cedolini", "payslips", "buste_paga", "extracted_documents"],
-      "campi_scritti": {"nota": "unione dei campi elencati sopra per F24 e Cedolini"},
-      "effetti_collaterali": "Job più lungo (somma dei tempi dei due sotto-job); lo stato 'running' resta true per tutta la durata combinata."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Condivide l'Hub 'Admin' (AdminHub.jsx) con Admin.jsx (/admin) e BatchProcessor.jsx (/batch-processor).",
-    "Opera sulle stesse collezioni F24 usate dalle pagine Scadenze/F24 e sulle collezioni Cedolini usate dal modulo Buste Paga; i campi _enhanced scritti da questa pagina sono pensati per essere confrontati (e successivamente eventualmente promossi a campi definitivi) da un processo/pagina di revisione non incluso in questo set di file."
-  ],
-  "popup_e_modali_presenti": [
-    "Nessun modale HTML. Conferma nativa del browser (window.confirm) SOLO per i 3 pulsanti della modalità Produzione, assente per la modalità Test.",
-    "alert() nativo in caso di errore all'avvio del job."
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Elaborazioni amministrative",
+  "route": "/admin/elaborazioni",
+  "catalog_id": 56,
+  "modulo": "admin",
+  "accesso": "admin",
+  "stato_audit": "in_review",
+  "scopo": "Mappa tecnica della schermata «Elaborazioni amministrative». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/hub/AdminElaborazioni.jsx",
+    "entry": "frontend/src/pages/hub/AdminHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/BatchReprocessing.jsx",
+      "frontend/src/pages/hub/AdminElaborazioni.jsx",
+      "frontend/src/pages/hub/AdminHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/router_registry.py",
+      "app/routers/batch_reprocessing.py",
+      "app/services/batch_reprocessing.py",
+      "app/services/enhanced_document_parser.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/admin",
+      "/api/agenti",
+      "/api/ai-parser",
+      "/api/alerts",
+      "/api/anagrafica-fornitori",
+      "/api/archivio-bonifici",
+      "/api/assegni",
+      "/api/assegni/learning",
+      "/api/auth",
+      "/api/auth/api/auth/verify",
+      "/api/auth/login",
+      "/api/auth/verify",
+      "/api/auto-repair",
+      "/api/bank-statement",
+      "/api/batch-reprocess",
+      "/api/batch-reprocess/preview",
+      "/api/batch-reprocess/start",
+      "/api/batch-reprocess/status",
+      "/api/bilancio",
+      "/api/cash",
+      "/api/cedolini",
+      "/api/centri-costo",
+      "/api/cespiti",
+      "/api/chiusura-esercizio",
+      "/api/collaudo",
+      "/api/commercialista",
+      "/api/config",
+      "/api/config-import",
+      "/api/contabilita",
+      "/api/contabilita-gestionale",
+      "/api/controllo-gestione",
+      "/api/corrispettivi",
+      "/api/dashboard",
+      "/api/dati-isa",
+      "/api/dipendenti",
+      "/api/dizionario-articoli",
+      "/api/document-ai",
+      "/api/documenti",
+      "/api/documenti-fiscali",
+      "/api/documenti-inbox",
+      "/api/documenti-non-associati",
+      "/api/email-download",
+      "/api/email-scanner",
+      "/api/erp/ponte",
+      "/api/estratto-conto-movimenti",
+      "/api/f24",
+      "/api/f24-analisi",
+      "/api/f24-email",
+      "/api/f24-email-settings",
+      "/api/f24-public",
+      "/api/f24-riconciliazione",
+      "/api/f24/quietanze",
+      "/api/fatture",
+      "/api/fatture-estere",
+      "/api/fatture-ricevute",
+      "/api/finanziamenti-soci",
+      "/api/finanziaria",
+      "/api/fiscal",
+      "/api/fiscalita",
+      "/api/fornitori-learning",
+      "/api/gestione-riservata",
+      "/api/invoices",
+      "/api/invoices/emesse",
+      "/api/iva",
+      "/api/learning-machine",
+      "/api/learning-universal",
+      "/api/mutui",
+      "/api/nexi",
+      "/api/noleggio",
+      "/api/openapi",
+      "/api/openapi-automotive",
+      "/api/openapi-imprese",
+      "/api/operazioni-da-confermare",
+      "/api/pagamenti",
+      "/api/pagamenti-buoni",
+      "/api/pagopa",
+      "/api/paypal-api",
+      "/api/paypal-statements",
+      "/api/pianificazione",
+      "/api/piano-conti",
+      "/api/previsioni-acquisti",
+      "/api/prima-nota",
+      "/api/prima-nota-salari",
+      "/api/rapido",
+      "/api/regole",
+      "/api/ritenute",
+      "/api/scadenzario-fornitori",
+      "/api/scadenze",
+      "/api/settings",
+      "/api/sumup",
+      "/api/suppliers",
+      "/api/tfr",
+      "/api/verbali-noleggio",
+      "/api/verbali-riconciliazione",
+      "/api/verifica-coerenza",
+      "/api/voci-bilancio",
+      "/api/whatsapp"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

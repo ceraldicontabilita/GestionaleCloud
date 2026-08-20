@@ -3,84 +3,169 @@
     "id": "invoice-context",
     "prompt": "Mostra fattura, storia e prove di pagamento per l'identificativo sintetico F-001.",
     "expected_tool": "gestionale_get_invoice_context",
-    "criteria": ["non scarica PDF", "mantiene fonti separate", "non conferma pagamenti"],
+    "criteria": [
+      "non scarica PDF",
+      "mantiene fonti separate",
+      "non conferma pagamenti"
+    ],
     "read_only": true
   },
   {
     "id": "documents-duplicate-audit",
     "prompt": "Cerca documenti 2026 in errore e mostra hash e provenienza.",
     "expected_tool": "gestionale_search_documents",
-    "criteria": ["usa filtri", "espone provenienza", "non elimina duplicati"],
+    "criteria": [
+      "usa filtri",
+      "espone provenienza",
+      "non elimina duplicati"
+    ],
     "read_only": true
   },
   {
     "id": "bank-proof",
     "prompt": "Elenca i movimenti bancari di gennaio 2026 ancora non riconciliati.",
     "expected_tool": "gestionale_list_bank_movements",
-    "criteria": ["movimento bancario immutabile", "paginazione", "nessuna scrittura Prima Nota"],
+    "criteria": [
+      "movimento bancario immutabile",
+      "paginazione",
+      "nessuna scrittura Prima Nota"
+    ],
     "read_only": true
   },
   {
     "id": "pending-invoices",
     "prompt": "Mostra le fatture provvisorie 2026 senza decidere il metodo al posto mio.",
     "expected_tool": "gestionale_get_prima_nota",
-    "criteria": ["sezione provvisori", "nessuna conferma automatica", "nessuna duplicazione"],
+    "criteria": [
+      "sezione provvisori",
+      "nessuna conferma automatica",
+      "nessuna duplicazione"
+    ],
     "read_only": true
   },
   {
     "id": "checks-evidence",
     "prompt": "Mostra assegni 2026 incassati e le relative proposte, senza match per solo importo.",
     "expected_tool": "gestionale_get_checks",
-    "criteria": ["numero assegno", "fornitore e fatture distinti", "ambigui non confermati"],
+    "criteria": [
+      "numero assegno",
+      "fornitore e fatture distinti",
+      "ambigui non confermati"
+    ],
     "read_only": true
   },
   {
     "id": "paypal-links",
     "prompt": "Mostra transazioni PayPal del mese e collegamenti a fatture e banca.",
     "expected_tool": "gestionale_get_payment_channel",
-    "criteria": ["PayPal separato dalla banca", "payout non ricavo", "nessuna associazione automatica"],
+    "criteria": [
+      "PayPal separato dalla banca",
+      "payout non ricavo",
+      "nessuna associazione automatica"
+    ],
     "read_only": true
   },
   {
     "id": "sumup-gross-net",
     "prompt": "Mostra lordo SumUp, payout e commissioni del mese.",
     "expected_tool": "gestionale_get_payment_channel",
-    "criteria": ["lordo distinto da netto", "commissioni distinte", "payout non ricavo"],
+    "criteria": [
+      "lordo distinto da netto",
+      "commissioni distinte",
+      "payout non ricavo"
+    ],
     "read_only": true
   },
   {
     "id": "payroll-context",
     "prompt": "Mostra cedolini e bonifici per dipendente nel mese senza imporre importi identici.",
     "expected_tool": "gestionale_get_payroll",
-    "criteria": ["cedolino distinto dal bonifico", "filtro dipendente", "nessuna riconciliazione"],
+    "criteria": [
+      "cedolino distinto dal bonifico",
+      "filtro dipendente",
+      "nessuna riconciliazione"
+    ],
     "read_only": true
   },
   {
     "id": "f24-lines",
     "prompt": "Mostra lo stato F24 2026 distinguendo ogni codice tributo e la quietanza.",
     "expected_tool": "gestionale_get_f24_status",
-    "criteria": ["righe tributo separate", "saldo parziale visibile", "quietanza distinta dal modello"],
+    "criteria": [
+      "righe tributo separate",
+      "saldo parziale visibile",
+      "quietanza distinta dal modello"
+    ],
     "read_only": true
   },
   {
     "id": "vat-month",
     "prompt": "Mostra IVA del mese e anomalie con fonti fatture e F24, senza calcolo trimestrale.",
     "expected_tool": "gestionale_get_vat_period",
-    "criteria": ["mese richiesto", "credito e debito", "fonti indicate", "nessun trimestre"],
+    "criteria": [
+      "mese richiesto",
+      "credito e debito",
+      "fonti indicate",
+      "nessun trimestre"
+    ],
     "read_only": true
   },
   {
     "id": "coherence-audit",
     "prompt": "Mostra discrepanze contabili dell'anno senza correggerle.",
     "expected_tool": "gestionale_get_accounting_report",
-    "criteria": ["severità", "fonte", "sola lettura"],
+    "criteria": [
+      "severità",
+      "fonte",
+      "sola lettura"
+    ],
     "read_only": true
   },
   {
     "id": "fines-pagopa",
     "prompt": "Mostra verbali non riconciliati e ricevute PagoPA senza creare collegamenti ambigui.",
     "expected_tool": "gestionale_get_operational_context",
-    "criteria": ["verbale e ricevuta distinti", "stato riconciliazione", "nessuna mutazione"],
+    "criteria": [
+      "verbale e ricevuta distinti",
+      "stato riconciliazione",
+      "nessuna mutazione"
+    ],
+    "read_only": true
+  },
+  {
+    "id": "drive-ledger-provenance",
+    "prompt": "Mostra l'identità canonica e la provenienza Drive di una fattura senza modificarla.",
+    "expected_tool": "gestionale_get_invoice_context",
+    "criteria": [
+      "canonical_id",
+      "operation_id",
+      "hash e provenienza",
+      "sola lettura"
+    ],
+    "read_only": true
+  },
+  {
+    "id": "partenopay-chain",
+    "prompt": "Mostra verbale PartenoPay, targa, driver storico, quietanza e banca mantenendo le prove separate.",
+    "expected_tool": "gestionale_get_operational_context",
+    "criteria": [
+      "targa e data infrazione",
+      "driver storico",
+      "prove separate",
+      "ambigui non confermati"
+    ],
+    "read_only": true
+  },
+  {
+    "id": "fiscal-declarations-drive",
+    "prompt": "Elenca le dichiarazioni fiscali disponibili su Drive per anno e tipologia con hash e fonte.",
+    "expected_tool": "gestionale_search_documents",
+    "criteria": [
+      "Drive come fonte",
+      "anno e tipologia",
+      "hash",
+      "nessuno spostamento"
+    ],
     "read_only": true
   }
 ]

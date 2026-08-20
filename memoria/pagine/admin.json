@@ -1,160 +1,77 @@
 {
-  "pagina": "Amministrazione (Admin)",
-  "url": "https://impresasemplice.online/admin  (tab specifici: /admin/email, /admin/keywords, /admin/fatture, /admin/system, /admin/rollback)",
-  "file_sorgente_frontend": [
-    "frontend/src/pages/hub/AdminHub.jsx",
-    "frontend/src/pages/Admin.jsx"
-  ],
-  "file_sorgente_backend": [
-    "app/routers/admin.py (montato su prefix /api/admin)",
-    "app/routers/admin_rollback.py (già montato con prefix completo /api/admin/rollback dentro il file stesso)",
-    "app/routers/config.py o equivalente per /api/config/email-accounts e /api/config/parole-chiave (non incluso nel set di file richiesto per questo audit, endpoint solo referenziati)",
-    "router di /api/fatture/drive/* (Google Drive import fatture, non incluso nel set di file richiesto per questo audit, endpoint solo referenziati)"
-  ],
-  "scopo_generale": "Pannello di amministrazione del gestionale con 5 tab sincronizzate via URL e hash state (useHashState + /admin/:sezione): Email (gestione account email IMAP usati per scaricare documenti + import fatture XML da Google Drive), Parole Chiave (parole chiave globali per categorizzare le email scaricate), Fatture (statistiche metodi di pagamento e azione massiva di default), Sistema (stato salute app + conteggi collection dal riepilogo dashboard), Rollback Dati (strumento per eliminare deliberatamente dati di un periodo/sezione per verificare la correttezza dei calcoli dopo un re-import).",
-  "bottoni_azioni": [
-    {
-      "etichetta": "Tab bar: Email / Parole Chiave / Fatture / Sistema / Rollback Dati",
-      "cosa_fa_al_click": "handleTabChange(tabId): aggiorna lo hash-state (setHs('tab', tabId)) e naviga a /admin/{tabId} con react-router. Il componente rilegge il tab attivo dal pathname (getTabFromPath, regex /admin/([\\w-]+)) così l'URL resta sincronizzato e condivisibile (deep link).",
-      "endpoint_chiamato": "nessuno (solo cambio di tab lato client; i dati dei singoli tab sono già caricati al mount della pagina oppure caricati lazy dal componente della tab, es. FattureAdminTab e RollbackDatiTab)",
-      "logica_backend": "N/A",
-      "formula_matematica": "nessuna",
-      "aggiornamento_ui": "Cambia il pannello visibile mantenendo l'URL sincronizzato.",
-      "casi_errore": "nessuno"
-    },
-    {
-      "etichetta": "➕ Aggiungi Email (tab Email)",
-      "cosa_fa_al_click": "setShowNewForm(true): apre il form inline 'Nuovo Account Email' con campi nome, email, app_password, imap_server, parole chiave.",
-      "endpoint_chiamato": "nessuno finché non si preme '✔️ Salva' del form",
-      "logica_backend": "N/A",
-      "formula_matematica": "nessuna",
-      "aggiornamento_ui": "Mostra il form.",
-      "casi_errore": "nessuno"
-    },
-    {
-      "etichetta": "✔️ Salva / ✔️ Salva Modifiche (form account email, nuovo o esistente)",
-      "cosa_fa_al_click": "saveEmailAccount(account): se account.id esiste fa una PUT (update), altrimenti una POST (create). Dopo il salvataggio ricarica la lista account, chiude i form e resetta gli stati locali (newAccount, editingAccount).",
-      "endpoint_chiamato": "POST /api/config/email-accounts  oppure  PUT /api/config/email-accounts/{id}",
-      "logica_backend": "Non incluso nel set di file letti per questo audit (router di configurazione email, verosimilmente app/routers/config.py) — comportamento dedotto solo dal contratto usato dal frontend: crea/aggiorna un documento account email con nome, email, app_password, imap_server, imap_port, parole_chiave, cartelle.",
-      "formula_matematica": "nessuna",
-      "aggiornamento_ui": "loadEmailAccounts() ricarica la lista account email visualizzata come card.",
-      "casi_errore": "alert('Errore: ' + (e.response?.data?.detail || e.message))."
-    },
-    {
-      "etichetta": "Test (per ogni account email)",
-      "cosa_fa_al_click": "testEmailConnection(accountId): imposta testingConnection=accountId (mostra ⏳ sul pulsante), testa la connessione IMAP dell'account.",
-      "endpoint_chiamato": "POST /api/config/email-accounts/{id}/test",
-      "logica_backend": "Non incluso nel set di file letti per questo audit.",
-      "formula_matematica": "nessuna",
-      "aggiornamento_ui": "alert('✅ Connessione riuscita!\\n\\nEmail nella casella: {count}') se r.data.success, altrimenti alert('❌ Connessione fallita:\\n{message}').",
-      "casi_errore": "alert('Errore test: ' + (e.response?.data?.detail || e.message))."
-    },
-    {
-      "etichetta": "Modifica (per ogni account email)",
-      "cosa_fa_al_click": "Apre il form inline di modifica popolato con i dati dell'account (setEditingAccount({...acc})).",
-      "endpoint_chiamato": "nessuno finché non si salva",
-      "logica_backend": "N/A",
-      "formula_matematica": "nessuna",
-      "aggiornamento_ui": "Mostra il form di modifica; il campo Email è disabilitato se acc.is_env_default=true (l'account principale definito da variabili .env non può cambiare indirizzo da UI).",
-      "casi_errore": "nessuno"
-    },
-    {
-      "etichetta": "🗑️ (elimina account email, solo se NON is_env_default)",
-      "cosa_fa_al_click": "deleteEmailAccount(accountId): elimina l'account, senza dialogo di conferma nel codice letto.",
-      "endpoint_chiamato": "DELETE /api/config/email-accounts/{id}",
-      "logica_backend": "Non incluso nel set di file letti per questo audit.",
-      "formula_matematica": "nessuna",
-      "aggiornamento_ui": "loadEmailAccounts() ricarica la lista.",
-      "casi_errore": "alert('Errore: ' + (e.response?.data?.detail || e.message))."
-    },
-    {
-      "etichetta": "🔄 Sincronizza ora (card Google Drive — Import Fatture XML, data-testid=drive-sync-btn)",
-      "cosa_fa_al_click": "syncDriveNow(): disabilitato se già in corso o se driveStatus.configured=false. Avvia la sync (il backend risponde subito e prosegue in background), poi il FRONTEND fa polling ogni 4 secondi su GET /api/fatture/drive/status per un massimo di 15 minuti, finché sync_running diventa false.",
-      "endpoint_chiamato": "POST /api/fatture/drive/sync  (avvio)  +  GET /api/fatture/drive/status  (polling ripetuto ogni 4s)",
-      "logica_backend": "Non incluso nel set di file letti per questo audit (router import fatture da Google Drive).",
-      "formula_matematica": "nessuna",
-      "aggiornamento_ui": "Se d.status è 'not_configured' o 'error': mostra messaggio rosso e interrompe subito. Altrimenti, al termine del polling, aggiorna driveStatus e mostra: se last_error → messaggio rosso; se sync_running ancora true dopo 15 minuti → messaggio informativo 'ancora in corso'; altrimenti riepilogo con imported/duplicates/errors (+ primi 3 dettagli errore).",
-      "casi_errore": "In caso di eccezione HTTP: setDriveMsg con testo da e.response?.data?.detail || e.response?.data?.message || 'Errore durante la sincronizzazione ({status/message})'. Durante il polling, singoli errori transitori vengono ignorati e si riprova al giro successivo."
-    },
-    {
-      "etichetta": "➕ Aggiungi (parole chiave globali, tab Parole Chiave)",
-      "cosa_fa_al_click": "addParolaChiave(): se il campo testo è vuoto (trim) non fa nulla.",
-      "endpoint_chiamato": "POST /api/config/parole-chiave/aggiungi?categoria={categoria}&parola={parola}",
-      "logica_backend": "Non incluso nel set di file letti per questo audit.",
-      "formula_matematica": "nessuna",
-      "aggiornamento_ui": "loadParoleChiave() ricarica le liste per categoria (generale, fatture, f24, buste_paga) e svuota il campo input.",
-      "casi_errore": "alert('Errore: ' + (e.response?.data?.detail || e.message))."
-    },
-    {
-      "etichetta": "✕ (rimuovi singola parola chiave, per tag, data-testid=remove-keyword-{cat}-{kw})",
-      "cosa_fa_al_click": "removeParolaChiave(categoria, parola).",
-      "endpoint_chiamato": "DELETE /api/config/parole-chiave/rimuovi?categoria={categoria}&parola={parola}",
-      "logica_backend": "Non incluso nel set di file letti per questo audit.",
-      "formula_matematica": "nessuna",
-      "aggiornamento_ui": "loadParoleChiave() ricarica le liste.",
-      "casi_errore": "alert('Errore: ' + (e.response?.data?.detail || e.message))."
-    },
-    {
-      "etichetta": "🏦 Imposta \"Bonifico\" ({N} fatture) — tab Fatture, componente FattureAdminTab",
-      "cosa_fa_al_click": "Richiede DOPPIA conferma: il primo click su handleSetMetodoPagamento('Bonifico') imposta solo confirmAction={type:'set_metodo', metodo:'Bonifico'} e mostra i pulsanti '✓ Conferma'/'✕ Annulla'; solo il secondo click (su '✓ Conferma') esegue realmente la chiamata.",
-      "endpoint_chiamato": "POST /api/admin/fatture-set-metodo-pagamento  con body {metodo_pagamento: 'Bonifico'}",
-      "logica_backend": "set_fatture_metodo_pagamento() in admin.py: update_many su collection 'invoices' con filtro OR su metodo_pagamento assente/null/stringa vuota, imposta metodo_pagamento=metodo (default 'Bonifico' se non passato) e metodo_pagamento_updated_at=ora UTC ISO. Logga il numero di documenti modificati.",
-      "formula_matematica": "nessuna (aggiornamento massivo condizionale, non un calcolo)",
-      "aggiornamento_ui": "alert(`✅ ${message}\\n\\nFatture aggiornate: ${updated}`); poi loadFattureStats() ricarica le statistiche (totale, metodi_pagamento aggregati, senza_metodo).",
-      "casi_errore": "alert('❌ Errore: ' + (e.response?.data?.detail || e.message)). Il pulsante è disabilitato se fattureStats?.senza_metodo === 0 (nulla da aggiornare)."
-    },
-    {
-      "etichetta": "🔄 Aggiorna Stats (tab Fatture)",
-      "cosa_fa_al_click": "loadFattureStats().",
-      "endpoint_chiamato": "GET /api/admin/fatture-stats",
-      "logica_backend": "get_fatture_stats() in admin.py: conta tutte le 'invoices' (totale); aggrega per campo metodo_pagamento con pipeline $group + $sort discendente (limit 20 gruppi); conta le fatture senza metodo (assente/null/vuoto) → senza_metodo.",
-      "formula_matematica": "nessuna, solo count/aggregate MongoDB",
-      "aggiornamento_ui": "Aggiorna la card 'Metodi di Pagamento Fatture' con totale, elenco metodi (_id/count) e box 'Fatture SENZA metodo' (arancione se >0, verde se 0).",
-      "casi_errore": "console.error se fallisce, la card mostra 'Errore caricamento dati'."
-    },
-    {
-      "etichetta": "Card 'Stato Sistema' e 'Statistiche Database' (tab Sistema)",
-      "cosa_fa_al_click": "Nessun pulsante di refresh dedicato in questa tab: i dati (dbStatus, stats) vengono popolati esclusivamente da loadDashboardSummary(), chiamata al mount della pagina e ogni 5 minuti (polling silenzioso). Le funzioni loadStats() e checkHealth() sono definite nel componente ma NON risultano invocate da nessun elemento della UI attuale (probabile residuo di una versione precedente con pulsanti di refresh dedicati, oggi rimossi).",
-      "endpoint_chiamato": "GET /api/admin/dashboard-summary (unica fonte dati per questa tab nell'uso corrente)",
-      "logica_backend": "get_dashboard_summary() in admin.py esegue in parallelo (asyncio.gather): count di invoices/fornitori/dipendenti/prima_nota_cassa/prima_nota_banca/f24_unificato → 'stats'; conteggio alert non letti/non risolti → 'alerts'; conteggio segnalazioni agenti non lette → 'agenti'; conteggio fatture/cassa/banca → 'sync'; check se siamo nei primi 10 giorni del mese per l'alert commercialista → 'commercialista_alert'; restituisce anche health fisso {status:'healthy', database:'connected'} (NON è una vera health-check, è statico) e timestamp.",
-      "formula_matematica": "fmt(n) = n?.toLocaleString('it-IT') || '0' — solo formattazione numerica italiana, nessun calcolo derivato.",
-      "aggiornamento_ui": "Popola dbStatus (mostrato come 'Online'/'Offline' in base a status==='healthy', che è però SEMPRE vero dato che il backend lo restituisce statico) e stats (griglia dinamica con Object.entries(stats), una card per ogni chiave con etichetta 'label.replace(/_/g,' ')').",
-      "casi_errore": "In loadDashboardSummary: .catch(() => ({data: null})) silenzioso; se il fetch fallisce del tutto, console.error. NOTA: i campi restituiti da /api/admin/stats (invoices, suppliers, products, employees, prima_nota_cassa, prima_nota_banca, f24) sono leggermente diversi da quelli di /api/admin/dashboard-summary.stats (invoices, suppliers, employees, prima_nota_cassa, prima_nota_banca, f24 — manca 'products'), ma dato che loadStats() non viene mai chiamato in pratica, questa differenza non ha effetto visibile."
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Creazione/modifica account email IMAP",
-      "sequenza_esatta": "1) Utente compila form (nuovo o modifica) con nome, email, app_password, imap_server, parole chiave (tag aggiunti uno alla volta con Invio o pulsante ➕, salvati in un array locale prima del submit). 2) Click Salva → saveEmailAccount() → POST (nuovo) o PUT (esistente) su /api/config/email-accounts. 3) Reload lista account.",
-      "collezioni_coinvolte": ["collection account email (nome esatto non determinabile senza il router di config, non incluso nel set file di questo audit)"],
-      "campi_scritti": {"nota": "dedotti dal payload frontend: nome, email, app_password, imap_server, imap_port, parole_chiave[], cartelle[]"},
-      "effetti_collaterali": "L'account creato/modificato verrà poi usato dal servizio di download email (BatchProcessor / task 'Download Email') per scaricare allegati PDF."
-    },
-    {
-      "nome": "Impostazione massiva metodo di pagamento 'Bonifico' sulle fatture prive di metodo",
-      "sequenza_esatta": "1) Click 'Imposta Bonifico' → mostra conferma. 2) Click 'Conferma' → POST /api/admin/fatture-set-metodo-pagamento {metodo_pagamento:'Bonifico'}. 3) Backend esegue update_many su 'invoices' con filtro su metodo_pagamento assente/null/vuoto. 4) Frontend mostra alert con il conteggio aggiornato e ricarica le statistiche.",
-      "collezioni_coinvolte": ["invoices"],
-      "campi_scritti": {"metodo_pagamento": "'Bonifico' (o il valore passato)", "metodo_pagamento_updated_at": "timestamp ISO UTC"},
-      "effetti_collaterali": "Operazione massiva e irreversibile via UI (non c'è un 'annulla'): tutte le fatture senza metodo pagamento pregresso vengono marcate Bonifico in un colpo solo. Protetta solo da una doppia conferma client-side, nessun controllo ruolo esplicito nel router (l'endpoint admin.py /fatture-set-metodo-pagamento non ha una dependency get_current_admin_user, a differenza di altri endpoint distruttivi come il rollback)."
-    },
-    {
-      "nome": "Rollback dati per periodo (tab Rollback Dati) — eliminazione mirata e irreversibile",
-      "sequenza_esatta": "1) Al mount della tab: GET /api/admin/rollback/sezioni carica l'elenco di sezioni disponibili (corrispettivi, fatture, paypal, cedolini, prima_nota_cassa, prima_nota_banca, f24, assegni, verbali_noleggio, bonifici, magazzino) e i periodi selezionabili (1 giorno, 1 settimana, 1 mese, oppure anno solare 2023/2024/2025). 2) L'utente clicca un pulsante 'periodo' per una sezione → chiediConferma(sezione, periodo) → GET /api/admin/rollback/{sezione}/conta?periodo={periodo} che RITORNA SOLO IL CONTEGGIO (nessuna scrittura), calcolato provando in OR tutti i campi data plausibili della collezione (per collezioni con convenzione mese/anno come cedolini, aggiunge anche match su coppie anno/mese). 3) Si apre il modale di conferma con il totale record e il dettaglio per collezione. 4) Se totale=0 il pulsante di conferma non appare (nulla da eliminare). 5) Click 'Elimina definitivamente' → confermaEliminazione() → DELETE /api/admin/rollback/{sezione}?periodo={periodo}, PROTETTO da get_current_admin_user (richiede ruolo admin). Il backend ricalcola lo stesso range/query della conta e chiama delete_many per ogni collezione della sezione, logga un WARNING con utente/sezione/periodo/dettaglio, e risponde con totale_eliminati + dettaglio per collezione. 6) Frontend mostra un banner verde di esito e chiude il modale.",
-      "collezioni_coinvolte": [
-        "corrispettivi", "invoices", "paypal_transactions", "paypal_statements", "cedolini",
-        "prima_nota_cassa", "prima_nota_banca", "estratto_conto_movimenti", "f24_unificato",
-        "assegni", "verbali_noleggio", "bonifici_transfers", "warehouse_movements"
-      ],
-      "campi_scritti": {"nota": "Operazione di sola CANCELLAZIONE (delete_many), nessun campo scritto. Range determinato per periodi 'relativo' (1g/1s/1m) come [oggi - N giorni, oggi] in formato YYYY-MM-DD, per periodi 'anno' come [1 gennaio, 31 dicembre] dell'anno scelto, confrontato in OR su tutti i campi data candidati della sezione (es. per 'fatture': invoice_date, data_documento, data_ricezione)."},
-      "effetti_collaterali": "IRREVERSIBILE: non è un vero rollback (nessun backup/ripristino), il nome riflette l'uso previsto (cancellare-reimportare-verificare). Ogni cancellazione è loggata con utente, sezione, periodo e conteggio esatto per collezione. È l'unico endpoint di questa pagina protetto esplicitamente da ruolo admin (get_current_admin_user) tra quelli letti nel codice backend fornito."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Condivide l'Hub 'Admin' (frontend/src/pages/hub/AdminHub.jsx) con le pagine BatchReprocessing.jsx (/batch-reprocessing) e BatchProcessor.jsx (/batch-processor).",
-    "Le collection toccate dal Rollback Dati sono le stesse usate da moduli distinti dell'app: Corrispettivi, ArchivioFattureRicevute/Fatture, RiconciliazionePaypal, buste paga (Cedolini), PrimaNota (Cassa/Banca), Scadenze/F24, GestioneAssegni, NoleggioAuto (verbali), ArchivioBonifici, magazzino."
-  ],
-  "popup_e_modali_presenti": [
-    "Modale di conferma eliminazione nel tab Rollback Dati (role=dialog, chiudibile con click sull'overlay, sulla X o Annulla se non in corso l'eliminazione): mostra il totale record e il dettaglio per collezione prima di procedere.",
-    "Alert nativi del browser per: esito test connessione email, errori salvataggio/eliminazione account email, errori parole chiave, esito impostazione metodo pagamento Bonifico."
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Admin sistema",
+  "route": "/admin",
+  "catalog_id": 54,
+  "modulo": "admin",
+  "accesso": "admin",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Admin sistema». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/Admin.jsx",
+    "entry": "frontend/src/pages/hub/AdminHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/Admin.jsx",
+      "frontend/src/pages/hub/AdminHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/config.py",
+      "app/routers/admin.py",
+      "app/routers/admin_rollback.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/admin/bank-supplier-rules",
+      "/api/admin/bank-supplier-rules/reprocess/{param}",
+      "/api/admin/bank-supplier-rules/{param}",
+      "/api/admin/dashboard-summary",
+      "/api/admin/google-sheets-ledger/config",
+      "/api/admin/google-sheets-ledger/duplicate-audit",
+      "/api/admin/google-sheets-ledger/duplicate-audit-folders",
+      "/api/admin/google-sheets-ledger/duplicate-cleanup-folders",
+      "/api/admin/google-sheets-ledger/jobs/{param}",
+      "/api/admin/google-sheets-ledger/manifest",
+      "/api/admin/rollback",
+      "/api/admin/rollback/drive-fatture/{param}",
+      "/api/admin/rollback/sezioni",
+      "/api/admin/rollback/{param}",
+      "/api/admin/rollback/{param}/conta",
+      "/api/admin/stats",
+      "/api/auth/google/callback",
+      "/api/collaudo/esegui",
+      "/api/collaudo/storico",
+      "/api/collaudo/ultimo",
+      "/api/config/email-accounts",
+      "/api/config/email-accounts/{param}",
+      "/api/config/email-accounts/{param}/test",
+      "/api/config/parole-chiave",
+      "/api/config/parole-chiave/aggiungi",
+      "/api/config/parole-chiave/rimuovi",
+      "/api/estratto-conto-movimenti/import",
+      "/api/health",
+      "/api/prima-nota/cassa/fix-corrispettivi-importo",
+      "/api/prima-nota/cassa/verifica-entrate-corrispettivi",
+      "/api/sync/match-fatture-banca",
+      "/api/sync/match-fatture-cassa",
+      "/api/sync/stato-sincronizzazione"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

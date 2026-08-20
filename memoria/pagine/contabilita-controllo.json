@@ -1,104 +1,49 @@
 {
-  "pagina": "Controllo Mensile (Controllo Annuale/Mensile)",
-  "url": "https://impresasemplice.online/contabilita/controllo",
-  "file_sorgente_frontend": [
-    "/home/user/GestionaleCloud/frontend/src/pages/ControlloMensile.jsx"
-  ],
-  "file_sorgente_backend": [
-    "/home/user/GestionaleCloud/app/routers/prima_nota_module/cassa.py",
-    "/home/user/GestionaleCloud/app/routers/prima_nota_module/common.py",
-    "/home/user/GestionaleCloud/app/routers/invoices/corrispettivi.py",
-    "/home/user/GestionaleCloud/app/routers/bank/bank_statement_import.py"
-  ],
-  "scopo_generale": "Pagina di sola lettura (dashboard di riconciliazione) che confronta, mese per mese o giorno per giorno, i dati automatici estratti dagli XML dei corrispettivi telematici (POS RT da chiusura serale, incassi totali) con i dati inseriti manualmente in Prima Nota Cassa (POS reale contato la sera, corrispettivi manuali, versamenti in banca) e con i movimenti dell'estratto conto bancario (accrediti POS). Serve all'utente per individuare discrepanze contabili tra 'quello che dice la macchina/XML' e 'quello che è stato effettivamente incassato/versato', evidenziando in giallo le righe con differenze superiori a 1 euro. Ha due viste: una vista Annuale con tabella aggregata per i 12 mesi, e una vista Mensile con dettaglio giorno per giorno del mese selezionato.",
-  "bottoni_azioni": [
-    {
-      "etichetta": "👁️ (icona occhio, colonna azioni riga mese, vista Annuale)",
-      "cosa_fa_al_click": "Chiama handleMonthClick(month): imposta meseSelezionato e viewMode='mese', passando alla vista mensile dettagliata del mese cliccato. Il bottone è visibile solo se row.hasData è true (cioè il mese ha almeno un valore diverso da zero tra posAuto, posManual, posBanca, corrispAuto, corrispManual, versamenti).",
-      "endpoint_chiamato": "GET /api/prima-nota/cassa?data_da=&data_a=&limit=10000 e GET /api/corrispettivi?data_da=&data_a=&limit=500 (eseguiti da loadMonthData al cambio di meseSelezionato)",
-      "logica_backend": "Stesse query di list_prima_nota_cassa (filtra su collection prima_nota_cassa, esclude status deleted/archived e categorie escluse POS_DUPLICATO/Corrispettivi POS) e list_corrispettivi (filtra collection corrispettivi per range data_da/data_a), ma con range ristretto al singolo mese (dal giorno 1 all'ultimo giorno del mese) e limit=10000 per cassa invece di 5000.",
-      "formula_matematica": "n/a (solo cambio di stato/view, il calcolo avviene lato frontend in processDailyData)",
-      "aggiornamento_ui": "La tabella passa dalla vista mensile aggregata (12 righe) alla vista giornaliera dettagliata (righe = giorni del mese), con navigazione Mese Precedente/Successivo, pulsante 'Riepilogo Annuale' per tornare indietro, e pulsante 'Versamenti' per aprire il modale dettaglio versamenti.",
-      "casi_errore": "In caso di errore nelle chiamate axios, viene loggato in console (console.error) e gestito con .catch che ritorna dati vuoti ({data: {movimenti: []}} o {data: []}); non viene mostrato alcun messaggio di errore visibile all'utente."
-    },
-    {
-      "etichetta": "◀ Mese Precedente / Mese Successivo ▶ (solo vista mensile)",
-      "cosa_fa_al_click": "Decrementa/incrementa meseSelezionato di 1 (bloccato tra 1 e 12, non cambia anno perché l'anno è globale). Il pulsante è disabilitato quando si è già a Gennaio (precedente) o Dicembre (successivo).",
-      "endpoint_chiamato": "GET /api/prima-nota/cassa?data_da=&data_a=&limit=10000, GET /api/corrispettivi?data_da=&data_a=&limit=500 (rieseguiti automaticamente dall'useEffect al cambio di meseSelezionato)",
-      "logica_backend": "Identica a list_prima_nota_cassa e list_corrispettivi, con range del nuovo mese selezionato",
-      "formula_matematica": "n/a",
-      "aggiornamento_ui": "Ricarica e ri-renderizza la tabella giornaliera per il nuovo mese",
-      "casi_errore": "Come sopra, fallback a array vuoti in caso di errore rete"
-    },
-    {
-      "etichetta": "← Riepilogo Annuale (solo vista mensile)",
-      "cosa_fa_al_click": "Chiama handleBackToYear(): imposta viewMode='anno' e meseSelezionato=null, tornando alla vista aggregata annuale",
-      "endpoint_chiamato": "GET /api/prima-nota/cassa?data_da=YYYY-01-01&data_a=YYYY-12-31&limit=5000, GET /api/corrispettivi?data_da=&data_a=&limit=500, GET /api/bank-statement/movements?data_da=&data_a=&limit=5000 (rieseguiti dall'useEffect al cambio di viewMode)",
-      "logica_backend": "list_prima_nota_cassa, list_corrispettivi, get_bank_statement_movements con range esteso a tutto l'anno",
-      "formula_matematica": "n/a",
-      "aggiornamento_ui": "Torna alla tabella con 12 righe (una per mese) e i box riepilogativi annuali",
-      "casi_errore": "come sopra"
-    },
-    {
-      "etichetta": "Versamenti (solo vista mensile)",
-      "cosa_fa_al_click": "Imposta showVersamentiModal=true, aprendo il modale 'Dettaglio Versamenti' che elenca i movimenti di Prima Nota Cassa del mese corrente con categoria 'Versamento' (o categoria/descrizione contenente 'versamento' case-insensitive) e tipo 'uscita', già caricati in precedenza da loadMonthData in versamentiDettaglio",
-      "endpoint_chiamato": "nessuna chiamata aggiuntiva: i dati sono già in memoria (filtrati client-side dai movimenti cassa del mese scaricati da GET /api/prima-nota/cassa)",
-      "logica_backend": "n/a (filtro client-side)",
-      "formula_matematica": "Totale versamenti mese = Σ |importo| dei movimenti filtrati (Math.abs), mostrato nel footer del modale",
-      "aggiornamento_ui": "Apre overlay modale con tabella Data/Descrizione/Importo e riga TOTALE; click sulla X o fuori dal box chiude il modale",
-      "casi_errore": "Se non ci sono versamenti nel mese, mostra il messaggio 'Nessun versamento registrato per questo mese.'"
-    },
-    {
-      "etichetta": "Toggle Anno (selettore globale, non specifico della pagina)",
-      "cosa_fa_al_click": "Cambia l'anno globale tramite AnnoContext (useAnnoGlobale); l'useEffect della pagina reagisce ricaricando i dati per il nuovo anno",
-      "endpoint_chiamato": "Stessi endpoint della vista corrente (anno o mese) con il nuovo anno nei parametri data_da/data_a",
-      "logica_backend": "Stesse funzioni backend, filtro data aggiornato",
-      "formula_matematica": "n/a",
-      "aggiornamento_ui": "Ricarica tutta la tabella e i box riepilogativi per l'anno selezionato",
-      "casi_errore": "come sopra"
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "NESSUNA operazione di scrittura/registrazione presente in questa pagina",
-      "sequenza_esatta": "La pagina è puramente di lettura/analisi (dashboard di confronto). Non esistono form di inserimento, non ci sono chiamate POST/PUT/DELETE verso il backend da questa pagina. Tutti i calcoli (aggregazione mensile/giornaliera, differenze, saldo cassa) sono eseguiti interamente lato client (funzioni processYearData e processDailyData) a partire dai dati letti dai tre endpoint GET.",
-      "collezioni_coinvolte": [],
-      "campi_scritti": {},
-      "effetti_collaterali": "nessuno: nessuna scrittura su MongoDB viene effettuata da questa pagina"
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Prima Nota Cassa (per correggere/inserire movimenti con categoria POS, Corrispettivi o Versamento che alimentano i confronti mostrati qui)",
-    "Corrispettivi (gestione XML corrispettivi da cui derivano POS RT, Corrisp. Auto, Documenti Commerciali, Annulli, Pagato Non Riscosso)",
-    "Estratto Conto Bancario / Bank Statement (fonte dei movimenti POS Banca con codice PDV 3757283)",
-    "Finanziaria (riepilogo finanziario complessivo che usa le stesse collection prima_nota_cassa/banca e corrispettivi)"
-  ],
-  "popup_e_modali_presenti": [
-    "Modale 'Dettaglio Versamenti - {Mese} {Anno}': overlay full-screen con tabella dei versamenti (Data, Descrizione, Importo) e riga totale, apribile solo dalla vista mensile tramite il pulsante 'Versamenti'; si chiude cliccando la X o l'area esterna al box"
-  ],
-  "note_calcolo_dettagliate": {
-    "fonti_dati": {
-      "corrispettivi_xml": "collection 'corrispettivi': pagato_elettronico = POS da chiusura serale RT, totale = incasso totale giornaliero, pagato_contanti = contanti, numero_documenti = documenti commerciali emessi, annulli (campo legacy), totale_ammontare_annulli = TotaleAmmontareAnnulli da XML, pagato_non_riscosso = differenza tra ammontare/importo parziale lordo e (contanti+elettronico), calcolato lato backend dall'endpoint POST /api/corrispettivi/ricalcola-annulli-non-riscosso",
-      "prima_nota_cassa": "collection 'prima_nota_cassa': categoria 'POS' o source 'excel_pos' = POS Reale (manuale); categoria 'Corrispettivi' o source 'excel_corrispettivi' con tipo 'entrata' = Corrispettivi Manuali; categoria 'Versamento' (o categoria/descrizione contenente 'versamento' case-insensitive) con tipo 'uscita' = Versamenti",
-      "estratto_conto_bancario": "collection 'estratto_conto_movimenti' (via GET /api/bank-statement/movements): movimenti la cui descrizione contiene 'PDV 3757283' o 'PDV: 3757283' sono POS Banca; tipo='entrata' = accrediti POS, tipo='uscita' = commissioni/spese POS. Nel codice esiste una funzione _getDataAccreditoAttesa che calcola lo sfasamento di accredito (giorno lavorativo successivo, con lista di festività italiane fisse), ma questa funzione risulta definita e NON utilizzata nell'aggregazione finale: il raggruppamento mensile usa direttamente la data presente nel movimento estratto conto (assunta già come data di accredito effettivo), non la data calcolata da _getDataAccreditoAttesa."
-    },
-    "formule": {
-      "POS_RT_XML": "Σ corrispettivi.pagato_elettronico del periodo/mese/giorno",
-      "POS_Reale_Manuale": "Σ |prima_nota_cassa.importo| WHERE categoria='POS' (case-insensitive) OR source='excel_pos'",
-      "POS_Banca": "Σ estratto_conto_movimenti.importo WHERE tipo='entrata' AND descrizione contiene 'PDV 3757283'",
-      "POS_Banca_Commissioni": "Σ estratto_conto_movimenti.importo WHERE tipo='uscita' AND descrizione contiene 'PDV 3757283' (calcolato ma inizializzato a 0 nel totale annuale per un possibile bug: yearPosBancaCommissioni non viene mai incrementato nel ciclo mensile nonostante posBancaCommissioni sia calcolato per mese)",
-      "Diff_POS": "POS_RT_XML - POS_Reale_Manuale",
-      "Diff_POS_Banca": "POS_Banca - POS_Reale_Manuale",
-      "Corrisp_Auto": "Σ corrispettivi.totale del periodo",
-      "Corrisp_Manuale": "Σ prima_nota_cassa.importo WHERE categoria='Corrispettivi' (o source='excel_corrispettivi') AND tipo='entrata'",
-      "Diff_Corrispettivi": "Corrisp_Auto - Corrisp_Manuale",
-      "Versamenti": "Σ |prima_nota_cassa.importo| WHERE (categoria='Versamento' OR categoria/descrizione contiene 'versamento') AND tipo='uscita'",
-      "Saldo_Cassa": "Σ prima_nota_cassa.importo WHERE tipo='entrata' del periodo - Σ prima_nota_cassa.importo WHERE tipo='uscita' del periodo",
-      "Documenti_Commerciali": "Σ corrispettivi.numero_documenti del periodo",
-      "Annulli_legacy": "Σ corrispettivi.annulli del periodo (campo spesso non popolato negli XML, mostrato come 'N/D negli XML' se 0)",
-      "Pagato_Non_Riscosso": "Σ corrispettivi.pagato_non_riscosso (solo per corrispettivi con valore > 0), con relativo conteggio occorrenze",
-      "Ammontare_Annulli": "Σ corrispettivi.totale_ammontare_annulli (solo per corrispettivi con valore > 0), con relativo conteggio occorrenze",
-      "hasDiscrepancy": "true se |Diff_POS| > 1 OR |Diff_Corrispettivi| > 1 OR |Diff_POS_Banca| > 1 (soglia di tolleranza 1 euro per evidenziare la riga in giallo)"
-    }
-  }
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Controllo mensile",
+  "route": "/contabilita/controllo",
+  "catalog_id": 19,
+  "modulo": "contabilita",
+  "accesso": "authenticated",
+  "stato_audit": "in_review",
+  "scopo": "Mappa tecnica della schermata «Controllo mensile». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/ControlloMensile.jsx",
+    "entry": "frontend/src/pages/hub/ContabilitaHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/ControlloMensile.jsx",
+      "frontend/src/pages/hub/ContabilitaHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/routers/bank/bank_statement_import.py",
+      "app/routers/invoices/corrispettivi.py",
+      "app/routers/prima_nota_module/cassa.py",
+      "app/routers/prima_nota_module/common.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/contabilita-gestionale/bilancio-verifica",
+      "/api/corrispettivi",
+      "/api/pos-corrispettivi/controllo-due-fasi",
+      "/api/prima-nota/cassa"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
+  ]
 }

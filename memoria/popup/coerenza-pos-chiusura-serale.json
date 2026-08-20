@@ -1,66 +1,32 @@
 {
-  "nome_popup": "ModalChiusuraSerale",
-  "file_sorgente": "/home/user/GestionaleCloud/frontend/src/pages/CoerenzaPOSCorrispettivi.jsx, righe 1242-1409 — componente definito INLINE nello stesso file della pagina; montato condizionalmente riga ~746-750 ({modalAperta && <ModalChiusuraSerale onClose={...} onSaved={...} />})",
-  "pagine_da_cui_si_apre": ["Coerenza POS Corrispettivi (/coerenza-pos)"],
-  "come_si_apre": "Click sul bottone '+ Inserisci chiusura serale' (sfondo dorato #b8860b) nella toolbar in cima al tab 'Controllo 2 Fasi' (tab di default della pagina): imposta setModalAperta(true) — solo stato locale, nessuna chiamata di rete all'apertura. È un overlay fisso (position:fixed, inset:0, sfondo rgba(0,0,0,0.5), zIndex 10000 — il più alto tra i modali documentati in questo incarico) con riquadro bianco max-width 480px.",
-  "scopo": "Permettere l'inserimento manuale, in chiusura di giornata, del totale corrispettivo provvisorio (in attesa dell'XML ufficiale dell'Agenzia delle Entrate) e/o del valore realmente battuto sul POS fisico, dati necessari rispettivamente alla FASE 1 (RT vs POS reale) e alla base del confronto di FASE 2 (POS reale vs accredito banca) del Controllo a 2 Fasi. Serve anche come fallback quando l'XML dei corrispettivi non è ancora arrivato dal registratore telematico.",
-  "dati_mostrati": "Nessun dato precaricato da backend: form vuoto tranne il campo Data, precompilato con la data odierna (new Date().toISOString().slice(0,10)) e vincolato con max=oggi (non si può inserire una chiusura per una data futura). Testo esplicativo sotto il titolo: 'Inserisci il totale del corrispettivo giornaliero (provvisorio) e il POS reale letto dall'hardware. Quando arriverà l'XML dall'Agenzia Entrate, il totale sarà sostituito automaticamente col dato ufficiale.'",
-  "campi_e_bottoni": [
-    {
-      "elemento": "Input 'Data' (type=date, default oggi, max=oggi)",
-      "cosa_fa": "Aggiorna dataForm.",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "Al submit: se dataForm è vuoto → setErrore('Inserisci la data')."
-    },
-    {
-      "elemento": "Input 'Totale corrispettivo (€) *' (type=text, inputMode=decimal, placeholder 'es. 1250,50')",
-      "cosa_fa": "Aggiorna totale come stringa libera (accetta sia virgola sia punto come separatore decimale, parsing con .replace(',', '.') al submit).",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "Al submit: parseFloat(totale.replace(',', '.')) deve essere un numero > 0, altrimenti setErrore('Il totale corrispettivo deve essere un numero maggiore di 0')."
-    },
-    {
-      "elemento": "Input 'POS reale dalla chiusura serale (€)' (opzionale, placeholder 'es. 450,00 (opzionale)')",
-      "cosa_fa": "Aggiorna posReale come stringa libera; nota a piè di campo: 'Facoltativo ma consigliato: il totale battuto al POS fisico (per il controllo FASE 1).'",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "Al submit, se valorizzato: parseFloat deve essere un numero >= 0, altrimenti setErrore('Il POS reale deve essere un numero >= 0'). Se lasciato vuoto, viene inviato come null (p = posReale ? parseFloat(...) : null)."
-    },
-    {
-      "elemento": "Input 'Note' (testo libero opzionale)",
-      "cosa_fa": "Aggiorna note; se vuoto viene inviato come undefined (note || undefined).",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "nessuna"
-    },
-    {
-      "elemento": "Bottone 'Annulla' (footer, disabilitato mentre salvando=true)",
-      "cosa_fa": "Chiama onClose() senza salvare, identico al bottone '✕'.",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "nessuna"
-    },
-    {
-      "elemento": "Bottone '✕' nell'header",
-      "cosa_fa": "Chiama onClose().",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "nessuna"
-    },
-    {
-      "elemento": "Click sull'overlay scuro esterno al riquadro",
-      "cosa_fa": "onClick sul contenitore esterno chiama onClose() (il riquadro interno ha stopPropagation).",
-      "endpoint_chiamato": "nessuno",
-      "validazioni": "nessuna"
-    },
-    {
-      "elemento": "Bottone 'Salva chiusura' (footer, dorato #b8860b, testo diventa 'Salvo...' con sfondo grigio #94a3b8 mentre salvando=true)",
-      "cosa_fa": "salva(): esegue prima le 3 validazioni client (data, totale, pos reale) descritte sopra; se tutte superate, invia i dati al backend.",
-      "endpoint_chiamato": "POST /api/corrispettivi/manuale {data, totale, pos_reale_serale, note}",
-      "validazioni": "Lato server (app/routers/invoices/corrispettivi.py, montato su prefix /api/corrispettivi): se esiste già un documento 'corrispettivi' per quella data con stato='definitivo_xml', ritorna HTTP 409 (non si può sovrascrivere un dato fiscale ufficiale con uno manuale) — mostrato nel box errore del modale con e.response.data.detail. Se il record esiste ma non è definitivo, viene aggiornato (totale_manuale, totale=totale finché non arriva l'XML, stato='provvisorio'). Se non esiste, viene creato ex novo con stato='provvisorio', source='manuale_serale', totale_xml=None."
-    }
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "popup_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "popup": "ModalChiusuraSerale",
+  "scopo": "Mappa tecnica del popup «ModalChiusuraSerale». Il comportamento e le mutazioni reali devono essere verificati nei sorgenti correnti.",
+  "aperto_da": [
+    "Coerenza POS Corrispettivi (/coerenza-pos)"
   ],
-  "cosa_succede_alla_conferma": "Il backend scrive/aggiorna un documento nella collezione 'corrispettivi': id, data, anno, mese, totale, totale_manuale, totale_xml=None, pagato_contanti/pagato_elettronico=None, stato='provvisorio', source='manuale_serale', data_inserimento_manuale=now, note_manuale (se fornita). Se pos_reale_serale è stato fornito (non null), il backend cerca in 'prima_nota_banca' un movimento esistente con quella data e source in [chiusura_pos_mobile, corrispettivo_pos]: se esiste lo aggiorna (importo/amount=pos_reale_serale), altrimenti ne crea uno nuovo con id UUID, categoria='Corrispettivi POS', source='chiusura_pos_mobile', tipo/type='entrata', riconciliato=false (stessa logica dell'endpoint gemello PUT /api/pos-corrispettivi/chiusura-giornaliera usato dall'app mobile). Il frontend, in caso di successo, chiama onSaved() passato dal genitore (nessuna gestione locale ulteriore nel modale stesso).",
-  "come_si_chiude": [
-    "Bottone '✕' nell'header",
-    "Bottone 'Annulla' nel footer",
-    "Click sull'overlay scuro esterno al riquadro",
-    "Automaticamente dopo un salvataggio riuscito (il genitore, nel proprio onSaved, esegue setModalAperta(false) e poi loadDati())"
+  "file_verificati": [
+    "frontend/src/pages/CoerenzaPOSCorrispettivi.jsx"
   ],
-  "effetto_su_pagina_sottostante": "Il nuovo dato entra immediatamente nel calcolo del tab 'Controllo 2 Fasi' dopo il reload: il pos_manuale del giorno viene letto da _carica_pos_manuale_per_data() (che unisce 'chiusure_pos_manuali' e 'prima_nota_banca' con source chiusura_pos_mobile/corrispettivo_pos, dando priorità a prima_nota_banca) e confrontato con l'elettronico XML per la FASE 1 e con l'accredito banca atteso per la FASE 2. Finché il corrispettivo resta in stato 'provvisorio' o passa a 'manca_xml' (dopo 7 giorni senza XML, marcato da uno scheduler esterno), la FASE 1 mostra stato_serale='in_attesa_xml' invece di un vero confronto numerico. Quando arriverà successivamente l'XML ufficiale dei corrispettivi (flusso separato in invoices/corrispettivi.py), il record 'provvisorio' inserito da questo modale viene automaticamente promosso a 'definitivo_xml', sovrascrivendo totale/totale_xml con i dati fiscali reali mantenendo però lo storico di totale_manuale e data_inserimento_manuale."
+  "endpoint_rilevati_nei_sorgenti": [
+    "/api/corrispettivi/manuale",
+    "/api/pos-corrispettivi/chiusura-giornaliera",
+    "/api/pos-corrispettivi/chiusure-giornaliere/batch",
+    "/api/pos-corrispettivi/controllo-due-fasi",
+    "/api/pos-corrispettivi/riepilogo-mensile",
+    "/api/pos-corrispettivi/verifica-coerenza",
+    "/api/sumup/riepilogo"
+  ],
+  "regole_ux": [
+    "Il popup deve avere chiusura visibile e non restare sovrapposto al documento.",
+    "Le azioni distruttive o definitive richiedono una conferma esplicita.",
+    "Le associazioni ambigue mostrano candidati e non vengono applicate automaticamente."
+  ]
 }

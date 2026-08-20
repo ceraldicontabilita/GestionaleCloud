@@ -1,152 +1,47 @@
 {
-  "pagina": "Budget e Previsionale",
-  "url": "https://impresasemplice.online/contabilita/budget",
-  "file_sorgente_frontend": [
-    "/home/user/GestionaleCloud/frontend/src/pages/BudgetPrevisionale.jsx"
-  ],
-  "file_sorgente_backend": [
-    "/home/user/GestionaleCloud/app/routers/accounting/contabilita_gestionale.py"
-  ],
-  "scopo_generale": "Pagina per costruire un budget previsionale annuale (per voce di costo/ricavo, con distribuzione mensile) e confrontarlo con il consuntivo reale calcolato automaticamente dai dati contabili già presenti nel sistema (corrispettivi per i ricavi, fatture ricevute per i costi). Serve a capire, voce per voce e mese per mese, quanto ci si è scostati dalle previsioni. Ha 3 sotto-tab interne (gestite solo in React, nessuna route separata): 'Budget' (editing delle voci), 'Budget vs Consuntivo' (confronto con scostamenti) e 'Andamento Mensile' (tabella + grafico a barre mese per mese). Il consuntivo NON viene mai salvato: è ricalcolato al volo ad ogni caricamento leggendo le collezioni corrispettivi e invoices per l'anno selezionato.",
-  "bottoni_azioni": [
-    {
-      "etichetta": "Aggiorna (header pagina)",
-      "cosa_fa_al_click": "Richiama loadAll(): ricarica sia il budget sia il confronto per l'anno globale corrente",
-      "endpoint_chiamato": "GET /api/contabilita-gestionale/budget/{anno} + GET /api/contabilita-gestionale/budget-vs-consuntivo/{anno}",
-      "logica_backend": "Vedi endpoint dedicati sotto",
-      "formula_matematica": "n/a",
-      "aggiornamento_ui": "Aggiorna gli state 'budget' e 'confronto', ricalcola le card riepilogo e le tabelle",
-      "casi_errore": "Errore loggato in console con console.error('Errore budget:', err); nessun messaggio visibile all'utente"
-    },
-    {
-      "etichetta": "Nuova Voce (tab Budget)",
-      "cosa_fa_al_click": "Resetta il form (resetForm) e apre il pannello di inserimento voce (showForm=true)",
-      "endpoint_chiamato": "nessuno (solo stato locale)",
-      "logica_backend": "n/a",
-      "formula_matematica": "n/a",
-      "aggiornamento_ui": "Mostra il form con campi Voce, Categoria (costo/ricavo), Importo annuo, Note, griglia mensile 12 mesi",
-      "casi_errore": "n/a"
-    },
-    {
-      "etichetta": "Distribuisci uniforme (dentro il form)",
-      "cosa_fa_al_click": "Funzione locale distribuisciUniforme(): prende l'importo annuale digitato e lo divide per 12, arrotondato a 2 decimali; il dodicesimo mese (Dicembre) riceve il resto (importo - mensile*11) per garantire che la somma torni esatta all'importo annuale",
-      "endpoint_chiamato": "nessuno (solo stato locale formMensili)",
-      "logica_backend": "n/a",
-      "formula_matematica": "mensile = round(importo/12, 2); per i=1..11: m[i]=mensile; m[12] = round(importo - mensile*11, 2)",
-      "aggiornamento_ui": "Popola i 12 campi input mensili del form",
-      "casi_errore": "Se formImporto non è valorizzato, importo=0 e tutti i mesi diventano 0"
-    },
-    {
-      "etichetta": "Salva / Aggiorna (dentro il form, handleSave)",
-      "cosa_fa_al_click": "Invia la voce di budget al backend (creazione se voce nuova, aggiornamento se editingVoce è valorizzato)",
-      "endpoint_chiamato": "POST /api/contabilita-gestionale/budget",
-      "logica_backend": "salva_voce_budget(data): fa upsert su collection 'budget' con chiave (anno, voce) — se esiste aggiorna categoria/importo_budget/note/updated_at, altrimenti crea un nuovo documento con id uuid4 e created_at. Se il payload contiene 'mensile' (dict mese->importo), per ogni mese fa upsert su collection 'budget_mensile' con chiave (anno, voce, mese)",
-      "formula_matematica": "n/a (nessun calcolo, solo persistenza)",
-      "aggiornamento_ui": "Chiude il form (resetForm) e richiama loadAll() per ricaricare la tabella",
-      "casi_errore": "Se anno o voce mancanti il backend risponde {success:false, error:'Anno e voce obbligatori'}; in frontend eventuale errore HTTP mostra alert('Errore: ' + err.response?.data?.error || err.message). Il bottone è disabilitato se formVoce vuoto o formImporto vuoto"
-    },
-    {
-      "etichetta": "Modifica (icona matita per riga tabella)",
-      "cosa_fa_al_click": "startEdit(voce): precompila il form con i valori esistenti della voce (voce, categoria, importo_annuale, note, mensile) e blocca il campo Voce (non modificabile, essendo chiave)",
-      "endpoint_chiamato": "nessuno (solo stato locale, il salvataggio avviene poi con Salva)",
-      "logica_backend": "n/a",
-      "formula_matematica": "n/a",
-      "aggiornamento_ui": "Apre il form in modalità modifica",
-      "casi_errore": "n/a"
-    },
-    {
-      "etichetta": "Elimina (icona cestino per riga tabella)",
-      "cosa_fa_al_click": "Dopo conferma (window.confirm), elimina la voce di budget per l'anno corrente",
-      "endpoint_chiamato": "DELETE /api/contabilita-gestionale/budget/{anno}/{voce}",
-      "logica_backend": "elimina_voce_budget(anno, voce): db.budget.delete_one({anno, voce}) + db.budget_mensile.delete_many({anno, voce}); ritorna il conteggio eliminati",
-      "formula_matematica": "n/a",
-      "aggiornamento_ui": "Richiama loadAll() per aggiornare la tabella",
-      "casi_errore": "Se fallisce, alert('Errore: ' + err.message); nessuna verifica se la voce non esiste (il delete_one/delete_many ritornano semplicemente 0 eliminati, il frontend non lo segnala)"
-    },
-    {
-      "etichetta": "Duplica Anno (apre pannello)",
-      "cosa_fa_al_click": "Mostra il pannello con campi 'Anno destinazione' (default anno+1) e 'Variazione %' (default 0)",
-      "endpoint_chiamato": "nessuno",
-      "logica_backend": "n/a",
-      "formula_matematica": "n/a",
-      "aggiornamento_ui": "Mostra pannello showDuplica",
-      "casi_errore": "n/a"
-    },
-    {
-      "etichetta": "Duplica (dentro il pannello, handleDuplica)",
-      "cosa_fa_al_click": "Copia tutte le voci di budget (e i relativi importi mensili) dall'anno corrente all'anno destinazione, applicando una variazione percentuale opzionale",
-      "endpoint_chiamato": "POST /api/contabilita-gestionale/budget/duplica/{anno_origine}/{anno_destinazione}?variazione_pct=N",
-      "logica_backend": "duplica_budget: legge tutte le voci di db.budget per anno_origine; per ognuna, se NON esiste già una voce con la stessa 'voce' per anno_destinazione, crea un nuovo documento con importo_budget = importo_originale * (1 + variazione_pct/100), note='Duplicato da {anno_origine} ({variazione_pct}%)'. Ripete la stessa logica per db.budget_mensile (chiave anno+voce+mese). Le voci già esistenti nell'anno destinazione vengono saltate (non sovrascritte)",
-      "formula_matematica": "moltiplicatore = 1 + (variazione_pct/100); nuovo_importo = round(importo_originale * moltiplicatore, 2)",
-      "aggiornamento_ui": "alert(res.data.messaggio) con il conteggio voci duplicate, chiude il pannello, richiama loadAll()",
-      "casi_errore": "Se non esiste alcun budget per anno_origine: {success:false, error:'Nessun budget trovato per {anno}'}; se fallisce la request, alert('Errore: ' + err.message)"
-    },
-    {
-      "etichetta": "CSV (esporta)",
-      "cosa_fa_al_click": "Genera lato client un file CSV (';' come separatore, BOM UTF-8) con tutte le voci di budget correnti: Voce, Categoria, Importo Annuale, 12 colonne mensili, Note. Scarica il file budget-{anno}.csv",
-      "endpoint_chiamato": "nessuno — esportazione client-side pura, nessuna chiamata API",
-      "logica_backend": "n/a",
-      "formula_matematica": "n/a",
-      "aggiornamento_ui": "Avvia il download del file tramite Blob + URL.createObjectURL",
-      "casi_errore": "Se budget.voci non esiste la funzione ritorna subito senza fare nulla"
-    },
-    {
-      "etichetta": "Selettore Periodo (tab Budget vs Consuntivo)",
-      "cosa_fa_al_click": "handleMeseChange: cambia il filtro mese (1-12 o vuoto = anno intero) e ricarica solo il confronto",
-      "endpoint_chiamato": "GET /api/contabilita-gestionale/budget-vs-consuntivo/{anno}?mese=N (o senza mese per l'anno intero)",
-      "logica_backend": "Vedi dettaglio endpoint sotto",
-      "formula_matematica": "n/a",
-      "aggiornamento_ui": "Aggiorna solo lo state 'confronto', ricalcola card e tabella",
-      "casi_errore": "Errore loggato in console con console.error('Errore confronto:', err)"
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Salvataggio/aggiornamento voce di budget (POST /budget)",
-      "sequenza_esatta": "1) Cerca documento esistente in 'budget' con {anno, voce}. 2) Se esiste: update_one $set su categoria/importo_budget/note/updated_at. Se non esiste: insert_one con id=uuid4, created_at, updated_at. 3) Se il payload include 'mensile' (dict {mese: importo}), per ciascun mese fa update_one upsert=True su 'budget_mensile' con chiave {anno, voce, mese}",
-      "collezioni_coinvolte": ["budget", "budget_mensile"],
-      "campi_scritti": {
-        "budget.anno": "int - anno di riferimento",
-        "budget.voce": "string - nome libero della voce (es. 'Materie prime')",
-        "budget.categoria": "string - 'costo' o 'ricavo'",
-        "budget.importo_budget": "float - importo annuale totale",
-        "budget.note": "string libera",
-        "budget.id": "uuid4 string (solo alla creazione)",
-        "budget.created_at / updated_at": "ISO datetime UTC",
-        "budget_mensile.anno/voce/mese": "chiave composita",
-        "budget_mensile.importo": "float - importo del singolo mese",
-        "budget_mensile.updated_at": "ISO datetime UTC"
-      },
-      "effetti_collaterali": "Nessuna scrittura su prima nota, fatture o piano dei conti: il budget è puramente previsionale e isolato dalle altre collezioni contabili"
-    },
-    {
-      "nome": "Eliminazione voce di budget (DELETE /budget/{anno}/{voce})",
-      "sequenza_esatta": "1) delete_one su 'budget' con {anno, voce}. 2) delete_many su 'budget_mensile' con {anno, voce}",
-      "collezioni_coinvolte": ["budget", "budget_mensile"],
-      "campi_scritti": {},
-      "effetti_collaterali": "Nessuno oltre alla cancellazione; se la voce non esiste, l'operazione non fallisce (0 eliminati)"
-    },
-    {
-      "nome": "Duplicazione budget tra anni (POST /budget/duplica/{origine}/{destinazione})",
-      "sequenza_esatta": "1) Legge tutte le voci di 'budget' per anno_origine. 2) Per ogni voce non già presente in anno_destinazione, inserisce un nuovo documento in 'budget' con importo scalato dalla variazione_pct. 3) Ripete lo stesso procedimento per 'budget_mensile' (chiave anno+voce+mese)",
-      "collezioni_coinvolte": ["budget", "budget_mensile"],
-      "campi_scritti": {
-        "budget.importo_budget": "float scalato = importo_originale * (1 + variazione_pct/100)",
-        "budget.note": "string 'Duplicato da {anno_origine} ({variazione_pct}%)'",
-        "budget_mensile.importo": "float scalato con lo stesso moltiplicatore"
-      },
-      "effetti_collaterali": "Le voci già esistenti nell'anno destinazione (stessa 'voce') NON vengono toccate né sovrascritte, semplicemente saltate"
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Il 'Consuntivo' della tab Budget vs Consuntivo e Andamento Mensile viene calcolato leggendo dal vivo le collezioni 'corrispettivi' (ricavi, gestiti dalla pagina Corrispettivi/POS) e 'invoices' (costi, gestiti dalla pagina Fatture Passive/Ricezione Fatture)",
-    "Usa il selettore Anno globale dell'applicazione (contexts/AnnoContext, useAnnoGlobale) condiviso con le altre pagine di Contabilità",
-    "Fa parte dell'hub Contabilità insieme alle altre tab (Bilancio di Verifica, Partitario Clienti/Fornitori, Contabilità Avanzata) esposte dallo stesso router contabilita_gestionale.py"
-  ],
-  "popup_e_modali_presenti": [
-    "Pannello inline 'Nuova voce di budget' / 'Modifica: {voce}' (non è un vero modal overlay, è una sezione che si espande nella pagina) con campi Voce, Categoria, Importo annuo, Note e griglia 12 mesi",
-    "Pannello inline 'Duplica Budget {anno} →' con campi Anno destinazione e Variazione %",
-    "window.confirm() nativo del browser per la conferma di eliminazione voce",
-    "alert() nativo del browser per messaggi di esito duplicazione e di errore"
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Budget",
+  "route": "/contabilita/budget",
+  "catalog_id": 24,
+  "modulo": "contabilita",
+  "accesso": "authenticated",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Budget». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/BudgetPrevisionale.jsx",
+    "entry": "frontend/src/pages/hub/ContabilitaHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/BudgetPrevisionale.jsx",
+      "frontend/src/pages/hub/ContabilitaHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/routers/accounting/contabilita_gestionale.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/contabilita-gestionale/budget",
+      "/api/contabilita-gestionale/budget-vs-consuntivo/{param}",
+      "/api/contabilita-gestionale/budget/duplica/{param}/{param}",
+      "/api/contabilita-gestionale/budget/{param}",
+      "/api/contabilita-gestionale/budget/{param}/{param}"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

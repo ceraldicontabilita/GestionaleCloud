@@ -1,41 +1,45 @@
 {
-  "pagina": "Noleggio Auto - Tab Riepilogo Costi",
-  "url": "https://impresasemplice.online/noleggio/costi",
-  "file_sorgente_frontend": [
-    "frontend/src/pages/hub/VeicoliHub.jsx (componente interno RiepilogoCosti)"
-  ],
-  "file_sorgente_backend": [
-    "app/routers/noleggio.py (endpoint GET /api/noleggio/veicoli e GET /api/noleggio/export-pdf-costi)",
-    "app/services/noleggio/processors.py (scan_fatture_noleggio, stessa logica di calcolo usata dalla tab Flotta)",
-    "app/services/noleggio/parsers.py"
-  ],
-  "scopo_generale": "Vista di sola lettura, pensata per la revisione economica rapida e per il commercialista: riepiloga in un'unica schermata il totale spesa noleggio dell'anno selezionato (filtro Anno globale dell'app), suddiviso per le 6 categorie di spesa (Canoni, Pedaggio, Verbali, Bollo, Costi Extra, Riparazioni) e per veicolo. Non introduce nessuna nuova logica di calcolo: è un componente frontend puro (RiepilogoCosti, definito direttamente dentro VeicoliHub.jsx, non un file separato) che richiama lo STESSO endpoint GET /api/noleggio/veicoli già usato dalla tab Flotta e ne renderizza i campi statistiche/veicoli in forma di cruscotto + tabella, aggiungendo solo l'export PDF per il commercialista.",
-  "bottoni_azioni": [
-    {
-      "etichetta": "📄 Esporta PDF",
-      "cosa_fa_al_click": "Link <a> (non fetch) che apre in una nuova scheda il PDF generato lato server, per l'anno correntemente selezionato nel filtro globale.",
-      "endpoint_chiamato": "GET /api/noleggio/export-pdf-costi?anno={anno}",
-      "logica_backend": "export_pdf_costi(): se anno non passato usa l'anno corrente. Richiama scan_fatture_noleggio(anno) (stessa funzione di calcolo della tab Flotta) per i totali per veicolo/categoria, carica veicoli_noleggio per driver/marca/modello, e arricchisce i verbali sommando l'importo di TUTTI i documenti in verbali_noleggio con quella targa (qui, a differenza della tab Flotta/Verbali, NON fa la deduplicazione con verbali_noleggio_completi: somma semplicemente tutto ciò che trova in verbali_noleggio per targa, quindi il totale verbali nel PDF può differire leggermente da quello mostrato nella UI se esistono duplicati non ancora puliti). Genera un PDF con reportlab: intestazione 'RIEPILOGO COSTI NOLEGGIO AUTO {anno}' e ragione sociale Ceraldi Group SRL, tabella di riepilogo per categoria (Canoni, Verbali/Multe, Bollo, Pedaggio, Costi Extra, Riparazioni, TOTALE GENERALE), tabella dettaglio per veicolo (Targa, Veicolo, Driver, Canoni, Verbali, Bollo, Altro=pedaggio+costi_extra+riparazioni, TOTALE) con riga di totale finale, footer con data/ora di generazione.",
-      "formula_matematica": "Per ogni categoria: val = somma su tutti i veicoli di v.totale_{categoria}, arrotondato a 2 decimali. totale_gen = somma di tutte le 6 categorie. Per riga veicolo: tot = canoni+verbali+bollo+pedaggio+costi_extra+riparazioni di quel veicolo.",
-      "aggiornamento_ui": "Apre una nuova scheda del browser con il PDF (Content-Disposition inline, filename riepilogo_costi_noleggio_{anno}.pdf).",
-      "casi_errore": "Nessuna gestione errore lato frontend (è un semplice link <a target=_blank>); un errore server-side (es. dati mancanti) produrrebbe una risposta di errore HTTP mostrata direttamente dal browser."
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Caricamento dati riepilogo (nessuna scrittura, solo lettura aggregata)",
-      "sequenza_esatta": "Al mount del tab (o al cambio anno globale), GET /api/noleggio/veicoli?anno={anno} — stesso endpoint get_veicoli() descritto in dettaglio nel file noleggio-flotta.json: 1) scan_fatture_noleggio(anno) legge le fatture dei 4 fornitori di noleggio e le raggruppa per targa/categoria; 2) fonde con i dati salvati in veicoli_noleggio (driver, contratto, ecc.); 3) arricchisce i verbali unendo verbali_noleggio (posta) e verbali_noleggio_completi (fatture), deduplicati per numero_verbale; 4) calcola le statistiche aggregate su TUTTI i veicoli risultanti (totale_canoni, totale_pedaggio, totale_verbali, totale_bollo, totale_costi_extra, totale_riparazioni, totale_generale).",
-      "collezioni_coinvolte": ["invoices (lettura)", "veicoli_noleggio (lettura)", "verbali_noleggio (lettura)", "verbali_noleggio_completi (lettura)", "prima_nota_banca (lettura, per determinare pagato_confermato_banca)"],
-      "campi_scritti": {},
-      "effetti_collaterali": "Nessuna scrittura: questa tab è puramente di reporting/consultazione, non permette modifiche ai dati (per modificare un veicolo o un verbale bisogna passare dalle rispettive tab Flotta/Verbali)."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Tab 'Flotta Auto' (/noleggio) — stessa fonte dati grezza (GET /api/noleggio/veicoli); qui i dati sono solo aggregati e non modificabili.",
-    "Tab 'Verbali Noleggio' (/noleggio/verbali) — stessa fusione posta+fatture per il totale verbali mostrato nella card 'Verbali' e nella tabella dettaglio.",
-    "Export PDF (GET /api/noleggio/export-pdf-costi) — documento scaricabile pensato per essere inoltrato al commercialista."
-  ],
-  "popup_e_modali_presenti": [
-    "Nessun modal o popup: la tab è composta solo da un header con totale generale e link export PDF, una griglia di 6 card per categoria, e una tabella di dettaglio per veicolo con riga di totale."
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Costi noleggio",
+  "route": "/noleggio/costi",
+  "catalog_id": 13,
+  "modulo": "noleggio",
+  "accesso": "authenticated",
+  "stato_audit": "in_review",
+  "scopo": "Mappa tecnica della schermata «Costi noleggio». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/hub/VeicoliHub.jsx",
+    "entry": "frontend/src/pages/hub/VeicoliHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/hub/VeicoliHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/routers/noleggio.py",
+      "app/services/noleggio/parsers.py",
+      "app/services/noleggio/processors.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/noleggio/export-pdf-costi",
+      "/api/noleggio/veicoli"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

@@ -1,63 +1,43 @@
 {
-  "pagina": "Situazione Finanziaria (Finanziaria)",
-  "url": "https://impresasemplice.online/contabilita/finanziaria",
-  "file_sorgente_frontend": [
-    "/home/user/GestionaleCloud/frontend/src/pages/Finanziaria.jsx"
-  ],
-  "file_sorgente_backend": [
-    "/home/user/GestionaleCloud/app/routers/finanziaria.py"
-  ],
-  "scopo_generale": "Dashboard di sola lettura che mostra il quadro finanziario complessivo dell'azienda per l'anno selezionato: entrate e uscite totali (Cassa + Banca), saldo, riepilogo IVA (debito da Corrispettivi, credito da Fatture, saldo IVA da versare o a credito), dettaglio Prima Nota per conto (Cassa/Banca/Salari) e situazione debiti/crediti (fatture da pagare, fatture da incassare, IVA da versare). È pensata per dare una fotografia rapida della salute finanziaria e degli obblighi IVA senza dover consultare separatamente Prima Nota, Corrispettivi e Fatture.",
-  "bottoni_azioni": [
-    {
-      "etichetta": "Nessun bottone azione interattivo presente in pagina (nessun onClick/form/submit nel JSX oltre al cambio anno globale)",
-      "cosa_fa_al_click": "n/a — la pagina si limita a chiamare loadSummary() automaticamente in un useEffect che si riattiva al cambio di selectedYear (proveniente dal context globale useAnnoGlobale, il cui selettore vive nella sidebar/layout condiviso, non in questa pagina)",
-      "endpoint_chiamato": "GET /api/finanziaria/summary?anno={selectedYear}",
-      "logica_backend": "get_financial_summary(anno): vedi dettaglio calcoli sotto in operazioni_di_registrazione/note; in sintesi esegue 5 aggregazioni MongoDB indipendenti (prima_nota_cassa, prima_nota_banca, prima_nota_salari, corrispettivi, invoices per fatture normali, invoices per note di credito, invoices per fatture da pagare) filtrate sull'anno tramite range di date, poi combina i risultati in un unico oggetto JSON",
-      "formula_matematica": "vedi campo dedicato più sotto",
-      "aggiornamento_ui": "Popola i 3 box KPI principali (Entrate Totali, Uscite Totali, Saldo), la sezione Riepilogo IVA (3 box: IVA a debito, IVA a credito, Saldo IVA), la tabella Dettaglio Prima Nota (righe Cassa/Banca/Salari + riga TOTALE) e la sezione Situazione Debiti/Crediti (Fatture da pagare, Fatture da incassare, IVA da versare/a credito). Se summary.total_income===0 e summary.total_expenses===0 mostra un banner giallo 'Nessun movimento registrato per {anno}'",
-      "casi_errore": "La chiamata api.get ha un .catch che restituisce {data: null}; se summary è null tutti i valori vengono renderizzati come formatEuro(undefined) (probabilmente '€ 0,00' o simile a seconda dell'implementazione di formatEuro); non viene mostrato alcun messaggio di errore esplicito, solo eventuale console.error('Error loading financial summary')"
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "NESSUNA operazione di scrittura presente in questa pagina",
-      "sequenza_esatta": "La pagina Finanziaria.jsx è puramente di lettura/dashboard: un solo useEffect chiama GET /api/finanziaria/summary?anno=... al mount e ad ogni cambio di selectedYear. Non ci sono form, non ci sono pulsanti che generano richieste POST/PUT/DELETE. Il router backend finanziaria.py espone anche endpoint di scrittura (POST /api/finanziaria/costo per creare una voce di costo finanziario nella collection 'costi_finanziari', e GET /api/finanziaria/costi, /cost-categories) ma NESSUNO di questi è chiamato dal file Finanziaria.jsx: non risultano riferimenti a '/costi', '/costo' o '/cost-categories' nel componente. Questi endpoint sembrano quindi non collegati a questa specifica pagina (forse usati altrove o non ancora integrati nella UI).",
-      "collezioni_coinvolte": [],
-      "campi_scritti": {},
-      "effetti_collaterali": "nessuno da questa pagina"
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Prima Nota Cassa e Prima Nota Banca (fonte di cassa.entrate/uscite e banca.entrate/uscite)",
-    "Prima Nota Salari (fonte di salari.totale, già incluso nelle uscite banca per evitare doppio conteggio)",
-    "Corrispettivi (fonte di vat_debit/IVA a debito e corrispettivi.totale)",
-    "Fatture/Invoices (fonte di vat_credit/IVA a credito, fatture.totale, payables/fatture da pagare)",
-    "Controllo Mensile (usa le stesse collection prima_nota_cassa/banca e corrispettivi per un confronto più granulare mese per mese)",
-    "Calendario Fiscale (le scadenze di versamento IVA/F24 sono collegate concettualmente al saldo IVA mostrato qui)"
-  ],
-  "popup_e_modali_presenti": [
-    "Nessun modale o popup presente nella pagina"
-  ],
-  "note_calcolo_dettagliate": {
-    "filtro_periodo": "date_range = {$gte: 'ANNO-01-01', $lte: 'ANNO-12-31'} applicato sul campo stringa 'data' (formato YYYY-MM-DD)",
-    "filtro_esclusioni_prima_nota": "prima_nota_match = {status: {$nin: ['deleted','archived']}, categoria: {$nin: CATEGORIE_ESCLUSE}} dove CATEGORIE_ESCLUSE = ['POS_DUPLICATO', 'Corrispettivi POS'] (definite in prima_nota_module/common.py); applicato sia a prima_nota_cassa che prima_nota_banca per evitare di sommare movimenti storno/soft-delete o duplicati POS già identificati",
-    "cassa_entrate_uscite": "aggregazione $group su collection 'prima_nota_cassa' per campo 'tipo': cassa_entrate = Σ importo WHERE tipo='entrata', cassa_uscite = Σ importo WHERE tipo='uscita' (entrambi filtrati su prima_nota_match + date_range)",
-    "banca_entrate_uscite": "stessa aggregazione su collection 'prima_nota_banca': banca_entrate = Σ importo WHERE tipo='entrata', banca_uscite = Σ importo WHERE tipo='uscita' (banca_uscite include già eventuali salari e versamenti F24 pagati da banca)",
-    "salari_totale": "aggregazione su collection 'prima_nota_salari' filtrata solo per date_range (nessun filtro status/categoria): salari_totale = Σ importo. Riportato solo a scopo informativo nella risposta ('nota': 'Già inclusi in uscite Banca'), NON sommato una seconda volta nei totali per evitare doppio conteggio",
-    "iva_debito_corrispettivi": "aggregazione su collection 'corrispettivi' filtrata solo per date_range: iva_debito = Σ totale_iva, totale_corrispettivi = Σ totale, corr_count = numero di documenti",
-    "iva_credito_fatture": "aggregazione su collection 'invoices' con match: (data_ricezione in date_range) OR (data_ricezione non esiste AND invoice_date in date_range), tipo_documento NOT IN ['TD04','TD08'] (esclude Note di Credito): iva_credito_lordo = Σ iva, tot_fatture = Σ total_amount, fatt_count = numero documenti. Separata aggregazione per Note di Credito (tipo_documento IN ['TD04','TD08']) con stesso filtro date: iva_note_credito = Σ iva. iva_credito_netta = iva_credito_lordo - iva_note_credito (stessa logica di iva_calcolo.py, come da commento nel codice)",
-    "fatture_da_pagare_payables": "aggregazione su 'invoices' filtrata per invoice_date in date_range e status NOT IN STATI_PAGATI (costante da app.models.stati): payables = Σ total_amount",
-    "totali_finali": {
-      "total_income": "cassa_entrate + banca_entrate (i salari non vengono sommati separatamente perché già dentro banca_uscite)",
-      "total_expenses": "cassa_uscite + banca_uscite",
-      "balance": "total_income - total_expenses",
-      "saldo_iva": "iva_debito - iva_credito_netta; se > 0 lo stato è 'Da versare', altrimenti 'A credito' (vat_status)",
-      "saldo_cassa": "cassa_entrate - cassa_uscite",
-      "saldo_banca": "banca_entrate - banca_uscite",
-      "saldo_totale": "saldo_cassa + saldo_banca",
-      "receivables": "hardcoded a 0 nel backend con commento 'Non gestiamo fatture attive per ora' — il campo 'Fatture da incassare' mostrato in UI è quindi SEMPRE zero, funzionalità non implementata"
-    },
-    "gestione_errori_backend": "L'intera logica è avvolta in un try/except: in caso di eccezione durante le aggregazioni, l'endpoint logga l'errore e ritorna comunque HTTP 200 con un oggetto parziale {anno, total_income:0, total_expenses:0, balance:0, error: <messaggio>} invece di sollevare un'eccezione HTTP, per non rompere il frontend"
-  }
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Finanziaria",
+  "route": "/contabilita/finanziaria",
+  "catalog_id": 22,
+  "modulo": "contabilita",
+  "accesso": "authenticated",
+  "stato_audit": "verified",
+  "scopo": "Mappa tecnica della schermata «Finanziaria». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/Finanziaria.jsx",
+    "entry": "frontend/src/pages/hub/ContabilitaHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/Finanziaria.jsx",
+      "frontend/src/pages/hub/ContabilitaHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/routers/finanziaria.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/finanziaria/summary"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
+  ]
 }

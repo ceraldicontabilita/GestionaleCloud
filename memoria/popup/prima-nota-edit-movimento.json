@@ -1,29 +1,39 @@
 {
-  "nome_popup": "EditMovimentoModal",
-  "file_sorgente": "frontend/src/pages/PrimaNota.jsx (componente separato definito in fondo al file, righe 2846-3130; viene montato all'interno del componente MovementsTable, righe 2054-2086)",
-  "pagine_da_cui_si_apre": ["Prima Nota (PrimaNota.jsx) — tabella movimenti, sia tab CASSA che tab BANCA"],
-  "come_si_apre": "Click sull'icona ✏️ nella colonna Azioni di una riga della tabella movimenti (riga 2704: onClick={() => setEditingMovimento(mov)}). Visibile solo se readOnly=false. Il modale viene renderizzato condizionalmente ({!readOnly && editingMovimento && <EditMovimentoModal .../>}) passando movimento=editingMovimento e tipo ('cassa' o 'banca', in base al tab in cui ci si trova).",
-  "scopo": "Permette di correggere manualmente i dati di un movimento di Prima Nota (Cassa o Banca) già registrato, es. per correggere un importo, una data o una descrizione sbagliata, senza doverlo eliminare e ricreare. Alla conferma, il modale passa automaticamente al movimento successivo (nella pagina corrente o in quella dopo) per velocizzare la correzione in serie di più righe.",
-  "dati_mostrati": "Il form è precompilato dai dati dell'oggetto movimento passato come prop: data, tipo (entrata/uscita), importo, descrizione, categoria, riferimento, note. Nessuna fetch aggiuntiva: i dati sono già in memoria dal caricamento della tabella (loadAllData()).",
-  "campi_e_bottoni": [
-    {"elemento": "Campo Data (input type=date, required)", "cosa_fa": "Aggiorna form.data.", "endpoint_chiamato": "nessuno finché non si invia il form", "validazioni": "Richiesto dal browser (attributo required)."},
-    {"elemento": "Select Tipo ('↑ DARE (Entrata)' / '↓ AVERE (Uscita)')", "cosa_fa": "Aggiorna form.tipo tra 'entrata' e 'uscita'.", "endpoint_chiamato": "nessuno", "validazioni": "nessuna, sempre uno dei due valori"},
-    {"elemento": "Campo Importo (€) (input type=number, step=0.01, required)", "cosa_fa": "Aggiorna form.importo.", "endpoint_chiamato": "nessuno", "validazioni": "Richiesto dal browser; controllato anche lato JS al submit (if (!form.importo || !form.descrizione) alert('Compila importo e descrizione'))."},
-    {"elemento": "Select Categoria", "cosa_fa": "Aggiorna form.categoria. Le opzioni cambiano in base a tipo: se tipo='cassa' → ['Corrispettivi','POS','Versamento','Pagamento fornitore','Incasso','Spese','Altro']; se tipo='banca' → ['Pagamento fornitore','Bonifico','Assegno','F24','Altro'].", "endpoint_chiamato": "nessuno", "validazioni": "opzionale (option vuota '-- Seleziona --' disponibile)"},
-    {"elemento": "Campo Descrizione (input text, required)", "cosa_fa": "Aggiorna form.descrizione.", "endpoint_chiamato": "nessuno", "validazioni": "Richiesto dal browser + controllo JS al submit."},
-    {"elemento": "Campo Riferimento (opzionale, input text)", "cosa_fa": "Aggiorna form.riferimento (es. numero fattura/documento).", "endpoint_chiamato": "nessuno", "validazioni": "nessuna"},
-    {"elemento": "Campo Note (opzionale, textarea)", "cosa_fa": "Aggiorna form.note.", "endpoint_chiamato": "nessuno", "validazioni": "nessuna"},
-    {"elemento": "Bottone 'Annulla' (type=button)", "cosa_fa": "onClick={onClose}: chiude il modale senza salvare nulla (setEditingMovimento(null) nel genitore).", "endpoint_chiamato": "nessuno", "validazioni": "n/d"},
-    {"elemento": "Bottone '💾 Salva Modifiche' (type=submit, label 'Salvataggio...' mentre saving=true)", "cosa_fa": "Submit del form → handleSubmit: valida importo e descrizione non vuoti, poi PUT sull'endpoint corretto in base a tipo.", "endpoint_chiamato": "PUT /api/prima-nota/cassa/{movimento.id} (se tipo='cassa') oppure PUT /api/prima-nota/banca/{movimento.id} (se tipo='banca')", "validazioni": "Blocca il submit con alert('Compila importo e descrizione') se importo o descrizione sono vuoti; disabilitato mentre saving=true."},
-    {"elemento": "Icona '✕' nell'header", "cosa_fa": "onClick={onClose}, stesso comportamento del bottone Annulla.", "endpoint_chiamato": "nessuno", "validazioni": "n/d"}
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "popup_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "popup": "EditMovimentoModal",
+  "scopo": "Mappa tecnica del popup «EditMovimentoModal». Il comportamento e le mutazioni reali devono essere verificati nei sorgenti correnti.",
+  "aperto_da": [
+    "Prima Nota (PrimaNota.jsx) — tabella movimenti, sia tab CASSA che tab BANCA"
   ],
-  "cosa_succede_alla_conferma": "Al submit, il body inviato è {data, tipo, importo: parseFloat(form.importo), descrizione, categoria, riferimento, note}. Il backend (update_prima_nota_cassa / update_prima_nota_banca) aggiorna solo i campi passati sul documento esistente più updated_at. Per la Banca, se l'id non è trovato in prima_nota_banca (perché il record mostrato in tabella arriva dall'estratto conto), il backend tenta un secondo update sulla collection estratto_conto_movimenti prima di restituire 404. In caso di successo, il frontend chiama onSave({...movimento, ...form, importo: parseFloat(form.importo)}) che nel genitore (handleEditMovimento) richiama semplicemente loadAllData() per ricaricare tutta la pagina (cassa, estratto conto, banca, provvisori). Subito dopo, il componente MovementsTable calcola automaticamente il movimento SUCCESSIVO nella pagina corrente (currentWithBalance) e riapre il modale su quello (setEditingMovimento(next)), per permettere una correzione veloce a catena; se non c'è un successivo nella pagina corrente ma esiste una pagina successiva, cambia pagina (setCurrentPage+1) e dopo un timeout di 100ms apre il primo movimento della nuova pagina; se è l'ultimo movimento in assoluto, il modale si chiude (setEditingMovimento(null)).",
-  "come_si_chiude": [
-    "Bottone 'Annulla'",
-    "Icona '✕' nell'header",
-    "Click sull'overlay scuro fuori dal riquadro bianco (onClick={onClose} sul div esterno, stopPropagation sul contenuto)",
-    "Submit riuscito: NON chiude direttamente il modale, ma lo riapre automaticamente sul movimento successivo (o lo chiude solo se non ci sono più movimenti da correggere)",
-    "Nessuna gestione esplicita del tasto Esc nel codice"
+  "file_verificati": [
+    "frontend/src/pages/PrimaNota.jsx"
   ],
-  "effetto_su_pagina_sottostante": "loadAllData() viene richiamata ad ogni salvataggio riuscito (tramite handleEditMovimento nel genitore), ricaricando in parallelo cassa, estratto conto, banca e provvisori: la tabella, i saldi e le card di riepilogo si aggiornano con i nuovi valori. Se il movimento modificato aveva un tipo diverso da quello originale (es. da entrata a uscita), il saldo progressivo della tabella cambia di conseguenza al prossimo calcolo lato client."
+  "endpoint_rilevati_nei_sorgenti": [
+    "/api/corrispettivi/view-by-filename",
+    "/api/corrispettivi/{param}/view",
+    "/api/nexi/stato",
+    "/api/prima-nota/provvisori",
+    "/api/prima-nota/provvisori/attendi-banca",
+    "/api/prima-nota/provvisori/conferma",
+    "/api/prima-nota/provvisori/conferma-divisione",
+    "/api/prima-nota/provvisori/conferma-multipla",
+    "/api/prima-nota/provvisori/da-decidere",
+    "/api/prima-nota/provvisori/segnala-dubbio",
+    "/api/prima-nota/saldo-iniziale",
+    "/api/prima-nota/sumup",
+    "/api/prima-nota/{param}",
+    "/api/prima-nota/{param}/{param}"
+  ],
+  "regole_ux": [
+    "Il popup deve avere chiusura visibile e non restare sovrapposto al documento.",
+    "Le azioni distruttive o definitive richiedono una conferma esplicita.",
+    "Le associazioni ambigue mostrano candidati e non vengono applicate automaticamente."
+  ]
 }

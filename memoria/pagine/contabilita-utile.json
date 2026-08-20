@@ -1,74 +1,43 @@
 {
-  "pagina": "Utile Obiettivo",
-  "url": "https://impresasemplice.online/contabilita/utile",
-  "file_sorgente_frontend": [
-    "/home/user/GestionaleCloud/frontend/src/pages/UtileObiettivo.jsx"
-  ],
-  "file_sorgente_backend": [
-    "/home/user/GestionaleCloud/app/routers/accounting/centri_costo.py"
-  ],
-  "scopo_generale": "Pagina di monitoraggio in tempo reale dell'obiettivo di utile (profitto) annuale dell'azienda. L'utente imposta un target di utile per l'anno selezionato (utile 'obiettivo') e un margine medio atteso; il sistema confronta questo target con l'utile reale calcolato dai dati contabili effettivi (ricavi da corrispettivi meno costi da fatture) e mostra una barra di avanzamento con percentuale di raggiungimento, il gap da colmare rispetto al target proporzionato ad oggi, e uno stato (in linea / attenzione / sotto obiettivo). E' pensata per un bar-pasticceria e serve a dare all'imprenditore una visione immediata se sta andando verso l'obiettivo di profitto fissato per l'anno, con calcolo dei giorni lavorativi trascorsi/rimanenti e proiezione di fine anno.",
-  "bottoni_azioni": [
-    {
-      "etichetta": "Salva Target (bottone 'Salva Target', icona Save, data-testid=save-target-btn)",
-      "cosa_fa_al_click": "Invia i valori inseriti nei campi 'Target Utile Annuale (€)' e 'Margine Atteso (%)' al backend per salvare/aggiornare il target dell'anno selezionato (anno preso dal contesto globale useAnnoGlobale). Al termine ricarica lo stato chiamando loadStatus().",
-      "endpoint_chiamato": "POST /api/centri-costo/utile-obiettivo",
-      "logica_backend": "Funzione set_utile_obiettivo in centri_costo.py. Richiede 'anno' nel body (altrimenti HTTPException 400 'Anno obbligatorio'). Costruisce un documento target = {anno, utile_target_annuo (default 50000), utile_target_mensile = utile_target_annuo/12, margine_medio_atteso (default 0.35), giorni_lavorativi_anno (default 300, non modificabile da UI), note, configurato: True, updated_at}. Esegue upsert su collezione 'utile_obiettivo' con filtro {anno: anno} (db['utile_obiettivo'].update_one({'anno': anno}, {'$set': target}, upsert=True)). Nota: il frontend non invia giorni_lavorativi_anno né note, quindi vengono sempre salvati i default (300 e stringa vuota) ad ogni salvataggio, anche se in precedenza erano stati impostati diversamente da altra via.",
-      "formula_matematica": "utile_target_mensile = utile_target_annuo / 12",
-      "aggiornamento_ui": "Dopo il salvataggio (successo o fallito, in blocco finally si azzera lo stato 'saving'), viene richiamata loadStatus() che rilegge GET /api/centri-costo/utile-obiettivo?anno= e aggiorna tutte le card (percentuale, target, ricavi, costi, utile attuale, gap).",
-      "casi_errore": "Se la POST fallisce, viene mostrato un alert() con testo 'Errore salvataggio: ' + messaggio di dettaglio restituito dal backend (err.response.data.detail) o err.message. Lato backend l'unico errore esplicito è 400 se manca il campo 'anno' (ma nel frontend anno è sempre passato dal context globale, quindi in pratica non si verifica dall'interfaccia)."
-    },
-    {
-      "etichetta": "Campo numerico 'Target Utile Annuale (€)' (input, data-testid=input-target-utile)",
-      "cosa_fa_al_click": "Non è un bottone ma un campo di input controllato: ad ogni digitazione aggiorna lo stato locale settings.target_utile (parseFloat, fallback 0). Il valore non viene inviato al server finché non si preme 'Salva Target'.",
-      "endpoint_chiamato": "n/a (nessuna chiamata di rete al cambio valore)",
-      "logica_backend": "n/a",
-      "formula_matematica": "n/a",
-      "aggiornamento_ui": "Aggiorna solo lo stato React locale settings.target_utile.",
-      "casi_errore": "Se il valore non è numerico, parseFloat restituisce NaN e viene sostituito con 0."
-    },
-    {
-      "etichetta": "Campo numerico 'Margine Atteso (%)' (input, data-testid=input-margine)",
-      "cosa_fa_al_click": "Campo controllato: il valore visualizzato è la percentuale (settings.margine_atteso * 100), e al cambio viene ricalcolato settings.margine_atteso dividendo per 100 (quindi memorizzato come frazione decimale, es. 15% -> 0.15).",
-      "endpoint_chiamato": "n/a (nessuna chiamata di rete al cambio valore)",
-      "logica_backend": "n/a",
-      "formula_matematica": "margine_atteso = valore_percentuale_inserito / 100",
-      "aggiornamento_ui": "Aggiorna solo lo stato React locale settings.margine_atteso.",
-      "casi_errore": "Se il valore non è numerico, fallback a 0."
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Caricamento stato obiettivo (loadStatus, eseguito automaticamente al mount e al cambio anno)",
-      "sequenza_esatta": "Al mount del componente e ogni volta che cambia 'anno' (contesto globale), viene chiamata GET /api/centri-costo/utile-obiettivo?anno=<anno>. Backend: 1) legge il documento target dalla collezione 'utile_obiettivo' filtrando per {anno}; se non esiste usa un default in memoria (utile_target_annuo=50000, margine_medio_atteso=0.35, giorni_lavorativi_anno=300, configurato=False) senza scriverlo nel DB. 2) Calcola ricavi_totali aggregando la collezione 'corrispettivi' (somma campo 'totale' per data compresa tra 1 gennaio e 31 dicembre dell'anno, filtro stringa su formato YYYY-MM-DD). 3) Calcola costi_totali aggregando la collezione 'invoices' (somma campo 'total_amount' per invoice_date nello stesso intervallo). 4) Calcola utile_corrente = ricavi_totali - costi_totali. 5) Calcola scostamento = utile_corrente - utile_target. 6) Calcola giorni_trascorsi nell'anno (oggi - 1 gennaio, +1 giorno; se l'anno richiesto è passato, forza 365). 7) Calcola giorni_lavorativi_trascorsi = giorni_trascorsi * (giorni_lavorativi_anno/365) troncato a intero. 8) Calcola giorni_rimanenti = giorni_lavorativi_anno - giorni_lavorativi_trascorsi. 9) Calcola utile_target_ad_oggi = (utile_target / giorni_lavorativi_anno) * giorni_lavorativi_trascorsi (target proporzionato linearmente ai giorni lavorativi già trascorsi). 10) Calcola scostamento_ad_oggi = utile_corrente - utile_target_ad_oggi. 11) Calcola utile_proiezione (fine anno) = (utile_corrente / giorni_trascorsi) * 365 se giorni_trascorsi>0, altrimenti 0 (proiezione lineare basata sul ritmo attuale). 12) Se scostamento<0 (sotto target annuale) calcola ricavi_necessari = |scostamento| / margine_medio_atteso e costi_da_tagliare = |scostamento|; altrimenti entrambi 0. Il frontend legge i campi risultanti e popola le card: ricavi_totali, costi_totali, utile_attuale (=utile_corrente), percentuale_raggiungimento (da analisi.percentuale_raggiungimento, clampata a >=0), gap_da_colmare (valore assoluto di analisi.scostamento_ad_oggi).",
-      "collezioni_coinvolte": ["utile_obiettivo (lettura target)", "corrispettivi (aggregazione ricavi)", "invoices (aggregazione costi)"],
-      "campi_scritti": {},
-      "effetti_collaterali": "Nessuna scrittura sul database: è un endpoint di sola lettura/calcolo. Se il target per l'anno non esiste, NON viene creato automaticamente (a differenza di altri moduli come i centri di costo); resta 'configurato: False' finché l'utente non salva esplicitamente col bottone Salva Target."
-    },
-    {
-      "nome": "Salvataggio target utile (saveTarget -> POST utile-obiettivo)",
-      "sequenza_esatta": "Vedi bottone 'Salva Target' sopra: upsert sulla collezione utile_obiettivo con filtro {anno}, poi ricarica lo stato con una nuova GET.",
-      "collezioni_coinvolte": ["utile_obiettivo"],
-      "campi_scritti": {
-        "anno": "int - anno di riferimento del target",
-        "utile_target_annuo": "float - target di utile annuo in euro, inserito dall'utente (default 50000 se assente)",
-        "utile_target_mensile": "float calcolato = utile_target_annuo / 12",
-        "margine_medio_atteso": "float - frazione decimale (es 0.15 = 15%), usata per calcolare i ricavi aggiuntivi necessari a colmare il gap",
-        "giorni_lavorativi_anno": "int - default 300, non esposto/modificabile dal form del frontend (rimane sempre 300 salvo modifica diretta via API)",
-        "note": "stringa - default vuota, non esposta nel form frontend",
-        "configurato": "bool - impostato a True ad ogni salvataggio",
-        "updated_at": "stringa ISO datetime UTC"
-      },
-      "effetti_collaterali": "Nessun effetto su altre collezioni. Il salvataggio non ricalcola ricavi/costi (quelli sono sempre derivati live da corrispettivi/invoices alla successiva GET)."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Contabilità Analitica / Centri di Costo (stesso router centri_costo.py, endpoint /api/centri-costo, /api/centri-costo/utile-obiettivo/per-cdc, /api/centri-costo/ribaltamento/*): la sezione 'Distribuzione per Centro di Costo' della pagina UtileObiettivo.jsx è predisposta nel codice (status.per_centro_costo) ma nel frontend attuale viene sempre impostata a oggetto vuoto {} in loadStatus, quindi la sezione non viene mai renderizzata: il collegamento dati con i centri di costo esiste lato backend (endpoint /utile-obiettivo/per-cdc e /ribaltamento/calcola calcolano margini per CDC-01/CDC-02) ma non è ancora integrato in questa pagina.",
-    "Corrispettivi (i ricavi utilizzati nel calcolo utile provengono dalla collezione 'corrispettivi', quindi dipende dalla pagina/modulo di registrazione corrispettivi giornalieri).",
-    "Fatture Fornitori / Invoices (i costi provengono dalla collezione 'invoices', quindi dipende dal modulo fatture passive e dall'assegnazione del centro di costo tramite /api/centri-costo/assegna-cdc-fatture).",
-    "Contesto Anno Globale (useAnnoGlobale) condiviso con le altre pagine di Contabilità, incluso Previsioni Acquisti."
-  ],
-  "popup_e_modali_presenti": [
-    "Nessun modale/popup dedicato nel file JSX. L'unica interazione di tipo 'popup' è l'alert() nativo del browser mostrato in caso di errore nel salvataggio del target (vedi bottone Salva Target)."
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Utile obiettivo",
+  "route": "/contabilita/utile",
+  "catalog_id": 27,
+  "modulo": "contabilita",
+  "accesso": "authenticated",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Utile obiettivo». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/UtileObiettivo.jsx",
+    "entry": "frontend/src/pages/hub/ContabilitaHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/UtileObiettivo.jsx",
+      "frontend/src/pages/hub/ContabilitaHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/routers/accounting/centri_costo.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/centri-costo/utile-obiettivo"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

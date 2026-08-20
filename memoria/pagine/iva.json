@@ -1,0 +1,52 @@
+{
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Gestione IVA",
+  "route": "/iva",
+  "catalog_id": 60,
+  "modulo": "contabilita",
+  "accesso": "authenticated",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Gestione IVA». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/GestioneIVA.jsx",
+    "entry": "frontend/src/main.jsx",
+    "file_verificati": [
+      "frontend/src/main.jsx",
+      "frontend/src/pages/GestioneIVA.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/corrispettivi",
+      "/api/iva/anomalie",
+      "/api/iva/dashboard/{param}/{param}",
+      "/api/iva/fatture",
+      "/api/iva/liquidazioni/calcola",
+      "/api/iva/liquidazioni/{param}",
+      "/api/iva/liquidazioni/{param}/conferma",
+      "/api/iva/liquidazioni/{param}/riapri",
+      "/api/iva/ricalcola-attribuzione{param}",
+      "/api/iva/riepilogo-annuale/{param}",
+      "/api/scadenze/iva-mensile/{param}",
+      "/api/verifica-coerenza/confronto-iva-completo/{param}"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
+  ]
+}

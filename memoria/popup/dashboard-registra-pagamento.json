@@ -1,63 +1,32 @@
 {
-  "nome_popup": "Modale 'Registra Pagamento' (interno al widget Scadenze)",
-  "file_sorgente": "frontend/src/pages/Dashboard.jsx (componente ScadenzeWidget, righe 1896-2416 circa; il modale vero e proprio è renderizzato alle righe 2242-2413, montato SOLO quando pagaModal è valorizzato)",
-  "pagine_da_cui_si_apre": ["Dashboard (route '/', '/dashboard', '/dashboard/:anno', '/analytics'), sezione widget 'Scadenze in Arrivo'"],
-  "come_si_apre": "Click sul pulsante verde con icona ✓ ('Paga') presente su ogni riga della tabella scadenze del widget ScadenzeWidget. Il click chiama setPagaModal(s), dove s è l'intero oggetto scadenza (tipo, fornitore, importo, data, fattura_id, numero_fattura, ecc.). Non è un componente separato ma un blocco JSX condizionale ({pagaModal && (...)})): appare come vero overlay con position:'fixed', inset:0, sfondo rgba(0,0,0,0.5) e zIndex:1000, con il riquadro bianco centrato (flex align/justify center) sopra di esso.",
-  "scopo": "Permettere di saldare rapidamente, senza uscire dalla Dashboard, una scadenza imminente (fattura fornitore, IVA, F24, INPS) scegliendo se il pagamento è avvenuto in contanti/Cassa (saldato subito) o tramite Banca (da riconciliare in seguito con l'estratto conto). È pensato come scorciatoia operativa dal cruscotto principale, evitando di dover navigare fino alla pagina Scadenze o Fatture per registrare un pagamento urgente.",
-  "dati_mostrati": "Titolo 'Registra Pagamento'. Riepilogo in un box grigio chiaro: Tipo (pagaModal.tipo + numero_fattura se presente), Fornitore (se pagaModal.fornitore è valorizzato), Scadenza (data formattata gg/mmm), Importo (formatEuro, in rosso e grassetto). Sotto, un testo esplicativo 'Scegli il metodo di pagamento. Il movimento verrà registrato in Prima Nota.' e una nota informativa finale che spiega la differenza tra CASSA (saldata immediatamente) e BANCA (riconciliata quando arriva il movimento nell'estratto conto). Nessuna chiamata di rete all'apertura: tutti i dati provengono dall'oggetto scadenza già in memoria (caricato in precedenza dal widget principale).",
-  "bottoni_azioni": [
-    {
-      "etichetta": "💵 CASSA (pagato subito)",
-      "cosa_fa_al_click": "Chiama handlePaga(pagaModal, 'cassa'): setProcessing(true), poi POST con body {fattura_id, scadenza_id, importo: Math.abs(scadenza.importo), metodo:'cassa', data_pagamento: oggi ISO, fornitore, numero_fattura}. Il bottone è disabilitato (sfondo grigio, cursor not-allowed) mentre processing=true.",
-      "endpoint_chiamato": "POST /api/fatture-ricevute/paga-manuale",
-      "logica_backend": "paga_fattura_manuale (app/routers/fatture_module/pagamento.py): valida fattura_id presente e importo>0 (400 altrimenti), valida metodo in ['cassa','banca'] (400 altrimenti). Imposta auto_riconciliato=False SEMPRE, anche per banca (la riconciliazione bancaria resta un processo separato legato all'import dell'estratto conto). Sceglie la collection prima_nota_cassa; verifica deduplicazione cercando un movimento già esistente con lo stesso fattura_id (in tal caso non ne crea uno nuovo, riusa l'id esistente); altrimenti inserisce un nuovo documento con id uuid4, descrizione 'Pagamento Fatt. {numero} - {fornitore}', tipo='uscita', categoria='fornitori', stato='confermato', provvisorio=False, riconciliato=False, source='pagamento_manuale'. Se scadenza_id è presente aggiorna lo scadenzario: stato='pagato', pagato=True, data_pagamento, metodo_effettivo, movimento_id. Aggiorna infine sia indice_documenti che invoices con status='paid', pagato=True, stato_pagamento='pagata', riconciliato=False, metodo_pagamento_effettivo/metodo_pagamento='cassa', prima_nota_cassa_id=movimento_id, prima_nota_banca_id=None. Pubblica infine (best-effort) un evento fattura pagata sull'event bus.",
-      "formula_matematica": "N/A (registrazione contabile diretta, nessun calcolo); importo registrato = valore assoluto di scadenza.importo.",
-      "validazioni": "Lato client nessuna validazione esplicita prima della chiamata (il pulsante è sempre cliccabile se non processing). Lato server: 400 se fattura_id assente o importo<=0; 400 se metodo non è 'cassa'/'banca'.",
-      "casi_errore": "Se la POST fallisce (eccezione/errore HTTP), il catch di handlePaga mostra alert('Errore pagamento: ' + (e.response?.data?.detail || e.message)); il modale resta aperto e processing torna a false così l'utente può riprovare."
-    },
-    {
-      "etichetta": "🏦 BANCA (da riconciliare)",
-      "cosa_fa_al_click": "Identico al bottone CASSA ma chiama handlePaga(pagaModal, 'banca'): stesso payload con metodo:'banca'.",
-      "endpoint_chiamato": "POST /api/fatture-ricevute/paga-manuale",
-      "logica_backend": "Stessa funzione paga_fattura_manuale, ma con collection='prima_nota_banca' e conseguente prima_nota_banca_id/prima_nota_cassa_id=None sull'update di indice_documenti/invoices. riconciliato resta False anche in questo ramo: il pagamento in banca NON marca automaticamente la fattura come riconciliata, che è un passo separato legato all'import dell'estratto conto reale.",
-      "formula_matematica": "N/A",
-      "validazioni": "Le stesse del ramo Cassa.",
-      "casi_errore": "Le stesse del ramo Cassa."
-    },
-    {
-      "etichetta": "✕ (chiudi, pulsante nell'header)",
-      "cosa_fa_al_click": "Chiude il modale senza inviare nulla: setPagaModal(null).",
-      "endpoint_chiamato": "nessuno",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "validazioni": "n/a",
-      "casi_errore": "n/a"
-    },
-    {
-      "etichetta": "Annulla (bottone a piena larghezza in fondo al modale)",
-      "cosa_fa_al_click": "Identico al pulsante '✕': setPagaModal(null).",
-      "endpoint_chiamato": "nessuno",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "validazioni": "n/a",
-      "casi_errore": "n/a"
-    },
-    {
-      "etichetta": "Click sull'overlay scuro di sfondo",
-      "cosa_fa_al_click": "onClick sul div esterno chiama setPagaModal(null); il riquadro bianco interno usa stopPropagation per non chiudere il modale quando si clicca al suo interno.",
-      "endpoint_chiamato": "nessuno",
-      "logica_backend": "N/A",
-      "formula_matematica": "N/A",
-      "validazioni": "n/a",
-      "casi_errore": "n/a"
-    }
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "popup_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "popup": "Modale 'Registra Pagamento' (interno al widget Scadenze)",
+  "scopo": "Mappa tecnica del popup «Modale 'Registra Pagamento' (interno al widget Scadenze)». Il comportamento e le mutazioni reali devono essere verificati nei sorgenti correnti.",
+  "aperto_da": [
+    "Dashboard (route '/', '/dashboard', '/dashboard/:anno', '/analytics'), sezione widget 'Scadenze in Arrivo'"
   ],
-  "come_si_chiude": [
-    "Pulsante '✕' nell'header",
-    "Bottone 'Annulla' in fondo al modale",
-    "Click sull'overlay scuro esterno al riquadro",
-    "Automaticamente al termine di un pagamento riuscito (setPagaModal(null) dentro handlePaga dopo la risposta 200 della POST)",
-    "In caso di errore di rete il modale NON si chiude: viene mostrato alert('Errore pagamento: ...') e l'utente può correggere/riprovare (nessuna gestione esplicita del tasto ESC nel codice)"
+  "file_verificati": [
+    "frontend/src/pages/Dashboard.jsx"
   ],
-  "effetti_su_pagina_sottostante": "Dopo un pagamento riuscito, la scadenza viene rimossa OTTIMISTICAMENTE dalla tabella del widget aggiungendo il suo id all'insieme locale paidIds (setPaidIds), SENZA rifare la fetch delle scadenze dal server: la riga scompare istantaneamente dalla vista, ma i contatori/KPI generali della Dashboard (se dipendono da altri endpoint) non vengono ricalcolati in automatico. Se la scadenza pagata era l'ultima urgente, anche l'evidenziazione rossa del bordo del widget (urgenti.length>0) sparisce al successivo render. Se scadenza_id era assente, lo scadenzario non viene toccato ma la fattura in invoices/indice_documenti risulta comunque marcata come pagata."
+  "endpoint_rilevati_nei_sorgenti": [
+    "/api/controllo-gestione/costi-ricavi",
+    "/api/dashboard/fascia-energia",
+    "/api/dashboard/trend-mensile",
+    "/api/prima-nota/stats",
+    "/api/scadenze",
+    "/api/verifica-coerenza/confronto-iva-completo/{param}",
+    "/api/verifica-coerenza/iva/{param}/{param}"
+  ],
+  "regole_ux": [
+    "Il popup deve avere chiusura visibile e non restare sovrapposto al documento.",
+    "Le azioni distruttive o definitive richiedono una conferma esplicita.",
+    "Le associazioni ambigue mostrano candidati e non vengono applicate automaticamente."
+  ]
 }

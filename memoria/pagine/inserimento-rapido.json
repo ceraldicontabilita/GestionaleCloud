@@ -1,120 +1,56 @@
 {
-  "pagina": "Inserimento Rapido",
-  "url": "https://impresasemplice.online/rapido",
-  "file_sorgente_frontend": [
-    "frontend/src/pages/InserimentoRapido.jsx (1031 righe: componente unico con 7 form specializzati — corrispettivi, POS serale, versamenti banca, apporto soci, fatture da pagare, acconti dipendenti, presenze — pensato esplicitamente per uso da mobile, con stili inline dedicati (non usa lib/utils STYLES) per input grandi e touch-friendly)"
-  ],
-  "file_sorgente_backend": [
-    "app/routers/rapido.py (montato su /api/rapido: dipendenti-attivi, ultimi-inserimenti, corrispettivo, versamento-banca, apporto-soci, paga-fattura, acconto-dipendente, presenza)",
-    "app/routers/bank/pos_corrispettivi_check.py (probabile sorgente di PUT /api/pos-corrispettivi/chiusura-giornaliera, endpoint chiamato dal form POS Serale ma non letto in dettaglio in questa analisi mirata su app/routers/rapido.py)",
-    "app/routers/employees/dipendenti.py (fallback GET /api/dipendenti se /api/rapido/dipendenti-attivi fallisce)",
-    "collezioni lette per il form Fatture: invoices (via GET /api/invoices) con fallback a /api/fatture-ricevute/archivio"
-  ],
-  "scopo_generale": "È una console di inserimento veloce pensata per operare da smartphone durante la giornata (subtitle: 'Gestione veloce da mobile'), pensata per ridurre al minimo i click: un menu a card (7 categorie) apre un form specifico e semplificato con data precompilata (oggi, o 1° gennaio se si sta lavorando su un anno diverso da quello corrente tramite AnnoContext), importo e poche note opzionali. Sotto al menu principale mostra sempre gli 'Ultimi Inserimenti' (ultimi 5) fatti tramite QUESTA pagina, per dare un feedback immediato e permettere controlli rapidi senza dover navigare altrove.",
-  "bottoni_azioni": [
-    {
-      "etichetta": "Card 'Corrispettivi' → Salva Corrispettivo",
-      "cosa_fa_al_click": "handleSaveCorrispettivo(): valida client-side che importo sia >0 (altrimenti showMessage errore), poi POST.",
-      "endpoint_chiamato": "POST /api/rapido/corrispettivo",
-      "logica_backend": "rapido_corrispettivo (rapido.py): valida importo>0 (400 altrimenti), inserisce in prima_nota_cassa un movimento con tipo='entrata', categoria='Corrispettivi', source='rapido_corrispettivo'.",
-      "formula_matematica": "N/A (scrittura diretta dell'importo inserito)",
-      "aggiornamento_ui": "showMessage('Corrispettivo salvato!'), resetForm(), e dopo 500ms viene ricaricata la lista 'Ultimi Inserimenti'.",
-      "casi_errore": "catch → showMessage(err.response?.data?.detail || 'Errore salvataggio', 'error') mostrato per 3 secondi in un banner rosso."
-    },
-    {
-      "etichetta": "Card 'POS Serale' → Salva Incasso POS",
-      "cosa_fa_al_click": "handleSavePos(): valida che l'importo sia definito e >=0 (accetta esplicitamente anche 0, per registrare 'nessun incasso POS oggi'), poi PUT.",
-      "endpoint_chiamato": "PUT /api/pos-corrispettivi/chiusura-giornaliera",
-      "logica_backend": "Non presente in app/routers/rapido.py; router non identificato con certezza in questa analisi (nome plausibile: pos_corrispettivi_check.py). Semanticamente registra la chiusura fisica del POS della sera, usata poi dal modulo Coerenza POS Corrispettivi per confrontarla con l'importo POS letto dall'XML dei corrispettivi.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "showMessage('Incasso POS serale salvato!'), resetForm().",
-      "casi_errore": "catch → showMessage(err.response?.data?.detail || 'Errore salvataggio', 'error')."
-    },
-    {
-      "etichetta": "Card 'Versamenti Banca' → Salva Versamento",
-      "cosa_fa_al_click": "handleSaveVersamento(): valida importo>0, poi POST.",
-      "endpoint_chiamato": "POST /api/rapido/versamento-banca",
-      "logica_backend": "rapido_versamento (rapido.py): valida importo>0, inserisce in prima_nota_cassa un movimento con tipo='uscita' (la cassa si svuota del contante versato), categoria='Versamento', source='rapido_versamento'. NOTA: nonostante il payload dal frontend includa conto_dare='BANCA'/conto_avere='CASSA', il backend attuale li IGNORA — scrive solo su prima_nota_cassa, non genera alcun movimento corrispondente in prima_nota_banca.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "showMessage('Versamento salvato!'), resetForm().",
-      "casi_errore": "catch → showMessage(errore)."
-    },
-    {
-      "etichetta": "Card 'Apporto Soci' → Salva Apporto",
-      "cosa_fa_al_click": "handleSaveApporto(): valida importo>0; l'utente sceglie anche una 'Destinazione' (Cassa o Banca) tramite due bottoni toggle, poi POST.",
-      "endpoint_chiamato": "POST /api/rapido/apporto-soci",
-      "logica_backend": "rapido_apporto (rapido.py): valida importo>0, inserisce SEMPRE in prima_nota_cassa (indipendentemente dalla destinazione scelta nel form) un movimento con tipo='entrata', categoria='Finanziamento soci', source='rapido_apporto_soci'. NOTA: il campo 'destinazione' scelto dall'utente (cassa/banca) e i campi conto_dare/conto_avere inviati dal frontend vengono ignorati dal backend — la scelta 'Banca' nel form NON produce alcuna scrittura su prima_nota_banca.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "showMessage('Apporto salvato!'), resetForm().",
-      "casi_errore": "catch → showMessage(errore)."
-    },
-    {
-      "etichetta": "Card 'Fatture Ricevute' → bottoni Cassa/Banca su ogni riga",
-      "cosa_fa_al_click": "handlePagaFattura(fattura, metodo): la lista mostrata proviene da GET /api/invoices?limit=100&anno={anno} filtrata client-side per fatture SENZA metodo_pagamento assegnato (metodo_pagamento vuoto/null/'None'/'null'), con fallback a GET /api/fatture-ricevute/archivio se la prima chiamata fallisce.",
-      "endpoint_chiamato": "POST /api/rapido/paga-fattura?invoice_id={id}&metodo_pagamento={metodo}&importo={importo}",
-      "logica_backend": "rapido_paga_fattura (rapido.py): trova la fattura in invoices (404 se assente), calcola l'importo dal parametro o, se assente, da total_amount/importo_totale della fattura. Sceglie la collection target (prima_nota_cassa se metodo='cassa', altrimenti prima_nota_banca) e verifica anti-duplicato (find_one per fattura_id già presente → ritorna 'Già pagata' senza reinserire). Inserisce il movimento (tipo='uscita', categoria='fornitori', source='rapido_paga_fattura'), poi aggiorna invoices con pagato=True, stato_pagamento='pagata'. Infine pubblica un evento EventTypes.FATTURA_PAGATA sull'event bus (app.services.event_bus.propagate_event), in try/except silenzioso, per notificare altri moduli (es. scadenzario/riconciliazione) del pagamento.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "showMessage('Fattura pagata in {metodo}!'); la fattura viene rimossa OTTIMISTICAMENTE dalla lista locale (setFatture filtrando l'id) senza refetch.",
-      "casi_errore": "catch → showMessage(err.response?.data?.detail || 'Errore', 'error')."
-    },
-    {
-      "etichetta": "Card 'Acconti Dipendenti' → Salva Acconto",
-      "cosa_fa_al_click": "handleSaveAcconto(): valida che dipendente_id e importo siano presenti, poi POST. Il dropdown dipendenti è popolato da GET /api/rapido/dipendenti-attivi (con fallback a GET /api/dipendenti filtrato client-side per in_carico!==false).",
-      "endpoint_chiamato": "POST /api/rapido/acconto-dipendente",
-      "logica_backend": "rapido_acconto (rapido.py): valida importo>0 e dipendente_id presenti, inserisce in prima_nota_cassa un movimento tipo='uscita', categoria='Acconti dipendenti', con dipendente_id collegato, source='rapido_acconto'. NOTA: il campo 'nome' usato nella descrizione ('Acconto a dipendente {nome}') non viene mai popolato dal frontend nel payload, quindi la descrizione risulterà sempre 'Acconto a dipendente ' (vuoto).",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "showMessage('Acconto salvato!'), resetForm().",
-      "casi_errore": "catch → showMessage(err.response?.data?.detail || 'Errore', 'error')."
-    },
-    {
-      "etichetta": "Card 'Presenze' → Salva Presenza",
-      "cosa_fa_al_click": "handleSavePresenza(): valida dipendente_id e tipo_presenza (4 opzioni: Presente/Ferie/Malattia/Permesso, con campo Ore lavorate visibile solo se tipo='PRESENTE'), poi POST.",
-      "endpoint_chiamato": "POST /api/rapido/presenza",
-      "logica_backend": "rapido_presenza (rapido.py): valida dipendente_id presente, inserisce in presenze_giornaliere un documento con tipo, ore (default 8 se non passato — anche se il payload frontend passa null quando tipo non è PRESENTE, quindi in quel caso ore diventa float(payload.get('ore', 8)) = float(None) che genererebbe un TypeError gestito solo se il backend fa il fallback correttamente; punto da verificare in produzione), note, source='rapido'.",
-      "formula_matematica": "N/A",
-      "aggiornamento_ui": "showMessage('Presenza salvata!'), resetForm().",
-      "casi_errore": "catch → showMessage(err.response?.data?.detail || 'Errore', 'error')."
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Pagamento rapido fattura fornitore (dalla card Fatture Ricevute)",
-      "sequenza_esatta": "1) Utente apre la card 'Fatture Ricevute' → viene caricata la lista delle fatture in invoices dell'anno corrente SENZA metodo_pagamento (le uniche mostrate in questa vista). 2) Sceglie Cassa o Banca sulla riga della fattura desiderata. 3) POST /api/rapido/paga-fattura con invoice_id/metodo_pagamento/importo come query params. 4) Il backend verifica assenza duplicati, inserisce un movimento nella collezione target, marca la fattura come pagata, propaga un evento fattura.pagata sull'event bus. 5) La riga sparisce immediatamente dalla lista locale.",
-      "collezioni_coinvolte": ["invoices", "prima_nota_cassa oppure prima_nota_banca"],
-      "campi_scritti": {
-        "prima_nota_cassa/banca": "id, data=oggi, tipo='uscita', importo, descrizione='Pagamento fattura {numero}', categoria='fornitori', fattura_id, source='rapido_paga_fattura', created_at",
-        "invoices": "pagato=True, stato_pagamento='pagata'"
-      },
-      "effetti_collaterali": "Propagazione evento EventTypes.FATTURA_PAGATA sull'event bus (best-effort, non blocca la risposta se fallisce) — presumibilmente ascoltato da altri moduli (riconciliazione, scadenzario, learning machine) per aggiornarsi a cascata."
-    },
-    {
-      "nome": "Registrazione corrispettivo / versamento / apporto soci / acconto dipendente (pattern comune)",
-      "sequenza_esatta": "1) Utente apre la card corrispondente. 2) Compila data (precompilata) e importo (obbligatorio, >0). 3) Click sul bottone Salva. 4) Il frontend fa una POST diretta al relativo endpoint /api/rapido/*. 5) Il backend valida e inserisce SEMPRE e SOLO in prima_nota_cassa (mai in prima_nota_banca, anche quando il form suggerisce visivamente una scelta 'banca', come per Apporto Soci) un documento con id uuid4, tipo entrata/uscita a seconda del caso, categoria dedicata, source che identifica l'origine 'rapido_*', created_at. 6) resetForm() svuota i campi e dopo 500ms viene ricaricata la lista Ultimi Inserimenti.",
-      "collezioni_coinvolte": ["prima_nota_cassa"],
-      "campi_scritti": {
-        "prima_nota_cassa": "id, data, tipo (entrata per corrispettivo/apporto, uscita per versamento/acconto), importo, descrizione, categoria (Corrispettivi / Versamento / Finanziamento soci / Acconti dipendenti), source, created_at, (per acconto: dipendente_id)"
-      },
-      "effetti_collaterali": "Nessuna propagazione di eventi per queste 4 operazioni (a differenza del pagamento fattura). Il widget 'Ultimi Inserimenti' della stessa pagina legge da prima_nota_cassa filtrando source con regex 'rapido', quindi mostra insieme corrispettivi/versamenti/apporti/acconti (ma NON le presenze, che sono su una collezione diversa, presenze_giornaliere, esclusa da quella query)."
-    },
-    {
-      "nome": "Registrazione presenza/assenza dipendente",
-      "sequenza_esatta": "1) Apre card 'Presenze'. 2) Seleziona dipendente dal dropdown, data, tipo (Presente/Ferie/Malattia/Permesso) e, se Presente, le ore lavorate. 3) POST /api/rapido/presenza. 4) Il backend inserisce il documento in presenze_giornaliere.",
-      "collezioni_coinvolte": ["presenze_giornaliere"],
-      "campi_scritti": {
-        "presenze_giornaliere": "id, dipendente_id, data, tipo, ore (default 8), note, source='rapido', created_at"
-      },
-      "effetti_collaterali": "Nessuna propagazione visibile in questo file; presumibilmente letta poi dal modulo Dipendenti/Paghe per il calcolo del cedolino mensile (collegamento descritto nella pagina Mappa Gestionale, sezione DIPENDENTI → Cedolini/Paghe)."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Nessun <Link> di navigazione esplicito presente nel codice: la pagina è un 'vicolo cieco' operativo — non ha bottoni per saltare ad altre pagine, si torna al menu principale tramite il pulsante 'Torna al menu' (che è interno, non un link ad altra route) o tramite il menu di navigazione globale dell'app."
-  ],
-  "popup_e_modali_presenti": [
-    "Nessun modale: ogni card apre un form a schermo intero all'interno della stessa pagina (activeSection sostituisce il contenuto, non è un overlay)."
-  ],
-  "note_tecniche": [
-    "BUG POTENZIALE individuato nel codice: sia rapido_versamento sia rapido_apporto scrivono sempre e solo su prima_nota_cassa, ignorando i campi conto_dare/conto_avere/destinazione inviati dal frontend — quindi un 'Versamento in Banca' o un 'Apporto Soci' con destinazione Banca NON producono alcun movimento su prima_nota_banca, solo un'uscita/entrata di cassa.",
-    "BUG POTENZIALE: in rapido_acconto la descrizione del movimento usa payload.get('nome', '') ma il frontend non invia mai il campo 'nome' nel payload — la descrizione risulterà sempre 'Acconto a dipendente ' senza il nome effettivo.",
-    "Sia dipendenti-attivi che ultimi-inserimenti hanno un commento esplicito nel codice backend che documenta un bug storico già corretto: gli endpoint restituivano una lista nuda invece dell'oggetto {dipendenti:[...]} / {inserimenti:[...]} atteso dal frontend, causando dropdown e liste sempre vuoti senza errori visibili."
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Inserimento rapido",
+  "route": "/rapido",
+  "catalog_id": 4,
+  "modulo": "dashboard",
+  "accesso": "authenticated",
+  "stato_audit": "unverified",
+  "scopo": "Mappa tecnica della schermata «Inserimento rapido». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/InserimentoRapido.jsx",
+    "entry": "frontend/src/main.jsx",
+    "file_verificati": [
+      "frontend/src/main.jsx",
+      "frontend/src/pages/InserimentoRapido.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/routers/employees/dipendenti.py",
+      "app/routers/pos_corrispettivi_check.py",
+      "app/routers/rapido.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/dipendenti",
+      "/api/fatture-ricevute/archivio",
+      "/api/invoices",
+      "/api/pos-corrispettivi/chiusura-giornaliera",
+      "/api/rapido/acconto-dipendente",
+      "/api/rapido/apporto-soci",
+      "/api/rapido/corrispettivo",
+      "/api/rapido/dipendenti-attivi",
+      "/api/rapido/paga-fattura",
+      "/api/rapido/presenza",
+      "/api/rapido/ultimi-inserimenti",
+      "/api/rapido/versamento-banca"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

@@ -1,20 +1,35 @@
 {
-  "nome_popup": "Modal 'Fatture Non Associate'",
-  "pagine_da_cui_si_apre": ["Noleggio > Flotta Auto (tab 'flotta', NoleggioAuto.jsx)"],
-  "come_si_apre": "Click sul pulsante '👁️ Visualizza' dentro il badge giallo '⚠️ N fatture non associate' (visibile in header solo se fattureNonAssociate > 0). Il click imposta subito modalFattureNonAssociate={open:true, loading:true, fatture:[], errore:''} e lancia la chiamata GET; al termine aggiorna lo stato con i risultati o l'errore. Commento nel codice: sostituisce un vecchio alert() nativo giudicato 'illeggibile, senza scroll utile, testo non selezionabile'.",
-  "scopo": "Mostrare l'elenco delle fatture di noleggio che il sistema non è riuscito ad agganciare con certezza a nessuna targa/veicolo, per permettere all'utente di risolverle manualmente (di solito creando il veicolo mancante o aggiungendo il numero contratto sul veicolo esistente).",
-  "dati_mostrati": "Titolo con conteggio 'Fatture Non Associate ({N})'. Testo esplicativo: 'Il sistema non è riuscito a estrarre la targa da queste fatture: vanno associate manualmente a un veicolo (bottone \"➕ Aggiungi Veicolo\")'. Durante il caricamento: 'Caricamento...'. Se errore: banner rosso 'Errore: {dettaglio}'. Se lista vuota (e non loading/errore): '✅ Nessuna fattura non associata'. Altrimenti, per ciascuna fattura: fornitore, numero, data ('{fornitore} — Fatt. {numero} del {data}'), importo formattato euro, descrizione se presente, e se presenti contratto e/o codice_cliente una riga con quei dati.",
-  "campi_e_bottoni": [
-    {"elemento": "Pulsante '✕' (header) / click sull'overlay scuro", "cosa_fa": "Chiude il modal: setModalFattureNonAssociate(m => ({...m, open:false}))", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
-    {"elemento": "Link '📄 Vedi' su ciascuna fattura (visibile solo se f.id presente)", "cosa_fa": "Apre in una nuova scheda la visualizzazione della fattura originale (link <a target=_blank>, con stopPropagation per non chiudere il modal)", "endpoint_chiamato": "GET /api/fatture-ricevute/fattura/{id}/view-assoinvoice", "validazioni": "n/a"},
-    {"elemento": "Pulsante '➕ Associa' su ciascuna fattura", "cosa_fa": "Precompila nuovoVeicolo.fornitore_piva con il piva della fattura (f.piva), chiude questo modal (open:false) e apre il modal 'Aggiungi Veicolo' (setShowAddVeicolo(true))", "endpoint_chiamato": "nessuno (nessuna chiamata diretta; l'eventuale POST avviene poi nel modal Aggiungi Veicolo)", "validazioni": "n/a"}
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "popup_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "popup": "Modal 'Fatture Non Associate'",
+  "scopo": "Mappa tecnica del popup «Modal 'Fatture Non Associate'». Il comportamento e le mutazioni reali devono essere verificati nei sorgenti correnti.",
+  "aperto_da": [
+    "Noleggio > Flotta Auto (tab 'flotta', NoleggioAuto.jsx)"
   ],
-  "endpoint_apertura": "GET /api/noleggio/fatture-non-associate?anno={annoFiltro} (con anno omesso se annoFiltro è null/vuoto, per considerare tutti gli anni). Logica backend (get_fatture_non_associate): richiama scan_fatture_noleggio(anno) per ottenere fatture_senza_targa, poi per ciascuna verifica con scegli_veicolo_per_fattura() se l'associazione al fornitore sarebbe 'certa' (certo=True): se sì la fattura viene esclusa dall'elenco perché già risolta automaticamente. Restano solo le fatture di fornitori senza alcun veicolo salvato in DB, o con più veicoli e nessun contratto combaciante (scelta ambigua).",
-  "cosa_succede_alla_conferma": "Non è un form con submit proprio: l'unica azione 'attiva' è '➕ Associa' che rimanda al modal 'Aggiungi Veicolo' per completare l'associazione (vedi popup noleggio-aggiungi-veicolo.json).",
-  "come_si_chiude": [
-    "Pulsante '✕' nell'header",
-    "Click sull'overlay semi-trasparente di sfondo",
-    "Click su '➕ Associa' su una riga (chiude questo modal e ne apre un altro)"
+  "file_verificati": [
+    "frontend/src/pages/NoleggioAuto.jsx"
   ],
-  "effetto_su_pagina_sottostante": "Nessun effetto diretto alla sola chiusura (è un modal di sola lettura); se invece si passa per '➕ Associa' e si completa l'aggiunta veicolo nel modal successivo, al prossimo refetch della tabella veicoli il badge '⚠️ N fatture non associate' e il contenuto di questo modal (alla riapertura) rifletteranno il numero aggiornato."
+  "endpoint_rilevati_nei_sorgenti": [
+    "/api/noleggio/associa-fornitore",
+    "/api/noleggio/drivers",
+    "/api/noleggio/fatture-non-associate{param}",
+    "/api/noleggio/fatture/{param}/associa-veicolo",
+    "/api/noleggio/fornitori",
+    "/api/noleggio/riepilogo-controlli{param}",
+    "/api/noleggio/veicoli",
+    "/api/noleggio/veicoli/{param}",
+    "/api/openapi-automotive/aggiorna-veicolo",
+    "/api/openapi-automotive/info/{param}"
+  ],
+  "regole_ux": [
+    "Il popup deve avere chiusura visibile e non restare sovrapposto al documento.",
+    "Le azioni distruttive o definitive richiedono una conferma esplicita.",
+    "Le associazioni ambigue mostrano candidati e non vengono applicate automaticamente."
+  ]
 }

@@ -1,340 +1,59 @@
 {
-  "pagina": "Riconciliazione PayPal",
-  "url": "https://impresasemplice.online/riconciliazione/paypal",
-  "file_sorgente_frontend": [
-    "/home/user/GestionaleCloud/frontend/src/pages/RiconciliazionePaypal.jsx",
-    "/home/user/GestionaleCloud/frontend/src/components/PaypalTransactionDetailModal.jsx",
-    "/home/user/GestionaleCloud/frontend/src/pages/hub/RiconciliazioneHub.jsx"
-  ],
-  "file_sorgente_backend": [
-    "/home/user/GestionaleCloud/app/routers/paypal_statements.py",
-    "/home/user/GestionaleCloud/app/routers/paypal_api.py",
-    "/home/user/GestionaleCloud/app/services/paypal_riconciliazione.py",
-    "/home/user/GestionaleCloud/app/services/paypal_api_client.py",
-    "/home/user/GestionaleCloud/app/services/paypal_api_sync.py",
-    "/home/user/GestionaleCloud/app/parsers/paypal_msr_parser.py",
-    "/home/user/GestionaleCloud/app/parsers/paypal_csv_parser.py"
-  ],
-  "scopo_generale": "La pagina 'Gestione PayPal' (montata dentro l'hub di navigazione RiconciliazioneHub, che smista i contenuti in base al pathname) è il centro di controllo di tutto ciò che passa dal conto PayPal aziendale. Da qui si importano gli estratti conto PayPal (PDF ufficiali MSR/CSR oppure export CSV bulk), si sincronizzano le transazioni via API PayPal reale (OAuth2 client_credentials verso l'endpoint Reporting/Transaction Search di PayPal, non una simulazione), e si riconciliano automaticamente i pagamenti sia con i movimenti dell'estratto conto bancario aziendale sia con le fatture fornitori presenti nel gestionale. Esiste anche una parte di 'mapping' manuale: ogni beneficiario PayPal (paypal_account_id) va associato una volta sola a un fornitore dell'anagrafica, dopodiché la riconciliazione fatture diventa automatica. Il modale di dettaglio transazione mostra tutti i collegamenti risolti per un singolo movimento (fattura, verbale di noleggio/multa PagoPA, dipendente e trattenuta in busta paga, email trovate su Gmail) e permette azioni rapide di navigazione verso quegli oggetti. La pagina lavora sia su transazioni PayPal 'commerciali' (pagamenti a fornitori SaaS/beni) sia su multe PagoPA pagate via PayPal, che seguono percorsi di riconciliazione diversi.",
-  "sezioni_tab": [
-    {
-      "nome": "Dashboard",
-      "descrizione": "Vista di riepilogo: card con estratti conto totali, transazioni totali, totale speso, transazioni riconciliate con la banca, movimenti banca con descrizione 'paypal'. Contiene 'Top Fornitori PayPal' (classifica per spesa, cliccabile per filtrare le transazioni), 'Spese per Tipo' (raggruppamento per tipologia di movimento con colori) e, se disponibile il report, un grafico a barre 'Andamento Mensile'."
-    },
-    {
-      "nome": "Transazioni",
-      "descrizione": "Tabella di tutte le transazioni PayPal (fino a 1000 righe) con colonne Data, Tipo, Descrizione, Controparte (+email), Importo (lordo, colorato rosso/verde), stato riconciliazione banca (icona spunta verde), fattura associata (icona documento, con badge ⚠️ se il match è 'solo importo' a bassa confidenza) o email Gmail trovata (icona busta), ID transazione. Ha una barra di ricerca libera (filtra client-side su nome_controparte/descrizione/email) e un checkbox 'Solo pagamenti' che, quando attivo, richiede al backend solo i movimenti con lordo negativo. Ogni riga è cliccabile e apre il modale di dettaglio transazione."
-    },
-    {
-      "nome": "Report Spese",
-      "descrizione": "Report aggregato per l'anno selezionato nella barra globale: totale speso, numero pagamenti, e un elenco a fisarmonica ('details/summary') per fornitore con le singole transazioni annidate, anch'esse cliccabili per aprire il dettaglio."
-    },
-    {
-      "nome": "Estratti Conto",
-      "descrizione": "Tabella degli estratti conto PayPal importati (MSR/CSR), con periodo, numero transazioni, totale pagamenti inviati, totale depositi/accrediti, saldo finale e nome file di origine. Solo consultazione, nessuna azione diretta sulla riga."
-    },
-    {
-      "nome": "Mapping Fornitori",
-      "descrizione": "Elenco degli account PayPal (paypal_account_id) non ancora collegati a un fornitore dell'anagrafica. Per ciascuno mostra nome/email controparte, numero e totale transazioni, importo medio, ultima data, eventuali invoice_id noti, e propone una lista di fornitori candidati (match certo per nome PayPal, oppure suggerimento per importo simile). Da qui si collega, si crea un nuovo fornitore, o si cerca la fattura via email. Contiene anche un banner per il mapping massivo dei 'match certi'."
-    }
-  ],
-  "bottoni_azioni": [
-    {
-      "etichetta": "+ Importa PDF",
-      "dove_si_trova": "Header della pagina (RiconciliazionePaypal.jsx, riga ~359)",
-      "cosa_fa_al_click": "Non importa direttamente: naviga alla pagina generica '/documenti/import' (l'importazione PDF MSR/CSR passa dal flusso unificato di importazione documenti dell'ERP, non da un endpoint dedicato su questa pagina).",
-      "endpoint_chiamato": "Nessuno diretto dal click; l'import effettivo del PDF avviene altrove tramite POST /api/paypal-statements/import-pdf (multipart, field 'file'), usato dalla pagina /documenti/import o da automazioni.",
-      "logica_backend": "app/routers/paypal_statements.py::import_paypal_pdf: valida estensione .pdf, salva il file in /tmp/uploads/msr_statements, lo passa a parse_paypal_msr() (app/parsers/paypal_msr_parser.py) che estrae periodo, riepilogo attività e singole transazioni (lordo/tariffa/netto/tipo), poi chiama _save_parsed_statement() per upsert su paypal_statements (dedup per periodo_inizio+periodo_fine) e insert su paypal_transactions (dedup per transaction_id). Alla fine lancia _auto_riconcilia(db) per il matching automatico con l'estratto conto bancario.",
-      "formula_matematica": "netto = lordo + tariffa (tariffa è la commissione PayPal, valore negativo, riportata così com'è dal PDF/CSV — non ricalcolata dal codice).",
-      "aggiornamento_ui": "Nessun aggiornamento immediato su questa pagina: l'utente viene portato via dalla route /documenti/import.",
-      "casi_errore": "422 se il parsing del PDF fallisce (parsed['success'] è False, con dettaglio errori); 400 se il file non ha estensione .pdf."
-    },
-    {
-      "etichetta": "+ Importa CSV",
-      "dove_si_trova": "Header della pagina, accanto a 'Importa PDF' (bottone che apre un input file nascosto tramite csvInputRef)",
-      "cosa_fa_al_click": "Apre il selettore file del sistema operativo (accept='.csv'); alla selezione del file chiama handleImportCsv, che invia il file via FormData in multipart/form-data.",
-      "endpoint_chiamato": "POST /api/paypal-statements/import-csv",
-      "logica_backend": "app/routers/paypal_statements.py::import_paypal_csv: valida estensione .csv, legge il contenuto e lo passa a parse_paypal_csv() (app/parsers/paypal_csv_parser.py), che riconosce sia intestazioni italiane (data/descrizione/lordo/tariffa/netto) sia inglesi (date/description/gross/fee/net) e suddivide le righe per 'File' in più statement separati (un CSV bulk export può coprire più mesi/più file). Per ogni statement chiama _save_parsed_statement() (stesso comportamento upsert/dedup del PDF), poi lancia _auto_riconcilia(db).",
-      "formula_matematica": "netto = lordo + tariffa, stessa formula del parser PDF. Il tipo transazione viene classificato da _classifica_tipo() in base a parole chiave nella descrizione e al segno di lordo.",
-      "aggiornamento_ui": "Toast di successo con conteggio '✓ CSV importato — N transazioni (M già presenti), K riconciliate con la banca'; poi loadAll() ricarica dashboard, transazioni, report ed estratti conto. In caso di errore, toast rosso con il dettaglio.",
-      "casi_errore": "400 se il file non è .csv; l'endpoint non solleva altri errori bloccanti — righe non parsabili vengono contate in 'righe_scartate' e ignorate."
-    },
-    {
-      "etichetta": "Selettore 'Ultimo mese / Ultimi 3 mesi / Ultimi 6 mesi / Ultimo anno'",
-      "dove_si_trova": "Header, dropdown accanto al bottone Sync",
-      "cosa_fa_al_click": "Imposta lo stato locale syncMesi (1/3/6/12), usato solo per calcolare la finestra di date (start/end) passata alla sincronizzazione API quando si preme 'Sync PayPal API'. Non genera chiamate di rete da solo.",
-      "endpoint_chiamato": "Nessuno",
-      "logica_backend": "N/A (solo stato frontend)",
-      "aggiornamento_ui": "Nessuno visibile finché non si lancia la sync.",
-      "casi_errore": "Nessuno"
-    },
-    {
-      "etichetta": "🔄 Sync PayPal API",
-      "dove_si_trova": "Header della pagina, bottone dorato con data-testid='sync-paypal-api-btn'",
-      "cosa_fa_al_click": "Calcola l'intervallo di date odierno-meno-syncMesi, chiama POST /api/paypal-api/sync con {start_date, end_date}; se va a buon fine, chiama subito dopo POST /api/paypal-api/riconcilia con lo stesso intervallo per associare le nuove transazioni a fatture/banca; infine ricarica dashboard e transazioni.",
-      "endpoint_chiamato": "POST /api/paypal-api/sync poi POST /api/paypal-api/riconcilia",
-      "logica_backend": "app/routers/paypal_api.py::sync_period chiama sync_paypal_period(db, start, end) (app/services/paypal_api_sync.py), che usa paypal_client (app/services/paypal_api_client.py, client OAuth2 client_credentials VERO verso le API PayPal Reporting/Transaction Search — non simulato) per scaricare le transazioni reali del periodo, arricchirle (campo source='paypal_api') e salvarle/aggiornarle in paypal_transactions. Il successivo /riconcilia (riconcilia_da_collection) esegue in sequenza: 1) riconcilia_multe_pagopa() per le transazioni is_pagopa=True (cerca il numero verbale nel transaction_subject con regex e lo aggancia a verbali_noleggio); 2) riconcilia_pagamenti_paypal() per le fatture commerciali (tolleranza importo 2%, tolleranza data 60 giorni); 3) collega_a_estratto_conto() per allineare paypal_transactions a estratto_conto_movimenti sui movimenti con event_code T0006/T0003; 4) in background, recupera_fatture_mancanti_email() cerca su Gmail le fatture dei fornitori esteri senza documento nel gestionale.",
-      "formula_matematica": "Tolleranza match fatture: |importo_fattura - importo_tx| <= 2% dell'importo, entro 60 giorni di distanza data. Tolleranza match banca (collega_a_estratto_conto): movimento con importo entro ±0.01€ e data entro 7 giorni dopo initiation_date della transazione PayPal, con descrizione che contiene 'PayPal Europe' + IBAN '49RJ2252ASLM4'.",
-      "aggiornamento_ui": "Toast informativo 'Sincronizzazione PayPal API in corso…', poi toast di successo con conteggi (totale/arricchite), poi un secondo toast con il numero di transazioni associate a fatture. Il bottone si disabilita (spinner testuale '⏳ Sync…') durante l'operazione. Se la riconciliazione fallisce dopo una sync riuscita, appare un toast di errore dedicato mentre la sync resta valida.",
-      "casi_errore": "Se /sync fallisce (es. credenziali PayPal non valide, formato date errato → 400), toast rosso 'Errore sync: ...'; se /riconcilia fallisce dopo sync riuscita, toast rosso separato 'Sync OK ma riconciliazione fallita: ...'."
-    },
-    {
-      "etichetta": "Tab: Dashboard / Transazioni / Report Spese / Estratti Conto / Mapping Fornitori",
-      "dove_si_trova": "Barra tab sotto le card statistiche",
-      "cosa_fa_al_click": "Cambia lo stato activeTab; se si passa al tab 'mapping', un useEffect dedicato invoca automaticamente loadMapping(). Il tab attivo può anche essere impostato via query string ?tab=... (usato dal bottone 'Mappa fornitore' del modale di dettaglio transazione per fare un deep-link diretto).",
-      "endpoint_chiamato": "Solo per il tab 'mapping': GET /api/paypal-api/account-ids-non-mappati?anno=...",
-      "logica_backend": "Vedi voce dedicata 'Ricarica' più sotto per la logica di account_ids_non_mappati.",
-      "aggiornamento_ui": "Contenuto della pagina sostituito col pannello del tab selezionato; i badge numerici sui tab (es. count transazioni, count estratti, count non mappati) provengono dai dati già caricati in dashboard/statements/mappingData.",
-      "casi_errore": "Se loadMapping() fallisce, toast rosso 'Errore caricamento mapping: ...'."
-    },
-    {
-      "etichetta": "Riga 'Top Fornitori PayPal' (click su un fornitore)",
-      "dove_si_trova": "Tab Dashboard, card 'Top Fornitori PayPal'",
-      "cosa_fa_al_click": "Imposta searchTx al nome del fornitore (se diverso da 'N/D') e passa al tab 'transazioni', così la tabella si filtra client-side su quel nome.",
-      "endpoint_chiamato": "Nessuno (solo stato locale + filtro client-side sull'array già caricato)",
-      "logica_backend": "N/A",
-      "aggiornamento_ui": "Passa al tab Transazioni con la ricerca già valorizzata.",
-      "casi_errore": "Nessuno"
-    },
-    {
-      "etichetta": "Checkbox 'Solo pagamenti'",
-      "dove_si_trova": "Tab Transazioni, barra filtri sopra la tabella",
-      "cosa_fa_al_click": "Alterna lo stato soloPagamenti; il cambio di questo stato fa scattare (via useCallback/useEffect a monte, loadTransactions è richiamata solo al mount/loadAll iniziale — il filtro incide sui parametri della query già inviata) il parametro solo_pagamenti=true sulla chiamata GET transazioni.",
-      "endpoint_chiamato": "GET /api/paypal-statements/transactions?anno=...&solo_pagamenti=true&limit=1000",
-      "logica_backend": "app/routers/paypal_statements.py::get_paypal_transactions applica query['lordo'] = {'$lt': 0} quando solo_pagamenti è true, oltre ai filtri anno/mese/tipo. Esegue anche _backfill_controparte() per completare nome/email controparte mancanti riusando altre transazioni con lo stesso paypal_account_id, e valorizza il campo 'descrizione' quando assente (usa transaction_subject, transaction_note o 'Fatt. {invoice_id_fornitore}').",
-      "aggiornamento_ui": "La tabella transazioni si aggiorna con solo i movimenti in uscita (lordo negativo).",
-      "casi_errore": "Errore silenzioso loggato in console se la GET fallisce."
-    },
-    {
-      "etichetta": "Campo di ricerca 'Cerca fornitore, descrizione...'",
-      "dove_si_trova": "Tab Transazioni, barra filtri",
-      "cosa_fa_al_click": "Filtra client-side (filteredTx) l'array transactions già caricato, su nome_controparte/descrizione/email_controparte (case-insensitive, substring match).",
-      "endpoint_chiamato": "Nessuno",
-      "logica_backend": "N/A (solo frontend)",
-      "aggiornamento_ui": "Righe tabella filtrate in tempo reale, contatore 'N risultati' aggiornato.",
-      "casi_errore": "Nessuno"
-    },
-    {
-      "etichetta": "Riga transazione (click su qualunque riga della tabella Transazioni o su una voce nel Report per Fornitore)",
-      "dove_si_trova": "Tab Transazioni (tabella) e tab Report Spese (elenco per fornitore espanso)",
-      "cosa_fa_al_click": "Imposta modalTxId = transaction_id (o id) della riga cliccata, aprendo PaypalTransactionDetailModal.",
-      "endpoint_chiamato": "GET /api/paypal-statements/transazione/{transaction_id}/dettaglio (chiamato dal modale all'apertura)",
-      "logica_backend": "Vedi sezione 'popup_e_modali_presenti' per il dettaglio completo dell'endpoint.",
-      "aggiornamento_ui": "Overlay modale centrato con i dettagli della transazione.",
-      "casi_errore": "404 se la transazione non esiste; il modale mostra un banner di errore rosso con il messaggio."
-    },
-    {
-      "etichetta": "Icona 📄 / 📄⚠️ (fattura associata)",
-      "dove_si_trova": "Tab Transazioni, colonna 'Fattura' della tabella",
-      "cosa_fa_al_click": "Link <a target='_blank'> che apre direttamente la vista PDF/AssoInvoice della fattura collegata (tx.fattura_associata.view_url oppure fallback /api/fatture-ricevute/fattura/{id}/view-assoinvoice). Usa stopPropagation per non aprire anche il modale di dettaglio transazione.",
-      "endpoint_chiamato": "GET /api/fatture-ricevute/fattura/{fattura_id}/view-assoinvoice (fuori dai due router documentati, appartiene al modulo Fatture)",
-      "logica_backend": "Non appartiene a paypal_statements.py/paypal_api.py; è il visualizzatore fatture del modulo Fatture Ricevute.",
-      "aggiornamento_ui": "Apre una nuova scheda del browser col PDF della fattura. Se il match è 'solo_importo' (bassa confidenza), l'icona ha il badge ⚠️ e il tooltip lo segnala esplicitamente.",
-      "casi_errore": "Gestito dal modulo Fatture (fuori scope)."
-    },
-    {
-      "etichetta": "Icona ✉️ (email Gmail associata)",
-      "dove_si_trova": "Tab Transazioni, colonna 'Fattura' (mostrata al posto dell'icona fattura quando non c'è fattura ma c'è un'email trovata)",
-      "cosa_fa_al_click": "Link <a target='_blank'> che apre tx.gmail_associata.gmail_link direttamente in Gmail.",
-      "endpoint_chiamato": "Nessuno (link statico salvato in precedenza da auto_cerca_gmail)",
-      "logica_backend": "N/A",
-      "aggiornamento_ui": "Apre Gmail in una nuova scheda.",
-      "casi_errore": "Nessuno lato app (dipende da Gmail)."
-    },
-    {
-      "etichetta": "🔄 Ricarica",
-      "dove_si_trova": "Tab Mapping Fornitori, header del pannello (data-testid='reload-mapping-btn')",
-      "cosa_fa_al_click": "Richiama loadMapping(), che ricarica l'elenco degli account non mappati e pre-seleziona automaticamente i fornitori con match certo.",
-      "endpoint_chiamato": "GET /api/paypal-api/account-ids-non-mappati?anno=...",
-      "logica_backend": "app/routers/paypal_api.py::account_ids_non_mappati: aggrega (pipeline Mongo su paypal_transactions) i paypal_account_id con importo<0 non ancora presenti in fornitori.paypal_account_id, escludendo quelli marcati is_pagopa. Per ciascun account_id calcola n_tx, importo_totale, importo_medio, ultima_data, subjects/invoice_ids noti. Poi cerca candidati fornitore con due strategie: (1) match sul nome_controparte contro fornitori.nome/ragione_sociale con normalize_string() e match_fornitore() (punteggio fuzzy, soglia 0.6, tipi exact/partial/fuzzy — un match 'exact' diventa suggested_fornitore_id, cioè pre-selezionato in UI); (2) fallback per importo simile alle fatture (±40% dell'importo medio), raggruppando invoices per supplier_vat e cercando il fornitore corrispondente.",
-      "formula_matematica": "Match candidato: normalizzazione stringhe (rimozione caratteri non alfanumerici, lowercase) — uguaglianza esatta => score 1.0 ('exact'); contenimento reciproco => score 0.85 ('partial'); altrimenti punteggio fuzzy da match_fornitore() con soglia minima 0.6 ('fuzzy'). Fascia importo per candidati per importo simile: [importo_medio*0.6, importo_medio*1.4].",
-      "aggiornamento_ui": "Elenco degli account non mappati ricaricato, badge count aggiornato, eventuale banner 'match certi' ricalcolato.",
-      "casi_errore": "Toast rosso 'Errore caricamento mapping: ...' se la GET fallisce."
-    },
-    {
-      "etichetta": "🚀 Mappa tutti i certi",
-      "dove_si_trova": "Tab Mapping Fornitori, banner verde mostrato solo se esistono match certi (data-testid='mappa-tutti-certi-btn')",
-      "cosa_fa_al_click": "Chiede conferma (confirm browser) con il numero di fornitori da mappare, poi itera su tutti gli item con suggested_fornitore_id e chiama in sequenza POST /api/paypal-api/mappa-fornitore per ciascuno; al termine ricarica il mapping.",
-      "endpoint_chiamato": "POST /api/paypal-api/mappa-fornitore (una chiamata per ogni match certo)",
-      "logica_backend": "app/routers/paypal_api.py::mappa_fornitore: valida paypal_account_id e fornitore_id, verifica che il fornitore esista, verifica che l'account_id non sia già mappato a un altro fornitore diverso (409 in caso contrario), poi esegue update_one su fornitori impostando paypal_account_id e updated_at.",
-      "aggiornamento_ui": "Toast '✓ Mappati N/M fornitori'; loadMapping() ricarica la lista (gli item appena mappati spariscono perché ora sono esclusi dalla query 'non mappati').",
-      "casi_errore": "Se non ci sono match certi: toast info 'Nessun match certo da mappare'. Le singole chiamate fallite vengono ignorate silenziosamente (continua col prossimo) — il conteggio finale riflette solo i successi."
-    },
-    {
-      "etichetta": "Select fornitore (dropdown per riga account non mappato)",
-      "dove_si_trova": "Tab Mapping Fornitori, colonna centrale di ogni riga (data-testid='select-fornitore-{paypal_account_id}')",
-      "cosa_fa_al_click": "Aggiorna lo stato locale selectedForn[paypal_account_id] con il fornitore_id scelto tra gli optgroup 'Match certo (nome PayPal)' e 'Candidati (importo simile)'. Non chiama il backend.",
-      "endpoint_chiamato": "Nessuno",
-      "logica_backend": "N/A",
-      "aggiornamento_ui": "Bordo verde se la selezione coincide col suggested_fornitore_id; abilita il bottone 'Collega'.",
-      "casi_errore": "Nessuno"
-    },
-    {
-      "etichetta": "🔗 Collega",
-      "dove_si_trova": "Tab Mapping Fornitori, colonna azioni di ogni riga (data-testid='mappa-btn-{paypal_account_id}')",
-      "cosa_fa_al_click": "Disabilitato finché non è selezionato un fornitore nel dropdown; al click chiama mappaFornitore(paypal_account_id, fornitore_id selezionato).",
-      "endpoint_chiamato": "POST /api/paypal-api/mappa-fornitore {paypal_account_id, fornitore_id}",
-      "logica_backend": "Stessa logica di mappa_fornitore descritta sopra: verifica fornitore esistente, verifica non-doppia-mappatura (409), update_one su fornitori con $set paypal_account_id + updated_at.",
-      "aggiornamento_ui": "Toast '✓ Mappato: {ragione_sociale}'; loadMapping() ricarica la lista e la riga sparisce (l'account ora è mappato).",
-      "casi_errore": "Toast rosso 'Seleziona prima un fornitore' se nessun fornitore selezionato; toast rosso con dettaglio errore se la POST fallisce (es. 409 account già mappato altrove, 404 fornitore non trovato)."
-    },
-    {
-      "etichetta": "➕ Crea nuovo",
-      "dove_si_trova": "Tab Mapping Fornitori, colonna azioni di ogni riga (data-testid='crea-forn-btn-{paypal_account_id}')",
-      "cosa_fa_al_click": "Apre il modale CreaFornitorePaypalModal precompilato con paypal_account_id, nome_controparte, email_controparte, importo_totale, n_tx dell'item corrente.",
-      "endpoint_chiamato": "Nessuno al click (l'endpoint viene chiamato dal submit del modale, vedi sotto)",
-      "logica_backend": "N/A al click",
-      "aggiornamento_ui": "Apre l'overlay del modale di creazione fornitore.",
-      "casi_errore": "Nessuno al click"
-    },
-    {
-      "etichetta": "📧 Cerca fattura via email",
-      "dove_si_trova": "Tab Mapping Fornitori, colonna azioni di ogni riga (data-testid='cerca-email-btn-{paypal_account_id}')",
-      "cosa_fa_al_click": "Chiama handleCercaFatturaEmail(paypal_account_id), che esegue la POST verso l'endpoint di ricerca email dedicato.",
-      "endpoint_chiamato": "POST /api/paypal-api/account/{paypal_account_id}/cerca-fattura-email",
-      "logica_backend": "app/routers/paypal_api.py::cerca_fattura_email_per_account: aggrega da paypal_transactions nome/email controparte per l'account; se il fornitore risulta già censito (via _mappa_da_fornitore_esistente), collega subito senza cercare in posta. Altrimenti recupera le credenziali Gmail (Admin → Email, App Password) e lancia download_documents_from_email() (app/services/email_document_downloader.py) usando come parola chiave la prima parola del nome controparte — la stessa pipeline usata da Documenti Inbox (categorizzazione, dedup per hash, parsing AI). Se trova documenti, li aggancia con _aggancia_documenti_trovati().",
-      "aggiornamento_ui": "Toast di successo '✓ Trovati N documenti in posta per \"X\" — vai su Documenti per vederli' se trovati, altrimenti toast informativo con conteggio email esaminate. Il bottone mostra '⏳ Cerco nella posta…' durante l'esecuzione.",
-      "casi_errore": "400 se nessun account Gmail è configurato; toast rosso con dettaglio in caso di errore generico."
-    },
-    {
-      "etichetta": "Annulla (modale Crea fornitore)",
-      "dove_si_trova": "Modale CreaFornitorePaypalModal, footer",
-      "cosa_fa_al_click": "Chiude il modale senza salvare (onClose).",
-      "endpoint_chiamato": "Nessuno",
-      "logica_backend": "N/A",
-      "aggiornamento_ui": "Chiude l'overlay.",
-      "casi_errore": "Nessuno"
-    },
-    {
-      "etichetta": "➕ Crea e mappa",
-      "dove_si_trova": "Modale CreaFornitorePaypalModal, footer",
-      "cosa_fa_al_click": "Valida che ragione_sociale non sia vuota, poi invia il form (ragione_sociale, piva, nazione, email, metodo_pagamento='paypal', esclude_magazzino, note) insieme al paypal_account_id del contesto.",
-      "endpoint_chiamato": "POST /api/paypal-api/crea-fornitore-e-mappa",
-      "logica_backend": "app/routers/paypal_api.py::crea_fornitore_e_mappa: verifica anti-duplicazione su paypal_account_id già mappato (409) e su P.IVA già esistente (409, con suggerimento di usare /mappa-fornitore); crea un nuovo documento in fornitori con uuid, campi anagrafici, iban vuoto ('PayPal non usa IBAN'), metodo_pagamento default 'paypal', esclude_magazzino default True (fornitori PayPal sono tipicamente SaaS/servizi), paypal_account_id valorizzato subito, source='paypal_mapping'. Conta anche quante transazioni beneficeranno subito del mapping (n_transazioni_collegabili).",
-      "aggiornamento_ui": "Al successo: onCreated() chiude il modale, richiama loadMapping() (la riga sparisce dalla lista non mappati) e mostra toast '✓ Fornitore creato e mappato'.",
-      "casi_errore": "Errore inline nel modale (banner rosso) con il detail della risposta: 'La ragione sociale è obbligatoria' (validazione client), 409 se account_id o P.IVA già esistenti, 400 se paypal_account_id/ragione_sociale mancanti lato server."
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Import estratto conto PayPal (PDF MSR/CSR o CSV)",
-      "sequenza_esatta": "1. L'utente carica un file PDF (via /documenti/import) o CSV (bottone '+ Importa CSV' su questa pagina). 2. Il backend salva/legge il file e lo passa al parser dedicato (parse_paypal_msr o parse_paypal_csv), che estrae periodo, riepilogo attività e lista transazioni con lordo/tariffa/netto/tipo/transaction_id. 3. _save_parsed_statement() fa upsert su paypal_statements usando (periodo_inizio, periodo_fine) come chiave di dedup, poi inserisce ogni transazione in paypal_transactions se il transaction_id non è già presente (altrimenti la conta come duplicata e la salta). 4. Ogni transazione appena inserita riceve riconciliato_banca=false e created_at. 5. Subito dopo, _auto_riconcilia(db) viene eseguita automaticamente: cerca movimenti in estratto_conto (descrizione o descrizione_originale contenente 'paypal') con importo corrispondente (tolleranza 0.02€) e data entro 3 giorni, e marca le transazioni corrispondenti come riconciliato_banca=true con movimento_banca_id e data_banca. 6. Il frontend richiama loadAll() per aggiornare dashboard/transazioni/report/estratti.",
-      "collezioni_coinvolte": ["paypal_statements", "paypal_transactions", "estratto_conto (COLL_ESTRATTO_CONTO)"],
-      "campi_scritti": {
-        "paypal_statements": "id, tipo_documento, codice_conto, email_paypal, periodo_inizio, periodo_fine, mese, anno, riepilogo, totale_transazioni, file_name, created_at",
-        "paypal_transactions": "data, descrizione, transaction_id, nome_controparte, email_controparte, lordo, tariffa, netto, tipo, valuta, statement_id, riconciliato_banca, created_at (+ dopo auto-riconciliazione: movimento_banca_id, data_banca, riconciliato_il)"
-      },
-      "effetti_collaterali": "Nessuna scrittura su fatture/anagrafica in questa fase: solo popolamento delle collezioni PayPal e collegamento (best-effort) ai movimenti bancari già presenti."
-    },
-    {
-      "nome": "Sincronizzazione via API PayPal reale + riconciliazione completa",
-      "sequenza_esatta": "1. Click su 'Sync PayPal API': calcolo intervallo date in base al selettore mesi. 2. POST /api/paypal-api/sync → sync_paypal_period() usa paypal_client (OAuth2 client_credentials verso le vere API PayPal) per scaricare le transazioni del periodo dall'API Transaction Search/Reporting e le salva/aggiorna in paypal_transactions con source='paypal_api'. 3. Il frontend richiama subito POST /api/paypal-api/riconcilia con lo stesso intervallo. 4. riconcilia_da_collection() legge da paypal_transactions le transazioni con importo<0 nel range, le divide in multe PagoPA (is_pagopa=True) e fatture commerciali. 5. riconcilia_multe_pagopa(): cerca nel transaction_subject un pattern di numero verbale (regex lettera+10-12 cifre), trova il verbale in verbali_noleggio, verifica match tramite trova_pagamento_verbale() e lo applica con applica_pagamento_a_verbale(). 6. riconcilia_pagamenti_paypal(): per le transazioni commerciali, cerca fatture con importo entro il 2% e data entro 60 giorni; se già presente un metodo pagamento diverso lo aggiorna, altrimenti segna il match. 7. collega_a_estratto_conto(): per le transazioni con event_code T0006/T0003 (giroconti/prelievi verso banca) cerca in estratto_conto_movimenti un movimento con descrizione che contiene 'PayPal Europe...49RJ2252ASLM4', importo entro ±0.01€ e data entro 7 giorni dopo, e lo collega settando riconciliato_con_estratto_banca=true. 8. In background parte anche recupera_fatture_mancanti_email() per cercare su Gmail le fatture ancora mancanti.",
-      "collezioni_coinvolte": ["paypal_transactions", "verbali_noleggio", "invoices", "estratto_conto_movimenti", "paypal_webhook_events (per eventi in tempo reale)"],
-      "campi_scritti": {
-        "paypal_transactions": "campi arricchiti dall'API (source='paypal_api', enriched_at, is_pagopa, transaction_subject, ecc.); dopo la riconciliazione: fattura_associata o collegamento a estratto conto, riconciliato_con_estratto_banca",
-        "verbali_noleggio": "stato pagamento aggiornato da applica_pagamento_a_verbale() quando una multa PagoPA via PayPal viene riconosciuta"
-      },
-      "effetti_collaterali": "È l'unica operazione che tocca realmente l'API PayPal (autenticazione OAuth2 reale, non simulata). Esiste anche un endpoint webhook (/api/paypal-api/webhook) che, alla ricezione di eventi di pagamento reali da PayPal (es. PAYMENT.SALE.COMPLETED), verifica la firma (se PAYPAL_WEBHOOK_ID è configurato) e ri-lancia sync_paypal_period() per il giorno dell'evento, così i dati restano sempre allineati alla fonte ufficiale anche fuori da un sync manuale."
-    },
-    {
-      "nome": "Mapping account PayPal → fornitore (collegamento manuale o massivo)",
-      "sequenza_esatta": "1. Nel tab Mapping Fornitori l'utente seleziona un fornitore candidato dal dropdown (o usa 'Mappa tutti i certi' per i match ad alta confidenza). 2. Click su 'Collega' → POST /api/paypal-api/mappa-fornitore {paypal_account_id, fornitore_id}. 3. Il backend verifica che il fornitore esista e che l'account_id non sia già associato a un fornitore diverso (409 altrimenti). 4. update_one su fornitori: $set {paypal_account_id, updated_at}. 5. Da questo momento, ogni transazione PayPal futura con quel paypal_account_id sarà risolvibile nel modale di dettaglio (mapping_fornitore) e le riconciliazioni fatture per P.IVA diventano possibili. È disponibile anche l'inverso, /api/paypal-api/smappa-fornitore, per rimuovere il collegamento (non esposto da un bottone visibile in questa pagina, solo come endpoint).",
-      "collezioni_coinvolte": ["fornitori", "paypal_transactions (in lettura, per calcolare le aggregazioni 'non mappati')"],
-      "campi_scritti": {
-        "fornitori": "paypal_account_id, updated_at"
-      },
-      "effetti_collaterali": "Non scrive nulla sulle transazioni esistenti: il mapping è letto dinamicamente ogni volta che serve (dashboard mapping, dettaglio transazione, riconciliazione fatture)."
-    },
-    {
-      "nome": "Creazione fornitore + mapping in un'unica operazione",
-      "sequenza_esatta": "1. Click su '➕ Crea nuovo' apre il modale precompilato con i dati dell'account PayPal non mappato. 2. L'utente compila/conferma ragione sociale, P.IVA, nazione, email, note, e il flag 'Escludi da magazzino' (default true). 3. Click su '➕ Crea e mappa' → POST /api/paypal-api/crea-fornitore-e-mappa. 4. Il backend verifica che l'account non sia già mappato e che la P.IVA (se indicata) non sia duplicata (409 in entrambi i casi). 5. Crea il documento fornitore con uuid, iban vuoto, metodo_pagamento='paypal', paypal_account_id già valorizzato, source='paypal_mapping'. 6. Ritorna anche il conteggio delle transazioni che beneficeranno subito del mapping.",
-      "collezioni_coinvolte": ["fornitori", "paypal_transactions (in lettura per il conteggio)"],
-      "campi_scritti": {
-        "fornitori": "id, nome, ragione_sociale, piva, codice_fiscale, email, telefono, indirizzo, cap, comune, provincia, nazione, iban (vuoto), iban_lista, metodo_pagamento, giorni_pagamento, esclude_magazzino, escludi_da_tracciabilita, paypal_account_id, note, source='paypal_mapping', created_at, updated_at"
-      },
-      "effetti_collaterali": "Nessuna scrittura su fatture. Il nuovo fornitore appare da subito in anagrafica e nella lista candidati di future riconciliazioni."
-    },
-    {
-      "nome": "Ricerca automatica fattura via email (per fornitori esteri non SDI)",
-      "sequenza_esatta": "1. Click su '📧 Cerca fattura via email' per un account non mappato (o dal flusso automatico auto-cerca-gmail per le singole transazioni). 2. Il backend recupera nome/email controparte aggregando da paypal_transactions. 3. Se il fornitore è già censito, collega subito senza cercare (evita rumore). 4. Altrimenti recupera le credenziali Gmail configurate (Admin → Email) e lancia download_documents_from_email() con la prima parola del nome come parola chiave, riusando la pipeline di Documenti Inbox (categorizzazione, dedup per hash, parsing AI dei PDF). 5. Se trova documenti nuovi, li aggancia con _aggancia_documenti_trovati().",
-      "collezioni_coinvolte": ["paypal_transactions", "fornitori", "documenti (via pipeline Documenti Inbox, fuori scope diretto)"],
-      "campi_scritti": {
-        "documenti": "nuovi documenti scaricati da Gmail, categorizzati e deduplicati (dettaglio implementativo nel modulo Documenti)"
-      },
-      "effetti_collaterali": "I documenti trovati sono consultabili nella pagina Documenti; non modificano automaticamente lo stato di riconciliazione della transazione PayPal se non tramite il meccanismo separato gmail_associata/gmail_candidati."
-    },
-    {
-      "nome": "Riconciliazione automatica con estratto conto bancario (dopo ogni import)",
-      "sequenza_esatta": "1. Eseguita automaticamente al termine di ogni import PDF/CSV (o su richiesta via POST /api/paypal-statements/riconcilia-banca). 2. Prende tutte le paypal_transactions con riconciliato_banca != true e lordo < 0. 3. Prende tutti i movimenti di estratto_conto con descrizione o descrizione_originale che contiene 'paypal' (case-insensitive). 4. Per ogni transazione PayPal cerca il movimento bancario con importo corrispondente (tolleranza 0.02€) e la minima distanza di data entro 3 giorni, evitando di riusare due volte lo stesso movimento bancario (set banca_usati). 5. Se trovato, aggiorna la transazione PayPal con riconciliato_banca=true, movimento_banca_id, data_banca, riconciliato_il.",
-      "collezioni_coinvolte": ["paypal_transactions", "estratto_conto"],
-      "campi_scritti": {
-        "paypal_transactions": "riconciliato_banca=true, movimento_banca_id, data_banca, riconciliato_il"
-      },
-      "effetti_collaterali": "Aggiorna anche i contatori mostrati nella dashboard ('Riconciliati Banca')."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    {
-      "pagina": "Documenti / Import documenti",
-      "descrizione": "Il bottone '+ Importa PDF' rimanda a /documenti/import, dove passa il flusso di caricamento dei PDF MSR/CSR PayPal (endpoint POST /api/paypal-statements/import-pdf)."
-    },
-    {
-      "pagina": "Fatture Ricevute / Archivio Fatture",
-      "descrizione": "Le icone 📄 nella tabella transazioni e i pulsanti 'Vai a fattura'/'Vedi'/'Cerca fattura manualmente' nel modale di dettaglio aprono /fatture?invoice_id=... o la view AssoInvoice diretta (/api/fatture-ricevute/fattura/{id}/view-assoinvoice). La riconciliazione automatica (auto_associa_transazioni, riconcilia_pagamenti_paypal) scrive il campo fattura_associata sulla transazione PayPal collegandola a un documento della collezione invoices."
-    },
-    {
-      "pagina": "Verbali Noleggio (multe PagoPA)",
-      "descrizione": "Se una transazione PayPal è una multa pagata via PagoPA (is_pagopa=True), viene riconosciuta e collegata a verbali_noleggio; il modale di dettaglio transazione mostra la sezione 'Verbale collegato' con bottoni per aprire il PDF (GET /api/verbali-noleggio/pdf/{numero_verbale}) e per navigare a /verbali-noleggio/{numero_verbale}."
-    },
-    {
-      "pagina": "Dipendenti / Buste paga",
-      "descrizione": "Se il verbale collegato ha un driver_id, il modale mostra il dipendente associato e l'eventuale trattenuta in busta paga (collezione trattenute_dipendenti); il bottone 'Scheda dipendente' naviga a /dipendenti?id=..."
-    },
-    {
-      "pagina": "Anagrafica Fornitori",
-      "descrizione": "Il tab 'Mapping Fornitori' legge/scrive il campo paypal_account_id sui documenti della collezione fornitori; la creazione di un nuovo fornitore da questa pagina inserisce direttamente un nuovo documento in fornitori."
-    },
-    {
-      "pagina": "Estratto Conto Bancario / Riconciliazione Bancaria",
-      "descrizione": "La riconciliazione automatica confronta paypal_transactions con i movimenti di estratto_conto/estratto_conto_movimenti che riportano 'PayPal' in descrizione, per marcare i trasferimenti di fondi da PayPal al conto corrente aziendale come riconciliati."
-    },
-    {
-      "pagina": "Gmail / Posta elettronica",
-      "descrizione": "Sia il pulsante 'Cerca fattura via email' del mapping sia la sezione 'Cerca su Gmail' del modale di dettaglio usano le credenziali Gmail configurate in Admin → Email per cercare ricevute/fatture esterne che non passano dal Sistema di Interscambio (fornitori SaaS/esteri)."
-    },
-    {
-      "pagina": "RiconciliazioneHub (routing)",
-      "descrizione": "La pagina è servita dentro l'hub /riconciliazione/* che, in base al pathname, monta lazy PaypalContent quando il path contiene '/paypal' (condivide lo stesso hub con Riconciliazione Bancaria unificata, Gestione Assegni, Archivio Bonifici e Coerenza POS/Corrispettivi)."
-    }
-  ],
-  "popup_e_modali_presenti": [
-    {
-      "nome": "PaypalTransactionDetailModal (modale dettaglio transazione)",
-      "come_si_apre": "Click su una riga della tabella Transazioni, su una voce nel Report per Fornitore, o deep-link diretto impostando modalTxId dall'esterno.",
-      "cosa_mostra": "All'apertura chiama GET /api/paypal-statements/transazione/{transaction_id}/dettaglio. La risposta popola 4 sezioni: (1) 'Dettagli PayPal' — transaction ID, data, importo (lordo, colorato), controparte, email, tipo (tradotto dai codici evento PayPal T0000-T1201 tramite PAYPAL_TIPO_LABELS), stato (tradotto tramite PAYPAL_STATO_LABELS), descrizione, account PayPal controparte, riferimento fattura PayPal (invoice_id_fornitore), oggetto/campo personalizzato, flag riconciliato in banca; (2) 'Verbale collegato' — se esiste un verbale in verbali_noleggio con paypal_transaction_id uguale, mostra numero verbale/targa/ente/data/importo/stato con bottoni 'Apri PDF verbale' e 'Vai alla scheda verbale'; (3) 'Dipendente associato' — se il verbale ha un driver_id, mostra nome/cognome/CF/ruolo del dipendente da employees e l'eventuale trattenuta in busta paga da trattenute_dipendenti, con bottone 'Scheda dipendente'; (4) 'Fornitore e fatture' — mostra il fornitore mappato (da paypal_mapping_fornitori) e fino a 6 fatture correlate trovate con strategia multi-livello (0: match per numero fattura/invoice_id_fornitore esatto — priorità massima; A: match per P.IVA del fornitore mappato; B: match fuzzy sul nome controparte, parole >=4 lettere, esclusi suffissi societari; C: match per email controparte; D: fallback su qualsiasi anno per importo ±0.05€), con badge dorato per le fatture di importo identico e badge verde '✓ fattura indicata da PayPal' per il match diretto per riferimento; include anche una sotto-sezione 'Cerca su Gmail' per email esterne.",
-      "azioni_disponibili": [
-        "Apri PDF verbale — GET /api/verbali-noleggio/pdf/{numero_verbale}, decodifica il PDF base64 restituito e lo apre in una nuova scheda come blob",
-        "Vai alla scheda verbale — naviga a /verbali-noleggio/{numero_verbale} e chiude il modale",
-        "Scheda dipendente — naviga a /dipendenti?id={id} e chiude il modale",
-        "Mappa fornitore (link inline, mostrato solo se non c'è mapping) — naviga a /riconciliazione/paypal?tab=mapping e chiude il modale (deep-link gestito dal parent tramite query string tab)",
-        "Click su una riga fattura collegata — naviga a /fatture?invoice_id={id} e chiude il modale",
-        "📄 Vedi (dentro la riga fattura, con stopPropagation) — window.open diretto sulla view PDF della fattura senza chiudere il modale",
-        "Cerca fattura manualmente (mostrato se nessuna fattura trovata) — naviga a /fatture?fornitore=...&importo=... precompilando i filtri",
-        "✉️ Cerca su Gmail — GET /api/paypal-statements/transazione/{transaction_id}/cerca-gmail, che usa le credenziali Gmail admin e build_transaction_query() (importo + controparte + finestra data) per cercare email compatibili; i risultati (o quelli già trovati automaticamente in tx.gmail_candidati) sono elencati come link diretti al messaggio Gmail",
-        "Chiudi (X in alto o bottone footer, oppure tasto ESC, oppure click fuori dal riquadro) — chiude il modale senza side-effect"
-      ],
-      "casi_errore": "Se la transazione non viene trovata: 404 con banner rosso 'Transazione PayPal non trovata'. Se 'Apri PDF verbale' non trova un content_base64: alert 'PDF non disponibile'. Se la ricerca Gmail fallisce (nessun account configurato o errore IMAP): messaggio rosso con il dettaglio errore al posto dei risultati."
-    },
-    {
-      "nome": "CreaFornitorePaypalModal (crea fornitore inline + mappa)",
-      "come_si_apre": "Click su '➕ Crea nuovo' in una riga del tab Mapping Fornitori.",
-      "cosa_mostra": "Form con campi: Ragione sociale (obbligatoria, precompilata dal nome_controparte PayPal), P.IVA/VAT (uppercase automatico), Nazione (select con IT/IE/NL/DE/FR/ES/GB/US/LU/Altro), Email (precompilata), Note (precompilata con conteggio transazioni e totale), checkbox 'Escludi da magazzino' (default attivo, consigliato per fornitori PayPal SaaS/servizi/abbonamenti). Mostra l'Account ID PayPal e il numero di transazioni nel sottotitolo.",
-      "azioni_disponibili": [
-        "Annulla — chiude senza salvare",
-        "➕ Crea e mappa — POST /api/paypal-api/crea-fornitore-e-mappa con i dati del form + paypal_account_id di contesto; al successo chiude il modale, ricarica il mapping e mostra toast di conferma",
-        "X (chiusura in alto a destra) e click sull'overlay esterno — chiudono il modale senza salvare"
-      ],
-      "casi_errore": "Validazione client: 'La ragione sociale è obbligatoria' se il campo è vuoto. Errori server mostrati in un banner rosso dentro al modale: 409 se l'account PayPal è già mappato altrove, 409 se la P.IVA è già presente su un altro fornitore (con suggerimento di usare /mappa-fornitore su quel fornitore_id), 400 se mancano campi obbligatori lato server."
-    }
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "PayPal",
+  "route": "/riconciliazione/paypal",
+  "catalog_id": 39,
+  "modulo": "riconciliazione",
+  "accesso": "authenticated",
+  "stato_audit": "in_review",
+  "scopo": "Mappa tecnica della schermata «PayPal». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/RiconciliazionePaypal.jsx",
+    "entry": "frontend/src/pages/hub/RiconciliazioneHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/RiconciliazionePaypal.jsx",
+      "frontend/src/pages/hub/RiconciliazioneHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/parsers/paypal_csv_parser.py",
+      "app/parsers/paypal_msr_parser.py",
+      "app/routers/paypal_api.py",
+      "app/routers/paypal_statements.py",
+      "app/services/paypal_api_client.py",
+      "app/services/paypal_api_sync.py",
+      "app/services/paypal_riconciliazione.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/fatture-ricevute/fattura/{f",
+      "/api/paypal-api/status",
+      "/api/paypal-api/sync",
+      "/api/paypal-api/sync/incremental",
+      "/api/paypal-statements/bank-movements",
+      "/api/paypal-statements/dashboard",
+      "/api/paypal-statements/report",
+      "/api/paypal-statements/riprocessa",
+      "/api/paypal-statements/statements",
+      "/api/paypal-statements/transactions",
+      "/api/paypal-statements/transactions/{param}"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

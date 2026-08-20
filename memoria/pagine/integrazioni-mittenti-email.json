@@ -1,0 +1,42 @@
+{
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Mittenti Email attendibili",
+  "route": "/integrazioni/mittenti-email",
+  "catalog_id": 53,
+  "modulo": "integrazioni",
+  "accesso": "authenticated",
+  "stato_audit": "verified",
+  "scopo": "Mappa tecnica della schermata «Mittenti Email attendibili». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/MittentiEmail.jsx",
+    "entry": "frontend/src/pages/hub/IntegrazioniHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/MittentiEmail.jsx",
+      "frontend/src/pages/hub/IntegrazioniHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/email-download/mittenti",
+      "/api/email-download/mittenti/{param}"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
+  ]
+}

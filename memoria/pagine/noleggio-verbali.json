@@ -1,172 +1,67 @@
 {
-  "pagina": "Noleggio Auto - Tab Verbali Noleggio (Riconciliazione)",
-  "url": "https://impresasemplice.online/noleggio/verbali",
-  "file_sorgente_frontend": [
-    "frontend/src/pages/hub/VeicoliHub.jsx",
-    "frontend/src/pages/VerbaliRiconciliazione.jsx",
-    "frontend/src/pages/DettaglioVerbale.jsx (pagina figlia, url /verbali-noleggio/{numero})"
-  ],
-  "file_sorgente_backend": [
-    "app/routers/verbali_riconciliazione.py",
-    "app/routers/verbali_noleggio_api.py",
-    "app/routers/verbali_noleggio.py (endpoint /pdf, /stats shadowati, vedi note nel codice)",
-    "app/routers/auto_repair.py (collega-targa-driver)",
-    "app/routers/noleggio.py (get_verbali_dipendente, usato da HR)"
-  ],
-  "scopo_generale": "Gestione del ciclo di vita completo di ogni multa/verbale stradale legato a un veicolo a noleggio: dalla scoperta (email/PEC o fattura del noleggiatore) fino alla riconciliazione con pagamento e driver responsabile. La catena logica è: VERBALE (multa) -> FATTURA noleggiatore (contiene il numero verbale + spesa di notifica) -> PAGAMENTO (trovato in estratto conto/PayPal/Gmail) -> VEICOLO (targa) -> DRIVER (dipendente). Esistono due 'ingressi' possibili nel sistema (i due scenari spiegati anche nell'info-box della pagina): Scenario A 'Pago Prima' (il driver paga subito la multa, il verbale viene scaricato da posta e salvato, poi arriva la fattura del noleggiatore con la spesa di notifica da riconciliare) e Scenario B 'Fattura Prima' (arriva prima la fattura del noleggiatore con il numero verbale nella descrizione, poi si paga). La pagina lavora sulla collezione verbali_noleggio, alimentata da 8 percorsi diversi (scan email, scan fatture, trigger fattura, pipeline post-download, scanner PagoPA, ecc.) — per questo esiste anche un bottone di pulizia duplicati.",
-  "bottoni_azioni": [
-    {
-      "etichetta": "🔍 Scan Fatture Noleggiatori",
-      "cosa_fa_al_click": "handleScanFatture(): avvia una scansione di tutte le fatture in 'invoices' alla ricerca di numeri verbale nel testo, per creare/aggiornare le associazioni verbale->fattura.",
-      "endpoint_chiamato": "POST /api/verbali-riconciliazione/scan-fatture-verbali",
-      "logica_backend": "scan_fatture_per_verbali(): interroga 'invoices' cercando fatture il cui supplier_name/fornitore contiene ALD/LEASYS/ARVAL/LEASEPLAN/ALPHABET oppure il cui testo (descrizione, body, note, oggetto, righe fattura + AltriDatiGestionali) contiene un pattern tipo verbale ([AB]\\d{8,12}). Per ogni fattura costruisce un testo completo concatenando tutti i campi rilevanti, poi applica extract_verbale_from_description() (diversi pattern regex, incluso 'Verbale Nr/N./Numero'). Se trova un numero verbale e non esiste già l'associazione esatta (stesso numero_verbale + fattura_id), crea o aggiorna il documento in verbali_noleggio con fattura_id, fattura_numero, fornitore, targa; lo stato passa a 'fattura_ricevuta' (o 'riconciliato' se aveva già un pagamento).",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Messaggio di successo con 'X fatture, Y verbali trovati, Z nuove associazioni'; ricarica dashboard e lista.",
-      "casi_errore": "setError('Errore durante scan fatture') generico."
-    },
-    {
-      "etichetta": "👤 Associa Driver",
-      "cosa_fa_al_click": "handleCollegaDriver(): tenta di assegnare automaticamente un driver a tutti i verbali che hanno una targa ma non hanno ancora un driver_id.",
-      "endpoint_chiamato": "POST /api/verbali-riconciliazione/collega-driver-massivo",
-      "logica_backend": "collega_driver_massivo(): per ogni verbale con targa e senza driver_id, prova in cascata 5 strategie fino a trovarne una che funziona: 1) veicoli_noleggio (targa->driver_id/driver salvato); 2) storico_assegnazioni_veicoli (chi guidava quel veicolo alla data della violazione, con range data_inizio<=data_violazione<=data_fine); 3) contratti_noleggio (campo driver/intestatario sulla targa o lista targhe); 4) dipendenti con veicolo_targa/targa_assegnata/auto_aziendale corrispondente; 5) ricerca testuale del cognome di un dipendente attivo dentro la descrizione/note del verbale. Applica la prima strategia che produce un risultato e aggiorna driver_id/driver_nome/driver.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Messaggio 'Driver collegati: X verbali associati su Y analizzati'; ricarica dashboard e lista.",
-      "casi_errore": "setError('Errore durante collegamento driver')."
-    },
-    {
-      "etichetta": "🔗 Associazione Manuale",
-      "cosa_fa_al_click": "Apre il modal per collegare manualmente una targa (tra quelle senza driver nei verbali attualmente in lista) a un dipendente.",
-      "endpoint_chiamato": "POST /api/auto-repair/collega-targa-driver?targa={targa}&driver_id={id} (al submit tramite handleAssociaTargaDriver)",
-      "logica_backend": "collega_targa_driver() in auto_repair.py: verifica che il dipendente esista in 'dipendenti' (404 altrimenti), calcola nome_completo, poi esegue un update_many su TUTTI i verbali con quella targa che non hanno ancora driver_id (o è null/stringa vuota), impostando driver_id, driver_nome, auto_repaired=true.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Messaggio 'Targa X associata a Y. N verbali aggiornati.'; chiude il modal, ricarica dashboard e lista.",
-      "casi_errore": "setError con dettaglio se manca targa/driver o se la chiamata fallisce (es. dipendente non trovato -> 404)."
-    },
-    {
-      "etichetta": "🧹 Pulisci Duplicati",
-      "cosa_fa_al_click": "handlePulisciDuplicati(): PRIMA esegue una chiamata in dry_run=true per contare quanti gruppi di duplicati esistono e mostrare una window.confirm con l'anteprima; solo se l'utente conferma esegue la pulizia reale (dry_run=false).",
-      "endpoint_chiamato": "POST /api/verbali-riconciliazione/pulisci-duplicati?dry_run=true (anteprima) poi POST ...?dry_run=false (esecuzione)",
-      "logica_backend": "pulisci_duplicati_verbali(): raggruppa verbali_noleggio per numero_verbale (aggregation $group), individua i gruppi con count>1. Per ogni gruppo, ordina i documenti per _punteggio_completezza() (conta quanti tra fattura_id, fattura_numero, numero_fattura, importo, pagamento_id, driver_id, driver, targa, quietanza_ricevuta sono valorizzati) e poi per data updated_at/created_at più recente; il primo (più completo/più recente) diventa il documento 'canonico'. Recupera dai duplicati eventuali campi mancanti nel canonico (solo se il canonico li ha vuoti), li scrive sul canonico con $set, poi elimina fisicamente i duplicati con delete_many. Con dry_run=true non scrive nulla, restituisce solo l'anteprima (gruppi_duplicati_trovati, documenti_eliminati previsti, dettaglio con campi_recuperati).",
-      "formula_matematica": "punteggio_completezza(v) = numero di campi non vuoti tra: fattura_id, fattura_numero, numero_fattura, importo, pagamento_id, driver_id, driver, targa, quietanza_ricevuta (max 9)",
-      "aggiornamento_ui": "Se nGruppi==0: 'Nessun verbale duplicato trovato'. Altrimenti window.confirm con conteggio gruppi/righe da unire; se confermato, messaggio finale 'Puliti X verbali duplicati (Y righe rimosse)'; ricarica dashboard e lista.",
-      "casi_errore": "setError('Errore durante pulizia duplicati'). Operazione distruttiva (delete_many) quindi protetta da doppia conferma (anteprima + window.confirm)."
-    },
-    {
-      "etichetta": "🔄 Riconcilia (per riga, e nel pannello dettaglio come '🔄 Riconcilia Automatico')",
-      "cosa_fa_al_click": "handleRiconcilia(numeroVerbale): tenta la riconciliazione automatica del singolo verbale, cercando fattura/veicolo/driver mancanti. Disabilitato se lo stato è già 'riconciliato'.",
-      "endpoint_chiamato": "POST /api/verbali-riconciliazione/riconcilia/{numero_verbale}",
-      "logica_backend": "riconcilia_verbale(): 404 se il verbale non esiste. 1) se manca fattura_id, cerca in 'invoices' una fattura il cui testo (descrizione/body/note/notes/oggetto/subject/items.descrizione) contiene il numero_verbale (regex case-insensitive) -> se trovata imposta fattura_id/fattura_numero/fornitore. 2) se manca la targa, la cerca in verbali_noleggio_completi. 3) se c'è una targa, cerca il veicolo in veicoli_noleggio e, se ha un driver_id, recupera il nome da 'dipendenti' (match su campo id, che è un UUID stringa non un ObjectId). 4) determina il nuovo stato: se ha fattura E pagamento -> 'riconciliato'; se solo fattura -> 'fattura_ricevuta'; se solo pagamento -> 'pagato'. Applica gli update trovati con $set e updated_at.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Messaggio 'Verbale X: azione1, azione2, ...' (o 'Nessuna azione' se non trova nulla di nuovo); se il verbale è quello attualmente selezionato nel pannello dettaglio, lo sostituisce con i dati aggiornati restituiti (res.data.verbale); ricarica dashboard e lista.",
-      "casi_errore": "setError('Errore riconciliazione {numero}'); 404 se il numero verbale non esiste nella collezione."
-    },
-    {
-      "etichetta": "🔍 Cerca pagamento (pannello Dettaglio Verbale, /verbali-noleggio/{numero})",
-      "cosa_fa_al_click": "Cerca in cascata su più fonti (PayPal, Gmail, estratto conto) un movimento di pagamento compatibile con il verbale corrente. Visibile solo quando lo stato non è 'pagato'.",
-      "endpoint_chiamato": "POST /api/verbali-noleggio/{verbale_id}/cerca-pagamento",
-      "logica_backend": "cerca_pagamento_verbale() in verbali_noleggio_api.py: carica il verbale (per id o numero_verbale), chiama trova_pagamento_verbale(db, v) del servizio app.services.verbali_pagamento_finder (ricerca in cascata: PayPal -> Gmail -> estratto conto/E.C. — file non incluso in questo audit). Se trova un match, chiama applica_pagamento_a_verbale() che scrive sul verbale i dati del pagamento trovato (fonte, psp, importo, data_pagamento, metodo_pagamento, eventuale pdf_ricevuta_path/iuv).",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Se trovato('trovato':true): alert con fonte/PSP/importo/data, poi window.location.reload() dopo 500ms per rimostrare il verbale con stato aggiornato a 'pagato'. Se non trovato: alert 'Nessun pagamento trovato per questo verbale.'",
-      "casi_errore": "alert con e.response.data.detail o e.message."
-    },
-    {
-      "etichetta": "📥 Scarica ricevuta (Dettaglio Verbale, visibile solo se pagato e pdf_ricevuta_path presente)",
-      "cosa_fa_al_click": "Link diretto (non fetch) che apre/scarica il PDF della ricevuta di pagamento.",
-      "endpoint_chiamato": "GET /api/verbali-noleggio/{verbale_id}/ricevuta-pdf",
-      "logica_backend": "scarica_ricevuta_verbale(): legge pdf_ricevuta_path dal verbale, verifica con os.path.realpath che il percorso risolto sia effettivamente sotto /tmp/uploads/ (protezione path traversal) e che il file esista; altrimenti 404. Restituisce il file con FileResponse.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Il browser apre/scarica il PDF in una nuova scheda.",
-      "casi_errore": "404 'PDF non disponibile' se il path manca, non è sotto /tmp/uploads/, o il file non esiste su disco."
-    },
-    {
-      "etichetta": "📧 Scarica da Posta (Dettaglio Verbale, quando pdf_disponibili è vuoto)",
-      "cosa_fa_al_click": "Placeholder per il download del PDF del verbale dalla posta elettronica.",
-      "endpoint_chiamato": "POST /api/verbali-noleggio/scarica-posta",
-      "logica_backend": "scarica_posta_verbali() in verbali_noleggio_api.py: funzione NON implementata, ritorna sempre {message: 'Funzionalità in sviluppo', status: 'pending'} senza fare nulla.",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "alert con 'Scaricati undefined nuovi verbali' (il campo nuovi_verbali non esiste nella risposta placeholder — comportamento attualmente non funzionante/incompleto).",
-      "casi_errore": "-"
-    },
-    {
-      "etichetta": "📄 Dettaglio (pannello destro, apre in nuova scheda)",
-      "cosa_fa_al_click": "window.open('/verbali-noleggio/{numero_verbale}', '_blank')",
-      "endpoint_chiamato": "Naviga alla pagina DettaglioVerbale.jsx, che internamente chiama GET /api/verbali-noleggio/dettaglio/{numero_verbale}",
-      "logica_backend": "get_verbale_dettaglio(): cerca il verbale per numero_verbale/numero_verbale_old (case sensitive/insensitive)/id in verbali_noleggio, con fallback su verbali_noleggio_completi. Arricchisce con driver_dettaglio (da employees), veicolo_dettaglio (da veicoli_noleggio), pdf_disponibili (ricostruito da pdf_data/quietanza_pdf se non già presente), e se manca fattura_id ma c'è la targa cerca una fattura in 'invoices' la cui descrizione contiene la targa. Rimuove pdf_data/quietanza_pdf dalla risposta (troppo pesanti).",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Pagina dedicata con header (numero verbale, stato PAGATO/SOSPESO/DA VERIFICARE, targa, importo, driver, contratto), dettagli verbale, fattura associata, documenti PDF, stato pagamento (con eventuale movimento bancario collegato), info veicolo.",
-      "casi_errore": "404 'Verbale {numero} non trovato' -> la pagina mostra un banner di errore con bottone 'Torna indietro'."
-    },
-    {
-      "etichetta": "Click riga verbale (tabella lista)",
-      "cosa_fa_al_click": "setSelectedVerbale(v): apre il pannello di dettaglio a destra della tabella (layout a due colonne) senza navigare altrove.",
-      "endpoint_chiamato": "Nessuna chiamata di rete (usa i dati già in memoria dalla GET /lista)",
-      "logica_backend": "-",
-      "formula_matematica": "-",
-      "aggiornamento_ui": "Mostra numero verbale, badge stato, targa, importo verbale/notifica, date verbale/pagamento, fattura associata (se presente), driver associato (se presente), bottoni Riconcilia Automatico e Dettaglio.",
-      "casi_errore": "-"
-    }
-  ],
-  "operazioni_di_registrazione": [
-    {
-      "nome": "Caricamento dashboard riepilogativa",
-      "sequenza_esatta": "loadDashboard() al mount -> GET /api/verbali-riconciliazione/dashboard -> aggregation su verbali_noleggio raggruppata per stato (count + somma importo), conteggio verbali 'da riconciliare' (stato fattura_ricevuta senza pagamento_id, OPPURE pagato senza fattura_id, OPPURE stato salvato), ultimi 5 verbali per created_at.",
-      "collezioni_coinvolte": ["verbali_noleggio (lettura, aggregation)"],
-      "campi_scritti": {},
-      "effetti_collaterali": "Nessuno, solo lettura. Alimenta le 4 card in alto: Totale Verbali, Da Riconciliare, Riconciliati, Totale Importo."
-    },
-    {
-      "nome": "Caricamento lista verbali con filtri",
-      "sequenza_esatta": "loadVerbali() -> GET /api/verbali-riconciliazione/lista?stato=&targa=&da_riconciliare=&ordinamento= -> query dinamica su verbali_noleggio con proiezione che esclude i campi PDF pesanti (pdf_content/pdf_base64/email_body/attachment_content/pdf_quietanza), ordinata per data_verbale (default, desc) o numero_verbale (asc) o created_at (desc). Se filtro 'Solo da riconciliare' attivo, stessa condizione $or della dashboard.",
-      "collezioni_coinvolte": ["verbali_noleggio (lettura)"],
-      "campi_scritti": {},
-      "effetti_collaterali": "Normalizza driver_nome<-driver e fattura_numero<-numero_fattura se mancanti, per uniformare i due schemi usati dai diversi percorsi di scrittura."
-    },
-    {
-      "nome": "Riconciliazione manuale/automatica di un verbale (stato finale)",
-      "sequenza_esatta": "Trigger tramite bottone 🔄 Riconcilia o automazione-completa (batch su tutti i verbali, non esposto direttamente in questa UI ma disponibile come endpoint POST /automazione-completa). Determina lo stato finale del verbale secondo la macchina a stati: da_scaricare -> salvato -> fattura_ricevuta -> pagato -> riconciliato (riconciliato richiede sia fattura_id sia pagamento_id, e in associa_verbale_completo anche driver_id).",
-      "collezioni_coinvolte": ["verbali_noleggio (scrittura)", "invoices (lettura, ricerca fattura per numero verbale)", "veicoli_noleggio (lettura, targa->driver/contratto/codice_cliente)", "dipendenti (lettura, id->nome)"],
-      "campi_scritti": {
-        "verbali_noleggio": "fattura_id, fattura_numero, fornitore, targa, veicolo_id, driver_id, driver, driver_nome, contratto, codice_cliente, stato, riconciliato (bool), updated_at"
-      },
-      "effetti_collaterali": "Il campo 'stato' guida i colori/badge nella UI (STATI_VERBALE nel frontend: da_scaricare, salvato, fattura_ricevuta, pagato, pagato_attesa_fattura, riconciliato, sconosciuto)."
-    },
-    {
-      "nome": "Registrazione pagamento verbale da estratto conto/quietanza (non un bottone diretto in questa pagina ma endpoint disponibile e usato da altri flussi: /registra-pagamento, /registra-quietanza/{numero}, /crea-prima-nota-verbale/{numero})",
-      "sequenza_esatta": "1) registra_pagamento_verbale: se il verbale non esiste ancora (scenario A, pago prima) lo crea con stato='pagato'; se esiste, aggiorna importo/data_pagamento/pagamento_id e passa a 'riconciliato' se ha già fattura_id, altrimenti resta 'pagato'. 2) registra_quietanza: marca quietanza_ricevuta=true, stato_pagamento='pagato', stato='riconciliato' se ha fattura_id altrimenti 'pagato'. 3) crea_prima_nota_verbale: se il verbale ha un importo e non ha già un movimento_banca_id/movimento_cassa_id, crea un movimento in prima_nota_cassa (categoria 'Verbali/Multe') e lo collega al verbale (movimento_cassa_id), stato passa a 'riconciliato' se c'è fattura_id, altrimenti 'pagato'.",
-      "collezioni_coinvolte": ["verbali_noleggio (scrittura)", "prima_nota_cassa (scrittura, un movimento di tipo 'uscita')"],
-      "campi_scritti": {
-        "prima_nota_cassa": "id, data, tipo='uscita', importo, descrizione, categoria='Verbali/Multe', verbale_id, targa, driver_id, driver_nome, fornitore, source='verbale_automazione', created_at"
-      },
-      "effetti_collaterali": "Collega il modulo verbali alla Prima Nota Cassa aziendale, così la spesa compare anche nella contabilità di cassa."
-    },
-    {
-      "nome": "Upload manuale quietanza/bollettino (POST /api/verbali-noleggio/{verbale_id}/upload-quietanza, disponibile come endpoint anche se non richiamato da un bottone visibile in questa pagina/dettaglio)",
-      "sequenza_esatta": "Aggiorna il verbale a stato='pagato', quietanza_ricevuta=true, salva data_pagamento/metodo/importo_pagato ed eventualmente il PDF in base64. Se il verbale ha un driver_id/driver_cf, crea automaticamente una nota per il consulente del lavoro (note_presenze_consulente) e una trattenuta (trattenute_dipendenti) di tipo 'trattenuta_verbale'/'verbale_multa' per il mese successivo, da applicare in busta paga.",
-      "collezioni_coinvolte": ["verbali_noleggio (scrittura)", "note_presenze_consulente (scrittura)", "trattenute_dipendenti (scrittura)"],
-      "campi_scritti": {
-        "note_presenze_consulente / trattenute_dipendenti": "id, dipendente_id, dipendente_nome, tipo, mese, anno, importo, descrizione, evidenza=true, inviato_consulente=false, verbale_id, numero_verbale, targa, stato='da_applicare' (solo trattenute), created_at"
-      },
-      "effetti_collaterali": "Ponte diretto tra il modulo Verbali e il modulo HR/Buste Paga: la spesa del verbale pagato dall'azienda può essere trattenuta dallo stipendio del dipendente responsabile."
-    }
-  ],
-  "collegamenti_con_altre_pagine": [
-    "Tab 'Flotta Auto' (/noleggio) — stessa collezione veicoli_noleggio per il match targa->driver.",
-    "Tab 'Riepilogo Costi' (/noleggio/costi) — i totali verbali mostrati lì derivano dalla stessa fusione verbali_noleggio + verbali_noleggio_completi usata qui.",
-    "Pagina Scadenze (/scadenze) — widget 'Documenti da Riconciliare' con contatori su verbali in attesa fattura / fatture in attesa verbale, che rimandano a /noleggio.",
-    "HR - Scheda Dipendente (tab Verbali) — usa GET /api/noleggio/verbali-dipendente per mostrare i verbali del singolo dipendente (per driver_id o codice_fiscale).",
-    "Dettaglio Verbale (/verbali-noleggio/{numero_verbale}) — pagina di drill-down raggiunta dal bottone 📄 Dettaglio o da link nella tab Flotta.",
-    "Visualizzatore fattura AssoInvoice (/api/fatture-ricevute/fattura/{id}/view-assoinvoice) — link diretto dal box 'Fattura Associata' nel Dettaglio Verbale."
-  ],
-  "popup_e_modali_presenti": [
-    {
-      "nome": "Modal Associazione Manuale (Targa <-> Driver)",
-      "trigger": "🔗 Associazione Manuale",
-      "contenuto": "Select Targa Veicolo (solo le targhe presenti nei verbali correnti che NON hanno ancora un driver_id), select Driver (Dipendente, popolato da GET /api/dipendenti). Footer Annulla / ✅ Associa (disabilitato finché non sono selezionati entrambi)."
-    },
-    {
-      "nome": "Pannello Dettaglio Verbale (non un vero modal, colonna laterale in-page)",
-      "trigger": "click su una riga della tabella verbali",
-      "contenuto": "Numero verbale, badge stato, targa, importo verbale/notifica, date verbale/pagamento, box Fattura Associata (numero+fornitore), box Driver Associato, bottoni 🔄 Riconcilia Automatico e 📄 Dettaglio (apre /verbali-noleggio/{numero} in nuova scheda)."
-    }
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "page_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "pagina": "Verbali noleggio",
+  "route": "/noleggio/verbali",
+  "catalog_id": 12,
+  "modulo": "noleggio",
+  "accesso": "authenticated",
+  "stato_audit": "in_review",
+  "scopo": "Mappa tecnica della schermata «Verbali noleggio». Il comportamento operativo effettivo è definito dai sorgenti e dai test correnti, non da descrizioni storiche.",
+  "frontend": {
+    "component": "frontend/src/pages/VerbaliRiconciliazione.jsx",
+    "entry": "frontend/src/pages/hub/VeicoliHub.jsx",
+    "file_verificati": [
+      "frontend/src/pages/DettaglioVerbale.jsx",
+      "frontend/src/pages/VerbaliRiconciliazione.jsx",
+      "frontend/src/pages/hub/VeicoliHub.jsx"
+    ]
+  },
+  "backend": {
+    "file_verificati": [
+      "app/routers/auto_repair.py",
+      "app/routers/noleggio.py",
+      "app/routers/verbali_noleggio.py",
+      "app/routers/verbali_noleggio_api.py",
+      "app/routers/verbali_riconciliazione.py"
+    ],
+    "endpoint_rilevati_nei_sorgenti": [
+      "/api/auto-repair/collega-targa-driver",
+      "/api/auto-repair/inferisci-targa-driver-da-fatture",
+      "/api/dipendenti",
+      "/api/noleggio/export-pdf-costi",
+      "/api/noleggio/veicoli",
+      "/api/verbali-noleggio",
+      "/api/verbali-noleggio/associa-pdf/{param}",
+      "/api/verbali-noleggio/correggi-importo/{param}",
+      "/api/verbali-noleggio/correggi-trasgressore/{param}",
+      "/api/verbali-noleggio/dettaglio/{param}",
+      "/api/verbali-noleggio/pdf/{param}",
+      "/api/verbali-noleggio/ricalcola-pdf/{param}",
+      "/api/verbali-riconciliazione/collega-driver-massivo",
+      "/api/verbali-riconciliazione/dashboard",
+      "/api/verbali-riconciliazione/lista",
+      "/api/verbali-riconciliazione/migra-attesa-quietanza",
+      "/api/verbali-riconciliazione/pulisci-duplicati",
+      "/api/verbali-riconciliazione/riconcilia/{param}",
+      "/api/verbali-riconciliazione/scan-email",
+      "/api/verbali-riconciliazione/scan-fatture-verbali"
+    ]
+  },
+  "archivio_dati": {
+    "stato_corrente": "mongodb_transitorio",
+    "destinazione": "google_drive_sheets",
+    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+  },
+  "regole_di_lettura": [
+    "HTTP 200 non prova il corretto funzionamento della schermata.",
+    "Gli endpoint elencati sono riferimenti statici rilevati nei sorgenti.",
+    "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }

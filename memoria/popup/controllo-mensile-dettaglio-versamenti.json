@@ -1,18 +1,29 @@
 {
-  "nome_popup": "Modale 'Dettaglio Versamenti - {Mese} {Anno}'",
-  "pagine_da_cui_si_apre": ["Contabilità > Controllo Mensile (ControlloMensile.jsx), solo nella vista Mensile (viewMode='mese')"],
-  "come_si_apre": "Click sul pulsante 'Versamenti' visibile solo nella vista mensile dettagliata (non nella vista annuale). Chiama setShowVersamentiModal(true). Il componente interno VersamentiModal ritorna null se showVersamentiModal è false.",
-  "scopo": "Mostrare l'elenco dei movimenti di Prima Nota Cassa del mese corrente classificati come 'versamento' (uscite verso banca), per verificare/riconciliare il totale versamenti usato nel confronto POS/corrispettivi della pagina.",
-  "dati_mostrati": "Titolo dinamico con mese/anno selezionati (monthNames[meseSelezionato-1] + anno). Se l'array versamentiDettaglio è vuoto, testo 'Nessun versamento registrato per questo mese.'. Altrimenti tabella con colonne Data (formatDateIT), Descrizione (v.descrizione o v.categoria come fallback), Importo (valore assoluto formattato in euro, colore verde); riga di piede TOTALE con la somma di Math.abs(importo) su tutti i versamenti. I dati (versamentiDettaglio) sono già presenti in memoria: sono stati filtrati client-side dai movimenti di Prima Nota Cassa del mese scaricati in precedenza da loadMonthData (GET /api/prima-nota/cassa), selezionando i record con categoria 'Versamento' (o categoria/descrizione contenente 'versamento', case-insensitive) e tipo 'uscita'.",
-  "campi_e_bottoni": [
-    {"elemento": "Pulsante '✕' nell'header", "cosa_fa": "Chiude il modale: setShowVersamentiModal(false)", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
-    {"elemento": "Click sull'overlay scuro di sfondo", "cosa_fa": "Chiude il modale (onClick sull'overlay esterno; il box interno usa stopPropagation per non chiudersi al click al suo interno)", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
-    {"elemento": "Righe della tabella", "cosa_fa": "Sola visualizzazione, nessuna interazione", "endpoint_chiamato": "nessuno", "validazioni": "n/a"}
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "popup_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "popup": "Modale 'Dettaglio Versamenti - {Mese} {Anno}'",
+  "scopo": "Mappa tecnica del popup «Modale 'Dettaglio Versamenti - {Mese} {Anno}'». Il comportamento e le mutazioni reali devono essere verificati nei sorgenti correnti.",
+  "aperto_da": [
+    "Contabilità > Controllo Mensile (ControlloMensile.jsx), solo nella vista Mensile (viewMode='mese')"
   ],
-  "cosa_succede_alla_conferma": "Non è un form: nessuna azione di conferma/submit, nessuna chiamata al backend viene effettuata dal modale (i dati sono già in memoria, filtrati lato client).",
-  "come_si_chiude": [
-    "Pulsante '✕' nell'header",
-    "Click sull'area esterna al box (overlay)"
+  "file_verificati": [
+    "frontend/src/pages/ControlloMensile.jsx"
   ],
-  "effetto_su_pagina_sottostante": "Nessuno: il modale è puramente informativo/di sola lettura, la chiusura non causa ricaricamenti né modifiche alla tabella giornaliera sottostante."
+  "endpoint_rilevati_nei_sorgenti": [
+    "/api/contabilita-gestionale/bilancio-verifica",
+    "/api/corrispettivi",
+    "/api/pos-corrispettivi/controllo-due-fasi",
+    "/api/prima-nota/cassa"
+  ],
+  "regole_ux": [
+    "Il popup deve avere chiusura visibile e non restare sovrapposto al documento.",
+    "Le azioni distruttive o definitive richiedono una conferma esplicita.",
+    "Le associazioni ambigue mostrano candidati e non vengono applicate automaticamente."
+  ]
 }

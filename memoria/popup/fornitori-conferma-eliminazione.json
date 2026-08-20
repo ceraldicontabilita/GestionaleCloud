@@ -1,31 +1,34 @@
 {
-  "nome_popup": "window.confirm() nativo — conferma (doppia) eliminazione fornitore",
-  "file_sorgente": "frontend/src/pages/Fornitori.jsx (funzione handleDelete, righe 1728-1763)",
-  "pagine_da_cui_si_apre": ["Fornitori (Fornitori.jsx)"],
-  "come_si_apre": "Click sull'icona cestino 'Elimina' su una SupplierCard, che chiama handleDelete(id, forceDelete=false). Se forceDelete è false (primo tentativo), mostra window.confirm(`Eliminare definitivamente \"{nome}\"?\\n\\nAttenzione: questa operazione non può essere annullata.`) — {nome} è ragione_sociale (fallback nome/name) del fornitore recuperato dall'array suppliers già in memoria. Se l'utente annulla, la funzione esce subito senza chiamare l'API.",
-  "scopo": "Prevenire l'eliminazione accidentale di un fornitore con un doppio livello di conferma: la prima finestra nativa conferma l'intento generico di eliminare; una SECONDA finestra nativa (solo se il backend segnala che il fornitore ha fatture collegate) chiede esplicitamente se forzare comunque l'eliminazione nonostante il rischio di lasciare fatture orfane.",
-  "dati_mostrati": "Solo testo interpolato con il nome del fornitore (ragione_sociale/nome/name, fallback 'questo fornitore' se nessuno disponibile); nessun altro dato numerico o contabile viene mostrato prima della conferma (a differenza di altri moduli, qui non si vede in anteprima quante fatture sono collegate finché non arriva l'errore dal backend).",
-  "campi_e_bottoni": [
-    {
-      "elemento": "Primo window.confirm — 'Eliminare definitivamente \"{nome}\"?'",
-      "cosa_fa": "Se OK, prosegue con DELETE /api/suppliers/{id} (senza force). Se Annulla, la funzione handleDelete ritorna immediatamente senza alcuna chiamata di rete.",
-      "endpoint_chiamato": "DELETE /api/suppliers/{id} (solo se confermato)",
-      "validazioni": "nessuna validazione applicativa nel confirm stesso"
-    },
-    {
-      "elemento": "Secondo window.confirm — '\"{nome}\" ha fatture collegate. Eliminare comunque (eliminazione forzata)?' (mostrato SOLO se la prima DELETE fallisce con HTTP 400 e il messaggio contiene la stringa 'fatture collegate')",
-      "cosa_fa": "Se OK, richiama handleDelete(id, true) ricorsivamente, che questa volta salta il primo confirm (forceDelete=true) e chiama DELETE /api/suppliers/{id}?force=true. Se Annulla, nessuna ulteriore azione: il fornitore resta intatto.",
-      "endpoint_chiamato": "DELETE /api/suppliers/{id}?force=true (solo se confermato)",
-      "validazioni": "attivato solo per l'errore specifico 'fatture collegate'; qualsiasi altro errore 400/500 mostra invece solo alert('Errore eliminazione: ' + dettaglio) senza riproporre un secondo confirm"
-    }
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "popup_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "popup": "window.confirm() nativo — conferma (doppia) eliminazione fornitore",
+  "scopo": "Mappa tecnica del popup «window.confirm() nativo — conferma (doppia) eliminazione fornitore». Il comportamento e le mutazioni reali devono essere verificati nei sorgenti correnti.",
+  "aperto_da": [
+    "Fornitori (Fornitori.jsx)"
   ],
-  "cosa_succede_alla_conferma": "PRIMA chiamata (senza force): DELETE /api/suppliers/{id} → base.py::delete_supplier trova il fornitore ($or:[id, partita_iva], 404 se assente); se ha partita_iva e force=False, conta db['invoices'].count_documents({'cedente_piva': piva}) e, se >0, blocca con HTTP 400 'Fornitore ha N fatture collegate. Usa force=true per eliminare comunque.' — è questo messaggio che il frontend intercetta per proporre il secondo confirm. SECONDA chiamata (con force=true, solo se l'utente conferma il secondo popup): il controllo sulle fatture collegate viene bypassato; delete_one FISICO (hard delete, non soft-delete) del documento fornitore su 'fornitori', invalidazione della cache 'suppliers_list', poi pulizia relazionale best-effort (try/except che non fa fallire la richiesta): partite_aperte con controparte_id=id fornitore e stato in [aperta,parziale] → aggiornate a stato='annullata'; alerts con entita_id=id fornitore e stato='aperto' → aggiornati a stato='risolto', resolved_by='cascade_delete_fornitore'. Le fatture del fornitore eliminato NON vengono toccate in alcun modo: restano nel database con un riferimento a una P.IVA ormai orfana (nessun campo tipo fornitore_eliminato viene scritto su di esse in questo flusso reale — la funzione più completa CascadeOperations.delete_fornitore_cascade esiste nel codice ma è verificata essere disconnessa da qualunque route, quindi mai eseguita).",
-  "come_si_chiude": [
-    "Click su 'OK' sul primo confirm (prosegue con la DELETE)",
-    "Click su 'Annulla'/'Cancel' sul primo confirm (nessuna azione, fornitore intatto)",
-    "Click su 'OK' sul secondo confirm, se comparso (prosegue con la DELETE forzata)",
-    "Click su 'Annulla'/'Cancel' sul secondo confirm, se comparso (nessuna azione, fornitore intatto)",
-    "Tasto ESC (equivalente ad Annulla nella maggior parte dei browser)"
+  "file_verificati": [
+    "frontend/src/pages/Fornitori.jsx"
   ],
-  "effetto_su_pagina_sottostante": "Se la DELETE (semplice o forzata) va a buon fine, il frontend richiama reloadData() per ricaricare l'intera griglia fornitori dal server (GET /api/suppliers/filtered): la card del fornitore eliminato sparisce e le StatCard aggregate si ricalcolano. Se invece la prima DELETE fallisce per un motivo diverso da 'fatture collegate' (es. errore di rete o altro 400), viene mostrato solo alert('Errore eliminazione: ' + dettaglio) e nessun reload viene eseguito, lasciando la griglia invariata."
+  "endpoint_rilevati_nei_sorgenti": [
+    "/api/anagrafica-fornitori/popola-fornitore/{param}",
+    "/api/anagrafica-fornitori/popola-tutti",
+    "/api/fatture-ricevute/paga-manuale",
+    "/api/fatture/{param}",
+    "/api/openapi-imprese/info/{param}",
+    "/api/suppliers",
+    "/api/suppliers/filtered",
+    "/api/suppliers/search-piva/{param}",
+    "/api/suppliers/{param}"
+  ],
+  "regole_ux": [
+    "Il popup deve avere chiusura visibile e non restare sovrapposto al documento.",
+    "Le azioni distruttive o definitive richiedono una conferma esplicita.",
+    "Le associazioni ambigue mostrano candidati e non vengono applicate automaticamente."
+  ]
 }

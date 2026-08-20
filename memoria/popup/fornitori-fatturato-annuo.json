@@ -1,24 +1,34 @@
 {
-  "nome_popup": "Modale Fatturato (fatturato annuo del fornitore)",
-  "file_sorgente": "frontend/src/pages/Fornitori.jsx (logica handleShowFatturato righe 1840-1855; rendering righe 2470-2684, in un React Portal)",
-  "pagine_da_cui_si_apre": ["Fornitori (Fornitori.jsx)"],
-  "come_si_apre": "Click su uno dei due bottoni 'Fatturato [anno corrente]' / 'Fatturato [anno-1]' presenti su ogni SupplierCard. Il click chiama handleShowFatturato(supplier, anno). Se il fornitore non ha partita_iva, mostra subito alert('Questo fornitore non ha una Partita IVA') e NON apre il modale. Altrimenti imposta immediatamente setFatturatoModal({open:true, data:null, loading:true}) (mostrando lo spinner) e lancia la fetch.",
-  "scopo": "Mostrare rapidamente, senza uscire dalla pagina Fornitori, il riepilogo del fatturato di un fornitore per un anno specifico: totale fatturato, numero fatture, quante sono pagate/da pagare (con relativi importi) e il dettaglio mese per mese.",
-  "dati_mostrati": "Provengono da GET /api/suppliers/{id}/fatturato?anno={anno} (get_supplier_fatturato in suppliers_module/base.py): trova il fornitore (match id/partita_iva/piva), interroga 'invoices' con $and di ($or su fornitore_partita_iva/supplier_vat/cedente_piva) e ($or su data_documento/invoice_date con regex ^anno), poi itera i risultati calcolando totale_fatturato, numero_fatture, fatture_pagate/fatture_non_pagate, importo_pagato/importo_non_pagato (basato su pagato bool o stato_pagamento in (pagata,paid)), e dettaglio_mensile raggruppato per mese (mese_nome, totale, numero_fatture).",
-  "campi_e_bottoni": [
-    {"elemento": "Riquadro 'TOTALE FATTURATO {anno}'", "cosa_fa": "Sola visualizzazione: importo totale (formatEuro) e numero fatture dell'anno.", "endpoint_chiamato": "nessuno (dato già caricato)", "validazioni": "n/d"},
-    {"elemento": "Card 'Pagate' (verde)", "cosa_fa": "Sola visualizzazione: numero fatture pagate e relativo importo_pagato.", "endpoint_chiamato": "nessuno", "validazioni": "n/d"},
-    {"elemento": "Card 'Da Pagare' (rossa)", "cosa_fa": "Sola visualizzazione: numero fatture non pagate e relativo importo_non_pagato.", "endpoint_chiamato": "nessuno", "validazioni": "n/d"},
-    {"elemento": "Lista 'Dettaglio Mensile' (scrollabile, max-height 200px, visibile solo se dettaglio_mensile ha elementi)", "cosa_fa": "Sola visualizzazione: per ogni mese, nome mese, totale (formatEuro) e numero di fatture.", "endpoint_chiamato": "nessuno", "validazioni": "n/d"},
-    {"elemento": "Messaggio 'Nessuna fattura registrata per questo anno' (visibile se numero_fatture===0)", "cosa_fa": "Sola visualizzazione, stato vuoto.", "endpoint_chiamato": "nessuno", "validazioni": "n/d"},
-    {"elemento": "Bottone '✕' nell'header (data-testid=\"close-fatturato-modal\")", "cosa_fa": "onClick => setFatturatoModal({open:false, data:null, loading:false}): chiude il modale e azzera lo stato/dati caricati.", "endpoint_chiamato": "nessuno", "validazioni": "n/d"}
+  "_meta": {
+    "schema_version": 2,
+    "document_type": "popup_source_map",
+    "updated_at": "2026-08-20",
+    "source_revision": "21660b3d500fcdac8ca0ce6f7916cdd49b49500b",
+    "generator": "scripts/refresh_json_docs.py",
+    "verification": "static_source_map"
+  },
+  "popup": "Modale Fatturato (fatturato annuo del fornitore)",
+  "scopo": "Mappa tecnica del popup «Modale Fatturato (fatturato annuo del fornitore)». Il comportamento e le mutazioni reali devono essere verificati nei sorgenti correnti.",
+  "aperto_da": [
+    "Fornitori (Fornitori.jsx)"
   ],
-  "cosa_succede_alla_conferma": "Non esiste un'azione di conferma/submit: è un popup di sola lettura, nessuna scrittura viene mai effettuata dall'interno di questo modale. Se la fetch iniziale fallisce, viene mostrato alert('Errore caricamento fatturato: ' + dettaglio) e il modale si chiude automaticamente (setFatturatoModal({open:false, ...})) invece di restare aperto con un messaggio d'errore interno.",
-  "come_si_chiude": [
-    "Bottone '✕' nell'header",
-    "Click sull'overlay scuro fuori dal riquadro bianco (onClick sul div esterno => setFatturatoModal({open:false,...}); stopPropagation sul contenuto)",
-    "Chiusura automatica in caso di errore nella fetch iniziale",
-    "Nessuna gestione esplicita del tasto ESC nel codice"
+  "file_verificati": [
+    "frontend/src/pages/Fornitori.jsx"
   ],
-  "effetto_su_pagina_sottostante": "Nessun effetto sulla pagina sottostante: nessuna scrittura, nessun reloadData() viene richiamato alla chiusura, dato che il modale è puramente informativo/di sola lettura."
+  "endpoint_rilevati_nei_sorgenti": [
+    "/api/anagrafica-fornitori/popola-fornitore/{param}",
+    "/api/anagrafica-fornitori/popola-tutti",
+    "/api/fatture-ricevute/paga-manuale",
+    "/api/fatture/{param}",
+    "/api/openapi-imprese/info/{param}",
+    "/api/suppliers",
+    "/api/suppliers/filtered",
+    "/api/suppliers/search-piva/{param}",
+    "/api/suppliers/{param}"
+  ],
+  "regole_ux": [
+    "Il popup deve avere chiusura visibile e non restare sovrapposto al documento.",
+    "Le azioni distruttive o definitive richiedono una conferma esplicita.",
+    "Le associazioni ambigue mostrano candidati e non vengono applicate automaticamente."
+  ]
 }
