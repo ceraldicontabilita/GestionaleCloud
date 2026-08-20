@@ -584,6 +584,14 @@ async def sync(db) -> Dict[str, Any]:
                     result["duplicates"] += int(stats.get("duplicati") or (esito or {}).get("duplicati_saltati") or 0)
                     sync_assegni = (esito or {}).get("assegni_sync") or {}
                     result["cheques"] += int(sync_assegni.get("assegni_creati") or 0)
+                    # L'importatore canonico riconcilia gia' soltanto gli ID
+                    # inseriti o promossi da questo documento. Conserviamo
+                    # l'esito nel riepilogo del job senza riesaminare l'intero
+                    # storico bancario a fine ciclo.
+                    result["bank_reconciliation"] = (
+                        (esito or {}).get("riconciliazione_automatica")
+                        or {"skipped": True, "reason": "nessun_nuovo_movimento"}
+                    )
                 result["processed"] += 1
                 now_file = datetime.now(timezone.utc).isoformat()
                 await db[_IMPORT_REGISTRY].update_one(
@@ -628,36 +636,16 @@ async def sync(db) -> Dict[str, Any]:
                     "error": str(exc),
                 })
 
-        # Non basta riconciliare i soli movimenti appena inseriti. L'estratto
-        # conto puo' essere arrivato prima della fattura: in quel caso il file
-        # e' gia' in Elaborate e una scansione successiva non produce nuovi ID,
-        # ma deve comunque riesaminare i movimenti ufficiali ancora aperti.
-        # Il motore canonico applica soltanto riscontri forti e conserva in
-        # sospeso quelli ambigui; qui non viene mai usato il solo importo.
-        try:
-            from app.services.riconciliazione_bancaria import (
-                riconcilia_movimenti_banca,
-            )
-
-            # Il Drive operativo contiene dal 2026 in avanti. Limitare il
-            # replay allo stesso confine evita di riprocessare migliaia di
-            # movimenti storici a ogni ciclo di cinque minuti, mantenendo
-            # comunque il caso essenziale EC-prima/fattura-dopo.
-            anno_minimo = int(
-                getattr(settings, "DRIVE_ESTRATTI_ANNO_MINIMO", 0) or 0
-            )
-            data_dal = f"{anno_minimo}-01-01" if anno_minimo else None
-            result["bank_reconciliation"] = await riconcilia_movimenti_banca(
-                data_dal=data_dal,
-            )
-        except Exception as exc:
-            logger.exception(
-                "Drive estratti conto: riprocessamento bancario finale fallito"
-            )
-            result["errors"].append({
-                "file": "Estratti conto (riconciliazione finale)",
-                "error": str(exc),
-            })
+        # Non eseguire qui una riconciliazione generale. L'importatore degli
+        # estratti opera sugli ID appena creati; quando invece una fattura
+        # arriva dopo il relativo movimento, l'importatore fatture cerca e
+        # riprocessa soltanto i candidati compatibili. Un replay completo ogni
+        # cinque minuti e' ridondante e puo' esaurire la memoria del worker
+        # anche quando ``Da elaborare`` e' vuota.
+        result.setdefault("bank_reconciliation", {
+            "skipped": True,
+            "reason": "gestita_dalle_pipeline_incrementali",
+        })
 
         now = datetime.now(timezone.utc).isoformat()
         await db["sistema_stato"].update_one(
