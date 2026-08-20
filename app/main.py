@@ -368,6 +368,24 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Pulizia ammortamenti in cassa non eseguita: {e}")
 
+    # Rollback automatico della deduplica 20/08/2026 basata su fattura_id.
+    # Una fattura puo' essere pagata da piu' assegni/rate: quelle righe sono
+    # operazioni distinte e devono tornare visibili senza intervento utente.
+    try:
+        db = Database.get_db()
+        if settings.RUN_STARTUP_DATA_REPAIRS and db is not None:
+            from app.routers.prima_nota_module.manutenzione import (
+                ripristina_dedup_fatture_errato,
+            )
+            ripristino = await ripristina_dedup_fatture_errato()
+            if ripristino.get("ripristinati"):
+                logger.warning(
+                    "Ripristinate %s operazioni nascoste dalla deduplica fattura_id",
+                    ripristino["ripristinati"],
+                )
+    except Exception as e:
+        logger.error("Rollback deduplica fattura_id non eseguito: %s", e)
+
     logger.info("Application startup complete")
     yield
 
