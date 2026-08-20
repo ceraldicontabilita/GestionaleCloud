@@ -4,7 +4,7 @@ import { useConfirm } from '../components/ui/ConfirmDialog';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout, PageSection } from '../components/PageLayout';
 import { formatEuroD } from '../lib/utils';
-import { AlertTriangle, CheckCircle, Search, Eye, Trash2, RefreshCw, Loader2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Search, Eye, RefreshCw, Loader2 } from 'lucide-react';
 
 /**
  * Pagina di manutenzione Prima Nota.
@@ -50,40 +50,11 @@ export default function PuliziaPrimaNota() {
     azzeraErrori();
     setLoading('anteprima');
     try {
-      const res = await api.post(`/api/prima-nota/dedup-fatture?applica=false&anno=${anno}`);
+      const res = await api.post(`/api/prima-nota/dedup-fatture?applica=false&auto_risolvi_certi=true&anno=${anno}`);
       setAnteprima(res.data);
+      setRisultatoPulizia(res.data);
     } catch (e) {
       setErrore(e?.response?.data?.detail || e?.message || 'Errore durante l\'anteprima');
-    } finally {
-      setLoading(null);
-    }
-  };
-
-  const lanciaPulizia = async () => {
-    const totaleDaEliminare =
-      (anteprima?.cassa?.movimenti_da_eliminare || 0) +
-      (anteprima?.banca?.movimenti_da_eliminare || 0);
-
-    const conferma = await confirm({
-      title: 'Pulizia duplicati Prima Nota',
-      message:
-        `Stai per marcare come eliminati ${totaleDaEliminare} movimenti duplicati ` +
-        `(${anteprima?.cassa?.movimenti_da_eliminare || 0} in Cassa, ${anteprima?.banca?.movimenti_da_eliminare || 0} in Banca). ` +
-        `Verranno contrassegnati come "deleted" (soft-delete): restano nel database e sono ripristinabili.`,
-      confirmText: 'Procedi',
-      variant: 'warning',
-    });
-    if (!conferma) return;
-
-    azzeraErrori();
-    setLoading('pulisci');
-    try {
-      const res = await api.post(`/api/prima-nota/dedup-fatture?applica=true&anno=${anno}`);
-      setRisultatoPulizia(res.data);
-      // dopo la pulizia, azzero l'anteprima così l'utente non clicca di nuovo per sbaglio
-      setAnteprima(null);
-    } catch (e) {
-      setErrore(e?.response?.data?.detail || e?.message || 'Errore durante la pulizia');
     } finally {
       setLoading(null);
     }
@@ -354,8 +325,8 @@ export default function PuliziaPrimaNota() {
         {/* STEP 2 - ANTEPRIMA DUPLICATI */}
         <StepCard
           numero={2}
-          titolo="Anteprima duplicati fatture"
-          descrizione="Mostra quali fatture risultano duplicate in Prima Nota Cassa e Banca. Non modifica niente."
+          titolo="Controlla e correggi duplicati fatture"
+          descrizione="Mostra sempre l'elenco completo e nasconde automaticamente solo le copie con identità fattura certa."
         >
           <button
             onClick={lanciaAnteprima}
@@ -363,7 +334,7 @@ export default function PuliziaPrimaNota() {
             style={btnStyle('primary', isBusy)}
           >
             {loading === 'anteprima' ? <Loader2 size={16} className="animate-spin" /> : <Eye size={16} />}
-            Mostra anteprima
+            Analizza e correggi duplicati certi
           </button>
 
           {anteprima && (
@@ -373,13 +344,17 @@ export default function PuliziaPrimaNota() {
                   <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Prima Nota Cassa</div>
                   <Stat label="Gruppi duplicati" value={anteprima.cassa?.gruppi_duplicati || 0} />
                   <Stat label="Movimenti da rimuovere" value={anteprima.cassa?.movimenti_da_eliminare || 0} color="#dc2626" />
+                  <Stat label="Casi da verificare" value={anteprima.cassa?.movimenti_da_verificare || 0} color="#d97706" />
                 </div>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Prima Nota Banca</div>
                   <Stat label="Gruppi duplicati" value={anteprima.banca?.gruppi_duplicati || 0} />
                   <Stat label="Movimenti da rimuovere" value={anteprima.banca?.movimenti_da_eliminare || 0} color="#dc2626" />
+                  <Stat label="Casi da verificare" value={anteprima.banca?.movimenti_da_verificare || 0} color="#d97706" />
                 </div>
               </div>
+              <DuplicateList title="Dettaglio Cassa" groups={anteprima.cassa?.dettagli || []} />
+              <DuplicateList title="Dettaglio Banca" groups={anteprima.banca?.dettagli || []} />
               <div style={{ marginTop: 12, fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>
                 {anteprima.nota}
               </div>
@@ -390,24 +365,15 @@ export default function PuliziaPrimaNota() {
         {/* STEP 3 - ESEGUI PULIZIA */}
         <StepCard
           numero={3}
-          titolo="Esegui pulizia duplicati"
-          descrizione="Marca come eliminati i duplicati trovati al passo 2. Esegui prima il passo 2!"
+          titolo="Esito correzione automatica"
+          descrizione="I duplicati certi sono già nascosti in modo recuperabile; i casi dubbi restano visibili e non vengono modificati."
           disabledReason={!anteprima ? 'Esegui prima l\'anteprima (passo 2)' : null}
         >
-          <button
-            onClick={lanciaPulizia}
-            disabled={isBusy || !anteprima || (anteprima?.cassa?.movimenti_da_eliminare || 0) + (anteprima?.banca?.movimenti_da_eliminare || 0) === 0}
-            style={btnStyle('danger', isBusy || !anteprima)}
-          >
-            {loading === 'pulisci' ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-            Elimina duplicati
-          </button>
-
           {risultatoPulizia && (
             <div style={{ ...resultBoxStyle, background: '#f0fdf4', borderColor: '#22c55e' }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
                 <CheckCircle size={18} color="#059669" />
-                <strong style={{ color: '#065f46' }}>Pulizia completata</strong>
+                <strong style={{ color: '#065f46' }}>Correzione automatica completata</strong>
               </div>
               <div style={{ fontSize: 13, color: '#065f46' }}>
                 Eliminati <strong>{risultatoPulizia.cassa?.eliminati_effettivi || 0}</strong> movimenti duplicati da Cassa e{' '}
@@ -735,6 +701,39 @@ export default function PuliziaPrimaNota() {
         </StepCard>
       </PageSection>
     </PageLayout>
+  );
+}
+
+function DuplicateList({ title, groups }) {
+  if (!groups.length) return (
+    <div style={{ marginTop: 12, fontSize: 13, color: '#059669' }}><strong>{title}:</strong> nessun duplicato.</div>
+  );
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: '#0f2744', marginBottom: 8 }}>{title} ({groups.length} gruppi)</div>
+      <div style={{ display: 'grid', gap: 10 }}>
+        {groups.map((g, index) => (
+          <div key={`${g.chiave}-${index}`} style={{ border: `1px solid ${g.certezza === 'certo' ? '#86efac' : '#fbbf24'}`, borderRadius: 8, padding: 12, background: g.certezza === 'certo' ? '#f0fdf4' : '#fffbeb' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+              <strong>{g.certezza === 'certo' ? 'Corretto automaticamente' : 'Da verificare'}</strong>
+              <span style={{ fontSize: 12 }}>{g.motivo}</span>
+            </div>
+            {g.tenuto && <MovementRow label="Conservato" movement={g.tenuto} />}
+            {(g.duplicati || []).map((m, i) => <MovementRow key={m.id || i} label={g.certezza === 'certo' ? 'Copia nascosta' : 'Possibile copia'} movement={m} />)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MovementRow({ label, movement }) {
+  return (
+    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #dbe3ee', fontSize: 12, lineHeight: 1.55 }}>
+      <strong>{label}:</strong> {movement.data || 'data assente'} · {formatEuroD(movement.importo || 0)} · {movement.numero_fattura || movement.fattura_id || movement.riferimento || 'senza riferimento'}
+      <br />{movement.descrizione || 'descrizione assente'}
+      <br /><span style={{ color: '#64748b' }}>ID {movement.id || 'assente'} · fonte {movement.source || 'non indicata'}</span>
+    </div>
   );
 }
 

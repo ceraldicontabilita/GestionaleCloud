@@ -1774,6 +1774,10 @@ async def migrazione_pulisci_bancari_da_cassa(_admin: Dict[str, Any] = Depends(g
 
 async def dedup_fatture_prima_nota(
     applica: bool = Query(False, description="Se False esegue solo dry-run, se True elimina realmente"),
+    auto_risolvi_certi: bool = Query(
+        False,
+        description="Rimuove automaticamente solo i duplicati con identita fattura certa",
+    ),
     anno: Optional[int] = Query(None, description="Limita al singolo anno")
 ) -> Dict[str, Any]:
     """Elimina i duplicati di fatture in Prima Nota Cassa e Banca.
@@ -1790,7 +1794,26 @@ async def dedup_fatture_prima_nota(
     """
     db = Database.get_db()
 
-    report: Dict[str, Any] = {"cassa": {}, "banca": {}, "applica": applica}
+    report: Dict[str, Any] = {
+        "cassa": {}, "banca": {}, "applica": applica,
+        "auto_risolvi_certi": auto_risolvi_certi,
+    }
+
+    def dettaglio_movimento(m: Dict[str, Any]) -> Dict[str, Any]:
+        """Campi leggibili e tracciabili: un contatore non e' un audit."""
+        return {
+            "id": m.get("id"),
+            "data": m.get("data") or m.get("date"),
+            "importo": m.get("importo") if m.get("importo") is not None else m.get("amount"),
+            "descrizione": m.get("descrizione") or m.get("description") or "",
+            "numero_fattura": m.get("numero_fattura") or m.get("invoice_number"),
+            "fattura_id": m.get("fattura_id"),
+            "riferimento": m.get("riferimento"),
+            "fornitore": m.get("fornitore") or m.get("nome_fornitore"),
+            "fornitore_piva": m.get("fornitore_piva"),
+            "source": m.get("source") or m.get("fonte"),
+            "created_at": m.get("created_at"),
+        }
 
     for collection_name in [COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA]:
         label = "cassa" if "cassa" in collection_name else "banca"
@@ -1852,7 +1875,8 @@ async def dedup_fatture_prima_nota(
                 anonime_dup.append(m)
 
         duplicati_trovati = []
-        ids_da_eliminare = []
+        ids_certi = []
+        ids_da_verificare = []
         for chiave, mov_list in gruppi.items():
             if len(mov_list) <= 1:
                 continue
@@ -1860,31 +1884,50 @@ async def dedup_fatture_prima_nota(
             mov_list.sort(key=lambda x: x.get("created_at") or "9999")
             tenuto = mov_list[0]
             da_eliminare = mov_list[1:]
+            certezza = "certo" if chiave.startswith("fid:") else "da_verificare"
+            motivo = (
+                "Stessa identita canonica della fattura (fattura_id/riferimento FATT)"
+                if certezza == "certo" else
+                "Stesso numero, data e importo: verificare il fornitore prima di rimuovere"
+            )
             duplicati_trovati.append({
                 "chiave": chiave,
+                "certezza": certezza,
+                "motivo": motivo,
                 "tenuto_id": tenuto.get("id"),
                 "tenuto_importo": tenuto.get("importo"),
                 "tenuto_data": tenuto.get("data"),
+                "tenuto": dettaglio_movimento(tenuto),
                 "eliminati_count": len(da_eliminare),
                 "eliminati_ids": [d.get("id") for d in da_eliminare],
+                "duplicati": [dettaglio_movimento(d) for d in da_eliminare],
             })
-            ids_da_eliminare.extend(d.get("id") for d in da_eliminare if d.get("id"))
+            destinazione = ids_certi if certezza == "certo" else ids_da_verificare
+            destinazione.extend(d.get("id") for d in da_eliminare if d.get("id"))
 
         for m in anonime_dup:
             duplicati_trovati.append({
                 "chiave": f"anonima:{m.get('data')}|{m.get('importo')}",
+                "certezza": "da_verificare",
+                "motivo": "Somiglianza per data, importo e fornitore nella descrizione; identita fattura assente",
                 "tenuto_id": "(la riga identificata con fattura)",
                 "tenuto_importo": m.get("importo"),
                 "tenuto_data": m.get("data"),
+                "tenuto": None,
                 "eliminati_count": 1,
                 "eliminati_ids": [m.get("id")],
+                "duplicati": [dettaglio_movimento(m)],
             })
             if m.get("id"):
-                ids_da_eliminare.append(m["id"])
+                ids_da_verificare.append(m["id"])
 
         # Soft delete (reversibile)
         deleted = 0
-        if applica and ids_da_eliminare:
+        # L'automatismo e' ammesso esclusivamente per identita fattura certa.
+        # Il vecchio `applica=true` resta compatibile, ma non elimina piu' le
+        # somiglianze anonime o basate soltanto su numero/data/importo.
+        ids_da_eliminare = ids_certi if (applica or auto_risolvi_certi) else []
+        if ids_da_eliminare:
             result = await db[collection_name].update_many(
                 {"id": {"$in": ids_da_eliminare}},
                 {"$set": {
@@ -1897,14 +1940,18 @@ async def dedup_fatture_prima_nota(
 
         report[label] = {
             "gruppi_duplicati": len(duplicati_trovati),
-            "movimenti_da_eliminare": len(ids_da_eliminare),
+            "movimenti_da_eliminare": len(ids_certi),
+            "movimenti_certi": len(ids_certi),
+            "movimenti_da_verificare": len(ids_da_verificare),
             "eliminati_effettivi": deleted,
+            # Lista completa: ogni alert numerico deve essere verificabile.
+            "dettagli": duplicati_trovati,
             "campione": duplicati_trovati[:20],
         }
 
     report["nota"] = (
         "DRY-RUN (niente è stato toccato). Rilancia con ?applica=true per eseguire."
-        if not applica else
+        if not (applica or auto_risolvi_certi) else
         "Duplicati marchiati come deleted (soft delete, recuperabili da DB)."
     )
     return report
