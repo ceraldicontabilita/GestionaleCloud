@@ -21,6 +21,8 @@ export default function DettaglioVerbale() {
   const [drivers, setDrivers] = useState([]);
   const [selectedDriver, setSelectedDriver] = useState('');
   const [linkingDriver, setLinkingDriver] = useState(false);
+  const [correctedAmount, setCorrectedAmount] = useState('');
+  const [savingAmount, setSavingAmount] = useState(false);
   const pdfInputRef = useRef(null);
 
   useEffect(() => {
@@ -143,6 +145,27 @@ export default function DettaglioVerbale() {
     }
   };
 
+  const saveCorrectedAmount = async () => {
+    const amount = Number(String(correctedAmount).replace(',', '.'));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Inserisci un importo valido');
+      return;
+    }
+    setSavingAmount(true);
+    try {
+      await api.post(`/api/verbali-noleggio/correggi-importo/${encodeURIComponent(verbaleId)}`, {
+        importo: amount, fonte: 'verifica_pdf_operatore',
+      });
+      await reload();
+      setCorrectedAmount('');
+      toast.success('Importo corretto e registrato nello storico');
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Correzione importo non riuscita');
+    } finally {
+      setSavingAmount(false);
+    }
+  };
+
   if (loading) {
     return (
       <PageLayout title="Dettaglio verbale" subtitle={`Caricamento verbale ${verbaleId}`}>
@@ -199,6 +222,10 @@ export default function DettaglioVerbale() {
               {recalculating ? 'Rilettura…' : 'Rileggi importo dal PDF'}
             </Button>
           )}
+          <input aria-label="Importo corretto dal PDF" inputMode="decimal" placeholder="Es. 51,64" value={correctedAmount} onChange={e => setCorrectedAmount(e.target.value)} style={{ width: 130, padding: '8px 10px' }} />
+          <Button variant="success" disabled={!correctedAmount || savingAmount} onClick={saveCorrectedAmount}>
+            {savingAmount ? 'Salvataggio…' : 'Salva importo verificato'}
+          </Button>
           <span style={{ fontSize: 12, color: COLORS.textMuted }}>
             Il PDF originale è la fonte dell’importo; eventuali conflitti OCR restano tracciati.
           </span>

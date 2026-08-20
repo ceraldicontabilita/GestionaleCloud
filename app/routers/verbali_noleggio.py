@@ -11,7 +11,7 @@ scarica-tutti, stats, tutti-verbali, verbale/{numero_verbale}, verbali,
 verbali-attesa-fattura, verbali-privati, verifica-nuove-fatture — codice
 conservato nella cronologia git.
 """
-from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
+from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Body
 from typing import Dict, Any
 import base64
 import hashlib
@@ -109,6 +109,43 @@ async def ricalcola_verbale_da_pdf(
             parsed_metadata={"numero_verbale": verbale.get("numero_verbale")}))
     refreshed = await db["verbali_noleggio"].find_one({"numero_verbale": verbale.get("numero_verbale")}, {"_id": 0}) or verbale
     return {"success": True, "pdf_elaborati": len(results), "importo": refreshed.get("importo"), "risultati": results}
+
+
+@router.post("/correggi-importo/{numero_verbale:path}")
+@handle_errors
+async def correggi_importo_verbale(
+    numero_verbale: str,
+    data: Dict[str, Any] = Body(...),
+    admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Corregge l'importo con audit esplicito quando la scansione non e' leggibile."""
+    db = Database.get_db()
+    collection, verbale = await _find_verbale(db, numero_verbale)
+    if not verbale:
+        raise HTTPException(status_code=404, detail="Verbale non trovato")
+    try:
+        amount = round(float(data.get("importo")), 2)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Importo non valido")
+    if amount <= 0 or amount > 100000:
+        raise HTTPException(status_code=400, detail="Importo fuori intervallo")
+    now = datetime.now(timezone.utc).isoformat()
+    previous = verbale.get("importo")
+    update = {"importo": amount, "importo_fonte": "correzione_manuale_da_pdf",
+              "importo_precedente": previous, "importo_corretto_at": now,
+              "importo_corretto_da": admin.get("email") or admin.get("user_id"), "updated_at": now}
+    query = {"id": verbale.get("id")} if verbale.get("id") else {"numero_verbale": verbale.get("numero_verbale")}
+    await db[collection].update_one(query, {"$set": update})
+    await db["audit_log"].insert_one({
+        "id": f"verbale_importo_{hashlib.sha256(f'{numero_verbale}:{now}'.encode()).hexdigest()[:24]}",
+        "modulo": "verbali_noleggio", "azione": "correzione_importo_da_pdf",
+        "entita_id": verbale.get("id") or verbale.get("numero_verbale"),
+        "numero_verbale": verbale.get("numero_verbale"), "valore_precedente": previous,
+        "valore_nuovo": amount, "fonte": data.get("fonte") or "verifica_pdf_operatore",
+        "utente": admin.get("email") or admin.get("user_id"), "created_at": now,
+    })
+    return {"success": True, "numero_verbale": verbale.get("numero_verbale"),
+            "importo_precedente": previous, "importo": amount, "fonte": update["importo_fonte"]}
 
 
 @router.get("/pdf/{numero_verbale:path}")
