@@ -59,8 +59,8 @@ def _register_auth(app: FastAPI):
     app.include_router(erp_bridge_router)
     app.include_router(legal_router, tags=["Legal"])
 
-    from app.routers.whatsapp_webhook import router as whatsapp_router
-    app.include_router(whatsapp_router, prefix="/api/whatsapp", tags=["WhatsApp"])
+    # WhatsApp legacy disattivato: rimane archiviato ma non registrato
+    # come router attivo. Le notifiche operative usano Telegram.
 
 
 # ─── F24 Module ──────────────────────────────────────────────────────────────
