@@ -566,6 +566,70 @@ async def ensure_workbook(
     return await asyncio.to_thread(_ensure_workbook_sync, config, tuple(collections))
 
 
+def _ensure_collection_sheet_sync(
+    spreadsheet_id: str, collection: str,
+) -> LedgerSheet:
+    """Crea in modo idempotente il foglio Drive per una collezione operativa.
+
+    Il codice storico accede a collezioni tecniche e di dominio anche fuori dal
+    manifest iniziale (alert, audit, partite aperte, magazzino). In backend
+    Sheets queste collezioni non devono ricadere su Mongo e non devono bloccare
+    un import: al primo tentativo di scrittura ricevono un foglio ``DB_*``.
+    """
+    sheet = dynamic_sheet(collection)
+    sheets = _sheets_service()
+    metadata = sheets.spreadsheets().get(
+        spreadsheetId=spreadsheet_id,
+        fields="sheets.properties",
+    ).execute()
+    existing = {
+        item["properties"]["title"]
+        for item in metadata.get("sheets", [])
+        if item.get("properties", {}).get("title")
+    }
+    if sheet.title not in existing:
+        try:
+            sheets.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={"requests": [{"addSheet": {"properties": {
+                    "title": sheet.title,
+                    "gridProperties": {
+                        "frozenRowCount": 1,
+                        "columnCount": len(HEADERS),
+                    },
+                }}}]},
+            ).execute()
+        except Exception:
+            # Due scritture concorrenti possono tentare lo stesso addSheet.
+            # Accettiamo l'errore soltanto se il foglio ora esiste davvero.
+            refreshed = sheets.spreadsheets().get(
+                spreadsheetId=spreadsheet_id,
+                fields="sheets.properties.title",
+            ).execute()
+            refreshed_titles = {
+                item["properties"]["title"]
+                for item in refreshed.get("sheets", [])
+                if item.get("properties", {}).get("title")
+            }
+            if sheet.title not in refreshed_titles:
+                raise
+    sheets.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id,
+        range=f"'{sheet.title}'!A1:{LAST_COLUMN}1",
+        valueInputOption="RAW",
+        body={"values": [HEADERS]},
+    ).execute()
+    return sheet
+
+
+async def ensure_collection_sheet(
+    spreadsheet_id: str, collection: str,
+) -> LedgerSheet:
+    return await asyncio.to_thread(
+        _ensure_collection_sheet_sync, spreadsheet_id, collection,
+    )
+
+
 def _drive_duplicate_audit_sync(folder_id: str) -> Dict[str, Any]:
     _, drive = _services()
     files = []

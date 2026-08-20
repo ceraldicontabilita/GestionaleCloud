@@ -66,3 +66,17 @@ def test_nome_canonico_render_configura_fatture(monkeypatch):
 
     assert drive._folder_id() == "folder-private"
     assert drive.is_configured() is True
+
+
+def test_import_fatture_seleziona_un_lotto_limitato(monkeypatch):
+    monkeypatch.setattr(settings, "DRIVE_FATTURE_BATCH_SIZE", 3)
+    files = [{"id": str(index), "name": f"{index}.xml"} for index in range(8)]
+
+    assert [item["id"] for item in drive._select_batch(files)] == ["0", "1", "2"]
+
+
+def test_dimensione_lotto_fatture_e_sempre_sicura(monkeypatch):
+    monkeypatch.setattr(settings, "DRIVE_FATTURE_BATCH_SIZE", 0)
+    assert drive._batch_size() == 1
+    monkeypatch.setattr(settings, "DRIVE_FATTURE_BATCH_SIZE", 1000)
+    assert drive._batch_size() == 100

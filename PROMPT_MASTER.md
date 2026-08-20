@@ -564,6 +564,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `ENABLE_DRIVE_DICHIARAZIONI_IVA_SYNC` | feature-job | configurazione | `bool` / `False` | `app/config.py` |
 | `ENABLE_DRIVE_ESTRATTI_CONTO_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_DRIVE_FATTURE_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
+| `DRIVE_FATTURE_BATCH_SIZE` | feature-job | configurazione | `int` / `10` | `app/config.py` |
 | `ENABLE_DRIVE_QUIETANZE_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_DRIVE_VERBALI_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_EMAIL_F24_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
