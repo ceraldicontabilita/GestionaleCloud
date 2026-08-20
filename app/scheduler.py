@@ -19,6 +19,24 @@ import random
 
 logger = logging.getLogger(__name__)
 
+# Con il backend Drive/Sheets il servizio Render gira intenzionalmente in un
+# solo processo (FastAPI e APScheduler condividono lo stesso event loop). Un
+# lock distribuito salvato come riga contabile non sarebbe atomico su Sheets e
+# costringerebbe inoltre a trattare una lease effimera come dato aziendale.
+# Manteniamo quindi un lock locale per job; MongoDB conserva il lock distribuito
+# soltanto durante la fase di compatibilita' transitoria multi-processo.
+_sheets_job_locks: dict[str, asyncio.Lock] = {}
+
+
+async def _esegui_con_lock_locale(job_id, funzione, *args, **kwargs):
+    lock = _sheets_job_locks.setdefault(job_id, asyncio.Lock())
+    if lock.locked():
+        logger.info("[SCHEDULER] job %s gia' in esecuzione nel processo Sheets", job_id)
+        return None
+    async with lock:
+        risultato = funzione(*args, **kwargs)
+        return await risultato if inspect.isawaitable(risultato) else risultato
+
 async def _esegui_con_lease_distribuito(job_id, funzione, *args, **kwargs):
     """Esegue un job una sola volta anche con piu' worker/istanze.
 
@@ -28,6 +46,9 @@ async def _esegui_con_lease_distribuito(job_id, funzione, *args, **kwargs):
     """
     from app.config import settings
     from app.database import Database
+
+    if str(getattr(settings, "DATA_BACKEND", "sheets")).strip().lower() == "sheets":
+        return await _esegui_con_lock_locale(job_id, funzione, *args, **kwargs)
 
     db = Database.get_db()
     if db is None:
