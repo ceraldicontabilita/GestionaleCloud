@@ -192,13 +192,20 @@ def test_f24_rows_are_drive_first_filterable_and_keep_stable_ids(monkeypatch):
         "Tipo riga": "CREDITO", "Codice tributo": "6099",
         "Periodo tributo": "2025", "Debito": 0, "Credito": 10,
         "SHA-256": "a" * 64, "Pagina": 1,
+    }, {
+        "ID documento": "DOC-F24", "Anno pagamento": "2019",
+        "Data pagamento": "31/12/2019", "Sezione": "ERARIO",
+        "Tipo riga": "DEBITO", "Codice tributo": "9001",
+        "Periodo tributo": "2015", "Debito": 100, "Credito": 0,
+        "SHA-256": "a" * 64, "Pagina": 2,
     }]
     catalog = {"documents": [document], "f24_rows": rows, "declarations": [], "duplicates": []}
     monkeypatch.setattr(index, "load_full_catalog", lambda service=None: ({}, catalog))
 
-    all_rows = list_f24_rows(year="2026")
+    all_rows = list_f24_rows()
     credit_rows = list_f24_rows(year="2026", credits_only=True)
-    assert all_rows["total"] == 2
+    assert all_rows["total"] == 3
+    assert all_rows["items"][0]["payment_date"] == "2026-08-20"
     assert credit_rows["total"] == 1
     credit_from_all = next(item for item in all_rows["items"] if item["tax_code"] == "6099")
     assert credit_rows["items"][0]["id"] == credit_from_all["id"]

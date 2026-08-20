@@ -13,6 +13,7 @@ import posixpath
 import re
 import threading
 from collections import Counter, defaultdict
+from datetime import date, datetime
 from pathlib import PurePosixPath
 from typing import Any, Iterable
 
@@ -164,6 +165,18 @@ def _amount(value: Any) -> float:
         return round(float(value or 0), 2)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _date_sort_key(value: Any) -> str:
+    if isinstance(value, (datetime, date)):
+        return value.strftime("%Y%m%d")
+    text = str(value or "").strip()
+    for pattern in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(text[:10], pattern).strftime("%Y%m%d")
+        except ValueError:
+            continue
+    return text
 
 
 def _declaration_type(value: Any, filename: Any = None) -> str:
@@ -415,7 +428,7 @@ def list_f24_documents(
                 else "MODELLO_F24_NON_PROVA_BANCARIA"
             ),
         })
-    results.sort(key=lambda item: (str(item.get("payment_date") or ""), item["document"]["filename"]), reverse=True)
+    results.sort(key=lambda item: (_date_sort_key(item.get("payment_date")), item["document"]["filename"]), reverse=True)
     return {"returned": min(len(results), limit), "total_matching": len(results), "results": results[:limit]}
 
 
@@ -473,7 +486,7 @@ def list_f24_rows(
             ),
         })
     matches.sort(key=lambda item: (
-        str(item.get("payment_date") or ""), str(item.get("filename") or ""),
+        _date_sort_key(item.get("payment_date")), str(item.get("filename") or ""),
         str(item.get("tax_code") or ""),
     ), reverse=True)
     page = matches[offset:offset + limit]
