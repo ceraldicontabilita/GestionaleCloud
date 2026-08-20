@@ -148,6 +148,41 @@ async def correggi_importo_verbale(
             "importo_precedente": previous, "importo": amount, "fonte": update["importo_fonte"]}
 
 
+@router.post("/correggi-trasgressore/{numero_verbale:path}")
+@handle_errors
+async def correggi_trasgressore_verbale(
+    numero_verbale: str,
+    data: Dict[str, Any] = Body(...),
+    admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Registra il trasgressore verificato senza confonderlo con il driver."""
+    db = Database.get_db()
+    collection, verbale = await _find_verbale(db, numero_verbale)
+    if not verbale:
+        raise HTTPException(status_code=404, detail="Verbale non trovato")
+    trasgressore = " ".join(str(data.get("trasgressore") or "").split()).strip()
+    if len(trasgressore) < 3 or len(trasgressore) > 200:
+        raise HTTPException(status_code=400, detail="Trasgressore non valido")
+    now = datetime.now(timezone.utc).isoformat()
+    previous = verbale.get("trasgressore")
+    query = {"id": verbale.get("id")} if verbale.get("id") else {"numero_verbale": verbale.get("numero_verbale")}
+    await db[collection].update_one(query, {"$set": {
+        "trasgressore": trasgressore, "trasgressore_verificato": True,
+        "trasgressore_fonte": data.get("fonte") or "verifica_documento_operatore",
+        "trasgressore_verificato_at": now, "updated_at": now,
+    }})
+    await db["audit_log"].insert_one({
+        "id": f"verbale_trasgressore_{hashlib.sha256(f'{numero_verbale}:{now}'.encode()).hexdigest()[:24]}",
+        "modulo": "verbali_noleggio", "azione": "correzione_trasgressore",
+        "entita_id": verbale.get("id") or verbale.get("numero_verbale"),
+        "numero_verbale": verbale.get("numero_verbale"),
+        "valore_precedente": previous, "valore_nuovo": trasgressore,
+        "utente": admin.get("email") or admin.get("user_id"), "created_at": now,
+    })
+    return {"success": True, "numero_verbale": verbale.get("numero_verbale"),
+            "trasgressore": trasgressore, "trasgressore_precedente": previous}
+
+
 @router.get("/pdf/{numero_verbale:path}")
 @handle_errors
 async def get_pdf_verbale(numero_verbale: str, indice: int = 0) -> Dict[str, Any]:

@@ -23,6 +23,8 @@ export default function DettaglioVerbale() {
   const [linkingDriver, setLinkingDriver] = useState(false);
   const [correctedAmount, setCorrectedAmount] = useState('');
   const [savingAmount, setSavingAmount] = useState(false);
+  const [trasgressore, setTrasgressore] = useState('');
+  const [savingTrasgressore, setSavingTrasgressore] = useState(false);
   const pdfInputRef = useRef(null);
 
   useEffect(() => {
@@ -33,7 +35,10 @@ export default function DettaglioVerbale() {
       setError('');
       try {
         const res = await api.get(`/api/verbali-noleggio/dettaglio/${verbaleId}`);
-        if (alive) setVerbale(res.data || null);
+        if (alive) {
+          setVerbale(res.data || null);
+          setTrasgressore(res.data?.trasgressore || '');
+        }
       } catch (e) {
         if (alive) setError(e.response?.data?.detail || e.message || 'Errore caricamento verbale');
       } finally {
@@ -50,6 +55,25 @@ export default function DettaglioVerbale() {
   const reload = async () => {
     const res = await api.get(`/api/verbali-noleggio/dettaglio/${verbaleId}`);
     setVerbale(res.data || null);
+    setTrasgressore(res.data?.trasgressore || '');
+  };
+
+  const saveTrasgressore = async () => {
+    const value = trasgressore.trim();
+    if (value.length < 3) return;
+    setSavingTrasgressore(true);
+    try {
+      await api.post(`/api/verbali-noleggio/correggi-trasgressore/${encodeURIComponent(verbaleId)}`, {
+        trasgressore: value,
+        fonte: 'verifica_documento_operatore',
+      });
+      await reload();
+      toast.success('Trasgressore registrato');
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Salvataggio trasgressore non riuscito');
+    } finally {
+      setSavingTrasgressore(false);
+    }
   };
 
   useEffect(() => {
@@ -205,9 +229,28 @@ export default function DettaglioVerbale() {
           <div><strong>Numero</strong><div>{verbale?.numero_verbale || verbaleId}</div></div>
           <div><strong>Fornitore</strong><div>{verbale?.fornitore || '-'}</div></div>
           <div><strong>Targa</strong><div>{verbale?.targa || '-'}</div></div>
+          <div><strong>Trasgressore</strong><div>{verbale?.trasgressore || '-'}</div></div>
           <div><strong>Stato</strong><div><Badge variant={stato === 'pagato' ? 'success' : stato === 'sospeso' ? 'warning' : 'neutral'}>{stato}</Badge></div></div>
           <div><strong>Importo</strong><div>{formatEuro(verbale?.importo || verbale?.totale || 0)}</div></div>
           <div><strong>PDF disponibili</strong><div>{pdfCount}</div></div>
+        </div>
+      </PageSection>
+
+      <PageSection title="Trasgressore indicato nel verbale">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          <input
+            value={trasgressore}
+            onChange={event => setTrasgressore(event.target.value)}
+            placeholder="Ragione sociale o nominativo"
+            aria-label="Trasgressore"
+            style={{ minWidth: 320, padding: '10px 12px', borderRadius: 8, border: `1px solid ${COLORS.border}` }}
+          />
+          <Button variant="primary" disabled={savingTrasgressore || trasgressore.trim().length < 3} onClick={saveTrasgressore}>
+            {savingTrasgressore ? 'Salvataggio…' : 'Salva trasgressore'}
+          </Button>
+        </div>
+        <div style={{ marginTop: 8, fontSize: 12, color: COLORS.textMuted }}>
+          Il trasgressore è l’intestatario indicato nel verbale e non viene usato automaticamente come driver.
         </div>
       </PageSection>
 
