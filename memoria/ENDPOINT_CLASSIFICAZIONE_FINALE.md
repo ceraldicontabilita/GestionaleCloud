@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1130 · tenere: 727 · verificare: 377 · admin-only (migrazione/manutenzione): 26
+**Totale endpoint:** 1131 · tenere: 728 · verificare: 377 · admin-only (migrazione/manutenzione): 26
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -1121,10 +1121,11 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/verbali-noleggio/{verbale_id}/upload-quietanza` | verbali_noleggio_api | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/verbali-riconciliazione/collega-driver-massivo` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `GET /api/verbali-riconciliazione/dashboard` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `POST /api/verbali-riconciliazione/import-partenopay` | verbali_riconciliazione | — | sì | — | — | — | tenere | in uso: scheduler |
 | `GET /api/verbali-riconciliazione/lista` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/verbali-riconciliazione/pulisci-duplicati` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/verbali-riconciliazione/riconcilia/{numero_verbale}` | verbali_riconciliazione | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
-| `POST /api/verbali-riconciliazione/scan-email` | verbali_riconciliazione | — | sì | — | — | — | tenere | in uso: scheduler |
+| `POST /api/verbali-riconciliazione/scan-email` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/verbali-riconciliazione/scan-fatture-verbali` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/verbali-riconciliazione/scan-gmail-attendibili` | verbali_riconciliazione | — | sì | — | — | sì | tenere | in uso: scheduler |
 | `GET /api/verifica-coerenza/completa/{anno}` | verifica_coerenza | sì | — | — | — | — | tenere | in uso: FE |

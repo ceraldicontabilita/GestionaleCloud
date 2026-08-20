@@ -225,6 +225,8 @@ class Settings(BaseSettings):
     # F24 reali — controllare i primi risultati prima di fidarsi.
     ENABLE_EMAIL_F24_SYNC: bool = True
     ENABLE_EMAIL_VERBALI_SYNC: bool = True
+    # Ora locale Europe/Rome del controllo giornaliero verbali.
+    VERBALI_EMAIL_SCAN_HOUR: int = 6
     
     # Telegram
     TELEGRAM_BOT_TOKEN: Optional[str] = None

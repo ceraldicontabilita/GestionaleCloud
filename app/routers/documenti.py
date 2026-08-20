@@ -2386,6 +2386,22 @@ async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
     import io
     import zipfile
 
+    from app.services.partenopay_archive_import import (
+        import_partenopay_archive,
+        is_partenopay_archive,
+    )
+    if is_partenopay_archive(content):
+        result = await import_partenopay_archive(Database.get_db(), content, dry_run=False)
+        return {
+            **result,
+            "tipo_rilevato": "archivio_partenopay",
+            "workflow": "PARTENOPAY_ARCHIVIO_PROBATORIO",
+            "filename": filename,
+            "imported": result.get("inserted_or_updated", 0),
+            "duplicates": 0,
+            "errors": len(result.get("integrity_errors") or []),
+        }
+
     try:
         archive = zipfile.ZipFile(io.BytesIO(content))
     except (OSError, zipfile.BadZipFile) as exc:
