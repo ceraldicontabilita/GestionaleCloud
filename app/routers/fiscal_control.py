@@ -247,10 +247,6 @@ async def declarations(
 ):
     if declaration_type and declaration_type not in DECLARATION_TYPES:
         raise HTTPException(400, "Tipo dichiarazione non valido")
-    database_items = await list_declaration_dossiers(
-        Database.get_db(), company_id=_company(), year=year,
-        declaration_type=declaration_type,
-    )
     drive_warning = None
     try:
         from app.services.drive_document_index import list_declarations as list_drive_declarations
@@ -265,7 +261,7 @@ async def declarations(
 
     merged: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for item in [*drive_items, *database_items]:
+    for item in drive_items:
         identity = str(
             item.get("sha256") or item.get("document_id") or item.get("id")
             or item.get("archive_path") or item.get("filename") or ""
@@ -283,7 +279,8 @@ async def declarations(
         "declaration_type": declaration_type,
         "sources": {
             "drive_excel_index": len(drive_items),
-            "database": len(database_items),
+            "database": 0,
+            "canonical": "google_drive",
             "drive_warning": drive_warning,
         },
     }
