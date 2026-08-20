@@ -7,8 +7,6 @@ import json
 import posixpath
 import re
 import zipfile
-import asyncio
-import base64
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 
@@ -118,6 +116,37 @@ async def import_partenopay_archive(db, content: bytes, *, dry_run: bool = True)
     now_iso = now.isoformat()
     archive_sha = result["archive_sha256"]
 
+    # Conserva una sola copia integrale e verificata del pacchetto. I file
+    # interni restano indirizzabili tramite archive_path senza moltiplicare
+    # 141 chiamate Drive dentro la richiesta HTTP.
+    import_run_id = f"partenopay_{archive_sha[:32]}"
+    previous_run = await db["partenopay_import_runs"].find_one(
+        {"id": import_run_id}, {"_id": 0, "drive_archive_status": 1}
+    )
+    previous_archive_status = str((previous_run or {}).get("drive_archive_status") or "")
+    if previous_archive_status not in {"archived", "duplicate", "archived_manual_oauth"}:
+        try:
+            from app.services.email_drive_archive import archive_document_copy
+            drive_archive = archive_document_copy(
+                {"id": import_run_id, "filename": "PARTENOPAY_NAVIGABILE_PRONTO.zip",
+                 "file_hash": archive_sha, "content": content},
+                "verbale",
+            )
+        except Exception as exc:
+            drive_archive = {"status": "error", "reason": str(exc)}
+    else:
+        drive_archive = {"status": previous_archive_status}
+    await db["partenopay_import_runs"].update_one(
+        {"id": import_run_id},
+        {"$set": {"id": import_run_id, "archive_sha256": archive_sha,
+                  "filename": "PARTENOPAY_NAVIGABILE_PRONTO.zip",
+                  "drive_archive_status": drive_archive.get("status"),
+                  "drive_archive_reason": drive_archive.get("reason"),
+                  "drive_archived_at": drive_archive.get("archived_at"),
+                  "updated_at": now_iso},
+         "$setOnInsert": {"created_at": now_iso}}, upsert=True,
+    )
+
     for email in payload.get("emails") or []:
         email_id = str(email.get("id") or "").strip() or hashlib.sha256(
             json.dumps(email, sort_keys=True).encode()
@@ -139,12 +168,8 @@ async def import_partenopay_archive(db, content: bytes, *, dry_run: bool = True)
     with zipfile.ZipFile(io.BytesIO(content)) as archive:
         for relative, item in file_by_path.items():
             full = relative if relative.startswith(ROOT) else ROOT + relative
-            raw = archive.read(full)
-            sha = hashlib.sha256(raw).hexdigest()
+            sha = str(item.get("sha256") or "").lower()
             doc_id = f"partenopay_{sha[:32]}"
-            existing_doc = await db["documents_inbox"].find_one(
-                {"id": doc_id}, {"_id": 0, "drive_archive_status": 1}
-            )
             await db["documents_inbox"].update_one(
                 {"id": doc_id},
                 {"$set": {
@@ -153,43 +178,12 @@ async def import_partenopay_archive(db, content: bytes, *, dry_run: bool = True)
                     "fonte": "partenopay_zip", "archive_path": relative,
                     "archive_sha256": archive_sha, "categoria_partenopay": item.get("categoria"),
                     "codice_avviso_estratto": item.get("codice_avviso"),
+                    "source_archive_id": import_run_id,
+                    "drive_archive_status": "contained_in_source_archive",
                     "original_preserved": True, "updated_at": now_iso,
                 }, "$setOnInsert": {"created_at": now_iso, "processed": False, "status": "importato"}},
                 upsert=True,
             )
-            # Copia non distruttiva soltanto delle prove originali. TXT e CSV
-            # sono indici/trascrizioni già conservati nel JSON canonico: copiarli
-            # singolarmente rendeva il caricamento sincrono troppo lento.
-            extension = str(item.get("estensione") or "").lower()
-            previous_status = str((existing_doc or {}).get("drive_archive_status") or "")
-            if extension in {"pdf", "eml", "xml", "p7m", "p7s"} and previous_status not in {
-                "archived", "duplicate", "archived_manual_oauth",
-            }:
-                try:
-                    from app.services.email_drive_archive import archive_document_copy
-                    drive_result = await asyncio.to_thread(
-                        archive_document_copy,
-                        {"id": doc_id, "filename": item.get("nome") or posixpath.basename(relative),
-                         "file_hash": sha, "pdf_data": base64.b64encode(raw).decode("ascii")},
-                        "verbale",
-                    )
-                except Exception as exc:
-                    drive_result = {"status": "error", "reason": str(exc)}
-                await db["documents_inbox"].update_one(
-                    {"id": doc_id},
-                    {"$set": {"drive_archive_status": drive_result.get("status"),
-                               "drive_archive_area": drive_result.get("area"),
-                               "drive_archive_reason": drive_result.get("reason"),
-                               "drive_archived_at": drive_result.get("archived_at")}},
-                )
-            if str(item.get("estensione") or "").lower() == "pdf":
-                from app.services.verbali_document_import import process_verbale_document
-                await process_verbale_document(
-                    db, document_id=doc_id, content=raw,
-                    filename=item.get("nome") or posixpath.basename(relative),
-                    source="partenopay_zip",
-                    parsed_metadata={"identificativo_bolletta": item.get("codice_avviso")},
-                )
 
     for record in payload.get("records") or []:
         key, number, plate = _record_identity(record)
