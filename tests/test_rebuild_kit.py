@@ -27,6 +27,17 @@ def test_rebuild_kit_is_complete_integral_and_single_root(tmp_path: Path):
         assert f"{prefix}00_PROMPT_DA_INCOLLARE.txt" in names
         assert f"{prefix}01_MASTER/PROMPT_MASTER.md" in names
         assert len([name for name in names if name.startswith(f"{prefix}03_PAGINE/") and Path(name).name[:2].isdigit() and name.endswith(".md")]) == 65
+        logic_names = [name for name in names if name.startswith(f"{prefix}03_PAGINE/LOGICA_JSON/") and name.endswith(".json")]
+        assert len(logic_names) == 65
+        page_names = [name for name in names if name.startswith(f"{prefix}03_PAGINE/") and Path(name).name[:2].isdigit() and name.endswith(".md")]
+        for name in page_names:
+            document = archive.read(name).decode("utf-8")
+            assert "## Logica operativa specifica" in document
+            assert "## Fonti e registri letti" in document
+            assert "## Scritture ed effetti consentiti" in document
+            assert "## Collegamenti con le altre pagine" in document
+            assert "## Divieti e protezioni specifiche" in document
+            assert "## Criteri specifici di completamento" in document
 
         manifest = json.loads(archive.read(f"{prefix}MANIFEST.json"))
         spec = json.loads(archive.read(f"{prefix}09_MACHINE_READABLE/RECONSTRUCTION_SPEC.json"))
@@ -34,6 +45,7 @@ def test_rebuild_kit_is_complete_integral_and_single_root(tmp_path: Path):
         variables = json.loads(archive.read(f"{prefix}06_CONFIG/VARIABLES.json"))
 
     assert manifest["counts"]["pages"] == 65
+    assert manifest["counts"]["page_logic_contracts"] == 65
     assert manifest["counts"]["popups"] == 36
     assert manifest["counts"]["endpoints"] == 1140
     assert manifest["counts"]["sheets"] == 22

@@ -30,6 +30,7 @@ try:
         settings_variables,
         variable_group,
     )
+    from scripts.rebuild_page_logic import PAGE_LOGIC, validate_page_logic
 except ModuleNotFoundError:  # esecuzione diretta: python scripts/...
     from genera_prompt_master import (  # type: ignore[no-redef]
         PAGE_PURPOSES,
@@ -40,6 +41,7 @@ except ModuleNotFoundError:  # esecuzione diretta: python scripts/...
         settings_variables,
         variable_group,
     )
+    from rebuild_page_logic import PAGE_LOGIC, validate_page_logic  # type: ignore[no-redef]
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -190,10 +192,19 @@ def render_list(values: list[str], empty: str = "Nessuno rilevato staticamente."
     return "\n".join(f"- `{value}`" for value in values)
 
 
+def render_plain_list(values: list[str]) -> str:
+    return "\n".join(f"- {value}" for value in values)
+
+
+def render_steps(values: list[str]) -> str:
+    return "\n".join(f"{index}. {value}" for index, value in enumerate(values, start=1))
+
+
 def render_page_document(
     page: dict[str, Any],
     page_map: dict[str, Any],
     logic: dict[str, Any],
+    operating: dict[str, Any],
     endpoints: list[dict[str, str]],
     tests: list[str],
 ) -> str:
@@ -236,13 +247,48 @@ def render_page_document(
 - Componente corrente: `{page['component']}`
 - Entrypoint/router: `{page['entry']}`
 - Mappa macchina: [`MAPPE_JSON/{map_name}`](MAPPE_JSON/{map_name})
+- Contratto logico macchina: [`LOGICA_JSON/{page['id']:02d}-{Path(page['documentation_file']).stem}.json`](LOGICA_JSON/{page['id']:02d}-{Path(page['documentation_file']).stem}.json)
 - Stato della prova corrente: `{page['audit_status']}`; una mappa statica o HTTP 200 non sono prova end-to-end.
 
 ## Scopo da preservare
 
 {purpose}
 
-## Flusso obbligatorio
+## Fonti e registri letti
+
+{render_plain_list(operating['sources'])}
+
+## Scritture ed effetti consentiti
+
+{render_plain_list(operating['writes'])}
+
+Ogni effetto passa dal servizio/writer canonico del dominio, usa idempotency key
+e conserva `canonical_id`, `operation_id`, fonte, attore e audit prima/dopo.
+
+## Logica operativa specifica
+
+{render_steps(operating['flow'])}
+
+## Automazioni previste
+
+{render_plain_list(operating['automations'])}
+
+Le automazioni ordinarie non richiedono una plancia di pulsanti. Un errore deve
+creare un caso visibile e ripetibile; non deve duplicare dati o mascherarsi da
+esito riuscito.
+
+## Collegamenti con le altre pagine
+
+{render_plain_list(operating['links'])}
+
+I collegamenti sono reciproci: se A mostra B, B deve mostrare A usando la stessa
+`relation_id`/`operation_id` e deve aprire il record esatto, non una ricerca generica.
+
+## Divieti e protezioni specifiche
+
+{render_plain_list(operating['guards'])}
+
+## Regole comuni obbligatorie
 
 1. Caricare identità, autorizzazioni e anno globale prima dei dati di dominio.
 2. Leggere i registri Drive/Sheets tramite servizi/API canonici; mai interrogare file o archivi paralleli dalla UI.
@@ -250,6 +296,13 @@ def render_page_document(
 4. Eseguire azioni idempotenti; le associazioni certe sono automatiche, quelle ambigue mostrano candidati e motivazione.
 5. Aggiornare tutte le viste collegate tramite `operation_id`/relazioni e rendere la navigazione bidirezionale.
 6. Conservare fonte, hash, identificatore esterno, timestamp e stato di ogni prova.
+
+## Criteri specifici di completamento
+
+{render_plain_list(operating['acceptance'])}
+
+Questi criteri vanno provati con test unitari, integrazione e almeno un percorso
+browser end-to-end basato su fixture documentali verificabili.
 
 ## API rilevate dalla pagina e dalle sue mappe
 
@@ -505,6 +558,7 @@ Non contiene dati reali, credenziali, allegati fiscali o una copia del vecchio c
 ## Contenuto verificato
 
 - {counts['pages']} pagine canoniche con logica, API, stato UI, handler, fonti e test;
+- {counts['page_logic_contracts']} contratti logici JSON, uno per ogni pagina;
 - {counts['popups']} popup mappati;
 - {counts['endpoints']} endpoint classificati, inclusi quelli in quarantena;
 - {counts['variables']} variabili senza valori segreti;
@@ -584,6 +638,7 @@ def source_fingerprint(paths: list[Path]) -> str:
 
 
 def build_package(package_root: Path) -> dict[str, Any]:
+    validate_page_logic()
     catalog = read_json("page_catalog.json")
     pages = sorted(catalog["pages"], key=lambda item: item["id"])
     if len(pages) != 65 or [page["id"] for page in pages] != list(range(1, 66)):
@@ -598,12 +653,14 @@ def build_package(package_root: Path) -> dict[str, Any]:
     quarantined_maps = sorted(all_page_maps - canonical_maps)
 
     fingerprint_inputs = [ROOT / "PROMPT_MASTER.md", ROOT / "page_catalog.json", ROOT / "app/config.py", ROOT / "render.yaml"]
+    fingerprint_inputs.append(ROOT / "scripts/rebuild_page_logic.py")
     fingerprint_inputs.extend(ROOT / page["component"] for page in pages)
     fingerprint_inputs.extend(ROOT / path for path in canonical_maps)
     fingerprint = source_fingerprint(fingerprint_inputs)
 
     counts = {
         "pages": len(pages),
+        "page_logic_contracts": len(PAGE_LOGIC),
         "popups": len(popup_paths),
         "endpoints": len(endpoints),
         "variables": len(variables),
@@ -628,12 +685,26 @@ def build_package(package_root: Path) -> dict[str, Any]:
     page_index: list[dict[str, Any]] = []
     for page in pages:
         page_map = read_json(page["documentation_file"])
+        operating = PAGE_LOGIC[page["id"]]
         sources = page_sources(page, page_map)
         logic = extract_frontend_logic(sources)
         tests = frontend_test_paths(page)
         slug = Path(page["documentation_file"]).stem
         doc_path = f"03_PAGINE/{page['id']:02d}-{slug}.md"
-        write_text(package_root, doc_path, render_page_document(page, page_map, logic, endpoints, tests))
+        logic_path = f"03_PAGINE/LOGICA_JSON/{page['id']:02d}-{slug}.json"
+        write_text(package_root, doc_path, render_page_document(page, page_map, logic, operating, endpoints, tests))
+        write_json(
+            package_root,
+            logic_path,
+            {
+                "schema_version": 1,
+                "page_id": page["id"],
+                "label": page["label"],
+                "route": page["path"],
+                "purpose": PAGE_PURPOSES[page["id"]],
+                **operating,
+            },
+        )
         raw_map_destination = f"03_PAGINE/MAPPE_JSON/{Path(page['documentation_file']).name}"
         write_json(package_root, raw_map_destination, page_map)
         page_index.append(
@@ -644,6 +715,7 @@ def build_package(package_root: Path) -> dict[str, Any]:
                 "module": page["module"],
                 "access": page["access"],
                 "document": doc_path,
+                "logic": logic_path,
                 "map": raw_map_destination,
                 "component": page["component"],
                 "source_sha256": sha256_file(ROOT / page["component"]),
@@ -652,14 +724,21 @@ def build_package(package_root: Path) -> dict[str, Any]:
             }
         )
 
-    page_md = ["# Indice delle 65 pagine", "", "| # | Pagina | Route | Modulo | Accesso | Scheda |", "|---:|---|---|---|---|---|"]
+    page_md = [
+        "# Indice delle 65 pagine",
+        "",
+        "Ogni pagina ha una scheda Markdown leggibile e un contratto JSON macchina con la stessa logica.",
+        "",
+        "| # | Pagina | Route | Modulo | Accesso | Scheda | JSON |",
+        "|---:|---|---|---|---|---|---|",
+    ]
     page_md.extend(
-        f"| {row['id']} | {row['label']} | `{row['path']}` | `{row['module']}` | `{row['access']}` | [{Path(row['document']).name}]({Path(row['document']).name}) |"
+        f"| {row['id']} | {row['label']} | `{row['path']}` | `{row['module']}` | `{row['access']}` | [{Path(row['document']).name}]({Path(row['document']).name}) | [{Path(row['logic']).name}](LOGICA_JSON/{Path(row['logic']).name}) |"
         for row in page_index
     )
     write_text(package_root, "03_PAGINE/INDICE_PAGINE.md", "\n".join(page_md))
     write_json(package_root, "03_PAGINE/INDICE_PAGINE.json", page_index)
-    write_csv(package_root, "03_PAGINE/INDICE_PAGINE.csv", page_index, ["id", "label", "path", "module", "access", "document", "map", "component", "source_sha256", "api_calls"])
+    write_csv(package_root, "03_PAGINE/INDICE_PAGINE.csv", page_index, ["id", "label", "path", "module", "access", "document", "logic", "map", "component", "source_sha256", "api_calls"])
     for relative in quarantined_maps:
         write_json(package_root, f"03_PAGINE/QUARANTENA_MAPPE/{Path(relative).name}", read_json(relative))
     write_text(
@@ -792,6 +871,8 @@ def validate_package(package_root: Path, manifest: dict[str, Any]) -> None:
             raise RuntimeError(f"Manifest non valido: {item['path']}")
     if len(list((package_root / "03_PAGINE").glob("[0-9][0-9]-*.md"))) != 65:
         raise RuntimeError("Numero schede pagina diverso da 65")
+    if len(list((package_root / "03_PAGINE/LOGICA_JSON").glob("[0-9][0-9]-*.json"))) != 65:
+        raise RuntimeError("Numero contratti logici pagina diverso da 65")
     if len(list((package_root / "04_POPUP/MAPPE_JSON").glob("*.json"))) != 36:
         raise RuntimeError("Numero mappe popup diverso da 36")
     endpoints = json.loads((package_root / "05_API/ENDPOINTS.json").read_text(encoding="utf-8"))

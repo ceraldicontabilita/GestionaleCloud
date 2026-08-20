@@ -216,7 +216,8 @@ di considerare pubblicata una modifica:
 ### Kit completo per la ricostruzione pulita
 
 Per generare un unico ZIP autosufficiente con Prompt Master, architettura,
-logica delle 65 pagine, 36 popup, contratti API, variabili senza segreti,
+65 schede Markdown e 65 contratti JSON con la logica specifica di ogni pagina,
+36 popup, contratti API, variabili senza segreti,
 modello Drive/Sheets e matrice di accettazione:
 
 ```powershell
