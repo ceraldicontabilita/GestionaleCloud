@@ -23,6 +23,15 @@ def test_manifest_ha_fogli_collezioni_e_prefissi_unici():
     assert {"Cedolini", "Estratti conto", "Movimenti bancari", "Bonifici"} <= {
         row["foglio"] for row in manifest
     }
+    assert {"Codici tributo", "Import PartenoPay", "Email PartenoPay", "Verbali PartenoPay"} <= {
+        row["foglio"] for row in manifest
+    }
+
+
+def test_albero_drive_operativo_ha_le_cartelle_richieste():
+    assert ledger.ARCHIVE_TREE_NAMES == (
+        "REGISTRO DATI", "PARTENOPAY", "CODICI TRIBUTO", "QUIETANZE", "DICHIARAZIONI",
+    )
 
 
 def test_fogli_dinamici_hanno_nome_e_prefisso_stabili():
@@ -130,6 +139,42 @@ def test_sync_esporta_anche_documenti_storici_con_solo_objectid(monkeypatch):
         assert result["righe"] == 1
         assert captured["rows"][0][1] == str(inserted.inserted_id)
         assert json.loads(captured["rows"][0][15])["_mongo_id"] == str(inserted.inserted_id)
+
+    run(scenario())
+
+
+def test_snapshot_sorgente_deduplica_solo_copie_identiche():
+    async def scenario():
+        db = AsyncMongoMockClient().db
+        await db.prova.insert_many([
+            {"id": "A", "valore": 1},
+            {"id": "A", "valore": 1},
+            {"id": "B", "valore": 2},
+        ])
+
+        result = await ledger.source_collection_snapshot(db, "prova")
+
+        assert result["righe_sorgente"] == 3
+        assert result["identita_uniche"] == 2
+        assert result["duplicati_esatti"] == 1
+        assert result["numero_conflitti"] == 0
+
+    run(scenario())
+
+
+def test_snapshot_sorgente_blocca_stessa_identita_con_payload_diversi():
+    async def scenario():
+        db = AsyncMongoMockClient().db
+        await db.prova.insert_many([
+            {"id": "A", "valore": 1},
+            {"id": "A", "valore": 2},
+        ])
+
+        result = await ledger.source_collection_snapshot(db, "prova")
+
+        assert result["identita_uniche"] == 1
+        assert result["numero_conflitti"] == 1
+        assert result["conflitti"][0]["canonical_id"] == "A"
 
     run(scenario())
 

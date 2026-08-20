@@ -1,8 +1,8 @@
-"""Registro portabile del gestionale su un unico Google Spreadsheet.
+"""Registro operativo del gestionale su Google Drive/Google Sheets.
 
-Mongo resta temporaneamente il motore operativo, ma ogni tabella canonica puo'
-essere sincronizzata e ricostruita da questo registro. Ogni foglio conserva un
-progressivo proprio e il payload JSON completo, senza perdere campi futuri.
+Il registro e' ricostruibile senza MongoDB: ogni archivio ha un foglio, un
+progressivo stabile, un identificativo canonico e il payload JSON completo.
+La migrazione da Mongo e' ammessa soltanto come fase transitoria verificata.
 """
 from __future__ import annotations
 
@@ -63,6 +63,22 @@ SHEETS: tuple[LedgerSheet, ...] = (
     LedgerSheet("PayPal", "paypal_transactions", "PAY"),
     LedgerSheet("Scadenze fornitori", "scadenziario_fornitori", "SCA"),
     LedgerSheet("Relazioni", "entity_relations", "REL"),
+    LedgerSheet("Codici tributo", "tax_code_registry", "CTR"),
+    LedgerSheet("Import PartenoPay", "partenopay_import_runs", "PPR"),
+    LedgerSheet("Email PartenoPay", "verbali_email_archive", "PPE"),
+    LedgerSheet("Verbali PartenoPay", "verbali_noleggio", "PPV"),
+)
+
+# Sotto la radice indicata dall'amministratore il gestionale mantiene una
+# tassonomia piccola e stabile. I documenti originali non vengono mai spostati
+# automaticamente: gli ingest futuri li archiviano qui e l'indice conserva i
+# percorsi storici gia' esistenti.
+ARCHIVE_TREE_NAMES: tuple[str, ...] = (
+    "REGISTRO DATI",
+    "PARTENOPAY",
+    "CODICI TRIBUTO",
+    "QUIETANZE",
+    "DICHIARAZIONI",
 )
 
 
@@ -150,6 +166,65 @@ def canonical_filter(document: Dict[str, Any]) -> Dict[str, Any]:
         if value not in (None, ""):
             return {field: value}
     raise ValueError("Documento senza chiave canonica")
+
+
+def portable_document(document: Dict[str, Any]) -> Dict[str, Any]:
+    """Copia serializzabile con identita portabile anche per record storici."""
+    payload = dict(document)
+    mongo_id = payload.pop("_id", None)
+    if mongo_id is not None and not canonical_id(payload):
+        payload["_mongo_id"] = str(mongo_id)
+    return payload
+
+
+def document_fingerprint(document: Dict[str, Any]) -> str:
+    payload = portable_document(document)
+    encoded = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, default=_json_default,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def collection_fingerprint(fingerprints: Iterable[str]) -> str:
+    digest = hashlib.sha256()
+    for value in sorted(str(item) for item in fingerprints):
+        digest.update(value.encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+async def source_collection_snapshot(db, collection_name: str) -> Dict[str, Any]:
+    """Conta e deduplica per identita, distinguendo copie esatte e conflitti."""
+    raw_count = 0
+    without_id = 0
+    exact_duplicates = 0
+    by_id: Dict[str, str] = {}
+    conflicts: List[Dict[str, str]] = []
+    async for raw in db[collection_name].find({}):
+        raw_count += 1
+        document = portable_document(raw)
+        key = canonical_id(document)
+        if not key:
+            without_id += 1
+            continue
+        fingerprint = document_fingerprint(document)
+        previous = by_id.get(key)
+        if previous is None:
+            by_id[key] = fingerprint
+        elif previous == fingerprint:
+            exact_duplicates += 1
+        else:
+            conflicts.append({"canonical_id": key, "motivo": "payload_diversi"})
+    return {
+        "righe_sorgente": raw_count,
+        "identita_uniche": len(by_id),
+        "duplicati_esatti": exact_duplicates,
+        "senza_id": without_id,
+        "conflitti": conflicts[:100],
+        "numero_conflitti": len(conflicts),
+        "digest": collection_fingerprint(by_id.values()),
+    }
 
 
 def operation_id(document: Dict[str, Any]) -> str:
@@ -244,6 +319,46 @@ def _services():
     )
 
 
+def _escape_drive_query(value: str) -> str:
+    return str(value).replace("\\", "\\\\").replace("'", "\\'")
+
+
+def _ensure_child_folder_sync(drive, parent_id: str, name: str) -> Dict[str, Any]:
+    escaped = _escape_drive_query(name)
+    found = drive.files().list(
+        q=(f"name='{escaped}' and '{parent_id}' in parents and "
+           "mimeType='application/vnd.google-apps.folder' and trashed=false"),
+        fields="files(id,name,webViewLink,parents)", pageSize=3,
+        supportsAllDrives=True, includeItemsFromAllDrives=True,
+    ).execute().get("files", [])
+    if len(found) > 1:
+        raise RuntimeError(f"Cartella Drive duplicata: {name}")
+    if found:
+        return found[0]
+    return drive.files().create(
+        body={
+            "name": name,
+            "mimeType": "application/vnd.google-apps.folder",
+            "parents": [parent_id],
+        },
+        fields="id,name,webViewLink,parents", supportsAllDrives=True,
+    ).execute()
+
+
+def _ensure_archive_tree_sync(drive, root_id: str) -> Dict[str, Dict[str, Any]]:
+    root = drive.files().get(
+        fileId=root_id, fields="id,name,mimeType,trashed,webViewLink",
+        supportsAllDrives=True,
+    ).execute()
+    if root.get("trashed") or root.get("mimeType") != "application/vnd.google-apps.folder":
+        raise RuntimeError("La radice Drive del gestionale non e' una cartella attiva")
+    folders = {
+        name: _ensure_child_folder_sync(drive, root_id, name)
+        for name in ARCHIVE_TREE_NAMES
+    }
+    return {"RADICE": root, **folders}
+
+
 def _drive_cleanup_service():
     """Client Drive con scrittura, usato solo dalla pulizia esplicita admin."""
     from app.services.drive_invoice_ingest import _parse_sa_json
@@ -290,45 +405,31 @@ def _ensure_workbook_sync(
     sheets, drive = _services()
     requested_sheets = sheet_definitions(collections)
     spreadsheet_id = _setting_value(config, "GOOGLE_SHEETS_LEDGER_ID")
-    configured_folder_id = _setting_value(config, "GOOGLE_SHEETS_LEDGER_FOLDER_ID")
     folder_id = default_folder_id(config)
-    # Se usiamo una cartella Drive gia configurata per gli import, creiamo
-    # una sottocartella dedicata: il registro non si mescola ai documenti.
-    if folder_id and not configured_folder_id:
-        escaped_folder = LEDGER_FOLDER_TITLE.replace("'", "\\'")
-        folders = drive.files().list(
-            q=(f"name='{escaped_folder}' and '{folder_id}' in parents and "
-               "mimeType='application/vnd.google-apps.folder' and trashed=false"),
-            fields="files(id,name)", pageSize=2,
-            supportsAllDrives=True, includeItemsFromAllDrives=True,
-        ).execute().get("files", [])
-        if len(folders) > 1:
-            raise RuntimeError("Piu cartelle registro con lo stesso nome")
-        if folders:
-            folder_id = folders[0]["id"]
-        else:
-            folder_id = drive.files().create(
-                body={
-                    "name": LEDGER_FOLDER_TITLE,
-                    "mimeType": "application/vnd.google-apps.folder",
-                    "parents": [folder_id],
-                },
-                fields="id", supportsAllDrives=True,
-            ).execute()["id"]
+    archive_tree: Dict[str, Dict[str, Any]] = {}
+    ledger_folder_id = folder_id
+    if folder_id:
+        archive_tree = _ensure_archive_tree_sync(drive, folder_id)
+        ledger_folder_id = archive_tree["REGISTRO DATI"]["id"]
     if not spreadsheet_id and folder_id:
-        escaped_title = WORKBOOK_TITLE.replace("'", "\\'")
-        found = drive.files().list(
-            q=(f"name='{escaped_title}' and '{folder_id}' in parents and "
-               "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"),
-            fields="files(id,name,webViewLink)", pageSize=2,
-            supportsAllDrives=True, includeItemsFromAllDrives=True,
-        ).execute().get("files", [])
+        escaped_title = _escape_drive_query(WORKBOOK_TITLE)
+        found = []
+        # Compatibilita': prima il file poteva essere creato direttamente
+        # nella radice; i nuovi registri vivono in REGISTRO DATI.
+        for parent_id in dict.fromkeys((ledger_folder_id, folder_id)):
+            found.extend(drive.files().list(
+                q=(f"name='{escaped_title}' and '{parent_id}' in parents and "
+                   "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"),
+                fields="files(id,name,webViewLink,parents)", pageSize=2,
+                supportsAllDrives=True, includeItemsFromAllDrives=True,
+            ).execute().get("files", []))
+        found = list({item["id"]: item for item in found}.values())
         if len(found) > 1:
             raise RuntimeError("Piu registri con lo stesso nome nella cartella Drive")
         if found:
             spreadsheet_id = found[0]["id"]
     if not spreadsheet_id:
-        if folder_id:
+        if ledger_folder_id:
             # Un service account non dispone di quota Drive propria. Creare
             # prima il foglio nella sua radice con Sheets API fallisce con
             # PERMISSION_DENIED anche se la cartella aziendale e' condivisa.
@@ -338,7 +439,7 @@ def _ensure_workbook_sync(
                 body={
                     "name": WORKBOOK_TITLE,
                     "mimeType": "application/vnd.google-apps.spreadsheet",
-                    "parents": [folder_id],
+                    "parents": [ledger_folder_id],
                 },
                 fields="id,webViewLink,parents",
                 supportsAllDrives=True,
@@ -427,6 +528,14 @@ def _ensure_workbook_sync(
         "spreadsheet_id": spreadsheet_id,
         "spreadsheet_url": metadata.get("spreadsheetUrl") or f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}",
         "folder_id": folder_id or "",
+        "ledger_folder_id": ledger_folder_id or "",
+        "archive_tree": {
+            name: {
+                "id": item.get("id"), "name": item.get("name"),
+                "url": item.get("webViewLink"),
+            }
+            for name, item in archive_tree.items()
+        },
         "sheet_definitions": requested_sheets,
     }
 
@@ -769,12 +878,7 @@ async def sync_collection(
     db, sheet: LedgerSheet, spreadsheet_id: str, *, preserve_missing: bool = True,
 ) -> Dict[str, Any]:
     documents = await db[sheet.collection].find({}).to_list(100000)
-    for document in documents:
-        mongo_id = document.pop("_id", None)
-        if mongo_id is not None and not canonical_id(document):
-            # Gli archivi storici talvolta hanno soltanto ObjectId. Lo rendiamo
-            # esplicito e portabile, senza affidare l'identita a importo/data.
-            document["_mongo_id"] = str(mongo_id)
+    documents = [portable_document(document) for document in documents]
     existing = await asyncio.to_thread(_read_existing_sync, spreadsheet_id, sheet)
     existing_progressives = [str(row[0]).strip() for row in existing if row and str(row[0]).strip()]
     existing_ids = [str(row[1]).strip() for row in existing if len(row) > 1 and str(row[1]).strip()]
@@ -789,11 +893,23 @@ async def sync_collection(
     rows: List[List[Any]] = []
     current_keys = set()
     skipped_without_id = 0
+    exact_duplicates = 0
+    source_fingerprints: Dict[str, str] = {}
     for document in documents:
         key = canonical_id(document)
         if not key:
             skipped_without_id += 1
             continue
+        fingerprint = document_fingerprint(document)
+        previous = source_fingerprints.get(key)
+        if previous is not None:
+            if previous == fingerprint:
+                exact_duplicates += 1
+                continue
+            raise RuntimeError(
+                f"Identita canonica in conflitto in {sheet.collection}: {key}"
+            )
+        source_fingerprints[key] = fingerprint
         current_keys.add(key)
         progressive = progress_by_id.get(key)
         if not progressive:
@@ -812,11 +928,25 @@ async def sync_collection(
     return {
         "foglio": sheet.title, "collezione": sheet.collection,
         "righe": len(rows), "senza_id": skipped_without_id,
+        "duplicati_esatti": exact_duplicates,
+        "digest": collection_fingerprint(source_fingerprints.values()),
     }
 
 
 async def sync_collection_streaming(db, sheet: LedgerSheet, spreadsheet_id: str) -> Dict[str, Any]:
-    """Migrazione canonica a memoria costante, senza conservare righe fantasma."""
+    """Riscrive lo snapshot canonico, deduplicato e verificabile del foglio."""
+    snapshot = await source_collection_snapshot(db, sheet.collection)
+    if snapshot["numero_conflitti"]:
+        conflict = snapshot["conflitti"][0]["canonical_id"]
+        raise RuntimeError(
+            f"Migrazione bloccata: {sheet.collection} contiene payload diversi "
+            f"con lo stesso canonical_id {conflict}"
+        )
+    if snapshot["senza_id"]:
+        raise RuntimeError(
+            f"Migrazione bloccata: {sheet.collection} contiene "
+            f"{snapshot['senza_id']} righe prive di identita"
+        )
     identities = await asyncio.to_thread(_read_identities_sync, spreadsheet_id, sheet)
     progress_by_id = {
         str(row[1]): str(row[0]) for row in identities
@@ -829,24 +959,21 @@ async def sync_collection_streaming(db, sheet: LedgerSheet, spreadsheet_id: str)
         if len(progress_by_id) != len(valid):
             raise RuntimeError(f"Progressivi o canonical_id duplicati nel foglio {sheet.title}")
     sequence = next_progressive(sheet.prefix, [row[0] for row in identities if row])
-    source_count = await db[sheet.collection].count_documents({})
     await asyncio.to_thread(
-        _ensure_row_capacity_sync, spreadsheet_id, sheet, max(source_count + 1, 2),
+        _ensure_row_capacity_sync, spreadsheet_id, sheet,
+        max(snapshot["identita_uniche"] + 1, 2),
     )
+    await asyncio.to_thread(_clear_rows_sync, spreadsheet_id, sheet)
     batch: List[List[Any]] = []
-    written = len(progress_by_id)
-    skipped_without_id = 0
+    written = 0
+    seen: set[str] = set()
     cursor = db[sheet.collection].find({})
-    async for document in cursor:
-        mongo_id = document.pop("_id", None)
-        if mongo_id is not None and not canonical_id(document):
-            document["_mongo_id"] = str(mongo_id)
+    async for raw in cursor:
+        document = portable_document(raw)
         key = canonical_id(document)
-        if not key:
-            skipped_without_id += 1
+        if not key or key in seen:
             continue
-        if key in progress_by_id:
-            continue
+        seen.add(key)
         progressive = progress_by_id.get(key)
         if not progressive:
             progressive = format_progressive(sheet.prefix, sequence)
@@ -861,7 +988,11 @@ async def sync_collection_streaming(db, sheet: LedgerSheet, spreadsheet_id: str)
         written += len(batch)
     return {
         "foglio": sheet.title, "collezione": sheet.collection,
-        "righe": written, "senza_id": skipped_without_id,
+        "righe": written,
+        "righe_sorgente": snapshot["righe_sorgente"],
+        "duplicati_esatti": snapshot["duplicati_esatti"],
+        "senza_id": snapshot["senza_id"],
+        "digest": snapshot["digest"],
     }
 
 
@@ -897,17 +1028,32 @@ async def migration_audit(db, config: Optional[Dict[str, Any]] = None) -> Dict[s
         item.get("collezione") for item in verification.get("fogli", [])
     )
     for sheet in audited_definitions:
-        source_count = await db[sheet.collection].count_documents({})
+        source = await source_collection_snapshot(db, sheet.collection)
         verified = by_collection.get(sheet.collection, {})
         sheet_count = int(verified.get("valide") or 0)
         errors = int(verified.get("numero_errori") or 0)
+        digest_equal = str(source.get("digest")) == str(verified.get("digest"))
+        complete = (
+            source["identita_uniche"] == sheet_count
+            and errors == 0
+            and source["numero_conflitti"] == 0
+            and source["senza_id"] == 0
+            and digest_equal
+        )
         checks.append({
             "foglio": sheet.title,
             "collezione": sheet.collection,
-            "sorgente": source_count,
+            "sorgente": source["righe_sorgente"],
+            "sorgente_unica": source["identita_uniche"],
             "drive": sheet_count,
             "errori": errors,
-            "completo": source_count == sheet_count and errors == 0,
+            "duplicati_esatti_sorgente": source["duplicati_esatti"],
+            "conflitti_sorgente": source["numero_conflitti"],
+            "senza_id_sorgente": source["senza_id"],
+            "digest_sorgente": source["digest"],
+            "digest_drive": verified.get("digest"),
+            "digest_coincidente": digest_equal,
+            "completo": complete,
         })
 
     migrated = {sheet.collection for sheet in audited_definitions}
@@ -958,6 +1104,7 @@ async def restore_all(
         errors = []
         seen_progressive = set()
         seen_ids = set()
+        fingerprints: List[str] = []
         for index, row in enumerate(rows, start=2):
             if len(row) < len(HEADERS):
                 row = list(row) + [""] * (len(HEADERS) - len(row))
@@ -980,6 +1127,7 @@ async def restore_all(
                 errors.append({"riga": index, "errore": "canonical_id diverso dal payload"})
                 continue
             valid += 1
+            fingerprints.append(document_fingerprint(payload))
             if apply:
                 await db[sheet.collection].replace_one(
                     canonical_filter(payload), payload, upsert=True,
@@ -988,6 +1136,7 @@ async def restore_all(
             "foglio": sheet.title, "collezione": sheet.collection,
             "prefisso": sheet.prefix,
             "valide": valid, "errori": errors[:100], "numero_errori": len(errors),
+            "digest": collection_fingerprint(fingerprints),
         })
     return {
         **workbook, "apply": apply, "schema_version": SCHEMA_VERSION,

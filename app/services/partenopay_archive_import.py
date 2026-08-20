@@ -130,7 +130,7 @@ async def import_partenopay_archive(db, content: bytes, *, dry_run: bool = True)
             drive_archive = archive_document_copy(
                 {"id": import_run_id, "filename": "PARTENOPAY_NAVIGABILE_PRONTO.zip",
                  "file_hash": archive_sha, "content": content},
-                "verbale",
+                "partenopay",
             )
         except Exception as exc:
             drive_archive = {"status": "error", "reason": str(exc)}

@@ -5,6 +5,7 @@ Provides singleton Motor AsyncIOMotorClient for MongoDB Atlas.
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from typing import Any, Optional
 import logging
+import os
 from .config import settings
 from .db_collections import (
     COLL_ADMIN_ANOMALIES,
@@ -17,6 +18,15 @@ from .db_collections import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def scrub_mongo_runtime_configuration() -> None:
+    """Rimuove URI/credenziali Mongo dal processo dopo il cutover Sheets."""
+    for name in tuple(os.environ):
+        if name.upper().startswith(("MONGO_", "MONGODB_")):
+            os.environ.pop(name, None)
+    settings.MONGODB_ATLAS_URI = None
+    settings.MONGO_URL = ""
 
 
 class Database:
@@ -35,6 +45,7 @@ class Database:
             if settings.DATA_BACKEND.strip().lower() == "sheets":
                 from app.services.sheets_runtime_database import SheetsRuntimeDatabase
 
+                scrub_mongo_runtime_configuration()
                 runtime = SheetsRuntimeDatabase(settings.DB_NAME, {
                     "GOOGLE_SHEETS_LEDGER_ID": settings.GOOGLE_SHEETS_LEDGER_ID,
                     "GOOGLE_SHEETS_LEDGER_FOLDER_ID": settings.GOOGLE_SHEETS_LEDGER_FOLDER_ID,

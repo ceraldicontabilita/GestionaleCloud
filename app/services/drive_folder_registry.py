@@ -14,6 +14,7 @@ _AUTOMATIC_AREAS = {
     "bonifici_dipendenti", "cartelle_esattoriali", "avvisi_bonari", "f24",
     "verbali", "verbali_auto", "dichiarazioni_iva", "documenti",
     "paypal", "noleggio",
+    "partenopay",
     "carte", "nexi", "estratti_conto_carte",
 }
 
@@ -37,6 +38,7 @@ _AREA_ALIASES = {
     "bonifico": ("bonifici_dipendenti", "bonifici"),
     "fattura": ("fatture",),
     "fattura_xml": ("fatture",),
+    "partenopay": ("partenopay",),
 }
 
 _runtime_entries: list[dict[str, Any]] = []

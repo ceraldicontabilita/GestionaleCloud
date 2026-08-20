@@ -5,6 +5,7 @@ import json
 import pytest
 
 from app.config import Settings
+from app import database as database_module
 from app.database import Database
 from app.main import health_check
 from app.services.auth_secret import initialize_auth_secret
@@ -93,3 +94,17 @@ def test_secret_esplicito_non_viene_sovrascritto_da_mongo():
 
     assert asyncio.run(initialize_auth_secret(db, cfg)) == "configured"
     assert cfg.SECRET_KEY == explicit
+
+
+def test_cutover_sheets_rimuove_credenziali_mongo_dal_processo(monkeypatch):
+    monkeypatch.setenv("MONGO_URL", "mongodb://example.invalid")
+    monkeypatch.setenv("MONGODB_ATLAS_URI", "mongodb://secret.invalid")
+    monkeypatch.setattr(database_module.settings, "MONGO_URL", "mongodb://example.invalid")
+    monkeypatch.setattr(database_module.settings, "MONGODB_ATLAS_URI", "mongodb://secret.invalid")
+
+    database_module.scrub_mongo_runtime_configuration()
+
+    assert "MONGO_URL" not in database_module.os.environ
+    assert "MONGODB_ATLAS_URI" not in database_module.os.environ
+    assert database_module.settings.MONGO_URL == ""
+    assert database_module.settings.MONGODB_ATLAS_URI is None
