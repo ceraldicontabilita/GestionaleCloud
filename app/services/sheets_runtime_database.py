@@ -17,7 +17,9 @@ from typing import Any
 from mongomock_motor import AsyncMongoMockClient
 
 from app.services.google_sheets_ledger import (
-    LedgerSheet, SHEETS, ensure_collection_sheet, restore_all, sync_collection,
+    LedgerSheet, SHEETS, canonical_id, ensure_collection_sheet,
+    portable_document, remove_documents, restore_all, sync_collection_streaming,
+    upsert_documents,
 )
 
 
@@ -27,6 +29,12 @@ MUTATING_METHODS = {
     "insert_one", "insert_many", "update_one", "update_many", "replace_one",
     "delete_one", "delete_many", "find_one_and_update", "find_one_and_replace",
     "find_one_and_delete", "bulk_write",
+}
+DELETE_METHODS = {"delete_one", "delete_many", "find_one_and_delete"}
+MANY_METHODS = {"update_many", "delete_many"}
+FILTERED_METHODS = {
+    "update_one", "update_many", "replace_one", "delete_one", "delete_many",
+    "find_one_and_update", "find_one_and_replace", "find_one_and_delete",
 }
 
 
@@ -46,8 +54,52 @@ class SheetsRuntimeCollection:
         async def write_through(*args, **kwargs):
             async with self._owner.lock_for(self._name):
                 await self._owner.ensure_collection(self._name)
+                before = []
+                if name in FILTERED_METHODS:
+                    selector = args[0] if args else kwargs.get("filter", {})
+                    length = 100000 if name in MANY_METHODS else 1
+                    before = await self._collection.find(selector or {}).to_list(length)
                 result = await target(*args, **kwargs)
-                await self._owner.flush_collection(self._name)
+                if name == "bulk_write":
+                    # Fallback raro: resta streaming e non materializza mai
+                    # 100.000 documenti in una singola lista Python.
+                    await self._owner.flush_collection(self._name)
+                    return result
+
+                if name in DELETE_METHODS:
+                    keys = [
+                        canonical_id(portable_document(document))
+                        for document in before
+                    ]
+                    await self._owner.remove_documents(self._name, keys)
+                    return result
+
+                ids = []
+                inserted_id = getattr(result, "inserted_id", None)
+                if inserted_id is not None:
+                    ids.append(inserted_id)
+                ids.extend(getattr(result, "inserted_ids", None) or [])
+                ids.extend(
+                    document.get("_id") for document in before
+                    if document.get("_id") is not None
+                )
+                upserted_id = getattr(result, "upserted_id", None)
+                if upserted_id is not None:
+                    ids.append(upserted_id)
+                # Conserva l'ordine e rimuove gli ID ripetuti senza imporre
+                # che siano hashable (alcuni test usano tipi compatibili BSON).
+                unique_ids = []
+                for candidate in ids:
+                    if not any(candidate == current for current in unique_ids):
+                        unique_ids.append(candidate)
+                documents = []
+                if unique_ids:
+                    documents = await self._collection.find(
+                        {"_id": {"$in": unique_ids}}
+                    ).to_list(len(unique_ids))
+                elif isinstance(result, dict) and result:
+                    documents = [result]
+                await self._owner.persist_documents(self._name, documents)
                 return result
 
         return write_through
@@ -124,9 +176,27 @@ class SheetsRuntimeDatabase:
         spreadsheet_id = str(self._config.get("GOOGLE_SHEETS_LEDGER_ID") or "")
         if not spreadsheet_id:
             raise RuntimeError("GOOGLE_SHEETS_LEDGER_ID mancante")
-        return await sync_collection(
-            self._memory_db, sheet, spreadsheet_id, preserve_missing=False,
+        return await sync_collection_streaming(
+            self._memory_db, sheet, spreadsheet_id,
         )
+
+    async def persist_documents(
+        self, collection_name: str, documents: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        sheet = await self.ensure_collection(collection_name)
+        spreadsheet_id = str(self._config.get("GOOGLE_SHEETS_LEDGER_ID") or "")
+        if not spreadsheet_id:
+            raise RuntimeError("GOOGLE_SHEETS_LEDGER_ID mancante")
+        return await upsert_documents(sheet, spreadsheet_id, documents)
+
+    async def remove_documents(
+        self, collection_name: str, canonical_ids: list[str],
+    ) -> dict[str, Any]:
+        sheet = await self.ensure_collection(collection_name)
+        spreadsheet_id = str(self._config.get("GOOGLE_SHEETS_LEDGER_ID") or "")
+        if not spreadsheet_id:
+            raise RuntimeError("GOOGLE_SHEETS_LEDGER_ID mancante")
+        return await remove_documents(sheet, spreadsheet_id, canonical_ids)
 
     def __getitem__(self, collection_name: str):
         return self._collections.setdefault(
