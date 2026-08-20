@@ -125,7 +125,15 @@ def update_document(path: str, status: str) -> None:
     raw = target.read_text(encoding="utf-8-sig")
     raw = MARKER_RE.sub("\n", raw, count=1)
     raw = NOTICE_RE.sub("\n", raw, count=1)
-    lines = raw.lstrip("\ufeff\n").splitlines()
+    text = raw.lstrip("\ufeff\n")
+
+    # YAML frontmatter (`--- ... ---`) precede a volte il titolo MD
+    if text.startswith("---\n"):
+        end = text.find("\n---\n", 4)
+        if end != -1:
+            text = text[end + 5 :].lstrip("\n")
+
+    lines = text.splitlines()
     if not lines or not lines[0].startswith("#"):
         raise ValueError(f"{path}: manca il titolo Markdown iniziale")
     title = lines[0]

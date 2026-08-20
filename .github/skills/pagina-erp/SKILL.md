@@ -1,8 +1,13 @@
----
-name: pagina-erp
-description: "Use when: analizzare, spiegare, validare, mappare, documentare, approfondire o fare una scheda di una singola pagina del gestionale, pagina ERP, page catalog, dashboard, fatture, banca, flotta, dichiarazioni, documenti, contabilità, noleggio, prima nota."
----
 # Skill: pagina-erp
+
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
 
 Analizza una pagina del GestionaleCloud come entità di business con dati, origine, relazioni e impatto operativo.
 
