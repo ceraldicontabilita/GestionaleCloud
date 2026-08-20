@@ -213,6 +213,26 @@ di considerare pubblicata una modifica:
 - `memoria/pagine/*.json` — mappe tecniche delle pagine.
 - `memoria/popup/*.json` — mappe tecniche dei popup.
 
+### Kit completo per la ricostruzione pulita
+
+Per generare un unico ZIP autosufficiente con Prompt Master, architettura,
+logica delle 65 pagine, 36 popup, contratti API, variabili senza segreti,
+modello Drive/Sheets e matrice di accettazione:
+
+```powershell
+python scripts\genera_kit_ricostruzione.py
+```
+
+Il comando crea in `Documents`:
+
+- `GestionaleCloud_REBUILD_KIT_2026-08-20.zip`;
+- `GestionaleCloud_REBUILD_KIT_2026-08-20.zip.sha256`.
+
+Il generatore verifica una sola cartella radice, manifest e hash interni,
+conteggi canonici e firme compatibili con credenziali. Lo ZIP non viene
+versionato: non contiene dati aziendali, allegati, segreti o una copia del
+codice applicativo; viene rigenerato dalle fonti correnti del repository.
+
 ## Licenza
 
 Uso interno Ceraldi Group S.R.L. Tutti i diritti riservati.
