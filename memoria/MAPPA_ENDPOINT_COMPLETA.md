@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1131 endpoint** in **113 gruppi**.
+> Totale **1134 endpoint** in **113 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 687 · ext esterni = 88 · — da verificare = 356
+**Riepilogo uso:** ✓ frontend = 689 · ext esterni = 88 · — da verificare = 357
 
 ## AI Parser  (11)
 
@@ -190,11 +190,12 @@
 | POST | `/api/auth/logout` | ext | auth |
 | GET | `/api/auth/verify` | ext | auth |
 
-## Auto Riparazione  (1)
+## Auto Riparazione  (2)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | POST | `/api/auto-repair/collega-targa-driver` | ✓ | auto_repair |
+| POST | `/api/auto-repair/inferisci-targa-driver-da-fatture` | ✓ | auto_repair |
 
 ## Bank Statement  (7)
 
@@ -1649,12 +1650,14 @@
 | GET | `/api/verbali-noleggio/dettaglio/{numero_verbale:path}` | ✓ | verbali_noleggio_api |
 | POST | `/api/verbali-noleggio/{verbale_id}/upload-quietanza` | — | verbali_noleggio_api |
 
-## Verbali Noleggio  (3)
+## Verbali Noleggio  (5)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
+| POST | `/api/verbali-noleggio/associa-pdf/{numero_verbale:path}` | — | verbali_noleggio |
 | GET | `/api/verbali-noleggio/dettaglio/{numero_verbale}` | ✓ | verbali_noleggio |
-| GET | `/api/verbali-noleggio/pdf/{numero_verbale:path}` | — | verbali_noleggio |
+| GET | `/api/verbali-noleggio/pdf/{numero_verbale:path}` | ✓ | verbali_noleggio |
+| POST | `/api/verbali-noleggio/ricalcola-pdf/{numero_verbale:path}` | — | verbali_noleggio |
 | GET | `/api/verbali-noleggio/verbali-completi` | — | verbali_noleggio |
 
 ## Verbali Riconciliazione  (9)
