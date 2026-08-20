@@ -7,7 +7,7 @@ storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+> Documento di riferimento del dominio. La specifica normativa unica è `PROMPT_MASTER.md`; questo file non può contraddirla.
 
 > ⚠️ **Aggiornamento lug 2026**: la mappa endpoint aggiornata e rigenerabile è
 > `memoria/MAPPA_ENDPOINT_COMPLETA.md` (ogni endpoint reale con uso frontend) +
@@ -84,4 +84,4 @@ duplicate/shadowate contate una volta per modulo che le implementa).
 
 - **Prima di modificare un endpoint**: cerca il suo prefisso qui, leggi la sezione — ti dice subito se è shadowato/morto, quali collezioni tocca davvero, e se il docstring è affidabile.
 - **Prima di "consolidare" due router che sembrano fare la stessa cosa**: controlla la sezione Note di entrambi — spesso uno dei due contiene la logica corretta (es. metodo dal fornitore, dedup più robusto) e l'altro è quello da eliminare, ma la scelta va verificata caso per caso confrontando anche i chiamanti reali nel frontend.
-- Questi file **descrivono lo stato del codice**, non prescrivono come dovrebbe essere: per la logica di business corretta vedi `memoria/LOGICA_OPERATIVA.md`.
+- Questi file **descrivono lo stato del codice**, non prescrivono come dovrebbe essere: la specifica normativa unica è `PROMPT_MASTER.md`.

@@ -7,7 +7,7 @@ storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+> Documento di riferimento del dominio. La specifica normativa unica è `PROMPT_MASTER.md`; questo file non può contraddirla.
 
 Fonte specifica: `Fatture Ricevute E Flussi Automatici.txt` (fornita dall'utente).
 Verificato leggendo il codice attuale (post-consolidamento router del 2026-07-07).
@@ -114,7 +114,7 @@ il job bulk schedulato non tocca il fornitore non certo. 90/90 test esistenti an
 4. **Pagamento parziale/rateale**: `riconciliazione_intelligente_api.py` implementava
    questa logica (pagamento-parziale, nota di credito, bonifico cumulativo) ma è stata
    trovata oggi come **sostanzialmente non funzionante** (0/25 endpoint ricevono traffico
-   reale funzionante) — vedi `memoria/endpoints/RICONCILIAZIONE_AUDIT.md`. Non esiste oggi
+   reale funzionante) — vedi `PROMPT_MASTER.md`, sezione 9. Non esiste oggi
    un percorso alternativo funzionante per pagamenti parziali su fatture.
 5. ~ PARZIALE (lug 2026) — dei 7 tipi alert richiesti dalla spec, `"fornitore_senza_metodo_
    pagamento"` era già sistematico. ✔ RISOLTI ora 2 dei rimanenti, entrambi additivi (non

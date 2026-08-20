@@ -10,7 +10,7 @@ l'unico dei due davvero raggiunto dal flusso di upload reale
 app/services/handlers/banca_handlers.py, innescati dall'evento
 movimento_banca.importato) non veniva mai propagato da nessun upload
 realmente usato, quindi non aveva mai girato su dati reali — vedi
-memoria/endpoints/RICONCILIAZIONE_AUDIT.md.
+PROMPT_MASTER.md, sezioni 6, 10 e 12.
 
 Motore B è stato rimosso; la sua unica idea utile — l'astrazione
 "partita aperta" materializzata (app/services/partite_aperte_engine.py),

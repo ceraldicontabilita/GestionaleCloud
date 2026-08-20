@@ -7,7 +7,7 @@ storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+> Documento di riferimento del dominio. La specifica normativa unica è `PROMPT_MASTER.md`; questo file non può contraddirla.
 
 Documentazione dei router: email_download, documenti, documenti_non_associati, documents_inbox_classify, document_ai, ai_parser, enhanced_parser, email_scanner, email_mongodb, import_manuale, import_templates, chat_router, learning_machine, learning_universal, learning_machine_cdc.
 

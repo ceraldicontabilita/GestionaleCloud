@@ -9,6 +9,9 @@ storage_architecture: drive-only
 ERP interno di Ceraldi Group S.R.L. per documenti, fatture, fornitori, Prima
 Nota, riconciliazioni, fisco, personale e flotta.
 
+La specifica normativa unica, completa e atomica è [`PROMPT_MASTER.md`](PROMPT_MASTER.md).
+Gli altri documenti sono guide di lettura, riferimenti di dominio o mappe generate.
+
 - Produzione: [impresasemplice.online](https://impresasemplice.online)
 - Repository: `ceraldicontabilita/GestionaleCloud`
 - Branch operativo: `main`
@@ -200,6 +203,8 @@ di considerare pubblicata una modifica:
 
 ## Documentazione
 
+- `PROMPT_MASTER.md` — unica autorità normativa: prodotto, dati, Gmail, Drive,
+  variabili, pagine, router, endpoint, divieti e gate.
 - `CLAUDE.md` — regole vincolanti per lavorare nel repository.
 - `PRODUCT.md` — visione, flussi e albero funzionale.
 - `LOGICA_FUNZIONAMENTO.md` — comportamento operativo per gli utenti.

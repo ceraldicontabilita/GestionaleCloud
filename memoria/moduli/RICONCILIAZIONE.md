@@ -7,13 +7,13 @@ storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+> Documento di riferimento del dominio. La specifica normativa unica è `PROMPT_MASTER.md`; questo file non può contraddirla.
 
 Fonte specifica: `Riconciliazione — Flussi automatici — Logica relazionale completa.txt`
 (fornita dall'utente, il documento più complesso dei 10). Verificato leggendo il codice
 attuale, DOPO la consolidazione già effettuata in questa sessione (9 sistemi di
 riconciliazione paralleli ridotti a 1 motore canonico + l'indice partite aperte — vedi
-`memoria/endpoints/RICONCILIAZIONE_AUDIT.md` per la cronistoria completa
+`PROMPT_MASTER.md` per la regola normativa completa
 dell'unificazione).
 
 ## Architettura reale oggi (post-unificazione)

@@ -121,9 +121,13 @@ def test_vecchie_url_non_vengono_piu_spacciate_per_schermate_canoniche():
     assert paths.isdisjoint({"/magazzino", "/dipendenti", "/cedolini"})
 
 
-def test_il_registro_markdown_e_il_catalogo_macchina_non_divergono():
-    report = (ROOT / "docs/COLLAUDO_PAGINE_E2E_2026-08-05.md").read_text(encoding="utf-8")
-    rows = re.findall(r"^\|\s*(\d+)\s*\|.*?—\s*`([^`]+)`\s*\|", report, flags=re.MULTILINE)
+def test_il_prompt_master_e_il_catalogo_macchina_non_divergono():
+    report = (ROOT / "PROMPT_MASTER.md").read_text(encoding="utf-8")
+    rows = re.findall(
+        r"^(\d+)\. \*\*[^*]+\*\* — `([^`]+)` — accesso ",
+        report,
+        flags=re.MULTILINE,
+    )
     documented = {int(identifier): path for identifier, path in rows}
     assert len(documented) == 65
     assert documented == {page["id"]: page["path"] for page in PAGES}

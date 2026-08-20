@@ -11,6 +11,9 @@ release viene verificato in CI e in produzione, senza fissarlo in questo file.
 
 ## Prodotto
 
+Questo documento è una vista sintetica. La specifica normativa completa e
+atomica è `PROMPT_MASTER.md`; in caso di divergenza prevale il master.
+
 GestionaleCloud è l'ERP interno di Ceraldi Group S.R.L. Unisce documenti,
 fatture, fornitori, Prima Nota, banca, fisco, personale, flotta e
 riconciliazioni in un solo grafo operativo consultabile.
