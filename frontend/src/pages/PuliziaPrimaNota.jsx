@@ -578,9 +578,16 @@ export default function PuliziaPrimaNota() {
               <div style={{ fontSize: 13, color: '#065f46', lineHeight: 1.6 }}>
                 Versamenti trovati nell'estratto conto: <strong>{risultatoVersamenti.movimenti_versamento_trovati}</strong>
                 <br />
+                Nuove registrazioni: <strong>{risultatoVersamenti.creati_cassa}</strong> in Cassa ·{' '}
+                <strong>{risultatoVersamenti.creati_banca}</strong> in Banca
+                <br />
                 Registrazioni Cassa già presenti: <strong>{risultatoVersamenti.gia_presenti_cassa}</strong>
                 <br />
                 Senza registrazione Cassa, lasciati da verificare: {risultatoVersamenti.versamenti_senza_registrazione_cassa}
+                <br />
+                Fatture riconciliate con riferimenti certi:{' '}
+                <strong>{risultatoVersamenti.riconciliazione_fatture?.allocati || 0}</strong> · sospese perché ambigue/non quadrate:{' '}
+                {risultatoVersamenti.riconciliazione_fatture?.sospesi || 0}
               </div>
             </div>
           )}

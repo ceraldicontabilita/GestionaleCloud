@@ -2256,6 +2256,16 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
                 {"$set": {"riconciliato": True, "tipo_riconciliazione": tipo_ric}},
             )
 
+    # Conclude anche la riconciliazione delle fatture, ma soltanto quando
+    # il movimento contiene riferimenti espliciti, i candidati sono univoci
+    # e la somma quadra al centesimo. L'uguaglianza del solo importo non basta.
+    from app.services.bank_payment_allocations import (
+        reconcile_deterministic_invoice_allocations,
+    )
+    riconciliazione_fatture = await reconcile_deterministic_invoice_allocations(
+        db, anno=anno,
+    )
+
     return {
         "success": True,
         "anno": anno,
@@ -2269,4 +2279,5 @@ async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opz
         # compatibilità con la vecchia risposta
         "riparati": creati_cassa,
         "gia_presenti": gia_presenti_cassa,
+        "riconciliazione_fatture": riconciliazione_fatture,
     }
