@@ -1,18 +1,13 @@
----
-projection_version: 1
-entity_type: "{{entity_type}}"
-entity_id: "{{entity_id}}"
-title: "{{title}}"
-status: "{{status}}"
-source_system: GestionaleCloud
-source_updated_at: "{{source_updated_at}}"
-exported_at: "{{exported_at}}"
-gestionale_url: "{{gestionale_url}}"
-sensitivity: "{{sensitivity}}"
-tags: [gestionalecloud, "{{entity_type}}"]
----
-
 # {{title}}
+
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
 
 ## Riepilogo
 
@@ -34,4 +29,3 @@ tags: [gestionalecloud, "{{entity_type}}"]
 ## Annotazioni personali
 
 <!-- ANNOTAZIONI_PERSONALI:END -->
-

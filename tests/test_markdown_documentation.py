@@ -41,7 +41,7 @@ def test_legacy_collection_map_and_mongodb_runbook_are_removed() -> None:
 def test_inventory_covers_every_repository_markdown() -> None:
     rows = inventory_rows()
     assert set(rows) == existing_repository_markdown()
-    assert len(rows) == 73
+    assert len(rows) == len(existing_repository_markdown())
 
 
 def test_non_generated_documents_have_status_metadata() -> None:

@@ -1,16 +1,13 @@
----
-projection_version: 1
-entity_type: automation_run
-entity_id: "{{run_id}}"
-run_date: "{{run_date}}"
-status: "{{status}}"
-started_at: "{{started_at}}"
-finished_at: "{{finished_at}}"
-source_system: GestionaleCloud
-tags: [gestionalecloud, automazione, controllo-giornaliero]
----
-
 # Controllo giornaliero {{run_date}}
+
+<!-- gestionalecloud-doc
+status: historical
+reviewed_at: 2026-08-20
+storage_architecture: drive-only
+-->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
 
 | Indicatore | Valore |
 | --- | ---: |
@@ -32,4 +29,3 @@ tags: [gestionalecloud, automazione, controllo-giornaliero]
 ## Errori
 
 {{error_details}}
-

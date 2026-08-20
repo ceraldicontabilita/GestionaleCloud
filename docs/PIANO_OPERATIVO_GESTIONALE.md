@@ -60,7 +60,7 @@ Aree da consolidare:
 - Prima nota automatica ancora da rendere pienamente affidabile.
 - Scarico verbali da PEC non chiuso.
 - Scheda fornitore e fascicolo dipendente da completare.
-- TFR automatico da cedolino, IVA mensile automatica, WhatsApp e alcuni export ancora parziali.
+- TFR automatico da cedolino, IVA mensile automatica, Telegram come canale alert e alcuni export ancora parziali.
 - Alcuni parser e fallback AI ancora da industrializzare.
 
 ## 4. Cosa manca davvero
@@ -86,7 +86,7 @@ Priorita media:
 Priorita bassa ma utile:
 
 - Dashboard automazioni, errori pipeline, job bloccati e dead letters.
-- WhatsApp come canale automatico di alert business.
+- Telegram come canale automatico di alert business.
 - AI e learning consolidati in casi d'uso reali.
 
 ## 5. Tenere, completare, costruire
@@ -97,7 +97,7 @@ Tenere:
 
 Completare:
 
-- Prima nota auto, PEC verbali, fascicolo dipendente, scheda fornitore, TFR automatico, IVA mensile automatica, export PDF/Excel, fallback AI, monitoraggio job e WhatsApp.
+- Prima nota auto, PEC verbali, fascicolo dipendente, scheda fornitore, TFR automatico, IVA mensile automatica, export PDF/Excel, fallback AI, monitoraggio job e Telegram.
 
 Costruire davvero:
 

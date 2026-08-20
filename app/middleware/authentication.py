@@ -39,12 +39,9 @@ PUBLIC_PATHS = {
     # RIMOSSO: "/api/auth/register" — ora richiede autenticazione (admin crea utenti)
 
     # Integrazioni esterne: chiamanti che non possono avere un nostro JWT.
-    # Prima nessuna era whitelistata → 401 sempre, integrazioni di fatto
-    # rotte in produzione (bug #24 audit memoria/endpoints/README.md).
-    # Ciascuna si autentica con un proprio meccanismo (vedi i rispettivi
-    # router): WhatsApp col verify_token di Meta, il ponte ERP con
-    # ERP_BRIDGE_SECRET.
-    "/api/whatsapp/webhook",
+    # Il webhook WhatsApp legacy è stato disattivato; il ponte ERP resta
+    # l'unica integrazione esterna pubblicamente raggiungibile e usa
+    # ERP_BRIDGE_SECRET come protezione dedicata.
     "/api/erp/ponte/fattura-ricevuta",
 
     # Pagine legali: già pubbliche in versione non-/api (bypass generico
