@@ -13,16 +13,18 @@ services:
   - type: web
     name: GestionaleCloud
     runtime: python
-    plan: standard
+    plan: starter
     branch: main
     autoDeploy: true
     buildCommand: >-
       pip install -r backend/requirements.txt &&
       npm --prefix frontend install --include=dev --legacy-peer-deps &&
       npm --prefix frontend run build
-    # Web e automazioni vivono in processi distinti: scansioni Drive/Gmail,
-    # OCR e agenti shadow non possono bloccare le richieste della Prima Nota.
-    startCommand: python -m app.process_supervisor
+    # Il piano Starter dispone di 512 MiB: due interpreti Python completi
+    # duplicano il registro Sheets in memoria e superano il limite. FastAPI e
+    # APScheduler vivono quindi nello stesso processo; PROCESS_ROLE=combined
+    # mantiene attive le automazioni senza una seconda copia del database.
+    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
     envVars:
       # rapidocr-onnxruntime 1.4.4 supporta Python < 3.13. Il pin evita che
@@ -35,9 +37,11 @@ services:
         value: "true"
       - key: DATA_BACKEND
         value: "sheets"
+      - key: PROCESS_ROLE
+        value: "combined"
+      - key: ENABLE_SCHEDULER
+        value: "true"
       - key: GOOGLE_SHEETS_LEDGER_ID
-        sync: false
-      - key: GOOGLE_SHEETS_LEDGER_FOLDER_ID
         sync: false
       - key: GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON
         sync: false
