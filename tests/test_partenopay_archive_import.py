@@ -47,10 +47,6 @@ def test_dry_run_non_scrive_e_verifica_hash():
 def test_import_idempotente_e_pagato_solo_con_quietanza(monkeypatch):
     db = AsyncMongoMockClient()["test"]
 
-    async def fake_process(db, **kwargs):
-        return {"status": "linked"}
-
-    monkeypatch.setattr("app.services.verbali_document_import.process_verbale_document", fake_process)
     monkeypatch.setattr("app.services.email_drive_archive.archive_document_copy",
                         lambda *_args, **_kwargs: {"status": "archived", "area": "verbali"})
     first = asyncio.run(mod.import_partenopay_archive(db, _archive(), dry_run=False))
@@ -84,10 +80,6 @@ def test_retry_non_riarchivia_documento_gia_copiato(monkeypatch):
     db = AsyncMongoMockClient()["test"]
     calls = []
 
-    async def fake_process(db, **kwargs):
-        return {"status": "linked"}
-
-    monkeypatch.setattr("app.services.verbali_document_import.process_verbale_document", fake_process)
     monkeypatch.setattr(
         "app.services.email_drive_archive.archive_document_copy",
         lambda *_args, **_kwargs: calls.append(True) or {"status": "archived", "area": "verbali"},
