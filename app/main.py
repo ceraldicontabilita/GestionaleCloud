@@ -373,7 +373,7 @@ async def lifespan(app: FastAPI):
     # operazioni distinte e devono tornare visibili senza intervento utente.
     try:
         db = Database.get_db()
-        if settings.RUN_STARTUP_DATA_REPAIRS and db is not None:
+        if db is not None:
             from app.routers.prima_nota_module.manutenzione import (
                 ripristina_dedup_fatture_errato,
             )
