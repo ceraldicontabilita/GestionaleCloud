@@ -510,6 +510,7 @@ async def root(request: Request):
 async def health_check():
     from datetime import datetime, timezone
 
+    data_backend = str(getattr(settings, "DATA_BACKEND", "sheets")).strip().lower()
     if Database.db is None:
         return JSONResponse(
             status_code=503,
@@ -523,9 +524,18 @@ async def health_check():
         )
 
     try:
-        await Database.db.command("ping")
+        if data_backend == "sheets":
+            # SheetsRuntimeDatabase viene assegnato soltanto dopo che tutti i
+            # fogli sono stati letti e validati. Non inviare comandi Mongo al
+            # runtime Drive: ``command`` verrebbe interpretato come il nome di
+            # una collezione non migrata e renderebbe unhealthy un archivio
+            # perfettamente idratato.
+            if getattr(Database.db, "hydration_result", None) is None:
+                raise RuntimeError("Registro Drive/Sheets non idratato")
+        else:
+            await Database.db.command("ping")
     except Exception:
-        logger.exception("Health check MongoDB fallito")
+        logger.exception("Health check backend %s fallito", data_backend)
         return JSONResponse(
             status_code=503,
             content={
@@ -539,7 +549,7 @@ async def health_check():
 
     salari_sync = "not_started"
     try:
-        if Database.db is not None:
+        if Database.db is not None and data_backend != "sheets":
             run = await Database.db["migration_runs"].find_one(
                 {"id": SALARI_SYNC_MARKER}, {"_id": 0, "status": 1}
             )
