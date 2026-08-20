@@ -90,6 +90,15 @@ def test_numero_verbale_estratto_dai_nomi_file_reali():
     assert mod._extract_numero("VERBALE N. VV/24990121765.pdf") == "VV/24990121765"
 
 
+def test_importo_testuale_5164_centesimi_prevale_su_ocr_5164_euro():
+    amount, source, conflict = mod._select_document_amount(
+        {"importo_ridotto": 5164}, {}, "Importo da pagare € 51,64"
+    )
+    assert amount == 51.64
+    assert source == "pdf_testo_conflitto_ocr_x100"
+    assert conflict is True
+
+
 def test_pdf_scansione_usa_vision_e_crea_verbale_amministrativo(monkeypatch):
     db = _Db()
     db["documents_inbox"].docs = [{"id": "doc-scan"}]

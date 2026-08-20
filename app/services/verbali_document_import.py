@@ -100,6 +100,28 @@ def _extract_amount(text: str) -> Optional[float]:
     return None
 
 
+def _select_document_amount(ai_data: Dict[str, Any], pagopa_data: Dict[str, Any], text: str) -> tuple[Optional[float], str, bool]:
+    """Sceglie l'importo con provenienza, correggendo il tipico OCR 51,64 -> 5164.
+
+    Il testo vettoriale/estratto dal PDF e il parser PagoPA sono evidenze piu'
+    forti di un numero AI privo di separatore. Non effettua correzioni arbitrarie:
+    risolve soltanto il conflitto esatto x100 tra le fonti.
+    """
+    ai_amount = _float_or_none(ai_data.get("importo_ridotto")) or _float_or_none(ai_data.get("importo_ordinario"))
+    pagopa_amount = _float_or_none(pagopa_data.get("importo"))
+    text_amount = _extract_amount(text)
+    documentary = pagopa_amount or text_amount
+    if ai_amount and documentary and round(ai_amount, 2) == round(documentary * 100, 2):
+        return round(documentary, 2), "pdf_testo_conflitto_ocr_x100", True
+    if pagopa_amount is not None:
+        return round(pagopa_amount, 2), "parser_pagopa", bool(ai_amount and round(ai_amount, 2) != round(pagopa_amount, 2))
+    if text_amount is not None:
+        return round(text_amount, 2), "pdf_testo", bool(ai_amount and round(ai_amount, 2) != round(text_amount, 2))
+    if ai_amount is not None:
+        return round(ai_amount, 2), "parser_ai", False
+    return None, "non_rilevato", False
+
+
 def _extract_payment_date(text: str) -> Optional[str]:
     match = re.search(
         r"(?:data\s+(?:del\s+)?pagamento|pagato\s+il)\s*:?\s*(\d{2}[/-]\d{2}[/-]\d{4})",
@@ -234,12 +256,7 @@ async def process_verbale_document(
         else pagopa_data.get("targa")
         or (targa_match.group(1).upper() if targa_match else None)
     )
-    importo = (
-        _float_or_none(ai_data.get("importo_ridotto"))
-        or _float_or_none(ai_data.get("importo_ordinario"))
-        or pagopa_data.get("importo")
-        or _extract_amount(text)
-    )
+    importo, importo_fonte, importo_conflitto = _select_document_amount(ai_data, pagopa_data, text)
     data_pagamento = _extract_payment_date(text)
     negative_payment = (
         pagopa_data.get("document_kind") == "ESITO_PAGOPA_NEGATIVO"
@@ -259,6 +276,8 @@ async def process_verbale_document(
         "iuv_estratto": iuv,
         "targa_estratta": targa,
         "importo_estratto": importo,
+        "importo_fonte": importo_fonte,
+        "importo_conflitto_risolto": importo_conflitto,
         "codice_avviso_estratto": pagopa_data.get("codice_avviso"),
         "codice_cbill_estratto": pagopa_data.get("codice_cbill"),
         "data_scadenza_estratta": pagopa_data.get("data_scadenza"),
@@ -366,6 +385,8 @@ async def process_verbale_document(
         "iuv": iuv,
         "targa": targa,
         "importo": importo,
+        "importo_fonte": importo_fonte,
+        "importo_conflitto_risolto": importo_conflitto,
         "data_verbale": ai_data.get("data_verbale"),
         "data_violazione": violation_date,
         "data_scadenza": pagopa_data.get("data_scadenza"),
@@ -408,7 +429,8 @@ async def process_verbale_document(
         values = {
             key: value for key, value in values.items()
             if value not in (None, "") and (existing.get(key) in (None, "") or key in {
-                "source_document_id", "source_sha256", "updated_at"
+                "source_document_id", "source_sha256", "updated_at",
+                *(('importo', 'importo_fonte', 'importo_conflitto_risolto') if importo_conflitto else ()),
             })
         }
     verbale_query = (

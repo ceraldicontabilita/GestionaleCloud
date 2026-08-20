@@ -11,16 +11,104 @@ scarica-tutti, stats, tutti-verbali, verbale/{numero_verbale}, verbali,
 verbali-attesa-fattura, verbali-privati, verifica-nuove-fatture — codice
 conservato nella cronologia git.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
 from typing import Dict, Any
+import base64
+import hashlib
+from datetime import datetime, timezone
 
 from app.database import Database
 from app.utils.error_handler import handle_errors
+from app.utils.dependencies import get_current_admin_user
 
 router = APIRouter(prefix="/api/verbali-noleggio", tags=["Verbali Noleggio"])
 
 # Collection
 COLLECTION_VERBALI = "verbali_noleggio"
+
+
+async def _find_verbale(db, numero_verbale: str):
+    query = {"$or": [
+        {"numero_verbale": numero_verbale}, {"numero_verbale_old": numero_verbale},
+        {"numero_verbale": numero_verbale.upper()}, {"numero_verbale_old": numero_verbale.upper()},
+    ]}
+    for collection in ("verbali_noleggio", "verbali_noleggio_completi"):
+        item = await db[collection].find_one(query, {"_id": 0})
+        if item:
+            return collection, item
+    return None, None
+
+
+@router.post("/associa-pdf/{numero_verbale:path}")
+@handle_errors
+async def associa_pdf_verbale(
+    numero_verbale: str,
+    file: UploadFile = File(...),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Conserva e collega un PDF originale al verbale, con hash e provenienza."""
+    from app.utils.upload_validation import verifica_pdf_reale
+    from app.services.verbali_document_import import process_verbale_document, _extract_text, _extract_numero
+
+    db = Database.get_db()
+    collection, verbale = await _find_verbale(db, numero_verbale)
+    if not verbale:
+        raise HTTPException(status_code=404, detail="Verbale non trovato")
+    content = await file.read()
+    filename = file.filename or f"verbale_{numero_verbale}.pdf"
+    verifica_pdf_reale(content, filename)
+    extracted_number = _extract_numero(f"{filename}\n{_extract_text(content)}")
+    accepted = {str(verbale.get("numero_verbale") or "").upper(), str(verbale.get("numero_verbale_old") or "").upper()}
+    if extracted_number and extracted_number.upper() not in accepted:
+        raise HTTPException(status_code=409, detail=f"Il PDF indica il verbale {extracted_number}, non {numero_verbale}")
+    digest = hashlib.sha256(content).hexdigest()
+    existing = await db["documents_inbox"].find_one({"file_hash": digest}, {"_id": 0, "id": 1})
+    doc_id = (existing or {}).get("id") or f"verbale_pdf_{digest[:24]}"
+    now = datetime.now(timezone.utc).isoformat()
+    if not existing:
+        await db["documents_inbox"].insert_one({
+            "id": doc_id, "filename": filename, "pdf_data": base64.b64encode(content).decode("ascii"),
+            "file_hash": digest, "sha256": digest, "size": len(content), "category": "verbale_codice_strada",
+            "tipo_documento": "verbale", "evidence_role": "obbligazione", "source": "upload_dettaglio_verbale",
+            "numero_verbale": verbale.get("numero_verbale"), "verbale_id": verbale.get("id"),
+            "created_at": now, "updated_at": now, "processed": False, "status": "da_elaborare",
+        })
+    await db[collection].update_one(
+        {"id": verbale.get("id")} if verbale.get("id") else {"numero_verbale": verbale.get("numero_verbale")},
+        {"$addToSet": {"document_ids": doc_id}, "$set": {"updated_at": now}},
+    )
+    outcome = await process_verbale_document(db, document_id=doc_id, content=content,
+        filename=filename, source="upload_dettaglio_verbale",
+        parsed_metadata={"numero_verbale": verbale.get("numero_verbale")})
+    return {"success": True, "duplicate": bool(existing), "document_id": doc_id, "elaborazione": outcome}
+
+
+@router.post("/ricalcola-pdf/{numero_verbale:path}")
+@handle_errors
+async def ricalcola_verbale_da_pdf(
+    numero_verbale: str,
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Rilegge i PDF gia collegati e corregge soltanto conflitti documentali certi."""
+    from app.services.verbali_pdf_service import collect_verbale_pdfs
+    from app.services.verbali_document_import import process_verbale_document
+    db = Database.get_db()
+    _collection, verbale = await _find_verbale(db, numero_verbale)
+    if not verbale:
+        raise HTTPException(status_code=404, detail="Verbale non trovato")
+    pdfs = await collect_verbale_pdfs(db, verbale, include_content=True)
+    results = []
+    for index, pdf in enumerate(pdfs):
+        encoded = pdf.get("content_base64")
+        if not encoded or pdf.get("tipo") == "quietanza":
+            continue
+        content = base64.b64decode(encoded)
+        doc_id = pdf.get("document_id") or verbale.get("source_document_id") or f"ricalcolo_{hashlib.sha256(content).hexdigest()[:24]}"
+        results.append(await process_verbale_document(db, document_id=doc_id, content=content,
+            filename=pdf.get("filename") or f"verbale_{index + 1}.pdf", source="ricalcolo_pdf_collegato",
+            parsed_metadata={"numero_verbale": verbale.get("numero_verbale")}))
+    refreshed = await db["verbali_noleggio"].find_one({"numero_verbale": verbale.get("numero_verbale")}, {"_id": 0}) or verbale
+    return {"success": True, "pdf_elaborati": len(results), "importo": refreshed.get("importo"), "risultati": results}
 
 
 @router.get("/pdf/{numero_verbale:path}")
