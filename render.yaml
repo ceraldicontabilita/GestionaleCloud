@@ -41,6 +41,10 @@ services:
         value: "combined"
       - key: ENABLE_SCHEDULER
         value: "true"
+      - key: DRIVE_FATTURE_BATCH_SIZE
+        value: "1"
+      - key: DRIVE_ESTRATTI_BATCH_SIZE
+        value: "1"
       - key: GOOGLE_SHEETS_LEDGER_ID
         sync: false
       - key: GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON

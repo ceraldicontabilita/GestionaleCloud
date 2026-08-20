@@ -35,6 +35,19 @@ _FOLDER_MIME = "application/vnd.google-apps.folder"
 _LIFECYCLE_NAMES = {"da elaborare", "elaborate", "errori", "duplicati"}
 
 
+def _batch_size() -> int:
+    """Numero massimo di documenti lavorati per ciclo, con limite sicuro."""
+    try:
+        configured = int(settings.DRIVE_ESTRATTI_BATCH_SIZE)
+    except (TypeError, ValueError):
+        configured = 1
+    return max(1, min(configured, 25))
+
+
+def _select_batch(files: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return list(files[:_batch_size()])
+
+
 def _folder_id() -> Optional[str]:
     ids = _folder_ids()
     return ids[0] if ids else None
@@ -415,7 +428,11 @@ async def sync(db) -> Dict[str, Any]:
                 service,
                 root_id,
                 initial_route="nexi" if root_id in _nexi_folder_ids() else None,
-                include_elaborate=True,
+                # ``Elaborate`` e' archivio: il ciclo operativo legge soltanto
+                # i documenti nuovi. Riesaminare a ogni passaggio tutti gli
+                # archivi contraddice il lifecycle Drive, blocca il worker e
+                # puo' causare un riavvio per memoria.
+                include_elaborate=False,
             )
             for item in root_files:
                 files_by_id.setdefault(item["id"], item)
@@ -431,10 +448,13 @@ async def sync(db) -> Dict[str, Any]:
         if rimandati:
             logger.info("Drive estratti conto: %s documenti dell'arretrato lasciati "
                         "fermi (anno minimo %s)", len(rimandati), result["deferred_before_year"])
-        files = sorted(files_by_id.values(), key=_work_item_priority)
+        discovered_files = sorted(files_by_id.values(), key=_work_item_priority)
+        files = _select_batch(discovered_files)
         sources = list(sources_by_id.values())
         result["sources"] = [source["path"] for source in sources]
-        result["total"] = len(files)
+        result["total"] = len(discovered_files)
+        result["attempted"] = len(files)
+        result["pending"] = max(len(discovered_files) - len(files), 0)
         result["archive_recovered"] = 0
         result["archive_already_indexed"] = 0
         lifecycle: Dict[str, Dict[str, Optional[str]]] = {}
