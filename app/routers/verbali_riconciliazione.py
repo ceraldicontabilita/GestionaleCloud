@@ -935,18 +935,22 @@ async def collega_driver_massivo() -> Dict[str, Any]:
     db = Database.get_db()
     
     try:
-        # Trova verbali con targa ma senza driver
+        # Trova verbali con targa la cui associazione driver e' assente o
+        # incompleta (alcuni record hanno driver_id ma nessun nome visibile).
         verbali = await db["verbali_noleggio"].find({
             "targa": {"$exists": True, "$nin": [None, ""]},
             "$or": [
                 {"driver_id": {"$exists": False}},
                 {"driver_id": None},
-                {"driver_id": ""}
+                {"driver_id": ""},
+                {"driver_nome": {"$exists": False}},
+                {"driver_nome": None},
+                {"driver_nome": ""},
             ]
         }).to_list(1000)
         
         collegati = 0
-        strategie_usate = {"veicolo": 0, "storico": 0, "contratto": 0, "dipendente": 0, "descrizione": 0}
+        strategie_usate = {"driver_id": 0, "veicolo": 0, "storico": 0, "contratto": 0, "dipendente": 0, "descrizione": 0}
         non_trovati = []
         
         for verbale in verbali:
@@ -957,9 +961,23 @@ async def collega_driver_massivo() -> Dict[str, Any]:
             if not targa:
                 continue
             
-            driver_id = None
-            driver_nome = None
+            driver_id = verbale.get("driver_id")
+            driver_nome = verbale.get("driver_nome") or verbale.get("driver")
             strategia = None
+
+            # Un ID gia registrato e' una relazione esplicita: completa solo
+            # il nome mancante, senza inferire una persona dalla targa.
+            if driver_id and not driver_nome:
+                dipendente_id = await db["dipendenti"].find_one({
+                    "$or": [{"id": driver_id}, {"_id": driver_id}]
+                })
+                if dipendente_id:
+                    driver_nome = (
+                        dipendente_id.get("nome_completo")
+                        or dipendente_id.get("name")
+                        or f"{dipendente_id.get('nome', '')} {dipendente_id.get('cognome', '')}".strip()
+                    )
+                    strategia = "driver_id"
             
             # === STRATEGIA 1: veicolo_noleggio → driver ===
             veicolo = await db["veicoli_noleggio"].find_one({"targa": targa})
@@ -1051,7 +1069,7 @@ async def collega_driver_massivo() -> Dict[str, Any]:
             # Una relazione proposta da veicolo/contratto/dipendente senza
             # assegnazione storica alla data non e' probatoria: resta in coda
             # per conferma manuale e non viene scritta sul verbale.
-            if strategia != "storico" or not data_violazione:
+            if strategia not in {"storico", "driver_id"} or (strategia == "storico" and not data_violazione):
                 non_trovati.append({
                     "numero": numero,
                     "targa": targa,
