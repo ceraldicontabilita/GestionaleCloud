@@ -53,6 +53,12 @@ def test_runtime_blocca_collezione_non_migrata():
         raise AssertionError("Una collezione fuori manifest non deve usare storage implicito")
 
 
+def test_runtime_espone_stato_sistema_per_checkpoint_import():
+    runtime = SheetsRuntimeDatabase("test", {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"})
+
+    assert runtime["sistema_stato"] is not None
+
+
 def test_runtime_memorizza_il_foglio_scoperto_per_le_scritture(monkeypatch):
     calls = []
 

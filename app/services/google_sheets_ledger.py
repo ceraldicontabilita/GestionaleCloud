@@ -67,6 +67,10 @@ SHEETS: tuple[LedgerSheet, ...] = (
     LedgerSheet("Import PartenoPay", "partenopay_import_runs", "PPR"),
     LedgerSheet("Email PartenoPay", "verbali_email_archive", "PPE"),
     LedgerSheet("Verbali PartenoPay", "verbali_noleggio", "PPV"),
+    # Stato tecnico degli import Drive/Gmail e configurazione operativa. Non e'
+    # un fallback Mongo: in modalita' Sheets questo foglio e' la sorgente
+    # persistente per checkpoint e chiavi idempotenti dei job automatici.
+    LedgerSheet("Stato sistema", "sistema_stato", "SYS"),
 )
 
 # Sotto la radice indicata dall'amministratore il gestionale mantiene una

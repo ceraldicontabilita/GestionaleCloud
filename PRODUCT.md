@@ -95,7 +95,7 @@ Radice GestionaleCloud
 └── DICHIARAZIONI
 ```
 
-Il registro contiene 22 archivi canonici espliciti e può includere gli altri
+Il registro contiene 23 archivi canonici espliciti e può includere gli altri
 archivi logici scoperti nel database durante la migrazione. Ogni foglio ha un
 progressivo proprio e conserva il payload ricostruibile.
 
