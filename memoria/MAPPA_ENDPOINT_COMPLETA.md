@@ -4,7 +4,7 @@
 > Totale **1136 endpoint** in **113 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 689 · ext esterni = 88 · — da verificare = 359
+**Riepilogo uso:** ✓ frontend = 690 · ext esterni = 88 · — da verificare = 358
 
 ## AI Parser  (11)
 
@@ -1669,7 +1669,7 @@
 | GET | `/api/verbali-riconciliazione/dashboard` | ✓ | verbali_riconciliazione |
 | POST | `/api/verbali-riconciliazione/import-partenopay` | — | verbali_riconciliazione |
 | GET | `/api/verbali-riconciliazione/lista` | ✓ | verbali_riconciliazione |
-| POST | `/api/verbali-riconciliazione/migra-attesa-quietanza` | — | verbali_riconciliazione |
+| POST | `/api/verbali-riconciliazione/migra-attesa-quietanza` | ✓ | verbali_riconciliazione |
 | POST | `/api/verbali-riconciliazione/pulisci-duplicati` | ✓ | verbali_riconciliazione |
 | POST | `/api/verbali-riconciliazione/riconcilia/{numero_verbale}` | ✓ | verbali_riconciliazione |
 | POST | `/api/verbali-riconciliazione/scan-email` | ✓ | verbali_riconciliazione |
