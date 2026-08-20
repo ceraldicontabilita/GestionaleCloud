@@ -53,6 +53,7 @@ export default function VerbaliRiconciliazione() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [checkingEmail, setCheckingEmail] = useState(false);
+  const [migratingQuietanze, setMigratingQuietanze] = useState(false);
 
   // Nuovi state per associazione manuale
   const [dipendenti, setDipendenti] = useState([]);
@@ -139,6 +140,24 @@ export default function VerbaliRiconciliazione() {
       setError(`Controllo posta non riuscito: ${e.response?.data?.detail || e.message}`);
     } finally {
       setCheckingEmail(false);
+    }
+  };
+
+  const handleMigraQuietanze = async () => {
+    setMigratingQuietanze(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      const res = await api.post('/api/verbali-riconciliazione/migra-attesa-quietanza');
+      setSuccessMsg(
+        `Stati aggiornati: ${res.data.zip_con_quietanza || 0} verbali ZIP pagati, ${res.data.in_attesa_quietanza || 0} in attesa quietanza.`
+      );
+      loadDashboard();
+      loadVerbali();
+    } catch (e) {
+      setError(`Aggiornamento quietanze non riuscito: ${e.response?.data?.detail || e.message}`);
+    } finally {
+      setMigratingQuietanze(false);
     }
   };
 
@@ -349,6 +368,16 @@ export default function VerbaliRiconciliazione() {
             data-testid="btn-associa-manuale"
           >
             🔗 Associazione Manuale
+          </Button>
+          <Button
+            variant="secondary"
+            size="lg"
+            onClick={handleMigraQuietanze}
+            disabled={migratingQuietanze}
+            data-testid="btn-migra-quietanze"
+            title="Sostituisce attesa fattura e riconosce le quietanze presenti nello ZIP"
+          >
+            {migratingQuietanze ? '⏳ Aggiornamento...' : '🧾 Aggiorna Quietanze'}
           </Button>
           <Button
             variant="secondary"
