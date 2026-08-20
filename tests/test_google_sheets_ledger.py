@@ -254,6 +254,129 @@ def test_restore_runtime_non_provisiona_e_legge_tutti_i_fogli_in_batch(monkeypat
     run(scenario())
 
 
+def test_restore_ricostruisce_mongo_id_tecnico_come_id_reale(monkeypatch):
+    async def scenario():
+        db = AsyncMongoMockClient().db
+        target = ledger.dynamic_sheet("drive_sync_state")
+        payload = {"_mongo_id": "fatture_drive", "last_sync": "2026-08-20"}
+        row = ledger.row_for_document(payload, f"{target.prefix}-00000001")
+        monkeypatch.setattr(
+            ledger,
+            "_existing_workbook_sync",
+            lambda config=None: {
+                "spreadsheet_id": "SHEET-1",
+                "spreadsheet_url": "https://example.invalid/sheet",
+                "sheet_definitions": [target],
+            },
+        )
+        monkeypatch.setattr(
+            ledger, "_read_sheet_rows_batch_sync",
+            lambda _spreadsheet_id, _definitions: [[row]],
+        )
+
+        await ledger.restore_all(
+            db, {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"},
+            apply=True, provision=False,
+        )
+
+        restored = await db.drive_sync_state.find_one({"_id": "fatture_drive"})
+        assert restored["last_sync"] == "2026-08-20"
+        assert "_mongo_id" not in restored
+
+    run(scenario())
+
+
+def test_upsert_incrementale_aggiorna_e_accoda_senza_riscrivere_il_foglio(monkeypatch):
+    calls = {}
+
+    class Request:
+        def __init__(self, result=None):
+            self.result = result or {}
+
+        def execute(self):
+            return self.result
+
+    class Values:
+        def batchUpdate(self, **kwargs):
+            calls["batch_update"] = kwargs
+            return Request()
+
+        def append(self, **kwargs):
+            calls["append"] = kwargs
+            return Request()
+
+    class Spreadsheets:
+        def values(self):
+            return Values()
+
+    class Service:
+        def spreadsheets(self):
+            return Spreadsheets()
+
+    target = ledger.dynamic_sheet("invoices")
+    monkeypatch.setattr(
+        ledger, "_read_identities_sync",
+        lambda _spreadsheet_id, _sheet: [[f"{target.prefix}-00000007", "INV-1"]],
+    )
+    monkeypatch.setattr(ledger, "_sheets_service", lambda: Service())
+
+    result = ledger._upsert_documents_sync("SHEET-1", target, [
+        {"id": "INV-1", "total_amount": 25},
+        {"id": "INV-2", "total_amount": 50},
+    ])
+
+    assert result == {
+        "foglio": target.title, "collezione": "invoices",
+        "aggiornate": 1, "aggiunte": 1,
+    }
+    update = calls["batch_update"]["body"]["data"][0]
+    assert update["range"].endswith(f"A2:{ledger.LAST_COLUMN}2")
+    assert update["values"][0][0] == f"{target.prefix}-00000007"
+    appended = calls["append"]["body"]["values"][0]
+    assert appended[0] == f"{target.prefix}-00000008"
+    assert appended[1] == "INV-2"
+
+
+def test_rimozione_incrementale_svuota_solo_le_righe_richieste(monkeypatch):
+    calls = {}
+
+    class Request:
+        def execute(self):
+            return {}
+
+    class Values:
+        def batchClear(self, **kwargs):
+            calls["batch_clear"] = kwargs
+            return Request()
+
+    class Spreadsheets:
+        def values(self):
+            return Values()
+
+    class Service:
+        def spreadsheets(self):
+            return Spreadsheets()
+
+    target = ledger.dynamic_sheet("invoices")
+    monkeypatch.setattr(
+        ledger, "_read_identities_sync",
+        lambda _spreadsheet_id, _sheet: [
+            ["D111111-00000001", "INV-1"],
+            ["D111111-00000002", "INV-2"],
+        ],
+    )
+    monkeypatch.setattr(ledger, "_sheets_service", lambda: Service())
+
+    result = ledger._remove_documents_sync(
+        "SHEET-1", target, ["INV-2", "NON-ESISTE"],
+    )
+
+    assert result["rimosse"] == 1
+    assert calls["batch_clear"]["body"]["ranges"] == [
+        f"'{target.title}'!A3:{ledger.LAST_COLUMN}3"
+    ]
+
+
 def test_audit_migrazione_blocca_collezioni_non_coperte(monkeypatch):
     async def scenario():
         db = AsyncMongoMockClient().db

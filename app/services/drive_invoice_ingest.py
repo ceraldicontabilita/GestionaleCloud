@@ -40,7 +40,7 @@ def _batch_size() -> int:
     try:
         configured = int(settings.DRIVE_FATTURE_BATCH_SIZE)
     except (TypeError, ValueError):
-        configured = 10
+        configured = 1
     return max(1, min(configured, 100))
 
 

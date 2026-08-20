@@ -13,6 +13,7 @@ import gzip
 import hashlib
 import json
 import re
+import threading
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -323,6 +324,9 @@ def _services():
     )
 
 
+_sheets_thread_local = threading.local()
+
+
 def _sheets_service():
     """Crea solo il client Sheets per le operazioni che non usano Drive.
 
@@ -332,9 +336,13 @@ def _sheets_service():
     """
     from googleapiclient.discovery import build
 
-    return build(
-        "sheets", "v4", credentials=_credentials(), cache_discovery=False,
-    )
+    service = getattr(_sheets_thread_local, "service", None)
+    if service is None:
+        service = build(
+            "sheets", "v4", credentials=_credentials(), cache_discovery=False,
+        )
+        _sheets_thread_local.service = service
+    return service
 
 
 def _escape_drive_query(value: str) -> str:
@@ -835,6 +843,131 @@ def _read_identities_sync(spreadsheet_id: str, sheet: LedgerSheet):
     ).execute().get("values", [])
 
 
+def _upsert_documents_sync(
+    spreadsheet_id: str, sheet: LedgerSheet, documents: Iterable[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Aggiorna soltanto le righe mutate senza riscrivere l'intero foglio.
+
+    Il vecchio write-through rileggeva e riscriveva tutta la collezione a ogni
+    singola insert/update. Durante l'import XML una fattura genera piu'
+    mutazioni collegate e il processo Render da 512 MiB poteva essere
+    riavviato. Qui si legge soltanto l'indice A:B e si scrivono le righe
+    effettivamente cambiate.
+    """
+    identities = _read_identities_sync(spreadsheet_id, sheet)
+    rows_by_id: Dict[str, tuple[str, int]] = {}
+    progressives: List[str] = []
+    for row_number, row in enumerate(identities, start=2):
+        progressive = str(row[0] if row else "").strip()
+        key = str(row[1] if len(row) > 1 else "").strip()
+        if not progressive and not key:
+            continue
+        if not progressive or not key:
+            raise RuntimeError(f"Progressivo o canonical_id mancante nel foglio {sheet.title}")
+        if key in rows_by_id:
+            raise RuntimeError(f"canonical_id duplicato nel foglio {sheet.title}: {key}")
+        rows_by_id[key] = (progressive, row_number)
+        progressives.append(progressive)
+
+    sequence = next_progressive(sheet.prefix, progressives)
+    pending: Dict[str, Dict[str, Any]] = {}
+    fingerprints: Dict[str, str] = {}
+    for raw in documents:
+        document = portable_document(raw)
+        key = canonical_id(document)
+        if not key:
+            raise ValueError(f"Documento senza chiave canonica per {sheet.collection}")
+        fingerprint = document_fingerprint(document)
+        previous = fingerprints.get(key)
+        if previous is not None and previous != fingerprint:
+            raise RuntimeError(
+                f"Identita canonica in conflitto in {sheet.collection}: {key}"
+            )
+        fingerprints[key] = fingerprint
+        pending[key] = document
+
+    sheets = _sheets_service()
+    updates = []
+    appended = []
+    for key, document in pending.items():
+        current = rows_by_id.get(key)
+        if current:
+            progressive, row_number = current
+            updates.append({
+                "range": f"'{sheet.title}'!A{row_number}:{LAST_COLUMN}{row_number}",
+                "values": [row_for_document(document, progressive)],
+            })
+            continue
+        progressive = format_progressive(sheet.prefix, sequence)
+        sequence += 1
+        appended.append(row_for_document(document, progressive))
+
+    if updates:
+        sheets.spreadsheets().values().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"valueInputOption": "RAW", "data": updates},
+        ).execute()
+    if appended:
+        sheets.spreadsheets().values().append(
+            spreadsheetId=spreadsheet_id,
+            range=f"'{sheet.title}'!A:{LAST_COLUMN}",
+            valueInputOption="RAW",
+            insertDataOption="INSERT_ROWS",
+            body={"values": appended},
+        ).execute()
+    return {
+        "foglio": sheet.title,
+        "collezione": sheet.collection,
+        "aggiornate": len(updates),
+        "aggiunte": len(appended),
+    }
+
+
+async def upsert_documents(
+    sheet: LedgerSheet, spreadsheet_id: str, documents: Iterable[Dict[str, Any]],
+) -> Dict[str, Any]:
+    portable = [portable_document(document) for document in documents]
+    if not portable:
+        return {
+            "foglio": sheet.title, "collezione": sheet.collection,
+            "aggiornate": 0, "aggiunte": 0,
+        }
+    return await asyncio.to_thread(
+        _upsert_documents_sync, spreadsheet_id, sheet, portable,
+    )
+
+
+def _remove_documents_sync(
+    spreadsheet_id: str, sheet: LedgerSheet, canonical_ids: Iterable[str],
+) -> Dict[str, Any]:
+    targets = {str(value).strip() for value in canonical_ids if str(value).strip()}
+    if not targets:
+        return {"foglio": sheet.title, "collezione": sheet.collection, "rimosse": 0}
+    identities = _read_identities_sync(spreadsheet_id, sheet)
+    ranges = [
+        f"'{sheet.title}'!A{row_number}:{LAST_COLUMN}{row_number}"
+        for row_number, row in enumerate(identities, start=2)
+        if len(row) > 1 and str(row[1]).strip() in targets
+    ]
+    if ranges:
+        _sheets_service().spreadsheets().values().batchClear(
+            spreadsheetId=spreadsheet_id, body={"ranges": ranges},
+        ).execute()
+    return {
+        "foglio": sheet.title,
+        "collezione": sheet.collection,
+        "rimosse": len(ranges),
+    }
+
+
+async def remove_documents(
+    sheet: LedgerSheet, spreadsheet_id: str, canonical_ids: Iterable[str],
+) -> Dict[str, Any]:
+    return await asyncio.to_thread(
+        _remove_documents_sync, spreadsheet_id, sheet, tuple(canonical_ids),
+    )
+
+
 def _clear_rows_sync(spreadsheet_id: str, sheet: LedgerSheet) -> None:
     sheets = _sheets_service()
     sheets.spreadsheets().values().clear(
@@ -1281,8 +1414,20 @@ async def restore_all(
             valid += 1
             fingerprints.append(document_fingerprint(payload))
             if apply:
+                storage_payload = dict(payload)
+                mongo_id = storage_payload.pop("_mongo_id", None)
+                if mongo_id not in (None, ""):
+                    # Le righe prive di un ID applicativo vengono esportate
+                    # con ``_mongo_id``. Al ripristino deve tornare il vero
+                    # ``_id``: lasciare `_mongo_id` come campo ordinario fa
+                    # fallire gli upsert che cercano `_id` e crea una seconda
+                    # identita' logica con la stessa chiave canonica.
+                    storage_payload["_id"] = str(mongo_id)
+                    identity_filter = {"_id": str(mongo_id)}
+                else:
+                    identity_filter = canonical_filter(storage_payload)
                 await db[sheet.collection].replace_one(
-                    canonical_filter(payload), payload, upsert=True,
+                    identity_filter, storage_payload, upsert=True,
                 )
         results.append({
             "foglio": sheet.title, "collezione": sheet.collection,
