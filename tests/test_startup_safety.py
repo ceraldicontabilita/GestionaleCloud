@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from app.config import Settings
+from app.config import Settings, settings
 from app import database as database_module
 from app.database import Database
 from app.main import health_check
@@ -93,6 +93,23 @@ def test_health_check_non_dichiara_healthy_senza_database(monkeypatch):
     assert response.status_code == 503
     assert payload["status"] == "unhealthy"
     assert payload["database"] == "disconnected"
+
+
+def test_health_check_sheets_verifica_idratazione_senza_ping_mongo(monkeypatch):
+    class RuntimeSheets:
+        hydration_result = {"spreadsheet_id": "SHEET-1", "fogli": []}
+
+        async def command(self, *_args, **_kwargs):
+            raise AssertionError("Il backend Sheets non deve ricevere ping Mongo")
+
+    monkeypatch.setattr(settings, "DATA_BACKEND", "sheets")
+    monkeypatch.setattr(Database, "db", RuntimeSheets())
+
+    response = asyncio.run(health_check())
+
+    assert response["status"] == "healthy"
+    assert response["database"] == "connected"
+    assert response["salari_sync"] == "not_started"
 
 
 def test_riparazioni_dati_startup_disabilitate_per_default():
