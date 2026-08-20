@@ -142,6 +142,9 @@ async def import_partenopay_archive(db, content: bytes, *, dry_run: bool = True)
             raw = archive.read(full)
             sha = hashlib.sha256(raw).hexdigest()
             doc_id = f"partenopay_{sha[:32]}"
+            existing_doc = await db["documents_inbox"].find_one(
+                {"id": doc_id}, {"_id": 0, "drive_archive_status": 1}
+            )
             await db["documents_inbox"].update_one(
                 {"id": doc_id},
                 {"$set": {
@@ -154,25 +157,31 @@ async def import_partenopay_archive(db, content: bytes, *, dry_run: bool = True)
                 }, "$setOnInsert": {"created_at": now_iso, "processed": False, "status": "importato"}},
                 upsert=True,
             )
-            # Copia non distruttiva nell'area Drive Verbali. Il file originale
-            # nel pacchetto e l'email sorgente non vengono mai spostati/eliminati.
-            try:
-                from app.services.email_drive_archive import archive_document_copy
-                drive_result = await asyncio.to_thread(
-                    archive_document_copy,
-                    {"id": doc_id, "filename": item.get("nome") or posixpath.basename(relative),
-                     "file_hash": sha, "pdf_data": base64.b64encode(raw).decode("ascii")},
-                    "verbale",
+            # Copia non distruttiva soltanto delle prove originali. TXT e CSV
+            # sono indici/trascrizioni già conservati nel JSON canonico: copiarli
+            # singolarmente rendeva il caricamento sincrono troppo lento.
+            extension = str(item.get("estensione") or "").lower()
+            previous_status = str((existing_doc or {}).get("drive_archive_status") or "")
+            if extension in {"pdf", "eml", "xml", "p7m", "p7s"} and previous_status not in {
+                "archived", "duplicate", "archived_manual_oauth",
+            }:
+                try:
+                    from app.services.email_drive_archive import archive_document_copy
+                    drive_result = await asyncio.to_thread(
+                        archive_document_copy,
+                        {"id": doc_id, "filename": item.get("nome") or posixpath.basename(relative),
+                         "file_hash": sha, "pdf_data": base64.b64encode(raw).decode("ascii")},
+                        "verbale",
+                    )
+                except Exception as exc:
+                    drive_result = {"status": "error", "reason": str(exc)}
+                await db["documents_inbox"].update_one(
+                    {"id": doc_id},
+                    {"$set": {"drive_archive_status": drive_result.get("status"),
+                               "drive_archive_area": drive_result.get("area"),
+                               "drive_archive_reason": drive_result.get("reason"),
+                               "drive_archived_at": drive_result.get("archived_at")}},
                 )
-            except Exception as exc:
-                drive_result = {"status": "error", "reason": str(exc)}
-            await db["documents_inbox"].update_one(
-                {"id": doc_id},
-                {"$set": {"drive_archive_status": drive_result.get("status"),
-                           "drive_archive_area": drive_result.get("area"),
-                           "drive_archive_reason": drive_result.get("reason"),
-                           "drive_archived_at": drive_result.get("archived_at")}},
-            )
             if str(item.get("estensione") or "").lower() == "pdf":
                 from app.services.verbali_document_import import process_verbale_document
                 await process_verbale_document(
