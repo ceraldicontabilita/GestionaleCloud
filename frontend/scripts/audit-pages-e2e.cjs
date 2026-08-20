@@ -58,8 +58,8 @@ function uniqueProblems(problems) {
 }
 
 (async () => {
-  if (catalog.pages.length !== 62) {
-    throw new Error(`Catalogo incompleto: attese 62 pagine, trovate ${catalog.pages.length}`);
+  if (catalog.pages.length !== 64) {
+    throw new Error(`Catalogo incompleto: attese 64 pagine, trovate ${catalog.pages.length}`);
   }
 
   const browser = await chromium.launch(EXE ? { executablePath: EXE } : {});
