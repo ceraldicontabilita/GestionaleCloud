@@ -23,8 +23,8 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 - Correnti: **16**
 - Riferimento: **25**
 - Generati: **5**
-- Storici: **42**
-- Totale: **88**
+- Storici: **43**
+- Totale: **89**
 
 ## Elenco completo
 
@@ -67,6 +67,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `docs/MCP_GESTIONALE_SPEC.md` | `current` | Autorità operativa corrente |
 | `docs/OBSIDIAN_KNOWLEDGE_ARCHITECTURE_2026-08-20.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/PIANO_OPERATIVO_GESTIONALE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/PROMPT_GESTIONALE_MITTENTI_TRIBUTI_DICHIARAZIONI_PARTENOPAY.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/SPECIFICA_OPERATIVA_GESTIONALECLOUD.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/obsidian-integration/ARCHITETTURA.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/obsidian-integration/MAPPA_COLLEGAMENTI.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
