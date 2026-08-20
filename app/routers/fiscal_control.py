@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -74,6 +75,19 @@ class AderArchiveRequest(BaseModel):
 
 def _company() -> str:
     return settings.FISCAL_COMPANY_ID
+
+
+def _fiscal_date_sort_key(value: Any) -> str:
+    """Normalizza le date miste dell'indice Drive prima dell'ordinamento API."""
+    if isinstance(value, (datetime, date)):
+        return value.strftime("%Y%m%d")
+    text = str(value or "").strip()
+    for pattern in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(text[:10], pattern).strftime("%Y%m%d")
+        except ValueError:
+            continue
+    return text
 
 
 async def _load_ader_archive(body: AderArchiveRequest) -> tuple[dict[str, Any], bytes]:
@@ -207,7 +221,7 @@ async def f24_rows(
         seen.add(key)
         merged.append(item)
     merged.sort(key=lambda item: (
-        str(item.get("payment_date") or ""), str(item.get("filename") or ""),
+        _fiscal_date_sort_key(item.get("payment_date")), str(item.get("filename") or ""),
         int(item.get("ordinal") or 0),
     ), reverse=True)
     items = merged[offset:offset + limit]

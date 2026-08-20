@@ -47,6 +47,29 @@ def test_f24_rows_read_through_drive_and_keep_payment_unverified(monkeypatch):
     assert payload["items"][0]["evidence_state"] == "MODELLO_F24_NON_PROVA_BANCARIA"
 
 
+def test_f24_rows_sort_mixed_date_formats_chronologically(monkeypatch):
+    db = AsyncMongoMockClient()["fiscal-drive-f24-dates"]
+    monkeypatch.setattr(Database, "get_db", staticmethod(lambda: db))
+    monkeypatch.setattr(drive_document_index, "list_f24_rows", lambda **_kwargs: {
+        "items": [
+            {"id": "old", "document_id": "OLD", "ordinal": 1,
+             "payment_date": "31/12/2019", "tax_code": "9002"},
+            {"id": "new", "document_id": "NEW", "ordinal": 1,
+             "payment_date": "2026-04-30", "tax_code": "1704"},
+            {"id": "middle", "document_id": "MID", "ordinal": 1,
+             "payment_date": "31-10-2025", "tax_code": "9001"},
+        ],
+        "total": 3,
+    })
+
+    payload = asyncio.run(fiscal_control.f24_rows(
+        tax_code=None, document_id=None, year=None, credits_only=False,
+        offset=0, limit=200, _admin={},
+    ))
+
+    assert [item["id"] for item in payload["items"]] == ["new", "middle", "old"]
+
+
 def test_declarations_read_through_drive_when_transitional_db_is_empty(monkeypatch):
     db = AsyncMongoMockClient()["fiscal-drive-declarations"]
     monkeypatch.setattr(Database, "get_db", staticmethod(lambda: db))
