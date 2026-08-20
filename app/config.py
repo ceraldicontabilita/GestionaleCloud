@@ -186,7 +186,7 @@ class Settings(BaseSettings):
     # Il servizio Render Starter dispone di memoria limitata. Le fatture XML
     # vengono quindi elaborate a lotti piccoli e idempotenti, mai caricando
     # l'intero arretrato nello stesso ciclo.
-    DRIVE_FATTURE_BATCH_SIZE: int = 10
+    DRIVE_FATTURE_BATCH_SIZE: int = 1
     ENABLE_DRIVE_CEDOLINI_SYNC: bool = True
     ENABLE_DRIVE_CORRISPETTIVI_SYNC: bool = True
     # Quietanze: ACCESO su scelta esplicita dell'utente (10/07/2026)
