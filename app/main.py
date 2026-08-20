@@ -1,7 +1,7 @@
 """
 Ceraldi ERP - Main Application
 ==============================
-FastAPI + MongoDB Atlas | Refactored Modular Architecture
+FastAPI + Google Drive/Sheets | GestionaleCloud
 """
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -31,8 +31,8 @@ async def lifespan(app: FastAPI):
     """Application lifecycle: startup, yield, shutdown."""
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
 
-    # Fail closed: senza MongoDB il gestionale non puo' garantire letture o
-    # scritture contabili coerenti. Il processo non deve risultare healthy.
+    # Fail closed: senza l'archivio operativo configurato il gestionale non
+    # puo' garantire letture o scritture contabili coerenti.
     await Database.connect_db()
     from app.services.auth_secret import initialize_auth_secret
 

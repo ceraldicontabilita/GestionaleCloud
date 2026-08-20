@@ -65,7 +65,14 @@ class SheetsRuntimeDatabase:
         self.hydration_result: dict[str, Any] | None = None
 
     async def hydrate(self) -> dict[str, Any]:
-        result = await restore_all(self._memory_db, self._config, apply=True)
+        # Con un ID esplicito il registro e' gia' predisposto: l'avvio web deve
+        # soltanto leggerlo, senza ricreare alberi Drive o riformattare 23 fogli.
+        provision = not bool(
+            str(self._config.get("GOOGLE_SHEETS_LEDGER_ID") or "").strip()
+        )
+        result = await restore_all(
+            self._memory_db, self._config, apply=True, provision=provision,
+        )
         discovered_spreadsheet_id = str(result.get("spreadsheet_id") or "").strip()
         if discovered_spreadsheet_id:
             self._config["GOOGLE_SHEETS_LEDGER_ID"] = discovered_spreadsheet_id

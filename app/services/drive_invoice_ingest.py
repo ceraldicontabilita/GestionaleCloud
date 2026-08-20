@@ -40,10 +40,8 @@ def is_sync_running() -> bool:
 
 
 def _folder_id() -> Optional[str]:
-    """ID cartella fatture: nome canonico o alias dell'ambiente Render."""
-    return (settings.GOOGLE_DRIVE_FATTURE_FOLDER_ID
-            or settings.DRIVE_FOLDER_FATTURE_ID
-            or settings.DRIVE_FATTURE_FOLDER_ID)
+    """ID della cartella fatture configurato con il nome canonico."""
+    return settings.GOOGLE_DRIVE_FATTURE_FOLDER_ID
 
 
 def start_background_sync(db) -> bool:

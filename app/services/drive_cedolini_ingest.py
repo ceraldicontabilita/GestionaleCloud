@@ -71,10 +71,8 @@ def start_background_sync(db) -> bool:
 
 
 def _folder_id() -> Optional[str]:
-    """ID cartella: nome canonico o alias reale dell'ambiente Render."""
-    return (settings.GOOGLE_DRIVE_CEDOLINI_FOLDER_ID
-            or settings.DRIVE_FOLDER_CEDOLINI_ID
-            or settings.DRIVE_CEDOLINI_FOLDER_ID)
+    """ID della cartella cedolini configurato con il nome canonico."""
+    return settings.GOOGLE_DRIVE_CEDOLINI_FOLDER_ID
 
 
 def _load_credentials_cedolini():

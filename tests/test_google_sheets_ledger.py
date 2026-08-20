@@ -219,6 +219,41 @@ def test_restore_default_e_solo_validazione(monkeypatch):
     run(scenario())
 
 
+def test_restore_runtime_non_provisiona_e_legge_tutti_i_fogli_in_batch(monkeypatch):
+    async def scenario():
+        db = AsyncMongoMockClient().db
+        calls = []
+        monkeypatch.setattr(
+            ledger,
+            "_existing_workbook_sync",
+            lambda config=None: {
+                "spreadsheet_id": "SHEET-1",
+                "spreadsheet_url": "https://example.invalid/sheet",
+                "sheet_definitions": list(ledger.SHEETS),
+            },
+        )
+
+        def fake_batch(spreadsheet_id, definitions):
+            calls.append((spreadsheet_id, tuple(definitions)))
+            return [[] for _ in definitions]
+
+        monkeypatch.setattr(ledger, "_read_sheet_rows_batch_sync", fake_batch)
+
+        result = await ledger.restore_all(
+            db,
+            {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"},
+            apply=True,
+            provision=False,
+        )
+
+        assert len(calls) == 1
+        assert calls[0][0] == "SHEET-1"
+        assert len(calls[0][1]) == len(ledger.SHEETS)
+        assert result["spreadsheet_id"] == "SHEET-1"
+
+    run(scenario())
+
+
 def test_audit_migrazione_blocca_collezioni_non_coperte(monkeypatch):
     async def scenario():
         db = AsyncMongoMockClient().db

@@ -120,11 +120,7 @@ def test_recupero_archivio_elaborate_e_esplicito_e_non_confonde_l_inbox():
 
 def test_piu_radici_da_env_e_registro_sono_deduplicate(monkeypatch):
     monkeypatch.setattr(settings, "GOOGLE_DRIVE_ESTRATTI_FOLDER_IDS", "root-a, root-b")
-    monkeypatch.setattr(settings, "DRIVE_FOLDER_ESTRATTI_CONTO_IDS", None)
-    monkeypatch.setattr(settings, "DRIVE_ESTRATTI_CONTO_FOLDER_IDS", None)
     monkeypatch.setattr(settings, "GOOGLE_DRIVE_ESTRATTI_FOLDER_ID", "root-a")
-    monkeypatch.setattr(settings, "DRIVE_FOLDER_ESTRATTI_CONTO_ID", None)
-    monkeypatch.setattr(settings, "DRIVE_ESTRATTI_CONTO_FOLDER_ID", None)
     monkeypatch.setattr(settings, "DRIVE_CARTE_FOLDER_ID", "root-carte")
     monkeypatch.setattr(settings, "DRIVE_FOLDER_REGISTRY_JSON", json.dumps({"folders": [
         {"area": "estratti_conto_bnl", "folder_id": "root-c"},

@@ -11,8 +11,9 @@ def run(coro):
 def test_runtime_idrata_e_persistenza_write_through(monkeypatch):
     calls = []
 
-    async def fake_restore(db, config, apply=False):
+    async def fake_restore(db, config, apply=False, provision=True):
         assert apply is True
+        assert provision is False
         await db["invoices"].insert_one({"id": "INV-1", "total_amount": 10})
         return {
             "fogli": [
@@ -62,8 +63,9 @@ def test_runtime_espone_stato_sistema_per_checkpoint_import():
 def test_runtime_memorizza_il_foglio_scoperto_per_le_scritture(monkeypatch):
     calls = []
 
-    async def fake_restore(db, config, apply=False):
+    async def fake_restore(db, config, apply=False, provision=True):
         assert apply is True
+        assert provision is True
         return {
             "spreadsheet_id": "SHEET-DISCOVERED",
             "fogli": [
