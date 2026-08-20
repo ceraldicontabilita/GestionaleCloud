@@ -29,6 +29,7 @@ def test_fail_fast_accetta_fallback_cors_same_origin(monkeypatch):
     monkeypatch.setenv("FAIL_FAST_SECRETS", "true")
     cfg = Settings(
         ENVIRONMENT="production",
+        DATA_BACKEND="mongodb",
         SECRET_KEY="x" * 64,
         MONGODB_ATLAS_URI="mongodb://example.invalid",
         CORS_ALLOWED_ORIGINS="",
@@ -42,6 +43,7 @@ def test_fail_fast_rifiuta_cors_wildcard_con_credenziali(monkeypatch):
     monkeypatch.setenv("FAIL_FAST_SECRETS", "true")
     cfg = Settings(
         ENVIRONMENT="production",
+        DATA_BACKEND="mongodb",
         SECRET_KEY="x" * 64,
         MONGODB_ATLAS_URI="mongodb://example.invalid",
         CORS_ALLOWED_ORIGINS="*",
@@ -50,6 +52,36 @@ def test_fail_fast_rifiuta_cors_wildcard_con_credenziali(monkeypatch):
 
     with pytest.raises(RuntimeError, match="CORS wildcard"):
         cfg.validate_startup()
+
+
+def test_fail_fast_sheets_non_usa_mongo_come_fallback(monkeypatch):
+    monkeypatch.setenv("FAIL_FAST_SECRETS", "true")
+    cfg = Settings(
+        ENVIRONMENT="production",
+        DATA_BACKEND="sheets",
+        SECRET_KEY="x" * 64,
+        GOOGLE_SHEETS_LEDGER_ID=None,
+        GOOGLE_SHEETS_LEDGER_FOLDER_ID=None,
+        MONGODB_ATLAS_URI="mongodb://example.invalid",
+        CORS_ALLOWED_ORIGINS="",
+    )
+
+    with pytest.raises(RuntimeError, match="MongoDB non e' un fallback"):
+        cfg.validate_startup()
+
+
+def test_fail_fast_sheets_accetta_cartella_registro_esplicita(monkeypatch):
+    monkeypatch.setenv("FAIL_FAST_SECRETS", "true")
+    cfg = Settings(
+        ENVIRONMENT="production",
+        DATA_BACKEND="sheets",
+        SECRET_KEY="x" * 64,
+        GOOGLE_SHEETS_LEDGER_ID=None,
+        GOOGLE_SHEETS_LEDGER_FOLDER_ID="drive-root-1",
+        CORS_ALLOWED_ORIGINS="",
+    )
+
+    cfg.validate_startup()
 
 
 def test_health_check_non_dichiara_healthy_senza_database(monkeypatch):
@@ -66,6 +98,7 @@ def test_health_check_non_dichiara_healthy_senza_database(monkeypatch):
 def test_riparazioni_dati_startup_disabilitate_per_default():
     cfg = Settings()
 
+    assert cfg.DATA_BACKEND == "sheets"
     assert cfg.RUN_STARTUP_DATA_REPAIRS is False
     assert cfg.RUN_STARTUP_INDEX_MIGRATIONS is False
     assert cfg.RUN_STARTUP_SEED_DATA is False

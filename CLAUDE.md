@@ -53,9 +53,11 @@ si aggiornano con `scripts/refresh_json_docs.py`, non a mano.
 
 - Il default del codice è `DATA_BACKEND=sheets`.
 - MongoDB è solo compatibilità transitoria del runtime, non la destinazione finale.
-- Il supporto Google Sheets/Drive è la destinazione operativa; il cutover resta
-  verificato solo con sincronizzazione, conteggi, hash, lettura, scrittura e
-  ricostruzione positive di tutte le collezioni.
+- Google Sheets/Drive è l'archivio operativo. MongoDB si attiva soltanto con
+  `DATA_BACKEND=mongodb`; non esiste fallback automatico dal backend Sheets.
+- La migrazione dei dati storici resta verificata solo con sincronizzazione,
+  conteggi, hash, lettura, scrittura e ricostruzione positive di tutte le
+  collezioni.
 
 ### Destinazione Drive-only
 
@@ -86,12 +88,20 @@ Regole del cutover:
 3. copiare il dataset completo nel registro Drive;
 4. confrontare conteggi unici e digest sorgente/destinazione;
 5. ricostruire il runtime dai fogli e provarne la scrittura;
-6. impostare `DATA_BACKEND=sheets` e verificare la produzione;
+6. confermare `DATA_BACKEND=sheets`, configurare esplicitamente il registro e
+   verificare la produzione;
 7. solo dopo disabilitare MongoDB e rimuoverne variabili e dati.
 
-Mai cancellare MongoDB prima del punto 6. In modalità Sheets il database in
+Mai cancellare i dati MongoDB prima del punto 6. In modalità Sheets il database in
 memoria è soltanto una cache di compatibilità del processo: Drive/Sheets resta
 la sorgente persistente.
+
+## Canali operativi e conoscenza
+
+- Telegram è l'unico canale attivo per alert e notifiche operative.
+- Non registrare router, webhook o fallback WhatsApp legacy.
+- Obsidian è una proiezione consultiva della documentazione: non è un database,
+  non riceve scritture contabili e non sostituisce Drive/Sheets.
 
 ## Identità, duplicati e relazioni
 

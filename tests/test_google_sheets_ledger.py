@@ -34,6 +34,14 @@ def test_albero_drive_operativo_ha_le_cartelle_richieste():
     )
 
 
+def test_radice_ledger_non_ripiega_su_cartelle_documentali(monkeypatch):
+    monkeypatch.setattr(ledger.settings, "GOOGLE_SHEETS_LEDGER_FOLDER_ID", None)
+    monkeypatch.setattr(ledger.settings, "GOOGLE_DRIVE_FATTURE_FOLDER_ID", "fatture-legacy")
+    monkeypatch.setattr(ledger.settings, "GOOGLE_DRIVE_ESTRATTI_FOLDER_ID", "estratti-legacy")
+
+    assert ledger.default_folder_id() is None
+
+
 def test_fogli_dinamici_hanno_nome_e_prefisso_stabili():
     first = ledger.dynamic_sheet("sumup_transactions")
     second = ledger.dynamic_sheet("sumup_transactions")

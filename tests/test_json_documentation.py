@@ -83,9 +83,10 @@ def test_inventario_json_e_completo_e_verificabile():
 
 def test_conoscenza_operativa_e_valutazioni_restano_di_sola_lettura():
     kb = load_json(ROOT / "app/knowledge/chat_kb.json")
-    assert kb["meta"]["versione"] == "4.0-drive-transition"
-    assert kb["storage_operativo"]["stato_corrente"] == "mongodb_transitorio"
-    assert kb["storage_operativo"]["destinazione"] == "google_drive_sheets"
+    assert kb["meta"]["versione"] == "5.0-drive-sheets-operational"
+    assert kb["storage_operativo"]["stato_corrente"] == "google_drive_sheets"
+    assert kb["storage_operativo"]["backend_predefinito"] == "sheets"
+    assert kb["storage_operativo"]["compatibilita"] == "mongodb_solo_con_DATA_BACKEND_mongodb"
 
     evals = load_json(ROOT / "gestionale_mcp/evals/read_only_evals.json")
     assert len({item["id"] for item in evals}) == len(evals)

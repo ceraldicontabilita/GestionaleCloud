@@ -84,4 +84,5 @@ def test_drive_only_docs_state_real_cutover_boundary() -> None:
     assert "DATA_BACKEND=sheets" in logic
     assert "compatibilità transitoria" in logic
     assert "ricostruzione completa" in logic
-    assert "backend transitorio" in readme
+    assert "compatibilità esplicita" in readme
+    assert "non esiste fallback" in readme.lower()

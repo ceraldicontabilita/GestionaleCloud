@@ -179,7 +179,7 @@ def test_run_agente_specifico_propaga_errore_dopo_averlo_registrato(monkeypatch)
     assert stato["stato"] == "errore"
 
 
-def test_crea_segnalazione_urgente_con_telegram_giu_non_fallisce(monkeypatch):
+def test_crea_segnalazione_urgente_con_telegram_giu_non_fallisce(monkeypatch, caplog):
     db = _Db()
 
     async def _telegram_giu(msg, **kw):
@@ -194,6 +194,7 @@ def test_crea_segnalazione_urgente_con_telegram_giu_non_fallisce(monkeypatch):
 
     assert seg_id is not None
     assert len(db["agenti_segnalazioni"].docs) == 1  # la segnalazione è comunque salvata
+    assert "notifica Telegram non inviata" in caplog.text
 
 
 def test_crea_segnalazione_non_urgente_non_chiama_telegram(monkeypatch):

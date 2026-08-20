@@ -1,5 +1,5 @@
 """
-Public API endpoints - Legacy endpoints non ancora refactorizzati.
+Endpoint ERP protetti - router storico non ancora separato per dominio.
 Gli endpoint principali sono stati spostati nei router modulari:
 - fatture_upload.py: /api/fatture
 - corrispettivi_router.py: /api/corrispettivi
@@ -24,13 +24,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# ============== F24 PUBLIC ALERTS ==============
+# ============== F24 ALERTS (AUTENTICATI DAL MIDDLEWARE) ==============
 
 @router.get("/f24-public/alerts")
 async def get_f24_alerts_public(
     anno: Optional[int] = Query(None, description="Filter by year")
 ) -> List[Dict[str, Any]]:
-    """Alert pubblici scadenze F24 da tutte le collection."""
+    """Alert scadenze F24 da tutte le collection; richiede sessione valida."""
     db = Database.get_db()
     alerts = []
     today = datetime.now(timezone.utc).date()

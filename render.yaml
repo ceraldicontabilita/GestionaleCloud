@@ -33,6 +33,14 @@ services:
         value: "1"
       - key: FAIL_FAST_SECRETS
         value: "true"
+      - key: DATA_BACKEND
+        value: "sheets"
+      - key: GOOGLE_SHEETS_LEDGER_ID
+        sync: false
+      - key: GOOGLE_SHEETS_LEDGER_FOLDER_ID
+        sync: false
+      - key: GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON
+        sync: false
       - key: SUMUP_API_KEY
         sync: false
       - key: SUMUP_MERCHANT_CODE

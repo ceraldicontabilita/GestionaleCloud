@@ -94,7 +94,11 @@ async def crea_segnalazione(
         try:
             from app.services.telegram_notifications import send_notification
             await send_notification(f"🚨 {titolo}\n{descrizione[:200]}")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "Segnalazione %s salvata, ma notifica Telegram non inviata: %s",
+                segnalazione["id"],
+                exc,
+            )
 
     return segnalazione["id"]

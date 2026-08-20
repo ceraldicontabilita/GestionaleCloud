@@ -41,6 +41,10 @@ Per ogni pagina, traccia il percorso:
 - elaborazione della pagina,
 - output: contabilità, dashboard, alert, stati, report.
 
+Drive/Sheets è l'archivio operativo predefinito. MongoDB è solo compatibilità
+esplicita e non è un fallback. Gli alert operativi escono soltanto su Telegram;
+Obsidian documenta il sistema ma non memorizza dati delle pagine.
+
 ## Output richiesto
 Ogni documentazione di pagina deve includere:
 - titolo pagina
