@@ -137,6 +137,42 @@ async def importa_archivio_partenopay(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.post("/migra-attesa-quietanza")
+@handle_errors
+async def migra_attesa_quietanza(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Sostituisce l'attesa fattura e chiude i record ZIP che hanno quietanza."""
+    db = Database.get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    legacy = {"stato": "pagato_attesa_fattura"}
+    zip_with_receipt = {
+        "$and": [legacy, {"source": "partenopay_zip"}, {"$or": [
+            {"quietanza_ricevuta": True},
+            {"pagato_documentalmente": True},
+            {"source_files": {"$regex": "02_QUIETANZE", "$options": "i"}},
+        ]}],
+    }
+    completed = await db["verbali_noleggio"].update_many(zip_with_receipt, {"$set": {
+        "stato": "pagato", "quietanza_ricevuta": True,
+        "stato_pagamento_documentale": "PAGATO_VERIFICATO",
+        "stato_migrazione": "quietanza_zip_acquisita", "updated_at": now,
+    }})
+    waiting = await db["verbali_noleggio"].update_many(legacy, {"$set": {
+        "stato": "pagato_attesa_quietanza",
+        "stato_migrazione": "rinomina_attesa_fattura", "updated_at": now,
+    }})
+    audit_id = f"migrazione_attesa_quietanza_{now}"
+    await db["audit_log"].update_one({"id": audit_id}, {"$setOnInsert": {
+        "id": audit_id, "modulo": "verbali_noleggio", "azione": "migra_attesa_quietanza",
+        "zip_con_quietanza": completed.modified_count,
+        "in_attesa_quietanza": waiting.modified_count,
+        "utente": _admin.get("email") or _admin.get("user_id"), "created_at": now,
+    }}, upsert=True)
+    return {"success": True, "zip_con_quietanza": completed.modified_count,
+            "in_attesa_quietanza": waiting.modified_count}
+
+
 @router.post("/scan-gmail-attendibili")
 @handle_errors
 async def scan_gmail_mittenti_attendibili(
@@ -173,7 +209,7 @@ async def get_verbali_dashboard() -> Dict[str, Any]:
                 "stato": {
                     "$cond": [
                         {"$and": [
-                            {"$in": ["$stato", ["pagato", "pagato_attesa_fattura", "riconciliato"]]},
+                            {"$in": ["$stato", ["pagato", "pagato_attesa_quietanza", "pagato_attesa_fattura", "riconciliato"]]},
                             {"$or": [
                                 {"$ne": ["$importo_verificato", True]},
                                 {"$eq": [

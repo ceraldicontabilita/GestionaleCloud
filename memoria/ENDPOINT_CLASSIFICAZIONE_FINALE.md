@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1135 · tenere: 732 · verificare: 377 · admin-only (migrazione/manutenzione): 26
+**Totale endpoint:** 1136 · tenere: 732 · verificare: 377 · admin-only (migrazione/manutenzione): 27
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -1127,6 +1127,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/verbali-riconciliazione/dashboard` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/verbali-riconciliazione/import-partenopay` | verbali_riconciliazione | — | sì | — | — | — | tenere | in uso: scheduler |
 | `GET /api/verbali-riconciliazione/lista` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `POST /api/verbali-riconciliazione/migra-attesa-quietanza` | verbali_riconciliazione | — | sì | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `POST /api/verbali-riconciliazione/pulisci-duplicati` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/verbali-riconciliazione/riconcilia/{numero_verbale}` | verbali_riconciliazione | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `POST /api/verbali-riconciliazione/scan-email` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |

@@ -121,7 +121,7 @@ def sanitize_verbale_evidence(record: Dict[str, Any]) -> Dict[str, Any]:
     sanitized = sanitize_verbale_amount(record)
     sanitized.update(describe_verbale_date(record))
     stato_originale = str(record.get("stato") or "sconosciuto").lower()
-    if stato_originale in {"pagato", "pagato_attesa_fattura", "riconciliato"}:
+    if stato_originale in {"pagato", "pagato_attesa_quietanza", "pagato_attesa_fattura", "riconciliato"}:
         has_payment_evidence = bool(
             record.get("pagato_documentalmente") is True
             or record.get("banca_verificata") is True

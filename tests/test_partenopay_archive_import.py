@@ -57,6 +57,8 @@ def test_import_idempotente_e_pagato_solo_con_quietanza(monkeypatch):
     assert verbale["numero_verbale"] == "A25110069164"
     assert verbale["targa"] == "GG782PN"
     assert verbale["stato_pagamento_documentale"] == "PAGATO_VERIFICATO"
+    assert verbale["stato"] == "pagato"
+    assert verbale["quietanza_ricevuta"] is True
     assert asyncio.run(db["notification_log"].count_documents({})) == 4
 
 
@@ -87,3 +89,21 @@ def test_retry_non_riarchivia_documento_gia_copiato(monkeypatch):
     asyncio.run(mod.import_partenopay_archive(db, _archive(), dry_run=False))
     asyncio.run(mod.import_partenopay_archive(db, _archive(), dry_run=False))
     assert len(calls) == 1
+
+
+def test_pagamento_senza_quietanza_resta_in_attesa_quietanza(monkeypatch):
+    raw = _archive()
+    src = zipfile.ZipFile(io.BytesIO(raw))
+    payload = json.loads(src.read("package_clean/data.json"))
+    payload["records"][0]["files"] = []
+    payload["files"] = []
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as archive:
+        archive.writestr("package_clean/data.json", json.dumps(payload))
+        archive.writestr("package_clean/documenti/MANIFEST_SHA256.csv", "file,sha256\n")
+    db = AsyncMongoMockClient()["test"]
+    result = asyncio.run(mod.import_partenopay_archive(db, out.getvalue(), dry_run=False))
+    assert result["success"] is True
+    verbale = asyncio.run(db["verbali_noleggio"].find_one({}))
+    assert verbale["stato"] == "pagato_attesa_quietanza"
+    assert verbale["quietanza_ricevuta"] is False

@@ -265,7 +265,7 @@ async def _trova_doc_verbale(db, numero_verbale: str) -> Optional[Dict]:
     )
 
 
-_STATI_GIA_PAGATI = {"pagato", "PAGATO", "riconciliato", "pagato_attesa_fattura"}
+_STATI_GIA_PAGATI = {"pagato", "PAGATO", "riconciliato", "pagato_attesa_quietanza", "pagato_attesa_fattura"}
 
 
 async def scan_email_con_priorita(db, email_service=None, days_back: int = 30) -> Dict[str, Any]:

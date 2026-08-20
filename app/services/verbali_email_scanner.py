@@ -375,7 +375,8 @@ class VerbaliEmailScanner:
             update_data["stato"] = "riconciliato"
             update_data["riconciliato"] = True
         else:
-            update_data["stato"] = "pagato_attesa_fattura"
+            # La quietanza e' gia stata acquisita: non manca una fattura.
+            update_data["stato"] = "pagato"
         
         await self.db["verbali_noleggio"].update_one(
             {"numero_verbale": numero_verbale},
