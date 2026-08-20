@@ -71,10 +71,14 @@ def test_inventario_json_e_completo_e_verificabile():
     assert [item["path"] for item in entries] == [
         path.relative_to(ROOT).as_posix() for path in actual
     ]
+    assert inventory["hash_mode"] == "canonical_json_utf8"
     for path, item in zip(actual, entries, strict=True):
-        raw = path.read_bytes()
+        value = load_json(path)
+        canonical = json.dumps(
+            value, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+        ).encode("utf-8")
         assert item["valid_json"] is True
-        assert item["sha256"] == hashlib.sha256(raw).hexdigest()
+        assert item["sha256"] == hashlib.sha256(canonical).hexdigest()
 
 
 def test_conoscenza_operativa_e_valutazioni_restano_di_sola_lettura():

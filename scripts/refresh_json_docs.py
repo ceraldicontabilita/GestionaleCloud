@@ -506,8 +506,10 @@ def write_inventory(revision: str, updated_at: str) -> None:
     for path in json_files():
         if path == inventory_path:
             continue
-        raw = path.read_bytes()
-        json.loads(raw.decode("utf-8"))
+        value = json.loads(path.read_text(encoding="utf-8"))
+        canonical = json.dumps(
+            value, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+        ).encode("utf-8")
         relative = path.relative_to(ROOT).as_posix()
         category, policy = category_for(relative)
         entries.append({
@@ -515,13 +517,14 @@ def write_inventory(revision: str, updated_at: str) -> None:
             "category": category,
             "policy": policy,
             "valid_json": True,
-            "sha256": hashlib.sha256(raw).hexdigest(),
+            "sha256": hashlib.sha256(canonical).hexdigest(),
         })
     dump_json(inventory_path, {
         "schema_version": 1,
         "updated_at": updated_at,
         "source_revision": revision,
         "scope": "Tutti i file JSON del repository esclusi artefatti, cache e dipendenze.",
+        "hash_mode": "canonical_json_utf8",
         "total_excluding_self": len(entries),
         "entries": entries,
     })
