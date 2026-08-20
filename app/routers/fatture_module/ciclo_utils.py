@@ -3,7 +3,7 @@ Costanti condivise per lo scadenziario fornitori (usate da pagamento.py).
 
 Le funzioni cerca_match_bancario()/esegui_riconciliazione() che stavano qui
 sono state rimosse: erano un ulteriore motore di matching estratto conto
-(nono trovato nell'audit di memoria/endpoints/RICONCILIAZIONE_AUDIT.md),
+(regola consolidata in PROMPT_MASTER.md, sezioni 6 e 9),
 usato solo da POST /api/scadenzario-fornitori/riconcilia-automatica, senza
 alcun chiamante frontend. La riconciliazione automatica live è unica, in
 app/services/riconciliazione_bancaria.py.

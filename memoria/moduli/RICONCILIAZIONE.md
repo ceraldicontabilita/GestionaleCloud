@@ -13,7 +13,7 @@ Fonte specifica: `Riconciliazione — Flussi automatici — Logica relazionale c
 (fornita dall'utente, il documento più complesso dei 10). Verificato leggendo il codice
 attuale, DOPO la consolidazione già effettuata in questa sessione (9 sistemi di
 riconciliazione paralleli ridotti a 1 motore canonico + l'indice partite aperte — vedi
-`memoria/endpoints/RICONCILIAZIONE_AUDIT.md` per la cronistoria completa
+`PROMPT_MASTER.md` per la regola normativa completa
 dell'unificazione).
 
 ## Architettura reale oggi (post-unificazione)

@@ -11,6 +11,9 @@ release viene verificato in CI e in produzione, senza fissarlo in questo file.
 
 ## Prodotto
 
+Questo documento è una vista sintetica. La specifica normativa completa e
+atomica è `PROMPT_MASTER.md`; in caso di divergenza prevale il master.
+
 GestionaleCloud è l'ERP interno di Ceraldi Group S.R.L. Unisce documenti,
 fatture, fornitori, Prima Nota, banca, fisco, personale, flotta e
 riconciliazioni in un solo grafo operativo consultabile.
@@ -50,15 +53,18 @@ Documento originale
 
 ## Stato dell'architettura dati
 
-Il codice supporta due backend:
+Il codice supporta due backend, ma non li alterna automaticamente:
 
-- `mongodb`: runtime attuale e transitorio;
-- `sheets`: registro Google Sheets su Drive, con cache asincrona di
-  compatibilità nel processo applicativo.
+- `sheets`: registro operativo predefinito su Google Sheets/Drive, con cache
+  asincrona nel processo applicativo;
+- `mongodb`: compatibilità transitoria attivabile solo con
+  `DATA_BACKEND=mongodb` per controllare o migrare dati storici.
 
-Il cutover Drive-only è preparato ma non ancora dichiarato completato. Deve
-prima superare copia completa, confronto conteggi/hash, ricostruzione e prova
-di scrittura. Fino ad allora MongoDB non può essere eliminato.
+In modalità Sheets mancare l'ID del registro o della cartella Drive è un
+errore di configurazione, non un motivo per ripiegare su MongoDB. La migrazione
+storica è conclusa solo dopo copia completa, confronto conteggi/hash,
+ricostruzione e prova di scrittura; prima di allora i dati Mongo non si
+cancellano.
 
 ## Fonti dati per dominio
 

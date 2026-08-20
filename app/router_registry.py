@@ -43,7 +43,7 @@ def _register_auth(app: FastAPI):
     from app.routers.erp_bridge import router as erp_bridge_router
     from app.routers.legal_pages import router as legal_router
 
-    app.include_router(public_api.router, prefix="/api", tags=["Public API"])
+    app.include_router(public_api.router, prefix="/api", tags=["API ERP protetta"])
     # auth.router already carries an internal prefix="/api" and its routes are
     # "/auth/...", so it must be included WITHOUT an extra prefix — otherwise the
     # paths double up to "/api/auth/api/auth/verify" and the frontend's
@@ -59,8 +59,8 @@ def _register_auth(app: FastAPI):
     app.include_router(erp_bridge_router)
     app.include_router(legal_router, tags=["Legal"])
 
-    # WhatsApp legacy disattivato: rimane archiviato ma non registrato
-    # come router attivo. Le notifiche operative usano Telegram.
+    # Le notifiche operative usano esclusivamente Telegram. Non registrare
+    # webhook o router di canali legacy.
 
 
 # ─── F24 Module ──────────────────────────────────────────────────────────────
@@ -74,7 +74,7 @@ def _register_f24(app: FastAPI):
     app.include_router(f24_main.router, prefix="/api/f24", tags=["F24"])
     app.include_router(f24_analisi.router, prefix="/api/f24-analisi", tags=["F24 Analisi"])
     app.include_router(f24_riconciliazione.router, prefix="/api/f24-riconciliazione", tags=["F24 Riconciliazione"])
-    app.include_router(f24_public.router, prefix="/api/f24-public", tags=["F24 Public"])
+    app.include_router(f24_public.router, prefix="/api/f24-public", tags=["F24 protetti"])
     app.include_router(f24_email_settings.router, prefix="/api/f24-email-settings", tags=["F24 Email"])
     app.include_router(riconciliazione_f24_banca.router, prefix="/api/f24-riconciliazione", tags=["Riconciliazione F24 Banca"])
 

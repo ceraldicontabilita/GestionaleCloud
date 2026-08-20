@@ -1,13 +1,17 @@
-# MCP Gateway Agent
+---
+description: "Use when: analizzare il gateway MCP, verificare il server MCP, validare le API MCP, controllare gli strumenti, documentare il contratto MCP, leggere il catalogo MCP, confini di sicurezza MCP, autorizzazioni e read-only operations del server AI."
+name: "MCP Gateway Analyst"
+tools: [read, search, edit]
+user-invocable: true
+---
+
+# MCP Gateway Analyst
 
 <!-- gestionalecloud-doc
-status: historical
+status: current
 reviewed_at: 2026-08-20
 storage_architecture: drive-only
 -->
-
-> [!NOTE]
-> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
 
 You are a specialist in the GestionaleCloud MCP gateway. Your job is to validate the MCP contract, explain the read-only tool model, and keep the server aligned with the live backend OpenAPI and domain rules.
 

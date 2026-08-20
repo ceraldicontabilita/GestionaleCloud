@@ -573,7 +573,7 @@ export default function GestioneAssegni() {
     if (!editingAssegnoForFatture) return;
 
     try {
-      // Schema canonico (memoria/LOGICA_OPERATIVA.md): l'assegno mantiene il
+      // Schema canonico (PROMPT_MASTER.md, sezione 10): l'assegno mantiene il
       // suo importo nominale, ogni fattura riceve una quota. Il backend
       // aggiorna importo_pagato/assegni_collegati sulle fatture e lo stato
       // dell'assegno (assegnato/parzialmente_assegnato) coerentemente.
@@ -1378,7 +1378,7 @@ export default function GestioneAssegni() {
           + Genera Assegni
         </Button>
 
-        {/* Auto-Match rigoroso a 4 livelli (LOGICA_OPERATIVA) */}
+        {/* Auto-Match rigoroso a 4 livelli (PROMPT_MASTER) */}
         <Button
           variant="success"
           size="lg"

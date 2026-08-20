@@ -264,9 +264,10 @@ def rewrite_page_docs(catalog: dict, revision: str, updated_at: str) -> set[str]
                 "endpoint_rilevati_nei_sorgenti": endpoints_for(sources),
             },
             "archivio_dati": {
-                "stato_corrente": "mongodb_transitorio",
-                "destinazione": "google_drive_sheets",
-                "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi",
+                "stato_corrente": "google_drive_sheets",
+                "backend_predefinito": "sheets",
+                "compatibilita": "mongodb_solo_con_DATA_BACKEND_mongodb",
+                "fallback_automatico": "disabilitato",
             },
             "regole_di_lettura": [
                 "HTTP 200 non prova il corretto funzionamento della schermata.",
@@ -383,9 +384,10 @@ def rewrite_catalog(catalog: dict, revision: str, updated_at: str) -> None:
             "componenti, route, dati e relazioni devono essere collaudati."
         ),
         "storage_state": {
-            "current": "mongodb_transitional",
-            "target": "google_drive_sheets",
-            "cutover": "pending_verified_sync_and_reconstruction",
+            "current": "google_drive_sheets",
+            "default_backend": "sheets",
+            "compatibility": "mongodb_explicit_only",
+            "automatic_fallback": "disabled",
         },
         "pages": catalog["pages"],
     }
@@ -396,16 +398,17 @@ def rewrite_chat_kb(revision: str, updated_at: str) -> None:
     path = ROOT / "app" / "knowledge" / "chat_kb.json"
     kb = json.loads(path.read_text(encoding="utf-8"))
     meta = kb.setdefault("meta", {})
-    meta["versione"] = "4.0-drive-transition"
+    meta["versione"] = "5.0-drive-sheets-operational"
     meta["aggiornato_al"] = updated_at
     meta["source_revision"] = revision
     meta["repository"] = "ceraldicontabilita/GestionaleCloud"
     kb["storage_operativo"] = {
-        "stato_corrente": "mongodb_transitorio",
-        "destinazione": "google_drive_sheets",
+        "stato_corrente": "google_drive_sheets",
+        "backend_predefinito": "sheets",
+        "compatibilita": "mongodb_solo_con_DATA_BACKEND_mongodb",
         "regola": (
-            "La chat interroga soltanto strumenti backend autorizzati. Dopo il cutover "
-            "verificato, Drive/Sheets è la sorgente persistente esclusiva."
+            "La chat interroga soltanto strumenti backend autorizzati. Drive/Sheets "
+            "è l'archivio operativo; non esiste fallback automatico a MongoDB."
         ),
         "cartelle_canoniche": [
             "REGISTRO DATI", "PARTENOPAY", "CODICI TRIBUTO", "QUIETANZE", "DICHIARAZIONI",

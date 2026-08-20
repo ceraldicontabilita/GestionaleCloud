@@ -12,6 +12,9 @@ configurazione di produzione prevalgono sui report storici.
 
 ## 1. Principio generale
 
+Questa è una guida di lettura. La specifica normativa unica e atomica è
+`PROMPT_MASTER.md`; ogni modifica di logica deve aggiornare prima il master.
+
 Il gestionale trasforma documenti e fonti esterne in un grafo di fatti
 consultabile:
 
@@ -68,20 +71,24 @@ conserva Drive ID, percorso, origine, hash e data di acquisizione.
 
 ### Stato della migrazione
 
-Il codice supporta `DATA_BACKEND=sheets`, ma il default corrente in
-`app/config.py` è ancora `mongodb`. MongoDB è quindi compatibilità transitoria,
-non l'architettura finale. Il cutover è concluso solo quando:
+Il default corrente in `app/config.py` è `DATA_BACKEND=sheets`. Drive/Sheets è
+quindi l'archivio operativo; MongoDB è una compatibilità transitoria attivabile
+soltanto impostando esplicitamente `DATA_BACKEND=mongodb`. Non esiste fallback
+automatico fra i due backend. La migrazione dei dati storici è conclusa solo
+quando:
 
 1. tutti i fogli richiesti esistono e sono accessibili;
 2. la copia iniziale è completa e senza collisioni irrisolte;
 3. lettura, inserimento, aggiornamento e ricerca funzionano su Sheets;
 4. un confronto end-to-end dimostra equivalenza dei risultati;
 5. è provata la ricostruzione completa partendo da Drive e registro;
-6. produzione usa `DATA_BACKEND=sheets` e i controlli post-deploy passano.
+6. produzione usa `DATA_BACKEND=sheets`, ha un registro esplicitamente
+   configurato e i controlli post-deploy passano.
 
-Prima di questi punti non si cancella MongoDB e non si rimuovono le variabili
-di compatibilità. Dopo il cutover verificato non devono essere creati nuovi
-dati esclusivamente in MongoDB.
+Prima di questi punti non si cancellano i dati MongoDB ancora necessari alla
+verifica. Le relative variabili non vengono però considerate un fallback e,
+in modalità Sheets, vengono rimosse dal processo. Non devono essere creati
+nuovi dati esclusivamente in MongoDB.
 
 ## 3. Identità, hash e duplicati
 

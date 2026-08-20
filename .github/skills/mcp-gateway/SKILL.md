@@ -1,13 +1,15 @@
+---
+name: mcp-gateway
+description: "Use when: verificare il gateway MCP, controllare il contratto degli strumenti, validare read-only tool, analizzare sicurezza M2M, audit middleware MCP, autorizzazioni, host, origin, scope, gateway AI del GestionaleCloud."
+---
+
 # Skill: mcp-gateway
 
 <!-- gestionalecloud-doc
-status: historical
+status: current
 reviewed_at: 2026-08-20
 storage_architecture: drive-only
 -->
-
-> [!NOTE]
-> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
 
 Valida il gateway MCP del GestionaleCloud come interfaccia semantica tra agenti AI e il backend ERP, senza creare un secondo ERP.
 

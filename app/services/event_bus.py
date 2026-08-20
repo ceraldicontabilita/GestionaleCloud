@@ -240,7 +240,7 @@ def register_all_handlers():
     # estratto conto (PrimaNota.jsx -> /api/estratto-conto-movimenti/import),
     # quindi il motore non aveva mai girato su dati reali. La riconciliazione
     # automatica live è ora unica, in app/services/riconciliazione_bancaria.py
-    # — vedi memoria/endpoints/RICONCILIAZIONE_AUDIT.md.
+    # — vedi PROMPT_MASTER.md, sezioni 6 e 10.
 
     # --- Fase 4: F24 (Chat 9c) ---
     try:

@@ -41,7 +41,7 @@ def test_legacy_collection_map_and_mongodb_runbook_are_removed() -> None:
 def test_inventory_covers_every_repository_markdown() -> None:
     rows = inventory_rows()
     assert set(rows) == existing_repository_markdown()
-    assert len(rows) == len(existing_repository_markdown())
+    assert rows, "L'inventario Markdown non può essere vuoto"
 
 
 def test_non_generated_documents_have_status_metadata() -> None:
@@ -84,4 +84,5 @@ def test_drive_only_docs_state_real_cutover_boundary() -> None:
     assert "DATA_BACKEND=sheets" in logic
     assert "compatibilità transitoria" in logic
     assert "ricostruzione completa" in logic
-    assert "backend transitorio" in readme
+    assert "compatibilità esplicita" in readme
+    assert "non esiste fallback" in readme.lower()

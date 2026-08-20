@@ -48,8 +48,8 @@ def frontend_refs():
 
 # prefissi con chiamanti ESTERNI legittimi (app collegate, webhook, chatbot,
 # scheduler): "non nel FE" non significa morto.
-EXTERNAL = ("/api/erp/", "/api/public", "/api/f24-public", "/api/openapi",
-            "/api/whatsapp", "/api/auth", "/api/legal", "/api/ai-parser",
+EXTERNAL = ("/api/erp/", "/api/f24-public", "/api/openapi",
+            "/api/auth", "/api/legal", "/api/ai-parser",
             "/api/agenti", "/api/v1/", "/api/portal", "/api/paypal-api/webhook",
             "/data-deletion", "/privacy", "/terms")
 

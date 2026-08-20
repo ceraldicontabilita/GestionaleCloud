@@ -1,7 +1,4 @@
-"""
-Database configuration and connection management.
-Provides singleton Motor AsyncIOMotorClient for MongoDB Atlas.
-"""
+"""Database runtime selected explicitly through ``DATA_BACKEND``."""
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from typing import Any, Optional
 import logging
@@ -30,7 +27,7 @@ def scrub_mongo_runtime_configuration() -> None:
 
 
 class Database:
-    """MongoDB connection manager with singleton pattern."""
+    """Connection manager for the configured Sheets or MongoDB runtime."""
     
     client: Optional[AsyncIOMotorClient] = None
     db: Optional[Any] = None
@@ -42,35 +39,24 @@ class Database:
         Called on application startup.
         """
         try:
-            mongo_uri = settings.MONGODB_ATLAS_URI or settings.MONGO_URL
-
             if settings.DATA_BACKEND.strip().lower() == "sheets":
                 from app.services.sheets_runtime_database import SheetsRuntimeDatabase
 
-                try:
-                    runtime = SheetsRuntimeDatabase(settings.DB_NAME, {
-                        "GOOGLE_SHEETS_LEDGER_ID": settings.GOOGLE_SHEETS_LEDGER_ID,
-                        "GOOGLE_SHEETS_LEDGER_FOLDER_ID": settings.GOOGLE_SHEETS_LEDGER_FOLDER_ID,
-                    })
-                    await runtime.hydrate()
-                    cls.client = runtime._client
-                    cls.db = runtime
-                    # Solo dopo hydrate riuscito rimuoviamo le credenziali Mongo
-                    # dal processo: prima serve per eventuale fallback runtime.
-                    scrub_mongo_runtime_configuration()
-                    logger.info(
-                        "Connected to Google Sheets ledger %s; MongoDB esterno disattivato",
-                        settings.GOOGLE_SHEETS_LEDGER_ID,
-                    )
-                    return
-                except Exception as sheets_error:
-                    if mongo_uri:
-                        logger.warning(
-                            "Sheets backend non disponibile (%s). Fallback su MongoDB transitorio.",
-                            sheets_error,
-                        )
-                    else:
-                        raise
+                runtime = SheetsRuntimeDatabase(settings.DB_NAME, {
+                    "GOOGLE_SHEETS_LEDGER_ID": settings.GOOGLE_SHEETS_LEDGER_ID,
+                    "GOOGLE_SHEETS_LEDGER_FOLDER_ID": settings.GOOGLE_SHEETS_LEDGER_FOLDER_ID,
+                })
+                await runtime.hydrate()
+                cls.client = runtime._client
+                cls.db = runtime
+                scrub_mongo_runtime_configuration()
+                logger.info(
+                    "Connected to Google Sheets ledger %s; MongoDB esterno disattivato",
+                    settings.GOOGLE_SHEETS_LEDGER_ID,
+                )
+                return
+
+            mongo_uri = settings.MONGODB_ATLAS_URI or settings.MONGO_URL
 
             if mongo_uri and mongo_uri.startswith("mongomock://"):
                 from mongomock_motor import AsyncMongoMockClient
@@ -117,7 +103,7 @@ class Database:
                 await cls._ensure_builtin_senders()
             
         except Exception as e:
-            logger.error(f"❌ Error connecting to MongoDB: {e}")
+            logger.error("Error connecting to configured database backend: %s", e)
             raise
 
     @classmethod

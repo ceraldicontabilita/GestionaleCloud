@@ -3,7 +3,7 @@
     "schema_version": 2,
     "document_type": "page_source_map",
     "updated_at": "2026-08-20",
-    "source_revision": "916d6d18ec8271f441fe3a3013ded3ace6664614",
+    "source_revision": "a6e2b21c03a3f00b161b682f52760d75df5b970f",
     "generator": "scripts/refresh_json_docs.py",
     "verification": "static_source_map"
   },
@@ -35,9 +35,10 @@
     ]
   },
   "archivio_dati": {
-    "stato_corrente": "mongodb_transitorio",
-    "destinazione": "google_drive_sheets",
-    "cutover": "non_completato_finche_sincronizzazione_e_audit_non_sono_verdi"
+    "stato_corrente": "google_drive_sheets",
+    "backend_predefinito": "sheets",
+    "compatibilita": "mongodb_solo_con_DATA_BACKEND_mongodb",
+    "fallback_automatico": "disabilitato"
   },
   "regole_di_lettura": [
     "HTTP 200 non prova il corretto funzionamento della schermata.",

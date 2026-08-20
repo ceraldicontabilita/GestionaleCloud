@@ -1012,8 +1012,6 @@ async def run_full_sync(db) -> Dict[str, Any]:
             logger.error(f"Errore agenti AI: {e}")
         
         # 7. NOTIFICA TELEGRAM se ci sono novità
-        
-        # 7. NOTIFICA TELEGRAM se ci sono novità
         try:
             from app.services.telegram_notifications import notifica_sync_completato
             nuovi_doc = results["email_sync"].get("new_documents", 0)

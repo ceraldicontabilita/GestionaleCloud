@@ -1,13 +1,10 @@
 # Prompt operativo per implementare l’integrazione
 
 <!-- gestionalecloud-doc
-status: historical
+status: current
 reviewed_at: 2026-08-20
 storage_architecture: drive-only
 -->
-
-> [!NOTE]
-> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
 
 ```text
 Implementa nel repository canonico ceraldicontabilita/GestionaleCloud

@@ -1,7 +1,7 @@
 """
 Auto-matcher Assegni ↔ Fatture (4 livelli, N:M, tolleranza ±0,005€).
 
-Implementa la logica documentata in /app/memoria/LOGICA_OPERATIVA.md §8.
+Implementa la logica normativa in PROMPT_MASTER.md, sezioni 6, 10 e 12.
 
 LIVELLI:
 - L1 match secco: 1 assegno = 1 fattura stesso importo (±0,005€)

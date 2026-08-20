@@ -9,6 +9,9 @@ storage_architecture: drive-only
 ERP interno di Ceraldi Group S.R.L. per documenti, fatture, fornitori, Prima
 Nota, riconciliazioni, fisco, personale e flotta.
 
+La specifica normativa unica, completa e atomica è [`PROMPT_MASTER.md`](PROMPT_MASTER.md).
+Gli altri documenti sono guide di lettura, riferimenti di dominio o mappe generate.
+
 - Produzione: [impresasemplice.online](https://impresasemplice.online)
 - Repository: `ceraldicontabilita/GestionaleCloud`
 - Branch operativo: `main`
@@ -16,11 +19,16 @@ Nota, riconciliazioni, fisco, personale e flotta.
 
 ## Stato aggiornato al 20/08/2026
 
-La produzione usa ancora MongoDB come backend transitorio. Il supporto per il
-registro operativo Google Sheets/Drive è presente e pubblicato, ma il cutover
-Drive-only richiede ancora la sincronizzazione completa e l'audit di
-ricostruzione. Non considerare MongoDB rimosso finché questi controlli non sono
-stati superati e `DATA_BACKEND=sheets` non è attivo in produzione.
+Il repository usa `DATA_BACKEND=sheets` come predefinito: Google Sheets è il
+registro operativo e Drive conserva gli originali. MongoDB è disponibile solo
+se viene selezionato esplicitamente con `DATA_BACKEND=mongodb`, per
+compatibilità durante la migrazione dei dati storici. Non esiste fallback
+automatico da Sheets a MongoDB: in produzione l'avvio richiede l'ID del
+registro o della sua cartella Drive.
+
+Il passaggio dei dati storici si considera concluso soltanto dopo confronto di
+conteggi e hash, ricostruzione completa e prova di scrittura. Fino a quella
+verifica MongoDB non va cancellato, ma non deve ricevere nuove dipendenze.
 
 Il registro Drive crea questa struttura:
 
@@ -63,17 +71,16 @@ locali come fonte di verità. I dati arrivano da questi canali:
 | Corrispettivi e POS | XML RT, chiusure terminale, accrediti gestore, commissioni | il ricavo nasce dal corrispettivo RT; l'accredito POS è un fatto successivo e separato |
 | Amministrazione e audit | configurazione Render, cataloghi, log, inventory e report storici | usati per governo e tracciabilità, non come dato operativo primario |
 
-L'unico cutover persistente ancora in corso è quello da MongoDB transitorio a
-Google Sheets/Drive. Fino alla verifica completa di copia, ricostruzione e
-scrittura, MongoDB resta compatibilità runtime e non va trattato come origine
-finale.
+L'unica migrazione persistente ancora da verificare è quella dei dati storici
+da MongoDB a Google Sheets/Drive. MongoDB resta una compatibilità esplicita e
+non va trattato come origine operativa finale.
 
 ### Stack
 
 - Backend: Python 3.12, FastAPI, Motor-compatible async API, APScheduler.
 - Frontend: React 18, Vite 5, React Router 6, TanStack Query, Zustand.
-- Persistenza: MongoDB transitorio; Google Sheets/Drive disponibile per il
-  registro portabile.
+- Persistenza: Google Sheets/Drive operativi; MongoDB solo compatibilità
+  esplicita per la migrazione storica.
 - Deploy: un servizio Render avviato con `python -m app.process_supervisor`.
 - CI: pytest, Vitest, build Vite, audit statici, runtime smoke ed E2E isolato.
 
@@ -106,7 +113,7 @@ avvio in `render.yaml` e il lifecycle importato dai test correnti.
 - `ENVIRONMENT`
 - `SECRET_KEY`
 - `CORS_ALLOWED_ORIGINS`
-- `DATA_BACKEND=mongodb|sheets`
+- `DATA_BACKEND=sheets` (predefinito) oppure `mongodb` solo per compatibilità
 
 ### Backend MongoDB transitorio
 
@@ -115,8 +122,7 @@ avvio in `render.yaml` e il lifecycle importato dai test correnti.
 
 ### Registro Google Sheets/Drive
 
-- `GOOGLE_SHEETS_LEDGER_ID` oppure la cartella configurata per scoprirlo
-- `GOOGLE_SHEETS_LEDGER_FOLDER_ID`
+- `GOOGLE_SHEETS_LEDGER_ID` oppure `GOOGLE_SHEETS_LEDGER_FOLDER_ID`
 - `GOOGLE_DRIVE_SA_JSON` / `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`
 - ID delle cartelle documentali abilitate
 
@@ -133,7 +139,7 @@ La procedura amministrativa deve essere eseguita in quest'ordine:
 4. sincronizzazione completa nel registro Sheets;
 5. confronto di conteggi e digest per ogni foglio;
 6. ricostruzione del runtime dai fogli e prova di scrittura;
-7. attivazione `DATA_BACKEND=sheets`;
+7. conferma di `DATA_BACKEND=sheets` senza fallback Mongo;
 8. verifica live del commit in produzione;
 9. disattivazione e successiva rimozione controllata di MongoDB.
 
@@ -225,6 +231,8 @@ di considerare pubblicata una modifica:
 
 ## Documentazione
 
+- `PROMPT_MASTER.md` — unica autorità normativa: prodotto, dati, Gmail, Drive,
+  variabili, pagine, router, endpoint, divieti e gate.
 - `CLAUDE.md` — regole vincolanti per lavorare nel repository.
 - `PRODUCT.md` — visione, flussi e albero funzionale.
 - `LOGICA_FUNZIONAMENTO.md` — comportamento operativo per gli utenti.
@@ -232,6 +240,27 @@ di considerare pubblicata una modifica:
 - `memoria/JSON_INVENTORY.json` — inventario e politica dei file JSON.
 - `memoria/pagine/*.json` — mappe tecniche delle pagine.
 - `memoria/popup/*.json` — mappe tecniche dei popup.
+
+### Kit completo per la ricostruzione pulita
+
+Per generare un unico ZIP autosufficiente con Prompt Master, architettura,
+65 schede Markdown e 65 contratti JSON con la logica specifica di ogni pagina,
+36 popup, contratti API, variabili senza segreti,
+modello Drive/Sheets e matrice di accettazione:
+
+```powershell
+python scripts\genera_kit_ricostruzione.py
+```
+
+Il comando crea in `Documents`:
+
+- `GestionaleCloud_REBUILD_KIT_2026-08-20.zip`;
+- `GestionaleCloud_REBUILD_KIT_2026-08-20.zip.sha256`.
+
+Il generatore verifica una sola cartella radice, manifest e hash interni,
+conteggi canonici e firme compatibili con credenziali. Lo ZIP non viene
+versionato: non contiene dati aziendali, allegati, segreti o una copia del
+codice applicativo; viene rigenerato dalle fonti correnti del repository.
 
 ## Licenza
 

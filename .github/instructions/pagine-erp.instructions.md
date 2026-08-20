@@ -1,13 +1,15 @@
+---
+applyTo: ["page_catalog.json", "memoria/**", "frontend/src/pages/**", "frontend/src/main.jsx", "app/**", "docs/**"]
+description: "Istruzioni applicate a tutte le pagine ERP, al catalogo e alla documentazione operativa."
+---
+
 # Istruzioni pagine ERP
 
 <!-- gestionalecloud-doc
-status: historical
+status: current
 reviewed_at: 2026-08-20
 storage_architecture: drive-only
 -->
-
-> [!NOTE]
-> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
 
 Usa queste regole quando lavori su una pagina, su un catalogo di schermate o su documentazione a livello pagina.
 
@@ -40,6 +42,10 @@ Per ogni pagina, traccia il percorso:
 - registrazione applicativa o ledger,
 - elaborazione della pagina,
 - output: contabilità, dashboard, alert, stati, report.
+
+Drive/Sheets è l'archivio operativo predefinito. MongoDB è solo compatibilità
+esplicita e non è un fallback. Gli alert operativi escono soltanto su Telegram;
+Obsidian documenta il sistema ma non memorizza dati delle pagine.
 
 ## Output richiesto
 Ogni documentazione di pagina deve includere:

@@ -22,6 +22,37 @@
 | GET | `/api/ai-parser/statistiche` | ext | ai_parser |
 | GET | `/api/ai-parser/test` | ext | ai_parser |
 
+## API ERP protetta  (26)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| POST | `/api/assegni` | ✓ | public_api |
+| GET | `/api/assegni-legacy` | ✓ | public_api |
+| GET | `/api/bank/statements` | ✓ | public_api |
+| POST | `/api/bank/statements` | ✓ | public_api |
+| GET | `/api/cash` | ✓ | public_api |
+| POST | `/api/cash` | ✓ | public_api |
+| GET | `/api/dashboard/stats-legacy` | — | public_api |
+| GET | `/api/f24-public/alerts` | ext | public_api |
+| GET | `/api/f24-public/dashboard` | ext | public_api |
+| GET | `/api/pianificazione/events` | ✓ | public_api |
+| POST | `/api/pianificazione/events` | ✓ | public_api |
+| POST | `/api/portal/upload` | ext | public_api |
+| GET | `/api/ricerca-globale` | — | public_api |
+| POST | `/api/suppliers-legacy` | ✓ | public_api |
+| GET | `/api/suppliers/{supplier_id}/inventory` | ✓ | public_api |
+| GET | `/api/v1/fatture` | ext | public_api |
+| GET | `/api/v1/keys` | ext | public_api |
+| POST | `/api/v1/keys/generate` | ext | public_api |
+| GET | `/api/v1/movimenti` | ext | public_api |
+| GET | `/api/v1/stats` | ext | public_api |
+| GET | `/api/warehouse/movements` | — | public_api |
+| POST | `/api/warehouse/movements` | — | public_api |
+| GET | `/api/warehouse/products` | ✓ | public_api |
+| POST | `/api/warehouse/products` | ✓ | public_api |
+| PUT | `/api/warehouse/products/{product_id}` | ✓ | public_api |
+| DELETE | `/api/warehouse/products/{product_id}` | ✓ | public_api |
+
 ## Admin  (23)
 
 | Metodo | Path | FE | File |
@@ -791,20 +822,6 @@
 | POST | `/api/f24-email/scarica-e-processa` | ✓ | f24.email_f24 |
 | POST | `/api/f24-email/scarica-email` | ✓ | f24.email_f24 |
 
-## F24 Public  (9)
-
-| Metodo | Path | FE | File |
-|---|---|:-:|---|
-| GET | `/api/f24-public/models` | ext | f24.f24_public |
-| PUT | `/api/f24-public/models/{f24_id}` | ext | f24.f24_public |
-| DELETE | `/api/f24-public/models/{f24_id}` | ext | f24.f24_public |
-| PUT | `/api/f24-public/models/{f24_id}/pagato` | ext | f24.f24_public |
-| GET | `/api/f24-public/pdf/{f24_id}` | ext | f24.f24_public |
-| GET | `/api/f24-public/scadenze-prossime` | ext | f24.f24_public |
-| GET | `/api/f24-public/test` | ext | f24.f24_public |
-| POST | `/api/f24-public/upload` | ext | f24.f24_public |
-| POST | `/api/f24-public/upload-overwrite` | ext | f24.f24_public |
-
 ## F24 Riconciliazione  (18)
 
 | Metodo | Path | FE | File |
@@ -827,6 +844,20 @@
 | POST | `/api/f24-riconciliazione/riconcilia-quietanza` | ✓ | f24.f24_riconciliazione |
 | POST | `/api/f24-riconciliazione/riconcilia-tutto` | ✓ | f24.f24_riconciliazione |
 | GET | `/api/f24-riconciliazione/verifica-codice/{codice_tributo}` | ✓ | f24.f24_riconciliazione |
+
+## F24 protetti  (9)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/f24-public/models` | ext | f24.f24_public |
+| PUT | `/api/f24-public/models/{f24_id}` | ext | f24.f24_public |
+| DELETE | `/api/f24-public/models/{f24_id}` | ext | f24.f24_public |
+| PUT | `/api/f24-public/models/{f24_id}/pagato` | ext | f24.f24_public |
+| GET | `/api/f24-public/pdf/{f24_id}` | ext | f24.f24_public |
+| GET | `/api/f24-public/scadenze-prossime` | ext | f24.f24_public |
+| GET | `/api/f24-public/test` | ext | f24.f24_public |
+| POST | `/api/f24-public/upload` | ext | f24.f24_public |
+| POST | `/api/f24-public/upload-overwrite` | ext | f24.f24_public |
 
 ## Fatture Drive  (3)
 
@@ -1400,37 +1431,6 @@
 | GET | `/api/prima-nota-salari/salari/{record_id}/cedolino-pdf` | ✓ | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/salari/{record_id}/cedolino-pdf` | ✓ | accounting.prima_nota_salari |
 | PUT | `/api/prima-nota-salari/salari/{record_id}/riconcilia` | ✓ | accounting.prima_nota_salari |
-
-## Public API  (26)
-
-| Metodo | Path | FE | File |
-|---|---|:-:|---|
-| POST | `/api/assegni` | ✓ | public_api |
-| GET | `/api/assegni-legacy` | ✓ | public_api |
-| GET | `/api/bank/statements` | ✓ | public_api |
-| POST | `/api/bank/statements` | ✓ | public_api |
-| GET | `/api/cash` | ✓ | public_api |
-| POST | `/api/cash` | ✓ | public_api |
-| GET | `/api/dashboard/stats-legacy` | — | public_api |
-| GET | `/api/f24-public/alerts` | ext | public_api |
-| GET | `/api/f24-public/dashboard` | ext | public_api |
-| GET | `/api/pianificazione/events` | ✓ | public_api |
-| POST | `/api/pianificazione/events` | ✓ | public_api |
-| POST | `/api/portal/upload` | ext | public_api |
-| GET | `/api/ricerca-globale` | — | public_api |
-| POST | `/api/suppliers-legacy` | ✓ | public_api |
-| GET | `/api/suppliers/{supplier_id}/inventory` | ✓ | public_api |
-| GET | `/api/v1/fatture` | ext | public_api |
-| GET | `/api/v1/keys` | ext | public_api |
-| POST | `/api/v1/keys/generate` | ext | public_api |
-| GET | `/api/v1/movimenti` | ext | public_api |
-| GET | `/api/v1/stats` | ext | public_api |
-| GET | `/api/warehouse/movements` | — | public_api |
-| POST | `/api/warehouse/movements` | — | public_api |
-| GET | `/api/warehouse/products` | ✓ | public_api |
-| POST | `/api/warehouse/products` | ✓ | public_api |
-| PUT | `/api/warehouse/products/{product_id}` | ✓ | public_api |
-| DELETE | `/api/warehouse/products/{product_id}` | ✓ | public_api |
 
 ## Quietanze Drive  (3)
 

@@ -390,12 +390,13 @@ def _setting_value(config: Optional[Dict[str, Any]], name: str) -> Optional[str]
 
 
 def default_folder_id(config: Optional[Dict[str, Any]] = None) -> Optional[str]:
-    return (
-        _setting_value(config, "GOOGLE_SHEETS_LEDGER_FOLDER_ID")
-        or str(getattr(settings, "GOOGLE_DRIVE_FATTURE_FOLDER_ID", None) or "").strip()
-        or str(getattr(settings, "GOOGLE_DRIVE_ESTRATTI_FOLDER_ID", None) or "").strip()
-        or None
-    )
+    """Return the explicit root of the operational ledger.
+
+    Fatture ed estratti conto hanno cartelle documentali proprie: usarle come
+    radice implicita del registro rendeva il risultato dipendente da una
+    configurazione legacy e poteva creare alberi diversi fra ambienti.
+    """
+    return _setting_value(config, "GOOGLE_SHEETS_LEDGER_FOLDER_ID")
 
 
 def _ensure_workbook_sync(

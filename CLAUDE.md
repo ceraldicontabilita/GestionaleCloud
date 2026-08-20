@@ -9,6 +9,9 @@ storage_architecture: drive-only
 Aggiornato il 20/08/2026 sul codice di `main` del repository canonico
 `ceraldicontabilita/GestionaleCloud`.
 
+Prima di ogni intervento leggere `PROMPT_MASTER.md`: è la specifica normativa
+unica. Questo file è soltanto il punto di ingresso operativo per Claude.
+
 Questo file contiene le regole operative per chi modifica il progetto. Il
 codice corrente, i test e la configurazione effettiva di produzione hanno
 precedenza sui report storici.
@@ -28,7 +31,7 @@ precedenza sui report storici.
 - Repository: `https://github.com/ceraldicontabilita/GestionaleCloud`.
 - Checkout canonico Windows: `C:\Users\ceral\Documents\GESTIONALE CLOUD 2`.
 - Branch operativo: `main`.
-- Non usare `GestionaleCloud-Private`, ZIP o vecchi checkout come autorità.
+- Non usare repository privati non canonici, ZIP o vecchi checkout come autorità.
 - Prima di intervenire confronta sempre `HEAD` con `origin/main`.
 - Il worktree può contenere modifiche dell'utente: non cancellarle, non
   ripristinarle e non includerle nei commit.
@@ -36,12 +39,10 @@ precedenza sui report storici.
 
 ## Fonti di verità
 
-1. Codice e test correnti.
-2. Configurazione realmente attiva in produzione.
-3. `page_catalog.json` per le 65 schermate operative.
-4. `PRODUCT.md` per obiettivi e confini del prodotto.
-5. `LOGICA_FUNZIONAMENTO.md` e specifiche in `memoria/` per le regole di
-   dominio ancora confermate dal codice.
+1. Originali Drive e identificatori delle fonti esterne.
+2. Codice, test e configurazione live correnti.
+3. `PROMPT_MASTER.md` per tutte le regole normative e i divieti.
+4. `page_catalog.json` e mappe generate per la superficie tecnica.
 
 I JSON in `memoria/pagine/` e `memoria/popup/` sono mappe tecniche generate:
 si aggiornano con `scripts/refresh_json_docs.py`, non a mano.
@@ -52,9 +53,11 @@ si aggiornano con `scripts/refresh_json_docs.py`, non a mano.
 
 - Il default del codice è `DATA_BACKEND=sheets`.
 - MongoDB è solo compatibilità transitoria del runtime, non la destinazione finale.
-- Il supporto Google Sheets/Drive è la destinazione operativa; il cutover resta
-  verificato solo con sincronizzazione, conteggi, hash, lettura, scrittura e
-  ricostruzione positive di tutte le collezioni.
+- Google Sheets/Drive è l'archivio operativo. MongoDB si attiva soltanto con
+  `DATA_BACKEND=mongodb`; non esiste fallback automatico dal backend Sheets.
+- La migrazione dei dati storici resta verificata solo con sincronizzazione,
+  conteggi, hash, lettura, scrittura e ricostruzione positive di tutte le
+  collezioni.
 
 ### Destinazione Drive-only
 
@@ -85,12 +88,20 @@ Regole del cutover:
 3. copiare il dataset completo nel registro Drive;
 4. confrontare conteggi unici e digest sorgente/destinazione;
 5. ricostruire il runtime dai fogli e provarne la scrittura;
-6. impostare `DATA_BACKEND=sheets` e verificare la produzione;
+6. confermare `DATA_BACKEND=sheets`, configurare esplicitamente il registro e
+   verificare la produzione;
 7. solo dopo disabilitare MongoDB e rimuoverne variabili e dati.
 
-Mai cancellare MongoDB prima del punto 6. In modalità Sheets il database in
+Mai cancellare i dati MongoDB prima del punto 6. In modalità Sheets il database in
 memoria è soltanto una cache di compatibilità del processo: Drive/Sheets resta
 la sorgente persistente.
+
+## Canali operativi e conoscenza
+
+- Telegram è l'unico canale attivo per alert e notifiche operative.
+- Non registrare router, webhook o fallback WhatsApp legacy.
+- Obsidian è una proiezione consultiva della documentazione: non è un database,
+  non riceve scritture contabili e non sostituisce Drive/Sheets.
 
 ## Identità, duplicati e relazioni
 

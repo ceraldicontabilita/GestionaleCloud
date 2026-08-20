@@ -31,10 +31,8 @@ PUBLIC_PATHS = {
     "/api/auth/login",
     "/api/auth/logout",
     "/api/auth/verify",  # verifica il token da sé (401 con messaggio specifico se assente/scaduto)
-    "/api/auth/setup",  # Setup iniziale admin (solo se nessun admin esiste)
     "/api/auth/pin-login",  # login PIN reale (pin_login.router montato su /api/auth): senza
                              # questo path esplicito NESSUNO può più fare login (review Codex, PR #65)
-    "/api/auth/pin-login/health",  # diagnostica pubblica del router PIN, nessun dato sensibile
     "/api/auth/mfa/verify-login",  # challenge firmata + OTP, non ancora una sessione
     # RIMOSSO: "/api/auth/register" — ora richiede autenticazione (admin crea utenti)
 
@@ -69,7 +67,6 @@ PUBLIC_PREFIXES = [
     # futuro montato sotto /api/auth/, non solo i 3 reali (login/logout/
     # verify), che ora sono elencati esplicitamente in PUBLIC_PATHS con lo
     # stesso identico comportamento di prima (nessun cambio per il frontend).
-    "/api/public/",      # Explicit public API
     "/docs",             # Swagger UI assets
     "/redoc",            # ReDoc assets
 ]

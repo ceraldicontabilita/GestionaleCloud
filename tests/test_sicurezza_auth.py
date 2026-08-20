@@ -35,12 +35,12 @@ class TestPublicPaths:
         pubblico — regressione trovata da review Codex su PR #65: senza
         questo path esplicito nessuno può più autenticarsi."""
         assert "/api/auth/pin-login" in PUBLIC_PATHS
-        assert "/api/auth/pin-login/health" in PUBLIC_PATHS
         assert "/api/auth/mfa/verify-login" in PUBLIC_PATHS
 
-    def test_setup_pubblico(self):
-        """Endpoint setup iniziale deve essere pubblico."""
-        assert "/api/auth/setup" in PUBLIC_PATHS
+    def test_diagnostica_e_setup_non_pubblici(self):
+        """Diagnostica PIN e vecchio setup non devono bypassare il login."""
+        assert "/api/auth/pin-login/health" not in PUBLIC_PATHS
+        assert "/api/auth/setup" not in PUBLIC_PATHS
 
     def test_docs_pubblici(self):
         """OpenAPI docs devono essere pubblici."""
@@ -66,9 +66,9 @@ class TestPublicPrefixes:
         assert "/api/auth/verify" in PUBLIC_PATHS
         assert "/api/auth/" not in PUBLIC_PREFIXES
 
-    def test_public_api_prefix(self):
-        """API esplicitamente pubbliche."""
-        assert "/api/public/" in PUBLIC_PREFIXES
+    def test_nessun_prefisso_api_pubblico_generico(self):
+        """Un futuro endpoint aziendale non deve diventare pubblico per prefisso."""
+        assert "/api/public/" not in PUBLIC_PREFIXES
 
     def test_f24_public_prefix_ora_protetto(self):
         """F24-public NON deve più essere pubblico: esponeva lettura/scrittura
@@ -111,9 +111,9 @@ class TestAllowlistCongelata:
     ALLOWLIST_PATHS_ATTESA = {
         # Health check
         "/", "/health", "/api/health", "/api/ping",
-        # Autenticazione (login/logout/verify + setup primo admin + PIN login reale)
-        "/api/auth/login", "/api/auth/logout", "/api/auth/verify", "/api/auth/setup",
-        "/api/auth/pin-login", "/api/auth/pin-login/health", "/api/auth/mfa/verify-login",
+        # Autenticazione necessaria prima di una sessione valida
+        "/api/auth/login", "/api/auth/logout", "/api/auth/verify",
+        "/api/auth/pin-login", "/api/auth/mfa/verify-login",
         # Integrazioni esterne con auth propria (ERP bridge, non WhatsApp legacy)
         "/api/erp/ponte/fattura-ricevuta",
         # Pagine legali
@@ -124,7 +124,7 @@ class TestAllowlistCongelata:
         "/robots.txt", "/sitemap.xml", "/favicon.ico",
     }
 
-    ALLOWLIST_PREFISSI_ATTESA = ["/api/public/", "/docs", "/redoc"]
+    ALLOWLIST_PREFISSI_ATTESA = ["/docs", "/redoc"]
 
     def test_public_paths_esattamente_quelli_attesi(self):
         assert PUBLIC_PATHS == self.ALLOWLIST_PATHS_ATTESA, (
@@ -184,6 +184,23 @@ class TestPathMatching:
 
     def test_whatsapp_non_pubblico(self):
         assert self._is_public("/api/whatsapp/webhook") is False
+
+    def test_whatsapp_non_montato_nella_route_table(self):
+        from fastapi import FastAPI
+        from app.router_registry import register_all_routers
+
+        app = FastAPI()
+        register_all_routers(app)
+        assert all(
+            "whatsapp" not in str(getattr(route, "path", "")).lower()
+            for route in app.routes
+        )
+
+    def test_futuri_dati_aziendali_non_pubblici_per_prefisso(self):
+        assert self._is_public("/api/public/dati-azienda") is False
+
+    def test_diagnostica_pin_richiede_sessione(self):
+        assert self._is_public("/api/auth/pin-login/health") is False
 
     def test_api_invoices_protetto(self):
         assert self._is_public("/api/invoices") is False

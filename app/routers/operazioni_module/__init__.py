@@ -4,7 +4,7 @@ Operazioni Module - Gestione operazioni da confermare.
 
 Il sottomodulo "carta" (transazioni carta di credito + supervisione) è stato
 rimosso: zero chiamanti frontend, mai wired in UI (audit
-memoria/endpoints/RICONCILIAZIONE_AUDIT.md, sistema #6).
+PROMPT_MASTER.md, sezioni 6 e 10).
 """
 from fastapi import APIRouter, Query, Body, HTTPException
 from typing import Optional, Dict, Any

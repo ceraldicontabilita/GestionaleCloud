@@ -404,7 +404,7 @@ class Settings(BaseSettings):
         """Validate required and optional secrets."""
         return {
             'database': bool(
-                self.GOOGLE_SHEETS_LEDGER_ID
+                self.GOOGLE_SHEETS_LEDGER_ID or self.GOOGLE_SHEETS_LEDGER_FOLDER_ID
                 if self.DATA_BACKEND.strip().lower() == "sheets"
                 else (self.MONGODB_ATLAS_URI or self.MONGO_URL)
             ),
@@ -418,8 +418,9 @@ class Settings(BaseSettings):
         """Validate critical configuration at startup.
 
         In produzione, se FAIL_FAST_SECRETS=true è attivo, l'applicazione
-        fallisce l'avvio se mancano SECRET_KEY o MONGODB_ATLAS_URI.
-        Altrimenti logga un errore critico ma continua (comportamento legacy).
+        fallisce l'avvio se mancano SECRET_KEY o la configurazione richiesta
+        dal backend selezionato. Non esiste un fallback automatico fra
+        Drive/Sheets e MongoDB.
         """
         import logging
         import os
@@ -445,22 +446,18 @@ class Settings(BaseSettings):
         if backend not in {"mongodb", "sheets"}:
             errors.append("DATA_BACKEND deve essere 'mongodb' oppure 'sheets'.")
 
-        # Check database configuration.
-        # Il target operativo e' Drive/Sheets, ma il runtime mantiene un
-        # fallback Mongo legacy durante la transizione. In produzione il
-        # fail-fast deve accettare *uno* dei due backends attivi, non
-        # bloccare automaticamente il sistema se esiste ancora la
-        # configurazione Mongo di compatibilita'.
+        # Check database configuration. Sheets e' il runtime operativo
+        # predefinito; MongoDB resta disponibile solo quando viene selezionato
+        # esplicitamente come backend di compatibilita'. Non usare credenziali
+        # Mongo per mascherare una configurazione Sheets incompleta.
         if backend == "sheets":
-            if self.GOOGLE_SHEETS_LEDGER_ID:
+            if self.GOOGLE_SHEETS_LEDGER_ID or self.GOOGLE_SHEETS_LEDGER_FOLDER_ID:
                 pass
-            elif self.MONGODB_ATLAS_URI or self.MONGO_URL:
-                logger.warning(
-                    "DATA_BACKEND=sheets ma e' presente una configurazione Mongo legacy: "
-                    "si usa il fallback transitorio fino al cutover completato."
-                )
             else:
-                msg = "GOOGLE_SHEETS_LEDGER_ID non configurato per DATA_BACKEND=sheets."
+                msg = (
+                    "DATA_BACKEND=sheets richiede GOOGLE_SHEETS_LEDGER_ID oppure "
+                    "GOOGLE_SHEETS_LEDGER_FOLDER_ID; MongoDB non e' un fallback."
+                )
                 if fail_fast:
                     errors.append(msg)
                 else:
