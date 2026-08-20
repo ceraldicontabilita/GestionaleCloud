@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1137 · tenere: 733 · verificare: 377 · admin-only (migrazione/manutenzione): 27
+**Totale endpoint:** 1139 · tenere: 736 · verificare: 376 · admin-only (migrazione/manutenzione): 27
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -389,7 +389,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/document-ai/process-classified-email` | document_ai | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/document-ai/reprocess-and-save` | document_ai | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/documenti-fiscali/lista` | documenti_fiscali | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/documenti-fiscali/upload` | documenti_fiscali | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/documenti-fiscali/upload` | documenti_fiscali | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/documenti-inbox/auto-classify` | documents_inbox_classify | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti-inbox/cross-check-f24` | documents_inbox_classify | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/documenti-inbox/import-dipendenti-from-cu` | documents_inbox_classify | sì | — | — | — | — | tenere | in uso: FE |
@@ -404,6 +404,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/documenti-non-associati/pdf/{documento_id}` | documenti_non_associati | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti-non-associati/statistiche` | documenti_non_associati | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/documenti-non-associati/{documento_id}` | documenti_non_associati | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/documenti/amministrativi` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti/cartelle-email` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/documenti/categorie` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `DELETE /api/documenti/documento/{doc_id}` | documenti | sì | — | — | — | — | tenere | in uso: FE |
@@ -649,6 +650,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/fiscal/collections/{claim_id}` | fiscal_control | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/fiscal/collections/{claim_id}/events` | fiscal_control | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/fiscal/crosswalk` | fiscal_control | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/fiscal/declarations` | fiscal_control | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/fiscal/documents/{document_id}/content` | fiscal_control | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/fiscal/dossier.pdf` | fiscal_control | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/fiscal/evidence-package.zip` | fiscal_control | sì | — | — | — | sì | tenere | in uso: FE |
@@ -934,7 +936,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/prima-nota/collega-corrispettivi` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/collega-fatture` | prima_nota_module.sync | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota/corrispettivi-status` | prima_nota_module.sync | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/prima-nota/dedup-fatture` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/prima-nota/dedup-fatture` | prima_nota_module.manutenzione | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota/dedup-righe-estratto-conto` | prima_nota_module.manutenzione | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota/diagnostica-corrispettivi` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/diagnostica-metodi` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
