@@ -125,7 +125,7 @@ avvio in `render.yaml` e il lifecycle importato dai test correnti.
 - `GOOGLE_SHEETS_LEDGER_ID` oppure `GOOGLE_SHEETS_LEDGER_FOLDER_ID`
 - Le collezioni operative non ancora presenti nel manifest iniziale ricevono
   al primo inserimento un foglio privato `DB_*`; non esiste un fallback Mongo.
-- L'import fatture usa `DRIVE_FATTURE_BATCH_SIZE` (default 10) e viene eseguito
+- L'import fatture usa `DRIVE_FATTURE_BATCH_SIZE` (default 1) e viene eseguito
   ogni 15 minuti, così l'arretrato non satura la memoria del servizio web.
 - `GOOGLE_DRIVE_SA_JSON` / `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`
 - una sola variabile canonica `GOOGLE_DRIVE_<AREA>_FOLDER_ID` per ciascuna
