@@ -23,17 +23,21 @@ logger = logging.getLogger(__name__)
 # solo processo (FastAPI e APScheduler condividono lo stesso event loop). Un
 # lock distribuito salvato come riga contabile non sarebbe atomico su Sheets e
 # costringerebbe inoltre a trattare una lease effimera come dato aziendale.
-# Manteniamo quindi un lock locale per job; MongoDB conserva il lock distribuito
-# soltanto durante la fase di compatibilita' transitoria multi-processo.
-_sheets_job_locks: dict[str, asyncio.Lock] = {}
+# Il piano Render ha 512 MiB e alcuni job caricano parser PDF/OCR: in modalita'
+# Sheets le automazioni devono essere seriali nell'intero processo, non solo
+# per singolo job. In questo modo due import diversi non sommano i rispettivi
+# picchi di memoria mentre FastAPI resta disponibile.
+_sheets_scheduler_lock = asyncio.Lock()
 
 
 async def _esegui_con_lock_locale(job_id, funzione, *args, **kwargs):
-    lock = _sheets_job_locks.setdefault(job_id, asyncio.Lock())
-    if lock.locked():
-        logger.info("[SCHEDULER] job %s gia' in esecuzione nel processo Sheets", job_id)
+    if _sheets_scheduler_lock.locked():
+        logger.info(
+            "[SCHEDULER] job %s rinviato: un'altra automazione Sheets e' in esecuzione",
+            job_id,
+        )
         return None
-    async with lock:
+    async with _sheets_scheduler_lock:
         risultato = funzione(*args, **kwargs)
         return await risultato if inspect.isawaitable(risultato) else risultato
 
@@ -585,6 +589,9 @@ async def gmail_full_scan_task():
 def start_scheduler():
     """Avvia lo scheduler con i task programmati."""
     logger.info("🚀 [SCHEDULER] Configurazione scheduler...")
+    # Evita il picco di memoria del deploy: gli import Drive non partono tutti
+    # nello stesso istante e la porta web puo' aprirsi prima del primo job.
+    avvio = datetime.now()
 
     # ── Gmail Verbali CdS: scan ogni 30 min ────────────────────────────────
     # Tesoreria AI: solo lettura + decisioni shadow. Nessun pagamento,
@@ -901,57 +908,57 @@ def start_scheduler():
     scheduler.add_job(
         _tesoreria_shadow_job,
         'interval', hours=1,
-        next_run_time=datetime.now(),
+        next_run_time=avvio + timedelta(minutes=40),
         id="ai_tesoreria_shadow",
-        name="Agente Tesoreria in shadow mode (ogni ora + al riavvio)",
+        name="Agente Tesoreria in shadow mode (ogni ora)",
         replace_existing=True,
     )
     scheduler.add_job(
         _cash_flow_shadow_job,
         'interval', hours=6,
-        next_run_time=datetime.now(),
+        next_run_time=avvio + timedelta(minutes=41),
         id="ai_cash_flow_13w_shadow",
-        name="Cash flow 13 settimane in shadow mode (ogni 6 ore + al riavvio)",
+        name="Cash flow 13 settimane in shadow mode (ogni 6 ore)",
         replace_existing=True,
     )
     scheduler.add_job(
         _contabile_shadow_job,
         'interval', hours=6,
-        next_run_time=datetime.now(),
+        next_run_time=avvio + timedelta(minutes=42),
         id="ai_contabile_shadow",
-        name="Agente Contabile in shadow mode (ogni 6 ore + al riavvio)",
+        name="Agente Contabile in shadow mode (ogni 6 ore)",
         replace_existing=True,
     )
     scheduler.add_job(
         _fiscale_shadow_job,
         'interval', hours=6,
-        next_run_time=datetime.now(),
+        next_run_time=avvio + timedelta(minutes=43),
         id="ai_fiscale_shadow",
-        name="Agente Fiscale in shadow mode (ogni 6 ore + al riavvio)",
+        name="Agente Fiscale in shadow mode (ogni 6 ore)",
         replace_existing=True,
     )
     scheduler.add_job(
         _acquisti_shadow_job,
         'interval', hours=24,
-        next_run_time=datetime.now(),
+        next_run_time=avvio + timedelta(minutes=44),
         id="ai_acquisti_shadow",
-        name="Agente Acquisti in shadow mode (giornaliero + al riavvio)",
+        name="Agente Acquisti in shadow mode (giornaliero)",
         replace_existing=True,
     )
     scheduler.add_job(
         _crediti_shadow_job,
         'interval', hours=24,
-        next_run_time=datetime.now(),
+        next_run_time=avvio + timedelta(minutes=45),
         id="ai_crediti_shadow",
-        name="Agente Crediti in shadow mode (giornaliero + al riavvio)",
+        name="Agente Crediti in shadow mode (giornaliero)",
         replace_existing=True,
     )
     scheduler.add_job(
         _compliance_shadow_job,
         'interval', hours=24,
-        next_run_time=datetime.now(),
+        next_run_time=avvio + timedelta(minutes=46),
         id="ai_compliance_shadow",
-        name="Agente Compliance in shadow mode (giornaliero + al riavvio)",
+        name="Agente Compliance in shadow mode (giornaliero)",
         replace_existing=True,
     )
     scheduler.add_job(
@@ -961,65 +968,65 @@ def start_scheduler():
         replace_existing=True,
     )
     # Scelta utente (13/07/2026): ogni ORA (allineata al manuale) + un controllo
-    # immediato a ogni riavvio del server (next_run_time=now: la prima esecuzione
-    # parte subito, poi prosegue a intervalli regolari).
+    # dopo l'avvio del server. Gli offset distinti evitano la concorrenza fra
+    # parser XML, PDF/OCR e ricostruzione contabile.
     scheduler.add_job(
         _drive_ingest_job,
         'interval', hours=1,
-        next_run_time=datetime.now(),
+        next_run_time=avvio + timedelta(minutes=1),
         misfire_grace_time=300,
         coalesce=True,
-        id="drive_fatture_ingest", name="Import Fatture da Google Drive (ogni ora + al riavvio)",
+        id="drive_fatture_ingest", name="Import Fatture da Google Drive (ogni ora)",
         replace_existing=True,
     )
 
     scheduler.add_job(
         _drive_cedolini_job,
         'interval', hours=1,
-        next_run_time=datetime.now(),
+        next_run_time=avvio + timedelta(minutes=3),
         misfire_grace_time=300,
         coalesce=True,
-        id="drive_cedolini_ingest", name="Import Cedolini da Google Drive (ogni ora + al riavvio)",
+        id="drive_cedolini_ingest", name="Import Cedolini da Google Drive (ogni ora)",
         replace_existing=True,
     )
 
     scheduler.add_job(
         _drive_corrispettivi_job,
         'interval', hours=1,
-        next_run_time=datetime.now(),
+        next_run_time=avvio + timedelta(minutes=5),
         misfire_grace_time=300,
         coalesce=True,
-        id="drive_corrispettivi_ingest", name="Import Corrispettivi da Google Drive (ogni ora + al riavvio)",
+        id="drive_corrispettivi_ingest", name="Import Corrispettivi da Google Drive (ogni ora)",
         replace_existing=True,
     )
 
     scheduler.add_job(
         _drive_quietanze_job,
         'interval', hours=1,
-        next_run_time=datetime.now(),
+        next_run_time=avvio + timedelta(minutes=7),
         misfire_grace_time=300,
         coalesce=True,
-        id="drive_quietanze_ingest", name="Import Quietanze F24 da Google Drive (ogni ora + al riavvio)",
+        id="drive_quietanze_ingest", name="Import Quietanze F24 da Google Drive (ogni ora)",
         replace_existing=True,
     )
 
     scheduler.add_job(
         _drive_estratti_conto_job,
         'interval', minutes=5,
-        next_run_time=datetime.now(),
+        next_run_time=avvio + timedelta(minutes=2),
         misfire_grace_time=300,
         coalesce=True,
         id="drive_estratti_conto_ingest",
-        name="Import Estratti Conto da Google Drive (ogni 5 min + al riavvio)",
+        name="Import Estratti Conto da Google Drive (ogni 5 min)",
         replace_existing=True,
     )
 
     scheduler.add_job(
         _bonifici_pdf_inbox_job,
         'interval', minutes=10,
-        next_run_time=datetime.now(),
+        next_run_time=avvio + timedelta(minutes=4),
         id="bonifici_pdf_inbox",
-        name="Elabora PDF bonifico da Import documenti (ogni 10 min + al riavvio)",
+        name="Elabora PDF bonifico da Import documenti (ogni 10 min)",
         replace_existing=True,
     )
 
