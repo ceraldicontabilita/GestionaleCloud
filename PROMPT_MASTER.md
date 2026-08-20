@@ -1,13 +1,10 @@
 # PROMPT MASTER — GestionaleCloud / Ceraldi ERP
 
 <!-- gestionalecloud-doc
-status: historical
+status: current
 reviewed_at: 2026-08-20
 storage_architecture: drive-only
 -->
-
-> [!NOTE]
-> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
 
 > Questa è l'unica specifica normativa e atomica del progetto. Codice, test e
 > configurazione live verificata prevalgono soltanto quando provano uno stato
@@ -516,7 +513,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `CHROMIUM_PATH` | test-tooling | configurazione | non dichiarato in Settings | `scripts/collaudo_ui.mjs` |
 | `CORS_ALLOWED_ORIGINS` | sicurezza | configurazione | `str` / `''` | `app/config.py` |
 | `CORS_ORIGINS` | sicurezza | configurazione | `str` / `'*'` | `app/config.py` |
-| `DATA_BACKEND` | app-runtime | configurazione | `str` / `'mongodb'` | `app/config.py` |
+| `DATA_BACKEND` | app-runtime | configurazione | `str` / `'sheets'` | `app/config.py`, `render.yaml` |
 | `DB_NAME` | app-runtime | configurazione | `str` / `'Gestionale'` | `app/config.py`, `app/scripts/create_indexes.py`, `backend/tests/test_corrispettivi_ingest.py`, `scripts/archivia_prima_nota_salari_fuori_periodo.py`, `scripts/bonifica_pos_numia.py`, `scripts/e2e_distruttivo_server.py` |
 | `DEBUG` | app-runtime | configurazione | `bool` / `False` | `app/config.py` |
 | `DEFAULT_USER_EMAIL` | app-runtime | configurazione | `str` / `'admin@ceraldi.it'` | `app/config.py` |
@@ -609,7 +606,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `GOOGLE_DRIVE_QUIETANZE_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_DRIVE_SA_FILE` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_DRIVE_SA_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
+| `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
 | `GOOGLE_REDIRECT_URI` | app-runtime | configurazione | `str` / `'/api/auth/google/callback'` | `app/config.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_BONIFICI` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_CEDOLINI` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
@@ -617,8 +614,8 @@ si rigenerano dal codice e non si correggono a mano.
 | `GOOGLE_SERVICE_ACCOUNT_JSON_ESTRATTI_CONTO` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_FATTURE` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_QUIETANZE` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `GOOGLE_SHEETS_LEDGER_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `GOOGLE_SHEETS_LEDGER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
+| `GOOGLE_SHEETS_LEDGER_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
+| `GOOGLE_SHEETS_LEDGER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
 | `HOST` | app-runtime | configurazione | `str` / `'0.0.0.0'` | `app/config.py` |
 | `IMAP_HOST` | gmail-email | configurazione | `str` / `'imap.gmail.com'` | `app/config.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
 | `IMAP_PASSWORD` | gmail-email | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
@@ -699,7 +696,6 @@ si rigenerano dal codice e non si correggono a mano.
 | `VERBALE_TEST_ID` | test-tooling | configurazione | non dichiarato in Settings | `scripts/collaudo_ui.mjs` |
 | `VERBALI_EMAIL_SCAN_HOUR` | feature-job | configurazione | `int` / `6` | `app/config.py` |
 | `VITE_BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `frontend/vite.config.js` |
-| `WHATSAPP_VERIFY_TOKEN` | integrazioni | segreta | non dichiarato in Settings | `app/routers/whatsapp_webhook.py` |
 
 Regole: alias duplicati Drive/email vanno migrati verso un nome canonico e poi rimossi; una variabile senza consumer non va mantenuta; tutte le variabili `transitorie-vietate-nel-target` sono escluse dalla ricostruzione Drive-only.
 
@@ -750,7 +746,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1140**; attivi da ricreare: **737**; quarantena: **403** (`verificare` 376, `admin-only` 27).
+Route table sorgente: **1135**; attivi da ricreare: **737**; quarantena: **398** (`verificare` 371, `admin-only` 27).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -2272,14 +2268,6 @@ Route table sorgente: **1140**; attivi da ricreare: **737**; quarantena: **403**
 - **quarantena: verificare** — `POST /api/dizionario-articoli/ricategorizza-fatture` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `POST /api/dizionario-articoli/riclassifica-completo` — in uso: FE
 - **quarantena: verificare** — `GET /api/dizionario-articoli/statistiche` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-
-### Router `whatsapp_webhook` (5)
-
-- **quarantena: verificare** — `POST /api/whatsapp/send` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/whatsapp/send-test` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/whatsapp/status` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `GET /api/whatsapp/webhook` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
-- **quarantena: verificare** — `POST /api/whatsapp/webhook` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
 ## Appendice E — Provenienza della specifica
 

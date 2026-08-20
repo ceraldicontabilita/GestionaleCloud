@@ -6,9 +6,6 @@ reviewed_at: 2026-08-20
 storage_architecture: drive-only
 -->
 
-> [!NOTE]
-> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
-
 ## Obiettivo
 
 Obsidian non deve essere un semplice archivio di verbali. Deve diventare il livello di conoscenza aziendale del GestionaleCloud: un grafico di entità, relazioni, cronologie, procedure e decisioni, collegato ai dati operativi del gestionale senza sostituire il registro contabile o i documenti originali.

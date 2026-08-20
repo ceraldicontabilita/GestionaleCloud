@@ -141,3 +141,32 @@ def test_cutover_sheets_rimuove_credenziali_mongo_dal_processo(monkeypatch):
     assert "MONGODB_ATLAS_URI" not in database_module.os.environ
     assert database_module.settings.MONGO_URL == ""
     assert database_module.settings.MONGODB_ATLAS_URI is None
+
+
+def test_runtime_sheets_non_ripiega_su_mongo_se_hydrate_fallisce(monkeypatch):
+    class BrokenSheetsRuntime:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def hydrate(self):
+            raise RuntimeError("registro Sheets non disponibile")
+
+    def forbidden_mongo_client(*_args, **_kwargs):
+        raise AssertionError("MongoDB non deve essere contattato in modalita Sheets")
+
+    monkeypatch.setattr(database_module.settings, "DATA_BACKEND", "sheets")
+    monkeypatch.setattr(database_module.settings, "MONGO_URL", "mongodb://example.invalid")
+    monkeypatch.setattr(database_module.settings, "MONGODB_ATLAS_URI", None)
+    monkeypatch.setattr(database_module, "AsyncIOMotorClient", forbidden_mongo_client)
+    monkeypatch.setattr(
+        "app.services.sheets_runtime_database.SheetsRuntimeDatabase",
+        BrokenSheetsRuntime,
+    )
+    monkeypatch.setattr(Database, "client", None)
+    monkeypatch.setattr(Database, "db", None)
+
+    with pytest.raises(RuntimeError, match="registro Sheets non disponibile"):
+        asyncio.run(Database.connect_db())
+
+    assert Database.client is None
+    assert Database.db is None

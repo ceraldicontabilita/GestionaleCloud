@@ -3,7 +3,7 @@
     "schema_version": 2,
     "document_type": "embedded_or_legacy_page_source_map",
     "updated_at": "2026-08-20",
-    "source_revision": "5a53859ef5ca909caf66c1468c396913ef371f1f",
+    "source_revision": "a6e2b21c03a3f00b161b682f52760d75df5b970f",
     "generator": "scripts/refresh_json_docs.py",
     "verification": "not_in_canonical_page_catalog"
   },

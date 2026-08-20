@@ -26,6 +26,7 @@ CURRENT = {
     "CLAUDE.md",
     "DESIGN.md",
     "LOGICA_FUNZIONAMENTO.md",
+    "PROMPT_MASTER.md",
     "PRODUCT.md",
     "README.md",
     "docs/FISCAL_ACCOUNTING_POLICY.md",

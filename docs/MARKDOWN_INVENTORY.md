@@ -20,11 +20,11 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Riepilogo
 
-- Correnti: **31**
+- Correnti: **32**
 - Riferimento: **25**
 - Generati: **5**
-- Storici: **27**
-- Totale: **88**
+- Storici: **3**
+- Totale: **65**
 
 ## Elenco completo
 
@@ -40,7 +40,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `DESIGN.md` | `current` | Autorità operativa corrente |
 | `LOGICA_FUNZIONAMENTO.md` | `current` | Autorità operativa corrente |
 | `PRODUCT.md` | `current` | Autorità operativa corrente |
-| `PROMPT_MASTER.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `PROMPT_MASTER.md` | `current` | Autorità operativa corrente |
 | `README.md` | `current` | Autorità operativa corrente |
 | `archive/legacy-audit/README.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/FISCAL_ACCOUNTING_POLICY.md` | `current` | Autorità operativa corrente |
@@ -49,7 +49,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `docs/MCP_GESTIONALE_SPEC.md` | `current` | Autorità operativa corrente |
 | `docs/OBSIDIAN_KNOWLEDGE_ARCHITECTURE_2026-08-20.md` | `current` | Autorità operativa corrente |
 | `docs/PIANO_OPERATIVO_GESTIONALE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/SPECIFICA_OPERATIVA_GESTIONALECLOUD.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/PROMPT_GESTIONALE_MITTENTI_TRIBUTI_DICHIARAZIONI_PARTENOPAY.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/obsidian-integration/ARCHITETTURA.md` | `current` | Autorità operativa corrente |
 | `docs/obsidian-integration/MAPPA_COLLEGAMENTI.md` | `current` | Autorità operativa corrente |
 | `docs/obsidian-integration/MODELLO_NOTE.md` | `current` | Autorità operativa corrente |
@@ -59,7 +59,6 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `docs/obsidian-integration/SICUREZZA_E_GOVERNANCE.md` | `current` | Autorità operativa corrente |
 | `docs/obsidian-integration/templates/ENTITA.md` | `current` | Autorità operativa corrente |
 | `docs/obsidian-integration/templates/RUN_GIORNALIERO.md` | `current` | Autorità operativa corrente |
-| `docs/porting-private-cloud-2026-08-08.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/rt-locale-drive.md` | `current` | Autorità operativa corrente |
 | `frontend/README.md` | `current` | Autorità operativa corrente |
 | `memoria/AUDIT_FRONTEND_DEAD_CODE.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
