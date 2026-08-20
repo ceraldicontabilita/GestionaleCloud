@@ -12,4 +12,14 @@ Organizzati in sottocartelle per modulo.
 # - reports/ (export, analytics)
 # - warehouse/ (magazzino, prodotti)
 
-__all__ = []
+from . import accounting, bank, employees, f24, invoices, reports, warehouse
+
+__all__ = [
+	"accounting",
+	"bank",
+	"employees",
+	"f24",
+	"invoices",
+	"reports",
+	"warehouse",
+]

@@ -47,6 +47,27 @@ Google Drive / Gmail autorizzato / API esterne
      -> fatture, F24, quietanze, banca, PartenoPay, cedolini
 ```
 
+## Fonti dati operative
+
+Le schermate e i servizi non leggono direttamente il repository o archivi
+locali come fonte di verità. I dati arrivano da questi canali:
+
+| Dominio | Fonti primarie | Regole di acquisizione |
+|---|---|---|
+| Documenti | upload manuale, cartelle Drive configurate, allegati email autorizzati, API dei gestori | conserva l'originale, calcola hash, deduplica per identità canonica, registra provenienza |
+| Fatture e fornitori | XML/P7M da Drive/SDI, anagrafiche fornitore, alias normalizzati | la P.IVA o il codice fiscale identificano il fornitore; il nome da solo non crea duplicati |
+| Prima Nota | import da fatture, corrispettivi, banca, versamenti contanti, POS, cedolini, F24 | una scrittura nasce solo da un fatto di dominio e mantiene il proprio `operation_id` |
+| Banca e riconciliazioni | estratti conto, movimenti bancari, CRO/TRN, descrizioni normalizzate | i movimenti riconciliano prove esistenti; non sostituiscono i documenti originali |
+| Fisco e quietanze | modelli F24, codici tributo, quietanze, dichiarazioni, archivi Drive dedicati | F24, quietanza e movimento bancario restano prove distinte |
+| Flotta e verbali | email autorizzate, verbali PDF, ZIP, contratti, storico assegnazioni veicolo | la targa normalizzata e la data/ora guidano l'associazione; i casi ambigui restano manuali |
+| Corrispettivi e POS | XML RT, chiusure terminale, accrediti gestore, commissioni | il ricavo nasce dal corrispettivo RT; l'accredito POS è un fatto successivo e separato |
+| Amministrazione e audit | configurazione Render, cataloghi, log, inventory e report storici | usati per governo e tracciabilità, non come dato operativo primario |
+
+L'unico cutover persistente ancora in corso è quello da MongoDB transitorio a
+Google Sheets/Drive. Fino alla verifica completa di copia, ricostruzione e
+scrittura, MongoDB resta compatibilità runtime e non va trattato come origine
+finale.
+
 ### Stack
 
 - Backend: Python 3.12, FastAPI, Motor-compatible async API, APScheduler.
@@ -156,6 +177,10 @@ PRODUCT.md                      obiettivi e confini del prodotto
 - Riconciliazione banca, bonifici, assegni, PayPal, PagoPA e POS
 - Import, archivio e indice documentale Drive
 - Strumenti, integrazioni, agenti e amministrazione
+
+Nel catalogo corrente la logica di coerenza POS vive nella pagina 40
+(`Riconciliazione > Coerenza POS`); le elaborazioni amministrative e legacy
+sono le pagine 56 e 57 nell'area Admin.
 
 L'elenco completo e verificabile delle route è in `page_catalog.json`.
 

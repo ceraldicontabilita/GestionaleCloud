@@ -50,11 +50,11 @@ si aggiornano con `scripts/refresh_json_docs.py`, non a mano.
 
 ### Stato attuale
 
-- Il default del codice è ancora `DATA_BACKEND=mongodb`.
-- MongoDB è un archivio transitorio, non la destinazione finale.
-- Il supporto Google Sheets/Drive esiste, ma il cutover non è completato finché
-  non risultano positivi sincronizzazione, conteggi, hash, lettura, scrittura e
-  ricostruzione di tutte le collezioni.
+- Il default del codice è `DATA_BACKEND=sheets`.
+- MongoDB è solo compatibilità transitoria del runtime, non la destinazione finale.
+- Il supporto Google Sheets/Drive è la destinazione operativa; il cutover resta
+  verificato solo con sincronizzazione, conteggi, hash, lettura, scrittura e
+  ricostruzione positive di tutte le collezioni.
 
 ### Destinazione Drive-only
 

@@ -182,6 +182,11 @@ Al caricamento il sistema:
 5. lascia in elenco gli abbinamenti ambigui;
 6. produce un resoconto navigabile dei risultati.
 
+La coerenza tra corrispettivi RT, chiusure POS, accrediti dei gestori e
+movimenti bancari è esposta nella pagina dedicata alla Coerenza POS del
+catalogo, mentre Prima Nota Cassa/Banca conserva le scritture contabili
+distinte e collegate.
+
 ## 7. PayPal, bonifici e assegni
 
 - Una transazione PayPal mantiene il proprio ID e può collegarsi sia alla
@@ -258,10 +263,34 @@ documento ↔ fattura ↔ pagamento gestore ↔ movimento bancario
 ```
 
 Un link mostra sempre tipo, ID, data, importo e origine della destinazione.
+
+## 13. Fonti dati per area
+
+Questa sezione riassume da dove il sistema prende i dati per ogni area
+funzionale. Le sorgenti sono sempre le stesse: Drive, email autorizzate,
+upload manuali, API di gestori e, per il periodo transitorio, il backend
+MongoDB del runtime.
+
+| Area | Fonti | Dato operativo risultante |
+|---|---|---|
+| Documenti | cartelle Drive configurate, email autorizzate, upload manuale, API dei gestori | documento indicizzato con hash, origine e classe dominio |
+| Fatture ricevute | XML/P7M da Drive/SDI, anagrafiche fornitore, mapping alias | fattura con fornitore canonico, importo, scadenza e stato |
+| Fornitori | fatture, documenti ricevuti, alias normalizzati e anagrafiche già presenti | fornitore univoco per P.IVA/codice fiscale |
+| Prima Nota Cassa/Banca | fatture, corrispettivi RT, movimenti bancari, versamenti contanti, POS, cedolini, F24 | scritture distinte collegate da `operation_id` |
+| Estratti conto | file banca importati, movimenti con CRO/TRN o descrizioni normalizzate | movimenti bancari deduplicati e riconciliati |
+| F24 e quietanze | modelli F24, codici tributo, quietanze PDF e movimenti bancari | delega, riga tributo, quietanza e addebito restano entità separate |
+| Corrispettivi e POS | XML RT, chiusure terminale, accrediti gestore, commissioni | ricavo RT e accredito POS separati, con riconciliazione finale |
+| Cedolini | file paga, anagrafiche dipendenti, bonifici salario | cedolino collegato al dipendente e al periodo corretto |
+| PartenoPay e verbali | email autorizzate, ZIP, verbali PDF, ricevute e storico assegnazioni veicolo | verbale collegato a targa, driver e pagamento quando univoci |
+| Amministrazione e audit | configurazione, inventory, log, report storici e test | tracciabilità e verifica, non scrittura dei fatti di dominio |
+
+La logica resta idempotente: lo stesso hash o la stessa identità canonica non
+deve generare una seconda operazione. Quando l'oggetto non è certo, il sistema
+espone i candidati e chiede una scelta manuale.
 Modificare una relazione aggiorna tutte le viste che la leggono; non crea copie
 locali scollegate.
 
-## 13. Alert e azioni utente
+## 14. Alert e azioni utente
 
 - Ogni numero di anomalie è cliccabile e apre la lista completa.
 - Gli errori certi e recuperabili vengono corretti dal sistema durante
@@ -272,7 +301,7 @@ locali scollegate.
 - Nessuna associazione ambigua, pagamento, eliminazione o spostamento di
   originale avviene automaticamente.
 
-## 14. Accesso, audit e sicurezza
+## 15. Accesso, audit e sicurezza
 
 - Autenticazione e autorizzazione proteggono tutti gli endpoint riservati.
 - La sessione è scorrevole e scade dopo il periodo d'inattività configurato.
@@ -282,7 +311,7 @@ locali scollegate.
   origine e risultato.
 - Le automazioni periodiche usano lock/lease per evitare esecuzioni concorrenti.
 
-## 15. Verifica end-to-end
+## 16. Verifica end-to-end
 
 Un flusso è completato soltanto se sono provati:
 
@@ -297,7 +326,7 @@ Un flusso è completato soltanto se sono provati:
 
 Un HTTP 200 o una pagina che si apre non dimostrano la correttezza dei dati.
 
-## 16. Documenti di riferimento
+## 17. Documenti di riferimento
 
 - `README.md`: avvio, architettura e deploy.
 - `PRODUCT.md`: obiettivi e albero funzionale.

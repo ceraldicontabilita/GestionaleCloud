@@ -22,8 +22,9 @@ storage_architecture: drive-only
 | Deploy | Render, `render.yaml` |
 
 Il backend di persistenza è selezionato da `DATA_BACKEND`. La destinazione è
-`sheets`; il default del codice resta temporaneamente `mongodb` finché copia,
-ricostruzione, scrittura e verifica end-to-end non sono concluse.
+`sheets`; il default del codice è `sheets` e MongoDB resta solo compatibilità
+transitoria del runtime finché il cutover Drive/Sheets non risulti verificato
+end-to-end.
 
 ## Documenti correnti
 
