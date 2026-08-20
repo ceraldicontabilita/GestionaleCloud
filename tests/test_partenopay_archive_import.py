@@ -78,3 +78,20 @@ def test_hash_errato_blocca_import():
     assert result["success"] is False
     assert result["integrity_errors"][0]["errore"] == "sha256_non_coincide"
     assert asyncio.run(db["verbali_noleggio"].count_documents({})) == 0
+
+
+def test_retry_non_riarchivia_documento_gia_copiato(monkeypatch):
+    db = AsyncMongoMockClient()["test"]
+    calls = []
+
+    async def fake_process(db, **kwargs):
+        return {"status": "linked"}
+
+    monkeypatch.setattr("app.services.verbali_document_import.process_verbale_document", fake_process)
+    monkeypatch.setattr(
+        "app.services.email_drive_archive.archive_document_copy",
+        lambda *_args, **_kwargs: calls.append(True) or {"status": "archived", "area": "verbali"},
+    )
+    asyncio.run(mod.import_partenopay_archive(db, _archive(), dry_run=False))
+    asyncio.run(mod.import_partenopay_archive(db, _archive(), dry_run=False))
+    assert len(calls) == 1
