@@ -192,6 +192,10 @@ class Settings(BaseSettings):
     # Quietanze: ACCESO su scelta esplicita dell'utente (10/07/2026)
     ENABLE_DRIVE_QUIETANZE_SYNC: bool = True
     ENABLE_DRIVE_ESTRATTI_CONTO_SYNC: bool = True
+    # Anche gli estratti vengono elaborati in lotti minimi. La radice Drive
+    # contiene anni di documenti e non deve mai essere riprocessata tutta da
+    # un singolo worker web con 512 MiB di memoria.
+    DRIVE_ESTRATTI_BATCH_SIZE: int = 1
     # Anno minimo dei documenti da importare dall'area Estratti conto
     # (scelta utente 07/08/2026: "solo 2026, il resto fermo"). L'inbox unico
     # contiene un arretrato dal 2023: i documenti piu' vecchi restano dove

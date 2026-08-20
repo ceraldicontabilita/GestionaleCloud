@@ -519,32 +519,17 @@ si rigenerano dal codice e non si correggono a mano.
 | `DEFAULT_USER_EMAIL` | app-runtime | configurazione | `str` / `'admin@ceraldi.it'` | `app/config.py` |
 | `DEFAULT_USER_ID` | app-runtime | configurazione | `str` / `'admin'` | `app/config.py` |
 | `DEV` | app-runtime | configurazione | non dichiarato in Settings | `frontend/src/components/ErrorBoundary.jsx` |
-| `DRIVE_AVVISI_ESATTORIALI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `DRIVE_CARTE_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `DRIVE_CEDOLINI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `DRIVE_CORRISPETTIVI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `DRIVE_DOCUMENT_INDEX_ROOT_FOLDER_ID` | drive-sheets | configurazione | `str` / `'1tmVu6fl7qhJbLcGCHT3wEQzrvFAElc9h'` | `app/config.py` |
 | `DRIVE_ESTRATTI_ANNO_MINIMO` | drive-sheets | configurazione | `int` / `2026` | `app/config.py` |
-| `DRIVE_ESTRATTI_CONTO_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `DRIVE_ESTRATTI_CONTO_FOLDER_IDS` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
+| `DRIVE_ESTRATTI_BATCH_SIZE` | drive-sheets | configurazione | `int` / `1` | `app/config.py`, `render.yaml` |
 | `DRIVE_F24_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `DRIVE_FATTURE_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
+| `DRIVE_FATTURE_BATCH_SIZE` | drive-sheets | configurazione | `int` / `1` | `app/config.py`, `render.yaml` |
 | `DRIVE_FISCAL_ROOT_FOLDER_ID` | drive-sheets | configurazione | `str` / `'1f48bounfoOyHL_kqpHAp2GAnFfEpHvVa'` | `app/config.py` |
-| `DRIVE_FOLDER_AVVISI_BONARI_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `DRIVE_FOLDER_BONIFICI_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `DRIVE_FOLDER_CARTELLE_ESATTORIALI_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `DRIVE_FOLDER_CEDOLINI_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `DRIVE_FOLDER_CORRISPETTIVI_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `DRIVE_FOLDER_DICHIARAZIONI_IVA_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `DRIVE_FOLDER_ESTRATTI_CONTO_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `DRIVE_FOLDER_ESTRATTI_CONTO_IDS` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `DRIVE_FOLDER_FATTURE_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `DRIVE_FOLDER_QUIETANZE_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `DRIVE_FOLDER_REGISTRY_JSON` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `DRIVE_NOLEGGIO_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `DRIVE_PAYPAL_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `DRIVE_PRESENZE_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `DRIVE_QUIETANZE_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `DRIVE_VERBALI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `DR_SOURCE_DB_NAME` | transitorie-vietate-nel-target | configurazione | non dichiarato in Settings | `scripts/verifica_ripristino_mongodb.py` |
 | `E2E_BASE_URL` | test-tooling | configurazione | non dichiarato in Settings | `frontend/scripts/audit-destructive-e2e.cjs`, `frontend/scripts/audit-pages-e2e.cjs` |
@@ -564,13 +549,12 @@ si rigenerano dal codice e non si correggono a mano.
 | `ENABLE_DRIVE_DICHIARAZIONI_IVA_SYNC` | feature-job | configurazione | `bool` / `False` | `app/config.py` |
 | `ENABLE_DRIVE_ESTRATTI_CONTO_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_DRIVE_FATTURE_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
-| `DRIVE_FATTURE_BATCH_SIZE` | feature-job | configurazione | `int` / `1` | `app/config.py` |
 | `ENABLE_DRIVE_QUIETANZE_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_DRIVE_VERBALI_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_EMAIL_F24_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_EMAIL_VERBALI_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_GMAIL_IMAP` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
-| `ENABLE_SCHEDULER` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
+| `ENABLE_SCHEDULER` | feature-job | configurazione | `bool` / `True` | `app/config.py`, `render.yaml` |
 | `ENABLE_SMTP_EMAIL` | feature-job | configurazione | `bool` / `False` | `app/config.py` |
 | `ENVIRONMENT` | app-runtime | configurazione | `str` / `'production'` | `app/config.py`, `app/utils/session_cookie.py`, `scripts/e2e_distruttivo_server.py` |
 | `ERP_BRIDGE_SECRET` | app-runtime | segreta | non dichiarato in Settings | `app/routers/erp_bridge.py` |
@@ -615,7 +599,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `GOOGLE_SERVICE_ACCOUNT_JSON_ESTRATTI_CONTO` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_FATTURE` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_QUIETANZE` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `GOOGLE_SHEETS_LEDGER_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
+| `GOOGLE_SHEETS_LEDGER_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `GOOGLE_SHEETS_LEDGER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py`, `render.yaml` |
 | `HOST` | app-runtime | configurazione | `str` / `'0.0.0.0'` | `app/config.py` |
 | `IMAP_HOST` | gmail-email | configurazione | `str` / `'imap.gmail.com'` | `app/config.py`, `app/routers/settings_router.py`, `app/services/pagopa_scanner.py` |
@@ -659,7 +643,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `PLAYWRIGHT_CHROMIUM` | app-runtime | configurazione | non dichiarato in Settings | `frontend/scripts/audit-destructive-e2e.cjs`, `frontend/scripts/audit-layout.cjs`, `frontend/scripts/audit-operation-index.cjs`, `frontend/scripts/audit-pages-e2e.cjs`, `frontend/scripts/audit-viewer.cjs` |
 | `PORT` | app-runtime | configurazione | `int` / `8000` | `app/config.py` |
 | `POS_ACCREDITO_WEEKEND` | feature-job | configurazione | non dichiarato in Settings | `app/utils/pos_accredito.py` |
-| `PROCESS_ROLE` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py` |
+| `PROCESS_ROLE` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py`, `render.yaml` |
 | `PYTHONUTF8` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `PYTHON_VERSION` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
 | `REACT_APP_BACKEND_URL` | app-runtime | configurazione | non dichiarato in Settings | `backend/tests/test_corrispettivi_ingest.py`, `backend/tests/test_fase2_fase3_fase4.py` |
@@ -706,31 +690,14 @@ Questa tabella è l'inventario canonico degli alias di cartella. Gli ID sono con
 
 | Variabile cartella | Default dichiarato | Sorgenti/consumer |
 |---|---|---|
-| `DRIVE_AVVISI_ESATTORIALI_FOLDER_ID` | `None` | `app/config.py` |
 | `DRIVE_CARTE_FOLDER_ID` | `None` | `app/config.py` |
-| `DRIVE_CEDOLINI_FOLDER_ID` | `None` | `app/config.py` |
-| `DRIVE_CORRISPETTIVI_FOLDER_ID` | `None` | `app/config.py` |
 | `DRIVE_DOCUMENT_INDEX_ROOT_FOLDER_ID` | `'1tmVu6fl7qhJbLcGCHT3wEQzrvFAElc9h'` | `app/config.py` |
-| `DRIVE_ESTRATTI_CONTO_FOLDER_ID` | `None` | `app/config.py` |
-| `DRIVE_ESTRATTI_CONTO_FOLDER_IDS` | `None` | `app/config.py` |
 | `DRIVE_F24_FOLDER_ID` | `None` | `app/config.py` |
-| `DRIVE_FATTURE_FOLDER_ID` | `None` | `app/config.py` |
 | `DRIVE_FISCAL_ROOT_FOLDER_ID` | `'1f48bounfoOyHL_kqpHAp2GAnFfEpHvVa'` | `app/config.py` |
-| `DRIVE_FOLDER_AVVISI_BONARI_ID` | `None` | `app/config.py` |
-| `DRIVE_FOLDER_BONIFICI_ID` | `None` | `app/config.py` |
-| `DRIVE_FOLDER_CARTELLE_ESATTORIALI_ID` | `None` | `app/config.py` |
-| `DRIVE_FOLDER_CEDOLINI_ID` | `None` | `app/config.py` |
-| `DRIVE_FOLDER_CORRISPETTIVI_ID` | `None` | `app/config.py` |
-| `DRIVE_FOLDER_DICHIARAZIONI_IVA_ID` | `None` | `app/config.py` |
-| `DRIVE_FOLDER_ESTRATTI_CONTO_ID` | `None` | `app/config.py` |
-| `DRIVE_FOLDER_ESTRATTI_CONTO_IDS` | `None` | `app/config.py` |
-| `DRIVE_FOLDER_FATTURE_ID` | `None` | `app/config.py` |
-| `DRIVE_FOLDER_QUIETANZE_ID` | `None` | `app/config.py` |
 | `DRIVE_FOLDER_REGISTRY_JSON` | `None` | `app/config.py` |
 | `DRIVE_NOLEGGIO_FOLDER_ID` | `None` | `app/config.py` |
 | `DRIVE_PAYPAL_FOLDER_ID` | `None` | `app/config.py` |
 | `DRIVE_PRESENZE_FOLDER_ID` | `None` | `app/config.py` |
-| `DRIVE_QUIETANZE_FOLDER_ID` | `None` | `app/config.py` |
 | `DRIVE_VERBALI_FOLDER_ID` | `None` | `app/config.py` |
 | `GOOGLE_DRIVE_AVVISI_BONARI_FOLDER_ID` | `None` | `app/config.py` |
 | `GOOGLE_DRIVE_BONIFICI_FOLDER_ID` | `None` | `app/config.py` |

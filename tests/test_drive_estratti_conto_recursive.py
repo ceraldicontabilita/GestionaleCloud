@@ -5,9 +5,11 @@ import pytest
 
 from app.config import settings
 from app.services.drive_estratti_conto_ingest import (
+    _batch_size,
     _discover_work_items,
     _folder_ids,
     _nexi_folder_ids,
+    _select_batch,
     _work_item_priority,
 )
 
@@ -175,6 +177,22 @@ def test_da_elaborare_ha_priorita_sui_file_storici_diretti():
     assert [item["id"] for item in ordinati] == [
         "inbox-a", "inbox-b", "storico",
     ]
+
+
+def test_lotto_estratti_e_limitato_e_deterministico(monkeypatch):
+    monkeypatch.setattr(settings, "DRIVE_ESTRATTI_BATCH_SIZE", 1, raising=False)
+    files = [{"id": "A"}, {"id": "B"}]
+
+    assert _batch_size() == 1
+    assert _select_batch(files) == [{"id": "A"}]
+
+
+def test_lotto_estratti_ripiega_su_uno_se_la_configurazione_e_errata(monkeypatch):
+    monkeypatch.setattr(
+        settings, "DRIVE_ESTRATTI_BATCH_SIZE", "non-numerico", raising=False,
+    )
+
+    assert _batch_size() == 1
 
 
 def test_l_arretrato_non_entra_nel_lavoro_ma_viene_contato(monkeypatch):
