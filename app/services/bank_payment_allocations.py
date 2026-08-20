@@ -51,7 +51,7 @@ async def validate_bank_invoice_allocations(
     if any(not invoice_id for invoice_id in ids) or len(set(ids)) != len(ids):
         raise HTTPException(status_code=409, detail="Fatture mancanti o duplicate nel prospetto")
 
-    invoices = await db.invoices.find({"id": {"$in": ids}}).to_list(len(ids))
+    invoices = await db["invoices"].find({"id": {"$in": ids}}).to_list(len(ids))
     by_id = {str(invoice.get("id")): invoice for invoice in invoices}
     if len(by_id) != len(ids):
         missing = [invoice_id for invoice_id in ids if invoice_id not in by_id]
@@ -119,10 +119,10 @@ async def persist_bank_invoice_allocations(
             "confirmed_at": now,
         })
         public_allocations.append(public)
-        existing = await db.bank_payment_allocations.find_one({"allocation_id": public["allocation_id"]})
+        existing = await db["bank_payment_allocations"].find_one({"allocation_id": public["allocation_id"]})
         if existing and int(existing.get("quota_cents") or 0) != public["quota_cents"]:
             raise HTTPException(status_code=409, detail="Allocazione esistente con quota differente")
-        await db.bank_payment_allocations.update_one(
+        await db["bank_payment_allocations"].update_one(
             {"allocation_id": public["allocation_id"]},
             {"$setOnInsert": public},
             upsert=True,
@@ -130,7 +130,7 @@ async def persist_bank_invoice_allocations(
 
     for item in allocations:
         invoice_id = item["fattura_id"]
-        invoice_allocations = await db.bank_payment_allocations.find(
+        invoice_allocations = await db["bank_payment_allocations"].find(
             {"fattura_id": invoice_id, "status": {"$ne": "reversed"}}, {"_id": 0}
         ).to_list(1000)
         invoice = item["invoice"]
@@ -147,7 +147,7 @@ async def persist_bank_invoice_allocations(
             for link in invoice_allocations
             if link.get("movimento_id")
         })
-        await db.invoices.update_one(
+        await db["invoices"].update_one(
             {"id": invoice_id},
             {"$set": {
                 "payment_allocations": invoice_allocations,
@@ -188,7 +188,7 @@ async def persist_bank_invoice_allocations(
         "data_riconciliazione": now,
         "updated_at": now,
     }
-    await db.estratto_conto_movimenti.update_one({"id": movement_id}, {"$set": movement_update})
+    await db["estratto_conto_movimenti"].update_one({"id": movement_id}, {"$set": movement_update})
 
     pn_query = {"$or": [
         {"estratto_conto_id": movement_id},
@@ -202,7 +202,7 @@ async def persist_bank_invoice_allocations(
         "riconciliato": True,
         "updated_at": now,
     }}
-    updated = await db.prima_nota_banca.update_many(pn_query, pn_update)
+    updated = await db["prima_nota_banca"].update_many(pn_query, pn_update)
     if updated.matched_count == 0:
         await scrivi_movimento_se_assente(db, "banca", pn_query, {
             "id": str(uuid4()),
@@ -250,7 +250,7 @@ async def reconcile_deterministic_invoice_allocations(
         query["id"] = {"$in": [str(value) for value in movement_ids if value]}
     if anno:
         query["data"] = {"$regex": f"^{anno}"}
-    movements = await db.estratto_conto_movimenti.find(query, {"_id": 0}).to_list(5000)
+    movements = await db["estratto_conto_movimenti"].find(query, {"_id": 0}).to_list(5000)
     stats = {"esaminati": len(movements), "allocati": 0, "sospesi": 0, "errori": []}
     for movement in movements:
         classification = classify_bank_movement(movement)
@@ -260,7 +260,7 @@ async def reconcile_deterministic_invoice_allocations(
         associations = []
         ambiguous = False
         for ref in refs:
-            candidates = await db.invoices.find({
+            candidates = await db["invoices"].find({
                 "$or": [
                     {"invoice_number": ref},
                     {"numero_fattura": ref},
