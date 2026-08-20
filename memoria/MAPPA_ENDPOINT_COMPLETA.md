@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1135 endpoint** in **113 gruppi**.
+> Totale **1136 endpoint** in **113 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 689 · ext esterni = 88 · — da verificare = 358
+**Riepilogo uso:** ✓ frontend = 689 · ext esterni = 88 · — da verificare = 359
 
 ## AI Parser  (11)
 
@@ -1661,7 +1661,7 @@
 | POST | `/api/verbali-noleggio/ricalcola-pdf/{numero_verbale:path}` | — | verbali_noleggio |
 | GET | `/api/verbali-noleggio/verbali-completi` | — | verbali_noleggio |
 
-## Verbali Riconciliazione  (9)
+## Verbali Riconciliazione  (10)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1669,6 +1669,7 @@
 | GET | `/api/verbali-riconciliazione/dashboard` | ✓ | verbali_riconciliazione |
 | POST | `/api/verbali-riconciliazione/import-partenopay` | — | verbali_riconciliazione |
 | GET | `/api/verbali-riconciliazione/lista` | ✓ | verbali_riconciliazione |
+| POST | `/api/verbali-riconciliazione/migra-attesa-quietanza` | — | verbali_riconciliazione |
 | POST | `/api/verbali-riconciliazione/pulisci-duplicati` | ✓ | verbali_riconciliazione |
 | POST | `/api/verbali-riconciliazione/riconcilia/{numero_verbale}` | ✓ | verbali_riconciliazione |
 | POST | `/api/verbali-riconciliazione/scan-email` | ✓ | verbali_riconciliazione |

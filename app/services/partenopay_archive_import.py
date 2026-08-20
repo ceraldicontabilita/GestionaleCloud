@@ -190,10 +190,16 @@ async def import_partenopay_archive(db, content: bytes, *, dry_run: bool = True)
         linked_files = list(record.get("files") or [])
         states = str(record.get("stati") or "").casefold()
         has_receipt = any("02_quietanze" in str(path).casefold() for path in linked_files)
-        payment_verified = has_receipt and "pagamento eseguito" in states
         record_id = f"verbale_{hashlib.sha256(('partenopay:' + key).encode()).hexdigest()[:32]}"
         query = {"codice_avviso": str(record.get("codice_avviso"))} if record.get("codice_avviso") else {"id": record_id}
         existing = await db["verbali_noleggio"].find_one(query, {"_id": 0})
+        payment_declared = "pagamento eseguito" in states
+        payment_verified = has_receipt and payment_declared
+        payment_state = (
+            "pagato" if payment_verified
+            else "pagato_attesa_quietanza" if payment_declared
+            else ((existing or {}).get("stato") or "salvato")
+        )
         if existing and number and existing.get("numero_verbale") not in (None, "", number):
             result["ambiguous"] += 1
             await db["verbali_match_candidates"].update_one(
@@ -215,8 +221,9 @@ async def import_partenopay_archive(db, content: bytes, *, dry_run: bool = True)
             "cf_piva": record.get("cf_piva"), "oggetto_pagamento": record.get("oggetto_pagamento"),
             "source": "partenopay_zip", "archive_sha256": archive_sha,
             "source_files": linked_files, "pagato_documentalmente": payment_verified,
+            "quietanza_ricevuta": has_receipt,
             "stato_pagamento_documentale": "PAGATO_VERIFICATO" if payment_verified else "DA_VERIFICARE",
-            "stato": "pagato_attesa_fattura" if payment_verified else ((existing or {}).get("stato") or "salvato"),
+            "stato": payment_state,
             "scadenza_operativa": (now + timedelta(days=5)).date().isoformat(),
             "scadenza_operativa_motivo": "5 giorni dalla scoperta; distinta dalla scadenza legale",
             "updated_at": now_iso,
