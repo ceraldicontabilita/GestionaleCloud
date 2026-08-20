@@ -72,6 +72,18 @@ registri strutturati in Google Sheets/Excel collegati a Drive. MongoDB resta
 una compatibilità transitoria del backend fino al cutover verificato e non
 deve comparire nella logica dei componenti React.
 
+Le informazioni mostrate nella UI derivano quindi da queste fonti:
+
+- documenti e allegati indicizzati in Drive;
+- email e allegati acquisiti dai mittenti autorizzati;
+- importazioni di fatture, F24, quietanze, corrispettivi e movimenti bancari;
+- anagrafiche, relazioni e stati calcolati dal backend;
+- configurazione e cataloghi applicativi pubblicati dal repository.
+
+Quando una vista mostra un alert, un contatore o una riconciliazione, deve
+aprire i record che la compongono oppure esporre il collegamento alla prova
+originaria.
+
 ## Verifica prima del commit
 
 1. `npm --prefix frontend test`

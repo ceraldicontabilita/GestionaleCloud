@@ -63,6 +63,23 @@ Il cutover Drive-only è preparato ma non ancora dichiarato completato. Deve
 prima superare copia completa, confronto conteggi/hash, ricostruzione e prova
 di scrittura. Fino ad allora MongoDB non può essere eliminato.
 
+## Fonti dati per dominio
+
+Il prodotto aggrega fatti economici e documentali da sorgenti diverse. Le
+fonti operative sono queste:
+
+- Documenti: upload manuale, cartelle Drive configurate, email autorizzate e API dei gestori.
+- Fatture e fornitori: XML/P7M da Drive o SDI, anagrafiche e alias normalizzati.
+- Prima Nota: fatture, corrispettivi, banca, versamenti contanti, POS, cedolini e F24.
+- Riconciliazione: estratti conto, movimenti bancari, CRO/TRN, descrizioni normalizzate e riferimenti del gestore.
+- Fisco: modelli F24, codici tributo, quietanze, dichiarazioni e cartelle Drive dedicate.
+- Flotta e verbali: email autorizzate, verbali PDF, ZIP, contratti, storico assegnazioni e prove di pagamento.
+- Corrispettivi e POS: XML RT, chiusure terminale, accrediti del gestore e commissioni separate.
+
+Il criterio è invariabile: i documenti originali restano immutabili, gli
+importi non bastano da soli a provare un'associazione e i casi ambigui devono
+mostrare candidati, non collegamenti silenziosi.
+
 Albero Drive previsto:
 
 ```text
@@ -82,6 +99,12 @@ progressivo proprio e conserva il payload ricostruibile.
 ## Albero funzionale
 
 Il catalogo macchina contiene 65 schermate operative.
+
+I riferimenti più delicati del catalogo sono:
+
+- Coerenza POS: pagina 40, nel ramo Riconciliazione.
+- Elaborazioni amministrative: pagina 56.
+- Elaborazioni legacy: pagina 57.
 
 ```text
 Ceraldi ERP

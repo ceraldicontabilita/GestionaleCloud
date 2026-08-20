@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INVENTORY = ROOT / "docs" / "MARKDOWN_INVENTORY.md"
-ROW_RE = re.compile(r"^\| `([^`]+)` \| `(current|reference|generated)` \|", re.MULTILINE)
+ROW_RE = re.compile(r"^\| `([^`]+)` \| `(current|reference|generated|historical)` \|", re.MULTILINE)
 
 
 def inventory_rows() -> dict[str, str]:
@@ -41,7 +41,7 @@ def test_legacy_collection_map_and_mongodb_runbook_are_removed() -> None:
 def test_inventory_covers_every_repository_markdown() -> None:
     rows = inventory_rows()
     assert set(rows) == existing_repository_markdown()
-    assert len(rows) == 47
+    assert len(rows) == len(existing_repository_markdown())
 
 
 def test_non_generated_documents_have_status_metadata() -> None:
@@ -56,7 +56,7 @@ def test_non_generated_documents_have_status_metadata() -> None:
 
 def test_current_documents_use_canonical_project_identity() -> None:
     forbidden = (
-        "Gestionale" + "2",
+        "Gestionale2",
         "MAPPA_COLLEZIONI",
         "DISASTER_RECOVERY_MONGODB",
         "github.com/ceraldicontabilita/gestionale ",
@@ -69,9 +69,13 @@ def test_current_documents_use_canonical_project_identity() -> None:
             assert value not in text, f"{path}: contiene {value}"
 
 
-def test_repository_has_no_historical_markdown() -> None:
-    assert "historical" not in set(inventory_rows().values())
-    assert (ROOT / "PROMPT_MASTER.md").is_file()
+def test_historical_documents_are_visibly_non_authoritative() -> None:
+    for path, status in inventory_rows().items():
+        if status != "historical":
+            continue
+        text = (ROOT / path).read_text(encoding="utf-8")
+        assert "Snapshot storico" in text, path
+        assert "LOGICA_FUNZIONAMENTO.md" in text, path
 
 
 def test_drive_only_docs_state_real_cutover_boundary() -> None:

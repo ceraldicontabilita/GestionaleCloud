@@ -16,7 +16,8 @@ IMPORTANTE:
 """
 import asyncio
 import logging
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
 import os
 
@@ -110,6 +111,124 @@ async def _check_mittente(db, from_addr: str, canale: str) -> Optional[Dict]:
     return None
 
 
+async def _build_gmail_credentials(db):
+    """Determinazione credenziali Gmail senza esporre segreti nei log."""
+    from app.config import settings
+    from app.utils.crypto import decrypt_credential
+
+    email_user = None
+    email_password = None
+    imap_host = settings.IMAP_HOST or "imap.gmail.com"
+
+    try:
+        gmail_cfg = await db["settings"].find_one({"chiave": "gmail"}, {"_id": 0})
+        if gmail_cfg and gmail_cfg.get("gmail_app_password") and gmail_cfg.get("imap_user"):
+            email_user = gmail_cfg["imap_user"]
+            email_password = decrypt_credential(gmail_cfg["gmail_app_password"])
+            imap_host = gmail_cfg.get("imap_host", imap_host)
+    except Exception:
+        pass
+
+    if not email_user:
+        email_user = settings.IMAP_USER or settings.EMAIL_USER
+    if not email_password:
+        email_password = settings.IMAP_PASSWORD or settings.EMAIL_PASSWORD
+
+    return email_user, email_password, imap_host
+
+
+async def _load_allowed_gmail_patterns(db):
+    """Recupera i mittenti Gmail attivi per il controllo del flusso."""
+    mittenti_gmail = await db["mittenti_email"].find(
+        {"canale": "gmail", "attivo": True}, {"_id": 0}
+    ).to_list(200)
+    return [m["pattern"] for m in mittenti_gmail if m.get("pattern")]
+
+
+async def _queue_retry(db, execution_id: Optional[str], error: str, *, retry_after_seconds: int = 300, source: str = "gmail_daily") -> Dict[str, Any]:
+    """Accoda un retry transitorio senza duplicare il lavoro."""
+    if not execution_id:
+        return {"queued": False, "reason": "missing_execution_id"}
+    payload = {
+        "queue_id": f"retry-{execution_id}-{int(datetime.now(timezone.utc).timestamp())}",
+        "execution_id": execution_id,
+        "source": source,
+        "status": "queued",
+        "reason": "transient_error",
+        "error": str(error)[:2000],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "scheduled_for": (datetime.now(timezone.utc) + timedelta(seconds=retry_after_seconds)).isoformat(),
+        "retry_after_seconds": retry_after_seconds,
+    }
+    await db["email_retry_queue"].insert_one(payload)
+    return payload
+
+
+async def start_email_monitor_run(db, source: str = "gmail_daily") -> Dict[str, Any]:
+    """Crea un record persistente di una singola esecuzione del monitor Gmail."""
+    execution_id = str(uuid.uuid4())
+    started_at = datetime.now(timezone.utc)
+    run = {
+        "execution_id": execution_id,
+        "source": source,
+        "status": "running",
+        "started_at": started_at.isoformat(),
+        "ended_at": None,
+        "counters": {},
+        "last_error": None,
+        "credential_status": {
+            "configured": False,
+            "user_set": False,
+            "password_present": False,
+            "imap_host": None,
+        },
+    }
+    try:
+        email_user, email_password, imap_host = await _build_gmail_credentials(db)
+        run["credential_status"] = {
+            "configured": bool(email_user and email_password),
+            "user_set": bool(email_user),
+            "password_present": bool(email_password),
+            "imap_host": imap_host,
+        }
+    except Exception:
+        pass
+    await db["email_monitor_runs"].insert_one(run)
+    return run
+
+
+async def finalize_email_monitor_run(db, execution_id: str, *, status: str, counters: Optional[Dict[str, Any]] = None, error: Optional[str] = None) -> Dict[str, Any]:
+    """Aggiorna la run con stato finale e contatori."""
+    doc = await db["email_monitor_runs"].find_one({"execution_id": execution_id}, {"_id": 0})
+    if not doc:
+        return {"execution_id": execution_id, "status": status, "ended_at": datetime.now(timezone.utc).isoformat()}
+    patch = {
+        "status": status,
+        "ended_at": datetime.now(timezone.utc).isoformat(),
+        "counters": counters or {},
+        "last_error": error,
+    }
+    if status == "completed":
+        patch["last_successful_run_at"] = patch["ended_at"]
+    await db["email_monitor_runs"].update_one({"execution_id": execution_id}, {"$set": patch})
+    return {**doc, **patch}
+
+
+async def get_last_email_monitor_status(db, source: str = "gmail_daily") -> Dict[str, Any]:
+    """Recupera l'ultima esecuzione riuscita e lo stato dell'ultima run."""
+    last_run = await db["email_monitor_runs"].find_one({"source": source}, {"_id": 0}, sort=[("started_at", -1)])
+    if not last_run:
+        return {"source": source, "status": "never_run", "last_successful_run_at": None, "last_error": None}
+    last_success = await db["email_monitor_runs"].find_one({"source": source, "status": "completed"}, {"_id": 0}, sort=[("started_at", -1)])
+    return {
+        "source": source,
+        "status": last_run.get("status"),
+        "last_successful_run_at": last_success.get("ended_at") if last_success else None,
+        "last_error": last_run.get("last_error"),
+        "last_execution_id": last_run.get("execution_id"),
+    }
+
+
 async def _salva_documento_generico(db, from_addr: str, subject: str, tipo: str, attachments: list, email_date: str = None):
     """
     Salva in documents_inbox i documenti non-XML (pagopa, inps, inail, paypal, cartella_esattoriale, cedolino).
@@ -162,70 +281,77 @@ async def _salva_documento_generico(db, from_addr: str, subject: str, tipo: str,
             logger.exception("Errore propagazione evento documento.acquisito (monitor)")
 
 
-async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
+async def sync_email_documents(db, giorni: int = 30, execution_id: Optional[str] = None) -> Dict[str, Any]:
     """
     Scarica documenti dalla Gmail con routing intelligente per tipo_documento.
-    
-    Flusso:
-    1. Scarica email dai mittenti attendibili (pattern matching canale=gmail)
-    2. Per ogni email → check mittente → tipo_documento
-    3. fattura_xml → parser XML → invoices
-    4. cedolino → salva PDF in documents_inbox (no parser auto)
-    5. pagopa/inps/inail/paypal/cartella_esattoriale → documento generico/alert
-
-    IMAP sincrono girato in asyncio.to_thread() per non bloccare il server.
+    La chiamata è idempotente e produce un record persistente di esecuzione
+    e una coda di retry per errori temporanei.
     """
     from app.services.email_document_downloader import download_documents_from_email
-    from app.config import settings
 
-    # ── Credenziali Gmail ────────────────────────────────────────────────────
-    email_user = None
-    email_password = None
-    imap_host = settings.IMAP_HOST or "imap.gmail.com"
+    if execution_id is None:
+        execution = await start_email_monitor_run(db, source="gmail_daily")
+        execution_id = execution["execution_id"]
 
-    try:
-        from app.utils.crypto import decrypt_credential
-        gmail_cfg = await db["settings"].find_one({"chiave": "gmail"}, {"_id": 0})
-        if gmail_cfg and gmail_cfg.get("gmail_app_password") and gmail_cfg.get("imap_user"):
-            email_user = gmail_cfg["imap_user"]
-            email_password = decrypt_credential(gmail_cfg["gmail_app_password"])
-            imap_host = gmail_cfg.get("imap_host", imap_host)
-    except Exception:
-        pass
-
-    if not email_user:
-        email_user = settings.IMAP_USER or settings.EMAIL_USER
-    if not email_password:
-        email_password = settings.IMAP_PASSWORD or settings.EMAIL_PASSWORD
+    cred_result = _build_gmail_credentials(db)
+    if asyncio.iscoroutine(cred_result):
+        email_user, email_password, imap_host = await cred_result
+    else:
+        email_user, email_password, imap_host = cred_result
+    credential_status = {
+        "configured": bool(email_user and email_password),
+        "user_set": bool(email_user),
+        "password_present": bool(email_password),
+        "imap_host": imap_host,
+    }
 
     if not email_user or not email_password:
-        return {"success": False, "error": "Credenziali Gmail non configurate"}
+        await finalize_email_monitor_run(
+            db,
+            execution_id,
+            status="failed",
+            counters={"new_documents": 0, "xml_processed": 0},
+            error="Credenziali Gmail non configurate",
+        )
+        return {"success": False, "status": "missing_credentials", "execution_id": execution_id, "credential_status": credential_status, "error": "Credenziali Gmail non configurate"}
 
-    # ── Carica mittenti Gmail attivi ─────────────────────────────────────────
-    mittenti_gmail = await db["mittenti_email"].find(
-        {"canale": "gmail", "attivo": True}, {"_id": 0}
-    ).to_list(200)
+    patterns_result = _load_allowed_gmail_patterns(db)
+    if asyncio.iscoroutine(patterns_result):
+        allowed_patterns = await patterns_result
+    else:
+        allowed_patterns = patterns_result
+    if not allowed_patterns:
+        await finalize_email_monitor_run(
+            db,
+            execution_id,
+            status="failed",
+            counters={"new_documents": 0, "xml_processed": 0},
+            error="Nessun mittente Gmail configurato",
+        )
+        return {"success": False, "status": "missing_sender_rules", "execution_id": execution_id, "error": "Nessun mittente Gmail configurato"}
 
-    if not mittenti_gmail:
-        return {"success": False, "error": "Nessun mittente Gmail configurato"}
-
-    # Per il downloader usiamo i pattern come allowed_senders (match parziale)
-    allowed_patterns = [m["pattern"] for m in mittenti_gmail]
     logger.info(f"[Gmail] Sync con {len(allowed_patterns)} pattern mittenti")
 
-    # ── Download IMAP (in thread, non blocca) ───────────────────────────────
     try:
-        result = await download_documents_from_email(
+        result = await _download_email_batch(
             db=db,
             email_user=email_user,
             email_password=email_password,
+            imap_host=imap_host,
             since_days=giorni,
             max_emails=200,
-            allowed_senders=allowed_patterns,
+            allowed_patterns=allowed_patterns,
         )
-    except Exception as e:
-        logger.error(f"[Gmail] Errore download: {e}")
-        return {"success": False, "error": str(e)}
+    except TimeoutError as exc:
+        logger.error(f"[Gmail] Errore temporaneo download: {exc}")
+        await _queue_retry(db, execution_id, str(exc), retry_after_seconds=300)
+        await finalize_email_monitor_run(db, execution_id, status="failed", counters={"new_documents": 0, "xml_processed": 0}, error=str(exc))
+        return {"success": False, "status": "transient_error", "execution_id": execution_id, "error": str(exc), "retry_after_seconds": 300}
+    except Exception as exc:
+        logger.error(f"[Gmail] Errore download: {exc}")
+        await _queue_retry(db, execution_id, str(exc), retry_after_seconds=600)
+        await finalize_email_monitor_run(db, execution_id, status="failed", counters={"new_documents": 0, "xml_processed": 0}, error=str(exc))
+        return {"success": False, "status": "transient_error", "execution_id": execution_id, "error": str(exc), "retry_after_seconds": 600}
 
     stats = result.get("stats", {})
     new_docs = stats.get("new_documents", 0)
@@ -394,13 +520,41 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
             logger.info(f"[Gmail] Documento {tipo}: {doc.get('filename','?')} da {from_addr}")
 
     logger.info(f"[Gmail] Sync OK: {new_docs} nuovi, {xml_processed} XML processati")
+    counters = {
+        "new_documents": new_docs,
+        "duplicates_skipped": stats.get("duplicates_skipped", 0),
+        "xml_processed": xml_processed,
+    }
+    await finalize_email_monitor_run(
+        db,
+        execution_id,
+        status="completed",
+        counters=counters,
+        error=None,
+    )
     return {
         "success": True,
+        "status": "completed",
+        "execution_id": execution_id,
         "new_documents": new_docs,
         "duplicates_skipped": stats.get("duplicates_skipped", 0),
         "xml_processed": xml_processed,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "credential_status": credential_status,
     }
+
+
+async def _download_email_batch(db, email_user: str, email_password: str, imap_host: str, since_days: int, max_emails: int, allowed_patterns: list):
+    """Wrapper per il download reale delle email: permette test e retry isolati."""
+    from app.services.email_document_downloader import download_documents_from_email
+    return await download_documents_from_email(
+        db=db,
+        email_user=email_user,
+        email_password=email_password,
+        since_days=since_days,
+        max_emails=max_emails,
+        allowed_senders=allowed_patterns,
+    )
 
 
 async def ricategorizza_documenti(db) -> Dict[str, Any]:

@@ -974,29 +974,29 @@ CRUD minimale dei costi previsionali (budget planning) sulla collection `costi_p
 **Logica codice**: `delete_one({"id": costo_id})`; risponde sempre "Cost deleted".
 **Note**: non controlla `deleted_count` — successo anche se l'id non esiste.
 
-## whatsapp_webhook.py (prefisso `/api/whatsapp`)
-Integrazione WhatsApp Business Cloud API (Meta): verifica webhook, ricezione notifiche e invio messaggi tramite `app/services/whatsapp_notifications`. Token di verifica `WHATSAPP_VERIFY_TOKEN` (fallback hardcoded `"ceraldi_erp_webhook_2026"`). 5 endpoint.
+## whatsapp_webhook.py (legacy, non registrato nel runtime attuale)
+Integrazione WhatsApp Business Cloud API (Meta) conservata come riferimento storico: il router non è più montato nel runtime attuale e non deve essere considerato canale operativo. I dettagli sotto descrivono il comportamento storico del modulo, non un endpoint attivo. Token di verifica `WHATSAPP_VERIFY_TOKEN` (fallback hardcoded `"ceraldi_erp_webhook_2026"`). 5 endpoint storici.
 
-### GET /api/whatsapp/webhook — verifica webhook Meta
+### GET /api/whatsapp/webhook — verifica webhook Meta (storico)
 **Cosa fa**: risponde alla challenge di sottoscrizione del webhook Meta.
 **Logica codice**: legge query `hub.mode`, `hub.verify_token`, `hub.challenge`; se `mode=="subscribe"` e token corrisponde restituisce la challenge in `PlainTextResponse`, altrimenti 403. Nessun DB.
 **Note**: NON è in whitelist pubblica: essendo sotto `/api/`, richiede JWT — Meta riceverebbe 401 e la verifica fallirebbe (integrazione webhook di fatto rotta). Il token in chiaro viene loggato.
 
-### POST /api/whatsapp/webhook — ricezione notifiche Meta
+### POST /api/whatsapp/webhook — ricezione notifiche Meta (storico)
 **Cosa fa**: riceve messaggi in arrivo e status update (sent/delivered/read) da Meta.
 **Logica codice**: parsa `entry[].changes[].value`, itera `messages` e `statuses` e li LOGGA soltanto (testo troncato a 100 caratteri); eccezioni inghiottite; risponde sempre `{"status":"ok"}`. Nessuna scrittura DB.
 **Note**: il docstring dice "gestisce ricezione messaggi" ma i messaggi non vengono persistiti né processati (solo log). Anche questo endpoint è bloccato dal middleware auth.
 
-### GET /api/whatsapp/status — stato configurazione
+### GET /api/whatsapp/status — stato configurazione (storico)
 **Cosa fa**: riporta lo stato di configurazione della Cloud API senza esporre il token.
 **Logica codice**: delega a `get_whatsapp_config_status()` (import lazy). Nessun DB.
 
-### POST /api/whatsapp/send — invio messaggio
+### POST /api/whatsapp/send — invio messaggio (storico)
 **Cosa fa**: invia un messaggio WhatsApp a un numero, al destinatario di default o in broadcast.
 **Logica codice**: valida solo `text` non vuoto (400); `broadcast` truthy → `send_whatsapp_to_all(text)`, altrimenti `send_whatsapp_message(text, to)`.
 **Note**: nessun controllo ruolo: qualunque utente autenticato può inviare/broadcastare.
 
-### POST /api/whatsapp/send-test — messaggio di test
+### POST /api/whatsapp/send-test — messaggio di test (storico)
 **Cosa fa**: invia un messaggio di prova al primo destinatario configurato (`WHATSAPP_RECIPIENT_1`).
 **Logica codice**: testo fisso con data/ora locale + `send_whatsapp_message(msg)`.
 

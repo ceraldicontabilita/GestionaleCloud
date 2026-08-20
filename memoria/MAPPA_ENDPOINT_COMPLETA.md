@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1140 endpoint** in **113 gruppi**.
+> Totale **1135 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 695 · ext esterni = 88 · — da verificare = 357
+**Riepilogo uso:** ✓ frontend = 695 · ext esterni = 83 · — da verificare = 357
 
 ## AI Parser  (11)
 
@@ -1700,14 +1700,4 @@
 | GET | `/api/voci-bilancio/codici-disponibili` | ✓ | voci_bilancio |
 | GET | `/api/voci-bilancio/{anno}` | ✓ | voci_bilancio |
 | DELETE | `/api/voci-bilancio/{voce_id}` | ✓ | voci_bilancio |
-
-## WhatsApp  (5)
-
-| Metodo | Path | FE | File |
-|---|---|:-:|---|
-| POST | `/api/whatsapp/send` | ext | whatsapp_webhook |
-| POST | `/api/whatsapp/send-test` | ext | whatsapp_webhook |
-| GET | `/api/whatsapp/status` | ext | whatsapp_webhook |
-| GET | `/api/whatsapp/webhook` | ext | whatsapp_webhook |
-| POST | `/api/whatsapp/webhook` | ext | whatsapp_webhook |
 

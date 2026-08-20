@@ -114,9 +114,9 @@ class TestAllowlistCongelata:
         # Autenticazione (login/logout/verify + setup primo admin + PIN login reale)
         "/api/auth/login", "/api/auth/logout", "/api/auth/verify", "/api/auth/setup",
         "/api/auth/pin-login", "/api/auth/pin-login/health", "/api/auth/mfa/verify-login",
-        # Integrazioni esterne con auth propria (verify_token Meta, ERP_BRIDGE_SECRET)
-        "/api/whatsapp/webhook", "/api/erp/ponte/fattura-ricevuta",
-        # Pagine legali (revisione app Meta)
+        # Integrazioni esterne con auth propria (ERP bridge, non WhatsApp legacy)
+        "/api/erp/ponte/fattura-ricevuta",
+        # Pagine legali
         "/api/privacy", "/api/terms", "/api/data-deletion",
         # OpenAPI docs
         "/docs", "/redoc", "/openapi.json",
@@ -181,6 +181,9 @@ class TestPathMatching:
 
     def test_api_login_pubblico(self):
         assert self._is_public("/api/auth/login") is True
+
+    def test_whatsapp_non_pubblico(self):
+        assert self._is_public("/api/whatsapp/webhook") is False
 
     def test_api_invoices_protetto(self):
         assert self._is_public("/api/invoices") is False

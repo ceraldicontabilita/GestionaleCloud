@@ -19,7 +19,9 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "production"
     # Archivio operativo: ``sheets`` usa Google Sheets/Drive come sorgente
     # primaria mantenendo una API asincrona compatibile con il codice attuale.
-    DATA_BACKEND: str = "mongodb"
+    # MongoDB resta solo compatibilita' transitoria del runtime; il default
+    # di produzione e' il registro Drive/Sheets.
+    DATA_BACKEND: str = "sheets"
 
     # Server
     HOST: str = "0.0.0.0"
@@ -443,14 +445,27 @@ class Settings(BaseSettings):
         if backend not in {"mongodb", "sheets"}:
             errors.append("DATA_BACKEND deve essere 'mongodb' oppure 'sheets'.")
 
-        # Check database configuration
-        if backend == "sheets" and not self.GOOGLE_SHEETS_LEDGER_ID:
-            msg = "GOOGLE_SHEETS_LEDGER_ID non configurato per DATA_BACKEND=sheets."
-            if fail_fast:
-                errors.append(msg)
+        # Check database configuration.
+        # Il target operativo e' Drive/Sheets, ma il runtime mantiene un
+        # fallback Mongo legacy durante la transizione. In produzione il
+        # fail-fast deve accettare *uno* dei due backends attivi, non
+        # bloccare automaticamente il sistema se esiste ancora la
+        # configurazione Mongo di compatibilita'.
+        if backend == "sheets":
+            if self.GOOGLE_SHEETS_LEDGER_ID:
+                pass
+            elif self.MONGODB_ATLAS_URI or self.MONGO_URL:
+                logger.warning(
+                    "DATA_BACKEND=sheets ma e' presente una configurazione Mongo legacy: "
+                    "si usa il fallback transitorio fino al cutover completato."
+                )
             else:
-                logger.error(msg)
-        elif backend == "mongodb" and not self.MONGODB_ATLAS_URI:
+                msg = "GOOGLE_SHEETS_LEDGER_ID non configurato per DATA_BACKEND=sheets."
+                if fail_fast:
+                    errors.append(msg)
+                else:
+                    logger.error(msg)
+        elif backend == "mongodb" and not (self.MONGODB_ATLAS_URI or self.MONGO_URL):
             msg = (
                 "MONGODB_ATLAS_URI non configurata! "
                 "Il database non funzionerà correttamente."
