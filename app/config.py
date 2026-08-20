@@ -150,35 +150,15 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_CARTELLE_ESATTORIALI_FOLDER_ID: Optional[str] = None # cartelle esattoriali (PDF)
     GOOGLE_DRIVE_AVVISI_BONARI_FOLDER_ID: Optional[str] = None       # avvisi bonari (PDF)
 
-    # Nomi REALI già presenti nell'ambiente Render dell'utente (file .env
-    # del 10-07-2026): il codice li accetta come alias — vale il primo
-    # valorizzato tra il nome GOOGLE_DRIVE_* e questi.
-    DRIVE_FOLDER_CEDOLINI_ID: Optional[str] = None
-    DRIVE_FOLDER_CORRISPETTIVI_ID: Optional[str] = None
-    DRIVE_FOLDER_QUIETANZE_ID: Optional[str] = None
-    DRIVE_FOLDER_ESTRATTI_CONTO_ID: Optional[str] = None
-    DRIVE_FOLDER_ESTRATTI_CONTO_IDS: Optional[str] = None
-    DRIVE_FOLDER_BONIFICI_ID: Optional[str] = None
-    DRIVE_FOLDER_FATTURE_ID: Optional[str] = None
-    DRIVE_FOLDER_DICHIARAZIONI_IVA_ID: Optional[str] = None
-    DRIVE_FOLDER_CARTELLE_ESATTORIALI_ID: Optional[str] = None
-    DRIVE_FOLDER_AVVISI_BONARI_ID: Optional[str] = None
-
-    # Alias usati dal gestionale privato corrente. Consentono di trasferire
-    # la configurazione Render senza duplicare o rinominare valori sensibili.
-    DRIVE_FATTURE_FOLDER_ID: Optional[str] = None
-    DRIVE_CEDOLINI_FOLDER_ID: Optional[str] = None
-    DRIVE_CORRISPETTIVI_FOLDER_ID: Optional[str] = None
-    DRIVE_QUIETANZE_FOLDER_ID: Optional[str] = None
-    DRIVE_ESTRATTI_CONTO_FOLDER_ID: Optional[str] = None
-    DRIVE_ESTRATTI_CONTO_FOLDER_IDS: Optional[str] = None
+    # Canali documentali ancora privi di un nome GOOGLE_DRIVE_* dedicato.
+    # Le aree principali sopra hanno invece una sola variabile canonica:
+    # non reintrodurre alias Render che puntano allo stesso folder ID.
     DRIVE_PRESENZE_FOLDER_ID: Optional[str] = None
     DRIVE_F24_FOLDER_ID: Optional[str] = None
     DRIVE_CARTE_FOLDER_ID: Optional[str] = None
     DRIVE_PAYPAL_FOLDER_ID: Optional[str] = None
     DRIVE_NOLEGGIO_FOLDER_ID: Optional[str] = None
     DRIVE_VERBALI_FOLDER_ID: Optional[str] = None
-    DRIVE_AVVISI_ESATTORIALI_FOLDER_ID: Optional[str] = None
     DRIVE_FOLDER_REGISTRY_JSON: Optional[str] = None
     # Radice fiscale canonica indicata dall'amministratore. L'ID identifica
     # soltanto la cartella contenitore: le sottocartelle operative vengono

@@ -31,28 +31,26 @@ CANALI: Dict[str, Dict[str, Any]] = {
     "bonifico": {
         "category": "bonifico",
         "label": "Bonifici effettuati",
-        "folder": lambda s: s.GOOGLE_DRIVE_BONIFICI_FOLDER_ID or s.DRIVE_FOLDER_BONIFICI_ID or get_folder_id("bonifico"),
+        "folder": lambda s: s.GOOGLE_DRIVE_BONIFICI_FOLDER_ID or get_folder_id("bonifico"),
         "enable": lambda s: s.ENABLE_DRIVE_BONIFICI_SYNC,
     },
     "dichiarazione_iva": {
         "category": "dichiarazione_iva",
         "label": "Dichiarazioni IVA",
-        "folder": lambda s: s.GOOGLE_DRIVE_DICHIARAZIONI_IVA_FOLDER_ID or s.DRIVE_FOLDER_DICHIARAZIONI_IVA_ID or get_folder_id("dichiarazione_iva"),
+        "folder": lambda s: s.GOOGLE_DRIVE_DICHIARAZIONI_IVA_FOLDER_ID or get_folder_id("dichiarazione_iva"),
         "enable": lambda s: s.ENABLE_DRIVE_DICHIARAZIONI_IVA_SYNC,
     },
     "cartella_esattoriale": {
         "category": "cartella_esattoriale",
         "label": "Cartelle Esattoriali",
         "folder": lambda s: (s.GOOGLE_DRIVE_CARTELLE_ESATTORIALI_FOLDER_ID
-                             or s.DRIVE_FOLDER_CARTELLE_ESATTORIALI_ID
-                             or s.DRIVE_AVVISI_ESATTORIALI_FOLDER_ID
                              or get_folder_id("cartella_esattoriale")),
         "enable": lambda s: s.ENABLE_DRIVE_CARTELLE_ESATTORIALI_SYNC,
     },
     "avviso_bonario": {
         "category": "avviso_bonario",
         "label": "Avvisi Bonari",
-        "folder": lambda s: s.GOOGLE_DRIVE_AVVISI_BONARI_FOLDER_ID or s.DRIVE_FOLDER_AVVISI_BONARI_ID or get_folder_id("avviso_bonario"),
+        "folder": lambda s: s.GOOGLE_DRIVE_AVVISI_BONARI_FOLDER_ID or get_folder_id("avviso_bonario"),
         "enable": lambda s: s.ENABLE_DRIVE_AVVISI_BONARI_SYNC,
     },
     "verbale": {

@@ -323,6 +323,20 @@ def _services():
     )
 
 
+def _sheets_service():
+    """Crea solo il client Sheets per le operazioni che non usano Drive.
+
+    Il runtime web legge il registro all'avvio. Costruire anche un client
+    Drive per ogni foglio moltiplicava memoria e discovery document fino a
+    superare il limite del servizio Render.
+    """
+    from googleapiclient.discovery import build
+
+    return build(
+        "sheets", "v4", credentials=_credentials(), cache_discovery=False,
+    )
+
+
 def _escape_drive_query(value: str) -> str:
     return str(value).replace("\\", "\\\\").replace("'", "\\'")
 
@@ -743,7 +757,7 @@ async def trash_exact_duplicates(folder_ids: Iterable[str], apply: bool = False)
 
 
 def _read_existing_sync(spreadsheet_id: str, sheet: LedgerSheet):
-    sheets, _ = _services()
+    sheets = _sheets_service()
     values = sheets.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id, range=f"'{sheet.title}'!A2:{LAST_COLUMN}",
     ).execute().get("values", [])
@@ -751,14 +765,14 @@ def _read_existing_sync(spreadsheet_id: str, sheet: LedgerSheet):
 
 
 def _read_identities_sync(spreadsheet_id: str, sheet: LedgerSheet):
-    sheets, _ = _services()
+    sheets = _sheets_service()
     return sheets.spreadsheets().values().get(
         spreadsheetId=spreadsheet_id, range=f"'{sheet.title}'!A2:B",
     ).execute().get("values", [])
 
 
 def _clear_rows_sync(spreadsheet_id: str, sheet: LedgerSheet) -> None:
-    sheets, _ = _services()
+    sheets = _sheets_service()
     sheets.spreadsheets().values().clear(
         spreadsheetId=spreadsheet_id,
         range=f"'{sheet.title}'!A2:{LAST_COLUMN}", body={},
@@ -768,7 +782,7 @@ def _clear_rows_sync(spreadsheet_id: str, sheet: LedgerSheet) -> None:
 def _ensure_row_capacity_sync(
     spreadsheet_id: str, sheet: LedgerSheet, required_rows: int,
 ) -> None:
-    sheets, _ = _services()
+    sheets = _sheets_service()
     metadata = sheets.spreadsheets().get(
         spreadsheetId=spreadsheet_id, fields="sheets.properties",
     ).execute()
@@ -795,7 +809,7 @@ def _resize_all_sheets_sync(
     spreadsheet_id: str, definitions: Iterable[LedgerSheet], counts: Dict[str, int],
 ) -> None:
     """Elimina le celle vuote preallocate che concorrono al limite di 10M."""
-    sheets, _ = _services()
+    sheets = _sheets_service()
     metadata = sheets.spreadsheets().get(
         spreadsheetId=spreadsheet_id, fields="sheets.properties",
     ).execute()
@@ -830,7 +844,7 @@ def _write_batch_sync(
 ) -> None:
     if not rows:
         return
-    sheets, _ = _services()
+    sheets = _sheets_service()
     end_row = start_row + len(rows) - 1
     request = lambda: sheets.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
@@ -855,7 +869,7 @@ def _write_batch_sync(
 
 
 def _write_rows_sync(spreadsheet_id: str, sheet: LedgerSheet, rows: List[List[Any]]) -> None:
-    sheets, _ = _services()
+    sheets = _sheets_service()
     # Rimuove anche le righe finali non piu' presenti. Un semplice update
     # lasciava record fantasma quando l'archivio diminuiva.
     sheets.spreadsheets().values().clear(
@@ -1090,21 +1104,90 @@ def _read_sheet_rows_sync(spreadsheet_id: str, sheet: LedgerSheet) -> List[List[
     return _read_existing_sync(spreadsheet_id, sheet)
 
 
+def _existing_workbook_sync(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Valida un registro esistente senza creare cartelle, fogli o formati."""
+    spreadsheet_id = _setting_value(config, "GOOGLE_SHEETS_LEDGER_ID")
+    if not spreadsheet_id:
+        raise RuntimeError("GOOGLE_SHEETS_LEDGER_ID non configurato")
+
+    sheets = _sheets_service()
+    metadata = sheets.spreadsheets().get(
+        spreadsheetId=spreadsheet_id,
+        fields="spreadsheetId,spreadsheetUrl,sheets.properties",
+    ).execute()
+    titles = {
+        item["properties"]["title"]
+        for item in metadata.get("sheets", [])
+        if item.get("properties", {}).get("title")
+    }
+    missing = [item.title for item in SHEETS if item.title not in titles]
+    if missing:
+        raise RuntimeError(
+            "Registro Sheets incompleto; fogli mancanti: " + ", ".join(missing)
+        )
+    dynamic = [
+        dynamic_sheet(title[3:]) for title in titles if title.startswith("DB_")
+    ]
+    definitions = sheet_definitions(
+        [item.collection for item in SHEETS]
+        + [item.collection for item in dynamic]
+    )
+    return {
+        "spreadsheet_id": spreadsheet_id,
+        "spreadsheet_url": metadata.get("spreadsheetUrl")
+        or f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}",
+        "folder_id": default_folder_id(config) or "",
+        "ledger_folder_id": "",
+        "archive_tree": {},
+        "sheet_definitions": definitions,
+    }
+
+
+def _read_sheet_rows_batch_sync(
+    spreadsheet_id: str, definitions: Iterable[LedgerSheet],
+) -> List[List[List[Any]]]:
+    """Legge tutti i fogli con un solo client e una sola richiesta HTTP."""
+    definitions = tuple(definitions)
+    sheets = _sheets_service()
+    response = sheets.spreadsheets().values().batchGet(
+        spreadsheetId=spreadsheet_id,
+        ranges=[f"'{sheet.title}'!A2:{LAST_COLUMN}" for sheet in definitions],
+    ).execute()
+    value_ranges = response.get("valueRanges", [])
+    if len(value_ranges) != len(definitions):
+        raise RuntimeError("Risposta Sheets incompleta durante l'idratazione")
+    return [item.get("values", []) for item in value_ranges]
+
+
 async def restore_all(
     db, config: Optional[Dict[str, Any]] = None, *, apply: bool = False,
+    provision: bool = True,
 ) -> Dict[str, Any]:
     """Valida o ricostruisce le collezioni dal payload JSON dei fogli.
 
     Il default e' sempre dry-run. In modalita apply usa upsert sull'ID
     canonico e non cancella documenti presenti nel database.
     """
-    workbook = await ensure_workbook(config)
+    if provision:
+        workbook = await ensure_workbook(config)
+    else:
+        workbook = await asyncio.to_thread(_existing_workbook_sync, config)
     definitions = workbook.pop("sheet_definitions")
-    results = []
-    for sheet in definitions:
-        rows = await asyncio.to_thread(
-            _read_sheet_rows_sync, workbook["spreadsheet_id"], sheet,
+    if provision:
+        rows_by_sheet = [
+            await asyncio.to_thread(
+                _read_sheet_rows_sync, workbook["spreadsheet_id"], sheet,
+            )
+            for sheet in definitions
+        ]
+    else:
+        rows_by_sheet = await asyncio.to_thread(
+            _read_sheet_rows_batch_sync,
+            workbook["spreadsheet_id"],
+            definitions,
         )
+    results = []
+    for sheet, rows in zip(definitions, rows_by_sheet):
         valid = 0
         errors = []
         seen_progressive = set()

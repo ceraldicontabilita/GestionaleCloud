@@ -56,10 +56,8 @@ def test_crea_le_tre_cartelle_e_sposta_senza_cancellare():
     }]
 
 
-def test_alias_render_privato_configura_fatture(monkeypatch):
-    monkeypatch.setattr(settings, "GOOGLE_DRIVE_FATTURE_FOLDER_ID", None)
-    monkeypatch.setattr(settings, "DRIVE_FOLDER_FATTURE_ID", None)
-    monkeypatch.setattr(settings, "DRIVE_FATTURE_FOLDER_ID", "folder-private")
+def test_nome_canonico_render_configura_fatture(monkeypatch):
+    monkeypatch.setattr(settings, "GOOGLE_DRIVE_FATTURE_FOLDER_ID", "folder-private")
     monkeypatch.setattr(settings, "GOOGLE_SERVICE_ACCOUNT_JSON_FATTURE", None)
     monkeypatch.setattr(settings, "GOOGLE_DRIVE_SA_FILE", None)
     monkeypatch.setattr(settings, "GOOGLE_DRIVE_SA_JSON", None)

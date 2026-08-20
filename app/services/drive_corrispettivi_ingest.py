@@ -62,10 +62,8 @@ def start_background_sync(db) -> bool:
 
 
 def _folder_id() -> Optional[str]:
-    """ID cartella: nome canonico o alias reale dell'ambiente Render."""
-    return (settings.GOOGLE_DRIVE_CORRISPETTIVI_FOLDER_ID
-            or settings.DRIVE_FOLDER_CORRISPETTIVI_ID
-            or settings.DRIVE_CORRISPETTIVI_FOLDER_ID)
+    """ID della cartella corrispettivi configurato con il nome canonico."""
+    return settings.GOOGLE_DRIVE_CORRISPETTIVI_FOLDER_ID
 
 
 def _load_credentials_corrispettivi():

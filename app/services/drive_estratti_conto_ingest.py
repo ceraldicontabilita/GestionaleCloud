@@ -109,17 +109,9 @@ def _nexi_folder_ids() -> List[str]:
 
 def _folder_ids() -> List[str]:
     values: List[str] = []
-    for raw in (
-        settings.GOOGLE_DRIVE_ESTRATTI_FOLDER_IDS,
-        settings.DRIVE_FOLDER_ESTRATTI_CONTO_IDS,
-        settings.DRIVE_ESTRATTI_CONTO_FOLDER_IDS,
-    ):
+    for raw in (settings.GOOGLE_DRIVE_ESTRATTI_FOLDER_IDS,):
         values.extend(_split_folder_ids(raw))
-    values.extend(filter(None, (
-        settings.GOOGLE_DRIVE_ESTRATTI_FOLDER_ID,
-        settings.DRIVE_FOLDER_ESTRATTI_CONTO_ID,
-        settings.DRIVE_ESTRATTI_CONTO_FOLDER_ID,
-    )))
+    values.extend(filter(None, (settings.GOOGLE_DRIVE_ESTRATTI_FOLDER_ID,)))
     values.extend(_registry_folder_ids())
     values.extend(_nexi_folder_ids())
     return list(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))

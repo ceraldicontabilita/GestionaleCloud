@@ -124,7 +124,13 @@ avvio in `render.yaml` e il lifecycle importato dai test correnti.
 
 - `GOOGLE_SHEETS_LEDGER_ID` oppure `GOOGLE_SHEETS_LEDGER_FOLDER_ID`
 - `GOOGLE_DRIVE_SA_JSON` / `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`
-- ID delle cartelle documentali abilitate
+- una sola variabile canonica `GOOGLE_DRIVE_<AREA>_FOLDER_ID` per ciascuna
+  area documentale; non creare alias Render diversi per lo stesso folder ID
+
+Il foglio privato `_INDICE_DRIVE` del registro elenca le cartelle canoniche e,
+per le aree operative, i tre stati `Da elaborare`, `Elaborate` ed `Errori`.
+Codice e automazioni consultano quell'indice e `DRIVE_FOLDER_REGISTRY_JSON`;
+gli ID aziendali non devono essere copiati nella documentazione pubblica.
 
 Le credenziali restano nel secret store di Render. Non inserire JSON di
 service account, token o password nel repository.

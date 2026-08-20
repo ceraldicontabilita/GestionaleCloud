@@ -10,7 +10,7 @@ I file elaborati (importati o duplicati noti) vengono spostati nella
 sottocartella Drive `Elaborate` (creata se manca).
 
 Configurazione (env / settings):
-  GOOGLE_DRIVE_QUIETANZE_FOLDER_ID (o alias DRIVE_FOLDER_QUIETANZE_ID)
+GOOGLE_DRIVE_QUIETANZE_FOLDER_ID
   GOOGLE_SERVICE_ACCOUNT_JSON_QUIETANZE (o il service account condiviso
   GOOGLE_DRIVE_SA_FILE / GOOGLE_DRIVE_SA_JSON)
   ENABLE_DRIVE_QUIETANZE_SYNC (acceso su scelta esplicita dell'utente 10/07)
@@ -58,10 +58,8 @@ def start_background_sync(db) -> bool:
 
 
 def _folder_id() -> Optional[str]:
-    """ID cartella: nome canonico o alias reale dell'ambiente Render."""
-    return (settings.GOOGLE_DRIVE_QUIETANZE_FOLDER_ID
-            or settings.DRIVE_FOLDER_QUIETANZE_ID
-            or settings.DRIVE_QUIETANZE_FOLDER_ID)
+    """ID della cartella quietanze configurato con il nome canonico."""
+    return settings.GOOGLE_DRIVE_QUIETANZE_FOLDER_ID
 
 
 def _load_credentials_quietanze():
@@ -163,7 +161,7 @@ async def _do_sync(db) -> Dict[str, Any]:
     if not is_configured():
         return {
             "status": "not_configured",
-            "message": "Imposta GOOGLE_DRIVE_QUIETANZE_FOLDER_ID (o DRIVE_FOLDER_QUIETANZE_ID) "
+            "message": "Imposta GOOGLE_DRIVE_QUIETANZE_FOLDER_ID "
                        "e il service account (GOOGLE_DRIVE_SA_FILE o GOOGLE_DRIVE_SA_JSON).",
         }
     creds, cred_err = _load_credentials_quietanze()

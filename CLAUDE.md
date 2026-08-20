@@ -72,6 +72,12 @@ QUIETANZE/
 DICHIARAZIONI/
 ```
 
+La mappa privata delle cartelle è il foglio `_INDICE_DRIVE` del registro.
+Per ogni area operativa contiene cartella canonica, `Da elaborare`,
+`Elaborate`, `Errori` e nome della variabile Render. Non duplicare gli ID nei
+file pubblici del repository e non reintrodurre alias Render per la stessa
+cartella.
+
 Il registro usa un foglio per archivio logico. Ogni riga conserva almeno:
 
 - progressivo stabile del foglio;
