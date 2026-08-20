@@ -59,4 +59,10 @@ describe('Indice documentale Drive', () => {
     expect(await screen.findByText('f24.pdf')).toBeInTheDocument();
     expect(screen.getByText(/pagamento bancario non confermato/i)).toBeInTheDocument();
   });
+
+  it('mostra un errore esplicito quando l archivio Drive non e configurato', async () => {
+    api.get.mockRejectedValueOnce({ response: { data: { detail: 'Indice Drive non configurato' } } });
+    render(<DriveDocumentIndex />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Indice Drive non configurato');
+  });
 });

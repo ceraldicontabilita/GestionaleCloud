@@ -17,9 +17,9 @@ PAGES = CATALOG["pages"]
 MAIN = (ROOT / "frontend/src/main.jsx").read_text(encoding="utf-8")
 
 
-def test_catalogo_contiene_esattamente_le_64_schermate_numerate():
-    assert [page["id"] for page in PAGES] == list(range(1, 65))
-    assert len({page["path"] for page in PAGES}) == 64
+def test_catalogo_contiene_esattamente_le_65_schermate_numerate():
+    assert [page["id"] for page in PAGES] == list(range(1, 66))
+    assert len({page["path"] for page in PAGES}) == 65
     assert all(page["audit_status"] in {"unverified", "in_review", "verified"} for page in PAGES)
 
 
@@ -73,6 +73,25 @@ def test_ogni_componente_lazy_degli_hub_e_nel_catalogo():
             )
 
 
+def test_ogni_pagina_lazy_top_level_operativa_e_nel_catalogo():
+    """Blocca omissioni come Situazione fiscale dal collaudo globale."""
+    componenti_catalogati = {
+        (ROOT / page["component"]).resolve()
+        for page in PAGES
+    }
+    main_dir = ROOT / "frontend/src"
+    for relative in re.findall(
+        r"lazy\(\(\)\s*=>\s*import\(['\"]([^'\"]+)['\"]\)\)", MAIN
+    ):
+        if "/hub/" in relative or relative.endswith("LegacyRouteResolver.jsx"):
+            continue
+        component = (main_dir / relative).resolve()
+        assert component in componenti_catalogati, (
+            f"{component.relative_to(ROOT)} e caricata dal router principale "
+            "ma manca da page_catalog.json"
+        )
+
+
 def test_tutte_le_route_del_catalogo_sono_coperte_da_una_route_react_reale():
     exact = {"/", "/login", "/gestione-riservata"}
     wildcard_prefixes: set[str] = set()
@@ -106,5 +125,5 @@ def test_il_registro_markdown_e_il_catalogo_macchina_non_divergono():
     report = (ROOT / "docs/COLLAUDO_PAGINE_E2E_2026-08-05.md").read_text(encoding="utf-8")
     rows = re.findall(r"^\|\s*(\d+)\s*\|.*?—\s*`([^`]+)`\s*\|", report, flags=re.MULTILINE)
     documented = {int(identifier): path for identifier, path in rows}
-    assert len(documented) == 64
+    assert len(documented) == 65
     assert documented == {page["id"]: page["path"] for page in PAGES}

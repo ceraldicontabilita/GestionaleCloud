@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1139 endpoint** in **113 gruppi**.
+> Totale **1140 endpoint** in **113 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 693 · ext esterni = 88 · — da verificare = 358
+**Riepilogo uso:** ✓ frontend = 695 · ext esterni = 88 · — da verificare = 357
 
 ## AI Parser  (11)
 
@@ -563,7 +563,7 @@
 | POST | `/api/document-ai/process-classified-email` | — | document_ai |
 | POST | `/api/document-ai/reprocess-and-save` | — | document_ai |
 
-## Documenti  (45)
+## Documenti  (46)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -605,8 +605,9 @@
 | POST | `/api/documenti/sync-estratti-conto` | — | documenti |
 | POST | `/api/documenti/sync-f24-automatico` | — | documenti |
 | GET | `/api/documenti/task/{task_id}` | — | documenti |
+| GET | `/api/documenti/tax-codes` | ✓ | documenti |
 | GET | `/api/documenti/tax-codes/status` | ✓ | documenti |
-| POST | `/api/documenti/tax-codes/sync` | — | documenti |
+| POST | `/api/documenti/tax-codes/sync` | ✓ | documenti |
 | GET | `/api/documenti/telegram/status` | — | documenti |
 | POST | `/api/documenti/telegram/test` | — | documenti |
 | GET | `/api/documenti/ultimo-sync` | — | documenti |

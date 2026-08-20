@@ -49,7 +49,7 @@ Alla data di questa riscrittura il catalogo macchina registra:
 - 15 pagine `in_review`;
 - 43 pagine `unverified`.
 
-Il precedente test isolato aveva aperto 62/62 schermate senza 404, ErrorBoundary o errori API iniziali, ma non includeva Dati ISA. Il catalogo corretto richiede ora 63/63 aperture. Anche un passaggio completo dimostra il montaggio tecnico, non la correttezza contabile.
+Il precedente test isolato aveva aperto 62/62 schermate senza 404, ErrorBoundary o errori API iniziali, ma non includeva Dati ISA. Il catalogo corrente contiene 65 schermate, comprese Dati ISA, Atti amministrativi e Situazione fiscale, e richiede l'apertura di tutte le voci presenti nel catalogo. Anche un passaggio completo dimostra il montaggio tecnico, non la correttezza contabile.
 
 ### 3.1 Definizioni obbligatorie
 

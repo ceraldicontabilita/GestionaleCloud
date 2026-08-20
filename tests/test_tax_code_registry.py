@@ -1,4 +1,4 @@
-from app.services.tax_code_registry import parse_tax_codes
+from app.services.tax_code_registry import parse_tax_codes, search_bundled_tax_codes
 
 
 def test_parse_tax_codes_from_official_table_shape():
@@ -19,3 +19,12 @@ def test_parser_deduplicates_same_code():
     payload = "<table><tr><td>Prima descrizione valida</td><td>4001</td></tr>" \
               "<tr><td>Descrizione aggiornata valida</td><td>4001</td></tr></table>"
     assert parse_tax_codes(payload) == [{"code": "4001", "description": "Descrizione aggiornata valida"}]
+
+
+def test_catalogo_ade_incluso_e_ricercabile():
+    result = search_bundled_tax_codes(query="6001", limit=20)
+    assert result["catalog"]["record_count"] == 2576
+    assert result["catalog"]["distinct_codes"] == 2341
+    assert result["total"] >= 1
+    assert all(item["codice_tributo"] == "6001" for item in result["items"])
+    assert all(item["fonte_url"].startswith("https://www1.agenziaentrate.gov.it/") for item in result["items"])

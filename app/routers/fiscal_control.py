@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 from typing import Any, Dict, List, Optional
@@ -118,7 +119,23 @@ async def summary(_admin: Dict[str, Any] = Depends(get_current_admin_user)):
              "ader_snapshots": COLL_ADER_POSITION_SNAPSHOTS}
     counts = {key: await db[name].count_documents({"company_id": _company()}) for key, name in names.items()}
     unresolved = await db[COLL_TAX_COLLECTION_CLAIMS].count_documents({"company_id": _company(), "business_status": {"$in": ["DA_VERIFICARE", "CONTESTATA"]}})
-    return {"company_id": _company(), "counts": counts, "requires_review": unresolved}
+    drive_index: dict[str, Any]
+    try:
+        from app.services.drive_document_index import get_overview
+        overview = await asyncio.to_thread(get_overview)
+        validation = overview.get("validation") or {}
+        drive_index = {
+            "available": True,
+            "verified": bool(validation.get("all_true")),
+            "counts": validation.get("counts") or {},
+            "semantics": overview.get("semantics") or {},
+        }
+    except (RuntimeError, ValueError) as exc:
+        drive_index = {"available": False, "verified": False, "counts": {}, "warning": str(exc)}
+    return {
+        "company_id": _company(), "counts": counts,
+        "requires_review": unresolved, "drive_index": drive_index,
+    }
 
 
 @router.get("/obligations")
@@ -158,13 +175,52 @@ async def f24_rows(
     db = Database.get_db()
     cursor = db[COLL_TAX_ALLOCATIONS].find(query, {"_id": 0}).sort([
         ("payment_date", -1), ("filename", 1), ("ordinal", 1),
-    ]).skip(offset).limit(limit)
-    items = await cursor.to_list(limit)
+    ])
+    database_items = await cursor.to_list(5000)
+    drive_warning = None
+    try:
+        from app.services.drive_document_index import list_f24_rows
+        drive_payload = await asyncio.to_thread(
+            list_f24_rows, year=str(year) if year else None,
+            tax_code=tax_code, document_id=document_id,
+            credits_only=credits_only, offset=0, limit=5000,
+        )
+        drive_items = drive_payload["items"]
+    except (RuntimeError, ValueError) as exc:
+        drive_items = []
+        drive_warning = str(exc)
+
+    def identity(item: dict[str, Any]) -> tuple[Any, ...]:
+        return (
+            item.get("sha256") or item.get("source_sha256") or item.get("document_id"),
+            item.get("ordinal"), item.get("tax_code"), item.get("reference_period"),
+            round(float(item.get("debit_amount") or 0), 2),
+            round(float(item.get("credit_amount") or 0), 2),
+        )
+
+    merged: list[dict[str, Any]] = []
+    seen: set[tuple[Any, ...]] = set()
+    for item in [*drive_items, *database_items]:
+        key = identity(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(item)
+    merged.sort(key=lambda item: (
+        str(item.get("payment_date") or ""), str(item.get("filename") or ""),
+        int(item.get("ordinal") or 0),
+    ), reverse=True)
+    items = merged[offset:offset + limit]
     return {
         "items": items,
-        "total": await db[COLL_TAX_ALLOCATIONS].count_documents(query),
+        "total": len(merged),
         "offset": offset,
         "limit": limit,
+        "sources": {
+            "drive_excel_index": len(drive_items),
+            "database": len(database_items),
+            "drive_warning": drive_warning,
+        },
         "filters": {"tax_code": tax_code, "document_id": document_id, "year": year, "credits_only": credits_only},
     }
 
@@ -177,11 +233,46 @@ async def declarations(
 ):
     if declaration_type and declaration_type not in DECLARATION_TYPES:
         raise HTTPException(400, "Tipo dichiarazione non valido")
-    items = await list_declaration_dossiers(
+    database_items = await list_declaration_dossiers(
         Database.get_db(), company_id=_company(), year=year,
         declaration_type=declaration_type,
     )
-    return {"items": items, "total": len(items), "year": year, "declaration_type": declaration_type}
+    drive_warning = None
+    try:
+        from app.services.drive_document_index import list_declarations as list_drive_declarations
+        drive_payload = await asyncio.to_thread(
+            list_drive_declarations, year=str(year) if year else None,
+            declaration_type=declaration_type, limit=5000,
+        )
+        drive_items = drive_payload["results"]
+    except (RuntimeError, ValueError) as exc:
+        drive_items = []
+        drive_warning = str(exc)
+
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in [*drive_items, *database_items]:
+        identity = str(
+            item.get("sha256") or item.get("document_id") or item.get("id")
+            or item.get("archive_path") or item.get("filename") or ""
+        ).casefold()
+        if identity and identity in seen:
+            continue
+        if identity:
+            seen.add(identity)
+        merged.append(item)
+    merged.sort(key=lambda item: (
+        int(item.get("filing_year") or 0), str(item.get("filename") or ""),
+    ), reverse=True)
+    return {
+        "items": merged, "total": len(merged), "year": year,
+        "declaration_type": declaration_type,
+        "sources": {
+            "drive_excel_index": len(drive_items),
+            "database": len(database_items),
+            "drive_warning": drive_warning,
+        },
+    }
 
 
 @router.get("/f24-documents")

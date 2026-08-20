@@ -12,6 +12,8 @@ from app.services.drive_document_index import (
     _discover_index_file_sync,
     _parse_index_xlsx,
     _resolve_path_sync,
+    list_declarations,
+    list_f24_rows,
     search_records,
     validate_relations,
 )
@@ -169,3 +171,61 @@ def test_boolean_validation_rejects_broken_relations():
     assert validation["all_true"] is False
     assert validation["checks"]["all_f24_documents_exist"] is False
     assert validation["checks"]["all_declarations_link_exactly_one_document"] is False
+
+
+def test_f24_rows_are_drive_first_filterable_and_keep_stable_ids(monkeypatch):
+    from app.services import drive_document_index as index
+
+    document = {
+        "ID documento": "DOC-F24", "Nome file": "F24_2026.pdf",
+        "SHA-256": "a" * 64, "Percorso Drive": r"F24\2026\F24_2026.pdf",
+    }
+    rows = [{
+        "ID documento": "DOC-F24", "Anno pagamento": "2026",
+        "Data pagamento": "2026-08-20", "Sezione": "ERARIO",
+        "Tipo riga": "DEBITO", "Codice tributo": "1704",
+        "Periodo tributo": "2026", "Debito": 51.64, "Credito": 0,
+        "SHA-256": "a" * 64, "Pagina": 1,
+    }, {
+        "ID documento": "DOC-F24", "Anno pagamento": "2026",
+        "Data pagamento": "2026-08-20", "Sezione": "ERARIO",
+        "Tipo riga": "CREDITO", "Codice tributo": "6099",
+        "Periodo tributo": "2025", "Debito": 0, "Credito": 10,
+        "SHA-256": "a" * 64, "Pagina": 1,
+    }]
+    catalog = {"documents": [document], "f24_rows": rows, "declarations": [], "duplicates": []}
+    monkeypatch.setattr(index, "load_full_catalog", lambda service=None: ({}, catalog))
+
+    all_rows = list_f24_rows(year="2026")
+    credit_rows = list_f24_rows(year="2026", credits_only=True)
+    assert all_rows["total"] == 2
+    assert credit_rows["total"] == 1
+    credit_from_all = next(item for item in all_rows["items"] if item["tax_code"] == "6099")
+    assert credit_rows["items"][0]["id"] == credit_from_all["id"]
+    assert credit_rows["items"][0]["evidence_state"] == "MODELLO_F24_NON_PROVA_BANCARIA"
+
+
+def test_declarations_use_canonical_types_and_verified_document_identity(monkeypatch):
+    from app.services import drive_document_index as index
+
+    document = {
+        "ID documento": "DOC-770", "Nome file": "770_2026.pdf",
+        "SHA-256": "b" * 64, "Percorso Drive": r"DICHIARAZIONI\770_2026.pdf",
+    }
+    catalog = {
+        "documents": [document], "f24_rows": [], "duplicates": [],
+        "declarations": [{
+            "Anno": "2026", "Tipo": "770", "Protocollo": "T26001",
+            "Percorso archivio": "02_ANNI/2026/DICHIARAZIONI/770_2026.pdf",
+        }],
+    }
+    monkeypatch.setattr(index, "load_full_catalog", lambda service=None: ({}, catalog))
+
+    payload = list_declarations(year="2026", declaration_type="MODELLO_770")
+    assert payload["total_matching"] == 1
+    item = payload["results"][0]
+    assert item["id"] == "DOC-770"
+    assert item["document_type"] == "MODELLO_770"
+    assert item["filing_year"] == 2026
+    assert item["tax_year"] == 2025
+    assert item["relation_state"] == "CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO"

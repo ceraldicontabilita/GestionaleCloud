@@ -7,7 +7,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 ## Conteggio corrente verificato dal codice
 
 - 31 registrazioni `path:` nel router React principale (famiglie canoniche e wildcard).
-- 63 schermate funzionali distinte, inclusa la pagina Indice documentale Drive.
+- 65 schermate funzionali distinte, incluse Indice documentale Drive, Atti amministrativi e Situazione fiscale.
 - 1 pagina tecnica 404, non operativa.
 - 51 redirect legacy esatti e 29 redirect per prefisso: sono compatibilita per vecchi link, non pagine aggiuntive.
 - 0 pagine autorizzate alla rimozione in questa fase: nessuna sara eliminata senza prova di inutilizzo e senza verificare i collegamenti.
@@ -114,6 +114,7 @@ Regola di chiusura: una pagina viene marcata `[x]` solo dopo verifica di route R
 
 | 63 | [~] IN REVISIONE | Indice documentale Drive — `/documenti/drive` | Consulta originali, F24, righe tributo e dichiarazioni tramite indice Excel senza salvare binari nel database. | COMPLETARE COLLAUDO LIVE IN SOLA LETTURA |
 | 64 | [~] IN REVISIONE | Atti amministrativi — `/documenti/atti` | Verbali, TARI, AdeR e dimissioni con provenienza documentale. | COMPLETARE COLLAUDO LIVE IN SOLA LETTURA |
+| 65 | [~] IN REVISIONE | Situazione fiscale — `/situazione-fiscale` | Incrocia obblighi, F24, dichiarazioni, cartelle e prove senza confondere documenti e pagamenti. | COLLEGARE LE FONTI DRIVE/EXCEL GIA VERIFICATE E COMPLETARE COLLAUDO LIVE |
 
 ## Pagina tecnica
 

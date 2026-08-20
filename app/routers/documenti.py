@@ -204,6 +204,20 @@ async def stato_codici_tributo(
     return latest or {"status": "not_initialized"}
 
 
+@router.get("/tax-codes")
+async def elenco_codici_tributo(
+    q: str = Query("", max_length=200),
+    tipo_imposta: str = Query("", max_length=100),
+    contesto_uso: str = Query("", max_length=100),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Consulta lo snapshot ufficiale AdE incluso, senza creare fatti contabili."""
+    from app.services.tax_code_registry import search_bundled_tax_codes
+    return search_bundled_tax_codes(q, tipo_imposta, contesto_uso, offset, limit)
+
+
 @router.post("/tax-codes/sync")
 async def sincronizza_codici_tributo(
     _admin: Dict[str, Any] = Depends(get_current_admin_mfa_user),

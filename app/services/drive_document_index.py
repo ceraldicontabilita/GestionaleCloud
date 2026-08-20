@@ -8,6 +8,7 @@ quando richiesto, risolve il percorso fino al link Drive del file originale.
 from __future__ import annotations
 
 import io
+import hashlib
 import posixpath
 import re
 import threading
@@ -163,6 +164,38 @@ def _amount(value: Any) -> float:
         return round(float(value or 0), 2)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _declaration_type(value: Any) -> str:
+    """Converte le etichette del foglio nel vocabolario fiscale canonico."""
+    normalized = re.sub(r"[^A-Z0-9]+", "_", str(value or "").upper()).strip("_")
+    compact = normalized.replace("_", "")
+    aliases = {
+        "770": "MODELLO_770",
+        "MODELLO770": "MODELLO_770",
+        "IVA": "DICHIARAZIONE_IVA",
+        "DICHIARAZIONEIVA": "DICHIARAZIONE_IVA",
+        "LIPE": "LIPE",
+        "REDDITI": "REDDITI_SC",
+        "REDDITISC": "REDDITI_SC",
+        "MODELLO760": "REDDITI_SC",
+        "760": "REDDITI_SC",
+        "IRAP": "DICHIARAZIONE_IRAP",
+        "DICHIARAZIONEIRAP": "DICHIARAZIONE_IRAP",
+        "ELENCOPERCIPIENTI": "ELENCO_PERCIPIENTI",
+        "PERCIPIENTI": "ELENCO_PERCIPIENTI",
+    }
+    return aliases.get(compact, normalized)
+
+
+def _stable_f24_row_id(row: dict[str, Any], ordinal: int) -> str:
+    identity = "|".join(str(row.get(field) or "").strip() for field in (
+        "ID documento", "Anno pagamento", "Data pagamento", "Sezione",
+        "Tipo riga", "Codice tributo", "Periodo tributo", "Ente",
+        "Debito", "Credito", "Protocollo", "Pagina", "Testo sorgente",
+    ))
+    digest = hashlib.sha256(f"{identity}|{ordinal}".encode("utf-8")).hexdigest()[:24]
+    return f"drive-f24-row:{digest}"
 
 
 def validate_relations(catalog: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
@@ -372,6 +405,73 @@ def list_f24_documents(
     return {"returned": min(len(results), limit), "total_matching": len(results), "results": results[:limit]}
 
 
+def list_f24_rows(
+    service=None, *, year: str | None = None, tax_code: str | None = None,
+    document_id: str | None = None, credits_only: bool = False,
+    offset: int = 0, limit: int = 1000,
+) -> dict[str, Any]:
+    """Righe F24 del foglio Drive, senza inferire quietanza o pagamento bancario."""
+    _, catalog = load_full_catalog(service)
+    by_id = {str(item.get("ID documento")): item for item in catalog["documents"]}
+    matches: list[dict[str, Any]] = []
+    ordinals: dict[str, int] = defaultdict(int)
+    for row in catalog["f24_rows"]:
+        current_document_id = str(row.get("ID documento") or "")
+        ordinals[current_document_id] += 1
+        ordinal = ordinals[current_document_id]
+        if year and _norm(row.get("Anno pagamento")) != _norm(year):
+            continue
+        if tax_code and _norm(row.get("Codice tributo")) != _norm(tax_code):
+            continue
+        if document_id and _norm(current_document_id) != _norm(document_id):
+            continue
+        credit = _amount(row.get("Credito"))
+        if credits_only and credit <= 0:
+            continue
+        document = by_id.get(current_document_id, {})
+        matches.append({
+            "id": _stable_f24_row_id(row, ordinal),
+            "document_id": current_document_id,
+            "ordinal": ordinal,
+            "source_kind": "DRIVE_EXCEL_INDEX_F24_ROW",
+            "payment_year": row.get("Anno pagamento"),
+            "payment_date": row.get("Data pagamento"),
+            "section": row.get("Sezione"),
+            "row_type": row.get("Tipo riga"),
+            "tax_code": row.get("Codice tributo"),
+            "description": row.get("Descrizione"),
+            "reference_period": row.get("Periodo tributo"),
+            "entity": row.get("Ente"),
+            "debit_amount": _amount(row.get("Debito")),
+            "credit_amount": credit,
+            "protocol": row.get("Protocollo"),
+            "document_type": row.get("Tipo documento"),
+            "sha256": row.get("SHA-256") or document.get("SHA-256"),
+            "drive_path": row.get("Percorso Drive") or document.get("Percorso Drive"),
+            "page": row.get("Pagina"),
+            "source_text": row.get("Testo sorgente"),
+            "source": row.get("Fonte"),
+            "filename": document.get("Nome file"),
+            "evidence_state": (
+                "QUIETANZA_DOCUMENTALE_NON_PROVA_BANCARIA"
+                if "quietanza" in _norm(row.get("Tipo documento"))
+                else "MODELLO_F24_NON_PROVA_BANCARIA"
+            ),
+        })
+    matches.sort(key=lambda item: (
+        str(item.get("payment_date") or ""), str(item.get("filename") or ""),
+        str(item.get("tax_code") or ""),
+    ), reverse=True)
+    page = matches[offset:offset + limit]
+    return {
+        "items": page,
+        "total": len(matches),
+        "offset": offset,
+        "limit": limit,
+        "source": "drive_excel_index",
+    }
+
+
 def list_declarations(
     service=None, *, year: str | None = None, declaration_type: str | None = None,
     q: str | None = None, limit: int = 200,
@@ -384,18 +484,33 @@ def list_declarations(
     for row in catalog["declarations"]:
         if year and _norm(row.get("Anno")) != _norm(year):
             continue
-        if declaration_type and _norm(row.get("Tipo")) != _norm(declaration_type):
+        canonical_type = _declaration_type(row.get("Tipo"))
+        if declaration_type and canonical_type != _declaration_type(declaration_type):
             continue
         if q and _norm(q) not in _norm(" ".join(str(value or "") for value in row.values())):
             continue
         matches = names.get(_basename(row.get("Percorso archivio")), [])
+        filing_year = int(row.get("Anno")) if str(row.get("Anno") or "").isdigit() else row.get("Anno")
+        document = _public_record(matches[0]) if len(matches) == 1 else None
         results.append({
+            "id": document.get("document_id") if document else None,
+            "document_id": document.get("document_id") if document else None,
+            "source_kind": "DRIVE_EXCEL_INDEX_DECLARATION",
+            "filing_year": filing_year,
+            "tax_year": filing_year if canonical_type == "LIPE" else (filing_year - 1 if isinstance(filing_year, int) else None),
+            "document_type": canonical_type,
+            "filename": document.get("filename") if document else _basename(row.get("Percorso archivio")),
+            "sha256": document.get("sha256") if document else None,
+            "drive_path": document.get("drive_path") if document else row.get("Percorso archivio"),
             "year": row.get("Anno"),
             "type": row.get("Tipo"),
             "protocol": row.get("Protocollo"),
             "archive_path": row.get("Percorso archivio"),
             "relation_state": "CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO" if len(matches) == 1 else "AMBIGUA",
-            "document": _public_record(matches[0]) if len(matches) == 1 else None,
+            "document": document,
+            "f24_links": [],
+            "f24_confirmed_count": 0,
+            "f24_candidate_count": 0,
         })
     results.sort(key=lambda item: (str(item.get("year") or ""), str(item.get("archive_path") or "")), reverse=True)
     return {"returned": min(len(results), limit), "total_matching": len(results), "results": results[:limit]}

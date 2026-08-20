@@ -17,7 +17,7 @@ const TABS = [
   ['ader', 'Snapshot AdeR'],
 ];
 
-const endpointFor = (tab, f24Filters = {}) => {
+const endpointFor = (tab, f24Filters = {}, taxCodeFilters = {}) => {
   if (tab === 'dichiarazioni') {
     const params = new URLSearchParams();
     if (f24Filters.year) params.set('year', f24Filters.year);
@@ -32,10 +32,17 @@ const endpointFor = (tab, f24Filters = {}) => {
     params.set('limit', '1000');
     return `/api/fiscal/f24-rows?${params.toString()}`;
   }
+  if (tab === 'codici-tributo') {
+    const params = new URLSearchParams();
+    if (taxCodeFilters.query) params.set('q', taxCodeFilters.query);
+    if (taxCodeFilters.taxType) params.set('tipo_imposta', taxCodeFilters.taxType);
+    if (taxCodeFilters.context) params.set('contesto_uso', taxCodeFilters.context);
+    params.set('limit', '100');
+    return `/api/documenti/tax-codes?${params.toString()}`;
+  }
   return ({
     tributi: '/api/fiscal/obligations',
     'tributi-pagati': '/api/fiscal/obligations?status=PAID_ON_TIME',
-    'codici-tributo': '/api/documenti/tax-codes/status',
     'crosswalk-riscossione': '/api/fiscal/crosswalk',
     riscossione: '/api/fiscal/collections',
     ader: '/api/fiscal/ader-snapshots',
@@ -64,6 +71,13 @@ export default function SituazioneFiscale() {
   const [uploadCategory, setUploadCategory] = useState('automatica');
   const [uploading, setUploading] = useState(false);
   const declarationInput = useRef(null);
+  const [taxCodeQuery, setTaxCodeQuery] = useState('');
+  const [taxCodeType, setTaxCodeType] = useState('');
+  const [taxCodeContext, setTaxCodeContext] = useState('');
+  const [taxCodeFilters, setTaxCodeFilters] = useState({ query: '', taxType: '', context: '' });
+  const [taxCodeMeta, setTaxCodeMeta] = useState(null);
+  const [taxCodeOptions, setTaxCodeOptions] = useState({ tax_types: [], contexts: [] });
+  const [tabSources, setTabSources] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -72,11 +86,14 @@ export default function SituazioneFiscale() {
         api.get('/api/fiscal/summary'), api.get(endpointFor(tab, {
           year: tab === 'dichiarazioni' ? declarationYear : f24Year,
           declarationType, taxCode: f24TaxCode, creditsOnly: f24CreditsOnly,
-        })), api.get('/api/fiscal/review'),
+        }, taxCodeFilters)), api.get('/api/fiscal/review'),
       ]);
       setSummary(summaryResponse.data);
       const payload = dataResponse.data || {};
-      setItems(payload.items || (tab === 'codici-tributo' ? [payload] : []));
+      setItems(payload.items || []);
+      setTaxCodeMeta(payload.catalog || null);
+      setTaxCodeOptions(payload.filters || { tax_types: [], contexts: [] });
+      setTabSources(payload.sources || null);
       setTabMeta(payload.latest_import || null);
       setAderRelated({ ratePlans: payload.rate_plans || [], settlements: payload.settlements || [] });
       setReview(reviewResponse.data || { findings: [] });
@@ -84,7 +101,7 @@ export default function SituazioneFiscale() {
       setItems([]);
       toast.error('Situazione fiscale non disponibile', { description: error.response?.data?.detail || error.message });
     } finally { setLoading(false); }
-  }, [tab, f24Year, f24TaxCode, f24CreditsOnly, declarationYear, declarationType]);
+  }, [tab, f24Year, f24TaxCode, f24CreditsOnly, declarationYear, declarationType, taxCodeFilters]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -110,6 +127,17 @@ export default function SituazioneFiscale() {
     }
   };
 
+  const openDriveDocument = async documentId => {
+    try {
+      const response = await api.get(`/api/documenti/drive/index/document/${encodeURIComponent(documentId)}`);
+      const url = response.data?.drive_url;
+      if (!url) throw new Error('Link Drive non disponibile');
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      toast.error('Originale Drive non disponibile', { description: error.response?.data?.detail || error.message });
+    }
+  };
+
   const uploadDeclaration = async event => {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -129,6 +157,7 @@ export default function SituazioneFiscale() {
   };
 
   const counts = summary?.counts || {};
+  const driveCounts = summary?.drive_index?.counts || {};
   const activeLabel = useMemo(() => TABS.find(([id]) => id === tab)?.[1], [tab]);
   return (
     <PageLayout title="Situazione fiscale" icon="⚖️"
@@ -142,13 +171,19 @@ export default function SituazioneFiscale() {
             background: tab === id ? '#0f2744' : '#e2e8f0', color: tab === id ? '#fff' : '#0f2744' }}>{label}</Link>)}
       </nav>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 12, marginBottom: 18 }}>
-        <StatCard label="Documenti" value={counts.documents || 0} accent="primary" />
+        <StatCard label="Record fiscali DB" value={counts.documents || 0} accent="primary" />
+        <StatCard label="F24 in Drive" value={driveCounts.f24_documents || 0} accent="primary" />
+        <StatCard label="Righe tributo Drive" value={driveCounts.f24_rows || 0} accent="primary" />
+        <StatCard label="Dichiarazioni Drive" value={driveCounts.declarations || 0} accent="primary" />
         <StatCard label="Obblighi" value={counts.obligations || 0} accent="primary" />
         <StatCard label="Pagamenti" value={counts.payments || 0} accent="success" />
         <StatCard label="Cartelle" value={counts.collection_claims || 0} accent="warning" />
         <StatCard label="Snapshot AdeR" value={counts.ader_snapshots || 0} accent="primary" />
         <StatCard label="Da verificare" value={summary?.requires_review || 0} accent="danger" />
       </div>
+      {summary?.drive_index?.available === false && <Card style={{ marginBottom: 18 }} bodyStyle={{ padding: 14, color: '#92400e', background: '#fffbeb' }}>
+        <strong>Indice Drive non disponibile:</strong> {summary.drive_index.warning}. I record transitori del database restano consultabili.
+      </Card>}
       {(review.findings || []).length > 0 && <Card style={{ marginBottom: 18 }} bodyStyle={{ padding: 16 }}>
         <h3 style={{ marginTop: 0 }}>Controlli deterministici</h3>
         {review.findings.slice(0, 10).map((item, index) => <div key={`${item.code}-${index}`} style={{ padding: '8px 0', borderTop: '1px solid #e2e8f0' }}>
@@ -157,6 +192,10 @@ export default function SituazioneFiscale() {
       </Card>}
       <Card bodyStyle={{ padding: 16 }}>
         <h3 style={{ marginTop: 0 }}>{activeLabel}</h3>
+        {tabSources && (tab === 'f24' || tab === 'dichiarazioni') && <div style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 8, background: '#ecfdf5', color: '#166534' }}>
+          <strong>Fonti collegate:</strong> indice Drive {tabSources.drive_excel_index || 0} · archivio transitorio DB {tabSources.database || 0}
+          {tabSources.drive_warning && <div style={{ color: '#92400e', marginTop: 4 }}>Drive non disponibile: {tabSources.drive_warning}</div>}
+        </div>}
         {tab === 'f24' && <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end', marginBottom: 14 }}>
           <label>Anno<br /><select value={f24Year} onChange={event => setF24Year(event.target.value)} style={{ padding: 8 }}>
             <option value="">Tutti</option>{[2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019].map(year => <option key={year}>{year}</option>)}
@@ -179,6 +218,22 @@ export default function SituazioneFiscale() {
           <input ref={declarationInput} type="file" accept="application/pdf,.pdf" hidden onChange={uploadDeclaration} disabled={uploading} />
           <Button variant="primary" disabled={uploading} onClick={() => declarationInput.current?.click()}>{uploading ? 'Caricamento…' : 'Inserisci dichiarazione'}</Button>
         </div>}
+        {tab === 'codici-tributo' && <>
+          {taxCodeMeta && <div style={{ margin: '0 0 14px', padding: '12px 14px', borderRadius: 10, background: '#eef6ff', border: '1px solid #bfdbfe' }}>
+            <strong>Catalogo Agenzia delle Entrate:</strong> {taxCodeMeta.record_count} classificazioni · {taxCodeMeta.distinct_codes} codici distinti · acquisito il {taxCodeMeta.acquired_at || 'dato non disponibile'}
+          </div>}
+          <form onSubmit={event => { event.preventDefault(); setTaxCodeFilters({ query: taxCodeQuery, taxType: taxCodeType, context: taxCodeContext }); }}
+            style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end', marginBottom: 14 }}>
+            <label>Cerca codice o descrizione<br /><input value={taxCodeQuery} onChange={event => setTaxCodeQuery(event.target.value)} placeholder="es. 6001 o IVA mensile" style={{ padding: 8, width: 240 }} /></label>
+            <label>Tipo imposta<br /><select value={taxCodeType} onChange={event => setTaxCodeType(event.target.value)} style={{ padding: 8, maxWidth: 260 }}>
+              <option value="">Tutti</option>{taxCodeOptions.tax_types.map(value => <option key={value}>{value}</option>)}
+            </select></label>
+            <label>Contesto<br /><select value={taxCodeContext} onChange={event => setTaxCodeContext(event.target.value)} style={{ padding: 8, maxWidth: 260 }}>
+              <option value="">Tutti</option>{taxCodeOptions.contexts.map(value => <option key={value}>{value}</option>)}
+            </select></label>
+            <Button type="submit">Cerca</Button>
+          </form>
+        </>}
         {tab === 'ader' && tabMeta && <div style={{ margin: '0 0 14px', padding: '12px 14px', borderRadius: 10, background: '#eef6ff', border: '1px solid #bfdbfe' }}>
           <strong>Ultimo archivio verificato:</strong> snapshot {tabMeta.snapshot_date || 'data non disponibile'} · {tabMeta.analytic_count || 0} posizioni · SHA-256 {String(tabMeta.dataset_sha256 || '').slice(0, 16)}…
         </div>}
@@ -216,22 +271,32 @@ export default function SituazioneFiscale() {
           </section>
         </div>}
         {loading && <p>Caricamento…</p>}
-        {!loading && items.length === 0 && <p>Nessun dato importato. La presenza di Excel, ZIP o PDF non equivale a record nel database.</p>}
+        {!loading && items.length === 0 && <p>Nessun record disponibile nelle fonti collegate.</p>}
         {items.map((item, index) => {
           const entityId = item.id || item.collection_number || item.code || `row-${index}`;
           return <div key={entityId} style={{ padding: '12px 0', borderTop: '1px solid #e2e8f0' }}>
             <strong>{tab === 'f24' ? `${item.tax_code || item.section || 'Riga F24'} · ${item.reference_period || 'periodo non indicato'}` : tab === 'dichiarazioni' ? `${item.document_type} · ${item.filing_year || 'anno da verificare'}` : (labelForClaim(item) || item.code || item.version_id || 'Record fiscale')}</strong>{' '}
             {(item.calculated_business_status || item.business_status || item.payment_status || item.status) && <Badge variant={item.requires_review ? 'warning' : 'info'}>{item.calculated_business_status || item.business_status || item.payment_status || item.status}</Badge>}
             {item.official_description && <span style={{ marginLeft: 8 }}>{item.official_description}</span>}
+            {tab === 'codici-tributo' && <div style={{ marginTop: 6 }}>
+              <strong>{item.codice_tributo}</strong> · {item.descrizione}
+              <div style={{ marginTop: 4, color: '#475569' }}>
+                {item.tipo_imposta || 'Tipo non indicato'} · {item.tipo_contribuente || 'Contribuente non indicato'} · {item.contesto_uso || 'Contesto non indicato'}
+              </div>
+              {item.url_esempio_compilazione && <a href={item.url_esempio_compilazione} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 5 }}>Esempio ufficiale di compilazione</a>}
+            </div>}
             {tab === 'f24' && <div style={{ marginTop: 6, color: '#475569' }}>
               Debito {euro(item.debit_amount)} · Credito {euro(item.credit_amount)} · {item.payment_date || 'data non indicata'}
               {item.protocol && <> · protocollo {item.protocol}</>}
               {item.filename && <div style={{ marginTop: 4 }}>{item.filename}</div>}
+              {item.evidence_state && <div style={{ marginTop: 4 }}><strong>{item.evidence_state === 'MODELLO_F24_NON_PROVA_BANCARIA' ? 'Modello F24: pagamento bancario da verificare' : 'Quietanza documentale: banca da verificare'}</strong></div>}
             </div>}
             {tab === 'dichiarazioni' && <div style={{ marginTop: 8, color: '#475569' }}>
               <div>Anno d'imposta {item.tax_year || 'da verificare'}{item.protocol && <> · protocollo {item.protocol}</>}</div>
               <div>{item.filename}</div>
-              <Button size="sm" variant="secondary" style={{ marginTop: 8 }} onClick={() => openDocument(item.id)}>Apri dichiarazione</Button>
+              {item.source_kind === 'DRIVE_EXCEL_INDEX_DECLARATION'
+                ? <Button size="sm" variant="secondary" style={{ marginTop: 8 }} disabled={!item.document_id} onClick={() => openDriveDocument(item.document_id)}>Apri originale Drive</Button>
+                : <Button size="sm" variant="secondary" style={{ marginTop: 8 }} onClick={() => openDocument(item.id)}>Apri dichiarazione</Button>}
               {(item.f24_links || []).map(link => <div key={link.f24_id} style={{ marginTop: 10, padding: 10, border: '1px solid #cbd5e1', borderRadius: 8 }}>
                 <strong>F24 {link.filename || link.f24_id}</strong>{' '}<Badge variant={link.link_status === 'CONFIRMED' ? 'success' : 'warning'}>{link.link_status === 'CONFIRMED' ? 'Collegato' : 'Candidato da verificare'}</Badge>
                 <div>{(link.tax_rows || []).map(row => `${row.tax_code} ${row.reference_period || ''}`).join(' · ')}</div>
