@@ -26,6 +26,11 @@ def test_manifest_ha_fogli_collezioni_e_prefissi_unici():
     assert {"Codici tributo", "Import PartenoPay", "Email PartenoPay", "Verbali PartenoPay"} <= {
         row["foglio"] for row in manifest
     }
+    assert {
+        "foglio": "Stato sistema",
+        "collezione": "sistema_stato",
+        "prefisso": "SYS",
+    } in manifest
 
 
 def test_albero_drive_operativo_ha_le_cartelle_richieste():
