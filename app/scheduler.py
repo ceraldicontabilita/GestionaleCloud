@@ -198,6 +198,13 @@ async def scan_verbali_email_task():
         logger.error(traceback.format_exc())
 
 
+async def verbali_notifications_task():
+    from app.database import Database
+    from app.services.partenopay_archive_import import dispatch_due_verbali_notifications
+    result = await dispatch_due_verbali_notifications(Database.get_db())
+    logger.info("[SCHEDULER-VERBALI] notifiche: %s", result)
+
+
 async def check_scadenze_partite_task():
     """
     Task eseguito ogni giorno alle 7:00.
@@ -1221,14 +1228,26 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    # Task Scan Verbali Email ogni ora
+    # Task Scan Verbali Email giornaliero, in ora locale Europe/Rome.
+    from zoneinfo import ZoneInfo
+    from app.config import settings as scheduler_settings
     scheduler.add_job(
         scan_verbali_email_task,
-        'interval',
-        hours=1,
+        CronTrigger(
+            hour=max(0, min(23, int(scheduler_settings.VERBALI_EMAIL_SCAN_HOUR))),
+            minute=0,
+            timezone=ZoneInfo("Europe/Rome"),
+        ),
         id="verbali_email_scan",
-        name="Scan Email Verbali (ogni ora)",
+        name="Scan Email Verbali (giornaliero Europe/Rome)",
         replace_existing=True
+    )
+    scheduler.add_job(
+        verbali_notifications_task,
+        CronTrigger(hour=7, minute=10, timezone=ZoneInfo("Europe/Rome")),
+        id="verbali_notifications",
+        name="Promemoria verbali (giornaliero Europe/Rome)",
+        replace_existing=True,
     )
     
     # Task Scadenze Partite Aperte (sistema relazionale) - ogni giorno alle 7:00

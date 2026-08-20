@@ -25,7 +25,7 @@ Stati del Verbale:
 # NOTA 18/07/2026: scan-email è stata REINTRODOTTA (admin) per collaudare
 # on-demand l'orchestratore completato di verbali_email_logic (audit P1-4).
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from bson import ObjectId
@@ -116,6 +116,25 @@ async def scan_email_verbali(
     from app.services.verbali_email_logic import scan_email_con_priorita
     db = Database.get_db()
     return await scan_email_con_priorita(db, days_back=days_back)
+
+
+@router.post("/import-partenopay")
+@handle_errors
+async def importa_archivio_partenopay(
+    file: UploadFile = File(...),
+    dry_run: bool = Query(True, description="Valida senza scrivere; false applica l'import idempotente"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Importa il pacchetto PartenoPay preservando originali e provenienza."""
+    from app.services.partenopay_archive_import import import_partenopay_archive
+
+    content = await file.read()
+    if len(content) > 250 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Archivio oltre il limite di 250 MB")
+    try:
+        return await import_partenopay_archive(Database.get_db(), content, dry_run=dry_run)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/scan-gmail-attendibili")

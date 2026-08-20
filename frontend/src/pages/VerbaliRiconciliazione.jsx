@@ -46,6 +46,7 @@ export default function VerbaliRiconciliazione() {
   const [collegandoDriver, setCollegandoDriver] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [checkingEmail, setCheckingEmail] = useState(false);
 
   // Nuovi state per associazione manuale
   const [dipendenti, setDipendenti] = useState([]);
@@ -114,6 +115,24 @@ export default function VerbaliRiconciliazione() {
       setError('Errore durante scan fatture');
     } finally {
       setScanning(false);
+    }
+  };
+
+  const handleCheckEmail = async () => {
+    setCheckingEmail(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      const res = await api.post('/api/verbali-riconciliazione/scan-email?days_back=30');
+      const nuovi = res.data?.fase_2_nuovi?.verbali_nuovi || 0;
+      const quietanze = res.data?.fase_1_completamenti?.quietanze_trovate || 0;
+      setSuccessMsg(`Posta controllata: ${nuovi} nuovi verbali, ${quietanze} quietanze collegate.`);
+      loadDashboard();
+      loadVerbali();
+    } catch (e) {
+      setError(`Controllo posta non riuscito: ${e.response?.data?.detail || e.message}`);
+    } finally {
+      setCheckingEmail(false);
     }
   };
 
@@ -290,6 +309,15 @@ export default function VerbaliRiconciliazione() {
             flexWrap: 'wrap',
           }}
         >
+          <Button
+            variant="primary"
+            size="lg"
+            onClick={handleCheckEmail}
+            disabled={checkingEmail}
+            data-testid="btn-controlla-email"
+          >
+            {checkingEmail ? '⏳ Controllo posta...' : '📧 Controlla adesso'}
+          </Button>
           <Button
             variant="danger"
             size="lg"
