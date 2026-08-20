@@ -3,2387 +3,424 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Gestione pagine - GestionaleCloud</title>
+  <title>Mappa funzionale business owner</title>
   <style>
-    :root {
-      --bg:#f3f7fb; --card:#ffffff; --primary:#123a5b; --accent:#2a7ce2; --text:#1a2430; --muted:#58687b; --line:#dfe9f4; --soft:#edf4ff; --shadow:0 10px 28px rgba(18,58,91,0.08);
-    }
+    :root { --bg:#f3f7fb; --card:#fff; --primary:#123a5b; --accent:#2d7dd2; --line:#dfe7f3; --text:#1a2430; --muted:#5b6880; }
     * { box-sizing:border-box; }
-    body { margin:0; font-family:Arial,Helvetica,sans-serif; background:var(--bg); color:var(--text); }
-    .wrap { max-width:1200px; margin:0 auto; padding:24px 16px 50px; }
-    .hero { background:linear-gradient(135deg, var(--primary), #1d5f8d); color:white; padding:24px 20px; border-radius:18px; box-shadow:var(--shadow); margin-bottom:18px; }
+    body { margin:0; background:var(--bg); font-family:Arial,Helvetica,sans-serif; color:var(--text); }
+    .wrap { max-width:1200px; margin:0 auto; padding:24px 16px 44px; }
+    .hero { background:linear-gradient(135deg, var(--primary), #1d5e8f); color:white; border-radius:18px; padding:22px 20px; margin-bottom:18px; }
     .hero h1 { margin:0 0 10px; font-size:30px; }
-    .hero p { margin:0; line-height:1.6; color:#e6f0ff; }
-    .cards { display:grid; gap:18px; }
-    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; box-shadow:var(--shadow); }
-    .topline { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
-    .badge { display:inline-flex; min-width:42px; height:32px; align-items:center; justify-content:center; background:var(--soft); color:var(--primary); border-radius:8px; font-weight:800; }
-    .topline h3 { margin:0; font-size:18px; }
-    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
-    .box { background:#fafcff; border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
-    .label { font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); font-weight:700; margin-bottom:6px; }
-    .box p, .plain { margin:0; line-height:1.55; }
-    .line { font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); font-weight:700; margin:14px 0 6px; }
-    .reply { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-start; margin-top:12px; }
-    .reply label { display:inline-flex; align-items:center; gap:6px; padding:8px 10px; border-radius:8px; background:#f3f6fb; font-weight:700; }
-    textarea { flex:1 1 100%; min-height:60px; resize:vertical; border:1px solid var(--line); border-radius:10px; padding:10px 12px; font:inherit; }
-    .foot { margin-top:18px; padding-top:14px; border-top:1px solid var(--line); color:var(--muted); font-size:14px; }
-    @media (max-width:700px) { .hero h1 { font-size:24px; } .reply { flex-direction:column; } }
+    .hero p { margin:0; line-height:1.6; color:#eaf3ff; }
+    .notice { background:#fff7d6; border:1px solid #f1d587; border-radius:12px; padding:12px 14px; margin:0 0 18px; color:#5a451d; font-size:14px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; box-shadow:0 8px 22px rgba(17,58,93,0.06); }
+    .row-head { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+    .num { display:inline-flex; align-items:center; justify-content:center; width:38px; height:30px; background:#edf4ff; color:var(--primary); border-radius:8px; font-weight:800; }
+    h3 { margin:0; font-size:18px; }
+    .item { margin-top:8px; line-height:1.45; font-size:14px; }
+    strong { color:var(--primary); }
+    @media (max-width:700px) { .hero h1 { font-size:24px; } }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="hero">
-      <h1>Gestione funzionale del GestionaleCloud</h1>
-      <p>Questa pagina spiega, pagina per pagina, come nasce il dato, dove arriva, cosa usa e cosa alimenta. Non è una checklist vuota: è la mappa di funzionamento del sistema.</p>
-    </div>
-
-    <div class="cards">
-      
-    <div class="card">
-      <div class="topline">
-        <span class="badge">01</span>
-        <h3>Login</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Permette all’utente di autenticarsi e accedere al sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dal login dell’utente e dal profilo assegnato.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Username, password, sessione, profilo, ruoli e permessi.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Apre il resto del gestionale e determina quali aree dell’applicazione sono accessibili.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dal login dell’utente e dal profilo assegnato. e li usa per apre il resto del gestionale e determina quali aree dell’applicazione sono accessibili.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_1" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_1" value="NO"> NO</label>
-        <label><input type="radio" name="ans_1" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Login"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">02</span>
-        <h3>Gestione riservata</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Gestisce utenti, ruoli e autorizzazioni del sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle configurazioni di sicurezza e dai profili assegnati.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Utenti, ruoli, privilegi, configurazioni e permessi.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Definisce chi può usare quali pagine e quali azioni sono consentite.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle configurazioni di sicurezza e dai profili assegnati. e li usa per definisce chi può usare quali pagine e quali azioni sono consentite.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_2" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_2" value="NO"> NO</label>
-        <label><input type="radio" name="ans_2" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Gestione riservata"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">03</span>
-        <h3>Dashboard</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Mostra lo stato operativo del giorno: scadenze, movimenti, documenti e alert.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dai dati del sistema aggregati e aggiornati nel tempo.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Documenti, movimenti, banche, fatture, pagamenti e scadenze.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Guida il lavoro quotidiano e indica le priorità da controllare.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dai dati del sistema aggregati e aggiornati nel tempo. e li usa per guida il lavoro quotidiano e indica le priorità da controllare.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_3" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_3" value="NO"> NO</label>
-        <label><input type="radio" name="ans_3" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Dashboard"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">04</span>
-        <h3>Inserimento rapido</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Permette di creare un documento o un movimento in modo veloce.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalla scelta rapida dell’utente e dal modello già noto.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Dati già noti: cliente, fornitore, importo, documento, contesto.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Genera un nuovo record che poi viene elaborato in contabilità, banca o documenti.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalla scelta rapida dell’utente e dal modello già noto. e li usa per genera un nuovo record che poi viene elaborato in contabilità, banca o documenti.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_4" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_4" value="NO"> NO</label>
-        <label><input type="radio" name="ans_4" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Inserimento rapido"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">05</span>
-        <h3>Archivio fatture</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Archivia e consulta le fatture ricevute e i relativi dati fiscali.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dall’importazione della fattura o dall’XML ricevuto.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Fornitore, numero, data, importo, IVA, scadenza, XML/P7M.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta pagamenti, scadenze, contabilità e riconciliazione.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dall’importazione della fattura o dall’xml ricevuto. e li usa per alimenta pagamenti, scadenze, contabilità e riconciliazione.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_5" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_5" value="NO"> NO</label>
-        <label><input type="radio" name="ans_5" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Archivio fatture"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">06</span>
-        <h3>Corrispettivi</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Mostra i ricavi e i flussi monetari da corrispettivi e forme di pagamento.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dai movimenti elettronici, bancari e dai corrispettivi.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>RT, POS, accrediti, commissioni, movimenti bancari.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta la contabilità dei ricavi e la dashboard di tesoreria.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dai movimenti elettronici, bancari e dai corrispettivi. e li usa per alimenta la contabilità dei ricavi e la dashboard di tesoreria.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_6" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_6" value="NO"> NO</label>
-        <label><input type="radio" name="ans_6" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Corrispettivi"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">07</span>
-        <h3>Fornitori</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Tiene l’anagrafica dei fornitori e il loro storico di documenti.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dall’anagrafica e dai documenti ricevuti.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>P.IVA, codice fiscale, nome, alias, fatture e documenti associati.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta fatture, scadenze, controlli e relazioni con la contabilità.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dall’anagrafica e dai documenti ricevuti. e li usa per alimenta fatture, scadenze, controlli e relazioni con la contabilità.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_7" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_7" value="NO"> NO</label>
-        <label><input type="radio" name="ans_7" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Fornitori"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">08</span>
-        <h3>Prima Nota</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Mostra le scritture contabili e il loro impiego nella contabilità.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle registrazioni contabili generate dai fatti economici.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Movimenti di cassa, banca, fatture, cedolini, F24, ricavi e costi.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta bilancio, giornale, verifiche e report contabili.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle registrazioni contabili generate dai fatti economici. e li usa per alimenta bilancio, giornale, verifiche e report contabili.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_8" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_8" value="NO"> NO</label>
-        <label><input type="radio" name="ans_8" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Prima Nota"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">09</span>
-        <h3>Pulizia Prima Nota</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Mostra le scritture contabili e il loro impiego nella contabilità.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle registrazioni contabili generate dai fatti economici.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Movimenti di cassa, banca, fatture, cedolini, F24, ricavi e costi.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta bilancio, giornale, verifiche e report contabili.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle registrazioni contabili generate dai fatti economici. e li usa per alimenta bilancio, giornale, verifiche e report contabili.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_9" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_9" value="NO"> NO</label>
-        <label><input type="radio" name="ans_9" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Pulizia Prima Nota"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">10</span>
-        <h3>Cedolini e salari</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Gestisce stipendi, ritenute e pagamenti del personale.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dai cedolini e dalle rilevazioni del personale.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Dipendenti, cedolini, trattenute, rate, periodi e assegni.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta Prima Nota, cassa, ritenute e report fiscali.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dai cedolini e dalle rilevazioni del personale. e li usa per alimenta prima nota, cassa, ritenute e report fiscali.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_10" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_10" value="NO"> NO</label>
-        <label><input type="radio" name="ans_10" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Cedolini e salari"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">11</span>
-        <h3>Flotta noleggio</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Traccia veicoli, verbali, costi e relazioni nel settore noleggio.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dai contratti, dai verbali e dai documenti della flotta.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Targa, veicolo, driver, verbale, importi, ricevute e pagamento.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta flotta, costi, riconciliazione e stato di ciascun verbale.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dai contratti, dai verbali e dai documenti della flotta. e li usa per alimenta flotta, costi, riconciliazione e stato di ciascun verbale.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_11" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_11" value="NO"> NO</label>
-        <label><input type="radio" name="ans_11" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Flotta noleggio"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">12</span>
-        <h3>Verbali noleggio</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Traccia veicoli, verbali, costi e relazioni nel settore noleggio.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dai contratti, dai verbali e dai documenti della flotta.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Targa, veicolo, driver, verbale, importi, ricevute e pagamento.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta flotta, costi, riconciliazione e stato di ciascun verbale.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dai contratti, dai verbali e dai documenti della flotta. e li usa per alimenta flotta, costi, riconciliazione e stato di ciascun verbale.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_12" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_12" value="NO"> NO</label>
-        <label><input type="radio" name="ans_12" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Verbali noleggio"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">13</span>
-        <h3>Costi noleggio</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Traccia veicoli, verbali, costi e relazioni nel settore noleggio.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dai contratti, dai verbali e dai documenti della flotta.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Targa, veicolo, driver, verbale, importi, ricevute e pagamento.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta flotta, costi, riconciliazione e stato di ciascun verbale.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dai contratti, dai verbali e dai documenti della flotta. e li usa per alimenta flotta, costi, riconciliazione e stato di ciascun verbale.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_13" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_13" value="NO"> NO</label>
-        <label><input type="radio" name="ans_13" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Costi noleggio"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">14</span>
-        <h3>Dettaglio verbale</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Traccia veicoli, verbali, costi e relazioni nel settore noleggio.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dai contratti, dai verbali e dai documenti della flotta.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Targa, veicolo, driver, verbale, importi, ricevute e pagamento.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta flotta, costi, riconciliazione e stato di ciascun verbale.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dai contratti, dai verbali e dai documenti della flotta. e li usa per alimenta flotta, costi, riconciliazione e stato di ciascun verbale.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_14" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_14" value="NO"> NO</label>
-        <label><input type="radio" name="ans_14" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Dettaglio verbale"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">15</span>
-        <h3>Piano dei Conti</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Pagina operativa del gestionale.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Dati del dominio, documenti, movimenti e relazioni del sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta lo stato del modulo e le pagine collegate del sistema.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale. e li usa per alimenta lo stato del modulo e le pagine collegate del sistema.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_15" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_15" value="NO"> NO</label>
-        <label><input type="radio" name="ans_15" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Piano dei Conti"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">16</span>
-        <h3>Bilancio</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Raccoglie la contabilità di base e la sintesi economica dell’azienda.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalla Prima Nota e dai conti di contabilità.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Scritture, saldi, movimenti e conti.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Genera bilancio, verifiche, conti e report di controllo.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalla prima nota e dai conti di contabilità. e li usa per genera bilancio, verifiche, conti e report di controllo.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_16" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_16" value="NO"> NO</label>
-        <label><input type="radio" name="ans_16" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Bilancio"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">17</span>
-        <h3>Verifica Bilancio</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Raccoglie la contabilità di base e la sintesi economica dell’azienda.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalla Prima Nota e dai conti di contabilità.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Scritture, saldi, movimenti e conti.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Genera bilancio, verifiche, conti e report di controllo.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalla prima nota e dai conti di contabilità. e li usa per genera bilancio, verifiche, conti e report di controllo.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_17" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_17" value="NO"> NO</label>
-        <label><input type="radio" name="ans_17" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Verifica Bilancio"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">18</span>
-        <h3>Libro Giornale</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Raccoglie la contabilità di base e la sintesi economica dell’azienda.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalla Prima Nota e dai conti di contabilità.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Scritture, saldi, movimenti e conti.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Genera bilancio, verifiche, conti e report di controllo.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalla prima nota e dai conti di contabilità. e li usa per genera bilancio, verifiche, conti e report di controllo.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_18" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_18" value="NO"> NO</label>
-        <label><input type="radio" name="ans_18" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Libro Giornale"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">19</span>
-        <h3>Controllo mensile</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Pagina operativa del gestionale.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Dati del dominio, documenti, movimenti e relazioni del sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta lo stato del modulo e le pagine collegate del sistema.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale. e li usa per alimenta lo stato del modulo e le pagine collegate del sistema.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_19" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_19" value="NO"> NO</label>
-        <label><input type="radio" name="ans_19" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Controllo mensile"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">20</span>
-        <h3>Calendario fiscale</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Ricorda le scadenze fiscali, di pagamento e di controllo.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle date dei documenti e dalle regole di pagamento.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Date, scadenze, documenti e obblighi.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta alert, dashboard e pianificazione.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle date dei documenti e dalle regole di pagamento. e li usa per alimenta alert, dashboard e pianificazione.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_20" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_20" value="NO"> NO</label>
-        <label><input type="radio" name="ans_20" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Calendario fiscale"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">21</span>
-        <h3>Cespiti</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Gestisce pianificazione, finanziamenti, budget e analisi strategica.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce da dati di bilancio, pianificazione e dati di struttura.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Cespiti, mutui, budget, previsioni, dati economici.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce da dati di bilancio, pianificazione e dati di struttura. e li usa per alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_21" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_21" value="NO"> NO</label>
-        <label><input type="radio" name="ans_21" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Cespiti"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">22</span>
-        <h3>Finanziaria</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Gestisce pianificazione, finanziamenti, budget e analisi strategica.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce da dati di bilancio, pianificazione e dati di struttura.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Cespiti, mutui, budget, previsioni, dati economici.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce da dati di bilancio, pianificazione e dati di struttura. e li usa per alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_22" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_22" value="NO"> NO</label>
-        <label><input type="radio" name="ans_22" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Finanziaria"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">23</span>
-        <h3>Chiusura esercizio</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Pagina operativa del gestionale.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Dati del dominio, documenti, movimenti e relazioni del sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta lo stato del modulo e le pagine collegate del sistema.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale. e li usa per alimenta lo stato del modulo e le pagine collegate del sistema.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_23" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_23" value="NO"> NO</label>
-        <label><input type="radio" name="ans_23" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Chiusura esercizio"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">24</span>
-        <h3>Budget</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Gestisce pianificazione, finanziamenti, budget e analisi strategica.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce da dati di bilancio, pianificazione e dati di struttura.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Cespiti, mutui, budget, previsioni, dati economici.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce da dati di bilancio, pianificazione e dati di struttura. e li usa per alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_24" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_24" value="NO"> NO</label>
-        <label><input type="radio" name="ans_24" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Budget"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">25</span>
-        <h3>Mutui</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Gestisce pianificazione, finanziamenti, budget e analisi strategica.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce da dati di bilancio, pianificazione e dati di struttura.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Cespiti, mutui, budget, previsioni, dati economici.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce da dati di bilancio, pianificazione e dati di struttura. e li usa per alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_25" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_25" value="NO"> NO</label>
-        <label><input type="radio" name="ans_25" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Mutui"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">26</span>
-        <h3>Contabilita avanzata</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Pagina operativa del gestionale.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Dati del dominio, documenti, movimenti e relazioni del sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta lo stato del modulo e le pagine collegate del sistema.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale. e li usa per alimenta lo stato del modulo e le pagine collegate del sistema.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_26" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_26" value="NO"> NO</label>
-        <label><input type="radio" name="ans_26" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Contabilita avanzata"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">27</span>
-        <h3>Utile obiettivo</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Gestisce pianificazione, finanziamenti, budget e analisi strategica.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce da dati di bilancio, pianificazione e dati di struttura.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Cespiti, mutui, budget, previsioni, dati economici.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce da dati di bilancio, pianificazione e dati di struttura. e li usa per alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_27" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_27" value="NO"> NO</label>
-        <label><input type="radio" name="ans_27" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Utile obiettivo"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">28</span>
-        <h3>Previsioni acquisti</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Gestisce pianificazione, finanziamenti, budget e analisi strategica.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce da dati di bilancio, pianificazione e dati di struttura.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Cespiti, mutui, budget, previsioni, dati economici.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce da dati di bilancio, pianificazione e dati di struttura. e li usa per alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_28" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_28" value="NO"> NO</label>
-        <label><input type="radio" name="ans_28" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Previsioni acquisti"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">29</span>
-        <h3>Learning Machine</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Configura automatismi, AI, import email e integrazioni esterne.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle impostazioni del sistema e dalle regole di automazione.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Regole, canali, email, endpoint, classificazioni e settings.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta classificazione, import, alert, AI e integrazioni.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle impostazioni del sistema e dalle regole di automazione. e li usa per alimenta classificazione, import, alert, ai e integrazioni.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_29" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_29" value="NO"> NO</label>
-        <label><input type="radio" name="ans_29" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Learning Machine"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">30</span>
-        <h3>Scadenze</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Ricorda le scadenze fiscali, di pagamento e di controllo.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle date dei documenti e dalle regole di pagamento.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Date, scadenze, documenti e obblighi.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta alert, dashboard e pianificazione.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle date dei documenti e dalle regole di pagamento. e li usa per alimenta alert, dashboard e pianificazione.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_30" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_30" value="NO"> NO</label>
-        <label><input type="radio" name="ans_30" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Scadenze"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">31</span>
-        <h3>Ritenute</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Registra le trattenute fiscali e previdenziali.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dal dato del cedolino e dalle regole fiscali applicate.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Cedolini, trattenute, contributi, importi e dipendenti.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta la contabilità, i pagamenti e le dichiarazioni.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dal dato del cedolino e dalle regole fiscali applicate. e li usa per alimenta la contabilità, i pagamenti e le dichiarazioni.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_31" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_31" value="NO"> NO</label>
-        <label><input type="radio" name="ans_31" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Ritenute"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">32</span>
-        <h3>Riconciliazione dashboard</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Mostra lo stato operativo del giorno: scadenze, movimenti, documenti e alert.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dai dati del sistema aggregati e aggiornati nel tempo.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Documenti, movimenti, banche, fatture, pagamenti e scadenze.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Guida il lavoro quotidiano e indica le priorità da controllare.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dai dati del sistema aggregati e aggiornati nel tempo. e li usa per guida il lavoro quotidiano e indica le priorità da controllare.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_32" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_32" value="NO"> NO</label>
-        <label><input type="radio" name="ans_32" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Riconciliazione dashboard"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">33</span>
-        <h3>Riconciliazione banca</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_33" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_33" value="NO"> NO</label>
-        <label><input type="radio" name="ans_33" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Riconciliazione banca"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">34</span>
-        <h3>Riconciliazione F24</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_34" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_34" value="NO"> NO</label>
-        <label><input type="radio" name="ans_34" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Riconciliazione F24"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">35</span>
-        <h3>Riconciliazione stipendi</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_35" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_35" value="NO"> NO</label>
-        <label><input type="radio" name="ans_35" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Riconciliazione stipendi"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">36</span>
-        <h3>Riconciliazione documenti</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_36" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_36" value="NO"> NO</label>
-        <label><input type="radio" name="ans_36" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Riconciliazione documenti"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">37</span>
-        <h3>Archivio bonifici</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_37" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_37" value="NO"> NO</label>
-        <label><input type="radio" name="ans_37" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Archivio bonifici"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">38</span>
-        <h3>Assegni</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_38" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_38" value="NO"> NO</label>
-        <label><input type="radio" name="ans_38" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Assegni"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">39</span>
-        <h3>PayPal</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_39" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_39" value="NO"> NO</label>
-        <label><input type="radio" name="ans_39" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per PayPal"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">40</span>
-        <h3>Coerenza POS</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_40" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_40" value="NO"> NO</label>
-        <label><input type="radio" name="ans_40" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Coerenza POS"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">41</span>
-        <h3>Import documenti</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Contiene i documenti originali, il loro indice e la loro consultazione nel sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dall’importazione o dalla scansione del documento originale.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>File, PDF, XML, P7M, ZIP, Drive IDs, path, hash e metadata.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta l’archivio, la classificazione, il tracking e la relazione con le pratiche.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dall’importazione o dalla scansione del documento originale. e li usa per alimenta l’archivio, la classificazione, il tracking e la relazione con le pratiche.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_41" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_41" value="NO"> NO</label>
-        <label><input type="radio" name="ans_41" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Import documenti"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">42</span>
-        <h3>Archivio documenti</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Contiene i documenti originali, il loro indice e la loro consultazione nel sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dall’importazione o dalla scansione del documento originale.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>File, PDF, XML, P7M, ZIP, Drive IDs, path, hash e metadata.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta l’archivio, la classificazione, il tracking e la relazione con le pratiche.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dall’importazione o dalla scansione del documento originale. e li usa per alimenta l’archivio, la classificazione, il tracking e la relazione con le pratiche.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_42" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_42" value="NO"> NO</label>
-        <label><input type="radio" name="ans_42" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Archivio documenti"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">43</span>
-        <h3>Verifica coerenza</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Supporta controllo, amministrazione, sicurezza e gestione del sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle amministrazioni del sistema e dai controlli di qualità.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Dati di sistema, utenti, regole, verifiche, imposte e parametri.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle amministrazioni del sistema e dai controlli di qualità. e li usa per alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_43" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_43" value="NO"> NO</label>
-        <label><input type="radio" name="ans_43" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Verifica coerenza"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">44</span>
-        <h3>Movimenti banca</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_44" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_44" value="NO"> NO</label>
-        <label><input type="radio" name="ans_44" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Movimenti banca"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">45</span>
-        <h3>Commercialista</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Supporta controllo, amministrazione, sicurezza e gestione del sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle amministrazioni del sistema e dai controlli di qualità.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Dati di sistema, utenti, regole, verifiche, imposte e parametri.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle amministrazioni del sistema e dai controlli di qualità. e li usa per alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_45" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_45" value="NO"> NO</label>
-        <label><input type="radio" name="ans_45" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Commercialista"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">46</span>
-        <h3>Pianificazione</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Supporta controllo, amministrazione, sicurezza e gestione del sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle amministrazioni del sistema e dai controlli di qualità.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Dati di sistema, utenti, regole, verifiche, imposte e parametri.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle amministrazioni del sistema e dai controlli di qualità. e li usa per alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_46" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_46" value="NO"> NO</label>
-        <label><input type="radio" name="ans_46" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Pianificazione"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">47</span>
-        <h3>Visure</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Supporta controllo, amministrazione, sicurezza e gestione del sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle amministrazioni del sistema e dai controlli di qualità.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Dati di sistema, utenti, regole, verifiche, imposte e parametri.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle amministrazioni del sistema e dai controlli di qualità. e li usa per alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_47" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_47" value="NO"> NO</label>
-        <label><input type="radio" name="ans_47" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Visure"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">48</span>
-        <h3>Agenti AI</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Configura automatismi, AI, import email e integrazioni esterne.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle impostazioni del sistema e dalle regole di automazione.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Regole, canali, email, endpoint, classificazioni e settings.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta classificazione, import, alert, AI e integrazioni.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle impostazioni del sistema e dalle regole di automazione. e li usa per alimenta classificazione, import, alert, ai e integrazioni.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_48" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_48" value="NO"> NO</label>
-        <label><input type="radio" name="ans_48" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Agenti AI"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">49</span>
-        <h3>Impostazioni F24 email</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Configura automatismi, AI, import email e integrazioni esterne.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle impostazioni del sistema e dalle regole di automazione.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Regole, canali, email, endpoint, classificazioni e settings.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta classificazione, import, alert, AI e integrazioni.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle impostazioni del sistema e dalle regole di automazione. e li usa per alimenta classificazione, import, alert, ai e integrazioni.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_49" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_49" value="NO"> NO</label>
-        <label><input type="radio" name="ans_49" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Impostazioni F24 email"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">50</span>
-        <h3>Impostazioni AI</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Configura automatismi, AI, import email e integrazioni esterne.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle impostazioni del sistema e dalle regole di automazione.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Regole, canali, email, endpoint, classificazioni e settings.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta classificazione, import, alert, AI e integrazioni.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle impostazioni del sistema e dalle regole di automazione. e li usa per alimenta classificazione, import, alert, ai e integrazioni.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_50" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_50" value="NO"> NO</label>
-        <label><input type="radio" name="ans_50" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Impostazioni AI"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">51</span>
-        <h3>Integrazione OpenAPI</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Configura automatismi, AI, import email e integrazioni esterne.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle impostazioni del sistema e dalle regole di automazione.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Regole, canali, email, endpoint, classificazioni e settings.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta classificazione, import, alert, AI e integrazioni.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle impostazioni del sistema e dalle regole di automazione. e li usa per alimenta classificazione, import, alert, ai e integrazioni.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_51" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_51" value="NO"> NO</label>
-        <label><input type="radio" name="ans_51" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Integrazione OpenAPI"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">52</span>
-        <h3>Riconciliazione PagoPA</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Controlla che i documenti e i pagamenti si allineino con i movimenti bancari e di tesoreria.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dal confronto tra prova documentale e movimento effettivo.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Estratti conto, PayPal, PagoPA, bonifici, assegni, POS, ricezioni.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dal confronto tra prova documentale e movimento effettivo. e li usa per alimenta lo stato delle operazioni, la contabilità e gli alert di incongruenza.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_52" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_52" value="NO"> NO</label>
-        <label><input type="radio" name="ans_52" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Riconciliazione PagoPA"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">53</span>
-        <h3>Mittenti Email attendibili</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Configura automatismi, AI, import email e integrazioni esterne.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle impostazioni del sistema e dalle regole di automazione.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Regole, canali, email, endpoint, classificazioni e settings.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta classificazione, import, alert, AI e integrazioni.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle impostazioni del sistema e dalle regole di automazione. e li usa per alimenta classificazione, import, alert, ai e integrazioni.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_53" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_53" value="NO"> NO</label>
-        <label><input type="radio" name="ans_53" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Mittenti Email attendibili"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">54</span>
-        <h3>Admin sistema</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Supporta controllo, amministrazione, sicurezza e gestione del sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle amministrazioni del sistema e dai controlli di qualità.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Dati di sistema, utenti, regole, verifiche, imposte e parametri.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle amministrazioni del sistema e dai controlli di qualità. e li usa per alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_54" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_54" value="NO"> NO</label>
-        <label><input type="radio" name="ans_54" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Admin sistema"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">55</span>
-        <h3>Admin MFA</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Supporta controllo, amministrazione, sicurezza e gestione del sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle amministrazioni del sistema e dai controlli di qualità.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Dati di sistema, utenti, regole, verifiche, imposte e parametri.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle amministrazioni del sistema e dai controlli di qualità. e li usa per alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_55" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_55" value="NO"> NO</label>
-        <label><input type="radio" name="ans_55" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Admin MFA"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">56</span>
-        <h3>Elaborazioni amministrative</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Pagina operativa del gestionale.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Dati del dominio, documenti, movimenti e relazioni del sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta lo stato del modulo e le pagine collegate del sistema.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale. e li usa per alimenta lo stato del modulo e le pagine collegate del sistema.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_56" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_56" value="NO"> NO</label>
-        <label><input type="radio" name="ans_56" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Elaborazioni amministrative"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">57</span>
-        <h3>Elaborazioni legacy</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Pagina operativa del gestionale.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Dati del dominio, documenti, movimenti e relazioni del sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta lo stato del modulo e le pagine collegate del sistema.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dai fatti gestiti dal gestionale e dalla loro evidenza documentale. e li usa per alimenta lo stato del modulo e le pagine collegate del sistema.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_57" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_57" value="NO"> NO</label>
-        <label><input type="radio" name="ans_57" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Elaborazioni legacy"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">58</span>
-        <h3>Utenti</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Supporta controllo, amministrazione, sicurezza e gestione del sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle amministrazioni del sistema e dai controlli di qualità.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Dati di sistema, utenti, regole, verifiche, imposte e parametri.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle amministrazioni del sistema e dai controlli di qualità. e li usa per alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_58" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_58" value="NO"> NO</label>
-        <label><input type="radio" name="ans_58" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Utenti"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">59</span>
-        <h3>Mappa gestionale</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Supporta controllo, amministrazione, sicurezza e gestione del sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle amministrazioni del sistema e dai controlli di qualità.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Dati di sistema, utenti, regole, verifiche, imposte e parametri.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle amministrazioni del sistema e dai controlli di qualità. e li usa per alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_59" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_59" value="NO"> NO</label>
-        <label><input type="radio" name="ans_59" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Mappa gestionale"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">60</span>
-        <h3>Gestione IVA</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Supporta controllo, amministrazione, sicurezza e gestione del sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dalle amministrazioni del sistema e dai controlli di qualità.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Dati di sistema, utenti, regole, verifiche, imposte e parametri.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dalle amministrazioni del sistema e dai controlli di qualità. e li usa per alimenta coerenza, sicurezza, report e manutenzione applicativa.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_60" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_60" value="NO"> NO</label>
-        <label><input type="radio" name="ans_60" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Gestione IVA"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">61</span>
-        <h3>Verifica fatture estere</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Archivia e consulta le fatture ricevute e i relativi dati fiscali.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dall’importazione della fattura o dall’XML ricevuto.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Fornitore, numero, data, importo, IVA, scadenza, XML/P7M.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta pagamenti, scadenze, contabilità e riconciliazione.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dall’importazione della fattura o dall’xml ricevuto. e li usa per alimenta pagamenti, scadenze, contabilità e riconciliazione.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_61" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_61" value="NO"> NO</label>
-        <label><input type="radio" name="ans_61" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Verifica fatture estere"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">62</span>
-        <h3>Dati ISA</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Gestisce pianificazione, finanziamenti, budget e analisi strategica.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce da dati di bilancio, pianificazione e dati di struttura.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>Cespiti, mutui, budget, previsioni, dati economici.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce da dati di bilancio, pianificazione e dati di struttura. e li usa per alimenta obiettivi, analisi, decisioni e controllo di gestione.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_62" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_62" value="NO"> NO</label>
-        <label><input type="radio" name="ans_62" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Dati ISA"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">63</span>
-        <h3>Indice documentale Drive</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Contiene i documenti originali, il loro indice e la loro consultazione nel sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dall’importazione o dalla scansione del documento originale.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>File, PDF, XML, P7M, ZIP, Drive IDs, path, hash e metadata.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta l’archivio, la classificazione, il tracking e la relazione con le pratiche.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dall’importazione o dalla scansione del documento originale. e li usa per alimenta l’archivio, la classificazione, il tracking e la relazione con le pratiche.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_63" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_63" value="NO"> NO</label>
-        <label><input type="radio" name="ans_63" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Indice documentale Drive"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">64</span>
-        <h3>Atti amministrativi</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Contiene i documenti originali, il loro indice e la loro consultazione nel sistema.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dall’importazione o dalla scansione del documento originale.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>File, PDF, XML, P7M, ZIP, Drive IDs, path, hash e metadata.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta l’archivio, la classificazione, il tracking e la relazione con le pratiche.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dall’importazione o dalla scansione del documento originale. e li usa per alimenta l’archivio, la classificazione, il tracking e la relazione con le pratiche.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_64" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_64" value="NO"> NO</label>
-        <label><input type="radio" name="ans_64" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Atti amministrativi"></textarea>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="topline">
-        <span class="badge">65</span>
-        <h3>Situazione fiscale</h3>
-      </div>
-
-      <div class="grid">
-        <div class="box">
-          <div class="label">Funzione</div>
-          <p>Riepiloga lo stato fiscale dell’azienda e i suoi adempimenti.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dove nasce</div>
-          <p>Nasce dall’aggregazione dei fatti fiscali e delle prove disponibili.</p>
-        </div>
-        <div class="box">
-          <div class="label">Dati in entrata</div>
-          <p>IVA, F24, dichiarazioni, scadenze, pagamenti e documenti fiscali.</p>
-        </div>
-        <div class="box">
-          <div class="label">Cosa alimenta</div>
-          <p>Alimenta il controllo fiscale finale e la vista di sintesi aziendale.</p>
-        </div>
-      </div>
-
-      <div class="line">Come funziona in pratica</div>
-      <p class="plain">La pagina prende i dati da nasce dall’aggregazione dei fatti fiscali e delle prove disponibili. e li usa per alimenta il controllo fiscale finale e la vista di sintesi aziendale.</p>
-
-      <div class="reply">
-        <label><input type="radio" name="ans_65" value="SÌ" checked> SÌ</label>
-        <label><input type="radio" name="ans_65" value="NO"> NO</label>
-        <label><input type="radio" name="ans_65" value="MODIFICA"> MODIFICA</label>
-        <textarea placeholder="Nota: cosa vuoi correggere su questa pagina?" aria-label="Nota per Situazione fiscale"></textarea>
-      </div>
-    </div>
-    
-    </div>
-
-    <div class="foot">
-      Totale pagine: <strong>65</strong> · Risposte salvate nel browser · Puoi modificare ogni voce e scaricare il risultato come JSON/TXT.
+      <h1>Mappa funzionale del GestionaleCloud</h1>
+      <p>Versione business-owner: semplice, scansionabile e pensata per capire in pochi secondi come funziona ogni pagina del sistema.</p>
+    </div>
+    <div class="notice">Nota: non ho trovato alcun ZIP recente nel repository attivo. Ho usato il catalogo delle pagine e la logica corrente del repo come riferimento operativo.</div>
+    <div class="grid">
+      <div class="card">
+      <div class="row-head"><span class="num">01</span><h3>Login</h3></div>
+      <div class="item"><strong>Funzione:</strong> Accede al sistema</div>
+      <div class="item"><strong>Arriva da:</strong> utente, password, permessi</div>
+      <div class="item"><strong>Serve a:</strong> apre il gestionale e determina chi vede cosa</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">02</span><h3>Gestione riservata</h3></div>
+      <div class="item"><strong>Funzione:</strong> Gestisce utenti e autorizzazioni</div>
+      <div class="item"><strong>Arriva da:</strong> ruoli, utenti, permessi</div>
+      <div class="item"><strong>Serve a:</strong> decide chi può usare le pagine</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">03</span><h3>Dashboard</h3></div>
+      <div class="item"><strong>Funzione:</strong> Mostra lo stato operativo</div>
+      <div class="item"><strong>Arriva da:</strong> scadenze, movimenti, fatture, banca</div>
+      <div class="item"><strong>Serve a:</strong> priorità, alert e situazione del giorno</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">04</span><h3>Inserimento rapido</h3></div>
+      <div class="item"><strong>Funzione:</strong> Crea record velocemente</div>
+      <div class="item"><strong>Arriva da:</strong> dati noti del sistema</div>
+      <div class="item"><strong>Serve a:</strong> apre nuovo documento o movimento</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">05</span><h3>Archivio fatture</h3></div>
+      <div class="item"><strong>Funzione:</strong> Gestisce fatture e fornitori</div>
+      <div class="item"><strong>Arriva da:</strong> fornitore, importo, data, IVA, documento</div>
+      <div class="item"><strong>Serve a:</strong> scadenze, pagamento, contabilità</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">06</span><h3>Corrispettivi</h3></div>
+      <div class="item"><strong>Funzione:</strong> Controlla i ricavi</div>
+      <div class="item"><strong>Arriva da:</strong> RT, POS, movimenti bancari</div>
+      <div class="item"><strong>Serve a:</strong> ricavi, cassa e stato contabile</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">07</span><h3>Fornitori</h3></div>
+      <div class="item"><strong>Funzione:</strong> Gestisce fatture e fornitori</div>
+      <div class="item"><strong>Arriva da:</strong> fornitore, importo, data, IVA, documento</div>
+      <div class="item"><strong>Serve a:</strong> scadenze, pagamento, contabilità</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">08</span><h3>Prima Nota</h3></div>
+      <div class="item"><strong>Funzione:</strong> Registra e corregge la contabilità</div>
+      <div class="item"><strong>Arriva da:</strong> fatture, movimenti, cassa, banca</div>
+      <div class="item"><strong>Serve a:</strong> bilancio, giornale e verifica</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">09</span><h3>Pulizia Prima Nota</h3></div>
+      <div class="item"><strong>Funzione:</strong> Registra e corregge la contabilità</div>
+      <div class="item"><strong>Arriva da:</strong> fatture, movimenti, cassa, banca</div>
+      <div class="item"><strong>Serve a:</strong> bilancio, giornale e verifica</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">10</span><h3>Cedolini e salari</h3></div>
+      <div class="item"><strong>Funzione:</strong> Gestisce stipendio e trattenute</div>
+      <div class="item"><strong>Arriva da:</strong> dipendenti, cedolini, importi</div>
+      <div class="item"><strong>Serve a:</strong> pagamento, contabilità e dichiarazioni</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">11</span><h3>Flotta noleggio</h3></div>
+      <div class="item"><strong>Funzione:</strong> Gestisce flotta e verbali</div>
+      <div class="item"><strong>Arriva da:</strong> veicoli, targhe, driver, verbali</div>
+      <div class="item"><strong>Serve a:</strong> costi, pagamenti e stato verbale</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">12</span><h3>Verbali noleggio</h3></div>
+      <div class="item"><strong>Funzione:</strong> Gestisce flotta e verbali</div>
+      <div class="item"><strong>Arriva da:</strong> veicoli, targhe, driver, verbali</div>
+      <div class="item"><strong>Serve a:</strong> costi, pagamenti e stato verbale</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">13</span><h3>Costi noleggio</h3></div>
+      <div class="item"><strong>Funzione:</strong> Gestisce flotta e verbali</div>
+      <div class="item"><strong>Arriva da:</strong> veicoli, targhe, driver, verbali</div>
+      <div class="item"><strong>Serve a:</strong> costi, pagamenti e stato verbale</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">14</span><h3>Dettaglio verbale</h3></div>
+      <div class="item"><strong>Funzione:</strong> Gestisce flotta e verbali</div>
+      <div class="item"><strong>Arriva da:</strong> veicoli, targhe, driver, verbali</div>
+      <div class="item"><strong>Serve a:</strong> costi, pagamenti e stato verbale</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">15</span><h3>Piano dei Conti</h3></div>
+      <div class="item"><strong>Funzione:</strong> Struttura e controlla la contabilità</div>
+      <div class="item"><strong>Arriva da:</strong> scritture, saldi, conti</div>
+      <div class="item"><strong>Serve a:</strong> bilancio, verifiche e report</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">16</span><h3>Bilancio</h3></div>
+      <div class="item"><strong>Funzione:</strong> Struttura e controlla la contabilità</div>
+      <div class="item"><strong>Arriva da:</strong> scritture, saldi, conti</div>
+      <div class="item"><strong>Serve a:</strong> bilancio, verifiche e report</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">17</span><h3>Verifica Bilancio</h3></div>
+      <div class="item"><strong>Funzione:</strong> Struttura e controlla la contabilità</div>
+      <div class="item"><strong>Arriva da:</strong> scritture, saldi, conti</div>
+      <div class="item"><strong>Serve a:</strong> bilancio, verifiche e report</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">18</span><h3>Libro Giornale</h3></div>
+      <div class="item"><strong>Funzione:</strong> Struttura e controlla la contabilità</div>
+      <div class="item"><strong>Arriva da:</strong> scritture, saldi, conti</div>
+      <div class="item"><strong>Serve a:</strong> bilancio, verifiche e report</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">19</span><h3>Controllo mensile</h3></div>
+      <div class="item"><strong>Funzione:</strong> Struttura e controlla la contabilità</div>
+      <div class="item"><strong>Arriva da:</strong> scritture, saldi, conti</div>
+      <div class="item"><strong>Serve a:</strong> bilancio, verifiche e report</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">20</span><h3>Calendario fiscale</h3></div>
+      <div class="item"><strong>Funzione:</strong> Gestisce scadenze e tempi</div>
+      <div class="item"><strong>Arriva da:</strong> date, pagamenti, obblighi</div>
+      <div class="item"><strong>Serve a:</strong> alert e pianificazione</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">21</span><h3>Cespiti</h3></div>
+      <div class="item"><strong>Funzione:</strong> Pianifica e controlla il futuro economico</div>
+      <div class="item"><strong>Arriva da:</strong> budget, mutui, previsioni</div>
+      <div class="item"><strong>Serve a:</strong> decisioni e monitoraggio</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">22</span><h3>Finanziaria</h3></div>
+      <div class="item"><strong>Funzione:</strong> Pianifica e controlla il futuro economico</div>
+      <div class="item"><strong>Arriva da:</strong> budget, mutui, previsioni</div>
+      <div class="item"><strong>Serve a:</strong> decisioni e monitoraggio</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">23</span><h3>Chiusura esercizio</h3></div>
+      <div class="item"><strong>Funzione:</strong> Pagina del gestionale</div>
+      <div class="item"><strong>Arriva da:</strong> dati di business</div>
+      <div class="item"><strong>Serve a:</strong> stato e relazione con le altre aree</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">24</span><h3>Budget</h3></div>
+      <div class="item"><strong>Funzione:</strong> Pianifica e controlla il futuro economico</div>
+      <div class="item"><strong>Arriva da:</strong> budget, mutui, previsioni</div>
+      <div class="item"><strong>Serve a:</strong> decisioni e monitoraggio</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">25</span><h3>Mutui</h3></div>
+      <div class="item"><strong>Funzione:</strong> Pianifica e controlla il futuro economico</div>
+      <div class="item"><strong>Arriva da:</strong> budget, mutui, previsioni</div>
+      <div class="item"><strong>Serve a:</strong> decisioni e monitoraggio</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">26</span><h3>Contabilita avanzata</h3></div>
+      <div class="item"><strong>Funzione:</strong> Pagina del gestionale</div>
+      <div class="item"><strong>Arriva da:</strong> dati di business</div>
+      <div class="item"><strong>Serve a:</strong> stato e relazione con le altre aree</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">27</span><h3>Utile obiettivo</h3></div>
+      <div class="item"><strong>Funzione:</strong> Pagina del gestionale</div>
+      <div class="item"><strong>Arriva da:</strong> dati di business</div>
+      <div class="item"><strong>Serve a:</strong> stato e relazione con le altre aree</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">28</span><h3>Previsioni acquisti</h3></div>
+      <div class="item"><strong>Funzione:</strong> Pianifica e controlla il futuro economico</div>
+      <div class="item"><strong>Arriva da:</strong> budget, mutui, previsioni</div>
+      <div class="item"><strong>Serve a:</strong> decisioni e monitoraggio</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">29</span><h3>Learning Machine</h3></div>
+      <div class="item"><strong>Funzione:</strong> Configura automazione e AI</div>
+      <div class="item"><strong>Arriva da:</strong> regole, email, endpoint, settings</div>
+      <div class="item"><strong>Serve a:</strong> classificazione, import, integrazione</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">30</span><h3>Scadenze</h3></div>
+      <div class="item"><strong>Funzione:</strong> Gestisce scadenze e tempi</div>
+      <div class="item"><strong>Arriva da:</strong> date, pagamenti, obblighi</div>
+      <div class="item"><strong>Serve a:</strong> alert e pianificazione</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">31</span><h3>Ritenute</h3></div>
+      <div class="item"><strong>Funzione:</strong> Gestisce stipendio e trattenute</div>
+      <div class="item"><strong>Arriva da:</strong> dipendenti, cedolini, importi</div>
+      <div class="item"><strong>Serve a:</strong> pagamento, contabilità e dichiarazioni</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">32</span><h3>Riconciliazione dashboard</h3></div>
+      <div class="item"><strong>Funzione:</strong> Mostra lo stato operativo</div>
+      <div class="item"><strong>Arriva da:</strong> scadenze, movimenti, fatture, banca</div>
+      <div class="item"><strong>Serve a:</strong> priorità, alert e situazione del giorno</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">33</span><h3>Riconciliazione banca</h3></div>
+      <div class="item"><strong>Funzione:</strong> Confronta prove e movimenti</div>
+      <div class="item"><strong>Arriva da:</strong> banca, PayPal, POS, bonifici</div>
+      <div class="item"><strong>Serve a:</strong> stato coerente e alert</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">34</span><h3>Riconciliazione F24</h3></div>
+      <div class="item"><strong>Funzione:</strong> Confronta prove e movimenti</div>
+      <div class="item"><strong>Arriva da:</strong> banca, PayPal, POS, bonifici</div>
+      <div class="item"><strong>Serve a:</strong> stato coerente e alert</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">35</span><h3>Riconciliazione stipendi</h3></div>
+      <div class="item"><strong>Funzione:</strong> Confronta prove e movimenti</div>
+      <div class="item"><strong>Arriva da:</strong> banca, PayPal, POS, bonifici</div>
+      <div class="item"><strong>Serve a:</strong> stato coerente e alert</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">36</span><h3>Riconciliazione documenti</h3></div>
+      <div class="item"><strong>Funzione:</strong> Confronta prove e movimenti</div>
+      <div class="item"><strong>Arriva da:</strong> banca, PayPal, POS, bonifici</div>
+      <div class="item"><strong>Serve a:</strong> stato coerente e alert</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">37</span><h3>Archivio bonifici</h3></div>
+      <div class="item"><strong>Funzione:</strong> Confronta prove e movimenti</div>
+      <div class="item"><strong>Arriva da:</strong> banca, PayPal, POS, bonifici</div>
+      <div class="item"><strong>Serve a:</strong> stato coerente e alert</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">38</span><h3>Assegni</h3></div>
+      <div class="item"><strong>Funzione:</strong> Confronta prove e movimenti</div>
+      <div class="item"><strong>Arriva da:</strong> banca, PayPal, POS, bonifici</div>
+      <div class="item"><strong>Serve a:</strong> stato coerente e alert</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">39</span><h3>PayPal</h3></div>
+      <div class="item"><strong>Funzione:</strong> Confronta prove e movimenti</div>
+      <div class="item"><strong>Arriva da:</strong> banca, PayPal, POS, bonifici</div>
+      <div class="item"><strong>Serve a:</strong> stato coerente e alert</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">40</span><h3>Coerenza POS</h3></div>
+      <div class="item"><strong>Funzione:</strong> Confronta prove e movimenti</div>
+      <div class="item"><strong>Arriva da:</strong> banca, PayPal, POS, bonifici</div>
+      <div class="item"><strong>Serve a:</strong> stato coerente e alert</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">41</span><h3>Import documenti</h3></div>
+      <div class="item"><strong>Funzione:</strong> Archivio e consultazione documentale</div>
+      <div class="item"><strong>Arriva da:</strong> PDF, XML, file, hash, Drive</div>
+      <div class="item"><strong>Serve a:</strong> archivio, relazioni e evidenze</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">42</span><h3>Archivio documenti</h3></div>
+      <div class="item"><strong>Funzione:</strong> Archivio e consultazione documentale</div>
+      <div class="item"><strong>Arriva da:</strong> PDF, XML, file, hash, Drive</div>
+      <div class="item"><strong>Serve a:</strong> archivio, relazioni e evidenze</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">43</span><h3>Verifica coerenza</h3></div>
+      <div class="item"><strong>Funzione:</strong> Supporta controllo e amministrazione</div>
+      <div class="item"><strong>Arriva da:</strong> dati, utenti, regole, imposte</div>
+      <div class="item"><strong>Serve a:</strong> controlli, sicurezza e gestione</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">44</span><h3>Movimenti banca</h3></div>
+      <div class="item"><strong>Funzione:</strong> Confronta prove e movimenti</div>
+      <div class="item"><strong>Arriva da:</strong> banca, PayPal, POS, bonifici</div>
+      <div class="item"><strong>Serve a:</strong> stato coerente e alert</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">45</span><h3>Commercialista</h3></div>
+      <div class="item"><strong>Funzione:</strong> Supporta controllo e amministrazione</div>
+      <div class="item"><strong>Arriva da:</strong> dati, utenti, regole, imposte</div>
+      <div class="item"><strong>Serve a:</strong> controlli, sicurezza e gestione</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">46</span><h3>Pianificazione</h3></div>
+      <div class="item"><strong>Funzione:</strong> Supporta controllo e amministrazione</div>
+      <div class="item"><strong>Arriva da:</strong> dati, utenti, regole, imposte</div>
+      <div class="item"><strong>Serve a:</strong> controlli, sicurezza e gestione</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">47</span><h3>Visure</h3></div>
+      <div class="item"><strong>Funzione:</strong> Supporta controllo e amministrazione</div>
+      <div class="item"><strong>Arriva da:</strong> dati, utenti, regole, imposte</div>
+      <div class="item"><strong>Serve a:</strong> controlli, sicurezza e gestione</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">48</span><h3>Agenti AI</h3></div>
+      <div class="item"><strong>Funzione:</strong> Configura automazione e AI</div>
+      <div class="item"><strong>Arriva da:</strong> regole, email, endpoint, settings</div>
+      <div class="item"><strong>Serve a:</strong> classificazione, import, integrazione</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">49</span><h3>Impostazioni F24 email</h3></div>
+      <div class="item"><strong>Funzione:</strong> Configura automazione e AI</div>
+      <div class="item"><strong>Arriva da:</strong> regole, email, endpoint, settings</div>
+      <div class="item"><strong>Serve a:</strong> classificazione, import, integrazione</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">50</span><h3>Impostazioni AI</h3></div>
+      <div class="item"><strong>Funzione:</strong> Configura automazione e AI</div>
+      <div class="item"><strong>Arriva da:</strong> regole, email, endpoint, settings</div>
+      <div class="item"><strong>Serve a:</strong> classificazione, import, integrazione</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">51</span><h3>Integrazione OpenAPI</h3></div>
+      <div class="item"><strong>Funzione:</strong> Configura automazione e AI</div>
+      <div class="item"><strong>Arriva da:</strong> regole, email, endpoint, settings</div>
+      <div class="item"><strong>Serve a:</strong> classificazione, import, integrazione</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">52</span><h3>Riconciliazione PagoPA</h3></div>
+      <div class="item"><strong>Funzione:</strong> Confronta prove e movimenti</div>
+      <div class="item"><strong>Arriva da:</strong> banca, PayPal, POS, bonifici</div>
+      <div class="item"><strong>Serve a:</strong> stato coerente e alert</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">53</span><h3>Mittenti Email attendibili</h3></div>
+      <div class="item"><strong>Funzione:</strong> Configura automazione e AI</div>
+      <div class="item"><strong>Arriva da:</strong> regole, email, endpoint, settings</div>
+      <div class="item"><strong>Serve a:</strong> classificazione, import, integrazione</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">54</span><h3>Admin sistema</h3></div>
+      <div class="item"><strong>Funzione:</strong> Supporta controllo e amministrazione</div>
+      <div class="item"><strong>Arriva da:</strong> dati, utenti, regole, imposte</div>
+      <div class="item"><strong>Serve a:</strong> controlli, sicurezza e gestione</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">55</span><h3>Admin MFA</h3></div>
+      <div class="item"><strong>Funzione:</strong> Supporta controllo e amministrazione</div>
+      <div class="item"><strong>Arriva da:</strong> dati, utenti, regole, imposte</div>
+      <div class="item"><strong>Serve a:</strong> controlli, sicurezza e gestione</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">56</span><h3>Elaborazioni amministrative</h3></div>
+      <div class="item"><strong>Funzione:</strong> Pagina del gestionale</div>
+      <div class="item"><strong>Arriva da:</strong> dati di business</div>
+      <div class="item"><strong>Serve a:</strong> stato e relazione con le altre aree</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">57</span><h3>Elaborazioni legacy</h3></div>
+      <div class="item"><strong>Funzione:</strong> Pagina del gestionale</div>
+      <div class="item"><strong>Arriva da:</strong> dati di business</div>
+      <div class="item"><strong>Serve a:</strong> stato e relazione con le altre aree</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">58</span><h3>Utenti</h3></div>
+      <div class="item"><strong>Funzione:</strong> Supporta controllo e amministrazione</div>
+      <div class="item"><strong>Arriva da:</strong> dati, utenti, regole, imposte</div>
+      <div class="item"><strong>Serve a:</strong> controlli, sicurezza e gestione</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">59</span><h3>Mappa gestionale</h3></div>
+      <div class="item"><strong>Funzione:</strong> Pagina del gestionale</div>
+      <div class="item"><strong>Arriva da:</strong> dati di business</div>
+      <div class="item"><strong>Serve a:</strong> stato e relazione con le altre aree</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">60</span><h3>Gestione IVA</h3></div>
+      <div class="item"><strong>Funzione:</strong> Supporta controllo e amministrazione</div>
+      <div class="item"><strong>Arriva da:</strong> dati, utenti, regole, imposte</div>
+      <div class="item"><strong>Serve a:</strong> controlli, sicurezza e gestione</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">61</span><h3>Verifica fatture estere</h3></div>
+      <div class="item"><strong>Funzione:</strong> Gestisce fatture e fornitori</div>
+      <div class="item"><strong>Arriva da:</strong> fornitore, importo, data, IVA, documento</div>
+      <div class="item"><strong>Serve a:</strong> scadenze, pagamento, contabilità</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">62</span><h3>Dati ISA</h3></div>
+      <div class="item"><strong>Funzione:</strong> Pagina del gestionale</div>
+      <div class="item"><strong>Arriva da:</strong> dati di business</div>
+      <div class="item"><strong>Serve a:</strong> stato e relazione con le altre aree</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">63</span><h3>Indice documentale Drive</h3></div>
+      <div class="item"><strong>Funzione:</strong> Archivio e consultazione documentale</div>
+      <div class="item"><strong>Arriva da:</strong> PDF, XML, file, hash, Drive</div>
+      <div class="item"><strong>Serve a:</strong> archivio, relazioni e evidenze</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">64</span><h3>Atti amministrativi</h3></div>
+      <div class="item"><strong>Funzione:</strong> Archivio e consultazione documentale</div>
+      <div class="item"><strong>Arriva da:</strong> PDF, XML, file, hash, Drive</div>
+      <div class="item"><strong>Serve a:</strong> archivio, relazioni e evidenze</div>
+    </div>
+<div class="card">
+      <div class="row-head"><span class="num">65</span><h3>Situazione fiscale</h3></div>
+      <div class="item"><strong>Funzione:</strong> Riepiloga lo stato fiscale</div>
+      <div class="item"><strong>Arriva da:</strong> IVA, F24, dichiarazioni, scadenze</div>
+      <div class="item"><strong>Serve a:</strong> stato fiscale complessivo</div>
+    </div>
     </div>
   </div>
 </body>
