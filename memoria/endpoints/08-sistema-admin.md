@@ -7,7 +7,7 @@ storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. La specifica normativa unica è `PROMPT_MASTER.md`; questo file non può contraddirla.
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
 
 Documentazione endpoint dei moduli di sistema: autenticazione, amministrazione, configurazione, dashboard/report/export, scadenze/alert/notifiche, operazioni batch e coerenza dati, commercialista, integrazioni esterne (OpenAPI.it, WhatsApp), API pubbliche/alias e dizionario articoli.
 

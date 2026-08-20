@@ -7,7 +7,7 @@ storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. La specifica normativa unica è `PROMPT_MASTER.md`; questo file non può contraddirla.
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
 
 Fonte specifica: `Riconciliazione — Flussi automatici — Logica relazionale completa.txt`
 (fornita dall'utente, il documento più complesso dei 10). Verificato leggendo il codice

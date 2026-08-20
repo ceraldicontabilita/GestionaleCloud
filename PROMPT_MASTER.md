@@ -1,10 +1,13 @@
 # PROMPT MASTER — GestionaleCloud / Ceraldi ERP
 
 <!-- gestionalecloud-doc
-status: current
+status: historical
 reviewed_at: 2026-08-20
 storage_architecture: drive-only
 -->
+
+> [!NOTE]
+> Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
 
 > Questa è l'unica specifica normativa e atomica del progetto. Codice, test e
 > configurazione live verificata prevalgono soltanto quando provano uno stato

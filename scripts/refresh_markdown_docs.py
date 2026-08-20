@@ -26,7 +26,6 @@ CURRENT = {
     "CLAUDE.md",
     "DESIGN.md",
     "LOGICA_FUNZIONAMENTO.md",
-    "PROMPT_MASTER.md",
     "PRODUCT.md",
     "README.md",
     "docs/FISCAL_ACCOUNTING_POLICY.md",
@@ -71,7 +70,6 @@ def tracked_markdown() -> list[str]:
     paths = {line.strip().replace("\\", "/") for line in result.stdout.splitlines() if line.strip()}
     paths.discard("memoria/MAPPA_COLLEZIONI.md")
     paths.discard("memoria/DISASTER_RECOVERY_MONGODB.md")
-    paths.add("PROMPT_MASTER.md")
     paths.add("memoria/DISASTER_RECOVERY_DRIVE.md")
     paths.add("docs/MARKDOWN_INVENTORY.md")
     return sorted(path for path in paths if (ROOT / path).exists() or path == "docs/MARKDOWN_INVENTORY.md")
@@ -84,9 +82,12 @@ def classify(path: str) -> str:
         return "current"
     if path in REFERENCE or path.startswith("memoria/moduli/"):
         return "reference"
-    if path.startswith("memoria/endpoints/"):
+    if path.startswith("memoria/endpoints/") and path not in {
+        "memoria/endpoints/09-frontend-fatture-riconciliazione-audit.md",
+        "memoria/endpoints/RICONCILIAZIONE_AUDIT.md",
+    }:
         return "reference"
-    raise ValueError(f"Markdown non classificato: {path}")
+    return "historical"
 
 
 def marker(status: str) -> str:
@@ -100,11 +101,19 @@ def marker(status: str) -> str:
 
 
 def notice(status: str) -> str:
+    if status == "historical":
+        return (
+            "> [!NOTE]\n"
+            "> Snapshot storico: non descrive lo stato operativo corrente. "
+            "Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, "
+            "`CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`."
+        )
     if status == "reference":
         return (
             "> [!IMPORTANT]\n"
-            "> Documento di riferimento del dominio. La specifica normativa "
-            "unica è `PROMPT_MASTER.md`; questo file non può contraddirla."
+            "> Documento di riferimento del dominio. Per persistenza e cutover "
+            "vale l'architettura Drive-only descritta nei documenti correnti; "
+            "eventuali nomi Mongo/collection restano compatibilità o contesto storico."
         )
     return ""
 
@@ -139,19 +148,17 @@ def update_document(path: str, status: str) -> None:
 
 
 def inventory(paths: list[str]) -> str:
-    counts = {status: 0 for status in ("current", "reference", "generated")}
+    counts = {status: 0 for status in ("current", "reference", "generated", "historical")}
     rows: list[str] = []
     for path in paths:
         status = classify(path)
         counts[status] += 1
-        if path == "PROMPT_MASTER.md":
-            role = "Unica specifica normativa e atomica"
-        else:
-            role = {
-                "current": "Guida corrente subordinata al Prompt Master",
-                "reference": "Dettaglio di dominio subordinato al Prompt Master",
-                "generated": "Artefatto meccanico; rigenerare dalla sorgente indicata",
-            }[status]
+        role = {
+            "current": "Autorità operativa corrente",
+            "reference": "Dettaglio di dominio subordinato ai documenti correnti",
+            "generated": "Artefatto meccanico; rigenerare dalla sorgente indicata",
+            "historical": "Snapshot/audit datato, conservato come evidenza",
+        }[status]
         rows.append(f"| `{path}` | `{status}` | {role} |")
 
     return f"""# Inventario Markdown — GestionaleCloud
@@ -168,12 +175,14 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `current` | Descrive il comportamento o le regole operative correnti. |
 | `reference` | Approfondimento di dominio; l'architettura corrente prevale. |
 | `generated` | Output di uno script, da non modificare manualmente. |
+| `historical` | Audit, piano o fotografia datata, conservata come prova. |
 
 ## Riepilogo
 
 - Correnti: **{counts['current']}**
 - Riferimento: **{counts['reference']}**
 - Generati: **{counts['generated']}**
+- Storici: **{counts['historical']}**
 - Totale: **{len(paths)}**
 
 ## Elenco completo
@@ -184,10 +193,10 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Regola architetturale
 
-La specifica normativa unica è `PROMPT_MASTER.md`. La destinazione è
-Drive-only: originali in Google Drive e registri in Google Sheets/Excel
-collegato a Drive. Audit, piani e porting datati non restano nel repository:
-la loro storia è già conservata da Git.
+La destinazione è Drive-only: originali in Google Drive e registri in Google
+Sheets/Excel collegato a Drive. MongoDB è compatibilità transitoria fino alla
+verifica completa di copia, scrittura, ricostruzione e cutover; i documenti
+storici che lo indicano come database primario non sono più autorità.
 """
 
 

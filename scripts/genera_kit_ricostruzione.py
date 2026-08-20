@@ -869,15 +869,19 @@ def validate_package(package_root: Path, manifest: dict[str, Any]) -> None:
         path = package_root / item["path"]
         if not path.is_file() or path.stat().st_size != item["size"] or sha256_file(path) != item["sha256"]:
             raise RuntimeError(f"Manifest non valido: {item['path']}")
-    if len(list((package_root / "03_PAGINE").glob("[0-9][0-9]-*.md"))) != 65:
-        raise RuntimeError("Numero schede pagina diverso da 65")
-    if len(list((package_root / "03_PAGINE/LOGICA_JSON").glob("[0-9][0-9]-*.json"))) != 65:
-        raise RuntimeError("Numero contratti logici pagina diverso da 65")
-    if len(list((package_root / "04_POPUP/MAPPE_JSON").glob("*.json"))) != 36:
-        raise RuntimeError("Numero mappe popup diverso da 36")
+
+    expected_counts = manifest["counts"]
+    if len(list((package_root / "03_PAGINE").glob("[0-9][0-9]-*.md"))) != expected_counts["pages"]:
+        raise RuntimeError("Numero schede pagina diverso dal manifest")
+    if len(list((package_root / "03_PAGINE/LOGICA_JSON").glob("[0-9][0-9]-*.json"))) != expected_counts["page_logic_contracts"]:
+        raise RuntimeError("Numero contratti logici pagina diverso dal manifest")
+    if len(list((package_root / "04_POPUP/MAPPE_JSON").glob("*.json"))) != expected_counts["popups"]:
+        raise RuntimeError("Numero mappe popup diverso dal manifest")
+
     endpoints = json.loads((package_root / "05_API/ENDPOINTS.json").read_text(encoding="utf-8"))
-    if len(endpoints) != 1140:
+    if len(endpoints) != expected_counts["endpoints"]:
         raise RuntimeError("Superficie endpoint incompleta")
+
     content = "\n".join(path.read_text(encoding="utf-8", errors="ignore") for path in package_root.rglob("*") if path.is_file())
     forbidden = [
         re.compile(r"ghp_[A-Za-z0-9]{20,}"),

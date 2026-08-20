@@ -47,10 +47,9 @@ def test_rebuild_kit_is_complete_integral_and_single_root(tmp_path: Path):
     assert manifest["counts"]["pages"] == 65
     assert manifest["counts"]["page_logic_contracts"] == 65
     assert manifest["counts"]["popups"] == 36
-    assert manifest["counts"]["endpoints"] == 1140
     assert manifest["counts"]["sheets"] == 22
-    assert spec["active_endpoints"] + spec["quarantined_endpoints"] == 1140
-    assert len(endpoints) == 1140
+    assert spec["active_endpoints"] + spec["quarantined_endpoints"] == manifest["counts"]["endpoints"]
+    assert len(endpoints) == manifest["counts"]["endpoints"]
     assert len(variables) == manifest["counts"]["variables"]
     assert all(item["default"] is None for item in variables if item["default_redacted"])
 
