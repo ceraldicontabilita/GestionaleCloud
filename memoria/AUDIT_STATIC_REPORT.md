@@ -5,9 +5,9 @@ Generato da `scripts/audit_static.py`.
 
 ## Sintesi
 
-- P1: 319
-- P2: 13
-- P3: 63
+- P1: 317
+- P2: 6
+- P3: 67
 - INFO: 16
 
 ## Findings
@@ -26,25 +26,31 @@ Generato da `scripts/audit_static.py`.
 
 ### INFO - fornitori-api
 
-- File: `frontend/src/pages/Fornitori.jsx:127`
+- File: `frontend/src/pages/Fornitori.jsx:126`
 
 - Dettaglio: API compatibile /api/suppliers: ok se backend usa collection fornitori.
 
 ### INFO - fornitori-api
 
-- File: `frontend/src/pages/Fornitori.jsx:1544`
+- File: `frontend/src/pages/Fornitori.jsx:1501`
 
 - Dettaglio: API compatibile /api/suppliers: ok se backend usa collection fornitori.
 
 ### INFO - fornitori-api
 
-- File: `frontend/src/pages/Fornitori.jsx:1585`
+- File: `frontend/src/pages/Fornitori.jsx:1542`
 
 - Dettaglio: API compatibile /api/suppliers: ok se backend usa collection fornitori.
 
 ### INFO - fornitori-api
 
-- File: `frontend/src/pages/Fornitori.jsx:1629`
+- File: `frontend/src/pages/Fornitori.jsx:1586`
+
+- Dettaglio: API compatibile /api/suppliers: ok se backend usa collection fornitori.
+
+### INFO - fornitori-api
+
+- File: `frontend/src/pages/Fornitori.jsx:1589`
 
 - Dettaglio: API compatibile /api/suppliers: ok se backend usa collection fornitori.
 
@@ -56,55 +62,49 @@ Generato da `scripts/audit_static.py`.
 
 ### INFO - fornitori-api
 
-- File: `frontend/src/pages/Fornitori.jsx:1668`
+- File: `frontend/src/pages/Fornitori.jsx:1655`
 
 - Dettaglio: API compatibile /api/suppliers: ok se backend usa collection fornitori.
 
 ### INFO - fornitori-api
 
-- File: `frontend/src/pages/Fornitori.jsx:1684`
+- File: `frontend/src/pages/Fornitori.jsx:1689`
 
 - Dettaglio: API compatibile /api/suppliers: ok se backend usa collection fornitori.
 
 ### INFO - fornitori-api
 
-- File: `frontend/src/pages/Fornitori.jsx:1718`
+- File: `frontend/src/pages/Fornitori.jsx:1713`
 
 - Dettaglio: API compatibile /api/suppliers: ok se backend usa collection fornitori.
 
 ### INFO - fornitori-api
 
-- File: `frontend/src/pages/Fornitori.jsx:1742`
+- File: `frontend/src/pages/Fornitori.jsx:1785`
 
 - Dettaglio: API compatibile /api/suppliers: ok se backend usa collection fornitori.
 
 ### INFO - fornitori-api
 
-- File: `frontend/src/pages/Fornitori.jsx:1814`
+- File: `frontend/src/pages/Fornitori.jsx:1810`
 
 - Dettaglio: API compatibile /api/suppliers: ok se backend usa collection fornitori.
 
 ### INFO - fornitori-api
 
-- File: `frontend/src/pages/Fornitori.jsx:1839`
+- File: `frontend/src/pages/Fornitori.jsx:1863`
 
 - Dettaglio: API compatibile /api/suppliers: ok se backend usa collection fornitori.
 
 ### INFO - fornitori-api
 
-- File: `frontend/src/pages/Fornitori.jsx:1892`
+- File: `frontend/src/pages/Fornitori.jsx:1899`
 
 - Dettaglio: API compatibile /api/suppliers: ok se backend usa collection fornitori.
 
 ### INFO - fornitori-api
 
-- File: `frontend/src/pages/Fornitori.jsx:1928`
-
-- Dettaglio: API compatibile /api/suppliers: ok se backend usa collection fornitori.
-
-### INFO - fornitori-api
-
-- File: `frontend/src/pages/Fornitori.jsx:1954`
+- File: `frontend/src/pages/Fornitori.jsx:1925`
 
 - Dettaglio: API compatibile /api/suppliers: ok se backend usa collection fornitori.
 
@@ -216,33 +216,57 @@ Generato da `scripts/audit_static.py`.
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
+### P1 - body
+
+- File: `app/routers/admin.py:60`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/routers/admin.py:187`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/routers/admin.py:210`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/routers/admin.py:249`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
 ### P1 - collection
 
-- File: `app/routers/admin.py:24`
+- File: `app/routers/admin.py:263`
 
 - Dettaglio: collection fornitori deprecata: usare costante che punta a fornitori
 
 ### P1 - collection
 
-- File: `app/routers/admin.py:25`
+- File: `app/routers/admin.py:264`
 
 - Dettaglio: collection dipendenti deprecata: usare dipendenti
 
 ### P1 - collection
 
-- File: `app/routers/admin.py:86`
+- File: `app/routers/admin.py:325`
 
 - Dettaglio: collection fornitori deprecata: usare costante che punta a fornitori
 
 ### P1 - collection
 
-- File: `app/routers/admin.py:88`
+- File: `app/routers/admin.py:327`
 
 - Dettaglio: collection dipendenti deprecata: usare dipendenti
 
 ### P1 - body
 
-- File: `app/routers/admin.py:268`
+- File: `app/routers/admin.py:507`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -336,66 +360,6 @@ Generato da `scripts/audit_static.py`.
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
-### P1 - body
-
-- File: `app/routers/assistente_operativo.py:99`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
-- File: `app/routers/assistente_operativo.py:107`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
-- File: `app/routers/assistente_operativo.py:115`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
-- File: `app/routers/assistente_operativo.py:130`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
-- File: `app/routers/assistente_operativo.py:137`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
-- File: `app/routers/assistente_operativo.py:157`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
-- File: `app/routers/assistente_operativo.py:168`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
-- File: `app/routers/assistente_operativo.py:180`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
-- File: `app/routers/assistente_operativo.py:204`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
-- File: `app/routers/assistente_operativo.py:213`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
 ### P1 - missing-required-file
 
 - File: `app/routers/attendance_module/export_consulente.py:0`
@@ -410,85 +374,91 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/auto_repair.py:15`
+- File: `app/routers/auto_repair.py:16`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/assegni.py:1047`
+- File: `app/routers/auto_repair.py:74`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/assegni.py:1404`
+- File: `app/routers/bank/assegni.py:1070`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/assegni.py:1819`
+- File: `app/routers/bank/assegni.py:1427`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/assegni.py:2161`
+- File: `app/routers/bank/assegni.py:1864`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/assegni.py:2232`
+- File: `app/routers/bank/assegni.py:2206`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/assegni.py:2266`
+- File: `app/routers/bank/assegni.py:2277`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/assegni.py:2283`
+- File: `app/routers/bank/assegni.py:2311`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/assegni.py:2473`
+- File: `app/routers/bank/assegni.py:2328`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/assegni.py:2502`
+- File: `app/routers/bank/assegni.py:2518`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/assegni.py:2672`
+- File: `app/routers/bank/assegni.py:2570`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/assegni.py:2726`
+- File: `app/routers/bank/assegni.py:2740`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/assegni.py:2871`
+- File: `app/routers/bank/assegni.py:2794`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/assegni.py:2974`
+- File: `app/routers/bank/assegni.py:2939`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/routers/bank/assegni.py:3042`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -554,67 +524,67 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/bank/estratto_conto.py:1247`
+- File: `app/routers/bank/estratto_conto.py:1220`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/estratto_conto.py:1248`
+- File: `app/routers/bank/estratto_conto.py:1221`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/estratto_conto.py:1859`
+- File: `app/routers/bank/estratto_conto.py:1818`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/estratto_conto.py:2081`
+- File: `app/routers/bank/estratto_conto.py:2040`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/estratto_conto.py:2121`
+- File: `app/routers/bank/estratto_conto.py:2080`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/batch_reprocessing.py:160`
+- File: `app/routers/batch_reprocessing.py:127`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/batch_reprocessing.py:169`
+- File: `app/routers/batch_reprocessing.py:141`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/batch_reprocessing.py:178`
+- File: `app/routers/batch_reprocessing.py:153`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bonifici_module/associazioni.py:24`
+- File: `app/routers/bonifici_module/associazioni.py:25`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bonifici_module/associazioni.py:178`
+- File: `app/routers/bonifici_module/associazioni.py:206`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bonifici_module/associazioni.py:375`
+- File: `app/routers/bonifici_module/associazioni.py:455`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -728,145 +698,145 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:43`
+- File: `app/routers/documenti.py:146`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:69`
+- File: `app/routers/documenti.py:172`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:77`
+- File: `app/routers/documenti.py:180`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:94`
+- File: `app/routers/documenti.py:221`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:102`
+- File: `app/routers/documenti.py:229`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:131`
+- File: `app/routers/documenti.py:258`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:152`
+- File: `app/routers/documenti.py:279`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:184`
+- File: `app/routers/documenti.py:311`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:214`
+- File: `app/routers/documenti.py:341`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:456`
+- File: `app/routers/documenti.py:674`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:660`
+- File: `app/routers/documenti.py:878`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:713`
+- File: `app/routers/documenti.py:931`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:749`
+- File: `app/routers/documenti.py:967`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:800`
+- File: `app/routers/documenti.py:1018`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:920`
+- File: `app/routers/documenti.py:1138`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:1199`
+- File: `app/routers/documenti.py:1417`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:1366`
+- File: `app/routers/documenti.py:1584`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:1533`
+- File: `app/routers/documenti.py:1751`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:1694`
+- File: `app/routers/documenti.py:1912`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:1765`
+- File: `app/routers/documenti.py:1983`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:1819`
+- File: `app/routers/documenti.py:2037`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:2488`
+- File: `app/routers/documenti.py:2748`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:2514`
+- File: `app/routers/documenti.py:2782`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti_fiscali.py:20`
+- File: `app/routers/documenti_fiscali.py:25`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1244,43 +1214,43 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/fiscal_control.py:257`
+- File: `app/routers/fiscal_control.py:375`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/fiscal_control.py:276`
+- File: `app/routers/fiscal_control.py:394`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/fiscal_control.py:308`
+- File: `app/routers/fiscal_control.py:426`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/fiscal_control.py:345`
+- File: `app/routers/fiscal_control.py:463`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/fiscal_control.py:350`
+- File: `app/routers/fiscal_control.py:468`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/fiscal_control.py:368`
+- File: `app/routers/fiscal_control.py:486`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/fiscal_control.py:376`
+- File: `app/routers/fiscal_control.py:494`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1424,13 +1394,13 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/invoices/corrispettivi.py:1686`
+- File: `app/routers/invoices/corrispettivi.py:1690`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/corrispettivi.py:1712`
+- File: `app/routers/invoices/corrispettivi.py:1716`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1448,103 +1418,103 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:1561`
+- File: `app/routers/invoices/fatture_upload.py:1628`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:2052`
+- File: `app/routers/invoices/fatture_upload.py:2119`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:2148`
+- File: `app/routers/invoices/fatture_upload.py:2215`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:2251`
+- File: `app/routers/invoices/fatture_upload.py:2318`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:2394`
+- File: `app/routers/invoices/fatture_upload.py:2461`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:2574`
+- File: `app/routers/invoices/fatture_upload.py:2641`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:125`
+- File: `app/routers/iva.py:158`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:327`
+- File: `app/routers/iva.py:386`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:393`
+- File: `app/routers/iva.py:452`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:551`
+- File: `app/routers/iva.py:610`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:614`
+- File: `app/routers/iva.py:673`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:871`
+- File: `app/routers/iva.py:937`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:883`
+- File: `app/routers/iva.py:949`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:895`
+- File: `app/routers/iva.py:961`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:907`
+- File: `app/routers/iva.py:973`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:919`
+- File: `app/routers/iva.py:985`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:930`
+- File: `app/routers/iva.py:996`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1604,7 +1574,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/noleggio.py:137`
+- File: `app/routers/noleggio.py:142`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1628,25 +1598,19 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/openapi_it.py:206`
+- File: `app/routers/openapi_it.py:296`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/openapi_it.py:293`
+- File: `app/routers/openapi_it.py:518`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/openapi_it.py:515`
-
-- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
-
-### P1 - body
-
-- File: `app/routers/openapi_it.py:569`
+- File: `app/routers/openapi_it.py:572`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1670,31 +1634,31 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/paypal_api.py:479`
+- File: `app/routers/paypal_api.py:482`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/paypal_statements.py:1426`
+- File: `app/routers/paypal_statements.py:1453`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/paypal_statements.py:1436`
+- File: `app/routers/paypal_statements.py:1465`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/paypal_statements.py:1459`
+- File: `app/routers/paypal_statements.py:1488`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/paypal_statements.py:1526`
+- File: `app/routers/paypal_statements.py:1555`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1724,7 +1688,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/ritenute.py:326`
+- File: `app/routers/ritenute.py:398`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1736,7 +1700,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/scadenze.py:376`
+- File: `app/routers/scadenze.py:388`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1748,37 +1712,37 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/settings_router.py:77`
+- File: `app/routers/settings_router.py:78`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/settings_router.py:162`
+- File: `app/routers/settings_router.py:168`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/settings_router.py:220`
+- File: `app/routers/settings_router.py:235`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/suppliers_module/base.py:640`
+- File: `app/routers/suppliers_module/base.py:642`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - collection
 
-- File: `app/routers/suppliers_module/base.py:869`
+- File: `app/routers/suppliers_module/base.py:871`
 
 - Dettaglio: warehouse_stocks legacy: non usare come fonte primaria
 
 ### P1 - body
 
-- File: `app/routers/suppliers_module/base.py:905`
+- File: `app/routers/suppliers_module/base.py:907`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1916,31 +1880,55 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/verbali_riconciliazione.py:102`
+- File: `app/routers/verbali_noleggio.py:42`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/verbali_riconciliazione.py:354`
+- File: `app/routers/verbali_noleggio.py:86`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/verbali_riconciliazione.py:486`
+- File: `app/routers/verbali_riconciliazione.py:107`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/verbali_riconciliazione.py:563`
+- File: `app/routers/verbali_riconciliazione.py:121`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/verbali_riconciliazione.py:684`
+- File: `app/routers/verbali_riconciliazione.py:140`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/routers/verbali_riconciliazione.py:496`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/routers/verbali_riconciliazione.py:628`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/routers/verbali_riconciliazione.py:705`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/routers/verbali_riconciliazione.py:923`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1988,19 +1976,19 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - delete-confirm
 
-- File: `frontend/src/pages/ArchivioFattureRicevute.jsx:107`
+- File: `frontend/src/pages/ArchivioFattureRicevute.jsx:227`
 
 - Dettaglio: DELETE senza confirm vicino.
 
 ### P1 - delete-confirm
 
-- File: `frontend/src/pages/Fornitori.jsx:1743`
+- File: `frontend/src/pages/Fornitori.jsx:1714`
 
 - Dettaglio: DELETE senza confirm vicino.
 
 ### P1 - delete-confirm
 
-- File: `frontend/src/pages/Fornitori.jsx:1980`
+- File: `frontend/src/pages/Fornitori.jsx:1951`
 
 - Dettaglio: DELETE senza confirm vicino.
 
@@ -2021,48 +2009,6 @@ Generato da `scripts/audit_static.py`.
 - File: `frontend/src/stores/primaNotaStore.js:158`
 
 - Dettaglio: DELETE senza confirm vicino.
-
-### P2 - timezone
-
-- File: `app/routers/iva.py:177`
-
-- Dettaglio: Sostituire con datetime.now(timezone.utc).
-
-### P2 - timezone
-
-- File: `app/routers/iva.py:298`
-
-- Dettaglio: Sostituire con datetime.now(timezone.utc).
-
-### P2 - timezone
-
-- File: `app/routers/iva.py:411`
-
-- Dettaglio: Sostituire con datetime.now(timezone.utc).
-
-### P2 - timezone
-
-- File: `app/routers/iva.py:571`
-
-- Dettaglio: Sostituire con datetime.now(timezone.utc).
-
-### P2 - timezone
-
-- File: `app/routers/iva.py:583`
-
-- Dettaglio: Sostituire con datetime.now(timezone.utc).
-
-### P2 - timezone
-
-- File: `app/routers/iva.py:636`
-
-- Dettaglio: Sostituire con datetime.now(timezone.utc).
-
-### P2 - timezone
-
-- File: `app/routers/iva.py:849`
-
-- Dettaglio: Sostituire con datetime.now(timezone.utc).
 
 ### P2 - timezone
 
@@ -2102,7 +2048,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/App.jsx:36`
+- File: `frontend/src/App.jsx:33`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
@@ -2115,6 +2061,12 @@ Generato da `scripts/audit_static.py`.
 ### P3 - fetch-race
 
 - File: `frontend/src/components/AssociaMovimentoBanca.jsx:35`
+
+- Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
+
+### P3 - fetch-race
+
+- File: `frontend/src/components/DriveImportControls.jsx:16`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
@@ -2144,12 +2096,6 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/components/PaypalTransactionDetailModal.jsx:101`
-
-- Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
-
-### P3 - fetch-race
-
 - File: `frontend/src/components/layout/TopNav.jsx:417`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
@@ -2174,7 +2120,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/Admin.jsx:81`
+- File: `frontend/src/pages/Admin.jsx:79`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
@@ -2186,13 +2132,19 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/ArchivioBonifici.jsx:138`
+- File: `frontend/src/pages/ArchivioBonifici.jsx:139`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/ArchivioFattureRicevute.jsx:165`
+- File: `frontend/src/pages/ArchivioFattureRicevute.jsx:286`
+
+- Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
+
+### P3 - fetch-race
+
+- File: `frontend/src/pages/AttiAmministrativi.jsx:53`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
@@ -2204,7 +2156,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/BatchReprocessing.jsx:25`
+- File: `frontend/src/pages/BatchReprocessing.jsx:23`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
@@ -2234,7 +2186,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/CedoliniSalari.jsx:162`
+- File: `frontend/src/pages/CedoliniSalari.jsx:99`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
@@ -2270,7 +2222,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/Corrispettivi.jsx:78`
+- File: `frontend/src/pages/Corrispettivi.jsx:91`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
@@ -2282,13 +2234,19 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/DettaglioVerbale.jsx:27`
+- File: `frontend/src/pages/DettaglioVerbale.jsx:37`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/Documenti.jsx:137`
+- File: `frontend/src/pages/Documenti.jsx:136`
+
+- Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
+
+### P3 - fetch-race
+
+- File: `frontend/src/pages/DriveDocumentIndex.jsx:53`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
@@ -2360,7 +2318,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/LibroGiornale.jsx:51`
+- File: `frontend/src/pages/LibroGiornale.jsx:50`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
@@ -2384,7 +2342,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/NoleggioAuto.jsx:95`
+- File: `frontend/src/pages/NoleggioAuto.jsx:96`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
@@ -2408,31 +2366,31 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/PrimaNota.jsx:408`
+- File: `frontend/src/pages/PrimaNota.jsx:402`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/RegoleCategorizzazione.jsx:52`
+- File: `frontend/src/pages/RegoleCategorizzazione.jsx:53`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/RiconciliazionePaypal.jsx:133`
+- File: `frontend/src/pages/RiconciliazionePaypal.jsx:71`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/RiconciliazioneUnificata.jsx:304`
+- File: `frontend/src/pages/RiconciliazioneUnificata.jsx:328`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/Ritenute.jsx:36`
+- File: `frontend/src/pages/Ritenute.jsx:38`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
@@ -2444,7 +2402,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/SituazioneFiscale.jsx:59`
+- File: `frontend/src/pages/SituazioneFiscale.jsx:86`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
@@ -2462,18 +2420,30 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/VerbaliRiconciliazione.jsx:58`
+- File: `frontend/src/pages/VerbaliRiconciliazione.jsx:67`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/VerificaMovimentiBanca.jsx:29`
+- File: `frontend/src/pages/VerificaCoerenza.jsx:44`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/pages/hub/DocumentiHub.jsx:57`
+- File: `frontend/src/pages/VerificaMovimentiBanca.jsx:52`
+
+- Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
+
+### P3 - fetch-race
+
+- File: `frontend/src/pages/hub/DocumentiHub.jsx:78`
+
+- Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
+
+### P3 - fetch-race
+
+- File: `frontend/src/pages/hub/RiconciliazioneHub.jsx:69`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.

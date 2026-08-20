@@ -78,7 +78,14 @@ def tracked_markdown() -> list[str]:
 def classify(path: str) -> str:
     if path in GENERATED:
         return "generated"
-    if path in CURRENT:
+    if (
+        path in CURRENT
+        or path.startswith(".github/agents/")
+        or path.startswith(".github/instructions/")
+        or path.startswith(".github/skills/")
+        or path.startswith("docs/obsidian-integration/")
+        or path == "docs/OBSIDIAN_KNOWLEDGE_ARCHITECTURE_2026-08-20.md"
+    ):
         return "current"
     if path in REFERENCE or path.startswith("memoria/moduli/"):
         return "reference"
@@ -125,20 +132,34 @@ def update_document(path: str, status: str) -> None:
     raw = target.read_text(encoding="utf-8-sig")
     raw = MARKER_RE.sub("\n", raw, count=1)
     raw = NOTICE_RE.sub("\n", raw, count=1)
-    text = raw.lstrip("\ufeff\n")
+    lines = raw.lstrip("\ufeff\n").splitlines()
+    frontmatter: list[str] = []
+    if lines and lines[0].strip() == "---":
+        try:
+            end = lines.index("---", 1)
+        except ValueError as exc:
+            raise ValueError(f"{path}: frontmatter YAML non chiuso") from exc
+        frontmatter = lines[:end + 1]
+        lines = lines[end + 1:]
+        while lines and not lines[0].strip():
+            lines.pop(0)
 
-    # YAML frontmatter (`--- ... ---`) precede a volte il titolo MD
-    if text.startswith("---\n"):
-        end = text.find("\n---\n", 4)
-        if end != -1:
-            text = text[end + 5 :].lstrip("\n")
-
-    lines = text.splitlines()
-    if not lines or not lines[0].startswith("#"):
+    if lines and lines[0].startswith("#"):
+        title = lines[0]
+        body_lines = lines[1:]
+    elif frontmatter:
+        name_line = next((line for line in frontmatter if line.startswith("name:")), "")
+        title_text = name_line.partition(":")[2].strip().strip('"') or Path(path).stem
+        title = f"# {title_text}"
+        body_lines = lines
+    else:
         raise ValueError(f"{path}: manca il titolo Markdown iniziale")
-    title = lines[0]
-    body = "\n".join(lines[1:]).lstrip("\n")
-    output = [title, "", marker(status)]
+
+    body = "\n".join(body_lines).lstrip("\n")
+    output = [*frontmatter]
+    if frontmatter:
+        output.append("")
+    output.extend([title, "", marker(status)])
     status_notice = notice(status)
     if status_notice:
         output.extend(["", status_notice])
@@ -193,10 +214,10 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Regola architetturale
 
-La destinazione è Drive-only: originali in Google Drive e registri in Google
-Sheets/Excel collegato a Drive. MongoDB è compatibilità transitoria fino alla
-verifica completa di copia, scrittura, ricostruzione e cutover; i documenti
-storici che lo indicano come database primario non sono più autorità.
+La destinazione operativa è Drive/Sheets: originali in Google Drive e registri
+in Google Sheets/Excel collegato a Drive. MongoDB è una compatibilità esplicita
+senza fallback automatico, mantenuta soltanto per verificare e migrare i dati
+storici; i documenti che lo indicano come database primario non sono autorità.
 """
 
 

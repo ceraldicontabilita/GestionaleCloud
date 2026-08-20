@@ -1,7 +1,7 @@
 # Obsidian Knowledge Architecture — GestionaleCloud
 
 <!-- gestionalecloud-doc
-status: historical
+status: current
 reviewed_at: 2026-08-20
 storage_architecture: drive-only
 -->

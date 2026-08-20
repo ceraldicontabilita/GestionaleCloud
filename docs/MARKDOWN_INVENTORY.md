@@ -20,22 +20,22 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Riepilogo
 
-- Correnti: **16**
+- Correnti: **31**
 - Riferimento: **25**
 - Generati: **5**
-- Storici: **18**
-- Totale: **64**
+- Storici: **27**
+- Totale: **88**
 
 ## Elenco completo
 
 | File | Stato | Uso |
 |---|---|---|
-| `.github/agents/mcp-gateway.agent.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `.github/agents/ogni-pagina.agent.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `.github/agents/mcp-gateway.agent.md` | `current` | Autorità operativa corrente |
+| `.github/agents/ogni-pagina.agent.md` | `current` | Autorità operativa corrente |
 | `.github/copilot-instructions.md` | `current` | Autorità operativa corrente |
-| `.github/instructions/pagine-erp.instructions.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `.github/skills/mcp-gateway/SKILL.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `.github/skills/pagina-erp/SKILL.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `.github/instructions/pagine-erp.instructions.md` | `current` | Autorità operativa corrente |
+| `.github/skills/mcp-gateway/SKILL.md` | `current` | Autorità operativa corrente |
+| `.github/skills/pagina-erp/SKILL.md` | `current` | Autorità operativa corrente |
 | `CLAUDE.md` | `current` | Autorità operativa corrente |
 | `DESIGN.md` | `current` | Autorità operativa corrente |
 | `LOGICA_FUNZIONAMENTO.md` | `current` | Autorità operativa corrente |
@@ -47,17 +47,19 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `docs/MARKDOWN_INVENTORY.md` | `current` | Autorità operativa corrente |
 | `docs/MCP_GESTIONALE_RUNBOOK.md` | `current` | Autorità operativa corrente |
 | `docs/MCP_GESTIONALE_SPEC.md` | `current` | Autorità operativa corrente |
-| `docs/OBSIDIAN_KNOWLEDGE_ARCHITECTURE_2026-08-20.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/OBSIDIAN_KNOWLEDGE_ARCHITECTURE_2026-08-20.md` | `current` | Autorità operativa corrente |
 | `docs/PIANO_OPERATIVO_GESTIONALE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/obsidian-integration/ARCHITETTURA.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/obsidian-integration/MAPPA_COLLEGAMENTI.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/obsidian-integration/MODELLO_NOTE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/obsidian-integration/PIANO_IMPLEMENTAZIONE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/obsidian-integration/PROMPT_IMPLEMENTAZIONE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/obsidian-integration/README.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/obsidian-integration/SICUREZZA_E_GOVERNANCE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/obsidian-integration/templates/ENTITA.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
-| `docs/obsidian-integration/templates/RUN_GIORNALIERO.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/SPECIFICA_OPERATIVA_GESTIONALECLOUD.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/obsidian-integration/ARCHITETTURA.md` | `current` | Autorità operativa corrente |
+| `docs/obsidian-integration/MAPPA_COLLEGAMENTI.md` | `current` | Autorità operativa corrente |
+| `docs/obsidian-integration/MODELLO_NOTE.md` | `current` | Autorità operativa corrente |
+| `docs/obsidian-integration/PIANO_IMPLEMENTAZIONE.md` | `current` | Autorità operativa corrente |
+| `docs/obsidian-integration/PROMPT_IMPLEMENTAZIONE.md` | `current` | Autorità operativa corrente |
+| `docs/obsidian-integration/README.md` | `current` | Autorità operativa corrente |
+| `docs/obsidian-integration/SICUREZZA_E_GOVERNANCE.md` | `current` | Autorità operativa corrente |
+| `docs/obsidian-integration/templates/ENTITA.md` | `current` | Autorità operativa corrente |
+| `docs/obsidian-integration/templates/RUN_GIORNALIERO.md` | `current` | Autorità operativa corrente |
+| `docs/porting-private-cloud-2026-08-08.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/rt-locale-drive.md` | `current` | Autorità operativa corrente |
 | `frontend/README.md` | `current` | Autorità operativa corrente |
 | `memoria/AUDIT_FRONTEND_DEAD_CODE.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |
@@ -97,7 +99,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Regola architetturale
 
-La destinazione è Drive-only: originali in Google Drive e registri in Google
-Sheets/Excel collegato a Drive. MongoDB è compatibilità transitoria fino alla
-verifica completa di copia, scrittura, ricostruzione e cutover; i documenti
-storici che lo indicano come database primario non sono più autorità.
+La destinazione operativa è Drive/Sheets: originali in Google Drive e registri
+in Google Sheets/Excel collegato a Drive. MongoDB è una compatibilità esplicita
+senza fallback automatico, mantenuta soltanto per verificare e migrare i dati
+storici; i documenti che lo indicano come database primario non sono autorità.
