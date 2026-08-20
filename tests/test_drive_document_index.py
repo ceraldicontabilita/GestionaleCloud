@@ -212,11 +212,18 @@ def test_declarations_use_canonical_types_and_verified_document_identity(monkeyp
         "ID documento": "DOC-770", "Nome file": "770_2026.pdf",
         "SHA-256": "b" * 64, "Percorso Drive": r"DICHIARAZIONI\770_2026.pdf",
     }
+    lipe_document = {
+        "ID documento": "DOC-LIPE", "Nome file": "LIPE_2026_407141844.pdf",
+        "SHA-256": "c" * 64, "Percorso Drive": r"DICHIARAZIONI\LIPE_2026_407141844.pdf",
+    }
     catalog = {
-        "documents": [document], "f24_rows": [], "duplicates": [],
+        "documents": [document, lipe_document], "f24_rows": [], "duplicates": [],
         "declarations": [{
-            "Anno": "2026", "Tipo": "770", "Protocollo": "T26001",
+            "Anno": "2026", "Tipo": "DICHIARAZIONE", "Protocollo": "T26001",
             "Percorso archivio": "02_ANNI/2026/DICHIARAZIONI/770_2026.pdf",
+        }, {
+            "Anno": "2026", "Tipo": "DICHIARAZIONE", "Protocollo": "",
+            "Percorso archivio": "02_ANNI/2026/DICHIARAZIONI/LIPE_2026_407141844.pdf",
         }],
     }
     monkeypatch.setattr(index, "load_full_catalog", lambda service=None: ({}, catalog))
@@ -229,3 +236,7 @@ def test_declarations_use_canonical_types_and_verified_document_identity(monkeyp
     assert item["filing_year"] == 2026
     assert item["tax_year"] == 2025
     assert item["relation_state"] == "CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO"
+
+    all_items = list_declarations(year="2026")["results"]
+    lipe = next(entry for entry in all_items if entry["document_type"] == "LIPE")
+    assert lipe["tax_year"] == 2026

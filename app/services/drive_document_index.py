@@ -166,7 +166,7 @@ def _amount(value: Any) -> float:
         return 0.0
 
 
-def _declaration_type(value: Any) -> str:
+def _declaration_type(value: Any, filename: Any = None) -> str:
     """Converte le etichette del foglio nel vocabolario fiscale canonico."""
     normalized = re.sub(r"[^A-Z0-9]+", "_", str(value or "").upper()).strip("_")
     compact = normalized.replace("_", "")
@@ -185,7 +185,21 @@ def _declaration_type(value: Any) -> str:
         "ELENCOPERCIPIENTI": "ELENCO_PERCIPIENTI",
         "PERCIPIENTI": "ELENCO_PERCIPIENTI",
     }
-    return aliases.get(compact, normalized)
+    if compact in aliases:
+        return aliases[compact]
+    searchable = str(filename or "").upper().replace("\\", "/")
+    filename_patterns = (
+        (r"(?:^|[/_\s-])LIPE(?:[/_\s.-]|$)", "LIPE"),
+        (r"(?:^|[/_\s-])770(?:[/_\s.-]|$)", "MODELLO_770"),
+        (r"(?:^|[/_\s-])(?:760|REDDITI(?:_SC)?)(?:[/_\s.-]|$)", "REDDITI_SC"),
+        (r"(?:^|[/_\s-])IRAP(?:[/_\s.-]|$)", "DICHIARAZIONE_IRAP"),
+        (r"(?:^|[/_\s-])IVA(?:[/_\s.-]|$)", "DICHIARAZIONE_IVA"),
+        (r"(?:^|[/_\s-])PERCIPIENTI?(?:[/_\s.-]|$)", "ELENCO_PERCIPIENTI"),
+    )
+    for pattern, canonical in filename_patterns:
+        if re.search(pattern, searchable):
+            return canonical
+    return normalized
 
 
 def _stable_f24_row_id(row: dict[str, Any], ordinal: int) -> str:
@@ -484,7 +498,7 @@ def list_declarations(
     for row in catalog["declarations"]:
         if year and _norm(row.get("Anno")) != _norm(year):
             continue
-        canonical_type = _declaration_type(row.get("Tipo"))
+        canonical_type = _declaration_type(row.get("Tipo"), row.get("Percorso archivio"))
         if declaration_type and canonical_type != _declaration_type(declaration_type):
             continue
         if q and _norm(q) not in _norm(" ".join(str(value or "") for value in row.values())):
