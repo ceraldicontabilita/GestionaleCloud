@@ -626,11 +626,13 @@ export default function VerbaliRiconciliazione() {
                 data-testid="filtro-stato"
               >
                 <option value="">Tutti gli stati</option>
-                {Object.entries(STATI_VERBALE).map(([key, val]) => (
+                {Object.entries(STATI_VERBALE)
+                  .filter(([key]) => key !== 'pagato_attesa_fattura')
+                  .map(([key, val]) => (
                   <option key={key} value={key}>
                     {val.icon} {val.label}
                   </option>
-                ))}
+                  ))}
               </Select>
             </div>
 
