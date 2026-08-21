@@ -985,6 +985,8 @@ async def import_salari_verificati(data: Dict[str, Any] = Body(...)) -> Dict[str
                 if (
                     existing.get("source") != "indice_cedolini_drive"
                     or (source_url and existing.get("source_url") != source_url)
+                    or existing.get("tipo") != "busta"
+                    or float(existing.get("importo_bonifico") or 0) != 0
                 ):
                     await db["prima_nota_salari"].update_one(
                         {"id": existing["id"]},
@@ -993,7 +995,12 @@ async def import_salari_verificati(data: Dict[str, Any] = Body(...)) -> Dict[str
                             "source_url": source_url or existing.get("source_url"),
                             "document_status": status,
                             "payment_status": "DA_ASSEGNARE",
+                            "tipo": "busta",
                             "importo_busta_documentato": round(importo, 2),
+                            "importo_bonifico": 0,
+                            "importo_bonifico_documentato": 0,
+                            "saldo": round(-importo, 2),
+                            "riconciliato": False,
                             "updated_at": datetime.now(timezone.utc).isoformat(),
                         }},
                     )
