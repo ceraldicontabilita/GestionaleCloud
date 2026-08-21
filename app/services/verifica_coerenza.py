@@ -11,7 +11,8 @@ Verifiche implementate:
 """
 
 from typing import Dict, Any, List
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+import calendar
 from app.database import Database, Collections
 import logging
 
@@ -19,6 +20,24 @@ logger = logging.getLogger(__name__)
 
 MESI_NOMI = ['', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
              'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre']
+
+
+def stato_temporale_periodo(
+    anno: int, mese: int, stato_calcolo: str, scadenza_legale: str, *, oggi: date | None = None,
+) -> str:
+    """Distingue periodi non maturati da omissioni realmente scadute."""
+    oggi = oggi or date.today()
+    primo = date(anno, mese, 1)
+    ultimo = date(anno, mese, calendar.monthrange(anno, mese)[1])
+    if primo > oggi:
+        return "NON_ANCORA_DOVUTO"
+    if primo <= oggi <= ultimo:
+        return "IN_FORMAZIONE"
+    if stato_calcolo != "NON_CALCOLATO":
+        return "CALCOLATO"
+    if oggi <= date.fromisoformat(scadenza_legale):
+        return "IN_ATTESA"
+    return "DA_COMPLETARE"
 
 
 class VerificaCoerenza:
@@ -72,6 +91,8 @@ class VerificaCoerenza:
             "periodo": f"{MESI_NOMI[mese]} {anno}",
             "stato_calcolo": snapshot["stato_calcolo"],
             "fonte_calcolo": snapshot["fonte_calcolo"],
+            "scadenza_nominale": snapshot["scadenza_nominale"],
+            "scadenza_legale": snapshot["scadenza_legale"],
         }
     
     async def verifica_iva_debito_mensile(self, anno: int, mese: int) -> Dict[str, float]:
@@ -89,6 +110,8 @@ class VerificaCoerenza:
             "periodo": f"{MESI_NOMI[mese]} {anno}",
             "stato_calcolo": snapshot["stato_calcolo"],
             "fonte_calcolo": snapshot["fonte_calcolo"],
+            "scadenza_nominale": snapshot["scadenza_nominale"],
+            "scadenza_legale": snapshot["scadenza_legale"],
         }
 
     async def trova_f24_iva_mensile(self, anno: int, mese: int) -> Dict[str, Any]:
@@ -190,6 +213,11 @@ class VerificaCoerenza:
             "f24_multi_tributo": bool(c["altri_codici"]),
             "altri_codici_tributo": c["altri_codici"],
             "stato_pagamento_intero_f24": evidenza["stato"],
+            "quietanza_presente": evidenza.get("quietanza_presente", False),
+            "quietanza_id": f24.get("quietanza_id"),
+            "pagato_banca": evidenza.get("pagato", False),
+            "verificato_banca": evidenza.get("verificato_banca", False),
+            "movimento_bancario_id": evidenza.get("movimento_bancario_id"),
         }
     
     async def verifica_versamenti_vs_banca(self, anno: int, mese: int = None) -> List[Dict]:
@@ -391,7 +419,7 @@ class VerificaCoerenza:
             "differenza": round(differenza, 2)
         }
     
-    async def verifica_completa(self, anno: int) -> Dict[str, Any]:
+    async def verifica_completa(self, anno: int, *, oggi: date | None = None) -> Dict[str, Any]:
         """
         Esegue tutte le verifiche per un anno.
         """
@@ -410,6 +438,10 @@ class VerificaCoerenza:
             }
         }
         
+        oggi = oggi or date.today()
+        from app.services.lipe_verifica import list_lipe_monthly_evidence
+        lipe_mensile = await list_lipe_monthly_evidence(self.db, year=anno)
+
         # Verifica IVA per ogni mese
         iva_mensile = []
         f24_iva_mensile = []
@@ -418,9 +450,15 @@ class VerificaCoerenza:
             iva_debito = await self.verifica_iva_debito_mensile(anno, mese)
             f24_iva = await self.trova_f24_iva_mensile(anno, mese)
             
+            stato_periodo = stato_temporale_periodo(
+                anno, mese, iva_credito.get("stato_calcolo", "NON_CALCOLATO"),
+                iva_credito["scadenza_legale"], oggi=oggi,
+            )
             iva_mensile.append({
                 "mese": mese,
                 "mese_nome": MESI_NOMI[mese],
+                "stato_periodo": stato_periodo,
+                "lipe": lipe_mensile[mese],
                 **iva_credito,
                 **iva_debito
             })
@@ -445,9 +483,11 @@ class VerificaCoerenza:
             "iva_debito_totale_cents": totale_iva_debito_cents,
             "saldo_iva": euros(totale_iva_debito_cents - totale_iva_credito_cents),
             "saldo_iva_cents": totale_iva_debito_cents - totale_iva_credito_cents,
-            "mesi_non_calcolati": sum(
-                1 for item in iva_mensile if item.get("stato_calcolo") == "NON_CALCOLATO"
-            )
+            "mesi_non_calcolati": sum(1 for item in iva_mensile if item["stato_periodo"] == "DA_COMPLETARE"),
+            "mesi_in_formazione": sum(1 for item in iva_mensile if item["stato_periodo"] == "IN_FORMAZIONE"),
+            "mesi_non_ancora_dovuti": sum(1 for item in iva_mensile if item["stato_periodo"] == "NON_ANCORA_DOVUTO"),
+            "mesi_in_attesa": sum(1 for item in iva_mensile if item["stato_periodo"] == "IN_ATTESA"),
+            "mesi_calcolati": sum(1 for item in iva_mensile if item["stato_periodo"] == "CALCOLATO"),
         }
         risultati["verifiche"]["f24_iva"] = {
             "mensile": f24_iva_mensile,
@@ -466,12 +506,12 @@ class VerificaCoerenza:
                 "sottocategoria": "Copertura annuale",
                 "severita": "warning",
                 "descrizione": (
-                    f"{mesi_non_calcolati} mesi su 12 non hanno un calcolo IVA completo; "
-                    "la verifica annuale non puo essere dichiarata OK."
+                    f"{mesi_non_calcolati} periodi IVA gia scaduti non hanno un calcolo completo; "
+                    "i mesi in corso o futuri non sono conteggiati."
                 ),
                 "periodo": str(anno),
-                "valore_atteso": 12,
-                "valore_trovato": 12 - mesi_non_calcolati,
+                "valore_atteso": 0,
+                "valore_trovato": mesi_non_calcolati,
                 "differenza": -mesi_non_calcolati,
                 "suggerimento": "Completa o classifica i documenti IVA dei mesi mancanti.",
             })
@@ -510,7 +550,10 @@ class VerificaCoerenza:
         
         return risultati
     
-    async def verifica_coerenza_iva_tra_pagine(self, anno: int, mese: int) -> Dict[str, Any]:
+    async def verifica_coerenza_iva_tra_pagine(
+        self, anno: int, mese: int, *, lipe_evidence: Dict[str, Any] | None = None,
+        oggi: date | None = None,
+    ) -> Dict[str, Any]:
         """
         Verifica specifica: confronta IVA tra diverse pagine/sezioni.
         Questa è la verifica principale richiesta dall'utente.
@@ -536,6 +579,9 @@ class VerificaCoerenza:
             if saldo_gestionale_cents is not None else None
         )
         f24_iva = await self.trova_f24_iva_mensile(anno, mese)
+        if lipe_evidence is None:
+            from app.services.lipe_verifica import list_lipe_monthly_evidence
+            lipe_evidence = (await list_lipe_monthly_evidence(self.db, year=anno))[mese]
         importo_f24_cents = f24_iva.get("importo_f24_cents")
         scostamento_f24_cents = (
             int(importo_f24_cents) - max(int(saldo_gestionale_cents), 0)
@@ -545,6 +591,22 @@ class VerificaCoerenza:
         scostamento_f24 = (
             euros(scostamento_f24_cents)
             if scostamento_f24_cents is not None else None
+        )
+        lipe_vp4_cents = lipe_evidence.get("vp4_cents")
+        lipe_vp5_cents = lipe_evidence.get("vp5_cents")
+        scostamento_lipe_vendite_cents = (
+            int(lipe_vp4_cents) - int(iva_debito_cents)
+            if lipe_vp4_cents is not None and iva_debito_cents is not None else None
+        )
+        scostamento_lipe_acquisti_cents = (
+            int(lipe_vp5_cents) - int(iva_credito_cents)
+            if lipe_vp5_cents is not None and iva_credito_cents is not None else None
+        )
+        lipe_coerente = (
+            abs(scostamento_lipe_vendite_cents) <= 1
+            and abs(scostamento_lipe_acquisti_cents) <= 1
+            if scostamento_lipe_vendite_cents is not None
+            and scostamento_lipe_acquisti_cents is not None else None
         )
         
         risultato = {
@@ -580,7 +642,19 @@ class VerificaCoerenza:
                     if scostamento_f24_cents is not None else None
                 ),
             },
+            "lipe": {
+                **lipe_evidence,
+                "vp4": euros(lipe_vp4_cents) if lipe_vp4_cents is not None else None,
+                "vp5": euros(lipe_vp5_cents) if lipe_vp5_cents is not None else None,
+                "vp14": euros(lipe_evidence["vp14_cents"]) if lipe_evidence.get("vp14_cents") is not None else None,
+                "scostamento_vendite": euros(scostamento_lipe_vendite_cents) if scostamento_lipe_vendite_cents is not None else None,
+                "scostamento_acquisti": euros(scostamento_lipe_acquisti_cents) if scostamento_lipe_acquisti_cents is not None else None,
+                "coerente_gestionale": lipe_coerente,
+            },
             "stato_calcolo": snapshot["stato_calcolo"],
+            "stato_periodo": stato_temporale_periodo(
+                anno, mese, snapshot["stato_calcolo"], snapshot["scadenza_legale"], oggi=oggi,
+            ),
             "fonte_calcolo": snapshot["fonte_calcolo"],
             "scadenza_nominale": snapshot["scadenza_nominale"],
             "scadenza_legale": snapshot["scadenza_legale"],

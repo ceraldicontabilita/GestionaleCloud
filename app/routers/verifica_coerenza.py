@@ -140,13 +140,18 @@ async def confronto_iva_completo(anno: int) -> Dict[str, Any]:
         
         confronto_mensile = []
         from app.services.iva_liquidation_query import euros
+        from app.services.lipe_verifica import list_lipe_monthly_evidence
+
+        lipe_mensile = await list_lipe_monthly_evidence(db, year=anno)
 
         totale_credito_fatture_cents = 0
         totale_debito_corrispettivi_cents = 0
         periodi_calcolati = 0
         
         for mese in range(1, 13):
-            iva = await verificatore.verifica_coerenza_iva_tra_pagine(anno, mese)
+            iva = await verificatore.verifica_coerenza_iva_tra_pagine(
+                anno, mese, lipe_evidence=lipe_mensile[mese]
+            )
             
             credito = iva["iva_credito"]["da_fatture"]
             debito = iva["iva_debito"]["da_corrispettivi"]
@@ -192,6 +197,7 @@ async def confronto_iva_completo(anno: int) -> Dict[str, Any]:
                 "a_credito": euros(max(-saldo_cents, 0)) if saldo_cents is not None else None,
                 "periodo_calcolato": periodo_calcolato,
                 "stato_calcolo": iva.get("stato_calcolo", "CALCOLATO" if periodo_calcolato else "NON_CALCOLATO"),
+                "stato_periodo": iva.get("stato_periodo"),
                 "fonte_calcolo": iva.get("fonte_calcolo"),
                 "scadenza_nominale": iva.get("scadenza_nominale"),
                 "scadenza_legale": iva.get("scadenza_legale"),
@@ -202,6 +208,13 @@ async def confronto_iva_completo(anno: int) -> Dict[str, Any]:
                 "coerente_f24": f24_iva.get("coerente"),
                 "f24_multi_tributo": f24_iva.get("f24_multi_tributo", False),
                 "altri_codici_tributo": f24_iva.get("altri_codici_tributo", []),
+                "quietanza_presente": f24_iva.get("quietanza_presente", False),
+                "quietanza_id": f24_iva.get("quietanza_id"),
+                "pagato_banca": f24_iva.get("pagato_banca", False),
+                "verificato_banca": f24_iva.get("verificato_banca", False),
+                "movimento_bancario_id": f24_iva.get("movimento_bancario_id"),
+                "stato_pagamento_f24": f24_iva.get("stato_pagamento_intero_f24"),
+                "lipe": iva.get("lipe"),
             })
         
         return {
@@ -220,6 +233,13 @@ async def confronto_iva_completo(anno: int) -> Dict[str, Any]:
                 ),
                 "periodi_calcolati": periodi_calcolati,
                 "periodi_non_calcolati": 12 - periodi_calcolati,
+                "periodi_da_completare": sum(
+                    item.get("stato_periodo") == "DA_COMPLETARE" for item in confronto_mensile
+                ),
+                "periodi_non_ancora_dovuti": sum(
+                    item.get("stato_periodo") in ("NON_ANCORA_DOVUTO", "IN_FORMAZIONE")
+                    for item in confronto_mensile
+                ),
             },
             "discrepanze": verificatore.discrepanze
         }

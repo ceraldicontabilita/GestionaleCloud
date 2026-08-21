@@ -16,6 +16,7 @@ describe('Prospetti IVA: periodi non conclusi', () => {
               mese: 8,
               mese_nome: 'Agosto',
               stato_calcolo: 'NON_CALCOLATO',
+              stato_periodo: 'NON_ANCORA_DOVUTO',
               periodo_calcolato: false,
               iva_debito_corrispettivi: null,
               iva_credito_fatture: null,
@@ -47,7 +48,7 @@ describe('Prospetti IVA: periodi non conclusi', () => {
     );
 
     const confronto = screen.getByTestId('iva-confronto-commercialista');
-    expect(within(confronto).getByText('Non calcolato')).toBeInTheDocument();
+    expect(within(confronto).getByText('Non ancora dovuto')).toBeInTheDocument();
     expect(within(confronto).getAllByText('—').length).toBeGreaterThanOrEqual(5);
 
     const scadenze = screen.getByTestId('iva-scadenze-mensili');
@@ -78,6 +79,9 @@ describe('Confronto IVA: base completa del mese', () => {
             fatture_gia_liquidate: 84,
             fatture_da_classificare: 11,
             importo_f24_commercialista: null,
+            quietanza_presente: false,
+            verificato_banca: false,
+            lipe: { stato: 'LIPE_ESTRATTA', vp4: 6211.86, vp5: 3241.46, coerente_gestionale: true, page_number: 2 },
           }],
           totali: {},
         }}
@@ -88,6 +92,8 @@ describe('Confronto IVA: base completa del mese', () => {
     expect(within(confronto).getByText('108')).toBeInTheDocument();
     expect(within(confronto).getByText(/97 con IVA · 84 già liquidate · 11 da verificare/)).toBeInTheDocument();
     expect(within(confronto).getByText('€ 3.241,46')).toBeInTheDocument();
+    expect(within(confronto).getByText(/VP4 € 6.211,86 · VP5 € 3.241,46/)).toBeInTheDocument();
+    expect(within(confronto).getByText(/coerente · pag. 2/)).toBeInTheDocument();
     expect(within(confronto).getByText(/indipendentemente da cassa, banca e stato del pagamento/)).toBeInTheDocument();
   });
 });

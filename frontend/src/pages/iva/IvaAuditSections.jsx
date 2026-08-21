@@ -33,8 +33,18 @@ const metricStyle = {
 };
 
 function EsitoF24({ mese }) {
+  if (mese.stato_periodo === 'NON_ANCORA_DOVUTO') return <Badge variant="neutral">Non ancora dovuto</Badge>;
+  if (mese.stato_periodo === 'IN_FORMAZIONE') return <Badge variant="info">In formazione</Badge>;
+  if (mese.stato_periodo === 'IN_ATTESA') return <Badge variant="info">In attesa</Badge>;
+  if (mese.stato_periodo === 'DA_COMPLETARE') return <Badge variant="danger">Da completare</Badge>;
   if (mese.periodo_calcolato === false || mese.stato_calcolo === 'NON_CALCOLATO') {
     return <Badge variant="neutral">Non calcolato</Badge>;
+  }
+  if (mese.lipe?.stato === 'LIPE_AMBIGUA' || mese.lipe?.stato === 'LIPE_DA_VERIFICARE') {
+    return <Badge variant="warning">LIPE da verificare</Badge>;
+  }
+  if (mese.lipe?.stato === 'LIPE_ESTRATTA' && mese.lipe?.coerente_gestionale === false) {
+    return <Badge variant="danger">LIPE diversa</Badge>;
   }
   if ((mese.da_versare || 0) <= 0) {
     return <Badge variant="info">Credito {formatEuro(mese.a_credito || 0)}</Badge>;
@@ -59,8 +69,8 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
         Confronto con F24 del commercialista
       </h3>
       <p style={{ margin: '0 0 12px', color: COLORS.textMuted, fontSize: 13 }}>
-        Confronta la stima del gestionale con la sola riga IVA (codici 6001–6012)
-        estratta dal modello F24 ricevuto via email. Gli altri tributi presenti nello stesso
+        Confronta mese per mese il calcolo del gestionale, i campi VP4/VP5 della LIPE e la sola
+        riga IVA (codici 6001–6012) estratta dal modello F24 ricevuto via email. Gli altri tributi presenti nello stesso
         modello, ad esempio il 1040, restano distinti e non vengono sommati all’IVA.
         Il calcolo comprende tutte le fatture fiscalmente attribuite al mese, indipendentemente
         da cassa, banca e stato del pagamento.
@@ -81,7 +91,7 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
             <table className="iva-responsive-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead>
                 <tr>
-                  {['Mese', 'IVA debito', 'IVA credito', 'Fatture del mese', 'Saldo gestionale', 'F24 commercialista', 'Scostamento', 'Esito'].map((label) => (
+                  {['Mese', 'IVA debito', 'IVA credito', 'Fatture', 'Saldo gestionale', 'LIPE VP4/VP5', 'F24 commercialista', 'Quietanza', 'Banca', 'Scostamento F24', 'Esito'].map((label) => (
                     <th key={label} style={{ padding: '10px 9px', textAlign: label === 'Mese' ? 'left' : 'right', color: COLORS.textMuted, background: COLORS.bgAlt, whiteSpace: 'nowrap' }}>
                       {label}
                     </th>
@@ -111,6 +121,16 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
                     <td data-label="Saldo gestionale" style={{ padding: '10px 9px', textAlign: 'right', fontWeight: 700, color: m.saldo > 0 ? COLORS.danger : COLORS.success }}>
                       {nonCalcolato ? '—' : <>{m.saldo > 0 ? '+' : ''}{formatEuro(m.saldo)}</>}
                     </td>
+                    <td data-label="LIPE VP4/VP5" style={{ padding: '10px 9px', textAlign: 'right' }}>
+                      {m.lipe?.stato === 'LIPE_ESTRATTA' ? (
+                        <span>
+                          VP4 {formatEuro(m.lipe.vp4)} · VP5 {formatEuro(m.lipe.vp5)}
+                          <small style={{ display: 'block', color: m.lipe.coerente_gestionale ? COLORS.success : COLORS.danger }}>
+                            {m.lipe.coerente_gestionale ? 'coerente' : 'scostamento rilevato'} · pag. {m.lipe.page_number || '—'}
+                          </small>
+                        </span>
+                      ) : <span style={{ color: COLORS.textMuted }}>{m.lipe?.stato === 'LIPE_AMBIGUA' ? 'Più LIPE candidate' : '—'}</span>}
+                    </td>
                     <td data-label="F24 commercialista" style={{ padding: '10px 9px', textAlign: 'right' }}>
                       {m.importo_f24_commercialista == null ? '—' : (
                         <span>
@@ -121,7 +141,13 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
                         </span>
                       )}
                     </td>
-                    <td data-label="Scostamento" style={{ padding: '10px 9px', textAlign: 'right', color: m.scostamento_f24 == null ? COLORS.textMuted : Math.abs(m.scostamento_f24) <= 0.01 ? COLORS.success : COLORS.danger }}>
+                    <td data-label="Quietanza" style={{ padding: '10px 9px', textAlign: 'right' }}>
+                      <Badge variant={m.quietanza_presente ? 'success' : 'neutral'}>{m.quietanza_presente ? 'Presente' : 'Assente'}</Badge>
+                    </td>
+                    <td data-label="Banca" style={{ padding: '10px 9px', textAlign: 'right' }}>
+                      <Badge variant={m.verificato_banca ? 'success' : 'neutral'}>{m.verificato_banca ? 'Verificata' : 'Non verificata'}</Badge>
+                    </td>
+                    <td data-label="Scostamento F24" style={{ padding: '10px 9px', textAlign: 'right', color: m.scostamento_f24 == null ? COLORS.textMuted : Math.abs(m.scostamento_f24) <= 0.01 ? COLORS.success : COLORS.danger }}>
                       {m.scostamento_f24 == null ? '—' : formatEuro(m.scostamento_f24)}
                     </td>
                     <td data-label="Esito" style={{ padding: '10px 9px', textAlign: 'right' }}><EsitoF24 mese={m} /></td>
