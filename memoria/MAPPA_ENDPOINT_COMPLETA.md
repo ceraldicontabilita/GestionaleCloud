@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1140 endpoint** in **112 gruppi**.
+> Totale **1142 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 694 · ext esterni = 83 · — da verificare = 363
+**Riepilogo uso:** ✓ frontend = 696 · ext esterni = 83 · — da verificare = 363
 
 ## AI Parser  (11)
 
@@ -594,7 +594,7 @@
 | POST | `/api/document-ai/process-classified-email` | — | document_ai |
 | POST | `/api/document-ai/reprocess-and-save` | — | document_ai |
 
-## Documenti  (46)
+## Documenti  (48)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -643,7 +643,9 @@
 | POST | `/api/documenti/telegram/test` | — | documenti |
 | GET | `/api/documenti/ultimo-sync` | — | documenti |
 | POST | `/api/documenti/upload-auto` | ✓ | documenti |
+| GET | `/api/documenti/upload-auto/jobs/{job_id}` | ✓ | documenti |
 | POST | `/api/documenti/upload-auto/preview` | ✓ | documenti |
+| POST | `/api/documenti/upload-auto/queue` | ✓ | documenti |
 
 ## Documenti Non Associati  (9)
 

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../api';
 import ImportDocumenti, { classificaEsitoUpload, descriviProvaFiscale } from './ImportDocumenti';
 
-vi.mock('../api', () => ({ default: { post: vi.fn() } }));
+vi.mock('../api', () => ({ default: { post: vi.fn(), get: vi.fn() } }));
 vi.mock('../components/DriveImportControls', () => ({
   DriveFattureImportCard: () => <div>Controllo import fatture Drive</div>,
   AnnoImportazioneCard: () => <div>Controllo anno import Drive</div>,
@@ -162,6 +162,44 @@ describe('Import documenti - corrispettivo duplicato', () => {
     expect(importUrl).toBe('/api/documenti/upload-auto');
     expect(config.headers['X-Document-Preview-Token']).toBe('token-archivio_zip');
     expect((await screen.findAllByText('Archivio ZIP')).length).toBeGreaterThan(0);
+  });
+
+  it('accoda gli export POS grandi e mostra automaticamente il risultato finale', async () => {
+    mockPreviewThenImport('pos_terminal', {
+      success: true,
+      tipo_rilevato: 'pos_terminal',
+      workflow: 'POS_NUMIA_ASYNC_OPERATION_ID_V2',
+      status: 'queued',
+      job_id: 'DOC-IMPORT-test',
+    }, { operazioni: 2809, giorni: 24 });
+    api.get.mockResolvedValue({
+      data: {
+        status: 'completed',
+        result: {
+          inserted: 2809,
+          updated: 0,
+          unchanged: 0,
+          operation_identity: 'pos_numia_v2',
+        },
+      },
+    });
+    render(<ImportDocumenti />);
+
+    const xlsx = new File(['xlsx'], 'Export_Transazioni_gennaio 2026.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    fireEvent.change(screen.getByTestId('file-input'), { target: { files: [xlsx] } });
+    fireEvent.click(await screen.findByTestId('upload-btn'));
+    await screen.findByTestId('preview-summary');
+    fireEvent.click(screen.getByTestId('upload-btn'));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+    expect(api.post.mock.calls[1][0]).toBe('/api/documenti/upload-auto/queue');
+    expect(api.get).toHaveBeenCalledWith(
+      '/api/documenti/upload-auto/jobs/DOC-IMPORT-test',
+      expect.objectContaining({ timeout: 10000 }),
+    );
+    expect(await screen.findByText(/2809 operazioni nuove/)).toBeInTheDocument();
   });
 
   it('rende espliciti i due passaggi fino alla Prima Nota', async () => {
