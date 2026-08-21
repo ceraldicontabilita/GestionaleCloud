@@ -259,7 +259,7 @@ def test_documented_tax_payments_only_include_quietanze_and_keep_bank_unverified
     assert all(item["bank_status"] == "DA_VERIFICARE" for item in payload["items"])
 
 
-def test_tax_obligations_include_all_debits_and_keep_evidence_states_distinct(monkeypatch):
+def test_tax_obligations_keep_complete_f24_delegations_and_evidence_states_distinct(monkeypatch):
     from app.services import drive_document_index as index
 
     documents = [{
@@ -285,13 +285,15 @@ def test_tax_obligations_include_all_debits_and_keep_evidence_states_distinct(mo
 
     payload = list_tax_obligations()
 
-    assert payload["total"] == 2
-    assert {item["tax_code"] for item in payload["items"]} == {"1001", "6001"}
+    assert payload["total"] == 3
+    assert {item["tax_code"] for item in payload["items"]} == {"1001", "6001", "6099"}
     quietanza = next(item for item in payload["items"] if item["tax_code"] == "1001")
     modello = next(item for item in payload["items"] if item["tax_code"] == "6001")
+    credito = next(item for item in payload["items"] if item["tax_code"] == "6099")
     assert quietanza["documentary_payment_status"] == "QUIETANZA_PRESENTE"
     assert modello["documentary_payment_status"] == "DA_VERIFICARE"
-    assert quietanza["bank_status"] == modello["bank_status"] == "DA_VERIFICARE"
+    assert credito["credit_amount"] == 25
+    assert quietanza["bank_status"] == modello["bank_status"] == credito["bank_status"] == "DA_VERIFICARE"
 
 
 def test_declarations_use_canonical_types_and_verified_document_identity(monkeypatch):
