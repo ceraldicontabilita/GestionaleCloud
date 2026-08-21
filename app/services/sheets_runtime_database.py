@@ -113,6 +113,14 @@ class SheetsRuntimeDatabase:
         self._memory_db = self._client[name]
         self._config = dict(config)
         self._by_collection = {sheet.collection: sheet for sheet in SHEETS}
+        # I fogli canonici vengono predisposti insieme al registro. I fogli
+        # dinamici gia' presenti, invece, possono essere stati creati in
+        # anticipo e risultare ancora privi dell'intestazione. Prima della
+        # prima scrittura del processo li ripassiamo quindi attraverso
+        # ``ensure_collection_sheet``: in questo modo Sheets non interpreta la
+        # prima riga dati come intestazione e non accoda le righe successive a
+        # partire da una colonna errata.
+        self._write_ready_collections = {sheet.collection for sheet in SHEETS}
         self._collections: dict[str, SheetsRuntimeCollection] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         self._schema_lock = asyncio.Lock()
@@ -154,17 +162,18 @@ class SheetsRuntimeDatabase:
 
     async def ensure_collection(self, collection_name: str) -> LedgerSheet:
         sheet = self._by_collection.get(collection_name)
-        if sheet is not None:
+        if sheet is not None and collection_name in self._write_ready_collections:
             return sheet
         async with self._schema_lock:
             sheet = self._by_collection.get(collection_name)
-            if sheet is not None:
+            if sheet is not None and collection_name in self._write_ready_collections:
                 return sheet
             spreadsheet_id = str(self._config.get("GOOGLE_SHEETS_LEDGER_ID") or "")
             if not spreadsheet_id:
                 raise RuntimeError("GOOGLE_SHEETS_LEDGER_ID mancante")
             sheet = await ensure_collection_sheet(spreadsheet_id, collection_name)
             self._by_collection[collection_name] = sheet
+            self._write_ready_collections.add(collection_name)
             logger.info(
                 "Foglio Drive dinamico predisposto: %s -> %s",
                 collection_name, sheet.title,
