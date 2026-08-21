@@ -6,7 +6,7 @@ e trattarle come righe di un terminale diverso raddoppierebbe l'incasso.
 """
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services.scritture_contabili import (
     GESTORE_POS_DEFAULT,
@@ -22,7 +22,7 @@ def _run(awaitable):
 
 
 def _db():
-    return AsyncMongoMockClient()["pos_multi_gestore_test"]
+    return MemorySheetsClient()["pos_multi_gestore_test"]
 
 
 def _chiusura(importo, gestore=None, source="inserimento_manuale_terminale"):

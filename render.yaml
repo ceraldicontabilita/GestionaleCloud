@@ -35,8 +35,8 @@ services:
         value: "1"
       - key: FAIL_FAST_SECRETS
         value: "true"
-      - key: DATA_BACKEND
-        value: "sheets"
+      - key: SHEETS_REGISTRY_NAME
+        value: "GestionaleCloud"
       - key: PROCESS_ROLE
         value: "combined"
       - key: ENABLE_SCHEDULER
@@ -49,9 +49,11 @@ services:
         sync: false
       - key: GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON
         sync: false
+      - key: CREDENTIALS_ENCRYPTION_KEY
+        sync: false
       - key: SUMUP_API_KEY
         sync: false
       - key: SUMUP_MERCHANT_CODE
         sync: false
-      # Credenziali, database e integrazioni sono configurati nella dashboard.
+      # Credenziali, archivio e integrazioni sono configurati nella dashboard.
       # Non aggiungere valori sensibili al repository.

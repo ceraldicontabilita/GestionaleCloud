@@ -1,7 +1,7 @@
 import asyncio
 import base64
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services import ripielaborazione_documenti as modulo
 from app.services.ripielaborazione_documenti import RielaborazioneDocumentiService
@@ -13,7 +13,7 @@ def _pdf_fake() -> str:
 
 def test_anteprima_elenca_categorie_dinamiche():
     async def scenario():
-        db = AsyncMongoMockClient()["rielaborazione-preview"]
+        db = MemorySheetsClient()["rielaborazione-preview"]
         await db["documents_inbox"].insert_many([
             {"id": "1", "document_type": "f24", "pdf_data": _pdf_fake()},
             {"id": "2", "document_type": "tari_avviso", "pdf_data": _pdf_fake()},
@@ -36,7 +36,7 @@ def test_simulazione_non_scrive_sul_documento(monkeypatch):
     monkeypatch.setattr(modulo, "parse_document_with_ai", parser_finto)
 
     async def scenario():
-        db = AsyncMongoMockClient()["rielaborazione-dry-run"]
+        db = MemorySheetsClient()["rielaborazione-dry-run"]
         await db["documents_inbox"].insert_one({
             "id": "fatt-1", "document_type": "fattura_pdf", "pdf_data": _pdf_fake(),
         })
@@ -55,7 +55,7 @@ def test_esecuzione_salva_esito_accanto_all_originale(monkeypatch):
     monkeypatch.setattr(modulo, "parse_document_with_ai", parser_finto)
 
     async def scenario():
-        db = AsyncMongoMockClient()["rielaborazione-write"]
+        db = MemorySheetsClient()["rielaborazione-write"]
         originale = _pdf_fake()
         await db["documents_inbox"].insert_one({
             "id": "v-1", "document_type": "verbale", "pdf_data": originale,
@@ -78,7 +78,7 @@ def test_filtro_categoria_non_tocca_le_altre(monkeypatch):
     monkeypatch.setattr(modulo, "parse_document_with_ai", parser_finto)
 
     async def scenario():
-        db = AsyncMongoMockClient()["rielaborazione-filtro"]
+        db = MemorySheetsClient()["rielaborazione-filtro"]
         await db["documents_inbox"].insert_many([
             {"id": "a", "document_type": "f24", "pdf_data": _pdf_fake()},
             {"id": "b", "document_type": "tari_avviso", "pdf_data": _pdf_fake()},
@@ -105,7 +105,7 @@ def test_formato_senza_parser_specifico_resta_da_verificare_non_errore(monkeypat
     monkeypatch.setattr(modulo, "parse_document_with_ai", parser_finto)
 
     async def scenario():
-        db = AsyncMongoMockClient()["rielaborazione-fallback"]
+        db = MemorySheetsClient()["rielaborazione-fallback"]
         originale = _pdf_fake()
         await db["documents_inbox"].insert_one({
             "id": "ader-1", "document_type": "cartella_ader", "pdf_data": originale,

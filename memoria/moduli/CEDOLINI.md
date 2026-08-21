@@ -61,7 +61,7 @@ attendibili reale fornita dall'utente). Pipeline: `app/services/post_download_pi
      esisteva solo la chiamata di *risoluzione* in `cedolino_handlers.py`, mai una
      generazione: l'alert non poteva mai comparire). Entrambi additivi/best-effort,
      non cambiano quale movimento/cedolino viene accettato come match, solo lo
-     segnalano. Verificato con mongomock: alert corretto sui due casi, nessun falso
+     segnalano. Verificato con registro Sheets effimero: alert corretto sui due casi, nessun falso
      positivo su mese diverso, il cedolino resta comunque riconciliato.
    - Restano NON generati (solo definiti): `CED_TIPO_NON_RICONOSCIUTO`,
      `CED_PRIMA_NOTA_NON_GENERATA`, `CED_TFR_NON_AGGIORNATO`, `CED_INCOERENZA_PRESENZE`

@@ -1,4 +1,4 @@
-"""Audit statico ripetibile dell'architettura FastAPI/MongoDB.
+"""Audit statico ripetibile dell'architettura FastAPI/Drive/Sheets.
 
 Non modifica codice o dati. Produce metriche oggettive utili a impedire che
 la revisione architetturale diventi una valutazione soggettiva.

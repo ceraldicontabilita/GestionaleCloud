@@ -90,7 +90,7 @@ quella "approssimata" — sono la stessa logica di scoring con soglie diverse, n
    invece che a importo esatto, ora genera un alert con la differenza calcolata invece
    di riconciliare in silenzio. Tutte chiamate additive best-effort (try/except, non
    toccano la logica di calcolo/matching, solo la rendono visibile), verificate con
-   mongomock: nessun alert su match esatto (zero falsi positivi), alert corretto su
+   registro Sheets effimero: nessun alert su match esatto (zero falsi positivi), alert corretto su
    match con differenza, idempotenza su run ripetuti.
 
    `RIC_PARTITA_VECCHIA` wired in `app/scheduler.py::check_scadenze_partite_task()`
@@ -101,7 +101,7 @@ quella "approssimata" — sono la stessa logica di scoring con soglie diverse, n
    anche se scadute da mesi; (b) partite aperte SENZA `data_scadenza` esplicita ma
    ferme da oltre 90 giorni dalla creazione — prima invisibili perché la query
    scadenze richiede sempre una `data_scadenza` valorizzata. Verificato con
-   mongomock: alert generato sui due casi, non generato su una partita recente
+   registro Sheets effimero: alert generato sui due casi, non generato su una partita recente
    (5gg) senza scadenza, idempotenza su run ripetuti.
 
    `RIC_PAGAMENTO_MULTIPLO` wired in
@@ -113,7 +113,7 @@ quella "approssimata" — sono la stessa logica di scoring con soglie diverse, n
    motore (vedi anche gap puntuale più sotto in questo documento). Solo
    rilevamento/segnalazione: non marca nulla come pagato né riconcilia
    automaticamente, la combinazione va sempre confermata da un operatore.
-   Verificato con mongomock: alert corretto su combinazione 500+700=1200,
+   Verificato con registro Sheets effimero: alert corretto su combinazione 500+700=1200,
    nessun falso positivo su importo senza combinazione plausibile.
 
    **Bug collaterale trovato e corretto mentre si wired RIC_POS_NON_QUADRATO**:
@@ -156,7 +156,7 @@ nell'unificazione. Verifica puntuale completata:
      motore risultava "pagata" ovunque tranne che in Prima Nota Banca. Corretto in
      entrambe le funzioni: ora chiamano anche `registra_pagamento_fattura(fattura,
      "banca")` (idempotente) e (per il path automatico) propagano `FATTURA_PAGATA`.
-     Verificato con mongomock: fattura riconciliata via `riconcilia_manuale` e via
+     Verificato con registro Sheets effimero: fattura riconciliata via `riconcilia_manuale` e via
      `riconcilia_automatico` produce entrambe le volte un movimento reale in
      `prima_nota_banca`, nessuna regressione sui 90 test esistenti.
   Le tolleranze di matching restano diverse da `riconciliazione_bancaria.py` (±1% qui vs

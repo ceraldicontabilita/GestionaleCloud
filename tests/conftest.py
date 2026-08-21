@@ -2,7 +2,7 @@
 Configurazione test per il gestionale ERP Azienda in Cloud.
 
 Fornisce fixture per:
-- Mock del database MongoDB
+- Mock del registro Sheets
 - Dati di esempio per corrispettivi, fatture, cedolini, dipendenti
 """
 import pytest

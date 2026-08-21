@@ -66,11 +66,9 @@ essere ricondotte ai componenti condivisi, non replicate.
 ## Dati
 
 Il frontend non accede direttamente ad archivi. Interroga le API FastAPI, che
-espongono il dominio indipendentemente dal backend di persistenza. La
-destinazione operativa del progetto è Drive-only: originali in Google Drive e
-registri strutturati in Google Sheets/Excel collegati a Drive. MongoDB resta
-una compatibilità transitoria del backend fino al cutover verificato e non
-deve comparire nella logica dei componenti React.
+espongono il dominio senza accesso diretto alla persistenza. L'archivio
+operativo è Drive/Sheets: originali in Google Drive e registri strutturati in
+Google Sheets/Excel collegati a Drive. Non esistono fallback nei componenti.
 
 Le informazioni mostrate nella UI derivano quindi da queste fonti:
 

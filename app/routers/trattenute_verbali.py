@@ -15,7 +15,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from pymongo import ReturnDocument
+from app.services.sheets_document_store import ReturnRecord
 
 from app.database import Database
 from app.utils.error_handler import handle_errors
@@ -126,7 +126,7 @@ async def conferma_trattenuta(
             "updated_at": now_iso,
         }},
         projection={"_id": 0},
-        return_document=ReturnDocument.AFTER,
+        return_document=ReturnRecord.AFTER,
     )
     if not trattenuta:
         esistente = await db[COLL_TRATTENUTE].find_one(
@@ -165,7 +165,7 @@ async def comunica_trattenuta(trattenuta_id: str) -> Dict[str, Any]:
             "updated_at": now_iso,
         }},
         projection={"_id": 0},
-        return_document=ReturnDocument.AFTER,
+        return_document=ReturnRecord.AFTER,
     )
     if not trattenuta:
         esistente = await db[COLL_TRATTENUTE].find_one(
@@ -217,7 +217,7 @@ async def rimanda_trattenuta(
             "updated_at": now_iso,
         }},
         projection={"_id": 0},
-        return_document=ReturnDocument.AFTER,
+        return_document=ReturnRecord.AFTER,
     )
     if not trattenuta:
         if not prima:
@@ -264,7 +264,7 @@ async def escludi_trattenuta(
             "updated_at": now_iso,
         }},
         projection={"_id": 0},
-        return_document=ReturnDocument.AFTER,
+        return_document=ReturnRecord.AFTER,
     )
     if not trattenuta:
         if not prima:

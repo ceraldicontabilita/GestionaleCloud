@@ -45,8 +45,8 @@ PAYMENT_TERMS = [
 from app.engines.prima_nota_engine import METODI_RICHIEDONO_IBAN as METODI_BANCARI
 
 
-def clean_mongo_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
-    """Rimuove _id da documento MongoDB."""
+def clean_record(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Rimuove l'identificatore interno prima della risposta JSON."""
     if doc and "_id" in doc:
         doc.pop("_id", None)
     return doc

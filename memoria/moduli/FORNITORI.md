@@ -71,14 +71,14 @@ sulla stessa pipeline `process_xml_bytes` → `ensure_supplier_exists()`.
      Aggiunto `app/scheduler.py::check_fornitori_duplicati_task()` (ogni giorno ore 6:00),
      che genera l'alert solo per i gruppi con certezza "alta" (stessa P.IVA identica) — i
      gruppi "media" (nome simile, fuzzy) restano solo nel controllo manuale, per evitare
-     falsi positivi da un job automatico notturno. Verificato con mongomock: alert corretto
+     falsi positivi da un job automatico notturno. Verificato con registro Sheets effimero: alert corretto
      su P.IVA duplicata, idempotenza su run ripetuti.
    ✔ RISOLTO anche `FORN_DATI_INCOERENTI`: generato in `fatture_upload.py::
    _controlla_dati_fornitore_incoerenti()` (chiamata sia per fornitori nuovi che esistenti in
    `ensure_supplier_exists()`) quando la P.IVA di un fornitore con nazione IT/vuota non è nel
    formato standard italiano (11 cifre numeriche). Esclude esplicitamente i fornitori esteri
    (nazione diversa da IT), che hanno formati P.IVA legittimamente diversi. Verificato con
-   mongomock: alert su P.IVA a 10 cifre e su dati storici malformati già in DB, nessun falso
+   registro Sheets effimero: alert su P.IVA a 10 cifre e su dati storici malformati già in DB, nessun falso
    positivo su P.IVA valida o fornitore estero.
 5. **Merge Magazzino↔Fornitori non verificato**: la spec Magazzino presuppone dizionario
    prodotti collegato al fornitore per riordino automatico — vedi `MAGAZZINO.md` per il

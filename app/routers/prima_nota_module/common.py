@@ -130,8 +130,8 @@ def filtro_saldo_prima_nota(collection: str, **extra: Any) -> Dict[str, Any]:
     }
 
 
-def clean_mongo_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
-    """Rimuove _id da documento MongoDB."""
+def clean_record(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Rimuove l'identificatore interno prima della risposta JSON."""
     if doc and "_id" in doc:
         doc.pop("_id", None)
     return doc
@@ -210,7 +210,7 @@ async def _totali_entrate_uscite(db, collection: str,
                                   query: Dict[str, Any]) -> tuple[float, float]:
     """Somma entrate/uscite su Mongo e sul runtime Drive/Sheets.
 
-    MongoDB esegue la pipeline sul server. Il database in memoria usato dal
+    Drive/Sheets esegue la pipeline sul server. Il database in memoria usato dal
     backend Sheets non implementa ``$convert``: in quel caso leggiamo i soli
     campi necessari e applichiamo la stessa conversione tollerante in Python.
     """
@@ -326,7 +326,7 @@ async def saldi_finanziari(db, anno: int = None) -> Dict[str, Any]:
     async def _saldo(query: Dict[str, Any]) -> float:
         # Somma in Python invece che in aggregate: sono le righe di una
         # singola scheda di tesoreria, non l'intero registro, e cosi' il
-        # calcolo non dipende da $convert (assente in mongomock, quindi
+        # calcolo non dipende da $convert (assente in registro Sheets effimero, quindi
         # altrimenti non verificabile nei test).
         cursore = db["prima_nota_banca"].find(
             {**base, **query}, {"_id": 0, "tipo": 1, "importo": 1})

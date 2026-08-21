@@ -5,7 +5,7 @@ trasferimento giornaliero, non cinque rimborsi/ricavi indipendenti.
 """
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 from pydantic import ValidationError
 import pytest
 
@@ -30,7 +30,7 @@ def _run(awaitable):
 
 
 def _db():
-    return AsyncMongoMockClient()["bonifica_pos_numia_test"]
+    return MemorySheetsClient()["bonifica_pos_numia_test"]
 
 
 def test_payload_bonifica_numia_rifiuta_campi_e_anni_non_validi():

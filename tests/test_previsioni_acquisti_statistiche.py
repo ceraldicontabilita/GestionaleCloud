@@ -1,13 +1,13 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers import previsioni_acquisti
 
 
 def test_statistiche_espongono_quantita_corrente_confronto_e_costo(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_previsioni_statistiche"]
+        db = MemorySheetsClient()["test_previsioni_statistiche"]
         monkeypatch.setattr(
             previsioni_acquisti.Database, "get_db", staticmethod(lambda: db)
         )

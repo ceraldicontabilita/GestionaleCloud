@@ -347,7 +347,7 @@ async def ingest_corrispettivo_parsed(
     # in produzione, il movimento in Prima Nota Cassa non si duplicava).
     # Quando è disponibile la chiave naturale del file XML (il caso comune
     # e quello a rischio reale di doppio import automatico), l'insert
-    # diventa un'unica operazione atomica lato MongoDB. I due controlli più
+    # diventa un'unica operazione atomica lato Drive/Sheets. I due controlli più
     # deboli (data+matricola, data+totale — usati per corrispettivi
     # manuali/provvisori senza chiave XML) restano non atomici: rischio
     # residuo noto, non coperto in questo fix mirato.

@@ -1,14 +1,13 @@
-"""Filtri MongoDB coerenti per documenti contabili annuali.
+"""Filtri coerenti per i registri contabili annuali.
 
-I dati storici del gestionale contengono sia date ISO (YYYY-MM-DD), sia date
-italiane (DD/MM/YYYY), sia veri ``datetime``.  Questo helper evita che ogni
-dashboard implementi un filtro diverso o perda documenti legacy.
+I dati storici contengono date ISO, date italiane e oggetti ``datetime``.
+Questo helper impedisce alle pagine di applicare criteri annuali divergenti.
 """
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Optional
 
 
-def filtro_anno_mongo(
+def filtro_anno_registro(
     anno: Optional[int],
     campi_data: Iterable[str],
     *,

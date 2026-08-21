@@ -18,7 +18,7 @@ Contesto trasversale:
 ---
 
 ## auth.py (montato senza prefisso extra: prefisso interno `/api`)
-Login/logout single-user admin (credenziali da env `ADMIN_EMAIL` + `ADMIN_PASSWORD` in chiaro o `ADMIN_PASSWORD_HASH` bcrypt). Emette JWT HS256 (7 giorni) con PyJWT e lo salva in cookie httpOnly `access_token` + cookie flag `session_active`. Nessuna collezione MongoDB: utente unico da variabili d'ambiente.
+Login/logout single-user admin (credenziali da env `ADMIN_EMAIL` + `ADMIN_PASSWORD` in chiaro o `ADMIN_PASSWORD_HASH` bcrypt). Emette JWT HS256 (7 giorni) con PyJWT e lo salva in cookie httpOnly `access_token` + cookie flag `session_active`. Nessuna collezione Drive/Sheets: utente unico da variabili d'ambiente.
 
 ### POST /api/login — login legacy
 **Cosa fa**: autentica l'admin con email+password e imposta i cookie di sessione.
@@ -84,7 +84,7 @@ Funzioni amministrative: riepilogo dashboard admin, statistiche DB, saldi apertu
 **Logica codice**: upsert su `opening_balances` con `$set` del body + `year` + `updated_at`; nessuna validazione sulla struttura del body.
 
 ### GET /api/admin/collections — elenco collezioni
-**Cosa fa**: lista tutte le collezioni MongoDB con conteggio documenti.
+**Cosa fa**: lista tutte le collezioni Drive/Sheets con conteggio documenti.
 **Logica codice**: `list_collection_names()` poi `count_documents({})` per ciascuna (loop sequenziale).
 
 ### POST /api/admin/reset-collections — svuota collezioni selezionate
@@ -106,7 +106,7 @@ Funzioni amministrative: riepilogo dashboard admin, statistiche DB, saldi apertu
 **Note**: endpoint one-shot legacy, candidato a rimozione dopo l'esecuzione.
 
 ## admin_export.py (montato su `/api` + prefisso interno `/admin/export` → `/api/admin/export`)
-Download e lista dei file di export generati sul filesystem del server. Nessun accesso MongoDB.
+Download e lista dei file di export generati sul filesystem del server. Nessun accesso Drive/Sheets.
 
 ### GET /api/admin/export — lista file export disponibili
 **Cosa fa**: elenca i file presenti nella directory export con dimensione, data e URL di download.
@@ -289,7 +289,7 @@ Export Excel "strutturati" (5 endpoint GET) via layer servizi (`InvoiceServiceV2
 **Note**: stesso problema del campo `date` inesistente: il report mensile rischia di essere sempre a zero.
 
 ## reports/simple_exports.py (prefisso `/api/exports`)
-Export "semplificati" (8 endpoint GET): query dirette MongoDB senza layer servizi, output Excel via pandas/openpyxl oppure JSON grezzo con `?format=json`. Nessuna dipendenza auth negli handler (solo middleware, dichiarato correttamente nel docstring).
+Export "semplificati" (8 endpoint GET): query dirette Drive/Sheets senza layer servizi, output Excel via pandas/openpyxl oppure JSON grezzo con `?format=json`. Nessuna dipendenza auth negli handler (solo middleware, dichiarato correttamente nel docstring).
 
 ### GET /api/exports/invoices — export fatture
 **Cosa fa**: esporta tutte le fatture (max 10.000) in xlsx o JSON.
@@ -1251,7 +1251,7 @@ Mappatura degli articoli delle fatture al Piano dei Conti: estrazione articoli u
 
 **Autenticazione / sicurezza**
 - `POST /api/login` e `POST /api/logout` legacy sono irraggiungibili da non autenticati (non in whitelist middleware): funziona solo l'alias `/api/auth/login`; logica di login duplicata riga per riga in `auth.py`.
-- Due stack JWT paralleli: `auth.py` (PyJWT, `sub`=email, "HS256" hardcoded) vs `pin_login.py`/middleware (jose, `settings.ALGORITHM`, `sub`=user_id): `request.state.user_id` vale un'email o un ObjectId a seconda del login.
+- Due stack JWT paralleli: `auth.py` (PyJWT, `sub`=email, "HS256" hardcoded) vs `pin_login.py`/middleware (jose, `settings.ALGORITHM`, `sub`=user_id): `request.state.user_id` vale un'email o un identificatore interno a seconda del login.
 - ✔ RISOLTO (lug 2026) — I WebSocket `/api/ws/*` erano di fatto SENZA autenticazione (`?token=` stava in `BaseHTTPMiddleware.dispatch` che non intercetta lo scope ASGI `websocket`, codice morto). Ora `_autentica_websocket()` verifica il JWT dentro l'handler stesso, prima di `ws_manager.connect()`.
 - ✔ RISOLTO (lug 2026) — `/api/f24-public/*` era completamente pubblico ed esponeva importi F24 e contribuenti (oltre a upload/modifica/delete) senza auth. Rimosso da `PUBLIC_PREFIXES`.
 - ✔ RISOLTO (lug 2026) — Webhook WhatsApp (`/api/whatsapp/webhook`) e ponte ERP (`/api/erp/ponte/*`) ora in whitelist; il ponte ERP è protetto da un segreto dedicato (`ERP_BRIDGE_SECRET` via header `X-Erp-Secret`) invece di restare aperto. Gli header `X-Source`/`X-Azienda` restano solo loggati (informativi, non di sicurezza).
@@ -1259,7 +1259,7 @@ Mappatura degli articoli delle fatture al Piano dei Conti: estrazione articoli u
 - API v1 (public_api): doppio requisito contraddittorio API key + JWT; key passata come query param; `permessi` mai verificato; `/v1/keys/generate` senza controllo ruolo admin.
 - Nessun controllo di RUOLO in tutto il perimetro: qualunque utente JWT può usare endpoint distruttivi (reset collezioni/dizionario), dati riservati, invio WhatsApp, chiamate a pagamento verso OpenAPI.*.
 - `gestione_riservata`: il codice `GESTIONE_RISERVATA_CODE` protegge solo `/login` (gating cosmetico lato client); il codice errato viene loggato in chiaro.
-- Password in chiaro su MongoDB: `email_accounts.app_password`, `settings.gmail_app_password`; `GET /api/config/email` restituisce il documento senza mascheramenti; `ADMIN_PASSWORD` in chiaro ha priorità sul bcrypt; cookie con `secure=False`; PIN hashato SHA-256 senza salt e anti brute-force solo in-memory per processo.
+- Password in chiaro su Drive/Sheets: `email_accounts.app_password`, `settings.gmail_app_password`; `GET /api/config/email` restituisce il documento senza mascheramenti; `ADMIN_PASSWORD` in chiaro ha priorità sul bcrypt; cookie con `secure=False`; PIN hashato SHA-256 senza salt e anti brute-force solo in-memory per processo.
 
 **Docstring che mentono**
 - `admin_export.py` dichiara `/app/uploads/` ma usa `/tmp/uploads`.

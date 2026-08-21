@@ -1,7 +1,7 @@
 """Catalogo documentale Drive in sola lettura.
 
 L'Excel e' il ponte tra Drive e il gestionale. Questo servizio non accede a
-MongoDB e non scarica i documenti indicizzati: scarica soltanto l'indice e,
+Drive/Sheets e non scarica i documenti indicizzati: scarica soltanto l'indice e,
 quando richiesto, risolve il percorso fino al link Drive del file originale.
 """
 

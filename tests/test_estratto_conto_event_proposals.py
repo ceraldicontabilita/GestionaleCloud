@@ -1,14 +1,14 @@
 import asyncio
 
 import pytest
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.handlers.estratto_conto import handler_matching_estratto_conto
 
 
 @pytest.fixture
 def db():
-    return AsyncMongoMockClient()["test_gestionale"]
+    return MemorySheetsClient()["test_gestionale"]
 
 
 def test_f24_multi_tributo_per_solo_importo_resta_proposta_idempotente(db):

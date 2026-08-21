@@ -1,31 +1,30 @@
-"""Versione ISOLATA (mongomock) della pipeline testata in
+"""Versione ISOLATA (registro Sheets effimero) della pipeline testata in
 test_corrispettivi_ingest.py: stessa logica applicativa reale
 (ingest_corrispettivo_parsed → motore unico registra_corrispettivo), ma
 senza bisogno di un backend live né di una connessione reale ad Atlas —
 gira sempre, anche in un sandbox senza rete.
 
-Usa un vero motore di query MongoDB in memoria (mongomock-motor), non un
+Usa un vero motore di query del registro in memoria (registro Sheets effimero), non un
 fake scritto a mano collezione per collezione: un fake semplificato con
 matching approssimativo delle query non avrebbe mai potuto rivelare la
 race condition trovata il 19/07/2026 in registra_corrispettivo (due
-scritture concorrenti duplicavano Prima Nota Cassa) — mongomock replica
+scritture concorrenti duplicavano Prima Nota Cassa) — registro Sheets effimero replica
 find_one_and_update/upsert con semantica reale.
 
 NON sostituisce test_corrispettivi_ingest.py, che resta la prova end-to-end
 vera (HTTP + Atlas reale) per quando gira in un ambiente con accesso
-effettivo a un backend live e a MongoDB Atlas."""
+effettivo a un backend live e a Google Sheets."""
 import asyncio
 
 import pytest
 
-mongomock_motor = pytest.importorskip("mongomock_motor")
-from mongomock_motor import AsyncMongoMockClient  # noqa: E402
+from app.services.sheets_document_store import MemorySheetsClient  # noqa: E402
 
 from app.routers.invoices.corrispettivi_helpers import ingest_corrispettivo_parsed  # noqa: E402
 
 
 def _db():
-    client = AsyncMongoMockClient()
+    client = MemorySheetsClient()
     return client["test_gestionale_isolato"]
 
 

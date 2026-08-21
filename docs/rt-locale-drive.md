@@ -33,4 +33,4 @@ e copia atomicamente solo i file nuovi. La pipeline Drive del gestionale esegue 
 deduplica, poi sposta i documenti in `Elaborate` o `Errori`.
 
 Per l'esecuzione ogni sera usare Utilita di pianificazione di Windows sul PC del locale. Le
-credenziali MongoDB e Google non servono allo script: Google Drive Desktop sincronizza la cartella.
+credenziali Drive/Sheets e Google non servono allo script: Google Drive Desktop sincronizza la cartella.

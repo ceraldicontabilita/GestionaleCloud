@@ -6,7 +6,7 @@ Registra chi ha fatto cosa, quando e su quale entità.
 
 Utilizzo:
     from app.services.audit_logger import log_evento
-    
+
     await log_evento(
         modulo="fatture",
         azione="stato_aggiornato",
@@ -44,13 +44,13 @@ async def log_evento(
 ) -> str:
     """
     Registra un evento di audit nel log unificato.
-    
+
     Args:
         modulo: modulo sorgente (fatture, fornitori, f24, cedolini, ...)
         azione: tipo azione (creato, aggiornato, stato_aggiornato, eliminato,
                 riconciliato, match_confermato, alert_generato, ...)
         entita_id: id dell'entità coinvolta
-        entita_collection: nome collezione MongoDB
+        entita_collection: nome foglio Sheets
         db: istanza database Motor
         vecchio_stato: stato prima della modifica (campi rilevanti)
         nuovo_stato: stato dopo la modifica
@@ -58,12 +58,12 @@ async def log_evento(
         utente: utente umano o "sistema"
         dettaglio: descrizione leggibile facoltativa
         extra: dati aggiuntivi liberi
-    
+
     Returns:
         id del record audit creato
     """
     audit_id = f"audit_{uuid.uuid4().hex[:12]}"
-    
+
     record = {
         "id": audit_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -77,16 +77,16 @@ async def log_evento(
         "utente": utente,
         "dettaglio": dettaglio,
     }
-    
+
     if extra:
         record["extra"] = extra
-    
+
     try:
         await db[COLL_AUDIT_LOG].insert_one(record)
     except Exception as e:
         # L'audit log non deve mai bloccare le operazioni principali
         logger.error(f"Errore scrittura audit log: {e}")
-    
+
     return audit_id
 
 
@@ -147,7 +147,7 @@ async def get_audit_per_modulo(
             query["timestamp"]["$gte"] = da
         if a:
             query["timestamp"]["$lte"] = a
-    
+
     records = await db[COLL_AUDIT_LOG].find(
         query, {"_id": 0}
     ).sort("timestamp", -1).limit(limit).to_list(limit)

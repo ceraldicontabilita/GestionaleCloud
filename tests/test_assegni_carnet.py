@@ -1,13 +1,13 @@
 import asyncio
 
 import pytest
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.bank import assegni as assegni_router
 
 
 async def _scenario_carnet_salvato(monkeypatch):
-    db = AsyncMongoMockClient()["test_assegni_carnet"]
+    db = MemorySheetsClient()["test_assegni_carnet"]
     monkeypatch.setattr(
         assegni_router.Database,
         "get_db",
@@ -36,7 +36,7 @@ async def _scenario_carnet_salvato(monkeypatch):
 
 
 async def _scenario_carnet_duplicato(monkeypatch):
-    db = AsyncMongoMockClient()["test_assegni_carnet_duplicato"]
+    db = MemorySheetsClient()["test_assegni_carnet_duplicato"]
     await db["assegni"].insert_one({"numero": "0208770001-02"})
     monkeypatch.setattr(
         assegni_router.Database,
@@ -56,7 +56,7 @@ async def _scenario_carnet_duplicato(monkeypatch):
 
 
 async def _scenario_carnet_numero_continuo(monkeypatch):
-    db = AsyncMongoMockClient()["test_assegni_carnet_continuo"]
+    db = MemorySheetsClient()["test_assegni_carnet_continuo"]
     monkeypatch.setattr(
         assegni_router.Database,
         "get_db",
@@ -75,7 +75,7 @@ async def _scenario_carnet_numero_continuo(monkeypatch):
 
 
 async def _scenario_carnet_formato_non_valido(monkeypatch):
-    db = AsyncMongoMockClient()["test_assegni_carnet_formato_non_valido"]
+    db = MemorySheetsClient()["test_assegni_carnet_formato_non_valido"]
     monkeypatch.setattr(
         assegni_router.Database,
         "get_db",
@@ -94,7 +94,7 @@ async def _scenario_carnet_formato_non_valido(monkeypatch):
 
 
 async def _scenario_fatture_disponibili(monkeypatch):
-    db = AsyncMongoMockClient()["test_fatture_disponibili_assegno"]
+    db = MemorySheetsClient()["test_fatture_disponibili_assegno"]
     await db["invoices"].insert_many([
         {
             "id": "f1", "invoice_key": "K1", "invoice_number": "10",
@@ -133,7 +133,7 @@ async def _scenario_fatture_disponibili(monkeypatch):
 
 
 async def _scenario_incassato_arricchito(monkeypatch):
-    db = AsyncMongoMockClient()["test_assegno_incassato_arricchito"]
+    db = MemorySheetsClient()["test_assegno_incassato_arricchito"]
     await db["assegni"].insert_one({
         "id": "a-incassato", "numero": "0208770985", "stato": "incassato",
         "importo": 9760.0, "anno": 2026, "fattura_collegata": "f-1",

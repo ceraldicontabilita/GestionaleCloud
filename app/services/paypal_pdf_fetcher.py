@@ -10,7 +10,7 @@ import os
 import re
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.services.sheets_document_store import SheetDatabase
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ def _connect():
 
 
 async def fetch_ricevuta_pagopa(
-    db: AsyncIOMotorDatabase, transaction_id: str, importo: float, data_iso: str
+    db: SheetDatabase, transaction_id: str, importo: float, data_iso: str
 ) -> Optional[Dict[str, Any]]:
     """Cerca su Gmail la ricevuta PagoPA corrispondente alla transazione PayPal."""
     try:
@@ -117,7 +117,7 @@ def _genera_pdf_da_testo(testo: str, path: str, titolo: str):
 
 
 async def genera_pdf_transazione_paypal(
-    db: AsyncIOMotorDatabase, transaction_id: str
+    db: SheetDatabase, transaction_id: str
 ) -> Optional[str]:
     tx = await db["paypal_transactions"].find_one({"transaction_id": transaction_id})
     if not tx:

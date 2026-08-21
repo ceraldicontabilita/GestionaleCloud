@@ -39,7 +39,7 @@ def read_pdf_text(pdf_path: Path) -> str:
 def read_pdf_bytes(content: bytes) -> str:
     """Estrae testo da un PDF gia' disponibile in memoria.
 
-    Il flusso ``Import documenti`` conserva i file in MongoDB e non deve
+    Il flusso ``Import documenti`` conserva i file in Drive/Sheets e non deve
     dipendere dalla vita breve di ``/tmp``. Per questo il parser accetta
     direttamente i byte e usa PyMuPDF soltanto come fallback.
     """
@@ -250,9 +250,9 @@ def extract_transfers_from_text(text: str, filename: str = "") -> List[Dict[str,
     """Estrae bonifici dal testo PDF."""
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     table_row = _extract_transfer_table_row(lines)
-    
+
     results: List[Dict[str, Any]] = []
-    
+
     metadata_file = extract_filename_metadata(filename)
 
     # Parsing base: privilegia i campi etichettati del documento bancario.
@@ -261,7 +261,7 @@ def extract_transfers_from_text(text: str, filename: str = "") -> List[Dict[str,
     )
     dt = parse_date(data_value or text)
     amt = None
-    
+
     # Cerca importo
     amount_value = _value_after_label(
         lines, r"importo(?:\s+(?:bonifico|operazione|disposto))?|totale\s+bonifico"
@@ -276,23 +276,23 @@ def extract_transfers_from_text(text: str, filename: str = "") -> List[Dict[str,
             amt = _parse_euro(m_amt.group(1))
     if amt is None:
         amt = _parse_amount_from_document(text)
-    
+
     # Cerca CRO/TRN
     mcro = re.search(r"\b(?:CRO|TRN|NS\s*RIF\.?|RIF\.?\s*(?:OPERAZIONE)?)[:\s]*([A-Z0-9]*[0-9][A-Z0-9]{3,39})\b", text, re.IGNORECASE)
     cro = mcro.group(1).strip() if mcro else None
-    
+
     # Cerca causale
     caus = table_row.get("causale") or _value_after_label(
         lines, r"causale(?:\s+del\s+bonifico)?|motivazione"
     )
     if caus and (IBAN_RE.search(caus.replace(" ", "")) or _parse_euro(caus) is not None):
         caus = None
-    
+
     # Cerca IBAN
     ibans = IBAN_RE.findall(text.replace(' ', ''))
     ben_iban = table_row.get("beneficiario_iban") or (ibans[0] if ibans else None)
     ord_iban = ibans[1] if len(ibans) > 1 else None
-    
+
     # Cerca nomi
     ord_nome = None
     ben_nome = None
@@ -302,7 +302,7 @@ def extract_transfers_from_text(text: str, filename: str = "") -> List[Dict[str,
     if _is_invalid_person_value(ben_nome):
         ben_nome = metadata_file.get("beneficiario_nome")
     ord_nome = _value_after_label(lines, r"ordinante|disponente|intestatario\s+conto")
-    
+
     periodo = _extract_payroll_period(caus or "")
     results.append({
         'data': dt,
@@ -319,5 +319,5 @@ def extract_transfers_from_text(text: str, filename: str = "") -> List[Dict[str,
         'mese_pagamento_file': metadata_file.get('mese_pagamento_file'),
         'anno_pagamento_file': metadata_file.get('anno_pagamento_file'),
     })
-    
+
     return results

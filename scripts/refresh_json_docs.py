@@ -266,7 +266,7 @@ def rewrite_page_docs(catalog: dict, revision: str, updated_at: str) -> set[str]
             "archivio_dati": {
                 "stato_corrente": "google_drive_sheets",
                 "backend_predefinito": "sheets",
-                "compatibilita": "mongodb_solo_con_DATA_BACKEND_mongodb",
+                "compatibilita": "nessun_backend_alternativo",
                 "fallback_automatico": "disabilitato",
             },
             "regole_di_lettura": [
@@ -385,9 +385,9 @@ def rewrite_catalog(catalog: dict, revision: str, updated_at: str) -> None:
         ),
         "storage_state": {
             "current": "google_drive_sheets",
-            "default_backend": "sheets",
-            "compatibility": "mongodb_explicit_only",
-            "automatic_fallback": "disabled",
+            "registry": "sheets",
+            "originals": "drive",
+            "compatibility": "nessun_backend_alternativo",
         },
         "pages": catalog["pages"],
     }
@@ -405,10 +405,10 @@ def rewrite_chat_kb(revision: str, updated_at: str) -> None:
     kb["storage_operativo"] = {
         "stato_corrente": "google_drive_sheets",
         "backend_predefinito": "sheets",
-        "compatibilita": "mongodb_solo_con_DATA_BACKEND_mongodb",
+        "compatibilita": "nessun_backend_alternativo",
         "regola": (
             "La chat interroga soltanto strumenti backend autorizzati. Drive/Sheets "
-            "è l'archivio operativo; non esiste fallback automatico a MongoDB."
+            "è l'unico archivio operativo; non esiste fallback alternativo."
         ),
         "cartelle_canoniche": [
             "REGISTRO DATI", "PARTENOPAY", "CODICI TRIBUTO", "QUIETANZE", "DICHIARAZIONI",
@@ -426,10 +426,8 @@ def rewrite_chat_kb(revision: str, updated_at: str) -> None:
     architecture = implementation.get("architettura_generale", {})
     flow = architecture.get("flusso", [])
     architecture["flusso"] = [
-        item.replace(
-            "Il backend interroga MongoDB e, quando necessario, legge i documenti originali.",
-            "Il backend interroga l'archivio operativo selezionato da DATA_BACKEND e legge gli originali autorizzati da Drive.",
-        )
+        "Il backend interroga i registri Sheets e legge gli originali autorizzati da Drive."
+        if item.startswith("Il backend interroga") else item
         for item in flow
     ]
     tools = implementation.get("componenti_da_costruire", {}).get("strumenti_dati", {})
@@ -439,10 +437,8 @@ def rewrite_chat_kb(revision: str, updated_at: str) -> None:
             "strumenti autorizzati, tipizzati, paginati e registrati."
         )
         tools["regole"] = [
-            rule.replace(
-                "Il modello non può costruire query MongoDB libere.",
-                "Il modello non può costruire query libere contro MongoDB, Sheets o Drive.",
-            )
+            "Il modello non può costruire query libere contro Sheets o Drive."
+            if "query libere" in rule else rule
             for rule in tools.get("regole", [])
         ]
     dump_json(path, kb)

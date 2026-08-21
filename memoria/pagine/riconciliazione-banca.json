@@ -3,7 +3,7 @@
     "schema_version": 2,
     "document_type": "page_source_map",
     "updated_at": "2026-08-20",
-    "source_revision": "a6e2b21c03a3f00b161b682f52760d75df5b970f",
+    "source_revision": "347b5993d06044fe4a91a8bf77b85334e16c183d",
     "generator": "scripts/refresh_json_docs.py",
     "verification": "static_source_map"
   },
@@ -52,7 +52,7 @@
   "archivio_dati": {
     "stato_corrente": "google_drive_sheets",
     "backend_predefinito": "sheets",
-    "compatibilita": "mongodb_solo_con_DATA_BACKEND_mongodb",
+    "compatibilita": "nessun_backend_alternativo",
     "fallback_automatico": "disabilitato"
   },
   "regole_di_lettura": [

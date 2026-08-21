@@ -1,13 +1,13 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.bank.assegni_auto_match import _apply_match
 
 
 def test_conferma_proposta_collega_ma_non_crea_banca_ne_segna_pagata():
     async def scenario():
-        db = AsyncMongoMockClient()["assegni_auto_match_provvisorio"]
+        db = MemorySheetsClient()["assegni_auto_match_provvisorio"]
         assegno = {
             "id": "ass-1",
             "numero": "0208771000-01",

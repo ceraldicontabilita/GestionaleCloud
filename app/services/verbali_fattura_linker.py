@@ -6,13 +6,13 @@ import re
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.services.sheets_document_store import SheetDatabase
 
 logger = logging.getLogger(__name__)
 FORNITORI_NOLEGGIO = ["ARVAL", "LEASYS", "ALD AUTOMOTIVE", "ALPHABET", "ATHLON", "LEASEPLAN"]
 
 
-async def cerca_fattura_per_verbale(db: AsyncIOMotorDatabase, numero_verbale: str) -> Optional[Dict[str, Any]]:
+async def cerca_fattura_per_verbale(db: SheetDatabase, numero_verbale: str) -> Optional[Dict[str, Any]]:
     """Cerca una fattura di noleggio che contenga il numero verbale in una delle linee."""
     if not numero_verbale:
         return None
@@ -37,7 +37,7 @@ async def cerca_fattura_per_verbale(db: AsyncIOMotorDatabase, numero_verbale: st
     return None
 
 
-async def collega_verbali_a_fatture(db: AsyncIOMotorDatabase) -> Dict[str, int]:
+async def collega_verbali_a_fatture(db: SheetDatabase) -> Dict[str, int]:
     stats = {"processati": 0, "collegati": 0}
     cursor = db["verbali_noleggio"].find({
         "numero_verbale": {"$exists": True, "$ne": None},

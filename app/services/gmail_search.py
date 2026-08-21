@@ -2,8 +2,8 @@
 Ricerca email su Gmail via IMAP (X-GM-RAW) per le riconciliazioni.
 
 Usata dalla pagina PayPal per trovare fatture "esterne" che non passano dal
-Sistema di Interscambio (ricevute SaaS, fornitori esteri: Spotify, MongoDB,
-OpenAI, ...): si cerca nella casella Gmail per importo/controparte intorno
+Sistema di Interscambio (ricevute SaaS e altri fornitori esteri): si cerca
+nella casella Gmail per importo/controparte intorno
 alla data della transazione.
 
 Credenziali: prima dagli account configurati in Admin → Email
@@ -141,7 +141,7 @@ def build_transaction_query(importo: float, nome_controparte: str = "",
         terms.extend([f'"{v_dot}"', f'"{v_comma}"'])
     nome = (nome_controparte or "").strip()
     if nome and nome != "-":
-        # prima parola significativa (es. "MongoDB Limited" → MongoDB)
+        # prima parola significativa del nome della controparte
         for w in nome.replace(",", " ").split():
             if len(w) >= 4:
                 terms.append(f'"{w}"')

@@ -9,7 +9,7 @@ NON distruttivo: fa un insert in `mittenti_email` solo per i mittenti non ancora
 presenti (per pattern+canale) e NON cancella nulla da `mittenti_attendibili`.
 Idempotente: rieseguirlo non crea doppioni.
 
-Uso (richiede .env con MONGO_URL raggiungibile; NON eseguibile dal sandbox):
+Uso (richiede l'accesso al registro Google Sheets configurato):
     python -m app.scripts.migra_mittenti_attendibili_a_email            # dry-run
     python -m app.scripts.migra_mittenti_attendibili_a_email --esegui   # esegue
 """

@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Body
-from pymongo.errors import DuplicateKeyError
+from app.services.sheets_document_store import DuplicateRecordError
 from app.database import Database
 from app.utils.error_handler import handle_errors
 
@@ -46,17 +46,17 @@ async def _ricalcola_stato_fattura(db, fattura_id: str) -> Dict[str, Any]:
     fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0, "total_amount": 1})
     if not fattura:
         return {"stato": "non_trovata"}
-    
+
     totale = float(fattura.get("total_amount", 0))
-    
+
     pagamenti = await db["pagamenti"].find(
         {"fattura_id": fattura_id},
         {"_id": 0, "importo": 1}
     ).to_list(100)
-    
+
     somma_pagamenti = sum(float(p.get("importo", 0)) for p in pagamenti)
     residuo = round(totale - somma_pagamenti, 2)
-    
+
     if somma_pagamenti <= 0:
         stato = "non_pagata"
     elif residuo > 0.05:
@@ -65,7 +65,7 @@ async def _ricalcola_stato_fattura(db, fattura_id: str) -> Dict[str, Any]:
         stato = "eccedenza"
     else:
         stato = "pagata"
-    
+
     await db["invoices"].update_one(
         {"id": fattura_id},
         {"$set": {
@@ -75,7 +75,7 @@ async def _ricalcola_stato_fattura(db, fattura_id: str) -> Dict[str, Any]:
             "num_pagamenti": len(pagamenti),
         }}
     )
-    
+
     return {"stato": stato, "totale": totale, "pagato": somma_pagamenti, "residuo": residuo, "num_pagamenti": len(pagamenti)}
 
 
@@ -84,22 +84,22 @@ async def _ricalcola_stato_fattura(db, fattura_id: str) -> Dict[str, Any]:
 async def get_pagamenti_fattura(fattura_id: str) -> Dict[str, Any]:
     """Lista tutti i pagamenti di una fattura (multi-pagamento)."""
     db = Database.get_db()
-    
+
     fattura = await db["invoices"].find_one(
         {"id": fattura_id},
         {"_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1, "total_amount": 1, "stato_pagamento": 1}
     )
     if not fattura:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
-    
+
     pagamenti = await db["pagamenti"].find(
         {"fattura_id": fattura_id},
         {"_id": 0}
     ).sort("data", -1).to_list(100)
-    
+
     totale_fattura = float(fattura.get("total_amount", 0))
     totale_pagato = sum(float(p.get("importo", 0)) for p in pagamenti)
-    
+
     return {
         "fattura": fattura,
         "pagamenti": pagamenti,
@@ -116,7 +116,7 @@ async def get_pagamenti_fattura(fattura_id: str) -> Dict[str, Any]:
 async def registra_pagamento(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """
     Registra un pagamento (anche parziale) per una fattura.
-    
+
     Body:
     {
         "fattura_id": "uuid",
@@ -128,15 +128,15 @@ async def registra_pagamento(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]
     }
     """
     db = Database.get_db()
-    
+
     fattura_id = data.get("fattura_id")
     importo = float(data.get("importo", 0))
     metodo = data.get("metodo", "contanti")
     data_pag = data.get("data", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
-    
+
     if importo <= 0:
         raise HTTPException(status_code=400, detail="Importo deve essere > 0")
-    
+
     fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
     if not fattura:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
@@ -174,7 +174,7 @@ async def registra_pagamento(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]
 
     try:
         await db["pagamenti"].insert_one(pagamento)
-    except DuplicateKeyError:
+    except DuplicateRecordError:
         # Race: un submit concorrente identico ha già inserito il pagamento
         # (indice unique su idempotency_key). Rispondi idempotente, non 500.
         esistente = await db["pagamenti"].find_one({"idempotency_key": idem}, {"_id": 0})
@@ -201,13 +201,13 @@ async def registra_pagamento(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]
         "source": "multi_pagamento",
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
-    
+
     # Aggiorna il pagamento con il link prima nota
     await db["pagamenti"].update_one(
         {"id": pag_id},
         {"$set": {"prima_nota_id": pn_id, "prima_nota_tipo": pn_tipo}}
     )
-    
+
     # Se assegno, collega anche alla collection assegni
     if metodo == "assegno" and data.get("assegno_numero"):
         await db["assegni"].update_one(
@@ -215,10 +215,10 @@ async def registra_pagamento(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]
             {"$addToSet": {"fatture_associate": fattura_id},
              "$set": {"beneficiario": fattura.get("supplier_name",""), "beneficiario_piva": fattura.get("supplier_vat","")}}
         )
-    
+
     # Ricalcola stato fattura
     stato = await _ricalcola_stato_fattura(db, fattura_id)
-    
+
     return {
         "success": True,
         "pagamento_id": pag_id,
@@ -233,7 +233,7 @@ async def registra_pagamento(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]
 async def assegno_copre_piu_fatture(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """
     Un singolo assegno paga N fatture dello stesso fornitore.
-    
+
     Body:
     {
         "assegno_numero": "0208770769",
@@ -244,22 +244,22 @@ async def assegno_copre_piu_fatture(data: Dict[str, Any] = Body(...)) -> Dict[st
     }
     """
     db = Database.get_db()
-    
+
     assegno_numero = data.get("assegno_numero", "")
     fatture_list = data.get("fatture", [])
-    
+
     if not fatture_list:
         raise HTTPException(status_code=400, detail="Lista fatture vuota")
-    
+
     # Trova assegno
     assegno = await db["assegni"].find_one({"numero": assegno_numero})
     assegno_id = assegno["id"] if assegno else None
-    
+
     risultati = []
     for f in fatture_list:
         fatt_id = f.get("fattura_id")
         importo = float(f.get("importo", 0))
-        
+
         # Chiamata diretta con dict: passare Body(**{...}) creava un FieldInfo
         # e ogni data.get() dentro registra_pagamento crashava (endpoint mai
         # funzionato — bug #2 audit memoria/endpoints/README.md).
@@ -273,7 +273,7 @@ async def assegno_copre_piu_fatture(data: Dict[str, Any] = Body(...)) -> Dict[st
             "note": f"Assegno N.{assegno_numero} (multi-fattura)",
         })
         risultati.append(result)
-    
+
     return {"success": True, "assegno": assegno_numero, "fatture_pagate": len(risultati), "dettagli": risultati}
 
 
@@ -282,7 +282,7 @@ async def assegno_copre_piu_fatture(data: Dict[str, Any] = Body(...)) -> Dict[st
 async def fattura_pagata_multi_metodo(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """
     Una fattura pagata con N metodi diversi.
-    
+
     Body:
     {
         "fattura_id": "uuid",
@@ -293,13 +293,13 @@ async def fattura_pagata_multi_metodo(data: Dict[str, Any] = Body(...)) -> Dict[
     }
     """
     db = Database.get_db()
-    
+
     fattura_id = data.get("fattura_id")
     pagamenti_list = data.get("pagamenti", [])
-    
+
     if not pagamenti_list:
         raise HTTPException(status_code=400, detail="Lista pagamenti vuota")
-    
+
     risultati = []
     for p in pagamenti_list:
         # Dict diretto, non Body(**{...}): vedi commento in assegno_copre_piu_fatture.
@@ -312,7 +312,7 @@ async def fattura_pagata_multi_metodo(data: Dict[str, Any] = Body(...)) -> Dict[
             "note": p.get("note", ""),
         })
         risultati.append(result)
-    
+
     return {"success": True, "fattura_id": fattura_id, "pagamenti_registrati": len(risultati), "dettagli": risultati}
 
 
@@ -321,20 +321,20 @@ async def fattura_pagata_multi_metodo(data: Dict[str, Any] = Body(...)) -> Dict[
 async def riepilogo_pagamenti_fornitore(piva: str) -> Dict[str, Any]:
     """Riepilogo pagamenti per fornitore: fatture, pagamenti, residui."""
     db = Database.get_db()
-    
+
     fatture = await db["invoices"].find(
         {"supplier_vat": piva, "total_amount": {"$gt": 0}},
         {"_id": 0, "id": 1, "invoice_number": 1, "total_amount": 1, "stato_pagamento": 1, "totale_pagato": 1, "invoice_date": 1}
     ).sort("invoice_date", -1).to_list(500)
-    
+
     pagamenti = await db["pagamenti"].find(
         {"fornitore_piva": piva},
         {"_id": 0}
     ).sort("data", -1).to_list(1000)
-    
+
     tot_fatture = sum(float(f.get("total_amount", 0)) for f in fatture)
     tot_pagato = sum(float(p.get("importo", 0)) for p in pagamenti)
-    
+
     return {
         "fornitore_piva": piva,
         "fatture": fatture,
@@ -352,23 +352,23 @@ async def riepilogo_pagamenti_fornitore(piva: str) -> Dict[str, Any]:
 async def elimina_pagamento(pagamento_id: str) -> Dict[str, Any]:
     """Elimina un pagamento e ricalcola lo stato della fattura."""
     db = Database.get_db()
-    
+
     pag = await db["pagamenti"].find_one({"id": pagamento_id})
     if not pag:
         raise HTTPException(status_code=404, detail="Pagamento non trovato")
-    
+
     # Rimuovi dalla prima nota
     if pag.get("prima_nota_id"):
         for coll in ["prima_nota_cassa", "prima_nota_banca"]:
             await db[coll].delete_one({"id": pag["prima_nota_id"]})
-    
+
     # Rimuovi pagamento
     await db["pagamenti"].delete_one({"id": pagamento_id})
-    
+
     # Ricalcola stato fattura
     fattura_id = pag.get("fattura_id")
     if fattura_id:
         stato = await _ricalcola_stato_fattura(db, fattura_id)
         return {"success": True, "stato_fattura": stato}
-    
+
     return {"success": True}

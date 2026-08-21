@@ -11,7 +11,7 @@ l'hash) e NON cancella nulla da `f24_commercialista`. Se un documento è già in
 `f24_unificato` (stesso hash) viene saltato. Dopo aver verificato l'esito puoi
 decidere se archiviare `f24_commercialista` con `archivia_collection_*`.
 
-Uso (richiede .env con MONGO_URL raggiungibile; NON eseguibile dal sandbox):
+Uso (richiede l'accesso al registro Google Sheets configurato):
     python -m app.scripts.migra_f24_commercialista_a_unificato            # dry-run
     python -m app.scripts.migra_f24_commercialista_a_unificato --esegui   # esegue
 """

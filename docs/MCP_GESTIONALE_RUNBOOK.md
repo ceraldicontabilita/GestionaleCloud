@@ -66,7 +66,7 @@ Esporre la porta soltanto dietro TLS e reverse proxy. Il percorso MCP è `/mcp` 
 python -m pytest -q tests\test_mcp_openapi_contract.py
 ```
 
-Il test non deve richiedere MongoDB, Drive, Gmail, PayPal, SumUp o produzione.
+Il test non deve richiedere Drive/Sheets, Drive, Gmail, PayPal, SumUp o produzione.
 
 La pipeline `.github/workflows/mcp-ci.yml` verifica separatamente il contratto
 FastAPI e il runtime MCP. Questa separazione evita di aggiornare Starlette nel

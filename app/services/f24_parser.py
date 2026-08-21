@@ -213,7 +213,7 @@ def parse_data(value: str) -> Optional[str]:
 def extract_text_from_pdf(pdf_path: str = None, pdf_content: bytes = None) -> str:
     """
     Estrae tutto il testo da un PDF.
-    Supporta sia filepath (legacy) che bytes (architettura MongoDB-only).
+    Supporta sia filepath (legacy) che bytes (architettura Drive/Sheets).
     """
     try:
         if pdf_content:
@@ -235,12 +235,12 @@ def extract_text_from_pdf(pdf_path: str = None, pdf_content: bytes = None) -> st
 def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict[str, Any]:
     """
     Parsa una quietanza F24 ed estrae tutti i dati strutturati.
-    Supporta sia filepath (legacy) che bytes (MongoDB-only).
-    
+    Supporta sia filepath (legacy) che bytes (Drive/Sheets).
+
     Args:
         pdf_path: Percorso file PDF (legacy)
-        pdf_content: Contenuto PDF in bytes (architettura MongoDB-only)
-    
+        pdf_content: Contenuto PDF in bytes (architettura Drive/Sheets)
+
     Returns:
         Dict con:
         - dati_generali: codice_fiscale, ragione_sociale, data_pagamento, etc.
@@ -252,10 +252,10 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
         - totali: importo_debito, importo_credito, saldo
     """
     text = extract_text_from_pdf(pdf_path=pdf_path, pdf_content=pdf_content)
-    
+
     if not text:
         return {"error": "Impossibile estrarre testo dal PDF"}
-    
+
     result = {
         "dati_generali": {},
         "sezione_erario": [],
@@ -280,11 +280,11 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
             "protocollo_telematico": None,
             "numero_modello": None,
         })
-    
+
     # ============================================
     # DATI GENERALI
     # ============================================
-    
+
     # Codice Fiscale - dopo "Soggetto:" o "CODICE FISCALE"
     cf_patterns = [
         r'Soggetto:\s*[A-Z\s\.]+\(\s*(\d{11})\s*\)',
@@ -296,7 +296,7 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
         if cf_match:
             result["dati_generali"]["codice_fiscale"] = cf_match.group(1)
             break
-    
+
     # Ragione Sociale - dopo "Soggetto:"
     rs_match = re.search(r'Soggetto:\s*([A-Z][A-Z\s\.]+(?:S\.R\.L\.|S\.P\.A\.|S\.N\.C\.|S\.A\.S\.))', text)
     if rs_match:
@@ -306,7 +306,7 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
         rs_match2 = re.search(r'([A-Z][A-Z\s]+(?:S\.R\.L\.|S\.P\.A\.|S\.N\.C\.|S\.A\.S\.))', text)
         if rs_match2:
             result["dati_generali"]["ragione_sociale"] = rs_match2.group(1).strip()
-    
+
     # Protocollo Telematico: nei PDF AE il numero modello puo essere in una
     # casella separata senza slash nel layer testuale ("...3961 000001").
     pt_match = re.search(
@@ -325,13 +325,13 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
             result["dati_generali"]["protocollo_telematico"] = protocollo
             if "/" in protocollo:
                 result["dati_generali"]["numero_modello"] = protocollo.split("/", 1)[1]
-    
+
     # Data e Ora documento
     data_ora_match = re.search(r'Data:\s*(\d{2}/\d{2}/\d{4})\s*-\s*Ore:\s*(\d{2}:\d{2}:\d{2})', text)
     if data_ora_match:
         result["dati_generali"]["data_documento"] = parse_data(data_ora_match.group(1))
         result["dati_generali"]["ora_documento"] = data_ora_match.group(2)
-    
+
     # Data del versamento - pattern con cifre separate seguite dall'ABI (5 cifre).
     # Pattern: 1 7 0 1 2 0 2 5 05034 (17/01/2025 + ABI). L'ABI e' generico
     # (qualsiasi banca, scelta utente): viene catturato qui perche' questa e' la
@@ -386,12 +386,12 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
         )
     ):
         result["dati_generali"]["saldo_delega"] = coordinate_data["saldo_delega"]
-    
+
     # ============================================
     # SEZIONE ERARIO
     # ============================================
     # Pattern: ERARIO 1001 12 2024 2.610,51 0,00
-    
+
     erario_pattern = r'ERARIO\s+(\d{4})\s+(\d{0,2})\s*(\d{4})\s+([0-9.,]+)\s+([0-9.,]+)'
     for match in re.finditer(erario_pattern, text):
         codice = match.group(1)
@@ -399,9 +399,9 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
         anno = match.group(3)
         debito = parse_importo(match.group(4))
         credito = parse_importo(match.group(5))
-        
+
         periodo = f"{mese}/{anno}" if mese != "00" else anno
-        
+
         result["sezione_erario"].append({
             "codice_tributo": codice,
             "periodo_riferimento": periodo,
@@ -411,12 +411,12 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
         })
     if coordinate_data["sezione_erario"]:
         result["sezione_erario"] = coordinate_data["sezione_erario"]
-    
+
     # ============================================
     # SEZIONE INPS
     # ============================================
     # Pattern: INPS 5100 DM10 5124776507 12 2024 3.628,00 0,00
-    
+
     inps_pattern = r'INPS\s+(\d{4})\s+(DM10|CXX|RC01|C10|CF10)\s+([A-Z0-9]+)\s+(\d{1,2})\s+(\d{4})\s+([0-9.,]+)\s+([0-9.,]+)'
     for match in re.finditer(inps_pattern, text):
         result["sezione_inps"].append({
@@ -430,12 +430,12 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
         })
     if coordinate_data["sezione_inps"]:
         result["sezione_inps"] = coordinate_data["sezione_inps"]
-    
+
     # ============================================
     # SEZIONE INAIL
     # ============================================
     # Pattern: INAIL con codice ufficio e atto
-    
+
     inail_pattern = r'INAIL\s+(\d{5})\s+(\d+)\|([A-Z0-9\s]+)\s+([0-9.,]+)\s+([0-9.,]+)'
     for match in re.finditer(inail_pattern, text):
         result["sezione_inail"].append({
@@ -447,12 +447,12 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
         })
     if coordinate_data["sezione_inail"]:
         result["sezione_inail"] = coordinate_data["sezione_inail"]
-    
+
     # ============================================
     # SEZIONE REGIONI
     # ============================================
     # Pattern: REGIONI 05 3802 00/12 2024 142,55 0,00
-    
+
     regioni_pattern = r'REGIONI\s+(\d{2})\s+(\d{4})\s+(\d{2}/\d{2})\s*(\d{4})\s+([0-9.,]+)\s+([0-9.,]+)'
     for match in re.finditer(regioni_pattern, text):
         result["sezione_regioni"].append({
@@ -465,12 +465,12 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
         })
     if coordinate_data["sezione_regioni"]:
         result["sezione_regioni"] = coordinate_data["sezione_regioni"]
-    
+
     # ============================================
     # SEZIONE TRIBUTI LOCALI (IMU, TARI, etc.)
     # ============================================
     # Pattern: TRIB.LOCALI F839 1671 2024 0,00 32,73
-    
+
     locali_pattern = r'TRIB\.LOCALI\s+([A-Z]\d{3})\s+(\d{4})\s+(\d{4})\s+([0-9.,]+)\s+([0-9.,]+)'
     for match in re.finditer(locali_pattern, text):
         result["sezione_tributi_locali"].append({
@@ -490,16 +490,16 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
         for item in result[section_name]:
             item["importo_debito_cents"] = _importo_cents(item.get("importo_debito"))
             item["importo_credito_cents"] = _importo_cents(item.get("importo_credito"))
-    
+
     # ============================================
     # CALCOLO TOTALI
     # ============================================
-    
+
     totale_debito_cents = 0
     totale_credito_cents = 0
-    
-    for sezione in [result["sezione_erario"], result["sezione_inps"], 
-                    result["sezione_inail"], result["sezione_regioni"], 
+
+    for sezione in [result["sezione_erario"], result["sezione_inps"],
+                    result["sezione_inail"], result["sezione_regioni"],
                     result["sezione_tributi_locali"]]:
         for item in sezione:
             totale_debito_cents += item.get("importo_debito_cents", 0)
@@ -508,7 +508,7 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
     totale_debito = totale_debito_cents / 100
     totale_credito = totale_credito_cents / 100
     saldo_netto_cents = totale_debito_cents - totale_credito_cents
-    
+
     result["totali"] = {
         "totale_debito": round(totale_debito, 2),
         "totale_credito": round(totale_credito, 2),
@@ -528,10 +528,10 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
         "differenza_saldo_cents": difference_cents,
         "parser_version": "quietanza-coordinate-v2",
     }
-    
+
     # Rimuovi raw_text prima di restituire
     del result["raw_text_preview"]
-    
+
     return result
 
 
@@ -617,7 +617,7 @@ def generate_f24_summary(parsed_data: Dict[str, Any]) -> str:
     """Genera un riepilogo testuale della quietanza F24."""
     dg = parsed_data.get("dati_generali", {})
     totali = parsed_data.get("totali", {})
-    
+
     summary = []
     summary.append(f"QUIETANZA F24 - {dg.get('ragione_sociale', 'N/A')}")
     summary.append(f"Codice Fiscale: {dg.get('codice_fiscale', 'N/A')}")
@@ -628,29 +628,29 @@ def generate_f24_summary(parsed_data: Dict[str, Any]) -> str:
     summary.append(f"  - Debiti: € {totali.get('totale_debito', 0):,.2f}")
     summary.append(f"  - Crediti: € {totali.get('totale_credito', 0):,.2f}")
     summary.append("")
-    
+
     # Sezione Erario
     if parsed_data.get("sezione_erario"):
         summary.append("SEZIONE ERARIO:")
         for item in parsed_data["sezione_erario"]:
             summary.append(f"  {item['codice_tributo']} - {item['descrizione']}: € {item['importo_debito']:,.2f}")
-    
+
     # Sezione INPS
     if parsed_data.get("sezione_inps"):
         summary.append("SEZIONE INPS:")
         for item in parsed_data["sezione_inps"]:
             summary.append(f"  {item['causale']} ({item['matricola']}): € {item['importo_debito']:,.2f}")
-    
+
     # Sezione Regioni
     if parsed_data.get("sezione_regioni"):
         summary.append("SEZIONE REGIONI:")
         for item in parsed_data["sezione_regioni"]:
             summary.append(f"  {item['codice_tributo']} - {item['descrizione']}: € {item['importo_debito']:,.2f}")
-    
+
     # Sezione Tributi Locali
     if parsed_data.get("sezione_tributi_locali"):
         summary.append("SEZIONE TRIBUTI LOCALI:")
         for item in parsed_data["sezione_tributi_locali"]:
             summary.append(f"  {item['codice_tributo']} - {item['descrizione']}: € {item['importo_debito']:,.2f}")
-    
+
     return "\n".join(summary)

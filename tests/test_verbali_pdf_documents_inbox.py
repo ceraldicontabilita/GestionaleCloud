@@ -1,14 +1,14 @@
 import asyncio
 import base64
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers import verbali_noleggio, verbali_noleggio_api
 from app.services.verbali_pdf_service import collect_verbale_pdfs, pdf_metadata
 
 
 def _database():
-    db = AsyncMongoMockClient()["verbali-pdf"]
+    db = MemorySheetsClient()["verbali-pdf"]
     verbale = {
         "id": "verbale-test",
         "numero_verbale": "VV/24990121765",

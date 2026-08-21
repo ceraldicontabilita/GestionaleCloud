@@ -6,7 +6,7 @@ import fitz
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers import documenti
 from tests.document_preview_helpers import confirmed_preview_headers
@@ -225,7 +225,7 @@ def test_upload_auto_campioni_reali_imu_e_avviso_solo_su_database_di_test(monkey
     avviso_path = Path(r"C:\Users\ceral\Downloads\AvvisoDigitale_302000600008408304.pdf")
     if not imu_path.exists() or not avviso_path.exists():
         pytest.skip("fixture reale IMU/avviso non disponibile nel checkout")
-    db = AsyncMongoMockClient()["upload-auto-real-fixtures"]
+    db = MemorySheetsClient()["upload-auto-real-fixtures"]
     monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
     app = FastAPI()
     app.include_router(documenti.router, prefix="/api/documenti")
@@ -254,7 +254,7 @@ def test_upload_auto_campioni_reali_imu_e_avviso_solo_su_database_di_test(monkey
 
 
 def test_upload_auto_avviso_non_crea_ricevuta_o_pagamento(monkeypatch):
-    db = AsyncMongoMockClient()["upload-auto-avviso"]
+    db = MemorySheetsClient()["upload-auto-avviso"]
     monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
     app = FastAPI()
     app.include_router(documenti.router, prefix="/api/documenti")
@@ -321,7 +321,7 @@ def test_nota_rettifica_inps_crea_obbligazione_e_non_un_pagamento(monkeypatch):
     assert parsed["canonical_relations"]["uniemens"]["status"] == "CITED"
     assert parsed["canonical_relations"]["corrective_f24"]["status"] == "TO_BE_LINKED"
 
-    db = AsyncMongoMockClient()["upload-auto-rettifica"]
+    db = MemorySheetsClient()["upload-auto-rettifica"]
     monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
     app = FastAPI()
     app.include_router(documenti.router, prefix="/api/documenti")
@@ -348,7 +348,7 @@ def test_avviso_non_puo_essere_importato_direttamente_come_ricevuta():
         "Codice Avviso 302000600008408304", "Importo 34,90 EUR",
     )
     result = asyncio.run(import_receipt(
-        AsyncMongoMockClient()["pagopa-avviso-negato"], content=content,
+        MemorySheetsClient()["pagopa-avviso-negato"], content=content,
         filename="AvvisoDigitale.pdf", company_id="company-test",
     ))
     assert result["success"] is False
@@ -356,7 +356,7 @@ def test_avviso_non_puo_essere_importato_direttamente_come_ricevuta():
 
 
 def test_upload_auto_archivia_esito_negativo_senza_segnare_pagato(monkeypatch):
-    db = AsyncMongoMockClient()["upload-auto-esito-negativo"]
+    db = MemorySheetsClient()["upload-auto-esito-negativo"]
     monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
     app = FastAPI()
     app.include_router(documenti.router, prefix="/api/documenti")
@@ -387,7 +387,7 @@ def test_upload_auto_archivia_esito_negativo_senza_segnare_pagato(monkeypatch):
 
 
 def test_avviso_e_ricevuta_pagopa_si_collegano_al_verbale_senza_inventare_banca(monkeypatch):
-    db = AsyncMongoMockClient()["pagopa-verbale-bidirezionale"]
+    db = MemorySheetsClient()["pagopa-verbale-bidirezionale"]
     monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
     app = FastAPI()
     app.include_router(documenti.router, prefix="/api/documenti")
@@ -432,7 +432,7 @@ def test_avviso_e_ricevuta_pagopa_si_collegano_al_verbale_senza_inventare_banca(
 
 
 def test_upload_auto_quietanza_reale_generata_attraversa_parser_e_router(monkeypatch):
-    db = AsyncMongoMockClient()["upload-auto-quietanza-real-parser"]
+    db = MemorySheetsClient()["upload-auto-quietanza-real-parser"]
     monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
     asyncio.run(db["f24_unificato"].insert_one({
         "id": "f24-1040-06-2026", "status": "da_pagare", "riconciliato": False,

@@ -51,13 +51,10 @@ si aggiornano con `scripts/refresh_json_docs.py`, non a mano.
 
 ### Stato attuale
 
-- Il default del codice è `DATA_BACKEND=sheets`.
-- MongoDB è solo compatibilità transitoria del runtime, non la destinazione finale.
-- Google Sheets/Drive è l'archivio operativo. MongoDB si attiva soltanto con
-  `DATA_BACKEND=mongodb`; non esiste fallback automatico dal backend Sheets.
-- La migrazione dei dati storici resta verificata solo con sincronizzazione,
-  conteggi, hash, lettura, scrittura e ricostruzione positive di tutte le
-  collezioni.
+- Google Sheets/Drive è l'unico archivio operativo.
+- Il runtime non espone backend alternativi e non ha fallback legacy.
+- Ogni modifica deve preservare sincronizzazione, conteggi, hash, lettura,
+  scrittura e ricostruzione positiva di tutti i registri.
 
 ### Destinazione Drive-only
 
@@ -94,13 +91,11 @@ Regole del cutover:
 3. copiare il dataset completo nel registro Drive;
 4. confrontare conteggi unici e digest sorgente/destinazione;
 5. ricostruire il runtime dai fogli e provarne la scrittura;
-6. confermare `DATA_BACKEND=sheets`, configurare esplicitamente il registro e
-   verificare la produzione;
-7. solo dopo disabilitare MongoDB e rimuoverne variabili e dati.
+6. configurare esplicitamente il registro e verificare la produzione;
+7. confermare che non esistano variabili o percorsi di persistenza alternativi.
 
-Mai cancellare i dati MongoDB prima del punto 6. In modalità Sheets il database in
-memoria è soltanto una cache di compatibilità del processo: Drive/Sheets resta
-la sorgente persistente.
+La memoria del processo è soltanto una cache ricostruibile: Drive/Sheets resta
+sempre la sorgente persistente.
 
 ## Canali operativi e conoscenza
 

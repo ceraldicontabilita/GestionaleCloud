@@ -1,6 +1,6 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services.handlers.magazzino_handlers import on_fattura_righe_magazzino
 
@@ -11,7 +11,7 @@ def _run(coro):
 
 def test_righe_magazzino_normalizzano_numeri_italiani(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["magazzino_numeric_values"]
+        db = MemorySheetsClient()["magazzino_numeric_values"]
         await db.warehouse_inventory.insert_one({
             "id": "PROD-1",
             "nome": "CAFFE TEST",

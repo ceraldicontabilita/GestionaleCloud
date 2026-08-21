@@ -8,9 +8,9 @@ import re
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from pymongo.errors import DuplicateKeyError
+from app.services.sheets_document_store import DuplicateRecordError
 
-from app.services.scritture_contabili import _sessione, _transazione_mongo
+from app.services.scritture_contabili import _sessione, _transazione_registro
 
 
 COL_SCADENZIARIO = "scadenziario_fornitori"
@@ -115,7 +115,7 @@ async def register_manual_invoice_payment(db, req: ManualInvoicePaymentRequest) 
     result: Dict[str, Any]
 
     try:
-        async with _transazione_mongo(db) as session:
+        async with _transazione_registro(db) as session:
             skw = _sessione(session)
             # Rilegge la fattura dentro la transazione: la decisione sul
             # residuo deve usare lo stesso snapshot delle scritture che
@@ -172,7 +172,7 @@ async def register_manual_invoice_payment(db, req: ManualInvoicePaymentRequest) 
                     "scadenza_id": req.scadenza_id,
                     "created_at": now,
                 }, **skw)
-            except DuplicateKeyError as exc:
+            except DuplicateRecordError as exc:
                 raise HTTPException(
                     status_code=409,
                     detail="Pagamento identico gia' in elaborazione",
@@ -380,7 +380,7 @@ async def reconcile_invoice_bank_movement(
         "override_reason": req.override_reason,
         "created_at": now,
     }
-    async with _transazione_mongo(db) as session:
+    async with _transazione_registro(db) as session:
         skw = _sessione(session)
         invoice_updates = {
             "riconciliato": True,

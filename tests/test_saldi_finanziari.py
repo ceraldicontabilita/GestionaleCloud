@@ -9,7 +9,7 @@ scheda del credito.
 import asyncio
 
 import pytest
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.prima_nota_module.common import saldi_finanziari
 from app.services import conti_pos, sumup_payout, sumup_sync
@@ -25,7 +25,7 @@ def _run(awaitable):
 
 
 def _db():
-    return AsyncMongoMockClient()["saldi_finanziari_test"]
+    return MemorySheetsClient()["saldi_finanziari_test"]
 
 
 @pytest.fixture(autouse=True)

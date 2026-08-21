@@ -12,7 +12,7 @@ from app.database import Database
 
 router = APIRouter(tags=["Fornitori Learning"])
 
-# Collezione MongoDB
+# Collezione Drive/Sheets
 COLL_FORNITORI_KEYWORDS = "fornitori_keywords"
 
 
@@ -73,26 +73,26 @@ async def get_learning_stats() -> Dict[str, Any]:
             {"keywords.0": {"$exists": True}},
         ]
     })
-    
+
     # Conta fornitori totali (da fatture)
     fornitori_unici = await db["invoices"].distinct("supplier_name")
     totale_fornitori = len([f for f in fornitori_unici if f])
-    
+
     # Conta fatture
     totale_fatture = await db["invoices"].count_documents({})
     fatture_classificate = await db["invoices"].count_documents({
         "centro_costo_id": {"$exists": True, "$nin": [None, ""]}
     })
-    
+
     # Conta F24
     totale_f24 = await db["f24_unificato"].count_documents({})
     f24_classificati = await db["f24_unificato"].count_documents({
         "centro_costo_id": {"$exists": True, "$nin": [None, ""]}
     })
-    
+
     perc_fatture = round(fatture_classificate / max(totale_fatture, 1) * 100, 1)
     perc_f24 = round(f24_classificati / max(totale_f24, 1) * 100, 1)
-    
+
     return {
         "fornitori_con_keywords": fornitori_con_keywords,
         "totale_fornitori": totale_fornitori,
@@ -144,10 +144,10 @@ async def fornitori_non_classificati(limit: int = 50) -> Dict[str, Any]:
     Mostra i totali REALI del fornitore (tutte le fatture), non solo quelle non classificate.
     """
     db = Database.get_db()
-    
+
     # Trova fornitori già configurati
     configurati = await db[COLL_FORNITORI_KEYWORDS].distinct("fornitore_nome_normalizzato")
-    
+
     # Aggrega fornitori non classificati.
     # NB: una fattura è "da classificare" anche quando NON ha alcun centro
     # di costo (handler mai girato / import vecchio) — prima si contavano
@@ -171,9 +171,9 @@ async def fornitori_non_classificati(limit: int = 50) -> Dict[str, Any]:
         {"$sort": {"count_non_class": -1}},
         {"$limit": limit}
     ]
-    
+
     fornitori_raw = await db["invoices"].aggregate(pipeline).to_list(limit)
-    
+
     # Per ogni fornitore, calcola i totali REALI (tutte le fatture)
     fornitori = []
     for f in fornitori_raw:
@@ -188,10 +188,10 @@ async def fornitori_non_classificati(limit: int = 50) -> Dict[str, Any]:
                     "totale": {"$sum": "$total_amount"}
                 }}
             ]).to_list(1)
-            
+
             count_reale = totali[0]["count"] if totali else f["count_non_class"]
             totale_reale = totali[0]["totale"] if totali else 0
-            
+
             # Estrai prime descrizioni linee per aiutare l'utente
             descrizioni = []
             if f.get("esempio_linee"):
@@ -200,7 +200,7 @@ async def fornitori_non_classificati(limit: int = 50) -> Dict[str, Any]:
                         desc = linea.get("descrizione") or linea.get("description", "")
                         if desc:
                             descrizioni.append(desc[:100])
-            
+
             fornitori.append({
                 "fornitore_nome": f["_id"],
                 "fornitore_nome_normalizzato": nome_norm,
@@ -209,10 +209,10 @@ async def fornitori_non_classificati(limit: int = 50) -> Dict[str, Any]:
                 "totale_fatture": round(totale_reale, 2),  # Totale REALE
                 "esempio_descrizioni": descrizioni
             })
-    
+
     # Ordina per numero fatture reali
     fornitori.sort(key=lambda x: x["fatture_count"], reverse=True)
-    
+
     return {
         "totale": len(fornitori),
         "fornitori": fornitori
@@ -226,7 +226,7 @@ async def salva_fornitore_keywords(data: FornitoreKeywordsCreate) -> Dict[str, A
     Questo permette alla Learning Machine di classificare correttamente le fatture future.
     """
     db = Database.get_db()
-    
+
     nome_norm = normalizza_nome_fornitore(data.fornitore_nome)
 
     # Conta fatture per questo fornitore (re.escape: i nomi con punti,
@@ -244,7 +244,7 @@ async def salva_fornitore_keywords(data: FornitoreKeywordsCreate) -> Dict[str, A
     agg = await db["invoices"].aggregate(pipeline).to_list(1)
     if agg:
         totale = agg[0].get("tot", 0)
-    
+
     # Un fornitore non identifica una categoria: grossisti e marketplace
     # vendono normalmente prodotti molto diversi. Le nuove configurazioni
     # lavorano quindi per contenuto della singola fattura.
@@ -273,13 +273,13 @@ async def salva_fornitore_keywords(data: FornitoreKeywordsCreate) -> Dict[str, A
         "totale_fatture": round(totale, 2),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    
+
     # Upsert
     existing = await db[COLL_FORNITORI_KEYWORDS].find_one(
         {"fornitore_nome_normalizzato": nome_norm},
         {"_id": 0}
     )
-    
+
     if existing:
         await db[COLL_FORNITORI_KEYWORDS].update_one(
             {"fornitore_nome_normalizzato": nome_norm},
@@ -298,12 +298,12 @@ async def salva_fornitore_keywords(data: FornitoreKeywordsCreate) -> Dict[str, A
 async def elimina_fornitore_keywords(fornitore_id: str) -> Dict[str, Any]:
     """Elimina le keywords di un fornitore"""
     db = Database.get_db()
-    
+
     result = await db[COLL_FORNITORI_KEYWORDS].delete_one({"id": fornitore_id})
-    
+
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Fornitore non trovato")
-    
+
     return {"success": True, "message": "Fornitore eliminato"}
 
 
@@ -314,16 +314,16 @@ async def riclassifica_con_keywords_personalizzate() -> Dict[str, Any]:
     Applica le associazioni memorizzate per migliorare la classificazione automatica.
     """
     db = Database.get_db()
-    
+
     # Carica tutte le keywords configurate
     keywords_config = await db[COLL_FORNITORI_KEYWORDS].find({}).to_list(5000)
-    
+
     if not keywords_config:
         return {
             "success": False,
             "message": "Nessun fornitore configurato. Aggiungi prima le keywords ai fornitori."
         }
-    
+
     import re
     import app.services.learning_machine_cdc as lm
 
@@ -774,28 +774,28 @@ async def associa_fornitori_magazzino() -> Dict[str, Any]:
     """
     db = Database.get_db()
     import app.services.learning_machine_cdc as lm
-    
+
     # Carica fornitori configurati
     fornitori_config = await db[COLL_FORNITORI_KEYWORDS].find({}).to_list(5000)
-    
+
     if not fornitori_config:
         return {"success": False, "message": "Nessun fornitore configurato"}
-    
+
     aggiornati = 0
     dettaglio = []
-    
+
     for config in fornitori_config:
         fornitore_nome = _nome_da_config(config)
         if not fornitore_nome:
             continue
         keywords = config.get("keywords", [])
         centri_ammessi = config.get("centri_costo_ammessi") or []
-        
+
         # Trova prodotti di questo fornitore nel magazzino
         prodotti = await db["warehouse_inventory"].find({
             "fornitori": {"$regex": fornitore_nome, "$options": "i"}
         }).to_list(5000)
-        
+
         for prod in prodotti:
             # Classifica ogni prodotto dal proprio contenuto: lo stesso
             # grossista può fornire vino, bicchieri e detergenti.
@@ -820,14 +820,14 @@ async def associa_fornitori_magazzino() -> Dict[str, Any]:
                     }}
                 )
                 aggiornati += 1
-        
+
         if prodotti:
             dettaglio.append({
                 "fornitore": fornitore_nome,
                 "prodotti_trovati": len(prodotti),
                 "categorie_assegnate_per_prodotto": True
             })
-    
+
     return {
         "success": True,
         "prodotti_aggiornati": aggiornati,
@@ -842,12 +842,12 @@ async def prodotti_per_fornitore(fornitore_nome: str) -> Dict[str, Any]:
     Utile per verificare cosa compri da ciascun fornitore.
     """
     db = Database.get_db()
-    
+
     prodotti = await db["warehouse_inventory"].find(
         {"fornitori": {"$regex": fornitore_nome, "$options": "i"}},
         {"_id": 0, "nome": 1, "categoria": 1, "giacenza": 1, "unita_misura": 1, "prezzi": 1}
     ).sort("nome", 1).to_list(100)
-    
+
     # Raggruppa per categoria
     per_categoria = {}
     for p in prodotti:
@@ -855,7 +855,7 @@ async def prodotti_per_fornitore(fornitore_nome: str) -> Dict[str, Any]:
         if cat not in per_categoria:
             per_categoria[cat] = []
         per_categoria[cat].append(p)
-    
+
     return {
         "fornitore": fornitore_nome,
         "totale_prodotti": len(prodotti),
@@ -871,7 +871,7 @@ async def giacenze_fornitore(fornitore_nome: str) -> Dict[str, Any]:
     Es: "Quante Coca Cola ho in magazzino?"
     """
     db = Database.get_db()
-    
+
     # Aggregazione per calcolare giacenze
     pipeline = [
         {"$match": {"fornitori": {"$regex": fornitore_nome, "$options": "i"}}},
@@ -883,12 +883,12 @@ async def giacenze_fornitore(fornitore_nome: str) -> Dict[str, Any]:
         }},
         {"$sort": {"totale_prodotti": -1}}
     ]
-    
+
     stats = await db["warehouse_inventory"].aggregate(pipeline).to_list(5000)
-    
+
     totale_giacenza = sum(s.get("giacenza_totale", 0) for s in stats)
     totale_valore = sum(s.get("valore_stimato", 0) for s in stats)
-    
+
     return {
         "fornitore": fornitore_nome,
         "giacenza_totale": totale_giacenza,
@@ -907,7 +907,7 @@ async def classifica_f24_automatica() -> Dict[str, Any]:
     """
     Classifica automaticamente i documenti F24 nei centri di costo appropriati,
     basandosi sui codici tributo presenti in ciascun documento.
-    
+
     Es:
     - Codici 60xx (IVA) → Centro costo "IVA periodica"
     - Codici 10xx (ritenute dipendenti) → "Costo del personale"
@@ -915,11 +915,11 @@ async def classifica_f24_automatica() -> Dict[str, Any]:
     - ecc.
     """
     db = Database.get_db()
-    
+
     import app.services.learning_machine_cdc as lm
     import importlib
     importlib.reload(lm)
-    
+
     # Trova tutti i documenti F24 non ancora classificati
     f24s = await db["f24_unificato"].find(
         {
@@ -931,21 +931,21 @@ async def classifica_f24_automatica() -> Dict[str, Any]:
             ]
         }
     ).to_list(5000)
-    
+
     if not f24s:
         return {
             "success": True,
             "message": "Tutti gli F24 sono già classificati",
             "classificati": 0
         }
-    
+
     classificati = 0
     dettaglio = []
-    
+
     for f24 in f24s:
         # Classifica usando la nuova funzione
         cdc_id, cdc_config, tipo_tributo = lm.classifica_f24_per_centro_costo(f24)
-        
+
         # Aggiorna il documento
         await db["f24_unificato"].update_one(
             {"_id": f24["_id"]},
@@ -958,14 +958,14 @@ async def classifica_f24_automatica() -> Dict[str, Any]:
             }}
         )
         classificati += 1
-        
+
         dettaglio.append({
             "id": str(f24.get("id", f24.get("_id"))),
             "anno": f24.get("anno"),
             "tipo_tributo": tipo_tributo,
             "centro_costo": cdc_config["nome"]
         })
-    
+
     return {
         "success": True,
         "classificati": classificati,
@@ -979,14 +979,14 @@ async def f24_statistiche() -> Dict[str, Any]:
     Statistiche sulla classificazione degli F24.
     """
     db = Database.get_db()
-    
+
     # Conta totali
     totale = await db["f24_unificato"].count_documents({"status": {"$ne": "eliminato"}})
     classificati = await db["f24_unificato"].count_documents({
         "status": {"$ne": "eliminato"},
         "centro_costo_id": {"$exists": True, "$nin": [None, ""]}
     })
-    
+
     # Aggregazione per centro di costo
     pipeline = [
         {"$match": {"status": {"$ne": "eliminato"}, "centro_costo_nome": {"$exists": True}}},
@@ -997,9 +997,9 @@ async def f24_statistiche() -> Dict[str, Any]:
         }},
         {"$sort": {"count": -1}}
     ]
-    
+
     per_cdc = await db["f24_unificato"].aggregate(pipeline).to_list(5000)
-    
+
     return {
         "totale_f24": totale,
         "classificati": classificati,
@@ -1012,14 +1012,14 @@ async def f24_statistiche() -> Dict[str, Any]:
 async def riclassifica_singolo_f24(f24_id: str, data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """
     Riclassifica manualmente un singolo F24.
-    
+
     Body:
         - centro_costo_id: ID del centro di costo da assegnare
     """
     db = Database.get_db()
-    
+
     import app.services.learning_machine_cdc as lm
-    
+
     centro_costo_id = data.get("centro_costo_id")
     if not centro_costo_id:
         raise HTTPException(status_code=400, detail="centro_costo_id richiesto")
@@ -1028,7 +1028,7 @@ async def riclassifica_singolo_f24(f24_id: str, data: Dict[str, Any] = Body(...)
     centro_costo_id, cdc_config = lm.risolvi_centro_costo(centro_costo_id)
     if not cdc_config:
         raise HTTPException(status_code=400, detail=f"Centro di costo '{data.get('centro_costo_id')}' non trovato")
-    
+
     result = await db["f24_unificato"].update_one(
         {"id": f24_id},
         {"$set": {
@@ -1038,10 +1038,10 @@ async def riclassifica_singolo_f24(f24_id: str, data: Dict[str, Any] = Body(...)
             "classificazione_fonte": "manuale"
         }}
     )
-    
+
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="F24 non trovato")
-    
+
     return {
         "success": True,
         "message": f"F24 classificato come '{cdc_config['nome']}'"

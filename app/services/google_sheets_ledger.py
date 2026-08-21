@@ -1,8 +1,8 @@
 """Registro operativo del gestionale su Google Drive/Google Sheets.
 
-Il registro e' ricostruibile senza MongoDB: ogni archivio ha un foglio, un
-progressivo stabile, un identificativo canonico e il payload JSON completo.
-La migrazione da Mongo e' ammessa soltanto come fase transitoria verificata.
+Ogni archivio ha un foglio, un progressivo stabile, un identificativo canonico
+e il payload JSON completo. Drive conserva gli originali; Sheets e' l'archivio
+operativo interrogato dall'applicazione.
 """
 from __future__ import annotations
 
@@ -69,8 +69,8 @@ SHEETS: tuple[LedgerSheet, ...] = (
     LedgerSheet("Email PartenoPay", "verbali_email_archive", "PPE"),
     LedgerSheet("Verbali PartenoPay", "verbali_noleggio", "PPV"),
     # Stato tecnico degli import Drive/Gmail e configurazione operativa. Non e'
-    # un fallback Mongo: in modalita' Sheets questo foglio e' la sorgente
-    # persistente per checkpoint e chiavi idempotenti dei job automatici.
+    # Questo foglio e' la sorgente persistente per checkpoint e chiavi
+    # idempotenti dei job automatici.
     LedgerSheet("Stato sistema", "sistema_stato", "SYS"),
 )
 
@@ -150,7 +150,7 @@ def decode_payload(value: Any) -> Dict[str, Any]:
 
 def canonical_id(document: Dict[str, Any]) -> str:
     return str(
-        document.get("id") or document.get("_mongo_id")
+        document.get("id") or document.get("_record_id")
         or document.get("invoice_id")
         or document.get("document_id") or document.get("cedolino_id")
         or document.get("movement_id") or document.get("bonifico_id")
@@ -163,7 +163,7 @@ def canonical_id(document: Dict[str, Any]) -> str:
 
 def canonical_filter(document: Dict[str, Any]) -> Dict[str, Any]:
     for field in (
-        "id", "_mongo_id", "invoice_id", "document_id", "cedolino_id", "movement_id",
+        "id", "_record_id", "invoice_id", "document_id", "cedolino_id", "movement_id",
         "bonifico_id", "quietanza_id", "estratto_id", "invoice_key",
         "transaction_id", "file_hash", "pdf_hash", "fingerprint",
     ):
@@ -176,9 +176,9 @@ def canonical_filter(document: Dict[str, Any]) -> Dict[str, Any]:
 def portable_document(document: Dict[str, Any]) -> Dict[str, Any]:
     """Copia serializzabile con identita portabile anche per record storici."""
     payload = dict(document)
-    mongo_id = payload.pop("_id", None)
-    if mongo_id is not None and not canonical_id(payload):
-        payload["_mongo_id"] = str(mongo_id)
+    record_id = payload.pop("_id", None)
+    if record_id is not None and not canonical_id(payload):
+        payload["_record_id"] = str(record_id)
     return payload
 
 
@@ -581,8 +581,8 @@ def _ensure_collection_sheet_sync(
 
     Il codice storico accede a collezioni tecniche e di dominio anche fuori dal
     manifest iniziale (alert, audit, partite aperte, magazzino). In backend
-    Sheets queste collezioni non devono ricadere su Mongo e non devono bloccare
-    un import: al primo tentativo di scrittura ricevono un foglio ``DB_*``.
+    In Sheets questi registri non devono bloccare un import: al primo tentativo
+    di scrittura ricevono un foglio ``DB_*``.
     """
     sheet = dynamic_sheet(collection)
     sheets = _sheets_service()
@@ -1233,8 +1233,8 @@ async def sync_all(db, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any
     return {**workbook, "schema_version": SCHEMA_VERSION, "fogli": results}
 
 
-async def migration_audit(db, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Confronta Mongo sorgente e registro Drive senza modificare dati."""
+async def registry_audit(db, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Confronta la cache ricostruita e il registro Drive senza modifiche."""
     verification = await restore_all(db, config, apply=False)
     by_collection = {
         item["collezione"]: item for item in verification.get("fogli", [])
@@ -1415,15 +1415,12 @@ async def restore_all(
             fingerprints.append(document_fingerprint(payload))
             if apply:
                 storage_payload = dict(payload)
-                mongo_id = storage_payload.pop("_mongo_id", None)
-                if mongo_id not in (None, ""):
-                    # Le righe prive di un ID applicativo vengono esportate
-                    # con ``_mongo_id``. Al ripristino deve tornare il vero
-                    # ``_id``: lasciare `_mongo_id` come campo ordinario fa
-                    # fallire gli upsert che cercano `_id` e crea una seconda
-                    # identita' logica con la stessa chiave canonica.
-                    storage_payload["_id"] = str(mongo_id)
-                    identity_filter = {"_id": str(mongo_id)}
+                record_id = storage_payload.pop("_record_id", None)
+                if record_id not in (None, ""):
+                    # Le righe prive di ID applicativo conservano l'ID interno
+                    # portabile, ripristinato come vero ``_id`` del registro.
+                    storage_payload["_id"] = str(record_id)
+                    identity_filter = {"_id": str(record_id)}
                 else:
                     identity_filter = canonical_filter(storage_payload)
                 await db[sheet.collection].replace_one(

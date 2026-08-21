@@ -1,13 +1,13 @@
 import asyncio
 
 import pytest
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services.f24_canonico import richiedi_quadratura_f24, salva_f24
 
 
 def test_writer_canonico_rifiuta_f24_non_quadrato_senza_scrivere():
-    db = AsyncMongoMockClient()["f24-write-safety"]
+    db = MemorySheetsClient()["f24-write-safety"]
     document = {
         "file_name": "non_quadrato.pdf",
         "validazione": {"saldo_quadrato": False, "differenza_saldo": 0.01},

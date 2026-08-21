@@ -2,7 +2,7 @@ import asyncio
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 from tests.document_preview_helpers import confirmed_preview_headers
 
 from app.db_collections import (
@@ -51,7 +51,7 @@ def test_match_rata_ader_richiede_codice_forte_e_importo_esatto():
 
 def test_pagamento_cbill_collega_rata_e_cartelle_senza_duplicare_importo():
     async def scenario():
-        db = AsyncMongoMockClient()["fiscal-payment-test"]
+        db = MemorySheetsClient()["fiscal-payment-test"]
         await db[COLL_TAX_RATE_PLANS].insert_one(_plan(two_claims=True))
         for suffix in ("1", "2"):
             await db[COLL_TAX_COLLECTION_CLAIMS].insert_one({
@@ -106,7 +106,7 @@ def test_upload_auto_cbill_collega_rata_e_cartella(monkeypatch):
     from app.services import pagopa_receipts
     from app.utils import upload_validation
 
-    db = AsyncMongoMockClient()["upload-auto-cbill-test"]
+    db = MemorySheetsClient()["upload-auto-cbill-test"]
     asyncio.run(db[COLL_TAX_RATE_PLANS].insert_one(_plan()))
     asyncio.run(db[COLL_TAX_COLLECTION_CLAIMS].insert_one({
         "id": "claim-1", "company_id": "04523831214",
@@ -151,7 +151,7 @@ def test_upload_auto_cbill_collega_rata_e_cartella(monkeypatch):
 def test_quietanza_f24_con_identificativo_ader_usa_lo_stesso_motore(monkeypatch):
     from app.services import f24_parser, quietanze_import
 
-    db = AsyncMongoMockClient()["quietanza-f24-ader-test"]
+    db = MemorySheetsClient()["quietanza-f24-ader-test"]
     plan = _plan()
     plan["company_id"] = "04523831214"
     asyncio.run(db[COLL_TAX_RATE_PLANS].insert_one(plan))

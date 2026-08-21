@@ -643,12 +643,12 @@ email/PagoPA e prima nota. Vivi dal frontend (VerbaliRiconciliazione.jsx): /dash
 ### POST /api/verbali-riconciliazione/scan-fatture-verbali — scan massivo fatture
 **Cosa fa**: cerca numeri verbale (`[AB]\d{8,12}` + pattern testuali) in tutti i campi delle fatture noleggiatori e crea/aggiorna le associazioni.
 **Logica codice**: fino a 5000 `invoices` (regex su supplier/descrizione/body/note/oggetto + items); per match crea o aggiorna verbale con fattura_id (=str(_id) Mongo), stato fattura_ricevuta o riconciliato.
-**Note**: VIVO (jsx:95). Qui `fattura_id` è l'ObjectId stringato, altrove è l'uuid `id` — identificatori fattura misti nel dataset.
+**Note**: VIVO (jsx:95). Qui `fattura_id` è l'identificatore interno stringato, altrove è l'uuid `id` — identificatori fattura misti nel dataset.
 
 ### POST /api/verbali-riconciliazione/riconcilia/{numero_verbale} — riconciliazione singola
 **Cosa fa**: cerca fattura (regex sul numero verbale nei campi fattura), targa (da verbali_noleggio_completi), veicolo e driver; aggiorna stato.
 **Logica codice**: join su `invoices`, `verbali_noleggio_completi`, `veicoli_noleggio`, `dipendenti`.
-**Note**: VIVO (jsx:128). BUG POTENZIALE: il lookup driver fa `dipendenti.find_one({"_id": ObjectId(driver_id)})` ma `driver_id` è quasi sempre un uuid stringa → `InvalidId` non gestita → 500 quando il veicolo ha driver_id uuid.
+**Note**: VIVO (jsx:128). BUG POTENZIALE: il lookup driver fa `dipendenti.find_one({"_id": identificatore interno(driver_id)})` ma `driver_id` è quasi sempre un uuid stringa → `InvalidId` non gestita → 500 quando il veicolo ha driver_id uuid.
 
 ### POST /api/verbali-riconciliazione/collega-driver-massivo — driver matching multi-strategia
 **Cosa fa**: per i verbali con targa ma senza driver prova 5 strategie: veicolo → storico assegnazioni (alla data violazione) → contratti noleggio → dipendente con targa assegnata → cognome nella descrizione.
@@ -894,7 +894,7 @@ Nessun riferimento nel frontend: modulo di servizio/backoffice.
    docstring dice /app/uploads), ricevute verbali (`/tmp/uploads/`, commento dice /app/uploads):
    su Render i file spariscono a ogni deploy.
 5. **Rischi dati**: `scarica-tutti` sovrascrive i campi di associazione dei verbali già arricchiti;
-   riconcilia/{n} può andare in 500 con driver_id uuid (ObjectId non gestito); fallback "comune" del
+   riconcilia/{n} può andare in 500 con driver_id uuid (identificatore interno non gestito); fallback "comune" del
    CSV PayPal riconcilia fino a 10 verbali per riga senza check importo; POST /tfr/accantonamento non
    blocca doppioni per anno; riconciliazione manuale distinte BPM prende la prima busta senza filtro periodo.
 6. **Endpoint vivi confermati dal frontend**: GET /api/dipendenti (InserimentoRapido, VerbaliRiconciliazione);

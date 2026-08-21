@@ -84,7 +84,7 @@ cassa/banca/contanti/bonifico/assegno/rid/carta/misto invariato) — `pagamento_
 campo booleano indipendente, scelta deliberata per non toccare le 6 liste di validazione
 del metodo pagamento già disallineate tra loro nel codice (vedi gap sotto).
 
-Verificato con mongomock, test end-to-end completo: fornitore normale con metodo bonifico
+Verificato con registro Sheets effimero, test end-to-end completo: fornitore normale con metodo bonifico
 (non certo) → fattura resta provvisoria, zero movimenti prima nota creati, visibile nella
 lista provvisori; fornitore certo (Amazon-style, banca) → registrazione diretta e immediata;
 il job bulk schedulato non tocca il fornitore non certo. 90/90 test esistenti ancora verdi.

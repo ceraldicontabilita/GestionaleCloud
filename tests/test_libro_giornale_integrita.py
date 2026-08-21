@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 from fastapi import HTTPException
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.accounting import contabilita_gestionale as cg
 
@@ -65,7 +65,7 @@ def test_rileva_protocollo_duplicato_e_righe_invalide():
 
 
 def test_giornale_include_scrittura_con_solo_campo_data(monkeypatch):
-    db = AsyncMongoMockClient().db
+    db = MemorySheetsClient().db
     _run(db.movimenti_contabili.insert_one(_scrittura(1, 84, 84, data_field="data")))
     monkeypatch.setattr(cg.Database, "get_db", lambda: db)
 
@@ -101,7 +101,7 @@ def test_reimport_corrotto_viene_annullato_prima_di_qualsiasi_scrittura():
 
 
 def test_reimport_valido_e_idempotente(monkeypatch):
-    db = AsyncMongoMockClient().db
+    db = MemorySheetsClient().db
     monkeypatch.setattr(cg.Database, "get_db", lambda: db)
     dump = {
         "tipo": "libro_giornale_gestionalecloud",

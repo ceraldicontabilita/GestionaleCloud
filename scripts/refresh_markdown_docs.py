@@ -70,7 +70,6 @@ def tracked_markdown() -> list[str]:
     )
     paths = {line.strip().replace("\\", "/") for line in result.stdout.splitlines() if line.strip()}
     paths.discard("memoria/MAPPA_COLLEZIONI.md")
-    paths.discard("memoria/DISASTER_RECOVERY_MONGODB.md")
     paths.add("memoria/DISASTER_RECOVERY_DRIVE.md")
     paths.add("docs/MARKDOWN_INVENTORY.md")
     return sorted(path for path in paths if (ROOT / path).exists() or path == "docs/MARKDOWN_INVENTORY.md")
@@ -215,10 +214,9 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Regola architetturale
 
-La destinazione operativa è Drive/Sheets: originali in Google Drive e registri
-in Google Sheets/Excel collegato a Drive. MongoDB è una compatibilità esplicita
-senza fallback automatico, mantenuta soltanto per verificare e migrare i dati
-storici; i documenti che lo indicano come database primario non sono autorità.
+Drive/Sheets è l'unico archivio operativo: originali in Google Drive e registri
+in Google Sheets/Excel collegato a Drive. Non esistono fallback di persistenza;
+i documenti storici che descrivono altre architetture non sono autorità.
 """
 
 

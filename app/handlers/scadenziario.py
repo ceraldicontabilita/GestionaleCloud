@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Tuple
 
-from pymongo.errors import DuplicateKeyError
+from app.services.sheets_document_store import DuplicateRecordError
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +135,7 @@ async def handler_crea_scadenza(payload: Dict[str, Any], db) -> Dict[str, Any]:
                 {"scadenza_key": chiave}, {"$setOnInsert": scadenza}, upsert=True,
             )
             (create_ids if getattr(result, "upserted_id", None) is not None else existing_ids).append(chiave)
-        except DuplicateKeyError:
+        except DuplicateRecordError:
             existing_ids.append(chiave)
 
     logger.info("[HandlerScadenziario] fattura=%s create=%s esistenti=%s", fattura_id, len(create_ids), len(existing_ids))

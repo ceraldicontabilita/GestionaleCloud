@@ -3,7 +3,7 @@
 import asyncio
 from datetime import date
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 import app.agents.fiscale_shadow as agent_mod
 from app.agents.fiscale_shadow import FiscaleShadow
@@ -11,7 +11,7 @@ from app.services.fiscale_shadow_service import leggi_snapshot_fiscale
 
 
 def _db():
-    return AsyncMongoMockClient()["fiscale_shadow_test"]
+    return MemorySheetsClient()["fiscale_shadow_test"]
 
 
 async def _seed(db):

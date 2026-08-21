@@ -40,17 +40,17 @@ async def scarica_email_allegati(
     - Consulenti lavoro (ferrantini): F24 contributivi
     """
     db = Database.get_db()
-    
+
     # Download email
     result = await download_and_process_emails(
         email_address=EMAIL_ADDRESS,
         password=EMAIL_PASSWORD,
         since_days=giorni
     )
-    
+
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=result.get("errori", ["Errore sconosciuto"]))
-    
+
     # Log del download
     log_entry = {
         "id": datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S"),
@@ -62,7 +62,7 @@ async def scarica_email_allegati(
         "allegati_contributivi": result.get("allegati_contributivi", 0)
     }
     await db[COLL_EMAIL_LOG].insert_one(log_entry.copy())
-    
+
     # Salva info allegati nel database
     allegati_processati = []
     for allegato in result.get("allegati", []):
@@ -72,19 +72,19 @@ async def scarica_email_allegati(
             "email_date": allegato["email_date"],
             "email_from": allegato["email_from"]
         }, {"_id": 0})
-        
+
         if existing:
             allegato["status"] = "già_presente"
             allegati_processati.append(allegato)
             continue
-        
+
         # Salva nel database
         allegato["status"] = "da_processare"
         allegato["processato"] = False
         allegato_copy = {k: v for k, v in allegato.items()}  # Copia per evitare modifica
         await db[COLL_ALLEGATI].insert_one(allegato_copy.copy())
         allegati_processati.append(allegato)
-    
+
     return {
         "success": True,
         "message": f"Download completato: {result.get('totale_allegati', 0)} allegati da {result.get('totale_email', 0)} email",
@@ -105,13 +105,13 @@ async def processa_allegati_f24() -> Dict[str, Any]:
     Identifica se sono F24 o quietanze e li inserisce nel sistema appropriato.
     """
     db = Database.get_db()
-    
+
     # Trova allegati da processare
     allegati = await db[COLL_ALLEGATI].find({
         "processato": False,
         "extension": ".pdf"
     }, {"_id": 0}).to_list(100)
-    
+
     risultati = {
         "processati": 0,
         "f24_commercialista": 0,
@@ -119,28 +119,28 @@ async def processa_allegati_f24() -> Dict[str, Any]:
         "errori": 0,
         "dettagli": []
     }
-    
+
     for allegato in allegati:
-        # Architettura MongoDB-only: usa pdf_data
+        # Architettura Drive/Sheets: usa pdf_data
         pdf_data = allegato.get("pdf_data")
         if not pdf_data:
             risultati["errori"] += 1
             risultati["dettagli"].append({
                 "file": allegato.get("original_filename"),
-                "errore": "PDF non disponibile in MongoDB"
+                "errore": "PDF non disponibile in Drive/Sheets"
             })
             continue
-        
+
         try:
             # Decodifica PDF da Base64
             import base64
             pdf_content = base64.b64decode(pdf_data)
-            
+
             # Determina il tipo di documento basato sul mittente
             categoria = allegato.get("categoria_f24", "generico")
             mittente_tipo = allegato.get("mittente_tipo", "sconosciuto")
-            
-            # Prova a parsare come F24 commercialista (architettura MongoDB-only: usa bytes)
+
+            # Prova a parsare come F24 commercialista (architettura Drive/Sheets: usa bytes)
             parsed_quietanza_forte = parse_quietanza_f24(pdf_content=pdf_content)
             dg_quietanza = parsed_quietanza_forte.get("dati_generali", {})
             protocollo = str(dg_quietanza.get("protocollo_telematico") or "")
@@ -179,14 +179,14 @@ async def processa_allegati_f24() -> Dict[str, Any]:
                 continue
 
             parsed_f24 = parse_f24_commercialista(pdf_content=pdf_content)
-            
+
             # Se ha codici tributo, è un F24
             has_tributi = (
                 len(parsed_f24.get("sezione_erario", [])) > 0 or
                 len(parsed_f24.get("sezione_inps", [])) > 0 or
                 len(parsed_f24.get("sezione_regioni", [])) > 0
             )
-            
+
             if has_tributi and "error" not in parsed_f24:
                 # È un F24 della commercialista/consulente
                 file_hash = hashlib.sha256(pdf_content).hexdigest()
@@ -198,7 +198,7 @@ async def processa_allegati_f24() -> Dict[str, Any]:
                 f24_doc = {
                     "id": allegato.get("id"),
                     "file_name": allegato.get("original_filename"),
-                    "pdf_data": pdf_data,  # Architettura MongoDB-only
+                    "pdf_data": pdf_data,  # Architettura Drive/Sheets
                     "file_hash": file_hash,
                     "pdf_hash": pdf_hash,
                     "email_from": allegato.get("email_from"),
@@ -217,7 +217,7 @@ async def processa_allegati_f24() -> Dict[str, Any]:
                     "riconciliato": False,
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }
-                
+
                 f24_id = gia_presente.get("id") if gia_presente else await salva_f24(
                     db, f24_doc, source="email_f24"
                 )
@@ -233,14 +233,14 @@ async def processa_allegati_f24() -> Dict[str, Any]:
                     "codici": len(parsed_f24.get("codici_univoci", []))
                 })
             else:
-                # Prova come quietanza (architettura MongoDB-only: usa bytes)
+                # Prova come quietanza (architettura Drive/Sheets: usa bytes)
                 parsed_quietanza = parse_quietanza_f24(pdf_content=pdf_content)
-                
+
                 has_quietanza_data = (
                     len(parsed_quietanza.get("sezione_erario", [])) > 0 or
                     len(parsed_quietanza.get("sezione_inps", [])) > 0
                 )
-                
+
                 if has_quietanza_data and "error" not in parsed_quietanza:
                     esito_fallback = await importa_quietanza(
                         db,
@@ -266,7 +266,7 @@ async def processa_allegati_f24() -> Dict[str, Any]:
                         "tipo": "Non riconosciuto",
                         "errore": "Impossibile identificare come F24 o quietanza"
                     })
-            
+
             # Marca come processato
             await db[COLL_ALLEGATI].update_one(
                 {"id": allegato.get("id")},
@@ -276,7 +276,7 @@ async def processa_allegati_f24() -> Dict[str, Any]:
                 }}
             )
             risultati["processati"] += 1
-            
+
         except Exception as e:
             logger.error(f"Errore processing {allegato.get('original_filename')}: {e}")
             risultati["errori"] += 1
@@ -284,7 +284,7 @@ async def processa_allegati_f24() -> Dict[str, Any]:
                 "file": allegato.get("original_filename"),
                 "errore": str(e)
             })
-    
+
     # ── Anche i F24 finiti in documents_inbox (routing del monitor Gmail) ──
     # Bug segnalato 18/07/2026: i PDF F24 della commercialista arrivati via
     # monitor ("F24 rit. scad 16.07.pdf" di rosaria.marotta) venivano
@@ -422,17 +422,17 @@ async def list_allegati(
 ) -> Dict[str, Any]:
     """Lista allegati scaricati."""
     db = Database.get_db()
-    
+
     query = {}
     if processato is not None:
         query["processato"] = processato
     if categoria:
         query["categoria_f24"] = categoria
-    
+
     allegati = await db[COLL_ALLEGATI].find(
         query, {"_id": 0}
     ).sort("downloaded_at", -1).limit(limit).to_list(limit)
-    
+
     return {
         "allegati": allegati,
         "totale": len(allegati)
@@ -443,11 +443,11 @@ async def list_allegati(
 async def get_download_log(limit: int = Query(20)) -> Dict[str, Any]:
     """Log degli ultimi download email."""
     db = Database.get_db()
-    
+
     logs = await db[COLL_EMAIL_LOG].find(
         {}, {"_id": 0}
     ).sort("timestamp", -1).limit(limit).to_list(limit)
-    
+
     return {"logs": logs}
 
 
@@ -461,22 +461,22 @@ async def search_codici_tributo(
     Cerca informazioni sui codici tributo.
     """
     from app.services.codici_tributo_db import (
-        CODICI_TRIBUTO_ERARIO, CODICI_TRIBUTO_INPS, 
+        CODICI_TRIBUTO_ERARIO, CODICI_TRIBUTO_INPS,
         get_codici_per_categoria, get_codici_per_fonte
     )
-    
+
     if codice:
         info = get_info_codice_tributo(codice)
         return {"codice": codice, "info": info}
-    
+
     if categoria:
         codici = get_codici_per_categoria(categoria)
         return {"categoria": categoria, "codici": codici}
-    
+
     if fonte:
         codici = get_codici_per_fonte(fonte)
         return {"fonte": fonte, "codici": codici}
-    
+
     # Restituisci riepilogo
     return {
         "erario": {
@@ -500,17 +500,17 @@ async def scarica_e_processa(
     """
     # Step 1: Scarica email
     download_result = await scarica_email_allegati(giorni=giorni)
-    
+
     if not download_result.get("success"):
         return {
             "success": False,
             "fase": "download",
             "errore": download_result
         }
-    
+
     # Step 2: Processa allegati
     process_result = await processa_allegati_f24()
-    
+
     return {
         "success": True,
         "message": "Download e processamento completati",

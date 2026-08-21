@@ -1,5 +1,5 @@
 """
-Schema MongoDB per Collection MUTUI
+Schema Drive/Sheets per Collection MUTUI
 ===================================
 
 Collection: mutui
@@ -21,7 +21,7 @@ class RataMutuo(BaseModel):
     quota_capitale: float
     quota_interessi: float
     stato: Literal["Pagata", "Da pagare", "Scaduta"]
-    
+
     # Riconciliazione bancaria
     riconciliata: bool = False
     movimento_bancario_id: Optional[str] = None
@@ -38,33 +38,33 @@ class MutuoCreate(BaseModel):
     numero_delibera: str
     banca: str = "BPM - Banca Popolare di Milano"
     iban: Optional[str] = None
-    
+
     data_erogazione: Optional[str] = None
     data_prima_rata: Optional[str] = None
     data_ultima_rata: Optional[str] = None
-    
+
     rate: List[RataMutuo]
     totale_rate: int
-    
+
     rate_pagate: int = 0
     rate_da_pagare: int = 0
     rate_residue_dichiarate: int = 0
-    
+
     totale_pagato_capitale: float = 0.0
     totale_pagato_interessi: float = 0.0
     totale_pagato: float = 0.0
-    
+
     debito_residuo_capitale: float = 0.0
     debito_residuo_interessi: float = 0.0
     debito_residuo_totale: float = 0.0
-    
+
     prossima_data_scadenza: Optional[str] = None
     prossimo_importo: Optional[float] = None
-    
+
     rate_riconciliate: int = 0
     rate_non_riconciliate: int = 0
     percentuale_riconciliazione: float = 0.0
-    
+
     file_piano_ammortamento: Optional[str] = None
     allegati: List[str] = []
     note: Optional[str] = None

@@ -13,7 +13,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from pymongo.errors import DuplicateKeyError
+from app.services.sheets_document_store import DuplicateRecordError
 
 
 COLLECTION = "pagamenti_buoni"
@@ -126,7 +126,7 @@ async def import_rows(db, rows: list[dict[str, Any]], source_name: str, errors: 
             imported += 1
             if not row.get("transfer_reference"):
                 missing_reference += 1
-        except DuplicateKeyError:
+        except DuplicateRecordError:
             duplicates += 1
             if row.get("transfer_reference"):
                 duplicate_references.append(row["transfer_reference"])

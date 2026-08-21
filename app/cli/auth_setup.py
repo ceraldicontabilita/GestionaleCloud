@@ -81,7 +81,7 @@ async def _crea_primo_admin(db) -> None:
     print(f"   Email: {email}")
     print(f"   Nome: {nome or '(nessuno)'}")
     print(f"   Ruolo: admin")
-    print(f"   _id MongoDB: {result.inserted_id}")
+    print(f"   _id Drive/Sheets: {result.inserted_id}")
     print(f"\nOra puoi loggarti da /login con queste credenziali.")
 
 

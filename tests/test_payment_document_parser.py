@@ -4,7 +4,7 @@ import fitz
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers import documenti
 from app.services.pagopa_receipts import parse_receipt_pdf
@@ -152,7 +152,7 @@ def test_rav_non_viene_confuso_con_mav_o_pagopa():
 
 
 def test_upload_auto_cbill_e_idempotente_e_non_inventa_la_banca(monkeypatch):
-    db = AsyncMongoMockClient()["upload-auto-cbill"]
+    db = MemorySheetsClient()["upload-auto-cbill"]
     monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
     app = FastAPI()
     app.include_router(documenti.router, prefix="/api/documenti")
@@ -185,7 +185,7 @@ def test_upload_auto_cbill_e_idempotente_e_non_inventa_la_banca(monkeypatch):
 
 
 def test_upload_auto_bollettino_postale_usa_codice_forte_e_importo_operazione(monkeypatch):
-    db = AsyncMongoMockClient()["upload-auto-postal"]
+    db = MemorySheetsClient()["upload-auto-postal"]
     monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
     app = FastAPI()
     app.include_router(documenti.router, prefix="/api/documenti")
