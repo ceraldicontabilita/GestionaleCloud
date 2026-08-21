@@ -1013,6 +1013,10 @@ class SheetDatabase:
             yield None
 
     def close(self) -> None:
+        for table in self._tables.values():
+            closer = getattr(table, "close", None)
+            if callable(closer):
+                closer()
         self._tables.clear()
 
 
