@@ -3,7 +3,6 @@ import { Link, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import api from '../api';
 import { PageLayout } from '../components/PageLayout';
-import LinkedEvidencePanel from '../components/LinkedEvidencePanel';
 import { Badge, Button, Card, StatCard } from '../components/ds';
 
 const TABS = [
@@ -29,7 +28,7 @@ const endpointFor = (tab, f24Filters = {}, taxCodeFilters = {}) => {
     if (f24Filters.year) params.set('year', f24Filters.year);
     if (f24Filters.taxCode) params.set('tax_code', f24Filters.taxCode);
     if (f24Filters.creditsOnly) params.set('credits_only', 'true');
-    params.set('limit', '1000');
+    params.set('limit', '5000');
     return `/api/fiscal/f24-rows?${params.toString()}`;
   }
   if (tab === 'codici-tributo') {
@@ -41,7 +40,7 @@ const endpointFor = (tab, f24Filters = {}, taxCodeFilters = {}) => {
     return `/api/documenti/tax-codes?${params.toString()}`;
   }
   return ({
-    tributi: '/api/fiscal/obligations',
+    tributi: '/api/fiscal/obligations?limit=5000',
     'tributi-pagati': '/api/fiscal/obligations?status=PAID_ON_TIME&limit=5000',
     'crosswalk-riscossione': '/api/fiscal/crosswalk',
     riscossione: '/api/fiscal/collections',
@@ -57,8 +56,6 @@ export default function SituazioneFiscale() {
   const tab = TABS.find(([id]) => location.pathname.endsWith(`/${id}`))?.[0] || 'tributi';
   const [summary, setSummary] = useState(null);
   const [items, setItems] = useState([]);
-  const [review, setReview] = useState({ findings: [] });
-  const [selected, setSelected] = useState(null);
   const [tabMeta, setTabMeta] = useState(null);
   const [aderRelated, setAderRelated] = useState({ ratePlans: [], settlements: [] });
   const [loading, setLoading] = useState(true);
@@ -84,11 +81,11 @@ export default function SituazioneFiscale() {
     setLoading(true);
     const warnings = [];
     try {
-      const [summaryResult, dataResult, reviewResult] = await Promise.allSettled([
+      const [summaryResult, dataResult] = await Promise.allSettled([
         api.get('/api/fiscal/summary'), api.get(endpointFor(tab, {
           year: tab === 'dichiarazioni' ? declarationYear : f24Year,
           declarationType, taxCode: f24TaxCode, creditsOnly: f24CreditsOnly,
-        }, taxCodeFilters)), api.get('/api/fiscal/review'),
+        }, taxCodeFilters)),
       ]);
       if (summaryResult.status === 'fulfilled') {
         setSummary(summaryResult.value.data);
@@ -111,12 +108,6 @@ export default function SituazioneFiscale() {
           description: error.response?.data?.detail || error.message,
         });
       }
-      if (reviewResult.status === 'fulfilled') {
-        setReview(reviewResult.value.data || { findings: [] });
-      } else {
-        setReview({ findings: [] });
-        warnings.push('Controlli di revisione temporaneamente non disponibili.');
-      }
       setLoadWarnings(warnings);
     } catch (error) {
       setLoadWarnings(['Caricamento fiscale non completato.']);
@@ -125,17 +116,6 @@ export default function SituazioneFiscale() {
   }, [tab, f24Year, f24TaxCode, f24CreditsOnly, declarationYear, declarationType, taxCodeFilters]);
 
   useEffect(() => { load(); }, [load]);
-
-  const download = async (path, filename) => {
-    try {
-      const response = await api.get(path, { responseType: 'blob' });
-      const url = URL.createObjectURL(response.data);
-      const link = document.createElement('a'); link.href = url; link.download = filename;
-      document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
-    } catch (error) {
-      toast.error('Download non riuscito', { description: error.response?.data?.detail || error.message });
-    }
-  };
 
   const openDocument = async documentId => {
     try {
@@ -177,46 +157,33 @@ export default function SituazioneFiscale() {
     } finally { setUploading(false); }
   };
 
-  const counts = summary?.counts || {};
   const driveCounts = summary?.drive_index?.counts || {};
   const activeLabel = useMemo(() => TABS.find(([id]) => id === tab)?.[1], [tab]);
   return (
     <PageLayout title="Situazione fiscale" icon="⚖️"
       subtitle="Obblighi, pagamenti, cartelle e prove restano distinti e verificabili"
-      actions={<><Button variant="secondary" onClick={load} disabled={loading}>Aggiorna</Button>
-        <Button variant="secondary" onClick={() => download('/api/fiscal/dossier.pdf', 'dossier_fiscale.pdf')}>Dossier PDF</Button>
-        <Button onClick={() => download('/api/fiscal/evidence-package.zip', 'evidence_fiscale.zip')}>Pacchetto prove</Button></>}>
+      actions={<Button variant="secondary" onClick={load} disabled={loading}>Aggiorna da Drive</Button>}>
       <nav aria-label="Sezioni situazione fiscale" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
         {TABS.map(([id, label]) => <Link key={id} to={`/situazione-fiscale/${id}`}
           style={{ padding: '8px 12px', borderRadius: 8, textDecoration: 'none', fontWeight: 700,
             background: tab === id ? '#0f2744' : '#e2e8f0', color: tab === id ? '#fff' : '#0f2744' }}>{label}</Link>)}
       </nav>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 12, marginBottom: 18 }}>
-        <StatCard label="Record fiscali DB" value={counts.documents || 0} accent="primary" />
         <StatCard label="F24 in Drive" value={driveCounts.f24_documents || 0} accent="primary" />
         <StatCard label="Righe tributo Drive" value={driveCounts.f24_rows || 0} accent="primary" />
         <StatCard label="Dichiarazioni Drive" value={driveCounts.declarations || 0} accent="primary" />
-        <StatCard label="Obblighi" value={counts.obligations || 0} accent="primary" />
-        <StatCard label="Pagamenti documentati Drive" value={driveCounts.documentary_payment_documents || counts.payments || 0} accent="success" />
-        <StatCard label="Cartelle" value={counts.collection_claims || 0} accent="warning" />
-        <StatCard label="Snapshot AdeR" value={counts.ader_snapshots || 0} accent="primary" />
-        <StatCard label="Da verificare" value={summary?.requires_review || 0} accent="danger" />
+        <StatCard label="Tributi a debito Drive" value={driveCounts.tax_debit_rows || 0} accent="primary" />
+        <StatCard label="Quietanze Drive" value={driveCounts.documentary_payment_documents || 0} accent="success" />
       </div>
       {summary?.drive_index?.available === false && <Card style={{ marginBottom: 18 }} bodyStyle={{ padding: 14, color: '#92400e', background: '#fffbeb' }}>
-        <strong>Indice Drive non disponibile:</strong> {summary.drive_index.warning}. I record transitori del database restano consultabili.
+        <strong>Indice Drive non disponibile:</strong> {summary.drive_index.warning}.
       </Card>}
       {loadWarnings.length > 0 && <Card style={{ marginBottom: 18 }} bodyStyle={{ padding: 14, color: '#92400e', background: '#fffbeb' }}>
         {loadWarnings.map(message => <div key={message}>{message}</div>)}
       </Card>}
-      {(review.findings || []).length > 0 && <Card style={{ marginBottom: 18 }} bodyStyle={{ padding: 16 }}>
-        <h3 style={{ marginTop: 0 }}>Controlli deterministici</h3>
-        {review.findings.slice(0, 10).map((item, index) => <div key={`${item.code}-${index}`} style={{ padding: '8px 0', borderTop: '1px solid #e2e8f0' }}>
-          <Badge variant="warning">{item.code}</Badge> {item.message}
-        </div>)}
-      </Card>}
       <Card bodyStyle={{ padding: 16 }}>
         <h3 style={{ marginTop: 0 }}>{activeLabel}</h3>
-        {tabSources && (tab === 'f24' || tab === 'dichiarazioni' || tab === 'tributi-pagati') && <div style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 8, background: '#ecfdf5', color: '#166534' }}>
+        {tabSources && (tab === 'tributi' || tab === 'f24' || tab === 'dichiarazioni' || tab === 'tributi-pagati') && <div style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 8, background: '#ecfdf5', color: '#166534' }}>
           <strong>Archivio canonico:</strong> Google Drive · indice {tabSources.drive_excel_index || 0}
           {tabSources.drive_warning && <div style={{ color: '#92400e', marginTop: 4 }}>Drive non disponibile: {tabSources.drive_warning}</div>}
         </div>}
@@ -296,7 +263,11 @@ export default function SituazioneFiscale() {
           </section>
         </div>}
         {loading && <p>Caricamento…</p>}
-        {!loading && items.length === 0 && <p>Nessun record disponibile nelle fonti collegate.</p>}
+        {!loading && items.length === 0 && <p>{({
+          'crosswalk-riscossione': 'Nessun collegamento di riscossione presente nell’indice Drive.',
+          riscossione: 'Nessuna cartella o posizione di riscossione presente nell’indice Drive.',
+          ader: 'Nessuno snapshot AdeR presente nell’indice Drive.',
+        }[tab] || 'Nessun documento presente nella sezione Drive corrispondente.')}</p>}
         {items.map((item, index) => {
           const entityId = item.id || item.collection_number || item.code || `row-${index}`;
           return <div key={entityId} style={{ padding: '12px 0', borderTop: '1px solid #e2e8f0' }}>
@@ -316,12 +287,12 @@ export default function SituazioneFiscale() {
               {item.filename && <div style={{ marginTop: 4 }}>{item.filename}</div>}
               {item.evidence_state && <div style={{ marginTop: 4 }}><strong>{item.evidence_state === 'MODELLO_F24_NON_PROVA_BANCARIA' ? 'Modello F24: pagamento bancario da verificare' : 'Quietanza documentale: banca da verificare'}</strong></div>}
             </div>}
-            {tab === 'tributi-pagati' && item.source_kind === 'DRIVE_EXCEL_INDEX_F24_ROW' && <div style={{ marginTop: 6, color: '#475569' }}>
+            {(tab === 'tributi' || tab === 'tributi-pagati') && item.source_kind === 'DRIVE_EXCEL_INDEX_F24_ROW' && <div style={{ marginTop: 6, color: '#475569' }}>
               <div><strong>{item.tax_code || 'Codice non indicato'}</strong> · {item.description || item.section || 'Tributo F24'} · periodo {item.reference_period || 'non indicato'}</div>
               <div>Debito {euro(item.debit_amount)} · Credito {euro(item.credit_amount)} · data {item.payment_date || 'non indicata'}</div>
               <div>{item.filename}{item.protocol && <> · protocollo {item.protocol}</>}</div>
-              <div style={{ marginTop: 5 }}><strong>Quietanza documentale presente · riscontro bancario da verificare</strong></div>
-              <Button size="sm" variant="secondary" style={{ marginTop: 8 }} disabled={!item.document_id} onClick={() => openDriveDocument(item.document_id)}>Apri quietanza Drive</Button>
+              <div style={{ marginTop: 5 }}><strong>{item.documentary_payment_status === 'QUIETANZA_PRESENTE' ? 'Quietanza documentale presente' : 'Modello F24 presente'} · riscontro bancario da verificare</strong></div>
+              <Button size="sm" variant="secondary" style={{ marginTop: 8 }} disabled={!item.document_id} onClick={() => openDriveDocument(item.document_id)}>Apri PDF Drive</Button>
             </div>}
             {tab === 'dichiarazioni' && <div style={{ marginTop: 8, color: '#475569' }}>
               <div>Anno d'imposta {item.tax_year || 'da verificare'}{item.protocol && <> · protocollo {item.protocol}</>}</div>
@@ -346,12 +317,10 @@ export default function SituazioneFiscale() {
               <span><small>Fonte</small><br /><strong>{item.source_filename || 'PDF AdeR'}</strong></span>
             </div>}
             {tab === 'ader' && item.source_document_id && <Button size="sm" variant="secondary" style={{ marginTop: 10 }} onClick={() => openDocument(item.source_document_id)}>Apri PDF sorgente</Button>}
-            {tab === 'riscossione' && <Button size="sm" variant="secondary" style={{ marginLeft: 10 }} onClick={() => setSelected(selected === entityId ? null : entityId)}>Perché? / prove</Button>}
             {tab === 'riscossione' && (item.payment_evidence_ids || []).length > 0 && <div style={{ marginTop: 8, color: '#166534', fontWeight: 700 }}>
               Pagamento documentato collegato · prove: {item.payment_evidence_ids.length}
             </div>}
-            {tab === 'f24' && <Button size="sm" variant="secondary" style={{ marginTop: 8 }} onClick={() => setSelected(selected === entityId ? null : entityId)}>Apri PDF / prove</Button>}
-            {selected === entityId && <div style={{ marginTop: 12 }}><LinkedEvidencePanel entityType={tab === 'f24' ? 'tax_allocation' : 'tax_collection_claim'} entityId={entityId} /></div>}
+            {tab === 'f24' && <Button size="sm" variant="secondary" style={{ marginTop: 8 }} disabled={!item.document_id} onClick={() => openDriveDocument(item.document_id)}>Apri PDF Drive</Button>}
           </div>;
         })}
       </Card>

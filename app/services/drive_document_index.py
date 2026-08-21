@@ -281,6 +281,7 @@ def validate_relations(catalog: dict[str, list[dict[str, Any]]]) -> dict[str, An
             "documentary_payment_documents": len({
                 str(row.get("ID documento")) for row in f24_rows if _is_documentary_payment(row)
             }),
+            "tax_debit_rows": sum(1 for row in f24_rows if _amount(row.get("Debito")) > 0),
             "declarations": len(declarations),
             "duplicates_and_discards": len(duplicates),
         },
@@ -439,7 +440,7 @@ def list_f24_documents(
             "total_credit": round(sum(_amount(row.get("Credito")) for row in rows), 2),
             "evidence_state": (
                 "QUIETANZA_DOCUMENTALE_NON_PROVA_BANCARIA"
-                if "quietanza" in _norm(rows[0].get("Tipo documento"))
+                if _is_documentary_payment(rows[0])
                 else "MODELLO_F24_NON_PROVA_BANCARIA"
             ),
         })
@@ -496,7 +497,7 @@ def list_f24_rows(
             "filename": document.get("Nome file"),
             "evidence_state": (
                 "QUIETANZA_DOCUMENTALE_NON_PROVA_BANCARIA"
-                if "quietanza" in _norm(row.get("Tipo documento"))
+                if _is_documentary_payment(row)
                 else "MODELLO_F24_NON_PROVA_BANCARIA"
             ),
         })
@@ -529,10 +530,37 @@ def list_documented_tax_payments(
     for row in rows:
         if str(row.get("document_id") or "") not in documented_ids:
             continue
+        if _amount(row.get("debit_amount")) <= 0:
+            continue
         items.append({
             **row,
             "payment_status": "DOCUMENTATO_DA_QUIETANZA",
             "documentary_payment_status": "QUIETANZA_PRESENTE",
+            "bank_status": "DA_VERIFICARE",
+        })
+    return {
+        "items": items[offset:offset + limit],
+        "total": len(items),
+        "offset": offset,
+        "limit": limit,
+        "source": "drive_excel_index",
+    }
+
+
+def list_tax_obligations(
+    service=None, *, offset: int = 0, limit: int = 5000,
+) -> dict[str, Any]:
+    """Tributi a debito presenti nei modelli F24 Drive, con stato prova esplicito."""
+    rows = list_f24_rows(service=service, offset=0, limit=5000)["items"]
+    items = []
+    for row in rows:
+        if _amount(row.get("debit_amount")) <= 0:
+            continue
+        documentary = row.get("evidence_state") == "QUIETANZA_DOCUMENTALE_NON_PROVA_BANCARIA"
+        items.append({
+            **row,
+            "payment_status": "DOCUMENTATO_DA_QUIETANZA" if documentary else "MODELLO_F24_PRESENTE",
+            "documentary_payment_status": "QUIETANZA_PRESENTE" if documentary else "DA_VERIFICARE",
             "bank_status": "DA_VERIFICARE",
         })
     return {
