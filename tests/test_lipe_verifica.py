@@ -24,6 +24,72 @@ def test_parser_lipe_conserva_campi_vp_e_testimonianza():
     assert parsed["confidence"] == 1.0
 
 
+def test_parser_lipe_legge_il_modello_ade_per_coordinate_non_per_ordine_testo():
+    def word(text, x0, y0, x1=None, y1=None):
+        return {
+            "text": text, "x0": x0, "y0": y0,
+            "x1": x1 if x1 is not None else x0 + 8,
+            "y1": y1 if y1 is not None else y0 + 8,
+        }
+
+    layout = [
+        word("VP1", 108, 158), word("0", 155, 158), word("2", 170, 158),
+        word("VP2", 108, 182), word("10", 376, 183), word(",", 385, 183),
+        word("8", 393, 183), word("2", 408, 183),
+        word("VP3", 108, 206), word("54.935", 503, 207), word(",", 529, 207),
+        word("9", 536, 207), word("5", 551, 207),
+        word("VP4", 108, 230), word("10", 376, 231), word(",", 385, 231),
+        word("8", 393, 231), word("2", 408, 231),
+        word("VP5", 108, 254), word("10.337", 503, 255), word(",", 529, 255),
+        word("5", 536, 255), word("6", 551, 255),
+        word("VP6", 108, 278), word("10.326", 503, 279), word(",", 529, 279),
+        word("7", 536, 279), word("4", 551, 279),
+        word("VP8", 108, 326), word("7.732", 503, 327), word(",", 529, 327),
+        word("1", 536, 327), word("8", 551, 327),
+        word("VP14", 108, 470), word("18.058", 503, 471), word(",", 529, 471),
+        word("9", 536, 471), word("2", 551, 471),
+    ]
+    parsed = parse_lipe_page(
+        "VP2 Totale operazioni attive VP3 Totale operazioni passive VP4 IVA esigibile",
+        layout_words=layout,
+    )
+
+    assert parsed["month"] == 2
+    assert parsed["values"] == {
+        "vp2_cents": 1082,
+        "vp3_cents": 5493595,
+        "vp4_cents": 1082,
+        "vp5_cents": 1033756,
+        "vp6_cents": 1032674,
+        "vp8_cents": 773218,
+        "vp6_side": "credito",
+        "vp14_cents": 1805892,
+        "vp14_side": "credito",
+    }
+    assert parsed["parse_method"] == "pdf_layout"
+    assert parsed["quadrature"] == {"vp6": True, "vp14": True}
+    assert parsed["confidence"] == 1.0
+
+
+def test_parser_layout_non_conferma_una_quadratura_errata():
+    def word(text, x, y):
+        return {"text": text, "x0": x, "y0": y, "x1": x + 8, "y1": y + 8}
+
+    layout = [
+        word("VP1", 108, 158), word("0", 155, 158), word("1", 170, 158),
+        word("VP4", 108, 230), word("100", 376, 230), word(",", 385, 230),
+        word("0", 393, 230), word("0", 408, 230),
+        word("VP5", 108, 254), word("20", 503, 254), word(",", 529, 254),
+        word("0", 536, 254), word("0", 551, 254),
+        word("VP6", 108, 278), word("70", 376, 278), word(",", 385, 278),
+        word("0", 393, 278), word("0", 408, 278),
+    ]
+    parsed = parse_lipe_page("VP1 VP4 VP5 VP6", layout_words=layout)
+
+    assert parsed["quadrature"]["vp6"] is False
+    assert parsed["confidence"] == 0.7
+
+
 def test_lipe_duplicata_resta_ambigua_con_provenienza():
     async def scenario():
         db = MemorySheetsClient().db
