@@ -240,7 +240,7 @@ async def scan_finanziamenti_da_ec(db, anno: Optional[int] = None) -> Dict[str, 
         "per_socio": {s["id"]: 0 for s in SOCI},
     }
 
-    # Nessun filtro anno lato query Mongo: estratto_conto_movimenti ha righe
+    # Nessun filtro anno lato repository: estratto_conto_movimenti ha righe
     # più vecchie con data in formato italiano GG/MM/AAAA accanto a quelle
     # ISO — un range string $gte/$lte sul grezzo escluderebbe le prime
     # silenziosamente. Si filtra dopo, sulla data normalizzata.

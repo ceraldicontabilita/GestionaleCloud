@@ -26,7 +26,7 @@ def _app_con_stesso_limite_di_produzione():
     """App minima isolata (nessun DB, nessun lifespan) con la STESSA
     configurazione di rate limiting usata in app/main.py (200/minute),
     per verificare dal vivo che il limite scatti davvero, senza pagare il
-    costo/rischio di avviare l'app completa con connessione Mongo."""
+    costo/rischio di avviare l'app completa con accesso Drive/Sheets."""
     app = FastAPI()
     limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
     app.state.limiter = limiter

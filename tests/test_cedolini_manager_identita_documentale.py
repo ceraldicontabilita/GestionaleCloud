@@ -25,7 +25,7 @@ class _Collection:
 
     async def insert_one(self, doc):
         row = dict(doc)
-        row.setdefault("_id", f"mongo-{len(self.docs) + 1}")
+        row.setdefault("_id", f"record-{len(self.docs) + 1}")
         self.docs.append(row)
 
     async def update_one(self, query, update, *args, **kwargs):

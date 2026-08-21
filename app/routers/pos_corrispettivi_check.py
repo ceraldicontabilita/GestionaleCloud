@@ -1254,7 +1254,7 @@ async def controllo_incassi_due_fasi(
 
     # Index corrispettivi per data. Possono esistere piu' XML nella stessa
     # giornata (piu' RT o sostituzione della matricola): vanno sommati, non
-    # sovrascritti con l'ultimo documento restituito da Mongo.
+    # sovrascritti con l'ultimo documento restituito dal registro Drive/Sheets.
     corr_by_date: Dict[str, Dict] = {}
     for c in corrispettivi:
         d = c.get("data")
@@ -1761,7 +1761,7 @@ async def alert_oggi(
     # una chiamata Python diretta, non una richiesta HTTP, quindi FastAPI non
     # lo risolve), che è truthy: il ramo "if anno:" sovrascriveva data_da/data_a
     # con stringhe corrotte tipo "<fastapi.params.Query object...>-01-01",
-    # rompendo silenziosamente la query Mongo e azzerando SEMPRE gli alert
+    # rompendo silenziosamente il filtro del repository e azzerando SEMPRE gli alert
     # (bug trovato lug 2026, riproducibile in modo deterministico).
     full = await controllo_incassi_due_fasi(data_da=data_da, data_a=data_a, anno=None, tolleranza_euro=tolleranza_euro)
 

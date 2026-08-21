@@ -545,7 +545,7 @@ def direct_environment_names() -> dict[str, set[str]]:
 
 
 def variable_group(name: str) -> str:
-    if any(token in name for token in ("MONGO", "DR_SOURCE", "DR_RESTORE")):
+    if any(token in name for token in ("DR_SOURCE", "DR_RESTORE")):
         return "transitorie-vietate-nel-target"
     if name.startswith(("GOOGLE_DRIVE", "DRIVE_", "GOOGLE_SHEETS", "GOOGLE_SERVICE")):
         return "drive-sheets"

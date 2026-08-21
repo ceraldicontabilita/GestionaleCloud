@@ -1015,7 +1015,7 @@ async def delete_supplier(supplier_id: str, force: bool = Query(False)) -> Dict[
 
 
 def _filtro_fornitore(supplier_id: str) -> dict:
-    """Filtro Mongo tollerante per trovare un fornitore da un identificatore.
+    """Filtro repository tollerante per trovare un fornitore da un identificatore.
 
     L'identificatore può essere l'id applicativo oppure la P.IVA; i documenti
     legacy però tengono la P.IVA in 'piva' o 'vat_number' (e alcuni non hanno

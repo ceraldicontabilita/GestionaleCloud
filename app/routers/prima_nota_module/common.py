@@ -208,7 +208,7 @@ def _pipeline_entrate_uscite(query: Dict[str, Any]) -> list:
 
 async def _totali_entrate_uscite(db, collection: str,
                                   query: Dict[str, Any]) -> tuple[float, float]:
-    """Somma entrate/uscite su Mongo e sul runtime Drive/Sheets.
+    """Somma entrate/uscite nel runtime Drive/Sheets.
 
     Drive/Sheets esegue la pipeline sul server. Il database in memoria usato dal
     backend Sheets non implementa ``$convert``: in quel caso leggiamo i soli

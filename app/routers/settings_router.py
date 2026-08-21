@@ -56,7 +56,7 @@ async def salva_gmail_settings(data: Dict[str, Any] = Body(...)) -> Dict[str, An
         {"$set": {
             "chiave": "gmail",
             "imap_user": imap_user,
-            # Prima salvata in chiaro: chiunque leggesse la collection Mongo
+            # Prima salvata in chiaro: chiunque leggesse il registro applicativo
             # aveva accesso diretto alla App Password Gmail.
             "gmail_app_password": encrypt_credential(gmail_app_password),
             "imap_host": imap_host,

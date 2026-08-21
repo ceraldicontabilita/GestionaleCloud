@@ -268,7 +268,7 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
     Verifica se il fornitore esiste. Se sì, aggiorna i campi anagrafici mancanti.
     Se non esiste, lo crea automaticamente con i dati dalla fattura XML.
 
-    session: sessione Mongo opzionale, per partecipare a una transazione del
+    session: sessione repository opzionale, per partecipare a una transazione del
     chiamante (es. process_fattura_to_db). None per gli altri chiamanti.
     piva_validator: funzione di plausibilità P.IVA da usare per la guardia
     sotto — default `_piva_plausibile` (solo formato italiano/UE 11 cifre).
@@ -989,7 +989,7 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
     Usata da documenti.py per l'import automatico.
 
     Fornitore, fattura e (se generata) prima nota vengono scritti in
-    un'unica transazione Mongo: se un passaggio fallisce a metà, tutto viene
+    un'unica transazione repository: se un passaggio fallisce a metà, tutto viene
     annullato invece di lasciare stato incoerente (es. fornitore creato ma
     fattura mai salvata, o prima nota orfana senza il link sulla fattura).
     Il client di test in sandbox (registro Sheets effimero) non supporta le sessioni: in

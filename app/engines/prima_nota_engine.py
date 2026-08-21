@@ -40,7 +40,7 @@ _KEYWORDS_CASSA = {"cassa", "contanti", "contante", "cash", "mp01"}
 _KEYWORDS_MISTO = {"misto"}
 
 # Valori (canonici + legacy ancora in DB) dei metodi pagamento che richiedono
-# un IBAN in anagrafica fornitore. Usata nelle query Mongo $in dei moduli
+# un IBAN in anagrafica fornitore. Usata nei filtri ``$in`` del repository
 # fornitori/IBAN: punto unico al posto delle due liste divergenti che prima
 # vivevano in suppliers/iban_service.py e suppliers_module/common.py.
 METODI_RICHIEDONO_IBAN = [

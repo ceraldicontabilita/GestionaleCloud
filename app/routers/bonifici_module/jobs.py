@@ -245,7 +245,7 @@ async def _auto_associate_bonifici(db, job_id: str) -> tuple:
     """Auto-associa solo quando identita' e importo sono univoci.
 
     Il vecchio flusso usava ``find_one`` su una tolleranza del 2%: a parita'
-    di importo Mongo poteva restituire una persona/fattura arbitraria.
+    di importo la vecchia query poteva restituire una persona/fattura arbitraria.
     """
     auto_salari = 0
     auto_fatture = 0

@@ -120,7 +120,7 @@ def notice(status: str) -> str:
             "> [!IMPORTANT]\n"
             "> Documento di riferimento del dominio. Per persistenza e cutover "
             "vale l'architettura Drive-only descritta nei documenti correnti; "
-            "eventuali nomi Mongo/collection restano compatibilità o contesto storico."
+            "eventuali nomi di collection restano soltanto contesto storico."
         )
     return ""
 

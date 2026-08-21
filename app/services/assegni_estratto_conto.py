@@ -589,7 +589,7 @@ async def sincronizza_assegni_da_estratto_conto(
     risultati["movimenti_analizzati"] = len(movimenti)
 
     # Snapshot unica per tutta la run. Prima le fatture aperte venivano
-    # rilette da Mongo fino a due volte per ogni assegno, lasciando il
+    # rilette dal registro fino a due volte per ogni assegno, lasciando il
     # riprocessamento live bloccato per minuti sullo storico reale.
     fatture_aperte_per_piva = await _load_open_invoices_by_piva(db) if movimenti else {}
 

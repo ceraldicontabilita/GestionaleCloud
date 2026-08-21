@@ -30,7 +30,7 @@ async def _find_xml_for_fornitore(db, fornitore) -> List[Union[Path, str]]:
     sopravvivono a riavvii/deploy del backend: per una ricostruzione
     storica (richiesta utente 14/07/2026: "esegui script per far
     ricostruire una tantum i dati dalle fatture") xml_raw persistito su
-    Mongo è la fonte affidabile — il file su disco resta il fallback più
+    Drive/Sheets è la fonte affidabile — il file su disco resta il fallback più
     veloce quando l'upload è recente e il processo non è stato riavviato.
     """
     piva = (fornitore.get("partita_iva") or fornitore.get("piva") or "").strip()

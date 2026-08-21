@@ -189,7 +189,7 @@ async def sync_paypal_incremental(db: SheetDatabase) -> Dict[str, Any]:
         }},
         projection={"_id": 0},
         # BEFORE contiene il checkpoint precedente (serve per determinare il
-        # nuovo intervallo) e rende il test Mongo compatibile con Motor reale.
+        # nuovo intervallo) e rende il test compatibile col repository asincrono.
         return_document=ReturnRecord.BEFORE,
     )
     if not checkpoint:

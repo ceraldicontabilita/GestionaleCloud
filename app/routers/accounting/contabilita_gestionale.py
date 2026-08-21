@@ -927,10 +927,10 @@ async def _conta_documenti_giornale(
     match: Dict[str, Any],
     fallback: int,
 ) -> int:
-    """Conta esattamente in Mongo e resta compatibile con repository fittizi.
+    """Conta esattamente nel repository Drive/Sheets e nei doppi di test.
 
     I doppi di test storici espongono soltanto ``find``/``aggregate``. In
-    produzione Motor fornisce ``count_documents`` e quindi il dato di
+    produzione il repository asincrono fornisce ``count_documents`` e il dato di
     troncamento resta esatto; nei doppi minimali il numero dei record già
     letti è il fallback più fedele disponibile.
     """

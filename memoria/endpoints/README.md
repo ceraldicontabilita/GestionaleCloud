@@ -7,7 +7,7 @@ storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+> Documento di riferimento del dominio. Per persistenza vale l'architettura Drive/Sheets descritta nei documenti correnti; eventuali nomi di collection restano soltanto contesto storico.
 
 > ⚠️ **Aggiornamento lug 2026**: la mappa endpoint aggiornata e rigenerabile è
 > `memoria/MAPPA_ENDPOINT_COMPLETA.md` (ogni endpoint reale con uso frontend) +
@@ -16,7 +16,7 @@ storage_architecture: drive-only
 
 
 Ogni file spiega, per ogni endpoint del backend, **cosa fa** (lato operativo) e **come funziona nel codice**
-(collezioni Mongo, algoritmo, validazioni, helper). Generata leggendo i sorgenti per intero, non i docstring
+(fogli Drive/Sheets, algoritmo, validazioni, helper). Generata leggendo i sorgenti per intero, non i docstring
 (quando un docstring mente rispetto al codice, è segnalato in "Note").
 
 | File | Area | Endpoint documentati |

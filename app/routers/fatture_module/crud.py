@@ -531,7 +531,7 @@ async def _trova_fattura_e_xml_originale(fattura_id: str) -> tuple[Optional[dict
     1. Cerca la fattura in `invoices` (poi fallback COL_FATTURE_RICEVUTE / _id)
     2. Legge il file XML dal disco (gestisce .p7m estraendo l'XML interno)
        oppure, se il file non e' su disco, usa xml_raw/xml_content salvato
-       nel documento Mongo.
+       nel record Drive/Sheets.
     """
     import os
     from app.services.xml_invoice_processor import extract_xml_from_p7m
@@ -859,7 +859,7 @@ async def get_statistiche(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
         stats = result[0] if result else {}
         stats.pop("_id", None)
     except (NotImplementedError, TypeError, ValueError):
-        # Mongo in memoria usato dai collaudi non implementa tutti gli
+        # Il repository in memoria usato dai collaudi non implementa tutti gli
         # operatori di aggregazione ($round/$toDouble). Il contratto della
         # pagina deve restare verificabile con dati isolati, quindi applichiamo
         # la stessa deduplicazione in Python senza cambiare la fonte canonica.

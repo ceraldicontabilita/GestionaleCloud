@@ -159,7 +159,7 @@ async def verifica_addebiti_nexi(db, anno: Optional[int] = None) -> Dict[str, An
                 **statement, "metadata": metadata,
             }
 
-    # Nessun filtro anno lato query Mongo: estratto_conto_movimenti ha righe
+    # Nessun filtro anno lato repository: estratto_conto_movimenti ha righe
     # più vecchie con data in formato italiano GG/MM/AAAA accanto a quelle
     # ISO — un range string $gte/$lte sul grezzo escluderebbe le prime
     # silenziosamente (bug trovato in produzione il 18/07/2026). Si filtra
