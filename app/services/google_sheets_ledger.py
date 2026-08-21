@@ -1308,6 +1308,24 @@ def _read_sheet_rows_sync(spreadsheet_id: str, sheet: LedgerSheet) -> List[List[
     return _read_existing_sync(spreadsheet_id, sheet)
 
 
+def _execute_read_request(request_factory, *, max_attempts: int = 6):
+    """Riprova le sole letture temporaneamente limitate da Google Sheets.
+
+    Un riavvio non deve fallire per una finestra quota gia' consumata da un
+    deploy precedente. Le scritture non passano da qui, quindi il retry non
+    puo' duplicare dati.
+    """
+    delays = (2, 4, 8, 16, 30)
+    for attempt in range(max_attempts):
+        try:
+            return request_factory().execute()
+        except Exception as exc:
+            status = int(getattr(getattr(exc, "resp", None), "status", 0) or 0)
+            if status not in {429, 500, 502, 503, 504} or attempt >= max_attempts - 1:
+                raise
+            time.sleep(delays[min(attempt, len(delays) - 1)])
+
+
 def _existing_workbook_sync(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Valida un registro esistente senza creare cartelle, fogli o formati."""
     spreadsheet_id = _setting_value(config, "GOOGLE_SHEETS_LEDGER_ID")
@@ -1315,10 +1333,10 @@ def _existing_workbook_sync(config: Optional[Dict[str, Any]] = None) -> Dict[str
         raise RuntimeError("GOOGLE_SHEETS_LEDGER_ID non configurato")
 
     sheets = _sheets_service()
-    metadata = sheets.spreadsheets().get(
+    metadata = _execute_read_request(lambda: sheets.spreadsheets().get(
         spreadsheetId=spreadsheet_id,
         fields="spreadsheetId,spreadsheetUrl,sheets.properties",
-    ).execute()
+    ))
     titles = {
         item["properties"]["title"]
         for item in metadata.get("sheets", [])
@@ -1353,10 +1371,12 @@ def _read_sheet_rows_batch_sync(
     """Legge tutti i fogli con un solo client e una sola richiesta HTTP."""
     definitions = tuple(definitions)
     sheets = _sheets_service()
-    response = sheets.spreadsheets().values().batchGet(
-        spreadsheetId=spreadsheet_id,
-        ranges=[f"'{sheet.title}'!A2:{LAST_COLUMN}" for sheet in definitions],
-    ).execute()
+    response = _execute_read_request(
+        lambda: sheets.spreadsheets().values().batchGet(
+            spreadsheetId=spreadsheet_id,
+            ranges=[f"'{sheet.title}'!A2:{LAST_COLUMN}" for sheet in definitions],
+        ),
+    )
     value_ranges = response.get("valueRanges", [])
     if len(value_ranges) != len(definitions):
         raise RuntimeError("Risposta Sheets incompleta durante l'idratazione")
@@ -1365,10 +1385,14 @@ def _read_sheet_rows_batch_sync(
 
 def _sheet_last_row_sync(spreadsheet_id: str, sheet: LedgerSheet) -> int:
     """Restituisce l'ultima riga usata leggendo soltanto l'indice A:B."""
-    rows = _sheets_service().spreadsheets().values().get(
-        spreadsheetId=spreadsheet_id,
-        range=f"'{sheet.title}'!A2:B",
-    ).execute().get("values", [])
+    service = _sheets_service()
+    response = _execute_read_request(
+        lambda: service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=f"'{sheet.title}'!A2:B",
+        ),
+    )
+    rows = response.get("values", [])
     return len(rows) + 1
 
 
@@ -1378,10 +1402,13 @@ def _read_sheet_row_chunk_sync(
     start_row: int,
     end_row: int,
 ) -> List[List[Any]]:
-    return _sheets_service().spreadsheets().values().get(
-        spreadsheetId=spreadsheet_id,
-        range=f"'{sheet.title}'!A{start_row}:{LAST_COLUMN}{end_row}",
-    ).execute().get("values", [])
+    service = _sheets_service()
+    return _execute_read_request(
+        lambda: service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=f"'{sheet.title}'!A{start_row}:{LAST_COLUMN}{end_row}",
+        ),
+    ).get("values", [])
 
 
 async def restore_all(
@@ -1399,8 +1426,13 @@ async def restore_all(
         workbook = await asyncio.to_thread(_existing_workbook_sync, config)
     definitions = workbook.pop("sheet_definitions")
     results = []
-    restore_chunk_rows = 500
     for sheet in definitions:
+        # Il registro POS e' idratato direttamente nella cache SQLite: un
+        # blocco piu' ampio resta a memoria limitata e mantiene l'intero avvio
+        # sotto la quota Sheets di 60 letture al minuto.
+        restore_chunk_rows = (
+            2500 if sheet.collection == "pos_terminal_transactions" else 500
+        )
         valid = 0
         errors: List[Dict[str, Any]] = []
         error_count = 0
@@ -1477,9 +1509,9 @@ async def restore_all(
             )
             await process_rows(2, rows)
         else:
-            # Legge solo l'indice per trovare il limite, poi idrata al massimo
-            # 500 righe per volta. In questo modo il grande archivio POS non
-            # viene mai duplicato interamente nella memoria dell'istanza.
+            # Legge solo l'indice per trovare il limite, poi idrata a blocchi.
+            # Il registro POS usa blocchi maggiori sulla cache SQLite; gli
+            # altri fogli mantengono blocchi piccoli nella cache Python.
             last_row = await asyncio.to_thread(
                 _sheet_last_row_sync, workbook["spreadsheet_id"], sheet,
             )
