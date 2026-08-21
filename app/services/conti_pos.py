@@ -9,7 +9,7 @@ Il modello contabile e' quello deciso dall'utente:
 - l'incasso elettronico della giornata NON e' denaro in banca: e' un
   **credito verso il gestore** (15.07.xx), che vive in un saldo proprio;
 - l'accredito reale entra sul conto che lo riceve davvero — Banco BPM per
-  Nexi/Numia, il conto Mastercard SumUp per SumUp — e in quel momento
+  Numia, il conto Mastercard SumUp per SumUp — e in quel momento
   **chiude** il credito;
 - la trattenuta del gestore e' un costo su 75.01.07.xx, mai un minor ricavo.
 
@@ -46,7 +46,7 @@ CONTO_SUMUP_MASTERCARD = "19.01.05"
 
 CIRCUITI: Dict[str, Dict[str, str]] = {
     NUMIA: {
-        "etichetta": "Nexi/Numia",
+        "etichetta": "Numia",
         "credito": "15.07.01",
         "commissioni": "75.01.07.01",
         "conto_accredito": CONTO_BPM,

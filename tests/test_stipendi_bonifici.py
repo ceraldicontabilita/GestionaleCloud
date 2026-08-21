@@ -11,8 +11,10 @@ import pytest
 from app.services.stipendi_bonifici import (
     associa_bonifici_stipendi,
     estrai_nome_favore,
+    recupera_relazioni_stipendi_mancanti,
     riconciliazione_salario_verificata,
 )
+from app.services.sheets_document_store import MemorySheetsClient
 
 
 class _Cursor:
@@ -359,3 +361,79 @@ def test_etichetta_con_due_movimenti_reali_e_verificata():
         ],
     )
     assert _run(riconciliazione_salario_verificata(db, riga)) is True
+
+
+def test_recupera_relazione_stipendio_certa_ed_e_idempotente():
+    async def scenario():
+        db = MemorySheetsClient()["salary-relations-recovery"]
+        salary = {
+            "id": "S1",
+            "dipendente": "ROSSI MARIO",
+            "anno": 2026,
+            "mese": 3,
+            "importo_busta": 1200.0,
+            "importo_bonifico": 1200.0,
+            "riconciliato": True,
+            "movimenti_bancari_ids": ["M1"],
+        }
+        movement = {
+            "id": "M1",
+            "data": "2026-04-03",
+            "importo": -1200.0,
+            "tipo": "uscita",
+            "descrizione": "BONIFICO STIPENDIO FAVORE ROSSI MARIO",
+        }
+        await db["prima_nota_salari"].insert_one(salary)
+        await db["estratto_conto_movimenti"].insert_one(movement)
+
+        first = await recupera_relazioni_stipendi_mancanti(db, anno=2026)
+        second = await recupera_relazioni_stipendi_mancanti(db, anno=2026)
+        relation = await db["entity_relations"].find_one({
+            "relation_key": (
+                "bank_movement|M1|allocates_salary_payment|salary_entry|S1"
+            ),
+        })
+        stored_salary = await db["prima_nota_salari"].find_one({"id": "S1"})
+        stored_movement = await db["estratto_conto_movimenti"].find_one({"id": "M1"})
+        return first, second, relation, stored_salary, stored_movement
+
+    first, second, relation, stored_salary, stored_movement = _run(scenario())
+    assert first["relazioni_recuperate"] == 1
+    assert first["riferimenti_non_verificati"] == 0
+    assert second["relazioni_recuperate"] == 0
+    assert second["relazioni_gia_presenti"] == 1
+    assert relation["status"] == "confirmed"
+    assert relation["amount_cents"] == 120000
+    assert stored_salary["importo_bonifico"] == 1200.0
+    assert stored_movement.get("stipendio_id") is None
+
+
+def test_recupero_non_collega_un_movimento_con_nome_diverso():
+    async def scenario():
+        db = MemorySheetsClient()["salary-relations-recovery-negative"]
+        await db["prima_nota_salari"].insert_one({
+            "id": "S1",
+            "dipendente": "ROSSI MARIO",
+            "anno": 2026,
+            "mese": 3,
+            "importo_busta": 1200.0,
+            "importo_bonifico": 1200.0,
+            "riconciliato": True,
+            "movimento_bancario_id": "M1",
+        })
+        await db["estratto_conto_movimenti"].insert_one({
+            "id": "M1",
+            "data": "2026-04-03",
+            "importo": -1200.0,
+            "tipo": "uscita",
+            "descrizione": "BONIFICO STIPENDIO FAVORE BIANCHI LUCA",
+        })
+
+        result = await recupera_relazioni_stipendi_mancanti(db, anno=2026)
+        count = await db["entity_relations"].count_documents({})
+        return result, count
+
+    result, count = _run(scenario())
+    assert result["relazioni_recuperate"] == 0
+    assert result["riferimenti_non_verificati"] == 1
+    assert count == 0

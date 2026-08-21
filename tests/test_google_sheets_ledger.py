@@ -109,6 +109,23 @@ def test_progressivo_e_operation_id_restano_separati():
     assert ledger.next_progressive("ECM", ["ECM-00000002", "ALT-999", "ECM-00000009"]) == 10
 
 
+def test_relazione_usa_solo_celle_scalari_e_conserva_il_payload_strutturato():
+    document = {
+        "relation_key": "bank_movement|M1|allocates_salary_payment|salary_entry|S1",
+        "source": {"type": "bank_movement", "id": "M1"},
+        "target": {"type": "salary_entry", "id": "S1"},
+        "relation_type": "allocates_salary_payment",
+        "status": "confirmed",
+        "amount_cents": 120000,
+    }
+
+    row = ledger.row_for_document(document, "REL-00000001")
+
+    assert all(not isinstance(value, (dict, list)) for value in row[:15])
+    assert json.loads(row[12]) == document["source"]
+    assert ledger.decode_payload("".join(row[15:])) == document
+
+
 def test_identita_canonica_accetta_le_chiavi_reali_degli_archivi():
     for field in (
         "invoice_id", "document_id", "cedolino_id", "movement_id",

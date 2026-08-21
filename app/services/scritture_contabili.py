@@ -327,6 +327,26 @@ def metadati_fonte_pos(fonte: str, gestore: str) -> Dict[str, str]:
         ),
     }
 
+
+def descrizione_trasferimento_pos(data: str, gestore: str, quota_pos_fonte: str) -> str:
+    """Dicitura operativa coerente con la fonte reale del POS.
+
+    La chiusura corrente Numia e' manuale; il pregresso arriva dagli export
+    Numia su Drive; SumUp arriva dall'API. Sono fatti diversi e la descrizione
+    deve renderli distinguibili senza reintrodurre il nome Nexi.
+    """
+    origine = {
+        "export_numia_storico": "export storico Numia Drive",
+        "api_sumup": "dato API SumUp",
+        "terminale_reale": "chiusura terminale",
+        "chiusura_manuale": "chiusura terminale",
+    }.get(str(quota_pos_fonte or "").strip(), "dato POS")
+    return (
+        f"POS {conti_pos.sigla(gestore)} {conti_pos.data_italiana(data)} "
+        f"→ Banca ({origine})"
+    )
+
+
 STATO_PROVVISORIO = "provvisorio_operativo"
 STATO_CONFERMATO = "confermato"
 STATO_DIFFERENZA = "differenza_da_verificare"
@@ -507,7 +527,7 @@ async def registra_chiusura_pos_reale(
     L'importo zero e' esplicito: archivia gli eventuali trasferimenti
     sintetici del giorno e impedisce il fallback al valore XML.
 
-    Con piu' circuiti (Nexi/Numia, SumUp, ...) ``importo`` e' la chiusura del
+    Con piu' circuiti (Numia, SumUp, ...) ``importo`` e' la chiusura del
     singolo ``gestore`` e ogni circuito ha la SUA coppia uscita-cassa /
     entrata-banca, con un ``trasferimento_id`` proprio: gli accrediti arrivano
     separati (NUMIA sul conto BPM, payout sul conto SumUp) e una riga unica
@@ -702,9 +722,11 @@ async def registra_chiusura_pos_reale(
                           "updated_at": now}},
             )
     else:
-        descrizione_cassa = (
-            f"POS {conti_pos.sigla(gestore)} {conti_pos.data_italiana(data)}"
-            " -> Banca (chiusura terminale)")
+        descrizione_cassa = descrizione_trasferimento_pos(
+            data,
+            gestore,
+            metadati_fonte["quota_pos_fonte"],
+        )
         cassa_fields = {
             "importo": importo,
             "amount": importo,
