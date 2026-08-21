@@ -45,7 +45,10 @@ class Database:
                 "GOOGLE_SHEETS_LEDGER_FOLDER_ID": settings.GOOGLE_SHEETS_LEDGER_FOLDER_ID,
             })
             await runtime.hydrate()
-            cls.client = runtime._client
+            # Il runtime Sheets è sia archivio sia risorsa da chiudere. Non
+            # espone un driver separato: conservarlo direttamente evita di
+            # dipendere da attributi interni inesistenti durante lo startup.
+            cls.client = runtime
             cls.db = runtime
             logger.info(
                 "Connected to Google Sheets ledger %s",

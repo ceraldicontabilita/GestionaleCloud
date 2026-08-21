@@ -153,3 +153,36 @@ def test_runtime_non_ripiega_se_hydrate_fallisce(monkeypatch):
         asyncio.run(Database.connect_db())
     assert Database.client is None
     assert Database.db is None
+
+
+def test_runtime_sheets_avvia_e_chiude_senza_driver_separato(monkeypatch):
+    class WorkingSheetsRuntime:
+        instance = None
+
+        def __init__(self, *_args, **_kwargs):
+            self.closed = False
+            WorkingSheetsRuntime.instance = self
+
+        async def hydrate(self):
+            return {"fogli": []}
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(
+        "app.services.sheets_runtime_database.SheetsRuntimeDatabase",
+        WorkingSheetsRuntime,
+    )
+    monkeypatch.setattr(Database, "client", None)
+    monkeypatch.setattr(Database, "db", None)
+
+    asyncio.run(Database.connect_db())
+
+    runtime = WorkingSheetsRuntime.instance
+    assert Database.client is runtime
+    assert Database.db is runtime
+
+    asyncio.run(Database.close_db())
+    assert runtime.closed is True
+    assert Database.client is None
+    assert Database.db is None
