@@ -71,12 +71,7 @@ conserva Drive ID, percorso, origine, hash e data di acquisizione.
 
 ### Stato dell'archivio
 
-Il default corrente in `app/config.py` è `DATA_BACKEND=sheets`. Drive/Sheets è
-l'archivio operativo e l'unico backend supportato in produzione. legacy DB è
-stato rimosso come backend operativo e non deve essere utilizzato in ambienti
-produttivi. Qualsiasi riferimento a `DATA_BACKEND=legacy DB`, variabili legacy DB_*
-o script di provisioning è deprecato e deve essere trattato come artefatto
-storico o strumento di migrazione isolato e controllato.
+Il default corrente in `app/config.py` è `DATA_BACKEND=sheets`. Drive/Sheets è l'unico archivio operativo e il backend supportato in produzione. Il backend storico è stato rimosso come backend operativo e non deve essere utilizzato in ambienti produttivi. Qualsiasi riferimento a `DATA_BACKEND=legacy DB`, variabili legacy DB_* o script di provisioning è deprecato e deve essere trattato come artefatto storico o strumento di migrazione isolato e controllato.
 
 La migrazione dei dati storici è conclusa solo quando:
 
