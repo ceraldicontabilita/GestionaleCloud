@@ -953,6 +953,7 @@ async def import_salari_verificati(data: Dict[str, Any] = Body(...)) -> Dict[str
     skipped = 0
     errors: List[str] = []
     totale = 0.0
+    nuovi_record: List[Dict[str, Any]] = []
 
     for idx, row in enumerate(righe, 1):
         try:
@@ -1005,11 +1006,16 @@ async def import_salari_verificati(data: Dict[str, Any] = Body(...)) -> Dict[str
                 "created_at": now,
                 "updated_at": now,
             }
-            await db["prima_nota_salari"].insert_one(new_record.copy())
-            created += 1
-            totale += importo
+            nuovi_record.append(new_record)
         except Exception as exc:
             errors.append(f"Riga {idx}: {exc}")
+
+    if nuovi_record:
+        await db["prima_nota_salari"].insert_many(
+            [record.copy() for record in nuovi_record]
+        )
+        created = len(nuovi_record)
+        totale = sum(float(record["importo_busta"]) for record in nuovi_record)
 
     return {
         "success": not errors,
