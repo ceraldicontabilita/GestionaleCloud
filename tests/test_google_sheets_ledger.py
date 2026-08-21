@@ -14,6 +14,29 @@ def run(coro):
         loop.close()
 
 
+def test_lettura_sheets_riprova_quota_temporanea(monkeypatch):
+    sleeps = []
+    attempts = 0
+
+    class RateLimitError(RuntimeError):
+        def __init__(self):
+            self.resp = type("Response", (), {"status": 429})()
+
+    class Request:
+        def execute(self):
+            nonlocal attempts
+            attempts += 1
+            if attempts < 3:
+                raise RateLimitError()
+            return {"ok": True}
+
+    monkeypatch.setattr(ledger.time, "sleep", sleeps.append)
+
+    assert ledger._execute_read_request(Request) == {"ok": True}
+    assert attempts == 3
+    assert sleeps == [2, 4]
+
+
 def test_manifest_ha_fogli_collezioni_e_prefissi_unici():
     manifest = ledger.sheet_manifest()
     assert len(manifest) >= 18
@@ -339,7 +362,7 @@ def test_restore_runtime_carica_in_blocco_registro_pos_voluminoso(monkeypatch):
         )
 
         assert result["fogli"][0]["valide"] == 2_000
-        assert chunk_calls == [(2, 501), (502, 1001), (1002, 1501), (1502, 2001)]
+        assert chunk_calls == [(2, 2001)]
         assert await table.count_documents({}) == 2_000
         assert await table.count_documents({"id": "POS-NUMIA-TX-01999"}) == 1
 
