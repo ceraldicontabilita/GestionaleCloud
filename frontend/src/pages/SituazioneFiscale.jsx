@@ -78,28 +78,49 @@ export default function SituazioneFiscale() {
   const [taxCodeMeta, setTaxCodeMeta] = useState(null);
   const [taxCodeOptions, setTaxCodeOptions] = useState({ tax_types: [], contexts: [] });
   const [tabSources, setTabSources] = useState(null);
+  const [loadWarnings, setLoadWarnings] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
+    const warnings = [];
     try {
-      const [summaryResponse, dataResponse, reviewResponse] = await Promise.all([
+      const [summaryResult, dataResult, reviewResult] = await Promise.allSettled([
         api.get('/api/fiscal/summary'), api.get(endpointFor(tab, {
           year: tab === 'dichiarazioni' ? declarationYear : f24Year,
           declarationType, taxCode: f24TaxCode, creditsOnly: f24CreditsOnly,
         }, taxCodeFilters)), api.get('/api/fiscal/review'),
       ]);
-      setSummary(summaryResponse.data);
-      const payload = dataResponse.data || {};
-      setItems(payload.items || []);
-      setTaxCodeMeta(payload.catalog || null);
-      setTaxCodeOptions(payload.filters || { tax_types: [], contexts: [] });
-      setTabSources(payload.sources || null);
-      setTabMeta(payload.latest_import || null);
-      setAderRelated({ ratePlans: payload.rate_plans || [], settlements: payload.settlements || [] });
-      setReview(reviewResponse.data || { findings: [] });
+      if (summaryResult.status === 'fulfilled') {
+        setSummary(summaryResult.value.data);
+      } else {
+        warnings.push('Riepilogo temporaneamente non disponibile; i dati della sezione restano consultabili.');
+      }
+      if (dataResult.status === 'fulfilled') {
+        const payload = dataResult.value.data || {};
+        setItems(payload.items || []);
+        setTaxCodeMeta(payload.catalog || null);
+        setTaxCodeOptions(payload.filters || { tax_types: [], contexts: [] });
+        setTabSources(payload.sources || null);
+        setTabMeta(payload.latest_import || null);
+        setAderRelated({ ratePlans: payload.rate_plans || [], settlements: payload.settlements || [] });
+      } else {
+        const error = dataResult.reason;
+        setItems([]);
+        setTabSources(null);
+        toast.error(`${TABS.find(([id]) => id === tab)?.[1] || 'Sezione fiscale'} non disponibile`, {
+          description: error.response?.data?.detail || error.message,
+        });
+      }
+      if (reviewResult.status === 'fulfilled') {
+        setReview(reviewResult.value.data || { findings: [] });
+      } else {
+        setReview({ findings: [] });
+        warnings.push('Controlli di revisione temporaneamente non disponibili.');
+      }
+      setLoadWarnings(warnings);
     } catch (error) {
-      setItems([]);
-      toast.error('Situazione fiscale non disponibile', { description: error.response?.data?.detail || error.message });
+      setLoadWarnings(['Caricamento fiscale non completato.']);
+      toast.error('Situazione fiscale non disponibile', { description: error.message });
     } finally { setLoading(false); }
   }, [tab, f24Year, f24TaxCode, f24CreditsOnly, declarationYear, declarationType, taxCodeFilters]);
 
@@ -183,6 +204,9 @@ export default function SituazioneFiscale() {
       </div>
       {summary?.drive_index?.available === false && <Card style={{ marginBottom: 18 }} bodyStyle={{ padding: 14, color: '#92400e', background: '#fffbeb' }}>
         <strong>Indice Drive non disponibile:</strong> {summary.drive_index.warning}. I record transitori del database restano consultabili.
+      </Card>}
+      {loadWarnings.length > 0 && <Card style={{ marginBottom: 18 }} bodyStyle={{ padding: 14, color: '#92400e', background: '#fffbeb' }}>
+        {loadWarnings.map(message => <div key={message}>{message}</div>)}
       </Card>}
       {(review.findings || []).length > 0 && <Card style={{ marginBottom: 18 }} bodyStyle={{ padding: 16 }}>
         <h3 style={{ marginTop: 0 }}>Controlli deterministici</h3>
