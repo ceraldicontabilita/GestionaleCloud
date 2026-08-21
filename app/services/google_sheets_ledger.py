@@ -1494,7 +1494,10 @@ async def restore_all(
                 try:
                     payload = decode_payload("".join(str(part or "") for part in row[15:]))
                 except (ValueError, json.JSONDecodeError, gzip.BadGzipFile, binascii.Error) as exc:
-                    add_error(index, f"payload_json non valido: {exc}")
+                    add_error(
+                        index,
+                        f"payload_json non valido per canonical_id={key or '<mancante>'}: {exc}",
+                    )
                     continue
                 if not progressive or not key or not isinstance(payload, dict):
                     add_error(index, "progressivo, canonical_id o payload mancanti")
