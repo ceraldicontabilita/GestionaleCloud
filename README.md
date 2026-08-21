@@ -19,11 +19,11 @@ Gli altri documenti sono guide di lettura, riferimenti di dominio o mappe genera
 
 ## Stato aggiornato al 20/08/2026
 
-Il repository usa `DATA_BACKEND=sheets` come unico backend operativo: Google Sheets è il registro operativo e Drive conserva gli originali. MongoDB NON è più supportato e non va usato; ogni riferimento, variabile o script relativo a MongoDB è deprecato. In produzione configurare esplicitamente il registro o la cartella Drive del ledger.
+Il repository usa `DATA_BACKEND=sheets` come backend operativo: Google Sheets è il registro operativo e Drive conserva gli originali. In produzione configurare esplicitamente il registro o la cartella Drive del ledger.
 
 Il passaggio dei dati storici si considera concluso soltanto dopo confronto di
 conteggi e hash, ricostruzione completa e prova di scrittura. Fino a quella
-verifica MongoDB non va cancellato, ma non deve ricevere nuove dipendenze.
+verifica non cancellare dati storici senza autorizzazione e checklist di cutover approvata.
 
 Il registro Drive crea questa struttura:
 
