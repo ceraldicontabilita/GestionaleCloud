@@ -219,7 +219,7 @@ def test_restore_default_e_solo_validazione(monkeypatch):
     run(scenario())
 
 
-def test_restore_runtime_non_provisiona_e_legge_tutti_i_fogli_in_batch(monkeypatch):
+def test_restore_runtime_non_provisiona_e_legge_un_foglio_alla_volta(monkeypatch):
     async def scenario():
         db = MemorySheetsClient().db
         calls = []
@@ -246,9 +246,10 @@ def test_restore_runtime_non_provisiona_e_legge_tutti_i_fogli_in_batch(monkeypat
             provision=False,
         )
 
-        assert len(calls) == 1
-        assert calls[0][0] == "SHEET-1"
-        assert len(calls[0][1]) == len(ledger.SHEETS)
+        assert len(calls) == len(ledger.SHEETS)
+        assert all(call[0] == "SHEET-1" for call in calls)
+        assert all(len(call[1]) == 1 for call in calls)
+        assert [call[1][0] for call in calls] == list(ledger.SHEETS)
         assert result["spreadsheet_id"] == "SHEET-1"
 
     run(scenario())

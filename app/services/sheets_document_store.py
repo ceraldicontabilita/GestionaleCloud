@@ -648,7 +648,12 @@ class SheetTable:
     async def estimated_document_count(self, *args, **kwargs) -> int:
         return len(self._documents)
 
-    async def hydrate_documents(self, documents: Iterable[dict[str, Any]]) -> int:
+    async def hydrate_documents(
+        self,
+        documents: Iterable[dict[str, Any]],
+        *,
+        copy_documents: bool = True,
+    ) -> int:
         """Carica in blocco una tabella vuota durante l'avvio da Sheets.
 
         L'idratazione parte sempre da una cache effimera vuota. Usare gli
@@ -666,7 +671,11 @@ class SheetTable:
             stored_documents: list[dict[str, Any]] = []
             seen_ids: set[str] = set()
             for document in documents:
-                stored = _clone(document)
+                # Durante restore_all il payload e' appena decodificato da
+                # Sheets e viene ceduto alla cache: copiarlo nuovamente
+                # raddoppiava il picco di memoria dei registri POS. Il default
+                # resta difensivo per gli altri chiamanti.
+                stored = _clone(document) if copy_documents else document
                 stored.setdefault("_id", _new_id())
                 record_id = str(stored["_id"])
                 if record_id in seen_ids:
