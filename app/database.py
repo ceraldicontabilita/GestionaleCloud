@@ -27,15 +27,13 @@ class Database:
         Create database connection.
         Called on application startup.
 
-        NOTE: MongoDB support has been removed. This method only supports the
-        Sheets runtime (Google Sheets/Drive). Attempts to select 'mongodb' as
-        DATA_BACKEND will raise a RuntimeError.
+        NOTE: Il supporto ai backend legacy è stato rimosso. Questo metodo supporta solo il runtime Sheets (Google Sheets/Drive). Tentativi di selezionare backend non supportati genereranno un RuntimeError.
         """
         try:
             backend = settings.DATA_BACKEND.strip().lower()
             if backend != "sheets":
                 raise RuntimeError(
-                    "DATA_BACKEND 'mongodb' non è più supportato. Usare DATA_BACKEND=sheets "
+                    "DATA_BACKEND non supportato. Usare DATA_BACKEND=sheets "
                     "e configurare GOOGLE_SHEETS_LEDGER_ID o GOOGLE_SHEETS_LEDGER_FOLDER_ID."
                 )
 
@@ -49,9 +47,8 @@ class Database:
             await runtime.hydrate()
             cls.client = runtime._client
             cls.db = runtime
-            scrub_mongo_runtime_configuration()
             logger.info(
-                "Connected to Google Sheets ledger %s; MongoDB support disabled",
+                "Connected to Google Sheets ledger %s",
                 settings.GOOGLE_SHEETS_LEDGER_ID,
             )
             return

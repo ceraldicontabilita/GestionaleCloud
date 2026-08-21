@@ -529,7 +529,6 @@ si rigenerano dal codice e non si correggono a mano.
 | `DRIVE_PAYPAL_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `DRIVE_PRESENZE_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `DRIVE_VERBALI_FOLDER_ID` | drive-sheets | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `DR_SOURCE_DB_NAME` | transitorie-vietate-nel-target | configurazione | non dichiarato in Settings | `scripts/verifica_ripristino_mongodb.py` |
 | `E2E_BASE_URL` | test-tooling | configurazione | non dichiarato in Settings | `frontend/scripts/audit-destructive-e2e.cjs`, `frontend/scripts/audit-pages-e2e.cjs` |
 | `E2E_FRONTEND_DIST` | test-tooling | configurazione | non dichiarato in Settings | `scripts/e2e_distruttivo_server.py` |
 | `EMAIL_ADDRESS` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/routers/configurazioni.py`, `app/routers/learning_machine.py`, `app/services/gmail_search.py` |
@@ -612,15 +611,6 @@ si rigenerano dal codice e non si correggono a mano.
 | `LOG_LEVEL` | app-runtime | configurazione | `str` / `'INFO'` | `app/config.py` |
 | `MAX_CONCURRENT_IMPORTS` | app-runtime | configurazione | `int` / `5` | `app/config.py` |
 | `MAX_UPLOAD_SIZE_MB` | app-runtime | configurazione | `int` / `50` | `app/config.py` |
-| `MONGODB_ATLAS_URI` | app-runtime | configurazione | `Optional[str]` / `None` | `app/config.py` |
-| `MONGODB_CONNECT_TIMEOUT_MS` | app-runtime | configurazione | `int` / `5000` | `app/config.py` |
-| `MONGODB_MAX_IDLE_TIME_MS` | app-runtime | configurazione | `int` / `120000` | `app/config.py` |
-| `MONGODB_MAX_POOL_SIZE` | app-runtime | configurazione | `int` / `50` | `app/config.py` |
-| `MONGODB_MIN_POOL_SIZE` | app-runtime | configurazione | `int` / `0` | `app/config.py` |
-| `MONGODB_SOCKET_TIMEOUT_MS` | app-runtime | configurazione | `int` / `20000` | `app/config.py` |
-| `MONGODB_TIMEOUT_MS` | app-runtime | configurazione | `int` / `5000` | `app/config.py` |
-| `MONGODB_WAIT_QUEUE_TIMEOUT_MS` | app-runtime | configurazione | `int` / `5000` | `app/config.py` |
-| `MONGO_URL` | app-runtime | configurazione | `Optional[str]` / `None` | `app/config.py` |
 | `NODE_ENV` | app-runtime | configurazione | non dichiarato in Settings | `frontend/plugins/health-check/health-endpoints.js` |
 | `NOLEGGIO_GIORNI_SENZA_FATTURA` | feature-job | configurazione | non dichiarato in Settings | `app/services/noleggio/controlli.py` |
 | `OPENAI_API_KEY` | ai | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `app/routers/settings_router.py`, `app/services/chat_ai_engine.py` |

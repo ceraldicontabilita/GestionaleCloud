@@ -1,8 +1,8 @@
 """
-DEPRECATO: helper filtri anno (formati Mongo)
+DEPRECATO: helper filtri anno per record storici
 
-Questo modulo produce filtri compatibili con le query MongoDB storiche. Con
-la rimozione di MongoDB questo helper è deprecato; resta disponibile per
+Questo modulo produce filtri compatibili con le query legacy DB storiche. Con
+la rimozione di legacy DB questo helper è deprecato; resta disponibile per
 compatibilità con codice legacy ma non va usato in nuovi flussi.
 """
 from datetime import datetime, timezone
