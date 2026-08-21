@@ -242,7 +242,7 @@ def test_restore_default_e_solo_validazione(monkeypatch):
     run(scenario())
 
 
-def test_restore_runtime_non_provisiona_e_legge_un_foglio_alla_volta(monkeypatch):
+def test_restore_runtime_raggruppa_le_letture_dei_fogli(monkeypatch):
     async def scenario():
         db = MemorySheetsClient().db
         calls = []
@@ -256,11 +256,14 @@ def test_restore_runtime_non_provisiona_e_legge_un_foglio_alla_volta(monkeypatch
             },
         )
 
-        def fake_last_row(spreadsheet_id, definition):
-            calls.append((spreadsheet_id, definition))
-            return 1
+        def fake_batch_read(spreadsheet_id, definitions):
+            definitions = tuple(definitions)
+            calls.append((spreadsheet_id, definitions))
+            return [[] for _definition in definitions]
 
-        monkeypatch.setattr(ledger, "_sheet_last_row_sync", fake_last_row)
+        monkeypatch.setattr(
+            ledger, "_read_sheet_rows_batch_sync", fake_batch_read,
+        )
 
         result = await ledger.restore_all(
             db,
@@ -269,9 +272,12 @@ def test_restore_runtime_non_provisiona_e_legge_un_foglio_alla_volta(monkeypatch
             provision=False,
         )
 
-        assert len(calls) == len(ledger.SHEETS)
+        assert len(calls) == (len(ledger.SHEETS) + 7) // 8
         assert all(call[0] == "SHEET-1" for call in calls)
-        assert [call[1] for call in calls] == list(ledger.SHEETS)
+        assert all(1 <= len(call[1]) <= 8 for call in calls)
+        assert [definition for _sid, group in calls for definition in group] == list(
+            ledger.SHEETS
+        )
         assert result["spreadsheet_id"] == "SHEET-1"
 
     run(scenario())
@@ -293,12 +299,10 @@ def test_restore_ricostruisce_record_id_tecnico_come_id_reale(monkeypatch):
             },
         )
         monkeypatch.setattr(
-            ledger, "_sheet_last_row_sync",
-            lambda _spreadsheet_id, _definition: 2,
-        )
-        monkeypatch.setattr(
-            ledger, "_read_sheet_row_chunk_sync",
-            lambda _spreadsheet_id, _definition, _start, _end: [row],
+            ledger, "_read_sheet_rows_batch_sync",
+            lambda _spreadsheet_id, definitions: [
+                [row] if definition == target else [] for definition in definitions
+            ],
         )
 
         await ledger.restore_all(

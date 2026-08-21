@@ -1424,9 +1424,11 @@ async def restore_all(
         workbook = await ensure_workbook(config)
     else:
         workbook = await asyncio.to_thread(_existing_workbook_sync, config)
-    definitions = workbook.pop("sheet_definitions")
+    definitions = tuple(workbook.pop("sheet_definitions"))
     results = []
-    for sheet in definitions:
+    prefetched_rows: Dict[str, List[List[Any]]] = {}
+    batch_size = 8
+    for position, sheet in enumerate(definitions):
         # Il registro POS e' idratato direttamente nella cache SQLite: un
         # blocco piu' ampio resta a memoria limitata e mantiene l'intero avvio
         # sotto la quota Sheets di 60 letture al minuto.
@@ -1508,10 +1510,10 @@ async def restore_all(
                 _read_sheet_rows_sync, workbook["spreadsheet_id"], sheet,
             )
             await process_rows(2, rows)
-        else:
-            # Legge solo l'indice per trovare il limite, poi idrata a blocchi.
-            # Il registro POS usa blocchi maggiori sulla cache SQLite; gli
-            # altri fogli mantengono blocchi piccoli nella cache Python.
+        elif sheet.collection == "pos_terminal_transactions":
+            # Il registro POS puo' contenere molte migliaia di transazioni:
+            # resta in streaming verso SQLite per mantenere la memoria
+            # limitata. Le altre collezioni sono invece raggruppate sotto.
             last_row = await asyncio.to_thread(
                 _sheet_last_row_sync, workbook["spreadsheet_id"], sheet,
             )
@@ -1522,6 +1524,28 @@ async def restore_all(
                     workbook["spreadsheet_id"], sheet, start_row, end_row,
                 )
                 await process_rows(start_row, rows)
+        else:
+            # Un batchGet copre fino a otto archivi con una sola lettura API.
+            # Evita una richiesta di indice piu' una richiesta dati per ogni
+            # foglio, che durante l'avvio superava la quota Sheets per minuto.
+            if sheet.collection not in prefetched_rows:
+                group = tuple(
+                    candidate
+                    for candidate in definitions[position:]
+                    if candidate.collection != "pos_terminal_transactions"
+                )[:batch_size]
+                grouped_rows = await asyncio.to_thread(
+                    _read_sheet_rows_batch_sync,
+                    workbook["spreadsheet_id"],
+                    group,
+                )
+                prefetched_rows.update(
+                    {
+                        candidate.collection: rows
+                        for candidate, rows in zip(group, grouped_rows)
+                    }
+                )
+            await process_rows(2, prefetched_rows.pop(sheet.collection))
         results.append({
             "foglio": sheet.title, "collezione": sheet.collection,
             "prefisso": sheet.prefix,
