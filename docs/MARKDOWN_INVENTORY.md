@@ -23,8 +23,8 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 - Correnti: **35**
 - Riferimento: **25**
 - Generati: **5**
-- Storici: **4**
-- Totale: **69**
+- Storici: **5**
+- Totale: **70**
 
 ## Elenco completo
 
@@ -46,6 +46,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `archive/legacy-audit/README.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/ADR-005-INGESTIONE-DOCUMENTALE-UNIVERSALE-RENDER.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/FISCAL_ACCOUNTING_POLICY.md` | `current` | Autorità operativa corrente |
+| `docs/GUIDA-SEMPLICE-FLUSSO-ATOMICO-RENDER.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/MARKDOWN_INVENTORY.md` | `current` | Autorità operativa corrente |
 | `docs/MCP_GESTIONALE_RUNBOOK.md` | `current` | Autorità operativa corrente |
 | `docs/MCP_GESTIONALE_SPEC.md` | `current` | Autorità operativa corrente |
