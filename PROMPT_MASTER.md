@@ -228,8 +228,13 @@ di vendita non viene sostituito dalla data di accredito. SumUp e Numia restano
 circuiti separati. Giorni mancanti, importi discordanti e payout multi-giorno
 generano liste esplicite.
 
-La chiusura del terminale è il fatto owner e crea subito il credito/accredito
-atteso. L'estratto conto raggruppa `NUMIA-AMEX`, `NUMIA-INTER`, `NUMIA-BNCMT`
+Le fonti owner sono distinte: SumUp corrente arriva automaticamente dall'API;
+Numia corrente viene inserito manualmente ogni sera dalla chiusura dei
+terminali; Numia storico viene ricostruito dagli export operativi CSV/XLSX su
+Drive, deduplicati per ID transazione e accorpati per giorno vendita. Ciascun
+totale giornaliero crea subito il credito/accredito atteso del proprio gestore.
+L'estratto conto bancario non crea mai il fatto POS: raggruppa `NUMIA-AMEX`,
+`NUMIA-INTER`, `NUMIA-BNCMT`
 e `NUMIA-PGBNT` per il giorno `DEL gg/mm/aa`, somma al centesimo e soddisfa
 l'attesa esistente. Senza un'unica attesa resta `DA_VERIFICARE`: la banca non
 può creare retroattivamente la chiusura POS.

@@ -689,13 +689,13 @@ async def sincronizza_payouts(
 async def sincronizza(db, dal: str, al: str,
                       *, grezze: Optional[Iterable[Dict[str, Any]]] = None,
                       actor: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Scarica e archivia le evidenze SumUp dell'intervallo.
+    """Scarica e archivia le transazioni SumUp dell'intervallo.
 
     Rieseguirla sullo stesso intervallo non produce duplicati: le transazioni
-    sono deduplicate per chiave e la chiusura giornaliera aggiorna l'evidenza
-    del circuito invece di affiancarne una nuova. Le vendite non generano
-    movimenti di Prima Nota: soltanto un payout distinto puo' provare il
-    successivo movimento finanziario.
+    sono deduplicate per chiave e il totale giornaliero aggiorna lo stesso
+    fatto del circuito. Il fatto API crea immediatamente l'uscita POS Cassa e
+    il credito bancario atteso; soltanto un payout distinto puo' soddisfare
+    quell'attesa e provare il successivo movimento finanziario.
     """
     from app.services.scritture_contabili import (
         FONTE_API,
@@ -740,7 +740,6 @@ async def sincronizza(db, dal: str, al: str,
             note=(f"Sincronizzazione API SumUp: {giorno['transazioni']} "
                   f"transazioni, rimborsi {giorno['rimborsi']:.2f}"),
             actor=actor or {"user_id": "api_sumup", "name": "Sincronizzazione SumUp"},
-            solo_evidenza=True,
         )
         scritte.append({**giorno, "action": esito.get("action")})
 

@@ -173,6 +173,15 @@ versamento mancante.
 ### POS e SumUp
 
 - Le vendite POS appartengono al giorno delle transazioni.
+- SumUp corrente arriva automaticamente dall'API ufficiale: le transazioni
+  sono deduplicate per ID, aggregate per giorno e creano il credito bancario
+  atteso verso SumUp.
+- Numia corrente non arriva da API: l'operatore inserisce la chiusura dei
+  terminali ogni sera e quel totale crea il credito bancario atteso Numia.
+- Per il pregresso Numia, gli export operativi CSV/XLSX nella cartella Drive
+  dedicata sono deduplicati per ID transazione e accorpati per giorno vendita;
+  il totale di ogni giorno diventa l'attesa bancaria Numia. Non sono estratti
+  conto bancari.
 - L'accredito bancario è un fatto successivo e separato.
 - In Banca si mostra l'importo atteso finché non arriva il movimento effettivo.
 - Commissioni e scostamenti restano componenti identificabili.

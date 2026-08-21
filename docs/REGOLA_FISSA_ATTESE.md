@@ -88,15 +88,29 @@ Upload, Drive ed email devono passare dalla stessa pipeline idempotente.
 
 ## Vincoli POS non negoziabili
 
-La fonte terminale Numia/SumUp è owner della chiusura e crea immediatamente la
-coppia con un solo `operation_id`:
+Non esiste una generica regola “un file POS crea l'attesa”. Le fonti owner sono
+tre e devono restare riconoscibili:
+
+1. **SumUp corrente:** l'API ufficiale acquisisce automaticamente le
+   transazioni, deduplica per ID del gestore, somma il netto per giorno vendita
+   e crea/aggiorna l'attesa bancaria SumUp.
+2. **Numia corrente:** l'operatore inserisce ogni sera la chiusura dei
+   terminali; il totale manuale del giorno crea/aggiorna l'attesa bancaria
+   Numia e resta provvisorio finché non è confermato da una fonte più forte.
+3. **Numia storico:** gli export operativi Numia CSV/XLSX nella cartella Drive
+   dedicata vengono deduplicati per `ID Transazione`, ricostruiti e accorpati
+   per giorno vendita; ogni totale giornaliero crea/aggiorna la stessa attesa
+   Numia. Questi file non sono estratti conto bancari.
+
+Ognuno dei tre fatti crea immediatamente la coppia con un solo `operation_id`:
 
 ```text
 Prima Nota Cassa: uscita POS del circuito
 Prima Nota Banca: credito gestore / accredito atteso
 ```
 
-L'estratto conto raggruppa le componenti dello stesso giorno vendita letto
+L'estratto conto bancario non è mai owner del fatto POS. Raggruppa le
+componenti dello stesso giorno vendita letto
 dalla causale `DEL gg/mm/aa` (`NUMIA-AMEX`, `NUMIA-INTER`, `NUMIA-BNCMT`,
 `NUMIA-PGBNT`), ne somma l'importo al centesimo e soddisfa l'attesa esistente.
 Se l'attesa manca o ce ne sono più di una, le righe bancarie restano

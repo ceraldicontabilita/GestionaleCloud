@@ -242,10 +242,17 @@ def test_risincronizzare_non_duplica_nulla():
     assert chiusure[0]["fonte_dato"] == "api"
     assert chiusure[0]["stato_dato"] == "confermato"
 
-    # Una vendita SumUp e' un'evidenza commerciale, non un versamento in
-    # banca: senza payout non deve apparire alcuna riga in Prima Nota.
-    assert _run(db.prima_nota_cassa.find({}).to_list(50)) == []
-    assert _run(db.prima_nota_banca.find({}).to_list(50)) == []
+    # L'API SumUp e' il fatto owner: crea il credito atteso, non un accredito
+    # bancario gia' avvenuto. La risincronizzazione non duplica la coppia.
+    cassa = _run(db.prima_nota_cassa.find({}).to_list(50))
+    banca = _run(db.prima_nota_banca.find({}).to_list(50))
+    assert len(cassa) == 1 and cassa[0]["importo"] == 100.0
+    assert len(banca) == 1 and banca[0]["importo"] == 100.0
+    assert banca[0]["record_role"] == "expectation"
+    assert banca[0]["expectation_owner"] == "sumup_api"
+    assert banca[0]["expectation_status"] == "ATTESO"
+    assert banca[0]["in_transito"] is True
+    assert banca[0]["operation_id"] == cassa[0]["operation_id"]
 
 
 def test_prima_acquisizione_sumup_scrive_un_unico_batch_sheets():
@@ -272,7 +279,7 @@ def test_prima_acquisizione_sumup_scrive_un_unico_batch_sheets():
     assert mutazioni == []
 
 
-def test_vendita_sumup_116_90_non_diventa_un_falso_movimento_bancario():
+def test_vendita_sumup_116_90_crea_credito_atteso_non_accredito_reale():
     db = _db()
 
     esito = _sincronizza(db, [_tx("tx-11690", 116.90)])
@@ -282,8 +289,16 @@ def test_vendita_sumup_116_90_non_diventa_un_falso_movimento_bancario():
     assert chiusura["importo"] == 116.90
     assert chiusura["fonte_dato"] == "api"
     assert chiusura["source"] == "api_gestore_pos"
-    assert _run(db.prima_nota_cassa.find({}).to_list(50)) == []
-    assert _run(db.prima_nota_banca.find({}).to_list(50)) == []
+    cassa = _run(db.prima_nota_cassa.find_one({"gestore": "sumup"}))
+    banca = _run(db.prima_nota_banca.find_one({"gestore": "sumup"}))
+    assert cassa["importo"] == 116.90
+    assert cassa["quota_pos_fonte"] == "api_sumup"
+    assert banca["importo"] == 116.90
+    assert banca["record_role"] == "expectation"
+    assert banca["expectation_type"] == "pos_bank_credit"
+    assert banca["expectation_owner"] == "sumup_api"
+    assert banca["riconciliato"] is False
+    assert banca["in_transito"] is True
 
 
 def test_api_senza_transazioni_scrive_zero_esplicito_per_ogni_giorno():
@@ -320,7 +335,7 @@ def test_una_pagina_arrivata_prima_resta_nel_totale():
     assert chiusure[0]["importo"] == 100.0
 
 
-def test_l_api_aggiorna_l_evidenza_senza_riscrivere_la_prima_nota_storica():
+def test_l_api_sumup_aggiorna_anche_l_attesa_senza_creare_duplicati():
     from app.services.scritture_contabili import registra_chiusura_pos_reale
 
     db = _db()
@@ -334,10 +349,11 @@ def test_l_api_aggiorna_l_evidenza_senza_riscrivere_la_prima_nota_storica():
     uscite = _run(db.prima_nota_cassa.find(
         {"source": "corrispettivo_import"}).to_list(50))
     assert len(uscite) == 1
-    assert uscite[0]["importo"] == 95.0
+    assert uscite[0]["importo"] == 100.0
+    assert uscite[0]["quota_pos_fonte"] == "api_sumup"
     assert _run(db.prima_nota_banca.find_one({
         "source": "trasferimento_pos", "gestore": "sumup"
-    }))["importo"] == 95.0
+    }))["importo"] == 100.0
 
 
 def test_nexi_e_sumup_nello_stesso_giorno_restano_distinti():
@@ -354,7 +370,7 @@ def test_nexi_e_sumup_nello_stesso_giorno_restano_distinti():
     uscite = _run(db.prima_nota_cassa.find(
         {"source": "corrispettivo_import"}).to_list(50))
     assert {u["circuito"]: u["importo"] for u in uscite} == {
-        "NUMIA": 500.0}
+        "NUMIA": 500.0, "SUMUP": 100.0}
 
 
 def test_senza_credenziali_si_ferma_invece_di_scrivere_a_vuoto(monkeypatch):

@@ -176,7 +176,9 @@ Drive/SDI -> XML/P7M -> deduplica -> fornitore -> fattura
 
 ```text
 XML RT -> ricavo/cassa
-chiusura terminale -> trasferimento POS atteso
+SumUp API -> totale giornaliero -> trasferimento SumUp atteso
+chiusura Numia manuale serale -> trasferimento Numia atteso
+export storico Numia Drive -> deduplica + totale giornaliero -> trasferimento Numia atteso
 accredito gestore -> riconciliazione del trasferimento
 commissione -> costo separato
 ```

@@ -282,6 +282,51 @@ FONTE_TERMINALE = "terminale"
 FONTE_API = "api"
 PRIORITA_FONTE = {FONTE_MANUALE: 1, FONTE_EXCEL: 2, FONTE_TERMINALE: 3, FONTE_API: 3}
 
+
+def metadati_fonte_pos(fonte: str, gestore: str) -> Dict[str, str]:
+    """Descrive senza ambiguita' chi ha prodotto il fatto POS.
+
+    ``excel`` indica esclusivamente l'export storico del gestore Numia: non e'
+    un estratto conto bancario e non e' un inserimento manuale. SumUp usa
+    invece l'API ufficiale; la chiusura Numia corrente resta manuale e viene
+    digitata dall'operatore a fine serata.
+    """
+    fonte = str(fonte or FONTE_MANUALE).strip().lower()
+    gestore = normalizza_gestore_pos(gestore)
+    if fonte == FONTE_API:
+        return {
+            "source": "api_gestore_pos",
+            "quota_pos_fonte": (
+                "api_sumup" if gestore == conti_pos.SUMUP
+                else "api_gestore_pos"
+            ),
+            "expectation_owner": (
+                "sumup_api" if gestore == conti_pos.SUMUP
+                else f"{gestore}_api"
+            ),
+        }
+    if fonte == FONTE_EXCEL:
+        return {
+            "source": "import_storico_numia",
+            "quota_pos_fonte": "export_numia_storico",
+            "expectation_owner": "numia_provider_export",
+        }
+    if fonte == FONTE_TERMINALE:
+        return {
+            "source": "terminale_gestore_pos",
+            "quota_pos_fonte": "terminale_reale",
+            "expectation_owner": f"{gestore}_terminal",
+        }
+    return {
+        "source": "inserimento_manuale_terminale",
+        "quota_pos_fonte": "chiusura_manuale",
+        "expectation_owner": (
+            "numia_terminal_closure"
+            if gestore == conti_pos.NUMIA
+            else f"{gestore}_manual"
+        ),
+    }
+
 STATO_PROVVISORIO = "provvisorio_operativo"
 STATO_CONFERMATO = "confermato"
 STATO_DIFFERENZA = "differenza_da_verificare"
@@ -443,15 +488,15 @@ async def registra_chiusura_pos_reale(
 ) -> Dict[str, Any]:
     """Salva il POS reale letto dal terminale.
 
-    ``solo_evidenza`` separa l'acquisizione del fatto dalla contabilizzazione:
-    le API dei gestori (per esempio SumUp) possono certificare le vendite, ma
-    non provano che il denaro sia gia' transitato in banca. In questa modalita'
-    viene conservata soltanto la chiusura con la sua provenienza e non vengono
-    creati movimenti in Cassa, Banca o Prima Nota. L'eventuale payout resta un
-    evento distinto e viene gestito dal relativo servizio finanziario.
+    La fonte dipende dal circuito e dal periodo: SumUp arriva dall'API
+    ufficiale; Numia corrente viene inserito manualmente dalla chiusura serale;
+    Numia storico viene ricostruito dagli export operativi del gestore su
+    Drive. Tutte e tre le fonti creano il fatto e l'attesa bancaria. Il payout
+    o l'accredito reale resta un'evidenza successiva distinta.
 
-    Il dato manuale e' la fonte operativa canonica. L'elettronico XML resta
-    invariato sul corrispettivo e viene usato soltanto per il confronto
+    ``solo_evidenza`` e' riservato a diagnostiche che non devono materializzare
+    scritture; non va usato dai tre flussi operativi sopra. L'elettronico XML
+    resta invariato sul corrispettivo e viene usato soltanto per il confronto
     fiscale. In un'unica operazione logica vengono mantenuti coerenti:
 
     - ``chiusure_pos_manuali``: verita' manuale del terminale;
@@ -513,6 +558,7 @@ async def registra_chiusura_pos_reale(
         ), 2)
 
     chiusura_id = (precedente_doc or {}).get("id") or str(uuid.uuid4())
+    metadati_fonte = metadati_fonte_pos(evidenza["fonte_dato"], gestore)
     campi_chiusura = {
         "importo": importo,
         "totale": importo,
@@ -521,10 +567,7 @@ async def registra_chiusura_pos_reale(
         "stato_dato": evidenza["stato_dato"],
         "valori_per_fonte": evidenza["valori_per_fonte"],
         "differenza_fonti": evidenza["differenza"],
-        "source": (
-            "api_gestore_pos" if fonte == FONTE_API
-            else "inserimento_manuale_terminale"
-        ),
+        "source": metadati_fonte["source"],
         "note": note,
         "updated_at": now,
         "updated_by": user_id,
@@ -599,7 +642,7 @@ async def registra_chiusura_pos_reale(
     await db["corrispettivi"].update_one(
         {"data": data},
         {"$set": {"pos_reale_serale": totale_giorno,
-                  "pos_reale_fonte": "terminale_manuale",
+                  "pos_reale_fonte": "fonti_pos_reali",
                   "pos_reale_updated_at": now}},
     )
 
@@ -671,7 +714,7 @@ async def registra_chiusura_pos_reale(
             "description": descrizione_cassa,
             "gestore": gestore,
             "circuito": circuito,
-            "quota_pos_fonte": "chiusura_manuale",
+            "quota_pos_fonte": metadati_fonte["quota_pos_fonte"],
             "trasferimento_id": trasferimento_id,
             "operation_id": trasferimento_id,
             "updated_at": now,
@@ -694,7 +737,7 @@ async def registra_chiusura_pos_reale(
                 "source": "corrispettivo_import",
                 "gestore": gestore,
                 "circuito": circuito,
-                "quota_pos_fonte": "chiusura_manuale",
+                "quota_pos_fonte": metadati_fonte["quota_pos_fonte"],
                 "trasferimento_id": trasferimento_id,
                 "operation_id": trasferimento_id,
             }
@@ -726,7 +769,7 @@ async def registra_chiusura_pos_reale(
                 conti_pos.conto_credito(gestore)),
             "gestore": gestore,
             "circuito": circuito,
-            "quota_pos_fonte": "chiusura_manuale",
+            "quota_pos_fonte": metadati_fonte["quota_pos_fonte"],
             "trasferimento_id": trasferimento_id,
             "operation_id": trasferimento_id,
             "giorno_vendita": data,
@@ -741,7 +784,7 @@ async def registra_chiusura_pos_reale(
             "deleted": False,
             **expectation_fields(
                 expectation_type="pos_bank_credit",
-                owner="pos_terminal",
+                owner=metadati_fonte["expectation_owner"],
                 source_fact_id=chiusura_id,
                 satisfied=quadrato,
             ),
@@ -766,7 +809,7 @@ async def registra_chiusura_pos_reale(
                     conti_pos.conto_credito(gestore)),
                 "gestore": gestore,
                 "circuito": circuito,
-                "quota_pos_fonte": "chiusura_manuale",
+                "quota_pos_fonte": metadati_fonte["quota_pos_fonte"],
                 "trasferimento_id": trasferimento_id,
                 "operation_id": trasferimento_id,
                 "giorno_vendita": data,
@@ -774,7 +817,7 @@ async def registra_chiusura_pos_reale(
                 "in_transito": True,
                 **expectation_fields(
                     expectation_type="pos_bank_credit",
-                    owner="pos_terminal",
+                    owner=metadati_fonte["expectation_owner"],
                     source_fact_id=chiusura_id,
                 ),
             }
@@ -801,7 +844,7 @@ async def registra_chiusura_pos_reale(
                 "pagato_contanti": round(totale - totale_giorno, 2),
                 "dettaglio.elettronico": totale_giorno,
                 "dettaglio.contanti": round(totale - totale_giorno, 2),
-                "quota_pos_fonte": "chiusura_manuale",
+                "quota_pos_fonte": "fonti_pos_reali",
                 "updated_at": now,
             }},
         )
