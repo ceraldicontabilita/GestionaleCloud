@@ -286,6 +286,54 @@ def test_restore_ricostruisce_record_id_tecnico_come_id_reale(monkeypatch):
     run(scenario())
 
 
+def test_restore_runtime_carica_in_blocco_registro_pos_voluminoso(monkeypatch):
+    async def scenario():
+        db = MemorySheetsClient().db
+        db.loading = True
+        target = ledger.dynamic_sheet("pos_terminal_transactions")
+        rows = [
+            ledger.row_for_document(
+                {
+                    "id": f"POS-NUMIA-TX-{index:05d}",
+                    "operation_id": f"POS-NUMIA-TX-{index:05d}",
+                    "amount": "10.00",
+                },
+                f"{target.prefix}-{index + 1:08d}",
+            )
+            for index in range(2_000)
+        ]
+        monkeypatch.setattr(
+            ledger,
+            "_existing_workbook_sync",
+            lambda config=None: {
+                "spreadsheet_id": "SHEET-1",
+                "spreadsheet_url": "https://example.invalid/sheet",
+                "sheet_definitions": [target],
+            },
+        )
+        monkeypatch.setattr(
+            ledger, "_read_sheet_rows_batch_sync",
+            lambda _spreadsheet_id, _definitions: [rows],
+        )
+
+        table = db.pos_terminal_transactions
+
+        async def forbidden_row_upsert(*_args, **_kwargs):
+            raise AssertionError("l'idratazione runtime non deve fare upsert riga per riga")
+
+        monkeypatch.setattr(table, "replace_one", forbidden_row_upsert)
+        result = await ledger.restore_all(
+            db, {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"},
+            apply=True, provision=False,
+        )
+
+        assert result["fogli"][0]["valide"] == 2_000
+        assert await table.count_documents({}) == 2_000
+        assert await table.count_documents({"id": "POS-NUMIA-TX-01999"}) == 1
+
+    run(scenario())
+
+
 def test_upsert_incrementale_aggiorna_e_accoda_senza_riscrivere_il_foglio(monkeypatch):
     calls = {}
 

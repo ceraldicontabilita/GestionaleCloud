@@ -18,6 +18,7 @@ from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.bank import estratto_conto as modulo
 from app.services.scritture_contabili import (
+    recupera_pos_storico_da_estratto,
     registra_chiusura_pos_reale,
     riconcilia_accredito_pos_ec,
 )
@@ -136,6 +137,38 @@ def test_senza_trasferimento_l_accredito_resta_aperto_e_non_inventa_nulla(db):
     assert _run(db["prima_nota_banca"].find({}).to_list(10)) == []
     movimento = _run(db["estratto_conto_movimenti"].find_one({}))
     assert movimento.get("riconciliato") is not True
+
+
+def test_recupero_ufficiale_crea_un_totale_giornaliero_e_lo_riconcilia(db):
+    """Quando l'estratto ufficiale arriva prima dell'attesa POS, il secondo
+    passaggio crea una sola riga per il giorno vendita e collega tutte le
+    componenti bancarie senza aspettare lo scheduler."""
+    for indice, (descrizione, importo) in enumerate(ACCREDITI_NUMIA):
+        _run(db["estratto_conto_movimenti"].insert_one({
+            "id": f"ec-pos-{indice}",
+            "data": "2026-08-06",
+            "tipo": "entrata",
+            "importo": float(importo.replace(",", ".")),
+            "descrizione_originale": descrizione,
+            "riconciliato": False,
+        }))
+
+    esito = _run(recupera_pos_storico_da_estratto(db, 2026))
+
+    assert esito["giorni_bancari"] == 1
+    assert esito["creati"] == 1
+    assert esito["componenti_bancarie_ricollegate"] == 5
+    trasferimenti = _run(db["prima_nota_banca"].find({
+        "source": "trasferimento_pos", "gestore": "numia",
+    }).to_list(10))
+    assert len(trasferimenti) == 1
+    assert trasferimenti[0]["data"] == "2026-08-05"
+    assert trasferimenti[0]["importo"] == TOTALE_GIORNO
+    assert trasferimenti[0]["accreditato_ec"] == TOTALE_GIORNO
+    assert trasferimenti[0]["riconciliato"] is True
+    assert _run(db["estratto_conto_movimenti"].count_documents({
+        "riconciliato": True,
+    })) == 5
 
 
 # --- Multi-gestore: il filtro sul circuito ---------------------------------

@@ -1397,6 +1397,7 @@ async def restore_all(
         seen_progressive = set()
         seen_ids = set()
         fingerprints: List[str] = []
+        pending_documents: List[tuple[Dict[str, Any], Dict[str, Any]]] = []
         for index, row in enumerate(rows, start=2):
             if len(row) < len(HEADERS):
                 row = list(row) + [""] * (len(HEADERS) - len(row))
@@ -1430,9 +1431,29 @@ async def restore_all(
                     identity_filter = {"_id": str(record_id)}
                 else:
                     identity_filter = canonical_filter(storage_payload)
-                await db[sheet.collection].replace_one(
-                    identity_filter, storage_payload, upsert=True,
+                pending_documents.append((identity_filter, storage_payload))
+        if apply and pending_documents:
+            table = db[sheet.collection]
+            # Il runtime appena creato parte da tabelle vuote. In quel caso
+            # carichiamo la cache con una singola operazione O(n), evitando gli
+            # upsert O(n^2) che impedivano a Render di completare lo startup
+            # dopo l'importazione di migliaia di transazioni POS. Il percorso
+            # ordinario resta attivo per restore amministrativi su cache gia'
+            # popolate, preservandone la semantica di upsert senza cancellare.
+            can_bulk_hydrate = (
+                bool(getattr(db, "loading", False))
+                and hasattr(table, "hydrate_documents")
+                and await table.estimated_document_count() == 0
+            )
+            if can_bulk_hydrate:
+                await table.hydrate_documents(
+                    payload for _identity, payload in pending_documents
                 )
+            else:
+                for identity_filter, storage_payload in pending_documents:
+                    await table.replace_one(
+                        identity_filter, storage_payload, upsert=True,
+                    )
         results.append({
             "foglio": sheet.title, "collezione": sheet.collection,
             "prefisso": sheet.prefix,
