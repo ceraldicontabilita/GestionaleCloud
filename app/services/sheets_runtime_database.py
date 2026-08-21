@@ -212,6 +212,17 @@ class SheetsRuntimeDatabase:
             collection_name, SheetsRuntimeCollection(self, collection_name)
         )
 
+    @property
+    def client(self):
+        """Client compatibile Motor usato soltanto dal runtime in memoria.
+
+        Senza questa proprieta' ``__getattr__`` interpreta ``db.client`` come
+        una collection chiamata ``client``. I flussi storici che tentano di
+        aprire una sessione ricevono quindi una Collection e falliscono prima
+        ancora di poter usare il fallback senza transazioni.
+        """
+        return self._client
+
     def __getattr__(self, name: str) -> Any:
         if name.startswith("_"):
             raise AttributeError(name)

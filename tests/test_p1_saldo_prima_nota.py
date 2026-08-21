@@ -4,6 +4,7 @@ la formula preesistente (entrate−uscite + riporto anni precedenti)."""
 import asyncio
 
 from app.routers.prima_nota_module import common
+from app.services.sheets_runtime_database import SheetsRuntimeDatabase
 
 
 class _Agg:
@@ -227,6 +228,26 @@ def test_importo_stringa_convertito():
     assert s["totale_entrate"] == 100.50
     assert s["totale_uscite"] == 30.0
     assert s["saldo"] == 70.50
+
+
+def test_importo_stringa_convertito_nel_runtime_sheets_reale():
+    """Il runtime Sheets usa mongomock, che non implementa $convert."""
+    runtime = SheetsRuntimeDatabase(
+        "test", {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"},
+    )
+    _run(runtime._memory_db["prima_nota_banca"].insert_many([
+        {"tipo": "entrata", "importo": "100.50", "data": "2026-03-01"},
+        {"tipo": "uscita", "importo": 30, "data": "2026-03-02"},
+        {"tipo": "entrata", "importo": "non-un-numero", "data": "2026-03-03"},
+    ]))
+
+    saldo = _run(common.aggrega_saldo_prima_nota(
+        runtime, "prima_nota_banca", {}, anno=None,
+    ))
+
+    assert saldo["totale_entrate"] == 100.50
+    assert saldo["totale_uscite"] == 30.0
+    assert saldo["saldo"] == 70.50
 
 
 def test_riporto_query_base_esplicita_estratto_conto():

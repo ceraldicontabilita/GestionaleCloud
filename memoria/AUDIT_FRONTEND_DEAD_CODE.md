@@ -56,7 +56,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | File | Classificazione | Importato da (n. file) |
 |---|---|---:|
 | `frontend/src/App.jsx` | ENTRYPOINT | 1 |
-| `frontend/src/api.js` | COMPONENTE_USATO | 109 |
+| `frontend/src/api.js` | COMPONENTE_USATO | 107 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/AssociaAssegnoFattura.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/AssociaMovimentoBanca.jsx` | COMPONENTE_USATO | 1 |
