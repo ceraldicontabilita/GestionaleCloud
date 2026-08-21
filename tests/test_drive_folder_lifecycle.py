@@ -107,6 +107,7 @@ def test_ricostruzione_rilegge_tutte_le_cartelle_senza_spostare_file(monkeypatch
     async def fake_process(_db, content, filename, **kwargs):
         assert kwargs["source"] == "ricostruzione_drive"
         assert kwargs["applica_filtro_anno"] is True
+        assert kwargs["replay_storico"] is True
         return {"status": "duplicate" if filename == "uno.xml" else "imported"}
 
     from app.routers.invoices import fatture_upload
