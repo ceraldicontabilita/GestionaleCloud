@@ -164,7 +164,14 @@ def test_zip_invia_lipe_al_registro_fiscale(monkeypatch):
 
     monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
     import app.services.fiscal_document_ingestion as fiscal_ingestion
+    import app.services.drive_declaration_upload as drive_upload
     monkeypatch.setattr(fiscal_ingestion, "FiscalDocumentIngestionService", FakeFiscalIngestion)
+    monkeypatch.setattr(drive_upload, "upload_declaration", lambda **_kwargs: {
+        "success": True,
+        "duplicate": True,
+        "document_id": "DRIVE-LIPE",
+        "drive_path": "01_DICHIARAZIONI_FISCALI/LIPE/2026/LIPE_2026.pdf",
+    })
 
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -178,6 +185,7 @@ def test_zip_invia_lipe_al_registro_fiscale(monkeypatch):
     assert result["imported"] == 1
     assert calls[0]["category_hint"] == "lipe"
     assert calls[0]["source_metadata"]["archive_path"].endswith("LIPE_2026.pdf")
+    assert calls[0]["source_metadata"]["drive_document_id"] == "DRIVE-LIPE"
 
 
 def test_upload_zip_usa_batch_writes_del_runtime(monkeypatch):

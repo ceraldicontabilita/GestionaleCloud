@@ -70,3 +70,63 @@ def test_duplicato_legacy_rigenera_solo_il_testo_derivato(monkeypatch):
         assert page["text"].startswith("VP1 Mese 7")
 
     asyncio.run(scenario())
+
+
+def test_documento_fiscale_drive_non_duplica_il_pdf_nel_foglio():
+    async def scenario():
+        db = MemorySheetsClient().db
+        content = _blank_pdf()
+        result = await FiscalDocumentIngestionService(db, "CERALDI").ingest(
+            content=content,
+            filename="LIPE_2026.pdf",
+            source="documenti_upload_auto_zip",
+            category_hint="lipe",
+            source_metadata={
+                "drive_document_id": "DOC-DRIVE-LIPE",
+                "drive_file_id": "FILE-DRIVE-LIPE",
+                "drive_path": "01_DICHIARAZIONI_FISCALI/LIPE/2026/LIPE_2026.pdf",
+            },
+        )
+        inbox = await db.documents_inbox.find_one({"sha256": result["sha256"]})
+
+        assert inbox["drive_document_id"] == "DOC-DRIVE-LIPE"
+        assert inbox["drive_file_id"] == "FILE-DRIVE-LIPE"
+        assert "pdf_data" not in inbox
+
+    asyncio.run(scenario())
+
+
+def test_duplicato_parziale_riceve_il_riferimento_drive(monkeypatch):
+    async def scenario():
+        db = MemorySheetsClient().db
+        content = b"%PDF-LIPE-PARTIAL"
+        digest = hashlib.sha256(content).hexdigest()
+        await db.fiscal_document_versions.insert_one({
+            "id": "VERSION-PARTIAL", "document_id": "DOC-PARTIAL",
+            "company_id": "CERALDI", "sha256": digest,
+        })
+        await db.documents_inbox.insert_one({
+            "id": "INBOX-PARTIAL", "company_id": "CERALDI", "sha256": digest,
+            "pdf_data": "payload-temporaneo-non-persistibile",
+        })
+        monkeypatch.setattr(ingestion, "extract_pdf_pages", lambda _content: [{
+            "page_number": 1, "text": "VP1 VP4 VP14", "text_source": "pdf_text",
+            "ocr_used": False, "ocr_confidence": None, "layout_words": [],
+            "requires_ocr": False,
+        }])
+
+        result = await FiscalDocumentIngestionService(db, "CERALDI").ingest(
+            content=content,
+            filename="LIPE_2026.pdf",
+            source="documenti_upload_auto_zip",
+            category_hint="lipe",
+            source_metadata={"drive_document_id": "DRIVE-PARTIAL"},
+        )
+        inbox = await db.documents_inbox.find_one({"sha256": digest})
+
+        assert result["status"] == "duplicate"
+        assert inbox["fiscal_document_id"] == "DOC-PARTIAL"
+        assert inbox["drive_document_id"] == "DRIVE-PARTIAL"
+        assert "pdf_data" not in inbox
+
+    asyncio.run(scenario())

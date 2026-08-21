@@ -903,10 +903,35 @@ async def download_documento(doc_id: str):
     if not doc:
         raise HTTPException(status_code=404, detail="Documento non trovato")
 
-    # Architettura Drive/Sheets: usa solo pdf_data
+    # I documenti piccoli storici possono avere ancora il payload nel registro;
+    # gli originali fiscali nuovi restano invece su Drive e Sheets conserva il
+    # riferimento verificabile. Il download resta sempre mediato da questo
+    # endpoint autenticato, mai da un URL Drive pubblico.
     pdf_data = doc.get("pdf_data")
     if not pdf_data:
-        raise HTTPException(status_code=404, detail="PDF non disponibile in Drive/Sheets. Eseguire migrazione dati.")
+        drive_document_id = (
+            doc.get("drive_document_id")
+            or (doc.get("source_metadata") or {}).get("drive_document_id")
+        )
+        if not drive_document_id:
+            raise HTTPException(status_code=404, detail="PDF non disponibile nel catalogo Drive/Sheets")
+        try:
+            import asyncio
+            from app.services.drive_document_index import get_document
+            from app.services.fiscal_document_ingestion import download_drive_file
+            from app.services.drive_document_index import build_drive_service
+
+            drive_doc = await asyncio.to_thread(get_document, str(drive_document_id))
+            content = await asyncio.to_thread(
+                download_drive_file, build_drive_service(), drive_doc["drive_file_id"]
+            )
+        except (RuntimeError, ValueError, KeyError) as exc:
+            raise HTTPException(status_code=404, detail=f"Originale Drive non disponibile: {exc}") from exc
+        nome_sicuro = re.sub(r'[\r\n"]+', " ", doc.get("filename") or "documento.pdf").strip()
+        return StreamingResponse(
+            iter([content]), media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{nome_sicuro}"'},
+        )
 
     def _decode_chunks():
         # Niente più `base64.b64decode(pdf_data)` in un colpo solo: su file grandi
@@ -2573,7 +2598,7 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     return "auto"
 
 
-def _fiscal_category_from_archive_path(archive_path: str) -> str | None:
+def _fiscal_archive_info(archive_path: str) -> tuple[str, int] | None:
     """Ricava una categoria fiscale solo dalla struttura canonica dello ZIP.
 
     La regola e' volutamente stretta: accetta esclusivamente il PDF completo
@@ -2589,13 +2614,19 @@ def _fiscal_category_from_archive_path(archive_path: str) -> str | None:
     parts = [part for part in relative.split("/") if part]
     if len(parts) != 3 or not parts[1].isdigit() or not parts[2].lower().endswith(".pdf"):
         return None
-    return {
+    category = {
         "770": "modello_770",
         "lipe": "lipe",
         "iva": "dichiarazione_iva",
         "irap": "dichiarazione_irap",
         "redditi_sc": "redditi_sc",
     }.get(parts[0].lower())
+    return (category, int(parts[1])) if category else None
+
+
+def _fiscal_category_from_archive_path(archive_path: str) -> str | None:
+    info = _fiscal_archive_info(archive_path)
+    return info[0] if info else None
 
 
 async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
@@ -2684,16 +2715,34 @@ async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
                 "archive_group": str(Path(normalized_path).parent).replace("\\", "/"),
                 "archive_sha256": hashlib.sha256(content).hexdigest(),
             }
-            fiscal_category = _fiscal_category_from_archive_path(normalized_path)
-            if fiscal_category:
+            fiscal_info = _fiscal_archive_info(normalized_path)
+            if fiscal_info:
+                import asyncio
+                from app.services.drive_declaration_upload import upload_declaration
                 from app.services.fiscal_document_ingestion import FiscalDocumentIngestionService
 
+                fiscal_category, filing_year = fiscal_info
+                drive_item = await asyncio.to_thread(
+                    upload_declaration,
+                    content=payload,
+                    filename=clean_name,
+                    category=fiscal_category,
+                    filing_year=filing_year,
+                    note=f"Import da {filename}: {normalized_path}",
+                )
+                fiscal_source = {
+                    **nested_upload.source_context,
+                    "drive_document_id": drive_item.get("document_id"),
+                    "drive_file_id": drive_item.get("drive_file_id"),
+                    "drive_path": drive_item.get("drive_path"),
+                    "drive_url": drive_item.get("drive_url"),
+                }
                 fiscal_item = await FiscalDocumentIngestionService(Database.get_db()).ingest(
                     content=payload,
                     filename=clean_name,
                     source="documenti_upload_auto_zip",
                     category_hint=fiscal_category,
-                    source_metadata=dict(nested_upload.source_context),
+                    source_metadata=fiscal_source,
                     expected_sha256=hashlib.sha256(payload).hexdigest(),
                 )
                 duplicate = fiscal_item.get("status") == "duplicate"

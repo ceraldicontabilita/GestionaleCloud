@@ -174,6 +174,39 @@ class FiscalDocumentIngestionService:
                         upsert=True,
                     )
                 refreshed = True
+            source_metadata = dict(source_metadata or {})
+            if source_metadata.get("drive_document_id") or source_metadata.get("drive_file_id"):
+                inbox_id = stable_id("document", self.company_id, digest)
+                await self.db[COLL_DOCUMENTS_INBOX].update_one(
+                    {"company_id": self.company_id, "sha256": digest},
+                    {"$setOnInsert": {
+                        "id": inbox_id,
+                        "company_id": self.company_id,
+                        "filename": filename,
+                        "file_hash": digest,
+                        "hash_algorithm": "sha256",
+                        "sha256": digest,
+                        "file_size": len(content),
+                        "category": category_hint or "fiscale",
+                        "status": "processato",
+                        "processed": True,
+                        "processed_to": "fiscal_documents",
+                        "fiscal_document_id": existing_version["document_id"],
+                        "fiscal_version_id": existing_version["id"],
+                        "source": source,
+                        "created_at": utc_now(),
+                    }, "$set": {
+                        "fiscal_document_id": existing_version["document_id"],
+                        "fiscal_version_id": existing_version["id"],
+                        "processed": True,
+                        "processed_to": "fiscal_documents",
+                        "drive_document_id": source_metadata.get("drive_document_id"),
+                        "drive_file_id": source_metadata.get("drive_file_id"),
+                        "drive_path": source_metadata.get("drive_path"),
+                        "source_metadata": source_metadata,
+                    }, "$unset": {"pdf_data": ""}},
+                    upsert=True,
+                )
             return {
                 "status": "duplicate",
                 "document_id": existing_version["document_id"],
@@ -262,29 +295,44 @@ class FiscalDocumentIngestionService:
         # Documenti resta l'unico archivio di ingresso e l'unico proprietario
         # del payload. Il registro fiscale conserva solo metadati/versioni.
         inbox_id = stable_id("document", self.company_id, digest)
-        await self.db[COLL_DOCUMENTS_INBOX].update_one(
-            {"company_id": self.company_id, "sha256": digest},
-            {"$setOnInsert": {
-                "id": inbox_id,
-                "company_id": self.company_id,
-                "filename": filename,
-                "pdf_data": base64.b64encode(content).decode("ascii"),
-                "file_hash": digest,
-                "hash_algorithm": "sha256",
-                "sha256": digest,
-                "file_size": len(content),
-                "category": category_hint or "fiscale",
-                "category_label": classification["document_type"],
-                "status": "processato",
-                "processed": True,
-                "processed_to": "fiscal_documents",
-                "fiscal_document_id": document_id,
-                "fiscal_version_id": version_id,
-                "source": source,
+        drive_backed = bool(
+            source_metadata.get("drive_document_id") or source_metadata.get("drive_file_id")
+        )
+        inbox_record = {
+            "id": inbox_id,
+            "company_id": self.company_id,
+            "filename": filename,
+            "file_hash": digest,
+            "hash_algorithm": "sha256",
+            "sha256": digest,
+            "file_size": len(content),
+            "category": category_hint or "fiscale",
+            "category_label": classification["document_type"],
+            "status": "processato",
+            "processed": True,
+            "processed_to": "fiscal_documents",
+            "fiscal_document_id": document_id,
+            "fiscal_version_id": version_id,
+            "drive_document_id": source_metadata.get("drive_document_id"),
+            "drive_file_id": source_metadata.get("drive_file_id"),
+            "drive_path": source_metadata.get("drive_path"),
+            "source": source,
+            "source_metadata": source_metadata,
+            "created_at": now,
+        }
+        if not drive_backed:
+            inbox_record["pdf_data"] = base64.b64encode(content).decode("ascii")
+        inbox_update: dict[str, Any] = {"$setOnInsert": inbox_record}
+        if drive_backed:
+            inbox_update["$set"] = {
+                "drive_document_id": source_metadata.get("drive_document_id"),
+                "drive_file_id": source_metadata.get("drive_file_id"),
+                "drive_path": source_metadata.get("drive_path"),
                 "source_metadata": source_metadata,
-                "created_at": now,
-            }},
-            upsert=True,
+            }
+            inbox_update["$unset"] = {"pdf_data": ""}
+        await self.db[COLL_DOCUMENTS_INBOX].update_one(
+            {"company_id": self.company_id, "sha256": digest}, inbox_update, upsert=True,
         )
         return {
             "status": "inserted",
