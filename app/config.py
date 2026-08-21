@@ -29,11 +29,11 @@ class Settings(BaseSettings):
     RELOAD: bool = False
 
     # legacy DB (DEPRECATO)
-    # Nota: legacy DB è stato rimosso come backend supportato. Le variabili
+    # Nota: il backend storico è stato rimosso come backend supportato. Le variabili
     # qui presenti restano per retrocompatibilità locale ma non devono essere
     # usate in produzione. In produzione il backend operativo è "sheets".
-    legacy DB_ATLAS_URI: Optional[str] = None  # DEPRECATO
-    MONGO_URL: Optional[str] = None          # DEPRECATO
+    LEGACY_DB_ATLAS_URI: Optional[str] = None  # DEPRECATO (usare solo per audit offline)
+    MONGO_URL: Optional[str] = None          # DEPRECATO (mantienuto per compatibilità degli script legacy)
 
     # Nome logico del database (mantiene compatibilità con codice storico)
     DB_NAME: str = "Gestionale"
@@ -41,13 +41,13 @@ class Settings(BaseSettings):
     # I parametri pool/timeouts relativi a legacy DB restano visibili ma non
     # influenzano il runtime quando DATA_BACKEND='sheets'. Non usarli in
     # produzione. (DEPRECATO)
-    legacy DB_MAX_POOL_SIZE: int = 50
-    legacy DB_MIN_POOL_SIZE: int = 0
-    legacy DB_TIMEOUT_MS: int = 5000
-    legacy DB_CONNECT_TIMEOUT_MS: int = 5000
-    legacy DB_SOCKET_TIMEOUT_MS: int = 20000
-    legacy DB_WAIT_QUEUE_TIMEOUT_MS: int = 5000
-    legacy DB_MAX_IDLE_TIME_MS: int = 120000
+    LEGACY_DB_MAX_POOL_SIZE: int = 50
+    LEGACY_DB_MIN_POOL_SIZE: int = 0
+    LEGACY_DB_TIMEOUT_MS: int = 5000
+    LEGACY_DB_CONNECT_TIMEOUT_MS: int = 5000
+    LEGACY_DB_SOCKET_TIMEOUT_MS: int = 20000
+    LEGACY_DB_WAIT_QUEUE_TIMEOUT_MS: int = 5000
+    LEGACY_DB_MAX_IDLE_TIME_MS: int = 120000
 
     # Le riparazioni dati e migrazioni all'avvio restano disabilitate per default.
     RUN_STARTUP_DATA_REPAIRS: bool = False
