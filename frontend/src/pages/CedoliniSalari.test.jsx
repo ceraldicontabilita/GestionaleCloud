@@ -23,7 +23,7 @@ describe('CedoliniSalari', () => {
     render(<CedoliniSalari />);
     await waitFor(() => expect(screen.getByText('Mario Rossi')).toBeInTheDocument());
     expect(screen.getByText('Anna Bianchi')).toBeInTheDocument();
-    expect(api.get).toHaveBeenCalledWith('/api/prima-nota-salari/salari');
+    expect(api.get).toHaveBeenCalledWith('/api/prima-nota-salari/salari-ricostruiti');
     expect(screen.getByRole('heading')).toHaveTextContent('per dipendente');
   });
 
@@ -35,20 +35,18 @@ describe('CedoliniSalari', () => {
     expect(screen.getByText('Anna Bianchi')).toBeInTheDocument();
   });
 
-  it('mostra mesi, busta, acconti e saldo senza duplicare la stessa busta', async () => {
+  it('mantiene due cedolini distinti dello stesso mese e somma gli importi ricostruiti', async () => {
     api.get.mockResolvedValueOnce({
       data: [
-        { id: 'busta', dipendente_nome: 'Mario Rossi', anno: 2026, mese: 3, importo_busta: 1000 },
-        { id: 'a1', dipendente_nome: 'Mario Rossi', anno: 2026, mese: 3, importo_busta: 1000, importo_bonifico_documentato: 300 },
-        { id: 'a2', dipendente_nome: 'Mario Rossi', anno: 2026, mese: 3, importo_bonifico_documentato: 200 },
+        { id: 'busta-1', dipendente: 'Mario Rossi', anno: 2026, mese: 3, importo_busta: 1000 },
+        { id: 'busta-2', dipendente: 'Mario Rossi', anno: 2026, mese: 3, importo_busta: 400 },
       ],
     });
     render(<CedoliniSalari />);
     await waitFor(() => expect(screen.getByText('Mario Rossi')).toBeInTheDocument());
     expect(screen.getByText('Marzo')).toBeInTheDocument();
     const riepilogo = screen.getByText('Marzo').closest('tr');
-    expect(within(riepilogo).getByText('€ 1.000,00')).toBeInTheDocument();
-    expect(within(riepilogo).getAllByText('€ 500,00')).toHaveLength(2);
+    expect(within(riepilogo).getAllByText('€ 1.400,00')).toHaveLength(2);
   });
 
   it('non presenta come riconciliata una vecchia associazione da rivedere', async () => {

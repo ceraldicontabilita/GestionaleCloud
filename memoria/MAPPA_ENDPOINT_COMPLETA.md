@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1138 endpoint** in **112 gruppi**.
+> Totale **1140 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 693 · ext esterni = 83 · — da verificare = 362
+**Riepilogo uso:** ✓ frontend = 694 · ext esterni = 83 · — da verificare = 363
 
 ## AI Parser  (11)
 
@@ -1409,7 +1409,7 @@
 | POST | `/api/prima-nota/unifica-categorie` | — | prima_nota_module.manutenzione |
 | GET | `/api/prima-nota/verifica-metodo-fattura/{fattura_id}` | — | prima_nota_module.manutenzione |
 
-## Prima Nota Salari  (21)
+## Prima Nota Salari  (23)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1420,10 +1420,12 @@
 | GET | `/api/prima-nota-salari/export-excel` | — | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/import-bonifici` | ✓ | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/import-paghe` | ✓ | accounting.prima_nota_salari |
+| POST | `/api/prima-nota-salari/import-salari-ricostruiti` | — | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/import-salari-verificati` | — | accounting.prima_nota_salari |
 | DELETE | `/api/prima-nota-salari/pulisci-righe-vuote` | — | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/ricalcola-progressivi` | ✓ | accounting.prima_nota_salari |
 | GET | `/api/prima-nota-salari/salari` | ✓ | accounting.prima_nota_salari |
+| GET | `/api/prima-nota-salari/salari-ricostruiti` | ✓ | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/salari/aggiustamento` | ✓ | accounting.prima_nota_salari |
 | DELETE | `/api/prima-nota-salari/salari/reset` | ✓ | accounting.prima_nota_salari |
 | GET | `/api/prima-nota-salari/salari/riepilogo` | ✓ | accounting.prima_nota_salari |
