@@ -53,10 +53,6 @@ class SheetsRuntimeDatabase(SheetDatabase):
         if discovered_spreadsheet_id:
             self._config["GOOGLE_SHEETS_LEDGER_ID"] = discovered_spreadsheet_id
         errors = sum(int(item.get("numero_errori") or 0) for item in result["fogli"])
-        if errors:
-            raise RuntimeError(
-                f"Registro Drive non avviabile: {errors} righe non valide"
-            )
         self._by_collection = {
             item["collezione"]: LedgerSheet(
                 item["foglio"], item["collezione"], item["prefisso"],
@@ -64,6 +60,15 @@ class SheetsRuntimeDatabase(SheetDatabase):
             for item in result["fogli"]
         }
         self.hydration_result = result
+        if errors:
+            # Una singola riga storica malformata non deve rendere invisibili
+            # tutte le altre registrazioni valide. ``restore_all`` conserva la
+            # riga originale nel foglio, la esclude dalla cache e ne mantiene
+            # il dettaglio in ``hydration_result`` per l'audit amministrativo.
+            logger.warning(
+                "Archivio Sheets idratato con %s righe non valide escluse",
+                errors,
+            )
         logger.info(
             "Archivio Sheets idratato: %s righe in %s fogli",
             sum(int(item.get("valide") or 0) for item in result["fogli"]),
