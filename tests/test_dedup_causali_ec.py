@@ -8,7 +8,7 @@ righe che UN file porta; solo l'eccedenza cross-file e' doppione.
 import asyncio
 
 import pytest
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.bank import estratto_conto as modulo_import
 from app.routers.bank.estratto_conto import normalizza_descrizione_ec
@@ -57,7 +57,7 @@ def _riga(descrizione, importo="-1,79"):
 
 @pytest.fixture
 def db(monkeypatch):
-    finto = AsyncMongoMockClient()["dedup_causali_test"]
+    finto = MemorySheetsClient()["dedup_causali_test"]
     monkeypatch.setattr(modulo_import.Database, "get_db", staticmethod(lambda: finto))
     return finto
 
@@ -90,7 +90,7 @@ def _ec(id_, descrizione, file, **extra):
 
 
 def test_la_bonifica_marca_solo_l_eccedenza_cross_file():
-    db = AsyncMongoMockClient()["bonifica_test"]
+    db = MemorySheetsClient()["bonifica_test"]
     # File A dichiara DUE operazioni; file B le ridichiara col prefisso.
     _semina_storico(
         db,
@@ -114,7 +114,7 @@ def test_la_bonifica_marca_solo_l_eccedenza_cross_file():
 
 def test_un_gruppo_con_una_sola_forma_non_viene_toccato():
     """N righe identiche dallo stesso file = N operazioni dichiarate."""
-    db = AsyncMongoMockClient()["bonifica_test2"]
+    db = MemorySheetsClient()["bonifica_test2"]
     _semina_storico(
         db,
         _ec("a1", SDD_LUNGO, "ESTRATTO 2026.csv"),
@@ -128,7 +128,7 @@ def test_un_gruppo_con_una_sola_forma_non_viene_toccato():
 
 def test_la_riga_gia_lavorata_e_quella_che_resta():
     """Se una copia e' gia' in Prima Nota, si marca l'altra."""
-    db = AsyncMongoMockClient()["bonifica_test3"]
+    db = MemorySheetsClient()["bonifica_test3"]
     _semina_storico(
         db,
         _ec("a1", SDD_CORTO, "ElencoEntrateUscite.csv"),
@@ -143,7 +143,7 @@ def test_la_riga_gia_lavorata_e_quella_che_resta():
 
 
 def test_l_analisi_non_scrive_niente():
-    db = AsyncMongoMockClient()["bonifica_test4"]
+    db = MemorySheetsClient()["bonifica_test4"]
     _semina_storico(
         db,
         _ec("a1", SDD_CORTO, "ElencoEntrateUscite.csv"),

@@ -231,11 +231,12 @@ def test_importo_stringa_convertito():
 
 
 def test_importo_stringa_convertito_nel_runtime_sheets_reale():
-    """Il runtime Sheets usa mongomock, che non implementa $convert."""
+    """Il runtime Sheets converte anche gli importi serializzati come testo."""
     runtime = SheetsRuntimeDatabase(
         "test", {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"},
     )
-    _run(runtime._memory_db["prima_nota_banca"].insert_many([
+    runtime.loading = True
+    _run(runtime["prima_nota_banca"].insert_many([
         {"tipo": "entrata", "importo": "100.50", "data": "2026-03-01"},
         {"tipo": "uscita", "importo": 30, "data": "2026-03-02"},
         {"tipo": "entrata", "importo": "non-un-numero", "data": "2026-03-03"},

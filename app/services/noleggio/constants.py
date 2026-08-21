@@ -16,13 +16,13 @@ CATEGORIE SPESE:
 - Riparazioni: Sinistri, danni, carrozzeria, meccanica
 """
 
-# Collection MongoDB per veicoli noleggio
+# Foglio Sheets per veicoli noleggio
 COLLECTION = "veicoli_noleggio"
 
 # Fornitori noleggio con P.IVA
 FORNITORI_NOLEGGIO = {
     "ALD": "01924961004",
-    "ARVAL": "04911190488", 
+    "ARVAL": "04911190488",
     "Leasys": "06714021000",
     "LeasePlan": "02615080963"
 }

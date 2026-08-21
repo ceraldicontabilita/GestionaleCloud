@@ -56,13 +56,13 @@ async def processa_cedolino_completo(
     2. Riepilogo cedolini
     3. Prima nota salari
     4. Riconciliazione automatica
-    
+
     Args:
-        db: Database MongoDB
+        db: Registro Sheets
         cedolino_data: Dati estratti dal parser
         filename: Nome file PDF
-        pdf_data: Contenuto PDF in Base64 (architettura MongoDB-only)
-        
+        pdf_data: Contenuto PDF in Base64 (architettura Drive/Sheets)
+
     Returns:
         Risultato del processamento
     """
@@ -76,7 +76,7 @@ async def processa_cedolino_completo(
         "dipendente_id": None,
         "errore": None
     }
-    
+
     try:
         cf = cedolino_data.get("codice_fiscale", "").upper()
         nome = cedolino_data.get("nome_dipendente", "")
@@ -84,52 +84,52 @@ async def processa_cedolino_completo(
         anno = cedolino_data.get("anno")
         netto = cedolino_data.get("netto_mese", 0)
         cedolino_dedup_key = _chiave_documentale_cedolino(cedolino_data, pdf_data)
-        
+
         if not cf or not mese or not anno:
             result["errore"] = "Dati mancanti (CF, mese o anno)"
             return result
-        
+
         if netto == 0:
             result["errore"] = "Netto = 0, probabilmente foglio presenze"
             return result
-        
+
         # ============================================
         # 1. ANAGRAFICA DIPENDENTE
         # ============================================
         dipendente = await db["dipendenti"].find_one(
             {"codice_fiscale": cf}
         )
-        
+
         if dipendente:
             # Aggiorna dati esistenti se necessario
             dipendente_id = dipendente.get("id")
-            
+
             update_data = {
                 "ultimo_cedolino": f"{mese:02d}/{anno}",
                 "ultimo_netto": netto,
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }
-            
+
             # Aggiorna IBAN se presente e diverso
             iban = cedolino_data.get("iban")
             if iban and iban != dipendente.get("iban"):
                 update_data["iban"] = iban
-            
+
             await db["dipendenti"].update_one(
                 {"codice_fiscale": cf},
                 {"$set": update_data}
             )
             result["anagrafica_aggiornata"] = True
-            
+
         else:
             # CREA NUOVA ANAGRAFICA
             dipendente_id = str(uuid.uuid4())
-            
+
             # Estrai cognome e nome
             parti_nome = nome.split() if nome else []
             cognome = parti_nome[0] if parti_nome else ""
             nome_proprio = " ".join(parti_nome[1:]) if len(parti_nome) > 1 else ""
-            
+
             nuova_anagrafica = {
                 "id": dipendente_id,
                 "codice_fiscale": cf,
@@ -149,13 +149,13 @@ async def processa_cedolino_completo(
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }
-            
+
             await db["dipendenti"].insert_one(dict(nuova_anagrafica).copy())
             result["anagrafica_creata"] = True
             logger.info(f"📋 Nuova anagrafica dipendente creata: {nome} ({cf})")
-        
+
         result["dipendente_id"] = dipendente_id
-        
+
         # ============================================
         # 2. RIEPILOGO CEDOLINI
         # ============================================
@@ -174,7 +174,7 @@ async def processa_cedolino_completo(
             "ore_lavorate": cedolino_data.get("ore_lavorate", 0),
             "iban": cedolino_data.get("iban"),
             "filename": filename,
-            "pdf_data": pdf_data,  # Architettura MongoDB-only
+            "pdf_data": pdf_data,  # Architettura Drive/Sheets
             "formato": cedolino_data.get("formato_rilevato"),
             "tipo_cedolino": cedolino_data.get("tipo_cedolino", "mensile"),
             "cedolino_dedup_key": cedolino_dedup_key,
@@ -204,7 +204,7 @@ async def processa_cedolino_completo(
         else:
             await db["riepilogo_cedolini"].insert_one(dict(cedolino_record))
         result["cedolino_salvato"] = True
-        
+
         # ============================================
         # 3. PRIMA NOTA SALARI
         # ============================================
@@ -233,7 +233,7 @@ async def processa_cedolino_completo(
             # non deve generare una scrittura nella contabilita' operativa.
             existing_pn = {"id": None, "cedolino_dedup_key": cedolino_dedup_key}
             result["prima_nota_fuori_periodo"] = True
-        
+
         # movimento_id garantito in entrambi i rami (if existing_pn / if not)
         # Necessario per publish evento sotto
         movimento_id = None
@@ -247,12 +247,12 @@ async def processa_cedolino_completo(
 
         if not existing_pn:
             movimento_id = str(uuid.uuid4())
-            
+
             # Data movimento = ultimo giorno del mese
             import calendar
             ultimo_giorno = calendar.monthrange(anno, mese)[1]
             data_movimento = f"{anno}-{mese:02d}-{ultimo_giorno:02d}"
-            
+
             movimento_pn = {
                 "id": movimento_id,
                 "dipendente_id": dipendente_id,
@@ -272,18 +272,18 @@ async def processa_cedolino_completo(
                 "source": "cedolino_auto",
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
-            
+
             await db["prima_nota_salari"].insert_one(dict(movimento_pn).copy())
             result["prima_nota_creata"] = True
-            
+
             # ============================================
             # 4. RICONCILIAZIONE AUTOMATICA
             # ============================================
             # Cerca nel estratto conto un bonifico con importo simile
             # nello stesso periodo
-            
+
             riconciliato = await riconcilia_stipendio_automatico(
-                db, 
+                db,
                 dipendente_nome=nome,
                 importo=netto,
                 mese=mese,
@@ -291,9 +291,9 @@ async def processa_cedolino_completo(
                 movimento_id=movimento_id,
                 iban=cedolino_data.get("iban")
             )
-            
+
             result["riconciliato"] = riconciliato
-        
+
         result["success"] = True
 
         # ── EVENT BUS UNICO: partita aperta, alert, prima nota salari, TFR,
@@ -563,18 +563,18 @@ async def processa_tutti_cedolini_pdf(
     """
     Processa un file PDF di cedolini con flusso completo.
     Gestisce PDF multi-pagina con più dipendenti.
-    
-    Architettura MongoDB-only: accetta pdf_data in Base64.
+
+    Architettura Drive/Sheets: accetta pdf_data in Base64.
     Usa come prima scelta il parser deterministico multi-template dei modelli
     aziendali, poi Document AI e infine il parser regex storico.
-    
+
     Args:
-        db: Database MongoDB
+        db: Registro Sheets
         pdf_data: Contenuto PDF in Base64
         filename: Nome del file PDF
     """
     import base64
-    
+
     results = {
         "success": True,
         "cedolini_processati": 0,
@@ -584,7 +584,7 @@ async def processa_tutti_cedolini_pdf(
         "errori": [],
         "metodo": "multi_template"  # Traccia quale metodo è stato usato
     }
-    
+
     # Decodifica PDF da Base64
     try:
         file_content = base64.b64decode(pdf_data)
@@ -653,7 +653,7 @@ async def processa_tutti_cedolini_pdf(
                 results["metodo"] = "document_ai"
         except Exception as e:
             logger.warning("Document AI fallito per %s: %s", filename, e)
-    
+
     # ULTIMO FALLBACK: parser regex legacy per formati storici non coperti.
     if not cedolini:
         try:
@@ -665,7 +665,7 @@ async def processa_tutti_cedolini_pdf(
             results["success"] = False
             results["errori"].append(f"Entrambi i parser falliti: {str(e)}")
             return results
-    
+
     # Processa i cedolini trovati
     for ced in cedolini:
         try:
@@ -700,7 +700,7 @@ async def processa_tutti_cedolini_pdf(
         # Usa processamento V2 che estrae anche ferie/ROL/contributi
         try:
             from app.services.salari_unificati_v2 import processa_cedolino_v2
-            
+
             res = await processa_cedolino_v2(
                 db=db,
                 cedolino_data=ced,
@@ -716,7 +716,7 @@ async def processa_tutti_cedolini_pdf(
                 filename=filename,
                 pdf_data=cedolino_pdf_data
             )
-        
+
         if res.get("success"):
             results["cedolini_processati"] += 1
             if res.get("anagrafica_creata"):
@@ -728,7 +728,7 @@ async def processa_tutti_cedolini_pdf(
         else:
             if res.get("errore"):
                 results["errori"].append(f"{ced.get('nome_dipendente', 'N/D')}: {res.get('errore')}")
-    
+
     return results
 
 
@@ -737,44 +737,44 @@ async def get_anagrafica_dipendenti(db, attivi_solo: bool = True) -> List[Dict[s
     filtro = {}
     if attivi_solo:
         filtro["stato"] = "attivo"
-    
+
     dipendenti = await db["dipendenti"].find(
         filtro,
         {"_id": 0}
     ).sort("cognome", 1).to_list(500)
-    
+
     return dipendenti
 
 
 async def get_riepilogo_dipendente(db, codice_fiscale: str) -> Dict[str, Any]:
     """Restituisce il riepilogo completo di un dipendente."""
-    
+
     # Anagrafica
     anagrafica = await db["dipendenti"].find_one(
         {"codice_fiscale": codice_fiscale},
         {"_id": 0}
     )
-    
+
     if not anagrafica:
         return {"errore": "Dipendente non trovato"}
-    
+
     # Cedolini
     cedolini = await db["riepilogo_cedolini"].find(
         {"codice_fiscale": codice_fiscale},
         {"_id": 0}
     ).sort([("anno", -1), ("mese", -1)]).to_list(100)
-    
+
     # Totali
     totale_netto = sum(c.get("netto_mese", 0) for c in cedolini)
-    
+
     # Prima nota
     prima_nota = await db["prima_nota_salari"].find(
         {"codice_fiscale": codice_fiscale},
         {"_id": 0}
     ).sort([("anno", -1), ("mese", -1)]).to_list(100)
-    
+
     riconciliati = sum(1 for p in prima_nota if p.get("riconciliato"))
-    
+
     return {
         "anagrafica": anagrafica,
         "cedolini": cedolini,

@@ -9,7 +9,7 @@ storage_architecture: drive-only
 > [!IMPORTANT]
 > Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi legacy/collection restano contesto storico. MongoDB è rimosso e non va usato.
 
-Documentazione dei router: email_download, documenti, documenti_non_associati, documents_inbox_classify, document_ai, ai_parser, enhanced_parser, email_scanner, email_mongodb, import_manuale, import_templates, chat_router, learning_machine, learning_universal, learning_machine_cdc.
+Documentazione dei router: email_download, documenti, documenti_non_associati, documents_inbox_classify, document_ai, ai_parser, enhanced_parser, email_scanner, email_drive_sheets, import_manuale, import_templates, chat_router, learning_machine, learning_universal, learning_machine_cdc.
 
 Contesto: l'import fatture da email è stato unificato su `fatture_upload.process_xml_bytes`; il fix del 502 sul "Vedi" documenti è la decodifica base64 a chunk in `documenti.py /documento/{id}/download`. Gli altri punti che decodificano base64 interi in RAM sono segnalati nelle Note.
 
@@ -76,7 +76,7 @@ Router più grande del blocco: orchestrazione scarico completo email (PEC/Gmail 
 ### POST /api/email-download/sync-filesystem — sync filesystem→DB
 **Cosa fa**: scansiona /app/documents e allinea i record di `documents_inbox`.
 **Logica codice**: delega a `sync_filesystem_pdfs_to_db(db)`.
-**Note**: presuppone filesystem persistente; in architettura "MongoDB-only" è un residuo legacy.
+**Note**: presuppone filesystem persistente; in architettura "Drive/Sheets" è un residuo legacy.
 
 ### POST /api/email-download/associa-f24-filesystem — associa F24 da filesystem
 **Cosa fa**: associa i PDF F24 su disco ai record `f24_commercialista`.
@@ -194,7 +194,7 @@ Router più grande del blocco: orchestrazione scarico completo email (PEC/Gmail 
 
 ## documenti.py (/api/documenti) — 32 endpoint
 
-Pagina "Documenti Email": monitor IMAP periodico (`email_monitor_service`), download allegati (`email_document_downloader`) in `documents_inbox`, visualizzazione/gestione documenti (architettura MongoDB-only con pdf_data base64), pipeline di processamento per tipo (F24, buste paga, estratti Nexi/BNL) e upload manuale con autodetect. Contiene il fix streaming del 502 sul download.
+Pagina "Documenti Email": monitor IMAP periodico (`email_monitor_service`), download allegati (`email_document_downloader`) in `documents_inbox`, visualizzazione/gestione documenti (architettura Drive/Sheets con pdf_data base64), pipeline di processamento per tipo (F24, buste paga, estratti Nexi/BNL) e upload manuale con autodetect. Contiene il fix streaming del 502 sul download.
 
 ### POST /api/documenti/monitor/start — avvia monitor email
 **Cosa fa**: avvia il polling automatico della posta ogni `intervallo_minuti` (default 10).
@@ -271,7 +271,7 @@ Pagina "Documenti Email": monitor IMAP periodico (`email_monitor_service`), down
 ### GET /api/documenti/statistiche — statistiche documenti
 **Cosa fa**: totali, nuovi, processati, breakdown per categoria, ultimo download, spazio disco.
 **Logica codice**: count + aggregate su documents_inbox; scandisce `DOCUMENTS_DIR` su filesystem per calcolare i MB.
-**Note**: "ultimo_download" usa `find_one` senza sort → NON è realmente l'ultimo. Il calcolo spazio disco è legacy rispetto all'architettura MongoDB-only.
+**Note**: "ultimo_download" usa `find_one` senza sort → NON è realmente l'ultimo. Il calcolo spazio disco è legacy rispetto all'architettura Drive/Sheets.
 
 ### GET /api/documenti/cartelle-email — lista cartelle IMAP
 **Cosa fa**: elenca le cartelle IMAP dell'account Gmail configurato.
@@ -431,16 +431,16 @@ Estrazione dati strutturati da documenti via LLM (servizio `document_ai_extracto
 
 ### GET /api/document-ai/extracted-documents — archivio estrazioni
 **Cosa fa**: lista paginata dei documenti estratti (filtro tipo); `include_file=true` include il base64.
-**Logica codice**: find su `extracted_documents` con projection, sort created_at desc; converte `_id` ObjectId in stringa `id`.
+**Logica codice**: find su `extracted_documents` con projection, sort created_at desc; converte `_id` identificatore interno in stringa `id`.
 
 ### DELETE /api/document-ai/extracted-documents/{doc_id} — elimina estrazione
-**Cosa fa**: elimina un documento estratto per ObjectId.
-**Logica codice**: `delete_one({"_id": ObjectId(doc_id)})`; 404 se non trovato.
-**Note**: il try/except esterno intercetta anche l'HTTPException 404 e la ritrasforma in 500 (status code sbagliato per "non trovato" e per ObjectId invalido).
+**Cosa fa**: elimina un documento estratto per identificatore interno.
+**Logica codice**: `delete_one({"_id": identificatore interno(doc_id)})`; 404 se non trovato.
+**Note**: il try/except esterno intercetta anche l'HTTPException 404 e la ritrasforma in 500 (status code sbagliato per "non trovato" e per identificatore interno invalido).
 
 ### POST /api/document-ai/process-classified-email — processa singolo classificato
 **Cosa fa**: estrae i dati (LLM) da un documento della pipeline email `documents_classified` e aggiorna il record con extracted_data.
-**Logica codice**: lookup per ObjectId o msg_id; richiede `pdf_base64`; mappa tipo email→tipo documento; `process_document_from_base64`; update con extracted_data/processed.
+**Logica codice**: lookup per identificatore interno o msg_id; richiede `pdf_base64`; mappa tipo email→tipo documento; `process_document_from_base64`; update con extracted_data/processed.
 
 ### POST /api/document-ai/process-all-classified — processa tutti i classificati
 **Cosa fa**: processa in massa i documenti classificati con AI e salva nelle collection del gestionale (filtri per tipo, flag riprocessa).
@@ -565,27 +565,27 @@ Scanner "completo" della posta per cartelle Gmail tematiche (servizio `email_sca
 
 ---
 
-## email_mongodb.py (/api/email-mongodb) — 4 endpoint
+## email_drive_sheets.py (/api/email-drive_sheets) — 4 endpoint
 
-Variante "tutto su MongoDB Atlas, niente filesystem" dello scarico email (servizio `email_to_mongodb`, collezione `email_documents`). Montato con prefix `/api` + prefix interno `/email-mongodb`.
+Variante "tutto su Google Drive/Sheets, niente filesystem" dello scarico email (servizio `email_to_drive_sheets`, collezione `email_documents`). Montato con prefix `/api` + prefix interno `/email-drive_sheets`.
 
-### POST /api/email-mongodb/sync — scarica email su MongoDB
+### POST /api/email-drive_sheets/sync — scarica email su Drive/Sheets
 **Cosa fa**: scarica le email con PDF degli ultimi `days_back` giorni e salva tutto in `email_documents`.
 **Logica codice**: `download_and_save_emails(db, days_back, folder)`.
 **Note**: riceve `BackgroundTasks` ma NON lo usa: esecuzione sincrona (rischio timeout su periodi lunghi, il parametro inganna).
 
-### GET /api/email-mongodb/stats — statistiche
-**Cosa fa**: statistiche sui documenti email in MongoDB.
+### GET /api/email-drive_sheets/stats — statistiche
+**Cosa fa**: statistiche sui documenti email in Drive/Sheets.
 **Logica codice**: `get_email_documents_stats(db)`.
 
-### GET /api/email-mongodb/documents — lista documenti
+### GET /api/email-drive_sheets/documents — lista documenti
 **Cosa fa**: lista `email_documents` con filtri category/processed, senza payload PDF.
 **Logica codice**: find con projection `pdf_data:0`, sort created_at desc.
 
-### GET /api/email-mongodb/pdf/{doc_id} — download PDF
-**Cosa fa**: restituisce il PDF dal record MongoDB.
+### GET /api/email-drive_sheets/pdf/{doc_id} — download PDF
+**Cosa fa**: restituisce il PDF dal record Drive/Sheets.
 **Logica codice**: find_one per id; `base64.b64decode(pdf_data)` + Response inline.
-**Note**: decodifica base64 dell'intero file in RAM (no streaming) — stesso pattern del 502; da fixare a chunk. Il file duplica funzionalità di email_download (quarta pipeline di scarico email nel sistema: email_download, documenti, email_scanner, email_mongodb).
+**Note**: decodifica base64 dell'intero file in RAM (no streaming) — stesso pattern del 502; da fixare a chunk. Il file duplica funzionalità di email_download (quarta pipeline di scarico email nel sistema: email_download, documenti, email_scanner, email_drive_sheets).
 
 ---
 
@@ -757,11 +757,11 @@ Riclassificazione automatica dei costi per centro di costo (servizio `learning_m
 
 ## Anomalie trasversali (riepilogo)
 
-1. **Base64 interi in RAM (pattern del 502)**: oltre al punto già fixato in `documenti.py /documento/{id}/download` (streaming a chunk), decodificano ancora l'intero file in un colpo solo: `email_download GET /pdf/{collection}/{pdf_id}`, `email_mongodb GET /pdf/{doc_id}`, `documenti_non_associati GET /pdf/{documento_id}`. Inoltre `documenti.py POST /riepilogo-cedolini` carica fino a 5000 documenti COMPLETI di pdf_data in una lista (`to_list(5000)`) e `chat_router` fa `to_list(200000)`/`to_list(50000)` su invoices/f24_unificato.
+1. **Base64 interi in RAM (pattern del 502)**: oltre al punto già fixato in `documenti.py /documento/{id}/download` (streaming a chunk), decodificano ancora l'intero file in un colpo solo: `email_download GET /pdf/{collection}/{pdf_id}`, `email_drive_sheets GET /pdf/{doc_id}`, `documenti_non_associati GET /pdf/{documento_id}`. Inoltre `documenti.py POST /riepilogo-cedolini` carica fino a 5000 documenti COMPLETI di pdf_data in una lista (`to_list(5000)`) e `chat_router` fa `to_list(200000)`/`to_list(50000)` su invoices/f24_unificato.
 2. **Fatture email fuori dal percorso unificato**: `email_download /processa-fatture-email` (+ variante /batch) inserisce direttamente in `invoices` via `ai_document_parser`, bypassando `fatture_upload.process_xml_bytes`; idem `ai_parser /parse` e `/parse-fattura` (senza anti-duplicato). Solo `documenti /upload-auto` usa il percorso unificato.
 3. **F24 frammentati su 5 collezioni con schemi misti**: f24_unificato (con DUE schemi diversi inseriti da `documenti /sync-f24-automatico`), f24_commercialista, f24_tributi, f24_parsed, f24_quietanze. Il problema è documentato nel codice stesso (`chat_router._f24_anno`).
-4. **Docstring che mentono**: `documenti /processa-f24-scaricati` (controlla un wrapper `{success, f24_data}` che il parser non restituisce → probabilmente non importa mai nulla); `documenti /reimporta-da-filesystem` (dice /app/documents, usa /tmp/documents); `documenti /documento/{id}/processa` (non carica nella destinazione, marca solo lo stato); `ai_parser /da-rivedere/process-batch` (dice "riprocessa con AI", cambia solo uno status); `ai_parser /batch-parse` e `learning_universal /apply-suggestions` (parametri save_to_db / suggestion_ids ignorati); `document_ai /extract` (dice default gpt-4o, è claude-sonnet-4-5); `email_mongodb /sync` e `learning_machine /scan` (ricevono BackgroundTasks ma eseguono sincroni).
+4. **Docstring che mentono**: `documenti /processa-f24-scaricati` (controlla un wrapper `{success, f24_data}` che il parser non restituisce → probabilmente non importa mai nulla); `documenti /reimporta-da-filesystem` (dice /app/documents, usa /tmp/documents); `documenti /documento/{id}/processa` (non carica nella destinazione, marca solo lo stato); `ai_parser /da-rivedere/process-batch` (dice "riprocessa con AI", cambia solo uno status); `ai_parser /batch-parse` e `learning_universal /apply-suggestions` (parametri save_to_db / suggestion_ids ignorati); `document_ai /extract` (dice default gpt-4o, è claude-sonnet-4-5); `email_drive_sheets /sync` e `learning_machine /scan` (ricevono BackgroundTasks ma eseguono sincroni).
 5. **Duplicazione di pdf_data**: il base64 viene ricopiato nei record derivati (invoices da email, cedolini da sync-buste-paga, riepilogo_cedolini, record target di documenti-non-associati/associa, extracted_documents con file_base64): stesso file salvato N volte nel DB.
 6. **Stato in memoria di processo**: download_status, _batch_processing_status (email_download), _download_tasks e _email_operation_lock (documenti): persi al riavvio e non condivisi tra worker.
 7. **Bug puntuali**: `import_manuale /preview-import` conta una source mai scritta (stat POS sempre 0); `import-finanziamento-soci` senza anti-duplicato; `documenti /ultimo-sync` e `/statistiche` usano find_one senza sort ("ultimo" non garantito); `documents_inbox_classify /auto-classify` legge il testo PDF solo se pdf_data è bytes ma il dato è base64 string (estrazione contenuto di fatto disattivata) e usa il campo `categoria` mentre il resto usa `category`; `documenti_non_associati /associa` permette di scrivere in collezioni arbitrarie (whitelist non applicata); `learning_machine /reset-learning` "solo admin" senza alcun controllo; `document_ai DELETE` restituisce 500 invece di 404.
-8. **Pipeline email quadruplicata**: email_download (EmailFullDownloader), documenti (email_document_downloader + monitor), email_scanner (email_scanner_completo), email_mongodb (email_to_mongodb), più learning_machine che fa IMAP in proprio: cinque vie diverse per scaricare/classificare la stessa posta, con collezioni destinazione diverse (documents_inbox, email_documents, documenti_classificati, documenti_non_associati, fatture_email_attachments).
+8. **Pipeline email quadruplicata**: email_download (EmailFullDownloader), documenti (email_document_downloader + monitor), email_scanner (email_scanner_completo), email_drive_sheets (email_to_drive_sheets), più learning_machine che fa IMAP in proprio: cinque vie diverse per scaricare/classificare la stessa posta, con collezioni destinazione diverse (documents_inbox, email_documents, documenti_classificati, documenti_non_associati, fatture_email_attachments).

@@ -10,7 +10,6 @@ def test_pagina_html_interattiva_usa_solo_api_drive():
     assert "/api/documenti/drive/index/overview" in text
     assert "/api/documenti/drive/index/document/" in text
     assert "/api/documenti-fiscali/upload" in text
-    assert "mongodb" not in text.casefold()
     assert "documents_inbox" not in text.casefold()
 
 

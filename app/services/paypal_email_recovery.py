@@ -1,6 +1,6 @@
 """
 Recupero automatico delle fatture mancanti per i fornitori PayPal non
-mappati (tipicamente fornitori esteri: MongoDB, RTA, SaaS vari — non
+mappati (tipicamente fornitori esteri o servizi SaaS non presenti su SDI — non
 emettono mai fattura elettronica XML, quindi Drive/PEC-SDI non li
 troveranno MAI, a prescindere da quanto tempo passa).
 
@@ -140,7 +140,7 @@ async def _mappa_da_fornitore_esistente(db, account_id: str, nome_controparte: s
     in anagrafica): niente da cercare in posta, basta collegare l'account
     PayPal al fornitore che ha già un nome compatibile. La ricerca email ha
     senso solo per chi non ha ancora nessun fornitore/fattura in anagrafica
-    (fornitori esteri come MongoDB) — provarla anche per un fornitore
+    (fornitori esteri) — provarla anche per un fornitore
     italiano già censito sarebbe solo rumore nella casella di posta.
     Ritorna True se ha trovato ed eseguito un match certo.
     """
@@ -234,7 +234,7 @@ async def recupera_fatture_mancanti_email(db, forza: bool = False) -> Dict[str, 
             # download_documents_from_email() se allowed_senders è valorizzato
             # la ricerca per parola chiave viene ignorata del tutto e si cerca
             # solo FROM quell'indirizzo esatto — ma le fatture spesso arrivano
-            # da un indirizzo di sistema automatico (es. "MongoDB Cloud")
+            # da un indirizzo di sistema automatico del fornitore
             # diverso dall'email della persona di contatto salvata su PayPal,
             # quindi con allowed_senders non trovava mai nulla anche quando i
             # documenti erano chiaramente in posta.

@@ -29,7 +29,7 @@ async def cerca_in_estratto_conto(
     """
     Cerca un pagamento in uscita nell'estratto conto movimenti.
     Ritorna (id, collection) se trovato, altrimenti None.
-    
+
     In `estratto_conto_movimenti`: importo è NEGATIVO per le uscite.
     In `prima_nota_banca`: importo è POSITIVO, tipo = "uscita".
     """
@@ -37,7 +37,7 @@ async def cerca_in_estratto_conto(
         data_ref = datetime.strptime(data_ref_str, "%Y-%m-%d")
         data_min = (data_ref - timedelta(days=giorni_tolleranza)).strftime("%Y-%m-%d")
         data_max = (data_ref + timedelta(days=giorni_tolleranza // 2)).strftime("%Y-%m-%d")
-        
+
         # ---- 1. Cerca in estratto_conto_movimenti (importo negativo) ----
         query_ecm = {
             "$or": [
@@ -48,18 +48,18 @@ async def cerca_in_estratto_conto(
             "data": {"$gte": data_min, "$lte": data_max},
             "riconciliato_paghe": {"$ne": True}
         }
-        
+
         if keywords_descrizione:
             regex = "|".join(keywords_descrizione)
             query_ecm_kw = {**query_ecm, "descrizione_originale": {"$regex": regex, "$options": "i"}}
             mov = await db.estratto_conto_movimenti.find_one(_solo_evidenza_ufficiale(query_ecm_kw))
             if mov:
                 return (str(mov.get("id", str(mov.get("_id", "")))), "estratto_conto_movimenti")
-        
+
         mov = await db.estratto_conto_movimenti.find_one(_solo_evidenza_ufficiale(query_ecm))
         if mov:
             return (str(mov.get("id", str(mov.get("_id", "")))), "estratto_conto_movimenti")
-        
+
         # ---- 2. Cerca in prima_nota_banca (importo positivo, tipo uscita) ----
         query_pnb = {
             "tipo": "uscita",
@@ -68,18 +68,18 @@ async def cerca_in_estratto_conto(
             "riconciliato_paghe": {"$ne": True},
             "in_attesa_estratto_ufficiale": {"$ne": True},
         }
-        
+
         if keywords_descrizione:
             regex = "|".join(keywords_descrizione)
             query_pnb_kw = {**query_pnb, "descrizione": {"$regex": regex, "$options": "i"}}
             mov = await db.prima_nota_banca.find_one(query_pnb_kw)
             if mov:
                 return (str(mov.get("id", str(mov.get("_id", "")))), "prima_nota_banca")
-        
+
         mov = await db.prima_nota_banca.find_one(query_pnb)
         if mov:
             return (str(mov.get("id", str(mov.get("_id", "")))), "prima_nota_banca")
-        
+
         return None
     except Exception as e:
         logger.warning(f"Errore ricerca bancaria importo={importo_uscita}: {e}")
@@ -128,7 +128,7 @@ async def marca_movimento_riconciliato(
             "data_riconciliazione_paghe": datetime.now(timezone.utc).isoformat()
         }
         await db[collection].update_one({"id": mov_id}, {"$set": update})
-        # Anche per id ObjectId se necessario
+        # Gli identificativi storici sono normalizzati a stringa.
         if not mov_id.startswith("EC-") and len(mov_id) < 30:
             pass
     except Exception as e:
@@ -143,19 +143,19 @@ async def riconcilia_tutti_stipendi(db, anno: int = None, mese: int = None) -> d
     query = {"stato_pagamento": "DA_PAGARE", "netto_mese": {"$gt": 0}}
     if anno and mese:
         query["periodo"] = f"{anno:04d}-{mese:02d}"
-    
+
     buste = await db.buste_paga.find(query, {"_id": 0}).to_list(length=500)
-    
+
     riconciliati = 0
     non_trovati = 0
-    
+
     for busta in buste:
         cf = busta.get("codice_fiscale", "")
         netto = busta.get("netto_mese", 0)
         periodo_iso = busta.get("periodo", "")
         busta_id = busta.get("busta_id", f"bp_{cf}_{periodo_iso}")
         cognome_nome = busta.get("dipendente_nome", "")
-        
+
         # Ricostruisci data scadenza
         try:
             import calendar
@@ -164,24 +164,24 @@ async def riconcilia_tutti_stipendi(db, anno: int = None, mese: int = None) -> d
             data_scad = f"{anno_p:04d}-{mese_p:02d}-{ultimo_giorno:02d}"
         except (ValueError, AttributeError):
             continue
-        
+
         # Keywords: cognome o "STIPENDIO"
         keywords = ["STIPENDIO", "CEDOLINO"]
         if cognome_nome:
             cognome = cognome_nome.split()[0]
             if len(cognome) > 3:
                 keywords.append(cognome.upper())
-        
+
         result = await cerca_in_estratto_conto(
             db, netto, data_scad,
             giorni_tolleranza=10,
             keywords_descrizione=keywords
         )
-        
+
         if result:
             mov_id, collection = result
             now_iso = datetime.now(timezone.utc).isoformat()
-            
+
             await db.buste_paga.update_one(
                 {"codice_fiscale": cf, "periodo": periodo_iso},
                 {"$set": {
@@ -199,7 +199,7 @@ async def riconcilia_tutti_stipendi(db, anno: int = None, mese: int = None) -> d
             riconciliati += 1
         else:
             non_trovati += 1
-    
+
     logger.info(f"Riconciliazione stipendi: {riconciliati} saldati, {non_trovati} da saldare")
     return {
         "totale_analizzati": len(buste),
@@ -216,18 +216,18 @@ async def riconcilia_tutti_f24(db, anno: int = None) -> dict:
     query = {"stato": "DA_PAGARE", "totale_da_pagare": {"$gt": 0}}
     if anno:
         query["scadenza"] = {"$regex": str(anno)}
-    
+
     f24_list = await db.f24_pagamenti.find(query, {"_id": 0}).to_list(length=200)
-    
+
     riconciliati = 0
     non_trovati = 0
-    
+
     for f24 in f24_list:
         f24_id = f24.get("f24_id", "")
         totale = f24.get("totale_da_pagare", 0)
         scadenza = f24.get("scadenza", "")
         distinta_id = f"dist_{f24_id}"
-        
+
         # Calcola data scadenza ISO
         data_scad_iso = None
         try:
@@ -239,22 +239,22 @@ async def riconcilia_tutti_f24(db, anno: int = None) -> dict:
                     data_scad_iso = f"{yyyy}-{mm.zfill(2)}-16"
         except (ValueError, TypeError):
             continue
-        
+
         if not data_scad_iso:
             continue
-        
+
         keywords = ["F24", "ERARIO", "INPS", "AGENZIA", "ENTRATE", "TRIBUT"]
-        
+
         result = await cerca_in_estratto_conto(
             db, totale, data_scad_iso,
             giorni_tolleranza=7,
             keywords_descrizione=keywords
         )
-        
+
         if result:
             mov_id, collection = result
             now_iso = datetime.now(timezone.utc).isoformat()
-            
+
             await db.f24_pagamenti.update_one(
                 {"f24_id": f24_id},
                 {"$set": {
@@ -280,7 +280,7 @@ async def riconcilia_tutti_f24(db, anno: int = None) -> dict:
             riconciliati += 1
         else:
             non_trovati += 1
-    
+
     logger.info(f"Riconciliazione F24: {riconciliati} pagati, {non_trovati} da pagare")
     return {
         "totale_analizzati": len(f24_list),

@@ -1,7 +1,7 @@
 """Policy contabile fiscale, senza scritture definitive.
 
 Questo modulo traduce l'evidenza documentale in una *proposta* di bilancio.
-Non scrive su MongoDB e non decide da solo la deducibilita': la natura
+Non scrive su Drive/Sheets e non decide da solo la deducibilita': la natura
 contabile (stato patrimoniale/conto economico) e la deducibilita' IRES/IRAP
 sono assi distinti e restano subordinate a contesto, periodo e approvazione.
 

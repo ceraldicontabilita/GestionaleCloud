@@ -252,9 +252,7 @@ async def get_invoice(invoice_id: str) -> Dict[str, Any]:
     if invoice:
         return invoice
     try:
-        from bson import ObjectId
-
-        invoice = await db[Collections.INVOICES].find_one({"_id": ObjectId(invoice_id)})
+        invoice = await db[Collections.INVOICES].find_one({"_id": invoice_id})
         if invoice:
             invoice.pop("_id", None)
             return invoice

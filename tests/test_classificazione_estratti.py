@@ -85,6 +85,17 @@ def test_export_pos_si_riconosce_dalle_colonne_reali_del_terminale():
     assert cls.route_da_testo(testo) == cls.POS
 
 
+def test_import_documenti_instrada_export_pos_sul_parser_specifico():
+    from app.routers.documenti import detect_document_type
+
+    content = (
+        "Data e ora;Importo;Stato operazione;ID terminale / TML;MID;"
+        "Punto vendita;Circuito\n"
+        "01/06/2026 09:00:00;10,00;Acquisto approvato;T1;M1;Negozio;VISA\n"
+    ).encode("utf-8")
+    assert detect_document_type("Export_Mensile_Giugno_2026.csv", content) == "pos_terminal"
+
+
 def test_movimenti_carta_di_debito_restano_movimenti_bancari():
     testo = ("Carta di debito Circuito: MASTERCARD Conto Appoggio: 5462 "
              "Azienda: CERALDI GROUP S.R.L.")
@@ -139,6 +150,11 @@ def test_nell_inbox_unico_i_file_pos_vengono_presi_in_carico():
         route = _route_for_path("", nome)
         assert route == "pos"
         assert _supported_file(route, nome) is True
+
+
+def test_export_contabile_carta_viene_instradato_al_parser_estratto():
+    assert cls.route_da_nome("Enti_File_Contabili.xlsx") == cls.BANCA
+    assert _route_for_path("", "Enti_File_Contabili.xlsx") == "bank"
 
 
 def test_la_carta_di_credito_non_finisce_piu_nei_movimenti_bancari():

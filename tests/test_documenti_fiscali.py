@@ -147,7 +147,7 @@ def test_upload_dedup_stesso_file(fake_db):
     r2 = _run(df.upload_documento_fiscale(file=up2, categoria="avviso_bonario", periodo="2026"))
     assert r2["duplicate"] is True
     assert r2["document_id"] == r1["document_id"]
-    assert len(inbox.docs) == 0  # nessuna copia Mongo
+    assert len(inbox.docs) == 0  # nessuna copia nel registro
 
 
 def test_lista_filtra_per_categoria(fake_db):

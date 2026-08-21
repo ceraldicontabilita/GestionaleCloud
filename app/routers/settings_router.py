@@ -1,4 +1,4 @@
-"""Router Impostazioni — salva/leggi configurazioni da MongoDB."""
+"""Router Impostazioni — salva/leggi configurazioni da Drive/Sheets."""
 from fastapi import APIRouter, Body, Depends
 from typing import Dict, Any
 from datetime import datetime, timezone
@@ -12,7 +12,7 @@ router = APIRouter(tags=["Impostazioni"])
 
 @router.get("/gmail")
 async def get_gmail_settings() -> Dict[str, Any]:
-    """Legge le impostazioni Gmail da MongoDB (password oscurata)."""
+    """Legge le impostazioni Gmail da Drive/Sheets (password oscurata)."""
     db = Database.get_db()
     doc = await db["settings"].find_one({"chiave": "gmail"}, {"_id": 0})
     if not doc:
@@ -36,7 +36,7 @@ async def get_gmail_settings() -> Dict[str, Any]:
 @router.post("/gmail")
 async def salva_gmail_settings(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """
-    Salva le impostazioni Gmail in MongoDB.
+    Salva le impostazioni Gmail in Drive/Sheets.
     Chiavi accettate: imap_user, gmail_app_password, imap_host
     """
     db = Database.get_db()
@@ -56,7 +56,7 @@ async def salva_gmail_settings(data: Dict[str, Any] = Body(...)) -> Dict[str, An
         {"$set": {
             "chiave": "gmail",
             "imap_user": imap_user,
-            # Prima salvata in chiaro: chiunque leggesse la collection Mongo
+            # Prima salvata in chiaro: chiunque leggesse il registro applicativo
             # aveva accesso diretto alla App Password Gmail.
             "gmail_app_password": encrypt_credential(gmail_app_password),
             "imap_host": imap_host,

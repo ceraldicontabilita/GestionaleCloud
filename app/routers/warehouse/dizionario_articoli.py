@@ -84,7 +84,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.05",
         "conto_nome": "Acquisto prodotti alimentari"
     },
-    
+
     # LATTICINI
     "latticini": {
         "patterns": [
@@ -97,7 +97,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.05",
         "conto_nome": "Acquisto prodotti alimentari"
     },
-    
+
     # CARNI
     "carni": {
         "patterns": [
@@ -109,7 +109,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.05",
         "conto_nome": "Acquisto prodotti alimentari"
     },
-    
+
     # SALUMI
     "salumi": {
         "patterns": [
@@ -122,7 +122,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.05",
         "conto_nome": "Acquisto prodotti alimentari"
     },
-    
+
     # PESCE
     "pesce": {
         "patterns": [
@@ -135,7 +135,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.05",
         "conto_nome": "Acquisto prodotti alimentari"
     },
-    
+
     # FRUTTA
     "frutta": {
         "patterns": [
@@ -149,7 +149,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.05",
         "conto_nome": "Acquisto prodotti alimentari"
     },
-    
+
     # VERDURA
     "verdura": {
         "patterns": [
@@ -165,7 +165,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.05",
         "conto_nome": "Acquisto prodotti alimentari"
     },
-    
+
     # PRODOTTI DA FORNO / PASTICCERIA
     "pasticceria": {
         "patterns": [
@@ -182,7 +182,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.11",
         "conto_nome": "Acquisto prodotti da forno"
     },
-    
+
     # FARINE E SEMOLE
     "farine": {
         "patterns": [
@@ -195,7 +195,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.02",
         "conto_nome": "Acquisto materie prime"
     },
-    
+
     # SURGELATI
     "surgelati": {
         "patterns": [
@@ -206,7 +206,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.10",
         "conto_nome": "Acquisto surgelati"
     },
-    
+
     # CAFFE
     "caffe": {
         "patterns": [
@@ -219,7 +219,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.09",
         "conto_nome": "Acquisto caffè e affini"
     },
-    
+
     # BEVANDE ANALCOLICHE
     "bevande_analcoliche": {
         "patterns": [
@@ -236,7 +236,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.04",
         "conto_nome": "Acquisto bevande analcoliche"
     },
-    
+
     # ACQUA MINERALE (separato per maggiore precisione)
     "acqua": {
         "patterns": [
@@ -248,7 +248,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.04",
         "conto_nome": "Acquisto bevande analcoliche"
     },
-    
+
     # BEVANDE ALCOLICHE
     "bevande_alcoliche": {
         "patterns": [
@@ -266,7 +266,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.03",
         "conto_nome": "Acquisto bevande alcoliche"
     },
-    
+
     # CONSERVE
     "conserve": {
         "patterns": [
@@ -280,7 +280,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.05",
         "conto_nome": "Acquisto prodotti alimentari"
     },
-    
+
     # SPEZIE E CONDIMENTI
     "condimenti": {
         "patterns": [
@@ -293,7 +293,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.05",
         "conto_nome": "Acquisto prodotti alimentari"
     },
-    
+
     # DOLCIUMI, GOMME E CARAMELLE
     "dolciumi": {
         "patterns": [
@@ -309,7 +309,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.05",
         "conto_nome": "Acquisto prodotti alimentari"
     },
-    
+
     # INGREDIENTI PASTICCERIA E GELATERIA
     "ingredienti_pasticceria": {
         "patterns": [
@@ -327,7 +327,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.13",
         "conto_nome": "Additivi e ingredienti alimentari"
     },
-    
+
     # GRASSI E OLI DA CUCINA
     "grassi": {
         "patterns": [
@@ -338,7 +338,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.02",
         "conto_nome": "Acquisto materie prime"
     },
-    
+
     # PRODOTTI VEGETALI / SOIA
     "vegetali_soia": {
         "patterns": [
@@ -350,7 +350,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.05",
         "conto_nome": "Acquisto prodotti alimentari"
     },
-    
+
     # ADDITIVI E INGREDIENTI SPECIALI
     "additivi": {
         "patterns": [
@@ -363,7 +363,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.13",
         "conto_nome": "Additivi e ingredienti alimentari"
     },
-    
+
     # PULIZIA
     "pulizia": {
         "patterns": [
@@ -380,7 +380,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.08",
         "conto_nome": "Prodotti per pulizia e igiene"
     },
-    
+
     # IMBALLAGGI E CONTENITORI
     "imballaggi": {
         "patterns": [
@@ -395,7 +395,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.07",
         "conto_nome": "Materiali di consumo e imballaggio"
     },
-    
+
     # TRASPORTO
     "trasporto": {
         "patterns": [
@@ -406,7 +406,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.02.16",
         "conto_nome": "Trasporti su acquisti"
     },
-    
+
     # UTENZE ELETTRICITA
     "utenze_elettricita": {
         "patterns": [
@@ -420,7 +420,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.02.05",
         "conto_nome": "Utenze - Energia elettrica"
     },
-    
+
     # TELEFONIA
     "telefonia": {
         "patterns": [
@@ -431,7 +431,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.02.07",
         "conto_nome": "Telefonia e comunicazioni"
     },
-    
+
     # NOLEGGIO AUTO E LOCAZIONE
     "noleggio_auto": {
         "patterns": [
@@ -443,7 +443,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.02.22",
         "conto_nome": "Noleggio automezzi"
     },
-    
+
     # COMMISSIONI POS E BANCARIE
     "commissioni_pos": {
         "patterns": [
@@ -455,7 +455,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.02.18",
         "conto_nome": "Commissioni bancarie e POS"
     },
-    
+
     # SERVIZI E FATTURAZIONE
     "servizi": {
         "patterns": [
@@ -468,7 +468,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.02.01",
         "conto_nome": "Costi per servizi"
     },
-    
+
     # MATERIALE ELETTRICO E FERRAMENTA
     "ferramenta": {
         "patterns": [
@@ -480,7 +480,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.06",
         "conto_nome": "Acquisto piccola utensileria"
     },
-    
+
     # PASTA SECCA
     "pasta": {
         "patterns": [
@@ -492,7 +492,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.05",
         "conto_nome": "Acquisto prodotti alimentari"
     },
-    
+
     # WURSTEL E AFFETTATI CONFEZIONATI
     "wurstel": {
         "patterns": [
@@ -502,7 +502,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.01.05",
         "conto_nome": "Acquisto prodotti alimentari"
     },
-    
+
     # SCONTI E OMAGGI
     "sconti": {
         "patterns": [
@@ -512,7 +512,7 @@ PATTERNS_ARTICOLI = {
         "conto": "05.02.99",
         "conto_nome": "Altri costi"
     },
-    
+
     # SPESE VARIE
     "spese_varie": {
         "patterns": [
@@ -540,12 +540,12 @@ def categorizza_articolo(descrizione: str) -> Dict[str, Any]:
             "confidenza": 0.0,
             "matched_pattern": None
         }
-    
+
     desc_lower = descrizione.lower()
-    
+
     best_match = None
     best_confidenza = 0.0
-    
+
     for cat_key, cat_info in PATTERNS_ARTICOLI.items():
         for pattern in cat_info["patterns"]:
             if re.search(pattern, desc_lower, re.IGNORECASE):
@@ -554,7 +554,7 @@ def categorizza_articolo(descrizione: str) -> Dict[str, Any]:
                 if match:
                     match_len = len(match.group())
                     confidenza = min(match_len / len(descrizione) * 3, 1.0)  # Normalizza
-                    
+
                     if confidenza > best_confidenza:
                         best_confidenza = confidenza
                         best_match = {
@@ -564,7 +564,7 @@ def categorizza_articolo(descrizione: str) -> Dict[str, Any]:
                             "conto_nome": cat_info["conto_nome"],
                             "pattern": pattern
                         }
-    
+
     if best_match:
         cat_info = CATEGORIE_MERCEOLOGICHE.get(best_match["categoria_haccp"], {})
         return {
@@ -575,7 +575,7 @@ def categorizza_articolo(descrizione: str) -> Dict[str, Any]:
             "confidenza": round(best_confidenza, 2),
             "matched_pattern": best_match["pattern"],
         }
-    
+
     # Default: non classificato
     return {
         "categoria_haccp": "non_alimentare",
@@ -598,7 +598,7 @@ async def estrai_articoli_fatture(
     Estrae tutti gli articoli unici dalle fatture e li categorizza automaticamente.
     """
     db = Database.get_db()
-    
+
     pipeline = [
         {"$unwind": "$linee"},
         {"$group": {
@@ -615,9 +615,9 @@ async def estrai_articoli_fatture(
         {"$sort": {"count": -1}},
         {"$limit": limite}
     ]
-    
+
     articoli_raw = await db.invoices.aggregate(pipeline).to_list(limite)
-    
+
     # Categorizza ogni articolo
     articoli = []
     stats = {
@@ -628,14 +628,14 @@ async def estrai_articoli_fatture(
         "per_categoria_haccp": {},
         "per_conto": {}
     }
-    
+
     for art in articoli_raw:
         desc = art["_id"]
         cat = categorizza_articolo(desc)
-        
+
         # Calcola totale importo dalla lista prezzi
         totale_importo = sum_prices(art.get("prezzi", []))
-        
+
         articolo = {
             "descrizione": desc,
             "occorrenze": art["count"],
@@ -644,7 +644,7 @@ async def estrai_articoli_fatture(
             **cat
         }
         articoli.append(articolo)
-        
+
         # Statistiche
         if cat["confidenza"] >= 0.5:
             stats["categorizzati_alta_confidenza"] += 1
@@ -652,19 +652,19 @@ async def estrai_articoli_fatture(
             stats["categorizzati_media_confidenza"] += 1
         else:
             stats["non_categorizzati"] += 1
-        
+
         # Per categoria merceologica
         haccp = cat["categoria_haccp"]
         if haccp not in stats["per_categoria_haccp"]:
             stats["per_categoria_haccp"][haccp] = 0
         stats["per_categoria_haccp"][haccp] += 1
-        
+
         # Per conto
         conto = cat["conto"]
         if conto not in stats["per_conto"]:
             stats["per_conto"][conto] = {"count": 0, "nome": cat["conto_nome"]}
         stats["per_conto"][conto]["count"] += 1
-    
+
     return {
         "articoli": articoli,
         "statistiche": stats
@@ -682,20 +682,20 @@ async def get_dizionario(
     Recupera il dizionario articoli salvato nel database.
     """
     db = Database.get_db()
-    
+
     query = {}
     if categoria_haccp:
         query["categoria_haccp"] = categoria_haccp
     if non_mappati:
         query["mappatura_manuale"] = {"$ne": True}
-    
+
     items = await db.dizionario_articoli.find(
         query,
         {"_id": 0}
     ).sort("occorrenze", -1).skip(skip).limit(limit).to_list(limit)
-    
+
     total = await db.dizionario_articoli.count_documents(query)
-    
+
     return {
         "items": items,
         "total": total,
@@ -711,8 +711,8 @@ async def genera_dizionario() -> Dict[str, Any]:
     e applicando la categorizzazione automatica.
     """
     db = Database.get_db()
-    
-    # Estrai articoli senza calcoli numerici in MongoDB
+
+    # Estrai articoli senza calcoli numerici in Drive/Sheets
     pipeline = [
         {"$unwind": "$linee"},
         {"$group": {
@@ -724,24 +724,24 @@ async def genera_dizionario() -> Dict[str, Any]:
         {"$match": {"_id": {"$nin": [None, ""]}}},
         {"$sort": {"count": -1}}
     ]
-    
+
     articoli_raw = await db.invoices.aggregate(pipeline).to_list(10000)
-    
+
     created = 0
     updated = 0
-    
+
     for art in articoli_raw:
         desc = art["_id"]
-        
+
         # Controlla se esiste già
         existing = await db.dizionario_articoli.find_one({"descrizione": desc})
-        
+
         # Categorizza
         cat = categorizza_articolo(desc)
-        
+
         # Calcola totale importo in Python
         totale_importo = sum_prices(art.get("prezzi", []))
-        
+
         doc = {
             "descrizione": desc,
             "occorrenze": art["count"],
@@ -755,7 +755,7 @@ async def genera_dizionario() -> Dict[str, Any]:
             "confidenza": cat["confidenza"],
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
-        
+
         if existing:
             # Mantieni mappature manuali
             if existing.get("mappatura_manuale"):
@@ -763,7 +763,7 @@ async def genera_dizionario() -> Dict[str, Any]:
                 doc["categoria_haccp"] = existing["categoria_haccp"]
                 doc["conto"] = existing["conto"]
                 doc["conto_nome"] = existing.get("conto_nome", doc["conto_nome"])
-            
+
             await db.dizionario_articoli.update_one(
                 {"descrizione": desc},
                 {"$set": doc}
@@ -775,7 +775,7 @@ async def genera_dizionario() -> Dict[str, Any]:
             doc["mappatura_manuale"] = False
             await db.dizionario_articoli.insert_one(doc.copy())
             created += 1
-    
+
     return {
         "success": True,
         "created": created,
@@ -793,16 +793,16 @@ async def aggiorna_mappatura_articolo(
     Aggiorna manualmente la mappatura di un articolo.
     """
     db = Database.get_db()
-    
+
     # Decodifica descrizione
     import urllib.parse
     descrizione = urllib.parse.unquote(descrizione_encoded)
-    
+
     # Verifica che l'articolo esista
     existing = await db.dizionario_articoli.find_one({"descrizione": descrizione})
     if not existing:
         raise HTTPException(status_code=404, detail="Articolo non trovato")
-    
+
     # Valida categoria merceologica
     if data.get("categoria_haccp") and data["categoria_haccp"] not in CATEGORIE_MERCEOLOGICHE and data["categoria_haccp"] != "non_alimentare":
         raise HTTPException(status_code=400, detail=f"Categoria non valida: {data['categoria_haccp']}")
@@ -817,19 +817,19 @@ async def aggiorna_mappatura_articolo(
         update_data["categoria_haccp"] = data["categoria_haccp"]
         cat_info = CATEGORIE_MERCEOLOGICHE.get(data["categoria_haccp"], {})
         update_data["categoria_haccp_nome"] = cat_info.get("nome", data["categoria_haccp"])
-    
+
     if "conto" in data:
         update_data["conto"] = data["conto"]
     if "conto_nome" in data:
         update_data["conto_nome"] = data["conto_nome"]
     if "note" in data:
         update_data["note"] = data["note"]
-    
+
     await db.dizionario_articoli.update_one(
         {"descrizione": descrizione},
         {"$set": update_data}
     )
-    
+
     # Ritorna articolo aggiornato
     updated = await db.dizionario_articoli.find_one({"descrizione": descrizione}, {"_id": 0})
     return updated
@@ -841,10 +841,10 @@ async def get_statistiche_dizionario() -> Dict[str, Any]:
     Statistiche sul dizionario articoli.
     """
     db = Database.get_db()
-    
+
     total = await db.dizionario_articoli.count_documents({})
     manuali = await db.dizionario_articoli.count_documents({"mappatura_manuale": True})
-    
+
     # Per categoria merceologica
     pipeline_categoria = [
         {"$group": {
@@ -855,7 +855,7 @@ async def get_statistiche_dizionario() -> Dict[str, Any]:
         {"$sort": {"count": -1}}
     ]
     per_categoria = await db.dizionario_articoli.aggregate(pipeline_categoria).to_list(50)
-    
+
     # Per conto
     pipeline_conto = [
         {"$group": {
@@ -867,14 +867,14 @@ async def get_statistiche_dizionario() -> Dict[str, Any]:
         {"$sort": {"importo_totale": -1}}
     ]
     per_conto = await db.dizionario_articoli.aggregate(pipeline_conto).to_list(50)
-    
+
     # Per confidenza
     alta_conf = await db.dizionario_articoli.count_documents({"confidenza": {"$gte": 0.5}})
     media_conf = await db.dizionario_articoli.count_documents({
         "confidenza": {"$gt": 0, "$lt": 0.5}
     })
     non_class = await db.dizionario_articoli.count_documents({"confidenza": 0})
-    
+
     return {
         "totale_articoli": total,
         "mappature_manuali": manuali,
@@ -895,26 +895,26 @@ async def ricategorizza_fatture_da_dizionario() -> Dict[str, Any]:
     Aggiorna categoria_contabile e conto_costo nelle fatture.
     """
     db = Database.get_db()
-    
+
     # Carica dizionario in memoria per velocità
     dizionario = {}
     async for item in db.dizionario_articoli.find({}, {"_id": 0}):
         dizionario[item["descrizione"]] = item
-    
+
     logger.info(f"Dizionario caricato: {len(dizionario)} articoli")
-    
+
     updated = 0
-    
+
     # Processa fatture
     async for fattura in db.invoices.find({"linee": {"$exists": True, "$ne": []}}):
         linee = fattura.get("linee", [])
-        
+
         # Trova categoria dominante (quella con più importo)
         categorie_importi = {}
         for linea in linee:
             desc = linea.get("descrizione", "")
             importo = float(linea.get("prezzo_totale", 0) or 0)
-            
+
             if desc in dizionario:
                 cat = dizionario[desc]
                 conto = cat["conto"]
@@ -925,12 +925,12 @@ async def ricategorizza_fatture_da_dizionario() -> Dict[str, Any]:
                         "categoria_haccp": cat["categoria_haccp"]
                     }
                 categorie_importi[conto]["importo"] += importo
-        
+
         if categorie_importi:
             # Prendi la categoria con importo maggiore
             best_conto = max(categorie_importi, key=lambda k: categorie_importi[k]["importo"])
             best_info = categorie_importi[best_conto]
-            
+
             await db.invoices.update_one(
                 {"_id": fattura["_id"]},
                 {"$set": {
@@ -941,7 +941,7 @@ async def ricategorizza_fatture_da_dizionario() -> Dict[str, Any]:
                 }}
             )
             updated += 1
-    
+
     return {
         "success": True,
         "fatture_aggiornate": updated,
@@ -958,12 +958,12 @@ async def cerca_articoli(
     Cerca articoli nel dizionario.
     """
     db = Database.get_db()
-    
+
     items = await db.dizionario_articoli.find(
         {"descrizione": {"$regex": q, "$options": "i"}},
         {"_id": 0}
     ).sort("occorrenze", -1).limit(limit).to_list(limit)
-    
+
     return items
 
 

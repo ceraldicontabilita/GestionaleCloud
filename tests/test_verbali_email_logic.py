@@ -34,7 +34,7 @@ def _run(coro):
         loop.close()
 
 
-# ---------------------------------------------------------------- fake Motor
+# ----------------------------------------------- repository asincrono fittizio
 
 def _match(doc, cond):
     for k, v in (cond or {}).items():

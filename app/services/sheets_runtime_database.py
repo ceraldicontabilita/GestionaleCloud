@@ -1,148 +1,64 @@
-"""Runtime asincrono con Google Sheets come archivio primario.
+"""Runtime Drive/Sheets del gestionale.
 
-Il gestionale storico usa direttamente l'interfaccia Motor. Per migrare senza
-riscrivere centinaia di servizi, i fogli canonici vengono caricati in un
-database Mongo compatibile ma esclusivamente in memoria. Ogni mutazione viene
-poi resa persistente nel foglio Drive corrispondente prima di restituire il
-controllo al chiamante.
-
-Nessuna connessione MongoDB esterna viene aperta in ``DATA_BACKEND=sheets``.
+I fogli vengono letti in una cache documentale Python ricostruibile. Ogni
+mutazione completata viene persistita nel foglio corrispondente prima che il
+controllo torni al chiamante. Non esistono backend o driver alternativi.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from typing import Any
 
-from mongomock_motor import AsyncMongoMockClient
-
 from app.services.google_sheets_ledger import (
-    LedgerSheet, SHEETS, canonical_id, ensure_collection_sheet,
-    portable_document, remove_documents, restore_all, sync_collection_streaming,
+    LedgerSheet,
+    SHEETS,
+    canonical_id,
+    ensure_collection_sheet,
+    portable_document,
+    remove_documents,
+    restore_all,
+    sync_collection_streaming,
     upsert_documents,
 )
+from app.services.sheets_document_store import SheetDatabase
 
 
 logger = logging.getLogger(__name__)
 
-MUTATING_METHODS = {
-    "insert_one", "insert_many", "update_one", "update_many", "replace_one",
-    "delete_one", "delete_many", "find_one_and_update", "find_one_and_replace",
-    "find_one_and_delete", "bulk_write",
-}
-DELETE_METHODS = {"delete_one", "delete_many", "find_one_and_delete"}
-MANY_METHODS = {"update_many", "delete_many"}
-FILTERED_METHODS = {
-    "update_one", "update_many", "replace_one", "delete_one", "delete_many",
-    "find_one_and_update", "find_one_and_replace", "find_one_and_delete",
-}
 
-
-class SheetsRuntimeCollection:
-    """Collection Motor-compatible con persistenza write-through su Drive."""
-
-    def __init__(self, owner: "SheetsRuntimeDatabase", name: str):
-        self._owner = owner
-        self._name = name
-        self._collection = owner._memory_db[name]
-
-    def __getattr__(self, name: str) -> Any:
-        target = getattr(self._collection, name)
-        if name not in MUTATING_METHODS:
-            return target
-
-        async def write_through(*args, **kwargs):
-            async with self._owner.lock_for(self._name):
-                await self._owner.ensure_collection(self._name)
-                before = []
-                if name in FILTERED_METHODS:
-                    selector = args[0] if args else kwargs.get("filter", {})
-                    length = 100000 if name in MANY_METHODS else 1
-                    before = await self._collection.find(selector or {}).to_list(length)
-                result = await target(*args, **kwargs)
-                if name == "bulk_write":
-                    # Fallback raro: resta streaming e non materializza mai
-                    # 100.000 documenti in una singola lista Python.
-                    await self._owner.flush_collection(self._name)
-                    return result
-
-                if name in DELETE_METHODS:
-                    keys = [
-                        canonical_id(portable_document(document))
-                        for document in before
-                    ]
-                    await self._owner.remove_documents(self._name, keys)
-                    return result
-
-                ids = []
-                inserted_id = getattr(result, "inserted_id", None)
-                if inserted_id is not None:
-                    ids.append(inserted_id)
-                ids.extend(getattr(result, "inserted_ids", None) or [])
-                ids.extend(
-                    document.get("_id") for document in before
-                    if document.get("_id") is not None
-                )
-                upserted_id = getattr(result, "upserted_id", None)
-                if upserted_id is not None:
-                    ids.append(upserted_id)
-                # Conserva l'ordine e rimuove gli ID ripetuti senza imporre
-                # che siano hashable (alcuni test usano tipi compatibili BSON).
-                unique_ids = []
-                for candidate in ids:
-                    if not any(candidate == current for current in unique_ids):
-                        unique_ids.append(candidate)
-                documents = []
-                if unique_ids:
-                    documents = await self._collection.find(
-                        {"_id": {"$in": unique_ids}}
-                    ).to_list(len(unique_ids))
-                elif isinstance(result, dict) and result:
-                    documents = [result]
-                await self._owner.persist_documents(self._name, documents)
-                return result
-
-        return write_through
-
-
-class SheetsRuntimeDatabase:
-    """Database in memoria idratato e persistito dai fogli Google Drive."""
+class SheetsRuntimeDatabase(SheetDatabase):
+    """Archivio documentale con persistenza write-through su Google Sheets."""
 
     def __init__(self, name: str, config: dict[str, Any]):
-        self._client = AsyncMongoMockClient()
-        self._memory_db = self._client[name]
+        super().__init__(name, mutation_hook=self._write_through)
         self._config = dict(config)
         self._by_collection = {sheet.collection: sheet for sheet in SHEETS}
-        # I fogli canonici vengono predisposti insieme al registro. I fogli
-        # dinamici gia' presenti, invece, possono essere stati creati in
-        # anticipo e risultare ancora privi dell'intestazione. Prima della
-        # prima scrittura del processo li ripassiamo quindi attraverso
-        # ``ensure_collection_sheet``: in questo modo Sheets non interpreta la
-        # prima riga dati come intestazione e non accoda le righe successive a
-        # partire da una colonna errata.
         self._write_ready_collections = {sheet.collection for sheet in SHEETS}
-        self._collections: dict[str, SheetsRuntimeCollection] = {}
-        self._locks: dict[str, asyncio.Lock] = {}
         self._schema_lock = asyncio.Lock()
+        self._remote_write_lock = asyncio.Lock()
+        self._write_batch: ContextVar[dict[str, dict[str, Any]] | None] = (
+            ContextVar(f"sheets_write_batch_{id(self)}", default=None)
+        )
         self.hydration_result: dict[str, Any] | None = None
 
     async def hydrate(self) -> dict[str, Any]:
-        # Con un ID esplicito il registro e' gia' predisposto: l'avvio web deve
-        # soltanto leggerlo, senza ricreare alberi Drive o riformattare 23 fogli.
         provision = not bool(
             str(self._config.get("GOOGLE_SHEETS_LEDGER_ID") or "").strip()
         )
-        result = await restore_all(
-            self._memory_db, self._config, apply=True, provision=provision,
-        )
+        self.loading = True
+        try:
+            result = await restore_all(
+                self, self._config, apply=True, provision=provision,
+            )
+        finally:
+            self.loading = False
         discovered_spreadsheet_id = str(result.get("spreadsheet_id") or "").strip()
         if discovered_spreadsheet_id:
             self._config["GOOGLE_SHEETS_LEDGER_ID"] = discovered_spreadsheet_id
         errors = sum(int(item.get("numero_errori") or 0) for item in result["fogli"])
-        if errors:
-            raise RuntimeError(
-                f"Registro Drive non avviabile: {errors} righe non valide"
-            )
         self._by_collection = {
             item["collezione"]: LedgerSheet(
                 item["foglio"], item["collezione"], item["prefisso"],
@@ -150,15 +66,21 @@ class SheetsRuntimeDatabase:
             for item in result["fogli"]
         }
         self.hydration_result = result
+        if errors:
+            # Una singola riga storica malformata non deve rendere invisibili
+            # tutte le altre registrazioni valide. ``restore_all`` conserva la
+            # riga originale nel foglio, la esclude dalla cache e ne mantiene
+            # il dettaglio in ``hydration_result`` per l'audit amministrativo.
+            logger.warning(
+                "Archivio Sheets idratato con %s righe non valide escluse",
+                errors,
+            )
         logger.info(
             "Archivio Sheets idratato: %s righe in %s fogli",
             sum(int(item.get("valide") or 0) for item in result["fogli"]),
             len(result["fogli"]),
         )
         return result
-
-    def lock_for(self, collection_name: str) -> asyncio.Lock:
-        return self._locks.setdefault(collection_name, asyncio.Lock())
 
     async def ensure_collection(self, collection_name: str) -> LedgerSheet:
         sheet = self._by_collection.get(collection_name)
@@ -176,22 +98,105 @@ class SheetsRuntimeDatabase:
             self._write_ready_collections.add(collection_name)
             logger.info(
                 "Foglio Drive dinamico predisposto: %s -> %s",
-                collection_name, sheet.title,
+                collection_name,
+                sheet.title,
             )
             return sheet
+
+    async def _write_through(
+        self,
+        collection_name: str,
+        method: str,
+        before: list[dict[str, Any]],
+        after: list[dict[str, Any]],
+    ) -> None:
+        batch = self._write_batch.get()
+        if batch is not None:
+            pending = batch.setdefault(
+                collection_name, {"upserts": {}, "deletes": set()},
+            )
+            upserts = pending["upserts"]
+            deletes = pending["deletes"]
+            if method in {"delete_one", "delete_many", "find_one_and_delete"}:
+                for document in before:
+                    key = canonical_id(portable_document(document))
+                    if key:
+                        upserts.pop(key, None)
+                        deletes.add(key)
+                return
+            for document in after:
+                portable = portable_document(document)
+                key = canonical_id(portable)
+                if key:
+                    deletes.discard(key)
+                    upserts[key] = portable
+            return
+
+        async with self._remote_write_lock:
+            await self._persist_mutation(collection_name, method, before, after)
+
+    async def _persist_mutation(
+        self,
+        collection_name: str,
+        method: str,
+        before: list[dict[str, Any]],
+        after: list[dict[str, Any]],
+    ) -> None:
+        if method in {"delete_one", "delete_many", "find_one_and_delete"}:
+            keys = [
+                canonical_id(portable_document(document))
+                for document in before
+            ]
+            await self.remove_documents(collection_name, keys)
+            return
+        await self.persist_documents(collection_name, after)
+
+    @asynccontextmanager
+    async def batch_writes(self):
+        """Accorpa le mutazioni di uno stesso job in una chiamata per foglio.
+
+        La cache documentale continua ad aggiornarsi subito, quindi le letture
+        eseguite durante il job vedono lo stato corrente. Soltanto il traffico
+        remoto verso Google Sheets viene rinviato alla fine e deduplicato per
+        ``canonical_id``. Questo evita che un recupero storico di centinaia di
+        corrispettivi rilegga l'indice del medesimo foglio centinaia di volte,
+        saturando la memoria del servizio Render.
+        """
+        current = self._write_batch.get()
+        if current is not None:
+            # Un batch annidato partecipa alla stessa unita' di flush.
+            yield None
+            return
+
+        async with self._remote_write_lock:
+            batch: dict[str, dict[str, Any]] = {}
+            token = self._write_batch.set(batch)
+            try:
+                yield None
+            finally:
+                try:
+                    for collection_name, pending in batch.items():
+                        deletes = sorted(pending["deletes"])
+                        upserts = list(pending["upserts"].values())
+                        if deletes:
+                            await self.remove_documents(collection_name, deletes)
+                        if upserts:
+                            await self.persist_documents(collection_name, upserts)
+                finally:
+                    self._write_batch.reset(token)
 
     async def flush_collection(self, collection_name: str) -> dict[str, Any]:
         sheet = await self.ensure_collection(collection_name)
         spreadsheet_id = str(self._config.get("GOOGLE_SHEETS_LEDGER_ID") or "")
         if not spreadsheet_id:
             raise RuntimeError("GOOGLE_SHEETS_LEDGER_ID mancante")
-        return await sync_collection_streaming(
-            self._memory_db, sheet, spreadsheet_id,
-        )
+        return await sync_collection_streaming(self, sheet, spreadsheet_id)
 
     async def persist_documents(
         self, collection_name: str, documents: list[dict[str, Any]],
     ) -> dict[str, Any]:
+        if not documents:
+            return {"aggiornati": 0, "inseriti": 0}
         sheet = await self.ensure_collection(collection_name)
         spreadsheet_id = str(self._config.get("GOOGLE_SHEETS_LEDGER_ID") or "")
         if not spreadsheet_id:
@@ -201,35 +206,13 @@ class SheetsRuntimeDatabase:
     async def remove_documents(
         self, collection_name: str, canonical_ids: list[str],
     ) -> dict[str, Any]:
+        if not canonical_ids:
+            return {"rimossi": 0}
         sheet = await self.ensure_collection(collection_name)
         spreadsheet_id = str(self._config.get("GOOGLE_SHEETS_LEDGER_ID") or "")
         if not spreadsheet_id:
             raise RuntimeError("GOOGLE_SHEETS_LEDGER_ID mancante")
         return await remove_documents(sheet, spreadsheet_id, canonical_ids)
 
-    def __getitem__(self, collection_name: str):
-        return self._collections.setdefault(
-            collection_name, SheetsRuntimeCollection(self, collection_name)
-        )
-
-    @property
-    def client(self):
-        """Client compatibile Motor usato soltanto dal runtime in memoria.
-
-        Senza questa proprieta' ``__getattr__`` interpreta ``db.client`` come
-        una collection chiamata ``client``. I flussi storici che tentano di
-        aprire una sessione ricevono quindi una Collection e falliscono prima
-        ancora di poter usare il fallback senza transazioni.
-        """
-        return self._client
-
-    def __getattr__(self, name: str) -> Any:
-        if name.startswith("_"):
-            raise AttributeError(name)
-        return self[name]
-
-    async def list_collection_names(self, *args, **kwargs):
-        return list(self._by_collection)
-
-    def close(self) -> None:
-        self._client.close()
+    async def list_collection_names(self, *args, **kwargs) -> list[str]:
+        return sorted(set(self._by_collection) | set(self._tables))

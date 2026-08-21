@@ -64,16 +64,11 @@ locali come fonte di verità. I dati arrivano da questi canali:
 | Corrispettivi e POS | XML RT, chiusure terminale, accrediti gestore, commissioni | il ricavo nasce dal corrispettivo RT; l'accredito POS è un fatto successivo e separato |
 | Amministrazione e audit | configurazione Render, cataloghi, log, inventory e report storici | usati per governo e tracciabilità, non come dato operativo primario |
 
-L'unica migrazione persistente ancora da verificare è quella dei dati storici
-da MongoDB a Google Sheets/Drive. MongoDB resta una compatibilità esplicita e
-non va trattato come origine operativa finale.
-
 ### Stack
 
-- Backend: Python 3.12, FastAPI, Motor-compatible async API, APScheduler.
+- Backend: Python 3.12, FastAPI, archivio asincrono Sheets, APScheduler.
 - Frontend: React 18, Vite 5, React Router 6, TanStack Query, Zustand.
-- Persistenza: Google Sheets/Drive operativi; MongoDB solo compatibilità
-  esplicita per la migrazione storica.
+- Persistenza: Google Sheets per i registri e Google Drive per gli originali.
 - Deploy: un servizio Render avviato con `python -m app.process_supervisor`.
 - CI: pytest, Vitest, build Vite, audit statici, runtime smoke ed E2E isolato.
 
@@ -106,18 +101,14 @@ avvio in `render.yaml` e il lifecycle importato dai test correnti.
 - `ENVIRONMENT`
 - `SECRET_KEY`
 - `CORS_ALLOWED_ORIGINS`
-- `DATA_BACKEND=sheets` (predefinito) oppure `mongodb` solo per compatibilità
-
-### Backend MongoDB transitorio
-
-- `MONGODB_ATLAS_URI` oppure `MONGO_URL`
-- `DB_NAME`
+- `SHEETS_REGISTRY_NAME`
+- `CREDENTIALS_ENCRYPTION_KEY`
 
 ### Registro Google Sheets/Drive
 
 - `GOOGLE_SHEETS_LEDGER_ID` oppure `GOOGLE_SHEETS_LEDGER_FOLDER_ID`
 - Le collezioni operative non ancora presenti nel manifest iniziale ricevono
-  al primo inserimento un foglio privato `DB_*`; non esiste un fallback Mongo.
+  al primo inserimento un foglio privato `DB_*`.
 - L'import fatture usa `DRIVE_FATTURE_BATCH_SIZE` (default 1) e viene eseguito
   ogni 15 minuti, così l'arretrato non satura la memoria del servizio web.
 - `GOOGLE_DRIVE_SA_JSON` / `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`
@@ -132,19 +123,18 @@ gli ID aziendali non devono essere copiati nella documentazione pubblica.
 Le credenziali restano nel secret store di Render. Non inserire JSON di
 service account, token o password nel repository.
 
-## Migrazione Drive-only
+## Verifica Drive/Sheets
 
 La procedura amministrativa deve essere eseguita in quest'ordine:
 
-1. inventario delle collezioni sorgente;
+1. inventario dei registri;
 2. deduplica per `canonical_id` e hash del payload;
 3. blocco dei conflitti ID uguale/payload diverso;
 4. sincronizzazione completa nel registro Sheets;
 5. confronto di conteggi e digest per ogni foglio;
 6. ricostruzione del runtime dai fogli e prova di scrittura;
-7. conferma di `DATA_BACKEND=sheets` senza fallback Mongo;
-8. verifica live del commit in produzione;
-9. disattivazione e successiva rimozione controllata di MongoDB.
+7. verifica live del commit in produzione;
+8. conferma dell'assenza di backend alternativi e variabili obsolete.
 
 I documenti originali su Drive non vengono spostati o eliminati dalla
 migrazione del registro.
@@ -158,7 +148,7 @@ app/
 ├── parsers/                    XML, PDF, CSV e formati fiscali
 ├── knowledge/                  base di conoscenza della chat
 ├── config.py                   configurazione e feature flag
-└── database.py                 selezione backend MongoDB/Sheets
+└── database.py                 inizializzazione archivio Drive/Sheets
 backend/
 └── requirements.txt
 frontend/

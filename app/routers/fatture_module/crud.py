@@ -531,7 +531,7 @@ async def _trova_fattura_e_xml_originale(fattura_id: str) -> tuple[Optional[dict
     1. Cerca la fattura in `invoices` (poi fallback COL_FATTURE_RICEVUTE / _id)
     2. Legge il file XML dal disco (gestisce .p7m estraendo l'XML interno)
        oppure, se il file non e' su disco, usa xml_raw/xml_content salvato
-       nel documento Mongo.
+       nel record Drive/Sheets.
     """
     import os
     from app.services.xml_invoice_processor import extract_xml_from_p7m
@@ -543,10 +543,9 @@ async def _trova_fattura_e_xml_originale(fattura_id: str) -> tuple[Optional[dict
     if not fattura:
         fattura = await db[COL_FATTURE_RICEVUTE].find_one({"id": fattura_id}, {"_id": 0})
     if not fattura:
-        # Fallback: cerca per _id (MongoDB ObjectId) — usato nei link frontend legacy
+        # Compatibilita' con i link storici basati sull'ID interno del registro.
         try:
-            from bson import ObjectId
-            fattura = await db["invoices"].find_one({"_id": ObjectId(fattura_id)})
+            fattura = await db["invoices"].find_one({"_id": fattura_id})
             if fattura:
                 fattura.pop("_id", None)
         except Exception:
@@ -707,18 +706,18 @@ async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
 async def download_pdf_allegato(fattura_id: str, allegato_id: str) -> Response:
     """Download PDF allegato fattura."""
     db = Database.get_db()
-    
+
     allegato = await db[COL_ALLEGATI].find_one({"id": allegato_id, "fattura_id": fattura_id})
     if not allegato:
         raise HTTPException(status_code=404, detail="Allegato non trovato")
-    
+
     try:
         pdf_data = base64.b64decode(allegato["base64_data"])
     except Exception:
         raise HTTPException(status_code=500, detail="Errore decodifica PDF")
-    
+
     filename = allegato.get("nome_file", f"allegato_{allegato_id}.pdf")
-    
+
     return Response(
         content=pdf_data,
         media_type="application/pdf",
@@ -729,14 +728,13 @@ async def download_pdf_allegato(fattura_id: str, allegato_id: str) -> Response:
 async def get_fattura_dettaglio(fattura_id: str) -> Dict[str, Any]:
     """Dettaglio singola fattura con righe e allegati."""
     db = Database.get_db()
-    
+
     fattura = await db[COL_FATTURE_RICEVUTE].find_one({"id": fattura_id}, {"_id": 0})
     if not fattura:
         fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
     if not fattura:
         try:
-            from bson import ObjectId
-            fattura = await db["invoices"].find_one({"_id": ObjectId(fattura_id)})
+            fattura = await db["invoices"].find_one({"_id": fattura_id})
             if fattura:
                 fattura.pop("_id", None)
         except Exception:
@@ -751,7 +749,7 @@ async def get_fattura_dettaglio(fattura_id: str) -> Dict[str, Any]:
 
     righe = await db[COL_DETTAGLIO_RIGHE].find({"fattura_id": fattura_id}, {"_id": 0}).to_list(1000)
     allegati = await db[COL_ALLEGATI].find({"fattura_id": fattura_id}, {"_id": 0, "base64_data": 0}).to_list(10)
-    
+
     return {"fattura": fattura, "righe": righe, "allegati": allegati}
 
 
@@ -767,20 +765,20 @@ async def get_documenti_pagamento_fattura(fattura_id: str) -> Dict[str, Any]:
 async def update_fattura(fattura_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
     """Aggiorna una fattura."""
     db = Database.get_db()
-    
+
     fattura = await db[COL_FATTURE_RICEVUTE].find_one({"id": fattura_id})
     if not fattura:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
-    
+
     update_fields = {}
     for field in ["pagato", "data_pagamento", "metodo_pagamento", "riconciliato", "note"]:
         if field in data:
             update_fields[field] = data[field]
-    
+
     if update_fields:
         update_fields["updated_at"] = datetime.now(timezone.utc).isoformat()
         await db[COL_FATTURE_RICEVUTE].update_one({"id": fattura_id}, {"$set": update_fields})
-    
+
     return {"success": True, "updated": list(update_fields.keys())}
 
 
@@ -791,7 +789,7 @@ async def get_fornitori(
 ) -> Dict[str, Any]:
     """Lista fornitori con filtri."""
     db = Database.get_db()
-    
+
     query = {}
     if search:
         query["$or"] = [
@@ -800,7 +798,7 @@ async def get_fornitori(
         ]
     if con_fatture:
         query["fatture_count"] = {"$gt": 0}
-    
+
     fornitori = await db[COL_FORNITORI].find(query, {"_id": 0}).sort("ragione_sociale", 1).limit(limit).to_list(limit)
     return {"items": fornitori, "total": len(fornitori)}
 
@@ -861,7 +859,7 @@ async def get_statistiche(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
         stats = result[0] if result else {}
         stats.pop("_id", None)
     except (NotImplementedError, TypeError, ValueError):
-        # Mongo in memoria usato dai collaudi non implementa tutti gli
+        # Il repository in memoria usato dai collaudi non implementa tutti gli
         # operatori di aggregazione ($round/$toDouble). Il contratto della
         # pagina deve restare verificabile con dati isolati, quindi applichiamo
         # la stessa deduplicazione in Python senza cambiare la fonte canonica.

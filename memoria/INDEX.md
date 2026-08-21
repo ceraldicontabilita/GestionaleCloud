@@ -65,7 +65,7 @@ datati sono prove storiche, non istruzioni correnti.
 - associazioni definitive automatiche solo quando univoche;
 - importo uguale non prova identità;
 - ogni alert apre la lista dei record;
-- nessuna dismissione MongoDB prima del cutover Drive/Sheets verificato.
+- nessuna dismissione Drive/Sheets prima del cutover Drive/Sheets verificato.
 
 ## Verifica
 

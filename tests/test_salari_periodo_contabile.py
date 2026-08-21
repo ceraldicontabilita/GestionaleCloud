@@ -17,7 +17,7 @@ def test_solo_dicembre_2025_e_2026_fino_al_mese_corrente():
     assert not periodo_ammesso_in_prima_nota(None, None, oggi=oggi)
 
 
-def test_filtri_mongo_sono_complementari():
+def test_filtri_archivio_sono_complementari():
     oggi = date(2026, 8, 8)
     ammessi = filtro_periodo_prima_nota(oggi=oggi)
     esclusi = filtro_fuori_periodo_prima_nota(oggi=oggi)

@@ -55,7 +55,7 @@ def _anno_da_data(data: Optional[str]) -> Optional[int]:
 async def _prossimo_numero(db, anno: Optional[int]) -> int:
     """Numero di protocollo PROGRESSIVO PER ANNO (scelta utente 2026-07-14,
     prassi dei registri contabili): riparte da 1 a ogni nuovo anno solare.
-    `{"anno": anno}` in Mongo intercetta sia i documenti con `anno` uguale
+    `{"anno": anno}` nel repository intercetta sia i documenti con `anno` uguale
     sia quelli senza il campo, quando `anno` è None (fallback per scritture
     senza data individuabile)."""
     ultimo = await db[COLL_MOVIMENTI].find_one(

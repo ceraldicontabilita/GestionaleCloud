@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timezone
 
 from app.database import Database
-from app.utils.mongo_year import combina_filtri, filtro_anno_mongo
+from app.utils.accounting_year import combina_filtri, filtro_anno_registro
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/riconciliazione", tags=["Riconciliazione"])
@@ -26,7 +26,7 @@ async def stats_riconciliazione(
 
     from app.services.riconciliazione_kpi import calcola_contatori_movimenti
 
-    filtro_movimenti = filtro_anno_mongo(
+    filtro_movimenti = filtro_anno_registro(
         anno,
         ("data", "data_contabile", "data_operazione"),
     )
@@ -36,11 +36,11 @@ async def stats_riconciliazione(
     ).to_list(50000)
     banca = calcola_contatori_movimenti(movimenti)
 
-    filtro_proposte = filtro_anno_mongo(
+    filtro_proposte = filtro_anno_registro(
         anno,
         ("data", "data_operazione"),
     )
-    filtro_partite = filtro_anno_mongo(
+    filtro_partite = filtro_anno_registro(
         anno,
         ("data_documento", "data_scadenza", "data"),
     )

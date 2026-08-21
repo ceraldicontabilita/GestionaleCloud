@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import logging
 
 from app.database import Database
-from app.utils.mongo_year import combina_filtri, filtro_anno_mongo
+from app.utils.accounting_year import combina_filtri, filtro_anno_registro
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/partite-aperte", tags=["Partite Aperte"])
@@ -25,7 +25,7 @@ async def stats_partite(
     """Totali partite aperte raggruppati per tipo."""
     db = Database.get_db()
 
-    filtro_anno = filtro_anno_mongo(
+    filtro_anno = filtro_anno_registro(
         anno,
         ("data_documento", "data_scadenza", "data"),
     )
@@ -74,7 +74,7 @@ async def lista_partite(
         query["controparte_id"] = controparte_id
     query = combina_filtri(
         query,
-        filtro_anno_mongo(
+        filtro_anno_registro(
             anno,
             ("data_documento", "data_scadenza", "data"),
         ),
@@ -103,7 +103,7 @@ async def partite_scadute(
             "stato": {"$in": ["aperta", "parziale"]},
             "data_scadenza": {"$lt": data_limite, "$nin": [None, ""]}
         },
-        filtro_anno_mongo(
+        filtro_anno_registro(
             anno,
             ("data_documento", "data_scadenza", "data"),
         ),

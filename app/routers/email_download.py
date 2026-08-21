@@ -53,15 +53,15 @@ async def start_full_download(
     Il processo viene eseguito in background.
     """
     global download_status
-    
+
     if download_status["in_progress"]:
         raise HTTPException(status_code=400, detail="Download già in corso")
-    
+
     download_status["in_progress"] = True
     download_status["started_at"] = datetime.now(timezone.utc).isoformat()
     download_status["stats"] = None
     download_status["error"] = None
-    
+
     async def run_download():
         global download_status
         try:
@@ -79,9 +79,9 @@ async def start_full_download(
             download_status["error"] = str(e)
         finally:
             download_status["in_progress"] = False
-    
+
     background_tasks.add_task(run_download)
-    
+
     return {
         "message": "Download avviato in background",
         "days_back": days_back,
@@ -100,11 +100,11 @@ async def download_single_day(
         target_date = datetime.strptime(date, "%Y-%m-%d")
     except ValueError:
         raise HTTPException(status_code=400, detail="Formato data non valido. Usa YYYY-MM-DD")
-    
+
     db = Database.get_db()
     downloader = EmailFullDownloader(db)
     result = await downloader.download_single_day(target_date)
-    
+
     return result
 
 
@@ -118,7 +118,7 @@ async def list_documenti_non_associati(
     """
     db = Database.get_db()
     docs = await get_documenti_non_associati(db, category, limit)
-    
+
     return {
         "count": len(docs),
         "documenti": docs
@@ -136,7 +136,7 @@ async def associa_documento(
     Associa manualmente un PDF a un documento esistente.
     """
     db = Database.get_db()
-    
+
     success = await associate_pdf_to_document(
         db,
         pdf_id,
@@ -144,7 +144,7 @@ async def associa_documento(
         target_document_id,
         target_collection
     )
-    
+
     if success:
         return {"success": True, "message": "PDF associato con successo"}
     else:
@@ -159,7 +159,7 @@ async def auto_associa_documenti() -> Dict[str, Any]:
     """
     db = Database.get_db()
     stats = await smart_auto_associate(db)
-    
+
     return {
         "success": True,
         "stats": stats
@@ -176,7 +176,7 @@ async def auto_associa_documenti_v2() -> Dict[str, Any]:
     """
     db = Database.get_db()
     stats = await smart_auto_associate_v2(db)
-    
+
     return {
         "success": True,
         "message": "Auto-associazione v2 completata",
@@ -192,7 +192,7 @@ async def processa_fatture_email_ai(
     """
     Processa le fatture ricevute via email usando AI per estrarre i dati
     e le inserisce automaticamente in invoices.
-    
+
     Flusso:
     1. Prende PDF da fatture_email_attachments non ancora processati
     2. Usa AI per estrarre dati (fornitore, numero, importo, data)
@@ -202,7 +202,7 @@ async def processa_fatture_email_ai(
     import base64
     import uuid
     from app.services.ai_document_parser import parse_fattura_ai, convert_ai_fattura_to_db_format
-    
+
     db = Database.get_db()
     stats = {
         "processate": 0,
@@ -211,10 +211,10 @@ async def processa_fatture_email_ai(
         "non_pdf_saltati": 0,
         "fatture_inserite": []
     }
-    
+
     # Estensioni da escludere (non sono PDF validi)
     EXCLUDED_EXTENSIONS = {'.p7s', '.p7m', '.p7c', '.sig', '.xml', '.txt', '.html'}
-    
+
     # Trova fatture non ancora processate
     cursor = db["fatture_email_attachments"].find({
         "$or": [
@@ -223,15 +223,15 @@ async def processa_fatture_email_ai(
         ],
         "pdf_data": {"$exists": True, "$ne": None}
     }).limit(limit * 2)  # Prendiamo di più per compensare i saltati
-    
+
     processed_count = 0
     async for doc in cursor:
         if processed_count >= limit:
             break
-            
+
         try:
             filename = doc.get("filename", "fattura.pdf")
-            
+
             # Salta file non PDF
             ext = filename.lower().split('.')[-1] if '.' in filename else ''
             if f'.{ext}' in EXCLUDED_EXTENSIONS or ext in ['p7s', 'p7m', 'xml', 'txt', 'html']:
@@ -242,7 +242,7 @@ async def processa_fatture_email_ai(
                     {"$set": {"processed": True, "skip_reason": "non_pdf_file"}}
                 )
                 continue
-            
+
             # Verifica che sia effettivamente un PDF
             pdf_data = doc.get("pdf_data")
             if isinstance(pdf_data, str):
@@ -252,7 +252,7 @@ async def processa_fatture_email_ai(
                     pdf_bytes = pdf_data.encode()
             else:
                 pdf_bytes = pdf_data
-            
+
             # Verifica magic bytes PDF
             if not pdf_bytes[:4] == b'%PDF':
                 stats["non_pdf_saltati"] += 1
@@ -261,18 +261,18 @@ async def processa_fatture_email_ai(
                     {"$set": {"processed": True, "skip_reason": "not_pdf_format"}}
                 )
                 continue
-            
+
             # Estrai dati con AI
             ai_result = await parse_fattura_ai(file_bytes=pdf_bytes)
-            
+
             if not ai_result.get("success"):
                 stats["errori"] += 1
                 logger.warning(f"AI parsing fallito per {filename}: {ai_result.get('error')}")
                 continue
-            
+
             # Converti in formato DB
             invoice_data = convert_ai_fattura_to_db_format(ai_result.get("data", {}))
-            
+
             # Verifica duplicati
             numero_fattura = invoice_data.get("numero_fattura") or invoice_data.get("invoice_number")
             if numero_fattura:
@@ -291,7 +291,7 @@ async def processa_fatture_email_ai(
                     )
                     processed_count += 1
                     continue
-            
+
             # Inserisci nuova fattura
             new_invoice = {
                 "id": str(uuid.uuid4()),
@@ -304,9 +304,9 @@ async def processa_fatture_email_ai(
                 "email_from": doc.get("email_from"),
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
-            
+
             await db["invoices"].insert_one(new_invoice.copy())
-            
+
             # Marca come processato
             await db["fatture_email_attachments"].update_one(
                 {"id": doc["id"]},
@@ -316,7 +316,7 @@ async def processa_fatture_email_ai(
                     "processed_at": datetime.now(timezone.utc).isoformat()
                 }}
             )
-            
+
             stats["processate"] += 1
             processed_count += 1
             stats["fatture_inserite"].append({
@@ -325,13 +325,13 @@ async def processa_fatture_email_ai(
                 "numero": numero_fattura,
                 "totale": invoice_data.get("total_amount") or invoice_data.get("totale")
             })
-            
+
             logger.info(f"Fattura inserita: {filename} -> {new_invoice['id']}")
-            
+
         except Exception as e:
             logger.error(f"Errore processing fattura {doc.get('filename')}: {e}")
             stats["errori"] += 1
-    
+
     return {
         "success": True,
         "stats": stats
@@ -368,14 +368,14 @@ async def processa_fatture_email_batch(
     Controlla lo stato con GET /processa-fatture-email/status
     """
     global _batch_processing_status
-    
+
     if _batch_processing_status["running"]:
         return {
             "success": False,
             "message": "Processo già in esecuzione",
             "status": _batch_processing_status
         }
-    
+
     # Reset status
     _batch_processing_status = {
         "running": True,
@@ -387,10 +387,10 @@ async def processa_fatture_email_batch(
         "completed_at": None,
         "last_error": None
     }
-    
+
     # Avvia in background
     background_tasks.add_task(_run_batch_processing, batch_size, total_limit)
-    
+
     return {
         "success": True,
         "message": f"Processo avviato in background. Elaborazione di {total_limit} fatture in batch da {batch_size}.",
@@ -404,35 +404,35 @@ async def _run_batch_processing(batch_size: int, total_limit: int):
     import base64
     import uuid
     from app.services.ai_document_parser import parse_fattura_ai, convert_ai_fattura_to_db_format
-    
+
     db = Database.get_db()
     processed_total = 0
-    
+
     try:
         # Estensioni da escludere
         EXCLUDED_EXTENSIONS = {'.p7s', '.p7m', '.p7c', '.sig', '.xml', '.txt', '.html'}
-        
+
         # Conta totale da processare
         total_pending = await db["fatture_email_attachments"].count_documents({
             "$or": [{"processed": {"$exists": False}}, {"processed": False}],
             "pdf_data": {"$exists": True, "$ne": None}
         })
-        
+
         _batch_processing_status["total"] = min(total_pending, total_limit)
-        
+
         while processed_total < total_limit:
             # Prendi un batch
             cursor = db["fatture_email_attachments"].find({
                 "$or": [{"processed": {"$exists": False}}, {"processed": False}],
                 "pdf_data": {"$exists": True, "$ne": None}
             }).limit(batch_size)
-            
+
             batch_count = 0
             async for doc in cursor:
                 try:
                     filename = doc.get("filename", "fattura.pdf")
                     ext = filename.lower().split('.')[-1] if '.' in filename else ''
-                    
+
                     if f'.{ext}' in EXCLUDED_EXTENSIONS:
                         await db["fatture_email_attachments"].update_one(
                             {"id": doc["id"]},
@@ -441,7 +441,7 @@ async def _run_batch_processing(batch_size: int, total_limit: int):
                         batch_count += 1
                         processed_total += 1
                         continue
-                    
+
                     pdf_data = doc.get("pdf_data")
                     if isinstance(pdf_data, str):
                         try:
@@ -450,7 +450,7 @@ async def _run_batch_processing(batch_size: int, total_limit: int):
                             pdf_bytes = pdf_data.encode()
                     else:
                         pdf_bytes = pdf_data
-                    
+
                     if not pdf_bytes[:4] == b'%PDF':
                         await db["fatture_email_attachments"].update_one(
                             {"id": doc["id"]},
@@ -459,10 +459,10 @@ async def _run_batch_processing(batch_size: int, total_limit: int):
                         batch_count += 1
                         processed_total += 1
                         continue
-                    
+
                     # Parsing AI
                     ai_result = await parse_fattura_ai(file_bytes=pdf_bytes)
-                    
+
                     if not ai_result.get("success"):
                         _batch_processing_status["errori"] += 1
                         await db["fatture_email_attachments"].update_one(
@@ -472,10 +472,10 @@ async def _run_batch_processing(batch_size: int, total_limit: int):
                         batch_count += 1
                         processed_total += 1
                         continue
-                    
+
                     invoice_data = convert_ai_fattura_to_db_format(ai_result.get("data", {}))
                     numero_fattura = invoice_data.get("numero_fattura") or invoice_data.get("invoice_number")
-                    
+
                     # Check duplicati
                     if numero_fattura:
                         existing = await db["invoices"].find_one({
@@ -489,7 +489,7 @@ async def _run_batch_processing(batch_size: int, total_limit: int):
                             batch_count += 1
                             processed_total += 1
                             continue
-                    
+
                     # Inserisci fattura
                     new_invoice = {
                         "id": str(uuid.uuid4()),
@@ -499,37 +499,37 @@ async def _run_batch_processing(batch_size: int, total_limit: int):
                         "source": "email_attachment",
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
-                    
+
                     await db["invoices"].insert_one(new_invoice.copy())
                     await db["fatture_email_attachments"].update_one(
                         {"id": doc["id"]},
                         {"$set": {"processed": True, "invoice_id": new_invoice["id"]}}
                     )
-                    
+
                     _batch_processing_status["processate"] += 1
                     batch_count += 1
                     processed_total += 1
-                    
+
                 except Exception as e:
                     _batch_processing_status["errori"] += 1
                     _batch_processing_status["last_error"] = str(e)
                     batch_count += 1
                     processed_total += 1
-            
+
             # Aggiorna progresso
             _batch_processing_status["progress"] = processed_total
-            
+
             # Se non abbiamo processato nulla nel batch, interrompi
             if batch_count == 0:
                 break
-            
+
             # Pausa tra batch per non sovraccaricare
             await asyncio.sleep(0.5)
-        
+
     except Exception as e:
         _batch_processing_status["last_error"] = str(e)
         logger.error(f"Errore batch processing: {e}")
-    
+
     finally:
         _batch_processing_status["running"] = False
         _batch_processing_status["completed_at"] = datetime.now(timezone.utc).isoformat()
@@ -545,7 +545,7 @@ async def popola_pdf_payslips() -> Dict[str, Any]:
     """
     db = Database.get_db()
     stats = await populate_payslips_pdf_data(db)
-    
+
     return {
         "success": True,
         "message": "Popolazione PDF payslips completata",
@@ -560,7 +560,7 @@ async def get_inbox_stats() -> Dict[str, Any]:
     """
     db = Database.get_db()
     stats = await get_documents_inbox_stats(db)
-    
+
     return stats
 
 
@@ -572,7 +572,7 @@ async def sync_filesystem() -> Dict[str, Any]:
     """
     db = Database.get_db()
     stats = await sync_filesystem_pdfs_to_db(db)
-    
+
     return {
         "success": True,
         "message": "Sincronizzazione filesystem completata",
@@ -587,7 +587,7 @@ async def associa_f24_filesystem() -> Dict[str, Any]:
     """
     db = Database.get_db()
     stats = await associate_f24_from_filesystem(db)
-    
+
     return {
         "success": True,
         "message": "Associazione F24 completata",
@@ -603,7 +603,7 @@ async def processa_cedolini() -> Dict[str, Any]:
     """
     db = Database.get_db()
     stats = await process_cedolini_to_prima_nota(db)
-    
+
     return {
         "success": True,
         "message": "Processamento cedolini completato",
@@ -784,12 +784,12 @@ async def get_statistiche_allegati() -> Dict[str, Any]:
     """
     db = Database.get_db()
     stats = {}
-    
+
     for category, collection in CATEGORY_COLLECTIONS.items():
         total = await db[collection].count_documents({})
         associati = await db[collection].count_documents({"associato": True})
         non_associati = await db[collection].count_documents({"associato": False})
-        
+
         if total > 0:
             stats[category] = {
                 "totale": total,
@@ -797,7 +797,7 @@ async def get_statistiche_allegati() -> Dict[str, Any]:
                 "non_associati": non_associati,
                 "percentuale_associati": round(associati / total * 100, 1)
             }
-    
+
     return stats
 
 
@@ -808,22 +808,22 @@ async def get_pdf_content(collection: str, pdf_id: str):
     """
     from fastapi.responses import Response
     import base64
-    
+
     db = Database.get_db()
-    
+
     # Verifica che la collezione sia valida
     valid_collections = list(CATEGORY_COLLECTIONS.values()) + ["documents_inbox"]
     if collection not in valid_collections:
         raise HTTPException(status_code=400, detail="Collezione non valida")
-    
+
     doc = await db[collection].find_one({"id": pdf_id})
     if not doc:
         raise HTTPException(status_code=404, detail="PDF non trovato")
-    
+
     pdf_data = doc.get("pdf_data")
     if not pdf_data:
         raise HTTPException(status_code=404, detail="Contenuto PDF non disponibile")
-    
+
     pdf_bytes = base64.b64decode(pdf_data)
     # CR/LF nel nome file rendono l'header invalido → 502 (fix 18/07/2026)
     import re as _re
@@ -842,29 +842,29 @@ async def list_inbox_documents(
     status: str = Query(default=None),
     limit: int = Query(default=50, le=200)
 ) -> Dict[str, Any]:
-    """Lista documenti in documents_inbox con PDF salvato in MongoDB."""
+    """Lista documenti in documents_inbox con PDF salvato in Drive/Sheets."""
     db = Database.get_db()
-    
+
     query = {}
     if category:
         query["category"] = category
     if status:
         query["status"] = status
-    
-    # Solo documenti con pdf_data (salvati su MongoDB)
+
+    # Solo documenti con pdf_data (salvati su Drive/Sheets)
     query["pdf_data"] = {"$exists": True, "$ne": None}
-    
+
     cursor = db["documents_inbox"].find(
         query,
         {"_id": 0, "pdf_data": 0}  # Escludi PDF dalla lista
     ).sort("downloaded_at", -1).limit(limit)
-    
+
     docs = await cursor.to_list(limit)
     total = await db["documents_inbox"].count_documents({"pdf_data": {"$exists": True}})
-    
+
     return {
         "count": len(docs),
-        "total_in_mongodb": total,
+        "total_in_sheets": total,
         "documents": docs
     }
 
@@ -876,7 +876,7 @@ async def pulisci_duplicati() -> Dict[str, Any]:
     """
     db = Database.get_db()
     deleted_count = 0
-    
+
     for collection in CATEGORY_COLLECTIONS.values():
         # Trova hash duplicati
         pipeline = [
@@ -887,13 +887,13 @@ async def pulisci_duplicati() -> Dict[str, Any]:
             }},
             {"$match": {"count": {"$gt": 1}}}
         ]
-        
+
         async for group in db[collection].aggregate(pipeline):
             # Mantieni il primo, elimina gli altri
             ids_to_delete = group["ids"][1:]
             result = await db[collection].delete_many({"id": {"$in": ids_to_delete}})
             deleted_count += result.deleted_count
-    
+
     return {
         "success": True,
         "duplicati_rimossi": deleted_count
@@ -933,7 +933,7 @@ async def check_mittente(from_addr: str, canale: str = "gmail") -> Dict[str, Any
     """
     Verifica se un indirizzo email è attendibile.
     Match: if pattern in from_addr.lower() (contenimento stringa).
-    
+
     Args:
         from_addr: indirizzo mittente completo
         canale:    'pec' o 'gmail'
@@ -988,7 +988,7 @@ async def add_mittente(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         "builtin":        False,
         "created_at":     datetime.now(timezone.utc).isoformat(),
     }
-    await db["mittenti_email"].insert_one(dict(doc))  # copia: insert_one aggiunge _id (ObjectId) non serializzabile
+    await db["mittenti_email"].insert_one(dict(doc))
     return {"success": True, "mittente": doc}
 
 
@@ -1065,11 +1065,11 @@ async def reset_dizionario_email(_admin: Dict[str, Any] = Depends(get_current_ad
 async def trigger_email_sync(background_tasks: BackgroundTasks) -> Dict[str, Any]:
     """Trigger manuale per il sync email."""
     db = Database.get_db()
-    
+
     async def run_sync():
         from app.services.email_monitor_service import sync_email_documents
         return await sync_email_documents(db, giorni=30)
-    
+
     background_tasks.add_task(run_sync)
     return {"success": True, "message": "Sync email avviato in background"}
 

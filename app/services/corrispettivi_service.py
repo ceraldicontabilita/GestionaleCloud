@@ -16,7 +16,7 @@ import uuid
 
 from app.database import Database
 from app.services.business_rules import (
-    BusinessRules, 
+    BusinessRules,
     CorrispettivoStatus,
     EntityStatus
 )
@@ -27,16 +27,16 @@ logger = logging.getLogger(__name__)
 class CorrispettiviService:
     """
     Servizio corrispettivi con controlli di sicurezza integrati.
-    
+
     FLUSSO:
     1. Upload XML corrispettivo → Parse dati
     2. Verifica duplicato
     3. Salva corrispettivo
     4. Propaga a Prima Nota Cassa (incasso giornaliero)
     """
-    
+
     def __init__(self, db=None):
-        # AsyncIOMotorDatabase vieta intenzionalmente bool(db): usare
+        # SheetDatabase vieta intenzionalmente bool(db): usare
         # sempre il confronto esplicito, altrimenti il job Drive fallisce
         # prima ancora di leggere il primo XML.
         self.db = db if db is not None else Database.get_db()
@@ -53,7 +53,7 @@ class CorrispettiviService:
         return str(uuid.uuid4())
 
     # ==================== CREATE ====================
-    
+
     async def process_xml(self, xml_content: bytes, filename: str,
                            applica_filtro_anno: bool = False) -> Dict[str, Any]:
         """
@@ -199,7 +199,7 @@ class CorrispettiviService:
             "progressivo": parsed.get("progressivo", ""),
             "id_dispositivo": parsed.get("id_dispositivo", ""),
             "matricola_rt": parsed.get("id_dispositivo", ""),
-            
+
             # Importi
             "totale": parsed["totale"],
             "totale_complessivo": parsed["totale"],
@@ -210,18 +210,18 @@ class CorrispettiviService:
             "pagato_elettronico": parsed.get("pagato_pos", 0),
             "non_riscosso": parsed.get("non_riscosso", 0),
             "numero_documenti": parsed.get("numero_documenti", 0),
-            
+
             # IVA
             "totale_iva": parsed.get("totale_iva", 0),
             "imponibile": parsed.get("imponibile", 0),
             "riepilogo_iva": parsed.get("riepilogo_iva", []),
-            
+
             # Stati
             "status": CorrispettivoStatus.IMPORTED.value,
             "entity_status": EntityStatus.ACTIVE.value,
             "stato": "definitivo_xml",
             "totale_xml": parsed["totale"],
-            
+
             # Metadata
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -291,7 +291,7 @@ class CorrispettiviService:
             "prima_nota_id": prima_nota_id,
             "message": "Corrispettivo importato con successo"
         }
-    
+
     async def create_manual(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Crea un corrispettivo manuale (non da XML).
@@ -301,7 +301,7 @@ class CorrispettiviService:
             return {"status": "error", "message": "Data obbligatoria"}
         if not data.get("totale") or data["totale"] <= 0:
             return {"status": "error", "message": "Totale deve essere maggiore di 0"}
-        
+
         # Check duplicato per data
         existing = await self.corrispettivi.find_one({
             "data": data["data"],
@@ -312,7 +312,7 @@ class CorrispettiviService:
                 "status": "duplicate",
                 "message": f"Corrispettivo per {data['data']} già presente"
             }
-        
+
         corr_doc = {
             "id": self._generate_id(),
             "data": data["data"],
@@ -323,15 +323,15 @@ class CorrispettiviService:
             "non_riscosso": data.get("non_riscosso", 0),
             "descrizione": data.get("descrizione", "Corrispettivo manuale"),
             "source": "manual",
-            
+
             "status": CorrispettivoStatus.IMPORTED.value,
             "entity_status": EntityStatus.ACTIVE.value,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "prima_nota_id": None
         }
-        
+
         await self.corrispettivi.insert_one(corr_doc.copy())
-        
+
         # Propaga a Prima Nota
         prima_nota_id = await self._create_prima_nota_entry(corr_doc)
         if prima_nota_id:
@@ -339,21 +339,21 @@ class CorrispettiviService:
                 {"id": corr_doc["id"]},
                 {"$set": {"prima_nota_id": prima_nota_id}}
             )
-        
+
         return {
             "status": "created",
             "corrispettivo_id": corr_doc["id"],
             "prima_nota_id": prima_nota_id,
             "message": "Corrispettivo creato"
         }
-    
+
     # ==================== READ ====================
-    
-    async def get_all(self, filters: Dict[str, Any] = None, 
+
+    async def get_all(self, filters: Dict[str, Any] = None,
                       skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
         """Recupera tutti i corrispettivi."""
         query = {"entity_status": {"$ne": EntityStatus.DELETED.value}}
-        
+
         if filters:
             if filters.get("year"):
                 query["data"] = {"$regex": f"^{filters['year']}"}
@@ -361,32 +361,32 @@ class CorrispettiviService:
                 year = filters.get("year", datetime.now().year)
                 month = str(filters["month"]).zfill(2)
                 query["data"] = {"$regex": f"^{year}-{month}"}
-        
+
         cursor = self.corrispettivi.find(query, {"_id": 0}).skip(skip).limit(limit).sort("data", -1)
         return await cursor.to_list(limit)
-    
+
     async def get_by_id(self, corr_id: str) -> Optional[Dict[str, Any]]:
         """Recupera un corrispettivo per ID."""
         return await self.corrispettivi.find_one(
             {"id": corr_id, "entity_status": {"$ne": EntityStatus.DELETED.value}},
             {"_id": 0}
         )
-    
+
     async def get_by_date(self, data: str) -> Optional[Dict[str, Any]]:
         """Recupera un corrispettivo per data."""
         return await self.corrispettivi.find_one(
             {"data": data, "entity_status": {"$ne": EntityStatus.DELETED.value}},
             {"_id": 0}
         )
-    
+
     # ==================== UPDATE ====================
-    
+
     async def update(self, corr_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
         """Aggiorna un corrispettivo con validazione."""
         corr = await self.get_by_id(corr_id)
         if not corr:
             return {"status": "error", "message": "Corrispettivo non trovato"}
-        
+
         # Valida modifica
         validation = BusinessRules.can_modify_corrispettivo(corr)
         if not validation.is_valid:
@@ -395,29 +395,29 @@ class CorrispettiviService:
                 "message": "Modifica non consentita",
                 "errors": validation.errors
             }
-        
+
         # Applica modifica
         update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-        
+
         await self.corrispettivi.update_one(
             {"id": corr_id},
             {"$set": update_data}
         )
-        
+
         # Se cambiato totale, aggiorna Prima Nota
         if "totale" in update_data and corr.get("prima_nota_id"):
             await self._update_prima_nota_entry(corr["prima_nota_id"], update_data)
-        
+
         return {"status": "success", "message": "Corrispettivo aggiornato"}
-    
+
     # ==================== DELETE ====================
-    
+
     async def delete(self, corr_id: str, force: bool = False) -> Dict[str, Any]:
         """Elimina (soft-delete) un corrispettivo."""
         corr = await self.get_by_id(corr_id)
         if not corr:
             return {"status": "error", "message": "Corrispettivo non trovato"}
-        
+
         # Valida eliminazione
         validation = BusinessRules.can_delete_corrispettivo(corr)
         if not validation.is_valid:
@@ -426,7 +426,7 @@ class CorrispettiviService:
                 "message": "Eliminazione non consentita",
                 "errors": validation.errors
             }
-        
+
         # Soft-delete
         await self.corrispettivi.update_one(
             {"id": corr_id},
@@ -435,16 +435,16 @@ class CorrispettiviService:
                 "deleted_at": datetime.now(timezone.utc).isoformat()
             }}
         )
-        
+
         # Annulla movimento Prima Nota collegato
         if corr.get("prima_nota_id"):
             await self.cash_movements.update_one(
                 {"id": corr["prima_nota_id"]},
                 {"$set": {"status": "cancelled"}}
             )
-        
+
         return {"status": "success", "message": "Corrispettivo eliminato"}
-    
+
     # ==================== HELPERS ====================
 
     @staticmethod
@@ -477,7 +477,7 @@ class CorrispettiviService:
         query = {
             "data": previous_date,
             "entity_status": {"$ne": EntityStatus.DELETED.value},
-            # I residui archiviati restano in Mongo per audit, ma non sono
+            # I residui archiviati restano nel registro Drive/Sheets per audit, ma non sono
             # una chiusura attiva. Se li consideriamo "giorno valorizzato"
             # impediscono alla chiusura post-mezzanotte di tornare al giorno
             # corretto (caso reale XML 04/04/2026 attribuito al 03/04).
@@ -642,7 +642,7 @@ class CorrispettiviService:
             "prima_nota_id": prima_nota_id,
             "message": "Chiusura XML distinta sommata al corrispettivo giornaliero",
         }
-    
+
     def _parse_corrispettivo_xml(self, xml_content: bytes) -> Dict[str, Any]:
         """Adatta il parser COR10 canonico allo schema del servizio.
 
@@ -684,7 +684,7 @@ class CorrispettiviService:
             "id_dispositivo": parsed.get("matricola_rt", ""),
             "_periodo_inattivo": bool(parsed.get("periodo_inattivo")),
         }
-    
+
     async def _repair_duplicate_accounting(
         self,
         existing: Dict[str, Any],

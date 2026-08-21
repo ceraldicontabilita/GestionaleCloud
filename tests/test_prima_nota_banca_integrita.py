@@ -1,6 +1,6 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.prima_nota_module import manutenzione
 from app.routers.prima_nota_module import sync as sync_module
@@ -17,7 +17,7 @@ def _run(coro):
 
 def test_collaudo_accetta_solo_ripartizione_multi_fattura_quadrata():
     async def scenario():
-        db = AsyncMongoMockClient()["test_collaudo_multi"]
+        db = MemorySheetsClient()["test_collaudo_multi"]
         await db.estratto_conto_movimenti.insert_one({
             "id": "EC-MULTI", "importo": -300.0, "riconciliato": True,
             "tipo_riconciliazione": "fatture_multiple_causale",
@@ -41,7 +41,7 @@ def test_collaudo_accetta_solo_ripartizione_multi_fattura_quadrata():
 
 def test_dedup_conserva_riga_collegata_e_pagamenti_multi(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_dedup_sicuro"]
+        db = MemorySheetsClient()["test_dedup_sicuro"]
         monkeypatch.setattr(manutenzione.Database, "get_db", staticmethod(lambda: db))
         await db.estratto_conto_movimenti.insert_many([
             {"id": "EC-SINGOLO", "importo": -100.0, "riconciliato": True},
@@ -101,7 +101,7 @@ def test_dedup_conserva_riga_collegata_e_pagamenti_multi(monkeypatch):
 
 def test_dedup_non_modifica_collegamenti_fattura_ambigui(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_dedup_ambiguo"]
+        db = MemorySheetsClient()["test_dedup_ambiguo"]
         monkeypatch.setattr(manutenzione.Database, "get_db", staticmethod(lambda: db))
         await db.estratto_conto_movimenti.insert_one({"id": "EC-X", "importo": -100.0})
         await db.prima_nota_banca.insert_many([
@@ -122,7 +122,7 @@ def test_dedup_non_modifica_collegamenti_fattura_ambigui(monkeypatch):
 
 def test_registra_pagamento_promuove_riga_ec_generica(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_promozione_generica"]
+        db = MemorySheetsClient()["test_promozione_generica"]
         monkeypatch.setattr(sync_module.Database, "get_db", staticmethod(lambda: db))
         await db.prima_nota_banca.insert_one({
             "id": "PN-GENERICA", "estratto_conto_id": "EC-1",

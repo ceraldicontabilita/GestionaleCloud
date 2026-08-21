@@ -154,18 +154,18 @@ def parse_template_csc_napoli(text: str) -> Dict[str, Any]:
         "tfr": {},
         "ferie_permessi": {}
     }
-    
+
     # Rileva tipo cedolino
     is_acconto = 'ACCONTO' in text.upper()
     tipo_speciale = _detect_tipo_cedolino(text)
-    
+
     if is_acconto:
         result["tipo_cedolino"] = "acconto"
     elif tipo_speciale != "mensile":
         result["tipo_cedolino"] = tipo_speciale
     else:
         result["tipo_cedolino"] = "mensile"
-    
+
     # Estrai periodo (es: "DICEMBRE  2017" o "SETTEMBRE 2019")
     mesi = ['GENNAIO', 'FEBBRAIO', 'MARZO', 'APRILE', 'MAGGIO', 'GIUGNO',
             'LUGLIO', 'AGOSTO', 'SETTEMBRE', 'OTTOBRE', 'NOVEMBRE', 'DICEMBRE']
@@ -176,7 +176,7 @@ def parse_template_csc_napoli(text: str) -> Dict[str, Any]:
             result["periodo"]["mese_nome"] = mese.capitalize()
             result["periodo"]["anno"] = int(match.group(1))
             break
-    
+
     # Estrai nome dipendente - pattern: DATA NOME_COGNOME DATA_NASCITA CODICE_FISCALE
     # Es: "31/01/2017 CERALDI VALERIO                14/06/1988 CRLVLR88H14F839O"
     nome_match = re.search(r'\d{2}/\d{2}/\d{4}\s+([A-Z][A-Z\'\s]+?)\s+\d{2}/\d{2}/\d{4}\s+([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])', text)
@@ -186,7 +186,7 @@ def parse_template_csc_napoli(text: str) -> Dict[str, Any]:
         if nome and nome not in ['BOLLO ISTITUTO', 'COGNOME E NOME', 'CENTRO DI COSTO']:
             result["dipendente"]["nome_completo"] = nome
             result["dipendente"]["codice_fiscale"] = nome_match.group(2)
-    
+
     # Se non trovato, prova pattern alternativo più permissivo
     if not result["dipendente"].get("nome_completo"):
         # Cerca codice fiscale e risali al nome
@@ -203,17 +203,17 @@ def parse_template_csc_napoli(text: str) -> Dict[str, Any]:
                     nome = nome_alt.group(1).strip()
                     if nome and nome not in ['BOLLO ISTITUTO', 'COGNOME E NOME']:
                         result["dipendente"]["nome_completo"] = nome
-    
+
     # Estrai codice fiscale (se non già trovato)
     cf_match = re.search(r'([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])', text)
     if cf_match:
         result["dipendente"]["codice_fiscale"] = cf_match.group(1)
-    
+
     # Estrai livello (pattern: "O   5  BARISTA" o simile)
     livello_match = re.search(r'O\s+(\d+)\s+[A-Z]+', text)
     if livello_match:
         result["dipendente"]["livello"] = livello_match.group(1)
-    
+
     # DATI PERIODO - Cerca la riga con formato: "GG.LAV  ORE.LAV  GG.RETR  ORE.RETR  ORE.CONTR  GG.ASS"
     # Esempio: "18   119,88   24   159,84    172,00  20,00"
     # Pattern: GG.LAV (1-31), ORE.LAV (decimale), GG.RETR (1-31), ORE.RETR (decimale), ORE.CONTR (intero), GG.ASS
@@ -227,7 +227,7 @@ def parse_template_csc_napoli(text: str) -> Dict[str, Any]:
         gg_retr = int(dati_periodo_match.group(3))
         ore_retr = parse_importo(dati_periodo_match.group(4))  # Ore retribuite
         ore_contr = int(dati_periodo_match.group(5))  # Ore contrattuali
-        
+
         if 1 <= gg_lav <= 31:
             result["periodo"]["giorni_lavorati"] = gg_lav
         if 1 <= gg_retr <= 31:
@@ -238,29 +238,29 @@ def parse_template_csc_napoli(text: str) -> Dict[str, Any]:
             result["periodo"]["ore_retribuite"] = ore_retr
         if 50 <= ore_contr <= 250:
             result["periodo"]["ore_contrattuali"] = ore_contr
-    
+
     # Controlla se è un mese di SOSPENSIONE (SOS ripetuto)
     sos_count = text.count('SOS')
     is_sospensione = sos_count >= 20  # Se ci sono molti SOS, è sospensione
-    
+
     # PAGA BASE TEORICA - cerca "TOTALE :" dopo le voci paga (è la paga teorica, non il lordo effettivo)
     paga_base_match = re.search(r'TOTALE\s*:\s*([\d.,]+)', text)
     if paga_base_match:
         paga_base = parse_importo(paga_base_match.group(1))
         result["totali"]["paga_base_teorica"] = paga_base
-    
+
     # TOTALE COMPETENZE - questo è il LORDO EFFETTIVO (quanto ha guadagnato realmente)
     comp_match = re.search(r'TOTALE COMPETENZE\s+([\d.,]+)\+?', text)
     if comp_match:
         competenze = parse_importo(comp_match.group(1))
         result["totali"]["competenze"] = competenze
         result["totali"]["lordo"] = competenze  # Il lordo effettivo è TOTALE COMPETENZE
-    
-    # TOTALE TRATTENUTE  
+
+    # TOTALE TRATTENUTE
     tratt_match = re.search(r'TOTALE TRATTENUTE\s+([\d.,]+)-?', text)
     if tratt_match:
         result["totali"]["trattenute"] = parse_importo(tratt_match.group(1))
-    
+
     # RITENUTE PREVIDENZIALI (Ritenute Dipendente)
     ritenute_match = re.search(r'RITENUTE PREVIDENZIALI\s+[\d,]+\s+[\d,]+\+?\s+([\d.,]+)-?', text)
     if ritenute_match:
@@ -270,24 +270,24 @@ def parse_template_csc_napoli(text: str) -> Dict[str, Any]:
         ritenute_alt = re.search(r'RITENUTE PREVIDENZIALI.*?([\d]+[,\.]\d{2})-', text, re.DOTALL)
         if ritenute_alt:
             result["totali"]["ritenute_dipendente"] = parse_importo(ritenute_alt.group(1))
-    
+
     # RITENUTE FISCALI (IRPEF)
     irpef_match = re.search(r'RITENUTE FISCALI\s+([\d.,]+)-?', text)
     if irpef_match:
         result["totali"]["irpef"] = parse_importo(irpef_match.group(1))
-    
+
     # Per ACCONTI: cerca "IMPORTI ACCONTI SU TFR" o importo dopo ACCONTO
     if is_acconto:
         acconto_match = re.search(r'IMPORTI ACCONTI.*?([\d.,]+)\+', text)
         if acconto_match:
             result["totali"]["acconto"] = parse_importo(acconto_match.group(1))
-    
+
     # NETTO - cerca LIRE (formato CSC)
     lire_match = re.search(r'LIRE\s*:\s*([\d.,]+)\+?', text)
     if lire_match:
         lire_str = lire_match.group(1).replace('.', '').replace(',', '.')
         lire_val = float(lire_str) if lire_str else 0
-        
+
         if lire_val == 0:
             # LIRE:0 significa netto = 0 (o negativo se ci sono solo trattenute)
             if is_sospensione or result["totali"].get("competenze", 0) == 0:
@@ -305,29 +305,29 @@ def parse_template_csc_napoli(text: str) -> Dict[str, Any]:
         else:
             # Già in euro (raro ma possibile)
             result["totali"]["netto"] = lire_val
-    
+
     # Se non trovato con LIRE, cerca TOTALE NETTO esplicito
     if "netto" not in result["totali"]:
         netto_match = re.search(r'TOTALE NETTO\s+([\d.,]+)', text)
         if netto_match:
             result["totali"]["netto"] = parse_importo(netto_match.group(1))
-    
+
     # Marca come sospensione se rilevato
     if is_sospensione:
         result["tipo_cedolino"] = "sospensione"
         result["note"] = f"Mese di sospensione ({sos_count} giorni SOS)"
-    
+
     # Retribuzione TFR
     tfr_match = re.search(r'RETRIBUZIONE T\.?F\.?R\.?\s+([\d.,]+)', text)
     if tfr_match:
         result["tfr"]["retribuzione"] = parse_importo(tfr_match.group(1))
-    
+
     # Ferie
     ferie_mat_match = re.search(r'Mat\.\s*([\d.,]+)\+?\s*Mat\.\s*([\d.,]+)', text)
     if ferie_mat_match:
         result["ferie_permessi"]["ferie_maturate"] = parse_importo(ferie_mat_match.group(1))
         result["ferie_permessi"]["permessi_maturati"] = parse_importo(ferie_mat_match.group(2))
-    
+
     # Il lordo è già stato impostato da TOTALE COMPETENZE (sopra)
     # Se non è presente, gestisci i casi speciali
     if "lordo" not in result["totali"] or result["totali"].get("lordo") is None:
@@ -338,7 +338,7 @@ def parse_template_csc_napoli(text: str) -> Dict[str, Any]:
             result["totali"]["lordo"] = 0
         else:
             result["totali"]["lordo"] = 0
-    
+
     return result
 
 
@@ -356,7 +356,7 @@ def parse_template_teamsystem(text: str) -> Dict[str, Any]:
         "tfr": {},
         "ferie_permessi": {}
     }
-    
+
     # Estrai periodo (es: "SETTEMBRE    2022")
     mesi = ['GENNAIO', 'FEBBRAIO', 'MARZO', 'APRILE', 'MAGGIO', 'GIUGNO',
             'LUGLIO', 'AGOSTO', 'SETTEMBRE', 'OTTOBRE', 'NOVEMBRE', 'DICEMBRE']
@@ -367,27 +367,27 @@ def parse_template_teamsystem(text: str) -> Dict[str, Any]:
             result["periodo"]["mese_nome"] = mese.capitalize()
             result["periodo"]["anno"] = int(match.group(1))
             break
-    
+
     # Nome dipendente (pattern: dopo anno, es "20     1   5124776507 91431211 24       15  ARIANTE MARCELLA")
     nome_match = re.search(r'\d{4}\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+([A-Z][A-Z\'\s]+)', text)
     if nome_match:
         result["dipendente"]["nome_completo"] = nome_match.group(1).strip()
-    
+
     # Codice fiscale
     cf_match = re.search(r'([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])', text)
     if cf_match:
         result["dipendente"]["codice_fiscale"] = cf_match.group(1)
-    
+
     # Livello (es: "6^" o "6")
     livello_match = re.search(r'(\d)\^?\s*$', text, re.MULTILINE)
     if livello_match:
         result["dipendente"]["livello"] = livello_match.group(1)
-    
+
     # Ore lavorate (pattern: "26    172,00" dove 172 sono le ore)
     ore_match = re.search(r'\d{2}\s+(\d{2,3})[,\.]\d{2}\s*$', text, re.MULTILINE)
     if ore_match:
         result["periodo"]["ore_lavorate"] = int(ore_match.group(1))
-    
+
     # Giorni lavorati
     giorni_match = re.search(r'GG\.\s*CONTR\.\s*(\d+)', text)
     if not giorni_match:
@@ -395,7 +395,7 @@ def parse_template_teamsystem(text: str) -> Dict[str, Any]:
         giorni_match = re.search(r'\s(\d{2})\s+\d{2,3}[,\.]\d{2}', text)
     if giorni_match:
         result["periodo"]["giorni_lavorati"] = int(giorni_match.group(1))
-    
+
     # TOTALE LORDO - cerca pattern con importi affiancati
     lordo_match = re.search(r'(\d{3,4})[,\.](\d{2})\s+(\d{3,4})[,\.](\d{2})\s+(\d{2,3})[,\.](\d{2})', text)
     if lordo_match:
@@ -403,11 +403,11 @@ def parse_template_teamsystem(text: str) -> Dict[str, Any]:
         lordo_str = f"{lordo_match.group(1)},{lordo_match.group(2)}"
         result["totali"]["lordo"] = parse_importo(lordo_str)
         result["totali"]["competenze"] = result["totali"]["lordo"]
-        
+
         # Le trattenute sono il terzo valore
         tratt_str = f"{lordo_match.group(5)},{lordo_match.group(6)}"
         result["totali"]["trattenute"] = parse_importo(tratt_str)
-    
+
     # NETTO BUSTA - cerca pattern finale
     # Pattern: cerca numero seguito da "GIORNO DI RIPOSO" o simile
     netto_match = re.search(r'(\d{2,4})[,\.](\d{2})\s*R?\s*GIORNO', text)
@@ -424,26 +424,26 @@ def parse_template_teamsystem(text: str) -> Dict[str, Any]:
                 if 100 < val < 5000:  # Range ragionevole per netto
                     result["totali"]["netto"] = val
                     break
-    
+
     # Se non abbiamo lordo ma abbiamo netto, usa netto come riferimento
     if "netto" in result["totali"] and "lordo" not in result["totali"]:
         result["totali"]["lordo"] = result["totali"]["netto"]
-    
+
     # Ferie
     ferie_match = re.search(r'FERIE RES\.\s*([\d,]+)', text)
     if ferie_match:
         result["ferie_permessi"]["ferie_residuo"] = parse_importo(ferie_match.group(1))
-    
+
     # Permessi (ROL)
     rol_match = re.search(r'ROL RES\s*([-\d,]+)', text)
     if rol_match:
         result["ferie_permessi"]["permessi_residuo"] = parse_importo(rol_match.group(1))
-    
+
     # TFR
     tfr_match = re.search(r'TFR MESE\s*([\d,]+)', text)
     if tfr_match:
         result["tfr"]["quota_mese"] = parse_importo(tfr_match.group(1))
-    
+
     return result
 
 
@@ -522,7 +522,7 @@ def parse_template_zucchetti_classic(text: str) -> Dict[str, Any]:
         "tfr": {},
         "ferie_permessi": {}
     }
-    
+
     # Estrai periodo
     mesi = ['GENNAIO', 'FEBBRAIO', 'MARZO', 'APRILE', 'MAGGIO', 'GIUGNO',
             'LUGLIO', 'AGOSTO', 'SETTEMBRE', 'OTTOBRE', 'NOVEMBRE', 'DICEMBRE']
@@ -533,33 +533,33 @@ def parse_template_zucchetti_classic(text: str) -> Dict[str, Any]:
             result["periodo"]["mese_nome"] = mese.capitalize()
             result["periodo"]["anno"] = int(match.group(1))
             break
-    
+
     # Estrai nome dipendente
     nome_match = re.search(r'\d{2}/\d{2}/\d{4}\s+([A-Z][A-Z\'\s]+?)\s+\d{2}/\d{2}/\d{4}', text)
     if nome_match:
         result["dipendente"]["nome_completo"] = nome_match.group(1).strip()
-    
+
     # Codice fiscale
     cf_match = re.search(r'([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])', text)
     if cf_match:
         result["dipendente"]["codice_fiscale"] = cf_match.group(1)
-    
+
     # Livello
     livello_match = re.search(r'O\s+(\d+)\s+[A-Z]+', text)
     if livello_match:
         result["dipendente"]["livello"] = livello_match.group(1)
-    
+
     # TOTALE COMPETENZE
     comp_match = re.search(r'TOTALE COMPETENZE\s+([\d.,]+)', text)
     if comp_match:
         result["totali"]["competenze"] = parse_importo(comp_match.group(1))
         result["totali"]["lordo"] = result["totali"]["competenze"]
-    
+
     # TOTALE TRATTENUTE
     tratt_match = re.search(r'TOTALE TRATTENUTE\s+([\d.,]+)', text)
     if tratt_match:
         result["totali"]["trattenute"] = parse_importo(tratt_match.group(1))
-    
+
     # NETTO - cerca LIRE
     lire_match = re.search(r'LIRE\s*:\s*([\d.,]+)\+', text)
     if lire_match:
@@ -571,31 +571,31 @@ def parse_template_zucchetti_classic(text: str) -> Dict[str, Any]:
             result["totali"]["netto"] = round(
                 result["totali"]["competenze"] - result["totali"]["trattenute"], 2
             )
-    
+
     # Ore lavorate - pattern "ORE LAVORATE" o dopo numeri
     ore_match = re.search(r'(\d{2,3})[.,]00\s+\d+\s+\d+\s+(\d{2,3})[.,]00', text)
     if ore_match:
         result["periodo"]["ore_lavorate"] = parse_importo(ore_match.group(2))
-    
+
     # Giorni lavorati
     giorni_match = re.search(r'(\d+)\s+(\d+)[.,]00\s+\d+\s+\d+', text)
     if giorni_match:
         result["periodo"]["giorni_lavorati"] = int(giorni_match.group(1))
-    
+
     # TFR
     tfr_match = re.search(r'RETRIBUZIONE T\.?F\.?R\.?\s+([\d.,]+)', text)
     if tfr_match:
         result["tfr"]["retribuzione"] = parse_importo(tfr_match.group(1))
-    
+
     # Ferie maturate/godute
     ferie_mat = re.search(r'Mat\.\s*([\d.,]+)\+', text)
     if ferie_mat:
         result["ferie_permessi"]["ferie_maturate"] = parse_importo(ferie_mat.group(1))
-    
+
     ferie_god = re.search(r'God\.\s*([\d.,]+)\+', text)
     if ferie_god:
         result["ferie_permessi"]["ferie_godute"] = parse_importo(ferie_god.group(1))
-    
+
     return result
 
 
@@ -613,10 +613,10 @@ def parse_template_zucchetti_new(text: str) -> Dict[str, Any]:
         "ferie_permessi": {},
         "irpef": {}
     }
-    
+
     # Rileva tipo cedolino
     result["tipo_cedolino"] = _detect_tipo_cedolino(text)
-    
+
     # Estrai periodo (es: "Ottobre 2023")
     mesi = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
             'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre']
@@ -627,7 +627,7 @@ def parse_template_zucchetti_new(text: str) -> Dict[str, Any]:
             result["periodo"]["mese_nome"] = mese
             result["periodo"]["anno"] = int(match.group(1))
             break
-    
+
     # Nome dipendente — Zucchetti_new ha sempre il nome dopo il codice
     # dipendente (formato "0300NNN\n{NOME COGNOME}\n{CF}\n")
     # Pattern robusto: cattura solo fino a prima della riga con il CF
@@ -648,33 +648,33 @@ def parse_template_zucchetti_new(text: str) -> Dict[str, Any]:
             # Filtra etichette spurie ("CODICE", "PERIODO" ecc.)
             if candidate and not any(k in candidate for k in ("CODICE", "PERIODO", "COGNOME", "NOME")):
                 result["dipendente"]["nome_completo"] = candidate
-    
+
     # Codice fiscale
     cf_match = re.search(r'([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])', text)
     if cf_match:
         result["dipendente"]["codice_fiscale"] = cf_match.group(1)
-    
+
     # Livello (es: "5' Livello")
     livello_match = re.search(r"(\d+)['\s]*Livello", text)
     if livello_match:
         result["dipendente"]["livello"] = livello_match.group(1)
-    
+
     # Part Time
     pt_match = re.search(r'Part\s*Time\s+([\d.,]+)%', text)
     if pt_match:
         result["dipendente"]["part_time_perc"] = parse_importo(pt_match.group(1))
-    
+
     # ORE e GIORNI lavorati (cerca dopo "LAVORATO")
     lavorato_match = re.search(r'LAVORATO.*?(\d+)\s+(\d+)\s+(\d+)\s+(\d+)', text, re.DOTALL)
     if lavorato_match:
         result["periodo"]["ore_lavorate"] = int(lavorato_match.group(1))
         result["periodo"]["giorni_lavorati"] = int(lavorato_match.group(2))
-    
+
     # Pattern alternativo per ore: "135,00000 ORE" o "135,00 ORE"
     ore_match = re.search(r'(\d+)[,\.]\d+\s*ORE', text)
     if ore_match and "ore_lavorate" not in result["periodo"]:
         result["periodo"]["ore_lavorate"] = int(ore_match.group(1))
-    
+
     # TOTALE COMPETENZE - cerca valore numerico che termina con cifre grandi
     # Pattern: cerca riga con solo numero grande (>500) che potrebbe essere competenze
     competenze_patterns = [
@@ -682,7 +682,7 @@ def parse_template_zucchetti_new(text: str) -> Dict[str, Any]:
         r'(\d{1,3}[.,]\d{3}[.,]\d{2})\s*$',  # 1.228,13
         r'\n(\d{3,4}[.,]\d{2})\n',  # Standalone come 1.228,13 su riga
     ]
-    
+
     # Cerca NETTO DEL MESE esplicito (più affidabile)
     # Pattern con segno negativo: "-32,85 €"
     netto_match = re.search(r'(-?\d{1,3}[.,]?\d{0,3}[.,]\d{2})\s*€', text)
@@ -693,7 +693,7 @@ def parse_template_zucchetti_new(text: str) -> Dict[str, Any]:
             result["tipo_cedolino"] = "solo_trattenute"
         else:
             result["totali"]["netto"] = netto_val
-    
+
     # Cerca pattern competenze/trattenute dalla struttura del documento
     # Il formato è: trattenute \n competenze (es: 114,71 \n 1.228,13)
     tratt_comp_match = re.search(r'(\d{1,3}[.,]\d{2})\s*\n\s*(\d{1,3}[.,]?\d{0,3}[.,]\d{2})\s*\n', text)
@@ -705,43 +705,43 @@ def parse_template_zucchetti_new(text: str) -> Dict[str, Any]:
             result["totali"]["trattenute"] = tratt_val
             result["totali"]["competenze"] = comp_val
             result["totali"]["lordo"] = comp_val
-    
+
     # Pattern alternativo: cerca "Z00001 Retribuzione" seguito da importo
     retrib_match = re.search(r'Z00001\s+Retribuzione.*?([\d.,]+)\s*$', text, re.MULTILINE)
     if retrib_match and "lordo" not in result["totali"]:
         result["totali"]["lordo"] = parse_importo(retrib_match.group(1))
-    
+
     # IRPEF
     irpef_match = re.search(r'Ritenute IRPEF\s*([\d.,]+)', text)
     if irpef_match:
         result["irpef"]["ritenute"] = parse_importo(irpef_match.group(1))
-    
+
     # Contributo IVS (INPS)
     ivs_match = re.search(r'Contributo IVS.*?(\d+[.,]\d{2})\s*$', text, re.MULTILINE)
     if ivs_match:
         result["totali"]["inps_dipendente"] = parse_importo(ivs_match.group(1))
-    
+
     # TFR
     tfr_quota = re.search(r'Quota T\.?F\.?R\.?\s*([\d.,]+)', text)
     if tfr_quota:
         result["tfr"]["quota_anno"] = parse_importo(tfr_quota.group(1))
-    
+
     tfr_fondo = re.search(r'F\.?do 31/12\s*([\d.,]+)', text)
     if tfr_fondo:
         result["tfr"]["fondo_31_12"] = parse_importo(tfr_fondo.group(1))
-    
+
     # Ferie e Permessi (formato: "Ferie 8,66666 14,00000 -5,33334 GG.")
     ferie_match = re.search(r'Ferie\s+([-\d.,]+)\s+([-\d.,]+)\s+([-\d.,]+)', text)
     if ferie_match:
         result["ferie_permessi"]["ferie_residuo_ap"] = parse_importo(ferie_match.group(1))
         result["ferie_permessi"]["ferie_godute"] = parse_importo(ferie_match.group(2))
         result["ferie_permessi"]["ferie_saldo"] = parse_importo(ferie_match.group(3))
-    
+
     permessi_match = re.search(r'Permessi\s+([-\d.,]+)\s+([-\d.,]+)', text)
     if permessi_match:
         result["ferie_permessi"]["permessi_residuo"] = parse_importo(permessi_match.group(1))
         result["ferie_permessi"]["permessi_goduti"] = parse_importo(permessi_match.group(2))
-    
+
     # Calcola trattenute se mancanti
     if "trattenute" not in result["totali"]:
         trattenute = 0
@@ -751,28 +751,28 @@ def parse_template_zucchetti_new(text: str) -> Dict[str, Any]:
             trattenute += result["irpef"]["ritenute"]
         if trattenute > 0:
             result["totali"]["trattenute"] = trattenute
-    
+
     # Calcola netto se mancante
     if "netto" not in result["totali"] and "lordo" in result["totali"] and "trattenute" in result["totali"]:
         result["totali"]["netto"] = round(
             result["totali"]["lordo"] - result["totali"]["trattenute"], 2
         )
-    
+
     # Se abbiamo competenze ma non lordo, usa competenze come lordo
     if "competenze" in result["totali"] and "lordo" not in result["totali"]:
         result["totali"]["lordo"] = result["totali"]["competenze"]
-    
+
     # Per cedolini solo trattenute (netto negativo o 0), imposta lordo = 0
     if result.get("tipo_cedolino") == "solo_trattenute":
         result["totali"]["lordo"] = 0
-    
+
     # Se abbiamo netto (anche negativo) ma non lordo, consideriamo comunque valido
     if "netto" in result["totali"] and "lordo" not in result["totali"]:
         if result["totali"]["netto"] <= 0:
             result["totali"]["lordo"] = 0
         else:
             result["totali"]["lordo"] = result["totali"]["netto"]
-    
+
     return result
 
 
@@ -930,15 +930,15 @@ def parse_busta_paga_multi(pdf_path: str) -> Dict[str, Any]:
     """
     Parser principale che rileva automaticamente il template e applica
     il parser corretto. Gestisce anche PDF multi-pagina.
-    
+
     Args:
         pdf_path: Percorso del file PDF
-        
+
     Returns:
         Dizionario con tutti i dati estratti
     """
     doc = fitz.open(pdf_path)
-    
+
     # Estrai testo da tutte le pagine
     all_text = ""
     page_texts = []
@@ -948,13 +948,13 @@ def parse_busta_paga_multi(pdf_path: str) -> Dict[str, Any]:
         page_texts.append(page_text)
         page_words.append(page.get_text("words"))
         all_text += page_text + "\n"
-    
+
     num_pages = len(doc)
     doc.close()
-    
+
     # Usa la prima pagina per rilevare il template
     text = page_texts[0] if page_texts else ""
-    
+
     # Rileva il template dalla prima pagina
     template = detect_template(text)
 
@@ -1107,19 +1107,19 @@ def parse_page2_ore_lavorate(text: str) -> Dict[str, Any]:
     Estrae i dati di ferie/permessi/ore dalla seconda pagina dei PDF recenti.
     """
     result = {}
-    
+
     # Pattern per ferie: "Ferie -1,00000 -1,00000 GG."
     ferie_match = re.search(r'Ferie\s+([-\d,\.]+)\s+([-\d,\.]+)\s*GG', text)
     if ferie_match:
         result["ferie_residuo"] = parse_importo(ferie_match.group(1))
         result["ferie_saldo"] = parse_importo(ferie_match.group(2))
-    
+
     # Pattern per permessi: "Permessi 12,00000 12,00000 ORE"
     permessi_match = re.search(r'Permessi\s+([-\d,\.]+)\s+([-\d,\.]+)\s*ORE', text)
     if permessi_match:
         result["permessi_residuo"] = parse_importo(permessi_match.group(1))
         result["permessi_saldo"] = parse_importo(permessi_match.group(2))
-    
+
     # Pattern per "Residuo AP Goduto Saldo Maturato" seguito da valori
     residuo_match = re.search(r'Residuo AP\s+Goduto\s+Saldo\s+Maturato', text)
     if residuo_match:
@@ -1128,43 +1128,43 @@ def parse_page2_ore_lavorate(text: str) -> Dict[str, Any]:
         if values:
             result["ferie_residuo_ap"] = parse_importo(values[0][0])
             result["ferie_godute"] = parse_importo(values[0][1])
-    
+
     # Imponibili dalla pagina 2
     imp_inps = re.search(r'Imp\.\s*INPS\s+([\d,\.]+)', text)
     if imp_inps:
         result["imponibile_inps"] = parse_importo(imp_inps.group(1))
-    
+
     imp_irpef = re.search(r'Imp\.\s*IRPEF\s+([\d,\.]+)', text)
     if imp_irpef:
         result["imponibile_irpef"] = parse_importo(imp_irpef.group(1))
-    
+
     # Ore lavorate (se presente)
     ore_lav = re.search(r'ORE\s+LAVORATE\s*([\d,\.]+)', text, re.IGNORECASE)
     if ore_lav:
         result["ore_lavorate_mese"] = parse_importo(ore_lav.group(1))
-    
+
     # Giorni lavorati
     giorni_lav = re.search(r'GIORNI\s+LAVORATI\s*([\d]+)', text, re.IGNORECASE)
     if giorni_lav:
         result["giorni_lavorati_mese"] = int(giorni_lav.group(1))
-    
+
     return result
 
 
 def parse_busta_paga_from_bytes(pdf_bytes: bytes) -> Dict[str, Any]:
-    """Parse busta paga da bytes (per upload via API o dati da MongoDB)."""
+    """Parse busta paga da bytes (per upload via API o dati da Drive/Sheets)."""
     import tempfile
     import os
-    
+
     with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
         tmp.write(pdf_bytes)
         tmp_path = tmp.name
-    
+
     try:
         result = parse_busta_paga_multi(tmp_path)
     finally:
         os.unlink(tmp_path)
-    
+
     return result
 
 

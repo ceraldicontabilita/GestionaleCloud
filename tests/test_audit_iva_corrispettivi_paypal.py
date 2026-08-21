@@ -1,7 +1,7 @@
 import asyncio
 from datetime import date
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.handlers.corrispettivi import handler_prima_nota_corrispettivi
 from app.parsers.corrispettivi_parser import parse_corrispettivo_xml
@@ -71,7 +71,7 @@ def test_iva_annuale_non_somma_mesi_futuri(monkeypatch):
 
 def test_confronto_iva_include_tutte_le_fatture_indipendentemente_dal_pagamento():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         base = {
             "periodo_iva_attribuito": "2026-07",
             "iva_detraibile": 100.0,
@@ -109,7 +109,7 @@ def test_confronto_iva_include_tutte_le_fatture_indipendentemente_dal_pagamento(
 
 def test_confronto_iva_non_scambia_liquidazione_confermata_con_competenza_corrente():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await db.invoices.insert_many([
             {
                 "id": "storica-1", "periodo_iva_attribuito": "2026-06",
@@ -159,7 +159,7 @@ def test_corrispettivo_senza_imposta_non_inventa_iva():
 
 
 def test_handler_evento_corrispettivi_non_scrive_una_seconda_prima_nota():
-    db = AsyncMongoMockClient().db
+    db = MemorySheetsClient().db
     result = _run(handler_prima_nota_corrispettivi(
         {"data": "2026-08-10", "totale": 100}, db,
     ))
@@ -170,7 +170,7 @@ def test_handler_evento_corrispettivi_non_scrive_una_seconda_prima_nota():
 
 def test_paypal_incrementale_usa_lease_atomico(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         started = asyncio.Event()
         release = asyncio.Event()
 

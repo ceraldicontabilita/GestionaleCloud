@@ -3,7 +3,7 @@
 Verifica che i nuovi tool cerca_veicoli_noleggio e cerca_verbali_noleggio
 siano presenti nello schema, che l'executor li instradi, che la fusione
 posta+fattura dei verbali deduplichi per numero_verbale e che i PDF non
-finiscano mai nei risultati. Il DB è un finto Mongo asincrono minimale.
+finiscano mai nei risultati. Il repository asincrono è un doppio minimale.
 """
 import asyncio
 import json
@@ -22,7 +22,7 @@ from app.services.chat_ai_engine import (
 
 # ---------------------------------------------------------------------------
 # Finto DB asincrono: registra query/proiezione e restituisce documenti fissi
-# (i filtri Mongo non vengono applicati: qui si testa la logica Python).
+# (i filtri repository non vengono applicati: qui si testa la logica Python).
 # ---------------------------------------------------------------------------
 
 class _FakeCursor:
@@ -143,7 +143,7 @@ class TestCercaVerbaliNoleggio:
             assert "pdf_data" not in v
             assert "pdf_allegati" not in v
             assert "quietanza_pdf" not in v
-        # e la proiezione verso Mongo li esclude alla fonte
+        # e la proiezione del repository li esclude alla fonte
         proj = db.collections["verbali_noleggio"].ultima_proiezione
         assert proj["pdf_data"] == 0 and proj["pdf_allegati"] == 0 and proj["quietanza_pdf"] == 0
 

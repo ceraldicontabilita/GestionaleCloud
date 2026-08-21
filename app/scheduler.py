@@ -6,15 +6,10 @@ import logging
 import uuid
 import asyncio
 import inspect
-import os
-import socket
-from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from pymongo import ReturnDocument
-from pymongo.errors import DuplicateKeyError
 import random
 
 logger = logging.getLogger(__name__)
@@ -41,101 +36,20 @@ async def _esegui_con_lock_locale(job_id, funzione, *args, **kwargs):
         risultato = funzione(*args, **kwargs)
         return await risultato if inspect.isawaitable(risultato) else risultato
 
-async def _esegui_con_lease_distribuito(job_id, funzione, *args, **kwargs):
-    """Esegue un job una sola volta anche con piu' worker/istanze.
-
-    Il lock vive in MongoDB ed e' acquisito con una singola operazione atomica.
-    Un heartbeat prolunga la lease mentre il job lavora; se il processo muore,
-    la scadenza permette a un'altra istanza di riprendere il ciclo successivo.
-    """
-    from app.config import settings
-    from app.database import Database
-
-    if str(getattr(settings, "DATA_BACKEND", "sheets")).strip().lower() == "sheets":
-        return await _esegui_con_lock_locale(job_id, funzione, *args, **kwargs)
-
-    db = Database.get_db()
-    if db is None:
-        raise RuntimeError(f"Scheduler {job_id}: database non disponibile")
-
-    durata = max(int(getattr(settings, "SCHEDULER_LEASE_SECONDS", 21600)), 60)
-    owner = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4()}"
-    adesso = datetime.now(timezone.utc)
-    filtro = {
-        "_id": job_id,
-        "$or": [
-            {"expires_at": {"$lte": adesso}},
-            {"expires_at": {"$exists": False}},
-        ],
-    }
-    try:
-        lease = await db["scheduler_leases"].find_one_and_update(
-            filtro,
-            {
-                "$set": {
-                    "owner": owner,
-                    "acquired_at": adesso,
-                    "expires_at": adesso + timedelta(seconds=durata),
-                },
-                "$setOnInsert": {"created_at": adesso},
-            },
-            upsert=True,
-            return_document=ReturnDocument.AFTER,
-        )
-    except DuplicateKeyError:
-        lease = None
-
-    if not lease or lease.get("owner") != owner:
-        logger.info("[SCHEDULER] job %s gia' in esecuzione su un'altra istanza", job_id)
-        return None
-
-    async def _heartbeat():
-        try:
-            while True:
-                await asyncio.sleep(min(60, max(durata // 3, 10)))
-                rinnovo = datetime.now(timezone.utc)
-                result = await db["scheduler_leases"].update_one(
-                    {"_id": job_id, "owner": owner},
-                    {"$set": {"expires_at": rinnovo + timedelta(seconds=durata)}},
-                )
-                if not result.matched_count:
-                    logger.error("[SCHEDULER] lease persa durante il job %s", job_id)
-                    return
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            # Un guasto transitorio del rinnovo deve essere visibile, ma non
-            # deve sostituire l'eccezione o il risultato del job principale.
-            logger.exception("[SCHEDULER] heartbeat fallito per %s", job_id)
-
-    heartbeat = asyncio.create_task(_heartbeat())
-    try:
-        risultato = funzione(*args, **kwargs)
-        return await risultato if inspect.isawaitable(risultato) else risultato
-    finally:
-        heartbeat.cancel()
-        with suppress(asyncio.CancelledError):
-            await heartbeat
-        rilascio = datetime.now(timezone.utc)
-        try:
-            await db["scheduler_leases"].update_one(
-                {"_id": job_id, "owner": owner},
-                {"$set": {"expires_at": rilascio, "released_at": rilascio}},
-            )
-        except Exception:
-            # La lease scade comunque; non mascherare l'esito del job.
-            logger.exception("[SCHEDULER] rilascio lease fallito per %s", job_id)
+async def _esegui_con_lock_sheets(job_id, funzione, *args, **kwargs):
+    """Serializza ogni automazione nel processo operativo Drive/Sheets."""
+    return await _esegui_con_lock_locale(job_id, funzione, *args, **kwargs)
 
 
-class DistributedLockedScheduler(AsyncIOScheduler):
-    """APScheduler con esclusione distribuita applicata a ogni job."""
+class SheetsLockedScheduler(AsyncIOScheduler):
+    """APScheduler con esclusione locale applicata a ogni job Drive/Sheets."""
 
     def add_job(self, func, trigger=None, args=None, kwargs=None, id=None, **options):
         job_id = id or getattr(func, "__name__", str(uuid.uuid4()))
 
         @wraps(func)
         async def _locked(*job_args, **job_kwargs):
-            return await _esegui_con_lease_distribuito(
+            return await _esegui_con_lock_sheets(
                 job_id, func, *job_args, **job_kwargs
             )
 
@@ -149,9 +63,8 @@ class DistributedLockedScheduler(AsyncIOScheduler):
         )
 
 
-# Un solo oggetto per processo; il lock Mongo impedisce duplicazioni tra
-# worker e istanze orizzontali.
-scheduler = DistributedLockedScheduler()
+# Un solo oggetto per processo; Render mantiene una sola istanza applicativa.
+scheduler = SheetsLockedScheduler()
 
 async def scan_verbali_email_task():
     """
@@ -178,14 +91,14 @@ async def scan_verbali_email_task():
 
         fase1 = result.get("fase_1_completamenti", {})
         fase2 = result.get("fase_2_nuovi", {})
-        
+
         logger.info(f"🚗 [SCHEDULER] Scan verbali completato:")
         logger.info(f"   - Quietanze trovate: {fase1.get('quietanze_trovate', 0)}/{fase1.get('quietanze_cercate', 0)}")
         logger.info(f"   - PDF trovati: {fase1.get('pdf_trovati', 0)}/{fase1.get('pdf_cercati', 0)}")
         logger.info(f"   - Nuovi verbali: {fase2.get('verbali_nuovi', 0)}")
-        
+
         verbali_nuovi = fase2.get("verbali_nuovi", 0)
-        
+
         # Notifica WebSocket real-time se ci sono nuovi verbali
         if verbali_nuovi > 0:
             try:
@@ -197,12 +110,12 @@ async def scan_verbali_email_task():
                 logger.info("🔔 [SCHEDULER] WebSocket notifica verbali_scan inviata")
             except Exception as e:
                 logger.warning(f"🔔 [SCHEDULER] WebSocket non disponibile: {e}")
-        
+
         # Se ci sono nuovi verbali, prova a inviarli via Telegram
         if verbali_nuovi > 0:
             try:
                 from app.services.telegram_notifications import is_configured, send_notification
-                
+
                 if is_configured():
                     messaggio = f"""🚗 *Nuovi Verbali Trovati*
 
@@ -211,12 +124,12 @@ async def scan_verbali_email_task():
 📅 {datetime.now().strftime('%d-%m-%Y %H:%M')}
 
 👉 Vai su /verbali-riconciliazione per gestirli"""
-                    
+
                     await send_notification(messaggio)
                     logger.info("📱 [SCHEDULER] Notifica Telegram verbali inviata")
             except Exception as e:
                 logger.warning(f"📱 [SCHEDULER] Notifica Telegram non inviata: {e}")
-        
+
     except Exception as e:
         logger.error(f"🚗 [SCHEDULER] Errore scan verbali: {e}")
         import traceback
@@ -427,16 +340,16 @@ async def check_scadenze_f24_task():
     Controlla scadenze F24 imminenti e invia notifiche push (Telegram + Email).
     """
     logger.info("📅 [SCHEDULER] Controllo scadenze F24...")
-    
+
     try:
         from app.services.f24_scadenze_notifiche import invia_notifiche_scadenze
-        
+
         result = await invia_notifiche_scadenze()
-        
+
         n_scadenze = result.get("scadenze_notificate", 0)
         n_telegram = result.get("notifiche_telegram", 0)
         n_email = result.get("notifiche_email", 0)
-        
+
         if n_scadenze > 0:
             logger.info(f"📅 [SCHEDULER] Scadenze F24: {n_scadenze} trovate, "
                        f"Telegram: {n_telegram}, Email: {n_email}")
@@ -452,7 +365,7 @@ async def check_scadenze_f24_task():
                 logger.warning(f"🔔 [SCHEDULER] WebSocket non disponibile: {e}")
         else:
             logger.info("📅 [SCHEDULER] Nessuna scadenza F24 imminente")
-    
+
     except Exception as e:
         logger.error(f"📅 [SCHEDULER] Errore controllo scadenze F24: {e}")
 
@@ -510,7 +423,7 @@ async def check_fornitori_duplicati_task():
 async def paypal_recupera_fatture_email_task():
     """
     Task eseguito ogni giorno alle 5:30.
-    I fornitori PayPal non mappati sono tipicamente esteri (MongoDB, SaaS
+    I fornitori PayPal non mappati sono tipicamente esteri (Drive/Sheets, SaaS
     vari): non emettono mai fattura elettronica XML, quindi Drive/PEC-SDI
     non li troveranno mai, a prescindere da quanto tempo passa. Cerca da
     sola nella posta invece di aspettare un click manuale — vedi
@@ -561,7 +474,7 @@ async def gmail_full_scan_task():
             f"{stats.get('cartelle_scansionate', 0)} cartelle, "
             f"{stats.get('pdfs_downloaded', 0)} PDF"
         )
-        
+
         # Esegui pipeline post-download (F24, cedolini, verbali, quietanze)
         if stats.get("pdfs_downloaded", 0) > 0:
             try:
@@ -570,7 +483,7 @@ async def gmail_full_scan_task():
                 logger.info(f"[SCHEDULER-GMAIL] Pipeline: {pipeline_result}")
             except Exception as pipe_err:
                 logger.error(f"[SCHEDULER-GMAIL] Pipeline errore: {pipe_err}")
-        
+
         if stats.get("pdfs_downloaded", 0) > 0:
             try:
                 from app.services.websocket_manager import notify_data_change
@@ -1217,6 +1130,9 @@ def start_scheduler():
         'interval', minutes=30,
         id="automazioni_prima_nota",
         name="Automazioni Prima Nota: corrispettivi + provvisori + riconciliazione (ogni 30 min)",
+        # Non eseguire il giro completo durante lo startup: l'idratazione
+        # Drive/Sheets e le automazioni insieme superano la memoria del piano
+        # Render Starter. Il primo giro segue il normale intervallo.
         replace_existing=True,
     )
 
@@ -1276,7 +1192,7 @@ def start_scheduler():
         name="Promemoria verbali (giornaliero Europe/Rome)",
         replace_existing=True,
     )
-    
+
     # Task Scadenze Partite Aperte (sistema relazionale) - ogni giorno alle 7:00
     scheduler.add_job(
         check_scadenze_partite_task,
@@ -1377,7 +1293,7 @@ def start_scheduler():
         name="Reminder Scadenze F24 (ogni giorno ore 14:00)",
         replace_existing=True
     )
-    
+
     # Task Fornitori Duplicati - ogni giorno alle 6:00
     scheduler.add_job(
         check_fornitori_duplicati_task,

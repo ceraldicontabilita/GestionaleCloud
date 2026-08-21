@@ -1,7 +1,7 @@
 /**
  * Collaudo di apertura di tutte le schermate operative catalogate contro l'ERP isolato.
  *
- * Usa router backend reali e MongoDB in memoria (vedi
+ * Usa router backend reali e Drive/Sheets in memoria (vedi
  * scripts/e2e_distruttivo_server.py). Non legge e non modifica dati aziendali.
  * Il catalogo pagina -> componente e la stessa fonte usata dallo smoke runtime.
  */

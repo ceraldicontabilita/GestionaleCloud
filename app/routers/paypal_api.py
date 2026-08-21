@@ -482,7 +482,7 @@ async def account_ids_non_mappati(anno: Optional[int] = None):
 @router.post("/account/{paypal_account_id}/cerca-fattura-email")
 async def cerca_fattura_email_per_account(paypal_account_id: str) -> Dict[str, Any]:
     """
-    Per i fornitori esteri/non SDI (es. MongoDB Limited, RTA SRL): la fattura
+    Per i fornitori esteri/non SDI (per esempio un servizio SaaS): la fattura
     non passa mai da Drive/PEC (quei canali leggono solo XML FatturaPA, che un
     fornitore estero non emette mai), esiste SOLO come PDF nella posta. Cerca
     e scarica quel PDF via email usando il nome controparte del PayPal account
@@ -545,7 +545,7 @@ async def cerca_fattura_email_per_account(paypal_account_id: str) -> Dict[str, A
     # download_documents_from_email() ignora del tutto la ricerca per parola
     # chiave e cerca solo FROM quell'indirizzo esatto — ma le fatture arrivano
     # spesso da un indirizzo di sistema automatico diverso dalla persona di
-    # contatto salvata su PayPal (es. MongoDB fattura da "MongoDB Cloud", non
+    # contatto salvata su PayPal (la fattura può arrivare da un sistema automatico, non
     # dall'email del commerciale), quindi non trovava mai nulla.
     try:
         risultato = await download_documents_from_email(
@@ -644,12 +644,12 @@ async def crea_fornitore_e_mappa(body: Dict[str, Any] = Body(...)):
     Body:
         {
             "paypal_account_id": "6QL6S5MMB8NA2",  # OBBLIGATORIO
-            "ragione_sociale":   "MongoDB Limited",  # OBBLIGATORIO
+            "ragione_sociale":   "Fornitore SaaS Limited",  # OBBLIGATORIO
             "piva":              "IE9952657T",       # opzionale
             "nazione":           "IE",               # default "IT"
             "metodo_pagamento":  "paypal",           # default "paypal" (è ovvio)
             "esclude_magazzino": True,               # default True
-            "email":             "billing@mongodb.com",  # opzionale
+            "email":             "billing@vendor.example",  # opzionale
             "note":              "Servizi cloud DB"
         }
 

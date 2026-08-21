@@ -177,7 +177,7 @@ async def update_settings(
 async def get_user_preferences(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, Any]:
-    """Get user-specific preferences from MongoDB."""
+    """Get user-specific preferences from Drive/Sheets."""
     db = Database.get_db()
     prefs = await db["user_preferences"].find_one(
         {"user_id": current_user["user_id"]},
@@ -191,7 +191,7 @@ async def update_user_preferences(
     data: Dict[str, Any] = Body(...),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, str]:
-    """Save user preferences to MongoDB."""
+    """Save user preferences to Drive/Sheets."""
     db = Database.get_db()
     data["user_id"] = current_user["user_id"]
     data["updated_at"] = datetime.now(timezone.utc).isoformat()

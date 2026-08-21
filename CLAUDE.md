@@ -91,13 +91,11 @@ Regole del cutover:
 3. copiare il dataset completo nel registro Drive;
 4. confrontare conteggi unici e digest sorgente/destinazione;
 5. ricostruire il runtime dai fogli e provarne la scrittura;
-6. confermare `DATA_BACKEND=sheets`, configurare esplicitamente il registro e
-   verificare la produzione;
-7. solo dopo disabilitare MongoDB e rimuoverne variabili e dati.
+6. configurare esplicitamente il registro e verificare la produzione;
+7. confermare che non esistano variabili o percorsi di persistenza alternativi.
 
-Mai cancellare i dati MongoDB prima del punto 6. In modalità Sheets il database in
-memoria è soltanto una cache di compatibilità del processo: Drive/Sheets resta
-la sorgente persistente.
+La memoria del processo è soltanto una cache ricostruibile: Drive/Sheets resta
+sempre la sorgente persistente.
 
 ## Canali operativi e conoscenza
 

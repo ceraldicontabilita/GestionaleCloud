@@ -5,6 +5,7 @@ Sync corrispettivi, fatture, import CSV/batch.
 from fastapi import HTTPException, Query, Body
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta, timezone
+from contextlib import AsyncExitStack
 from itertools import combinations
 import logging
 import re
@@ -1038,7 +1039,19 @@ async def _sync_corrispettivi_impl(anno: int = None) -> Dict:
 
     query = {}
     if anno:
-        query["anno"] = anno
+        # Il registro Drive/Sheets contiene anche corrispettivi storici
+        # importati prima dell'introduzione del campo ``anno``.  Filtrare solo
+        # su quel campo rendeva invisibili proprio le righe valide che hanno
+        # ``data=YYYY-MM-DD`` e lasciava Prima Nota Cassa completamente vuota
+        # dopo l'idratazione del registro.  La data fiscale resta la fonte
+        # autorevole; ``anno`` e' soltanto un indice opzionale.
+        inizio = f"{int(anno)}-01-01"
+        fine = f"{int(anno)}-12-31"
+        query["$or"] = [
+            {"anno": int(anno)},
+            {"anno": {"$in": [None, ""]}, "data": {"$gte": inizio, "$lte": fine}},
+            {"anno": {"$exists": False}, "data": {"$gte": inizio, "$lte": fine}},
+        ]
 
     corrispettivi = await db["corrispettivi"].find(query, {"_id": 0}).to_list(5000)
 
@@ -1046,64 +1059,74 @@ async def _sync_corrispettivi_impl(anno: int = None) -> Dict:
     duplicati = 0
     saltati_importo_zero = []  # diagnostica: quali corrispettivi vengono scartati
 
-    for c in corrispettivi:
-        corr_id = c.get("id", "")
+    # Il runtime Drive/Sheets accorpa tutte le mutazioni per foglio. Senza il
+    # batch, ogni corrispettivo storico causava piu' riletture dell'indice
+    # remoto e il processo Render da 512 MiB veniva terminato prima di
+    # completare il recupero. I doppi di test o backend compatibili che non
+    # espongono batch_writes mantengono il comportamento asincrono normale.
+    async with AsyncExitStack() as stack:
+        batch_writes = getattr(db, "batch_writes", None)
+        if callable(batch_writes):
+            await stack.enter_async_context(batch_writes())
 
-        # Bug corretto 17/07/2026 (verificato live: cassa da 428k a 4,3M in
-        # 24 ore): i corrispettivi legacy SENZA campo id producevano qui
-        # corr_id="" — il find_one({"corrispettivo_id": ""}) non matchava mai
-        # il movimento scritto (corrispettivo_id None) e il sync ricreava
-        # l'entrata a ogni giro. Ora: 1) al documento senza id viene
-        # assegnato un id stabile; 2) il dedup copre anche il caso per
-        # data (un solo registratore → una sola entrata per giornata).
-        if not corr_id:
-            corr_id = str(uuid.uuid4())
-            await db["corrispettivi"].update_one(
-                {"data": c.get("data"), "id": {"$exists": False},
-                 "created_at": c.get("created_at")},
-                {"$set": {"id": corr_id}},
-            )
-            c["id"] = corr_id
+        for c in corrispettivi:
+            corr_id = c.get("id", "")
 
-        # Check dedup: se questo corrispettivo ha già un movimento cassa
-        # (da questo stesso sync o dal caricamento diretto), non rigenerare.
-        existing = await db[COLLECTION_PRIMA_NOTA_CASSA].find_one({"$or": [
-            {"corrispettivo_id": corr_id},
-            # Stessa chiave (data+matricola) della guardia di idempotenza del
-            # writer: il giorno del risigillo (cambio matricola) restano
-            # legittime due entrate nella stessa data.
-            {"data": c.get("data"), "tipo": "entrata", "categoria": "Corrispettivi",
-             "matricola_rt": c.get("matricola_rt") or c.get("id_dispositivo") or None},
-        ]})
-        if existing:
-            duplicati += 1
-            continue
+            # Bug corretto 17/07/2026 (verificato live: cassa da 428k a 4,3M in
+            # 24 ore): i corrispettivi legacy SENZA campo id producevano qui
+            # corr_id="" — il find_one({"corrispettivo_id": ""}) non matchava mai
+            # il movimento scritto (corrispettivo_id None) e il sync ricreava
+            # l'entrata a ogni giro. Ora: 1) al documento senza id viene
+            # assegnato un id stabile; 2) il dedup copre anche il caso per
+            # data (un solo registratore → una sola entrata per giornata).
+            if not corr_id:
+                corr_id = str(uuid.uuid4())
+                await db["corrispettivi"].update_one(
+                    {"data": c.get("data"), "id": {"$exists": False},
+                     "created_at": c.get("created_at")},
+                    {"$set": {"id": corr_id}},
+                )
+                c["id"] = corr_id
 
-        risultato = await _create_prima_nota_movements(db, c)
+            # Check dedup: se questo corrispettivo ha già un movimento cassa
+            # (da questo stesso sync o dal caricamento diretto), non rigenerare.
+            existing = await db[COLLECTION_PRIMA_NOTA_CASSA].find_one({"$or": [
+                {"corrispettivo_id": corr_id},
+                # Stessa chiave (data+matricola) della guardia di idempotenza del
+                # writer: il giorno del risigillo (cambio matricola) restano
+                # legittime due entrate nella stessa data.
+                {"data": c.get("data"), "tipo": "entrata", "categoria": "Corrispettivi",
+                 "matricola_rt": c.get("matricola_rt") or c.get("id_dispositivo") or None},
+            ]})
+            if existing:
+                duplicati += 1
+                continue
 
-        if not risultato.get("prima_nota_cassa_id"):
-            # Totale non ricostruibile da nessun campo noto: stessa diagnostica
-            # di prima, per non perdere visibilità sui corrispettivi scartati.
-            saltati_importo_zero.append({
-                "id": corr_id,
-                "data": c.get("data", c.get("data_operazione", "")),
-                "anno": c.get("anno"),
-                "campi_totale": {
-                    "totale": c.get("totale"),
-                    "totale_complessivo": c.get("totale_complessivo"),
-                    "importo": c.get("importo"),
-                    "pagato_contanti": c.get("pagato_contanti"),
-                    "pagato_elettronico": c.get("pagato_elettronico"),
-                    "pagato_pos": c.get("pagato_pos"),
-                },
-            })
-            logger.warning(
-                "Corrispettivo %s (data=%s) saltato: totale=0 su tutti i campi noti",
-                corr_id, c.get("data", ""),
-            )
-            continue
+            risultato = await _create_prima_nota_movements(db, c)
 
-        inseriti += 1
+            if not risultato.get("prima_nota_cassa_id"):
+                # Totale non ricostruibile da nessun campo noto: stessa diagnostica
+                # di prima, per non perdere visibilità sui corrispettivi scartati.
+                saltati_importo_zero.append({
+                    "id": corr_id,
+                    "data": c.get("data", c.get("data_operazione", "")),
+                    "anno": c.get("anno"),
+                    "campi_totale": {
+                        "totale": c.get("totale"),
+                        "totale_complessivo": c.get("totale_complessivo"),
+                        "importo": c.get("importo"),
+                        "pagato_contanti": c.get("pagato_contanti"),
+                        "pagato_elettronico": c.get("pagato_elettronico"),
+                        "pagato_pos": c.get("pagato_pos"),
+                    },
+                })
+                logger.warning(
+                    "Corrispettivo %s (data=%s) saltato: totale=0 su tutti i campi noti",
+                    corr_id, c.get("data", ""),
+                )
+                continue
+
+            inseriti += 1
 
     return {
         "message": f"Sincronizzati {inseriti} corrispettivi in Prima Nota Cassa",

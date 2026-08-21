@@ -7,8 +7,8 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List
-from motor.motor_asyncio import AsyncIOMotorDatabase
-from pymongo import ReturnDocument
+from app.services.sheets_document_store import SheetDatabase
+from app.services.sheets_document_store import ReturnRecord
 
 from app.services.paypal_api_client import paypal_client
 from app.services.payment_allocation_validator import to_cents
@@ -108,7 +108,7 @@ def extract_enriched_fields(tx: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def sync_paypal_period(
-    db: AsyncIOMotorDatabase,
+    db: SheetDatabase,
     start: datetime,
     end: datetime,
 ) -> Dict[str, int]:
@@ -150,7 +150,7 @@ async def sync_paypal_period(
             "period_start": start.isoformat(), "period_end": end.isoformat()}
 
 
-async def sync_paypal_incremental(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+async def sync_paypal_incremental(db: SheetDatabase) -> Dict[str, Any]:
     """Acquisisce solo l'intervallo successivo al checkpoint persistito.
 
     Un lease breve impedisce che due aperture contemporanee della pagina
@@ -189,8 +189,8 @@ async def sync_paypal_incremental(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
         }},
         projection={"_id": 0},
         # BEFORE contiene il checkpoint precedente (serve per determinare il
-        # nuovo intervallo) e rende il test Mongo compatibile con Motor reale.
-        return_document=ReturnDocument.BEFORE,
+        # nuovo intervallo) e rende il test compatibile col repository asincrono.
+        return_document=ReturnRecord.BEFORE,
     )
     if not checkpoint:
         current = await db[CHECKPOINT_COLL].find_one(

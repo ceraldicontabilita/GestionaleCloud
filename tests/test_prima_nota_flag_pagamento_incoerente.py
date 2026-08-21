@@ -1,6 +1,6 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.prima_nota_module import manutenzione
 from app.services.collaudo_invarianti import check_prima_nota_link_rotti
@@ -12,7 +12,7 @@ from app.services.prima_nota_integrity import (
 
 def test_paid_alias_e_id_laterale_sono_rilevati_e_ripristinati(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_prima_nota_flag_incoerente"]
+        db = MemorySheetsClient()["test_prima_nota_flag_incoerente"]
         monkeypatch.setattr(
             manutenzione.Database, "get_db", staticmethod(lambda: db)
         )
@@ -64,7 +64,7 @@ def test_paid_alias_e_id_laterale_sono_rilevati_e_ripristinati(monkeypatch):
 
 def test_fattura_paid_con_movimento_attivo_non_viene_toccata(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["test_prima_nota_flag_coerente"]
+        db = MemorySheetsClient()["test_prima_nota_flag_coerente"]
         monkeypatch.setattr(
             manutenzione.Database, "get_db", staticmethod(lambda: db)
         )
@@ -93,7 +93,7 @@ def test_fattura_paid_con_movimento_attivo_non_viene_toccata(monkeypatch):
 
 def test_provvisoria_include_banca_senza_estratto_e_link_cancellato():
     async def scenario():
-        db = AsyncMongoMockClient()["test_provvisoria_evidenza"]
+        db = MemorySheetsClient()["test_provvisoria_evidenza"]
         fatture = [
             {"id": "cassa", "prima_nota_cassa_id": "pn-cassa"},
             {"id": "banca-auto", "prima_nota_banca_id": "pn-auto", "paid": True},
@@ -117,7 +117,7 @@ def test_provvisoria_include_banca_senza_estratto_e_link_cancellato():
 
 def test_pagamento_parziale_mantiene_aperto_solo_il_residuo():
     async def scenario():
-        db = AsyncMongoMockClient()["test_provvisoria_residuo"]
+        db = MemorySheetsClient()["test_provvisoria_residuo"]
         fattura = {
             "id": "fattura-parziale",
             "total_amount": 100.0,
@@ -166,7 +166,7 @@ def test_pagamento_parziale_mantiene_aperto_solo_il_residuo():
 
 def test_parcella_con_ritenuta_chiude_sul_netto_fornitore():
     async def scenario():
-        db = AsyncMongoMockClient()["test_parcella_netto"]
+        db = MemorySheetsClient()["test_parcella_netto"]
         fattura = {
             "id": "parcella-1",
             "total_amount": 3806.40,
@@ -191,7 +191,7 @@ def test_parcella_con_ritenuta_chiude_sul_netto_fornitore():
 
 def test_parcella_con_ritenuta_mostra_solo_il_netto_residuo():
     async def scenario():
-        db = AsyncMongoMockClient()["test_parcella_residuo"]
+        db = MemorySheetsClient()["test_parcella_residuo"]
         fattura = {
             "id": "parcella-2",
             "total_amount": 3806.40,

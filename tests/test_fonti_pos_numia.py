@@ -8,7 +8,7 @@ movimento: e' sempre lo stesso ciclo di vendita.
 """
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services.scritture_contabili import (
     STATO_CONFERMATO,
@@ -26,7 +26,7 @@ def _run(awaitable):
 
 
 def _db():
-    return AsyncMongoMockClient()["fonti_pos_test"]
+    return MemorySheetsClient()["fonti_pos_test"]
 
 
 def _chiusura(db):

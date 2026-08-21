@@ -47,6 +47,35 @@ def test_runtime_idrata_e_persistenza_write_through(monkeypatch):
     assert calls == [("invoices", "SHEET-1", ["INV-2"])]
 
 
+def test_runtime_non_nasconde_i_dati_validi_per_una_riga_anomala(monkeypatch):
+    async def fake_restore(db, config, apply=False, provision=True):
+        await db["invoices"].insert_one({"id": "INV-VALIDA", "total_amount": 10})
+        return {
+            "spreadsheet_id": "SHEET-1",
+            "fogli": [
+                {
+                    "foglio": "Fatture",
+                    "collezione": "invoices",
+                    "prefisso": "FAT",
+                    "valide": 1,
+                    "numero_errori": 1,
+                    "errori": [{"riga": 7, "errore": "payload non valido"}],
+                }
+            ],
+        }
+
+    monkeypatch.setattr(runtime_module, "restore_all", fake_restore)
+    runtime = SheetsRuntimeDatabase(
+        "test", {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"},
+    )
+
+    result = run(runtime.hydrate())
+
+    assert run(runtime["invoices"].count_documents({})) == 1
+    assert result["fogli"][0]["numero_errori"] == 1
+    assert runtime.hydration_result == result
+
+
 def test_runtime_predispone_foglio_drive_per_collezione_operativa(monkeypatch):
     ensured = []
     synced = []
@@ -100,12 +129,14 @@ def test_runtime_espone_stato_sistema_per_checkpoint_import():
     assert runtime["sistema_stato"] is not None
 
 
-def test_runtime_espone_il_client_in_memoria_e_non_una_collection():
+def test_runtime_espone_la_transazione_atomica_del_registro():
     runtime = SheetsRuntimeDatabase("test", {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"})
-
-    assert runtime.client is runtime._client
-    with pytest.raises(NotImplementedError):
-        run(runtime.client.start_session())
+    runtime.loading = True
+    async def scenario():
+        async with runtime.transaction():
+            await runtime["sistema_stato"].insert_one({"id": "atomic-1"})
+    run(scenario())
+    assert run(runtime["sistema_stato"].count_documents({"id": "atomic-1"})) == 1
 
 
 def test_runtime_memorizza_il_foglio_scoperto_per_le_scritture(monkeypatch):
@@ -159,3 +190,62 @@ def test_runtime_update_persistisce_solo_il_documento_modificato(monkeypatch):
     ))
 
     assert calls == [["INV-2"]]
+
+
+def test_runtime_batch_writes_accorpa_insert_e_update_per_foglio(monkeypatch):
+    calls = []
+
+    async def fake_upsert(sheet, spreadsheet_id, documents):
+        calls.append((
+            sheet.collection,
+            [
+                (document["id"], document.get("total_amount"))
+                for document in documents
+            ],
+        ))
+        return {"foglio": sheet.title, "aggiunte": len(documents)}
+
+    monkeypatch.setattr(runtime_module, "upsert_documents", fake_upsert)
+    runtime = SheetsRuntimeDatabase("test", {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"})
+
+    async def scenario():
+        async with runtime.batch_writes():
+            await runtime["invoices"].insert_one({"id": "INV-1", "total_amount": 10})
+            await runtime["invoices"].insert_one({"id": "INV-2", "total_amount": 20})
+            await runtime["invoices"].update_one(
+                {"id": "INV-1"}, {"$set": {"total_amount": 15}},
+            )
+
+    run(scenario())
+
+    assert calls == [("invoices", [("INV-1", 15), ("INV-2", 20)])]
+
+
+def test_runtime_batch_writes_rispetta_l_ultima_operazione_per_identita(monkeypatch):
+    upserts = []
+    removals = []
+
+    async def fake_upsert(sheet, spreadsheet_id, documents):
+        upserts.append([document["id"] for document in documents])
+        return {"foglio": sheet.title, "aggiunte": len(documents)}
+
+    async def fake_remove(sheet, spreadsheet_id, canonical_ids):
+        removals.append(list(canonical_ids))
+        return {"foglio": sheet.title, "rimosse": len(canonical_ids)}
+
+    monkeypatch.setattr(runtime_module, "upsert_documents", fake_upsert)
+    monkeypatch.setattr(runtime_module, "remove_documents", fake_remove)
+    runtime = SheetsRuntimeDatabase("test", {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"})
+    run(runtime["invoices"].insert_one({"id": "INV-OLD"}))
+    upserts.clear()
+
+    async def scenario():
+        async with runtime.batch_writes():
+            await runtime["invoices"].delete_one({"id": "INV-OLD"})
+            await runtime["invoices"].insert_one({"id": "INV-NEW"})
+            await runtime["invoices"].delete_one({"id": "INV-NEW"})
+
+    run(scenario())
+
+    assert upserts == []
+    assert removals == [["INV-NEW", "INV-OLD"]]

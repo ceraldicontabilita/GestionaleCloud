@@ -7,7 +7,7 @@ storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+> Documento di riferimento del dominio. Per persistenza vale l'architettura Drive/Sheets descritta nei documenti correnti; eventuali nomi di collection restano soltanto contesto storico.
 
 Fonte specifica: `Fatture Ricevute E Flussi Automatici.txt` (fornita dall'utente).
 Verificato leggendo il codice attuale (post-consolidamento router del 2026-07-07).
@@ -84,7 +84,7 @@ cassa/banca/contanti/bonifico/assegno/rid/carta/misto invariato) — `pagamento_
 campo booleano indipendente, scelta deliberata per non toccare le 6 liste di validazione
 del metodo pagamento già disallineate tra loro nel codice (vedi gap sotto).
 
-Verificato con mongomock, test end-to-end completo: fornitore normale con metodo bonifico
+Verificato con registro Sheets effimero, test end-to-end completo: fornitore normale con metodo bonifico
 (non certo) → fattura resta provvisoria, zero movimenti prima nota creati, visibile nella
 lista provvisori; fornitore certo (Amazon-style, banca) → registrazione diretta e immediata;
 il job bulk schedulato non tocca il fornitore non certo. 90/90 test esistenti ancora verdi.

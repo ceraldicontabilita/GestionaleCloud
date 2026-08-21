@@ -7,7 +7,7 @@ storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+> Documento di riferimento del dominio. Per persistenza vale l'architettura Drive/Sheets descritta nei documenti correnti; eventuali nomi di collection restano soltanto contesto storico.
 
 Fonte specifica: `Prima Nota Cassa — Flussi automatici.txt` (fornita dall'utente).
 Verificato leggendo il codice attuale (post-consolidamento router del 2026-07-07).
@@ -40,7 +40,7 @@ Verificato leggendo il codice attuale (post-consolidamento router del 2026-07-07
    create_movimento_generico()` (endpoint di inserimento manuale movimento cassa/banca)
    quando esiste già un movimento cassa con stessa data+tipo+descrizione+importo. Additivo:
    non blocca l'inserimento (l'utente potrebbe intenzionalmente registrare due movimenti
-   identici), solo lo segnala — verificato con mongomock: alert corretto sul duplicato
+   identici), solo lo segnala — verificato con registro Sheets effimero: alert corretto sul duplicato
    esatto, nessun falso positivo su movimento banca (fuori scope di questo alert), il
    secondo movimento viene comunque salvato. Restano morti `CAS_SENZA_CAUSALE`,
    `CAS_FAT_CONTANTI_NON_REGOLATA`, `CAS_CORRISPETTIVI_INCOERENTI` — richiedono

@@ -181,7 +181,7 @@ async def scopri_cartelle_drive_fiscali(
 async def sincronizza_drive_fiscale_incrementale(
     _admin: Dict[str, Any] = Depends(get_current_admin_mfa_user),
 ) -> Dict[str, Any]:
-    """Compatibilita': verifica l'indice senza importare binari in MongoDB."""
+    """Compatibilita': verifica l'indice senza importare binari in Drive/Sheets."""
     import asyncio
     from app.services.drive_document_index import get_status
     try:
@@ -266,9 +266,9 @@ async def avvia_monitor(
     """
     db = Database.get_db()
     intervallo_secondi = intervallo_minuti * 60
-    
+
     started = start_monitor(db, intervallo_secondi)
-    
+
     return {
         "success": started,
         "message": f"Monitor avviato (ogni {intervallo_minuti} minuti)" if started else "Monitor già in esecuzione",
@@ -293,18 +293,18 @@ async def ferma_monitor() -> Dict[str, Any]:
 async def stato_monitor() -> Dict[str, Any]:
     """Ritorna lo stato del monitor email."""
     db = Database.get_db()
-    
+
     # Conta documenti nel DB
     total_docs = await db["documents_inbox"].count_documents({})
     processed_docs = await db["documents_inbox"].count_documents({"processed": True})
-    
+
     status = get_monitor_status()
     status["database"] = {
         "documenti_totali": total_docs,
         "documenti_processati": processed_docs,
         "documenti_da_processare": total_docs - processed_docs
     }
-    
+
     return status
 
 
@@ -327,9 +327,9 @@ async def sync_immediato() -> Dict[str, Any]:
 async def telegram_status() -> Dict[str, Any]:
     """Verifica se Telegram è configurato."""
     from app.services.telegram_notifications import is_configured, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
-    
+
     configured = is_configured()
-    
+
     return {
         "configurato": configured,
         "bot_token_presente": bool(TELEGRAM_BOT_TOKEN),
@@ -343,15 +343,15 @@ async def telegram_status() -> Dict[str, Any]:
 async def telegram_test() -> Dict[str, Any]:
     """Invia un messaggio di test su Telegram."""
     from app.services.telegram_notifications import test_connection
-    
+
     result = await test_connection()
-    
+
     if not result.get("configured"):
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail="Telegram non configurato. Aggiungi TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID in .env"
         )
-    
+
     return result
 
 
@@ -637,17 +637,17 @@ async def get_lock_status():
     }
 
 
-async def _execute_email_download(task_id: str, db, email_user: str, email_password: str, 
+async def _execute_email_download(task_id: str, db, email_user: str, email_password: str,
                                    giorni: int, folder: str, keywords: List[str]):
     """Esegue il download in background e aggiorna lo stato del task."""
     global _current_operation
-    
+
     try:
         async with _email_operation_lock:
             _current_operation = "download_documenti_email"
             _download_tasks[task_id]["status"] = "in_progress"
             _download_tasks[task_id]["message"] = "Connessione al server email..."
-            
+
             result = await download_documents_from_email(
                 db=db,
                 email_user=email_user,
@@ -656,13 +656,13 @@ async def _execute_email_download(task_id: str, db, email_user: str, email_passw
                 folder=folder,
                 search_keywords=keywords if keywords else None
             )
-            
+
             _download_tasks[task_id]["status"] = "completed"
             _download_tasks[task_id]["result"] = result
             _download_tasks[task_id]["message"] = "Download completato!"
             _download_tasks[task_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
             _current_operation = None
-        
+
     except Exception as e:
         logger.error(f"Errore download task {task_id}: {e}")
         _download_tasks[task_id]["status"] = "error"
@@ -684,7 +684,7 @@ async def scarica_documenti_email(
     Usa le credenziali configurate nel .env.
     Se parole_chiave è specificato, cerca email con quelle parole nell'oggetto.
     Se background=true, avvia il download in background e restituisce un task_id per il polling.
-    
+
     NOTA: Se c'è già un'operazione email in corso, restituisce errore.
     """
     # Verifica se c'è già un'operazione in corso
@@ -693,7 +693,7 @@ async def scarica_documenti_email(
             status_code=423,  # Locked
             detail=f"Operazione in corso: {get_current_operation()}. Attendere il completamento."
         )
-    
+
     db = Database.get_db()
 
     # Recupera credenziali email: prima dall'account configurato in
@@ -708,12 +708,12 @@ async def scarica_documenti_email(
             status_code=400,
             detail="Credenziali email non configurate: nessun account in email_accounts e nessuna variabile EMAIL_USER/EMAIL_APP_PASSWORD"
         )
-    
+
     # Parsing parole chiave
     keywords = []
     if parole_chiave:
         keywords = [k.strip() for k in parole_chiave.split(',') if k.strip()]
-    
+
     if background:
         # Modalità background: crea task e restituisce subito
         task_id = str(uuid.uuid4())
@@ -727,19 +727,19 @@ async def scarica_documenti_email(
             "result": None,
             "error": None
         }
-        
+
         # Avvia il task in background
         asyncio.create_task(_execute_email_download(
             task_id, db, email_user, email_password, giorni, folder, keywords
         ))
-        
+
         return {
             "success": True,
             "background": True,
             "task_id": task_id,
             "message": "Download avviato in background. Usa /documenti/task/{task_id} per controllare lo stato."
         }
-    
+
     # Modalità sincrona (comportamento originale)
     try:
         result = await download_documents_from_email(
@@ -750,9 +750,9 @@ async def scarica_documenti_email(
             folder=folder,
             search_keywords=keywords if keywords else None
         )
-        
+
         return result
-        
+
     except Exception as e:
         logger.error(f"Errore download documenti: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -764,9 +764,9 @@ async def get_task_status(task_id: str) -> Dict[str, Any]:
     """Controlla lo stato di un task di download in background."""
     if task_id not in _download_tasks:
         raise HTTPException(status_code=404, detail="Task non trovato")
-    
+
     task = _download_tasks[task_id]
-    
+
     # Pulisci task completati vecchi di 1 ora
     current_time = datetime.now(timezone.utc)
     for tid in list(_download_tasks.keys()):
@@ -775,7 +775,7 @@ async def get_task_status(task_id: str) -> Dict[str, Any]:
             completed = datetime.fromisoformat(t["completed_at"].replace("Z", "+00:00"))
             if (current_time - completed).total_seconds() > 3600:
                 del _download_tasks[tid]
-    
+
     return task
 
 
@@ -802,11 +802,11 @@ async def get_categorie() -> Dict[str, Any]:
 async def get_documento(doc_id: str) -> Dict[str, Any]:
     """Dettaglio singolo documento."""
     db = Database.get_db()
-    
+
     doc = await db["documents_inbox"].find_one({"id": doc_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Documento non trovato")
-    
+
     return doc
 
 
@@ -843,17 +843,17 @@ async def _trova_documento_scaricabile(db, doc_id: str):
 @router.get("/documento/{doc_id}/download")
 @handle_errors
 async def download_documento(doc_id: str):
-    """Scarica il file del documento da MongoDB (architettura MongoDB-only)."""
+    """Scarica il file del documento da Drive/Sheets (architettura Drive/Sheets)."""
     db = Database.get_db()
 
     doc = await _trova_documento_scaricabile(db, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Documento non trovato")
 
-    # Architettura MongoDB-only: usa solo pdf_data
+    # Architettura Drive/Sheets: usa solo pdf_data
     pdf_data = doc.get("pdf_data")
     if not pdf_data:
-        raise HTTPException(status_code=404, detail="PDF non disponibile in MongoDB. Eseguire migrazione dati.")
+        raise HTTPException(status_code=404, detail="PDF non disponibile in Drive/Sheets. Eseguire migrazione dati.")
 
     def _decode_chunks():
         # Niente più `base64.b64decode(pdf_data)` in un colpo solo: su file grandi
@@ -883,19 +883,19 @@ async def processa_documento(
 ) -> Dict[str, Any]:
     """
     Processa un documento e lo carica nella sezione appropriata.
-    Architettura MongoDB-only: usa solo pdf_data da MongoDB.
+    Architettura Drive/Sheets: usa solo pdf_data da Drive/Sheets.
     """
     db = Database.get_db()
-    
+
     doc = await db["documents_inbox"].find_one({"id": doc_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Documento non trovato")
-    
-    # Architettura MongoDB-only: usa solo pdf_data
+
+    # Architettura Drive/Sheets: usa solo pdf_data
     pdf_data = doc.get("pdf_data")
     if not pdf_data:
-        raise HTTPException(status_code=404, detail="PDF non disponibile in MongoDB. Eseguire migrazione dati.")
-    
+        raise HTTPException(status_code=404, detail="PDF non disponibile in Drive/Sheets. Eseguire migrazione dati.")
+
     # Mappa destinazioni agli endpoint
     destination_map = {
         "f24": "f24_unificato",
@@ -904,10 +904,10 @@ async def processa_documento(
         "estratto_conto": "estratto_conto",
         "quietanze": "quietanze_f24"
     }
-    
+
     if destinazione not in destination_map:
         raise HTTPException(status_code=400, detail=f"Destinazione non valida. Usa: {list(destination_map.keys())}")
-    
+
     # Aggiorna stato documento
     await db["documents_inbox"].update_one(
         {"id": doc_id},
@@ -918,7 +918,7 @@ async def processa_documento(
             "processed_at": datetime.now(timezone.utc).isoformat()
         }}
     )
-    
+
     return {
         "success": True,
         "message": f"Documento pronto per caricamento in {destinazione}",
@@ -936,18 +936,18 @@ async def cambia_categoria_documento(
 ) -> Dict[str, Any]:
     """
     Cambia la categoria di un documento.
-    Architettura MongoDB-only: aggiorna solo i metadati nel database.
+    Architettura Drive/Sheets: aggiorna solo i metadati nel database.
     """
     db = Database.get_db()
-    
+
     if nuova_categoria not in CATEGORIES:
         raise HTTPException(status_code=400, detail=f"Categoria non valida. Usa: {list(CATEGORIES.keys())}")
-    
+
     doc = await db["documents_inbox"].find_one({"id": doc_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Documento non trovato")
-    
-    # Architettura MongoDB-only: aggiorna solo metadati, nessuna operazione su filesystem
+
+    # Architettura Drive/Sheets: aggiorna solo metadati, nessuna operazione su filesystem
     await db["documents_inbox"].update_one(
         {"id": doc_id},
         {"$set": {
@@ -956,7 +956,7 @@ async def cambia_categoria_documento(
             "updated_at": datetime.now(timezone.utc).isoformat()
         }}
     )
-    
+
     return {
         "success": True,
         "nuova_categoria": nuova_categoria,
@@ -1001,17 +1001,17 @@ async def annulla_processamento_documento(doc_id: str) -> Dict[str, Any]:
 async def elimina_documento(doc_id: str) -> Dict[str, Any]:
     """
     Elimina un documento.
-    Architettura MongoDB-only: elimina solo dal database.
+    Architettura Drive/Sheets: elimina solo dal database.
     """
     db = Database.get_db()
-    
+
     doc = await db["documents_inbox"].find_one({"id": doc_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Documento non trovato")
-    
-    # Architettura MongoDB-only: elimina solo dal database
+
+    # Architettura Drive/Sheets: elimina solo dal database
     await db["documents_inbox"].delete_one({"id": doc_id})
-    
+
     return {"success": True, "deleted": doc_id}
 
 
@@ -1020,16 +1020,16 @@ async def elimina_documento(doc_id: str) -> Dict[str, Any]:
 async def elimina_documenti_processati() -> Dict[str, Any]:
     """
     Elimina tutti i documenti già processati.
-    Architettura MongoDB-only: elimina solo dal database.
+    Architettura Drive/Sheets: elimina solo dal database.
     """
     db = Database.get_db()
-    
+
     # Conta documenti da eliminare
     count_to_delete = await db["documents_inbox"].count_documents({"processed": True})
-    
-    # Elimina dal database (architettura MongoDB-only)
+
+    # Elimina dal database (architettura Drive/Sheets)
     await db["documents_inbox"].delete_many({"processed": True})
-    
+
     return {
         "success": True,
         "deleted_count": count_to_delete
@@ -1041,11 +1041,11 @@ async def elimina_documenti_processati() -> Dict[str, Any]:
 async def statistiche_documenti() -> Dict[str, Any]:
     """Statistiche sui documenti."""
     db = Database.get_db()
-    
+
     totale = await db["documents_inbox"].count_documents({})
     nuovi = await db["documents_inbox"].count_documents({"status": "nuovo"})
     processati = await db["documents_inbox"].count_documents({"processed": True})
-    
+
     # Per categoria
     pipeline = [
         {"$group": {
@@ -1064,14 +1064,14 @@ async def statistiche_documenti() -> Dict[str, Any]:
             "nuovi": doc["nuovi"],
             "processati": doc["processati"]
         })
-    
+
     # Ultimo download
     ultimo = await db["documents_inbox"].find_one(
         {},
         {"_id": 0, "downloaded_at": 1}
     )
     ultimo_download = ultimo.get("downloaded_at") if ultimo else None
-    
+
     # Spazio su disco
     total_size = 0
     for cat_dir in CATEGORIES.values():
@@ -1080,7 +1080,7 @@ async def statistiche_documenti() -> Dict[str, Any]:
             for f in dir_path.iterdir():
                 if f.is_file():
                     total_size += f.stat().st_size
-    
+
     return {
         "totale": totale,
         "nuovi": nuovi,
@@ -1109,9 +1109,9 @@ async def get_cartelle_email() -> Dict[str, Any]:
     try:
         conn = imaplib.IMAP4_SSL("imap.gmail.com")
         conn.login(email_user, email_password)
-        
+
         status, folders = conn.list()
-        
+
         folder_list = []
         if status == 'OK':
             for folder in folders:
@@ -1120,14 +1120,14 @@ async def get_cartelle_email() -> Dict[str, Any]:
                     parts = folder.decode().split(' "/" ')
                     if len(parts) > 1:
                         folder_list.append(parts[1].strip('"'))
-        
+
         conn.logout()
-        
+
         return {
             "folders": folder_list,
             "email_user": email_user
         }
-        
+
     except Exception as e:
         return {
             "folders": ["INBOX"],
@@ -1160,7 +1160,7 @@ async def sync_f24_automatico(
             "f24_caricati": 0,
             "dettagli": []
         }
-    
+
     try:
         # Scarica documenti (solo F24) - max 30 email per velocità
         result = await download_documents_from_email(
@@ -1171,7 +1171,7 @@ async def sync_f24_automatico(
             folder="INBOX",
             max_emails=30
         )
-        
+
         if not result.get("success"):
             return {
                 "success": False,
@@ -1180,47 +1180,47 @@ async def sync_f24_automatico(
                 "f24_caricati": 0,
                 "dettagli": []
             }
-        
+
         new_documents = result.get("documents", [])
         f24_docs = [d for d in new_documents if d.get("category") == "f24"]
         quietanze_docs = [d for d in new_documents if d.get("category") == "quietanza"]
-        
-        # Processa automaticamente gli F24 (architettura MongoDB-first)
+
+        # Processa automaticamente gli F24 (architettura Drive/Sheets)
         f24_caricati = []
         f24_errori = []
-        
+
         for doc in f24_docs:
             try:
-                # Architettura MongoDB-first: usa pdf_data
+                # Architettura Drive/Sheets: usa pdf_data
                 pdf_data = doc.get("pdf_data")
                 if not pdf_data:
-                    f24_errori.append({"file": doc["filename"], "errore": "PDF non disponibile in MongoDB"})
+                    f24_errori.append({"file": doc["filename"], "errore": "PDF non disponibile in Drive/Sheets"})
                     continue
-                
+
                 # Decodifica PDF da base64
                 import base64
                 pdf_content = base64.b64decode(pdf_data)
-                
-                # Chiama il parser F24 con pdf_content (architettura MongoDB-first)
+
+                # Chiama il parser F24 con pdf_content (architettura Drive/Sheets)
                 from app.services.parser_f24 import parse_f24_commercialista
-                
+
                 parsed = parse_f24_commercialista(pdf_content=pdf_content)
-                
+
                 # Il parser restituisce direttamente il risultato (non un wrapper con 'success')
                 # Verifica che non ci sia un errore e che ci siano dati
                 if not parsed.get("error") and (parsed.get("sezione_erario") or parsed.get("sezione_inps") or parsed.get("totali")):
                     # Il parsed È già f24_data
                     f24_data = parsed
-                    
+
                     # Aggiungi ID e filename
                     from uuid import uuid4
                     f24_data["id"] = str(uuid4())
                     f24_data["file_name"] = doc["filename"]
-                    
-                    # Rimuovi eventuali _id per evitare errori MongoDB
+
+                    # Rimuovi eventuali _id per evitare errori Drive/Sheets
                     if "_id" in f24_data:
                         del f24_data["_id"]
-                    
+
                     # Aggiungi info email
                     f24_data["email_source"] = {
                         "subject": doc.get("email_subject", ""),
@@ -1232,24 +1232,24 @@ async def sync_f24_automatico(
                     f24_data["import_date"] = datetime.now(timezone.utc).isoformat()
                     f24_data["pdf_data"] = pdf_data
                     f24_data["file_hash"] = hashlib.sha256(pdf_content).hexdigest()
-                    
+
                     # Controlla se già esiste (per evitare duplicati)
                     existing = await db["f24_unificato"].find_one({
                         "file_name": f24_data.get("file_name")
                     })
-                    
+
                     if existing:
                         f24_errori.append({"file": doc["filename"], "errore": "F24 già presente nel database"})
                         continue
-                    
+
                     from app.services.f24_canonico import salva_f24
 
                     f24_data["id"] = await salva_f24(db, f24_data, source="email_sync")
-                    
+
                     # Salva anche in f24_models per la visualizzazione frontend
-                    # Usa pdf_data già disponibile da MongoDB (architettura MongoDB-first)
+                    # Usa pdf_data già disponibile da Drive/Sheets (architettura Drive/Sheets)
                     pdf_base64 = pdf_data  # Già in base64
-                    
+
                     # Converti formato tributi per f24_models
                     tributi_erario = []
                     for t in parsed.get("sezione_erario", []):
@@ -1267,7 +1267,7 @@ async def sync_f24_automatico(
                             "descrizione": t.get("descrizione", ""),
                             "riferimento": t.get("periodo_riferimento", "")
                         })
-                    
+
                     tributi_inps = []
                     for t in parsed.get("sezione_inps", []):
                         tributi_inps.append({
@@ -1283,7 +1283,7 @@ async def sync_f24_automatico(
                             "importo": t.get("importo_debito", 0),
                             "descrizione": t.get("descrizione", "")
                         })
-                    
+
                     tributi_regioni = []
                     for t in parsed.get("sezione_regioni", []):
                         tributi_regioni.append({
@@ -1297,7 +1297,7 @@ async def sync_f24_automatico(
                             "importo": t.get("importo_debito", 0),
                             "descrizione": t.get("descrizione", "")
                         })
-                    
+
                     tributi_imu = []
                     for t in parsed.get("sezione_tributi_locali", []):
                         tributi_imu.append({
@@ -1311,13 +1311,13 @@ async def sync_f24_automatico(
                             "importo": t.get("importo_debito", 0),
                             "descrizione": t.get("descrizione", "")
                         })
-                    
+
                     totali = parsed.get("totali", {})
                     data_scadenza = (
                         parsed.get("dati_generali", {}).get("data_stampa")
                         or parsed.get("dati_generali", {}).get("data_compilazione")
                     )
-                    
+
                     f24_model_record = {
                         "id": f24_data["id"],  # Usa lo stesso ID
                         "data_scadenza": data_scadenza,
@@ -1341,16 +1341,16 @@ async def sync_f24_automatico(
                         "email_source": f24_data.get("email_source"),
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
-                    
+
                     # Controlla duplicati in f24_models
                     existing_model = await db["f24_unificato"].find_one({
                         "filename": doc["filename"]
                     })
-                    
+
                     # La vista frontend legge lo schema tollerante del record
                     # canonico appena salvato: non creare una seconda copia
                     # dello stesso PDF con un'altra forma dati.
-                    
+
                     # Aggiorna stato documento
                     await db["documents_inbox"].update_one(
                         {"id": doc["id"]},
@@ -1361,7 +1361,7 @@ async def sync_f24_automatico(
                             "processed_at": datetime.now(timezone.utc).isoformat()
                         }}
                     )
-                    
+
                     f24_caricati.append({
                         "file": doc["filename"],
                         "importo": totali.get("saldo_netto", 0) or totali.get("saldo_finale", 0),
@@ -1373,10 +1373,10 @@ async def sync_f24_automatico(
                         "file": doc["filename"],
                         "errore": parsed.get("error", "Parsing fallito")
                     })
-                    
+
             except Exception as e:
                 f24_errori.append({"file": doc["filename"], "errore": str(e)})
-        
+
         # Processa quietanze
         quietanze_caricate = 0
         for doc in quietanze_docs:
@@ -1391,7 +1391,7 @@ async def sync_f24_automatico(
                 quietanze_caricate += 1
             except Exception as e:
                 logger.warning(f"Errore collegamento quietanza: {e}")
-        
+
         return {
             "success": True,
             "f24_trovati": len(f24_docs),
@@ -1402,7 +1402,7 @@ async def sync_f24_automatico(
             "errori": f24_errori if f24_errori else None,
             "messaggio": f"Trovati {len(f24_docs)} F24, caricati {len(f24_caricati)} con successo" if f24_docs else "Nessun nuovo F24 trovato nelle email"
         }
-        
+
     except Exception as e:
         logger.error(f"Errore sync F24: {e}")
         return {
@@ -1422,13 +1422,13 @@ async def processa_f24_scaricati() -> Dict[str, Any]:
     Utile se il primo sync ha fallito.
     """
     db = Database.get_db()
-    
+
     # Trova F24 non processati
     f24_docs = await db["documents_inbox"].find(
         {"category": "f24", "processed": {"$ne": True}},
         {"_id": 0}
     ).to_list(100)
-    
+
     if not f24_docs:
         return {
             "success": True,
@@ -1436,23 +1436,23 @@ async def processa_f24_scaricati() -> Dict[str, Any]:
             "f24_processati": 0,
             "errori": []
         }
-    
+
     f24_caricati = []
     f24_errori = []
-    
+
     from app.services.parser_f24 import parse_f24_commercialista
     from app.services.f24_canonico import chiave_f24, salva_f24
     import base64
     import hashlib
-    
+
     for doc in f24_docs:
         try:
-            # Architettura MongoDB-first: usa pdf_data
+            # Architettura Drive/Sheets: usa pdf_data
             pdf_data = doc.get("pdf_data")
             if not pdf_data:
-                f24_errori.append({"file": doc["filename"], "errore": "PDF non disponibile in MongoDB"})
+                f24_errori.append({"file": doc["filename"], "errore": "PDF non disponibile in Drive/Sheets"})
                 continue
-            
+
             pdf_content = base64.b64decode(pdf_data)
             parsed = parse_f24_commercialista(pdf_content=pdf_content)
 
@@ -1487,14 +1487,14 @@ async def processa_f24_scaricati() -> Dict[str, Any]:
                 }
                 f24_data["auto_imported"] = True
                 f24_data["import_date"] = datetime.now(timezone.utc).isoformat()
-                
+
                 # Dedup canonica per contenuto e dati F24. Il solo filename non
                 # e' sufficiente: nomi uguali possono contenere modelli diversi.
                 f24_data["f24_dedup_key"] = chiave_f24(f24_data)
                 existing = await db["f24_unificato"].find_one({
                     "f24_dedup_key": f24_data["f24_dedup_key"]
                 })
-                
+
                 if existing:
                     # Aggiorna stato come processato ma non aggiungere
                     await db["documents_inbox"].update_one(
@@ -1502,9 +1502,9 @@ async def processa_f24_scaricati() -> Dict[str, Any]:
                         {"$set": {"status": "processato", "processed": True, "note": "Già presente"}}
                     )
                     continue
-                
+
                 await salva_f24(db, f24_data, source="documents_inbox")
-                
+
                 await db["documents_inbox"].update_one(
                     {"id": doc["id"]},
                     {"$set": {
@@ -1514,7 +1514,7 @@ async def processa_f24_scaricati() -> Dict[str, Any]:
                         "processed_at": datetime.now(timezone.utc).isoformat()
                     }}
                 )
-                
+
                 f24_caricati.append({
                     "file": doc["filename"],
                     "importo": f24_data.get("totali", {}).get("saldo_netto", 0),
@@ -1534,10 +1534,10 @@ async def processa_f24_scaricati() -> Dict[str, Any]:
                         "parser_checked_at": datetime.now(timezone.utc).isoformat(),
                     }},
                 )
-                
+
         except Exception as e:
             f24_errori.append({"file": doc["filename"], "errore": str(e)})
-    
+
     return {
         "success": True,
         "f24_processati": len(f24_caricati),
@@ -1553,25 +1553,25 @@ async def processa_f24_scaricati() -> Dict[str, Any]:
 async def get_ultimo_sync() -> Dict[str, Any]:
     """Restituisce info sull'ultimo sync F24."""
     db = Database.get_db()
-    
+
     # Ultimo documento scaricato
     ultimo_doc = await db["documents_inbox"].find_one(
         {"category": "f24"},
         {"_id": 0, "downloaded_at": 1, "filename": 1}
     )
-    
+
     # Conta F24 da processare
     da_processare = await db["documents_inbox"].count_documents({
         "category": "f24",
         "processed": {"$ne": True}
     })
-    
+
     # Ultimo F24 importato
     ultimo_f24 = await db["f24_unificato"].find_one(
         {"auto_imported": True},
         {"_id": 0, "file_name": 1, "import_date": 1}
     )
-    
+
     return {
         "ultimo_download": ultimo_doc.get("downloaded_at") if ultimo_doc else None,
         "ultimo_file": ultimo_doc.get("filename") if ultimo_doc else None,
@@ -1589,18 +1589,18 @@ async def sync_estratti_conto() -> Dict[str, Any]:
     Supporta:
     - Estratti conto carte Nexi
     - Estratti conto bancari BPM (se riconosciuti)
-    
+
     I movimenti vengono salvati in estratto_conto_nexi per carte
     o estratto_conto_movimenti per conto corrente.
     """
     db = Database.get_db()
-    
+
     # Trova estratti conto non processati
     docs = await db["documents_inbox"].find(
         {"category": "estratto_conto", "processed": {"$ne": True}},
         {"_id": 0}
     ).to_list(100)
-    
+
     if not docs:
         return {
             "success": True,
@@ -1608,43 +1608,43 @@ async def sync_estratti_conto() -> Dict[str, Any]:
             "processati": 0,
             "errori": []
         }
-    
+
     from app.parsers.estratto_conto_nexi_parser import EstrattoContoNexiParser
     import base64 as b64
-    
+
     processati = []
     errori = []
-    
+
     for doc in docs:
         filename = doc.get("filename", "")
-        
-        # Architettura MongoDB-first: usa pdf_data
+
+        # Architettura Drive/Sheets: usa pdf_data
         pdf_data = doc.get("pdf_data")
         if not pdf_data:
-            errori.append({"file": filename, "errore": "PDF non disponibile in MongoDB"})
+            errori.append({"file": filename, "errore": "PDF non disponibile in Drive/Sheets"})
             continue
-        
+
         try:
             # Decodifica PDF da base64
             pdf_content = b64.b64decode(pdf_data)
-            
+
             # Prova parser Nexi
             parser = EstrattoContoNexiParser()
             result = parser.parse_pdf(pdf_content)
-            
+
             if result.get("success"):
                 transazioni = result.get("transazioni", [])
                 metadata = result.get("metadata", {})
-                
+
                 if transazioni:
                     # Salva in estratto_conto_nexi
                     import uuid
                     estratto_id = str(uuid.uuid4())
-                    
+
                     estratto_record = {
                         "id": estratto_id,
                         "filename": filename,
-                        "pdf_data": pdf_data,  # Architettura MongoDB-first
+                        "pdf_data": pdf_data,  # Architettura Drive/Sheets
                         "tipo": "nexi_carta",
                         "metadata": metadata,
                         "totale_transazioni": len(transazioni),
@@ -1657,15 +1657,15 @@ async def sync_estratti_conto() -> Dict[str, Any]:
                         "import_date": datetime.now(timezone.utc).isoformat(),
                         "source": "email_sync"
                     }
-                    
+
                     # Controlla duplicati
                     existing = await db["estratto_conto_nexi"].find_one({
                         "filename": filename
                     })
-                    
+
                     if not existing:
                         await db["estratto_conto_nexi"].insert_one(dict(estratto_record).copy())
-                        
+
                         # Salva transazioni singole per riconciliazione
                         for idx, trans in enumerate(transazioni):
                             trans_record = {
@@ -1682,9 +1682,9 @@ async def sync_estratti_conto() -> Dict[str, Any]:
                                 "fattura_id": None,
                                 "created_at": datetime.now(timezone.utc).isoformat()
                             }
-                            # Usa dict() per evitare ObjectId issue
+                            # Usa una copia per separare il record dalla risposta.
                             await db["estratto_conto_movimenti"].insert_one(dict(trans_record).copy())
-                    
+
                     # Aggiorna stato documento
                     await db["documents_inbox"].update_one(
                         {"id": doc["id"]},
@@ -1695,7 +1695,7 @@ async def sync_estratti_conto() -> Dict[str, Any]:
                             "processed_at": datetime.now(timezone.utc).isoformat()
                         }}
                     )
-                    
+
                     processati.append({
                         "file": filename,
                         "tipo": "nexi_carta",
@@ -1711,7 +1711,7 @@ async def sync_estratti_conto() -> Dict[str, Any]:
                         "transazioni": 0,
                         "nota": "Solo riepilogo, nessun dettaglio movimenti"
                     })
-                    
+
                     await db["documents_inbox"].update_one(
                         {"id": doc["id"]},
                         {"$set": {
@@ -1727,10 +1727,10 @@ async def sync_estratti_conto() -> Dict[str, Any]:
                     "file": filename,
                     "errore": result.get("error", "Parsing fallito")
                 })
-                
+
         except Exception as e:
             errori.append({"file": filename, "errore": str(e)})
-    
+
     return {
         "success": True,
         "processati": len(processati),
@@ -1756,11 +1756,11 @@ async def sync_estratti_bnl() -> Dict[str, Any]:
     Supporta:
     - Estratti conto corrente BNL
     - Estratti conto carte di credito BNL Business
-    
+
     I movimenti vengono salvati in estratto_conto_movimenti.
     """
     db = Database.get_db()
-    
+
     # Cerca documenti BNL sia in "estratto_conto" che in "altro"
     docs = await db["documents_inbox"].find(
         {
@@ -1772,7 +1772,7 @@ async def sync_estratti_bnl() -> Dict[str, Any]:
         },
         {"_id": 0}
     ).to_list(200)
-    
+
     if not docs:
         return {
             "success": True,
@@ -1780,48 +1780,48 @@ async def sync_estratti_bnl() -> Dict[str, Any]:
             "processati": 0,
             "errori": []
         }
-    
+
     from app.parsers.estratto_conto_bnl_parser import parse_estratto_conto_bnl
     import base64
-    
+
     processati = []
     errori = []
-    
+
     for doc in docs:
         pdf_data = doc.get("pdf_data")
         filename = doc.get("filename", "")
-        
+
         # Salta se non è un file BNL
         if "BNL" not in filename.upper() and "bnl" not in filename.lower():
             # Potrebbe essere Nexi o altro, salta
             continue
-        
+
         if not pdf_data:
-            errori.append({"file": filename, "errore": "PDF non disponibile in MongoDB"})
+            errori.append({"file": filename, "errore": "PDF non disponibile in Drive/Sheets"})
             continue
-        
+
         try:
-            # Architettura MongoDB-only: decodifica da Base64
+            # Architettura Drive/Sheets: decodifica da Base64
             pdf_content = base64.b64decode(pdf_data)
-            
+
             # Usa parser BNL
             result = parse_estratto_conto_bnl(pdf_content)
-            
+
             if result.get("success"):
                 transazioni = result.get("transazioni", [])
                 metadata = result.get("metadata", {})
                 tipo_doc = result.get("tipo_documento", "bnl")
-                
+
                 import uuid
                 estratto_id = str(uuid.uuid4())
-                
+
                 # Determina la collezione di destinazione
                 collection_name = "estratto_conto_bnl"
-                
+
                 estratto_record = {
                     "id": estratto_id,
                     "filename": filename,
-                    "pdf_data": pdf_data,  # Architettura MongoDB-only
+                    "pdf_data": pdf_data,  # Architettura Drive/Sheets
                     "tipo": tipo_doc,
                     "banca": "BNL",
                     "metadata": metadata,
@@ -1836,15 +1836,15 @@ async def sync_estratti_bnl() -> Dict[str, Any]:
                     "import_date": datetime.now(timezone.utc).isoformat(),
                     "source": "email_sync"
                 }
-                
+
                 # Controlla duplicati
                 existing = await db[collection_name].find_one({
                     "filename": filename
                 })
-                
+
                 if not existing:
                     await db[collection_name].insert_one(dict(estratto_record).copy())
-                    
+
                     # Salva transazioni singole per riconciliazione
                     for idx, trans in enumerate(transazioni):
                         trans_record = {
@@ -1862,7 +1862,7 @@ async def sync_estratti_bnl() -> Dict[str, Any]:
                             "created_at": datetime.now(timezone.utc).isoformat()
                         }
                         await db["estratto_conto_movimenti"].insert_one(dict(trans_record).copy())
-                
+
                 # Aggiorna stato documento e categoria se era "altro"
                 update_data = {
                     "status": "processato",
@@ -1870,17 +1870,17 @@ async def sync_estratti_bnl() -> Dict[str, Any]:
                     "processed_to": collection_name,
                     "processed_at": datetime.now(timezone.utc).isoformat()
                 }
-                
+
                 # Se era in "altro", ricategorizza come "estratto_conto"
                 if doc.get("category") == "altro":
                     update_data["category"] = "estratto_conto"
                     update_data["category_label"] = "Estratti Conto"
-                
+
                 await db["documents_inbox"].update_one(
                     {"id": doc["id"]},
                     {"$set": update_data}
                 )
-                
+
                 processati.append({
                     "file": filename,
                     "tipo": tipo_doc,
@@ -1894,11 +1894,11 @@ async def sync_estratti_bnl() -> Dict[str, Any]:
                     "file": filename,
                     "errore": result.get("error", "Parsing fallito")
                 })
-                
+
         except Exception as e:
             logger.error(f"Errore parsing BNL {filename}: {e}")
             errori.append({"file": filename, "errore": str(e)})
-    
+
     return {
         "success": True,
         "processati": len(processati),
@@ -1917,26 +1917,26 @@ async def ricategorizza_documenti() -> Dict[str, Any]:
     che possono essere riconosciuti come altri tipi.
     """
     db = Database.get_db()
-    
+
     # Trova documenti in "altro" non processati
     docs = await db["documents_inbox"].find(
         {"category": "altro", "processed": {"$ne": True}},
         {"_id": 0}
     ).to_list(500)
-    
+
     if not docs:
         return {
             "success": True,
             "message": "Nessun documento da ricategorizzare",
             "ricategorizzati": 0
         }
-    
+
     ricategorizzati = []
-    
+
     for doc in docs:
         filename = doc.get("filename", "").lower()
         new_category = None
-        
+
         # Riconosci BNL
         if "bnl" in filename:
             new_category = "estratto_conto"
@@ -1952,7 +1952,7 @@ async def ricategorizza_documenti() -> Dict[str, Any]:
         # Riconosci PayPal
         elif "paypal" in filename:
             new_category = "estratto_conto"
-        
+
         if new_category:
             await db["documents_inbox"].update_one(
                 {"id": doc["id"]},
@@ -1972,7 +1972,7 @@ async def ricategorizza_documenti() -> Dict[str, Any]:
                 "da": "altro",
                 "a": new_category
             })
-    
+
     return {
         "success": True,
         "ricategorizzati": len(ricategorizzati),
@@ -1996,31 +1996,31 @@ async def processa_tutti_documenti() -> Dict[str, Any]:
         "estratti_nexi": None,
         "estratti_bnl": None
     }
-    
+
     try:
         # 1. Ricategorizza
         risultati["ricategorizzazione"] = await ricategorizza_documenti()
     except Exception as e:
         risultati["ricategorizzazione"] = {"error": str(e)}
-    
+
     try:
         # 2. Buste paga
         risultati["buste_paga"] = await sync_buste_paga()
     except Exception as e:
         risultati["buste_paga"] = {"error": str(e)}
-    
+
     try:
         # 3. Estratti Nexi
         risultati["estratti_nexi"] = await sync_estratti_conto()
     except Exception as e:
         risultati["estratti_nexi"] = {"error": str(e)}
-    
+
     try:
         # 4. Estratti BNL
         risultati["estratti_bnl"] = await sync_estratti_bnl()
     except Exception as e:
         risultati["estratti_bnl"] = {"error": str(e)}
-    
+
     return {
         "success": True,
         "risultati": risultati,
@@ -2045,44 +2045,44 @@ async def reimporta_documenti_da_filesystem(
     Utile quando il database è stato resettato ma i file sono ancora su disco.
     """
     import uuid
-    
+
     db = Database.get_db()
-    
+
     # DEPRECATO: Questo endpoint è per migrazione legacy.
-    # Architettura MongoDB-only: legge file da disco e li salva come Base64 in MongoDB.
-    
+    # Architettura Drive/Sheets: legge file da disco e li salva come Base64 in Drive/Sheets.
+
     # Categorie e sottocartelle
     category_dirs = {
         "Buste Paga": "busta_paga",
-        "Estratti Conto": "estratto_conto", 
+        "Estratti Conto": "estratto_conto",
         "F24": "f24",
         "Fatture": "fattura",
         "Altri": "altro"
     }
-    
+
     importati = []
     saltati = []
     errori = []
-    
+
     base_path = Path("/tmp/documents")
-    
+
     for dir_name, category in category_dirs.items():
         dir_path = base_path / dir_name
         if not dir_path.exists():
             continue
-        
+
         for file_path in dir_path.iterdir():
             if not file_path.is_file():
                 continue
-            
+
             # Salta file di sistema
             if file_path.name.startswith('.'):
                 continue
-            
+
             filename = file_path.name
             filepath = str(file_path)
-            
-            # Architettura MongoDB-only: leggi file e codifica in Base64
+
+            # Architettura Drive/Sheets: leggi file e codifica in Base64
             try:
                 with open(filepath, 'rb') as f:
                     file_content = f.read()
@@ -2091,7 +2091,7 @@ async def reimporta_documenti_da_filesystem(
             except Exception as e:
                 errori.append({"file": filename, "errore": f"Impossibile leggere file: {e}"})
                 continue
-            
+
             # Controlla se già esiste nel DB
             existing = await db["documents_inbox"].find_one({
                 "$or": [
@@ -2099,15 +2099,15 @@ async def reimporta_documenti_da_filesystem(
                     {"file_hash": file_hash}
                 ]
             })
-            
+
             if existing and not force:
                 saltati.append(filename)
                 continue
-            
+
             # Ricategorizza automaticamente in base al nome
             final_category = category
             filename_lower = filename.lower()
-            
+
             if "bnl" in filename_lower:
                 final_category = "estratto_conto"
             elif "nexi" in filename_lower:
@@ -2118,12 +2118,12 @@ async def reimporta_documenti_da_filesystem(
                 final_category = "busta_paga"
             elif "f24" in filename_lower:
                 final_category = "f24"
-            
-            # Crea record documento con pdf_data (MongoDB-only)
+
+            # Crea record documento con pdf_data (Drive/Sheets)
             doc_record = {
                 "id": str(uuid.uuid4()),
                 "filename": filename,
-                "pdf_data": pdf_base64,  # Architettura MongoDB-only
+                "pdf_data": pdf_base64,  # Architettura Drive/Sheets
                 "category": final_category,
                 "category_label": {
                     "estratto_conto": "Estratti Conto",
@@ -2139,7 +2139,7 @@ async def reimporta_documenti_da_filesystem(
                 "downloaded_at": datetime.now(timezone.utc).isoformat(),
                 "source": "filesystem_import_migrated"
             }
-            
+
             try:
                 if existing and force:
                     await db["documents_inbox"].update_one(
@@ -2148,20 +2148,20 @@ async def reimporta_documenti_da_filesystem(
                     )
                 else:
                     await db["documents_inbox"].insert_one(dict(doc_record).copy())
-                
+
                 importati.append({
                     "file": filename,
                     "categoria": final_category
                 })
             except Exception as e:
                 errori.append({"file": filename, "errore": str(e)})
-    
+
     # Statistiche per categoria
     by_category = {}
     for doc in importati:
         cat = doc["categoria"]
         by_category[cat] = by_category.get(cat, 0) + 1
-    
+
     return {
         "success": True,
         "importati": len(importati),
@@ -2442,6 +2442,21 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         return "fattura"
 
     if lower.endswith(".pdf"):
+        # L'area Estratti conto contiene PDF dal nome generico
+        # ``Estratto_Conto (N).pdf``. Prima di appiattirli sul conto corrente
+        # usa lo stesso classificatore documentale del job Drive: Nexi,
+        # PayPal e mutui hanno registri e regole contabili distinti.
+        from app.services.classificazione_estratti import classifica
+
+        statement_route, _reason = classifica(filename, file_content)
+        routed_type = {
+            "nexi": "estratto_conto_nexi",
+            "paypal": "estratto_conto_paypal",
+            "mutuo": "estratto_conto_mutuo",
+            "bank": "estratto_conto",
+        }.get(statement_route)
+        if routed_type:
+            return routed_type
         content_str = pdf_text
         if any(marker in content_str for marker in (
             "QUIETANZA", "RICEVUTA DI VERSAMENTO", "ESITO DEL VERSAMENTO F24",
@@ -2482,6 +2497,16 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
             and ("IMPORTO" in content_str or "IBAN" in content_str)
         ):
             return "distinte_bpm"
+        # Gli export Numia/BPM iniziano con Export_Mensile/Transazioni e
+        # contengono Data e ora + Stato operazione + terminale/MID. Non sono
+        # estratti bancari e non devono essere archiviati come generici AUTO.
+        from app.services.classificazione_estratti import classifica
+
+        statement_route, _reason = classifica(filename, file_content)
+        if statement_route == "pos":
+            return "pos_terminal"
+        if statement_route == "bank":
+            return "estratto_conto"
         bank_name = any(keyword in lower for keyword in (
             "estratto", "movimenti", "bpm", "banco", "bank_statement",
         ))
@@ -2787,7 +2812,7 @@ async def upload_documento_automatico(
 ) -> Dict[str, Any]:
     """
     Upload documento con riconoscimento automatico del tipo.
-    
+
     Analizza nome file e contenuto per determinare il tipo:
     - PDF F24 → /api/f24/upload-pdf
     - PDF Quietanza F24 → /api/quietanze-f24/upload
@@ -2795,10 +2820,10 @@ async def upload_documento_automatico(
     - XML Fattura → /api/fatture/upload-xml
     - Excel/CSV Estratto Conto → /api/estratto-conto-movimenti/import
     - Excel Bonifici → Archivio bonifici
-    
+
     Se non riconosciuto, salva in documents_inbox per processamento manuale.
     """
-    
+
     filename = Path(file.filename or "documento").name
     source_context = getattr(file, "source_context", None) or {}
     content = await file.read()
@@ -2819,7 +2844,7 @@ async def upload_documento_automatico(
         from app.utils.upload_validation import verifica_pdf_reale
 
         verifica_pdf_reale(content, filename)
-    
+
     # Rileva tipo
     tipo_rilevato = detect_document_type(filename, content)
 
@@ -2840,15 +2865,15 @@ async def upload_documento_automatico(
                 "Eseguire /api/documenti/upload-auto/preview e confermare il risultato."
             ),
         )
-    
+
     logger.info(f"Upload automatico: {filename} -> tipo rilevato: {tipo_rilevato}")
 
     if tipo_rilevato == "archivio_zip":
         return await _process_zip_upload(filename, content)
-    
+
     # Se non riconosciuto, salva in inbox
     if tipo_rilevato == 'auto':
-        # documents_inbox conserva il payload in Base64 dentro MongoDB: oltre
+        # documents_inbox conserva il payload in Base64 dentro Drive/Sheets: oltre
         # 10 MB il record si avvicina al limite BSON di 16 MB. I documenti
         # grandi devono passare da un workflow riconosciuto o da Drive.
         if len(content) > MAX_INBOX_BYTES:
@@ -2857,7 +2882,7 @@ async def upload_documento_automatico(
                 detail="Documento non riconosciuto oltre il limite inbox di 10 MB",
             )
         db = Database.get_db()
-        
+
         # Salva file in cartella temporanea
         file_hash = hashlib.md5(content).hexdigest()
 
@@ -2893,17 +2918,17 @@ async def upload_documento_automatico(
                 "message": "Documento duplicato gia acquisito da un altro canale",
                 "filename": filename,
             }
-        
+
         doc_id = f"upload_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{file_hash[:8]}"
-        
-        # SALVA SU MONGODB - NIENTE FILESYSTEM
+
+        # Salva nel registro Sheets senza copie locali permanenti.
         import base64
         pdf_base64 = base64.b64encode(content).decode('utf-8')
-        
+
         doc_record = {
             "id": doc_id,
             "filename": filename,
-            "pdf_data": pdf_base64,  # Contenuto in MongoDB!
+            "pdf_data": pdf_base64,  # Contenuto in Drive/Sheets!
             "category": "altro",
             "category_label": "Da classificare",
             "status": "nuovo",
@@ -2914,7 +2939,7 @@ async def upload_documento_automatico(
             "source": "upload_automatico",
             "source_context": source_context,
         }
-        
+
         await db["documents_inbox"].insert_one(dict(doc_record).copy())
 
         # --- EVENT BUS: propaga evento documento acquisito (upload manuale) ---
@@ -2940,7 +2965,7 @@ async def upload_documento_automatico(
             "filename": filename,
             "azione_richiesta": "Classifica manualmente il documento da Strumenti > Documenti Email"
         }
-    
+
     # Per i tipi riconosciuti, fai il redirect interno
     result = {
         "success": True,
@@ -2948,9 +2973,9 @@ async def upload_documento_automatico(
         "filename": filename,
         "message": ""
     }
-    
+
     db = Database.get_db()
-    
+
     try:
         if tipo_rilevato == 'corrispettivo':
             # Import corrispettivo telematico COR10 con anti-duplicato rigoroso
@@ -3003,7 +3028,7 @@ async def upload_documento_automatico(
                     else:
                         result["message"] = f"Corrispettivo importato: {data_str} — totale {tot_str}€ (Prima Nota aggiornata)"
                         result["imported"] = 1
-                    
+
         elif tipo_rilevato == 'fattura':
             # Import fattura XML
             from fastapi import HTTPException as _HTTPException
@@ -3069,7 +3094,7 @@ async def upload_documento_automatico(
             else:
                 result["success"] = False
                 result["message"] = "Errore parsing XML fattura"
-                
+
         elif tipo_rilevato == 'f24':
             from app.services.f24_canonico import importa_modello_bytes
 
@@ -3090,7 +3115,7 @@ async def upload_documento_automatico(
                 result["success"] = False
                 result["imported"] = 0
                 result["message"] = f"Errore import F24: {f24_result.get('error', 'parsing fallito')}"
-                
+
         elif tipo_rilevato == 'quietanza_f24':
             # Tutti i canali passano dallo stesso servizio: validazione dei
             # totali, deduplica, righe/crediti e collegamenti bidirezionali.
@@ -3224,16 +3249,16 @@ async def upload_documento_automatico(
                 result["message"] = receipt.get(
                     "error", "Parsing ricevuta PagoPA/CBILL fallito"
                 )
-                
+
         elif tipo_rilevato == 'cedolino':
             # Import cedolino / Libro Unico - USA IL WORKFLOW COMPLETO
             from app.routers.libro_unico_parser import import_libro_unico
             import io
-            
+
             # Crea un nuovo UploadFile per il workflow
             file_obj = io.BytesIO(content)
             new_upload = UploadFile(filename=filename, file=file_obj)
-            
+
             try:
                 lul_result = await import_libro_unico(file=new_upload, aggiorna_esistenti=True)
                 result["message"] = lul_result.get("message", "Libro Unico importato con workflow completo")
@@ -3246,15 +3271,15 @@ async def upload_documento_automatico(
             except Exception as e:
                 result["success"] = False
                 result["message"] = f"Errore import LUL: {str(e)}"
-        
+
         elif tipo_rilevato == 'distinte_bpm':
             # Import distinte stipendi BPM - riconcilia con buste paga
             from app.routers.distinte_bpm import import_distinte_bpm
             import io
-            
+
             file_obj = io.BytesIO(content)
             new_upload = UploadFile(filename=filename, file=file_obj)
-            
+
             try:
                 bpm_result = await import_distinte_bpm(file=new_upload, solo_anteprima=False)
                 stats = bpm_result.get("stats", {})
@@ -3332,6 +3357,92 @@ async def upload_documento_automatico(
                     ),
                 })
 
+        elif tipo_rilevato == 'pos_terminal':
+            if "commissioni_" in filename.lower():
+                from app.services.pos_commissioni_import import importa_pos_commissioni_file
+
+                pos_result = await importa_pos_commissioni_file(db, content, filename)
+                result.update({
+                    "workflow": "POS_NUMIA_COMMISSIONI",
+                    "imported": pos_result.get("inserted", 0),
+                    "duplicates": pos_result.get("duplicates", 0),
+                    "data": pos_result,
+                    "message": (
+                        f"Commissioni POS importate: {pos_result.get('inserted', 0)} nuove, "
+                        f"{pos_result.get('updated', 0)} aggiornate, "
+                        f"{pos_result.get('duplicates', 0)} già presenti."
+                    ),
+                })
+            else:
+                from app.services.pos_terminal_import import importa_pos_terminal_file
+
+                pos_result = await importa_pos_terminal_file(db, content, filename)
+                result.update({
+                    "workflow": "POS_NUMIA_OPERATION_ID_V2",
+                    "imported": pos_result.get("inserted", 0),
+                    "duplicates": pos_result.get("unchanged", 0),
+                    "data": pos_result,
+                    "message": (
+                        f"POS Numia importato: {pos_result.get('inserted', 0)} operazioni nuove, "
+                        f"{pos_result.get('updated', 0)} aggiornate, "
+                        f"{pos_result.get('unchanged', 0)} già presenti."
+                    ),
+                })
+
+        elif tipo_rilevato == 'estratto_conto_nexi':
+            from app.services.nexi_carta import importa_estratto_nexi_pdf
+
+            nexi_result = await importa_estratto_nexi_pdf(
+                db, filename, content, source="documenti_upload_auto_nexi",
+            )
+            if not nexi_result.get("success"):
+                raise ValueError(nexi_result.get("message") or "Parsing Nexi fallito")
+            result.update({
+                "workflow": "NEXI_STATEMENT_CANONICO",
+                "duplicate": bool(nexi_result.get("duplicate")),
+                "imported": 0 if nexi_result.get("duplicate") else nexi_result.get("operazioni", 0),
+                "data": nexi_result,
+                "message": (
+                    "Estratto Nexi già presente; verifica aggiornata."
+                    if nexi_result.get("duplicate")
+                    else f"Estratto Nexi importato: {nexi_result.get('operazioni', 0)} operazioni."
+                ),
+            })
+
+        elif tipo_rilevato == 'estratto_conto_paypal':
+            from app.services.paypal_statement_import import import_paypal_statement_pdf
+
+            paypal_result = await import_paypal_statement_pdf(
+                db, content, filename, source="documenti_upload_auto_paypal",
+            )
+            result.update({
+                "workflow": "PAYPAL_STATEMENT_CANONICO",
+                "imported": paypal_result.get("transazioni_inserite", 0),
+                "duplicates": paypal_result.get("transazioni_duplicate", 0),
+                "data": paypal_result,
+                "message": (
+                    f"Estratto PayPal importato: "
+                    f"{paypal_result.get('transazioni_inserite', 0)} operazioni nuove, "
+                    f"{paypal_result.get('transazioni_duplicate', 0)} già presenti."
+                ),
+            })
+
+        elif tipo_rilevato == 'estratto_conto_mutuo':
+            from app.services.mutui_document_import import importa_documento_mutuo
+
+            mutuo_result = await importa_documento_mutuo(db, content, filename)
+            result.update({
+                "workflow": "MUTUO_DOCUMENTO_CANONICO",
+                "duplicate": bool(mutuo_result.get("duplicate")),
+                "imported": 0 if mutuo_result.get("duplicate") else mutuo_result.get("records", 0),
+                "data": mutuo_result,
+                "message": (
+                    "Documento mutuo già presente."
+                    if mutuo_result.get("duplicate")
+                    else "Documento mutuo importato."
+                ),
+            })
+
         elif tipo_rilevato == 'estratto_conto':
             # Import diretto estratto conto CSV Banco BPM → estratto_conto_movimenti
             from app.routers.bank.estratto_conto import import_estratto_conto
@@ -3361,7 +3472,7 @@ async def upload_documento_automatico(
                 logger.error(f"Import estratto conto fallito: {ec_err}")
                 result["success"] = False
                 result["message"] = f"Errore import estratto conto: {str(ec_err)}"
-            
+
         elif tipo_rilevato == 'bonifici':
             # Salva e processa nello stesso flusso canonico dell'Archivio
             # Bonifici. Prima di questa correzione il file restava soltanto
@@ -3369,12 +3480,12 @@ async def upload_documento_automatico(
             # dati non venivano letti ne' associati al dipendente.
             import base64 as b64
             from app.services.bonifici_pdf_ingest import importa_pdf_bonifico
-            
+
             doc_id = f"bonifici_{uuid.uuid4()}"
             bonifici_doc = {
                 "id": doc_id,
                 "filename": filename,
-                "pdf_data": b64.b64encode(content).decode('utf-8'),  # MongoDB-only
+                "pdf_data": b64.b64encode(content).decode('utf-8'),  # Drive/Sheets
                 "category": "bonifico",
                 "status": "da_processare",
                 "processed": False,
@@ -3405,10 +3516,10 @@ async def upload_documento_automatico(
             result["doc_id"] = doc_id
             result["bonifico_transfer_id"] = ingest.get("transfer_id")
             result["associato_dipendente"] = bool(ingest.get("associato"))
-            
+
     except Exception as e:
         logger.error(f"Errore processing {tipo_rilevato}: {e}")
         result["success"] = False
         result["message"] = f"Errore durante l'importazione: {str(e)}"
-    
+
     return result

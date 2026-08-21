@@ -1,6 +1,6 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.prima_nota_module import banca
 from app.services.scritture_contabili import riconcilia_accredito_pos_ec
@@ -12,7 +12,7 @@ def _run(coro):
 
 def test_badge_pos_verde_solo_se_importi_quadrano():
     async def scenario():
-        db = AsyncMongoMockClient()["test_badge_pos_quadrato"]
+        db = MemorySheetsClient()["test_badge_pos_quadrato"]
         movimenti = [
             {"id": "pos-ok", "source": "trasferimento_pos", "importo": 1353.70,
              "accreditato_ec": 1353.70, "riconciliato": True},
@@ -33,7 +33,7 @@ def test_badge_pos_verde_solo_se_importi_quadrano():
 
 def test_accrediti_separati_diventano_verdi_solo_alla_quadratura():
     async def scenario():
-        db = AsyncMongoMockClient()["test_pos_componenti"]
+        db = MemorySheetsClient()["test_pos_componenti"]
         await db["prima_nota_banca"].insert_one({
             "id": "trasferimento", "source": "trasferimento_pos",
             "giorno_vendita": "2026-07-05", "data": "2026-07-05",
@@ -74,7 +74,7 @@ def test_accrediti_separati_diventano_verdi_solo_alla_quadratura():
 
 def test_differenza_di_un_euro_non_e_riconciliazione():
     async def scenario():
-        db = AsyncMongoMockClient()["test_pos_un_euro"]
+        db = MemorySheetsClient()["test_pos_un_euro"]
         await db["prima_nota_banca"].insert_one({
             "id": "trasferimento", "source": "trasferimento_pos",
             "giorno_vendita": "2026-07-05", "data": "2026-07-05",

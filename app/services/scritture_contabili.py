@@ -38,25 +38,14 @@ from typing import Any, Dict, List, Optional
 
 
 @asynccontextmanager
-async def _transazione_mongo(db):
-    """Apre una transazione Mongo quando il driver la supporta.
-
-    Atlas supporta le transazioni; ``mongomock`` usato nei test no. Il fallback
-    e' ammesso esclusivamente per quella capability assente, non per errori di
-    connessione o di scrittura che devono interrompere la bonifica.
-    """
-    client = getattr(db, "client", None)
-    if client is None:
+async def _transazione_registro(db):
+    """Serializza una scrittura composta nel registro Drive/Sheets."""
+    transaction = getattr(db, "transaction", None)
+    if not callable(transaction):
         yield None
         return
-    try:
-        session = await client.start_session()
-    except NotImplementedError:
+    async with transaction():
         yield None
-        return
-    async with session:
-        async with session.start_transaction():
-            yield session
 
 
 def _sessione(session) -> Dict[str, Any]:
@@ -182,7 +171,7 @@ async def scrivi_movimento(db, registro: str, mov: Dict[str, Any]) -> str:
 async def _scrivi_se_assente(db, registro: str, query_esistente: Dict[str, Any],
                               mov: Dict[str, Any]) -> tuple:
     """Come scrivi_movimento, ma con la guardia di idempotenza (query_esistente)
-    applicata in UNA SOLA operazione atomica verso MongoDB (find_one_and_update
+    applicata in UNA SOLA operazione atomica verso Drive/Sheets (find_one_and_update
     con upsert=True), non in due chiamate separate (find_one poi insert_one).
 
     Prima di questa funzione, registra_corrispettivo faceva le due chiamate
@@ -223,7 +212,7 @@ async def scrivi_movimento_se_assente(
 
 
 async def _leggi_tutti(cursor, n: int = 100):
-    """Compat: cursori Motor reali (async for) e fake dei test (to_list)."""
+    """Compat: cursori repository asincroni e doppi dei test (to_list)."""
     if hasattr(cursor, "to_list"):
         return await cursor.to_list(n)
     return [c async for c in cursor]
@@ -243,7 +232,7 @@ def normalizza_gestore_pos(valore: Any) -> str:
 
 
 def filtro_gestore_pos(gestore: str) -> Dict[str, Any]:
-    """Filtro Mongo per gestore.
+    """Filtro repository per gestore.
 
     Le chiusure gia' registrate non hanno il campo ``gestore``: appartengono
     tutte a Nexi, unico terminale fino ad ora. Vanno quindi intercettate dal
@@ -520,7 +509,7 @@ async def registra_chiusura_pos_reale(
         "updated_at": now,
         "updated_by": user_id,
     }
-    # Niente upsert con ``$or``: Mongo non sa dedurre il documento da creare
+    # Niente upsert con ``$or``: il repository non sa dedurre il record da creare
     # da un filtro alternativo. Il ramo viene deciso qui, esplicitamente.
     if precedente_doc is not None:
         await db["chiusure_pos_manuali"].update_one(
@@ -1372,9 +1361,8 @@ async def bonifica_accrediti_pos_numia(
             "righe_ec": len(ids_canonici),
         }
         # Il trasferimento e tutte le prove EC della giornata cambiano stato
-        # insieme. Su Atlas questa e' una transazione; nei test in-memory il
-        # fallback conserva la stessa sequenza idempotente.
-        async with _transazione_mongo(db) as session:
+        # insieme sotto il lock atomico del registro Drive/Sheets.
+        async with _transazione_registro(db) as session:
             sessione = _sessione(session)
             await db["prima_nota_banca"].update_one(
                 {"id": trasferimento.get("id")},
@@ -1435,7 +1423,7 @@ async def bonifica_accrediti_pos_numia(
             riga_id = str(riga.get("id") or "")
             snapshot = {k: v for k, v in riga.items() if k != "_id"}
             audit_id = f"{migration_id}:{riga_id}"
-            async with _transazione_mongo(db) as session:
+            async with _transazione_registro(db) as session:
                 sessione = _sessione(session)
                 await db["prima_nota_migrazioni_audit"].update_one(
                     {"id": audit_id},

@@ -1,6 +1,6 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.invoices.fatture_upload import find_ec_match_for_invoice
 
@@ -15,7 +15,7 @@ def _run(coro):
 
 def test_banca_richiede_numero_importo_e_fornitore_insieme():
     async def scenario():
-        db = AsyncMongoMockClient()["strict_bank_invoice"]
+        db = MemorySheetsClient()["strict_bank_invoice"]
         base = {
             "tipo": "uscita",
             "importo": 122.00,
@@ -38,7 +38,7 @@ def test_banca_richiede_numero_importo_e_fornitore_insieme():
 
 def test_banca_blocca_un_centesimo_di_differenza():
     async def scenario():
-        db = AsyncMongoMockClient()["strict_bank_invoice_cent"]
+        db = MemorySheetsClient()["strict_bank_invoice_cent"]
         await db.estratto_conto_movimenti.insert_one({
             "id": "cent-diff",
             "tipo": "uscita",

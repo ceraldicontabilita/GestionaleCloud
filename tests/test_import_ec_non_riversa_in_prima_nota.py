@@ -13,7 +13,7 @@ sarebbe piu' corta ma sbagliata, perche' quel denaro dal conto e' uscito.
 import asyncio
 
 import pytest
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.bank import estratto_conto as modulo
 
@@ -57,7 +57,7 @@ class _File:
 
 @pytest.fixture
 def db(monkeypatch):
-    finto = AsyncMongoMockClient()["prima_nota_import_test"]
+    finto = MemorySheetsClient()["prima_nota_import_test"]
     monkeypatch.setattr(modulo.Database, "get_db", staticmethod(lambda: finto))
     return finto
 

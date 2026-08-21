@@ -6,7 +6,7 @@ dichiararsi incompleta invece di dare per buono un importo fiscale.
 """
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services import bonifica_pos_xml
 from app.services.scritture_contabili import registra_chiusura_pos_reale
@@ -17,7 +17,7 @@ def _run(awaitable):
 
 
 def _db():
-    return AsyncMongoMockClient()["bonifica_test"]
+    return MemorySheetsClient()["bonifica_test"]
 
 
 def _riga_da_xml(db, data="2026-08-03", importo=1629.50):

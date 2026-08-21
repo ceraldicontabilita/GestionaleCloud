@@ -97,7 +97,6 @@ def setup_logging() -> None:
     # Set levels for third-party loggers
     logging.getLogger("uvicorn").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-    logging.getLogger("motor").setLevel(logging.WARNING)
     logging.getLogger("asyncio").setLevel(logging.WARNING)
     
     root_logger.info(f"✅ Logging configured: level={settings.LOG_LEVEL}, format={settings.LOG_FORMAT}")

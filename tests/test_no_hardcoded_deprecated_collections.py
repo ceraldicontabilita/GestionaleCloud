@@ -1,5 +1,5 @@
 """
-Piano residuo P1 §12 — blocca l'uso di collection MongoDB deprecate.
+Piano residuo P1 §12 — blocca l'uso di collection Drive/Sheets deprecate.
 
 Le collezioni sotto sono deprecate/legacy (vedi
 `app/db_collections.py::COLLEZIONI DEPRECATE - NON USARE` e le costanti
@@ -72,6 +72,6 @@ def test_nessuna_collection_deprecata_hardcoded_fuori_dagli_script_di_migrazione
                     violazioni.append(f"{path}:{numero_riga} usa la collection deprecata '{nome}'")
 
     assert not violazioni, (
-        "Trovati riferimenti a collection MongoDB deprecate (vedi "
+        "Trovati riferimenti a collection Drive/Sheets deprecate (vedi "
         "app/db_collections.py per la canonica corretta):\n" + "\n".join(violazioni)
     )

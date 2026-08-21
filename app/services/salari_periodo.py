@@ -38,7 +38,7 @@ def periodo_ammesso_in_prima_nota(
 
 
 def filtro_periodo_prima_nota(*, oggi: Optional[date] = None) -> Dict[str, Any]:
-    """Filtro Mongo per tutte e sole le mensilita' contabili ammesse."""
+    """Filtro repository per tutte e sole le mensilita' contabili ammesse."""
     corrente = oggi or date.today()
     anno_minimo, mese_minimo = PERIODO_MINIMO_SALARI
     if corrente.year == anno_minimo:

@@ -11,7 +11,6 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-from bson import ObjectId
 from fastapi import HTTPException
 
 from .constants import COLLECTION, FORNITORI_NOLEGGIO
@@ -34,14 +33,13 @@ def normalize_contract_reference(value: Any) -> str:
 
 
 def invoice_lookup_query(invoice_id: str) -> Dict[str, Any]:
-    """Cerca una fattura tramite ObjectId o identificativi applicativi."""
+    """Cerca una fattura tramite gli identificativi stringa del registro."""
 
     candidates: list[Dict[str, Any]] = [
         {"id": invoice_id},
         {"invoice_id": invoice_id},
     ]
-    if ObjectId.is_valid(invoice_id):
-        candidates.insert(0, {"_id": ObjectId(invoice_id)})
+    candidates.insert(0, {"_id": invoice_id})
     return {"$or": candidates}
 
 

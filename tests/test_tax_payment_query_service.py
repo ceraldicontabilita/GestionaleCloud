@@ -1,6 +1,6 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.ritenute import _carica_f24
 from app.services.iva_f24_verifica import verifica_versamento_iva
@@ -8,7 +8,7 @@ from app.services.tax_payment_query import TaxPaymentQueryService
 
 
 def test_servizio_unico_espone_righe_crediti_quietanza_e_banca_separate():
-    db = AsyncMongoMockClient()["tax-payment-query"]
+    db = MemorySheetsClient()["tax-payment-query"]
     asyncio.run(db["f24_unificato"].insert_one({
         "id": "f24-1", "quietanza_id": "q-1",
         "sezione_erario": [

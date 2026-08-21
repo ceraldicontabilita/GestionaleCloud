@@ -170,7 +170,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             # Token revocato esplicitamente (logout) prima della scadenza
             # naturale. Controllato SOLO dopo che firma/scadenza sono già
             # validate (review Codex su PR #65): un token spazzatura non deve
-            # costare una query Mongo prima di essere respinto localmente.
+            # costare una lettura Drive/Sheets prima di essere respinto localmente.
             from app.database import Database
             from app.utils.token_blacklist import TokenBlacklistUnavailable, is_revocato
             try:

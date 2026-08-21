@@ -20,7 +20,7 @@ import zipfile
 import io
 import re
 
-from pymongo.errors import DuplicateKeyError
+from app.services.sheets_document_store import DuplicateRecordError
 
 from app.database import Database, Collections
 from app.engines.prima_nota_engine import (
@@ -268,7 +268,7 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
     Verifica se il fornitore esiste. Se sì, aggiorna i campi anagrafici mancanti.
     Se non esiste, lo crea automaticamente con i dati dalla fattura XML.
 
-    session: sessione Mongo opzionale, per partecipare a una transazione del
+    session: sessione repository opzionale, per partecipare a una transazione del
     chiamante (es. process_fattura_to_db). None per gli altri chiamanti.
     piva_validator: funzione di plausibilità P.IVA da usare per la guardia
     sotto — default `_piva_plausibile` (solo formato italiano/UE 11 cifre).
@@ -989,10 +989,10 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
     Usata da documenti.py per l'import automatico.
 
     Fornitore, fattura e (se generata) prima nota vengono scritti in
-    un'unica transazione Mongo: se un passaggio fallisce a metà, tutto viene
+    un'unica transazione repository: se un passaggio fallisce a metà, tutto viene
     annullato invece di lasciare stato incoerente (es. fornitore creato ma
     fattura mai salvata, o prima nota orfana senza il link sulla fattura).
-    Il client di test in sandbox (mongomock) non supporta le sessioni: in
+    Il client di test in sandbox (registro Sheets effimero) non supporta le sessioni: in
     quel caso si procede senza transazione, come prima.
 
     Args:
@@ -1195,18 +1195,9 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
         }
 
     try:
-        session = await db.client.start_session()
-    except NotImplementedError:
-        # Client di test senza supporto sessioni (es. mongomock) → nessuna transazione
-        session = None
-
-    try:
-        if session is not None:
-            async with session:
-                outcome = await session.with_transaction(_do_import)
-        else:
+        async with db.transaction():
             outcome = await _do_import(None)
-    except DuplicateKeyError:
+    except DuplicateRecordError:
         raise HTTPException(status_code=409, detail=duplicate_detail)
 
     invoice = outcome["invoice"]
@@ -1331,18 +1322,18 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
 async def find_check_numbers_for_invoice(db, importo: float, data_fattura: str, fornitore: str) -> Optional[Dict[str, Any]]:
     """
     Cerca nell'estratto conto i numeri degli assegni che corrispondono all'importo della fattura.
-    
+
     Returns:
         Dict con numeri assegni trovati o None
     """
     try:
         if not importo or importo <= 0:
             return None
-        
+
         # Tolleranza importo
         importo_min = importo - 1.0
         importo_max = importo + 1.0
-        
+
         # Range date (90 giorni prima e dopo la data fattura)
         data_min = None
         data_max = None
@@ -1353,7 +1344,7 @@ async def find_check_numbers_for_invoice(db, importo: float, data_fattura: str, 
                 data_max = (data_doc + timedelta(days=90)).strftime("%Y-%m-%d")
             except Exception:
                 pass
-        
+
         # Cerca match singolo per importo
         query = {
             "tipo": "uscita",
@@ -1365,14 +1356,14 @@ async def find_check_numbers_for_invoice(db, importo: float, data_fattura: str, 
         }
         if data_min and data_max:
             query["data"] = {"$gte": data_min, "$lte": data_max}
-        
+
         match = await db["estratto_conto_movimenti"].find_one(query, {"_id": 0})
-        
+
         if match:
             # Estrai numero assegno dalla descrizione
             descrizione = match.get("descrizione", "")
             numero_assegno = None
-            
+
             patterns = [
                 r'NUM:\s*(\d+)',
                 r'ASSEGNO\s*N\.?\s*(\d+)',
@@ -1383,7 +1374,7 @@ async def find_check_numbers_for_invoice(db, importo: float, data_fattura: str, 
                 if m:
                     numero_assegno = m.group(1)
                     break
-            
+
             if numero_assegno:
                 return {
                     "tipo": "singolo",
@@ -1392,18 +1383,18 @@ async def find_check_numbers_for_invoice(db, importo: float, data_fattura: str, 
                     "data": match.get("data"),
                     "importo": abs(match.get("importo", 0))
                 }
-        
+
         # Se non trovato singolo, cerca combinazione assegni multipli
         from itertools import combinations
-        
+
         query_multi = {
             "descrizione": {"$regex": "assegno", "$options": "i"}
         }
         if data_min and data_max:
             query_multi["data"] = {"$gte": data_min, "$lte": data_max}
-        
+
         assegni = await db["estratto_conto_movimenti"].find(query_multi, {"_id": 0}).limit(50).to_list(50)
-        
+
         if len(assegni) >= 2:
             for num in [2, 3, 4]:
                 for combo in combinations(assegni, num):
@@ -1416,7 +1407,7 @@ async def find_check_numbers_for_invoice(db, importo: float, data_fattura: str, 
                                 if m:
                                     numeri.append(m.group(1))
                                     break
-                        
+
                         if numeri:
                             return {
                                 "tipo": "multiplo",
@@ -1425,9 +1416,9 @@ async def find_check_numbers_for_invoice(db, importo: float, data_fattura: str, 
                                 "num_assegni": len(combo),
                                 "somma": somma
                             }
-        
+
         return None
-        
+
     except Exception as e:
         logger.error(f"Errore ricerca assegni per fattura: {e}")
         return None
@@ -1436,17 +1427,17 @@ async def find_check_numbers_for_invoice(db, importo: float, data_fattura: str, 
 async def riconcilia_con_estratto_conto(db, importo: float, data_fattura: str, fornitore: str, numero_fattura: str = None) -> Dict[str, Any]:
     """
     Cerca riconciliazione nell'estratto conto (bonifici, assegni, qualsiasi movimento).
-    
+
     REGOLE DI MATCH (in ordine di priorità):
     1. Importo + Nome fornitore/beneficiario (MATCH FORTE)
-    2. Importo + Numero fattura in causale (MATCH FORTE)  
+    2. Importo + Numero fattura in causale (MATCH FORTE)
     3. Solo importo esatto con tolleranza minima (MATCH DEBOLE)
-    
+
     NOTE: La DATA NON È un criterio obbligatorio perché un bonifico può essere:
     - Contestuale alla fattura
     - Differito rispetto alla fattura
     - In anticipo rispetto alla data fattura
-    
+
     Returns:
         Dict con info riconciliazione o {"trovato": False}
     """
@@ -1459,28 +1450,28 @@ async def riconcilia_con_estratto_conto(db, importo: float, data_fattura: str, f
         "match_tipo": None,
         "match_score": 0
     }
-    
+
     try:
         if not importo or importo <= 0:
             return result
-        
+
         # Tolleranza importo: ±1€ o ±1% (usa il maggiore)
         tolleranza = max(1.0, importo * 0.01)
         importo_min = importo - tolleranza
         importo_max = importo + tolleranza
-        
+
         # Normalizza nome fornitore per ricerca (estrai parole significative)
         fornitore_words = []
         if fornitore:
             # Rimuovi forme societarie e parole comuni
             fornitore_clean = re.sub(
-                r'(S\.?R\.?L\.?|S\.?P\.?A\.?|S\.?N\.?C\.?|S\.?A\.?S\.?|DI|DEL|DELLA|IL|LA|LO|GLI|LE|UN|UNA|E|ED|\d+)', 
-                '', 
-                fornitore, 
+                r'(S\.?R\.?L\.?|S\.?P\.?A\.?|S\.?N\.?C\.?|S\.?A\.?S\.?|DI|DEL|DELLA|IL|LA|LO|GLI|LE|UN|UNA|E|ED|\d+)',
+                '',
+                fornitore,
                 flags=re.IGNORECASE
             )
             fornitore_words = [w.strip() for w in fornitore_clean.split() if len(w.strip()) > 2]
-        
+
         # Query base: cerca movimenti in uscita con importo compatibile
         # NON filtrare per data - lascia che il match avvenga su altri criteri
         query = {
@@ -1492,22 +1483,22 @@ async def riconcilia_con_estratto_conto(db, importo: float, data_fattura: str, f
             # Escludi movimenti già riconciliati
             "riconciliato": {"$ne": True}
         }
-        
+
         # Cerca nell'estratto conto (senza limite di data)
         movimenti = await db["estratto_conto_movimenti"].find(query, {"_id": 0}).limit(50).to_list(50)
-        
+
         best_match = None
         best_score = 0
-        
+
         for mov in movimenti:
             descrizione = (mov.get("descrizione", "") or "").upper()
             causale = (mov.get("causale", "") or "").upper()
             beneficiario = (mov.get("beneficiario", "") or "").upper()
             testo_ricerca = f"{descrizione} {causale} {beneficiario}"
-            
+
             score = 0
             match_reasons = []
-            
+
             # 1. Match per nome fornitore (PESO: 50 punti)
             if fornitore_words:
                 matches_found = 0
@@ -1518,7 +1509,7 @@ async def riconcilia_con_estratto_conto(db, importo: float, data_fattura: str, f
                     # Più parole matchano, più alto il punteggio
                     score += 25 + (matches_found * 10)
                     match_reasons.append(f"fornitore({matches_found} parole)")
-            
+
             # 2. Match per numero fattura in causale (PESO: 40 punti)
             if numero_fattura:
                 # Normalizza numero fattura (rimuovi spazi, slash)
@@ -1526,7 +1517,7 @@ async def riconcilia_con_estratto_conto(db, importo: float, data_fattura: str, f
                 if num_clean in testo_ricerca.replace(" ", "").replace("/", ""):
                     score += 40
                     match_reasons.append("numero_fattura")
-            
+
             # 3. Match per importo esatto (PESO: 30 punti)
             importo_mov = abs(mov.get("importo", 0))
             differenza = abs(importo_mov - importo)
@@ -1539,7 +1530,7 @@ async def riconcilia_con_estratto_conto(db, importo: float, data_fattura: str, f
             elif differenza < tolleranza:
                 score += 10
                 match_reasons.append("importo_tolleranza")
-            
+
             # Se abbiamo un match significativo (score >= 50)
             if score >= 50 and score > best_score:
                 # Determina metodo pagamento dalla descrizione
@@ -1552,7 +1543,7 @@ async def riconcilia_con_estratto_conto(db, importo: float, data_fattura: str, f
                     metodo = "cassa"
                 elif any(x in descrizione for x in ["RID", "SDD", "ADDEBITO"]):
                     metodo = "rid"
-                
+
                 best_match = {
                     "trovato": True,
                     "metodo_suggerito": metodo,
@@ -1564,12 +1555,12 @@ async def riconcilia_con_estratto_conto(db, importo: float, data_fattura: str, f
                     "match_score": score
                 }
                 best_score = score
-        
+
         if best_match:
             return best_match
-        
+
         return result
-        
+
     except Exception as e:
         logger.error(f"Errore riconciliazione estratto conto: {e}")
         return result
@@ -1585,7 +1576,7 @@ def extract_xml_from_zip(zip_content: bytes, zip_filename: str = "archive.zip") 
     """
     Estrae tutti i file XML da un archivio ZIP.
     Supporta ZIP annidati (ZIP dentro ZIP).
-    
+
     Returns:
         Lista di dict con {"filename": str, "content": bytes}
     """
@@ -1602,10 +1593,10 @@ def extract_xml_from_zip(zip_content: bytes, zip_filename: str = "archive.zip") 
                 # Salta directory
                 if name.endswith('/'):
                     continue
-                
+
                 try:
                     file_content = zf.read(name)
-                    
+
                     if name.lower().endswith('.xml') or is_p7m_content(name):
                         # File XML (o P7M firmato) trovato
                         xml_files.append({
@@ -1621,7 +1612,7 @@ def extract_xml_from_zip(zip_content: bytes, zip_filename: str = "archive.zip") 
                     continue
     except zipfile.BadZipFile:
         raise ValueError(f"File ZIP corrotto o non valido: {zip_filename}")
-    
+
     return xml_files
 
 
@@ -2158,17 +2149,17 @@ async def upload_fatture_xml_bulk(files: List[UploadFile] = File(...)) -> Dict[s
     """
     if not files:
         raise HTTPException(status_code=400, detail="Nessun file caricato")
-    
+
     results = {
         "success": [], "errors": [], "duplicates": [],
         "total": 0, "imported": 0, "failed": 0, "skipped_duplicates": 0
     }
-    
+
     db = Database.get_db()
-    
+
     # Raccoglie tutti i file XML (inclusi quelli estratti da ZIP)
     xml_files = []
-    
+
     from app.utils.upload_guard import leggi_upload
     for file in files:
         filename = file.filename or "unknown"
@@ -2188,9 +2179,9 @@ async def upload_fatture_xml_bulk(files: List[UploadFile] = File(...)) -> Dict[s
         else:
             results["errors"].append({"filename": filename, "error": "Formato non supportato (solo XML, P7M o ZIP)"})
             results["failed"] += 1
-    
+
     results["total"] = len(xml_files)
-    
+
     # Processa tutti gli XML con la pipeline condivisa (vedi process_xml_bytes)
     for xml_file in xml_files:
         filename = xml_file["filename"]
@@ -2251,7 +2242,7 @@ async def sync_suppliers_from_invoices() -> Dict[str, Any]:
     Crea nuovi fornitori per le P.IVA non presenti nel database.
     """
     db = Database.get_db()
-    
+
     # Trova tutte le P.IVA uniche nelle fatture
     pipeline = [
         {"$match": {"supplier_vat": {"$exists": True, "$ne": ""}}},
@@ -2262,29 +2253,29 @@ async def sync_suppliers_from_invoices() -> Dict[str, Any]:
             "count": {"$sum": 1}
         }}
     ]
-    
+
     supplier_groups = await db[Collections.INVOICES].aggregate(pipeline).to_list(5000)
-    
+
     created = 0
     updated = 0
     skipped = 0
-    
+
     for group in supplier_groups:
         supplier_vat = group["_id"]
         if not supplier_vat:
             continue
-        
+
         # Cerca fornitore esistente
         existing = await db[Collections.SUPPLIERS].find_one({"partita_iva": supplier_vat})
-        
+
         if existing:
             # Prepara aggiornamenti
             updates = {"fatture_count": group["count"], "updated_at": datetime.now(timezone.utc).isoformat()}
-            
+
             # Aggiorna ragione_sociale se mancante
             if not existing.get("ragione_sociale") and group.get("supplier_name"):
                 updates["ragione_sociale"] = group["supplier_name"]
-            
+
             # Aggiorna dati fornitore se mancanti
             fornitore_data = group.get("fornitore") or {}
             if not existing.get("indirizzo") and fornitore_data.get("indirizzo"):
@@ -2295,17 +2286,17 @@ async def sync_suppliers_from_invoices() -> Dict[str, Any]:
                 updates["comune"] = fornitore_data["comune"]
             if not existing.get("provincia") and fornitore_data.get("provincia"):
                 updates["provincia"] = fornitore_data["provincia"]
-            
+
             await db[Collections.SUPPLIERS].update_one(
                 {"partita_iva": supplier_vat},
                 {"$set": updates}
             )
             updated += 1
             continue
-        
+
         # Crea nuovo fornitore
         fornitore_data = group.get("fornitore") or {}
-        
+
         new_supplier = {
             "id": str(uuid.uuid4()),
             "ragione_sociale": group.get("supplier_name") or "Fornitore Sconosciuto",
@@ -2327,16 +2318,16 @@ async def sync_suppliers_from_invoices() -> Dict[str, Any]:
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "note": f"Creato automaticamente - {group['count']} fatture trovate"
         }
-        
+
         await db[Collections.SUPPLIERS].insert_one(new_supplier.copy())
         created += 1
-        
+
         # Aggiorna le fatture con il supplier_id
         await db[Collections.INVOICES].update_many(
             {"supplier_vat": supplier_vat, "supplier_id": {"$exists": False}},
             {"$set": {"supplier_id": new_supplier["id"]}}
         )
-    
+
     return {
         "success": True,
         "suppliers_created": created,
@@ -2354,7 +2345,7 @@ async def categorize_all_movements() -> Dict[str, Any]:
     basandosi sulla descrizione e sul fornitore.
     """
     db = Database.get_db()
-    
+
     categories_map = {
         'acquisti_merce': ['fattura', 'merce', 'prodotti', 'acquisto', 'fornitura', 'materie prime'],
         'utenze': ['enel', 'eni', 'gas', 'luce', 'acqua', 'bolletta', 'utenz', 'telecom', 'tim', 'vodafone', 'fastweb', 'wind'],
@@ -2371,18 +2362,18 @@ async def categorize_all_movements() -> Dict[str, Any]:
         'vendite': ['vendita', 'incasso', 'corrispettivo', 'scontrino', 'ricavo'],
         'altro': []
     }
-    
+
     def categorize_description(desc: str, fornitore: str = "") -> str:
         """Determina categoria basandosi su descrizione e fornitore."""
         text = f"{desc} {fornitore}".lower()
-        
+
         for category, keywords in categories_map.items():
             for keyword in keywords:
                 if keyword in text:
                     return category
-        
+
         return 'altro'
-    
+
     # Processa Prima Nota Cassa
     cassa_updated = 0
     cassa_movements = await db["prima_nota_cassa"].find({}).to_list(10000)
@@ -2390,13 +2381,13 @@ async def categorize_all_movements() -> Dict[str, Any]:
         desc = mov.get("descrizione", "") or mov.get("causale", "")
         fornitore = mov.get("fornitore", "")
         categoria = categorize_description(desc, fornitore)
-        
+
         await db["prima_nota_cassa"].update_one(
             {"_id": mov["_id"]},
             {"$set": {"categoria": categoria}}
         )
         cassa_updated += 1
-    
+
     # Processa Prima Nota Banca
     banca_updated = 0
     banca_movements = await db["prima_nota_banca"].find({}).to_list(10000)
@@ -2404,13 +2395,13 @@ async def categorize_all_movements() -> Dict[str, Any]:
         desc = mov.get("descrizione", "") or mov.get("causale", "")
         fornitore = mov.get("fornitore", "")
         categoria = categorize_description(desc, fornitore)
-        
+
         await db["prima_nota_banca"].update_one(
             {"_id": mov["_id"]},
             {"$set": {"categoria": categoria}}
         )
         banca_updated += 1
-    
+
     # Categorizza anche estratto conto
     ec_updated = 0
     ec_movements = await db["estratto_conto_movimenti"].find({}).to_list(10000)
@@ -2418,13 +2409,13 @@ async def categorize_all_movements() -> Dict[str, Any]:
         desc = mov.get("descrizione", "") or mov.get("causale", "")
         fornitore = mov.get("fornitore", "")
         categoria = categorize_description(desc, fornitore)
-        
+
         await db["estratto_conto_movimenti"].update_one(
             {"_id": mov["_id"]},
             {"$set": {"categoria": categoria}}
         )
         ec_updated += 1
-    
+
     return {
         "success": True,
         "cassa_movements_categorized": cassa_updated,
@@ -2457,32 +2448,32 @@ async def classifica_fattura_manuale(invoice_id: str, data: Dict[str, Any] = Bod
     Classifica manualmente una fattura assegnandola a un centro di costo.
     """
     db = Database.get_db()
-    
+
     centro_costo_id = data.get("centro_costo_id")
     if not centro_costo_id:
         raise HTTPException(status_code=400, detail="centro_costo_id richiesto")
-    
+
     # Recupera il nome del centro di costo
     cdc = await db["centri_costo"].find_one({"codice": centro_costo_id})
     centro_costo_nome = cdc.get("nome", centro_costo_id) if cdc else centro_costo_id
-    
+
     update_data = {
         "centro_costo_id": centro_costo_id,
         "centro_costo_nome": centro_costo_nome,
         "classificazione_manuale": True,
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    
+
     result = await db[Collections.INVOICES].update_one(
         {"id": invoice_id},
         {"$set": update_data}
     )
-    
+
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
-    
+
     return {
-        "success": True, 
+        "success": True,
         "message": f"Fattura classificata come '{centro_costo_nome}'",
         "centro_costo_id": centro_costo_id,
         "centro_costo_nome": centro_costo_nome
@@ -2500,15 +2491,15 @@ async def paga_fattura(invoice_id: str) -> Dict[str, Any]:
     - Aggiornare saldo fornitore
     """
     db = Database.get_db()
-    
+
     # Trova la fattura
     invoice = await db[Collections.INVOICES].find_one({"id": invoice_id})
     if not invoice:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
-    
+
     if invoice.get("pagato") or invoice.get("status") == "paid":
         raise HTTPException(status_code=400, detail="Fattura già pagata")
-    
+
     rate_xml = invoice.get("pagamento_rate") or []
     if len(rate_xml) > 1:
         raise HTTPException(
@@ -2522,20 +2513,20 @@ async def paga_fattura(invoice_id: str) -> Dict[str, Any]:
     metodo = invoice.get("metodo_pagamento")
     if not metodo:
         raise HTTPException(status_code=400, detail="Seleziona prima un metodo di pagamento")
-    
+
     # Usa DataPropagationService per propagare il pagamento
     from app.services.data_propagation import get_propagation_service
-    
+
     propagation_service = get_propagation_service()
     importo = invoice.get("total_amount") or invoice.get("importo_totale") or 0
-    
+
     result = await propagation_service.propagate_invoice_payment(
         invoice_id=invoice_id,
         payment_amount=float(importo),
         payment_method=metodo,
         payment_date=datetime.now(timezone.utc).isoformat()[:10]
     )
-    
+
     if not result.get("movement_created"):
         logger.warning(f"Propagation errors: {result.get('errors')}")
         raise HTTPException(
@@ -2564,12 +2555,12 @@ async def delete_invoice(
 ) -> Dict[str, Any]:
     """
     Elimina una singola fattura con validazione business rules.
-    
+
     **Regole:**
     - Non può eliminare fatture pagate
     - Non può eliminare fatture registrate in Prima Nota (richiede force=true)
     - Fatture con movimenti magazzino richiedono force=true
-    
+
     **CASCADE DELETE:**
     - Elimina/archivia righe dettaglio
     - Elimina/archivia Prima Nota associata
@@ -2579,21 +2570,21 @@ async def delete_invoice(
     """
     from app.services.business_rules import BusinessRules
     from app.services.cascade_operations import CascadeOperations
-    
+
     db = Database.get_db()
-    
+
     # Recupera fattura
     invoice = await db[Collections.INVOICES].find_one({"id": invoice_id})
     if not invoice:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
-    
+
     # Verifica se ha operazioni registrate
     stato_registrazione = await CascadeOperations.is_fattura_registrata(db, invoice_id)
     entita_correlate = await CascadeOperations.get_entita_correlate(db, invoice_id)
-    
+
     # Valida eliminazione con business rules
     validation = BusinessRules.can_delete_invoice(invoice)
-    
+
     # Aggiungi warning per entità correlate
     if entita_correlate["totale_entita"] > 0:
         validation.warnings.append(f"Verranno eliminate {entita_correlate['totale_entita']} entità correlate")
@@ -2601,7 +2592,7 @@ async def delete_invoice(
             validation.warnings.append("⚠️ ATTENZIONE: Verranno eliminate registrazioni contabili (Prima Nota)")
         if entita_correlate["movimenti_magazzino"] > 0:
             validation.warnings.append("⚠️ ATTENZIONE: Verranno annullati movimenti di magazzino")
-    
+
     if not validation.is_valid:
         raise HTTPException(
             status_code=400,
@@ -2611,7 +2602,7 @@ async def delete_invoice(
                 "entita_correlate": entita_correlate
             }
         )
-    
+
     # Se ci sono warning e non è forzata, richiedi conferma (DOPPIA CONFERMA)
     if (validation.warnings or stato_registrazione["registrata"]) and not force:
         return {
@@ -2623,10 +2614,10 @@ async def delete_invoice(
             "require_force": True,
             "nota": "Usa force=true per confermare l'eliminazione"
         }
-    
+
     # Esegui CASCADE DELETE
     risultato_cascade = await CascadeOperations.delete_fattura_cascade(db, invoice_id, hard_delete=hard_delete)
-    
+
     return {
         "success": True,
         "message": "Fattura eliminata" + (" (hard delete)" if hard_delete else " (archiviata)"),
@@ -2645,16 +2636,16 @@ async def get_entita_correlate_fattura(invoice_id: str) -> Dict[str, Any]:
     Utile per mostrare all'utente cosa verrà modificato/eliminato.
     """
     from app.services.cascade_operations import CascadeOperations
-    
+
     db = Database.get_db()
-    
+
     invoice = await db[Collections.INVOICES].find_one({"id": invoice_id})
     if not invoice:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
-    
+
     stato = await CascadeOperations.is_fattura_registrata(db, invoice_id)
     entita = await CascadeOperations.get_entita_correlate(db, invoice_id)
-    
+
     return {
         "fattura_id": invoice_id,
         "numero_documento": invoice.get("invoice_number") or invoice.get("numero_documento"),
@@ -2678,25 +2669,25 @@ async def recalculate_iva_all_invoices() -> Dict[str, Any]:
     Usa i dati dal riepilogo_iva se disponibili.
     """
     db = Database.get_db()
-    
+
     # Tipi documento Note Credito
     NOTE_CREDITO_TYPES = ["TD04", "TD08"]
-    
+
     updated_count = 0
     errors = []
-    
+
     # Trova tutte le fatture
     cursor = db[Collections.INVOICES].find({}, {"_id": 0})
     fatture = await cursor.to_list(10000)
-    
+
     for f in fatture:
         try:
             updates = {}
-            
+
             # Aggiungi data_ricezione se mancante (default = invoice_date)
             if not f.get('data_ricezione'):
                 updates['data_ricezione'] = f.get('invoice_date', '')
-            
+
             # Ricalcola IVA/imponibile dal riepilogo_iva se presente
             riepilogo = f.get('riepilogo_iva', [])
             if riepilogo:
@@ -2708,13 +2699,13 @@ async def recalculate_iva_all_invoices() -> Dict[str, Any]:
                         iva_calc += float(r.get('imposta', 0) or 0)
                     except (ValueError, TypeError):
                         pass
-                
+
                 # Aggiorna solo se i valori calcolati sono diversi da 0
                 if imponibile_calc > 0:
                     current_imponibile = float(f.get('imponibile', 0) or 0)
                     if abs(current_imponibile - imponibile_calc) > 0.01:
                         updates['imponibile'] = round(imponibile_calc, 2)
-                
+
                 if iva_calc > 0:
                     current_iva = float(f.get('iva', 0) or 0)
                     if abs(current_iva - iva_calc) > 0.01:
@@ -2725,16 +2716,16 @@ async def recalculate_iva_all_invoices() -> Dict[str, Any]:
                 if total > 0:
                     current_iva = float(f.get('iva', 0) or 0)
                     current_imponibile = float(f.get('imponibile', 0) or 0)
-                    
+
                     if current_iva == 0:
                         iva_stimata = round(total - (total / 1.22), 2)
                         updates['iva'] = iva_stimata
                         updates['iva_stimata'] = True  # Flag per indicare che è stimata
-                    
+
                     if current_imponibile == 0:
                         imponibile_stimato = round(total / 1.22, 2)
                         updates['imponibile'] = imponibile_stimato
-            
+
             # Applica aggiornamenti
             if updates:
                 updates['updated_at'] = datetime.now(timezone.utc).isoformat()
@@ -2743,10 +2734,10 @@ async def recalculate_iva_all_invoices() -> Dict[str, Any]:
                     {"$set": updates}
                 )
                 updated_count += 1
-                
+
         except Exception as e:
             errors.append(f"Errore fattura {f.get('invoice_number', 'N/A')}: {str(e)}")
-    
+
     return {
         "success": True,
         "fatture_analizzate": len(fatture),

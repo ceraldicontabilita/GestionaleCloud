@@ -28,8 +28,6 @@ Stati del Verbale:
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
-from bson import ObjectId
-from bson.errors import InvalidId
 import re
 import logging
 
@@ -65,7 +63,7 @@ def extract_verbale_from_description(description: str) -> Optional[str]:
     """Estrae il numero verbale dalla descrizione fattura."""
     if not description:
         return None
-    
+
     # Pattern comuni per numeri verbale
     patterns = [
         r'Verbale\s*(?:Nr|N\.?|Numero)?[:\s]*([A-Z0-9]+)',
@@ -76,25 +74,23 @@ def extract_verbale_from_description(description: str) -> Optional[str]:
         r'Nr[:\s]*([A-Z]\d{8,})',  # Nr: A25111540620
         r'Numero[:\s]*([A-Z]\d{8,})',  # Numero: A25111540620
     ]
-    
+
     for pattern in patterns:
         match = re.search(pattern, description, re.IGNORECASE)
         if match:
             return match.group(1).upper()
-    
+
     return None
 
 
 def serialize_doc(doc: dict) -> dict:
-    """Serializza documento MongoDB per JSON."""
+    """Serializza documento Drive/Sheets per JSON."""
     if doc is None:
         return None
     result = {}
     for k, v in doc.items():
         if k == '_id':
             result['id'] = str(v)
-        elif isinstance(v, ObjectId):
-            result[k] = str(v)
         elif isinstance(v, datetime):
             result[k] = v.isoformat()
         else:
@@ -201,7 +197,7 @@ async def scan_gmail_mittenti_attendibili(
 async def get_verbali_dashboard() -> Dict[str, Any]:
     """Dashboard riassuntiva dello stato verbali."""
     db = Database.get_db()
-    
+
     try:
         # Conta verbali per stato - USA PROIEZIONE per evitare di caricare PDF
         pipeline = [
@@ -266,7 +262,7 @@ async def get_verbali_dashboard() -> Dict[str, Any]:
             }}
         ]
         stati = await db["verbali_noleggio"].aggregate(pipeline).to_list(100)
-        
+
         per_stato = {}
         totale_verbali = 0
         totale_importo = 0
@@ -281,7 +277,7 @@ async def get_verbali_dashboard() -> Dict[str, Any]:
             totale_verbali += s["count"]
             totale_importo += s["totale_importo"]
             importi_da_verificare += s.get("importi_da_verificare", 0)
-        
+
         # Verbali da riconciliare - solo count
         da_riconciliare = await db["verbali_noleggio"].count_documents({
             "$or": [
@@ -290,7 +286,7 @@ async def get_verbali_dashboard() -> Dict[str, Any]:
                 {"stato": "salvato"}
             ]
         })
-        
+
         # Ultimi 5 verbali - ESCLUDI campi pesanti (pdf_content, pdf_base64, etc)
         projection = {
             "_id": 1,
@@ -313,7 +309,7 @@ async def get_verbali_dashboard() -> Dict[str, Any]:
             "created_at": 1
         }
         ultimi = await db["verbali_noleggio"].find({}, projection).sort("created_at", -1).limit(5).to_list(5)
-        
+
         from app.config import settings
         from app.services.drive_folder_registry import get_folder_id
 
@@ -381,23 +377,23 @@ async def get_lista_verbali(
 ) -> Dict[str, Any]:
     """Lista verbali con filtri e ordinamento. OTTIMIZZATO per escludere PDF."""
     db = Database.get_db()
-    
+
     try:
         query = {}
-        
+
         if stato:
             query["stato"] = stato
-        
+
         if targa:
             query["targa"] = {"$regex": targa, "$options": "i"}
-        
+
         if da_riconciliare:
             query["$or"] = [
                 {"stato": "fattura_ricevuta", "pagamento_id": {"$exists": False}},
                 {"stato": "pagato", "fattura_id": {"$exists": False}},
                 {"stato": "salvato"}
             ]
-        
+
         # PROIEZIONE: escludi campi pesanti (PDF base64)
         projection = {
             "_id": 1,
@@ -448,13 +444,13 @@ async def get_lista_verbali(
             "updated_at": 1
             # ESCLUDI: pdf_content, pdf_base64, email_body, attachment_content, pdf_quietanza, etc.
         }
-        
+
         # Ordinamento configurabile
         sort_field = ordinamento if ordinamento in ("data_verbale", "numero_verbale", "created_at") else "data_verbale"
         sort_dir = 1 if sort_field == "numero_verbale" else -1
-        
+
         verbali = await db["verbali_noleggio"].find(query, projection).sort(sort_field, sort_dir).to_list(500)
-        
+
         # Normalizza driver_nome e fattura_numero
         for v in verbali:
             v.update(sanitize_verbale_evidence(v))
@@ -482,7 +478,7 @@ async def get_lista_verbali(
                     v["metodo_pagamento"] = "PagoPA"
                 elif v.get("movimento_banca_id"):
                     v["metodo_pagamento"] = "Bonifico bancario"
-        
+
         return {
             "success": True,
             "verbali": [serialize_doc(v) for v in verbali],
@@ -501,11 +497,11 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
     e creare associazioni automatiche.
     """
     db = Database.get_db()
-    
+
     try:
         # Fornitori noleggio tipici (se vuoto cerca in tutte le fatture)
         fornitori_noleggio = ["ALD", "LEASYS", "ARVAL", "LEASEPLAN", "ALPHABET"]
-        
+
         # Trova fatture dei noleggiatori E tutte quelle con numeri verbale
         fatture = await db["invoices"].find({
             "$or": [
@@ -518,10 +514,10 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
                 {"oggetto": {"$regex": r"[AB]\d{8,12}", "$options": "i"}},
             ]
         }).to_list(5000)
-        
+
         verbali_trovati = 0
         associazioni_create = 0
-        
+
         for fattura in fatture:
             # Costruisci testo completo della fattura cercando in tutti i campi
             campi_testo = [
@@ -544,15 +540,15 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
                     campi_testo.append(adg.get("riferimento_testo", "") or "")
 
             testo_completo = " ".join(campi_testo)
-            
+
             # Cerca numero verbale nel testo completo
             numero_verbale = extract_verbale_from_description(testo_completo)
-            
+
             if numero_verbale:
                 verbali_trovati += 1
                 fattura_id = fattura.get("id") or str(fattura.get("_id"))
                 fattura_numero = fattura.get("invoice_number") or fattura.get("numero_fattura")
-                
+
                 # Verifica se esiste già l'associazione
                 existing = await db["verbali_noleggio"].find_one({
                     "numero_verbale": numero_verbale,
@@ -561,11 +557,11 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
                         {"fattura_associata_id": fattura_id},
                     ],
                 })
-                
+
                 if not existing:
                     # Crea o aggiorna verbale
                     verbale_doc = await db["verbali_noleggio"].find_one({"numero_verbale": numero_verbale})
-                    
+
                     update_data = {
                         "fattura_id": fattura_id,
                         "fattura_associata_id": fattura_id,
@@ -579,7 +575,7 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
                         "targa": fattura.get("targa"),
                         "updated_at": datetime.now(timezone.utc)
                     }
-                    
+
                     if verbale_doc:
                         # Aggiorna esistente
                         nuovo_stato = "riconciliato" if (
@@ -603,9 +599,9 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
                         {"id": fattura_id},
                         {"$addToSet": {"verbali_collegati": numero_verbale}},
                     )
-                    
+
                     associazioni_create += 1
-        
+
         return {
             "success": True,
             "fatture_analizzate": len(fatture),
@@ -713,7 +709,7 @@ async def riconcilia_verbale(
 ) -> Dict[str, Any]:
     """
     Cerca prove e prepara un'anteprima; non scrive senza conferma esplicita.
-    
+
     Cerca:
     1. Fattura con numero verbale nella descrizione
     2. Pagamento in estratto conto
@@ -721,20 +717,20 @@ async def riconcilia_verbale(
     4. Driver assegnato al veicolo
     """
     db = Database.get_db()
-    
+
     try:
         verbale = await db["verbali_noleggio"].find_one({"numero_verbale": numero_verbale})
-        
+
         if not verbale:
             raise HTTPException(status_code=404, detail="Verbale non trovato")
-        
+
         updates: Dict[str, Any] = {}
         messages: List[str] = []
         proposte: List[Dict[str, Any]] = []
         evidenze: List[Dict[str, Any]] = []
         motivi_blocco: List[str] = []
         fattura_da_collegare: Optional[Dict[str, Any]] = None
-        
+
         # 1. Cerca fattura se non presente
         if not verbale.get("fattura_id"):
             fatture = await db["invoices"].find({
@@ -747,7 +743,7 @@ async def riconcilia_verbale(
                 )
             elif len(fatture) == 1:
                 fattura = fatture[0]
-                # id canonico UUID (non l'ObjectId _id): tutto il resto dell'app
+                # id canonico UUID: tutto il resto dell'app
                 # collega le fatture per `id`. Vedi P0.4.
                 fattura_id = fattura.get("id") or str(fattura.get("_id"))
                 fattura_numero = fattura.get("invoice_number") or fattura.get("numero_fattura")
@@ -775,7 +771,7 @@ async def riconcilia_verbale(
                     "documento_id": fattura_id,
                     "numero_fattura": fattura_numero,
                 })
-        
+
         # 2. Cerca targa se non presente
         targa = verbale.get("targa") or updates.get("targa")
         if not targa:
@@ -795,7 +791,7 @@ async def riconcilia_verbale(
                     "documento_id": str(completo.get("_id") or completo.get("id") or ""),
                     "targa": targa,
                 })
-        
+
         # 3. Cerca veicolo e driver
         if targa:
             # Il record veicolo contiene al massimo un driver corrente, non
@@ -840,8 +836,8 @@ async def riconcilia_verbale(
                         }
                 if str(driver_prova.get("fonte") or "").startswith("storico_assegnazioni") and driver_prova.get("driver_id"):
                     updates["driver_id"] = driver_prova["driver_id"]
-                    
-                    # Trova nome driver (driver_id è un UUID stringa, non ObjectId —
+
+                    # Trova nome driver (driver_id è un UUID stringa;
                     # vedi il pattern corretto già usato in associa_verbale_completo
                     # in questo stesso file)
                     driver = await db["dipendenti"].find_one({"id": driver_prova["driver_id"]})
@@ -859,7 +855,7 @@ async def riconcilia_verbale(
                     motivi_blocco.append(
                         "La targa ha un driver corrente, ma manca una assegnazione valida alla data del verbale."
                     )
-        
+
         # 4. Determina nuovo stato
         has_fattura = verbale.get("fattura_id") or updates.get("fattura_id")
         has_pagamento = (
@@ -868,7 +864,7 @@ async def riconcilia_verbale(
             or verbale.get("ricevuta_pagopa_id")
             or verbale.get("movimento_banca_id")
         )
-        
+
         importo_info = describe_verbale_amount(verbale)
         if has_fattura and has_pagamento and importo_info["importo_verificato"]:
             updates["stato"] = "riconciliato"
@@ -878,7 +874,7 @@ async def riconcilia_verbale(
             motivi_blocco.append(
                 "Esiste una prova di pagamento, ma l'importo del verbale non e' ancora verificato."
             )
-        
+
         # L'anteprima predefinita non scrive nulla. La seconda chiamata viene
         # effettuata solo dopo la conferma esplicita mostrata dall'interfaccia.
         if updates and not dry_run:
@@ -900,7 +896,7 @@ async def riconcilia_verbale(
                 )
 
             verbale = await db["verbali_noleggio"].find_one({"numero_verbale": numero_verbale})
-        
+
         return {
             "success": True,
             "dry_run": dry_run,
@@ -925,7 +921,7 @@ async def riconcilia_verbale(
 async def collega_driver_massivo() -> Dict[str, Any]:
     """
     Collega automaticamente i verbali ai driver con strategia multi-livello:
-    
+
     1. Targa → veicolo_noleggio → driver_id
     2. Targa → storico_assegnazioni_veicoli (driver alla data violazione)
     3. Targa → contratti_noleggio → intestatario/driver
@@ -933,7 +929,7 @@ async def collega_driver_massivo() -> Dict[str, Any]:
     5. Descrizione verbale → estrae nome/cognome → dipendente
     """
     db = Database.get_db()
-    
+
     try:
         # Trova verbali con targa la cui associazione driver e' assente o
         # incompleta (alcuni record hanno driver_id ma nessun nome visibile).
@@ -948,19 +944,19 @@ async def collega_driver_massivo() -> Dict[str, Any]:
                 {"driver_nome": ""},
             ]
         }).to_list(1000)
-        
+
         collegati = 0
         strategie_usate = {"driver_id": 0, "veicolo": 0, "storico": 0, "contratto": 0, "dipendente": 0, "descrizione": 0}
         non_trovati = []
-        
+
         for verbale in verbali:
             targa = (verbale.get("targa") or "").upper()
             data_violazione = verbale.get("data_violazione") or verbale.get("data_verbale")
             numero = verbale.get("numero_verbale", "?")
-            
+
             if not targa:
                 continue
-            
+
             driver_id = verbale.get("driver_id")
             driver_nome = verbale.get("driver_nome") or verbale.get("driver")
             strategia = None
@@ -978,7 +974,7 @@ async def collega_driver_massivo() -> Dict[str, Any]:
                         or f"{dipendente_id.get('nome', '')} {dipendente_id.get('cognome', '')}".strip()
                     )
                     strategia = "driver_id"
-            
+
             # === STRATEGIA 1: veicolo_noleggio → driver ===
             veicolo = await db["veicoli_noleggio"].find_one({"targa": targa})
             if veicolo:
@@ -989,7 +985,7 @@ async def collega_driver_massivo() -> Dict[str, Any]:
                 elif veicolo.get("driver"):
                     driver_nome = veicolo["driver"]
                     strategia = "veicolo"
-            
+
             # === STRATEGIA 2: storico assegnazioni (driver alla data della violazione) ===
             if not driver_id and not driver_nome:
                 query_storico = {"targa": targa}
@@ -998,7 +994,7 @@ async def collega_driver_massivo() -> Dict[str, Any]:
                         {"data_inizio": {"$lte": data_violazione}, "data_fine": {"$gte": data_violazione}},
                         {"data_inizio": {"$lte": data_violazione}, "data_fine": {"$exists": False}},
                     ]
-                
+
                 storico_candidates = await db["storico_assegnazioni_veicoli"].find(
                     query_storico, {"_id": 0}
                 ).limit(10).to_list(10)
@@ -1012,7 +1008,7 @@ async def collega_driver_massivo() -> Dict[str, Any]:
                     driver_id = storico.get("driver_id")
                     driver_nome = storico.get("driver") or storico.get("driver_nome")
                     strategia = "storico"
-            
+
             # === STRATEGIA 3: contratti noleggio ===
             if not driver_id and not driver_nome:
                 contratto = await db["contratti_noleggio"].find_one(
@@ -1022,7 +1018,7 @@ async def collega_driver_massivo() -> Dict[str, Any]:
                     driver_nome = contratto.get("driver") or contratto.get("intestatario")
                     driver_id = contratto.get("driver_id")
                     strategia = "contratto"
-            
+
             # === STRATEGIA 4: dipendenti con veicolo assegnato ===
             if not driver_id and not driver_nome:
                 dipendente = await db["dipendenti"].find_one({
@@ -1039,7 +1035,7 @@ async def collega_driver_massivo() -> Dict[str, Any]:
                             {"targa_assegnata": targa}
                         ]
                     })
-                
+
                 if dipendente:
                     driver_id = dipendente.get("id") or str(dipendente.get("_id"))
                     driver_nome = (
@@ -1047,7 +1043,7 @@ async def collega_driver_massivo() -> Dict[str, Any]:
                         f"{dipendente.get('nome', '')} {dipendente.get('cognome', '')}".strip()
                     )
                     strategia = "dipendente"
-            
+
             # === STRATEGIA 5: cerca nome nella descrizione del verbale ===
             if not driver_id and not driver_nome:
                 desc = (verbale.get("descrizione") or verbale.get("note") or "").upper()
@@ -1057,7 +1053,7 @@ async def collega_driver_massivo() -> Dict[str, Any]:
                         {"stato": {"$ne": "cessato"}},
                         {"_id": 0, "id": 1, "cognome": 1, "nome": 1, "nome_completo": 1}
                     ).to_list(200)
-                    
+
                     for dip in all_dip:
                         cognome = (dip.get("cognome") or "").upper()
                         if cognome and len(cognome) > 2 and cognome in desc:
@@ -1065,7 +1061,7 @@ async def collega_driver_massivo() -> Dict[str, Any]:
                             driver_nome = dip.get("nome_completo") or f"{dip.get('nome', '')} {cognome}"
                             strategia = "descrizione"
                             break
-            
+
             # Una relazione proposta da veicolo/contratto/dipendente senza
             # assegnazione storica alla data non e' probatoria: resta in coda
             # per conferma manuale e non viene scritta sul verbale.
@@ -1086,7 +1082,7 @@ async def collega_driver_massivo() -> Dict[str, Any]:
                 if driver_nome:
                     update_data["driver_nome"] = driver_nome.strip()
                     update_data["driver"] = driver_nome.strip()
-                
+
                 await db["verbali_noleggio"].update_one(
                     {"_id": verbale["_id"]},
                     {"$set": update_data}
@@ -1100,7 +1096,7 @@ async def collega_driver_massivo() -> Dict[str, Any]:
                     "targa": targa,
                     "data": data_violazione
                 })
-        
+
         return {
             "success": True,
             "verbali_analizzati": len(verbali),

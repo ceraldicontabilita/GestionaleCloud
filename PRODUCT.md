@@ -48,8 +48,7 @@ Documento originale
 5. Un alert senza lista dei record interessati non è utile.
 6. Le pagine collegate devono mostrare lo stesso stato senza ricaricamenti o
    manutenzioni manuali.
-7. Drive è la destinazione dell'archivio operativo portabile; nessun lock-in
-   definitivo su MongoDB.
+7. Drive/Sheets è l'unico archivio operativo portabile.
 
 ## Stato dell'architettura dati
 

@@ -7,7 +7,7 @@ presentate come lo stesso saldo.
 
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers import finanziaria
 
@@ -21,7 +21,7 @@ def _run(coro):
 
 
 def test_summary_distingue_flussi_riporti_e_disponibilita(monkeypatch):
-    db = AsyncMongoMockClient()["test_finanziaria"]
+    db = MemorySheetsClient()["test_finanziaria"]
     _run(db["prima_nota_cassa"].insert_many([
         {"data": "2026-01-10", "tipo": "entrata", "importo": 100.0,
          "categoria": "Corrispettivi", "source": "manuale", "status": "active"},
@@ -44,7 +44,7 @@ def test_summary_distingue_flussi_riporti_e_disponibilita(monkeypatch):
         return {"saldo_precedente": -100.0, "saldo": 170.0}
 
     monkeypatch.setattr(finanziaria.Database, "get_db", staticmethod(lambda: db))
-    # Mongomock non implementa $convert; il motore di saldo canonico ha test
+    # Il motore di saldo canonico ha test dedicati alla conversione numerica.
     # dedicati, qui si verifica come Finanziaria usa i valori restituiti.
     monkeypatch.setattr(finanziaria, "aggrega_saldo_prima_nota", saldi_canonici)
 
@@ -63,7 +63,7 @@ def test_summary_distingue_flussi_riporti_e_disponibilita(monkeypatch):
 
 
 def test_summary_non_inventa_crediti_clienti(monkeypatch):
-    db = AsyncMongoMockClient()["test_finanziaria_crediti"]
+    db = MemorySheetsClient()["test_finanziaria_crediti"]
     monkeypatch.setattr(finanziaria.Database, "get_db", staticmethod(lambda: db))
 
     result = _run(finanziaria.get_financial_summary(anno=2026))

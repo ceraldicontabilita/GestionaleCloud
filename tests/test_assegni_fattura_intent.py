@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 from fastapi import HTTPException
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services.assegni_estratto_conto import (
     _collega_fattura_univoca,
@@ -26,7 +26,7 @@ def _run(coro):
 
 def test_assegno_compilato_prevale_su_fornitore_cassa_e_attende_estratto():
     async def scenario():
-        db = AsyncMongoMockClient()["assegno_intento_cassa"]
+        db = MemorySheetsClient()["assegno_intento_cassa"]
         await db.assegni.insert_one({
             "id": "ass-1", "numero": "0208770981", "importo": 267.02,
             "beneficiario": "TOP SPINA SRL UNIPERSONALE",
@@ -63,7 +63,7 @@ def test_assegno_compilato_prevale_su_fornitore_cassa_e_attende_estratto():
 
 def test_estratto_conto_chiude_il_ciclo_e_imposta_flag_riconciliato():
     async def scenario():
-        db = AsyncMongoMockClient()["assegno_intento_ec"]
+        db = MemorySheetsClient()["assegno_intento_ec"]
         await db.assegni.insert_one({
             "id": "ass-2", "numero": "0208770981", "importo": 267.02,
             "beneficiario": "TOP SPINA SRL UNIPERSONALE",
@@ -103,7 +103,7 @@ def test_estratto_conto_chiude_il_ciclo_e_imposta_flag_riconciliato():
 
 def test_non_collega_una_fattura_storica_di_un_altro_anno():
     async def scenario():
-        db = AsyncMongoMockClient()["assegno_intento_anno"]
+        db = MemorySheetsClient()["assegno_intento_anno"]
         await db.assegni.insert_one({
             "id": "ass-2026", "numero": "0208770999", "anno": 2026,
             "importo": 267.02, "beneficiario": "TOP SPINA SRL",
@@ -127,7 +127,7 @@ def test_non_collega_una_fattura_storica_di_un_altro_anno():
 
 def test_estratto_arriva_prima_della_fattura_e_xml_completa_tutto_senza_modale():
     async def scenario():
-        db = AsyncMongoMockClient()["assegno_ec_prima_xml"]
+        db = MemorySheetsClient()["assegno_ec_prima_xml"]
         await db.assegni.insert_one({
             "id": "ass-ec-prima", "numero": "0208770649", "importo": 977.38,
             "beneficiario": "FORNITORE AUTOMATICO SRL",
@@ -179,7 +179,7 @@ def test_estratto_arriva_prima_della_fattura_e_xml_completa_tutto_senza_modale()
 
 def test_numero_fattura_e_importo_univoci_collegano_anche_senza_beneficiario():
     async def scenario():
-        db = AsyncMongoMockClient()["assegno_numero_importo"]
+        db = MemorySheetsClient()["assegno_numero_importo"]
         await db.assegni.insert_one({
             "id": "ass-solo-numero",
             "numero": "0208770650",
@@ -214,7 +214,7 @@ def test_numero_fattura_e_importo_univoci_collegano_anche_senza_beneficiario():
 
 def test_numero_fattura_e_importo_duplicati_restano_ambigui():
     async def scenario():
-        db = AsyncMongoMockClient()["assegno_numero_ambiguo"]
+        db = MemorySheetsClient()["assegno_numero_ambiguo"]
         await db.assegni.insert_one({
             "id": "ass-ambiguo",
             "numero": "0208770651",
@@ -265,7 +265,7 @@ def test_numero_fattura_e_importo_duplicati_restano_ambigui():
 
 def test_modifica_anagrafica_non_degrada_un_assegno_incassato(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["assegno_incassato_protetto"]
+        db = MemorySheetsClient()["assegno_incassato_protetto"]
         await db.assegni.insert_one({
             "id": "ass-incassato",
             "numero": "0208770652",
@@ -301,7 +301,7 @@ def test_modifica_anagrafica_non_degrada_un_assegno_incassato(monkeypatch):
 
 def test_due_assegni_distinti_non_possono_saldare_due_volte_la_stessa_fattura():
     async def scenario():
-        db = AsyncMongoMockClient()["assegno_no_doppio_pagamento"]
+        db = MemorySheetsClient()["assegno_no_doppio_pagamento"]
         invoice = {
             "id": "fatt-unica", "invoice_number": "56/D",
             "total_amount": 646.72, "importo_pagato": 0.0,
@@ -329,7 +329,7 @@ def test_due_assegni_distinti_non_possono_saldare_due_volte_la_stessa_fattura():
 
 def test_due_rate_con_assegni_diversi_sono_ammesse_entro_totale():
     async def scenario():
-        db = AsyncMongoMockClient()["assegno_rate_valide"]
+        db = MemorySheetsClient()["assegno_rate_valide"]
         invoice = {
             "id": "fatt-rate", "invoice_number": "R-200",
             "total_amount": 200.0, "importo_pagato": 0.0,
@@ -357,7 +357,7 @@ def test_due_rate_con_assegni_diversi_sono_ammesse_entro_totale():
 
 def test_lista_segnala_sovra_attribuzione_storica_senza_modificare_dati(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["assegno_conflitto_storico"]
+        db = MemorySheetsClient()["assegno_conflitto_storico"]
         await db.invoices.insert_one({
             "id": "fatt-conflitto", "invoice_number": "56/D",
             "supplier_name": "EUREKA ONLUS", "invoice_date": "2026-07-07",
@@ -393,7 +393,7 @@ def test_lista_segnala_sovra_attribuzione_storica_senza_modificare_dati(monkeypa
 
 def test_endpoint_legacy_non_puo_sovrascrivere_una_fattura_gia_attribuita(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["assegno_endpoint_protetto"]
+        db = MemorySheetsClient()["assegno_endpoint_protetto"]
         await db.assegni.insert_one({
             "id": "ass-nuovo", "numero": "0208770990", "importo": 120.0,
             "stato": "incassato", "incassato_confermato_banca": True,
@@ -430,7 +430,7 @@ def test_endpoint_legacy_non_puo_sovrascrivere_una_fattura_gia_attribuita(monkey
 
 def test_collegamento_guidato_salva_numero_data_fornitore_e_relazione_bidirezionale(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient()["assegno_collegamento_guidato"]
+        db = MemorySheetsClient()["assegno_collegamento_guidato"]
         await db.assegni.insert_one({
             "id": "ass-kimbo", "numero": "0208769323", "importo": 1498.96,
             "stato": "compilato", "anno": 2026,
@@ -469,7 +469,7 @@ def test_collegamento_guidato_salva_numero_data_fornitore_e_relazione_bidirezion
 
 def test_riprocessamento_storico_collega_assegno_incassato_alla_fattura_univoca():
     async def scenario():
-        db = AsyncMongoMockClient()["assegno_riprocessamento_storico"]
+        db = MemorySheetsClient()["assegno_riprocessamento_storico"]
         await db.assegni.insert_one({
             "id": "ass-storico", "numero": "0208770649", "anno": 2026,
             "importo": 977.38, "beneficiario": "FORNITORE AUTOMATICO SRL",
@@ -508,7 +508,7 @@ def test_riprocessamento_storico_collega_assegno_incassato_alla_fattura_univoca(
 
 def test_riprocessamento_non_indovina_tra_due_fatture_identiche():
     async def scenario():
-        db = AsyncMongoMockClient()["assegno_riprocessamento_ambiguo"]
+        db = MemorySheetsClient()["assegno_riprocessamento_ambiguo"]
         await db.assegni.insert_one({
             "id": "ass-ambiguo", "numero": "0208770650", "anno": 2026,
             "importo": 200.0, "beneficiario": "FORNITORE DOPPIO SRL",

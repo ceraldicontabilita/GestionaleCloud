@@ -325,6 +325,88 @@ def test_importa_pdf_drive_e_idempotente_per_hash(monkeypatch):
     assert len(db["estratto_conto_movimenti"].docs) == 1
 
 
+def test_reimport_pdf_noto_backfill_chiave_operazione_legacy(monkeypatch):
+    """Un documento gia' archiviato deve migrare le sue righe legacy senza
+    creare copie: l'idempotenza vale anche durante il passaggio alle chiavi
+    stabili, non solo per gli import eseguiti dopo la modifica."""
+    import hashlib
+
+    def fake_parse(pdf_content):
+        return {
+            "success": True,
+            "metadata": {"data_estratto_iso": "2026-01-31"},
+            "transazioni": [
+                {"data": "2026-01-05", "descrizione": "Fornitore", "importo": 10.0},
+            ],
+        }
+
+    monkeypatch.setattr(
+        "app.parsers.estratto_conto_nexi_parser.parse_estratto_conto_nexi", fake_parse
+    )
+    db = _DB()
+    pdf_content = b"%PDF-storico"
+    statement_id = "nexi-legacy"
+    db["estratto_conto_nexi"].docs.append({
+        "id": statement_id,
+        "content_sha256": hashlib.sha256(pdf_content).hexdigest(),
+    })
+    db["estratto_conto_movimenti"].docs.append({
+        "id": "mov-legacy",
+        "estratto_id": statement_id,
+        "tipo": "carta_credito",
+        "banca": "Nexi",
+        "data": "2026-01-05",
+        "descrizione": "Fornitore",
+        "importo": 10.0,
+    })
+
+    risultato = _run(importa_estratto_nexi_pdf(
+        db, "gennaio.pdf", pdf_content, source="drive_documenti_nexi"
+    ))
+
+    assert risultato["success"] and risultato["duplicate"]
+    assert risultato["operazioni"] == 0
+    assert risultato["duplicati_operazione"] == 1
+    assert len(db["estratto_conto_nexi"].docs) == 1
+    assert len(db["estratto_conto_movimenti"].docs) == 1
+    legacy = db["estratto_conto_movimenti"].docs[0]
+    assert legacy["operation_key"]
+    assert legacy["operation_id"].startswith("nexi:")
+    assert legacy["identity_version"] == "nexi_v2"
+
+
+def test_importa_statement_sovrapposti_non_duplica_operazioni(monkeypatch):
+    def fake_parse(pdf_content):
+        comune = {
+            "data": "2026-01-05", "descrizione": "Fornitore comune",
+            "importo": 10.0,
+        }
+        extra = {
+            "data": "2026-01-06", "descrizione": "Nuovo fornitore",
+            "importo": 20.0,
+        }
+        return {
+            "success": True,
+            "metadata": {"data_estratto_iso": "2026-01-31"},
+            "transazioni": [comune] if pdf_content == b"%PDF-primo" else [comune, extra],
+        }
+
+    monkeypatch.setattr(
+        "app.parsers.estratto_conto_nexi_parser.parse_estratto_conto_nexi", fake_parse
+    )
+    db = _DB()
+    primo = _run(importa_estratto_nexi_pdf(db, "parziale.pdf", b"%PDF-primo"))
+    secondo = _run(importa_estratto_nexi_pdf(db, "completo.pdf", b"%PDF-secondo"))
+
+    assert primo["operazioni"] == 1
+    assert secondo["operazioni"] == 1
+    assert secondo["duplicati_operazione"] == 1
+    assert len(db["estratto_conto_nexi"].docs) == 2
+    assert len(db["estratto_conto_movimenti"].docs) == 2
+    keys = [row["operation_key"] for row in db["estratto_conto_movimenti"].docs]
+    assert len(keys) == len(set(keys))
+
+
 def test_verifica_segnala_non_quadra(monkeypatch):
     alert_calls = []
 

@@ -8,7 +8,7 @@ implementazione condivisa: questo test verifica che il fix sia effettivo."""
 import asyncio
 import hashlib
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services.corrispettivi_service import (
     CorrispettiviService,
@@ -17,8 +17,8 @@ from app.services.corrispettivi_service import (
 
 
 def test_factory_supporta_database_motor_e_riusa_quello_del_job_drive():
-    """Regressione produzione: AsyncIOMotorDatabase non consente __setitem__."""
-    db = AsyncMongoMockClient()["corrispettivi_drive_test"]
+    """Regressione produzione: SheetDatabase non consente __setitem__."""
+    db = MemorySheetsClient()["corrispettivi_drive_test"]
 
     svc = get_corrispettivi_service(db)
 
@@ -268,7 +268,7 @@ def test_process_xml_filtro_anno_corrente_va_al_flusso_attivo():
 
 
 def test_reimport_duplicato_ripara_prima_nota_mancante_senza_duplicare():
-    db = AsyncMongoMockClient()["corrispettivi_retry_test"]
+    db = MemorySheetsClient()["corrispettivi_retry_test"]
     _run(db["chiusure_pos_manuali"].insert_one({
         "data": "2026-08-03", "gestore": "nexi", "importo": 40.0,
         "source": "inserimento_manuale_terminale",
@@ -320,7 +320,7 @@ def _parsed_corr(*, data, ora, totale, contanti, pos, progressivo, docs=1):
 
 
 def test_xml_distinti_stessa_giornata_vengono_sommati_ma_retry_no():
-    db = AsyncMongoMockClient()["corrispettivi_multi_close_test"]
+    db = MemorySheetsClient()["corrispettivi_multi_close_test"]
     svc = CorrispettiviService(db=db)
     parsed = {
         b"chiusura-1": _parsed_corr(
@@ -352,7 +352,7 @@ def test_xml_distinti_stessa_giornata_vengono_sommati_ma_retry_no():
 
 
 def test_chiusura_post_mezzanotte_va_al_giorno_precedente_se_vuoto():
-    db = AsyncMongoMockClient()["corrispettivi_after_midnight_test"]
+    db = MemorySheetsClient()["corrispettivi_after_midnight_test"]
     svc = CorrispettiviService(db=db)
     parsed = {
         b"notte": _parsed_corr(
@@ -379,7 +379,7 @@ def test_chiusura_post_mezzanotte_va_al_giorno_precedente_se_vuoto():
 
 
 def test_chiusura_post_mezzanotte_non_sposta_se_precedente_valorizzato():
-    db = AsyncMongoMockClient()["corrispettivi_after_midnight_valued_test"]
+    db = MemorySheetsClient()["corrispettivi_after_midnight_valued_test"]
     svc = CorrispettiviService(db=db)
     parsed = {
         b"precedente": _parsed_corr(
@@ -404,7 +404,7 @@ def test_chiusura_post_mezzanotte_non_sposta_se_precedente_valorizzato():
 
 
 def test_retry_post_mezzanotte_ignora_precedente_archiviato_e_ripara_data():
-    db = AsyncMongoMockClient()["corrispettivi_after_midnight_archived_test"]
+    db = MemorySheetsClient()["corrispettivi_after_midnight_archived_test"]
     svc = CorrispettiviService(db=db)
     parsed = {
         b"precedente": _parsed_corr(

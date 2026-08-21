@@ -69,7 +69,7 @@ DICHIARAZIONI/
 I file originali non si spostano né si eliminano automaticamente. L'indice
 conserva Drive ID, percorso, origine, hash e data di acquisizione.
 
-### Stato della migrazione
+### Stato dell'archivio
 
 Il default corrente in `app/config.py` è `DATA_BACKEND=sheets`. Drive/Sheets è
 l'archivio operativo e l'unico backend supportato in produzione. MongoDB è
@@ -85,13 +85,10 @@ La migrazione dei dati storici è conclusa solo quando:
 3. lettura, inserimento, aggiornamento e ricerca funzionano su Sheets;
 4. un confronto end-to-end dimostra equivalenza dei risultati;
 5. è provata la ricostruzione completa partendo da Drive e registro;
-6. produzione usa `DATA_BACKEND=sheets`, ha un registro esplicitamente
-   configurato e i controlli post-deploy passano.
+6. produzione ha un registro esplicitamente configurato e i controlli
+   post-deploy passano.
 
-Prima di questi punti non si cancellano i dati MongoDB ancora necessari alla
-verifica. Le relative variabili non vengono però considerate un fallback e,
-in modalità Sheets, vengono rimosse dal processo. Non devono essere creati
-nuovi dati esclusivamente in MongoDB.
+Il runtime non accetta configurazioni o scritture verso archivi alternativi.
 
 ## 3. Identità, hash e duplicati
 
@@ -278,8 +275,8 @@ Un link mostra sempre tipo, ID, data, importo e origine della destinazione.
 
 Questa sezione riassume da dove il sistema prende i dati per ogni area
 funzionale. Le sorgenti sono sempre le stesse: Drive, email autorizzate,
-upload manuali, API di gestori e, per il periodo transitorio, il backend
-MongoDB del runtime.
+upload manuali e API dei gestori. Registri e relazioni risiedono in Sheets;
+gli originali risiedono in Drive.
 
 | Area | Fonti | Dato operativo risultante |
 |---|---|---|

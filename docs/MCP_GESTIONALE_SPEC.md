@@ -12,7 +12,7 @@ storage_architecture: drive-only
 
 Il server MCP:
 
-1. non apre connessioni MongoDB;
+1. non apre connessioni Drive/Sheets;
 2. non interroga direttamente Drive, Gmail, PayPal o SumUp;
 3. usa le API HTTP già registrate dal backend come unico confine applicativo;
 4. inoltra il JWT dell'utente al backend, che continua a verificare firma, scadenza, revoca e ruolo;
@@ -20,7 +20,7 @@ Il server MCP:
 6. rifiuta URL arbitrari, redirect, parametri non dichiarati, export e contenuti binari;
 7. non abilita scritture finché non sono soddisfatti contemporaneamente configurazione, ruolo admin, MFA e conferma esplicita.
 
-Questo evita query Mongo duplicate, regole contabili divergenti e bypass dei middleware già presenti.
+Questo evita letture Drive/Sheets duplicate, regole contabili divergenti e bypass dei middleware già presenti.
 
 ## Regole semantiche inderogabili
 

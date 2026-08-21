@@ -1,7 +1,7 @@
 import asyncio
 from copy import deepcopy
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services.entity_relations import upsert_entity_relation
 from app.services.entity_relations_audit import audit_legacy_entity_relations
@@ -17,7 +17,7 @@ def _run(coro):
 
 def test_audit_storico_e_solo_lettura_e_non_promuove_documenti_a_pagamenti():
     async def scenario():
-        db = AsyncMongoMockClient()["relations_audit"]
+        db = MemorySheetsClient()["relations_audit"]
         await db.assegni.insert_one({
             "id": "CHK-1", "movimento_estratto_conto_id": "EC-CHK-1",
             "incassato_confermato_banca": True,

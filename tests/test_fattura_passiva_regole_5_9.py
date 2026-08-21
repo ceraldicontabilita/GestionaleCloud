@@ -88,7 +88,7 @@ def test_fornitore_completa_solo_campi_vuoti_e_conserva_conflitti_come_proposta(
     parsed = parse_fattura_xml(XML)
     db = Db()
     db["fornitori"].docs = [{
-        "_id": "mongo-1", "id": "sup-1", "partita_iva": "01234567890",
+        "_id": "record-1", "id": "sup-1", "partita_iva": "01234567890",
         "piva": "01234567890", "nome": "FORNITORE MISTO SRL",
         "ragione_sociale": "FORNITORE MISTO SRL", "metodo_pagamento": "cassa",
         "indirizzo": "Via Confermata 9", "email": "", "telefono": "", "iban": "",

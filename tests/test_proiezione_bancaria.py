@@ -1,6 +1,6 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services.proiezione_bancaria import proietta_movimenti_bancari_semantici
 
@@ -10,7 +10,7 @@ def _run(awaitable):
 
 
 def test_proiezione_semantica_e_idempotente_senza_match_per_solo_importo():
-    db = AsyncMongoMockClient()["proiezione_bancaria_test"]
+    db = MemorySheetsClient()["proiezione_bancaria_test"]
     _run(db["dipendenti"].insert_many([
         {
             "id": "dip-valerio", "nome": "Valerio", "cognome": "Ceraldi",

@@ -4,7 +4,7 @@ Sistema unificato per classificare, processare e associare email ai moduli del g
 
 Mapping Email -> Sezioni Gestionale:
 - Verbali/Multe -> Fatture Noleggio
-- Dimissioni -> Anagrafica Dipendenti  
+- Dimissioni -> Anagrafica Dipendenti
 - Cartelle Esattoriali -> Commercialista
 - F24 -> Gestione F24
 - Buste Paga -> Cedolini
@@ -43,7 +43,7 @@ class EmailRule:
     sender_patterns: List[str]  # Pattern per mittente
     category: str  # Categoria nel sistema
     gestionale_section: str  # Sezione del gestionale
-    collection: str  # Collection MongoDB
+    collection: str  # Foglio Sheets
     action: str  # Tipo di azione: 'save_pdf', 'extract_data', 'associate'
     priority: int = 0  # Priorità (più alto = più prioritario)
 
@@ -65,7 +65,7 @@ EMAIL_RULES: List[EmailRule] = [
         action="associate_fattura",
         priority=10
     ),
-    
+
     # --- DIMISSIONI DIPENDENTI ---
     EmailRule(
         name="dimissioni",
@@ -78,7 +78,7 @@ EMAIL_RULES: List[EmailRule] = [
         action="update_employee",
         priority=15
     ),
-    
+
     # --- CARTELLE ESATTORIALI / ADR ---
     EmailRule(
         name="cartelle_esattoriali",
@@ -91,7 +91,7 @@ EMAIL_RULES: List[EmailRule] = [
         action="save_commercialista",
         priority=20
     ),
-    
+
     # --- DELIBERE FONSI / CASSA INTEGRAZIONE ---
     EmailRule(
         name="delibere_fonsi",
@@ -104,7 +104,7 @@ EMAIL_RULES: List[EmailRule] = [
         action="extract_cassa_integrazione",
         priority=12
     ),
-    
+
     # --- DILAZIONI INPS ---
     EmailRule(
         name="dilazioni_inps",
@@ -117,7 +117,7 @@ EMAIL_RULES: List[EmailRule] = [
         action="save_pdf",
         priority=11
     ),
-    
+
     # --- BONIFICI STIPENDI ---
     # Accetta qualsiasi banca/mittente - match su contenuto
     EmailRule(
@@ -133,7 +133,7 @@ EMAIL_RULES: List[EmailRule] = [
         action="associate_employee",
         priority=8
     ),
-    
+
     # --- F24 ---
     EmailRule(
         name="f24",
@@ -146,7 +146,7 @@ EMAIL_RULES: List[EmailRule] = [
         action="save_pdf",
         priority=7
     ),
-    
+
     # --- BUSTE PAGA / CEDOLINI ---
     EmailRule(
         name="buste_paga",
@@ -159,15 +159,15 @@ EMAIL_RULES: List[EmailRule] = [
         action="save_pdf",
         priority=9
     ),
-    
+
     # --- ESTRATTI CONTO ---
     # NOTA: sender_patterns vuoto = accetta qualsiasi mittente
     # Il match avviene su oggetto, corpo email o nome allegato
     EmailRule(
         name="estratti_conto",
-        keywords=["estratto conto", "movimenti bancari", "rendiconto", "situazione conto", 
+        keywords=["estratto conto", "movimenti bancari", "rendiconto", "situazione conto",
                   "lista movimenti", "saldo conto", "conto corrente", "riepilogo movimenti"],
-        subject_patterns=[r"estratto\s*conto", r"movimenti\s*bancar", r"rendiconto", 
+        subject_patterns=[r"estratto\s*conto", r"movimenti\s*bancar", r"rendiconto",
                          r"lista\s*movimenti", r"saldo.*conto", r"riepilogo.*conto"],
         sender_patterns=[],  # Accetta QUALSIASI mittente
         category="estratti_conto",
@@ -176,7 +176,7 @@ EMAIL_RULES: List[EmailRule] = [
         action="parse_and_save",  # Nuova azione: parsa e salva in estratto_conto_movimenti
         priority=6
     ),
-    
+
     # --- FATTURE ELETTRONICHE ---
     EmailRule(
         name="fatture_sdi",
@@ -223,65 +223,65 @@ def classify_email(subject: str, sender: str, body: str = "", attachment_names: 
     Classifica un'email in base alle regole definite.
     Controlla: oggetto, corpo email, nomi allegati.
     NON filtra più per mittente (sender_patterns vuoti = accetta tutti).
-    
+
     Args:
         subject: Oggetto dell'email
         sender: Mittente dell'email
         body: Corpo dell'email
         attachment_names: Lista dei nomi degli allegati
-    
+
     Returns:
         (regola_matchata, confidence_score)
     """
     subject_lower = subject.lower()
     sender_lower = sender.lower()
     body_lower = body.lower() if body else ""
-    
+
     # Combina tutto il testo searchable: oggetto + corpo + nomi allegati
     attachments_text = " ".join([name.lower() for name in (attachment_names or [])])
     full_text = f"{subject_lower} {body_lower} {attachments_text}"
-    
+
     best_match: Optional[EmailRule] = None
     best_score = 0.0
-    
+
     for rule in sorted(EMAIL_RULES, key=lambda r: -r.priority):
         score = 0.0
-        
+
         # Check keywords nel testo completo (oggetto + corpo + allegati)
         keyword_matches = sum(1 for kw in rule.keywords if kw.lower() in full_text)
         if keyword_matches > 0:
             score += 0.4 * (keyword_matches / len(rule.keywords))  # Aumentato da 0.3 a 0.4
-        
+
         # Check subject patterns
         for pattern in rule.subject_patterns:
             if re.search(pattern, subject_lower, re.I):
                 score += 0.35
                 break
-        
+
         # Check patterns anche nel corpo e allegati
         for pattern in rule.subject_patterns:
             if re.search(pattern, body_lower, re.I) or re.search(pattern, attachments_text, re.I):
                 score += 0.15  # Bonus se pattern trovato nel corpo/allegati
                 break
-        
+
         # Check sender patterns SOLO se specificati (non vuoti)
         if rule.sender_patterns:
             for pattern in rule.sender_patterns:
                 if pattern.lower() in sender_lower:
                     score += 0.1  # Ridotto da 0.3 a 0.1 - non più determinante
                     break
-        
+
         # Apply priority bonus
         score += rule.priority * 0.01
-        
+
         if score > best_score:
             best_score = score
             best_match = rule
-    
+
     # Soglia minima per considerare il match valido (abbassata da 0.25 a 0.20)
     if best_score < 0.20:
         return None, 0.0
-    
+
     return best_match, min(best_score, 1.0)
 
 
@@ -316,20 +316,20 @@ async def scan_and_classify_emails(
 ) -> Dict[str, Any]:
     """
     Scansiona le email, le classifica e le processa.
-    
+
     Args:
-        db: Database MongoDB
+        db: Registro Sheets
         cartella: Cartella IMAP da scansionare
         giorni: Numero di giorni da controllare
         delete_unmatched: Se True, elimina email che non matchano nessuna regola
         dry_run: Se True, non esegue modifiche reali
-    
+
     Returns:
         Statistiche e risultati della scansione
     """
     if not EMAIL or not EMAIL_PASSWORD:
         return {"error": "Credenziali email non configurate"}
-    
+
     risultati = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "cartella": cartella,
@@ -345,41 +345,41 @@ async def scan_and_classify_emails(
         "errori": [],
         "dettagli": []
     }
-    
+
     try:
         mail = imaplib.IMAP4_SSL(IMAP_SERVER)
         mail.login(EMAIL, EMAIL_PASSWORD)
         mail.select(cartella)
-        
+
         # Calcola data limite
         data_limite = datetime.now() - timedelta(days=giorni)
         date_str = data_limite.strftime("%d-%b-%Y")
-        
+
         # Cerca tutte le email nel periodo
         status, messages = mail.search(None, f'(SINCE {date_str})')
-        
+
         if status != "OK":
             mail.logout()
             return risultati
-        
+
         message_ids = messages[0].split()
         risultati["email_totali"] = len(message_ids)
-        
+
         emails_to_delete = []
-        
+
         for msg_id in message_ids:
             try:
                 status, msg_data = mail.fetch(msg_id, "(RFC822)")
                 if status != "OK":
                     continue
-                
+
                 email_body = msg_data[0][1]
                 msg = email.message_from_bytes(email_body)
-                
+
                 subject = decode_email_subject(msg.get("Subject", ""))
                 sender = msg.get("From", "")
                 date_str = msg.get("Date", "")
-                
+
                 # Estrai body text e nomi allegati
                 body_text = ""
                 attachment_names = []
@@ -396,10 +396,10 @@ async def scan_and_classify_emails(
                     if filename:
                         decoded_filename = decode_email_subject(filename)
                         attachment_names.append(decoded_filename)
-                
+
                 # Classifica email (ora include anche i nomi allegati)
                 rule, confidence = classify_email(subject, sender, body_text, attachment_names)
-                
+
                 email_info = {
                     "msg_id": msg_id.decode() if isinstance(msg_id, bytes) else str(msg_id),
                     "subject": subject[:100],
@@ -412,10 +412,10 @@ async def scan_and_classify_emails(
                     "gestionale_section": rule.gestionale_section if rule else None,
                     "action": rule.action if rule else None
                 }
-                
+
                 if rule:
                     risultati["email_classificate"] += 1
-                    
+
                     # Incrementa contatore categoria
                     if rule.category not in risultati["per_categoria"]:
                         risultati["per_categoria"][rule.category] = {
@@ -428,7 +428,7 @@ async def scan_and_classify_emails(
                         "subject": subject[:60],
                         "confidence": round(confidence, 2)
                     })
-                    
+
                     # Estrai allegati PDF se non dry_run
                     if not dry_run:
                         for part in msg.walk():
@@ -436,7 +436,7 @@ async def scan_and_classify_emails(
                             if filename and filename.lower().endswith('.pdf'):
                                 filename = decode_email_subject(filename)
                                 payload = part.get_payload(decode=True)
-                                
+
                                 if payload:
                                     # Salva nel database
                                     doc = {
@@ -462,28 +462,28 @@ async def scan_and_classify_emails(
                                         "processato": False,
                                         "created_at": datetime.now(timezone.utc).isoformat(),
                                     }
-                                    
+
                                     # Evita duplicati
                                     existing = await db["documenti_classificati"].find_one({
                                         "subject": subject,
                                         "filename": filename
                                     })
-                                    
+
                                     if not existing:
                                         await db["documenti_classificati"].insert_one(doc)
                                         risultati["documenti_salvati"] += 1
-                
+
                 else:
                     risultati["email_non_classificate"] += 1
                     if delete_unmatched:
                         emails_to_delete.append(msg_id)
                         email_info["marked_for_deletion"] = True
-                
+
                 risultati["dettagli"].append(email_info)
-                
+
             except Exception as e:
                 risultati["errori"].append(f"Errore email {msg_id}: {str(e)}")
-        
+
         # Elimina email non classificate se richiesto
         if delete_unmatched and not dry_run and emails_to_delete:
             for msg_id in emails_to_delete:
@@ -491,17 +491,17 @@ async def scan_and_classify_emails(
                     mail.store(msg_id, '+FLAGS', '\\Deleted')
                 except Exception as e:
                     risultati["errori"].append(f"Errore eliminazione {msg_id}: {str(e)}")
-            
+
             mail.expunge()
             risultati["email_da_eliminare"] = len(emails_to_delete)
         elif delete_unmatched and dry_run:
             risultati["email_da_eliminare"] = len(emails_to_delete)
-        
+
         mail.logout()
-        
+
     except Exception as e:
         risultati["errori"].append(f"Errore connessione: {str(e)}")
-    
+
     return risultati
 
 
@@ -515,14 +515,14 @@ async def process_classified_documents(db) -> Dict[str, Any]:
         "associazioni": [],
         "errori": []
     }
-    
+
     # Trova documenti non processati
     cursor = db["documenti_classificati"].find({"processed": False})
-    
+
     async for doc in cursor:
         try:
             category = doc.get("tipo")
-            
+
             if category == "dimissioni":
                 # Estrai codice fiscale e associa a dipendente
                 cf = extract_codice_fiscale(doc.get("subject", "") + doc.get("filename", ""))
@@ -544,7 +544,7 @@ async def process_classified_documents(db) -> Dict[str, Any]:
                             "codice_fiscale": cf,
                             "dipendente": f"{dipendente.get('nome', '')} {dipendente.get('cognome', '')}"
                         })
-            
+
             elif category == "cartelle_esattoriali":
                 # Salva in ADR per il commercialista
                 cf = extract_codice_fiscale(doc.get("subject", "") + doc.get("filename", ""))
@@ -569,17 +569,17 @@ async def process_classified_documents(db) -> Dict[str, Any]:
                         "tipo": "cartella_esattoriale",
                         "codice_fiscale": cf
                     })
-            
+
             # Marca come processato
             await db["documenti_classificati"].update_one(
                 {"_id": doc["_id"]},
                 {"$set": {"processed": True, "data_processamento": datetime.now(timezone.utc).isoformat()}}
             )
             risultati["documenti_processati"] += 1
-            
+
         except Exception as e:
             risultati["errori"].append(f"Errore doc {doc.get('_id')}: {str(e)}")
-    
+
     return risultati
 
 
@@ -592,20 +592,20 @@ async def process_documents_with_ai(
 ) -> Dict[str, Any]:
     """
     Processa i documenti classificati usando Document AI per estrarre dati strutturati.
-    
+
     Args:
-        db: Database MongoDB
+        db: Registro Sheets
         process_all: Se True, riprocessa anche documenti già processati
         document_types: Lista di tipi da processare (None = tutti)
         save_to_gestionale: Se True, salva i dati estratti nelle collection del gestionale
         model: Modello LLM da usare
-    
+
     Returns:
         Statistiche del processamento
     """
     from app.services.document_ai_extractor import process_document_from_base64
     from app.services.document_data_saver import save_extracted_data_to_gestionale
-    
+
     risultati = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "documenti_analizzati": 0,
@@ -618,7 +618,7 @@ async def process_documents_with_ai(
         "dettagli": [],
         "errori": []
     }
-    
+
     # ── Ponte documents_inbox → documenti_classificati (18/07/2026) ──────
     # Il bottone "Processa Allegati Email con AI" rispondeva sempre
     # "analizzati: 0": leggeva solo documenti_classificati (pipeline legacy,
@@ -660,35 +660,35 @@ async def process_documents_with_ai(
             {"ai_processed": {"$ne": True}},
             {"ai_processed": {"$exists": False}}
         ]
-    
+
     if document_types:
         query["tipo"] = {"$in": document_types}
-    
+
     # Processa solo documenti con PDF
     query["pdf_base64"] = {"$exists": True, "$ne": None}
-    
+
     cursor = db["documenti_classificati"].find(query)
     documents = await cursor.to_list(length=500)  # Max 500 documenti per batch
-    
+
     for doc in documents:
         doc_id = str(doc.get("_id"))
         filename = doc.get("filename", "documento.pdf")
         tipo_email = doc.get("tipo", "generico")
-        
+
         risultati["documenti_analizzati"] += 1
-        
+
         # Inizializza contatore per tipo
         if tipo_email not in risultati["per_tipo"]:
             risultati["per_tipo"][tipo_email] = {"analizzati": 0, "estratti": 0, "salvati": 0, "errori": 0}
         risultati["per_tipo"][tipo_email]["analizzati"] += 1
-        
+
         dettaglio = {
             "doc_id": doc_id,
             "filename": filename,
             "tipo_email": tipo_email,
             "status": "pending"
         }
-        
+
         try:
             # Estrai dati con Document AI
             extraction_result = await process_document_from_base64(
@@ -697,16 +697,16 @@ async def process_documents_with_ai(
                 document_type=None,  # Auto-detect
                 model=model
             )
-            
+
             if extraction_result.get("structured_data", {}).get("success"):
                 risultati["documenti_estratti"] += 1
                 risultati["per_tipo"][tipo_email]["estratti"] += 1
-                
+
                 extracted_data = extraction_result["structured_data"]
                 tipo_documento = extracted_data.get("document_type", "generico")
                 dettaglio["tipo_documento_rilevato"] = tipo_documento
                 dettaglio["status"] = "extracted"
-                
+
                 # Aggiorna documento con dati estratti
                 await db["documenti_classificati"].update_one(
                     {"_id": doc["_id"]},
@@ -721,7 +721,7 @@ async def process_documents_with_ai(
                         }
                     }
                 )
-                
+
                 # Salva nel gestionale se richiesto
                 if save_to_gestionale:
                     source_info = {
@@ -731,13 +731,13 @@ async def process_documents_with_ai(
                         "filename": filename,
                         "documents_classified_id": doc_id
                     }
-                    
+
                     save_result = await save_extracted_data_to_gestionale(
                         db, extracted_data, source_info
                     )
-                    
+
                     dettaglio["save_result"] = save_result
-                    
+
                     if save_result.get("status") == "saved":
                         risultati["documenti_salvati"] += 1
                         risultati["per_tipo"][tipo_email]["salvati"] += 1
@@ -755,7 +755,7 @@ async def process_documents_with_ai(
                 risultati["per_tipo"][tipo_email]["errori"] += 1
                 dettaglio["status"] = "extraction_error"
                 dettaglio["error"] = extraction_result.get("structured_data", {}).get("error", "Unknown error")[:200]
-                
+
                 # Marca come tentato ma fallito
                 await db["documenti_classificati"].update_one(
                     {"_id": doc["_id"]},
@@ -767,14 +767,14 @@ async def process_documents_with_ai(
                         }
                     }
                 )
-        
+
         except Exception as e:
             risultati["errori_estrazione"] += 1
             risultati["per_tipo"][tipo_email]["errori"] += 1
             dettaglio["status"] = "exception"
             dettaglio["error"] = str(e)[:200]
             risultati["errori"].append(f"Doc {doc_id}: {str(e)[:100]}")
-        
+
         risultati["dettagli"].append(dettaglio)
-    
+
     return risultati

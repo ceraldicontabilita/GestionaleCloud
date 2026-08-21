@@ -1,6 +1,6 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services.assegni_estratto_conto import (
     collega_assegno_riconciliato_a_fattura,
@@ -38,7 +38,7 @@ def test_numero_preserva_zero_iniziale_e_usa_num_non_cra():
 
 def test_importo_assoluto_tipo_uscita_crea_assegno_e_prima_nota_idempotenti():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await db.estratto_conto_movimenti.insert_one(_mov())
 
         primo = await sincronizza_assegni_da_estratto_conto(db)
@@ -63,7 +63,7 @@ def test_importo_assoluto_tipo_uscita_crea_assegno_e_prima_nota_idempotenti():
 
 def test_quattro_assegni_da_tremila_chiudono_quattro_rate_non_il_totale_subito():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await db.invoices.insert_one({
             "id": "fatt-rata",
             "invoice_number": "TEST-RATE",
@@ -108,7 +108,7 @@ def test_quattro_assegni_da_tremila_chiudono_quattro_rate_non_il_totale_subito()
 
 def test_importo_univoco_senza_numero_fattura_resta_proposta():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await db.invoices.insert_one({
             "id": "fatt-unica", "invoice_number": "TEST-UNICA",
             "invoice_date": "2026-04-01", "supplier_vat": "00000000001",
@@ -131,7 +131,7 @@ def test_importo_univoco_senza_numero_fattura_resta_proposta():
 
 def test_sync_limitata_non_riesamina_gli_assegni_storici():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await db.estratto_conto_movimenti.insert_many([
             _mov(numero="0208770981", idx=1),
             _mov(numero="0208770982", idx=2),
@@ -153,7 +153,7 @@ def test_sync_limitata_non_riesamina_gli_assegni_storici():
 
 def test_export_excel_viene_materializzato_solo_nel_riprocessamento_confermato():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         movimento = _mov(numero="0208769433", importo=1608.96, idx=9433)
         movimento.update({
             "livello_evidenza": "provvisoria",
@@ -179,7 +179,7 @@ def test_snapshot_fatture_aperte_caricata_una_volta_per_tutto_il_batch(monkeypat
     import app.services.assegni_estratto_conto as modulo
 
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await db.estratto_conto_movimenti.insert_many([
             _mov(numero="0208770981", idx=1),
             _mov(numero="0208770982", idx=2),
@@ -200,7 +200,7 @@ def test_snapshot_fatture_aperte_caricata_una_volta_per_tutto_il_batch(monkeypat
 
 def test_importo_ambiguo_non_marca_fatture_pagata_e_salva_proposte():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         for idx in (1, 2):
             await db.invoices.insert_one({
                 "id": f"fatt-{idx}", "invoice_number": f"TEST-{idx}",
@@ -221,7 +221,7 @@ def test_importo_ambiguo_non_marca_fatture_pagata_e_salva_proposte():
 
 def test_assegno_gia_presente_viene_riscontrato_invece_di_essere_saltato():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await db.assegni.insert_one({
             "id": "ass-esistente", "numero": "0208770981", "importo": 1853.02,
             "stato": "emesso", "beneficiario": "FORNITORE TEST",
@@ -240,7 +240,7 @@ def test_assegno_gia_presente_viene_riscontrato_invece_di_essere_saltato():
 
 def test_due_assegni_uguali_restano_distinti_e_chiudono_due_rate():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await db.invoices.insert_one({
             "id": "fatt-due-rate", "invoice_number": "F-9760",
             "invoice_date": "2026-05-15", "supplier_vat": "00000000001",
@@ -281,7 +281,7 @@ def test_due_assegni_uguali_restano_distinti_e_chiudono_due_rate():
 
 def test_assegno_gia_in_banca_puo_chiudere_due_fatture_senza_due_righe_banca():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         assegno = {
             "id": "ass-multi", "numero": "0208770985", "importo": 9760.0,
             "incassato_confermato_banca": True,

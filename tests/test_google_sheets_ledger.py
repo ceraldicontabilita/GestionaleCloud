@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services import google_sheets_ledger as ledger
 
@@ -107,7 +107,7 @@ def test_payload_grande_viene_compresso_e_ricostruito_senza_perdite():
 
 def test_sync_mantiene_progressivi_e_righe_storiche(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await db.estratto_conto_movimenti.insert_many([
             {"id": "EC-1", "data": "2026-01-01", "importo": 10},
             {"id": "EC-2", "data": "2026-01-02", "importo": 20},
@@ -134,9 +134,9 @@ def test_sync_mantiene_progressivi_e_righe_storiche(monkeypatch):
     run(scenario())
 
 
-def test_sync_esporta_anche_documenti_storici_con_solo_objectid(monkeypatch):
+def test_sync_esporta_anche_record_storici_con_solo_id_interno(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         inserted = await db.cedolini.insert_one({"periodo": "2026-07", "netto": 1000})
         captured = {}
         monkeypatch.setattr(ledger, "_read_existing_sync", lambda *_: [])
@@ -151,14 +151,14 @@ def test_sync_esporta_anche_documenti_storici_con_solo_objectid(monkeypatch):
 
         assert result["righe"] == 1
         assert captured["rows"][0][1] == str(inserted.inserted_id)
-        assert json.loads(captured["rows"][0][15])["_mongo_id"] == str(inserted.inserted_id)
+        assert json.loads(captured["rows"][0][15])["_record_id"] == str(inserted.inserted_id)
 
     run(scenario())
 
 
 def test_snapshot_sorgente_deduplica_solo_copie_identiche():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await db.prova.insert_many([
             {"id": "A", "valore": 1},
             {"id": "A", "valore": 1},
@@ -177,7 +177,7 @@ def test_snapshot_sorgente_deduplica_solo_copie_identiche():
 
 def test_snapshot_sorgente_blocca_stessa_identita_con_payload_diversi():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await db.prova.insert_many([
             {"id": "A", "valore": 1},
             {"id": "A", "valore": 2},
@@ -194,7 +194,7 @@ def test_snapshot_sorgente_blocca_stessa_identita_con_payload_diversi():
 
 def test_restore_default_e_solo_validazione(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         sheet = ledger.SHEETS[0]
         payload = {"id": "DOC-1", "filename": "prova.pdf"}
         row = ledger.row_for_document(payload, "DOC-00000001")
@@ -221,7 +221,7 @@ def test_restore_default_e_solo_validazione(monkeypatch):
 
 def test_restore_runtime_non_provisiona_e_legge_tutti_i_fogli_in_batch(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         calls = []
         monkeypatch.setattr(
             ledger,
@@ -254,11 +254,11 @@ def test_restore_runtime_non_provisiona_e_legge_tutti_i_fogli_in_batch(monkeypat
     run(scenario())
 
 
-def test_restore_ricostruisce_mongo_id_tecnico_come_id_reale(monkeypatch):
+def test_restore_ricostruisce_record_id_tecnico_come_id_reale(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         target = ledger.dynamic_sheet("drive_sync_state")
-        payload = {"_mongo_id": "fatture_drive", "last_sync": "2026-08-20"}
+        payload = {"_record_id": "fatture_drive", "last_sync": "2026-08-20"}
         row = ledger.row_for_document(payload, f"{target.prefix}-00000001")
         monkeypatch.setattr(
             ledger,
@@ -281,7 +281,7 @@ def test_restore_ricostruisce_mongo_id_tecnico_come_id_reale(monkeypatch):
 
         restored = await db.drive_sync_state.find_one({"_id": "fatture_drive"})
         assert restored["last_sync"] == "2026-08-20"
-        assert "_mongo_id" not in restored
+        assert "_record_id" not in restored
 
     run(scenario())
 
@@ -337,6 +337,42 @@ def test_upsert_incrementale_aggiorna_e_accoda_senza_riscrivere_il_foglio(monkey
     assert appended[1] == "INV-2"
 
 
+def test_upsert_incrementale_spezza_grandi_import_in_blocchi(monkeypatch):
+    append_sizes = []
+
+    class Request:
+        def execute(self):
+            return {}
+
+    class Values:
+        def batchUpdate(self, **_kwargs):
+            return Request()
+
+        def append(self, **kwargs):
+            append_sizes.append(len(kwargs["body"]["values"]))
+            return Request()
+
+    class Spreadsheets:
+        def values(self):
+            return Values()
+
+    class Service:
+        def spreadsheets(self):
+            return Spreadsheets()
+
+    target = ledger.dynamic_sheet("large_pos_import")
+    monkeypatch.setattr(ledger, "_read_identities_sync", lambda *_args: [])
+    monkeypatch.setattr(ledger, "_sheets_service", lambda: Service())
+
+    result = ledger._upsert_documents_sync(
+        "SHEET-1", target,
+        [{"id": f"POS-{index}"} for index in range(1001)],
+    )
+
+    assert result["aggiunte"] == 1001
+    assert append_sizes == [500, 500, 1]
+
+
 def test_rimozione_incrementale_svuota_solo_le_righe_richieste(monkeypatch):
     calls = {}
 
@@ -377,9 +413,9 @@ def test_rimozione_incrementale_svuota_solo_le_righe_richieste(monkeypatch):
     ]
 
 
-def test_audit_migrazione_blocca_collezioni_non_coperte(monkeypatch):
+def test_audit_registro_blocca_collezioni_non_coperte(monkeypatch):
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await db.invoices.insert_one({"id": "INV-1"})
         await db.users.insert_one({"id": "USR-1"})
 
@@ -395,7 +431,7 @@ def test_audit_migrazione_blocca_collezioni_non_coperte(monkeypatch):
             }
 
         monkeypatch.setattr(ledger, "restore_all", fake_restore)
-        result = await ledger.migration_audit(db)
+        result = await ledger.registry_audit(db)
 
         assert result["pronto_cutover"] is False
         assert result["collezioni_non_migrate"] == [

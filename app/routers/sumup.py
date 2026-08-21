@@ -343,7 +343,7 @@ async def bonifica_accrediti_numia(
     """Accorpa le componenti NUMIA per giorno e archivia le vecchie copie.
 
     Senza ``conferma`` restituisce soltanto l'anteprima. L'applicazione e'
-    reversibile: ogni riga archiviata viene fotografata nell'audit Mongo.
+    reversibile: ogni riga archiviata viene fotografata nell'audit Drive/Sheets.
     """
     from app.services.scritture_contabili import bonifica_accrediti_pos_numia
 

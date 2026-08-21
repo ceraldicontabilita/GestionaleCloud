@@ -17,11 +17,9 @@ class Settings(BaseSettings):
     APP_VERSION: str = "2.0.0"
     DEBUG: bool = False
     ENVIRONMENT: str = "production"
-    # Archivio operativo: ``sheets`` usa Google Sheets/Drive come sorgente
-    # primaria mantenendo una API asincrona compatibile con il codice attuale.
-    # MongoDB resta solo compatibilita' transitoria del runtime; il default
-    # di produzione e' il registro Drive/Sheets.
-    DATA_BACKEND: str = "sheets"
+    # Google Drive conserva gli originali e Google Sheets i registri
+    # operativi. Non esistono backend dati alternativi.
+    SHEETS_REGISTRY_NAME: str = "GestionaleCloud"
 
     # Server
     HOST: str = "0.0.0.0"
@@ -121,11 +119,11 @@ class Settings(BaseSettings):
 
     # OpenAI
     OPENAI_API_KEY: Optional[str] = None
-    
+
     # Google APIs
     GEMINI_API_KEY: Optional[str] = None
     GOOGLE_API_KEY: Optional[str] = None
-    
+
     # Google OAuth
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
@@ -221,11 +219,11 @@ class Settings(BaseSettings):
     ENABLE_EMAIL_VERBALI_SYNC: bool = True
     # Ora locale Europe/Rome del controllo giornaliero verbali.
     VERBALI_EMAIL_SCAN_HOUR: int = 6
-    
+
     # Telegram
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_CHAT_ID: Optional[str] = None
-    
+
     # PayPal Reporting API
     PAYPAL_CLIENT_ID: str = ""
     PAYPAL_CLIENT_SECRET: str = ""
@@ -235,12 +233,12 @@ class Settings(BaseSettings):
     SUMUP_API_KEY: str = ""
     SUMUP_MERCHANT_CODE: str = ""
     SUMUP_API_BASE: str = "https://api.sumup.com"
-    
+
     # OpenAPI.it
     OPENAPI_IT_KEY: Optional[str] = None
     OPENAPI_IT_ENV: str = "production"
     OPENAPI_IMPRESE_TOKEN: Optional[str] = None
-    
+
     # Feature Flags
     ENABLE_SMTP_EMAIL: bool = False
     # Interruttore maestro della scansione email (Gmail IMAP). Default acceso
@@ -250,35 +248,35 @@ class Settings(BaseSettings):
     ENABLE_DOCUMENT_AI: bool = False
     ENABLE_ASYNC_IMPORTS: bool = True
     ENABLE_CACHING: bool = True
-    
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"
     LOG_FILE: Optional[Path] = None
-    
+
     # Performance
     REQUEST_TIMEOUT_SECONDS: int = 300
     CACHE_TTL_SECONDS: int = 3600
     MAX_CONCURRENT_IMPORTS: int = 5
-    
+
     # Business Logic
     DEFAULT_USER_ID: str = "admin"
     DEFAULT_USER_EMAIL: str = "admin@ceraldi.it"
     IVA_ALIQUOTE: list[float] = [4.0, 5.0, 10.0, 22.0]
-    
+
     # Frontend
     FRONTEND_URL: Optional[str] = None
-    
+
     # Paths
     STATIC_FILES_DIR: Path = Path("static")
     TEMPLATES_DIR: Path = Path("templates")
     FONTS_DIR: Path = Path("fonts")
 
     # Stato runtime, escluso dalle variabili e dalla serializzazione. La
-    # configurazione non deve aprire connessioni o scrivere su MongoDB durante
-    # l'import: il segreto condiviso viene inizializzato dal lifecycle async.
+    # La configurazione non apre connessioni durante l'import; il segreto
+    # condiviso viene inizializzato dal lifecycle asincrono.
     _auth_secret_source: str = PrivateAttr(default="unset")
-    
+
     model_config = SettingsConfigDict(
         env_file="/app/backend/.env",
         env_file_encoding="utf-8",
@@ -295,24 +293,17 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> Tuple[PydanticBaseSettingsSource, ...]:
-        # Priorità: valori espliciti > .env file > variabili OS (pod Kubernetes)
-        # Garantisce che MONGO_URL e DB_NAME nel .env non vengano
-        # sovrascritti da variabili d'ambiente iniettate dalla piattaforma di deploy.
-        # Le variabili iniettate da Render/Kubernetes devono prevalere su un
-        # file .env dell'immagine potenzialmente obsoleto.
+        # Le variabili iniettate da Render devono prevalere su un file .env
+        # dell'immagine potenzialmente obsoleto.
         return (init_settings, env_settings, dotenv_settings, file_secret_settings)
-    
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        if not self.MONGODB_ATLAS_URI and self.MONGO_URL:
-            self.MONGODB_ATLAS_URI = self.MONGO_URL
-
         if self.SECRET_KEY:
             self._auth_secret_source = "configured"
         else:
             # Mantiene importabili i moduli e isolati i test, senza I/O di
-            # rete. In produzione il lifecycle sostituisce questa chiave con
-            # quella condivisa di Mongo prima di accettare richieste.
+            # rete. In produzione SECRET_KEY deve arrivare dal secret store.
             import secrets
             self.SECRET_KEY = secrets.token_urlsafe(64)
             self._auth_secret_source = "ephemeral"
@@ -326,7 +317,7 @@ class Settings(BaseSettings):
             raise ValueError("SECRET_KEY deve contenere almeno 32 caratteri")
         self.SECRET_KEY = value
         self._auth_secret_source = source
-    
+
     def get_cors_origins(self) -> list[str]:
         """Origin CORS consentiti.
 
@@ -379,19 +370,19 @@ class Settings(BaseSettings):
         # fallback sicuro e' quindi nessun origin cross-site; le integrazioni
         # esterne devono essere autorizzate esplicitamente.
         return [] if self.ALLOW_CREDENTIALS else ["*"]
-    
+
     def get_allowed_extensions(self) -> set[str]:
         """Parse allowed file extensions."""
         return set(ext.strip() for ext in self.ALLOWED_EXTENSIONS.split(","))
-    
+
     @property
     def is_development(self) -> bool:
         return self.ENVIRONMENT == "development"
-    
+
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "production"
-    
+
     def validate_required_secrets(self) -> dict[str, bool]:
         """Validate required and optional secrets.
 
@@ -407,14 +398,12 @@ class Settings(BaseSettings):
             'openai': bool(self.OPENAI_API_KEY),
             'telegram': bool(self.TELEGRAM_BOT_TOKEN),
         }
-    
+
     def validate_startup(self) -> None:
         """Validate critical configuration at startup.
 
         In produzione, se FAIL_FAST_SECRETS=true è attivo, l'applicazione
-        fallisce l'avvio se mancano SECRET_KEY o la configurazione richiesta
-        dal backend selezionato. Non esiste un fallback automatico fra
-        Drive/Sheets e MongoDB.
+        fallisce l'avvio se mancano SECRET_KEY o la configurazione Drive/Sheets.
         """
         import logging
         import os
@@ -424,12 +413,11 @@ class Settings(BaseSettings):
         errors: list[str] = []
 
         # Una chiave effimera rende i token diversi tra worker e li invalida
-        # a ogni deploy. Il lifecycle puo' sostituirla con la chiave Mongo
-        # condivisa; in modalita' fail-fast una sorgente effimera e' fatale.
+        # a ogni deploy; in modalita' fail-fast una sorgente effimera e' fatale.
         if self.auth_secret_source == "ephemeral":
             msg = (
                 "SECRET_KEY effimera: configurare SECRET_KEY nel secret store "
-                "oppure inizializzare la chiave condivisa Mongo prima dell'avvio."
+                "prima dell'avvio."
             )
             if fail_fast:
                 errors.append(msg)
@@ -456,9 +444,8 @@ class Settings(BaseSettings):
                 else:
                     logger.error(msg)
 
-        # DB_NAME: in produzione dev'essere valorizzato (default 'Gestionale').
-        if self.is_production and not (self.DB_NAME or "").strip():
-            msg = "DB_NAME non configurato in produzione."
+        if self.is_production and not (self.SHEETS_REGISTRY_NAME or "").strip():
+            msg = "SHEETS_REGISTRY_NAME non configurato in produzione."
             errors.append(msg) if fail_fast else logger.error(f"❌ ERROR: {msg}")
 
         # Senza origin espliciti ``get_cors_origins`` restituisce [] e mantiene

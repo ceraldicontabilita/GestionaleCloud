@@ -1,6 +1,6 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services.riconciliazione_bancaria import _applica_pagamento_banca
 
@@ -15,7 +15,7 @@ def _run(coro):
 
 def test_bonifici_rateali_aggiornano_quota_e_non_totale_documento():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await db.invoices.insert_one({
             "id": "fatt-rate-banca", "invoice_number": "TEST-RATE-BANCA",
             "invoice_date": "2026-02-06", "supplier_vat": "00000000000",
@@ -45,7 +45,7 @@ def test_bonifici_rateali_aggiornano_quota_e_non_totale_documento():
 
 def test_stessa_evidenza_bancaria_non_applica_due_volte_la_rata():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await db.invoices.insert_one({
             "id": "fatt-idem", "invoice_number": "TEST-IDEM",
             "total_amount": 6000.0, "importo_pagato": 0.0,

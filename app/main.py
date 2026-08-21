@@ -510,7 +510,6 @@ async def root(request: Request):
 async def health_check():
     from datetime import datetime, timezone
 
-    data_backend = str(getattr(settings, "DATA_BACKEND", "sheets")).strip().lower()
     if Database.db is None:
         return JSONResponse(
             status_code=503,
@@ -524,18 +523,10 @@ async def health_check():
         )
 
     try:
-        if data_backend == "sheets":
-            # SheetsRuntimeDatabase viene assegnato soltanto dopo che tutti i
-            # fogli sono stati letti e validati. Non inviare comandi Mongo al
-            # runtime Drive: ``command`` verrebbe interpretato come il nome di
-            # una collezione non migrata e renderebbe unhealthy un archivio
-            # perfettamente idratato.
-            if getattr(Database.db, "hydration_result", None) is None:
-                raise RuntimeError("Registro Drive/Sheets non idratato")
-        else:
-            await Database.db.command("ping")
+        if getattr(Database.db, "hydration_result", None) is None:
+            raise RuntimeError("Registro Drive/Sheets non idratato")
     except Exception:
-        logger.exception("Health check backend %s fallito", data_backend)
+        logger.exception("Health check Drive/Sheets fallito")
         return JSONResponse(
             status_code=503,
             content={
@@ -549,7 +540,7 @@ async def health_check():
 
     salari_sync = "not_started"
     try:
-        if Database.db is not None and data_backend != "sheets":
+        if Database.db is not None:
             run = await Database.db["migration_runs"].find_one(
                 {"id": SALARI_SYNC_MARKER}, {"_id": 0, "status": 1}
             )
@@ -557,9 +548,22 @@ async def health_check():
     except Exception:
         salari_sync = "unavailable"
 
+    hydration_result = getattr(Database.db, "hydration_result", {}) or {}
+    hydration_errors = sum(
+        int(item.get("numero_errori") or 0)
+        for item in hydration_result.get("fogli", [])
+    )
+    hydration_rows = sum(
+        int(item.get("valide") or 0)
+        for item in hydration_result.get("fogli", [])
+    )
+
     return {
-        "status": "healthy",
+        "status": "healthy" if hydration_errors == 0 else "degraded",
         "database": "connected" if Database.db is not None else "disconnected",
+        "storage": "drive_sheets",
+        "hydrated_rows": hydration_rows,
+        "hydration_errors": hydration_errors,
         "version": settings.APP_VERSION,
         # Prefisso pubblico e non sensibile: permette di verificare che
         # Render stia realmente servendo il commit atteso.

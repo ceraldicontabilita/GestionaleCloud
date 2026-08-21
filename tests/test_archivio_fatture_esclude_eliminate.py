@@ -7,7 +7,7 @@ lista/dettaglio nonostante il messaggio di conferma dell'UI dica che
 l'operazione non è reversibile."""
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.fatture_module import crud as mod
 
@@ -139,7 +139,7 @@ def test_dettaglio_fattura_attiva_resta_visibile(monkeypatch):
 
 
 def test_statistiche_restano_disponibili_nel_database_e2e_in_memoria(monkeypatch):
-    db = AsyncMongoMockClient()["fatture_statistiche_e2e"]
+    db = MemorySheetsClient()["fatture_statistiche_e2e"]
     monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
     _run(db["invoices"].insert_many([
         {

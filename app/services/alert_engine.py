@@ -7,10 +7,10 @@ dal catalogo ALERT_CATALOG.
 
 Utilizzo:
     from app.services.alert_engine import genera_alert, risolvi_alert
-    
+
     await genera_alert("FORN_MP_MANCANTE", fornitore_id, "fornitori",
                        "Fornitore XYZ senza metodo pagamento", db)
-    
+
     await risolvi_alert("FORN_MP_MANCANTE", fornitore_id, db)
 """
 import logging
@@ -66,7 +66,7 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Fornitore inattivo con nuovi documenti",
         "condizione_chiusura": "Fornitore riattivato o docs spostati"
     },
-    
+
     # --- Fatture ---
     "FAT_DUPLICATA": {
         "modulo": "fatture",
@@ -116,7 +116,7 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Fattura scaduta non pagata",
         "condizione_chiusura": "Pagamento registrato"
     },
-    
+
     # --- F24 ---
     "F24_ATTESO_NON_ACQUISITO": {
         "modulo": "f24",
@@ -154,7 +154,7 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Dati F24 estratti incompleti",
         "condizione_chiusura": "Dati completati"
     },
-    
+
     # --- Cedolini ---
     "CED_TIPO_NON_RICONOSCIUTO": {
         "modulo": "cedolini",
@@ -216,7 +216,7 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Trattenuta verbale non trovata nel cedolino",
         "condizione_chiusura": "Trattenuta trovata in un cedolino successivo o gestita dall'utente"
     },
-    
+
     # --- Dipendenti ---
     "DIP_INCOMPLETO": {
         "modulo": "dipendenti",
@@ -248,7 +248,7 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Contratto dipendente mancante",
         "condizione_chiusura": "Contratto inserito"
     },
-    
+
     # --- Banca ---
     "BNK_NON_CLASSIFICATO": {
         "modulo": "banca",
@@ -336,7 +336,7 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Quota contanti corrispettivi incoerente",
         "condizione_chiusura": "Corretto"
     },
-    
+
     # --- Magazzino ---
     "MAG_PRODOTTO_INCOMPLETO": {
         "modulo": "magazzino",
@@ -362,7 +362,7 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Possibile prodotto duplicato",
         "condizione_chiusura": "Merge o conferma"
     },
-    
+
     # --- Documenti/Inbox ---
     "DOC_NON_CLASSIFICATO": {
         "modulo": "documenti",
@@ -506,26 +506,26 @@ async def genera_alert(
     """
     Genera un alert se non ne esiste già uno aperto con stesso codice+entità.
     Idempotente: se l'alert esiste già aperto, non lo duplica.
-    
+
     Returns: il documento alert creato, o None se già esistente.
     """
     if codice not in ALERT_CATALOG:
         logger.warning(f"Codice alert sconosciuto: {codice}")
         return None
-    
+
     cat = ALERT_CATALOG[codice]
-    
+
     # Idempotenza: controlla se esiste già aperto
     existing = await db[COLL_ALERTS].find_one({
         "codice": codice,
         "entita_id": entita_id,
         "stato": "aperto"
     })
-    
+
     if existing:
         logger.debug(f"Alert {codice} già aperto per {entita_id}, skip")
         return None
-    
+
     alert = {
         "id": f"alert_{uuid.uuid4().hex[:12]}",
         "codice": codice,
@@ -543,10 +543,10 @@ async def genera_alert(
         "resolved_at": None,
         "resolved_by": None,
     }
-    
+
     if extra:
         alert["extra"] = extra
-    
+
     await db[COLL_ALERTS].insert_one(alert)
     logger.info(f"Alert generato: {codice} per {entita_collection}/{entita_id}")
     return alert
@@ -560,7 +560,7 @@ async def risolvi_alert(
 ) -> int:
     """
     Chiude tutti gli alert aperti con codice+entità dati.
-    
+
     Returns: numero di alert chiusi.
     """
     result = await db[COLL_ALERTS].update_many(
@@ -578,13 +578,13 @@ async def risolvi_alert(
             }
         }
     )
-    
+
     if result.modified_count > 0:
         logger.info(
             f"Alert risolti: {result.modified_count}x {codice} "
             f"per {entita_id} (da {resolved_by})"
         )
-    
+
     return result.modified_count
 
 
@@ -622,7 +622,7 @@ async def conta_alert_per_modulo(db) -> Dict[str, Dict[str, int]]:
             "count": {"$sum": 1}
         }}
     ]
-    
+
     result = {}
     async for doc in db[COLL_ALERTS].aggregate(pipeline):
         modulo = doc["_id"]["modulo"]
@@ -630,7 +630,7 @@ async def conta_alert_per_modulo(db) -> Dict[str, Dict[str, int]]:
         if modulo not in result:
             result[modulo] = {}
         result[modulo][severita] = doc["count"]
-    
+
     return result
 
 
@@ -654,10 +654,10 @@ async def ignora_alert(
 
 
 # ============================================================
-# SEED: inserire definizioni alert in MongoDB
+# SEED: inserire definizioni alert in Drive/Sheets
 # ============================================================
 async def seed_alert_definitions(db):
-    """Inserisce/aggiorna il catalogo alert_definitions in MongoDB."""
+    """Inserisce/aggiorna il catalogo alert_definitions in Drive/Sheets."""
     for codice, dati in ALERT_CATALOG.items():
         await db[COLL_ALERT_DEFINITIONS].update_one(
             {"codice": codice},

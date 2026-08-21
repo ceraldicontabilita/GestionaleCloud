@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from pymongo.errors import DuplicateKeyError
+from app.services.sheets_document_store import DuplicateRecordError
 
 from app.agents.models import (
     DecisioneInput,
@@ -304,7 +304,7 @@ async def crea_decisione(db, proposta: DecisioneInput) -> Dict[str, Any]:
     }
     try:
         await db[COLL_DECISIONI].insert_one(dict(record))
-    except DuplicateKeyError:
+    except DuplicateRecordError:
         # Protezione concorrente: due esecuzioni con la stessa fotografia
         # restituiscono la decisione già registrata, senza duplicare eventi.
         esistente = await db[COLL_DECISIONI].find_one(

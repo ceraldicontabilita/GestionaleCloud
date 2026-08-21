@@ -1,7 +1,7 @@
 """Catalogo documentale Drive in sola lettura.
 
 L'Excel e' il ponte tra Drive e il gestionale. Questo servizio non accede a
-MongoDB e non scarica i documenti indicizzati: scarica soltanto l'indice e,
+Drive/Sheets e non scarica i documenti indicizzati: scarica soltanto l'indice e,
 quando richiesto, risolve il percorso fino al link Drive del file originale.
 """
 
@@ -518,7 +518,12 @@ def list_f24_rows(
 def list_documented_tax_payments(
     service=None, *, offset: int = 0, limit: int = 5000,
 ) -> dict[str, Any]:
-    """Tributi coperti da quietanza Drive, senza attribuire una verifica bancaria."""
+    """Tutte le righe delle deleghe documentate da quietanza Drive.
+
+    Una quietanza F24 puo' contenere contemporaneamente righe a debito e righe
+    a credito.  Escludere queste ultime altera il documento e il saldo netto,
+    percio' l'intera delega viene restituita mantenendo ogni riga del PDF.
+    """
     _, catalog = load_full_catalog(service)
     documented_ids = {
         str(row.get("ID documento") or "")
@@ -529,8 +534,6 @@ def list_documented_tax_payments(
     items = []
     for row in rows:
         if str(row.get("document_id") or "") not in documented_ids:
-            continue
-        if _amount(row.get("debit_amount")) <= 0:
             continue
         items.append({
             **row,
@@ -550,12 +553,14 @@ def list_documented_tax_payments(
 def list_tax_obligations(
     service=None, *, offset: int = 0, limit: int = 5000,
 ) -> dict[str, Any]:
-    """Tributi a debito presenti nei modelli F24 Drive, con stato prova esplicito."""
+    """Deleghe F24 complete, con debiti e crediti e stato prova esplicito.
+
+    La vista raggruppa le righe per documento: eliminare qui le righe a credito
+    renderebbe falsi i totali e il saldo della quietanza visualizzata.
+    """
     rows = list_f24_rows(service=service, offset=0, limit=5000)["items"]
     items = []
     for row in rows:
-        if _amount(row.get("debit_amount")) <= 0:
-            continue
         documentary = row.get("evidence_state") == "QUIETANZA_DOCUMENTALE_NON_PROVA_BANCARIA"
         items.append({
             **row,

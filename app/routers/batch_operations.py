@@ -20,7 +20,7 @@ router = APIRouter()
 
 
 def filtro_uscite_da_riconciliare() -> Dict[str, Any]:
-    """Filtro Mongo per i movimenti di USCITA non ancora riconciliati in
+    """Filtro repository per i movimenti di USCITA non ancora riconciliati in
     `estratto_conto_movimenti`. Copre entrambe le convenzioni di segno presenti
     nei dati: importo positivo con `tipo="uscita"` (import canonico) e importo
     negativo (import legacy). Prima si filtrava solo `importo < 0` e il job non

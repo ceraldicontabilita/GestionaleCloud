@@ -16,7 +16,7 @@ storage_architecture: drive-only
 
 
 Ogni file spiega, per ogni endpoint del backend, **cosa fa** (lato operativo) e **come funziona nel codice**
-(collezioni Mongo, algoritmo, validazioni, helper). Generata leggendo i sorgenti per intero, non i docstring
+(fogli Drive/Sheets, algoritmo, validazioni, helper). Generata leggendo i sorgenti per intero, non i docstring
 (quando un docstring mente rispetto al codice, è segnalato in "Note").
 
 | File | Area | Endpoint documentati |
@@ -44,7 +44,7 @@ duplicate/shadowate contate una volta per modulo che le implementa).
 5. ✔ RISOLTO (lug 2026) — `sposta-cassa`/`sposta-banca` (dati_provvisori) ora salvano l'importo sempre **positivo** (il segno lo porta `tipo`, come da convenzione della collezione); aggiunti anche i campi `data`/`descrizione` mancanti su sposta-banca. *(01)*
 6. ✔ RISOLTO (lug 2026) — `riconciliazione_f24_banca.py` ora definisce localmente `COLL_F24_COMMERCIALISTA = "f24_commercialista"` invece di importare l'alias fuorviante da `db_collections.py` (che vale `"f24_unificato"`), allineandosi alla collezione realmente usata da `f24_riconciliazione.py`/`email_f24.py`. *(05)*
 7. ✔ RISOLTO (lug 2026) — `PUT /api/sync/update-fattura-everywhere`: aggiorna in prima nota solo i campi realmente inviati (prima azzerava a null quelli assenti). *(08)*
-8. ✔ RISOLTO (lug 2026) — verbali-riconciliazione: lookup fattura ora prova prima l'id UUID e usa ObjectId solo se valido (il crash su driver_id era già stato corretto in precedenza). *(07)*
+8. ✔ RISOLTO (lug 2026) — verbali-riconciliazione: lookup fattura ora prova prima l'id UUID e usa identificatore interno solo se valido (il crash su driver_id era già stato corretto in precedenza). *(07)*
 9. ✔ RISOLTO (lug 2026) — Ammortamenti cespiti: non vengono più scritti in `prima_nota_cassa` (costo non monetario); migrazione all'avvio soft-deleta i movimenti già creati dal bug. *(02)*
 10. ✔ RISOLTO (lug 2026) — Ricavi gonfiati: `chiusura_esercizio`, `indici_bilancio` e `controllo_gestione` ora trattano `invoices` come sole fatture ricevute (ricavi = corrispettivi, costi = tutte le fatture − note credito). *(02)*
 
@@ -63,7 +63,7 @@ duplicate/shadowate contate una volta per modulo che le implementa).
 18. **Riconciliazione**: 4 gruppi paralleli — `/api/riconciliazione`, `/api/riconciliazione-auto`, `/api/riconciliazione-intelligente` (25 route), `/api/operazioni-da-confermare` — più 3 importer estratto conto con schemi/dedup diversi sulla stessa collezione, e 3 circuiti banca↔PayPal con flag diversi. *(04)*
 19. **Contabilità**: 3 motori paralleli (`prima_nota_righe` Odoo/CEE, `movimenti_contabili`+saldi piano conti GG.SS.CC, `scritture_contabili` accounting-engine) che non si parlano; 2 sistemi cespiti, 2 chiusure esercizio, 2 sistemi budget, 2 sistemi regole di categorizzazione sulle stesse collezioni con schemi diversi. *(02)*
 20. **Fatture ricevute**: `paga-manuale` (fatture-ricevute) duplica `PUT /{id}/paga` (fatture); `cambia-metodo-pagamento` duplica `PUT /{id}/metodo-pagamento`; `archivio` duplica la lista di `/api/invoices`. *(03)*
-21. **Email/documenti**: 5 moduli scaricano/classificano la stessa posta verso collezioni diverse (email_download, documenti, email_scanner, email_mongodb, learning_machine); import fatture da email bypassa ancora la pipeline unificata in 2 punti (`email_download/processa-fatture-email`, `ai_parser/parse-fattura`). *(06)*
+21. **Email/documenti**: 5 moduli scaricano/classificano la stessa posta verso collezioni diverse (email_download, documenti, email_scanner, email_drive_sheets, learning_machine); import fatture da email bypassa ancora la pipeline unificata in 2 punti (`email_download/processa-fatture-email`, `ai_parser/parse-fattura`). *(06)*
 22. **F24** frammentato su 5 collezioni/moduli; **dipendenti**: doppia anagrafica `employees` (condivisa con AppDipendenti) vs `dipendenti` (locale) — moduli diversi cercano la persona in collezioni diverse. *(05, 07)*
 23. `fornitori/sync-suppliers` (in `/api/fatture`) duplica quasi esattamente `suppliers/sincronizza-da-fatture`; due Excel-import fornitori quasi identici. Tutti i punti di creazione automatica fornitore usano **default "bonifico"**, violando la regola "nuovo fornitore → nessun metodo finché non configurato". *(03)*
 
@@ -71,7 +71,7 @@ duplicate/shadowate contate una volta per modulo che le implementa).
 
 24. ✔ RISOLTO (lug 2026) — Webhook WhatsApp e ponte ERP ora whitelistati in `PUBLIC_PATHS` (il ponte ERP protetto da un segreto dedicato `ERP_BRIDGE_SECRET` via header `X-Erp-Secret`, non lasciato aperto). `/api/f24-public/*` rimosso da `PUBLIC_PREFIXES`: esponeva lettura E scrittura di F24 reali (importi, upload/modifica/delete PDF) senza alcuna verifica; l'unico chiamante (Dashboard.jsx) usa già il client autenticato, quindi ora richiede JWT come tutto il resto (verificato: 401 senza token). Le pagine legali (`/privacy`, `/terms`, `/data-deletion`) ora whitelistate in `PUBLIC_PATHS`. *(08)*
 25. ✔ RISOLTO (lug 2026) — Aggiunta `_autentica_websocket()` dentro `websocket_dashboard`/`websocket_notifications` (verifica JWT da `?token=` o cookie `access_token` PRIMA di `ws_manager.connect()`), dato che `BaseHTTPMiddleware.dispatch()` non viene mai invocato per lo scope `websocket`. Verificato con `TestClient.websocket_connect()`: connessione rifiutata senza token. *(08)*
-26. ~ PARZIALE (lug 2026) — Aggiunto `get_current_admin_user` (dependency già esistente ma mai usata in nessun router) ai 4 endpoint più distruttivi: `POST /api/admin/reset-collections` (cancella QUALSIASI collezione, prima chiamabile da qualunque utente loggato), `DELETE /api/prima-nota/cassa/delete-all`, `DELETE /api/prima-nota/banca/delete-all`, `DELETE /api/prima-nota-salari/salari/reset` (cancellano l'intero registro cassa/banca/salari). Verificato con mongomock: utente non-admin → 403, admin → 200. Restano senza gate di ruolo altri reset meno critici (dizionari, learning machine cache, riconciliazioni con `dry_run=False`) e le riconciliazioni automatiche citate: da riprendere in un prossimo giro, non urgenti quanto la cancellazione diretta dei registri contabili. *(04, 08)*
+26. ~ PARZIALE (lug 2026) — Aggiunto `get_current_admin_user` (dependency già esistente ma mai usata in nessun router) ai 4 endpoint più distruttivi: `POST /api/admin/reset-collections` (cancella QUALSIASI collezione, prima chiamabile da qualunque utente loggato), `DELETE /api/prima-nota/cassa/delete-all`, `DELETE /api/prima-nota/banca/delete-all`, `DELETE /api/prima-nota-salari/salari/reset` (cancellano l'intero registro cassa/banca/salari). Verificato con registro Sheets effimero: utente non-admin → 403, admin → 200. Restano senza gate di ruolo altri reset meno critici (dizionari, learning machine cache, riconciliazioni con `dry_run=False`) e le riconciliazioni automatiche citate: da riprendere in un prossimo giro, non urgenti quanto la cancellazione diretta dei registri contabili. *(04, 08)*
 
 ### ⚪ Stub / codice morto che finge di funzionare
 

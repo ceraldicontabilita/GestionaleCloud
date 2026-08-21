@@ -3,14 +3,14 @@ import asyncio
 
 import pytest
 from fastapi import HTTPException
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.database import Database
 from app.routers.admin import reset_collections
 
 
 def test_reset_non_puo_cancellare_collezioni_di_sicurezza(monkeypatch):
-    db = AsyncMongoMockClient()["admin_guard_test"]
+    db = MemorySheetsClient()["admin_guard_test"]
     monkeypatch.setattr(Database, "db", db)
 
     with pytest.raises(HTTPException) as exc:
@@ -23,7 +23,7 @@ def test_reset_non_puo_cancellare_collezioni_di_sicurezza(monkeypatch):
 
 
 def test_reset_operativo_lascia_prova_di_audit(monkeypatch):
-    db = AsyncMongoMockClient()["admin_guard_test"]
+    db = MemorySheetsClient()["admin_guard_test"]
     monkeypatch.setattr(Database, "db", db)
     asyncio.run(db["cache_operativa"].insert_one({"id": "x"}))
 

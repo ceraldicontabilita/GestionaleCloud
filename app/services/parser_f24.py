@@ -219,7 +219,7 @@ def _saldo_da_coordinate(page) -> float | None:
 def extract_text_from_pdf(pdf_path: str = None, pdf_content: bytes = None) -> str:
     """
     Estrae tutto il testo da un PDF.
-    Supporta sia filepath che bytes (architettura MongoDB-first).
+    Supporta sia filepath che bytes (architettura Drive/Sheets).
     """
     try:
         if pdf_content:
@@ -228,7 +228,7 @@ def extract_text_from_pdf(pdf_path: str = None, pdf_content: bytes = None) -> st
             doc = fitz.open(pdf_path)
         else:
             return ""
-        
+
         all_text = []
         for page in doc:
             all_text.append(page.get_text())
@@ -242,12 +242,12 @@ def extract_text_from_pdf(pdf_path: str = None, pdf_content: bytes = None) -> st
 def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) -> Dict[str, Any]:
     """
     Parsa un F24 PDF della commercialista ed estrae tutti i dati.
-    Supporta sia filepath che bytes (architettura MongoDB-first).
-    
+    Supporta sia filepath che bytes (architettura Drive/Sheets).
+
     Args:
         pdf_path: Percorso file PDF (legacy)
-        pdf_content: Contenuto PDF in bytes (MongoDB-first)
-    
+        pdf_content: Contenuto PDF in bytes (Drive/Sheets)
+
     Layout F24 standard:
     - Colonna DEBITO: X ~357-389 (euro + centesimi)
     - Colonna CREDITO: X ~443-475 (euro + centesimi)
@@ -267,7 +267,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
         "modelli": [],
         "diagnostica_pagine": [],
     }
-    
+
     from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
 
     try:
@@ -280,16 +280,16 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
     except Exception as e:
         logger.error(f"Errore apertura PDF: {e}")
         return {"error": f"Impossibile aprire il PDF: {e}"}
-    
+
     text = extract_text_from_pdf(pdf_path=pdf_path, pdf_content=pdf_content)
     if not text:
         doc.close()
         return {"error": "Impossibile estrarre testo dal PDF"}
-    
+
     # ============================================
     # DATI GENERALI
     # ============================================
-    
+
     coordinate_identity = _dati_anagrafici_da_coordinate(doc)
     result["dati_generali"].update(coordinate_identity)
 
@@ -316,7 +316,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                 if (len(cf) == 11 or len(cf) == 16) and cf != intermediary:
                     result["dati_generali"]["codice_fiscale"] = cf
                     break
-    
+
     ragione_sociale_match = re.search(r'CERALDI\s+GROUP\s+S\.?R\.?L\.?', text, re.IGNORECASE)
     if ragione_sociale_match:
         result["dati_generali"]["ragione_sociale"] = "CERALDI GROUP S.R.L."
@@ -335,7 +335,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
         "identita_stato": "VERIFICATA" if result["dati_generali"].get("codice_fiscale") else "IDENTITA_AMBIGUA",
         "identita_conflitti": [],
     })
-    
+
     data_stampa = _data_versamento_da_testo(text)
     if data_stampa:
         # Un modello/stampa non e' una quietanza: la data e' conservata come
@@ -347,14 +347,14 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
         result["dati_generali"]["data_pagamento"] = None
         result["dati_generali"]["data_versamento"] = data_stampa
         result["dati_generali"]["data_versamento_provenienza"] = "MODELLO_NON_PAGAMENTO"
-    
+
     if 'SEMPLIFICATO' in text.upper():
         result["dati_generali"]["tipo_f24"] = "F24 Semplificato"
     elif 'ORDINARIO' in text.upper():
         result["dati_generali"]["tipo_f24"] = "F24 Ordinario"
     else:
         result["dati_generali"]["tipo_f24"] = "F24"
-    
+
     # ============================================
     # COORDINATE PER ESTRAZIONE IMPORTI
     # ============================================
@@ -362,33 +362,33 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
     IMPORTO_X_START = 340
     DEBITO_X_MAX = 410
     CREDITO_X_MIN = 440
-    
+
     # Soglie Y per sezioni (approssimate, variano per PDF)
     # Le determineremo dinamicamente cercando le intestazioni
-    
+
     tributi_visti = set()
     page_models: dict[int, int | None] = {}
     page_balances: dict[int, float] = {}
-    
+
     def _extract_importo_cents_coordinate(row):
         """Estrae debito e credito da una riga basandosi sulle coordinate."""
         debito_parts = []
         credito_parts = []
-        
+
         for item in row:
             x = item['x']
             word = item['word']
-            
+
             if word in ['+/–', '+/-', '+', '-']:
                 continue
             if not re.match(r'^[\d.,]+$', word):
                 continue
-            
+
             if x > IMPORTO_X_START and x <= DEBITO_X_MAX:
                 debito_parts.append((x, word))
             elif x >= CREDITO_X_MIN:
                 credito_parts.append((x, word))
-        
+
         return _importo_cents_da_token(debito_parts), _importo_cents_da_token(credito_parts)
 
     def extract_importo_cents(row):
@@ -405,11 +405,11 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
             elif x >= CREDITO_X_MIN:
                 credito_parts.append((x, word))
         return _importo_cents_da_token(debito_parts), _importo_cents_da_token(credito_parts)
-    
+
     # ============================================
     # ESTRAZIONE PER PAGINA
     # ============================================
-    
+
     for page_num, page in enumerate(doc):
         page_number = page_num + 1
         page_text = page.get_text()
@@ -428,7 +428,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
         if saldo_coordinate is not None:
             result["dati_generali"]["saldo_delega"] = saldo_coordinate
             page_balances[page_number] = saldo_coordinate
-        
+
         # Raggruppa per riga (tolleranza 8 pixel)
         rows = {}
         for w in words:
@@ -437,7 +437,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
             if y_key not in rows:
                 rows[y_key] = []
             rows[y_key].append({'x': round(x0), 'y': round(y0), 'word': word.strip()})
-        
+
         # Processa ogni riga
         for y_key in sorted(rows.keys()):
             row = sorted(rows[y_key], key=lambda r: r['x'])
@@ -447,24 +447,24 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                 if saldo_documento_cents or "0,00" in row_text:
                     result["dati_generali"]["saldo_delega"] = saldo_documento_cents / 100
                     result["dati_generali"]["saldo_delega_cents"] = saldo_documento_cents
-            
+
             # ============================================
             # SEZIONE ERARIO - Codici 1xxx, 2xxx, 6xxx, 8xxx
             # Pattern: codice [rateazione] anno debito/credito
-            # IMPORTANTE: 
+            # IMPORTANTE:
             # - I codici 3xxx (IRAP) vanno SEMPRE nella sezione REGIONI
             # - Non processare se la riga ha un codice regione
             # ============================================
-            
+
             # Lista codici che vanno SEMPRE nella sezione REGIONI (IRAP)
-            CODICI_SOLO_REGIONI = {'3800', '3801', '3802', '3803', '3805', '3812', '3813', 
+            CODICI_SOLO_REGIONI = {'3800', '3801', '3802', '3803', '3805', '3812', '3813',
                                   '3858', '3881', '3882', '3883', '4070', '1868',
                                   '1993', '8907'}  # Ravvedimento IRAP
-            
+
             # Check se la riga inizia con codice regione (0 X o 0X o XX dove XX è 01-21)
             first_words = [r['word'] for r in row[:4]] if len(row) >= 4 else []
             is_riga_regioni = False
-            
+
             if len(first_words) >= 2:
                 # Pattern "0 X" dove X è cifra (0 5 -> 05)
                 if first_words[0] == '0' and re.match(r'^\d$', first_words[1]):
@@ -475,25 +475,25 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                 # Pattern "XX" codice regione 10-21
                 elif re.match(r'^(1[0-9]|2[0-1])$', first_words[0]):
                     is_riga_regioni = True
-            
+
             # Processa ERARIO solo se NON è una riga regioni
             if not is_riga_regioni:
                 for i, item in enumerate(row):
                     word = item['word']
-                    
-                    # Codici ERARIO: 1xxx, 2xxx, 6xxx, 8xxx 
+
+                    # Codici ERARIO: 1xxx, 2xxx, 6xxx, 8xxx
                     # ESCLUDI i codici 3xxx (IRAP) che vanno in REGIONI
                     # ESCLUDI anche codici IRAP specifici (1993, 8907) senza codice regione
                     if re.match(r'^(1\d{3}|2\d{3}|6\d{3}|7\d{3}|8\d{3}|9\d{3})$', word):
                         codice = word
-                        
+
                         # Se è un codice IRAP (1993, 8907), salta - andrà in REGIONI
                         if codice in CODICI_SOLO_REGIONI:
                             continue
-                        
+
                         rateazione = ""
                         anno = ""
-                        
+
                         # Cerca rateazione e anno
                         for j in range(i+1, min(i+5, len(row))):
                             nw = row[j]['word']
@@ -509,11 +509,11 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
 
                         debito_cents, credito_cents = extract_importo_cents(row)
                         debito, credito = debito_cents / 100, credito_cents / 100
-                        
+
                         if anno and (debito > 0 or credito > 0):
                             mese = rateazione[2:4] if len(rateazione) == 4 else "00"
                             key = f"E_{codice}_{anno}_{rateazione}_{debito}_{credito}"
-                            
+
                             if key not in tributi_visti:
                                 tributi_visti.add(key)
                                 result["sezione_erario"].append({
@@ -531,25 +531,25 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "testo_sorgente": row_text,
                                     "descrizione": get_descrizione_tributo(codice)
                                 })
-                                
+
                                 if codice in CODICI_RAVVEDIMENTO:
                                     result["has_ravvedimento"] = True
                                     result["codici_ravvedimento"].append(codice)
                         break
-            
+
             # ============================================
             # SEZIONE INPS - Pattern: 5100 causale matricola mese anno debito
             # ============================================
             if '5100' in row_text and any(c in row_text for c in ['CXX', 'DM10', 'RC01']):
                 for i, item in enumerate(row):
                     word = item['word']
-                    
+
                     if word in ['CXX', 'DM10', 'RC01', 'C10', 'CF10']:
                         causale = word
                         matricola = ""
                         mese = ""
                         anno = ""
-                        
+
                         # Cerca matricola, mese, anno
                         for j in range(i+1, len(row)):
                             nw = row[j]['word']
@@ -561,18 +561,18 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                 mese = nw
                             elif re.match(r'^20\d{2}$', nw) and not anno:
                                 anno = nw
-                        
+
                         # Estrai importo (per INPS solo debito, X > 340)
                         importo_cents = 0
                         numero_parts = []
                         for r in row:
                             if r['x'] > 340 and re.match(r'^[\d.]+$', r['word']):
                                 numero_parts.append((r['x'], r['word']))
-                        
+
                         if len(numero_parts) >= 2:
                             numero_parts.sort()
                             importo_cents = _importo_cents_da_token(numero_parts)
-                        
+
                         if causale and matricola and anno and importo_cents > 0:
                             key = f"I_{causale}_{matricola}_{anno}_{mese}"
                             if key not in tributi_visti:
@@ -594,7 +594,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "descrizione": get_descrizione_causale_inps(causale)
                                 })
                         break
-            
+
             # ============================================
             # SEZIONE INAIL - Pattern: cod_sede cod_ditta cc num_rif causale importo
             # Es: "33400 13882560 91 902025 P 365 11"
@@ -603,39 +603,39 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
             is_inail_row = False
             cod_sede_inail = ""
             cod_ditta = ""
-            
+
             if len(row) >= 5:
                 first_words = [r['word'] for r in row[:6]]
                 # Pattern: codice sede (5 cifre), codice ditta (8 cifre)
-                if (len(first_words) >= 2 and 
+                if (len(first_words) >= 2 and
                     re.match(r'^\d{5}$', first_words[0]) and
                     re.match(r'^\d{7,10}$', first_words[1])):
                     cod_sede_inail = first_words[0]
                     cod_ditta = first_words[1]
                     is_inail_row = True
-            
+
             if is_inail_row:
                 cc = ""
                 num_riferimento = ""
                 causale_inail = ""
-                
+
                 # Cerca cc, numero riferimento, causale
                 for i, item in enumerate(row):
                     word = item['word']
                     if word in [',', '+/–']:
                         continue
-                    
+
                     if re.match(r'^\d{2}$', word) and not cc and i > 1:
                         cc = word
                     elif re.match(r'^\d{6}$', word) and not num_riferimento:
                         num_riferimento = word
                     elif re.match(r'^[A-Z]$', word) and not causale_inail:
                         causale_inail = word
-                
+
                 importo_inail_cents, credito_inail_cents = extract_importo_cents(row)
                 importo_inail = importo_inail_cents / 100
                 credito_inail = credito_inail_cents / 100
-                
+
                 if cod_sede_inail and cod_ditta and importo_inail > 0:
                     key = f"INAIL_{cod_sede_inail}_{cod_ditta}_{num_riferimento}"
                     if key not in tributi_visti:
@@ -655,7 +655,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                             "testo_sorgente": row_text,
                             "descrizione": f"Premio INAIL - Causale {causale_inail}"
                         })
-            
+
             # ============================================
             # SEZIONE REGIONI - Pattern: cod_regione codice rateazione anno debito/credito
             # Codici 3xxx = IRAP, addizionali regionali
@@ -663,11 +663,11 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
             # Codici 1xxx = Interessi ravvedimento (quando hanno codice regione)
             # Riconosce righe con "0 X" dove X è una cifra (es: "0 5" = regione 05)
             # ============================================
-            
+
             # Lista codici IRAP che vanno SEMPRE in REGIONI
-            CODICI_IRAP = {'1868', '3800', '3801', '3802', '3803', '3805', '3812', '3813', 
+            CODICI_IRAP = {'1868', '3800', '3801', '3802', '3803', '3805', '3812', '3813',
                           '3858', '3881', '3882', '3883', '4070', '1993', '8907'}
-            
+
             cod_regione = _codice_regione_da_riga(row)
             is_regioni_row = bool(cod_regione)
             if len(row) >= 3 and not cod_regione:
@@ -680,13 +680,13 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                 elif len(first_words) >= 1 and re.match(r'^(0[1-9]|1\d|2[0-1])$', first_words[0]):
                     cod_regione = first_words[0]
                     is_regioni_row = True
-            
+
             # Processa righe con codice regione esplicito
             if is_regioni_row:
                 for i, item in enumerate(row):
                     word = item['word']
-                    
-                    # Codici regionali: 
+
+                    # Codici regionali:
                     # - 3xxx (IRAP, addizionale IRPEF)
                     # - 8xxx (sanzioni IRAP - es. 8907)
                     # - 1xxx (interessi ravvedimento - es. 1993)
@@ -694,7 +694,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                         codice = word
                         rateazione = ""
                         anno = ""
-                        
+
                         for j in range(i+1, min(i+5, len(row))):
                             nw = row[j]['word']
                             if nw in [',', '+/–']:
@@ -709,11 +709,11 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
 
                         debito_cents, credito_cents = extract_importo_cents(row)
                         debito, credito = debito_cents / 100, credito_cents / 100
-                        
+
                         if anno and (debito > 0 or credito > 0):
                             mese = rateazione[2:4] if len(rateazione) == 4 else "00"
                             key = f"R_{codice}_{cod_regione}_{anno}_{rateazione}_{debito}_{credito}"
-                            
+
                             if key not in tributi_visti:
                                 tributi_visti.add(key)
                                 result["sezione_regioni"].append({
@@ -733,7 +733,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "descrizione": get_descrizione_tributo_regioni(codice)
                                 })
                         break
-            
+
             # ============================================
             # FALLBACK REGIONI: Cattura codici IRAP senza codice regione esplicito
             # Alcuni PDF F24 non mostrano il codice regione nella stessa riga
@@ -741,13 +741,13 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
             if not is_regioni_row:
                 for i, item in enumerate(row):
                     word = item['word']
-                    
+
                     # Codici IRAP che vanno SEMPRE in REGIONI
                     if word in CODICI_IRAP:
                         codice = word
                         rateazione = ""
                         anno = ""
-                        
+
                         for j in range(i+1, min(i+5, len(row))):
                             nw = row[j]['word']
                             if nw in [',', '+/–']:
@@ -762,12 +762,12 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
 
                         debito_cents, credito_cents = extract_importo_cents(row)
                         debito, credito = debito_cents / 100, credito_cents / 100
-                        
+
                         if anno and (debito > 0 or credito > 0):
                             mese = rateazione[2:4] if len(rateazione) == 4 else "00"
                             # Usa "00" come codice regione placeholder
                             key = f"R_{codice}_00_{anno}_{rateazione}_{debito}_{credito}"
-                            
+
                             if key not in tributi_visti:
                                 tributi_visti.add(key)
                                 result["sezione_regioni"].append({
@@ -787,7 +787,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "descrizione": get_descrizione_tributo_regioni(codice)
                                 })
                         break
-            
+
             # ============================================
             # SEZIONE TRIBUTI LOCALI - Pattern: cod_comune/cod_ente codice rateazione anno debito/credito
             # Riconosce righe con lettere all'inizio:
@@ -798,40 +798,40 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
             is_locali_row = False
             cod_comune = ""
             cod_ente = ""
-            
+
             if len(row) >= 4:
                 first_words = [r['word'] for r in row[:5]]
-                
+
                 # Pattern 1: "B 9 9 0" o "F 8 3 9" = codice comune (4 caratteri separati)
-                if (len(first_words) >= 4 and 
+                if (len(first_words) >= 4 and
                     re.match(r'^[A-Z]$', first_words[0]) and
                     all(re.match(r'^\d$', w) for w in first_words[1:4])):
                     cod_comune = ''.join(first_words[:4])
                     is_locali_row = True
-                    
+
                 # Pattern 2: "N A" = codice ente (2 lettere separate, es. NA = Napoli)
-                elif (len(first_words) >= 2 and 
+                elif (len(first_words) >= 2 and
                       re.match(r'^[A-Z]$', first_words[0]) and
                       re.match(r'^[A-Z]$', first_words[1])):
                     cod_ente = first_words[0] + first_words[1]
                     is_locali_row = True
-                    
+
                 # Pattern 3: "NA" = codice ente diretto (2 lettere insieme)
-                elif (len(first_words) >= 1 and 
+                elif (len(first_words) >= 1 and
                       re.match(r'^[A-Z]{2}$', first_words[0])):
                     cod_ente = first_words[0]
                     is_locali_row = True
-            
+
             if is_locali_row:
                 for i, item in enumerate(row):
                     word = item['word']
-                    
+
                     # Codici tributi locali: 37xx, 38xx (Camera Commercio), 391x (IMU), 39xx (altri)
                     if re.match(r'^(37\d{2}|38\d{2}|39\d{2})$', word):
                         codice = word
                         rateazione = ""
                         anno = ""
-                        
+
                         for j in range(i+1, min(i+5, len(row))):
                             nw = row[j]['word']
                             if nw in [',', '+/–']:
@@ -846,12 +846,12 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
 
                         debito_cents, credito_cents = extract_importo_cents(row)
                         debito, credito = debito_cents / 100, credito_cents / 100
-                        
+
                         if anno and (debito > 0 or credito > 0):
                             mese = rateazione[2:4] if len(rateazione) == 4 else "00"
                             ente_ref = cod_comune or cod_ente or ""
                             key = f"L_{codice}_{ente_ref}_{anno}_{rateazione}_{debito}_{credito}"
-                            
+
                             if key not in tributi_visti:
                                 tributi_visti.add(key)
                                 result["sezione_tributi_locali"].append({
@@ -872,7 +872,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                     "descrizione": get_descrizione_tributo_locale(codice)
                                 })
                         break
-    
+
     # Provenienza completa e importi canonici: ogni riga mantiene il testo
     # originale, la pagina e il rettangolo delle parole che l'hanno generata.
     for section_name in (
@@ -1010,26 +1010,26 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
     codici_ravvedimento = sorted(codici_presenti.intersection(CODICI_RAVVEDIMENTO))
     result["codici_ravvedimento"] = codici_ravvedimento
     result["has_ravvedimento"] = bool(codici_ravvedimento)
-    
+
     # ============================================
     # CALCOLO TOTALI
     # ============================================
-    
+
     totale_debito_cents = 0
     totale_credito_cents = 0
-    
+
     for sezione in [result["sezione_erario"], result["sezione_inps"],
                     result["sezione_regioni"], result["sezione_tributi_locali"],
                     result["sezione_inail"]]:
         for item in sezione:
             totale_debito_cents += int(item.get("importo_debito_cents") or 0)
             totale_credito_cents += int(item.get("importo_credito_cents") or 0)
-    
+
     saldo_netto_cents = totale_debito_cents - totale_credito_cents
     totale_debito = totale_debito_cents / 100
     totale_credito = totale_credito_cents / 100
     saldo_netto = saldo_netto_cents / 100
-    
+
     saldo_documento = result["dati_generali"].get("saldo_delega")
     result["totali"] = {
         "totale_debito": round(totale_debito, 2),
@@ -1095,7 +1095,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
         ),
         "parser_version": "f24-coordinate-v4",
     }
-    
+
     return result
 
 
@@ -1124,7 +1124,7 @@ def get_descrizione_tributo(codice: str) -> str:
         "1058": "Ritenute su plusvalenze cessioni a termine valute estere",
         "1065": "Ritenuta 5% rendite AVS e LLP (art.76 L.413/1991)",
         "1066": "Ritenute su trattamenti pensionistici dopo conguaglio fine anno",
-        
+
         # ============================================
         # IRPEF - Autotassazione
         # ============================================
@@ -1151,7 +1151,7 @@ def get_descrizione_tributo(codice: str) -> str:
         "4724": "Imposta CFC - IRPEF secondo acconto",
         "4725": "Adeguamento IRPEF parametri/studi settore (art.33 DL 269/2003)",
         "4726": "Maggiorazione 3% adeguamento studi settore persone fisiche",
-        
+
         # ============================================
         # IRES
         # ============================================
@@ -1196,7 +1196,7 @@ def get_descrizione_tributo(codice: str) -> str:
         "2048": "IRES L. 207/2024 - acconto seconda rata",
         "2049": "IRES L. 207/2024 - saldo",
         "4069": "CPB soggetti ISA non PF - maggiorazione acconto (D.Lgs. 13/2024)",
-        
+
         # ============================================
         # IVA - Versamenti mensili
         # ============================================
@@ -1213,7 +1213,7 @@ def get_descrizione_tributo(codice: str) -> str:
         "6011": "IVA mensile novembre",
         "6012": "IVA mensile dicembre",
         "6013": "IVA acconto mensile",
-        
+
         # ============================================
         # IVA - Versamenti trimestrali
         # ============================================
@@ -1231,7 +1231,7 @@ def get_descrizione_tributo(codice: str) -> str:
         "6044": "IVA immissione consumo deposito fiscale (L. 205/2017)",
         "6045": "IVA inversione contabile settore logistica (L. 207/2024)",
         "6099": "IVA saldo dichiarazione annuale",
-        
+
         # ============================================
         # IVA - Immatricolazione auto UE
         # ============================================
@@ -1251,7 +1251,7 @@ def get_descrizione_tributo(codice: str) -> str:
         "6232": "IVA immatricolazione auto UE - II trimestre",
         "6233": "IVA immatricolazione auto UE - III trimestre",
         "6234": "IVA immatricolazione auto UE - IV trimestre",
-        
+
         # ============================================
         # IVA - Deposito
         # ============================================
@@ -1267,7 +1267,7 @@ def get_descrizione_tributo(codice: str) -> str:
         "6310": "IVA estrazione deposito - ottobre",
         "6311": "IVA estrazione deposito - novembre",
         "6312": "IVA estrazione deposito - dicembre",
-        
+
         # ============================================
         # IVA - Altri versamenti
         # ============================================
@@ -1288,7 +1288,7 @@ def get_descrizione_tributo(codice: str) -> str:
         "6727": "Subfornitura IVA trimestrale - IV trimestre",
         "6728": "Imposta sugli intrattenimenti",
         "6729": "IVA forfettaria intrattenimenti",
-        
+
         # ============================================
         # IRAP - Autoliquidazione (SEZIONE REGIONI)
         # ============================================
@@ -1302,13 +1302,13 @@ def get_descrizione_tributo(codice: str) -> str:
         "3882": "Maggior acconto II rata IRAP (L. 207/2024)",
         "3883": "IRAP compensazione credito (L. 190/2014)",
         "4070": "CPB maggiorazione acconto IRAP (D.Lgs. 13/2024)",
-        
+
         # ============================================
         # IRAP - Ravvedimento e sanzioni
         # ============================================
         "1993": "Interessi ravvedimento IRAP (art.13 D.Lgs. 472/97)",
         "8907": "Sanzione pecuniaria IRAP",
-        
+
         # ============================================
         # IRAP - Accertamento e contenzioso
         # ============================================
@@ -1342,13 +1342,13 @@ def get_descrizione_tributo(codice: str) -> str:
         "9971": "Sanzioni IRAP contenzioso art.29 DL 78/2010",
         "9988": "IRAP definizione agevolata PVC - imposta/interessi",
         "9990": "IRAP definizione agevolata PVC - sanzione",
-        
+
         # ============================================
         # Addizionali regionali IRPEF
         # ============================================
         "3801": "Addizionale regionale IRPEF - sostituto d'imposta",
         "3802": "Addizionale regionale IRPEF - autotassazione",
-        
+
         # ============================================
         # Crediti d'imposta
         # ============================================
@@ -1368,7 +1368,7 @@ def get_descrizione_tributo(codice: str) -> str:
         "1702": "Credito trattamento integrativo lavoro notturno/festivo turistico",
         "1703": "Credito bonus lavoratori dipendenti (DL 113/2024)",
         "1704": "Credito somma art.1 c.4 L. 207/2024",
-        
+
         # ============================================
         # Ravvedimento operoso - Interessi
         # ============================================
@@ -1379,7 +1379,7 @@ def get_descrizione_tributo(codice: str) -> str:
         "1990": "Interessi ravvedimento IRES (art.13 D.Lgs. 472/97)",
         "1991": "Interessi ravvedimento IVA (art.13 D.Lgs. 472/97)",
         "1909": "Interessi ravvedimento quota IRES Sicilia",
-        
+
         # ============================================
         # Ravvedimento operoso - Sanzioni
         # ============================================
@@ -1404,7 +1404,7 @@ def get_descrizione_tributo(codice: str) -> str:
         "8947": "Sanzione ravvedimento ritenute lavoro dipendente",
         "8948": "Sanzione ravvedimento ritenute lavoro autonomo",
         "8949": "Sanzione ravvedimento ritenute redditi capitale",
-        
+
         # ============================================
         # Ritenute
         # ============================================
@@ -1419,7 +1419,7 @@ def get_descrizione_tributo(codice: str) -> str:
         "1928": "Ritenute interessi banche Valle d'Aosta",
         "1962": "Eccedenza ritenute Valle d'Aosta effettuate fuori regione",
         "1020": "Ritenute 4% condominio - IRES",
-        
+
         # ============================================
         # Imposta sostitutiva TFR
         # ============================================
@@ -1427,7 +1427,7 @@ def get_descrizione_tributo(codice: str) -> str:
         "2502": "Imposta sostitutiva rivalutazione TFR 17% - saldo",
         "2503": "Imposta sostitutiva TFR forme pensionistiche",
         "2691": "Tributo straordinario soggetti IRPEG",
-        
+
         # ============================================
         # IMU e tributi locali
         # ============================================
@@ -1444,7 +1444,7 @@ def get_descrizione_tributo(codice: str) -> str:
         "3924": "IMU imposta - Stato",
         "3925": "IMU fabbricati gruppo D - Stato",
         "3930": "IMU fabbricati gruppo D - comune (incremento)",
-        
+
         # ============================================
         # TASI
         # ============================================
@@ -1454,20 +1454,20 @@ def get_descrizione_tributo(codice: str) -> str:
         "3961": "TASI altri fabbricati",
         "3962": "TASI interessi accertamento",
         "3963": "TASI sanzioni accertamento",
-        
+
         # ============================================
         # TARI/TARES
         # ============================================
         "3944": "TARES",
         "3950": "TARI",
-        
+
         # ============================================
         # Diritto annuale Camera di Commercio
         # ============================================
         "3850": "Diritto camerale annuale",
         "3851": "Interessi diritto camerale",
         "3852": "Sanzioni diritto camerale",
-        
+
         # ============================================
         # Contenzioso erariale
         # ============================================
@@ -1523,14 +1523,14 @@ def get_descrizione_tributo(codice: str) -> str:
         "9978": "IVA definizione agevolata PVC - imposta/interessi",
         "9979": "Ritenute definizione agevolata PVC - imposta/interessi",
         "9986": "Sanzione erariali definizione agevolata PVC",
-        
+
         # ============================================
         # IVIE/IVAFE
         # ============================================
         "1851": "IVAFE attività finanziarie estero - Conv. Santa Sede",
         "1852": "IVAFE attività finanziarie estero - acconto Conv. Santa Sede",
         "1854": "Imposta sostitutiva lezioni private - acconto (L. 145/2018)",
-        
+
         # ============================================
         # Assistenza fiscale sostituto
         # ============================================
@@ -1545,7 +1545,7 @@ def get_descrizione_tributo(codice: str) -> str:
         "4934": "Ritenute post-conguaglio Valle d'Aosta versate fuori",
         "4935": "Ritenute post-conguaglio versate Valle d'Aosta maturate fuori",
         "4936": "Rimborso erariali sostituto Valle d'Aosta",
-        
+
         # ============================================
         # Eccedenze dichiarazione sostituto
         # ============================================
@@ -1590,13 +1590,13 @@ def get_descrizione_tributo_regioni(codice: str) -> str:
         "3882": "Maggior acconto II rata IRAP (L. 207/2024)",
         "3883": "IRAP compensazione credito (L. 190/2014)",
         "4070": "CPB maggiorazione acconto IRAP (D.Lgs. 13/2024)",
-        
+
         # ============================================
         # IRAP - Ravvedimento operoso
         # ============================================
         "1993": "Interessi ravvedimento IRAP (art.13 D.Lgs. 472/97)",
         "8907": "Sanzione pecuniaria IRAP",
-        
+
         # ============================================
         # IRAP - Accertamento e contenzioso
         # ============================================
@@ -1630,7 +1630,7 @@ def get_descrizione_tributo_regioni(codice: str) -> str:
         "9971": "Sanzioni IRAP contenzioso art.29 DL 78/2010",
         "9988": "IRAP definizione agevolata PVC - imposta/interessi",
         "9990": "IRAP definizione agevolata PVC - sanzione",
-        
+
         # ============================================
         # Addizionale regionale IRPEF
         # ============================================
@@ -1639,7 +1639,7 @@ def get_descrizione_tributo_regioni(codice: str) -> str:
         "3803": "Addizionale regionale IRPEF - autotassazione acconto",
         "8902": "Interessi ravvedimento addizionale regionale IRPEF",
         "8903": "Sanzione pecuniaria addizionale regionale IRPEF",
-        
+
         # ============================================
         # Sanatorie e definizioni regionali
         # ============================================
@@ -1674,7 +1674,7 @@ def get_descrizione_tributo_locale(codice: str) -> str:
         "3844": "Addizionale comunale IRPEF - saldo autotassazione",
         "3847": "Addizionale comunale IRPEF trattenuta sostituto - acconto",
         "3848": "Addizionale comunale IRPEF trattenuta sostituto - saldo",
-        
+
         # ============================================
         # IMU - Imposta Municipale Unica
         # ============================================
@@ -1694,7 +1694,7 @@ def get_descrizione_tributo_locale(codice: str) -> str:
         "3927": "ISCOP interessi",
         "3928": "ISCOP sanzioni",
         "3930": "IMU fabbricati gruppo D - comune (incremento)",
-        
+
         # ============================================
         # TOSAP/COSAP
         # ============================================
@@ -1702,7 +1702,7 @@ def get_descrizione_tributo_locale(codice: str) -> str:
         "3932": "TOSAP/COSAP occupazione temporanea",
         "3933": "TOSAP/COSAP interessi",
         "3934": "TOSAP/COSAP sanzioni",
-        
+
         # ============================================
         # ICI (vecchia imposta - pre IMU)
         # ============================================
@@ -1712,7 +1712,7 @@ def get_descrizione_tributo_locale(codice: str) -> str:
         "3904": "ICI altri fabbricati",
         "3906": "ICI interessi",
         "3907": "ICI sanzioni",
-        
+
         # ============================================
         # TARES
         # ============================================
@@ -1725,7 +1725,7 @@ def get_descrizione_tributo_locale(codice: str) -> str:
         "3955": "TARES maggiorazione",
         "3956": "TARES maggiorazione interessi",
         "3957": "TARES maggiorazione sanzioni",
-        
+
         # ============================================
         # TASI
         # ============================================
@@ -1735,14 +1735,14 @@ def get_descrizione_tributo_locale(codice: str) -> str:
         "3961": "TASI altri fabbricati",
         "3962": "TASI interessi accertamento",
         "3963": "TASI sanzioni accertamento",
-        
+
         # ============================================
         # ICP/CIMP (Pubblicità)
         # ============================================
         "3964": "ICP/CIMP imposta pubblicità",
         "3965": "ICP/CIMP interessi",
         "3966": "ICP/CIMP sanzioni",
-        
+
         # ============================================
         # Camera di Commercio
         # ============================================
@@ -1756,17 +1756,17 @@ def get_descrizione_tributo_locale(codice: str) -> str:
 def confronta_codici_tributo(f24_commercialista: Dict, quietanza: Dict) -> Dict[str, Any]:
     """
     Confronta i codici tributo tra F24 commercialista e quietanza.
-    
+
     Logica di riconciliazione:
     1. Estrae i codici tributo (senza periodo) da entrambi i documenti
     2. Confronta codice per codice
     3. Se i codici base sono uguali → stesso F24
     4. Se la quietanza ha codici extra di sanzione/interessi → RAVVEDIMENTO
-    
+
     Codici sanzione ravvedimento:
     - 8901 (IRPEF), 8902 (Add. Regionale), 8903 (Add. Comunale), 8904 (IVA)
     - 8906 (Sostituti), 8907 (IRAP), 8908 (Altre imposte)
-    
+
     Codici interessi ravvedimento:
     - 1989 (IRPEF), 1990 (Add. Regionale), 1991 (IVA), 1993 (IRAP)
     - 1994 (Sostituti), 1668 (Interessi dilazione), 3805 (IRAP regionale)
@@ -1775,12 +1775,12 @@ def confronta_codici_tributo(f24_commercialista: Dict, quietanza: Dict) -> Dict[
     CODICI_SANZIONI = {'8901', '8902', '8903', '8904', '8905', '8906', '8907', '8908', '8909', '8910', '8911', '8913', '8918', '8926', '8929'}
     CODICI_INTERESSI = {'1989', '1990', '1991', '1993', '1994', '1668', '3805', '3857'}
     CODICI_RAVVEDIMENTO = CODICI_SANZIONI.union(CODICI_INTERESSI)
-    
+
     # Estrai codici tributo da F24 commercialista
     codici_f24 = set()
     codici_f24_con_periodo = set()
     importi_f24 = {}
-    
+
     for sezione in ['sezione_erario', 'sezione_inps', 'sezione_regioni', 'sezione_tributi_locali']:
         for item in f24_commercialista.get(sezione, []):
             codice = item.get('codice_tributo') or item.get('causale') or ''
@@ -1790,12 +1790,12 @@ def confronta_codici_tributo(f24_commercialista: Dict, quietanza: Dict) -> Dict[
                 periodo = item.get('periodo_riferimento', item.get('anno_riferimento', ''))
                 codici_f24_con_periodo.add(f"{codice}_{periodo}")
                 importi_f24[codice] = importi_f24.get(codice, 0) + (item.get('debito', 0) or 0)
-    
+
     # Estrai codici tributo da quietanza
     codici_quietanza = set()
     codici_quietanza_con_periodo = set()
     importi_quietanza = {}
-    
+
     for sezione in ['sezione_erario', 'sezione_inps', 'sezione_regioni', 'sezione_tributi_locali']:
         for item in quietanza.get(sezione, []):
             codice = item.get('codice_tributo') or item.get('causale') or ''
@@ -1805,17 +1805,17 @@ def confronta_codici_tributo(f24_commercialista: Dict, quietanza: Dict) -> Dict[
                 periodo = item.get('periodo_riferimento', item.get('anno_riferimento', ''))
                 codici_quietanza_con_periodo.add(f"{codice}_{periodo}")
                 importi_quietanza[codice] = importi_quietanza.get(codice, 0) + (item.get('debito', 0) or 0)
-    
+
     # Analisi dei codici
     codici_match = codici_f24.intersection(codici_quietanza)
     codici_mancanti_in_quietanza = codici_f24 - codici_quietanza
     codici_extra_in_quietanza = codici_quietanza - codici_f24
-    
+
     # Identifica codici ravvedimento negli extra
     codici_ravv_trovati = codici_extra_in_quietanza.intersection(CODICI_RAVVEDIMENTO)
     codici_sanzioni_trovati = codici_extra_in_quietanza.intersection(CODICI_SANZIONI)
     codici_interessi_trovati = codici_extra_in_quietanza.intersection(CODICI_INTERESSI)
-    
+
     # Calcola importi
     importo_f24 = f24_commercialista.get("totali", {}).get("saldo_netto", 0) or \
                   f24_commercialista.get("totali", {}).get("saldo_finale", 0) or 0
@@ -1823,24 +1823,24 @@ def confronta_codici_tributo(f24_commercialista: Dict, quietanza: Dict) -> Dict[
                         quietanza.get("totali", {}).get("totale_debito", 0) or \
                         abs(quietanza.get("totali", {}).get("saldo_netto", 0) or 0)
     differenza = round(importo_quietanza - importo_f24, 2)
-    
+
     # Logica di matching
     # 1. Se tutti i codici base dell'F24 sono presenti nella quietanza → MATCH
     codici_base_f24 = codici_f24 - CODICI_RAVVEDIMENTO
     codici_base_quietanza = codici_quietanza - CODICI_RAVVEDIMENTO
-    
+
     match_codici_base = codici_base_f24.issubset(codici_base_quietanza)
-    
+
     # 2. Calcola percentuale di match
     if len(codici_base_f24) > 0:
         match_percentage = len(codici_base_f24.intersection(codici_base_quietanza)) / len(codici_base_f24) * 100
     else:
         match_percentage = 0
-    
+
     # 3. Determina se è un ravvedimento
     is_ravvedimento = False
     tipo_ravvedimento = None
-    
+
     if match_codici_base and len(codici_ravv_trovati) > 0:
         is_ravvedimento = True
         if codici_sanzioni_trovati and codici_interessi_trovati:
@@ -1849,11 +1849,11 @@ def confronta_codici_tributo(f24_commercialista: Dict, quietanza: Dict) -> Dict[
             tipo_ravvedimento = "SOLO_SANZIONI"
         elif codici_interessi_trovati:
             tipo_ravvedimento = "SOLO_INTERESSI"
-    
+
     # 4. Determina il match finale
     # Match se: codici base corrispondono (con o senza ravvedimento)
     is_match = match_percentage >= 70 or (match_codici_base and len(codici_base_f24) > 0)
-    
+
     return {
         "match": is_match,
         "match_percentage": round(match_percentage, 1),

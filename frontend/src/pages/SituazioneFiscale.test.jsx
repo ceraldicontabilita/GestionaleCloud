@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../api';
@@ -55,6 +55,13 @@ describe('Situazione fiscale collegata all indice Drive', () => {
           filename: 'quietanza.pdf', protocol: '24111809324228190',
           payment_status: 'DOCUMENTATO_DA_QUIETANZA',
           documentary_payment_status: 'QUIETANZA_PRESENTE', bank_status: 'DA_VERIFICARE',
+        }, {
+          id: 'drive-paid-2', document_id: 'DOC-Q', source_kind: 'DRIVE_EXCEL_INDEX_F24_ROW',
+          tax_code: '3802', description: 'Addizionale regionale IRPEF', reference_period: '10/2024',
+          debit_amount: 44.79, credit_amount: 0, payment_date: '2024-11-18',
+          filename: 'quietanza.pdf', protocol: '24111809324228190',
+          payment_status: 'DOCUMENTATO_DA_QUIETANZA',
+          documentary_payment_status: 'QUIETANZA_PRESENTE', bank_status: 'DA_VERIFICARE',
         }],
         sources: { drive_excel_index: 1, canonical: 'google_drive' },
       } });
@@ -64,8 +71,17 @@ describe('Situazione fiscale collegata all indice Drive', () => {
     render(<MemoryRouter initialEntries={['/situazione-fiscale/tributi-pagati']}><SituazioneFiscale /></MemoryRouter>);
 
     expect(await screen.findByText(/Ritenute su retribuzioni/)).toBeInTheDocument();
+    expect(screen.getByText('Protocollo 24111809324228190')).toBeInTheDocument();
+    expect(screen.getAllByText('2 righe tributo', { exact: false }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Addizionale regionale IRPEF')).toBeInTheDocument();
+    expect(screen.queryByText('drive-paid-1')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Cerca nella sezione')).toBeInTheDocument();
     expect(screen.getByText('Quietanza documentale presente · riscontro bancario da verificare')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Apri PDF Drive' })).toBeEnabled();
+    expect(screen.getAllByRole('button', { name: 'Apri PDF Drive' })).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText('Cerca nella sezione'), { target: { value: 'inesistente' } });
+    expect(screen.getByText('Nessun risultato con questi filtri.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Azzera filtri' }));
+    expect(screen.getByText(/Ritenute su retribuzioni/)).toBeInTheDocument();
   });
 
   it('non dipende dal vecchio servizio di revisione', async () => {

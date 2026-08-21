@@ -1,6 +1,6 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services.scritture_contabili import calcola_operation_hash, scrivi_movimento
 
@@ -14,7 +14,7 @@ def test_hash_distingue_assegni_che_pagano_stessa_fattura():
 
 def test_writer_non_inserisce_due_volte_stessa_prova_originaria():
     async def scenario():
-        db = AsyncMongoMockClient()["operation_hash"]
+        db = MemorySheetsClient()["operation_hash"]
         mov = {
             "data": "2026-08-20", "tipo": "uscita", "importo": 51.64,
             "categoria": "Fatture", "descrizione": "Pagamento verbale",
@@ -28,4 +28,3 @@ def test_writer_non_inserisce_due_volte_stessa_prova_originaria():
     first, second, count = asyncio.run(scenario())
     assert first == second
     assert count == 1
-

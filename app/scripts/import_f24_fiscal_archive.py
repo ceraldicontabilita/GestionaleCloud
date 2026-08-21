@@ -1,6 +1,6 @@
 """Validate an F24 archive and optionally import its evidence ledger.
 
-Dry-run is the default and never connects to MongoDB. Database writes require
+Dry-run is the default and never opens the live Sheets registry. Writes require
 the explicit ``--esegui`` switch after the complete archive has validated.
 """
 

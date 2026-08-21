@@ -2,14 +2,14 @@
 
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.agents.compliance_shadow import ComplianceShadow
 from app.services.compliance_shadow_service import leggi_snapshot_compliance
 
 
 def _db():
-    return AsyncMongoMockClient()["compliance_shadow_test"]
+    return MemorySheetsClient()["compliance_shadow_test"]
 
 
 async def _seed(db):

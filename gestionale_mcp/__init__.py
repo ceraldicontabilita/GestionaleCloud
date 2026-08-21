@@ -1,7 +1,7 @@
 """MCP gateway for GestionaleCloud.
 
 The package is intentionally independent from the FastAPI application process:
-it calls the existing HTTP API and never opens a MongoDB connection directly.
+it calls the existing HTTP API and never opens a Drive/Sheets connection directly.
 """
 
 from typing import Any

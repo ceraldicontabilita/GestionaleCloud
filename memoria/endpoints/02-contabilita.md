@@ -7,7 +7,7 @@ storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+> Documento di riferimento del dominio. Per persistenza vale l'architettura Drive/Sheets descritta nei documenti correnti; eventuali nomi di collection restano soltanto contesto storico.
 
 Documentazione generata dalla lettura diretta del codice (luglio 2026). Prefissi reali da `app/router_registry.py`.
 
@@ -741,7 +741,7 @@ Gestione mutui BPM: CRUD, statistiche, riconciliazione rate↔estratto conto, im
 **Note**: la query importi cerca valori NEGATIVI (`importo` tra −max e −min), ma l'estratto conto salva importi POSITIVI con campo `tipo` (documentato in piano_conti.py): con dati standard il match automatico non trova mai nulla. I parametri `data_inizio`/`data_fine` dichiarati non vengono usati nella query.
 
 ### PUT /api/mutui/{mutuo_id}/rate/{numero_rata}/riconcilia — riconciliazione manuale
-**Cosa fa**: collega una rata a un movimento specifico (lookup per ObjectId o campo `id`); marca rata e movimento, ricalcola percentuale.
+**Cosa fa**: collega una rata a un movimento specifico (lookup per identificatore interno o campo `id`); marca rata e movimento, ricalcola percentuale.
 **Note**: `$inc rate_riconciliate` + ricalcolo successivo con `$set`: idempotente solo grazie al secondo passaggio; qui NON viene creato il movimento di prima nota (a differenza della riconciliazione automatica).
 
 ### POST /api/mutui/ — crea mutuo

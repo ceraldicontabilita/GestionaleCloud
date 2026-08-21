@@ -3,8 +3,8 @@ corrispettivo (app/routers/invoices/corrispettivi_helpers.py) ha lo stesso
 pattern find_one-poi-insert, ma su PIÙ livelli sequenziali (chiave XML,
 poi data+matricola, poi data+totale) prima di eventualmente inserire.
 
-Il test isolato con mongomock (backend/tests/test_corrispettivi_ingest_
-isolato.py) non basta per provare l'interleaving reale: mongomock esegue le
+Il test isolato con registro Sheets effimero (backend/tests/test_corrispettivi_ingest_
+isolato.py) non basta per provare l'interleaving reale: registro Sheets effimero esegue le
 operazioni senza cedere il controllo all'event loop, quindi due coroutine
 lanciate con asyncio.gather non si intrecciano mai, anche se in produzione
 (I/O di rete vero) potrebbero farlo. Questo file usa un fake DB che cede

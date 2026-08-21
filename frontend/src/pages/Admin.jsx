@@ -1336,7 +1336,7 @@ function GoogleSheetsLedgerTab() {
         </div>
       </Card>
       {result && (
-        <Card title={result.action === 'audit' ? 'Audit migrazione MongoDB → Drive' : (result.action === 'validate' ? 'Esito verifica ricostruzione' : 'Esito sincronizzazione')}>
+        <Card title={result.action === 'audit' ? 'Audit migrazione Drive/Sheets → Drive' : (result.action === 'validate' ? 'Esito verifica ricostruzione' : 'Esito sincronizzazione')}>
           {result.action === 'audit' && (
             <div style={{ marginBottom: 12, color: result.pronto_cutover ? COLORS.success : COLORS.danger }}>
               <strong>{result.pronto_cutover ? 'PRONTO AL PASSAGGIO' : 'PASSAGGIO BLOCCATO'}</strong>

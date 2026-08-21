@@ -8,8 +8,6 @@ import base64
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
-from bson import ObjectId
-
 from app.database import Database
 from app.services.enhanced_document_parser import (
     parse_f24_enhanced,
@@ -40,7 +38,7 @@ async def _blocco(coll, identificativi: List[Any],
 
 class BatchReprocessingService:
     """Servizio per riprocessare batch di documenti con il parser migliorato."""
-    
+
     def __init__(self):
         self.db = None
         self.stats = {
@@ -56,13 +54,13 @@ class BatchReprocessingService:
             "end_time": None,
             "errors": []
         }
-    
+
     async def init_db(self):
         """Inizializza connessione database."""
         self.db = Database.get_db()
         if self.db is None:
             raise Exception("Database non connesso")
-    
+
     async def _riprocessa_f24(self, coll, coll_name: str, doc: Dict[str, Any],
                               dry_run: bool) -> None:
         """Rilegge un F24 e gli aggiunge i campi del parser migliorato.
@@ -131,19 +129,19 @@ class BatchReprocessingService:
     async def reprocess_all_f24(self, dry_run: bool = False) -> Dict[str, Any]:
         """
         Riprocessa tutti gli F24 con PDF disponibile.
-        
+
         Args:
             dry_run: Se True, non salva le modifiche (solo test)
-        
+
         Returns:
             Statistiche del riprocessamento
         """
         await self.init_db()
         self.stats["start_time"] = datetime.now(timezone.utc).isoformat()
-        
+
         # Collezioni che contengono F24 con PDF
         collections = ["f24_models", "f24", "f24_uploaded"]
-        
+
         for coll_name in collections:
             try:
                 coll = self.db[coll_name]
@@ -162,10 +160,10 @@ class BatchReprocessingService:
 
             except Exception as e:
                 logger.error(f"Errore accesso collezione {coll_name}: {e}")
-        
+
         self.stats["end_time"] = datetime.now(timezone.utc).isoformat()
         return self.stats
-    
+
     async def _riprocessa_cedolino(self, coll, coll_name: str, doc: Dict[str, Any],
                                    dry_run: bool) -> None:
         """Rilegge un cedolino e gli aggiunge i campi del parser migliorato.
@@ -244,21 +242,21 @@ class BatchReprocessingService:
     async def reprocess_all_cedolini(self, dry_run: bool = False) -> Dict[str, Any]:
         """
         Riprocessa tutti i cedolini con PDF disponibile.
-        
+
         Args:
             dry_run: Se True, non salva le modifiche (solo test)
-        
+
         Returns:
             Statistiche del riprocessamento
         """
         await self.init_db()
-        
+
         if not self.stats["start_time"]:
             self.stats["start_time"] = datetime.now(timezone.utc).isoformat()
-        
+
         # Collezioni che contengono cedolini con PDF
         collections = ["cedolini", "payslips", "buste_paga", "extracted_documents"]
-        
+
         for coll_name in collections:
             try:
                 coll = self.db[coll_name]
@@ -284,37 +282,37 @@ class BatchReprocessingService:
 
             except Exception as e:
                 logger.error(f"Errore accesso collezione {coll_name}: {e}")
-        
+
         self.stats["end_time"] = datetime.now(timezone.utc).isoformat()
         return self.stats
-    
+
     async def reprocess_all(self, dry_run: bool = False) -> Dict[str, Any]:
         """
         Riprocessa tutti i documenti (F24 + Cedolini).
-        
+
         Args:
             dry_run: Se True, non salva le modifiche (solo test)
-        
+
         Returns:
             Statistiche complete del riprocessamento
         """
         logger.info(f"Avvio riprocessamento batch {'(DRY RUN)' if dry_run else ''}")
-        
+
         # Riprocessa F24
         await self.reprocess_all_f24(dry_run)
-        
+
         # Riprocessa Cedolini
         await self.reprocess_all_cedolini(dry_run)
-        
+
         # Calcola statistiche finali
         self.stats["totale_documenti"] = self.stats["f24_total"] + self.stats["cedolini_total"]
         self.stats["totale_processati"] = self.stats["f24_processed"] + self.stats["cedolini_processed"]
         self.stats["totale_successi"] = self.stats["f24_success"] + self.stats["cedolini_success"]
         self.stats["totale_errori"] = self.stats["f24_errors"] + self.stats["cedolini_errors"]
         self.stats["dry_run"] = dry_run
-        
+
         logger.info(f"Riprocessamento completato: {self.stats['totale_successi']}/{self.stats['totale_processati']} successi")
-        
+
         return self.stats
 
 
@@ -322,10 +320,10 @@ class BatchReprocessingService:
 async def run_batch_reprocessing(dry_run: bool = False) -> Dict[str, Any]:
     """
     Esegue il riprocessamento batch di tutti i documenti.
-    
+
     Args:
         dry_run: Se True, esegue solo un test senza salvare
-    
+
     Returns:
         Statistiche del riprocessamento
     """

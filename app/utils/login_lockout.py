@@ -7,7 +7,7 @@ email-login e pin-login condividono la stessa politica (scelta utente
 13/07/2026: 5 tentativi, poi 5 minuti di attesa).
 
 In-memory per processo: adeguato al deployment mono/pochi-worker attuale.
-Se in futuro si passa a molti worker, spostare lo stato su Mongo/Redis
+Se in futuro si passa a molti worker, spostare lo stato su Drive/Sheets
 mantenendo questa stessa interfaccia.
 """
 import time

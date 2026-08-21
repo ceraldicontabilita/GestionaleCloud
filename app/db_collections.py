@@ -1,5 +1,5 @@
 """
-Definizione centralizzata delle collezioni MongoDB.
+Definizione centralizzata delle collezioni Drive/Sheets.
 Questo file serve come UNICA fonte di verità per i nomi delle collezioni.
 
 REGOLA FONDAMENTALE: Ogni router DEVE importare i nomi delle collezioni da qui.
@@ -420,10 +420,10 @@ Le seguenti collezioni sono DEPRECATE e non devono essere usate:
 def get_collection_by_entity(entity: str) -> str:
     """
     Restituisce il nome della collezione principale per un'entità.
-    
+
     Args:
         entity: Nome dell'entità (es: 'employees', 'invoices', 'f24')
-    
+
     Returns:
         Nome della collezione principale
     """

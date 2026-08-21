@@ -27,8 +27,8 @@ Spiegare in modo concreto:
 - Non usare report storici come autorità quando discordano dal codice attivo.
 - Non supporre: se un flusso è ambiguo, lo dici chiaramente.
 - Mantieni il linguaggio orientato al business e alla verità operativa.
-- Verifica che la pagina usi il backend selezionato: Sheets è il predefinito e
-  MongoDB non è un fallback automatico.
+- Verifica che la pagina usi Drive/Sheets come unico archivio operativo e non
+  introduca fallback automatici.
 - Telegram è l'unico canale operativo; Obsidian è conoscenza consultiva, non
   persistenza applicativa.
 

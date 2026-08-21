@@ -1,8 +1,7 @@
 """Server isolato per il collaudo browser delle operazioni distruttive.
 
-Usa i router reali dell'applicazione e MongoDB in memoria. Non legge file
-``.env``, non conosce URI Atlas e non puo' raggiungere il database di
-produzione. I dati vengono creati all'avvio e spariscono alla chiusura.
+Usa i router reali e un registro Sheets in memoria. Non legge file ``.env`` e
+non puo' raggiungere l'archivio di produzione. I dati spariscono alla chiusura.
 """
 
 from __future__ import annotations
@@ -14,9 +13,6 @@ from pathlib import Path
 # Configurazione deliberatamente fittizia, impostata prima di importare app.*.
 os.environ["ENVIRONMENT"] = "development"
 os.environ["SECRET_KEY"] = "e2e-isolato-solo-test-non-produzione"
-os.environ["MONGO_URL"] = "mongodb://non-usato.invalid/e2e"
-os.environ["MONGODB_ATLAS_URI"] = "mongodb://non-usato.invalid/e2e"
-os.environ["DB_NAME"] = "Gestionale_E2E_Distruttivo"
 os.environ["ADMIN_EMAIL"] = "e2e@example.invalid"
 os.environ["ADMIN_PASSWORD"] = "e2e-password-solo-test"
 os.environ["GESTIONE_RISERVATA_CODE"] = "00000000"
@@ -25,7 +21,7 @@ os.environ.pop("ADMIN_PASSWORD_HASH", None)
 from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.responses import FileResponse, JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
-from mongomock_motor import AsyncMongoMockClient  # noqa: E402
+from app.services.sheets_document_store import MemorySheetsClient  # noqa: E402
 
 from app.config import settings  # noqa: E402
 from app.database import Database  # noqa: E402
@@ -45,7 +41,7 @@ DIST = Path(
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    client = AsyncMongoMockClient()
+    client = MemorySheetsClient()
     Database.client = client
     Database.db = client["Gestionale_E2E_Distruttivo"]
     await Database.db["notifiche_scadenze"].insert_one(

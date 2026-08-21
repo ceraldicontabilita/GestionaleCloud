@@ -1,16 +1,16 @@
 """
 Costanti per il modulo Fornitori.
 
-Regola canonica: la collection MongoDB dei fornitori e' `fornitori`.
+Regola canonica: la collection Drive/Sheets dei fornitori e' `fornitori`.
 `supplier`/`suppliers` restano nomi tecnici/inglesi di moduli, endpoint e servizi,
-ma NON devono indicare una collection MongoDB separata.
+ma NON devono indicare una collection Drive/Sheets separata.
 """
 
 from app.db_collections import COLL_FORNITORI, COLL_INVOICES
 
 
 class Collections:
-    """Nomi delle collection MongoDB per il modulo fornitori."""
+    """Nomi delle collection Drive/Sheets per il modulo fornitori."""
     FORNITORI = COLL_FORNITORI
     SUPPLIERS = COLL_FORNITORI  # Alias legacy/inglese -> collection canonica `fornitori`
     INVOICES = COLL_INVOICES

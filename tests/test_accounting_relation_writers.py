@@ -1,6 +1,6 @@
 import asyncio
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services.accounting_relation_writers import (
     record_check_reconciliation,
@@ -24,7 +24,7 @@ def _run(coro):
 
 def test_assegno_registra_catena_bidirezionale_senza_mutare_le_entita():
     async def scenario():
-        db = AsyncMongoMockClient()["relations_check"]
+        db = MemorySheetsClient()["relations_check"]
         cheque = {"id": "CHK-1", "numero": "0208769328", "importo": 1861.71}
         movement = {"id": "EC-1", "importo": 1861.71}
         invoice_links = [{
@@ -55,7 +55,7 @@ def test_assegno_registra_catena_bidirezionale_senza_mutare_le_entita():
 
 def test_salario_parziale_conserva_centesimi_e_collega_il_cedolino():
     async def scenario():
-        db = AsyncMongoMockClient()["relations_salary"]
+        db = MemorySheetsClient()["relations_salary"]
         keys = await record_salary_reconciliation(
             db,
             salary_entry={
@@ -80,7 +80,7 @@ def test_salario_parziale_conserva_centesimi_e_collega_il_cedolino():
 
 def test_quietanza_f24_non_diventa_prova_bancaria():
     async def scenario():
-        db = AsyncMongoMockClient()["relations_f24"]
+        db = MemorySheetsClient()["relations_f24"]
         f24 = {"id": "F24-1", "sezione_erario": [{
             "id": "TRIB-2001", "codice_tributo": "2001",
             "periodo_riferimento": "06", "anno_riferimento": "2026",
@@ -119,7 +119,7 @@ def test_quietanza_f24_non_diventa_prova_bancaria():
 
 def test_vista_fiscale_ricostruisce_catena_completa_dalle_relazioni():
     async def scenario():
-        db = AsyncMongoMockClient()["tax_payment_chain"]
+        db = MemorySheetsClient()["tax_payment_chain"]
         f24 = {"id": "F24-CATENA", "sezione_erario": [{
             "codice_tributo": "1040", "periodo_riferimento": "06",
             "anno_riferimento": "2026", "importo_debito_cents": 28400,
@@ -165,7 +165,7 @@ def test_vista_fiscale_ricostruisce_catena_completa_dalle_relazioni():
 
 def test_paypal_richiede_movimento_bancario_per_provare_il_pagamento():
     async def scenario():
-        db = AsyncMongoMockClient()["relations_paypal"]
+        db = MemorySheetsClient()["relations_paypal"]
         transaction = {"transaction_id": "PAY-1"}
         invoice = {"id": "INV-PAY-1"}
         await record_paypal_invoice_link(

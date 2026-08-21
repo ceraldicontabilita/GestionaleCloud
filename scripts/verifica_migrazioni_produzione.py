@@ -1,5 +1,4 @@
-"""Piano residuo op.13 — verifica lo stato REALE delle migrazioni canoniche
-sul DB collegato (produzione se lanciato con le credenziali giuste in .env).
+"""Verifica lo stato reale delle migrazioni nei registri Sheets configurati.
 
 Sola lettura: chiama ogni script di migrazione nella sua modalità dry-run
 (`migra(esegui=False)`), che conta soltanto — non scrive nulla. Aggrega i
@@ -11,8 +10,7 @@ blocco — note di migrazione nella cronologia git (PIANO_MIGRAZIONE_COLLECTION.
 attenzione specifiche di ciascuna).
 
 Uso: python scripts/verifica_migrazioni_produzione.py
-Richiede un .env con le credenziali del DB da verificare (MONGO_URL o
-equivalente) — vedi app/database.py per la variabile esatta.
+Richiede le credenziali Google Drive/Sheets previste da ``app/config.py``.
 """
 import asyncio
 import os
@@ -72,6 +70,6 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except Exception as e:
-        print(f"ERRORE: impossibile connettersi al DB per la verifica: {e}", file=sys.stderr)
-        print("Serve un .env con le credenziali del DB da verificare (vedi app/database.py).", file=sys.stderr)
+        print(f"ERRORE: impossibile aprire i registri Sheets: {e}", file=sys.stderr)
+        print("Servono le credenziali Drive/Sheets previste da app/config.py.", file=sys.stderr)
         sys.exit(1)

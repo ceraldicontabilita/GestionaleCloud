@@ -9,7 +9,7 @@ storage_architecture: drive-only
 > [!IMPORTANT]
 > Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi legacy/collection restano contesto storico. MongoDB è rimosso e non va usato.
 
-Documentazione operativa degli endpoint dei moduli banca/riconciliazione (FastAPI + MongoDB).
+Documentazione operativa degli endpoint dei moduli banca/riconciliazione (FastAPI + Drive/Sheets).
 Collezione canonica movimenti banca: `estratto_conto_movimenti`. Schema canonico collegamento assegno↔fatture: `fatture_collegate=[{fattura_id, quota, data_collegamento}]` (max 4 fatture, stesso fornitore, tolleranza ±0,005€).
 
 ---
@@ -344,7 +344,7 @@ Terzo importer: upload multiplo di PDF con parser universale (`universal_bank_st
 ### POST /api/bank-statement-bulk/commit/{preview_id} — salvataggio anteprima
 **Cosa fa**: persiste le transazioni della preview nella collezione indicata e lancia la riconciliazione paghe.
 **Logica codice**: per ogni tx: dedup `find_one` su {data, descrizione[:100], importo}; insert con campi `entrata`/`uscita`/`importo`, `stato="da_riconciliare"`, `import_batch_id`; evento `MOVIMENTO_BANCA_IMPORTATO`; a fine ciclo elimina la preview e chiama `esegui_riconciliazione_paghe_completa`.
-**Note**: il parametro `collection` è testo libero dal client (può scrivere in QUALSIASI collezione Mongo); i record NON hanno `id` né `tipo` (l'evento pubblica `movimento_id=None`), schema incompatibile con l'importer canonico.
+**Note**: il parametro `collection` è testo libero dal client (può scrivere in QUALSIASI foglio); i record NON hanno `id` né `tipo` (l'evento pubblica `movimento_id=None`), schema incompatibile con l'importer canonico.
 
 ### DELETE /api/bank-statement-bulk/preview/{preview_id} — annulla anteprima
 **Cosa fa**: elimina la preview dalla cache senza salvare. **Logica codice**: `del PREVIEW_CACHE[...]`; sempre success.
@@ -431,7 +431,7 @@ Mini-CRUD autenticato sulla collezione legacy `bank_statements` più due stub. 5
 
 ## bonifici_module/ + bonifici_import_unificato.py (/api/archivio-bonifici)
 
-Gestione Archivio Bonifici PDF: il router del package (`__init__.py`) monta 18 rotte con `add_api_route` da `jobs.py`, `transfers.py`, `riconciliazione.py`; `associazioni.py` ha prefix interno `/archivio-bonifici` ed è registrato con `/api` (stessi percorsi finali); `bank/bonifici_import_unificato.py` è un wrapper per la UI ImportUnificato. Collezioni: `bonifici_transfers` (moderna, UUID), `bonifici_jobs`, `archivio_bonifici` (LEGACY, ObjectId), `estratto_conto_movimenti`, `bonifici_email_attachments`, `prima_nota_salari`, `invoices`, `employees`, `suppliers`. Le costanti `COL_JOBS`/`COL_TRANSFERS`/`COL_RICONCILIAZIONE_TASKS` in `common.py` sono dichiarate ma MAI usate.
+Gestione Archivio Bonifici PDF: il router del package (`__init__.py`) monta 18 rotte con `add_api_route` da `jobs.py`, `transfers.py`, `riconciliazione.py`; `associazioni.py` ha prefix interno `/archivio-bonifici` ed è registrato con `/api` (stessi percorsi finali); `bank/bonifici_import_unificato.py` è un wrapper per la UI ImportUnificato. Collezioni: `bonifici_transfers` (moderna, UUID), `bonifici_jobs`, `archivio_bonifici` (LEGACY, identificatore interno), `estratto_conto_movimenti`, `bonifici_email_attachments`, `prima_nota_salari`, `invoices`, `employees`, `suppliers`. Le costanti `COL_JOBS`/`COL_TRANSFERS`/`COL_RICONCILIAZIONE_TASKS` in `common.py` sono dichiarate ma MAI usate.
 
 ### POST /api/archivio-bonifici/jobs — crea job import
 **Cosa fa**: crea un job di import vuoto e ne restituisce l'id (UUID).
@@ -486,7 +486,7 @@ Gestione Archivio Bonifici PDF: il router del package (`__init__.py`) monta 18 r
 
 ### GET /api/archivio-bonifici/riconcilia/task/{task_id} — stato task background
 **Cosa fa**: progresso del task di riconciliazione. **Logica codice**: legge il dict in memoria, 404 se assente.
-**Note**: stato volatile (perso al restart, non multi-worker); la persistenza Mongo suggerita da `COL_RICONCILIAZIONE_TASKS` non è mai stata implementata.
+**Note**: stato volatile (perso al restart, non multi-worker); la persistenza suggerita da `COL_RICONCILIAZIONE_TASKS` non è mai stata implementata.
 
 ### GET /api/archivio-bonifici/stato-riconciliazione — statistiche riconciliazione
 **Cosa fa**: totali/percentuale riconciliati e importi. **Logica codice**: count + aggregate `$group` per `riconciliato`.
@@ -507,7 +507,7 @@ Gestione Archivio Bonifici PDF: il router del package (`__init__.py`) monta 18 r
 
 ### POST /api/archivio-bonifici/associa-fattura — associa fattura a bonifico (associazioni.py)
 **Cosa fa**: collega una fattura a un bonifico (query param `bonifico_id`, `fattura_id`, `collection`).
-**Logica codice**: 422 se fattura_id vuoto; 409 se `fattura_associata_id` già diverso; su `bonifici_transfers` setta `fattura_associata_id`, `fattura_collection`, `stato_riconciliazione="associato"`, `data_associazione`; fallback su `archivio_bonifici` via ObjectId; 404 se assente ovunque.
+**Logica codice**: 422 se fattura_id vuoto; 409 se `fattura_associata_id` già diverso; su `bonifici_transfers` setta `fattura_associata_id`, `fattura_collection`, `stato_riconciliazione="associato"`, `data_associazione`; fallback su `archivio_bonifici` via identificatore interno; 404 se assente ovunque.
 **Note**: usa campi (`fattura_associata_id`) DIVERSI da quelli di jobs/transfers (`fattura_associata`/`fattura_id`): due schemi di associazione paralleli e non interoperabili.
 
 ### DELETE /api/archivio-bonifici/disassocia-fattura/{bonifico_id} — rimuovi associazione fattura
@@ -516,7 +516,7 @@ Gestione Archivio Bonifici PDF: il router del package (`__init__.py`) monta 18 r
 
 ### POST /api/archivio-bonifici/associa-salario — associa salario a bonifico
 **Cosa fa**: collega un'operazione di prima nota salari a un bonifico.
-**Logica codice**: update SOLO su `archivio_bonifici` per ObjectId: setta `operazione_salario_id`, `stato_riconciliazione="associato_salario"`.
+**Logica codice**: update SOLO su `archivio_bonifici` per identificatore interno: setta `operazione_salario_id`, `stato_riconciliazione="associato_salario"`.
 **Note**: LEGACY-only: nessun fallback su `bonifici_transfers` → inutilizzabile sui bonifici della pipeline moderna (id UUID).
 
 ### DELETE /api/archivio-bonifici/disassocia-salario/{bonifico_id} — rimuovi associazione salario
@@ -539,7 +539,7 @@ Gestione Archivio Bonifici PDF: il router del package (`__init__.py`) monta 18 r
 
 ### GET /api/archivio-bonifici/dipendente/{dipendente_id} — bonifici di un dipendente
 **Cosa fa**: elenca i bonifici legati a un dipendente (per id o nome).
-**Logica codice**: risolve dipendente per ObjectId poi per `id`; query `archivio_bonifici` con `$or` su (operazione_salario_id+dipendente_id) o regex sul beneficiario; sort desc, max 100.
+**Logica codice**: risolve dipendente per identificatore interno poi per `id`; query `archivio_bonifici` con `$or` su (operazione_salario_id+dipendente_id) o regex sul beneficiario; sort desc, max 100.
 **Note**: se il dipendente non ha nome il `$or` contiene `{}` → matcha TUTTI i documenti; solo collezione legacy.
 
 ### POST /api/archivio-bonifici/jobs/import — crea job per ImportUnificato (bonifici_import_unificato.py)
@@ -553,7 +553,7 @@ Gestione Archivio Bonifici PDF: il router del package (`__init__.py`) monta 18 r
 3. Costanti collezioni in common.py mai usate; task riconciliazione in dict in memoria (volatile).
 4. Dedup debole per i PDF parsati dal testo (chiave ridotta a importo+causale).
 5. Bug `_auto_associate_bonifici`: la stessa fattura può essere associata a più bonifici (flag scritto ≠ flag verificato).
-6. Docstring mendaci (import unificato, fatture-compatibili, bulk delete); GET /pdf con side-effect di scrittura; riconciliazione O(n·m) in memoria fino a 10k×50k; PDF Base64 nei documenti Mongo (limite 16MB/doc).
+6. Docstring mendaci (import unificato, fatture-compatibili, bulk delete); GET /pdf con side-effect di scrittura; riconciliazione O(n·m) in memoria fino a 10k×50k; PDF Base64 nei record applicativi (limite 16MB/record).
 
 ---
 
@@ -778,7 +778,7 @@ Riconciliazione email ↔ documenti gestionale: indice master (`indice_documenti
 ### GET /api/riconciliazione/pdf/{hash_pdf} — download PDF archiviato
 **Cosa fa**: restituisce inline un PDF archiviato per hash.
 **Logica codice**: find_one su `pdf_archive` per `hash`; decodifica `content_base64`; 404 se assente.
-**Note**: PDF base64 in Mongo (non GridFS): limite 16MB/documento.
+**Note**: PDF base64 nel record applicativo: limite 16MB/documento.
 
 ### GET /api/riconciliazione/log-riconciliazioni — log scansioni
 **Cosa fa**: log delle riconciliazioni (default ultime 50), opz. solo con match.

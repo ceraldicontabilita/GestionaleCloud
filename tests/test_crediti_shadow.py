@@ -3,7 +3,7 @@
 import asyncio
 from datetime import date
 
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 import app.agents.crediti_shadow as agent_mod
 from app.agents.crediti_shadow import CreditiShadow
@@ -11,7 +11,7 @@ from app.services.crediti_shadow_service import leggi_snapshot_crediti
 
 
 def _db():
-    return AsyncMongoMockClient()["crediti_shadow_test"]
+    return MemorySheetsClient()["crediti_shadow_test"]
 
 
 async def _seed(db):

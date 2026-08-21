@@ -1,5 +1,5 @@
 import asyncio
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers.accounting.contabilita_gestionale import (
     _bilancio_verifica_da_registro,
@@ -8,7 +8,7 @@ from app.routers.accounting.contabilita_gestionale import (
 
 def test_non_confonde_compensazione_annuale_con_scritture_in_quadratura():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await db.movimenti_contabili.insert_many([
             {
                 "id": "s1",
@@ -42,7 +42,7 @@ def test_non_confonde_compensazione_annuale_con_scritture_in_quadratura():
 
 def test_segnala_righe_invalide_e_scritture_senza_righe():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await db.movimenti_contabili.insert_many([
             {
                 "id": "valida-con-riga-errata",
@@ -71,7 +71,7 @@ def test_segnala_righe_invalide_e_scritture_senza_righe():
 
 def test_espone_il_patrimonio_netto_nel_riepilogo():
     async def scenario():
-        db = AsyncMongoMockClient().db
+        db = MemorySheetsClient().db
         await db.movimenti_contabili.insert_one({
             "id": "apertura",
             "anno": 2026,

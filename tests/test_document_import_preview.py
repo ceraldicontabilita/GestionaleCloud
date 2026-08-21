@@ -3,7 +3,7 @@ import hashlib
 import fitz
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.database import Database
 from app.routers import documenti
@@ -19,7 +19,7 @@ def _pdf(text: str) -> bytes:
 
 
 def test_preview_non_scrive_e_token_autorizza_solo_file_confermato(monkeypatch):
-    db = AsyncMongoMockClient()["document-preview-test"]
+    db = MemorySheetsClient()["document-preview-test"]
     monkeypatch.setattr(Database, "get_db", staticmethod(lambda: db))
     app = FastAPI()
     app.include_router(documenti.router, prefix="/api/documenti")

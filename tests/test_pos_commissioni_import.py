@@ -2,7 +2,7 @@ import asyncio
 import io
 
 import openpyxl
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.services.pos_commissioni_import import (
     importa_pos_commissioni_file,
@@ -43,7 +43,7 @@ def test_parser_commissioni_quadra_lordo_netto():
 
 def test_import_sovrapposto_tiene_la_fotografia_piu_completa():
     async def scenario():
-        db = AsyncMongoMockClient()["pos_commissioni"]
+        db = MemorySheetsClient()["pos_commissioni"]
         small = _xlsx([["30/03/2026", 16, 252.10, 251.37, -0.73, -0.0029]])
         complete = _xlsx([["30/03/2026", 156, 1775.10, 1763.26, -11.84, -0.00667]])
         await importa_pos_commissioni_file(db, small, "Commissioni_Marzo_2026.xlsx")

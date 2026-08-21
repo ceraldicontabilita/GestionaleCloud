@@ -575,7 +575,7 @@ deve usare lo stesso viewer canonico.
 Rendere `/api/documenti/documento/{doc_id}/download` coerente con l’architettura
 Drive-first: prima risolvere il documento canonico Drive, poi usare un fallback
 legacy esplicito quando i byte esistono soltanto nello storico. Non chiedere una
-nuova migrazione MongoDB come unica soluzione per un file già presente su Drive.
+nuova migrazione Drive/Sheets come unica soluzione per un file già presente su Drive.
 
 Il pulsante `Apri su Drive` può esistere come azione secondaria, ma l’azione
 principale deve essere `Visualizza nel Gestionale`.

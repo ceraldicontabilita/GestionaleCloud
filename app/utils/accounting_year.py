@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Optional
 
 
-def filtro_anno_mongo(
+def filtro_anno_registro(
     anno: Optional[int],
     campi_data: Iterable[str],
     *,

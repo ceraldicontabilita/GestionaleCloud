@@ -78,7 +78,7 @@ app/
 
 I router non devono conoscere il supporto fisico. Accedono all'interfaccia del
 database e ai servizi di dominio; nuovi flussi persistenti devono funzionare
-con `DATA_BACKEND=sheets`.
+con `SHEETS_REGISTRY_NAME=GestionaleCloud`.
 
 ## Frontend
 

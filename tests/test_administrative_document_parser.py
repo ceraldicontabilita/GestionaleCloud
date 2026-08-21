@@ -5,7 +5,7 @@ import zipfile
 import fitz
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from mongomock_motor import AsyncMongoMockClient
+from app.services.sheets_document_store import MemorySheetsClient
 
 from app.routers import documenti
 from tests.document_preview_helpers import confirmed_preview_headers
@@ -67,7 +67,7 @@ def test_parser_tari_preserva_contribuente_anno_e_fase():
 
 
 def test_upload_dimissioni_archivia_e_propone_dipendente_senza_modificarlo(monkeypatch):
-    db = AsyncMongoMockClient()["upload-dimissioni"]
+    db = MemorySheetsClient()["upload-dimissioni"]
     asyncio.run(db["dipendenti"].insert_one({
         "id": "dip-1", "codice_fiscale": "RSSMRA80A01F839X",
         "nome": "Mario", "cognome": "Rossi", "stato": "attivo",
@@ -101,7 +101,7 @@ def test_upload_dimissioni_archivia_e_propone_dipendente_senza_modificarlo(monke
 
 
 def test_upload_zip_preserva_percorso_e_gruppo_per_associare_allegati(monkeypatch):
-    db = AsyncMongoMockClient()["upload-zip-provenienza"]
+    db = MemorySheetsClient()["upload-zip-provenienza"]
     monkeypatch.setattr(documenti.Database, "get_db", staticmethod(lambda: db))
     app = FastAPI()
     app.include_router(documenti.router, prefix="/api/documenti")

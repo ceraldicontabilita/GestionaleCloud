@@ -28,7 +28,7 @@ async def associa_fattura_a_bonifico(
     fattura_id: str = Query(...),
     collection: str = Query("invoices")
 ) -> Dict[str, Any]:
-    """Associa una fattura a un bonifico. Supporta sia bonifici_transfers (UUID) sia archivio_bonifici (ObjectId)."""
+    """Associa una fattura a un bonifico nei registri attivi e storici."""
     db = Database.get_db()
 
     # Validazione: fattura_id non può essere vuoto
@@ -74,11 +74,10 @@ async def associa_fattura_a_bonifico(
         await collega_bonifico_fatture(db, bonifico, [fattura], auto=False)
         return {"success": True, "message": "Fattura associata al bonifico (transfers)"}
 
-    # 2) Fallback su archivio_bonifici (collection legacy, MongoDB ObjectId)
-    from bson import ObjectId
+    # 2) Registro storico: gli identificativi sono normalizzati a stringa.
     try:
         result2 = await db["archivio_bonifici"].update_one(
-            {"_id": ObjectId(bonifico_id)},
+            {"_id": bonifico_id},
             {"$set": {
                 "fattura_associata_id": fattura_id,
                 "fattura_collection": collection,
@@ -146,10 +145,9 @@ async def disassocia_fattura(bonifico_id: str) -> Dict[str, Any]:
         return {"success": True, "message": "Associazione fattura rimossa (transfers)"}
 
     # 2) Fallback archivio_bonifici
-    from bson import ObjectId
     try:
         result2 = await db["archivio_bonifici"].update_one(
-            {"_id": ObjectId(bonifico_id)},
+            {"_id": bonifico_id},
             {"$unset": rimozione, "$set": {"stato_riconciliazione": "non_riconciliato"}}
         )
         if result2.modified_count > 0:
@@ -161,19 +159,11 @@ async def disassocia_fattura(bonifico_id: str) -> Dict[str, Any]:
 
 
 async def _trova_bonifico(db, bonifico_id: str) -> Optional[Dict[str, Any]]:
-    """Cerca un bonifico in entrambe le collection: bonifici_transfers (attiva,
-    id stringa UUID) e archivio_bonifici (legacy, _id ObjectId). I bonifici
-    caricati dal flusso attivo (frontend ArchivioBonifici.jsx) hanno sempre id
-    UUID: un lookup che provasse solo ObjectId(bonifico_id) fallirebbe sempre
-    per loro con InvalidId."""
+    """Cerca un bonifico nei registri attivo e storico tramite ID stringa."""
     bonifico = await db["bonifici_transfers"].find_one({"id": bonifico_id})
     if bonifico:
         return bonifico
-    from bson import ObjectId
-    try:
-        return await db["archivio_bonifici"].find_one({"_id": ObjectId(bonifico_id)})
-    except Exception:
-        return None
+    return await db["archivio_bonifici"].find_one({"_id": bonifico_id})
 
 
 def _nome_salario(operazione: Dict[str, Any]) -> str:
@@ -208,7 +198,7 @@ async def associa_salario_a_bonifico(
     bonifico_id: str = Query(...),
     operazione_id: str = Query(...)
 ) -> Dict[str, Any]:
-    """Associa un'operazione salario a un bonifico. Supporta sia bonifici_transfers (UUID) sia archivio_bonifici (ObjectId)."""
+    """Associa un'operazione salario a un bonifico attivo o storico."""
     db = Database.get_db()
 
     bonifico = await _trova_bonifico(db, bonifico_id)
@@ -253,10 +243,9 @@ async def associa_salario_a_bonifico(
     if result.modified_count > 0:
         return {"success": True, "message": "Salario associato al bonifico (transfers)"}
 
-    from bson import ObjectId
     try:
         result2 = await db["archivio_bonifici"].update_one(
-            {"_id": ObjectId(bonifico_id)},
+            {"_id": bonifico_id},
             {"$set": aggiornamento}
         )
         if result2.modified_count > 0:
@@ -285,10 +274,9 @@ async def disassocia_salario(bonifico_id: str) -> Dict[str, Any]:
     if result.modified_count > 0:
         return {"success": True, "message": "Associazione salario rimossa (transfers)"}
 
-    from bson import ObjectId
     try:
         result2 = await db["archivio_bonifici"].update_one(
-            {"_id": ObjectId(bonifico_id)},
+            {"_id": bonifico_id},
             {"$unset": rimozione, "$set": {"salario_associato": False, "stato_riconciliazione": "non_riconciliato"}}
         )
         if result2.modified_count > 0:
@@ -512,28 +500,25 @@ async def sync_iban_anagrafica() -> Dict[str, Any]:
 async def get_bonifici_dipendente(dipendente_id: str) -> List[Dict[str, Any]]:
     """Recupera i bonifici associati a un dipendente."""
     db = Database.get_db()
-    from bson import ObjectId
-    
     # Cerca per ID dipendente o per nome
-    try:
-        employee = await db[Collections.EMPLOYEES].find_one({"_id": ObjectId(dipendente_id)})
-    except Exception:
-        employee = await db[Collections.EMPLOYEES].find_one({"id": dipendente_id})
-    
+    employee = await db[Collections.EMPLOYEES].find_one({"$or": [
+        {"_id": dipendente_id}, {"id": dipendente_id},
+    ]})
+
     if not employee:
         return []
-    
+
     nome = employee.get("nome_completo", employee.get("cognome", ""))
-    
+
     bonifici = await db["archivio_bonifici"].find({
         "$or": [
             {"operazione_salario_id": {"$exists": True}, "dipendente_id": dipendente_id},
             {"beneficiario": {"$regex": re.escape(nome), "$options": "i"}} if nome else {},
         ]
     }).sort("data", -1).to_list(100)
-    
-    # Serializza ObjectId
+
+    # Gli ID del registro sono sempre stringhe serializzabili.
     for b in bonifici:
         b["_id"] = str(b["_id"])
-    
+
     return bonifici

@@ -7,7 +7,7 @@ storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+> Documento di riferimento del dominio. Per persistenza vale l'architettura Drive/Sheets descritta nei documenti correnti; eventuali nomi di collection restano soltanto contesto storico.
 
 Moduli: dipendenti, paghe (distinte BPM + parser F24 + Libro Unico), TFR, INPS documenti,
 verbali noleggio (2 router), verbali riconciliazione, noleggio, veicoli, alert verbali, ADR.
@@ -421,7 +421,7 @@ Collection: `dipendenti`, `tfr_accantonamenti`, `tfr_liquidazioni`, `acconti_dip
 ## inps_documenti.py (prefisso /api/inps — 9 endpoint)
 
 Scarico documenti INPS da IMAP (Gmail/PEC via env EMAIL_ADDRESS/EMAIL_APP_PASSWORD): delibere FONSI,
-dilazioni, certificati medici. PDF salvati base64 in Mongo. Nessun riferimento nel frontend del
+dilazioni, certificati medici. PDF salvati base64 nel registro. Nessun riferimento nel frontend del
 gestionale: endpoint da strumenti/scheduler o legacy.
 
 ### GET /api/inps/cartelle-delibere — cartelle email rilevanti
@@ -642,13 +642,13 @@ email/PagoPA e prima nota. Vivi dal frontend (VerbaliRiconciliazione.jsx): /dash
 
 ### POST /api/verbali-riconciliazione/scan-fatture-verbali — scan massivo fatture
 **Cosa fa**: cerca numeri verbale (`[AB]\d{8,12}` + pattern testuali) in tutti i campi delle fatture noleggiatori e crea/aggiorna le associazioni.
-**Logica codice**: fino a 5000 `invoices` (regex su supplier/descrizione/body/note/oggetto + items); per match crea o aggiorna verbale con fattura_id (=str(_id) Mongo), stato fattura_ricevuta o riconciliato.
-**Note**: VIVO (jsx:95). Qui `fattura_id` è l'ObjectId stringato, altrove è l'uuid `id` — identificatori fattura misti nel dataset.
+**Logica codice**: fino a 5000 `invoices` (regex su supplier/descrizione/body/note/oggetto + items); per match crea o aggiorna verbale con fattura_id (=str(_id) del registro), stato fattura_ricevuta o riconciliato.
+**Note**: VIVO (jsx:95). Qui `fattura_id` è l'identificatore interno stringato, altrove è l'uuid `id` — identificatori fattura misti nel dataset.
 
 ### POST /api/verbali-riconciliazione/riconcilia/{numero_verbale} — riconciliazione singola
 **Cosa fa**: cerca fattura (regex sul numero verbale nei campi fattura), targa (da verbali_noleggio_completi), veicolo e driver; aggiorna stato.
 **Logica codice**: join su `invoices`, `verbali_noleggio_completi`, `veicoli_noleggio`, `dipendenti`.
-**Note**: VIVO (jsx:128). BUG POTENZIALE: il lookup driver fa `dipendenti.find_one({"_id": ObjectId(driver_id)})` ma `driver_id` è quasi sempre un uuid stringa → `InvalidId` non gestita → 500 quando il veicolo ha driver_id uuid.
+**Note**: VIVO (jsx:128). BUG POTENZIALE: il lookup driver fa `dipendenti.find_one({"_id": identificatore interno(driver_id)})` ma `driver_id` è quasi sempre un uuid stringa → `InvalidId` non gestita → 500 quando il veicolo ha driver_id uuid.
 
 ### POST /api/verbali-riconciliazione/collega-driver-massivo — driver matching multi-strategia
 **Cosa fa**: per i verbali con targa ma senza driver prova 5 strategie: veicolo → storico assegnazioni (alla data violazione) → contratti noleggio → dipendente con targa assegnata → cognome nella descrizione.
@@ -782,7 +782,7 @@ sotto) non è stato toccato in questo intervento.
 **Logica codice**: valida P.IVA contro FORNITORI_NOLEGGIO; upsert veicolo con fornitore.
 
 ### POST /api/noleggio/migra-dati — migrazione storica costi
-**Cosa fa**: scansiona tutti gli anni 2018-2026 e persiste veicoli/costi in Mongo (additivo, non distruttivo).
+**Cosa fa**: scansiona tutti gli anni 2018-2026 e persiste veicoli/costi in Drive/Sheets (additivo, non distruttivo).
 **Logica codice**: `data_persistence.migra_dati_esistenti(db)`.
 
 ### POST /api/noleggio/persisti-anno/{anno} — persisti un anno
@@ -894,7 +894,7 @@ Nessun riferimento nel frontend: modulo di servizio/backoffice.
    docstring dice /app/uploads), ricevute verbali (`/tmp/uploads/`, commento dice /app/uploads):
    su Render i file spariscono a ogni deploy.
 5. **Rischi dati**: `scarica-tutti` sovrascrive i campi di associazione dei verbali già arricchiti;
-   riconcilia/{n} può andare in 500 con driver_id uuid (ObjectId non gestito); fallback "comune" del
+   riconcilia/{n} può andare in 500 con driver_id uuid (identificatore interno non gestito); fallback "comune" del
    CSV PayPal riconcilia fino a 10 verbali per riga senza check importo; POST /tfr/accantonamento non
    blocca doppioni per anno; riconciliazione manuale distinte BPM prende la prima busta senza filtro periodo.
 6. **Endpoint vivi confermati dal frontend**: GET /api/dipendenti (InserimentoRapido, VerbaliRiconciliazione);
