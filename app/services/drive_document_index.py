@@ -404,6 +404,96 @@ def search_catalog(service=None, **filters: Any) -> dict[str, Any]:
     return {"total_indexed": len(records), "returned": len(results), "results": results}
 
 
+_ADMINISTRATIVE_AREA_TERMS = {
+    "verbali": ("verbali auto", "notifiche polizia locale", "notifica polizia locale"),
+    "tributi_locali": ("tributi locali", "tari", "tares", "tarsu"),
+    "riscossione": ("cartelle esattoriali", "agenzia riscossione", "ader"),
+    "personale": ("dimission", "unilav"),
+}
+
+
+def _administrative_area(record: dict[str, Any]) -> str | None:
+    searchable = _norm(" ".join(str(record.get(field) or "") for field in (
+        "Dominio", "Categoria", "Nome file", "Percorso Drive",
+        "ZIP origine", "Percorso nel pacchetto",
+    )))
+    for area, terms in _ADMINISTRATIVE_AREA_TERMS.items():
+        if any(term in searchable for term in terms):
+            return area
+    return None
+
+
+def list_administrative_documents(
+    service=None, *, area: str | None = None, year: str | None = None,
+    q: str | None = None, review_only: bool = False, limit: int = 500,
+) -> dict[str, Any]:
+    """Atti amministrativi dall'indice Drive, senza copiare i PDF nel DB."""
+    _, records = load_catalog(service)
+    overview_counts = {key: 0 for key in _ADMINISTRATIVE_AREA_TERMS}
+    overview_review = 0
+    matches: list[dict[str, Any]] = []
+    query = _norm(q)
+
+    for record in records:
+        if _norm(record.get("Estensione")).lstrip(".") != "pdf":
+            continue
+        record_area = _administrative_area(record)
+        if not record_area:
+            continue
+        status = _norm(record.get("Stato"))
+        requires_review = status in {"da verificare", "da_verificare", "errore"}
+        overview_counts[record_area] += 1
+        overview_review += int(requires_review)
+
+        if area and record_area != area:
+            continue
+        if year and _norm(record.get("Anno")) != _norm(year):
+            continue
+        if review_only and not requires_review:
+            continue
+        if query and query not in _norm(" ".join(str(value or "") for value in record.values())):
+            continue
+
+        public = _public_record(record)
+        matches.append({
+            "id": public["document_id"],
+            "filename": public["filename"],
+            "category": public["category"],
+            "category_label": public["category"] or public["domain"],
+            "administrative_area": record_area,
+            "document_date_display": public["year"],
+            "status": public["status"] or "indicizzato_drive",
+            "sha256": public["sha256"],
+            "source_kind": "drive_index",
+            "source_label": "Google Drive",
+            "source_context": {
+                "archive_path": public["drive_path"],
+                "source_zip": public["source_zip"],
+                "source_path": public["source_path"],
+            },
+            "parsed_metadata": {
+                "requires_review": requires_review,
+                "numero_documento": public["document_number"],
+            },
+        })
+
+    matches.sort(key=lambda item: (
+        str(item.get("document_date_display") or ""), str(item.get("filename") or "").casefold(),
+    ), reverse=True)
+    return {
+        "items": matches[:limit],
+        "total": len(matches),
+        "counts": dict(Counter(item["administrative_area"] for item in matches)),
+        "requires_review": sum(bool(item["parsed_metadata"]["requires_review"]) for item in matches),
+        "overview": {
+            "counts": overview_counts,
+            "total": sum(overview_counts.values()),
+            "requires_review": overview_review,
+        },
+        "source": "drive_excel_index",
+    }
+
+
 def list_f24_documents(
     service=None, *, q: str | None = None, year: str | None = None,
     tax_code: str | None = None, limit: int = 200,

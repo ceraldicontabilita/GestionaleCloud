@@ -69,6 +69,12 @@ export default function AttiAmministrativi() {
 
   const openDocument = async item => {
     try {
+      if (item.source_kind === 'drive_index') {
+        const detail = await api.get(`/api/documenti/drive/index/document/${encodeURIComponent(item.id)}`);
+        if (!detail.data?.drive_url) throw new Error('Collegamento Drive non disponibile');
+        window.open(detail.data.drive_url, '_blank', 'noopener,noreferrer');
+        return;
+      }
       const response = await api.get(`/api/documenti/documento/${encodeURIComponent(item.id)}/download`, {
         responseType: 'blob',
       });
@@ -148,7 +154,7 @@ export default function AttiAmministrativi() {
                 {metadata.requires_review && <Badge variant="warning" style={{ marginLeft: 6 }}>Da verificare</Badge>}
                 <div style={{ color: '#475569', marginTop: 5 }}>{item.filename}</div>
               </div>
-              <Button size="sm" variant="secondary" onClick={() => openDocument(item)}>Apri PDF</Button>
+              <Button size="sm" variant="secondary" onClick={() => openDocument(item)}>{item.source_kind === 'drive_index' ? 'Apri su Drive' : 'Apri PDF'}</Button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 8, marginTop: 10 }}>
               <span><small>Area</small><br /><strong>{AREA_LABELS[item.administrative_area] || item.administrative_area}</strong></span>

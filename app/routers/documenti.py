@@ -547,6 +547,28 @@ async def lista_atti_amministrativi(
     if area and area not in _ADMINISTRATIVE_CATEGORIES:
         raise HTTPException(status_code=400, detail="Area amministrativa non valida")
 
+    # Drive e il relativo indice verificato sono l'archivio operativo. I PDF
+    # restano su Drive; documents_inbox viene usato solo come compatibilita'
+    # quando l'indice non e' configurato o temporaneamente disponibile.
+    try:
+        from app.services.drive_document_index import list_administrative_documents
+        drive_payload = await asyncio.to_thread(
+            list_administrative_documents,
+            area=area,
+            year=str(anno) if anno else None,
+            q=search,
+            review_only=review_only,
+            limit=limit,
+        )
+        if drive_payload["overview"]["total"] > 0:
+            return {
+                **drive_payload,
+                "payment_evidence_count": 0,
+                "areas": {key: sorted(value) for key, value in _ADMINISTRATIVE_CATEGORIES.items()},
+            }
+    except (RuntimeError, ValueError) as exc:
+        logger.warning("Indice Drive atti amministrativi non disponibile: %s", exc)
+
     categories = (
         _ADMINISTRATIVE_CATEGORIES[area]
         if area
