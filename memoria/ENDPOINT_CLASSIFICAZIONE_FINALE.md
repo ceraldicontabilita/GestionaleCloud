@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1143 · tenere: 741 · verificare: 375 · admin-only (migrazione/manutenzione): 27
+**Totale endpoint:** 1145 · tenere: 743 · verificare: 375 · admin-only (migrazione/manutenzione): 27
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -453,6 +453,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/documenti/upload-auto/jobs/{job_id}` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/documenti/upload-auto/preview` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/documenti/upload-auto/queue` | documenti | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/documenti/upload-auto/render` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/documenti/upload-auto/render/preview` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/email-download/associa-documento` | email_download | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-download/associa-f24-filesystem` | email_download | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/email-download/auto-associa` | email_download | sì | — | — | — | — | tenere | in uso: FE |

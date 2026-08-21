@@ -575,6 +575,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `ENABLE_EMAIL_F24_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_EMAIL_VERBALI_SYNC` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
 | `ENABLE_GMAIL_IMAP` | feature-job | configurazione | `bool` / `True` | `app/config.py` |
+| `ENABLE_RENDER_CANONICAL_INGEST` | feature-job | configurazione | non dichiarato in Settings | `render_workflows/document_ingest.py` |
 | `ENABLE_SCHEDULER` | feature-job | configurazione | `bool` / `True` | `app/config.py`, `render.yaml` |
 | `ENABLE_SMTP_EMAIL` | feature-job | configurazione | `bool` / `False` | `app/config.py` |
 | `ENVIRONMENT` | app-runtime | configurazione | `str` / `'production'` | `app/config.py`, `app/utils/session_cookie.py`, `scripts/e2e_distruttivo_server.py` |
@@ -662,6 +663,7 @@ si rigenerano dal codice e non si correggono a mano.
 | `RELOAD` | app-runtime | configurazione | `bool` / `False` | `app/config.py` |
 | `RENDER` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py`, `app/utils/session_cookie.py` |
 | `RENDER_GIT_COMMIT` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py` |
+| `RENDER_INGEST_SHARED_SECRET` | app-runtime | segreta | `Optional[str]` / valore non riportato | `app/config.py`, `render_workflows/document_ingest.py` |
 | `RENDER_SERVICE_ID` | app-runtime | configurazione | non dichiarato in Settings | `app/main.py`, `app/utils/session_cookie.py` |
 | `REQUEST_TIMEOUT_SECONDS` | app-runtime | configurazione | `int` / `300` | `app/config.py` |
 | `RT_DRIVE_INBOX` | app-runtime | configurazione | non dichiarato in Settings | `scripts/sync_rt_to_drive.py` |
@@ -731,7 +733,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1143**; attivi da ricreare: **741**; quarantena: **402** (`verificare` 375, `admin-only` 27).
+Route table sorgente: **1145**; attivi da ricreare: **743**; quarantena: **402** (`verificare` 375, `admin-only` 27).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -1192,7 +1194,7 @@ Route table sorgente: **1143**; attivi da ricreare: **741**; quarantena: **402**
 - **quarantena: verificare** — `POST /api/document-ai/process-classified-email` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `POST /api/document-ai/reprocess-and-save` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
-### Router `documenti` (49)
+### Router `documenti` (51)
 
 - **attivo** — `GET /api/documenti/amministrativi` — in uso: FE
 - **attivo** — `GET /api/documenti/amministrativi/familiari` — in uso: FE
@@ -1243,6 +1245,8 @@ Route table sorgente: **1143**; attivi da ricreare: **741**; quarantena: **402**
 - **attivo** — `GET /api/documenti/upload-auto/jobs/{job_id}` — in uso: FE
 - **attivo** — `POST /api/documenti/upload-auto/preview` — in uso: FE
 - **attivo** — `POST /api/documenti/upload-auto/queue` — in uso: FE
+- **attivo** — `POST /api/documenti/upload-auto/render` — in uso: FE
+- **attivo** — `POST /api/documenti/upload-auto/render/preview` — in uso: FE
 
 ### Router `documenti_fiscali` (2)
 

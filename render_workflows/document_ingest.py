@@ -12,6 +12,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import Any, Iterable
+from urllib.parse import quote
 
 
 SUPPORTED_EXTENSIONS = {
@@ -200,19 +201,8 @@ def _drive_service():
     return build("drive", "v3", credentials=credentials, cache_discovery=False)
 
 
-def scan_document_inbox_preview(max_documents: int = 20_000) -> dict[str, Any]:
-    """Confronta prima con l'indice; classifica soltanto i documenti nuovi."""
-    service = _drive_service()
-    inbox_id = os.environ["GOOGLE_DRIVE_INBOX_FOLDER_ID"]
-    index_file_id = os.environ.get("GOOGLE_DRIVE_DOCUMENT_INDEX_FILE_ID", "").strip()
-    if not index_file_id:
-        raise RuntimeError("GOOGLE_DRIVE_DOCUMENT_INDEX_FILE_ID non configurato")
-    index_content = service.files().get_media(fileId=index_file_id).execute()
-    existing_hashes = index_hashes_from_xlsx(index_content)
-    if not existing_hashes:
-        raise RuntimeError("indice canonico privo di SHA-256: confronto non affidabile")
-
-    sources = []
+def _list_inbox_sources(service, inbox_id: str) -> list[dict[str, Any]]:
+    sources: list[dict[str, Any]] = []
     page_token = None
     while True:
         response = service.files().list(
@@ -224,7 +214,43 @@ def scan_document_inbox_preview(max_documents: int = 20_000) -> dict[str, Any]:
         sources.extend(response.get("files", []))
         page_token = response.get("nextPageToken")
         if not page_token:
-            break
+            return sources
+
+
+def _canonical_index_hashes(service) -> set[str]:
+    index_file_id = os.environ.get("GOOGLE_DRIVE_DOCUMENT_INDEX_FILE_ID", "").strip()
+    if not index_file_id:
+        raise RuntimeError("GOOGLE_DRIVE_DOCUMENT_INDEX_FILE_ID non configurato")
+    index_content = service.files().get_media(fileId=index_file_id).execute()
+    existing_hashes = index_hashes_from_xlsx(index_content)
+    if not existing_hashes:
+        raise RuntimeError("indice canonico privo di SHA-256: confronto non affidabile")
+    return existing_hashes
+
+
+def _ingest_configuration(confirm: bool) -> tuple[str, str]:
+    if confirm is not True:
+        raise RuntimeError("ingest bloccato: avviare il task con confirm=true")
+    enabled = os.environ.get("ENABLE_RENDER_CANONICAL_INGEST", "").strip().casefold()
+    if enabled not in {"1", "true", "yes", "on"}:
+        raise RuntimeError("ingest bloccato: ENABLE_RENDER_CANONICAL_INGEST non attivo")
+    base_url = os.environ.get(
+        "GESTIONALE_CANONICAL_BASE_URL", "https://impresasemplice.online"
+    ).strip().rstrip("/")
+    secret = os.environ.get("RENDER_INGEST_SHARED_SECRET", "").strip()
+    if not base_url.startswith("https://"):
+        raise RuntimeError("GESTIONALE_CANONICAL_BASE_URL deve usare HTTPS")
+    if len(secret) < 32:
+        raise RuntimeError("RENDER_INGEST_SHARED_SECRET assente o troppo corto")
+    return base_url, secret
+
+
+def scan_document_inbox_preview(max_documents: int = 20_000) -> dict[str, Any]:
+    """Confronta prima con l'indice; classifica soltanto i documenti nuovi."""
+    service = _drive_service()
+    inbox_id = os.environ["GOOGLE_DRIVE_INBOX_FOLDER_ID"]
+    existing_hashes = _canonical_index_hashes(service)
+    sources = _list_inbox_sources(service, inbox_id)
     seen = set(existing_hashes)
     classifications: Counter[str] = Counter()
     statuses: Counter[str] = Counter()
@@ -268,4 +294,104 @@ def scan_document_inbox_preview(max_documents: int = 20_000) -> dict[str, Any]:
         "source_errors": error_count,
         "writes": 0, "moves": 0, "deletes": 0,
         "next_action": "anteprima e conferma prima dell'ingest canonico",
+    }
+
+
+def ingest_document_inbox(
+    *, confirm: bool = False, max_documents: int = 100,
+) -> dict[str, Any]:
+    """Trasmette al Gestionale solo hash nuovi e famiglie con parser pronto.
+
+    Non sposta e non cancella gli originali. Ogni file passa prima dalla
+    preview applicativa e usa il relativo token breve per l'import definitivo.
+    """
+    import mimetypes
+    import httpx
+
+    base_url, secret = _ingest_configuration(confirm)
+    if not 1 <= int(max_documents) <= 1000:
+        raise ValueError("max_documents deve essere compreso fra 1 e 1000")
+
+    service = _drive_service()
+    inbox_id = os.environ["GOOGLE_DRIVE_INBOX_FOLDER_ID"]
+    seen = set(_canonical_index_hashes(service))
+    sources = _list_inbox_sources(service, inbox_id)
+    stats: Counter[str] = Counter()
+    processed = 0
+    headers = {"X-Render-Ingest-Token": secret}
+
+    with httpx.Client(timeout=300.0, follow_redirects=False) as client:
+        for source in sources:
+            suffix = PurePosixPath(source.get("name") or "").suffix.lower()
+            if suffix not in SUPPORTED_EXTENSIONS | {".zip"}:
+                continue
+            try:
+                payload = service.files().get_media(fileId=source["id"]).execute()
+                source_sha256 = hashlib.sha256(payload).hexdigest()
+                for member, content in iter_supported_documents(source["name"], payload):
+                    if processed >= max_documents:
+                        stats["LIMIT_REACHED"] += 1
+                        break
+                    digest = hashlib.sha256(content).hexdigest()
+                    if digest in seen:
+                        stats["DUPLICATO_INDICE_O_BATCH"] += 1
+                        continue
+                    seen.add(digest)
+                    classification = classify_document(member, content)
+                    if (
+                        classification["status"] != "CLASSIFICATO"
+                        or classification["readiness"] != "CANONICAL_IMPORT_READY"
+                    ):
+                        stats["DA_VERIFICARE"] += 1
+                        continue
+
+                    processed += 1
+                    safe_name = PurePosixPath(member).name or "documento"
+                    media_type = mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
+                    files = {"file": (safe_name, content, media_type)}
+                    preview = client.post(
+                        f"{base_url}/api/documenti/upload-auto/render/preview",
+                        headers=headers, files=files,
+                    )
+                    preview.raise_for_status()
+                    preview_data = preview.json()
+                    if preview_data.get("duplicate"):
+                        stats["DUPLICATO_GESTIONALE"] += 1
+                        continue
+                    token = preview_data.get("confirmation_token")
+                    if not preview_data.get("success") or not token:
+                        stats["ANTEPRIMA_BLOCCATA"] += 1
+                        continue
+
+                    upload_headers = {
+                        **headers,
+                        "X-Document-Preview-Token": token,
+                        "X-Source-Drive-File-ID": source["id"],
+                        "X-Source-Drive-Parent-ID": inbox_id,
+                        "X-Source-SHA256": source_sha256,
+                        "X-Source-Archive-Member": quote(member, safe=""),
+                    }
+                    uploaded = client.post(
+                        f"{base_url}/api/documenti/upload-auto/render",
+                        headers=upload_headers, files=files,
+                    )
+                    uploaded.raise_for_status()
+                    upload_data = uploaded.json()
+                    if upload_data.get("duplicate"):
+                        stats["DUPLICATO_GESTIONALE"] += 1
+                    elif upload_data.get("success"):
+                        stats["IMPORTATO"] += 1
+                    else:
+                        stats["IMPORT_NON_RIUSCITO"] += 1
+            except Exception:
+                stats["ERRORE_SORGENTE"] += 1
+
+    return {
+        "mode": "canonical_document_ingest",
+        "confirmed": True,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "documents_sent_to_preview": processed,
+        "results": dict(stats),
+        "moves": 0,
+        "deletes": 0,
     }

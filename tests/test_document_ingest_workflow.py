@@ -5,6 +5,7 @@ import zipfile
 from openpyxl import Workbook
 
 from render_workflows.document_ingest import (
+    _ingest_configuration,
     classify_document,
     index_hashes_from_xlsx,
     iter_supported_documents,
@@ -75,3 +76,26 @@ def test_generic_fiscal_and_payment_documents_stay_in_review():
         route = route_for(document_type)
         assert route["readiness"] == "REVIEW_REQUIRED"
         assert route["consumer"].startswith("documents_inbox")
+
+
+def test_real_ingest_requires_both_explicit_confirmation_and_feature_flag(monkeypatch):
+    monkeypatch.setenv("RENDER_INGEST_SHARED_SECRET", "s" * 40)
+    monkeypatch.setenv("GESTIONALE_CANONICAL_BASE_URL", "https://example.invalid")
+    monkeypatch.delenv("ENABLE_RENDER_CANONICAL_INGEST", raising=False)
+    try:
+        _ingest_configuration(False)
+    except RuntimeError as exc:
+        assert "confirm=true" in str(exc)
+    else:
+        raise AssertionError("ingest senza conferma non bloccato")
+    try:
+        _ingest_configuration(True)
+    except RuntimeError as exc:
+        assert "ENABLE_RENDER_CANONICAL_INGEST" in str(exc)
+    else:
+        raise AssertionError("ingest senza feature flag non bloccato")
+
+    monkeypatch.setenv("ENABLE_RENDER_CANONICAL_INGEST", "true")
+    assert _ingest_configuration(True) == (
+        "https://example.invalid", "s" * 40,
+    )

@@ -10,9 +10,9 @@ from urllib.request import Request, urlopen
 from render_sdk import Retry, Workflows
 
 try:
-    from .document_ingest import scan_document_inbox_preview
+    from .document_ingest import ingest_document_inbox, scan_document_inbox_preview
 except ImportError:  # Render avvia main.py dalla root directory del Workflow.
-    from document_ingest import scan_document_inbox_preview
+    from document_ingest import ingest_document_inbox, scan_document_inbox_preview
 
 
 PRODUCTION_HEALTH_URL = "https://impresasemplice.online/api/health"
@@ -67,6 +67,21 @@ def production_health_check() -> dict[str, Any]:
 def calderone_documenti_preview() -> dict[str, Any]:
     """Confronto universale sola lettura contro l'indice documentale canonico."""
     return scan_document_inbox_preview()
+
+
+@app.task(
+    name="calderone_documenti_ingest",
+    plan="starter",
+    retry=Retry(max_retries=0, wait_duration_ms=0),
+    timeout_seconds=7200,
+)
+def calderone_documenti_ingest(
+    confirm: bool = False, max_documents: int = 100,
+) -> dict[str, Any]:
+    """Invia solo file nuovi e riconosciuti dopo doppia conferma esplicita."""
+    return ingest_document_inbox(
+        confirm=confirm, max_documents=max_documents,
+    )
 
 
 if __name__ == "__main__":

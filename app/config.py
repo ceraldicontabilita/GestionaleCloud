@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     # AuthenticationMiddleware): finché lavori non scade mai; se lasci
     # l'app ferma un'ora, al collegamento successivo richiede il PIN.
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    # Canale macchina-a-macchina limitato ai due endpoint Render documentali.
+    # Non sostituisce il JWT utente e non deve essere riusato da altri servizi.
+    RENDER_INGEST_SHARED_SECRET: Optional[str] = None
 
     # CORS
     # Origin consentiti in produzione: impostare col dominio reale del
