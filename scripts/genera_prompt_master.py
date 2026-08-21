@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TODAY = "2026-08-20"
+TODAY = "2026-08-21"
 
 
 PAGE_PURPOSES = {
@@ -115,7 +115,7 @@ CORE = r"""# PROMPT MASTER — GestionaleCloud / Ceraldi ERP
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-20
+reviewed_at: 2026-08-21
 storage_architecture: drive-only
 -->
 
@@ -160,6 +160,19 @@ provano il funzionamento.
 8. Nessun record orfano, saldo hardcoded, fixture o snapshot servito come live.
 9. Nessun endpoint, pagina, componente, job o variabile senza consumer e test.
 10. Le associazioni automatiche richiedono prova deterministica; altrimenti proposta.
+
+### 3.1 Motore obbligatorio delle attese
+
+Applicare sempre `docs/REGOLA_FISSA_ATTESE.md`. Quando entra un fatto validato,
+il suo owner crea immediatamente tutti gli obblighi e le attese conseguenti.
+Le evidenze future non generano l'attesa che dovrebbero provare: la soddisfano
+oppure la lasciano `DA_VERIFICARE`.
+
+Stati aperti: `ATTESO`, `DA_VERIFICARE`, `IN_ELABORAZIONE`, `ERRORE`. Stati
+terminali positivi: `SODDISFATTO`, `NON_APPLICABILE`, `SUPERATO`. Il processo
+si chiude solo quando tutte le attese obbligatorie sono terminali positive.
+Ogni attesa conserva owner, fatto sorgente, `operation_id` ed evidenze, con
+navigazione bidirezionale.
 
 ## 4. Autorità e fonti
 
@@ -327,6 +340,17 @@ credito gestore; payout → chiusura del credito; commissione separata. Il giorn
 di vendita non viene sostituito dalla data di accredito. SumUp e Numia restano
 circuiti separati. Giorni mancanti, importi discordanti e payout multi-giorno
 generano liste esplicite.
+
+Le fonti owner sono distinte: SumUp corrente arriva automaticamente dall'API;
+Numia corrente viene inserito manualmente ogni sera dalla chiusura dei
+terminali; Numia storico viene ricostruito dagli export operativi CSV/XLSX su
+Drive, deduplicati per ID transazione e accorpati per giorno vendita. Ciascun
+totale giornaliero crea subito il credito/accredito atteso del proprio gestore.
+L'estratto conto bancario non crea mai il fatto POS: raggruppa `NUMIA-AMEX`,
+`NUMIA-INTER`, `NUMIA-BNCMT`
+e `NUMIA-PGBNT` per il giorno `DEL gg/mm/aa`, somma al centesimo e soddisfa
+l'attesa esistente. Senza un'unica attesa resta `DA_VERIFICARE`: la banca non
+può creare retroattivamente la chiusura POS.
 
 ## 12. PayPal, PagoPA, bonifici e assegni
 

@@ -84,7 +84,7 @@ def http_request(
     except HTTPError as e:
         body = e.read(1000).decode("utf-8", errors="replace")
         return e.code, body
-    except URLError as e:
+    except (URLError, TimeoutError) as e:
         return 0, str(e)
 
 
