@@ -35,7 +35,7 @@ COLLECTIONS = {
     "prima_nota_cassa": "prima_nota_cassa",
     "prima_nota_banca": "prima_nota_banca",
     "corrispettivi": "corrispettivi",
-    "suppliers": "fornitori",  # regola canonica: fornitori è l'unica collection Mongo, "suppliers" resta solo alias API
+    "suppliers": "fornitori",  # regola canonica: fornitori è l'unico foglio; "suppliers" resta solo alias API
 }
 
 

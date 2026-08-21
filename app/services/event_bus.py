@@ -118,7 +118,7 @@ async def propagate_event(
     Args:
         event_type: tipo evento (da EventTypes)
         payload: dati dell'evento
-        db: istanza database Motor
+        db: repository asincrono Drive/Sheets
         source_module: modulo che ha generato l'evento
         user: utente o "sistema"
     

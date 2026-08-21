@@ -14,7 +14,7 @@ from app.agents.fiscale_sentinella import FiscaleSentinella
 
 
 def _get(doc, chiave_puntata):
-    """Supporta la dot-notation di Mongo (es. "dati_riferimento.f24_id")."""
+    """Supporta la dot-notation del repository (es. "dati_riferimento.f24_id")."""
     valore = doc
     for parte in chiave_puntata.split("."):
         if not isinstance(valore, dict):
@@ -28,7 +28,7 @@ def _match(doc, query):
         campo = _get(doc, k)
         if isinstance(v, dict):
             if "$in" in v:
-                # Mongo: se il campo è un array, matcha se un elemento è
+                # Repository: se il campo è un array, matcha se un elemento è
                 # nel $in; altrimenti confronto scalare diretto.
                 if isinstance(campo, list):
                     if not any(el in v["$in"] for el in campo):

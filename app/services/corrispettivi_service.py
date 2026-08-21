@@ -477,7 +477,7 @@ class CorrispettiviService:
         query = {
             "data": previous_date,
             "entity_status": {"$ne": EntityStatus.DELETED.value},
-            # I residui archiviati restano in Mongo per audit, ma non sono
+            # I residui archiviati restano nel registro Drive/Sheets per audit, ma non sono
             # una chiusura attiva. Se li consideriamo "giorno valorizzato"
             # impediscono alla chiusura post-mezzanotte di tornare al giorno
             # corretto (caso reale XML 04/04/2026 attribuito al 03/04).

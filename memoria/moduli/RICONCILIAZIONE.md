@@ -7,7 +7,7 @@ storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+> Documento di riferimento del dominio. Per persistenza vale l'architettura Drive/Sheets descritta nei documenti correnti; eventuali nomi di collection restano soltanto contesto storico.
 
 Fonte specifica: `Riconciliazione — Flussi automatici — Logica relazionale completa.txt`
 (fornita dall'utente, il documento più complesso dei 10). Verificato leggendo il codice
@@ -125,7 +125,7 @@ quella "approssimata" — sono la stessa logica di scoring con soglie diverse, n
    HTTP, non in una chiamata Python interna — quindi `anno` riceveva l'oggetto
    `Query(...)` stesso, che è truthy, facendo scattare il ramo `if anno:` che
    sovrascriveva `data_da`/`data_a` con stringhe corrotte (`"<fastapi.params.Query
-   object...>-01-01"`), azzerando la query Mongo e quindi SEMPRE tutti gli alert.
+   object...>-01-01"`), azzerando il filtro del repository e quindi SEMPRE tutti gli alert.
    `GET /api/pos-corrispettivi/alert-oggi` (usato da `CoerenzaPOSCorrispettivi.jsx`)
    ha quindi sempre restituito zero alert in produzione, indipendentemente da eventuali
    incongruenze reali — bug riproducibile in modo deterministico, ora corretto.

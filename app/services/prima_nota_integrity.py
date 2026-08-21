@@ -81,7 +81,7 @@ def totale_pagabile_al_fornitore(fattura: Dict[str, Any]) -> float:
 
 
 def filtro_fatture_marcate_pagate() -> Dict[str, Any]:
-    """Filtro Mongo tollerante a tutti gli alias storici di 'pagata'."""
+    """Filtro repository tollerante a tutti gli alias storici di 'pagata'."""
     return {
         "status": {"$nin": ["deleted", "archived"]},
         "entity_status": {"$ne": "deleted"},

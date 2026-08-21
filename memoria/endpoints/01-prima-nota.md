@@ -7,7 +7,7 @@ storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+> Documento di riferimento del dominio. Per persistenza vale l'architettura Drive/Sheets descritta nei documenti correnti; eventuali nomi di collection restano soltanto contesto storico.
 
 Documentazione dei router: `app/routers/prima_nota_module/` (prefisso `/api/prima-nota`), `app/routers/accounting/prima_nota_automation.py` (`/api/prima-nota-auto`), `app/routers/accounting/prima_nota_salari.py` (`/api/prima-nota-salari`), `app/routers/accounting/prima_nota_salari_v2.py` (`/api/prima-nota-salari-v2`), `app/routers/dati_provvisori.py` (`/api`).
 
@@ -467,7 +467,7 @@ Due sistemi nella stessa file, entrambi sulla collection `dati_provvisori`: (A) 
 ### POST /api/dati-provvisori/upload-xml — upload fattura XML in staging
 **Cosa fa**: carica una fattura elettronica XML: se in staging esiste già la stessa fattura (arrivata da email) la arricchisce, altrimenti crea un nuovo dato provvisorio.
 **Logica codice**: parse con BeautifulSoup (`CedentePrestatore/Denominazione`, `Numero`, `Data`, `ImportoTotaleDocumento`); il metodo pagamento XML è IGNORATO volutamente ("inaffidabile" — coerente con la regola "il metodo fornitore comanda"). Match esistente per `numero_documento` + regex sui primi 10 caratteri del fornitore; update (`xml_caricato:true`, `xml_data` = XML intero) o insert `stato:"pending", fonte:"xml"`.
-**Note**: `soup.find("Numero")`/`find("Data")` prendono il PRIMO tag col quel nome in tutto l'XML: su fatture con più documenti/DDT collegati può pescare il campo sbagliato. Salva l'XML integrale nel documento Mongo (pesante).
+**Note**: `soup.find("Numero")`/`find("Data")` prendono il PRIMO tag col quel nome in tutto l'XML: su fatture con più documenti/DDT collegati può pescare il campo sbagliato. Salva l'XML integrale nel record Drive/Sheets (pesante).
 
 ### POST /api/dati-provvisori/riconcilia-estratto-conto — riconciliazione cassa→banca
 **Cosa fa**: dopo il caricamento dell'estratto conto, individua i pagamenti classificati a mano in cassa che in realtà risultano usciti dalla banca.

@@ -37,7 +37,7 @@ def test_fornitori_dettati_coprono_lista_utente():
         assert any(k in x for x in FORNITORI_MAI_ASSEGNO)
 
 
-# --------------------------------------------------------------- fake Motor
+# ----------------------------------------------- repository asincrono fittizio
 
 def _match(doc, cond):
     for k, v in (cond or {}).items():

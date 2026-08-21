@@ -7,7 +7,7 @@ storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi Mongo/collection restano compatibilità o contesto storico.
+> Documento di riferimento del dominio. Per persistenza vale l'architettura Drive/Sheets descritta nei documenti correnti; eventuali nomi di collection restano soltanto contesto storico.
 
 Documentazione operativa degli endpoint dei moduli banca/riconciliazione (FastAPI + Drive/Sheets).
 Collezione canonica movimenti banca: `estratto_conto_movimenti`. Schema canonico collegamento assegno↔fatture: `fatture_collegate=[{fattura_id, quota, data_collegamento}]` (max 4 fatture, stesso fornitore, tolleranza ±0,005€).
@@ -344,7 +344,7 @@ Terzo importer: upload multiplo di PDF con parser universale (`universal_bank_st
 ### POST /api/bank-statement-bulk/commit/{preview_id} — salvataggio anteprima
 **Cosa fa**: persiste le transazioni della preview nella collezione indicata e lancia la riconciliazione paghe.
 **Logica codice**: per ogni tx: dedup `find_one` su {data, descrizione[:100], importo}; insert con campi `entrata`/`uscita`/`importo`, `stato="da_riconciliare"`, `import_batch_id`; evento `MOVIMENTO_BANCA_IMPORTATO`; a fine ciclo elimina la preview e chiama `esegui_riconciliazione_paghe_completa`.
-**Note**: il parametro `collection` è testo libero dal client (può scrivere in QUALSIASI collezione Mongo); i record NON hanno `id` né `tipo` (l'evento pubblica `movimento_id=None`), schema incompatibile con l'importer canonico.
+**Note**: il parametro `collection` è testo libero dal client (può scrivere in QUALSIASI foglio); i record NON hanno `id` né `tipo` (l'evento pubblica `movimento_id=None`), schema incompatibile con l'importer canonico.
 
 ### DELETE /api/bank-statement-bulk/preview/{preview_id} — annulla anteprima
 **Cosa fa**: elimina la preview dalla cache senza salvare. **Logica codice**: `del PREVIEW_CACHE[...]`; sempre success.
@@ -486,7 +486,7 @@ Gestione Archivio Bonifici PDF: il router del package (`__init__.py`) monta 18 r
 
 ### GET /api/archivio-bonifici/riconcilia/task/{task_id} — stato task background
 **Cosa fa**: progresso del task di riconciliazione. **Logica codice**: legge il dict in memoria, 404 se assente.
-**Note**: stato volatile (perso al restart, non multi-worker); la persistenza Mongo suggerita da `COL_RICONCILIAZIONE_TASKS` non è mai stata implementata.
+**Note**: stato volatile (perso al restart, non multi-worker); la persistenza suggerita da `COL_RICONCILIAZIONE_TASKS` non è mai stata implementata.
 
 ### GET /api/archivio-bonifici/stato-riconciliazione — statistiche riconciliazione
 **Cosa fa**: totali/percentuale riconciliati e importi. **Logica codice**: count + aggregate `$group` per `riconciliato`.
@@ -553,7 +553,7 @@ Gestione Archivio Bonifici PDF: il router del package (`__init__.py`) monta 18 r
 3. Costanti collezioni in common.py mai usate; task riconciliazione in dict in memoria (volatile).
 4. Dedup debole per i PDF parsati dal testo (chiave ridotta a importo+causale).
 5. Bug `_auto_associate_bonifici`: la stessa fattura può essere associata a più bonifici (flag scritto ≠ flag verificato).
-6. Docstring mendaci (import unificato, fatture-compatibili, bulk delete); GET /pdf con side-effect di scrittura; riconciliazione O(n·m) in memoria fino a 10k×50k; PDF Base64 nei documenti Mongo (limite 16MB/doc).
+6. Docstring mendaci (import unificato, fatture-compatibili, bulk delete); GET /pdf con side-effect di scrittura; riconciliazione O(n·m) in memoria fino a 10k×50k; PDF Base64 nei record applicativi (limite 16MB/record).
 
 ---
 
@@ -778,7 +778,7 @@ Riconciliazione email ↔ documenti gestionale: indice master (`indice_documenti
 ### GET /api/riconciliazione/pdf/{hash_pdf} — download PDF archiviato
 **Cosa fa**: restituisce inline un PDF archiviato per hash.
 **Logica codice**: find_one su `pdf_archive` per `hash`; decodifica `content_base64`; 404 se assente.
-**Note**: PDF base64 in Mongo (non GridFS): limite 16MB/documento.
+**Note**: PDF base64 nel record applicativo: limite 16MB/documento.
 
 ### GET /api/riconciliazione/log-riconciliazioni — log scansioni
 **Cosa fa**: log delle riconciliazioni (default ultime 50), opz. solo con match.

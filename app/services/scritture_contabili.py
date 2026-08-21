@@ -212,7 +212,7 @@ async def scrivi_movimento_se_assente(
 
 
 async def _leggi_tutti(cursor, n: int = 100):
-    """Compat: cursori Motor reali (async for) e fake dei test (to_list)."""
+    """Compat: cursori repository asincroni e doppi dei test (to_list)."""
     if hasattr(cursor, "to_list"):
         return await cursor.to_list(n)
     return [c async for c in cursor]
@@ -232,7 +232,7 @@ def normalizza_gestore_pos(valore: Any) -> str:
 
 
 def filtro_gestore_pos(gestore: str) -> Dict[str, Any]:
-    """Filtro Mongo per gestore.
+    """Filtro repository per gestore.
 
     Le chiusure gia' registrate non hanno il campo ``gestore``: appartengono
     tutte a Nexi, unico terminale fino ad ora. Vanno quindi intercettate dal
@@ -509,7 +509,7 @@ async def registra_chiusura_pos_reale(
         "updated_at": now,
         "updated_by": user_id,
     }
-    # Niente upsert con ``$or``: Mongo non sa dedurre il documento da creare
+    # Niente upsert con ``$or``: il repository non sa dedurre il record da creare
     # da un filtro alternativo. Il ramo viene deciso qui, esplicitamente.
     if precedente_doc is not None:
         await db["chiusure_pos_manuali"].update_one(

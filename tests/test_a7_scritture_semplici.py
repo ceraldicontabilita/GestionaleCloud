@@ -23,7 +23,7 @@ class _Coll:
                     return False
             elif d.get(k) != v:
                 # {"anno": None} deve intercettare sia i doc senza `anno`
-                # sia quelli con `anno: None`, come in Mongo reale.
+                # sia quelli con `anno: None`, come nel repository reale.
                 return False
         return True
 

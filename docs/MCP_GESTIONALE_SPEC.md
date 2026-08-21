@@ -20,7 +20,7 @@ Il server MCP:
 6. rifiuta URL arbitrari, redirect, parametri non dichiarati, export e contenuti binari;
 7. non abilita scritture finché non sono soddisfatti contemporaneamente configurazione, ruolo admin, MFA e conferma esplicita.
 
-Questo evita query Mongo duplicate, regole contabili divergenti e bypass dei middleware già presenti.
+Questo evita letture Drive/Sheets duplicate, regole contabili divergenti e bypass dei middleware già presenti.
 
 ## Regole semantiche inderogabili
 

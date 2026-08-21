@@ -128,7 +128,7 @@ def _valida_sezione(sezione: str) -> Dict[str, Any]:
 
 
 def _query_periodo(collezione_cfg: Dict[str, Any], cutoff_str: str, oggi_str: str) -> Dict[str, Any]:
-    """Costruisce la query Mongo per 'documenti nell'intervallo [cutoff, oggi]'.
+    """Costruisce il filtro repository per 'documenti nell'intervallo [cutoff, oggi]'.
 
     Prova tutti i campi data candidati in OR. Per le collezioni con
     convenzione mese/anno (es. cedolini) aggiunge anche un OR sui mesi

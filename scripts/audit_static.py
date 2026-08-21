@@ -4,7 +4,7 @@ Audit statico Ceraldi ERP.
 
 Scansiona backend e frontend per bug pattern ricorrenti:
 - datetime.utcnow()
-- accessi Mongo a collection vietate/deprecate
+- accessi diretti a fogli vietati/deprecati
 - api.delete senza confirm vicino
 - fetch GET in useEffect senza AbortController
 - endpoint /api/suppliers e /api/fornitori

@@ -507,7 +507,7 @@ async def pulizia_dati_pre_anno(
         }
         docs = await db[collection].find({}, proiezione).to_list(200000)
         ids_da_eliminare = []
-        mongo_ids_da_eliminare = []
+        record_ids_da_eliminare = []
         preservati_cedolini_bonifici = 0
         per_anno: Dict[int, int] = {}
         for d in docs:
@@ -525,7 +525,7 @@ async def pulizia_dati_pre_anno(
                 elif d.get("_id") is not None:
                     # Alcuni record storici non hanno l'ID applicativo:
                     # vanno comunque inclusi usando il loro ID interno.
-                    mongo_ids_da_eliminare.append(d["_id"])
+                    record_ids_da_eliminare.append(d["_id"])
                 else:
                     continue
                 per_anno[anno_doc] = per_anno.get(anno_doc, 0) + 1
@@ -535,8 +535,8 @@ async def pulizia_dati_pre_anno(
         selettori = []
         if ids_da_eliminare:
             selettori.append({"id": {"$in": ids_da_eliminare}})
-        if mongo_ids_da_eliminare:
-            selettori.append({"_id": {"$in": mongo_ids_da_eliminare}})
+        if record_ids_da_eliminare:
+            selettori.append({"_id": {"$in": record_ids_da_eliminare}})
         filtro_eliminazione = (
             selettori[0] if len(selettori) == 1 else {"$or": selettori}
         ) if selettori else None
@@ -562,13 +562,13 @@ async def pulizia_dati_pre_anno(
                     {"id": {"$in": ids_da_eliminare[i:i + 500]}}
                 )
                 eliminati += r.deleted_count
-            for i in range(0, len(mongo_ids_da_eliminare), 500):
+            for i in range(0, len(record_ids_da_eliminare), 500):
                 r = await db[collection].delete_many(
-                    {"_id": {"$in": mongo_ids_da_eliminare[i:i + 500]}}
+                    {"_id": {"$in": record_ids_da_eliminare[i:i + 500]}}
                 )
                 eliminati += r.deleted_count
         report[collection] = {
-            "trovati_pre_anno": len(ids_da_eliminare) + len(mongo_ids_da_eliminare),
+            "trovati_pre_anno": len(ids_da_eliminare) + len(record_ids_da_eliminare),
             "per_anno": {str(k): v for k, v in sorted(per_anno.items())},
             "eliminati": eliminati if not dry_run else 0,
             "preservati_cedolini_bonifici": preservati_cedolini_bonifici,

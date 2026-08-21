@@ -74,7 +74,7 @@ async def get_email_accounts() -> List[Dict[str, Any]]:
     # Maschera le password - RIMUOVI password reale dalla response
     for acc in accounts:
         if acc.get("app_password"):
-            # Decifra prima di mascherare: prima il campo salvato in Mongo
+            # Decifra prima di mascherare: prima il campo salvato nel registro
             # era già in chiaro, quindi il "****xxxx" mostrato corrispondeva
             # sempre alla password reale; ora il campo grezzo è cifrato e
             # senza decifrare prima le ultime 4 lettere mostrate sarebbero
