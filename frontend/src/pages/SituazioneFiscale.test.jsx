@@ -42,4 +42,38 @@ describe('Situazione fiscale collegata all indice Drive', () => {
     expect(screen.getByText((_content, node) => node?.textContent === 'Archivio canonico: Google Drive · indice 1')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Apri originale Drive' })).toBeEnabled();
   });
+
+  it('mantiene la sezione utilizzabile quando i controlli di revisione rispondono 502', async () => {
+    api.get.mockImplementation(path => {
+      if (path === '/api/fiscal/summary') return Promise.resolve({ data: {
+        counts: {}, drive_index: { available: true, counts: { declarations: 60 } },
+      } });
+      if (path === '/api/fiscal/review') return Promise.reject({ response: { status: 502 } });
+      if (path.includes('/api/fiscal/obligations')) return Promise.resolve({ data: {
+        items: [{ id: 'tributo-1', document_number: 'Tributo pagato verificato', payment_status: 'PAID_ON_TIME' }],
+      } });
+      return Promise.resolve({ data: { items: [] } });
+    });
+
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/tributi-pagati']}><SituazioneFiscale /></MemoryRouter>);
+
+    expect(await screen.findByText('Tributo pagato verificato')).toBeInTheDocument();
+    expect(screen.getByText('Controlli di revisione temporaneamente non disponibili.')).toBeInTheDocument();
+  });
+
+  it('mantiene la sezione utilizzabile quando il riepilogo risponde 502', async () => {
+    api.get.mockImplementation(path => {
+      if (path === '/api/fiscal/summary') return Promise.reject({ response: { status: 502 } });
+      if (path === '/api/fiscal/review') return Promise.resolve({ data: { findings: [] } });
+      if (path.includes('/api/fiscal/obligations')) return Promise.resolve({ data: {
+        items: [{ id: 'tributo-2', document_number: 'Pagamento ancora consultabile', payment_status: 'PAID_ON_TIME' }],
+      } });
+      return Promise.resolve({ data: { items: [] } });
+    });
+
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/tributi-pagati']}><SituazioneFiscale /></MemoryRouter>);
+
+    expect(await screen.findByText('Pagamento ancora consultabile')).toBeInTheDocument();
+    expect(screen.getByText('Riepilogo temporaneamente non disponibile; i dati della sezione restano consultabili.')).toBeInTheDocument();
+  });
 });
