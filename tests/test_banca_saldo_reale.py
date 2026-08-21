@@ -9,8 +9,8 @@ def _run(awaitable):
     return asyncio.run(awaitable)
 
 
-def test_lista_banca_esclude_crediti_pos_virtuali_da_righe_e_saldo(monkeypatch):
-    """Il credito verso il gestore POS non e' ancora denaro sul conto BPM."""
+def test_lista_banca_mostra_attese_pos_ma_le_esclude_dal_saldo(monkeypatch):
+    """L'attesa POS e' visibile, ma non e' ancora denaro sul conto BPM."""
     db = MemorySheetsClient()["banca_saldo_reale_test"]
     monkeypatch.setattr(banca.Database, "get_db", staticmethod(lambda: db))
 
@@ -71,7 +71,7 @@ def test_lista_banca_esclude_crediti_pos_virtuali_da_righe_e_saldo(monkeypatch):
     ))
 
     assert [riga["id"] for riga in risultato["movimenti"]] == [
-        "uscita-reale", "accredito-reale",
+        "uscita-reale", "accredito-reale", "credito-pos",
     ]
     assert risultato["totale_entrate"] == 980.0
     assert risultato["totale_uscite"] == 80.0
