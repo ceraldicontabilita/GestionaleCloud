@@ -674,6 +674,9 @@ si rigenerano dal codice e non si correggono a mano.
 | `SHEETS_REGISTRY_NAME` | app-runtime | configurazione | `str` / `'GestionaleCloud'` | `app/config.py`, `render.yaml` |
 | `SMOKE_ANNO` | test-tooling | configurazione | non dichiarato in Settings | `scripts/smoke_app.py` |
 | `SMOKE_AUTH_TOKEN` | test-tooling | segreta | non dichiarato in Settings | `scripts/smoke_app.py` |
+| `SMOKE_DEPLOY_POLL_SECONDS` | test-tooling | configurazione | non dichiarato in Settings | `scripts/smoke_app.py` |
+| `SMOKE_DEPLOY_WAIT_SECONDS` | test-tooling | configurazione | non dichiarato in Settings | `scripts/smoke_app.py` |
+| `SMOKE_EXPECTED_COMMIT` | test-tooling | configurazione | non dichiarato in Settings | `scripts/smoke_app.py` |
 | `SMOKE_TIMEOUT` | test-tooling | configurazione | non dichiarato in Settings | `scripts/smoke_app.py` |
 | `SMTP_ENABLED` | gmail-email | configurazione | `bool` / `False` | `app/config.py` |
 | `SMTP_FROM_EMAIL` | gmail-email | configurazione | `Optional[str]` / `None` | `app/config.py`, `app/routers/commercialista.py` |

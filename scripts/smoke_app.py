@@ -30,6 +30,9 @@ FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/
 TIMEOUT = float(os.environ.get("SMOKE_TIMEOUT", "12"))
 SMOKE_ANNO = int(os.environ.get("SMOKE_ANNO", "2026"))
 SMOKE_AUTH_TOKEN = (os.environ.get("SMOKE_AUTH_TOKEN") or "").strip()
+SMOKE_EXPECTED_COMMIT = (os.environ.get("SMOKE_EXPECTED_COMMIT") or "").strip()[:8]
+SMOKE_DEPLOY_WAIT_SECONDS = float(os.environ.get("SMOKE_DEPLOY_WAIT_SECONDS", "0"))
+SMOKE_DEPLOY_POLL_SECONDS = float(os.environ.get("SMOKE_DEPLOY_POLL_SECONDS", "15"))
 HAS_AUTH = bool(SMOKE_AUTH_TOKEN)
 ROOT = Path(__file__).resolve().parents[1]
 PAGE_CATALOG = json.loads((ROOT / "page_catalog.json").read_text(encoding="utf-8"))
@@ -139,7 +142,66 @@ def run_frontend_check(path: str) -> dict:
     }
 
 
+def wait_for_expected_deploy(
+    expected_commit: str,
+    wait_seconds: float,
+    poll_seconds: float,
+) -> dict:
+    """Attende che la produzione dichiari il commit che deve essere testato."""
+    expected = expected_commit.strip()[:8]
+    deadline = time.monotonic() + max(wait_seconds, 0)
+    attempts = 0
+    last_status = 0
+    last_commit = ""
+    last_sample = ""
+
+    while True:
+        attempts += 1
+        last_status, body = http_request(f"{BACKEND_URL}/api/health")
+        last_sample = body[:180].replace("\n", " ")
+        try:
+            payload = json.loads(body)
+            last_commit = str(payload.get("deploy_commit") or "").strip()[:8]
+        except (json.JSONDecodeError, AttributeError):
+            last_commit = ""
+
+        if last_status == 200 and last_commit == expected:
+            return {
+                "ok": True,
+                "expected_commit": expected,
+                "live_commit": last_commit,
+                "attempts": attempts,
+            }
+
+        if time.monotonic() >= deadline:
+            return {
+                "ok": False,
+                "expected_commit": expected,
+                "live_commit": last_commit,
+                "status": last_status,
+                "attempts": attempts,
+                "sample": last_sample,
+            }
+
+        time.sleep(max(poll_seconds, 0.1))
+
+
 def main() -> int:
+    deploy_wait = None
+    if SMOKE_EXPECTED_COMMIT:
+        deploy_wait = wait_for_expected_deploy(
+            SMOKE_EXPECTED_COMMIT,
+            SMOKE_DEPLOY_WAIT_SECONDS,
+            SMOKE_DEPLOY_POLL_SECONDS,
+        )
+        if not deploy_wait["ok"]:
+            print(json.dumps({
+                "scope": "deploy-wait",
+                "backend_url": BACKEND_URL,
+                "deploy_wait": deploy_wait,
+            }, indent=2, ensure_ascii=False))
+            return 1
+
     results = []
 
     for check in BACKEND_CHECKS:
@@ -173,6 +235,7 @@ def main() -> int:
         "backend_url": BACKEND_URL,
         "frontend_url": FRONTEND_URL,
         "auth_used": HAS_AUTH,
+        "deploy_wait": deploy_wait,
         "catalog_pages": len(PAGES),
         "catalog_status": {
             status: sum(page["audit_status"] == status for page in PAGES)
