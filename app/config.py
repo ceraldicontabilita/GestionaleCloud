@@ -28,26 +28,8 @@ class Settings(BaseSettings):
     PORT: int = 8000
     RELOAD: bool = False
 
-    # legacy DB (DEPRECATO)
-    # Nota: il backend storico è stato rimosso come backend supportato. Le variabili
-    # qui presenti restano per retrocompatibilità locale ma non devono essere
-    # usate in produzione. In produzione il backend operativo è "sheets".
-    LEGACY_DB_ATLAS_URI: Optional[str] = None  # DEPRECATO (usare solo per audit offline)
-    MONGO_URL: Optional[str] = None          # DEPRECATO (mantienuto per compatibilità degli script legacy)
-
-    # Nome logico del database/registro (mantiene compatibilità con codice storico)
+    # Nome logico del registro Sheets esposto tramite l'interfaccia database.
     DB_NAME: str = "Gestionale"
-
-    # I parametri pool/timeouts relativi a legacy DB restano visibili ma non
-    # influenzano il runtime quando DATA_BACKEND='sheets'. Non usarli in
-    # produzione. (DEPRECATO)
-    LEGACY_DB_MAX_POOL_SIZE: int = 50
-    LEGACY_DB_MIN_POOL_SIZE: int = 0
-    LEGACY_DB_TIMEOUT_MS: int = 5000
-    LEGACY_DB_CONNECT_TIMEOUT_MS: int = 5000
-    LEGACY_DB_SOCKET_TIMEOUT_MS: int = 20000
-    LEGACY_DB_WAIT_QUEUE_TIMEOUT_MS: int = 5000
-    LEGACY_DB_MAX_IDLE_TIME_MS: int = 120000
     # Le riparazioni dati e migrazioni all'avvio restano disabilitate per default.
     RUN_STARTUP_DATA_REPAIRS: bool = False
     RUN_STARTUP_INDEX_MIGRATIONS: bool = False
