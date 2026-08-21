@@ -7,7 +7,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INVENTORY = ROOT / "docs" / "MARKDOWN_INVENTORY.md"
-ROW_RE = re.compile(r"^\| `([^`]+)` \| `(current|reference|generated|historical)` \|", re.MULTILINE)
+ROW_RE = re.compile(
+    r"^\| `([^`]+)` \| `(current|reference|planned|generated|historical)` \|",
+    re.MULTILINE,
+)
 
 
 def inventory_rows() -> dict[str, str]:
@@ -74,6 +77,14 @@ def test_historical_documents_are_visibly_non_authoritative() -> None:
         text = (ROOT / path).read_text(encoding="utf-8")
         assert "Snapshot storico" in text, path
         assert "LOGICA_FUNZIONAMENTO.md" in text, path
+
+
+def test_planned_documents_are_visibly_non_operational() -> None:
+    for path, status in inventory_rows().items():
+        if status != "planned":
+            continue
+        text = (ROOT / path).read_text(encoding="utf-8").lower()
+        assert "non ancora completamente operativo" in text, path
 
 
 def test_drive_only_docs_state_real_cutover_boundary() -> None:

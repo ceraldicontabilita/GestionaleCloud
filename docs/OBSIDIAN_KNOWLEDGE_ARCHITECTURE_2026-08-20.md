@@ -1,21 +1,24 @@
 # Obsidian Knowledge Architecture — GestionaleCloud
 
 <!-- gestionalecloud-doc
-status: current
+status: planned
 reviewed_at: 2026-08-21
 storage_architecture: drive-only
 -->
 
+> [!WARNING]
+> Specifica o piano approvato, ma non ancora completamente operativo. Verificare il runbook corrente e il codice distribuito prima dell'uso.
+
 ## Obiettivo
 
-Obsidian non deve essere un semplice archivio di verbali. Deve diventare il livello di conoscenza aziendale del GestionaleCloud: un grafico di entità, relazioni, cronologie, procedure e decisioni, collegato ai dati operativi del gestionale senza sostituire il registro contabile o i documenti originali.
+Questa è l'architettura obiettivo, non lo stato operativo corrente. Obsidian dovrà diventare il livello di conoscenza aziendale del GestionaleCloud: un grafico di entità, relazioni, cronologie, procedure e decisioni, collegato ai dati operativi del gestionale senza sostituire il registro contabile o i documenti originali.
 
 La logica corretta è:
 
 - Google Drive / Sheets: archivio canonico operativo e registro strutturato
 - GestionaleCloud: motore applicativo, workflow, import, validazione, contabilità, riconciliazione
 - Obsidian: conoscenza collegata, procedure, cronologie, relazioni semantiche, ricerca aziendale e spiegazione dei contesti
-- Codex / agenti: leggono GestionaleCloud + Obsidian e propongono azioni controllate
+- Codex / agenti: potranno consultare GestionaleCloud + Obsidian e proporre azioni controllate dopo il collaudo della proiezione privata
 
 ## Architettura di riferimento
 
@@ -29,8 +32,8 @@ Google Drive / Sheets
 Obsidian
   conoscenza collegata, cronologie, procedure, ricerca e spiegazione
 
-Codex / agenti
-  consultano Gestionale + Obsidian e propongono attività controllate
+Codex / agenti (fase futura)
+  consulteranno Gestionale + Obsidian e proporranno attività controllate
 ```
 
 ## Principi

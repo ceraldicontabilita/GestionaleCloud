@@ -277,20 +277,13 @@ Se una pagina è vuota o mancano dati:
 Gli originali Drive più gli indici Sheets devono permettere di ricostruire il
 Gestionale senza inventare dati.
 
-## Perché oggi non vedi ancora risultati Render nell'app
+## Stato alla data di questo snapshot storico
 
-La situazione attuale è questa:
-
-1. il Workflow Render esiste;
-2. il nuovo task generale è nel codice;
-3. l'ID dell'indice Drive è configurato;
-4. nessuna nuova scansione è stata avviata;
-5. il task è ancora in modalità `preview`, quindi non scrive nel Gestionale;
-6. manifest/watermark e invio autenticato dei soli documenti nuovi devono essere
-   completati e collaudati.
-
-Per questo non compare ancora una pagina con “risultati Render”. È intenzionale:
-prima rendiamo sicuro il confronto, poi abilitiamo la scrittura.
+Questa sezione descriveva una fase precedente all'attivazione dell'ingestione
+autenticata e non deve essere usata come stato corrente. Gli endpoint Render
+dedicati, il segreto condiviso, l'anteprima obbligatoria e il task di ingestione
+manuale sono stati successivamente distribuiti. Consultare il codice corrente,
+la pagina dei task Render e i runbook `current` prima di operare.
 
 ## Cosa vedrai quando il processo sarà completo
 
