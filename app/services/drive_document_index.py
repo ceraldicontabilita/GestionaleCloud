@@ -553,12 +553,14 @@ def list_documented_tax_payments(
 def list_tax_obligations(
     service=None, *, offset: int = 0, limit: int = 5000,
 ) -> dict[str, Any]:
-    """Tributi a debito presenti nei modelli F24 Drive, con stato prova esplicito."""
+    """Deleghe F24 complete, con debiti e crediti e stato prova esplicito.
+
+    La vista raggruppa le righe per documento: eliminare qui le righe a credito
+    renderebbe falsi i totali e il saldo della quietanza visualizzata.
+    """
     rows = list_f24_rows(service=service, offset=0, limit=5000)["items"]
     items = []
     for row in rows:
-        if _amount(row.get("debit_amount")) <= 0:
-            continue
         documentary = row.get("evidence_state") == "QUIETANZA_DOCUMENTALE_NON_PROVA_BANCARIA"
         items.append({
             **row,
