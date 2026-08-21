@@ -1660,8 +1660,14 @@ async def upload_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
     }
 
 
-async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xml_upload",
-                             applica_filtro_anno: bool = False) -> Dict[str, Any]:
+async def process_xml_bytes(
+    db,
+    content: bytes,
+    filename: str,
+    source: str = "xml_upload",
+    applica_filtro_anno: bool = False,
+    replay_storico: bool = False,
+) -> Dict[str, Any]:
     """Pipeline CONDIVISA per importare una singola fattura XML dai suoi bytes.
 
     Usata sia dall'upload bulk (`/upload-xml-bulk`) sia dall'ingest Google Drive,
@@ -1735,7 +1741,14 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
             if anno_fattura and anno_fattura != anno_attivo:
                 return await archivia_fattura_storica(db, p, filename, source, xml_raw=xml_content)
 
-        return await import_parsed_invoice(db, p, filename, source, xml_raw=xml_content)
+        if replay_storico:
+            return await import_parsed_invoice(
+                db, p, filename, source, xml_raw=xml_content,
+                replay_storico=True,
+            )
+        return await import_parsed_invoice(
+            db, p, filename, source, xml_raw=xml_content,
+        )
 
     risultato = await _importa_una(parsed)
 
@@ -1850,7 +1863,8 @@ async def archivia_fattura_storica(db, parsed: Dict[str, Any], filename: str, so
 
 async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, source: str,
                                  xml_raw: Optional[str] = None,
-                                 piva_validator=_piva_plausibile) -> Dict[str, Any]:
+                                 piva_validator=_piva_plausibile,
+                                 replay_storico: bool = False) -> Dict[str, Any]:
     """Pipeline CONDIVISA per importare una fattura già "parsata" in un dict
     con lo schema di `parse_fattura_xml` (invoice_number/supplier_vat/...).
 
@@ -1927,9 +1941,26 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "data_fattura": invoice_date,
         "importo_totale": float(parsed.get("total_amount", 0) or 0),
         "anno": int(invoice_date[:4]) if invoice_date[:4].isdigit() else None,
+        "replay_storico": replay_storico,
+        "stato_derivati": "da_ricalcolare" if replay_storico else "allineato",
     }
     await db[Collections.INVOICES].insert_one(invoice.copy())
     invoice.pop("_id", None)
+
+    # La ricostruzione dell'archivio non equivale all'arrivo di una nuova
+    # fattura. Il replay deve prima rendere nuovamente consultabile il
+    # documento canonico, senza riattivare in blocco magazzino, alert,
+    # scadenzario e riconciliazioni storiche. Questi derivati vengono
+    # ricalcolati in una fase dedicata e idempotente.
+    if replay_storico:
+        return {
+            "status": "imported",
+            "filename": filename,
+            "invoice_number": parsed.get("invoice_number"),
+            "supplier": parsed.get("supplier_name"),
+            "id": invoice["id"],
+            "replay_storico": True,
+        }
 
     # Giacenze magazzino: aggiornate qui sotto tramite l'event bus (punto 7,
     # EventTypes.FATTURA_CREATED -> on_fattura_righe_magazzino), NON in modo

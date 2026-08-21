@@ -457,6 +457,7 @@ async def ricostruisci_archivio_drive(db) -> Dict[str, Any]:
                         db, content, file_info["name"],
                         source="ricostruzione_drive",
                         applica_filtro_anno=True,
+                        replay_storico=True,
                     )
                     status = outcome.get("status")
                     if status == "imported":

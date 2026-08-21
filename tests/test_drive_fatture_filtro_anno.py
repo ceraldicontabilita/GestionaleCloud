@@ -137,6 +137,43 @@ def test_process_xml_bytes_filtro_anno_corrente_va_al_flusso_attivo(monkeypatch)
     assert chiamate == ["attivo"]
 
 
+def test_replay_storico_salva_fattura_senza_riattivare_derivati(monkeypatch):
+    db = _FakeDb()
+
+    async def fake_supplier(*_args, **_kwargs):
+        return {
+            "supplier_id": "FORN-1",
+            "supplier_created": False,
+            "metodo_pagamento": "banca",
+        }
+
+    async def side_effect_vietato(*_args, **_kwargs):
+        raise AssertionError("il replay storico non deve attivare derivati")
+
+    monkeypatch.setattr(fu_mod, "ensure_supplier_exists", fake_supplier)
+    monkeypatch.setattr(fu_mod, "auto_registra_prima_nota", side_effect_vietato)
+    monkeypatch.setattr(fu_mod, "_collega_nota_credito", side_effect_vietato)
+    monkeypatch.setattr(
+        fu_mod, "riprocessa_estratto_dopo_import_fattura",
+        side_effect_vietato,
+    )
+
+    result = _run(fu_mod.import_parsed_invoice(
+        db,
+        _parsed(_ANNO_CORRENTE),
+        "recupero.xml",
+        "ricostruzione_drive",
+        replay_storico=True,
+    ))
+
+    assert result["status"] == "imported"
+    assert result["replay_storico"] is True
+    invoice = db["invoices"].docs[0]
+    assert invoice["supplier_id"] == "FORN-1"
+    assert invoice["replay_storico"] is True
+    assert invoice["stato_derivati"] == "da_ricalcolare"
+
+
 def test_process_xml_bytes_senza_filtro_anno_ignora_lanno_di_upload_manuale(monkeypatch):
     # Default applica_filtro_anno=False: upload manuale via UI di una
     # fattura di un anno passato deve restare nel flusso attivo — un
