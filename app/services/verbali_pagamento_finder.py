@@ -28,25 +28,57 @@ PSP_MAP = {
 }
 
 
+def _documentary_evidence_id(match: Dict[str, Any]) -> Optional[str]:
+    """Restituisce l'identita' stabile della prova documentale, se presente."""
+    for field in (
+        "ricevuta_pagopa_id",
+        "paypal_transaction_id",
+        "gmail_message_id",
+    ):
+        value = str(match.get(field) or "").strip()
+        if value:
+            return value
+    return None
+
+
+def _paypal_candidate_id(doc: Dict[str, Any]) -> Optional[str]:
+    """Una transazione senza ID provider non e' collegabile automaticamente."""
+    value = str(doc.get("transaction_id") or "").strip()
+    return value or None
+
+
 async def trova_pagamento_verbale(db: SheetDatabase, verbale: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     iuv = get_iuv_from_verbale(verbale)
     numero_verbale = verbale.get("numero_verbale")
     targa = verbale.get("targa")
     importo = verbale.get("importo") or verbale.get("importo_addebitato_fornitore") or 0
 
-    # 1. paypal_transactions
-    m = await _cerca_in_paypal(db, iuv, numero_verbale, targa, importo)
-    if m:
-        return m
-    # 2. Gmail
-    m = await _cerca_in_gmail(db, iuv, numero_verbale, importo, verbale)
-    if m:
-        return m
-    # 3. estratto conto: solo con un riferimento del verbale/IUV/targa.
-    # Importo e data da soli non identificano un pagamento.
-    return await _cerca_in_estratto_conto(
-        db, iuv, numero_verbale, targa, importo, verbale
+    has_documentary_evidence = bool(
+        verbale.get("pagato_documentalmente")
+        or verbale.get("ricevuta_pagopa_id")
+        or verbale.get("paypal_transaction_id")
     )
+    has_bank_evidence = bool(
+        verbale.get("banca_verificata") or verbale.get("movimento_banca_id")
+    )
+
+    # Le due attese sono indipendenti: dopo la ricevuta continuiamo a cercare
+    # la banca; dopo la banca continuiamo a cercare la ricevuta.
+    if not has_documentary_evidence:
+        m = await _cerca_in_paypal(db, iuv, numero_verbale, targa, importo)
+        if m:
+            return m
+        m = await _cerca_in_gmail(db, iuv, numero_verbale, importo, verbale)
+        if m:
+            return m
+
+    if not has_bank_evidence:
+        # Importo e data da soli non identificano un pagamento: serve anche un
+        # riferimento esplicito del verbale/IUV/targa e un candidato unico.
+        return await _cerca_in_estratto_conto(
+            db, iuv, numero_verbale, targa, importo, verbale
+        )
+    return None
 
 
 async def _cerca_in_paypal(db, iuv, numero_verbale, targa, importo):
@@ -74,30 +106,41 @@ async def _cerca_in_paypal(db, iuv, numero_verbale, targa, importo):
             ],
             "importo": {"$gte": -imp - 2, "$lte": -imp + 2},
         })
+    candidates: Dict[str, Dict[str, Any]] = {}
     for q in queries:
         docs = await db["paypal_transactions"].find(q, {"_id": 0}).limit(20).to_list(20)
         for doc in docs:
             if importo and not amounts_equal_to_cent(doc.get("importo") or doc.get("lordo"), importo):
                 continue
-            return {
-                "fonte": "paypal",
-                "psp": PSP_MAP.get(
-                    doc.get("paypal_account_id", ""),
-                    f"PSP {(doc.get('paypal_account_id') or '?')[:8]}"
-                ),
-                "importo": abs(doc.get("importo", 0) or 0),
-                "data_pagamento": doc.get("initiation_date"),
-                "metodo_pagamento": "PayPal",
-                "paypal_transaction_id": doc.get("transaction_id"),
-                "pdf_ricevuta_path": doc.get("pdf_ricevuta_path"),
-                "iuv_usato": iuv,
-                "dettagli_grezzi": {
-                    "paypal_account_id": doc.get("paypal_account_id"),
-                    "custom_field": doc.get("custom_field"),
-                    "transaction_subject": doc.get("transaction_subject"),
-                },
-            }
-    return None
+            candidate_id = _paypal_candidate_id(doc)
+            if not candidate_id:
+                continue
+            candidates[candidate_id] = doc
+
+    # Il primo risultato del provider non e' una prova di unicita'. Se due
+    # transazioni distinte soddisfano le regole, il verbale resta da verificare.
+    if len(candidates) != 1:
+        return None
+
+    doc = next(iter(candidates.values()))
+    return {
+        "fonte": "paypal",
+        "psp": PSP_MAP.get(
+            doc.get("paypal_account_id", ""),
+            f"PSP {(doc.get('paypal_account_id') or '?')[:8]}"
+        ),
+        "importo": abs(doc.get("importo", 0) or doc.get("lordo", 0) or 0),
+        "data_pagamento": doc.get("initiation_date"),
+        "metodo_pagamento": "PayPal",
+        "paypal_transaction_id": doc.get("transaction_id"),
+        "pdf_ricevuta_path": doc.get("pdf_ricevuta_path"),
+        "iuv_usato": iuv,
+        "dettagli_grezzi": {
+            "paypal_account_id": doc.get("paypal_account_id"),
+            "custom_field": doc.get("custom_field"),
+            "transaction_subject": doc.get("transaction_subject"),
+        },
+    }
 
 
 async def _cerca_in_gmail(db, iuv, numero_verbale, importo, verbale):
@@ -124,6 +167,7 @@ async def _cerca_in_gmail(db, iuv, numero_verbale, importo, verbale):
         logger.warning("Gmail connect fallito: %s", e)
         return None
 
+    candidates: Dict[str, Dict[str, Any]] = {}
     try:
         for term in search_terms:
             q = f'(X-GM-RAW "({from_clause}) {term}")'
@@ -182,13 +226,16 @@ async def _cerca_in_gmail(db, iuv, numero_verbale, importo, verbale):
 
                 if importo and not amounts_equal_to_cent(parsed.get("totale"), importo):
                     continue
-                return {
+                message_id = str(msg.get("Message-ID") or "").strip() or None
+                candidate_key = message_id or f"imap:{num.decode(errors='ignore')}"
+                candidates[candidate_key] = {
                     "fonte": "gmail",
                     "psp": parsed.get("psp") or default_psp,
                     "importo": parsed.get("totale") or 0,
                     "data_pagamento": parsed.get("data_pagamento"),
                     "metodo_pagamento": parsed.get("metodo") or default_metodo,
                     "paypal_transaction_id": None,
+                    "gmail_message_id": message_id,
                     "pdf_ricevuta_path": pdf_path,
                     "iuv_usato": parsed.get("iuv") or iuv,
                     "dettagli_grezzi": parsed,
@@ -198,7 +245,13 @@ async def _cerca_in_gmail(db, iuv, numero_verbale, importo, verbale):
             conn.logout()
         except Exception:
             pass
-    return None
+
+    # Anche Gmail puo' contenere piu' ricevute con lo stesso riferimento e
+    # importo (reinoltri, tentativi ripetuti, operazioni distinte). In quel
+    # caso nessuna viene applicata automaticamente.
+    if len(candidates) != 1:
+        return None
+    return next(iter(candidates.values()))
 
 
 def _parse_pagopa_body(body):
@@ -378,39 +431,86 @@ async def _cerca_in_estratto_conto(db, iuv, numero_verbale, targa, importo, verb
 
 
 async def applica_pagamento_a_verbale(db, verbale_id, match):
-    """Applica il match al verbale — ricerca per id oppure per numero_verbale."""
+    """Collega una prova univoca mantenendo ricevuta e banca indipendenti."""
+    verbale = await db["verbali_noleggio"].find_one(
+        {"$or": [{"id": verbale_id}, {"numero_verbale": verbale_id}]},
+        {"_id": 0},
+    )
+    if not verbale:
+        return False
+
+    verbale_amount = (
+        verbale.get("importo") or verbale.get("importo_addebitato_fornitore")
+    )
+    if not amounts_equal_to_cent(verbale_amount, match.get("importo")):
+        return False
+
+    incoming_documentary_id = _documentary_evidence_id(match)
+    incoming_bank_id = str(match.get("movimento_id") or "").strip() or None
+    if not incoming_documentary_id and not incoming_bank_id:
+        return False
+
+    documentary_verified = bool(
+        incoming_documentary_id
+        or verbale.get("pagato_documentalmente")
+        or verbale.get("ricevuta_pagopa_id")
+        or verbale.get("paypal_transaction_id")
+    )
+    bank_verified = bool(
+        incoming_bank_id
+        or verbale.get("banca_verificata")
+        or verbale.get("movimento_banca_id")
+    )
+
+    if documentary_verified and bank_verified:
+        stato = "riconciliato"
+        stato_pratica = "RICONCILIATO_BANCA"
+    elif documentary_verified:
+        stato = "pagato"
+        stato_pratica = "PAGATO_DOCUMENTALE"
+    else:
+        stato = "pagato_attesa_quietanza"
+        stato_pratica = "ATTESA_QUIETANZA"
+
     pagamento_id = (
         match.get("paypal_transaction_id")
         or match.get("ricevuta_pagopa_id")
-        or match.get("movimento_id")
+        or verbale.get("pagamento_id")
+        or incoming_bank_id
     )
     update = {
-        "stato": "pagato",
-        # Stato probatorio separato: una ricevuta dimostra il pagamento
-        # documentale, non la presenza del movimento sul conto.
-        "stato_pratica": "PAGATO_DOCUMENTALE",
-        "pagato_documentalmente": True,
-        "banca_verificata": bool(match.get("movimento_id")),
-        "fonte_pagamento": match.get("fonte"),
+        "stato": stato,
+        "stato_pratica": stato_pratica,
+        "pagato_documentalmente": documentary_verified,
+        "banca_verificata": bank_verified,
+        "fonte_pagamento": (
+            match.get("fonte") if incoming_documentary_id
+            else verbale.get("fonte_pagamento")
+        ),
         "importo": match.get("importo") or None,
         "metodo_pagamento": match.get("metodo_pagamento"),
         "psp": match.get("psp"),
         "data_pagamento": match.get("data_pagamento"),
         "fonte_riconciliazione": match.get("fonte"),
-        "riconciliato_paypal": match.get("fonte") == "paypal",
+        "riconciliato_paypal": bool(
+            verbale.get("riconciliato_paypal") or match.get("fonte") == "paypal"
+        ),
         "pdf_ricevuta_path": match.get("pdf_ricevuta_path"),
-        "paypal_transaction_id": match.get("paypal_transaction_id"),
-        "movimento_banca_id": match.get("movimento_id"),
-        "ricevuta_pagopa_id": match.get("ricevuta_pagopa_id"),
+        "paypal_transaction_id": (
+            match.get("paypal_transaction_id") or verbale.get("paypal_transaction_id")
+        ),
+        "movimento_banca_id": incoming_bank_id or verbale.get("movimento_banca_id"),
+        "ricevuta_pagopa_id": (
+            match.get("ricevuta_pagopa_id") or verbale.get("ricevuta_pagopa_id")
+        ),
+        "gmail_message_id": (
+            match.get("gmail_message_id") or verbale.get("gmail_message_id")
+        ),
         "pagamento_id": pagamento_id,
         "iuv": match.get("iuv_usato"),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     update = {k: v for k, v in update.items() if v is not None}
-    verbale = await db["verbali_noleggio"].find_one(
-        {"$or": [{"id": verbale_id}, {"numero_verbale": verbale_id}]},
-        {"_id": 0, "id": 1, "numero_verbale": 1},
-    )
     res = await db["verbali_noleggio"].update_one(
         {"$or": [{"id": verbale_id}, {"numero_verbale": verbale_id}]},
         {"$set": update}
@@ -445,10 +545,15 @@ async def riconcilia_verbali_strict(db) -> Dict[str, Any]:
     """
     verbali = await db["verbali_noleggio"].find(
         {
-            "stato": {"$nin": ["pagato", "PAGATO", "riconciliato"]},
-            "$or": [
-                {"numero_verbale": {"$nin": [None, ""]}},
-                {"iuv": {"$nin": [None, ""]}},
+            "$and": [
+                {"$or": [
+                    {"numero_verbale": {"$nin": [None, ""]}},
+                    {"iuv": {"$nin": [None, ""]}},
+                ]},
+                {"$or": [
+                    {"pagato_documentalmente": {"$ne": True}},
+                    {"banca_verificata": {"$ne": True}},
+                ]},
             ],
         },
         {"_id": 0},
@@ -461,7 +566,7 @@ async def riconcilia_verbali_strict(db) -> Dict[str, Any]:
         "riconciliati_banca": 0,
         "non_riconciliati": 0,
         "errori": 0,
-        "regola": "riferimento_strutturato_e_importo_esatto_al_centesimo",
+        "regola": "prova_univoca_riferimento_strutturato_importo_esatto",
     }
     for verbale in verbali:
         try:
