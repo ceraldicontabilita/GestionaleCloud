@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Archivio fiscale Drive · Ceraldi ERP</title>
+  <style>
+    :root{--navy:#0f2744;--blue:#2563eb;--bg:#f4f7fb;--card:#fff;--line:#dbe4ef;--muted:#64748b;--ok:#047857;--warn:#b45309;--danger:#b91c1c}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#172033;font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+    header{background:linear-gradient(120deg,var(--navy),#164e78);color:#fff;padding:28px clamp(18px,4vw,56px)}
+    header h1{margin:0 0 5px;font-size:clamp(24px,4vw,38px)}header p{margin:0;color:#dbeafe}
+    main{max-width:1280px;margin:auto;padding:22px}.toolbar,.filters,.stats,.grid{display:grid;gap:12px}
+    .toolbar{grid-template-columns:1fr auto;align-items:center}.tabs{display:flex;gap:8px;flex-wrap:wrap}
+    button,.button,input,select{font:inherit}.tabs button,.button,button.primary{border:0;border-radius:9px;padding:10px 14px;font-weight:700;cursor:pointer}
+    .tabs button{background:#e2e8f0;color:var(--navy)}.tabs button.active,button.primary{background:var(--blue);color:#fff}
+    .button{display:inline-block;background:#fff;color:var(--navy);border:1px solid var(--line);text-decoration:none}
+    .status{padding:8px 11px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:800}.status.bad{background:#fee2e2;color:var(--danger)}
+    .stats{grid-template-columns:repeat(4,minmax(140px,1fr));margin:18px 0}.stat,.panel,.item{background:var(--card);border:1px solid var(--line);border-radius:13px;box-shadow:0 4px 18px #0f27440a}
+    .stat{padding:17px}.stat strong{display:block;font-size:28px;color:var(--navy)}.stat span{color:var(--muted)}
+    .panel{padding:18px;margin-bottom:16px}.filters{grid-template-columns:2fr 1fr 1fr auto;align-items:end}
+    label span{display:block;font-size:12px;font-weight:800;color:#475569;margin-bottom:5px}input,select{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff}
+    .grid{grid-template-columns:repeat(auto-fill,minmax(310px,1fr))}.item{padding:16px;display:flex;flex-direction:column;gap:7px}.item h3{margin:0;font-size:16px;overflow-wrap:anywhere}.item small,.muted{color:var(--muted)}
+    .badge{align-self:flex-start;border-radius:999px;padding:4px 8px;background:#e0f2fe;color:#075985;font-size:12px;font-weight:800}.actions{display:flex;gap:8px;margin-top:auto;padding-top:8px}.actions button{flex:1;border:1px solid var(--line);background:#fff;border-radius:8px;padding:9px;cursor:pointer;font-weight:700}.actions button:last-child{background:var(--navy);color:#fff}
+    .checks{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:8px}.check{padding:10px;border-radius:8px;background:#ecfdf5;color:var(--ok);font-weight:700}.check.no{background:#fef2f2;color:var(--danger)}
+    .hidden{display:none!important}.error{background:#fef2f2;color:var(--danger);padding:12px;border-radius:9px;margin:12px 0}.empty{text-align:center;color:var(--muted);padding:32px}
+    dialog{border:0;border-radius:14px;padding:0;max-width:760px;width:calc(100% - 28px);box-shadow:0 25px 80px #0f172a55}dialog::backdrop{background:#0f172a99}.modal{padding:22px}.modal header{background:none;color:inherit;padding:0;display:flex;justify-content:space-between;gap:15px}.modal header button{border:0;background:#e2e8f0;border-radius:50%;width:34px;height:34px;cursor:pointer}.relations{max-height:280px;overflow:auto}.relation{padding:9px 0;border-top:1px solid var(--line)}
+    #uploadPanel form{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;align-items:end}
+    @media(max-width:760px){.toolbar{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}.filters,#uploadPanel form{grid-template-columns:1fr}.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<header><h1>Archivio fiscale Drive</h1><p>Dichiarazioni, F24 e quietanze interconnessi. Gli originali restano su Google Drive.</p></header>
+<main>
+  <div class="toolbar"><div class="tabs" role="tablist">
+    <button class="active" data-tab="overview">Riepilogo</button><button data-tab="declarations">Dichiarazioni</button><button data-tab="f24">F24 e quietanze</button><button data-tab="documents">Tutti i documenti</button>
+  </div><div><a class="button" href="/situazione-fiscale/dichiarazioni">Gestionale</a> <span id="status" class="status">Caricamento…</span></div></div>
+  <div id="error" class="error hidden" role="alert"></div>
+  <section id="stats" class="stats"></section>
+  <section id="overview" class="panel"><h2>Controlli dell’archivio</h2><div id="checks" class="checks"></div><p class="muted"><strong>Regola probatoria:</strong> modello F24, quietanza documentale e movimento bancario restano fatti distinti. Le associazioni ambigue non vengono confermate automaticamente.</p></section>
+  <section id="workspace" class="hidden">
+    <form id="filters" class="panel filters"><label><span>Cerca</span><input id="q" placeholder="Nome, protocollo, codice o SHA-256"></label><label><span>Anno</span><select id="year"><option value="">Tutti</option></select></label><label id="taxWrap"><span>Codice tributo</span><input id="taxCode" placeholder="es. 1704"></label><button class="primary" type="submit">Cerca</button></form>
+    <section id="uploadPanel" class="panel hidden"><h2>Inserisci dichiarazione su Drive</h2><form id="upload"><label><span>PDF</span><input id="file" type="file" accept="application/pdf,.pdf" required></label><label><span>Anno dichiarazione</span><select id="uploadYear"></select></label><label><span>Classificazione</span><select id="category"><option value="automatica">Automatica</option><option value="modello_770">770</option><option value="dichiarazione_iva">IVA</option><option value="lipe">LIPE</option><option value="redditi_sc">Redditi SC</option><option value="dichiarazione_irap">IRAP</option><option value="elenco_percipienti">Percipienti</option></select></label><button class="primary" type="submit">Carica su Drive</button></form></section>
+    <div id="results" class="grid"></div><div id="empty" class="empty hidden">Nessun elemento trovato.</div>
+  </section>
+</main>
+<dialog id="detail"><div class="modal"><header><div><h2 id="detailTitle"></h2><p id="detailMeta" class="muted"></p></div><button id="close" aria-label="Chiudi">×</button></header><p id="detailPath"></p><div id="relations" class="relations"></div><p><a id="driveLink" class="button" target="_blank" rel="noopener noreferrer">Apri PDF originale su Drive</a></p></div></dialog>
+<script>
+const $=s=>document.querySelector(s), state={tab:'overview'};
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const euro=v=>new Intl.NumberFormat('it-IT',{style:'currency',currency:'EUR'}).format(Number(v||0));
+function authHeaders(){const token=localStorage.getItem('auth_token');return token?{Authorization:`Bearer ${token}`}:{}}
+async function api(path,options={}){const response=await fetch(path,{...options,headers:{...authHeaders(),...(options.headers||{})}});if(response.status===401){location.href='/login';throw new Error('Sessione scaduta')}const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.detail||`Errore ${response.status}`);return data}
+function fail(error){$('#error').textContent=error.message||String(error);$('#error').classList.remove('hidden')}
+function years(){const now=new Date().getFullYear();for(let y=now+1;y>=2019;y--){$('#year').insertAdjacentHTML('beforeend',`<option>${y}</option>`);$('#uploadYear').insertAdjacentHTML('beforeend',`<option ${y===now?'selected':''}>${y}</option>`)}}
+async function init(){years();try{const [status,overview]=await Promise.all([api('/api/documenti/drive/index/status'),api('/api/documenti/drive/index/overview')]);$('#status').textContent=`Drive verificato · ${status.documents}`;const c=overview.validation.counts;$('#stats').innerHTML=[['Documenti',c.documents],['F24',c.f24_documents],['Righe tributo',c.f24_rows],['Dichiarazioni',c.declarations]].map(([l,v])=>`<article class="stat"><strong>${esc(v)}</strong><span>${l}</span></article>`).join('');$('#checks').innerHTML=Object.entries(overview.validation.checks).map(([k,v])=>`<div class="check ${v?'':'no'}">${v?'✓':'✕'} ${esc(k.replaceAll('_',' '))}</div>`).join('')}catch(e){$('#status').textContent='Drive non disponibile';$('#status').classList.add('bad');fail(e)}}
+function endpoint(){const p=new URLSearchParams({limit:'500'});if($('#q').value)p.set('q',$('#q').value);if($('#year').value)p.set('year',$('#year').value);if(state.tab==='f24'&&$('#taxCode').value)p.set('tax_code',$('#taxCode').value);return `/api/documenti/drive/index/${state.tab==='documents'?'search':state.tab}?${p}`}
+async function search(){try{$('#error').classList.add('hidden');$('#results').innerHTML='<div class="empty">Caricamento…</div>';const data=await api(endpoint());const rows=data.results||[];$('#results').innerHTML=rows.map(card).join('');$('#empty').classList.toggle('hidden',rows.length>0);document.querySelectorAll('[data-doc]').forEach(b=>b.onclick=()=>detail(b.dataset.doc))}catch(e){$('#results').innerHTML='';fail(e)}}
+function card(item){const d=item.document||item;const id=d.document_id||item.document_id;let title=d.filename||item.filename||item.archive_path;let meta=`${d.category||item.document_type||item.type||'Documento'} · ${item.payment_date||item.year||d.year||'anno non indicato'}`;let extra=d.drive_path||item.archive_path||'';if(state.tab==='f24')extra=`Tributi ${esc((item.tax_codes||[]).join(', '))} · Debiti ${euro(item.total_debit)} · Crediti ${euro(item.total_credit)} · banca non confermata`;return `<article class="item"><span class="badge">${esc(state.tab==='f24'?(item.evidence_state||'F24'):state.tab)}</span><h3>${esc(title)}</h3><div>${esc(meta)}</div><small>${esc(extra)}</small><div class="actions"><button data-doc="${esc(id)}">Apri PDF e relazioni</button></div></article>`}
+async function detail(id){if(!id)return;try{const d=await api(`/api/documenti/drive/index/document/${encodeURIComponent(id)}`);$('#detailTitle').textContent=d.filename;$('#detailMeta').textContent=`${d.category||d.domain||''} · ${d.year||''} · SHA-256 ${d.sha256||''}`;$('#detailPath').textContent=d.drive_path||'';$('#driveLink').href=d.drive_url;const f=d.relations?.f24_rows||[],decs=d.relations?.declarations||[];$('#relations').innerHTML=[...f.map(r=>`<div class="relation"><strong>${esc(r.tax_code)} · ${esc(r.description)}</strong><br>${esc(r.tax_period||r.payment_date)} · debito ${euro(r.debit)} · credito ${euro(r.credit)}</div>`),...decs.map(r=>`<div class="relation"><strong>${esc(r.type)} ${esc(r.year)}</strong><br>${esc(r.archive_path)}</div>`)].join('')||'<p class="muted">Nessuna relazione indicizzata.</p>';$('#detail').showModal()}catch(e){fail(e)}}
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-tab]').forEach(x=>x.classList.remove('active'));b.classList.add('active');state.tab=b.dataset.tab;$('#overview').classList.toggle('hidden',state.tab!=='overview');$('#workspace').classList.toggle('hidden',state.tab==='overview');$('#taxWrap').classList.toggle('hidden',state.tab!=='f24');$('#uploadPanel').classList.toggle('hidden',state.tab!=='declarations');if(state.tab!=='overview')search()});
+$('#filters').onsubmit=e=>{e.preventDefault();search()};$('#close').onclick=()=>$('#detail').close();
+$('#upload').onsubmit=async e=>{e.preventDefault();const file=$('#file').files[0];if(!file)return;const data=new FormData();data.append('file',file);data.append('categoria',$('#category').value);data.append('periodo',$('#uploadYear').value);try{const result=await api('/api/documenti-fiscali/upload',{method:'POST',body:data});alert(result.duplicate?'PDF già presente su Drive':'PDF caricato e indicizzato su Drive');$('#file').value='';search();init()}catch(error){fail(error)}};
+init();
+</script>
+</body></html>

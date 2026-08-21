@@ -217,6 +217,7 @@ export default function SituazioneFiscale() {
           </select></label>
           <input ref={declarationInput} type="file" accept="application/pdf,.pdf" hidden onChange={uploadDeclaration} disabled={uploading} />
           <Button variant="primary" disabled={uploading} onClick={() => declarationInput.current?.click()}>{uploading ? 'Caricamento…' : 'Inserisci dichiarazione'}</Button>
+          <a href="/archivio-fiscale-drive.html" target="_blank" rel="noreferrer" style={{ padding: '9px 14px', borderRadius: 8, background: '#0f2744', color: '#fff', textDecoration: 'none', fontWeight: 700 }}>Apri pagina HTML Drive</a>
         </div>}
         {tab === 'codici-tributo' && <>
           {taxCodeMeta && <div style={{ margin: '0 0 14px', padding: '12px 14px', borderRadius: 10, background: '#eef6ff', border: '1px solid #bfdbfe' }}>
