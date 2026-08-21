@@ -22,6 +22,45 @@ Render non è un secondo Gestionale e non è un secondo archivio. Non deve
 inventare dati, pagamenti o collegamenti. Esegue in modo programmato le stesse
 regole del GestionaleCloud.
 
+### Se non metto il file nel Calderone, cosa succede?
+
+Render controlla soltanto `00 - CALDERONE/01 - IN ARRIVO`. Se non metti lì il
+file, quel task Render non lo vede e non fa nulla. Restano però attivi gli altri
+ingressi del Gestionale: monitor email, cartelle Drive specialistiche, API e
+caricamenti manuali. Tutti devono convergere nello stesso ingresso canonico;
+non devono importare due volte lo stesso originale.
+
+### Quali documenti sono già instradabili?
+
+| Documento riconosciuto | Destinazione esistente | Stato del collegamento |
+|---|---|---|
+| Fattura elettronica XML/P7M | `upload-auto` → fatture | pronto in anteprima |
+| Corrispettivo telematico XML | `upload-auto` → corrispettivi | pronto in anteprima |
+| F24 | `upload-auto` → registro F24 | pronto in anteprima |
+| Quietanza F24 | `upload-auto` → quietanze F24 | pronto in anteprima |
+| Cedolino/LUL | `upload-auto` → Libro Unico | pronto in anteprima |
+| Estratto conto riconoscibile | `upload-auto` → movimenti bancari | pronto in anteprima |
+| Dichiarazione fiscale | registro dichiarazioni | revisione richiesta |
+| Bonifico generico/distinta | archivio bonifici/distinte | revisione richiesta |
+| Cartella, avviso o verbale generico | atti amministrativi/PagoPA/AdeR | revisione richiesta |
+
+“Pronto in anteprima” significa che Render sa indicare il parser canonico, ma
+non trasmette ancora il documento: il task resta senza scritture, spostamenti o
+cancellazioni fino al collaudo e alla conferma dell'ingestione autenticata.
+
+### Legenda colori delle cartelle
+
+| Colore | Significato operativo |
+|---|---|
+| Verde | flusso completo, collaudato e attivo |
+| Giallo | riconoscimento/anteprima pronti, import automatico non ancora attivo |
+| Rosso | errori da correggere |
+| Grigio | cartella di archivio o flusso non ancora collegato |
+
+Il colore è un indicatore umano, non attiva il software. Una cartella diventa
+verde soltanto dopo un test completo: ingresso, deduplica, parser, registrazione
+canonica, pagina del Gestionale e prova di reimportazione idempotente.
+
 ## L'albero completo
 
 ```text

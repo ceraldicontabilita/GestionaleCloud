@@ -18,6 +18,7 @@ SUPPORTED_EXTENSIONS = {
     ".pdf", ".xlsx", ".xls", ".csv", ".xml", ".p7m", ".eml",
 }
 CLASSIFICATION_RULES = (
+    ("corrispettivo", ("dati rt", "dataorarilevazione", "codicefiscaleesercente", "pivaesercente")),
     ("cedolino", ("cedolino", "busta paga", "libro unico del lavoro", "netto del mese")),
     ("f24", ("modello f24", "f24 semplificato", "f24 ordinario", "delega irrevocabile")),
     ("quietanza_f24", ("quietanza f24", "ricevuta f24", "esito delega")),
@@ -26,9 +27,68 @@ CLASSIFICATION_RULES = (
     ("bonifico", ("bonifico", "cro", "trn", "ordinante", "beneficiario")),
     ("cartella_esattoriale", ("cartella di pagamento", "agenzia entrate riscossione", "ader")),
     ("avviso", ("avviso bonario", "avviso di accertamento", "avviso pagopa")),
-    ("fattura", ("fattura elettronica", "fattura", "nota di credito")),
+    ("fattura", ("fattura elettronica", "fatturaelettronica", "fattura", "nota di credito")),
     ("verbale", ("verbale", "violazione", "codice della strada")),
 )
+
+# Questa tabella non crea un secondo importatore: indica quale ingresso gia'
+# esistente del Gestionale deve ricevere il documento dopo la conferma umana.
+# ``CANONICAL_IMPORT_READY`` significa che upload-auto possiede gia' un parser
+# specialistico e la deduplica di dominio. ``REVIEW_REQUIRED`` conserva invece
+# il documento senza trasformarlo in un fatto contabile ambiguo.
+ROUTING_REGISTRY = {
+    "corrispettivo": {
+        "consumer": "documents_inbox -> /api/documenti/upload-auto -> corrispettivi",
+        "readiness": "CANONICAL_IMPORT_READY",
+    },
+    "fattura": {
+        "consumer": "documents_inbox -> /api/documenti/upload-auto -> fatture XML",
+        "readiness": "CANONICAL_IMPORT_READY",
+    },
+    "f24": {
+        "consumer": "documents_inbox -> /api/documenti/upload-auto -> F24 canonico",
+        "readiness": "CANONICAL_IMPORT_READY",
+    },
+    "quietanza_f24": {
+        "consumer": "documents_inbox -> /api/documenti/upload-auto -> quietanze F24",
+        "readiness": "CANONICAL_IMPORT_READY",
+    },
+    "cedolino": {
+        "consumer": "documents_inbox -> /api/documenti/upload-auto -> Libro Unico",
+        "readiness": "CANONICAL_IMPORT_READY",
+    },
+    "estratto_conto": {
+        "consumer": "documents_inbox -> /api/documenti/upload-auto -> movimenti bancari",
+        "readiness": "CANONICAL_IMPORT_READY",
+    },
+    "dichiarazione_fiscale": {
+        "consumer": "documents_inbox -> registro dichiarazioni fiscali",
+        "readiness": "REVIEW_REQUIRED",
+    },
+    "bonifico": {
+        "consumer": "documents_inbox -> archivio bonifici/distinte",
+        "readiness": "REVIEW_REQUIRED",
+    },
+    "cartella_esattoriale": {
+        "consumer": "documents_inbox -> atti amministrativi/AdeR",
+        "readiness": "REVIEW_REQUIRED",
+    },
+    "avviso": {
+        "consumer": "documents_inbox -> atti amministrativi/PagoPA",
+        "readiness": "REVIEW_REQUIRED",
+    },
+    "verbale": {
+        "consumer": "documents_inbox -> verbali/PagoPA",
+        "readiness": "REVIEW_REQUIRED",
+    },
+}
+
+
+def route_for(document_type: str) -> dict[str, str]:
+    return dict(ROUTING_REGISTRY.get(document_type, {
+        "consumer": "documents_inbox -> classificazione manuale",
+        "readiness": "REVIEW_REQUIRED",
+    }))
 
 
 def _safe_member(name: str) -> str:
@@ -77,6 +137,8 @@ def classify_document(name: str, content: bytes) -> dict[str, Any]:
     searchable = re.sub(r"[_\-]+", " ", name).casefold()
     if extension == ".pdf":
         searchable += " " + _pdf_text(content).casefold()
+    elif extension in {".xml", ".p7m", ".eml", ".csv"}:
+        searchable += " " + content[:256 * 1024].decode("utf-8", errors="ignore").casefold()
     matches = []
     for document_type, markers in CLASSIFICATION_RULES:
         score = sum(marker in searchable for marker in markers)
@@ -89,17 +151,21 @@ def classify_document(name: str, content: bytes) -> dict[str, Any]:
             ".csv": "dati_tabellari", ".xml": "documento_xml",
             ".p7m": "documento_firmato", ".eml": "messaggio_email",
         }.get(extension)
-        return {
+        result = {
             "document_type": fallback or "documento_non_classificato",
             "status": "DA_VERIFICARE", "confidence": 0.5 if fallback else 0.0,
         }
+        result.update(route_for(result["document_type"]))
+        return result
     best_score, best_type = matches[0]
     tied = len(matches) > 1 and matches[1][0] == best_score
-    return {
+    result = {
         "document_type": best_type,
         "status": "DA_VERIFICARE" if tied else "CLASSIFICATO",
         "confidence": 0.6 if tied else min(0.7 + best_score * 0.1, 0.99),
     }
+    result.update(route_for(best_type))
+    return result
 
 
 def index_hashes_from_xlsx(content: bytes) -> set[str]:
@@ -162,6 +228,8 @@ def scan_document_inbox_preview(max_documents: int = 20_000) -> dict[str, Any]:
     seen = set(existing_hashes)
     classifications: Counter[str] = Counter()
     statuses: Counter[str] = Counter()
+    routes: Counter[str] = Counter()
+    readiness: Counter[str] = Counter()
     source_count = document_count = duplicate_count = error_count = 0
     for source in sources:
         suffix = PurePosixPath(source.get("name") or "").suffix.lower()
@@ -183,6 +251,8 @@ def scan_document_inbox_preview(max_documents: int = 20_000) -> dict[str, Any]:
                 classification = classify_document(member, content)
                 classifications[classification["document_type"]] += 1
                 statuses[classification["status"]] += 1
+                routes[classification["consumer"]] += 1
+                readiness[classification["readiness"]] += 1
         except Exception:
             error_count += 1
             statuses["ERRORE"] += 1
@@ -194,6 +264,7 @@ def scan_document_inbox_preview(max_documents: int = 20_000) -> dict[str, Any]:
         "exact_duplicates_existing_or_batch": duplicate_count,
         "new_documents": document_count - duplicate_count,
         "statuses": dict(statuses), "classifications": dict(classifications),
+        "routes": dict(routes), "routing_readiness": dict(readiness),
         "source_errors": error_count,
         "writes": 0, "moves": 0, "deletes": 0,
         "next_action": "anteprima e conferma prima dell'ingest canonico",
