@@ -48,6 +48,22 @@ async def _transazione_registro(db):
         yield None
 
 
+@asynccontextmanager
+async def _batch_scritture_registro(db):
+    """Accorpa un job massivo in un solo flush per foglio Drive/Sheets.
+
+    I doppi di test e gli adapter compatibili che non espongono
+    ``batch_writes`` continuano a funzionare senza un ramo speciale nei
+    chiamanti. Il runtime Sheets deduplica inoltre i batch annidati.
+    """
+    batch_writes = getattr(db, "batch_writes", None)
+    if not callable(batch_writes):
+        yield None
+        return
+    async with batch_writes():
+        yield None
+
+
 def _sessione(session) -> Dict[str, Any]:
     return {"session": session} if session is not None else {}
 
@@ -1184,7 +1200,9 @@ def raggruppa_accrediti_pos_per_giorno(
     return out
 
 
-async def recupera_pos_storico_da_estratto(db, anno: int) -> Dict[str, Any]:
+async def _recupera_pos_storico_da_estratto_impl(
+    db, anno: int,
+) -> Dict[str, Any]:
     """Ricollega le prove EC alle attese POS gia' create dalla fonte POS.
 
     Nome mantenuto per compatibilita' con router e job esistenti. La regola
@@ -1258,7 +1276,13 @@ async def recupera_pos_storico_da_estratto(db, anno: int) -> Dict[str, Any]:
     }
 
 
-async def bonifica_accrediti_pos_numia(
+async def recupera_pos_storico_da_estratto(db, anno: int) -> Dict[str, Any]:
+    """Riconcilia le prove POS storiche con un solo flush per foglio."""
+    async with _batch_scritture_registro(db):
+        return await _recupera_pos_storico_da_estratto_impl(db, anno)
+
+
+async def _bonifica_accrediti_pos_numia_impl(
     db,
     anno: int,
     *,
@@ -1552,3 +1576,26 @@ async def bonifica_accrediti_pos_numia(
         "recupero_storico": recupero,
         "dettaglio": dettaglio,
     }
+
+
+async def bonifica_accrediti_pos_numia(
+    db,
+    anno: int,
+    *,
+    dry_run: bool = True,
+    actor: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Bonifica NUMIA con persistenza Drive/Sheets accorpata per foglio.
+
+    Senza questo confine un recupero di molte giornate eseguiva una lettura
+    remota dell'indice Sheets per ogni singola mutazione e superava il limite
+    di 60 letture/minuto. La cache resta aggiornata a ogni passaggio, mentre il
+    registro remoto riceve un unico upsert deduplicato per collezione.
+    """
+    async with _batch_scritture_registro(db):
+        return await _bonifica_accrediti_pos_numia_impl(
+            db,
+            anno,
+            dry_run=dry_run,
+            actor=actor,
+        )
