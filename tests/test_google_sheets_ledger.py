@@ -337,6 +337,42 @@ def test_upsert_incrementale_aggiorna_e_accoda_senza_riscrivere_il_foglio(monkey
     assert appended[1] == "INV-2"
 
 
+def test_upsert_incrementale_spezza_grandi_import_in_blocchi(monkeypatch):
+    append_sizes = []
+
+    class Request:
+        def execute(self):
+            return {}
+
+    class Values:
+        def batchUpdate(self, **_kwargs):
+            return Request()
+
+        def append(self, **kwargs):
+            append_sizes.append(len(kwargs["body"]["values"]))
+            return Request()
+
+    class Spreadsheets:
+        def values(self):
+            return Values()
+
+    class Service:
+        def spreadsheets(self):
+            return Spreadsheets()
+
+    target = ledger.dynamic_sheet("large_pos_import")
+    monkeypatch.setattr(ledger, "_read_identities_sync", lambda *_args: [])
+    monkeypatch.setattr(ledger, "_sheets_service", lambda: Service())
+
+    result = ledger._upsert_documents_sync(
+        "SHEET-1", target,
+        [{"id": f"POS-{index}"} for index in range(1001)],
+    )
+
+    assert result["aggiunte"] == 1001
+    assert append_sizes == [500, 500, 1]
+
+
 def test_rimozione_incrementale_svuota_solo_le_righe_richieste(monkeypatch):
     calls = {}
 

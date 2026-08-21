@@ -10,7 +10,9 @@ import logging
 import io
 import re
 import csv
+import hashlib
 from collections import Counter, defaultdict
+from contextlib import asynccontextmanager
 
 from app.database import Database
 from app.utils.error_handler import handle_errors
@@ -24,6 +26,17 @@ from app.services.bank_evidence import EVIDENZA_UFFICIALE, campi_evidenza
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+@asynccontextmanager
+async def _write_batch(db):
+    """Accorpa le scritture remote quando il runtime Sheets lo supporta."""
+    factory = getattr(db, "batch_writes", None)
+    if callable(factory):
+        async with factory():
+            yield
+    else:
+        yield
 
 
 def _occorrenza_gia_importata(
@@ -138,8 +151,137 @@ _PREFISSI_CANALE_EC = re.compile(
 
 def normalizza_descrizione_ec(desc: str) -> str:
     """Descrizione canonica di una riga EC ai fini della deduplica."""
-    compatta = re.sub(r"\s+", " ", (desc or "").strip())
+    compatta = re.sub(r"\s+", " ", (desc or "").strip()).upper()
     return _PREFISSI_CANALE_EC.sub("", compatta)[:80]
+
+
+def bank_operation_identity(
+    data_iso: str, tipo: str, importo: float, descrizione: str, occurrence: int,
+) -> tuple[str, str]:
+    """Identita stabile della singola riga bancaria.
+
+    Il file sorgente non partecipa alla chiave: export mensili o analitici
+    sovrapposti devono riconoscere la stessa operazione. L'occorrenza conserva
+    invece due addebiti realmente identici presenti nello stesso estratto.
+    """
+    cents = int(round(abs(float(importo)) * 100))
+    base = "|".join((
+        "bank:v2", str(data_iso)[:10], str(tipo or "").lower(), str(cents),
+        normalizza_descrizione_ec(descrizione),
+    ))
+    operation_key = hashlib.sha256(
+        f"{base}|occurrence:{int(occurrence)}".encode("utf-8")
+    ).hexdigest()
+    return operation_key, f"bank:{operation_key}"
+
+
+def _date_from_spreadsheet(value: Any) -> Optional[date]:
+    """Data robusta per gli export XLSX bancari e delle carte."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    raw = str(value or "").strip()
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(raw[:10], fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _float_from_spreadsheet(value: Any) -> Optional[float]:
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    raw = str(value).strip().replace(" ", "")
+    if not raw:
+        return None
+    if "," in raw:
+        raw = raw.replace(".", "").replace(",", ".")
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
+def parse_enti_file_contabili_xlsx(contents: bytes) -> Optional[List[Dict[str, Any]]]:
+    """Legge l'export ``Enti_File_Contabili`` delle carte aziendali.
+
+    Ritorna ``None`` quando il foglio non e' di questo tipo, cosi' il chiamante
+    puo' usare il parser XLSX bancario generico. Le spese sono uscite anche se
+    il portale le esporta come numeri positivi; ``Data Valuta`` e' la data
+    dell'operazione, mentre il valore tecnico 30/11/1999 del bollo viene
+    sostituito con la data contabile del rendiconto.
+    """
+    import openpyxl
+
+    workbook = openpyxl.load_workbook(io.BytesIO(contents), data_only=True)
+    sheet = workbook.active
+    headers_raw = [str(cell.value or "").strip() for cell in sheet[1]]
+    headers = [header.casefold() for header in headers_raw]
+    required = {"data contabile", "data valuta", "importo spesa", "insegna", "codice carta"}
+    if not required.issubset(set(headers)):
+        workbook.close()
+        return None
+
+    result: List[Dict[str, Any]] = []
+    for row_num in range(2, sheet.max_row + 1):
+        row = {
+            headers[index]: sheet.cell(row=row_num, column=index + 1).value
+            for index in range(len(headers))
+        }
+        amount = _float_from_spreadsheet(
+            row.get("importo movimento in valuta") or row.get("importo spesa")
+        )
+        accounting_date = _date_from_spreadsheet(row.get("data contabile"))
+        transaction_date = _date_from_spreadsheet(row.get("data valuta"))
+        if transaction_date and transaction_date.year < 2000:
+            transaction_date = None
+        operation_date = transaction_date or accounting_date
+        if operation_date is None or amount is None:
+            continue
+
+        merchant = str(row.get("insegna") or "").strip()
+        locality = str(
+            row.get("localita") or row.get("località") or row.get("localit�") or ""
+        ).strip()
+        external_reference = str(row.get("codice interno") or "").strip()
+        description_parts = [part for part in (merchant, locality) if part]
+        identity_description = " ".join(description_parts)
+        if external_reference:
+            description_parts.append(f"RIF {external_reference}")
+        description = " - ".join(description_parts) or "MOVIMENTO CARTA AZIENDALE"
+
+        card = re.sub(r"\s+", "", str(row.get("codice carta") or ""))
+        rapporto = str(row.get("posizione") or "").strip()
+        currency = str(
+            row.get("codice valuta") or row.get("codice divisa posizione") or "EUR"
+        ).strip() or "EUR"
+        category_code = str(row.get("codice categoria merceologica") or "").strip()
+        category = f"Carta aziendale MCC {category_code}" if category_code else "Carta aziendale"
+
+        result.append({
+            "data": operation_date,
+            "ragione_sociale": str(row.get("anagrafica") or "").strip() or None,
+            "fornitore": merchant or None,
+            "importo": -abs(amount),
+            "numero_fattura": None,
+            "data_pagamento": accounting_date,
+            "categoria": category,
+            "descrizione_originale": description,
+            "identity_description": identity_description or description,
+            "banca": "Nexi",
+            "rapporto": rapporto or card,
+            "divisa": currency,
+            "hashtag": "carta_aziendale",
+            "tipo": "uscita",
+            "external_reference": external_reference or None,
+            "numero_carta_mascherato": card or None,
+        })
+    workbook.close()
+    return result
 
 
 def mappa_categoria_ec(categoria: Optional[str], descrizione: Optional[str] = None) -> Optional[str]:
@@ -302,9 +444,12 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                     continue
             return None
 
-        banca_parser = parsed.get("banca") or (
+        is_nexi_parser = (
+            "nexi" in (parsed.get("tipo_documento") or "").lower()
+            or str(parsed.get("banca") or "").lower().startswith("nexi")
+        )
+        banca_parser = "Nexi" if is_nexi_parser else parsed.get("banca") or (
             "BNL" if "bnl" in (parsed.get("tipo_documento") or "").lower()
-            else "Nexi/Banco BPM" if "nexi" in (parsed.get("tipo_documento") or "").lower()
             else "Banco BPM"
         )
         for transazione in parsed.get("transazioni") or []:
@@ -330,6 +475,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                 "data_pagamento": data_valuta,
                 "categoria": transazione.get("categoria") or "",
                 "descrizione_originale": descrizione,
+                "identity_description": descrizione if is_nexi_parser else None,
                 "banca": banca_parser,
                 "rapporto": (parsed.get("metadata") or {}).get("numero_conto"),
                 "divisa": transazione.get("divisa") or "EUR",
@@ -456,111 +602,96 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     
     elif filename.endswith(('.xlsx', '.xls')):
         try:
-            import openpyxl
-            wb = openpyxl.load_workbook(io.BytesIO(contents))
-            sheet = wb.active
-            
-            # Mappa header originali a chiavi normalizzate
-            headers_raw = [str(cell.value or '') for cell in sheet[1]]
-            headers = [h.lower().strip() for h in headers_raw]
-            
-            for row_num in range(2, sheet.max_row + 1):
-                row_data = {headers[i]: sheet.cell(row=row_num, column=i+1).value 
-                           for i in range(len(headers))}
-                
-                # Trova colonne con supporto per varianti
-                data_contabile = None
-                importo = None
-                descrizione = ""
-                categoria = ""
-                data_valuta = None
-                ragione_sociale = ""
-                banca = ""
-                rapporto = ""
-                divisa = "EUR"
-                hashtag = ""
-                
-                for h, v in row_data.items():
-                    if not v:
-                        continue
-                    h_lower = h.lower()
-                    
-                    # Ragione Sociale
-                    if 'ragione sociale' in h_lower:
-                        ragione_sociale = str(v).strip()
-                    
-                    # Data contabile
-                    elif 'data contabile' in h_lower or (h_lower == 'data' and not data_contabile):
-                        if isinstance(v, (datetime, date)):
-                            data_contabile = v if isinstance(v, date) else v.date()
-                        elif '/' in str(v):
-                            parts = str(v).split('/')
-                            try:
-                                data_contabile = date(int(parts[2]), int(parts[1]), int(parts[0]))
-                            except (ValueError, TypeError, IndexError):
-                                pass
-                    
-                    # Data valuta
-                    elif 'data valuta' in h_lower or 'data valut' in h_lower:
-                        if isinstance(v, (datetime, date)):
-                            data_valuta = v if isinstance(v, date) else v.date()
-                        elif '/' in str(v):
-                            parts = str(v).split('/')
-                            try:
-                                data_valuta = date(int(parts[2]), int(parts[1]), int(parts[0]))
-                            except (ValueError, TypeError, IndexError):
-                                pass
-                    
-                    # Banca
-                    elif h_lower == 'banca':
-                        banca = str(v).strip()
-                    
-                    # Rapporto
-                    elif h_lower == 'rapporto':
-                        rapporto = str(v).strip()
-                    
-                    # Importo
-                    elif 'importo' in h_lower:
-                        if isinstance(v, (int, float)):
-                            importo = float(v)
-                        else:
-                            try:
-                                importo = float(str(v).replace('.', '').replace(',', '.'))
-                            except (ValueError, TypeError):
-                                pass
-                    
-                    # Divisa
-                    elif h_lower == 'divisa':
-                        divisa = str(v).strip()
-                    
-                    # Descrizione
-                    elif 'descri' in h_lower:
-                        descrizione = str(v).strip()
-                    
-                    # Categoria
-                    elif 'categoria' in h_lower:
-                        categoria = str(v).strip()
-                    
-                    # Hashtag
-                    elif h_lower == 'hashtag':
-                        hashtag = str(v).strip()
-                
-                if data_contabile and importo is not None:
-                    movimenti.append({
-                        "data": data_contabile,
-                        "ragione_sociale": ragione_sociale if ragione_sociale else None,
-                        "fornitore": estrai_fornitore_pulito(descrizione),
-                        "importo": importo,
-                        "numero_fattura": estrai_numero_fattura(descrizione),
-                        "data_pagamento": data_valuta,
-                        "categoria": categoria,
-                        "descrizione_originale": descrizione,
-                        "banca": banca,
-                        "rapporto": rapporto,
-                        "divisa": divisa,
-                        "hashtag": hashtag,
-                        "tipo": "uscita" if importo < 0 else "entrata"
-                    })
+            enti_rows = parse_enti_file_contabili_xlsx(contents)
+            if enti_rows is not None:
+                movimenti.extend(enti_rows)
+            else:
+                import openpyxl
+                wb = openpyxl.load_workbook(io.BytesIO(contents))
+                sheet = wb.active
+
+                # Mappa header originali a chiavi normalizzate
+                headers_raw = [str(cell.value or '') for cell in sheet[1]]
+                headers = [h.lower().strip() for h in headers_raw]
+
+                for row_num in range(2, sheet.max_row + 1):
+                    row_data = {headers[i]: sheet.cell(row=row_num, column=i+1).value
+                               for i in range(len(headers))}
+
+                    # Trova colonne con supporto per varianti
+                    data_contabile = None
+                    importo = None
+                    descrizione = ""
+                    categoria = ""
+                    data_valuta = None
+                    ragione_sociale = ""
+                    banca = ""
+                    rapporto = ""
+                    divisa = "EUR"
+                    hashtag = ""
+
+                    for h, v in row_data.items():
+                        if not v:
+                            continue
+                        h_lower = h.lower()
+
+                        # Ragione Sociale
+                        if 'ragione sociale' in h_lower:
+                            ragione_sociale = str(v).strip()
+
+                        # Data contabile
+                        elif 'data contabile' in h_lower or (h_lower == 'data' and not data_contabile):
+                            data_contabile = _date_from_spreadsheet(v)
+
+                        # Data valuta
+                        elif 'data valuta' in h_lower or 'data valut' in h_lower:
+                            data_valuta = _date_from_spreadsheet(v)
+
+                        # Banca
+                        elif h_lower == 'banca':
+                            banca = str(v).strip()
+
+                        # Rapporto
+                        elif h_lower == 'rapporto':
+                            rapporto = str(v).strip()
+
+                        # Importo
+                        elif 'importo' in h_lower:
+                            importo = _float_from_spreadsheet(v)
+
+                        # Divisa
+                        elif h_lower == 'divisa':
+                            divisa = str(v).strip()
+
+                        # Descrizione
+                        elif 'descri' in h_lower:
+                            descrizione = str(v).strip()
+
+                        # Categoria
+                        elif 'categoria' in h_lower:
+                            categoria = str(v).strip()
+
+                        # Hashtag
+                        elif h_lower == 'hashtag':
+                            hashtag = str(v).strip()
+
+                    if data_contabile and importo is not None:
+                        movimenti.append({
+                            "data": data_contabile,
+                            "ragione_sociale": ragione_sociale if ragione_sociale else None,
+                            "fornitore": estrai_fornitore_pulito(descrizione),
+                            "importo": importo,
+                            "numero_fattura": estrai_numero_fattura(descrizione),
+                            "data_pagamento": data_valuta,
+                            "categoria": categoria,
+                            "descrizione_originale": descrizione,
+                            "banca": banca,
+                            "rapporto": rapporto,
+                            "divisa": divisa,
+                            "hashtag": hashtag,
+                            "tipo": "uscita" if importo < 0 else "entrata"
+                        })
+                wb.close()
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Errore parsing Excel: {str(e)}")
     else:
@@ -593,7 +724,8 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     existing_cursor = db["estratto_conto_movimenti"].find(
         {"data": {"$gte": data_min, "$lte": data_max}},
         {"data": 1, "importo": 1, "descrizione_originale": 1, "descrizione": 1,
-         "id": 1, "livello_evidenza": 1, "evidenza_bancaria_ufficiale": 1, "_id": 0}
+         "id": 1, "tipo": 1, "banca": 1, "operation_key": 1, "operation_id": 1,
+         "livello_evidenza": 1, "evidenza_bancaria_ufficiale": 1, "_id": 0}
     )
     # chiave whitespace-insensibile: gli export bancari variano gli spazi
     # interni ("NUMIA-INTER  DEL" vs "NUMIA-INTER DEL") e senza normalizzare
@@ -602,14 +734,28 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         return normalizza_descrizione_ec(desc)
 
     existing_by_key: Dict[Any, List[Dict[str, Any]]] = defaultdict(list)
+    existing_operation_keys = set()
+    existing_card_by_base: Dict[Any, List[Dict[str, Any]]] = defaultdict(list)
+    from app.services.nexi_carta import _nexi_description, nexi_operation_identity
     async for rec in existing_cursor:
         dstr = rec.get("data", "")[:10]
         imp  = abs(float(rec.get("importo", 0)))
         desc = _norm_desc(rec.get("descrizione_originale") or rec.get("descrizione") or "")
-        existing_by_key[(dstr, round(imp, 2), desc)].append(rec)
+        existing_by_key[(dstr, rec.get("tipo"), round(imp, 2), desc)].append(rec)
+        if rec.get("operation_key"):
+            existing_operation_keys.add(str(rec["operation_key"]))
+        if rec.get("tipo") == "carta_credito" or str(rec.get("banca") or "").startswith("Nexi"):
+            raw_amount = float(rec.get("importo") or 0)
+            card_amount = raw_amount if rec.get("tipo") == "carta_credito" else abs(raw_amount)
+            card_base = (
+                dstr, int(round(card_amount * 100)),
+                _nexi_description(rec.get("descrizione_originale") or rec.get("descrizione")),
+            )
+            existing_card_by_base[card_base].append(rec)
     
     records_to_insert = []
     records_promossi = []
+    identity_backfills = []
     incoming_occurrences: Counter = Counter()
     for mov in movimenti:
         data_str    = mov["data"].isoformat()[:10] if hasattr(mov["data"], "isoformat") else str(mov["data"])[:10]
@@ -623,14 +769,49 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         if any(kw in desc_raw.upper() for kw in ["I24 AGENZIA ENTRATE", "BOLL.CBILL", "PAG. UTENZE"]):
             tipo_mov = "uscita"
         
+        # Le carte possono arrivare sia dal PDF Nexi sia dal foglio contabile:
+        # entrambi devono produrre la stessa identita' e non due movimenti.
+        is_card_movement = str(mov.get("banca") or "").startswith("Nexi")
+        identity_description = mov.get("identity_description") or (
+            mov.get("descrizione_originale") or mov.get("descrizione") or ""
+        )
+
         # Dedup uniforme: vale anche per commissioni e piccoli importi.
-        dedup_key = (data_str, round(importo_abs, 2), desc_raw)
-        
-        incoming_occurrences[dedup_key] += 1
-        occurrence = incoming_occurrences[dedup_key]
-        existing_rows = existing_by_key.get(dedup_key, [])
-        if len(existing_rows) >= occurrence:
-            existing = existing_rows[occurrence - 1]
+        dedup_key = (data_str, tipo_mov, round(importo_abs, 2), desc_raw)
+
+        if is_card_movement:
+            card_base = (
+                data_str, int(round(importo_abs * 100)),
+                _nexi_description(identity_description),
+            )
+            occurrence_counter_key = ("nexi", card_base)
+            incoming_occurrences[occurrence_counter_key] += 1
+            occurrence = incoming_occurrences[occurrence_counter_key]
+            operation_key, operation_id = nexi_operation_identity(
+                data_str, importo_abs, identity_description, occurrence,
+            )
+            existing_rows = existing_card_by_base.get(card_base, [])
+            identity_version = "nexi_v2"
+        else:
+            incoming_occurrences[dedup_key] += 1
+            occurrence = incoming_occurrences[dedup_key]
+            operation_key, operation_id = bank_operation_identity(
+                data_str, tipo_mov, importo_abs, desc_raw, occurrence,
+            )
+            existing_rows = existing_by_key.get(dedup_key, [])
+            identity_version = "bank_v2"
+
+        direct_operation_match = operation_key in existing_operation_keys
+        if direct_operation_match or len(existing_rows) >= occurrence:
+            existing = (
+                next((row for row in existing_rows if row.get("operation_key") == operation_key), None)
+                or (existing_rows[occurrence - 1] if len(existing_rows) >= occurrence else {})
+            )
+            if not existing.get("operation_key") or not existing.get("operation_id"):
+                identity_backfills.append((
+                    existing.get("id"), operation_key, operation_id, occurrence,
+                    identity_version,
+                ))
             if fonte_ufficiale and not (
                 existing.get("evidenza_bancaria_ufficiale") is True
                 or existing.get("livello_evidenza") == EVIDENZA_UFFICIALE
@@ -639,12 +820,15 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             duplicates += 1
             continue
         
-        row_uuid    = str(_uuid.uuid4())
-        fingerprint = _hashlib.md5(f"{data_str}|{importo_abs:.2f}|{desc_raw}|{row_uuid}".encode()).hexdigest()
-        mov_id      = f"EC-{data_str}-{importo_abs:.2f}-{fingerprint[:8]}"
+        fingerprint = operation_key
+        mov_id = f"EC-{data_str}-{importo_abs:.2f}-{operation_key[:12]}"
         
         records_to_insert.append({
             "id": mov_id,
+            "operation_id": operation_id,
+            "operation_key": operation_key,
+            "identity_version": identity_version,
+            "occurrence_index": occurrence,
             "data": data_str,
             "ragione_sociale": mov.get("ragione_sociale"),
             "fornitore": mov.get("fornitore"),
@@ -658,6 +842,8 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             "rapporto": mov.get("rapporto"),
             "divisa": mov.get("divisa", "EUR"),
             "hashtag": mov.get("hashtag"),
+            "external_reference": mov.get("external_reference"),
+            "numero_carta_mascherato": mov.get("numero_carta_mascherato"),
             "tipo": tipo_mov,
             "descrizione_hash": desc_raw[:50],
             "fingerprint": fingerprint,
@@ -670,25 +856,34 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         })
 
     promoted_ids = [record.get("id") for record in records_promossi if record.get("id")]
-    if promoted_ids:
-        await db["estratto_conto_movimenti"].update_many(
-            {"id": {"$in": promoted_ids}},
-            {"$set": {
-                **evidenza,
-                "source_filename_ufficiale": filename_originale,
-                "drive_file_id": drive_file_id,
-                "drive_source_path": drive_source_path,
-                "riconciliato": False,
-                "promosso_a_ufficiale_at": datetime.now(timezone.utc).isoformat(),
-            }, "$unset": {
-                "riconciliato_provvisoriamente": "",
-            }},
-        )
-    
-    # Inserimento bulk unico
-    if records_to_insert:
-        await db["estratto_conto_movimenti"].insert_many(records_to_insert, ordered=False)
-        inserted = len(records_to_insert)
+    async with _write_batch(db):
+        if promoted_ids:
+            await db["estratto_conto_movimenti"].update_many(
+                {"id": {"$in": promoted_ids}},
+                {"$set": {
+                    **evidenza,
+                    "source_filename_ufficiale": filename_originale,
+                    "drive_file_id": drive_file_id,
+                    "drive_source_path": drive_source_path,
+                    "riconciliato": False,
+                    "promosso_a_ufficiale_at": datetime.now(timezone.utc).isoformat(),
+                }, "$unset": {
+                    "riconciliato_provvisoriamente": "",
+                }},
+            )
+        for record_id, operation_key, operation_id, occurrence, identity_version in identity_backfills:
+            if record_id:
+                await db["estratto_conto_movimenti"].update_one(
+                    {"id": record_id}, {"$set": {
+                        "operation_key": operation_key,
+                        "operation_id": operation_id,
+                        "identity_version": identity_version,
+                        "occurrence_index": occurrence,
+                    }},
+                )
+        if records_to_insert:
+            await db["estratto_conto_movimenti"].insert_many(records_to_insert, ordered=False)
+            inserted = len(records_to_insert)
 
     has_material_changes = bool(records_to_insert or promoted_ids)
 
@@ -1350,13 +1545,16 @@ async def force_reimport_estratto_conto(file: UploadFile = File(...), _admin: Di
     existing_counts: Counter = Counter()
     existing_cursor = db["estratto_conto_movimenti"].find(
         {"data": {"$gte": data_min_csv, "$lte": data_max_csv}},
-        {"data": 1, "importo": 1, "descrizione_originale": 1, "descrizione": 1, "_id": 0}
+        {"data": 1, "importo": 1, "tipo": 1,
+         "descrizione_originale": 1, "descrizione": 1, "_id": 0}
     )
     async for rec in existing_cursor:
         dstr = rec.get("data", "")[:10]
         imp = abs(float(rec.get("importo", 0)))
-        desc = (rec.get("descrizione_originale") or rec.get("descrizione") or "")[:80]
-        existing_counts[(dstr, round(imp, 2), desc)] += 1
+        desc = normalizza_descrizione_ec(
+            rec.get("descrizione_originale") or rec.get("descrizione") or ""
+        )
+        existing_counts[(dstr, rec.get("tipo"), round(imp, 2), desc)] += 1
     
     cancellati = 0  # Non cancelliamo nulla
     
@@ -1370,24 +1568,31 @@ async def force_reimport_estratto_conto(file: UploadFile = File(...), _admin: Di
     for mov in movimenti:
         data_str = mov["data"].isoformat()[:10]
         importo_abs = abs(mov["importo"])
-        desc_raw = (mov.get("descrizione_originale") or "")[:80]
-        
-        # Dedup: se esiste già, salta
-        dedup_key = (data_str, round(importo_abs, 2), desc_raw)
-        if _occorrenza_gia_importata(existing_counts, incoming_occurrences, dedup_key):
-            duplicates_skipped += 1
-            continue
-        
+        desc_raw = normalizza_descrizione_ec(mov.get("descrizione_originale") or "")
         tipo_mov = "entrata" if mov["importo"] >= 0 else "uscita"
         if any(kw in desc_raw.upper() for kw in ["DISPOSIZIONE", "VS.DISP", "ADD.TOT", "I24 AGENZIA ENTRATE", "BOLL.CBILL", "PAG. UTENZE"]):
             tipo_mov = "uscita"
-        
-        row_uuid = str(_uuid.uuid4())
-        fingerprint = _hashlib.md5(f"{data_str}|{importo_abs:.2f}|{desc_raw}|{row_uuid}".encode()).hexdigest()
-        mov_id = f"EC-{data_str}-{importo_abs:.2f}-{fingerprint[:8]}"
+
+        # Dedup: se esiste gia', salta. Il verso fa parte dell'identita'.
+        dedup_key = (data_str, tipo_mov, round(importo_abs, 2), desc_raw)
+        incoming_occurrences[dedup_key] += 1
+        occurrence = incoming_occurrences[dedup_key]
+        if existing_counts[dedup_key] >= occurrence:
+            duplicates_skipped += 1
+            continue
+
+        operation_key, operation_id = bank_operation_identity(
+            data_str, tipo_mov, importo_abs, desc_raw, occurrence,
+        )
+        fingerprint = operation_key
+        mov_id = f"EC-{data_str}-{importo_abs:.2f}-{operation_key[:12]}"
         
         record = {
             "id": mov_id,
+            "operation_id": operation_id,
+            "operation_key": operation_key,
+            "identity_version": "bank_v2",
+            "occurrence_index": occurrence,
             "data": data_str,
             "ragione_sociale": mov.get("ragione_sociale"),
             "fornitore": mov.get("fornitore"),

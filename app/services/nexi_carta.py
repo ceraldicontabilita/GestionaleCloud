@@ -22,8 +22,10 @@ quando l'email non è arrivata) più il controllo di quadratura.
 """
 import logging
 import re
-import uuid
 import hashlib
+import unicodedata
+from collections import Counter, defaultdict
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -37,6 +39,44 @@ COLL_MOVIMENTI = "estratto_conto_movimenti"
 _RE_NEXI = re.compile(r"\bNEXI\b|CARTASI|CARTA\s+SI\b", re.IGNORECASE)
 
 _TOLLERANZA = 0.01
+
+
+@asynccontextmanager
+async def _write_batch(db):
+    factory = getattr(db, "batch_writes", None)
+    if callable(factory):
+        async with factory():
+            yield
+    else:
+        yield
+
+
+def _nexi_description(value: Any) -> str:
+    text = unicodedata.normalize("NFKD", str(value or "").strip()).upper()
+    # I due export reali scrivono lo stesso esercente in modi diversi:
+    # ``F LLI CASOLARO`` / ``F LLICASOLARO`` e ``AMZNBusiness*...`` /
+    # ``Amznbusiness ...``. La chiave usa quindi solo caratteri alfanumerici;
+    # la descrizione originale resta invariata e visibile all'utente.
+    return re.sub(r"[^A-Z0-9]", "", text)[:180]
+
+
+def nexi_operation_identity(
+    data_iso: str, importo: float, descrizione: str, occurrence: int,
+) -> tuple[str, str]:
+    """Identita' della singola operazione carta, indipendente dal PDF.
+
+    Due statement sovrapposti riconoscono la stessa spesa; due righe davvero
+    identiche nello stesso statement restano distinte tramite l'occorrenza.
+    """
+    cents = int(round(float(importo or 0) * 100))
+    base = "|".join((
+        "nexi:v2", _norm_data(data_iso), str(cents),
+        _nexi_description(descrizione),
+    ))
+    operation_key = hashlib.sha256(
+        f"{base}|occurrence:{int(occurrence)}".encode("utf-8")
+    ).hexdigest()
+    return operation_key, f"nexi:{operation_key}"
 
 
 def _descr(doc: Dict[str, Any]) -> str:
@@ -308,9 +348,13 @@ async def importa_estratto_nexi_pdf(
     if drive_file_id:
         condizioni.append({"drive_file_id": drive_file_id})
     existing = await db[COLL_ESTRATTI].find_one({"$or": condizioni}, {"_id": 0, "id": 1})
+    statement_is_duplicate = bool(existing)
     if existing:
         # Un parser migliorato deve poter arricchire anche un PDF gia' noto
         # (es. imposta di bollo Nexi), senza duplicare documento o movimenti.
+        # Continuiamo comunque fino alle transazioni: cosi' i record storici
+        # ricevono la chiave operazione stabile e un import interrotto puo'
+        # completare solo le righe realmente mancanti.
         await db[COLL_ESTRATTI].update_one(
             {"id": existing.get("id")},
             {"$set": {
@@ -318,55 +362,121 @@ async def importa_estratto_nexi_pdf(
                 "parser_updated_at": datetime.now(timezone.utc).isoformat(),
             }},
         )
-        verifica = await verifica_addebiti_nexi(db)
-        return {
-            "success": True,
-            "duplicate": True,
-            "estratto_id": existing.get("id"),
-            "operazioni": 0,
-            "totale_importo": 0,
-            "verifica": verifica,
-        }
 
     transazioni = result.get("transazioni", [])
     if not transazioni:
         return {"success": False, "message": "Nessuna transazione riconosciuta nel PDF"}
 
-    estratto_id = str(uuid.uuid4())
-    await db[COLL_ESTRATTI].insert_one({
+    estratto_id = (
+        existing.get("id") if existing and existing.get("id")
+        else f"nexi_statement:{content_sha256}"
+    )
+    now_iso = datetime.now(timezone.utc).isoformat()
+    statement_record = {
         "id": estratto_id,
         "filename": filename,
         "pdf_data": base64.b64encode(pdf_content).decode("utf-8"),
         "tipo": "nexi_carta",
         "metadata": result.get("metadata", {}),
         "totale_transazioni": len(transazioni),
-        "import_date": datetime.now(timezone.utc).isoformat(),
+        "import_date": now_iso,
         "source": source,
         "drive_file_id": drive_file_id,
         "source_path": source_path,
         "content_sha256": content_sha256,
-    })
-    for idx, t in enumerate(transazioni):
-        await db[COLL_MOVIMENTI].insert_one({
-            "id": f"{estratto_id}_{idx}",
+    }
+
+    # Un solo caricamento delle identita' gia' note. Il file sorgente e il suo
+    # hash non fanno parte dell'identita' contabile: scansioni diverse o
+    # statement con periodi sovrapposti non devono duplicare una spesa.
+    existing_by_key = set()
+    legacy_by_base: Counter = Counter()
+    existing_docs_by_base = defaultdict(list)
+    async for movement in db[COLL_MOVIMENTI].find({
+        "$or": [{"tipo": "carta_credito"}, {"banca": "Nexi"}],
+    }):
+        if movement.get("operation_key"):
+            existing_by_key.add(str(movement["operation_key"]))
+        legacy_base = (
+            _norm_data(movement.get("data") or movement.get("data_contabile") or ""),
+            int(round(float(movement.get("importo") or 0) * 100)),
+            _nexi_description(movement.get("descrizione_originale") or movement.get("descrizione")),
+        )
+        legacy_by_base[legacy_base] += 1
+        existing_docs_by_base[legacy_base].append(movement)
+
+    incoming_occurrences: Counter = Counter()
+    movement_records = []
+    duplicate_count = 0
+    backfills = []
+    for t in transazioni:
+        data_iso = _norm_data(t.get("data") or "")
+        amount = float(t.get("importo") or 0)
+        description = str(t.get("descrizione") or "").strip()
+        base = (data_iso, int(round(amount * 100)), _nexi_description(description))
+        incoming_occurrences[base] += 1
+        occurrence = incoming_occurrences[base]
+        operation_key, operation_id = nexi_operation_identity(
+            data_iso, amount, description, occurrence,
+        )
+        if operation_key in existing_by_key or legacy_by_base[base] >= occurrence:
+            duplicate_count += 1
+            if operation_key not in existing_by_key:
+                legacy = existing_docs_by_base[base][occurrence - 1]
+                if legacy.get("id"):
+                    backfills.append((legacy["id"], operation_key, operation_id, occurrence))
+            continue
+        movement_records.append({
+            "id": operation_id,
+            "operation_id": operation_id,
+            "operation_key": operation_key,
+            "identity_version": "nexi_v2",
+            "occurrence_index": occurrence,
             "estratto_id": estratto_id,
-            "data": t.get("data"),
-            "descrizione": t.get("descrizione", ""),
-            "importo": t.get("importo", 0),
+            "data": data_iso,
+            "descrizione": description,
+            "descrizione_originale": description,
+            "importo": amount,
             "tipo": "carta_credito",
             "banca": "Nexi",
             "categoria": t.get("categoria"),
             "riconciliato": False,
             "fattura_id": None,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "source_filename": filename,
+            "drive_file_id": drive_file_id,
+            "drive_source_path": source_path,
+            "created_at": now_iso,
         })
+
+    async with _write_batch(db):
+        if not statement_is_duplicate:
+            await db[COLL_ESTRATTI].insert_one(statement_record)
+        for record_id, operation_key, operation_id, occurrence in backfills:
+            await db[COLL_MOVIMENTI].update_one(
+                {"id": record_id}, {"$set": {
+                    "operation_key": operation_key,
+                    "operation_id": operation_id,
+                    "identity_version": "nexi_v2",
+                    "occurrence_index": occurrence,
+                }},
+            )
+        if movement_records:
+            collection = db[COLL_MOVIMENTI]
+            insert_many = getattr(collection, "insert_many", None)
+            if callable(insert_many):
+                await insert_many(movement_records, ordered=False)
+            else:  # Compatibilita' per adapter/test minimali.
+                for record in movement_records:
+                    await collection.insert_one(record)
 
     verifica = await verifica_addebiti_nexi(db)
     return {
         "success": True,
-        "duplicate": False,
+        "duplicate": statement_is_duplicate,
         "estratto_id": estratto_id,
-        "operazioni": len(transazioni),
+        "operazioni": len(movement_records),
+        "operazioni_lette": len(transazioni),
+        "duplicati_operazione": duplicate_count,
         "totale_importo": round(sum(t.get("importo") or 0 for t in transazioni), 2),
         "verifica": verifica,
     }

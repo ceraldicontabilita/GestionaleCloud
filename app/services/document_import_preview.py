@@ -134,6 +134,28 @@ def _specialist_preview(content: bytes, filename: str, document_type: str) -> di
                 parsed, document_type="NOTA_RETTIFICA_INPS"
             ),
         }
+    if document_type == "pos_terminal":
+        if "commissioni_" in filename.lower():
+            from app.services.pos_commissioni_import import parse_pos_commissioni_file
+
+            parsed = parse_pos_commissioni_file(content, filename)
+            return {
+                "giorni": parsed.get("rows", 0),
+                "righe_non_valide": parsed.get("invalid", 0),
+                "operation_identity": "pos_numia_commissioni_data",
+            }
+        from app.services.pos_terminal_import import parse_pos_terminal_file
+
+        parsed = parse_pos_terminal_file(content, filename)
+        return {
+            "operazioni": parsed.get("rows", 0),
+            "righe_sorgente": parsed.get("source_rows", 0),
+            "duplicati_nel_file": parsed.get("duplicates", 0),
+            "approvate": parsed.get("approved", 0),
+            "giorni": len(parsed.get("daily_totals") or {}),
+            "terminali": parsed.get("terminali") or [],
+            "operation_identity": "pos_numia_v2",
+        }
     if document_type in {
         "tari_avviso", "tari_istanza_compensazione", "visura_camerale",
         "documento_identita", "ader_sospensione", "ader_definizione_agevolata",

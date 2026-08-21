@@ -902,18 +902,25 @@ def _upsert_documents_sync(
         sequence += 1
         appended.append(row_for_document(document, progressive))
 
-    if updates:
+    # Un export POS mensile contiene migliaia di operazioni. Il flush resta
+    # atomico dal punto di vista della cache locale, ma le richieste HTTP a
+    # Sheets devono restare abbastanza piccole da non saturare Render/proxy.
+    write_batch_rows = 500
+    for offset in range(0, len(updates), write_batch_rows):
         sheets.spreadsheets().values().batchUpdate(
             spreadsheetId=spreadsheet_id,
-            body={"valueInputOption": "RAW", "data": updates},
+            body={
+                "valueInputOption": "RAW",
+                "data": updates[offset:offset + write_batch_rows],
+            },
         ).execute()
-    if appended:
+    for offset in range(0, len(appended), write_batch_rows):
         sheets.spreadsheets().values().append(
             spreadsheetId=spreadsheet_id,
             range=f"'{sheet.title}'!A:{LAST_COLUMN}",
             valueInputOption="RAW",
             insertDataOption="INSERT_ROWS",
-            body={"values": appended},
+            body={"values": appended[offset:offset + write_batch_rows]},
         ).execute()
     return {
         "foglio": sheet.title,
