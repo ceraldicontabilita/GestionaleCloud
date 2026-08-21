@@ -33,6 +33,8 @@ const metricStyle = {
 };
 
 function EsitoF24({ mese }) {
+  const daVersare = mese.da_versare ?? Math.max(Number(mese.saldo || 0), 0);
+  const aCredito = mese.a_credito ?? Math.max(-Number(mese.saldo || 0), 0);
   if (mese.stato_periodo === 'NON_ANCORA_DOVUTO') return <Badge variant="neutral">Non ancora dovuto</Badge>;
   if (mese.stato_periodo === 'IN_FORMAZIONE') return <Badge variant="info">In formazione</Badge>;
   if (mese.stato_periodo === 'IN_ATTESA') return <Badge variant="info">In attesa</Badge>;
@@ -44,10 +46,10 @@ function EsitoF24({ mese }) {
     return <Badge variant="warning">LIPE da verificare</Badge>;
   }
   if (mese.lipe?.stato === 'LIPE_ESTRATTA' && mese.lipe?.coerente_gestionale === false) {
-    return <Badge variant="danger">LIPE diversa</Badge>;
+    return <Badge variant="warning">Dati da verificare</Badge>;
   }
-  if ((mese.da_versare || 0) <= 0) {
-    return <Badge variant="info">Credito {formatEuro(mese.a_credito || 0)}</Badge>;
+  if (daVersare <= 0) {
+    return <Badge variant="info">Credito {formatEuro(aCredito)}</Badge>;
   }
   if (mese.stato_f24 === 'in_attesa_f24' || mese.importo_f24_commercialista == null) {
     return <Badge variant="warning">In attesa F24</Badge>;
@@ -69,11 +71,10 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
         Confronto con F24 del commercialista
       </h3>
       <p style={{ margin: '0 0 12px', color: COLORS.textMuted, fontSize: 13 }}>
-        Confronta mese per mese il calcolo del gestionale, i campi VP4/VP5 della LIPE e la sola
-        riga IVA (codici 6001–6012) estratta dal modello F24 ricevuto via email. Gli altri tributi presenti nello stesso
-        modello, ad esempio il 1040, restano distinti e non vengono sommati all’IVA.
-        Il calcolo comprende tutte le fatture fiscalmente attribuite al mese, indipendentemente
-        da cassa, banca e stato del pagamento.
+        Tre fonti distinte, senza sommarle tra loro: il gestionale calcola vendite meno acquisti
+        detraibili; la LIPE comunica VP4 (IVA esigibile) e VP5 (IVA detratta); l’F24 mostra quanto
+        richiesto dalla commercialista con il codice IVA 6001–6012. Quietanza e banca provano il
+        pagamento, non modificano il calcolo.
       </p>
 
       {loading && <div style={{ padding: 20, color: COLORS.textMuted }}>Caricamento confronto F24…</div>}
@@ -91,7 +92,7 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
             <table className="iva-responsive-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead>
                 <tr>
-                  {['Mese', 'IVA debito', 'IVA credito', 'Fatture', 'Saldo gestionale', 'LIPE VP4/VP5', 'F24 commercialista', 'Quietanza', 'Banca', 'Scostamento F24', 'Esito'].map((label) => (
+                  {['Mese', 'Calcolo gestionale', 'LIPE comunicata', 'F24 commercialista', 'Pagamento', 'Esito'].map((label) => (
                     <th key={label} style={{ padding: '10px 9px', textAlign: label === 'Mese' ? 'left' : 'right', color: COLORS.textMuted, background: COLORS.bgAlt, whiteSpace: 'nowrap' }}>
                       {label}
                     </th>
@@ -104,29 +105,29 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
                   return (
                   <tr key={m.mese} style={{ borderTop: `1px solid ${COLORS.border}` }}>
                     <td data-label="Mese" style={{ padding: '10px 9px', fontWeight: 700 }}>{m.mese_nome}</td>
-                    <td data-label="IVA debito" style={{ padding: '10px 9px', textAlign: 'right', color: nonCalcolato ? COLORS.textMuted : COLORS.danger }}>{nonCalcolato ? '—' : formatEuro(m.iva_debito_corrispettivi)}</td>
-                    <td data-label="IVA credito" style={{ padding: '10px 9px', textAlign: 'right', color: nonCalcolato ? COLORS.textMuted : COLORS.success }}>{nonCalcolato ? '—' : formatEuro(m.iva_credito_fatture)}</td>
-                    <td data-label="Fatture del mese" style={{ padding: '10px 9px', textAlign: 'right' }}>
+                    <td data-label="Calcolo gestionale" style={{ padding: '10px 9px', textAlign: 'right' }}>
                       {nonCalcolato ? '—' : (
                         <span>
-                          <strong>{m.num_fatture || 0}</strong>
+                          Vendite {formatEuro(m.iva_debito_corrispettivi)}<br />
+                          Acquisti − {formatEuro(m.iva_credito_fatture)}<br />
+                          <strong style={{ color: m.saldo > 0 ? COLORS.danger : COLORS.success }}>
+                            Saldo {m.saldo > 0 ? '+' : ''}{formatEuro(m.saldo)}
+                          </strong>
                           <small style={{ display: 'block', color: COLORS.textMuted }}>
-                            {m.fatture_con_iva_competenza || 0} con IVA
+                            {m.num_fatture || 0} fatture · {m.fatture_con_iva_competenza || 0} con IVA
                             {m.fatture_gia_liquidate ? ` · ${m.fatture_gia_liquidate} già liquidate` : ''}
                             {m.fatture_da_classificare ? ` · ${m.fatture_da_classificare} da verificare` : ''}
                           </small>
                         </span>
                       )}
                     </td>
-                    <td data-label="Saldo gestionale" style={{ padding: '10px 9px', textAlign: 'right', fontWeight: 700, color: m.saldo > 0 ? COLORS.danger : COLORS.success }}>
-                      {nonCalcolato ? '—' : <>{m.saldo > 0 ? '+' : ''}{formatEuro(m.saldo)}</>}
-                    </td>
-                    <td data-label="LIPE VP4/VP5" style={{ padding: '10px 9px', textAlign: 'right' }}>
+                    <td data-label="LIPE comunicata" style={{ padding: '10px 9px', textAlign: 'right' }}>
                       {['LIPE_ESTRATTA', 'LIPE_DA_VERIFICARE'].includes(m.lipe?.stato) ? (
                         <span>
-                          VP4 {formatEuro(m.lipe.vp4)} · VP5 {formatEuro(m.lipe.vp5)}
+                          Esigibile VP4 {formatEuro(m.lipe.vp4)}<br />
+                          Detraibile VP5 {formatEuro(m.lipe.vp5)}
                           <small style={{ display: 'block', color: m.lipe.stato === 'LIPE_DA_VERIFICARE' ? COLORS.warning : m.lipe.coerente_gestionale ? COLORS.success : COLORS.danger }}>
-                            {m.lipe.stato === 'LIPE_DA_VERIFICARE' ? 'OCR da verificare' : m.lipe.coerente_gestionale ? 'coerente' : 'scostamento rilevato'} · pag. {m.lipe.page_number || '—'}
+                            {m.lipe.stato === 'LIPE_DA_VERIFICARE' ? 'OCR da verificare' : m.lipe.coerente_gestionale ? 'uguale al gestionale' : 'diversa dal gestionale'} · pag. {m.lipe.page_number || '—'}
                           </small>
                         </span>
                       ) : <span style={{ color: COLORS.textMuted }}>{m.lipe?.stato === 'LIPE_AMBIGUA' ? 'Più LIPE candidate' : '—'}</span>}
@@ -141,14 +142,9 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
                         </span>
                       )}
                     </td>
-                    <td data-label="Quietanza" style={{ padding: '10px 9px', textAlign: 'right' }}>
-                      <Badge variant={m.quietanza_presente ? 'success' : 'neutral'}>{m.quietanza_presente ? 'Presente' : 'Assente'}</Badge>
-                    </td>
-                    <td data-label="Banca" style={{ padding: '10px 9px', textAlign: 'right' }}>
-                      <Badge variant={m.verificato_banca ? 'success' : 'neutral'}>{m.verificato_banca ? 'Verificata' : 'Non verificata'}</Badge>
-                    </td>
-                    <td data-label="Scostamento F24" style={{ padding: '10px 9px', textAlign: 'right', color: m.scostamento_f24 == null ? COLORS.textMuted : Math.abs(m.scostamento_f24) <= 0.01 ? COLORS.success : COLORS.danger }}>
-                      {m.scostamento_f24 == null ? '—' : formatEuro(m.scostamento_f24)}
+                    <td data-label="Pagamento" style={{ padding: '10px 9px', textAlign: 'right' }}>
+                      <small style={{ display: 'block' }}>Quietanza: {m.quietanza_presente ? 'presente' : 'assente'}</small>
+                      <small style={{ display: 'block' }}>Banca: {m.verificato_banca ? 'verificata' : 'non verificata'}</small>
                     </td>
                     <td data-label="Esito" style={{ padding: '10px 9px', textAlign: 'right' }}><EsitoF24 mese={m} /></td>
                   </tr>
@@ -197,7 +193,6 @@ export function ScadenzeIvaMensili({ anno, dati, loading, error }) {
             {scadenze.map((s) => {
               const nonCalcolato = s.stato === 'NON_CALCOLATO' || s.saldo_cents == null;
               const aDebito = Boolean(s.da_versare_effettivo ?? s.da_versare);
-              const importo = s.importo_versamento_effettivo ?? s.importo_versamento ?? 0;
               return (
                 <article key={s.mese} style={{ padding: 12, border: `1px solid ${COLORS.border}`, borderLeft: `4px solid ${nonCalcolato ? COLORS.textMuted : aDebito ? COLORS.warning : COLORS.success}`, borderRadius: 8, background: COLORS.bgAlt }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
@@ -212,7 +207,7 @@ export function ScadenzeIvaMensili({ anno, dati, loading, error }) {
                   </div>
                   <div style={{ marginTop: 9 }}>
                     <Badge variant={nonCalcolato ? 'neutral' : aDebito ? 'warning' : 'success'}>
-                      {nonCalcolato ? 'Non calcolato' : aDebito ? `Da confrontare ${formatEuro(importo)}` : 'Credito riportato'}
+                      {nonCalcolato ? 'Non calcolato' : aDebito ? 'Da verificare con F24' : 'Credito riportato'}
                     </Badge>
                   </div>
                 </article>
