@@ -67,7 +67,8 @@ movimento bancario e scrittura contabile sono prove distinte. Possono condivider
 
 La destinazione definitiva usa **Google Drive per gli originali** e **Google
 Sheets/Excel collegato a Drive per registri, progressivi, indici e relazioni**.
-legacy DB è stato rimosso e il runtime non la richiede. Le variabili e gli script legacy DB non sono supportati: rimuoverli o ignorarli; la sola fonte di persistenza è Drive/Sheets.
+Il runtime usa esclusivamente Drive/Sheets. Non esistono backend alternativi,
+fallback legacy o variabili di configurazione per archivi diversi.
 
 Workbook: `Ceraldi ERP - Registro dati`.
 
@@ -510,6 +511,8 @@ si rigenerano dal codice e non si correggono a mano.
 | `CORS_ALLOWED_ORIGINS` | sicurezza | configurazione | `str` / `''` | `app/config.py` |
 | `CORS_ORIGINS` | sicurezza | configurazione | `str` / `'*'` | `app/config.py` |
 | `CREDENTIALS_ENCRYPTION_KEY` | app-runtime | configurazione | non dichiarato in Settings | `render.yaml` |
+| `DATA_BACKEND` | app-runtime | configurazione | `str` / `'sheets'` | `app/config.py` |
+| `DB_NAME` | app-runtime | configurazione | `str` / `'Gestionale'` | `app/config.py` |
 | `DEBUG` | app-runtime | configurazione | `bool` / `False` | `app/config.py` |
 | `DEFAULT_USER_EMAIL` | app-runtime | configurazione | `str` / `'admin@ceraldi.it'` | `app/config.py` |
 | `DEFAULT_USER_ID` | app-runtime | configurazione | `str` / `'admin'` | `app/config.py` |

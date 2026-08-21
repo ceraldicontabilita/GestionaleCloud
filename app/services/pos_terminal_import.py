@@ -202,11 +202,21 @@ def _xlsx_rows(content: bytes) -> Iterable[Dict[str, Any]]:
             headers = candidate
             break
     if headers is None:
+        workbook.close()
         return []
-    return (
-        {headers[index]: value for index, value in enumerate(raw) if index < len(headers) and headers[index]}
-        for raw in iterator
-    )
+
+    def _rows():
+        try:
+            for raw in iterator:
+                yield {
+                    headers[index]: value
+                    for index, value in enumerate(raw)
+                    if index < len(headers) and headers[index]
+                }
+        finally:
+            workbook.close()
+
+    return _rows()
 
 
 def parse_pos_terminal_file(content: bytes, filename: str) -> Dict[str, Any]:
@@ -316,8 +326,22 @@ async def importa_pos_terminal_file(db, content: bytes, filename: str, *, drive_
     # Una sola lettura della cache Sheets, poi un solo inserimento bulk. La
     # vecchia implementazione faceva find+update remoto per ogni riga (oltre
     # 6.500 chiamate per un mese), causando i 502 visibili in produzione.
+    immutable_fields = (
+        "transaction_id", "transaction_timestamp", "data", "importo",
+        "tipo_transazione", "provider", "terminale", "mid",
+        "id_punto_vendita",
+    )
+    mutable_fields = (
+        "stato", "punto_vendita", "circuito_carta", "authorization_code",
+        "numero_carta", "valuta",
+    )
+    projection = {
+        "_id": 0, "id": 1, "operation_key": 1, "transaction_key": 1,
+        "legacy_transaction_key": 1,
+        **{field: 1 for field in immutable_fields + mutable_fields},
+    }
     existing_rows = await db["pos_terminal_transactions"].find(
-        {}, {"_id": 0}
+        {}, projection,
     ).to_list(250000)
     existing_by_key: Dict[str, Dict[str, Any]] = {}
     for row in existing_rows:
@@ -330,15 +354,6 @@ async def importa_pos_terminal_file(db, content: bytes, filename: str, *, drive_
 
     records_to_insert: List[Dict[str, Any]] = []
     records_to_update: List[tuple[str, Dict[str, Any]]] = []
-    immutable_fields = (
-        "transaction_id", "transaction_timestamp", "data", "importo",
-        "tipo_transazione", "provider", "terminale", "mid",
-        "id_punto_vendita",
-    )
-    mutable_fields = (
-        "stato", "punto_vendita", "circuito_carta", "authorization_code",
-        "numero_carta", "valuta",
-    )
     for item in parsed["transactions"]:
         candidate_keys = [
             item.get("operation_key"), item.get("transaction_key"),
@@ -351,19 +366,21 @@ async def importa_pos_terminal_file(db, content: bytes, filename: str, *, drive_
         )
         affected_dates.add(item["data"])
         if previous is None:
-            record = {
-                **item,
+            # La riga normalizzata e' gia esclusiva di questo import: la
+            # completiamo in-place per non mantenerne una seconda copia per
+            # migliaia di transazioni.
+            item.update({
                 "source_filename": filename,
                 "source_file_hash": file_hash,
                 "drive_file_id": drive_file_id,
                 "created_at": now,
                 "updated_at": now,
-            }
-            records_to_insert.append(record)
+            })
+            records_to_insert.append(item)
             inserted += 1
             for key in candidate_keys:
                 if key:
-                    existing_by_key[str(key)] = record
+                    existing_by_key[str(key)] = item
             continue
 
         affected_dates.add(previous.get("data"))
@@ -404,18 +421,25 @@ async def importa_pos_terminal_file(db, content: bytes, filename: str, *, drive_
         registra_chiusura_pos_reale,
     )
 
-    async with _write_batch():
-        if records_to_insert:
+    # Ogni batch limita le copie transitorie create dal datastore, dal hook di
+    # persistenza e dal payload Sheets. Il vecchio batch unico da oltre 6.500
+    # righe poteva superare i 512 MiB di Render prima del primo flush.
+    write_chunk_size = 250
+    for offset in range(0, len(records_to_insert), write_chunk_size):
+        async with _write_batch():
             await db["pos_terminal_transactions"].insert_many(
-                records_to_insert, ordered=False,
+                records_to_insert[offset:offset + write_chunk_size], ordered=False,
             )
-        for record_id, changes in records_to_update:
-            if not record_id:
-                continue
-            await db["pos_terminal_transactions"].update_one(
-                {"id": record_id}, {"$set": {**changes, "updated_at": now}},
-            )
+    for offset in range(0, len(records_to_update), write_chunk_size):
+        async with _write_batch():
+            for record_id, changes in records_to_update[offset:offset + write_chunk_size]:
+                if not record_id:
+                    continue
+                await db["pos_terminal_transactions"].update_one(
+                    {"id": record_id}, {"$set": {**changes, "updated_at": now}},
+                )
 
+    async with _write_batch():
         # La cache e' gia aggiornata dentro il batch: una sola scansione
         # sostituisce una query per ogni giorno del file.
         all_rows = await db["pos_terminal_transactions"].find(

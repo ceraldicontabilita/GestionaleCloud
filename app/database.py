@@ -33,7 +33,7 @@ class Database:
             backend = settings.DATA_BACKEND.strip().lower()
             if backend != "sheets":
                 raise RuntimeError(
-                    "DATA_BACKEND 'legacy DB' non è più supportato. Usare DATA_BACKEND=sheets "
+                    "DATA_BACKEND non supportato. Usare DATA_BACKEND=sheets "
                     "e configurare GOOGLE_SHEETS_LEDGER_ID o GOOGLE_SHEETS_LEDGER_FOLDER_ID."
                 )
 
@@ -47,9 +47,8 @@ class Database:
             await runtime.hydrate()
             cls.client = runtime._client
             cls.db = runtime
-            scrub_mongo_runtime_configuration()
             logger.info(
-                "Connected to Google Sheets ledger %s; legacy DB support disabled",
+                "Connected to Google Sheets ledger %s",
                 settings.GOOGLE_SHEETS_LEDGER_ID,
             )
             return
