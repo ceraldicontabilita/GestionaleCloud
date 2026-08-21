@@ -296,7 +296,11 @@ def row_for_document(document: Dict[str, Any], progressivo: str) -> List[Any]:
         _first(document, ("file_hash", "pdf_hash", "fingerprint")),
         str(_first(document, ("updated_at", "created_at"))),
     ]
-    return [sheet_cell_value(value) for value in index_values] + payload_chunks(payload)
+    row = [sheet_cell_value(value) for value in index_values] + payload_chunks(payload)
+    # Gli update Sheets non cancellano automaticamente le celle a destra se
+    # la nuova riga contiene meno chunk della precedente. Scrivere sempre fino
+    # a CA evita che frammenti JSON vecchi restino accodati al nuovo payload.
+    return row + [""] * (len(HEADERS) - len(row))
 
 
 def next_progressive(prefix: str, values: Iterable[str]) -> int:
