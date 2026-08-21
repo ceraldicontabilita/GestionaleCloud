@@ -953,7 +953,6 @@ async def import_salari_verificati(data: Dict[str, Any] = Body(...)) -> Dict[str
     skipped = 0
     errors: List[str] = []
     totale = 0.0
-    dipendenti_toccati = set()
 
     for idx, row in enumerate(righe, 1):
         try:
@@ -1009,12 +1008,8 @@ async def import_salari_verificati(data: Dict[str, Any] = Body(...)) -> Dict[str
             await db["prima_nota_salari"].insert_one(new_record.copy())
             created += 1
             totale += importo
-            dipendenti_toccati.add(dipendente)
         except Exception as exc:
             errors.append(f"Riga {idx}: {exc}")
-
-    for dipendente in sorted(dipendenti_toccati):
-        await ricalcola_progressivi_tutti(db, None, dipendente)
 
     return {
         "success": not errors,
@@ -1023,6 +1018,7 @@ async def import_salari_verificati(data: Dict[str, Any] = Body(...)) -> Dict[str
         "skipped": skipped,
         "righe_file": len(righe),
         "totale_importato": round(totale, 2),
+        "progressivi_ricalcolati": False,
         "errors": errors[:20],
     }
 
