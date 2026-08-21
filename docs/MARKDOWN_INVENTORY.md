@@ -2,11 +2,11 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-08-20
+reviewed_at: 2026-08-21
 storage_architecture: drive-only
 -->
 
-Inventario rigenerato il 2026-08-20 da `scripts/refresh_markdown_docs.py`.
+Inventario rigenerato il 2026-08-21 da `scripts/refresh_markdown_docs.py`.
 Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Significato degli stati
@@ -20,11 +20,11 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Riepilogo
 
-- Correnti: **32**
+- Correnti: **33**
 - Riferimento: **25**
 - Generati: **5**
 - Storici: **3**
-- Totale: **65**
+- Totale: **66**
 
 ## Elenco completo
 
@@ -49,6 +49,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `docs/MCP_GESTIONALE_SPEC.md` | `current` | Autorità operativa corrente |
 | `docs/OBSIDIAN_KNOWLEDGE_ARCHITECTURE_2026-08-20.md` | `current` | Autorità operativa corrente |
 | `docs/PIANO_OPERATIVO_GESTIONALE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/PROMPT_CEDOLINI_NETTO_DRIVE_SALARI.md` | `current` | Autorità operativa corrente |
 | `docs/PROMPT_GESTIONALE_MITTENTI_TRIBUTI_DICHIARAZIONI_PARTENOPAY.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/obsidian-integration/ARCHITETTURA.md` | `current` | Autorità operativa corrente |
 | `docs/obsidian-integration/MAPPA_COLLEGAMENTI.md` | `current` | Autorità operativa corrente |
