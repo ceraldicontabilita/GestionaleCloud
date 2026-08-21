@@ -125,14 +125,6 @@ def _ader_plan_preview(plan: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("/summary")
 async def summary(_admin: Dict[str, Any] = Depends(get_current_admin_user)):
-    db = Database.get_db()
-    names = {"documents": COLL_FISCAL_DOCUMENTS, "obligations": COLL_TAX_OBLIGATIONS,
-             "payments": COLL_TAX_PAYMENTS, "allocations": COLL_TAX_ALLOCATIONS,
-             "collection_claims": COLL_TAX_COLLECTION_CLAIMS,
-             "collection_snapshots": COLL_TAX_COLLECTION_SNAPSHOTS,
-             "ader_snapshots": COLL_ADER_POSITION_SNAPSHOTS}
-    counts = {key: await db[name].count_documents({"company_id": _company()}) for key, name in names.items()}
-    unresolved = await db[COLL_TAX_COLLECTION_CLAIMS].count_documents({"company_id": _company(), "business_status": {"$in": ["DA_VERIFICARE", "CONTESTATA"]}})
     drive_index: dict[str, Any]
     try:
         from app.services.drive_document_index import get_overview
@@ -147,36 +139,30 @@ async def summary(_admin: Dict[str, Any] = Depends(get_current_admin_user)):
     except (RuntimeError, ValueError) as exc:
         drive_index = {"available": False, "verified": False, "counts": {}, "warning": str(exc)}
     return {
-        "company_id": _company(), "counts": counts,
-        "requires_review": unresolved, "drive_index": drive_index,
+        "company_id": _company(), "counts": {},
+        "requires_review": 0, "drive_index": drive_index,
+        "canonical_source": "google_drive",
     }
 
 
 @router.get("/obligations")
 async def obligations(status: str | None = None, limit: int = Query(200, ge=1, le=5000),
                       _admin: Dict[str, Any] = Depends(get_current_admin_user)):
-    query: dict[str, Any] = {"company_id": _company()}
-    if status:
-        query["payment_status"] = status
-    db = Database.get_db()
-    items = await db[COLL_TAX_OBLIGATIONS].find(query, {"_id": 0}).sort("updated_at", -1).to_list(limit)
-    database_total = await db[COLL_TAX_OBLIGATIONS].count_documents(query)
-    drive_items: list[dict[str, Any]] = []
     drive_warning = None
-    if status == "PAID_ON_TIME":
-        try:
-            from app.services.drive_document_index import list_documented_tax_payments
-            drive_payload = await asyncio.to_thread(list_documented_tax_payments, offset=0, limit=limit)
-            drive_items = drive_payload["items"]
-        except (RuntimeError, ValueError) as exc:
-            drive_warning = str(exc)
-    merged = [*drive_items, *items]
+    try:
+        from app.services.drive_document_index import list_documented_tax_payments, list_tax_obligations
+        loader = list_documented_tax_payments if status == "PAID_ON_TIME" else list_tax_obligations
+        drive_payload = await asyncio.to_thread(loader, offset=0, limit=limit)
+        drive_items = drive_payload["items"]
+        drive_total = drive_payload["total"]
+    except (RuntimeError, ValueError) as exc:
+        drive_items, drive_total, drive_warning = [], 0, str(exc)
     return {
-        "items": merged[:limit],
-        "total": len(drive_items) + database_total,
+        "items": drive_items,
+        "total": drive_total,
         "sources": {
             "drive_excel_index": len(drive_items),
-            "database": database_total,
+            "canonical": "google_drive",
             "drive_warning": drive_warning,
         },
     }
@@ -189,27 +175,10 @@ async def f24_rows(
     year: int | None = Query(None, ge=2000, le=2100),
     credits_only: bool = False,
     offset: int = Query(0, ge=0),
-    limit: int = Query(200, ge=1, le=1000),
+    limit: int = Query(200, ge=1, le=5000),
     _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """Normalized F24 lines with a direct, reversible link to their PDF."""
-    query: dict[str, Any] = {
-        "company_id": _company(),
-        "source_kind": "F24_DOCUMENT_EVIDENCE",
-    }
-    if tax_code:
-        query["tax_code"] = tax_code.strip().upper()
-    if document_id:
-        query["document_id"] = document_id
-    if year:
-        query["payment_year"] = year
-    if credits_only:
-        query["credit_amount"] = {"$gt": 0}
-    db = Database.get_db()
-    cursor = db[COLL_TAX_ALLOCATIONS].find(query, {"_id": 0}).sort([
-        ("payment_date", -1), ("filename", 1), ("ordinal", 1),
-    ])
-    database_items = await cursor.to_list(5000)
     drive_warning = None
     try:
         from app.services.drive_document_index import list_f24_rows
@@ -219,39 +188,25 @@ async def f24_rows(
             credits_only=credits_only, offset=0, limit=5000,
         )
         drive_items = drive_payload["items"]
+        drive_total = drive_payload["total"]
     except (RuntimeError, ValueError) as exc:
         drive_items = []
+        drive_total = 0
         drive_warning = str(exc)
 
-    def identity(item: dict[str, Any]) -> tuple[Any, ...]:
-        return (
-            item.get("sha256") or item.get("source_sha256") or item.get("document_id"),
-            item.get("ordinal"), item.get("tax_code"), item.get("reference_period"),
-            round(float(item.get("debit_amount") or 0), 2),
-            round(float(item.get("credit_amount") or 0), 2),
-        )
-
-    merged: list[dict[str, Any]] = []
-    seen: set[tuple[Any, ...]] = set()
-    for item in [*drive_items, *database_items]:
-        key = identity(item)
-        if key in seen:
-            continue
-        seen.add(key)
-        merged.append(item)
-    merged.sort(key=lambda item: (
+    drive_items.sort(key=lambda item: (
         _fiscal_date_sort_key(item.get("payment_date")), str(item.get("filename") or ""),
         int(item.get("ordinal") or 0),
     ), reverse=True)
-    items = merged[offset:offset + limit]
+    items = drive_items[offset:offset + limit]
     return {
         "items": items,
-        "total": len(merged),
+        "total": drive_total,
         "offset": offset,
         "limit": limit,
         "sources": {
             "drive_excel_index": len(drive_items),
-            "database": len(database_items),
+            "canonical": "google_drive",
             "drive_warning": drive_warning,
         },
         "filters": {"tax_code": tax_code, "document_id": document_id, "year": year, "credits_only": credits_only},
@@ -298,7 +253,6 @@ async def declarations(
         "declaration_type": declaration_type,
         "sources": {
             "drive_excel_index": len(drive_items),
-            "database": 0,
             "canonical": "google_drive",
             "drive_warning": drive_warning,
         },

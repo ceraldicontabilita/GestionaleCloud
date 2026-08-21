@@ -4,7 +4,7 @@
 > Totale **1137 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 695 · ext esterni = 83 · — da verificare = 359
+**Riepilogo uso:** ✓ frontend = 693 · ext esterni = 83 · — da verificare = 361
 
 ## AI Parser  (11)
 
@@ -1544,8 +1544,8 @@
 | GET | `/api/fiscal/crosswalk` | ✓ | fiscal_control |
 | GET | `/api/fiscal/declarations` | ✓ | fiscal_control |
 | GET | `/api/fiscal/documents/{document_id}/content` | — | fiscal_control |
-| GET | `/api/fiscal/dossier.pdf` | ✓ | fiscal_control |
-| GET | `/api/fiscal/evidence-package.zip` | ✓ | fiscal_control |
+| GET | `/api/fiscal/dossier.pdf` | — | fiscal_control |
+| GET | `/api/fiscal/evidence-package.zip` | — | fiscal_control |
 | GET | `/api/fiscal/evidence/{entity_type}/{entity_id}` | — | fiscal_control |
 | GET | `/api/fiscal/f24-documents` | — | fiscal_control |
 | GET | `/api/fiscal/f24-rows` | ✓ | fiscal_control |

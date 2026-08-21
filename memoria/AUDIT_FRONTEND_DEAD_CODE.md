@@ -9,18 +9,20 @@
 |---|---:|
 | ENTRYPOINT | 3 |
 | ROUTE_ATTIVA | 28 |
-| COMPONENTE_USATO | 95 |
+| COMPONENTE_USATO | 94 |
 | MODALE_USATO | 3 |
 | HOOK_USATO | 3 |
 | TEST_ONLY | 49 |
 | DINAMICO_DA_VERIFICARE | 22 |
-| ORFANO_ELIMINABILE | 0 |
+| ORFANO_ELIMINABILE | 1 |
 
 ## ORFANO_ELIMINABILE — candidati eliminazione
 
 Nessun import statico o dinamico risolvibile li raggiunge da `main.jsx`/`App.jsx`/`navigation.config.js`, e il nome del file non compare altrove nel codice (safety net anti falso-positivo). Decisione conservativa (§7): NON eliminare in blocco — verificare uno per uno, poi `yarn build && yarn lint` dopo ogni piccolo gruppo.
 
-_Nessuno._
+| File |
+|---|
+| `frontend/src/components/LinkedEvidencePanel.jsx` |
 
 ## DINAMICO_DA_VERIFICARE
 
@@ -73,7 +75,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/components/InAttesaDocumento.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/InAttesaDocumento.test.jsx` | TEST_ONLY | 0 |
 | `frontend/src/components/InstallAppButton.jsx` | COMPONENTE_USATO | 1 |
-| `frontend/src/components/LinkedEvidencePanel.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/components/LinkedEvidencePanel.jsx` | ORFANO_ELIMINABILE | 0 |
 | `frontend/src/components/ModalFattura.jsx` | MODALE_USATO | 7 |
 | `frontend/src/components/NotificationBell.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/PageLayout.jsx` | COMPONENTE_USATO | 43 |

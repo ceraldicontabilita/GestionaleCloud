@@ -1,14 +1,9 @@
 import asyncio
-from mongomock_motor import AsyncMongoMockClient
-
-from app.database import Database
 from app.routers import fiscal_control
 from app.services import drive_document_index
 
 
-def test_summary_exposes_verified_drive_counts_without_turning_them_into_db_records(monkeypatch):
-    db = AsyncMongoMockClient()["fiscal-drive-summary"]
-    monkeypatch.setattr(Database, "get_db", staticmethod(lambda: db))
+def test_summary_exposes_verified_drive_counts_as_the_only_canonical_source(monkeypatch):
     monkeypatch.setattr(drive_document_index, "get_overview", lambda: {
         "validation": {"all_true": True, "counts": {
             "documents": 941, "f24_documents": 320,
@@ -18,14 +13,13 @@ def test_summary_exposes_verified_drive_counts_without_turning_them_into_db_reco
     })
 
     payload = asyncio.run(fiscal_control.summary(_admin={}))
-    assert payload["counts"]["documents"] == 0
+    assert payload["counts"] == {}
+    assert payload["canonical_source"] == "google_drive"
     assert payload["drive_index"]["verified"] is True
     assert payload["drive_index"]["counts"]["f24_rows"] == 1297
 
 
-def test_f24_rows_read_through_drive_and_keep_payment_unverified(monkeypatch):
-    db = AsyncMongoMockClient()["fiscal-drive-f24"]
-    monkeypatch.setattr(Database, "get_db", staticmethod(lambda: db))
+def test_f24_rows_read_drive_and_keep_payment_unverified(monkeypatch):
     monkeypatch.setattr(drive_document_index, "list_f24_rows", lambda **_kwargs: {
         "items": [{
             "id": "drive-row-1", "document_id": "DOC-F24", "ordinal": 1,
@@ -42,14 +36,12 @@ def test_f24_rows_read_through_drive_and_keep_payment_unverified(monkeypatch):
     ))
     assert payload["total"] == 1
     assert payload["sources"] == {
-        "drive_excel_index": 1, "database": 0, "drive_warning": None,
+        "drive_excel_index": 1, "canonical": "google_drive", "drive_warning": None,
     }
     assert payload["items"][0]["evidence_state"] == "MODELLO_F24_NON_PROVA_BANCARIA"
 
 
 def test_f24_rows_sort_mixed_date_formats_chronologically(monkeypatch):
-    db = AsyncMongoMockClient()["fiscal-drive-f24-dates"]
-    monkeypatch.setattr(Database, "get_db", staticmethod(lambda: db))
     monkeypatch.setattr(drive_document_index, "list_f24_rows", lambda **_kwargs: {
         "items": [
             {"id": "old", "document_id": "OLD", "ordinal": 1,
@@ -71,8 +63,6 @@ def test_f24_rows_sort_mixed_date_formats_chronologically(monkeypatch):
 
 
 def test_paid_obligations_read_documentary_payments_from_drive(monkeypatch):
-    db = AsyncMongoMockClient()["fiscal-drive-paid"]
-    monkeypatch.setattr(Database, "get_db", staticmethod(lambda: db))
     monkeypatch.setattr(drive_document_index, "list_documented_tax_payments", lambda **_kwargs: {
         "items": [{
             "id": "drive-paid-1", "document_id": "DOC-Q", "ordinal": 1,
@@ -86,14 +76,12 @@ def test_paid_obligations_read_documentary_payments_from_drive(monkeypatch):
 
     assert payload["total"] == 1
     assert payload["sources"] == {
-        "drive_excel_index": 1, "database": 0, "drive_warning": None,
+        "drive_excel_index": 1, "canonical": "google_drive", "drive_warning": None,
     }
     assert payload["items"][0]["bank_status"] == "DA_VERIFICARE"
 
 
-def test_declarations_read_through_drive_when_transitional_db_is_empty(monkeypatch):
-    db = AsyncMongoMockClient()["fiscal-drive-declarations"]
-    monkeypatch.setattr(Database, "get_db", staticmethod(lambda: db))
+def test_declarations_read_from_drive(monkeypatch):
     monkeypatch.setattr(drive_document_index, "list_declarations", lambda **_kwargs: {
         "results": [{
             "id": "DOC-770", "document_id": "DOC-770", "sha256": "a" * 64,

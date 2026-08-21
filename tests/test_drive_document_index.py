@@ -15,6 +15,7 @@ from app.services.drive_document_index import (
     list_documented_tax_payments,
     list_declarations,
     list_f24_rows,
+    list_tax_obligations,
     search_records,
     validate_relations,
 )
@@ -243,10 +244,45 @@ def test_documented_tax_payments_only_include_quietanze_and_keep_bank_unverified
 
     payload = list_documented_tax_payments()
 
-    assert payload["total"] == 2
-    assert {item["tax_code"] for item in payload["items"]} == {"1001", "1704"}
+    assert payload["total"] == 1
+    assert {item["tax_code"] for item in payload["items"]} == {"1001"}
     assert all(item["payment_status"] == "DOCUMENTATO_DA_QUIETANZA" for item in payload["items"])
     assert all(item["bank_status"] == "DA_VERIFICARE" for item in payload["items"])
+
+
+def test_tax_obligations_include_all_debits_and_keep_evidence_states_distinct(monkeypatch):
+    from app.services import drive_document_index as index
+
+    documents = [{
+        "ID documento": "DOC-Q", "Nome file": "quietanza.pdf",
+        "SHA-256": "a" * 64, "Percorso Drive": r"F24\quietanza.pdf",
+    }, {
+        "ID documento": "DOC-M", "Nome file": "modello.pdf",
+        "SHA-256": "b" * 64, "Percorso Drive": r"F24\modello.pdf",
+    }]
+    rows = [{
+        "ID documento": "DOC-Q", "Tipo documento": "Quietanza AE",
+        "Codice tributo": "1001", "Debito": 100, "Credito": 0,
+    }, {
+        "ID documento": "DOC-M", "Tipo documento": "Modello F24",
+        "Codice tributo": "6001", "Debito": 50, "Credito": 0,
+    }, {
+        "ID documento": "DOC-M", "Tipo documento": "Modello F24",
+        "Codice tributo": "6099", "Debito": 0, "Credito": 25,
+    }]
+    monkeypatch.setattr(index, "load_full_catalog", lambda service=None: ({}, {
+        "documents": documents, "f24_rows": rows, "declarations": [], "duplicates": [],
+    }))
+
+    payload = list_tax_obligations()
+
+    assert payload["total"] == 2
+    assert {item["tax_code"] for item in payload["items"]} == {"1001", "6001"}
+    quietanza = next(item for item in payload["items"] if item["tax_code"] == "1001")
+    modello = next(item for item in payload["items"] if item["tax_code"] == "6001")
+    assert quietanza["documentary_payment_status"] == "QUIETANZA_PRESENTE"
+    assert modello["documentary_payment_status"] == "DA_VERIFICARE"
+    assert quietanza["bank_status"] == modello["bank_status"] == "DA_VERIFICARE"
 
 
 def test_declarations_use_canonical_types_and_verified_document_identity(monkeypatch):
