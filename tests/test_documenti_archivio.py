@@ -157,7 +157,7 @@ def test_atti_amministrativi_separa_totali_archivio_dai_risultati_filtrati(monke
     assert result["total"] == 0
     assert result["items"] == []
     assert result["overview"] == {
-        "counts": {"verbali": 1, "tributi_locali": 1, "riscossione": 0, "personale": 0},
+        "counts": {"verbali": 1, "tributi_locali": 1, "riscossione": 0, "personale": 0, "famiglia": 0},
         "total": 2,
         "requires_review": 1,
     }

@@ -27,7 +27,7 @@ const identityFor = item => {
     return metadata.contribuente || metadata.codice_contribuente || 'Documento personale da identificare';
   }
   if (item.administrative_area === 'personale') {
-    return [metadata.lavoratore_cognome, metadata.lavoratore_nome].filter(Boolean).join(' ') ||
+    return metadata.persona || [metadata.lavoratore_cognome, metadata.lavoratore_nome].filter(Boolean).join(' ') ||
       metadata.lavoratore_cf || 'Lavoratore da identificare';
   }
   if (item.administrative_area === 'tributi_locali') {
@@ -132,8 +132,8 @@ export default function AttiAmministrativi() {
               .filter((value, index, values) => value && values.indexOf(value) === index)
               .map(value => <option key={value} value={value}>{value}</option>)}
           </select></label>
-          <label style={{ flex: '1 1 260px' }}>Cerca riferimento, CF, protocollo o file<br />
-            <input value={search} onChange={event => setSearch(event.target.value)} style={{ padding: 9, width: '100%' }} placeholder="es. codice fiscale, verbale, contribuente" />
+          <label style={{ flex: '1 1 260px' }}>Cerca nome, CF, P.IVA, contribuente, cliente, contratto, POD/PDR, posizione o file<br />
+            <input value={search} onChange={event => setSearch(event.target.value)} style={{ padding: 9, width: '100%' }} placeholder="es. nome, CF, codice cliente, numero utente, POD/PDR" />
           </label>
           <Button variant="secondary" onClick={load} disabled={loading}>Aggiorna</Button>
           {hasActiveFilters && <Button variant="ghost" onClick={resetFilters} disabled={loading}>Rimuovi filtri</Button>}

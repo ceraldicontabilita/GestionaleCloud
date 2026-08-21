@@ -435,9 +435,30 @@ def _administrative_area(record: dict[str, Any]) -> str | None:
     # pacchetto puo' descrivere solo l'email a cui un allegato apparteneva (per
     # esempio un documento d'identita' allegato a una pratica TARI) e non deve
     # quindi promuovere quell'allegato ad atto amministrativo.
-    searchable = _norm(" ".join(str(record.get(field) or "") for field in (
+    searchable_raw = " ".join(str(record.get(field) or "") for field in (
         "Dominio", "Categoria", "Nome file", "Percorso Drive",
-    )))
+    ))
+    searchable = _norm(searchable_raw)
+    from app.services.personal_family_registry import (
+        is_company_context, is_employment_context, match_family_person,
+    )
+    # Un documento di rapporto di lavoro resta aziendale anche quando il
+    # lavoratore e' contemporaneamente un familiare.
+    if is_employment_context(searchable_raw):
+        if any(term in searchable for term in _ADMINISTRATIVE_AREA_TERMS["personale"]):
+            return "personale"
+        return None
+    person = match_family_person(searchable_raw)
+    # Pane Giuseppina compare anche come legale rappresentante. Nell'indice
+    # Drive (che non contiene il testo del PDF) un atto AdeR col solo suo CF e'
+    # ambiguo e resta aziendale/documentale; il parser del contenuto potra'
+    # spostarlo in Famiglia solo quando l'intestatario persona fisica e' certo.
+    if person and person["person_id"] == "pane-giuseppina" and any(
+        term in searchable for term in _ADMINISTRATIVE_AREA_TERMS["riscossione"]
+    ):
+        return "riscossione"
+    if person and not is_company_context(searchable_raw):
+        return "famiglia"
     for area, terms in _ADMINISTRATIVE_AREA_TERMS.items():
         if any(term in searchable for term in terms):
             return area
@@ -454,6 +475,8 @@ def list_administrative_documents(
     overview_review = 0
     matches: list[dict[str, Any]] = []
     query = _norm(q)
+    from app.services.personal_family_registry import family_search_terms, match_family_person
+    query_terms = family_search_terms(q) if query else set()
 
     for record in records:
         if _norm(record.get("Estensione")).lstrip(".") != "pdf":
@@ -477,11 +500,21 @@ def list_administrative_documents(
             continue
         if review_only and not requires_review:
             continue
-        if query and query not in _norm(" ".join(str(value or "") for value in record.values())):
+        record_search = _norm(" ".join(str(value or "") for value in record.values()))
+        if query and not any(term.casefold() in record_search for term in query_terms):
             continue
 
         public = _public_record(record)
         personal_metadata = _PERSONAL_FAMILY_DOCUMENTS.get(_norm(public["sha256"]), {})
+        family_person = match_family_person(record_search)
+        if family_person:
+            personal_metadata = {
+                **personal_metadata,
+                "person_id": family_person["person_id"],
+                "persona": family_person["display_name"],
+                "identity_matched_by": family_person["matched_by"],
+                "lavoratore_cf": next(iter(family_person.get("identifiers", {}).get("codice_fiscale", ())), None),
+            }
         accounting_excluded = record_area == "famiglia"
         matches.append({
             "id": public["document_id"],

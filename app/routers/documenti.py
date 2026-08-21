@@ -527,7 +527,16 @@ _ADMINISTRATIVE_CATEGORIES = {
     "tributi_locali": {"tari_avviso", "tari_istanza_compensazione"},
     "riscossione": {"ader_sospensione", "ader_definizione_agevolata", "cartella_esattoriale"},
     "personale": {"dimissioni_telematiche"},
+    "famiglia": set(),
 }
+
+
+@router.get("/amministrativi/familiari")
+async def lista_anagrafica_familiari() -> Dict[str, Any]:
+    """Anagrafica consultiva usata per smistamento e ricerca documentale."""
+    from app.services.personal_family_registry import public_profiles
+
+    return {"items": public_profiles(), "total": len(public_profiles())}
 
 
 @router.get("/amministrativi")
