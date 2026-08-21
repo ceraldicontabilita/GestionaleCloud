@@ -15,6 +15,7 @@ import asyncio
 
 from app.routers.invoices import corrispettivi_helpers as helpers_mod
 from app.routers.prima_nota_module import sync as sync_mod
+from app.services.sheets_document_store import MemorySheetsClient
 
 
 def _matches(doc, query):
@@ -216,3 +217,43 @@ def test_sync_corrispettivi_impl_idempotente_su_doppia_esecuzione(monkeypatch):
     assert res2["inseriti"] == 0
     assert res2["duplicati"] == 1
     assert len(db.collections["prima_nota_banca"].docs) == 1  # un solo trasferimento, mai duplicato
+
+
+def test_sync_anno_legge_corrispettivi_drive_legacy_senza_campo_anno(monkeypatch):
+    """Il catch-up deve usare la data fiscale anche per i fogli storici.
+
+    In produzione le righe 2026 del registro Drive avevano ``data`` valida ma
+    non ``anno``: il vecchio filtro le escludeva tutte e Cassa restava vuota.
+    """
+    db = MemorySheetsClient()["corrispettivi_drive_legacy"]
+    monkeypatch.setattr(sync_mod.Database, "get_db", staticmethod(lambda: db))
+    _run(db["corrispettivi"].insert_many([
+        {
+            "id": "corr-2026-senza-anno",
+            "data": "2026-06-16",
+            "totale": 100.0,
+            "pagato_contanti": 60.0,
+            "pagato_elettronico": 40.0,
+            "matricola_rt": "RT-1",
+            "status": "imported",
+        },
+        {
+            "id": "corr-2025-senza-anno",
+            "data": "2025-12-31",
+            "totale": 90.0,
+            "pagato_contanti": 90.0,
+            "pagato_elettronico": 0.0,
+            "matricola_rt": "RT-1",
+            "status": "imported",
+        },
+    ]))
+
+    risultato = _run(sync_mod._sync_corrispettivi_impl(anno=2026))
+    righe = _run(db["prima_nota_cassa"].find({}, {"_id": 0}).to_list(None))
+
+    assert risultato["inseriti"] == 1
+    assert [(riga["data"], riga["tipo"], riga["importo"]) for riga in righe] == [
+        ("2026-06-16", "entrata", 100.0),
+    ]
+    # Senza chiusura reale del terminale non si inventa il circuito POS.
+    assert _run(db["prima_nota_banca"].count_documents({})) == 0
