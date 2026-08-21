@@ -83,6 +83,14 @@ def route_da_nome(nome: str) -> Optional[str]:
     if testo.startswith(("export_mensile", "export_transazioni", "commissioni_")):
         return POS
 
+    # Export contabile delle carte aziendali. Il nome e' quello prodotto dal
+    # portale e il foglio puo' dichiarare una dimensione errata (A1:A1), per
+    # cui openpyxl in read-only non vede le altre colonne durante la sola
+    # classificazione. Il parser bancario dedicato legge invece il foglio in
+    # modalita' normale e conserva le singole spese carta.
+    if testo.startswith("enti_file_contabili"):
+        return BANCA
+
     if _PAYPAL_REPORT.search(testo) or "paypal" in testo:
         return PAYPAL
 

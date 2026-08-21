@@ -2442,6 +2442,21 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         return "fattura"
 
     if lower.endswith(".pdf"):
+        # L'area Estratti conto contiene PDF dal nome generico
+        # ``Estratto_Conto (N).pdf``. Prima di appiattirli sul conto corrente
+        # usa lo stesso classificatore documentale del job Drive: Nexi,
+        # PayPal e mutui hanno registri e regole contabili distinti.
+        from app.services.classificazione_estratti import classifica
+
+        statement_route, _reason = classifica(filename, file_content)
+        routed_type = {
+            "nexi": "estratto_conto_nexi",
+            "paypal": "estratto_conto_paypal",
+            "mutuo": "estratto_conto_mutuo",
+            "bank": "estratto_conto",
+        }.get(statement_route)
+        if routed_type:
+            return routed_type
         content_str = pdf_text
         if any(marker in content_str for marker in (
             "QUIETANZA", "RICEVUTA DI VERSAMENTO", "ESITO DEL VERSAMENTO F24",
@@ -2482,6 +2497,16 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
             and ("IMPORTO" in content_str or "IBAN" in content_str)
         ):
             return "distinte_bpm"
+        # Gli export Numia/BPM iniziano con Export_Mensile/Transazioni e
+        # contengono Data e ora + Stato operazione + terminale/MID. Non sono
+        # estratti bancari e non devono essere archiviati come generici AUTO.
+        from app.services.classificazione_estratti import classifica
+
+        statement_route, _reason = classifica(filename, file_content)
+        if statement_route == "pos":
+            return "pos_terminal"
+        if statement_route == "bank":
+            return "estratto_conto"
         bank_name = any(keyword in lower for keyword in (
             "estratto", "movimenti", "bpm", "banco", "bank_statement",
         ))
@@ -3331,6 +3356,92 @@ async def upload_documento_automatico(
                         f"{import_result['invalid']} righe non valide"
                     ),
                 })
+
+        elif tipo_rilevato == 'pos_terminal':
+            if "commissioni_" in filename.lower():
+                from app.services.pos_commissioni_import import importa_pos_commissioni_file
+
+                pos_result = await importa_pos_commissioni_file(db, content, filename)
+                result.update({
+                    "workflow": "POS_NUMIA_COMMISSIONI",
+                    "imported": pos_result.get("inserted", 0),
+                    "duplicates": pos_result.get("duplicates", 0),
+                    "data": pos_result,
+                    "message": (
+                        f"Commissioni POS importate: {pos_result.get('inserted', 0)} nuove, "
+                        f"{pos_result.get('updated', 0)} aggiornate, "
+                        f"{pos_result.get('duplicates', 0)} già presenti."
+                    ),
+                })
+            else:
+                from app.services.pos_terminal_import import importa_pos_terminal_file
+
+                pos_result = await importa_pos_terminal_file(db, content, filename)
+                result.update({
+                    "workflow": "POS_NUMIA_OPERATION_ID_V2",
+                    "imported": pos_result.get("inserted", 0),
+                    "duplicates": pos_result.get("unchanged", 0),
+                    "data": pos_result,
+                    "message": (
+                        f"POS Numia importato: {pos_result.get('inserted', 0)} operazioni nuove, "
+                        f"{pos_result.get('updated', 0)} aggiornate, "
+                        f"{pos_result.get('unchanged', 0)} già presenti."
+                    ),
+                })
+
+        elif tipo_rilevato == 'estratto_conto_nexi':
+            from app.services.nexi_carta import importa_estratto_nexi_pdf
+
+            nexi_result = await importa_estratto_nexi_pdf(
+                db, filename, content, source="documenti_upload_auto_nexi",
+            )
+            if not nexi_result.get("success"):
+                raise ValueError(nexi_result.get("message") or "Parsing Nexi fallito")
+            result.update({
+                "workflow": "NEXI_STATEMENT_CANONICO",
+                "duplicate": bool(nexi_result.get("duplicate")),
+                "imported": 0 if nexi_result.get("duplicate") else nexi_result.get("operazioni", 0),
+                "data": nexi_result,
+                "message": (
+                    "Estratto Nexi già presente; verifica aggiornata."
+                    if nexi_result.get("duplicate")
+                    else f"Estratto Nexi importato: {nexi_result.get('operazioni', 0)} operazioni."
+                ),
+            })
+
+        elif tipo_rilevato == 'estratto_conto_paypal':
+            from app.services.paypal_statement_import import import_paypal_statement_pdf
+
+            paypal_result = await import_paypal_statement_pdf(
+                db, content, filename, source="documenti_upload_auto_paypal",
+            )
+            result.update({
+                "workflow": "PAYPAL_STATEMENT_CANONICO",
+                "imported": paypal_result.get("transazioni_inserite", 0),
+                "duplicates": paypal_result.get("transazioni_duplicate", 0),
+                "data": paypal_result,
+                "message": (
+                    f"Estratto PayPal importato: "
+                    f"{paypal_result.get('transazioni_inserite', 0)} operazioni nuove, "
+                    f"{paypal_result.get('transazioni_duplicate', 0)} già presenti."
+                ),
+            })
+
+        elif tipo_rilevato == 'estratto_conto_mutuo':
+            from app.services.mutui_document_import import importa_documento_mutuo
+
+            mutuo_result = await importa_documento_mutuo(db, content, filename)
+            result.update({
+                "workflow": "MUTUO_DOCUMENTO_CANONICO",
+                "duplicate": bool(mutuo_result.get("duplicate")),
+                "imported": 0 if mutuo_result.get("duplicate") else mutuo_result.get("records", 0),
+                "data": mutuo_result,
+                "message": (
+                    "Documento mutuo già presente."
+                    if mutuo_result.get("duplicate")
+                    else "Documento mutuo importato."
+                ),
+            })
 
         elif tipo_rilevato == 'estratto_conto':
             # Import diretto estratto conto CSV Banco BPM → estratto_conto_movimenti

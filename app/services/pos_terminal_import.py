@@ -12,6 +12,7 @@ import hashlib
 import io
 import re
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone
 from typing import Any, Dict, Iterable, List
 
@@ -51,6 +52,45 @@ def _date(value: Any) -> str:
     raise ValueError(f"data POS non valida: {raw!r}")
 
 
+def _timestamp(value: Any) -> str:
+    """Timestamp canonico dell'operazione, indipendente dal formato export.
+
+    CSV e XLSX Numia possono rappresentare la stessa ora rispettivamente
+    come ``31/05/2026 20:33:50.000`` e come oggetto ``datetime``. La chiave
+    non deve quindi dipendere dalla serializzazione scelta dal file.
+    """
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, date):
+        parsed = datetime.combine(value, datetime.min.time())
+    else:
+        raw = _text(value)
+        parsed = None
+        for fmt in (
+            "%d/%m/%Y %H:%M:%S.%f", "%d/%m/%Y %H:%M:%S",
+            "%d/%m/%Y %H:%M", "%d/%m/%Y",
+            "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d",
+        ):
+            try:
+                parsed = datetime.strptime(raw, fmt)
+                break
+            except ValueError:
+                continue
+        if parsed is None:
+            raise ValueError(f"data POS non valida: {raw!r}")
+    timespec = "milliseconds" if parsed.microsecond else "seconds"
+    return parsed.isoformat(timespec=timespec)
+
+
+def _identity_text(value: Any) -> str:
+    return _text(value).upper()
+
+
+def _operation_key(material: str) -> str:
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
 def _normalizza_row(row: Dict[str, Any], filename: str) -> Dict[str, Any] | None:
     lowered = {_text(key).lower(): value for key, value in row.items() if key is not None}
     data_raw = lowered.get("data e ora") or lowered.get("data")
@@ -59,7 +99,8 @@ def _normalizza_row(row: Dict[str, Any], filename: str) -> Dict[str, Any] | None
     if not data_raw or importo_raw in (None, "") or not stato:
         return None
 
-    data_iso = _date(data_raw)
+    timestamp = _timestamp(data_raw)
+    data_iso = timestamp[:10]
     importo = _amount(importo_raw)
     # Identita' del punto di incasso. Serve alla chiave logica
     # provider + terminale + giornata e all'aggancio dell'accredito, che la
@@ -77,25 +118,51 @@ def _normalizza_row(row: Dict[str, Any], filename: str) -> Dict[str, Any] | None
     # PagoBancomat...), non il gestore: sono tutti incassi Numia e vanno
     # sommati nella stessa giornata, non trattati come provider diversi.
     circuito_carta = _text(lowered.get("circuito"))
-    transaction_id = _text(
-        lowered.get("id transazione") or lowered.get("codice autorizzazione")
-    )
+    transaction_id = _text(lowered.get("id transazione"))
+    authorization_code = _text(lowered.get("codice autorizzazione"))
+    numero_carta = _text(lowered.get("numero carta"))
+    tipo_transazione = _text(lowered.get("tipo transazione")).lower()
+    valuta = _identity_text(lowered.get("valuta originale") or "EUR")
+
+    # L'ID del gestore e' la prova forte. Quando manca, la chiave usa tutti
+    # gli attributi operativi stabili ma MAI nome/hash del file: due export
+    # con periodi sovrapposti devono indicare la stessa operazione.
     if transaction_id:
-        key_material = f"bpm:{transaction_id}"
+        key_material = f"pos:numia:v2:id:{_identity_text(transaction_id)}"
+        # Conserviamo la vecchia chiave per riconoscere senza migrazioni le
+        # righe gia archiviate dalle versioni precedenti.
+        legacy_transaction_key = _operation_key(f"bpm:{transaction_id}")
+        identity_strength = "provider_transaction_id"
     else:
         key_material = "|".join((
-            filename, _text(data_raw), f"{importo:.2f}", stato,
-            _text(lowered.get("numero carta")),
-            _text(lowered.get("tipo transazione")),
+            "pos:numia:v2:composite", timestamp, f"{round(importo * 100):d}",
+            valuta, _identity_text(authorization_code),
+            _identity_text(numero_carta), _identity_text(tipo_transazione),
+            _identity_text(terminale), _identity_text(mid),
+            _identity_text(id_punto_vendita), _identity_text(punto_vendita),
         ))
+        legacy_transaction_key = None
+        identity_strength = "canonical_composite"
+
+    operation_key = _operation_key(key_material)
 
     return {
-        "transaction_key": hashlib.sha256(key_material.encode("utf-8")).hexdigest(),
+        "id": f"POS-NUMIA-{operation_key[:32]}",
+        "operation_id": f"pos:numia:{operation_key}",
+        "operation_key": operation_key,
+        "transaction_key": operation_key,
+        "legacy_transaction_key": legacy_transaction_key,
+        "identity_version": "pos_numia_v2",
+        "identity_strength": identity_strength,
         "transaction_id": transaction_id or None,
+        "authorization_code": authorization_code or None,
+        "transaction_timestamp": timestamp,
         "data": data_iso,
         "importo": importo,
         "stato": stato,
-        "tipo_transazione": _text(lowered.get("tipo transazione")).lower(),
+        "tipo_transazione": tipo_transazione,
+        "numero_carta": numero_carta or None,
+        "valuta": valuta,
         "provider": "numia",
         "terminale": terminale or None,
         "mid": mid or None,
@@ -157,6 +224,7 @@ def parse_pos_terminal_file(content: bytes, filename: str) -> Dict[str, Any]:
     source_rows = 0
     duplicates = 0
     invalid = 0
+    fallback_occurrences: defaultdict[str, int] = defaultdict(int)
     for row in rows:
         source_rows += 1
         try:
@@ -168,6 +236,22 @@ def parse_pos_terminal_file(content: bytes, filename: str) -> Dict[str, Any]:
             invalid += 1
             continue
 
+        # Senza ID gestore, due righe perfettamente uguali possono essere due
+        # addebiti reali distinti. L'indice di occorrenza preserva la
+        # molteplicita' ed e' stabile al reimport dello stesso sottoinsieme.
+        if not normalized.get("transaction_id"):
+            base_key = normalized["operation_key"]
+            fallback_occurrences[base_key] += 1
+            occurrence = fallback_occurrences[base_key]
+            operation_key = _operation_key(f"{base_key}|occurrence:{occurrence}")
+            normalized.update({
+                "id": f"POS-NUMIA-{operation_key[:32]}",
+                "operation_id": f"pos:numia:{operation_key}",
+                "operation_key": operation_key,
+                "transaction_key": operation_key,
+                "occurrence_index": occurrence,
+            })
+
         key = normalized["transaction_key"]
         previous = by_key.get(key)
         if previous is not None:
@@ -175,7 +259,7 @@ def parse_pos_terminal_file(content: bytes, filename: str) -> Dict[str, Any]:
             # Un duplicato identico viene contato per audit ma escluso dai
             # totali; un duplicato contraddittorio blocca l'importazione.
             comparable = (
-                "transaction_id", "data", "importo", "stato",
+                "transaction_id", "transaction_timestamp", "data", "importo", "stato",
                 "tipo_transazione", "provider", "terminale", "mid",
                 "punto_vendita", "id_punto_vendita", "circuito_carta",
             )
@@ -223,71 +307,161 @@ async def importa_pos_terminal_file(db, content: bytes, filename: str, *, drive_
     """Salva le transazioni deduplicate e riallinea i totali giornalieri."""
     parsed = parse_pos_terminal_file(content, filename)
     now = datetime.now(timezone.utc).isoformat()
+    file_hash = hashlib.sha256(content).hexdigest()
     affected_dates = set()
     inserted = 0
     updated = 0
+    unchanged = 0
 
+    # Una sola lettura della cache Sheets, poi un solo inserimento bulk. La
+    # vecchia implementazione faceva find+update remoto per ogni riga (oltre
+    # 6.500 chiamate per un mese), causando i 502 visibili in produzione.
+    existing_rows = await db["pos_terminal_transactions"].find(
+        {}, {"_id": 0}
+    ).to_list(250000)
+    existing_by_key: Dict[str, Dict[str, Any]] = {}
+    for row in existing_rows:
+        for key in (
+            row.get("operation_key"), row.get("transaction_key"),
+            row.get("legacy_transaction_key"),
+        ):
+            if key:
+                existing_by_key[str(key)] = row
+
+    records_to_insert: List[Dict[str, Any]] = []
+    records_to_update: List[tuple[str, Dict[str, Any]]] = []
+    immutable_fields = (
+        "transaction_id", "transaction_timestamp", "data", "importo",
+        "tipo_transazione", "provider", "terminale", "mid",
+        "id_punto_vendita",
+    )
+    mutable_fields = (
+        "stato", "punto_vendita", "circuito_carta", "authorization_code",
+        "numero_carta", "valuta",
+    )
     for item in parsed["transactions"]:
-        previous = await db["pos_terminal_transactions"].find_one(
-            {"transaction_key": item["transaction_key"]}, {"_id": 0, "stato": 1, "importo": 1, "data": 1}
+        candidate_keys = [
+            item.get("operation_key"), item.get("transaction_key"),
+            item.get("legacy_transaction_key"),
+        ]
+        previous = next(
+            (existing_by_key[str(key)] for key in candidate_keys
+             if key and str(key) in existing_by_key),
+            None,
         )
-        if previous:
-            affected_dates.add(previous.get("data"))
+        affected_dates.add(item["data"])
+        if previous is None:
+            record = {
+                **item,
+                "source_filename": filename,
+                "source_file_hash": file_hash,
+                "drive_file_id": drive_file_id,
+                "created_at": now,
+                "updated_at": now,
+            }
+            records_to_insert.append(record)
+            inserted += 1
+            for key in candidate_keys:
+                if key:
+                    existing_by_key[str(key)] = record
+            continue
+
+        affected_dates.add(previous.get("data"))
+        conflicts = [
+            field for field in immutable_fields
+            if previous.get(field) not in (None, "")
+            and item.get(field) not in (None, "")
+            and previous.get(field) != item.get(field)
+        ]
+        if conflicts:
+            raise ValueError(
+                "Chiave operazione POS contraddittoria "
+                f"{item['operation_id']}: campi diversi {', '.join(conflicts)}"
+            )
+        changes = {
+            field: item.get(field) for field in mutable_fields
+            if item.get(field) not in (None, "")
+            and previous.get(field) != item.get(field)
+        }
+        if changes:
+            records_to_update.append((str(previous.get("id") or ""), changes))
+            previous.update(changes)
             updated += 1
         else:
-            inserted += 1
-        affected_dates.add(item["data"])
-        await db["pos_terminal_transactions"].update_one(
-            {"transaction_key": item["transaction_key"]},
-            {"$set": {**item, "drive_file_id": drive_file_id, "updated_at": now},
-             "$setOnInsert": {"created_at": now}},
-            upsert=True,
-        )
+            unchanged += 1
+
+    @asynccontextmanager
+    async def _write_batch():
+        factory = getattr(db, "batch_writes", None)
+        if callable(factory):
+            async with factory():
+                yield
+        else:
+            yield
 
     from app.services.scritture_contabili import (
         GESTORE_POS_DEFAULT,
         registra_chiusura_pos_reale,
     )
 
-    totals: Dict[str, float] = {}
-    for data_iso in sorted(data for data in affected_dates if data):
-        approved = await db["pos_terminal_transactions"].find(
-            {"data": data_iso, "stato": {"$in": sorted(_APPROVED_STATUSES)}},
-            {"_id": 0, "importo": 1},
-        ).to_list(100000)
-        total = round(sum(float(row.get("importo") or 0) for row in approved), 2)
-        if total < 0:
-            raise ValueError(f"Totale POS negativo per {data_iso}")
-        await registra_chiusura_pos_reale(
-            db, data_iso, total,
-            # Questo flusso storico e' il terminale gia' esistente: resta il
-            # gestore predefinito, cosi' non nasce un secondo terminale
-            # fantasma accanto alle chiusure gia' registrate.
-            gestore=GESTORE_POS_DEFAULT,
-            # L'Excel ufficiale conferma (o smentisce) l'inserimento serale:
-            # non lo sovrascrive in silenzio.
-            fonte="excel",
-            note="Import automatico POS BPM da Drive: somma transazioni approvate",
-            actor={"user_id": "drive_pos_bpm", "name": "Import automatico Drive"},
-        )
-        totals[data_iso] = total
+    async with _write_batch():
+        if records_to_insert:
+            await db["pos_terminal_transactions"].insert_many(
+                records_to_insert, ordered=False,
+            )
+        for record_id, changes in records_to_update:
+            if not record_id:
+                continue
+            await db["pos_terminal_transactions"].update_one(
+                {"id": record_id}, {"$set": {**changes, "updated_at": now}},
+            )
 
-    await db["pos_terminal_imports"].update_one(
-        {"drive_file_id": drive_file_id or hashlib.sha256(content).hexdigest()},
-        {"$set": {
-            "filename": filename,
-            "file_hash": hashlib.sha256(content).hexdigest(),
-            "rows": parsed["rows"],
-            "source_rows": parsed["source_rows"],
-            "duplicates": parsed["duplicates"],
-            "approved": parsed["approved"],
-            "updated_at": now,
-        }},
-        upsert=True,
-    )
+        # La cache e' gia aggiornata dentro il batch: una sola scansione
+        # sostituisce una query per ogni giorno del file.
+        all_rows = await db["pos_terminal_transactions"].find(
+            {}, {"_id": 0, "data": 1, "stato": 1, "importo": 1}
+        ).to_list(250000)
+        totals_by_date: defaultdict[str, float] = defaultdict(float)
+        for row in all_rows:
+            data_iso = row.get("data")
+            if data_iso in affected_dates and row.get("stato") in _APPROVED_STATUSES:
+                totals_by_date[data_iso] += float(row.get("importo") or 0)
+
+        totals: Dict[str, float] = {}
+        for data_iso in sorted(data for data in affected_dates if data):
+            total = round(totals_by_date.get(data_iso, 0), 2)
+            if total < 0:
+                raise ValueError(f"Totale POS negativo per {data_iso}")
+            await registra_chiusura_pos_reale(
+                db, data_iso, total,
+                gestore=GESTORE_POS_DEFAULT,
+                fonte="excel",
+                note="Import automatico POS BPM/Numia: somma transazioni approvate",
+                actor={"user_id": "drive_pos_bpm", "name": "Import automatico Drive"},
+            )
+            totals[data_iso] = total
+
+        await db["pos_terminal_imports"].update_one(
+            {"file_hash": file_hash},
+            {"$set": {
+                "id": f"POS-IMPORT-{file_hash[:32]}",
+                "operation_id": f"pos-import:{file_hash}",
+                "drive_file_id": drive_file_id,
+                "filename": filename,
+                "file_hash": file_hash,
+                "identity_version": "pos_numia_v2",
+                "rows": parsed["rows"],
+                "source_rows": parsed["source_rows"],
+                "duplicates": parsed["duplicates"],
+                "approved": parsed["approved"],
+                "updated_at": now,
+            }, "$setOnInsert": {"created_at": now}},
+            upsert=True,
+        )
     return {
         "rows": parsed["rows"], "source_rows": parsed["source_rows"],
         "duplicates": parsed["duplicates"], "approved": parsed["approved"],
-        "inserted": inserted, "updated": updated,
+        "inserted": inserted, "updated": updated, "unchanged": unchanged,
+        "operation_identity": "pos_numia_v2",
         "days": len(totals), "daily_totals": totals,
     }
