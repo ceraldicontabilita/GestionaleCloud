@@ -96,4 +96,20 @@ describe('Confronto IVA: base completa del mese', () => {
     expect(within(confronto).getByText(/coerente · pag. 2/)).toBeInTheDocument();
     expect(within(confronto).getByText(/indipendentemente da cassa, banca e stato del pagamento/)).toBeInTheDocument();
   });
+
+  it('mostra i valori OCR ma richiede verifica', () => {
+    render(<ConfrontoIvaCommercialista anno={2026} loading={false} error={null} dati={{
+      mensile: [{
+        mese: 7, mese_nome: 'Luglio', stato_calcolo: 'CALCOLATA', periodo_calcolato: true,
+        iva_debito_corrispettivi: 100, iva_credito_fatture: 20, saldo: 80,
+        lipe: { stato: 'LIPE_DA_VERIFICARE', vp4: 100, vp5: 20, page_number: 1 },
+      }],
+      totali: {},
+    }} />);
+
+    const confronto = screen.getByTestId('iva-confronto-commercialista');
+    expect(within(confronto).getByText(/VP4 € 100,00 · VP5 € 20,00/)).toBeInTheDocument();
+    expect(within(confronto).getByText(/OCR da verificare · pag. 1/)).toBeInTheDocument();
+    expect(within(confronto).getByText('LIPE da verificare')).toBeInTheDocument();
+  });
 });

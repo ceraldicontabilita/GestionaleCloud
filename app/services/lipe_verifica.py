@@ -108,8 +108,13 @@ async def list_lipe_monthly_evidence(db, *, year: int, company_id: str | None = 
                     "version_id": page.get("version_id") or document.get("current_version_id"),
                     "page_number": page.get("page_number"),
                     "filename": document.get("filename"),
-                    "confidence": parsed["confidence"],
-                    "parser_version": "lipe-vp-v1",
+                    "confidence": min(
+                        parsed["confidence"],
+                        float(page.get("ocr_confidence") or 1.0),
+                    ),
+                    "text_source": page.get("text_source") or "pdf_text",
+                    "ocr_used": bool(page.get("ocr_used")),
+                    "parser_version": "lipe-vp-v2-ocr-aware",
                     "raw_evidence": parsed["raw_evidence"],
                 })
 

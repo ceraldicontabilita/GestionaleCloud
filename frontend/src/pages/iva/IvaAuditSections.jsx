@@ -122,11 +122,11 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
                       {nonCalcolato ? '—' : <>{m.saldo > 0 ? '+' : ''}{formatEuro(m.saldo)}</>}
                     </td>
                     <td data-label="LIPE VP4/VP5" style={{ padding: '10px 9px', textAlign: 'right' }}>
-                      {m.lipe?.stato === 'LIPE_ESTRATTA' ? (
+                      {['LIPE_ESTRATTA', 'LIPE_DA_VERIFICARE'].includes(m.lipe?.stato) ? (
                         <span>
                           VP4 {formatEuro(m.lipe.vp4)} · VP5 {formatEuro(m.lipe.vp5)}
-                          <small style={{ display: 'block', color: m.lipe.coerente_gestionale ? COLORS.success : COLORS.danger }}>
-                            {m.lipe.coerente_gestionale ? 'coerente' : 'scostamento rilevato'} · pag. {m.lipe.page_number || '—'}
+                          <small style={{ display: 'block', color: m.lipe.stato === 'LIPE_DA_VERIFICARE' ? COLORS.warning : m.lipe.coerente_gestionale ? COLORS.success : COLORS.danger }}>
+                            {m.lipe.stato === 'LIPE_DA_VERIFICARE' ? 'OCR da verificare' : m.lipe.coerente_gestionale ? 'coerente' : 'scostamento rilevato'} · pag. {m.lipe.page_number || '—'}
                           </small>
                         </span>
                       ) : <span style={{ color: COLORS.textMuted }}>{m.lipe?.stato === 'LIPE_AMBIGUA' ? 'Più LIPE candidate' : '—'}</span>}

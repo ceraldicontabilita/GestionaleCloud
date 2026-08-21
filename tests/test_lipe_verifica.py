@@ -44,6 +44,27 @@ def test_lipe_duplicata_resta_ambigua_con_provenienza():
     asyncio.run(scenario())
 
 
+def test_lipe_da_ocr_resta_da_verificare_anche_con_i_campi_presenti():
+    async def scenario():
+        db = MemorySheetsClient().db
+        await db.fiscal_documents.insert_one({
+            "id": "LIPE-OCR", "company_id": "CERALDI", "document_type": "LIPE",
+            "filename": "LIPE_2026.pdf", "source_metadata": {"tax_year": 2026},
+        })
+        await db.fiscal_pages.insert_one({
+            "document_id": "LIPE-OCR", "version_id": "V-OCR", "page_number": 1,
+            "text": "VP1 Mese 7\nVP4 100,00\nVP5 20,00", "ocr_used": True,
+            "text_source": "rapidocr_locale", "ocr_confidence": 0.91,
+        })
+        result = await list_lipe_monthly_evidence(db, year=2026, company_id="CERALDI")
+        assert result[7]["stato"] == "LIPE_DA_VERIFICARE"
+        assert result[7]["vp4_cents"] == 10000
+        assert result[7]["ocr_used"] is True
+        assert result[7]["confidence"] == 0.91
+
+    asyncio.run(scenario())
+
+
 def test_pagina_con_piu_moduli_non_confonde_i_mesi():
     parsed = parse_lipe_modules(
         "Anno 2026\nVP1 Mese 1\nVP4 100,00\nVP5 20,00\n"

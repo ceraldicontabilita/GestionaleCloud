@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import io
+from functools import lru_cache
 from typing import Any
 
 import fitz
@@ -32,7 +33,28 @@ CATEGORY_DOCUMENT_TYPES = {
 }
 
 
-def extract_pdf_pages(content: bytes) -> list[dict[str, Any]]:
+@lru_cache(maxsize=1)
+def _ocr_engine():
+    from rapidocr_onnxruntime import RapidOCR
+
+    return RapidOCR()
+
+
+def _ocr_page(page) -> tuple[str, float | None]:
+    """OCR locale della singola pagina, senza inviare il documento a terzi."""
+    import numpy as np
+    from PIL import Image
+
+    pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+    image = np.array(Image.open(io.BytesIO(pixmap.tobytes("png"))))
+    result, _ = _ocr_engine()(image)
+    rows = [item for item in (result or []) if len(item) >= 3 and str(item[1]).strip()]
+    text = "\n".join(str(item[1]).strip() for item in rows)
+    scores = [float(item[2]) for item in rows if item[2] is not None]
+    return text, (sum(scores) / len(scores) if scores else None)
+
+
+def extract_pdf_pages(content: bytes, *, use_ocr: bool = True) -> list[dict[str, Any]]:
     try:
         pdf = fitz.open(stream=content, filetype="pdf")
     except Exception as exc:
@@ -40,9 +62,24 @@ def extract_pdf_pages(content: bytes) -> list[dict[str, Any]]:
     pages = []
     for index, page in enumerate(pdf):
         text = page.get_text("text")[:MAX_EXTRACTED_PAGE_CHARS]
+        ocr_used = False
+        ocr_confidence = None
+        if use_ocr and len(text.strip()) < 20:
+            try:
+                ocr_text, ocr_confidence = _ocr_page(page)
+                if ocr_text.strip():
+                    text = ocr_text[:MAX_EXTRACTED_PAGE_CHARS]
+                    ocr_used = True
+            except Exception:
+                # Il documento resta in revisione: nessun fallimento OCR può
+                # trasformarsi in un dato fiscale certo o bloccare l'import.
+                pass
         pages.append({
             "page_number": index + 1,
             "text": text,
+            "text_source": "rapidocr_locale" if ocr_used else "pdf_text",
+            "ocr_used": ocr_used,
+            "ocr_confidence": ocr_confidence,
             "requires_ocr": len(text.strip()) < 20,
         })
     pdf.close()
@@ -52,7 +89,7 @@ def extract_pdf_pages(content: bytes) -> list[dict[str, Any]]:
 class FiscalDocumentIngestionService:
     """Acquisizione idempotente; non crea obblighi o pagamenti per inferenza."""
 
-    PARSER_VERSION = "fiscal-ingestion-v1"
+    PARSER_VERSION = "fiscal-ingestion-v2-ocr"
 
     def __init__(self, db, company_id: str | None = None):
         self.db = db
@@ -80,11 +117,34 @@ class FiscalDocumentIngestionService:
             {"company_id": self.company_id, "sha256": digest}, {"_id": 0}
         )
         if existing_version:
+            pages = await self.db[COLL_FISCAL_PAGES].find(
+                {"company_id": self.company_id, "version_id": existing_version["id"]},
+                {"_id": 0},
+            ).to_list(1000)
+            refreshed = False
+            if not pages or any(
+                page.get("requires_ocr") or len(str(page.get("text") or "").strip()) < 20
+                for page in pages
+            ):
+                now = utc_now()
+                for page in extract_pdf_pages(content):
+                    page_id = stable_id("fiscal_page", existing_version["id"], page["page_number"])
+                    await self.db[COLL_FISCAL_PAGES].update_one(
+                        {"company_id": self.company_id, "version_id": existing_version["id"],
+                         "page_number": page["page_number"]},
+                        {"$set": {"id": page_id, "company_id": self.company_id,
+                                  "document_id": existing_version["document_id"],
+                                  "version_id": existing_version["id"], **page,
+                                  "updated_at": now}},
+                        upsert=True,
+                    )
+                refreshed = True
             return {
                 "status": "duplicate",
                 "document_id": existing_version["document_id"],
                 "version_id": existing_version["id"],
                 "sha256": digest,
+                "derived_text_refreshed": refreshed,
             }
 
         if not filename.lower().endswith(".pdf"):
