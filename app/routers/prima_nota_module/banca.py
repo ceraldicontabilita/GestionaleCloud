@@ -14,7 +14,7 @@ from app.services.payment_allocation_validator import allocation_summary
 from .common import (
     entra_in_prima_nota,
     COLLECTION_PRIMA_NOTA_BANCA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE,
-    ESCLUSIONI_SALDO_REALE,
+    ESCLUSIONI_SALDO_REALE, SOURCES_CREDITO_POS, SOURCES_ESCLUSE,
     calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota,
     arricchisci_movimenti_fattura, saldi_finanziari,
 )
@@ -235,34 +235,61 @@ async def list_prima_nota_banca(
     tipo: Optional[str] = Query(None),
     categoria: Optional[str] = Query(None)
 ) -> Dict[str, Any]:
-    """Lista movimenti prima nota banca con saldo separato per anno."""
+    """Lista movimenti e attese bancarie con saldo reale separato.
+
+    Le attese POS devono essere visibili e riconciliabili nella pagina Banca,
+    ma non sono ancora liquidita': restano escluse da entrate, uscite e saldo
+    finche l'estratto conto non prova l'accredito. Elenco e saldo usano quindi
+    due filtri distinti.
+    """
     db = Database.get_db()
 
-    query_base = {
+    query_base_saldo = {
         "status": {"$nin": ["deleted", "archived"]},
         "categoria": {"$nin": CATEGORIE_ESCLUSE},
         **ESCLUSIONI_SALDO_REALE,
         # La Mastercard SumUp e' un conto distinto da Banco BPM.
         "conto_contabile": {"$ne": conti_pos.CONTO_SUMUP_MASTERCARD},
     }
+    query_base = {
+        "status": {"$nin": ["deleted", "archived"]},
+        "categoria": {"$nin": CATEGORIE_ESCLUSE},
+        "conto_contabile": {"$ne": conti_pos.CONTO_SUMUP_MASTERCARD},
+        "$and": [{"$or": [
+            {
+                "natura": {"$nin": ["credito_pos", "costo"]},
+                "source": {"$nin": SOURCES_CREDITO_POS + SOURCES_ESCLUSE},
+            },
+            # L'attesa nasce dal fatto POS/RT e resta visibile anche prima
+            # dell'accredito. Non contribuisce al saldo reale qui sopra.
+            {"source": "trasferimento_pos"},
+        ]}],
+    }
     query = dict(query_base)
+    query_saldo = dict(query_base_saldo)
 
     if anno:
         # §6.4: query anno allineata a cassa.py (copre anche i doc con anno == "")
-        query["$or"] = [
+        filtro_anno = [
             {"anno": anno},
             {"anno": {"$in": [None, ""]}, "data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}},
             {"anno": {"$exists": False}, "data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}}
         ]
+        query["$or"] = filtro_anno
+        query_saldo["$or"] = filtro_anno
     
     if data_da:
         query.setdefault("data", {})["$gte"] = data_da
+        query_saldo.setdefault("data", {})["$gte"] = data_da
     if data_a:
         query.setdefault("data", {})["$lte"] = data_a
+        query_saldo.setdefault("data", {})["$lte"] = data_a
     if tipo:
         query["tipo"] = tipo
+        query_saldo["tipo"] = tipo
     if categoria:
         query["categoria"] = categoria
+        query_saldo["categoria"] = categoria
     
     movimenti = await db[COLLECTION_PRIMA_NOTA_BANCA].find(query, {"_id": 0}).sort("data", -1).skip(skip).limit(limit).to_list(limit)
     await arricchisci_movimenti_fattura(db, movimenti)
@@ -273,9 +300,9 @@ async def list_prima_nota_banca(
     saldi = await aggrega_saldo_prima_nota(
         db,
         COLLECTION_PRIMA_NOTA_BANCA,
-        query,
+        query_saldo,
         anno,
-        query_base_precedente=query_base,
+        query_base_precedente=query_base_saldo,
     )
 
     return {
