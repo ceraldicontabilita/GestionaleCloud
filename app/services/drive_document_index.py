@@ -182,7 +182,12 @@ def _date_sort_key(value: Any) -> str:
 def _is_documentary_payment(row: dict[str, Any]) -> bool:
     """Una quietanza prova documentalmente il pagamento, non il riscontro bancario."""
     document_type = _norm(row.get("Tipo documento"))
-    return "quietanza" in document_type or "formato stampabile" in document_type
+    source_path = _norm(row.get("Percorso Drive"))
+    return (
+        "quietanza" in document_type
+        or "formato stampabile" in document_type
+        or "formato_stampabile" in source_path
+    )
 
 
 def _declaration_type(value: Any, filename: Any = None) -> str:

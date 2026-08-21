@@ -227,7 +227,8 @@ def test_documented_tax_payments_only_include_quietanze_and_keep_bank_unverified
         "ID documento": "DOC-Q", "Tipo documento": "Quietanza AE",
         "Codice tributo": "1001", "Debito": 100, "Credito": 0,
     }, {
-        "ID documento": "DOC-S", "Tipo documento": "Formato stampabile (considerato quietanza)",
+        "ID documento": "DOC-S", "Tipo documento": "Modello F24",
+        "Percorso Drive": r"F24\formato_stampabile\formato-stampabile.pdf",
         "Codice tributo": "1704", "Debito": 0, "Credito": 25,
     }, {
         "ID documento": "DOC-M", "Tipo documento": "Modello F24",
