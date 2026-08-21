@@ -33,7 +33,7 @@ class Database:
             backend = settings.DATA_BACKEND.strip().lower()
             if backend != "sheets":
                 raise RuntimeError(
-                    "DATA_BACKEND 'mongodb' non è più supportato. Usare DATA_BACKEND=sheets "
+                    "DATA_BACKEND 'legacy DB' non è più supportato. Usare DATA_BACKEND=sheets "
                     "e configurare GOOGLE_SHEETS_LEDGER_ID o GOOGLE_SHEETS_LEDGER_FOLDER_ID."
                 )
 

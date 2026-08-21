@@ -159,7 +159,7 @@
   "archivio_dati": {
     "stato_corrente": "google_drive_sheets",
     "backend_predefinito": "sheets",
-    "compatibilita": "nessuna - MongoDB rimosso; Drive-only",
+    "compatibilita": "nessuna - legacy DB rimosso; Drive-only",
     "fallback_automatico": "disabilitato"
   },
   "regole_di_lettura": [
@@ -168,3 +168,4 @@
     "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }
+

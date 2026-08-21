@@ -74,4 +74,4 @@ criteri.
 
 ## Stato attuale
 
-MongoDB è stato rimosso e non è più parte della procedura di disaster recovery. La ricostruzione e il ripristino devono basarsi esclusivamente su Drive/Sheets: tutte le verifiche, i confronti di conteggi e hash e i test end-to-end vanno eseguiti con `DATA_BACKEND=sheets`. Non usare variabili, script o collezioni MongoDB.
+legacy DB è stato rimosso e non è più parte della procedura di disaster recovery. La ricostruzione e il ripristino devono basarsi esclusivamente su Drive/Sheets: tutte le verifiche, i confronti di conteggi e hash e i test end-to-end vanno eseguiti con `DATA_BACKEND=sheets`. Non usare variabili, script o collezioni legacy DB.

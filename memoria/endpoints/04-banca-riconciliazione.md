@@ -7,7 +7,7 @@ storage_architecture: drive-only
 -->
 
 > [!IMPORTANT]
-> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi legacy/collection restano contesto storico. MongoDB è rimosso e non va usato.
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi legacy/collection restano contesto storico. legacy DB è rimosso e non va usato.
 
 Documentazione operativa degli endpoint dei moduli banca/riconciliazione (FastAPI + Drive/Sheets).
 Collezione canonica movimenti banca: `estratto_conto_movimenti`. Schema canonico collegamento assegno↔fatture: `fatture_collegate=[{fattura_id, quota, data_collegamento}]` (max 4 fatture, stesso fornitore, tolleranza ±0,005€).

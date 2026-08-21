@@ -67,7 +67,7 @@ movimento bancario e scrittura contabile sono prove distinte. Possono condivider
 
 La destinazione definitiva usa **Google Drive per gli originali** e **Google
 Sheets/Excel collegato a Drive per registri, progressivi, indici e relazioni**.
-MongoDB è stato rimosso e il runtime non la richiede. Le variabili e gli script MongoDB non sono supportati: rimuoverli o ignorarli; la sola fonte di persistenza è Drive/Sheets.
+legacy DB è stato rimosso e il runtime non la richiede. Le variabili e gli script legacy DB non sono supportati: rimuoverli o ignorarli; la sola fonte di persistenza è Drive/Sheets.
 
 Workbook: `Ceraldi ERP - Registro dati`.
 
