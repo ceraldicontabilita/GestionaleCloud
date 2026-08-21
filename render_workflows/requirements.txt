@@ -2,3 +2,4 @@ render_sdk>=0.6.0,<1
 google-api-python-client>=2.170,<3
 google-auth>=2.40,<3
 pdfplumber>=0.11,<1
+openpyxl>=3.1,<4
