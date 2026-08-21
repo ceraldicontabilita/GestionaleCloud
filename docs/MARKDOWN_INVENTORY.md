@@ -21,12 +21,12 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Riepilogo
 
-- Correnti: **25**
+- Correnti: **26**
 - Riferimento: **28**
 - Pianificati: **7**
 - Generati: **5**
 - Storici: **6**
-- Totale: **71**
+- Totale: **72**
 
 ## Elenco completo
 
@@ -58,6 +58,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `docs/PROMPT_GESTIONALE_MITTENTI_TRIBUTI_DICHIARAZIONI_PARTENOPAY.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/REGOLA_FISSA_ATTESE.md` | `current` | Autorità operativa corrente |
 | `docs/RUNBOOK-OBSIDIAN-PROCEDURE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/RUNBOOK-RENDER-CALDERONE.md` | `current` | Autorità operativa corrente |
 | `docs/obsidian-integration/ARCHITETTURA.md` | `planned` | Specifica approvata ma non ancora completamente operativa |
 | `docs/obsidian-integration/MAPPA_COLLEGAMENTI.md` | `planned` | Specifica approvata ma non ancora completamente operativa |
 | `docs/obsidian-integration/MODELLO_NOTE.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |

@@ -36,6 +36,7 @@ CURRENT = {
     "docs/MCP_GESTIONALE_SPEC.md",
     "docs/PROMPT_CEDOLINI_NETTO_DRIVE_SALARI.md",
     "docs/REGOLA_FISSA_ATTESE.md",
+    "docs/RUNBOOK-RENDER-CALDERONE.md",
     "docs/rt-locale-drive.md",
     "frontend/README.md",
     "memoria/DISASTER_RECOVERY_DRIVE.md",
@@ -57,7 +58,8 @@ MARKER_RE = re.compile(
     flags=re.DOTALL,
 )
 NOTICE_RE = re.compile(
-    r"\n?> \[!(?:NOTE|IMPORTANT)\]\n> (?:Snapshot storico|Documento di riferimento).*?\n(?=\n|#)",
+    r"\n?> \[!(?:NOTE|IMPORTANT|WARNING)\]\n> "
+    r"(?:Snapshot storico|Documento di riferimento|Specifica o piano approvato).*?\n(?=\n|#)",
     flags=re.DOTALL,
 )
 
@@ -150,7 +152,7 @@ def update_document(path: str, status: str) -> None:
     target = ROOT / path
     raw = target.read_text(encoding="utf-8-sig")
     raw = MARKER_RE.sub("\n", raw, count=1)
-    raw = NOTICE_RE.sub("\n", raw, count=1)
+    raw = NOTICE_RE.sub("\n", raw)
     lines = raw.lstrip("\ufeff\n").splitlines()
     frontmatter: list[str] = []
     if lines and lines[0].strip() == "---":
