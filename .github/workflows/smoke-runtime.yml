@@ -14,6 +14,10 @@ on:
         required: false
         default: https://impresasemplice.online
 
+concurrency:
+  group: runtime-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   smoke:
     runs-on: ubuntu-latest
@@ -21,6 +25,9 @@ jobs:
       BACKEND_URL: ${{ github.event.inputs.backend_url || 'https://impresasemplice.online' }}
       FRONTEND_URL: ${{ github.event.inputs.frontend_url || 'https://impresasemplice.online' }}
       SMOKE_TIMEOUT: '20'
+      SMOKE_EXPECTED_COMMIT: ${{ github.sha }}
+      SMOKE_DEPLOY_WAIT_SECONDS: '900'
+      SMOKE_DEPLOY_POLL_SECONDS: '15'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
