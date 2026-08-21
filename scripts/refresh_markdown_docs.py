@@ -23,6 +23,7 @@ GENERATED = {
 
 CURRENT = {
     ".github/copilot-instructions.md",
+    "AGENTS.md",
     "CLAUDE.md",
     "DESIGN.md",
     "LOGICA_FUNZIONAMENTO.md",

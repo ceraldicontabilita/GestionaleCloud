@@ -20,11 +20,11 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 ## Riepilogo
 
-- Correnti: **33**
+- Correnti: **34**
 - Riferimento: **25**
 - Generati: **5**
 - Storici: **3**
-- Totale: **66**
+- Totale: **67**
 
 ## Elenco completo
 
@@ -36,6 +36,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `.github/instructions/pagine-erp.instructions.md` | `current` | Autorità operativa corrente |
 | `.github/skills/mcp-gateway/SKILL.md` | `current` | Autorità operativa corrente |
 | `.github/skills/pagina-erp/SKILL.md` | `current` | Autorità operativa corrente |
+| `AGENTS.md` | `current` | Autorità operativa corrente |
 | `CLAUDE.md` | `current` | Autorità operativa corrente |
 | `DESIGN.md` | `current` | Autorità operativa corrente |
 | `LOGICA_FUNZIONAMENTO.md` | `current` | Autorità operativa corrente |
