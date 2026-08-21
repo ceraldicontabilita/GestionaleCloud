@@ -39,6 +39,18 @@ const identityFor = item => {
   return metadata.numero_verbale || metadata.codice_avviso || item.category_label || 'Verbale';
 };
 
+const expectationLabel = expectation => {
+  const labels = {
+    ESITO_DEFINIZIONE_AGEVOLATA: 'Esito AdER',
+    PIANO_O_IMPORTO_DEFINIZIONE: 'Piano/importo dovuto',
+    PAGAMENTO_CARTELLA: 'Pagamento cartella',
+    DECISIONE_VERBALE: 'Decisione entro la scadenza',
+    EVIDENZA_PAGAMENTO_VERBALE: 'Ricevuta di pagamento',
+    RISCONTRO_FINANZIARIO_VERBALE: 'Riscontro finanziario',
+  };
+  return labels[expectation.expectation_type] || expectation.expectation_type;
+};
+
 export default function AttiAmministrativi() {
   const { anno } = useAnnoGlobale();
   const [selectedYear, setSelectedYear] = useState('');
@@ -180,6 +192,29 @@ export default function AttiAmministrativi() {
             {item.administrative_area === 'famiglia' && <div style={{ marginTop: 8, color: '#334155' }}>
               Contribuente {metadata.contribuente || 'da verificare'} · codice {metadata.codice_contribuente || 'non estratto'} · anno tributo {metadata.anno_tributo || 'da verificare'}
               {metadata.immobile && <> · immobile {metadata.immobile}</>}
+            </div>}
+            {item.administrative_area === 'riscossione' && <div style={{ marginTop: 8, color: '#334155' }}>
+              {metadata.societa_denominazione && <>Società <strong>{metadata.societa_denominazione}</strong> · </>}
+              CF società {metadata.societa_cf || metadata.contribuente_cf || 'da verificare'}
+              {metadata.soggetto_richiedente_cf && <> · richiedente {metadata.soggetto_richiedente_cf}</>}
+              {metadata.soggetto_richiedente_ruolo && <> ({metadata.soggetto_richiedente_ruolo})</>}
+              {metadata.ricevuta_presentazione && <> · ricevuta {metadata.ricevuta_presentazione}</>}
+              {(metadata.numeri_cartella || []).length > 0 && <><br />Cartelle: <strong>{metadata.numeri_cartella.join(', ')}</strong>{metadata.tutti_i_carichi ? ' · tutti i carichi' : ''}</>}
+            </div>}
+            {item.administrative_area === 'verbali' && <div style={{ marginTop: 8, color: '#334155' }}>
+              Verbale {metadata.numero_verbale || item.numero_verbale_estratto || 'da verificare'}
+              {(metadata.numero_registro || metadata.numero_atto) && <> · registro {metadata.numero_registro || metadata.numero_atto}</>}
+              {(metadata.targa || item.targa_estratta) && <> · targa <strong>{metadata.targa || item.targa_estratta}</strong></>}
+              {(metadata.importo_ridotto || metadata.importo_ordinario || item.importo_ridotto || item.importo_ordinario) && <><br />Ridotto {(metadata.importo_ridotto || item.importo_ridotto) ? `€ ${metadata.importo_ridotto || item.importo_ridotto}` : 'da verificare'} · ordinario {(metadata.importo_ordinario || item.importo_ordinario) ? `€ ${metadata.importo_ordinario || item.importo_ordinario}` : 'da verificare'}</>}
+            </div>}
+            {(metadata.workflow_expectations || item.workflow_expectations || []).length > 0 && <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: '#fff7ed', color: '#7c2d12' }}>
+              <strong>Informazioni e prove attese</strong>
+              <ul style={{ margin: '6px 0 0', paddingLeft: 20 }}>
+                {(metadata.workflow_expectations || item.workflow_expectations).map((expectation, index) => <li key={`${expectation.expectation_type}-${index}`}>
+                  {expectationLabel(expectation)}: {expectation.status || expectation.expectation_status || 'ATTESO'}
+                  {expectation.discount_deadline && <> · entro {expectation.discount_deadline}</>}
+                </li>)}
+              </ul>
             </div>}
           </article>;
         })}

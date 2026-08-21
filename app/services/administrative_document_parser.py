@@ -85,8 +85,15 @@ def parse_dimissioni(text: str) -> dict[str, Any]:
 
 def parse_ader(text: str, document_type: str) -> dict[str, Any]:
     compact = re.sub(r"\s+", " ", text)
+    applicant_cf = _match(r"sottoscritto/a\s+([A-Z0-9]{16})", compact)
     company_cf = _match(
         r"del/della\s+.+?\s+codice\s+fiscale\s+(\d{11})", compact,
+    )
+    company_name = _match(
+        r"del/della\s+(.+?)\s+codice\s+fiscale\s+\d{11}", compact,
+    )
+    applicant_role = _match(
+        r"in\s+qualit[aà]\s+di\s+(.+?)\s+del/della", compact,
     )
     tax_codes = list(dict.fromkeys(re.findall(r"\b(?:\d{11}|[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])\b", compact, re.I)))
     claims = list(dict.fromkeys(re.findall(r"\b\d{20}\b", compact)))
@@ -99,15 +106,61 @@ def parse_ader(text: str, document_type: str) -> dict[str, Any]:
         if document_type == "ader_sospensione"
         else "definizione_agevolata"
     )
+    submission_date = _iso_date(_match(r"Servizi\s+online.*?(\d{2}/\d{2}/\d{4})", compact))
+    receipt_reference = _match(r"\b(W-\d{16})\b", compact)
+    all_claims = bool(re.search(r"Tutti\s+i\s+carichi", compact, re.I))
+    business_context = bool(company_cf and applicant_role)
+    relation_keys = {
+        "numeri_cartella": claims,
+        "contribuente_cf": company_cf or (tax_codes[0] if tax_codes else None),
+        "ricevuta_presentazione": receipt_reference,
+    }
+    expectations = []
+    if document_type == "ader_definizione_agevolata" and claims:
+        expectations = [
+            {
+                "expectation_type": "ESITO_DEFINIZIONE_AGEVOLATA",
+                "status": "ATTESO",
+                "mandatory": True,
+                "accepted_evidence": ["comunicazione_ader_accoglimento", "comunicazione_ader_rigetto"],
+            },
+            {
+                "expectation_type": "PIANO_O_IMPORTO_DEFINIZIONE",
+                "status": "ATTESO",
+                "mandatory": True,
+                "accepted_evidence": ["piano_rate_ader", "comunicazione_somme_dovute"],
+            },
+            {
+                "expectation_type": "PAGAMENTO_CARTELLA",
+                "status": "ATTESO",
+                "mandatory": True,
+                "accepted_evidence": [
+                    "movimento_bancario", "addebito_rid", "bollettino", "ricevuta_pagopa",
+                    "carta_credito", "paypal", "nexi", "pagobancomat",
+                ],
+                "requires_financial_confirmation": True,
+            },
+        ]
     return {
         "tipo_documento": document_type,
         "sottotipo": subtype,
         "contribuente_cf": company_cf or (tax_codes[0] if tax_codes else None),
+        "soggetto_richiedente_cf": applicant_cf,
+        "soggetto_richiedente_ruolo": applicant_role,
+        "societa_denominazione": company_name,
+        "societa_cf": company_cf,
+        "contesto": "AZIENDALE_RAPPRESENTANZA" if business_context else "DA_VERIFICARE",
         "codici_fiscali_presenti": tax_codes,
         "numeri_cartella": claims,
+        "tutti_i_carichi": all_claims,
+        "data_presentazione": submission_date,
+        "ricevuta_presentazione": receipt_reference,
         "date_presenti": [value for value in notification_dates if value],
         "association_keys": claims,
-        "requires_review": not bool(claims),
+        "relation_keys": relation_keys,
+        "workflow_expectations": expectations,
+        "obligation_status": "IN_ATTESA_ESITO" if expectations else "APERTO",
+        "requires_review": not bool(claims and (company_cf or tax_codes)),
         "is_payment_evidence": False,
     }
 

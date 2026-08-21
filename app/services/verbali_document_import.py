@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import io
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from app.services.payment_invoice_matching import amounts_equal_to_cent
@@ -193,6 +193,122 @@ def _extract_violation_date(text: str) -> Optional[str]:
     return f"{year}-{month}-{day}"
 
 
+def _extract_iso_date(pattern: str, text: str) -> Optional[str]:
+    match = re.search(pattern, text or "", re.I)
+    if not match:
+        return None
+    day, month, year = re.split(r"[/-]", match.group(1))
+    return f"{year}-{month}-{day}"
+
+
+def _extract_labeled_amount(pattern: str, text: str) -> Optional[float]:
+    match = re.search(pattern + r"[^\d]{0,80}([\d.]+,\d{2})\s*(?:€|euro)?", text or "", re.I)
+    return _float_or_none(match.group(1)) if match else None
+
+
+def _extract_verbale_details(text: str) -> Dict[str, Any]:
+    """Estrae i campi operativi senza trasformare l'avviso in pagamento."""
+    compact = re.sub(r"\s+", " ", text or "")
+    register = re.search(r"Registro\s+n[.°º]?\s*([A-Z0-9/-]+)", compact, re.I)
+    time_match = re.search(r"(?:alle\s+ore|ore)\s*(\d{1,2}:\d{2})", compact, re.I)
+    article = re.search(r"art(?:icolo)?[.\s]+(\d+)\s*(?:c(?:omma)?[.\s]+([\d, e]+))?", compact, re.I)
+    location = re.search(
+        r"(?:in|presso)\s+(?:via|viale|piazza|corso)\s+(.+?)(?=\s+(?:per\s+aver|in\s+violazione|ai\s+sensi|art[.\s]))",
+        compact, re.I,
+    )
+    obligor = re.search(r"([A-Z][A-Z0-9 .'&-]+?)\s+(?:e['’]\s+)?indicat[oa]\s+come\s+obbligat[oa]\s+in\s+solido", compact, re.I)
+    lessor = re.search(r"([A-Z][A-Z0-9 .'&-]+?)\s+(?:e['’]\s+)?indicat[oa]\s+come\s+societ[aà]\s+di\s+locazione", compact, re.I)
+    reduced = _extract_labeled_amount(r"(?:riduzione\s+del\s+30%|entro\s+5\s+giorni)", compact)
+    ordinary = _extract_labeled_amount(r"(?:dal\s+sesto\s+al\s+sessantesimo\s+giorno|entro\s+60\s+giorni)", compact)
+    issue_date = _extract_iso_date(r"(?:emesso|redatto|verbale).*?(\d{2}[/-]\d{2}[/-]\d{4})", compact)
+    return {
+        "numero_registro": register.group(1).upper() if register else None,
+        "data_emissione": issue_date,
+        "ora_violazione": time_match.group(1) if time_match else None,
+        "indirizzo_violazione": location.group(1).strip(" ,.;") if location else None,
+        "articolo_cds": article.group(1) if article else None,
+        "commi_cds": article.group(2).strip(" ,") if article and article.group(2) else None,
+        "obbligato_in_solido": obligor.group(1).strip() if obligor else None,
+        "societa_locazione": lessor.group(1).strip() if lessor else None,
+        "importo_ridotto": reduced,
+        "importo_ordinario": ordinary,
+    }
+
+
+def _verbale_expectations(
+    *, verbale_id: str, source_document_id: str, notification_date: Optional[str],
+    reduced_amount: Optional[float], ordinary_amount: Optional[float],
+) -> list[Dict[str, Any]]:
+    operation_id = f"verbale:{verbale_id}"
+    discount_deadline = None
+    if notification_date:
+        try:
+            discount_deadline = (date.fromisoformat(notification_date) + timedelta(days=5)).isoformat()
+        except ValueError:
+            pass
+    common = {
+        "operation_id": operation_id,
+        "source_fact_id": source_document_id,
+        "expectation_owner": "verbale",
+        "expectation_status": "ATTESO",
+        "mandatory": True,
+    }
+    return [
+        {
+            **common,
+            "expectation_type": "DECISIONE_VERBALE",
+            "discount_deadline": discount_deadline,
+            "reduced_amount": reduced_amount,
+            "ordinary_amount": ordinary_amount,
+            "accepted_outcomes": ["PAGARE_RIDOTTO", "PAGARE_ORDINARIO", "RICORSO", "REINTESTAZIONE"],
+        },
+        {
+            **common,
+            "expectation_type": "EVIDENZA_PAGAMENTO_VERBALE",
+            "accepted_evidence": ["ricevuta_pagopa", "bollettino", "carta_credito", "paypal", "nexi", "pagobancomat"],
+        },
+        {
+            **common,
+            "expectation_type": "RISCONTRO_FINANZIARIO_VERBALE",
+            "accepted_evidence": ["movimento_bancario", "addebito_carta", "paypal", "nexi", "pagobancomat"],
+        },
+    ]
+
+
+async def _schedule_verbale_notifications(
+    db, *, verbale_id: str, notification_date: Optional[str], now_iso: str,
+) -> None:
+    """Pianifica alert idempotenti dalla ricezione; senza data non inventa scadenze."""
+    if not notification_date:
+        return
+    try:
+        received = datetime.combine(
+            date.fromisoformat(notification_date), datetime.min.time(), tzinfo=timezone.utc,
+        )
+    except ValueError:
+        return
+    for offset, event in (
+        (0, "verbale_ricevuto"),
+        (3, "sconto_30_promemoria_2_giorni"),
+        (4, "sconto_30_promemoria_1_giorno"),
+        (5, "sconto_30_scaduto"),
+    ):
+        notification_id = f"{verbale_id}:{event}:{notification_date}"
+        await db["notification_log"].update_one(
+            {"id": notification_id},
+            {"$setOnInsert": {
+                "id": notification_id,
+                "tipo": "verbale",
+                "verbale_id": verbale_id,
+                "evento": event,
+                "scheduled_for": (received + timedelta(days=offset)).isoformat(),
+                "status": "pending",
+                "created_at": now_iso,
+            }},
+            upsert=True,
+        )
+
+
 async def process_verbale_document(
     db,
     *,
@@ -216,6 +332,15 @@ async def process_verbale_document(
         "targa": parsed_metadata.get("targa"),
         "importo_ridotto": parsed_metadata.get("importo"),
         "data_violazione": parsed_metadata.get("data_violazione"),
+        "data_verbale": parsed_metadata.get("data_verbale") or parsed_metadata.get("data_emissione"),
+        "ora_violazione": parsed_metadata.get("ora_violazione"),
+        "numero_atto": parsed_metadata.get("numero_atto") or parsed_metadata.get("numero_registro"),
+        "ente_creditore": parsed_metadata.get("ente_creditore"),
+        "articolo_cds": parsed_metadata.get("articolo_cds"),
+        "descrizione_violazione": parsed_metadata.get("descrizione_violazione"),
+        "responsabile": parsed_metadata.get("responsabile") or parsed_metadata.get("obbligato_in_solido"),
+        "partita_iva_responsabile": parsed_metadata.get("partita_iva_responsabile"),
+        "indirizzo_violazione": parsed_metadata.get("indirizzo_violazione"),
     }
     ai_data = {key: value for key, value in ai_data.items() if value not in (None, "")}
     ai_was_used = False
@@ -235,6 +360,10 @@ async def process_verbale_document(
             ai_error = str(exc)
 
     combined = f"{filename}\n{text}"
+    local_details = _extract_verbale_details(combined)
+    for key, value in local_details.items():
+        if value not in (None, "") and ai_data.get(key) in (None, ""):
+            ai_data[key] = value
     from app.services.pagopa_receipts import parse_receipt_pdf
 
     pagopa_data = parse_receipt_pdf(content, filename=filename)
@@ -379,6 +508,20 @@ async def process_verbale_document(
         or _extract_violation_date(text)
     )
     vehicle = await _vehicle_context(db, targa, violation_date)
+    notification_date = (
+        parsed_metadata.get("data_notifica")
+        or parsed_metadata.get("email_received_date")
+        or parsed_metadata.get("received_date")
+    )
+    reduced_amount = _float_or_none(ai_data.get("importo_ridotto"))
+    ordinary_amount = _float_or_none(ai_data.get("importo_ordinario"))
+    expectations = _verbale_expectations(
+        verbale_id=verbale_id,
+        source_document_id=document_id,
+        notification_date=notification_date,
+        reduced_amount=reduced_amount,
+        ordinary_amount=ordinary_amount,
+    )
     values = {
         "id": verbale_id,
         "numero_verbale": numero,
@@ -394,12 +537,20 @@ async def process_verbale_document(
         "codice_cbill": pagopa_data.get("codice_cbill"),
         "ora_violazione": ai_data.get("ora_violazione"),
         "numero_atto": ai_data.get("numero_atto"),
+        "numero_registro": ai_data.get("numero_registro"),
         "ente_creditore": ai_data.get("ente_creditore") or pagopa_data.get("beneficiario"),
         "articolo_cds": ai_data.get("articolo_cds"),
         "descrizione_violazione": ai_data.get("descrizione_violazione"),
         "responsabile": ai_data.get("responsabile"),
         "partita_iva_responsabile": ai_data.get("partita_iva_responsabile"),
         "indirizzo_violazione": ai_data.get("indirizzo_violazione"),
+        "obbligato_in_solido": ai_data.get("obbligato_in_solido"),
+        "societa_locazione": ai_data.get("societa_locazione"),
+        "importo_ridotto": reduced_amount,
+        "importo_ordinario": ordinary_amount,
+        "data_notifica": notification_date,
+        "workflow_expectations": expectations,
+        "operation_id": f"verbale:{verbale_id}",
         "ambito": "veicolo" if targa else "amministrativo",
         "source_document_id": document_id,
         "source_sha256": sha256,
@@ -447,6 +598,17 @@ async def process_verbale_document(
             "$addToSet": {"document_ids": document_id},
         },
         upsert=True,
+    )
+    for expectation in expectations:
+        expectation_id = f"{expectation['operation_id']}:{expectation['expectation_type']}"
+        await db["workflow_expectations"].update_one(
+            {"id": expectation_id},
+            {"$set": {"id": expectation_id, **expectation, "updated_at": now},
+             "$setOnInsert": {"created_at": now}},
+            upsert=True,
+        )
+    await _schedule_verbale_notifications(
+        db, verbale_id=verbale_id, notification_date=notification_date, now_iso=now,
     )
     await db["documents_inbox"].update_one(
         {"id": document_id},

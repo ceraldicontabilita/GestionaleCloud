@@ -90,6 +90,52 @@ def test_numero_verbale_estratto_dai_nomi_file_reali():
     assert mod._extract_numero("VERBALE N. VV/24990121765.pdf") == "VV/24990121765"
 
 
+def test_dettaglio_verbale_estrae_registro_luogo_articolo_e_importi():
+    details = mod._extract_verbale_details(
+        "Verbale n. A26110812778 Registro n. 20260200899 emesso dal Comune di Napoli "
+        "in data 29/04/2026 alle ore 15:25. In via Cesare Battisti per aver sostato "
+        "fuori dagli spazi, in violazione dell'art. 157 c. 5 e 8. "
+        "CERALDI GROUP SRL indicata come obbligato in solido. "
+        "LEASYS SPA indicata come societa di locazione. "
+        "Riduzione del 30% entro 5 giorni euro 34,90. "
+        "Dal sesto al sessantesimo giorno euro 47,50."
+    )
+    assert details["numero_registro"] == "20260200899"
+    assert details["data_emissione"] == "2026-04-29"
+    assert details["ora_violazione"] == "15:25"
+    assert details["articolo_cds"] == "157"
+    assert details["importo_ridotto"] == 34.90
+    assert details["importo_ordinario"] == 47.50
+
+
+def test_attese_verbale_calcolano_finestra_cinque_giorni_dalla_notifica():
+    expectations = mod._verbale_expectations(
+        verbale_id="verb-1", source_document_id="doc-1",
+        notification_date="2026-05-02", reduced_amount=34.90, ordinary_amount=47.50,
+    )
+    decision = next(item for item in expectations if item["expectation_type"] == "DECISIONE_VERBALE")
+    assert decision["discount_deadline"] == "2026-05-07"
+    assert decision["expectation_status"] == "ATTESO"
+    assert {item["expectation_type"] for item in expectations} == {
+        "DECISIONE_VERBALE", "EVIDENZA_PAGAMENTO_VERBALE", "RISCONTRO_FINANZIARIO_VERBALE",
+    }
+
+
+def test_alert_verbale_sono_idempotenti_e_partono_dalla_ricezione_email():
+    db = _Db()
+    _run(mod._schedule_verbale_notifications(
+        db, verbale_id="verb-1", notification_date="2026-05-02",
+        now_iso="2026-05-02T10:00:00+00:00",
+    ))
+    _run(mod._schedule_verbale_notifications(
+        db, verbale_id="verb-1", notification_date="2026-05-02",
+        now_iso="2026-05-02T10:00:00+00:00",
+    ))
+    assert len(db["notification_log"].docs) == 4
+    expired = next(item for item in db["notification_log"].docs if item["evento"] == "sconto_30_scaduto")
+    assert expired["scheduled_for"].startswith("2026-05-07")
+
+
 def test_importo_testuale_5164_centesimi_prevale_su_ocr_5164_euro():
     amount, source, conflict = mod._select_document_amount(
         {"importo_ridotto": 5164}, {}, "Importo da pagare € 51,64"

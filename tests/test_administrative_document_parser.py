@@ -54,6 +54,30 @@ def test_parser_ader_collega_numeri_cartella_ma_non_prova_pagamento():
     assert parsed["is_payment_evidence"] is False
 
 
+def test_parser_ader_definizione_distingue_rappresentante_societa_e_apre_attese():
+    parsed = parse_ader(
+        "Il/La sottoscritto/a PNAGPP58D48F839K in qualita di Rappresentante Legale "
+        "del/della CERALDI GROUP SRL codice fiscale 04523831214 DICHIARA di aderire "
+        "alla DEFINIZIONE AGEVOLATA Numero cartella/avviso 07120220089305113000 "
+        "Tutti i carichi Servizi online Agenzia Riscossione 30/06/2023 "
+        "W-2023063008687450",
+        "ader_definizione_agevolata",
+    )
+    assert parsed["soggetto_richiedente_cf"] == "PNAGPP58D48F839K"
+    assert parsed["societa_cf"] == "04523831214"
+    assert parsed["contesto"] == "AZIENDALE_RAPPRESENTANZA"
+    assert parsed["numeri_cartella"] == ["07120220089305113000"]
+    assert parsed["tutti_i_carichi"] is True
+    assert parsed["data_presentazione"] == "2023-06-30"
+    assert parsed["ricevuta_presentazione"] == "W-2023063008687450"
+    assert {item["expectation_type"] for item in parsed["workflow_expectations"]} == {
+        "ESITO_DEFINIZIONE_AGEVOLATA",
+        "PIANO_O_IMPORTO_DEFINIZIONE",
+        "PAGAMENTO_CARTELLA",
+    }
+    assert parsed["is_payment_evidence"] is False
+
+
 def test_parser_tari_preserva_contribuente_anno_e_fase():
     parsed = parse_tari(
         "AREA ENTRATE Prot. n 768681/353483 Cod. Contribuente: 1917342 "
