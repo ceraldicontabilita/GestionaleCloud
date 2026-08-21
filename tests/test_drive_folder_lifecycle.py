@@ -31,9 +31,13 @@ class _Files:
 class _Service:
     def __init__(self):
         self.resource = _Files()
+        self.closed = 0
 
     def files(self):
         return self.resource
+
+    def close(self):
+        self.closed += 1
 
 
 def test_crea_le_tre_cartelle_e_sposta_senza_cancellare():
@@ -172,3 +176,63 @@ def test_ricostruzione_web_riprende_dal_cursore_senza_spostare_file(monkeypatch)
     assert second["imported"] == 2
     assert calls == ["uno.xml", "due.xml", "tre.xml"]
     assert service.resource.updated == []
+    assert service.closed == 2
+
+
+def test_ricostruzione_web_isola_file_che_ha_interrotto_il_processo(monkeypatch):
+    service = _Service()
+    db = AsyncMongoMockClient()["test_quarantena"]
+    files = {
+        "root": [
+            {"id": "1", "name": "uno.xml"},
+            {"id": "2", "name": "corrotto.xml.p7m"},
+            {"id": "3", "name": "tre.xml"},
+        ],
+    }
+
+    monkeypatch.setattr(drive, "is_configured", lambda: True)
+    monkeypatch.setattr(drive, "_load_credentials_fatture", lambda: ({}, None))
+    monkeypatch.setattr(drive, "_build_drive_service", lambda: service)
+    monkeypatch.setattr(drive, "_folder_id", lambda: "root")
+    monkeypatch.setattr(drive, "_source_folders", lambda *_: [("radice", "root")])
+    monkeypatch.setattr(drive, "_list_xml_files", lambda _service, folder: files[folder])
+    monkeypatch.setattr(drive, "_download_bytes", lambda _service, file_id: file_id.encode())
+
+    __import__("asyncio").run(db["drive_sync_state"].insert_one({
+        "_id": "fatture_drive",
+        "last_rebuild_result": {
+            "status": "processing",
+            "total": 3,
+            "processed": 1,
+            "cursor": "1",
+            "inflight": {"id": "2", "name": "corrotto.xml.p7m"},
+            "imported": 1,
+            "duplicates": 0,
+            "archiviate": 0,
+            "errors": 0,
+            "started_at": "2026-08-21T00:00:00+00:00",
+        },
+    }))
+
+    calls = []
+
+    async def fake_process(_db, content, filename, **kwargs):
+        calls.append(filename)
+        return {"status": "imported"}
+
+    from app.routers.invoices import fatture_upload
+    monkeypatch.setattr(fatture_upload, "process_xml_bytes", fake_process)
+
+    result = __import__("asyncio").run(
+        drive.ricostruisci_archivio_drive_lotto(db, batch_size=1)
+    )
+
+    assert result["status"] == "ok"
+    assert result["processed"] == 3
+    assert result["pending"] == 0
+    assert result["imported"] == 2
+    assert result["errors"] == 1
+    assert result["cursor"] == "3"
+    assert calls == ["tre.xml"]
+    assert result["details"][-1]["file"] == "corrotto.xml.p7m"
+    assert service.closed == 1

@@ -13,6 +13,7 @@ Configurazione (env / settings):
 Se non configurato, `get_status` lo segnala e `sync` è un no-op.
 """
 import asyncio
+import gc
 import io
 import json
 import logging
@@ -169,6 +170,16 @@ def _build_drive_service():
     except Exception as e:
         logger.error(f"Drive ingest: errore costruzione service: {e}")
         return None
+
+
+def _close_drive_service(service) -> None:
+    """Chiude connessioni HTTP Drive e forza il rilascio delle risorse native."""
+    try:
+        close = getattr(service, "close", None)
+        if callable(close):
+            close()
+    except Exception:
+        logger.debug("Chiusura client Drive non riuscita", exc_info=True)
 
 
 def _get_or_create_folder(service, parent_id: str, folder_name: str) -> Optional[str]:
@@ -454,8 +465,15 @@ async def ricostruisci_archivio_drive_lotto(
         previous = state.get("last_rebuild_result") or {}
         can_resume = (
             not reset
-            and previous.get("status") in {"pending", "running"}
-            and bool(previous.get("cursor"))
+            and previous.get("status") in {"pending", "running", "processing"}
+            and (
+                bool(previous.get("cursor"))
+                or (
+                    previous.get("status") == "processing"
+                    and isinstance(previous.get("inflight"), dict)
+                    and bool(previous["inflight"].get("id"))
+                )
+            )
         )
         cursor = str(previous.get("cursor")) if can_resume else None
         started_at = (
@@ -467,6 +485,8 @@ async def ricostruisci_archivio_drive_lotto(
             for key in ("imported", "duplicates", "archiviate", "errors")
         }
         folders: Dict[str, int] = {}
+        details: List[Dict[str, str]] = list(previous.get("details") or [])[-10:]
+        crashed_inflight = previous.get("inflight") if can_resume else None
 
         try:
             unique_files: Dict[str, Dict[str, Any]] = {}
@@ -477,17 +497,55 @@ async def ricostruisci_archivio_drive_lotto(
                     unique_files.setdefault(file_info["id"], file_info)
 
             ordered = sorted(unique_files.values(), key=lambda item: str(item["id"]))
+
+            # Se il processo e' terminato mentre un file era marcato in
+            # lavorazione, quel documento e' il candidato certo del crash.
+            # L'originale resta su Drive, viene contato e mostrato come errore,
+            # ma il cursore avanza per non bloccare l'intera ricostruzione.
+            if (
+                previous.get("status") == "processing"
+                and isinstance(crashed_inflight, dict)
+                and crashed_inflight.get("id")
+                and str(crashed_inflight["id"]) > str(cursor or "")
+            ):
+                cursor = str(crashed_inflight["id"])
+                counters["errors"] += 1
+                details.append({
+                    "file": str(crashed_inflight.get("name") or cursor),
+                    "error": "processo interrotto durante il parsing; originale Drive conservato",
+                })
+
             if cursor:
                 remaining = [item for item in ordered if str(item["id"]) > cursor]
             else:
                 remaining = ordered
             already_processed = len(ordered) - len(remaining)
             batch = remaining[:_safe_rebuild_batch_size(batch_size)]
-            details: List[Dict[str, str]] = []
 
             for file_info in batch:
                 content = None
                 outcome = None
+                inflight_checkpoint: Dict[str, Any] = {
+                    "status": "processing",
+                    "total": len(ordered),
+                    "processed": already_processed,
+                    "pending": max(len(ordered) - already_processed, 0),
+                    **counters,
+                    "folders": folders,
+                    "cursor": cursor,
+                    "inflight": {
+                        "id": str(file_info["id"]),
+                        "name": str(file_info["name"]),
+                    },
+                    "batch_size": _safe_rebuild_batch_size(batch_size),
+                    "started_at": started_at,
+                    "details": details[-10:],
+                }
+                await db[_SYNC_STATE_COLLECTION].update_one(
+                    {"_id": _SYNC_STATE_ID},
+                    {"$set": {"last_rebuild_result": inflight_checkpoint}},
+                    upsert=True,
+                )
                 try:
                     content = await asyncio.to_thread(
                         _download_bytes, service, file_info["id"],
@@ -526,9 +584,11 @@ async def ricostruisci_archivio_drive_lotto(
                     # Non trattenere XML/parsing tra un documento e il successivo.
                     content = None
                     outcome = None
+                cursor = str(file_info["id"])
+                already_processed += 1
                 await asyncio.sleep(0)
 
-            processed = already_processed + len(batch)
+            processed = already_processed
             pending = max(len(ordered) - processed, 0)
             completed = pending == 0
             completed_at = datetime.now(timezone.utc).isoformat() if completed else None
@@ -539,7 +599,7 @@ async def ricostruisci_archivio_drive_lotto(
                 "pending": pending,
                 **counters,
                 "folders": folders,
-                "cursor": str(batch[-1]["id"]) if batch else cursor,
+                "cursor": cursor,
                 "batch_processed": len(batch),
                 "batch_size": _safe_rebuild_batch_size(batch_size),
                 "started_at": started_at,
@@ -568,6 +628,9 @@ async def ricostruisci_archivio_drive_lotto(
                 upsert=True,
             )
             return checkpoint
+        finally:
+            await asyncio.to_thread(_close_drive_service, service)
+            gc.collect()
 
 
 async def ricostruisci_archivio_drive(db) -> Dict[str, Any]:
