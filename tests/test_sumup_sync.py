@@ -8,7 +8,7 @@ serale al giorno dopo.
 import asyncio
 
 import pytest
-from app.services.sheets_document_store import MemorySheetsClient
+from app.services.sheets_document_store import MemorySheetsClient, SheetDatabase
 
 from app.services import sumup_sync
 from app.services.sumup_sync import (
@@ -230,7 +230,8 @@ def test_risincronizzare_non_duplica_nulla():
 
     assert primo["transazioni"]["nuove"] == 2
     assert secondo["transazioni"]["nuove"] == 0
-    assert secondo["transazioni"]["aggiornate"] == 2
+    assert secondo["transazioni"]["aggiornate"] == 0
+    assert secondo["transazioni"]["invariate"] == 2
     assert secondo["giornate"][0]["action"] == "noop"
 
     assert len(_run(db.sumup_transactions.find({}).to_list(50))) == 2
@@ -245,6 +246,30 @@ def test_risincronizzare_non_duplica_nulla():
     # banca: senza payout non deve apparire alcuna riga in Prima Nota.
     assert _run(db.prima_nota_cassa.find({}).to_list(50)) == []
     assert _run(db.prima_nota_banca.find({}).to_list(50)) == []
+
+
+def test_prima_acquisizione_sumup_scrive_un_unico_batch_sheets():
+    mutazioni = []
+
+    async def registra_mutazione(collection, metodo, prima, dopo):
+        mutazioni.append((collection, metodo, len(prima), len(dopo)))
+
+    db = SheetDatabase("sumup_batch", mutation_hook=registra_mutazione)
+    grezze = [_tx(f"tx-{indice}", float(indice)) for indice in range(1, 251)]
+
+    esito = _run(sumup_sync.salva_transazioni(db, grezze, MERCHANT))
+
+    assert esito == {
+        "nuove": 250, "aggiornate": 0, "invariate": 0, "scartate": 0,
+    }
+    assert mutazioni == [("sumup_transactions", "insert_many", 0, 250)]
+
+    mutazioni.clear()
+    secondo = _run(sumup_sync.salva_transazioni(db, grezze, MERCHANT))
+    assert secondo == {
+        "nuove": 0, "aggiornate": 0, "invariate": 250, "scartate": 0,
+    }
+    assert mutazioni == []
 
 
 def test_vendita_sumup_116_90_non_diventa_un_falso_movimento_bancario():
