@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../api';
@@ -64,8 +64,14 @@ describe('Situazione fiscale collegata all indice Drive', () => {
     render(<MemoryRouter initialEntries={['/situazione-fiscale/tributi-pagati']}><SituazioneFiscale /></MemoryRouter>);
 
     expect(await screen.findByText(/Ritenute su retribuzioni/)).toBeInTheDocument();
+    expect(screen.queryByText('drive-paid-1')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Cerca nella sezione')).toBeInTheDocument();
     expect(screen.getByText('Quietanza documentale presente · riscontro bancario da verificare')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Apri PDF Drive' })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('Cerca nella sezione'), { target: { value: 'inesistente' } });
+    expect(screen.getByText('Nessun risultato con questi filtri.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Azzera filtri' }));
+    expect(screen.getByText(/Ritenute su retribuzioni/)).toBeInTheDocument();
   });
 
   it('non dipende dal vecchio servizio di revisione', async () => {
