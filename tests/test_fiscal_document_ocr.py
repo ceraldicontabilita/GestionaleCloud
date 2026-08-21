@@ -19,17 +19,21 @@ def _blank_pdf() -> bytes:
 def test_pagina_fiscale_raster_usa_ocr_locale_con_confidenza(monkeypatch):
     monkeypatch.setattr(
         ingestion, "_ocr_page",
-        lambda _page: ("VP1 Mese 7\nVP4 100,00\nVP5 20,00", 0.93),
+        lambda _page: (
+            "VP1 Mese 7\nVP4 100,00\nVP5 20,00\nVP14 80,00", 0.93,
+            [{"x0": 10, "y0": 10, "x1": 20, "y1": 20, "text": "VP1"}],
+        ),
     )
 
     pages = ingestion.extract_pdf_pages(_blank_pdf())
 
     assert pages == [{
         "page_number": 1,
-        "text": "VP1 Mese 7\nVP4 100,00\nVP5 20,00",
+        "text": "VP1 Mese 7\nVP4 100,00\nVP5 20,00\nVP14 80,00",
         "text_source": "rapidocr_locale",
         "ocr_used": True,
         "ocr_confidence": 0.93,
+        "layout_words": [{"x0": 10, "y0": 10, "x1": 20, "y1": 20, "text": "VP1"}],
         "requires_ocr": False,
     }]
 

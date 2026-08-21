@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import io
+import re
 from functools import lru_cache
 from typing import Any
 
@@ -40,7 +41,22 @@ def _ocr_engine():
     return RapidOCR()
 
 
-def _ocr_page(page) -> tuple[str, float | None]:
+def _layout_word(box, text: str) -> dict[str, Any]:
+    return {
+        "x0": round(float(box[0]), 2),
+        "y0": round(float(box[1]), 2),
+        "x1": round(float(box[2]), 2),
+        "y1": round(float(box[3]), 2),
+        "text": str(text),
+    }
+
+
+def _looks_like_lipe_module(text: str) -> bool:
+    normalized = str(text or "").upper()
+    return all(field in normalized for field in ("VP1", "VP4", "VP14"))
+
+
+def _ocr_page(page) -> tuple[str, float | None, list[dict[str, Any]]]:
     """OCR locale della singola pagina, senza inviare il documento a terzi."""
     import numpy as np
     from PIL import Image
@@ -51,7 +67,12 @@ def _ocr_page(page) -> tuple[str, float | None]:
     rows = [item for item in (result or []) if len(item) >= 3 and str(item[1]).strip()]
     text = "\n".join(str(item[1]).strip() for item in rows)
     scores = [float(item[2]) for item in rows if item[2] is not None]
-    return text, (sum(scores) / len(scores) if scores else None)
+    layout_words = []
+    for box, row_text, *_rest in rows:
+        xs = [point[0] / 2 for point in box]
+        ys = [point[1] / 2 for point in box]
+        layout_words.append(_layout_word((min(xs), min(ys), max(xs), max(ys)), row_text))
+    return text, (sum(scores) / len(scores) if scores else None), layout_words
 
 
 def extract_pdf_pages(content: bytes, *, use_ocr: bool = True) -> list[dict[str, Any]]:
@@ -62,13 +83,19 @@ def extract_pdf_pages(content: bytes, *, use_ocr: bool = True) -> list[dict[str,
     pages = []
     for index, page in enumerate(pdf):
         text = page.get_text("text")[:MAX_EXTRACTED_PAGE_CHARS]
+        layout_words = [
+            _layout_word(word[:4], word[4])
+            for word in page.get_text("words")
+            if str(word[4]).strip()
+        ]
         ocr_used = False
         ocr_confidence = None
         if use_ocr and len(text.strip()) < 20:
             try:
-                ocr_text, ocr_confidence = _ocr_page(page)
+                ocr_text, ocr_confidence, ocr_words = _ocr_page(page)
                 if ocr_text.strip():
                     text = ocr_text[:MAX_EXTRACTED_PAGE_CHARS]
+                    layout_words = ocr_words
                     ocr_used = True
             except Exception:
                 # Il documento resta in revisione: nessun fallimento OCR può
@@ -80,6 +107,9 @@ def extract_pdf_pages(content: bytes, *, use_ocr: bool = True) -> list[dict[str,
             "text_source": "rapidocr_locale" if ocr_used else "pdf_text",
             "ocr_used": ocr_used,
             "ocr_confidence": ocr_confidence,
+            # Le coordinate servono al quadro VP; non gonfiano le righe Sheets
+            # degli altri documenti fiscali.
+            "layout_words": layout_words if _looks_like_lipe_module(text) else [],
             "requires_ocr": len(text.strip()) < 20,
         })
     pdf.close()
@@ -123,7 +153,12 @@ class FiscalDocumentIngestionService:
             ).to_list(1000)
             refreshed = False
             if not pages or any(
-                page.get("requires_ocr") or len(str(page.get("text") or "").strip()) < 20
+                page.get("requires_ocr")
+                or len(str(page.get("text") or "").strip()) < 20
+                or (
+                    _looks_like_lipe_module(page.get("text") or "")
+                    and not page.get("layout_words")
+                )
                 for page in pages
             ):
                 now = utc_now()
