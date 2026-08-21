@@ -227,18 +227,25 @@ def test_documented_tax_payments_only_include_quietanze_and_keep_bank_unverified
         "ID documento": "DOC-Q", "Tipo documento": "Quietanza AE",
         "Codice tributo": "1001", "Debito": 100, "Credito": 0,
     }, {
+        "ID documento": "DOC-S", "Tipo documento": "Formato stampabile (considerato quietanza)",
+        "Codice tributo": "1704", "Debito": 0, "Credito": 25,
+    }, {
         "ID documento": "DOC-M", "Tipo documento": "Modello F24",
         "Codice tributo": "6001", "Debito": 50, "Credito": 0,
     }]
+    documents.append({
+        "ID documento": "DOC-S", "Nome file": "formato-stampabile.pdf",
+        "SHA-256": "c" * 64, "Percorso Drive": r"F24\formato-stampabile.pdf",
+    })
     catalog = {"documents": documents, "f24_rows": rows, "declarations": [], "duplicates": []}
     monkeypatch.setattr(index, "load_full_catalog", lambda service=None: ({}, catalog))
 
     payload = list_documented_tax_payments()
 
-    assert payload["total"] == 1
-    assert payload["items"][0]["tax_code"] == "1001"
-    assert payload["items"][0]["payment_status"] == "DOCUMENTATO_DA_QUIETANZA"
-    assert payload["items"][0]["bank_status"] == "DA_VERIFICARE"
+    assert payload["total"] == 2
+    assert {item["tax_code"] for item in payload["items"]} == {"1001", "1704"}
+    assert all(item["payment_status"] == "DOCUMENTATO_DA_QUIETANZA" for item in payload["items"])
+    assert all(item["bank_status"] == "DA_VERIFICARE" for item in payload["items"])
 
 
 def test_declarations_use_canonical_types_and_verified_document_identity(monkeypatch):
