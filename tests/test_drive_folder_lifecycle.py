@@ -121,3 +121,54 @@ def test_ricostruzione_rilegge_tutte_le_cartelle_senza_spostare_file(monkeypatch
     assert result["duplicates"] == 1
     assert result["imported"] == 2
     assert service.resource.updated == []
+
+
+def test_ricostruzione_web_riprende_dal_cursore_senza_spostare_file(monkeypatch):
+    service = _Service()
+    db = AsyncMongoMockClient()["test_lotti"]
+    files = {
+        "root": [{"id": "1", "name": "uno.xml"}],
+        "inbox": [{"id": "2", "name": "due.xml"}],
+        "done": [{"id": "1", "name": "uno.xml"}],
+        "errors": [{"id": "3", "name": "tre.xml"}],
+    }
+
+    monkeypatch.setattr(drive, "is_configured", lambda: True)
+    monkeypatch.setattr(drive, "_load_credentials_fatture", lambda: ({}, None))
+    monkeypatch.setattr(drive, "_build_drive_service", lambda: service)
+    monkeypatch.setattr(drive, "_folder_id", lambda: "root")
+    monkeypatch.setattr(drive, "_source_folders", lambda *_: [
+        ("radice", "root"), ("Da elaborare", "inbox"),
+        ("Elaborate", "done"), ("Errori", "errors"),
+    ])
+    monkeypatch.setattr(drive, "_list_xml_files", lambda _service, folder: files[folder])
+    monkeypatch.setattr(drive, "_download_bytes", lambda _service, file_id: file_id.encode())
+
+    calls = []
+
+    async def fake_process(_db, content, filename, **kwargs):
+        calls.append(filename)
+        assert kwargs["replay_storico"] is True
+        return {"status": "duplicate" if filename == "uno.xml" else "imported"}
+
+    from app.routers.invoices import fatture_upload
+    monkeypatch.setattr(fatture_upload, "process_xml_bytes", fake_process)
+
+    first = __import__("asyncio").run(
+        drive.ricostruisci_archivio_drive_lotto(db, batch_size=2, reset=True)
+    )
+    second = __import__("asyncio").run(
+        drive.ricostruisci_archivio_drive_lotto(db, batch_size=2)
+    )
+
+    assert first["status"] == "pending"
+    assert first["processed"] == 2
+    assert first["pending"] == 1
+    assert first["cursor"] == "2"
+    assert second["status"] == "ok"
+    assert second["processed"] == 3
+    assert second["pending"] == 0
+    assert second["duplicates"] == 1
+    assert second["imported"] == 2
+    assert calls == ["uno.xml", "due.xml", "tre.xml"]
+    assert service.resource.updated == []

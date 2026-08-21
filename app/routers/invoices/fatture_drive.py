@@ -57,12 +57,28 @@ async def drive_quadratura() -> Dict[str, Any]:
 
 @router.post("/drive/ricostruzione")
 async def drive_ricostruzione(
+    reset: bool = False,
     _admin: Dict[str, Any] = Depends(richiedi_admin),
 ) -> Dict[str, Any]:
-    """Ricostruisce le fatture da tutte le cartelle senza spostare originali."""
+    """Avvia un lotto riprendibile senza spostare originali Drive."""
     db = Database.get_db()
     if not drive_invoice_ingest.is_configured():
-        return await drive_invoice_ingest.ricostruisci_archivio_drive(db)
-    if not drive_invoice_ingest.start_background_rebuild(db):
+        return await drive_invoice_ingest.ricostruisci_archivio_drive_lotto(
+            db, reset=reset,
+        )
+    if not drive_invoice_ingest.start_background_rebuild(db, reset=reset):
         return {"status": "running", "message": "Ricostruzione gia' in corso"}
-    return {"status": "started", "message": "Ricostruzione Drive avviata"}
+    return {"status": "started", "message": "Lotto ricostruzione Drive avviato"}
+
+
+@router.post("/drive/ricostruzione/lotto")
+async def drive_ricostruzione_lotto(
+    reset: bool = False,
+    batch_size: int = 10,
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Esegue e restituisce un solo lotto; la chiamata seguente riprende."""
+    db = Database.get_db()
+    return await drive_invoice_ingest.ricostruisci_archivio_drive_lotto(
+        db, batch_size=batch_size, reset=reset,
+    )

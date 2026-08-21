@@ -714,7 +714,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1136**; attivi da ricreare: **738**; quarantena: **398** (`verificare` 371, `admin-only` 27).
+Route table sorgente: **1137**; attivi da ricreare: **739**; quarantena: **398** (`verificare` 371, `admin-only` 27).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -1586,10 +1586,11 @@ Route table sorgente: **1136**; attivi da ricreare: **738**; quarantena: **398**
 - **attivo** — `DELETE /api/corrispettivi/{corrispettivo_id}` — in uso: FE
 - **attivo** — `GET /api/corrispettivi/{corrispettivo_id}/view` — in uso: FE
 
-### Router `invoices.fatture_drive` (4)
+### Router `invoices.fatture_drive` (5)
 
 - **attivo** — `POST /api/fatture/drive/quadratura` — in uso: FE
 - **attivo** — `POST /api/fatture/drive/ricostruzione` — in uso: FE
+- **attivo** — `POST /api/fatture/drive/ricostruzione/lotto` — in uso: FE
 - **attivo** — `GET /api/fatture/drive/status` — in uso: FE, scheduler
 - **attivo** — `POST /api/fatture/drive/sync` — in uso: FE, scheduler
 
