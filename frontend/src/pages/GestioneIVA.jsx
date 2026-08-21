@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { RefreshCw, Wallet, Calculator, CheckCircle2, Unlock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../api';
@@ -250,7 +250,22 @@ export default function GestioneIVA() {
 
   const fatture = dati?.fatture || [];
   const numero = valore => Number(valore || 0);
-  const totaliCorrispettivi = corrispettivi.reduce(
+  const corrispettiviUnici = useMemo(() => {
+    const visti = new Set();
+    return corrispettivi.filter((c) => {
+      const totaleCents = Math.round(numero(c.totale ?? c.totale_complessivo) * 100);
+      const chiave = String(c.corrispettivo_key || '').trim() || [
+        c.data || c.data_rilevazione || '',
+        c.matricola_rt || c.id_dispositivo || c.matricola || '',
+        totaleCents,
+      ].join('|');
+      if (visti.has(chiave)) return false;
+      visti.add(chiave);
+      return true;
+    });
+  }, [corrispettivi]);
+  const duplicatiCorrispettiviEsclusi = corrispettivi.length - corrispettiviUnici.length;
+  const totaliCorrispettivi = corrispettiviUnici.reduce(
     (acc, c) => {
       const totale = numero(c.totale ?? c.totale_complessivo);
       const iva = numero(c.totale_iva ?? c.iva);
@@ -337,7 +352,7 @@ export default function GestioneIVA() {
         <div>
           <strong>{vistaAnnuale ? `Tutto il ${anno}` : `${MESI_FULL[mese]} ${anno}`}</strong>
           <span>
-            {fatture.length} fatture · {corrispettivi.length} corrispettivi XML
+            {fatture.length} fatture · {corrispettiviUnici.length} giornate XML
           </span>
         </div>
         <div className="iva-command-actions">
@@ -463,13 +478,21 @@ export default function GestioneIVA() {
         <div className="iva-section-heading">
           <div>
             <h3 id="iva-corrispettivi-periodo">Corrispettivi del periodo</h3>
-            <p>Vendite, imponibile, IVA, contanti ed elettronico letti dagli XML.</p>
+            <p>
+              Una riga per giornata XML. La matricola RT identifica il registratore e può ripetersi
+              correttamente in giorni diversi.
+            </p>
           </div>
-          <Badge variant="info">{corrispettivi.length} XML</Badge>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <Badge variant="info">{corrispettiviUnici.length} giornate</Badge>
+            {duplicatiCorrispettiviEsclusi > 0 && (
+              <Badge variant="neutral">{duplicatiCorrispettiviEsclusi} copie escluse</Badge>
+            )}
+          </div>
         </div>
         {loading ? (
           <div style={STILI.vuoto}>Caricamento…</div>
-        ) : corrispettivi.length === 0 ? (
+        ) : corrispettiviUnici.length === 0 ? (
           <div style={STILI.vuoto}>Nessun corrispettivo XML nel periodo selezionato.</div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -477,7 +500,7 @@ export default function GestioneIVA() {
               <thead>
                 <tr>
                   <th style={STILI.th}>Data</th>
-                  <th style={STILI.th}>RT / invio</th>
+                  <th style={STILI.th}>Matricola RT</th>
                   <th style={{ ...STILI.th, textAlign: 'right' }}>Imponibile</th>
                   <th style={{ ...STILI.th, textAlign: 'right' }}>IVA</th>
                   <th style={{ ...STILI.th, textAlign: 'right' }}>Totale</th>
@@ -487,10 +510,10 @@ export default function GestioneIVA() {
                 </tr>
               </thead>
               <tbody>
-                {corrispettivi.map((c, i) => (
+                {corrispettiviUnici.map((c, i) => (
                   <tr key={c.id || c.id_invio || i} style={{ borderTop: `1px solid ${COLORS.border}` }}>
                     <td data-label="Data" style={STILI.td}>{formatDateIT(c.data || c.data_rilevazione)}</td>
-                    <td data-label="RT / invio" style={STILI.td}>{c.matricola_rt || c.matricola || c.id_invio || '—'}</td>
+                    <td data-label="Matricola RT" style={STILI.td}>{c.matricola_rt || c.matricola || c.id_dispositivo || '—'}</td>
                     <td data-label="Imponibile" style={{ ...STILI.td, textAlign: 'right' }}>{formatEuro(c.totale_imponibile ?? c.imponibile ?? 0)}</td>
                     <td data-label="IVA" style={{ ...STILI.td, textAlign: 'right', fontWeight: 700 }}>{formatEuro(c.totale_iva ?? c.iva ?? 0)}</td>
                     <td data-label="Totale" style={{ ...STILI.td, textAlign: 'right', fontWeight: 700 }}>{formatEuro(c.totale ?? c.totale_complessivo ?? 0)}</td>

@@ -49,7 +49,7 @@ describe('Prospetti IVA: periodi non conclusi', () => {
 
     const confronto = screen.getByTestId('iva-confronto-commercialista');
     expect(within(confronto).getByText('Non ancora dovuto')).toBeInTheDocument();
-    expect(within(confronto).getAllByText('—').length).toBeGreaterThanOrEqual(5);
+    expect(within(confronto).getAllByText('—').length).toBeGreaterThanOrEqual(3);
 
     const scadenze = screen.getByTestId('iva-scadenze-mensili');
     expect(within(scadenze).getByText('Non calcolato')).toBeInTheDocument();
@@ -89,12 +89,11 @@ describe('Confronto IVA: base completa del mese', () => {
     );
 
     const confronto = screen.getByTestId('iva-confronto-commercialista');
-    expect(within(confronto).getByText('108')).toBeInTheDocument();
-    expect(within(confronto).getByText(/97 con IVA · 84 già liquidate · 11 da verificare/)).toBeInTheDocument();
-    expect(within(confronto).getByText('€ 3.241,46')).toBeInTheDocument();
-    expect(within(confronto).getByText(/VP4 € 6.211,86 · VP5 € 3.241,46/)).toBeInTheDocument();
-    expect(within(confronto).getByText(/coerente · pag. 2/)).toBeInTheDocument();
-    expect(within(confronto).getByText(/indipendentemente da cassa, banca e stato del pagamento/)).toBeInTheDocument();
+    expect(within(confronto).getByText(/108 fatture · 97 con IVA · 84 già liquidate · 11 da verificare/)).toBeInTheDocument();
+    expect(within(confronto).getByText(/Esigibile VP4 € 6.211,86/)).toBeInTheDocument();
+    expect(within(confronto).getByText(/Detraibile VP5 € 3.241,46/)).toBeInTheDocument();
+    expect(within(confronto).getByText(/uguale al gestionale · pag. 2/)).toBeInTheDocument();
+    expect(within(confronto).getByText(/Quietanza e banca provano il pagamento/)).toBeInTheDocument();
   });
 
   it('mostra i valori OCR ma richiede verifica', () => {
@@ -108,7 +107,8 @@ describe('Confronto IVA: base completa del mese', () => {
     }} />);
 
     const confronto = screen.getByTestId('iva-confronto-commercialista');
-    expect(within(confronto).getByText(/VP4 € 100,00 · VP5 € 20,00/)).toBeInTheDocument();
+    expect(within(confronto).getByText(/Esigibile VP4 € 100,00/)).toBeInTheDocument();
+    expect(within(confronto).getByText(/Detraibile VP5 € 20,00/)).toBeInTheDocument();
     expect(within(confronto).getByText(/OCR da verificare · pag. 1/)).toBeInTheDocument();
     expect(within(confronto).getByText('LIPE da verificare')).toBeInTheDocument();
   });

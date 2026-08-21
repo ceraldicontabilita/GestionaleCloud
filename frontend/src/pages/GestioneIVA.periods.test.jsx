@@ -18,6 +18,9 @@ describe('Gestione IVA per periodo', () => {
     expect(source).toContain('/api/iva/fatture?periodo=${periodo}');
     expect(source).toContain('/api/corrispettivi?data_da=${start}&data_a=${end}');
     expect(source).toContain('iva-corrispettivi-tabella');
+    expect(source).toContain('corrispettiviUnici');
+    expect(source).toContain('copie escluse');
+    expect(source).toContain('La matricola RT identifica il registratore');
   });
 
   it('mostra IVA esposta, percentuale detraibile e stato non classificato', () => {
