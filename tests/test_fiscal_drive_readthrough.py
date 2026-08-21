@@ -70,6 +70,27 @@ def test_f24_rows_sort_mixed_date_formats_chronologically(monkeypatch):
     assert [item["id"] for item in payload["items"]] == ["new", "middle", "old"]
 
 
+def test_paid_obligations_read_documentary_payments_from_drive(monkeypatch):
+    db = AsyncMongoMockClient()["fiscal-drive-paid"]
+    monkeypatch.setattr(Database, "get_db", staticmethod(lambda: db))
+    monkeypatch.setattr(drive_document_index, "list_documented_tax_payments", lambda **_kwargs: {
+        "items": [{
+            "id": "drive-paid-1", "document_id": "DOC-Q", "ordinal": 1,
+            "source_kind": "DRIVE_EXCEL_INDEX_F24_ROW", "tax_code": "1001",
+            "payment_status": "DOCUMENTATO_DA_QUIETANZA", "bank_status": "DA_VERIFICARE",
+        }],
+        "total": 1,
+    })
+
+    payload = asyncio.run(fiscal_control.obligations(status="PAID_ON_TIME", limit=5000, _admin={}))
+
+    assert payload["total"] == 1
+    assert payload["sources"] == {
+        "drive_excel_index": 1, "database": 0, "drive_warning": None,
+    }
+    assert payload["items"][0]["bank_status"] == "DA_VERIFICARE"
+
+
 def test_declarations_read_through_drive_when_transitional_db_is_empty(monkeypatch):
     db = AsyncMongoMockClient()["fiscal-drive-declarations"]
     monkeypatch.setattr(Database, "get_db", staticmethod(lambda: db))

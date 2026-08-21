@@ -16,7 +16,7 @@ describe('Situazione fiscale collegata all indice Drive', () => {
         counts: { documents: 0, obligations: 0, payments: 0, collection_claims: 0, ader_snapshots: 0 },
         requires_review: 0,
         drive_index: { available: true, verified: true, counts: {
-          f24_documents: 320, f24_rows: 1297, declarations: 60,
+          f24_documents: 320, f24_rows: 1297, documentary_payment_documents: 320, declarations: 60,
         } },
       } });
       if (path.startsWith('/api/fiscal/declarations')) return Promise.resolve({ data: {
@@ -36,11 +36,37 @@ describe('Situazione fiscale collegata all indice Drive', () => {
     render(<MemoryRouter initialEntries={['/situazione-fiscale/dichiarazioni']}><SituazioneFiscale /></MemoryRouter>);
 
     expect(await screen.findByText('770_2026.pdf')).toBeInTheDocument();
-    expect(screen.getByText('320')).toBeInTheDocument();
+    expect(screen.getAllByText('320')).toHaveLength(2);
     expect(screen.getByText('1297')).toBeInTheDocument();
     expect(screen.getByText('60')).toBeInTheDocument();
     expect(screen.getByText((_content, node) => node?.textContent === 'Archivio canonico: Google Drive · indice 1')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Apri originale Drive' })).toBeEnabled();
+  });
+
+  it('mostra i tributi documentati dalle quietanze Drive senza inventare la verifica bancaria', async () => {
+    api.get.mockImplementation(path => {
+      if (path === '/api/fiscal/summary') return Promise.resolve({ data: {
+        counts: {}, drive_index: { available: true, counts: { documentary_payment_documents: 320 } },
+      } });
+      if (path === '/api/fiscal/review') return Promise.resolve({ data: { findings: [] } });
+      if (path.includes('/api/fiscal/obligations')) return Promise.resolve({ data: {
+        items: [{
+          id: 'drive-paid-1', document_id: 'DOC-Q', source_kind: 'DRIVE_EXCEL_INDEX_F24_ROW',
+          tax_code: '1001', description: 'Ritenute su retribuzioni', reference_period: '10/2024',
+          debit_amount: 1455.21, credit_amount: 0, payment_date: '2024-11-18',
+          filename: 'quietanza.pdf', protocol: '24111809324228190',
+          payment_status: 'DOCUMENTATO_DA_QUIETANZA', bank_status: 'DA_VERIFICARE',
+        }],
+        sources: { drive_excel_index: 1, database: 0 },
+      } });
+      return Promise.resolve({ data: { items: [] } });
+    });
+
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/tributi-pagati']}><SituazioneFiscale /></MemoryRouter>);
+
+    expect(await screen.findByText(/Ritenute su retribuzioni/)).toBeInTheDocument();
+    expect(screen.getByText('Quietanza documentale presente · riscontro bancario da verificare')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Apri quietanza Drive' })).toBeEnabled();
   });
 
   it('mantiene la sezione utilizzabile quando i controlli di revisione rispondono 502', async () => {

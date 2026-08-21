@@ -153,14 +153,33 @@ async def summary(_admin: Dict[str, Any] = Depends(get_current_admin_user)):
 
 
 @router.get("/obligations")
-async def obligations(status: str | None = None, limit: int = Query(200, ge=1, le=1000),
+async def obligations(status: str | None = None, limit: int = Query(200, ge=1, le=5000),
                       _admin: Dict[str, Any] = Depends(get_current_admin_user)):
     query: dict[str, Any] = {"company_id": _company()}
     if status:
         query["payment_status"] = status
     db = Database.get_db()
     items = await db[COLL_TAX_OBLIGATIONS].find(query, {"_id": 0}).sort("updated_at", -1).to_list(limit)
-    return {"items": items, "total": await db[COLL_TAX_OBLIGATIONS].count_documents(query)}
+    database_total = await db[COLL_TAX_OBLIGATIONS].count_documents(query)
+    drive_items: list[dict[str, Any]] = []
+    drive_warning = None
+    if status == "PAID_ON_TIME":
+        try:
+            from app.services.drive_document_index import list_documented_tax_payments
+            drive_payload = await asyncio.to_thread(list_documented_tax_payments, offset=0, limit=limit)
+            drive_items = drive_payload["items"]
+        except (RuntimeError, ValueError) as exc:
+            drive_warning = str(exc)
+    merged = [*drive_items, *items]
+    return {
+        "items": merged[:limit],
+        "total": len(drive_items) + database_total,
+        "sources": {
+            "drive_excel_index": len(drive_items),
+            "database": database_total,
+            "drive_warning": drive_warning,
+        },
+    }
 
 
 @router.get("/f24-rows")
