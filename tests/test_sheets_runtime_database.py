@@ -190,3 +190,62 @@ def test_runtime_update_persistisce_solo_il_documento_modificato(monkeypatch):
     ))
 
     assert calls == [["INV-2"]]
+
+
+def test_runtime_batch_writes_accorpa_insert_e_update_per_foglio(monkeypatch):
+    calls = []
+
+    async def fake_upsert(sheet, spreadsheet_id, documents):
+        calls.append((
+            sheet.collection,
+            [
+                (document["id"], document.get("total_amount"))
+                for document in documents
+            ],
+        ))
+        return {"foglio": sheet.title, "aggiunte": len(documents)}
+
+    monkeypatch.setattr(runtime_module, "upsert_documents", fake_upsert)
+    runtime = SheetsRuntimeDatabase("test", {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"})
+
+    async def scenario():
+        async with runtime.batch_writes():
+            await runtime["invoices"].insert_one({"id": "INV-1", "total_amount": 10})
+            await runtime["invoices"].insert_one({"id": "INV-2", "total_amount": 20})
+            await runtime["invoices"].update_one(
+                {"id": "INV-1"}, {"$set": {"total_amount": 15}},
+            )
+
+    run(scenario())
+
+    assert calls == [("invoices", [("INV-1", 15), ("INV-2", 20)])]
+
+
+def test_runtime_batch_writes_rispetta_l_ultima_operazione_per_identita(monkeypatch):
+    upserts = []
+    removals = []
+
+    async def fake_upsert(sheet, spreadsheet_id, documents):
+        upserts.append([document["id"] for document in documents])
+        return {"foglio": sheet.title, "aggiunte": len(documents)}
+
+    async def fake_remove(sheet, spreadsheet_id, canonical_ids):
+        removals.append(list(canonical_ids))
+        return {"foglio": sheet.title, "rimosse": len(canonical_ids)}
+
+    monkeypatch.setattr(runtime_module, "upsert_documents", fake_upsert)
+    monkeypatch.setattr(runtime_module, "remove_documents", fake_remove)
+    runtime = SheetsRuntimeDatabase("test", {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"})
+    run(runtime["invoices"].insert_one({"id": "INV-OLD"}))
+    upserts.clear()
+
+    async def scenario():
+        async with runtime.batch_writes():
+            await runtime["invoices"].delete_one({"id": "INV-OLD"})
+            await runtime["invoices"].insert_one({"id": "INV-NEW"})
+            await runtime["invoices"].delete_one({"id": "INV-NEW"})
+
+    run(scenario())
+
+    assert upserts == []
+    assert removals == [["INV-NEW", "INV-OLD"]]

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from typing import Any
 
 from app.services.google_sheets_ledger import (
@@ -36,6 +38,10 @@ class SheetsRuntimeDatabase(SheetDatabase):
         self._by_collection = {sheet.collection: sheet for sheet in SHEETS}
         self._write_ready_collections = {sheet.collection for sheet in SHEETS}
         self._schema_lock = asyncio.Lock()
+        self._remote_write_lock = asyncio.Lock()
+        self._write_batch: ContextVar[dict[str, dict[str, Any]] | None] = (
+            ContextVar(f"sheets_write_batch_{id(self)}", default=None)
+        )
         self.hydration_result: dict[str, Any] | None = None
 
     async def hydrate(self) -> dict[str, Any]:
@@ -104,6 +110,38 @@ class SheetsRuntimeDatabase(SheetDatabase):
         before: list[dict[str, Any]],
         after: list[dict[str, Any]],
     ) -> None:
+        batch = self._write_batch.get()
+        if batch is not None:
+            pending = batch.setdefault(
+                collection_name, {"upserts": {}, "deletes": set()},
+            )
+            upserts = pending["upserts"]
+            deletes = pending["deletes"]
+            if method in {"delete_one", "delete_many", "find_one_and_delete"}:
+                for document in before:
+                    key = canonical_id(portable_document(document))
+                    if key:
+                        upserts.pop(key, None)
+                        deletes.add(key)
+                return
+            for document in after:
+                portable = portable_document(document)
+                key = canonical_id(portable)
+                if key:
+                    deletes.discard(key)
+                    upserts[key] = portable
+            return
+
+        async with self._remote_write_lock:
+            await self._persist_mutation(collection_name, method, before, after)
+
+    async def _persist_mutation(
+        self,
+        collection_name: str,
+        method: str,
+        before: list[dict[str, Any]],
+        after: list[dict[str, Any]],
+    ) -> None:
         if method in {"delete_one", "delete_many", "find_one_and_delete"}:
             keys = [
                 canonical_id(portable_document(document))
@@ -112,6 +150,40 @@ class SheetsRuntimeDatabase(SheetDatabase):
             await self.remove_documents(collection_name, keys)
             return
         await self.persist_documents(collection_name, after)
+
+    @asynccontextmanager
+    async def batch_writes(self):
+        """Accorpa le mutazioni di uno stesso job in una chiamata per foglio.
+
+        La cache documentale continua ad aggiornarsi subito, quindi le letture
+        eseguite durante il job vedono lo stato corrente. Soltanto il traffico
+        remoto verso Google Sheets viene rinviato alla fine e deduplicato per
+        ``canonical_id``. Questo evita che un recupero storico di centinaia di
+        corrispettivi rilegga l'indice del medesimo foglio centinaia di volte,
+        saturando la memoria del servizio Render.
+        """
+        current = self._write_batch.get()
+        if current is not None:
+            # Un batch annidato partecipa alla stessa unita' di flush.
+            yield None
+            return
+
+        async with self._remote_write_lock:
+            batch: dict[str, dict[str, Any]] = {}
+            token = self._write_batch.set(batch)
+            try:
+                yield None
+            finally:
+                try:
+                    for collection_name, pending in batch.items():
+                        deletes = sorted(pending["deletes"])
+                        upserts = list(pending["upserts"].values())
+                        if deletes:
+                            await self.remove_documents(collection_name, deletes)
+                        if upserts:
+                            await self.persist_documents(collection_name, upserts)
+                finally:
+                    self._write_batch.reset(token)
 
     async def flush_collection(self, collection_name: str) -> dict[str, Any]:
         sheet = await self.ensure_collection(collection_name)
