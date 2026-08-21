@@ -420,9 +420,9 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/documenti/drive/index/declarations` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti/drive/index/document/{document_id}` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/documenti/drive/index/f24` | documenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/documenti/drive/index/overview` | documenti | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/documenti/drive/index/overview` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/documenti/drive/index/search` | documenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/documenti/drive/index/status` | documenti | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/documenti/drive/index/status` | documenti | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/documenti/drive/sync` | documenti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/documenti/elimina-processati` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/documenti/fiscal/ingest` | documenti | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
