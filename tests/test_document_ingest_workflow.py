@@ -1,5 +1,6 @@
 import hashlib
 import io
+import inspect
 import zipfile
 
 from openpyxl import Workbook
@@ -10,7 +11,9 @@ from render_workflows.document_ingest import (
     index_hashes_from_xlsx,
     iter_supported_documents,
     route_for,
+    scan_document_inbox_preview,
 )
+from render_workflows.main import calderone_documenti_preview
 
 
 def test_index_hashes_reads_canonical_sha256_only():
@@ -99,3 +102,13 @@ def test_real_ingest_requires_both_explicit_confirmation_and_feature_flag(monkey
     assert _ingest_configuration(True) == (
         "https://example.invalid", "s" * 40,
     )
+
+
+def test_preview_task_exposes_document_limit_and_rejects_invalid_values():
+    assert "max_documents" in inspect.signature(calderone_documenti_preview).parameters
+    try:
+        scan_document_inbox_preview(max_documents=0)
+    except ValueError as exc:
+        assert "max_documents" in str(exc)
+    else:
+        raise AssertionError("limite anteprima non validato")

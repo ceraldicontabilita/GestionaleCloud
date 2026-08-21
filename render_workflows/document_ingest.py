@@ -247,6 +247,8 @@ def _ingest_configuration(confirm: bool) -> tuple[str, str]:
 
 def scan_document_inbox_preview(max_documents: int = 20_000) -> dict[str, Any]:
     """Confronta prima con l'indice; classifica soltanto i documenti nuovi."""
+    if not 1 <= int(max_documents) <= 20_000:
+        raise ValueError("max_documents deve essere compreso fra 1 e 20000")
     service = _drive_service()
     inbox_id = os.environ["GOOGLE_DRIVE_INBOX_FOLDER_ID"]
     existing_hashes = _canonical_index_hashes(service)
@@ -258,6 +260,8 @@ def scan_document_inbox_preview(max_documents: int = 20_000) -> dict[str, Any]:
     readiness: Counter[str] = Counter()
     source_count = document_count = duplicate_count = error_count = 0
     for source in sources:
+        if document_count >= max_documents:
+            break
         suffix = PurePosixPath(source.get("name") or "").suffix.lower()
         if suffix not in SUPPORTED_EXTENSIONS | {".zip"}:
             continue
@@ -265,9 +269,9 @@ def scan_document_inbox_preview(max_documents: int = 20_000) -> dict[str, Any]:
         try:
             payload = service.files().get_media(fileId=source["id"]).execute()
             for member, content in iter_supported_documents(source["name"], payload):
+                if document_count >= max_documents:
+                    break
                 document_count += 1
-                if document_count > max_documents:
-                    raise RuntimeError("limite documenti superato")
                 digest = hashlib.sha256(content).hexdigest()
                 if digest in seen:
                     duplicate_count += 1
