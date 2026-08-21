@@ -74,12 +74,34 @@ def test_health_check_non_dichiara_healthy_senza_database(monkeypatch):
 
 def test_health_check_verifica_idratazione_sheets(monkeypatch):
     database = MemorySheetsClient()["health"]
-    database.hydration_result = {"spreadsheet_id": "SHEET-1", "fogli": []}
+    database.hydration_result = {
+        "spreadsheet_id": "SHEET-1",
+        "fogli": [{"valide": 2920, "numero_errori": 0}],
+    }
     monkeypatch.setattr(Database, "db", database)
     response = asyncio.run(health_check())
     assert response["status"] == "healthy"
     assert response["database"] == "connected"
+    assert response["storage"] == "drive_sheets"
+    assert response["hydrated_rows"] == 2920
+    assert response["hydration_errors"] == 0
     assert response["salari_sync"] == "not_started"
+
+
+def test_health_check_segnala_righe_sheets_escluse_senza_nascondere_i_dati(monkeypatch):
+    database = MemorySheetsClient()["health_degraded"]
+    database.hydration_result = {
+        "spreadsheet_id": "SHEET-1",
+        "fogli": [{"valide": 100, "numero_errori": 2}],
+    }
+    monkeypatch.setattr(Database, "db", database)
+
+    response = asyncio.run(health_check())
+
+    assert response["status"] == "degraded"
+    assert response["database"] == "connected"
+    assert response["hydrated_rows"] == 100
+    assert response["hydration_errors"] == 2
 
 
 def test_riparazioni_dati_startup_disabilitate_per_default():

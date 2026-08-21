@@ -548,9 +548,22 @@ async def health_check():
     except Exception:
         salari_sync = "unavailable"
 
+    hydration_result = getattr(Database.db, "hydration_result", {}) or {}
+    hydration_errors = sum(
+        int(item.get("numero_errori") or 0)
+        for item in hydration_result.get("fogli", [])
+    )
+    hydration_rows = sum(
+        int(item.get("valide") or 0)
+        for item in hydration_result.get("fogli", [])
+    )
+
     return {
-        "status": "healthy",
+        "status": "healthy" if hydration_errors == 0 else "degraded",
         "database": "connected" if Database.db is not None else "disconnected",
+        "storage": "drive_sheets",
+        "hydrated_rows": hydration_rows,
+        "hydration_errors": hydration_errors,
         "version": settings.APP_VERSION,
         # Prefisso pubblico e non sensibile: permette di verificare che
         # Render stia realmente servendo il commit atteso.

@@ -47,6 +47,35 @@ def test_runtime_idrata_e_persistenza_write_through(monkeypatch):
     assert calls == [("invoices", "SHEET-1", ["INV-2"])]
 
 
+def test_runtime_non_nasconde_i_dati_validi_per_una_riga_anomala(monkeypatch):
+    async def fake_restore(db, config, apply=False, provision=True):
+        await db["invoices"].insert_one({"id": "INV-VALIDA", "total_amount": 10})
+        return {
+            "spreadsheet_id": "SHEET-1",
+            "fogli": [
+                {
+                    "foglio": "Fatture",
+                    "collezione": "invoices",
+                    "prefisso": "FAT",
+                    "valide": 1,
+                    "numero_errori": 1,
+                    "errori": [{"riga": 7, "errore": "payload non valido"}],
+                }
+            ],
+        }
+
+    monkeypatch.setattr(runtime_module, "restore_all", fake_restore)
+    runtime = SheetsRuntimeDatabase(
+        "test", {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"},
+    )
+
+    result = run(runtime.hydrate())
+
+    assert run(runtime["invoices"].count_documents({})) == 1
+    assert result["fogli"][0]["numero_errori"] == 1
+    assert runtime.hydration_result == result
+
+
 def test_runtime_predispone_foglio_drive_per_collezione_operativa(monkeypatch):
     ensured = []
     synced = []
