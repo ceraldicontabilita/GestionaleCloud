@@ -1146,7 +1146,12 @@ async def recupera_pos_storico_da_estratto(db, anno: int) -> Dict[str, Any]:
         20000,
     )
     gruppi = raggruppa_accrediti_pos_per_giorno(movimenti)
-    creati = aggiornati = saltati_manuali = 0
+    movimenti_per_id = {
+        str(movimento.get("id") or ""): movimento
+        for movimento in movimenti
+        if movimento.get("id")
+    }
+    creati = aggiornati = saltati_manuali = riconciliati = 0
     dettagli = []
     for giorno, evidenza in sorted(gruppi.items()):
         filtro = {"data": giorno, **filtro_gestore_pos(conti_pos.NUMIA)}
@@ -1170,6 +1175,16 @@ async def recupera_pos_storico_da_estratto(db, anno: int) -> Dict[str, Any]:
                 "estratto_conto_ids": evidenza["estratto_conto_ids"],
             }},
         )
+        # Il primo passaggio dell'import puo' avere incontrato l'accredito
+        # prima che esistesse la riga giornaliera attesa. Ora che il totale
+        # unico del giorno vendita e' stato creato, ricolleghiamo subito tutte
+        # le sue componenti bancarie (BNCMT/AMEX/INTER e relativi PDV). Senza
+        # questo secondo passaggio la riga compariva come "attesa POS" ma
+        # restava aperta fino allo scheduler successivo.
+        for estratto_id in evidenza["estratto_conto_ids"]:
+            movimento = movimenti_per_id.get(str(estratto_id))
+            if movimento and await riconcilia_accredito_pos_ec(db, movimento):
+                riconciliati += 1
         if precedente:
             aggiornati += int(esito.get("action") != "noop")
         else:
@@ -1181,6 +1196,7 @@ async def recupera_pos_storico_da_estratto(db, anno: int) -> Dict[str, Any]:
         "creati": creati,
         "aggiornati": aggiornati,
         "saltati_per_chiusura_manuale": saltati_manuali,
+        "componenti_bancarie_ricollegate": riconciliati,
         "dettagli": dettagli,
     }
 

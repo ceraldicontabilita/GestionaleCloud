@@ -609,6 +609,36 @@ class SheetTable:
     async def estimated_document_count(self, *args, **kwargs) -> int:
         return len(self._documents)
 
+    async def hydrate_documents(self, documents: Iterable[dict[str, Any]]) -> int:
+        """Carica in blocco una tabella vuota durante l'avvio da Sheets.
+
+        L'idratazione parte sempre da una cache effimera vuota. Usare gli
+        upsert ordinari per ogni riga farebbe scandire ripetutamente la lista
+        gia' caricata, con costo quadratico sui registri piu' grandi (per
+        esempio le transazioni POS). Questo percorso e' deliberatamente
+        disponibile soltanto mentre ``database.loading`` e non genera alcuna
+        scrittura remota.
+        """
+        if not self.database.loading:
+            raise RuntimeError("hydrate_documents consentito solo durante l'idratazione")
+        async with self._lock:
+            if self._documents:
+                raise RuntimeError("hydrate_documents richiede una tabella vuota")
+            stored_documents: list[dict[str, Any]] = []
+            seen_ids: set[str] = set()
+            for document in documents:
+                stored = _clone(document)
+                stored.setdefault("_id", _new_id())
+                record_id = str(stored["_id"])
+                if record_id in seen_ids:
+                    raise DuplicateRecordError(
+                        f"Valore _id duplicato nel foglio {self.name}: {record_id}"
+                    )
+                seen_ids.add(record_id)
+                stored_documents.append(stored)
+            self._documents = stored_documents
+            return len(stored_documents)
+
     async def distinct(self, key: str, selector: dict[str, Any] | None = None, *args, **kwargs) -> list[Any]:
         values: list[Any] = []
         for document in self._documents:
