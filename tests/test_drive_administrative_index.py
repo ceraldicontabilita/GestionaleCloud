@@ -13,7 +13,7 @@ def test_indice_drive_classifica_solo_pdf_amministrativi(monkeypatch):
     payload = index.list_administrative_documents()
 
     assert payload["overview"] == {
-        "counts": {"verbali": 1, "tributi_locali": 1, "riscossione": 0, "personale": 0},
+        "counts": {"verbali": 1, "tributi_locali": 1, "riscossione": 0, "personale": 0, "famiglia": 0},
         "total": 2,
         "requires_review": 1,
     }
@@ -35,3 +35,27 @@ def test_indice_drive_filtra_area_anno_ricerca_e_revisioni(monkeypatch):
     assert payload["total"] == 1
     assert payload["items"][0]["id"] == "t1"
     assert payload["overview"]["total"] == 2
+
+
+def test_indice_drive_separa_tari_personale_per_hash_e_la_esclude_dalla_contabilita(monkeypatch):
+    personal_sha = "d3edc9fd5c999343a4370d441bf2e67fe672d41eb6c370e4a43b589d01bcd45a"
+    records = [{
+        "ID documento": "DOC-D3EDC9FD5C999343", "Dominio": "TRIBUTI LOCALI",
+        "Categoria": "TARI", "Anno": "2025",
+        "Nome file": "DOC_20240600051909_20240719_171752.pdf", "Estensione": "pdf",
+        "SHA-256": personal_sha, "Percorso Drive": "TARI/2025/documento.pdf",
+        "Stato": "CARICATO_UNICO",
+    }]
+    monkeypatch.setattr(index, "load_catalog", lambda service=None: ({}, records))
+
+    payload = index.list_administrative_documents(area="famiglia")
+
+    assert payload["total"] == 1
+    item = payload["items"][0]
+    assert item["administrative_area"] == "famiglia"
+    assert item["accounting_scope"] == "personal_family"
+    assert item["accounting_excluded"] is True
+    assert item["parsed_metadata"]["contribuente"] == "Ceraldi Antonietta"
+    assert item["parsed_metadata"]["anno_tributo"] == "2024"
+    assert payload["overview"]["counts"]["tributi_locali"] == 0
+    assert payload["overview"]["counts"]["famiglia"] == 1

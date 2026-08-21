@@ -10,6 +10,7 @@ const AREAS = [
   ['tributi_locali', 'TARI e tributi locali'],
   ['riscossione', 'Riscossione AdeR'],
   ['personale', 'Dimissioni e cessazioni'],
+  ['famiglia', 'Personale / Famiglia'],
 ];
 
 const AREA_LABELS = Object.fromEntries(AREAS);
@@ -22,6 +23,9 @@ const dateFor = item => {
 
 const identityFor = item => {
   const metadata = item.parsed_metadata || {};
+  if (item.administrative_area === 'famiglia') {
+    return metadata.contribuente || metadata.codice_contribuente || 'Documento personale da identificare';
+  }
   if (item.administrative_area === 'personale') {
     return [metadata.lavoratore_cognome, metadata.lavoratore_nome].filter(Boolean).join(' ') ||
       metadata.lavoratore_cf || 'Lavoratore da identificare';
@@ -113,6 +117,7 @@ export default function AttiAmministrativi() {
         <StatCard label="TARI" value={overviewCounts.tributi_locali || 0} subtext="Apri sezione" accent="warning" onClick={() => openSection('tributi_locali')} />
         <StatCard label="AdeR" value={overviewCounts.riscossione || 0} subtext="Apri sezione" accent="primary" onClick={() => openSection('riscossione')} />
         <StatCard label="Dimissioni" value={overviewCounts.personale || 0} subtext="Apri sezione" accent="accent" onClick={() => openSection('personale')} />
+        <StatCard label="Personale / Famiglia" value={overviewCounts.famiglia || 0} subtext="Escluso dalla contabilità" accent="primary" onClick={() => openSection('famiglia')} />
         <StatCard label="Da verificare" value={overview.requires_review ?? payload.requires_review ?? 0} subtext="Apri controlli" accent="warning" onClick={() => openSection('tutti', true)} />
       </div>
 
@@ -141,6 +146,9 @@ export default function AttiAmministrativi() {
         <p style={{ color: '#475569' }}>
           Gli avvisi indicano un'obbligazione; PEC e moduli provano la trasmissione. Nessuno di questi documenti prova da solo il pagamento o chiude automaticamente un rapporto di lavoro.
         </p>
+        {area === 'famiglia' && <p style={{ padding: 12, borderRadius: 8, background: '#eff6ff', color: '#1e3a8a' }}>
+          Archivio personale separato: questi documenti non entrano in bilanci, costi aziendali, Prima Nota o riconciliazioni.
+        </p>}
         {loading && <p>Caricamento…</p>}
         {!loading && payload.items.length === 0 && hasActiveFilters && <p>Nessun risultato per i filtri selezionati. Usa “Rimuovi filtri” oppure scegli una card per aprire la sezione dedicata.</p>}
         {!loading && payload.items.length === 0 && !hasActiveFilters && <p>Nessun atto amministrativo disponibile nell'archivio.</p>}
@@ -152,6 +160,7 @@ export default function AttiAmministrativi() {
                 <strong>{identityFor(item)}</strong>{' '}
                 <Badge variant={metadata.requires_review ? 'warning' : 'info'}>{item.category_label || item.category}</Badge>
                 {metadata.requires_review && <Badge variant="warning" style={{ marginLeft: 6 }}>Da verificare</Badge>}
+                {item.accounting_excluded && <Badge variant="info" style={{ marginLeft: 6 }}>Escluso dalla contabilità aziendale</Badge>}
                 <div style={{ color: '#475569', marginTop: 5 }}>{item.filename}</div>
               </div>
               <Button size="sm" variant="secondary" onClick={() => openDocument(item)}>{item.source_kind === 'drive_index' ? 'Apri su Drive' : 'Apri PDF'}</Button>
@@ -167,6 +176,10 @@ export default function AttiAmministrativi() {
             </div>}
             {item.administrative_area === 'tributi_locali' && <div style={{ marginTop: 8, color: '#334155' }}>
               Anno tributo {metadata.anno_tributo || 'da verificare'} · fase {metadata.fase || 'da verificare'} · contribuente {metadata.codice_contribuente || 'non estratto'}
+            </div>}
+            {item.administrative_area === 'famiglia' && <div style={{ marginTop: 8, color: '#334155' }}>
+              Contribuente {metadata.contribuente || 'da verificare'} · codice {metadata.codice_contribuente || 'non estratto'} · anno tributo {metadata.anno_tributo || 'da verificare'}
+              {metadata.immobile && <> · immobile {metadata.immobile}</>}
             </div>}
           </article>;
         })}

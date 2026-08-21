@@ -409,10 +409,28 @@ _ADMINISTRATIVE_AREA_TERMS = {
     "tributi_locali": ("tributi locali", "tari", "tares", "tarsu"),
     "riscossione": ("cartelle esattoriali", "agenzia riscossione", "ader"),
     "personale": ("dimission", "unilav"),
+    "famiglia": (),
+}
+
+
+# Eccezioni documentali verificate sul PDF originale. La chiave SHA-256 evita
+# che omonimie, importi o la cartella PEC trasformino un documento personale in
+# un costo aziendale. Questi metadati sono solo descrittivi: non generano
+# movimenti contabili, pagamenti o riconciliazioni.
+_PERSONAL_FAMILY_DOCUMENTS = {
+    "d3edc9fd5c999343a4370d441bf2e67fe672d41eb6c370e4a43b589d01bcd45a": {
+        "contribuente": "Ceraldi Antonietta",
+        "codice_contribuente": "1804135",
+        "anno_tributo": "2024",
+        "oggetto": "Avviso di pagamento TARI - Acconto 2024",
+        "immobile": "Via Cavallerizza 46, Napoli",
+    },
 }
 
 
 def _administrative_area(record: dict[str, Any]) -> str | None:
+    if _norm(record.get("SHA-256")) in _PERSONAL_FAMILY_DOCUMENTS:
+        return "famiglia"
     # La collocazione operativa Drive decide l'area. Il percorso storico nel
     # pacchetto puo' descrivere solo l'email a cui un allegato apparteneva (per
     # esempio un documento d'identita' allegato a una pratica TARI) e non deve
@@ -463,6 +481,8 @@ def list_administrative_documents(
             continue
 
         public = _public_record(record)
+        personal_metadata = _PERSONAL_FAMILY_DOCUMENTS.get(_norm(public["sha256"]), {})
+        accounting_excluded = record_area == "famiglia"
         matches.append({
             "id": public["document_id"],
             "filename": public["filename"],
@@ -474,6 +494,12 @@ def list_administrative_documents(
             "sha256": public["sha256"],
             "source_kind": "drive_index",
             "source_label": "Google Drive",
+            "accounting_scope": "personal_family" if accounting_excluded else "business_documentary",
+            "accounting_excluded": accounting_excluded,
+            "accounting_exclusion_reason": (
+                "Documento personale/familiare: escluso da bilanci, costi, Prima Nota e riconciliazioni aziendali."
+                if accounting_excluded else None
+            ),
             "source_context": {
                 "archive_path": public["drive_path"],
                 "source_zip": public["source_zip"],
@@ -482,6 +508,7 @@ def list_administrative_documents(
             "parsed_metadata": {
                 "requires_review": requires_review,
                 "numero_documento": public["document_number"],
+                **personal_metadata,
             },
         })
 
