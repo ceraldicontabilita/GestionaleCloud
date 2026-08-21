@@ -8,6 +8,7 @@ from render_workflows.document_ingest import (
     classify_document,
     index_hashes_from_xlsx,
     iter_supported_documents,
+    route_for,
 )
 
 
@@ -51,3 +52,26 @@ def test_classifier_covers_general_document_families_without_guessing_unknown():
     assert classify_document("dichiarazione_iva_2025.pdf", b"non-pdf")["document_type"] == "dichiarazione_fiscale"
     unknown = classify_document("documento.pdf", b"non-pdf")
     assert unknown["status"] == "DA_VERIFICARE"
+    assert unknown["readiness"] == "REVIEW_REQUIRED"
+
+
+def test_xml_content_routes_fatture_and_corrispettivi_to_existing_importers():
+    invoice = classify_document(
+        "IT01234567890_00001.xml",
+        b"<FatturaElettronica><FatturaElettronicaHeader /></FatturaElettronica>",
+    )
+    receipt = classify_document(
+        "RT_20260821.xml",
+        b"<DatiRT><DataOraRilevazione>2026-08-21</DataOraRilevazione></DatiRT>",
+    )
+    assert invoice["document_type"] == "fattura"
+    assert receipt["document_type"] == "corrispettivo"
+    assert invoice["readiness"] == receipt["readiness"] == "CANONICAL_IMPORT_READY"
+    assert "/api/documenti/upload-auto" in invoice["consumer"]
+
+
+def test_generic_fiscal_and_payment_documents_stay_in_review():
+    for document_type in ("dichiarazione_fiscale", "bonifico", "cartella_esattoriale", "avviso"):
+        route = route_for(document_type)
+        assert route["readiness"] == "REVIEW_REQUIRED"
+        assert route["consumer"].startswith("documents_inbox")
