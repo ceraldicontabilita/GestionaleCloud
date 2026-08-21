@@ -78,8 +78,17 @@ class SheetsRuntimeDatabase(SheetDatabase):
             # riga originale nel foglio, la esclude dalla cache e ne mantiene
             # il dettaglio in ``hydration_result`` per l'audit amministrativo.
             logger.warning(
-                "Archivio Sheets idratato con %s righe non valide escluse",
+                "Archivio Sheets idratato con %s righe non valide escluse: %s",
                 errors,
+                [
+                    {
+                        "foglio": item.get("foglio"),
+                        "collezione": item.get("collezione"),
+                        "errori": item.get("errori") or [],
+                    }
+                    for item in result["fogli"]
+                    if int(item.get("numero_errori") or 0)
+                ],
             )
         logger.info(
             "Archivio Sheets idratato: %s righe in %s fogli",
