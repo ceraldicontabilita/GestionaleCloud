@@ -19,8 +19,7 @@ Gli altri documenti sono guide di lettura, riferimenti di dominio o mappe genera
 
 ## Stato aggiornato al 20/08/2026
 
-Il repository usa `DATA_BACKEND=sheets` come backend operativo: Google Sheets è il registro operativo e Drive conserva gli originali. In produzione configurare esplicitamente il registro o la cartella Drive del ledger.
-Non esiste fallback di persistenza: Drive/Sheets è l'unico archivio operativo.
+Il repository usa `DATA_BACKEND=sheets` come backend operativo: Google Sheets è il registro operativo e Drive conserva gli originali. In produzione configurare esplicitamente il registro o la cartella Drive del ledger. Non esiste fallback di persistenza: Drive/Sheets è l'unico archivio operativo e non esiste fallback automatico verso altri backend.
 
 Il passaggio dei dati storici si considera concluso soltanto dopo confronto di
 conteggi e hash, ricostruzione completa e prova di scrittura. Fino a quella

@@ -3,7 +3,7 @@
     "schema_version": 2,
     "document_type": "page_source_map",
     "updated_at": "2026-08-20",
-    "source_revision": "dab420af25349d8482af3fb179c187c1ad62f538",
+    "source_revision": "ae3c085567067d7b22e2e1efc2790ee27a84158f",
     "generator": "scripts/refresh_json_docs.py",
     "verification": "static_source_map"
   },
@@ -29,7 +29,7 @@
   "archivio_dati": {
     "stato_corrente": "google_drive_sheets",
     "backend_predefinito": "sheets",
-    "compatibilita": "nessuna - legacy DB rimosso; Drive-only",
+    "compatibilita": "nessun_backend_alternativo",
     "fallback_automatico": "disabilitato"
   },
   "regole_di_lettura": [
@@ -38,4 +38,3 @@
     "Associazioni automatiche solo con identità e provenienza certe."
   ]
 }
-
