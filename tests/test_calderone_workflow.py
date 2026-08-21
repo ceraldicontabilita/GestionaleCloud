@@ -37,6 +37,11 @@ def test_netto_prende_primo_importo_a_destra_non_arrotondamenti_o_lire():
     assert extract_net_from_words(words) == [153]
 
 
+def test_netto_zero_esplicito_senza_decimali():
+    words = _words("ARR.", "ATTUALE", "TOTALE", "NETTO", "0+", "LIRE", "0+")
+    assert extract_net_from_words(words) == [0]
+
+
 def test_netto_riconosce_spazi_pdf_corrotto_e_netto_busta():
     assert extract_net_from_words(_words("NETTOsDELsMESE", "1.154,00€")) == [1154]
     assert extract_net_from_words(_words("NETTO", "BUSTA", "1.070,00")) == [1070]

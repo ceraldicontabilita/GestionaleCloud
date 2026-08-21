@@ -16,11 +16,14 @@ from typing import Any, Iterable
 
 LABELS = (("TOTALE", "NETTO"), ("NETTO", "DEL", "MESE"),
           ("NETTO", "IN", "BUSTA"), ("NETTO", "BUSTA"))
-MONEY = re.compile(r"(?<!\d)(?:EUR\s*)?(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+[.,]\d{2})(?!\d)", re.I)
+MONEY = re.compile(
+    r"(?<!\d)(?:EUR\s*)?(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+[.,]\d{2}|0[+-])(?!\d)",
+    re.I,
+)
 
 
 def _money(value: str) -> Decimal | None:
-    value = re.sub(r"(?i)EUR\s*", "", value).strip()
+    value = re.sub(r"(?i)EUR\s*", "", value).strip().rstrip("+-")
     if "," in value:
         value = value.replace(".", "").replace(",", ".")
     try:
