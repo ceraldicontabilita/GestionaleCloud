@@ -179,6 +179,12 @@ def _date_sort_key(value: Any) -> str:
     return text
 
 
+def _is_documentary_payment(row: dict[str, Any]) -> bool:
+    """Una quietanza prova documentalmente il pagamento, non il riscontro bancario."""
+    document_type = _norm(row.get("Tipo documento"))
+    return "quietanza" in document_type
+
+
 def _declaration_type(value: Any, filename: Any = None) -> str:
     """Converte le etichette del foglio nel vocabolario fiscale canonico."""
     normalized = re.sub(r"[^A-Z0-9]+", "_", str(value or "").upper()).strip("_")
@@ -266,6 +272,10 @@ def validate_relations(catalog: dict[str, list[dict[str, Any]]]) -> dict[str, An
             "documents": len(documents),
             "f24_rows": len(f24_rows),
             "f24_documents": len({str(row.get("ID documento")) for row in f24_rows}),
+            "documentary_payment_rows": sum(1 for row in f24_rows if _is_documentary_payment(row)),
+            "documentary_payment_documents": len({
+                str(row.get("ID documento")) for row in f24_rows if _is_documentary_payment(row)
+            }),
             "declarations": len(declarations),
             "duplicates_and_discards": len(duplicates),
         },
@@ -493,6 +503,36 @@ def list_f24_rows(
     return {
         "items": page,
         "total": len(matches),
+        "offset": offset,
+        "limit": limit,
+        "source": "drive_excel_index",
+    }
+
+
+def list_documented_tax_payments(
+    service=None, *, offset: int = 0, limit: int = 5000,
+) -> dict[str, Any]:
+    """Tributi coperti da quietanza Drive, senza attribuire una verifica bancaria."""
+    _, catalog = load_full_catalog(service)
+    documented_ids = {
+        str(row.get("ID documento") or "")
+        for row in catalog["f24_rows"]
+        if _is_documentary_payment(row)
+    }
+    rows = list_f24_rows(service=service, offset=0, limit=5000)["items"]
+    items = []
+    for row in rows:
+        if str(row.get("document_id") or "") not in documented_ids:
+            continue
+        items.append({
+            **row,
+            "payment_status": "DOCUMENTATO_DA_QUIETANZA",
+            "documentary_payment_status": "QUIETANZA_PRESENTE",
+            "bank_status": "DA_VERIFICARE",
+        })
+    return {
+        "items": items[offset:offset + limit],
+        "total": len(items),
         "offset": offset,
         "limit": limit,
         "source": "drive_excel_index",

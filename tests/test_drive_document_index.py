@@ -12,6 +12,7 @@ from app.services.drive_document_index import (
     _discover_index_file_sync,
     _parse_index_xlsx,
     _resolve_path_sync,
+    list_documented_tax_payments,
     list_declarations,
     list_f24_rows,
     search_records,
@@ -210,6 +211,34 @@ def test_f24_rows_are_drive_first_filterable_and_keep_stable_ids(monkeypatch):
     credit_from_all = next(item for item in all_rows["items"] if item["tax_code"] == "6099")
     assert credit_rows["items"][0]["id"] == credit_from_all["id"]
     assert credit_rows["items"][0]["evidence_state"] == "MODELLO_F24_NON_PROVA_BANCARIA"
+
+
+def test_documented_tax_payments_only_include_quietanze_and_keep_bank_unverified(monkeypatch):
+    from app.services import drive_document_index as index
+
+    documents = [{
+        "ID documento": "DOC-Q", "Nome file": "quietanza.pdf",
+        "SHA-256": "a" * 64, "Percorso Drive": r"F24\quietanza.pdf",
+    }, {
+        "ID documento": "DOC-M", "Nome file": "modello.pdf",
+        "SHA-256": "b" * 64, "Percorso Drive": r"F24\modello.pdf",
+    }]
+    rows = [{
+        "ID documento": "DOC-Q", "Tipo documento": "Quietanza AE",
+        "Codice tributo": "1001", "Debito": 100, "Credito": 0,
+    }, {
+        "ID documento": "DOC-M", "Tipo documento": "Modello F24",
+        "Codice tributo": "6001", "Debito": 50, "Credito": 0,
+    }]
+    catalog = {"documents": documents, "f24_rows": rows, "declarations": [], "duplicates": []}
+    monkeypatch.setattr(index, "load_full_catalog", lambda service=None: ({}, catalog))
+
+    payload = list_documented_tax_payments()
+
+    assert payload["total"] == 1
+    assert payload["items"][0]["tax_code"] == "1001"
+    assert payload["items"][0]["payment_status"] == "DOCUMENTATO_DA_QUIETANZA"
+    assert payload["items"][0]["bank_status"] == "DA_VERIFICARE"
 
 
 def test_declarations_use_canonical_types_and_verified_document_identity(monkeypatch):

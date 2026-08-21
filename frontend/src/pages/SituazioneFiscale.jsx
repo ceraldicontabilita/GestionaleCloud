@@ -42,7 +42,7 @@ const endpointFor = (tab, f24Filters = {}, taxCodeFilters = {}) => {
   }
   return ({
     tributi: '/api/fiscal/obligations',
-    'tributi-pagati': '/api/fiscal/obligations?status=PAID_ON_TIME',
+    'tributi-pagati': '/api/fiscal/obligations?status=PAID_ON_TIME&limit=5000',
     'crosswalk-riscossione': '/api/fiscal/crosswalk',
     riscossione: '/api/fiscal/collections',
     ader: '/api/fiscal/ader-snapshots',
@@ -197,7 +197,7 @@ export default function SituazioneFiscale() {
         <StatCard label="Righe tributo Drive" value={driveCounts.f24_rows || 0} accent="primary" />
         <StatCard label="Dichiarazioni Drive" value={driveCounts.declarations || 0} accent="primary" />
         <StatCard label="Obblighi" value={counts.obligations || 0} accent="primary" />
-        <StatCard label="Pagamenti" value={counts.payments || 0} accent="success" />
+        <StatCard label="Pagamenti documentati Drive" value={driveCounts.documentary_payment_documents || counts.payments || 0} accent="success" />
         <StatCard label="Cartelle" value={counts.collection_claims || 0} accent="warning" />
         <StatCard label="Snapshot AdeR" value={counts.ader_snapshots || 0} accent="primary" />
         <StatCard label="Da verificare" value={summary?.requires_review || 0} accent="danger" />
@@ -216,7 +216,7 @@ export default function SituazioneFiscale() {
       </Card>}
       <Card bodyStyle={{ padding: 16 }}>
         <h3 style={{ marginTop: 0 }}>{activeLabel}</h3>
-        {tabSources && (tab === 'f24' || tab === 'dichiarazioni') && <div style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 8, background: '#ecfdf5', color: '#166534' }}>
+        {tabSources && (tab === 'f24' || tab === 'dichiarazioni' || tab === 'tributi-pagati') && <div style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 8, background: '#ecfdf5', color: '#166534' }}>
           <strong>Archivio canonico:</strong> Google Drive · indice {tabSources.drive_excel_index || 0}
           {tabSources.drive_warning && <div style={{ color: '#92400e', marginTop: 4 }}>Drive non disponibile: {tabSources.drive_warning}</div>}
         </div>}
@@ -315,6 +315,13 @@ export default function SituazioneFiscale() {
               {item.protocol && <> · protocollo {item.protocol}</>}
               {item.filename && <div style={{ marginTop: 4 }}>{item.filename}</div>}
               {item.evidence_state && <div style={{ marginTop: 4 }}><strong>{item.evidence_state === 'MODELLO_F24_NON_PROVA_BANCARIA' ? 'Modello F24: pagamento bancario da verificare' : 'Quietanza documentale: banca da verificare'}</strong></div>}
+            </div>}
+            {tab === 'tributi-pagati' && item.source_kind === 'DRIVE_EXCEL_INDEX_F24_ROW' && <div style={{ marginTop: 6, color: '#475569' }}>
+              <div><strong>{item.tax_code || 'Codice non indicato'}</strong> · {item.description || item.section || 'Tributo F24'} · periodo {item.reference_period || 'non indicato'}</div>
+              <div>Debito {euro(item.debit_amount)} · Credito {euro(item.credit_amount)} · data {item.payment_date || 'non indicata'}</div>
+              <div>{item.filename}{item.protocol && <> · protocollo {item.protocol}</>}</div>
+              <div style={{ marginTop: 5 }}><strong>Quietanza documentale presente · riscontro bancario da verificare</strong></div>
+              <Button size="sm" variant="secondary" style={{ marginTop: 8 }} disabled={!item.document_id} onClick={() => openDriveDocument(item.document_id)}>Apri quietanza Drive</Button>
             </div>}
             {tab === 'dichiarazioni' && <div style={{ marginTop: 8, color: '#475569' }}>
               <div>Anno d'imposta {item.tax_year || 'da verificare'}{item.protocol && <> · protocollo {item.protocol}</>}</div>
