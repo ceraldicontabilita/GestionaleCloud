@@ -24,6 +24,7 @@ _PROJECT_ROOT = os.path.realpath(os.path.join(os.path.dirname(__file__), ".."))
 _FRONTEND_DIST = os.path.realpath(os.path.join(_PROJECT_ROOT, "frontend", "dist"))
 _FRONTEND_PUBLIC = os.path.realpath(os.path.join(_PROJECT_ROOT, "frontend", "public"))
 SALARI_SYNC_MARKER = "sync_prima_nota_salari_da_cedolini_2018_20260804_v1"
+SALARY_RELATIONS_RECOVERY_MARKER = "recover_salary_relations_20260821_v1"
 
 
 @asynccontextmanager
@@ -385,6 +386,73 @@ async def lifespan(app: FastAPI):
                 )
     except Exception as e:
         logger.error("Rollback deduplica fattura_id non eseguito: %s", e)
+
+    # Recupero una-tantum delle relazioni stipendio gia' dimostrate dai dati
+    # sorgente. Non cerca nuovi abbinamenti per solo nome/importo: ricostruisce
+    # esclusivamente il collegamento mancante quando la riga stipendio conserva
+    # l'ID del movimento bancario e il movimento supera tutte le verifiche
+    # (uscita, identita' completa, periodo/data e importo entro il residuo).
+    # La chiave canonica della relazione rende l'operazione idempotente.
+    try:
+        db = Database.get_db()
+        if db is not None:
+            marker = SALARY_RELATIONS_RECOVERY_MARKER
+            run = await db["migration_runs"].find_one({"id": marker})
+            if not run or run.get("status") != "completed":
+                started_at = datetime.now(timezone.utc).isoformat()
+                await db["migration_runs"].update_one(
+                    {"id": marker},
+                    {"$set": {
+                        "id": marker,
+                        "status": "running",
+                        "started_at": started_at,
+                    }},
+                    upsert=True,
+                )
+
+                from app.services.stipendi_bonifici import (
+                    recupera_relazioni_stipendi_mancanti,
+                )
+
+                result = await recupera_relazioni_stipendi_mancanti(db)
+                status = "completed" if not result.get("errori") else "retry"
+                await db["migration_runs"].update_one(
+                    {"id": marker},
+                    {"$set": {
+                        "id": marker,
+                        "status": status,
+                        "finished_at": datetime.now(timezone.utc).isoformat(),
+                        "result": result,
+                    }},
+                    upsert=True,
+                )
+                logger.info(
+                    "Recupero relazioni stipendi: status=%s esaminate=%s "
+                    "recuperate=%s gia_presenti=%s non_verificate=%s errori=%s",
+                    status,
+                    result.get("riferimenti_bancari_esaminati", 0),
+                    result.get("relazioni_recuperate", 0),
+                    result.get("relazioni_gia_presenti", 0),
+                    result.get("riferimenti_non_verificati", 0),
+                    result.get("errori", 0),
+                )
+    except Exception as e:
+        logger.exception("Recupero relazioni stipendi non completato")
+        try:
+            db = Database.get_db()
+            if db is not None:
+                await db["migration_runs"].update_one(
+                    {"id": SALARY_RELATIONS_RECOVERY_MARKER},
+                    {"$set": {
+                        "id": SALARY_RELATIONS_RECOVERY_MARKER,
+                        "status": "failed",
+                        "finished_at": datetime.now(timezone.utc).isoformat(),
+                        "error": type(e).__name__,
+                    }},
+                    upsert=True,
+                )
+        except Exception:
+            logger.exception("Impossibile registrare il fallimento del recupero stipendi")
 
     logger.info("Application startup complete")
     yield
