@@ -81,8 +81,7 @@ Gap corrente da correggere:
   `drive_url`, quindi l’utente esce dal Gestionale;
 - `/api/documenti/drive/index/document/{document_id}` risolve metadati e link,
   ma manca un endpoint autenticato che trasmetta il contenuto Drive al viewer;
-- `/api/documenti/documento/{doc_id}/download` è ancora descritto e implementato
-  come MongoDB-only: deve diventare Drive-first con fallback legacy controllato;
+- `/api/documenti/documento/{doc_id}/download` era descritto come legacy MongoDB: deve essere Drive-first con fallback legacy controllato.
 - il monitor giornaliero affidabile usa il downloader generico su `INBOX`, mentre
   la copertura di tutte le cartelle esiste in `email_full_download.py`: occorre
   unificare i due comportamenti senza creare un terzo downloader.

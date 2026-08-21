@@ -18,13 +18,12 @@ storage_architecture: drive-only
 | Backend | FastAPI asincrono |
 | Originali | Google Drive |
 | Registro operativo di destinazione | Google Sheets/Excel collegato a Drive |
-| Compatibilità transitoria | MongoDB, solo fino al cutover Drive/Sheets verificato |
+| Compatibilità transitoria | Nessuna — MongoDB rimosso; Drive-only |
 | Deploy | Render, `render.yaml` |
 
 Il backend di persistenza è selezionato da `DATA_BACKEND`. La destinazione è
-`sheets`; il default del codice è `sheets` e MongoDB resta solo compatibilità
-transitoria del runtime finché il cutover Drive/Sheets non risulti verificato
-end-to-end.
+`sheets`; il default del codice è `sheets`. MongoDB non è più supportato e ogni
+variabile o script legato a MongoDB è deprecato e non deve essere usato.
 
 ## Documenti correnti
 

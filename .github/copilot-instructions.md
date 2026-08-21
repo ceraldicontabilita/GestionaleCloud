@@ -30,12 +30,7 @@ Queste istruzioni valgono per il repository canonico
   essere idempotenti: prima si calcola l'identità, poi si inserisce o aggiorna.
 - Non deduplicare per solo importo. Usare identificativi esterni, hash del
   contenuto e chiavi normalizzate coerenti col dominio.
-- MongoDB è soltanto compatibilità transitoria del runtime finché copia,
-  ricostruzione, scrittura e cutover Drive/Sheets non risultano verificati.
-  Non introdurre nuove dipendenze funzionali da MongoDB e non dichiarare
-  conclusa la dismissione senza prova end-to-end.
-- `DATA_BACKEND=sheets` è il default e non ripiega su MongoDB. La produzione
-  deve indicare esplicitamente registro o cartella del ledger.
+  - MongoDB è stato rimosso e non è più supportato: non usare variabili, script o dipendenze MongoDB nel codice o nella configurazione. `DATA_BACKEND` va impostato su `sheets` e la produzione deve indicare esplicitamente il registro o la cartella Drive del ledger.
 - Telegram è l'unico canale operativo di alert. WhatsApp non va registrato né
   reintrodotto come fallback.
 - Obsidian è solo un layer consultivo di conoscenza; non persiste dati ERP.

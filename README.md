@@ -19,12 +19,7 @@ Gli altri documenti sono guide di lettura, riferimenti di dominio o mappe genera
 
 ## Stato aggiornato al 20/08/2026
 
-Il repository usa `DATA_BACKEND=sheets` come predefinito: Google Sheets è il
-registro operativo e Drive conserva gli originali. MongoDB è disponibile solo
-se viene selezionato esplicitamente con `DATA_BACKEND=mongodb`, per
-compatibilità durante la migrazione dei dati storici. Non esiste fallback
-automatico da Sheets a MongoDB: in produzione l'avvio richiede l'ID del
-registro o della sua cartella Drive.
+Il repository usa `DATA_BACKEND=sheets` come unico backend operativo: Google Sheets è il registro operativo e Drive conserva gli originali. MongoDB NON è più supportato e non va usato; ogni riferimento, variabile o script relativo a MongoDB è deprecato. In produzione configurare esplicitamente il registro o la cartella Drive del ledger.
 
 Il passaggio dei dati storici si considera concluso soltanto dopo confronto di
 conteggi e hash, ricostruzione completa e prova di scrittura. Fino a quella
