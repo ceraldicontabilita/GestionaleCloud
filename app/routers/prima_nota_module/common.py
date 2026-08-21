@@ -206,6 +206,44 @@ def _pipeline_entrate_uscite(query: Dict[str, Any]) -> list:
     ]
 
 
+async def _totali_entrate_uscite(db, collection: str,
+                                  query: Dict[str, Any]) -> tuple[float, float]:
+    """Somma entrate/uscite su Mongo e sul runtime Drive/Sheets.
+
+    MongoDB esegue la pipeline sul server. Il database in memoria usato dal
+    backend Sheets non implementa ``$convert``: in quel caso leggiamo i soli
+    campi necessari e applichiamo la stessa conversione tollerante in Python.
+    """
+    try:
+        totals = await db[collection].aggregate(
+            _pipeline_entrate_uscite(query)
+        ).to_list(1)
+        if not totals:
+            return 0.0, 0.0
+        return (
+            float(totals[0].get("entrate", 0) or 0),
+            float(totals[0].get("uscite", 0) or 0),
+        )
+    except NotImplementedError:
+        cursor = db[collection].find(
+            query, {"_id": 0, "tipo": 1, "importo": 1},
+        )
+        rows = (await cursor.to_list(100000) if hasattr(cursor, "to_list")
+                else [row async for row in cursor])
+        entrate = 0.0
+        uscite = 0.0
+        for row in rows:
+            try:
+                importo = float(row.get("importo") or 0)
+            except (TypeError, ValueError):
+                continue
+            if row.get("tipo") == "entrata":
+                entrate += importo
+            elif row.get("tipo") == "uscita":
+                uscite += importo
+        return entrate, uscite
+
+
 # Saldo iniziale (riporto) inserito A MANO dall'utente per (cassa|banca, anno).
 # Richiesta utente 16/07/2026: "il 2 gennaio 2026 il saldo deve essere
 # modificabile perché io ho il riporto nel 2025" — il riporto calcolato dai
@@ -247,9 +285,7 @@ async def aggrega_saldo_prima_nota(db, collection: str, query: Dict[str, Any],
     escluse) il riporto usa quelle condizioni + data < 1/1/anno.
     Ritorna importi già arrotondati a 2 decimali.
     """
-    totals = await db[collection].aggregate(_pipeline_entrate_uscite(query)).to_list(1)
-    entrate = totals[0].get("entrate", 0) if totals else 0
-    uscite = totals[0].get("uscite", 0) if totals else 0
+    entrate, uscite = await _totali_entrate_uscite(db, collection, query)
     saldo_anno = entrate - uscite
     saldo_manuale = await get_saldo_iniziale_manuale(db, collection, anno) if anno else None
     if saldo_manuale is not None:
@@ -376,11 +412,8 @@ async def calcola_saldo_anni_precedenti(db, collection: str, anno: int,
         query_base = filtro_saldo_prima_nota(collection)
     query = {**query_base, "data": {"$lt": f"{anno}-01-01"}}
 
-    totals = await db[collection].aggregate(_pipeline_entrate_uscite(query)).to_list(1)
-    
-    if totals:
-        return totals[0].get("entrate", 0) - totals[0].get("uscite", 0)
-    return 0.0
+    entrate, uscite = await _totali_entrate_uscite(db, collection, query)
+    return entrate - uscite
 
 
 # REGOLA PRIMA NOTA BANCA (utente 07/08/2026): la Prima Nota non e' una copia

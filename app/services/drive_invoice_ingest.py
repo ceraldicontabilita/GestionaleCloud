@@ -33,6 +33,8 @@ _SYNC_STATE_ID = "fatture_drive"
 # Un solo sync alla volta (manuale + job 15 min non devono sovrapporsi).
 _sync_lock = asyncio.Lock()
 _bg_task: Optional[asyncio.Task] = None
+_rebuild_lock = asyncio.Lock()
+_rebuild_task: Optional[asyncio.Task] = None
 
 
 def _batch_size() -> int:
@@ -52,6 +54,10 @@ def is_sync_running() -> bool:
     return _sync_lock.locked()
 
 
+def is_rebuild_running() -> bool:
+    return _rebuild_lock.locked()
+
+
 def _folder_id() -> Optional[str]:
     """ID della cartella fatture configurato con il nome canonico."""
     return settings.GOOGLE_DRIVE_FATTURE_FOLDER_ID
@@ -60,9 +66,18 @@ def _folder_id() -> Optional[str]:
 def start_background_sync(db) -> bool:
     """Avvia un sync in background. Ritorna False se ce n'è già uno in corso."""
     global _bg_task
-    if _sync_lock.locked():
+    if _sync_lock.locked() or _rebuild_lock.locked():
         return False
     _bg_task = asyncio.create_task(sync(db))
+    return True
+
+
+def start_background_rebuild(db) -> bool:
+    """Avvia la ricostruzione idempotente senza spostare file Drive."""
+    global _rebuild_task
+    if _rebuild_lock.locked() or _sync_lock.locked():
+        return False
+    _rebuild_task = asyncio.create_task(ricostruisci_archivio_drive(db))
     return True
 
 
@@ -167,6 +182,30 @@ def _get_or_create_folder(service, parent_id: str, folder_name: str) -> Optional
     return folder.get("id")
 
 
+def _find_folder(service, parent_id: str, folder_name: str) -> Optional[str]:
+    """Trova una sottocartella senza crearla o modificare Drive."""
+    q = (
+        f"name = '{folder_name}' and '{parent_id}' in parents "
+        "and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    )
+    res = service.files().list(
+        q=q, fields="files(id)", pageSize=1,
+        supportsAllDrives=True, includeItemsFromAllDrives=True,
+    ).execute()
+    files = res.get("files", [])
+    return files[0]["id"] if files else None
+
+
+def _source_folders(service, parent_id: str) -> List[tuple[str, str]]:
+    """Cartelle da rileggere per una ricostruzione completa e non distruttiva."""
+    folders = [("radice", parent_id)]
+    for name in (_INBOX_FOLDER_NAME, _ELABORATE_FOLDER_NAME, _ERROR_FOLDER_NAME):
+        folder_id = _find_folder(service, parent_id, name)
+        if folder_id:
+            folders.append((name, folder_id))
+    return folders
+
+
 def _get_or_create_inbox_folder(service, parent_id: str) -> Optional[str]:
     return _get_or_create_folder(service, parent_id, _INBOX_FOLDER_NAME)
 
@@ -239,16 +278,19 @@ async def get_status(db) -> Dict[str, Any]:
         "credenziali_errore": credenziali_errore,
         "folder_id": _folder_id(),
         "sync_running": is_sync_running(),
+        "rebuild_running": is_rebuild_running(),
         "last_sync": state.get("last_sync"),
         "last_result": state.get("last_result"),
         "last_error": state.get("last_error"),
         "total_imported": state.get("total_imported", 0),
+        "last_rebuild": state.get("last_rebuild"),
+        "last_rebuild_result": state.get("last_rebuild_result"),
     }
 
 
 async def sync(db) -> Dict[str, Any]:
     """Esegue un ciclo di import. Se un sync è già in corso, non fa nulla."""
-    if _sync_lock.locked():
+    if _sync_lock.locked() or _rebuild_lock.locked():
         return {"status": "running", "message": "Sincronizzazione già in corso"}
     async with _sync_lock:
         return await _do_sync(db)
@@ -358,6 +400,123 @@ async def _do_sync(db) -> Dict[str, Any]:
         upsert=True,
     )
     return result
+
+
+async def ricostruisci_archivio_drive(db) -> Dict[str, Any]:
+    """Rilegge tutti gli XML Drive e ricostruisce i record mancanti.
+
+    Include radice, ``Da elaborare``, ``Elaborate`` ed ``Errori``. La pipeline
+    fatture e' idempotente e questa procedura non chiama mai le API di move,
+    delete o trash: gli originali e la loro collocazione restano invariati.
+    """
+    if _rebuild_lock.locked() or _sync_lock.locked():
+        return {"status": "running", "message": "Ricostruzione gia' in corso"}
+    async with _rebuild_lock:
+        if not is_configured():
+            return {"status": "not_configured", "message": "Drive fatture non configurato"}
+        creds, cred_err = _load_credentials_fatture()
+        if creds is None:
+            return {"status": "error", "message": f"Credenziali non valide: {cred_err}"}
+        service = _build_drive_service()
+        if service is None:
+            return {"status": "error", "message": "Service Drive non disponibile"}
+
+        from app.routers.invoices.fatture_upload import process_xml_bytes
+
+        result: Dict[str, Any] = {
+            "status": "running", "total": 0, "processed": 0,
+            "imported": 0, "duplicates": 0, "archiviate": 0, "errors": 0,
+            "folders": {}, "details": [],
+        }
+        try:
+            unique_files: Dict[str, Dict[str, Any]] = {}
+            for folder_name, folder_id in _source_folders(service, _folder_id()):
+                files = await asyncio.to_thread(_list_xml_files, service, folder_id)
+                result["folders"][folder_name] = len(files)
+                for file_info in files:
+                    unique_files.setdefault(file_info["id"], file_info)
+            result["total"] = len(unique_files)
+
+            await db[_SYNC_STATE_COLLECTION].update_one(
+                {"_id": _SYNC_STATE_ID},
+                {"$set": {"last_rebuild_result": {
+                    **{k: result[k] for k in (
+                        "status", "total", "processed", "imported", "duplicates",
+                        "archiviate", "errors", "folders",
+                    )},
+                }}},
+                upsert=True,
+            )
+
+            for index, file_info in enumerate(unique_files.values(), start=1):
+                try:
+                    content = await asyncio.to_thread(
+                        _download_bytes, service, file_info["id"],
+                    )
+                    outcome = await process_xml_bytes(
+                        db, content, file_info["name"],
+                        source="ricostruzione_drive",
+                        applica_filtro_anno=True,
+                    )
+                    status = outcome.get("status")
+                    if status == "imported":
+                        result["imported"] += 1
+                    elif status == "duplicate":
+                        result["duplicates"] += 1
+                    elif status == "archiviata":
+                        result["archiviate"] += 1
+                    else:
+                        result["errors"] += 1
+                        if len(result["details"]) < 20:
+                            result["details"].append({
+                                "file": file_info["name"],
+                                "error": str(outcome.get("error") or "errore")[:200],
+                            })
+                except Exception as exc:
+                    logger.exception(
+                        "Ricostruzione Drive: errore sul file %s", file_info["name"],
+                    )
+                    result["errors"] += 1
+                    if len(result["details"]) < 20:
+                        result["details"].append({
+                            "file": file_info["name"], "error": str(exc)[:200],
+                        })
+                result["processed"] = index
+
+                # Checkpoint visibile in Admin senza una scrittura Sheets per
+                # ogni singolo documento.
+                if index % 25 == 0 or index == result["total"]:
+                    checkpoint = {k: result[k] for k in (
+                        "status", "total", "processed", "imported", "duplicates",
+                        "archiviate", "errors", "folders",
+                    )}
+                    await db[_SYNC_STATE_COLLECTION].update_one(
+                        {"_id": _SYNC_STATE_ID},
+                        {"$set": {"last_rebuild_result": checkpoint}},
+                        upsert=True,
+                    )
+                await asyncio.sleep(0)
+        except Exception as exc:
+            logger.exception("Ricostruzione completa Drive fallita")
+            result["status"] = "error"
+            result["message"] = str(exc)[:300]
+        else:
+            result["status"] = "ok"
+
+        completed_at = datetime.now(timezone.utc).isoformat()
+        final_result = {k: result[k] for k in (
+            "status", "total", "processed", "imported", "duplicates",
+            "archiviate", "errors", "folders",
+        )}
+        await db[_SYNC_STATE_COLLECTION].update_one(
+            {"_id": _SYNC_STATE_ID},
+            {"$set": {
+                "last_rebuild": completed_at,
+                "last_rebuild_result": final_result,
+            }},
+            upsert=True,
+        )
+        return result
 
 
 # ============================================================================

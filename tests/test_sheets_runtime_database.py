@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 from app.services import sheets_runtime_database as runtime_module
 from app.services.sheets_runtime_database import SheetsRuntimeDatabase
 
@@ -96,6 +98,14 @@ def test_runtime_espone_stato_sistema_per_checkpoint_import():
     runtime = SheetsRuntimeDatabase("test", {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"})
 
     assert runtime["sistema_stato"] is not None
+
+
+def test_runtime_espone_il_client_in_memoria_e_non_una_collection():
+    runtime = SheetsRuntimeDatabase("test", {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"})
+
+    assert runtime.client is runtime._client
+    with pytest.raises(NotImplementedError):
+        run(runtime.client.start_session())
 
 
 def test_runtime_memorizza_il_foglio_scoperto_per_le_scritture(monkeypatch):

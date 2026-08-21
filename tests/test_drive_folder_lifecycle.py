@@ -1,5 +1,6 @@
 from app.config import settings
 from app.services import drive_invoice_ingest as drive
+from mongomock_motor import AsyncMongoMockClient
 
 
 class _Request:
@@ -80,3 +81,42 @@ def test_dimensione_lotto_fatture_e_sempre_sicura(monkeypatch):
     assert drive._batch_size() == 1
     monkeypatch.setattr(settings, "DRIVE_FATTURE_BATCH_SIZE", 1000)
     assert drive._batch_size() == 100
+
+
+def test_ricostruzione_rilegge_tutte_le_cartelle_senza_spostare_file(monkeypatch):
+    service = _Service()
+    db = AsyncMongoMockClient()["test"]
+    files = {
+        "root": [{"id": "1", "name": "uno.xml"}],
+        "inbox": [{"id": "2", "name": "due.xml"}],
+        "done": [{"id": "1", "name": "uno.xml"}],
+        "errors": [{"id": "3", "name": "tre.xml"}],
+    }
+
+    monkeypatch.setattr(drive, "is_configured", lambda: True)
+    monkeypatch.setattr(drive, "_load_credentials_fatture", lambda: ({}, None))
+    monkeypatch.setattr(drive, "_build_drive_service", lambda: service)
+    monkeypatch.setattr(drive, "_folder_id", lambda: "root")
+    monkeypatch.setattr(drive, "_source_folders", lambda *_: [
+        ("radice", "root"), ("Da elaborare", "inbox"),
+        ("Elaborate", "done"), ("Errori", "errors"),
+    ])
+    monkeypatch.setattr(drive, "_list_xml_files", lambda _service, folder: files[folder])
+    monkeypatch.setattr(drive, "_download_bytes", lambda _service, file_id: file_id.encode())
+
+    async def fake_process(_db, content, filename, **kwargs):
+        assert kwargs["source"] == "ricostruzione_drive"
+        assert kwargs["applica_filtro_anno"] is True
+        return {"status": "duplicate" if filename == "uno.xml" else "imported"}
+
+    from app.routers.invoices import fatture_upload
+    monkeypatch.setattr(fatture_upload, "process_xml_bytes", fake_process)
+
+    result = __import__("asyncio").run(drive.ricostruisci_archivio_drive(db))
+
+    assert result["status"] == "ok"
+    assert result["total"] == 3
+    assert result["processed"] == 3
+    assert result["duplicates"] == 1
+    assert result["imported"] == 2
+    assert service.resource.updated == []

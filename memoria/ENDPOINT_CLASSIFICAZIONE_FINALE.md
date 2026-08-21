@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1135 · tenere: 737 · verificare: 371 · admin-only (migrazione/manutenzione): 27
+**Totale endpoint:** 1136 · tenere: 738 · verificare: 371 · admin-only (migrazione/manutenzione): 27
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -622,6 +622,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `DELETE /api/fatture/all` | invoices.fatture_upload | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/fatture/categorize-movements` | invoices.fatture_upload | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/fatture/drive/quadratura` | invoices.fatture_drive | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/fatture/drive/ricostruzione` | invoices.fatture_drive | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/fatture/drive/status` | invoices.fatture_drive | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/fatture/drive/sync` | invoices.fatture_drive | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `POST /api/fatture/recalculate-iva` | invoices.fatture_upload | — | sì | — | — | — | tenere | in uso: scheduler |

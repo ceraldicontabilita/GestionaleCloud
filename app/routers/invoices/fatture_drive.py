@@ -9,10 +9,11 @@ Il job schedulato (ogni 15 min) chiama la stessa `drive_invoice_ingest.sync`.
 """
 from typing import Dict, Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.database import Database
 from app.services import drive_invoice_ingest
+from app.utils.ruoli import richiedi_admin
 
 router = APIRouter()
 
@@ -52,3 +53,16 @@ async def drive_quadratura() -> Dict[str, Any]:
     """
     db = Database.get_db()
     return await drive_invoice_ingest.verifica_quadratura_elaborate(db)
+
+
+@router.post("/drive/ricostruzione")
+async def drive_ricostruzione(
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
+) -> Dict[str, Any]:
+    """Ricostruisce le fatture da tutte le cartelle senza spostare originali."""
+    db = Database.get_db()
+    if not drive_invoice_ingest.is_configured():
+        return await drive_invoice_ingest.ricostruisci_archivio_drive(db)
+    if not drive_invoice_ingest.start_background_rebuild(db):
+        return {"status": "running", "message": "Ricostruzione gia' in corso"}
+    return {"status": "started", "message": "Ricostruzione Drive avviata"}
