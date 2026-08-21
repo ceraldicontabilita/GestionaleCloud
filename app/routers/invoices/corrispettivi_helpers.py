@@ -439,7 +439,7 @@ async def rebuild_prima_nota_from_corrispettivi(
     purge_sources_cassa = [
         "corrispettivo_import", "corrispettivo_pos",
         "xml_import", "sincronizzazione", "corrispettivi_sync",
-        "zip_upload", "manual_entry", "manual", "corrispettivo_manuale",
+        "zip_upload", "corrispettivo_manuale",
         "corrispettivo_xml", "corrispettivi_pos_sync", "manuale_da_xml",
     ]
     purge_filter_cassa = {"source": {"$in": purge_sources_cassa}}

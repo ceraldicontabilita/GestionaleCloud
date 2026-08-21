@@ -19,6 +19,8 @@ from difflib import SequenceMatcher
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 
+from app.utils.parsing import safe_float
+
 logger = logging.getLogger(__name__)
 
 
@@ -44,8 +46,11 @@ async def on_fattura_righe_magazzino(event: Dict[str, Any], db) -> Optional[Dict
 
     for riga in righe:
         desc = riga.get("descrizione", "")
-        qta = riga.get("quantita", 0)
-        prezzo = riga.get("prezzo_unitario", 0)
+        # Il parser XML puo' restituire numeri come stringhe, anche nel
+        # formato italiano ("1.234,56"). Normalizziamo al confine del
+        # handler: confronti e calcoli a valle ricevono sempre float.
+        qta = safe_float(riga.get("quantita", 0))
+        prezzo = safe_float(riga.get("prezzo_unitario", 0))
         udm = riga.get("unita_misura", "")
 
         if not desc:

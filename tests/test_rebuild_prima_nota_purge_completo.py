@@ -124,6 +124,10 @@ def _setup_db():
          "categoria": "Versamento Banca", "source": "versamento_contanti"},
         {"id": "f1", "data": "2026-01-03", "tipo": "uscita", "importo": 100.0,
          "categoria": "Fatture", "source": "sync_fatture"},
+        {"id": "m1", "data": "2026-01-04", "tipo": "uscita", "importo": 250.0,
+         "categoria": "Versamento manuale", "source": "manual_entry"},
+        {"id": "m2", "data": "2026-01-05", "tipo": "entrata", "importo": 75.0,
+         "categoria": "Rettifica manuale", "source": "manual"},
     ]
     db["prima_nota_banca"].docs = [
         {"id": "b1", "data": "2026-01-02", "tipo": "entrata", "importo": 3617.0,
@@ -154,6 +158,8 @@ def test_purge_elimina_tutte_le_pipeline_e_ricrea_pulito():
     # intoccati
     assert any(m["id"] == "v1" for m in cassa)
     assert any(m["id"] == "f1" for m in cassa)
+    assert any(m["id"] == "m1" for m in cassa)
+    assert any(m["id"] == "m2" for m in cassa)
 
     banca = db["prima_nota_banca"].docs
     entrate_pos_legacy = [m for m in banca if m.get("source") == "corrispettivo_pos"]
