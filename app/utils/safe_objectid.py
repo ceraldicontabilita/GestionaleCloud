@@ -1,9 +1,10 @@
 """
-DEPRECATO: utility ObjectId MongoDB
+DEPRECATO: utility ObjectId (legacy)
 
-Questa utility gestisce ObjectId di MongoDB. MongoDB è deprecato come
-backend; la funzione resta disponibile per compatibilità, ma non dovrebbe
-essere usata per nuovi flussi. Non rimuovere senza un piano di test.
+Questa utility gestisce ObjectId per compatibilità con dati legacy. Il
+backend storico non è più supportato; la funzione resta disponibile per
+compatibilità, ma non dovrebbe essere usata per nuovi flussi. Non rimuovere
+senza un piano di test.
 """
 
 from bson import ObjectId
@@ -40,7 +41,7 @@ def safe_objectid(value: str, field_name: str = "id") -> ObjectId:
     if not OBJECTID_PATTERN.match(value.strip()):
         raise HTTPException(
             status_code=400,
-            detail=f"{field_name} non valido: '{value}' non è un ObjectId MongoDB valido"
+            detail=f"{field_name} non valido: '{value}' non è un ObjectId valido (formato 24 caratteri esadecimali)"
         )
     
     try:

@@ -1,16 +1,16 @@
 """
-DEPRECATO: provisioning e manipolazioni MongoDB
+DEPRECATO: provisioning e manipolazioni legacy DB
 
-Questo script era usato per provisioning e migrazione su MongoDB. MongoDB è
-stato rimosso come backend supportato. Questo script è mantenuto solo a fini
-storici e non deve essere eseguito in produzione. Se serve eseguire una
-migrazione storica, usare una copia fuori repo e una procedura controllata.
+Questo script era usato per provisioning e migrazione su backend legacy. Il
+backend non è più supportato. Questo script è mantenuto solo a fini storici
+e non deve essere eseguito in produzione. Se serve eseguire una migrazione
+storica, usare una copia fuori repo e una procedura controllata.
 """
 
 import sys
 
 if __name__ == "__main__":
-    print("ERROR: script deprecato — MongoDB non è più supportato. Non eseguire.")
+    print("ERROR: script deprecato — backend legacy non più supportato. Non eseguire.")
     sys.exit(1)
 
 from __future__ import annotations
