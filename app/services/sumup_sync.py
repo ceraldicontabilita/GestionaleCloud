@@ -482,28 +482,83 @@ def accrediti_payout_per_giorno(
 
 async def salva_transazioni(db, grezze: Iterable[Dict[str, Any]],
                             merchant_code: str) -> Dict[str, int]:
-    """Archivia le transazioni deduplicate. Nessuna scrittura contabile qui."""
+    """Archivia le transazioni deduplicate. Nessuna scrittura contabile qui.
+
+    Il registro operativo e' un Google Sheet write-through. Scrivere una riga
+    alla volta costringeva il runtime a rileggere l'indice del foglio e a
+    costruire una richiesta Google per ogni transazione; il recupero di trenta
+    giorni poteva quindi superare i 512 MiB del servizio Render. Le nuove
+    transazioni vengono inserite in un unico batch e quelle gia' note vengono
+    riscritte soltanto quando SumUp ha davvero cambiato un campo (per esempio
+    dopo un rimborso).
+    """
     now = datetime.now(timezone.utc).isoformat()
-    nuove = aggiornate = scartate = 0
+    nuove = aggiornate = invariate = scartate = 0
+    normalizzate: Dict[str, Dict[str, Any]] = {}
     for grezza in grezze:
         transazione = normalizza_transazione(grezza, merchant_code)
         if transazione is None:
             scartate += 1
             continue
-        esistente = await db[COLL_TRANSAZIONI].find_one(
-            {"chiave": transazione["chiave"]}, {"_id": 0, "chiave": 1}
-        )
-        await db[COLL_TRANSAZIONI].update_one(
-            {"chiave": transazione["chiave"]},
-            {"$set": {**transazione, "updated_at": now},
-             "$setOnInsert": {"created_at": now}},
-            upsert=True,
-        )
-        if esistente:
-            aggiornate += 1
+        # L'ultima occorrenza della stessa chiave nella risposta e' quella piu'
+        # aggiornata; non deve comunque generare due righe nel foglio.
+        normalizzate[transazione["chiave"]] = transazione
+
+    if not normalizzate:
+        return {
+            "nuove": 0, "aggiornate": 0, "invariate": 0,
+            "scartate": scartate,
+        }
+
+    collection = db[COLL_TRANSAZIONI]
+    cursore = collection.find(
+        {"chiave": {"$in": list(normalizzate)}}, {"_id": 0}
+    )
+    if hasattr(cursore, "to_list"):
+        esistenti = await cursore.to_list(len(normalizzate))
+    else:
+        esistenti = [documento async for documento in cursore]
+    per_chiave = {
+        str(documento.get("chiave") or ""): documento
+        for documento in esistenti
+        if documento.get("chiave")
+    }
+
+    da_inserire: List[Dict[str, Any]] = []
+    da_aggiornare: List[Dict[str, Any]] = []
+    for chiave, transazione in normalizzate.items():
+        esistente = per_chiave.get(chiave)
+        if esistente is None:
+            da_inserire.append({
+                **transazione, "created_at": now, "updated_at": now,
+            })
+            continue
+        if any(esistente.get(campo) != valore
+               for campo, valore in transazione.items()):
+            da_aggiornare.append(transazione)
         else:
-            nuove += 1
-    return {"nuove": nuove, "aggiornate": aggiornate, "scartate": scartate}
+            invariate += 1
+
+    if da_inserire:
+        await collection.insert_many(da_inserire)
+        nuove = len(da_inserire)
+
+    # In regime ordinario questa lista contiene zero o poche rettifiche. La
+    # prima acquisizione, che e' il caso voluminoso, e' gia' stata scritta con
+    # una sola operazione ``insert_many``.
+    for transazione in da_aggiornare:
+        await collection.update_one(
+            {"chiave": transazione["chiave"]},
+            {"$set": {**transazione, "updated_at": now}},
+        )
+        aggiornate += 1
+
+    return {
+        "nuove": nuove,
+        "aggiornate": aggiornate,
+        "invariate": invariate,
+        "scartate": scartate,
+    }
 
 
 async def transazioni_del_periodo(db, dal: str, al: str) -> List[Dict[str, Any]]:
