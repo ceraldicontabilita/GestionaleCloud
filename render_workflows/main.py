@@ -9,6 +9,11 @@ from urllib.request import Request, urlopen
 
 from render_sdk import Retry, Workflows
 
+try:
+    from .calderone import scan_calderone_preview
+except ImportError:  # Render avvia main.py dalla root directory del Workflow.
+    from calderone import scan_calderone_preview
+
 
 PRODUCTION_HEALTH_URL = "https://impresasemplice.online/api/health"
 app = Workflows()
@@ -51,6 +56,17 @@ def fetch_production_health(url: str = PRODUCTION_HEALTH_URL) -> dict[str, Any]:
 def production_health_check() -> dict[str, Any]:
     """Controlla che la produzione e il registro Drive/Sheets siano sani."""
     return fetch_production_health()
+
+
+@app.task(
+    name="calderone_cedolini_preview",
+    plan="starter",
+    retry=Retry(max_retries=1, wait_duration_ms=30000),
+    timeout_seconds=7200,
+)
+def calderone_cedolini_preview() -> dict[str, Any]:
+    """Scansione sola lettura: hash, duplicati e netti graficamente verificabili."""
+    return scan_calderone_preview()
 
 
 if __name__ == "__main__":
