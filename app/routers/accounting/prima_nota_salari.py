@@ -978,7 +978,25 @@ async def import_salari_verificati(data: Dict[str, Any] = Body(...)) -> Dict[str
                 continue
 
             import_key = _chiave_busta_excel(dipendente, anno, mese, importo)
-            if await db["prima_nota_salari"].find_one({"import_key": import_key}, {"_id": 0, "id": 1}):
+            existing = await db["prima_nota_salari"].find_one(
+                {"import_key": import_key}, {"_id": 0}
+            )
+            if existing:
+                if (
+                    existing.get("source") != "indice_cedolini_drive"
+                    or (source_url and existing.get("source_url") != source_url)
+                ):
+                    await db["prima_nota_salari"].update_one(
+                        {"id": existing["id"]},
+                        {"$set": {
+                            "source": "indice_cedolini_drive",
+                            "source_url": source_url or existing.get("source_url"),
+                            "document_status": status,
+                            "payment_status": "DA_ASSEGNARE",
+                            "importo_busta_documentato": round(importo, 2),
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                        }},
+                    )
                 duplicates += 1
                 continue
 
