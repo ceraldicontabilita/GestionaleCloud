@@ -2573,6 +2573,31 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     return "auto"
 
 
+def _fiscal_category_from_archive_path(archive_path: str) -> str | None:
+    """Ricava una categoria fiscale solo dalla struttura canonica dello ZIP.
+
+    La regola e' volutamente stretta: accetta esclusivamente il PDF completo
+    ``<categoria>/<anno>/<file>.pdf``. I singoli quadri conservati, ad esempio,
+    sotto ``770/<anno>/componenti_originali/...`` restano documenti di supporto
+    e non diventano seconde dichiarazioni complete.
+    """
+    normalized = str(archive_path or "").replace("\\", "/").strip("/")
+    marker = "/01_DICHIARAZIONI_FISCALI/"
+    if marker not in f"/{normalized}":
+        return None
+    relative = f"/{normalized}".split(marker, 1)[1]
+    parts = [part for part in relative.split("/") if part]
+    if len(parts) != 3 or not parts[1].isdigit() or not parts[2].lower().endswith(".pdf"):
+        return None
+    return {
+        "770": "modello_770",
+        "lipe": "lipe",
+        "iva": "dichiarazione_iva",
+        "irap": "dichiarazione_irap",
+        "redditi_sc": "redditi_sc",
+    }.get(parts[0].lower())
+
+
 async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
     """Espande un archivio solo dopo controlli anti zip-bomb.
 
@@ -2659,6 +2684,36 @@ async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
                 "archive_group": str(Path(normalized_path).parent).replace("\\", "/"),
                 "archive_sha256": hashlib.sha256(content).hexdigest(),
             }
+            fiscal_category = _fiscal_category_from_archive_path(normalized_path)
+            if fiscal_category:
+                from app.services.fiscal_document_ingestion import FiscalDocumentIngestionService
+
+                fiscal_item = await FiscalDocumentIngestionService(Database.get_db()).ingest(
+                    content=payload,
+                    filename=clean_name,
+                    source="documenti_upload_auto_zip",
+                    category_hint=fiscal_category,
+                    source_metadata=dict(nested_upload.source_context),
+                    expected_sha256=hashlib.sha256(payload).hexdigest(),
+                )
+                duplicate = fiscal_item.get("status") == "duplicate"
+                if duplicate:
+                    duplicati += 1
+                else:
+                    importati += 1
+                dettagli.append({
+                    "filename": clean_name,
+                    "archive_path": normalized_path,
+                    "tipo_rilevato": fiscal_category,
+                    "success": True,
+                    "duplicate": duplicate,
+                    "accounting_repaired": False,
+                    "message": (
+                        "Documento fiscale gia presente"
+                        if duplicate else "Documento importato nel registro fiscale"
+                    ),
+                })
+                continue
             from app.services.document_import_preview import create_confirmation_token
 
             nested_type = detect_document_type(clean_name, payload)
