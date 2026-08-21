@@ -701,7 +701,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1140**; attivi da ricreare: **738**; quarantena: **402** (`verificare` 375, `admin-only` 27).
+Route table sorgente: **1142**; attivi da ricreare: **740**; quarantena: **402** (`verificare` 375, `admin-only` 27).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -1162,7 +1162,7 @@ Route table sorgente: **1140**; attivi da ricreare: **738**; quarantena: **402**
 - **quarantena: verificare** — `POST /api/document-ai/process-classified-email` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `POST /api/document-ai/reprocess-and-save` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 
-### Router `documenti` (46)
+### Router `documenti` (48)
 
 - **attivo** — `GET /api/documenti/amministrativi` — in uso: FE
 - **quarantena: verificare** — `GET /api/documenti/cartelle-email` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
@@ -1209,7 +1209,9 @@ Route table sorgente: **1140**; attivi da ricreare: **738**; quarantena: **402**
 - **quarantena: verificare** — `POST /api/documenti/telegram/test` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `GET /api/documenti/ultimo-sync` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `POST /api/documenti/upload-auto` — in uso: FE
+- **attivo** — `GET /api/documenti/upload-auto/jobs/{job_id}` — in uso: FE
 - **attivo** — `POST /api/documenti/upload-auto/preview` — in uso: FE
+- **attivo** — `POST /api/documenti/upload-auto/queue` — in uso: FE
 
 ### Router `documenti_fiscali` (2)
 
