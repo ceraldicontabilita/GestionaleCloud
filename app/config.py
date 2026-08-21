@@ -18,7 +18,9 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     ENVIRONMENT: str = "production"
     # Google Drive conserva gli originali e Google Sheets i registri
-    # operativi. Non esistono backend dati alternativi.
+    # operativi. DATA_BACKEND esiste ancora come attributo per compatibilità
+    # e deve essere 'sheets' in produzione.
+    DATA_BACKEND: str = "sheets"
     SHEETS_REGISTRY_NAME: str = "GestionaleCloud"
 
     # Server
