@@ -8,7 +8,9 @@ const source = fs.readFileSync(path.join(here, 'NoleggioAuto.jsx'), 'utf8');
 
 describe('confini operativi della pagina Noleggio', () => {
   it('separa pagamenti bancari e associazione fattura-veicolo', () => {
-    expect(source).toContain('/riconciliazione/banca?ambito=noleggio');
+    expect(source).toContain('AssociaMovimentoBanca');
+    expect(source).toContain('Verifica pagamento');
+    expect(source).not.toContain('/riconciliazione/banca?ambito=noleggio');
     expect(source).toContain('/associa-veicolo');
     expect(source).toContain('questa relazione non modifica lo stato del pagamento');
     expect(source).not.toContain('🔗 Associa');

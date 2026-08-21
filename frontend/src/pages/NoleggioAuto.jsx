@@ -16,6 +16,7 @@ import {
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
 import ModalFattura from '../components/ModalFattura';
+import AssociaMovimentoBanca from '../components/AssociaMovimentoBanca';
 import { toast } from 'sonner';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import {
@@ -73,6 +74,7 @@ export default function NoleggioAuto() {
   // Se l'API fallisce o è vuota il pannello semplicemente non appare.
   const [controlli, setControlli] = useState(null);
   const [controlloAperto, setControlloAperto] = useState(null);
+  const [fatturaPagamento, setFatturaPagamento] = useState(null);
   // Stato per lookup OpenAPI
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupResult, setLookupResult] = useState(null);
@@ -309,8 +311,6 @@ export default function NoleggioAuto() {
       label: 'Pagamenti noleggio da verificare',
       color: COLORS.danger,
       bg: COLORS.dangerLight,
-      onClick: () =>
-        navigate(`/riconciliazione/banca?ambito=noleggio&anno=${annoFiltro || ''}`),
     },
     {
       key: 'alert_aperti',
@@ -441,6 +441,12 @@ export default function NoleggioAuto() {
                 paddingTop: 8,
               }}
             >
+              {controlloAperto === 'pagamenti_non_riconciliati' && (
+                <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 8 }}>
+                  Scegli una fattura: vedrai gli addebiti reali trovati nell’estratto conto e
+                  le prove che coincidono. La conferma resta sempre manuale.
+                </div>
+              )}
               {(controlli?.[controlloAperto]?.items || []).map((item, i) => (
                 <div
                   key={item?.id || i}
@@ -451,7 +457,25 @@ export default function NoleggioAuto() {
                     borderBottom: `1px solid ${COLORS.gray[100]}`,
                   }}
                 >
-                  {descriviVoceControllo(controlloAperto, item)}
+                  <span>{descriviVoceControllo(controlloAperto, item)}</span>
+                  {controlloAperto === 'pagamenti_non_riconciliati' && item?.id && (
+                    <button
+                      type="button"
+                      onClick={() => setFatturaPagamento({
+                        fattura_id: item.id,
+                        fattura_numero: item.invoice_number,
+                        fornitore: item.supplier_name,
+                        importo: item.total_amount,
+                      })}
+                      style={{
+                        marginLeft: 10, padding: '5px 9px', borderRadius: 7,
+                        border: `1px solid ${COLORS.primary}`, background: '#fff',
+                        color: COLORS.primary, fontWeight: 700, cursor: 'pointer',
+                      }}
+                    >
+                      Verifica pagamento
+                    </button>
+                  )}
                 </div>
               ))}
               {(controlli?.[controlloAperto]?.count || 0) >
@@ -466,6 +490,17 @@ export default function NoleggioAuto() {
             </div>
           )}
         </div>
+      )}
+
+      {fatturaPagamento && (
+        <AssociaMovimentoBanca
+          fattura={fatturaPagamento}
+          onChiudi={() => setFatturaPagamento(null)}
+          onAssociato={async () => {
+            setFatturaPagamento(null);
+            await Promise.all([fetchVeicoli(), fetchControlli()]);
+          }}
+        />
       )}
 
       {/* Azioni */}

@@ -769,8 +769,10 @@ async def get_riepilogo_controlli(
     dati_fatture = await get_fatture_non_associate(anno=anno)
     fatture_items = dati_fatture.get("fatture", [])
 
-    # ── 6) Pagamenti non riconciliati: qui resta soltanto il conteggio.
-    # Il dettaglio e le azioni appartengono esclusivamente alla pagina Banca.
+    # ── 6) Pagamenti non riconciliati. Il cruscotto deve essere navigabile:
+    # restituiamo le fatture reali, mentre la ricerca del movimento bancario
+    # resta nel flusso condiviso candidati-per-fattura. Nessun abbinamento e'
+    # deciso qui (tantomeno sulla sola uguaglianza dell'importo).
     anno_pagamenti = anno or datetime.now().year
     query_pagamenti = {
         "supplier_vat": {"$in": list(FORNITORI_NOLEGGIO.values())},
@@ -779,6 +781,15 @@ async def get_riepilogo_controlli(
         "riconciliato": {"$ne": True},
     }
     pagamenti_count = await db["invoices"].count_documents(query_pagamenti)
+    proiezione_pagamenti = {
+        "_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1,
+        "supplier_name": 1, "supplier_vat": 1, "total_amount": 1,
+        "pagato": 1, "riconciliato": 1, "drive_file_id": 1,
+        "drive_path": 1, "file_hash": 1, "source": 1,
+    }
+    pagamenti_items = await db["invoices"].find(
+        query_pagamenti, proiezione_pagamenti
+    ).sort("invoice_date", -1).to_list(50)
 
     # ── 7) Alert NOL_* aperti dal motore alert (collection 'alerts') ──
     query_alert = {"codice": {"$regex": "^NOL_"}, "stato": "aperto"}
@@ -797,7 +808,14 @@ async def get_riepilogo_controlli(
         "contratti_cessati": {"count": cessati_count, "items": cessati_items},
         "auto_senza_driver": {"count": senza_driver_count, "items": senza_driver_items},
         "fatture_non_associate": {"count": len(fatture_items), "items": fatture_items[:LIMITE_VOCI]},
-        "pagamenti_non_riconciliati": {"count": pagamenti_count, "items": []},
+        "pagamenti_non_riconciliati": {
+            "count": pagamenti_count,
+            "items": pagamenti_items,
+            "nota": (
+                "Apri una fattura per vedere gli addebiti bancari candidati. "
+                "Il gestionale non associa mai in base al solo importo."
+            ),
+        },
         "alert_aperti": {"count": alert_count, "items": alert_items},
     }
     return {
