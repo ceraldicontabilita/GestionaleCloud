@@ -52,8 +52,8 @@ si aggiornano con `scripts/refresh_json_docs.py`, non a mano.
 ### Stato attuale
 
 - Il default del codice è `DATA_BACKEND=sheets`.
-- MongoDB è stato rimosso come backend supportato e non va usato in produzione. Drive/Sheets è l'unico backend operativo.
-- Qualsiasi riferimento, variabile o script relativo a MongoDB è deprecato. Strumenti o script storici devono essere isolati, marcati come "legacy / solo per migrazione" e usati unicamente in procedure controllate e verificabili.
+- legacy DB è stato rimosso come backend supportato e non va usato in produzione. Drive/Sheets è l'unico backend operativo.
+- Qualsiasi riferimento, variabile o script relativo a legacy DB è deprecato. Strumenti o script storici devono essere isolati, marcati come "legacy / solo per migrazione" e usati unicamente in procedure controllate e verificabili.
 - La migrazione dei dati storici richiede confronto di conteggi e hash, ricostruzione completa e prove di scrittura; fino a verifica completa i dati storici non devono essere cancellati senza autorizzazione e checklist di cutover approvata.
 
 ### Destinazione Drive-only

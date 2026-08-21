@@ -28,26 +28,26 @@ class Settings(BaseSettings):
     PORT: int = 8000
     RELOAD: bool = False
 
-    # MongoDB (DEPRECATO)
-    # Nota: MongoDB è stato rimosso come backend supportato. Le variabili
+    # legacy DB (DEPRECATO)
+    # Nota: legacy DB è stato rimosso come backend supportato. Le variabili
     # qui presenti restano per retrocompatibilità locale ma non devono essere
     # usate in produzione. In produzione il backend operativo è "sheets".
-    MONGODB_ATLAS_URI: Optional[str] = None  # DEPRECATO
+    legacy DB_ATLAS_URI: Optional[str] = None  # DEPRECATO
     MONGO_URL: Optional[str] = None          # DEPRECATO
 
     # Nome logico del database (mantiene compatibilità con codice storico)
     DB_NAME: str = "Gestionale"
 
-    # I parametri pool/timeouts relativi a MongoDB restano visibili ma non
+    # I parametri pool/timeouts relativi a legacy DB restano visibili ma non
     # influenzano il runtime quando DATA_BACKEND='sheets'. Non usarli in
     # produzione. (DEPRECATO)
-    MONGODB_MAX_POOL_SIZE: int = 50
-    MONGODB_MIN_POOL_SIZE: int = 0
-    MONGODB_TIMEOUT_MS: int = 5000
-    MONGODB_CONNECT_TIMEOUT_MS: int = 5000
-    MONGODB_SOCKET_TIMEOUT_MS: int = 20000
-    MONGODB_WAIT_QUEUE_TIMEOUT_MS: int = 5000
-    MONGODB_MAX_IDLE_TIME_MS: int = 120000
+    legacy DB_MAX_POOL_SIZE: int = 50
+    legacy DB_MIN_POOL_SIZE: int = 0
+    legacy DB_TIMEOUT_MS: int = 5000
+    legacy DB_CONNECT_TIMEOUT_MS: int = 5000
+    legacy DB_SOCKET_TIMEOUT_MS: int = 20000
+    legacy DB_WAIT_QUEUE_TIMEOUT_MS: int = 5000
+    legacy DB_MAX_IDLE_TIME_MS: int = 120000
 
     # Le riparazioni dati e migrazioni all'avvio restano disabilitate per default.
     RUN_STARTUP_DATA_REPAIRS: bool = False
@@ -429,7 +429,7 @@ class Settings(BaseSettings):
         backend = self.DATA_BACKEND.strip().lower()
         # Production runtime supports only 'sheets'. Any other value is invalid.
         if backend != "sheets":
-            errors.append("DATA_BACKEND non supportato: il runtime corrente supporta solo 'sheets' (Google Sheets/Drive). Tutti i riferimenti a 'mongodb' sono deprecati.")
+            errors.append("DATA_BACKEND non supportato: il runtime corrente supporta solo 'sheets' (Google Sheets/Drive). Tutti i riferimenti a 'legacy DB' sono deprecati.")
 
         # Check database configuration for Sheets. Sheets is the operational backend;
         # absence of sheets configuration is a production error.
@@ -439,7 +439,7 @@ class Settings(BaseSettings):
             else:
                 msg = (
                     "DATA_BACKEND=sheets richiede GOOGLE_SHEETS_LEDGER_ID oppure "
-                    "GOOGLE_SHEETS_LEDGER_FOLDER_ID; non esiste fallback su MongoDB."
+                    "GOOGLE_SHEETS_LEDGER_FOLDER_ID; non esiste fallback su legacy DB."
                 )
                 if fail_fast:
                     errors.append(msg)

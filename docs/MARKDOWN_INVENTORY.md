@@ -101,6 +101,6 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 ## Regola architetturale
 
 La destinazione operativa è Drive/Sheets: originali in Google Drive e registri
-in Google Sheets/Excel collegato a Drive. MongoDB è stato rimosso e non è più
+in Google Sheets/Excel collegato a Drive. legacy DB è stato rimosso e non è più
 supportato: tutte le procedure di verifica e migrazione devono usare esclusivamente
-Drive/Sheets; i documenti che indicavano MongoDB come database primario sono storici.
+Drive/Sheets; i documenti che indicavano legacy DB come database primario sono storici.
