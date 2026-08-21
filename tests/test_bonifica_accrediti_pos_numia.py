@@ -4,6 +4,7 @@ Le componenti BNCMT/AMEX/INTER dello stesso giorno sono prove bancarie del
 trasferimento giornaliero, non cinque rimborsi/ricavi indipendenti.
 """
 import asyncio
+from contextlib import asynccontextmanager
 
 from app.services.sheets_document_store import MemorySheetsClient
 from pydantic import ValidationError
@@ -123,6 +124,30 @@ def test_bonifica_e_idempotente():
         "source": "trasferimento_pos", "gestore": "numia",
         "status": {"$nin": ["deleted", "archived"]},
     })) == 1
+
+
+def test_bonifica_massiva_usa_il_batch_drive_sheets():
+    db = _db()
+    _prepara(db)
+    eventi = []
+
+    @asynccontextmanager
+    async def batch_writes():
+        eventi.append("enter")
+        try:
+            yield None
+        finally:
+            eventi.append("exit")
+
+    db.batch_writes = batch_writes
+    esito = _run(bonifica_accrediti_pos_numia(db, 2026, dry_run=False))
+
+    assert esito["giornate_riconciliate"] == 1
+    assert eventi[0] == "enter"
+    assert eventi[-1] == "exit"
+    # Il recupero storico partecipa allo stesso confine; il runtime reale
+    # deduplica automaticamente questo batch annidato.
+    assert eventi.count("enter") == 2
 
 
 def test_anteprima_non_modifica_la_prima_nota():
