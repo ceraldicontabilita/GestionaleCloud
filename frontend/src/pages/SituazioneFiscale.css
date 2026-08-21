@@ -24,5 +24,29 @@
 .fiscal-muted { margin-top:6px; color:#64748b; }
 .fiscal-pagination { display:flex; align-items:center; justify-content:center; gap:16px; margin-top:18px; padding-top:14px; border-top:1px solid #e2e8f0; }
 .fiscal-empty { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px; border:1px dashed #94a3b8; border-radius:10px; background:#f8fafc; }
+.fiscal-f24-record { padding:0; overflow:hidden; }
+.fiscal-f24-record details > summary { list-style:none; }
+.fiscal-f24-record details > summary::-webkit-details-marker { display:none; }
+.fiscal-f24-summary { position:relative; display:grid; grid-template-columns:auto minmax(260px,1fr) auto auto; gap:16px; align-items:center; min-height:78px; padding:14px 16px; cursor:pointer; background:linear-gradient(100deg,#fff 0%,#f8fbff 100%); }
+.fiscal-f24-summary::after { content:'›'; color:#64748b; font-size:1.6rem; font-weight:700; transform:rotate(90deg); transition:transform .15s ease; }
+.fiscal-f24-record details[open] .fiscal-f24-summary::after { transform:rotate(-90deg); }
+.fiscal-f24-mark { display:grid; place-items:center; width:54px; height:54px; border:2px solid #0f2744; border-radius:8px; color:#0f2744; font-size:1.05rem; font-weight:900; letter-spacing:.08em; background:#fff; }
+.fiscal-f24-identity { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.fiscal-f24-identity small { color:#2563eb; font-weight:800; text-transform:uppercase; }
+.fiscal-f24-identity strong { overflow:hidden; color:#0f2744; text-overflow:ellipsis; white-space:nowrap; }
+.fiscal-f24-identity span { color:#64748b; font-size:.86rem; }
+.fiscal-f24-totals { display:flex; gap:18px; }
+.fiscal-f24-totals span { display:flex; flex-direction:column; text-align:right; }
+.fiscal-f24-totals small { color:#64748b; font-size:.68rem; font-weight:700; text-transform:uppercase; }
+.fiscal-f24-totals strong { color:#0f2744; }
+.fiscal-f24-sheet { position:relative; padding:16px; border-top:1px solid #cbd5e1; background:#fffdf7; overflow:hidden; }
+.fiscal-f24-watermark { position:absolute; top:50%; left:50%; color:rgba(15,39,68,.035); font-size:10rem; font-weight:900; letter-spacing:.1em; transform:translate(-50%,-50%) rotate(-12deg); pointer-events:none; }
+.fiscal-f24-file { position:relative; margin-bottom:10px; overflow:hidden; color:#64748b; font-size:.82rem; text-overflow:ellipsis; white-space:nowrap; }
+.fiscal-f24-table-wrap { position:relative; overflow-x:auto; }
+.fiscal-f24-table { width:100%; border-collapse:collapse; font-size:.86rem; }
+.fiscal-f24-table th,.fiscal-f24-table td { padding:8px 10px; border:1px solid #cbd5e1; text-align:left; }
+.fiscal-f24-table thead th { background:#e8eef5; color:#0f2744; font-size:.72rem; text-transform:uppercase; }
+.fiscal-f24-table td:nth-last-child(-n+2),.fiscal-f24-table th:nth-last-child(-n+2) { text-align:right; white-space:nowrap; }
+.fiscal-f24-table tfoot th { background:#eef6ff; color:#0f2744; }
 @media (max-width:1100px) { .fiscal-stats { grid-template-columns:repeat(3,minmax(140px,1fr)); } .fiscal-list-filters { grid-template-columns:repeat(2,minmax(180px,1fr)); position:static; } }
-@media (max-width:700px) { .fiscal-stats { display:flex; overflow-x:auto; } .fiscal-stats > * { min-width:160px; } .fiscal-list-filters { grid-template-columns:1fr; } .fiscal-data-grid { grid-template-columns:repeat(2,1fr); } .fiscal-record-header { align-items:flex-start; flex-direction:column; } .fiscal-actions button { width:100%; } .fiscal-pagination { justify-content:space-between; gap:8px; } }
+@media (max-width:700px) { .fiscal-stats { display:flex; overflow-x:auto; } .fiscal-stats > * { min-width:160px; } .fiscal-list-filters { grid-template-columns:1fr; } .fiscal-data-grid { grid-template-columns:repeat(2,1fr); } .fiscal-record-header { align-items:flex-start; flex-direction:column; } .fiscal-actions button { width:100%; } .fiscal-pagination { justify-content:space-between; gap:8px; } .fiscal-f24-summary { grid-template-columns:auto 1fr; gap:10px; } .fiscal-f24-summary > .ds-badge,.fiscal-f24-totals { grid-column:1 / -1; } .fiscal-f24-totals { justify-content:space-between; } }
