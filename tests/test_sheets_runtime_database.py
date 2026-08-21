@@ -69,6 +69,29 @@ def test_runtime_predispone_foglio_drive_per_collezione_operativa(monkeypatch):
     assert run(runtime["users"].count_documents({})) == 1
 
 
+def test_runtime_ripristina_header_di_foglio_dinamico_precreato(monkeypatch):
+    ensured = []
+
+    async def fake_ensure(spreadsheet_id, collection):
+        ensured.append((spreadsheet_id, collection))
+        return runtime_module.LedgerSheet("DB_users", collection, "D123456")
+
+    async def fake_upsert(sheet, spreadsheet_id, documents):
+        return {"foglio": sheet.title, "aggiunte": len(documents)}
+
+    monkeypatch.setattr(runtime_module, "ensure_collection_sheet", fake_ensure)
+    monkeypatch.setattr(runtime_module, "upsert_documents", fake_upsert)
+    runtime = SheetsRuntimeDatabase("test", {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"})
+    runtime._by_collection["users"] = runtime_module.LedgerSheet(
+        "DB_users", "users", "D123456",
+    )
+
+    run(runtime["users"].insert_one({"id": "USR-1"}))
+    run(runtime["users"].insert_one({"id": "USR-2"}))
+
+    assert ensured == [("SHEET-1", "users")]
+
+
 def test_runtime_espone_stato_sistema_per_checkpoint_import():
     runtime = SheetsRuntimeDatabase("test", {"GOOGLE_SHEETS_LEDGER_ID": "SHEET-1"})
 
