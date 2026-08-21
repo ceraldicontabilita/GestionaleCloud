@@ -64,9 +64,9 @@ def production_health_check() -> dict[str, Any]:
     retry=Retry(max_retries=1, wait_duration_ms=30000),
     timeout_seconds=7200,
 )
-def calderone_documenti_preview() -> dict[str, Any]:
+def calderone_documenti_preview(max_documents: int = 20_000) -> dict[str, Any]:
     """Confronto universale sola lettura contro l'indice documentale canonico."""
-    return scan_document_inbox_preview()
+    return scan_document_inbox_preview(max_documents=max_documents)
 
 
 @app.task(
