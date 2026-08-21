@@ -41,9 +41,7 @@ DICHIARAZIONI/
 Browser React/Vite
   -> API FastAPI same-origin
      -> servizi di dominio e motore unico Prima Nota
-        -> backend dati selezionato da DATA_BACKEND
-           ├── mongodb  (transitorio)
-           └── sheets   (Google Sheets/Drive, destinazione)
+        -> backend dati: Google Sheets/Drive (registri operativi)
 
 Google Drive / Gmail autorizzato / API esterne
   -> import, parser, deduplica, identità canonica
