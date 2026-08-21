@@ -1,21 +1,17 @@
-"""Verifica sola-lettura di un ripristino MongoDB Atlas.
-
-Confronta inventario, conteggi, indici e hash di un campione deterministico
-tra il database sorgente e una COPIA ripristinata. Non crea database, non
-scrive documenti e non stampa mai le URI di connessione.
-
-Le credenziali devono essere fornite esclusivamente tramite variabili
-d'ambiente:
-
-    DR_SOURCE_MONGO_URL
-    DR_RESTORE_MONGO_URL
-    DR_SOURCE_DB_NAME      (default: Gestionale)
-    DR_RESTORE_DB_NAME     (obbligatoria)
-
-Il ripristino deve essere creato prima nella dashboard Atlas su un cluster o
-database temporaneo distinto. Questo script non accetta sorgente e destinazione
-identiche e non usa MONGO_URL, per ridurre il rischio di errori operativi.
 """
+DEPRECATO: verifica ripristino MongoDB
+
+Questo script era usato per verificare ripristini MongoDB in modalità sola-
+lettura. MongoDB è stato rimosso come backend supportato; questo script è
+mantenuto solo a fini storici. Non eseguire nello stesso ambiente di produzione.
+"""
+
+import sys
+
+if __name__ == "__main__":
+    print("ERROR: script deprecato — MongoDB non è più supportato. Non eseguire.")
+    sys.exit(1)
+
 from __future__ import annotations
 
 import argparse

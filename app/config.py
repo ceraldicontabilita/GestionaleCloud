@@ -28,24 +28,28 @@ class Settings(BaseSettings):
     PORT: int = 8000
     RELOAD: bool = False
 
-    # MongoDB Atlas
-    MONGODB_ATLAS_URI: Optional[str] = None
-    MONGO_URL: Optional[str] = None
-    # Default allineato al DB reale (INDEX.md) e ai fallback interni
-    # (auth_secret): evita la divergenza 'azienda_erp_db' vs 'Gestionale'.
-    # In produzione è comunque impostato via env.
+    # MongoDB (DEPRECATO)
+    # Nota: MongoDB è stato rimosso come backend supportato. Le variabili
+    # qui presenti restano per retrocompatibilità locale ma non devono essere
+    # usate in produzione. In produzione il backend operativo è "sheets".
+    MONGODB_ATLAS_URI: Optional[str] = None  # DEPRECATO
+    MONGO_URL: Optional[str] = None          # DEPRECATO
+
+    # Nome logico del database (mantiene compatibilità con codice storico)
     DB_NAME: str = "Gestionale"
+
+    # I parametri pool/timeouts relativi a MongoDB restano visibili ma non
+    # influenzano il runtime quando DATA_BACKEND='sheets'. Non usarli in
+    # produzione. (DEPRECATO)
     MONGODB_MAX_POOL_SIZE: int = 50
-    # Dieci connessioni minime per ogni replica/worker esauriscono presto i
-    # limiti Atlas. Il pool cresce su domanda e rilascia le socket inattive.
     MONGODB_MIN_POOL_SIZE: int = 0
     MONGODB_TIMEOUT_MS: int = 5000
     MONGODB_CONNECT_TIMEOUT_MS: int = 5000
     MONGODB_SOCKET_TIMEOUT_MS: int = 20000
     MONGODB_WAIT_QUEUE_TIMEOUT_MS: int = 5000
     MONGODB_MAX_IDLE_TIME_MS: int = 120000
-    # Le riparazioni dati sono migrazioni operative, non attivita' di bootstrap.
-    # Un riavvio dell'app non deve modificare registrazioni contabili.
+
+    # Le riparazioni dati e migrazioni all'avvio restano disabilitate per default.
     RUN_STARTUP_DATA_REPAIRS: bool = False
     RUN_STARTUP_INDEX_MIGRATIONS: bool = False
     RUN_STARTUP_SEED_DATA: bool = False
@@ -389,12 +393,14 @@ class Settings(BaseSettings):
         return self.ENVIRONMENT == "production"
     
     def validate_required_secrets(self) -> dict[str, bool]:
-        """Validate required and optional secrets."""
+        """Validate required and optional secrets.
+
+        Questo runtime supporta esclusivamente Google Sheets/Drive come archive
+        operativo. Le verifiche qui sono limitate a ciò che serve per Sheets.
+        """
         return {
             'database': bool(
                 self.GOOGLE_SHEETS_LEDGER_ID or self.GOOGLE_SHEETS_LEDGER_FOLDER_ID
-                if self.DATA_BACKEND.strip().lower() == "sheets"
-                else (self.MONGODB_ATLAS_URI or self.MONGO_URL)
             ),
             'auth': bool(self.SECRET_KEY),
             'google_oauth': bool(self.GOOGLE_CLIENT_ID and self.GOOGLE_CLIENT_SECRET),
@@ -431,34 +437,24 @@ class Settings(BaseSettings):
                 logger.warning(f"⚠️ {msg}")
 
         backend = self.DATA_BACKEND.strip().lower()
-        if backend not in {"mongodb", "sheets"}:
-            errors.append("DATA_BACKEND deve essere 'mongodb' oppure 'sheets'.")
+        # Production runtime supports only 'sheets'. Any other value is invalid.
+        if backend != "sheets":
+            errors.append("DATA_BACKEND non supportato: il runtime corrente supporta solo 'sheets' (Google Sheets/Drive). Tutti i riferimenti a 'mongodb' sono deprecati.")
 
-        # Check database configuration. Sheets e' il runtime operativo
-        # predefinito; MongoDB resta disponibile solo quando viene selezionato
-        # esplicitamente come backend di compatibilita'. Non usare credenziali
-        # Mongo per mascherare una configurazione Sheets incompleta.
+        # Check database configuration for Sheets. Sheets is the operational backend;
+        # absence of sheets configuration is a production error.
         if backend == "sheets":
             if self.GOOGLE_SHEETS_LEDGER_ID or self.GOOGLE_SHEETS_LEDGER_FOLDER_ID:
                 pass
             else:
                 msg = (
                     "DATA_BACKEND=sheets richiede GOOGLE_SHEETS_LEDGER_ID oppure "
-                    "GOOGLE_SHEETS_LEDGER_FOLDER_ID; MongoDB non e' un fallback."
+                    "GOOGLE_SHEETS_LEDGER_FOLDER_ID; non esiste fallback su MongoDB."
                 )
                 if fail_fast:
                     errors.append(msg)
                 else:
                     logger.error(msg)
-        elif backend == "mongodb" and not (self.MONGODB_ATLAS_URI or self.MONGO_URL):
-            msg = (
-                "MONGODB_ATLAS_URI non configurata! "
-                "Il database non funzionerà correttamente."
-            )
-            if fail_fast:
-                errors.append(msg)
-            else:
-                logger.error(f"❌ ERROR: {msg}")
 
         # DB_NAME: in produzione dev'essere valorizzato (default 'Gestionale').
         if self.is_production and not (self.DB_NAME or "").strip():

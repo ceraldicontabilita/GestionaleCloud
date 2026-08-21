@@ -1,6 +1,9 @@
 """
-Utility per gestione sicura degli ObjectId MongoDB.
-Previene crash su ID non validi forniti dall'utente.
+DEPRECATO: utility ObjectId MongoDB
+
+Questa utility gestisce ObjectId di MongoDB. MongoDB è deprecato come
+backend; la funzione resta disponibile per compatibilità, ma non dovrebbe
+essere usata per nuovi flussi. Non rimuovere senza un piano di test.
 """
 
 from bson import ObjectId

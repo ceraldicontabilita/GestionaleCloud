@@ -37,71 +37,36 @@ class Database:
         """
         Create database connection.
         Called on application startup.
+
+        NOTE: MongoDB support has been removed. This method only supports the
+        Sheets runtime (Google Sheets/Drive). Attempts to select 'mongodb' as
+        DATA_BACKEND will raise a RuntimeError.
         """
         try:
-            if settings.DATA_BACKEND.strip().lower() == "sheets":
-                from app.services.sheets_runtime_database import SheetsRuntimeDatabase
-
-                runtime = SheetsRuntimeDatabase(settings.DB_NAME, {
-                    "GOOGLE_SHEETS_LEDGER_ID": settings.GOOGLE_SHEETS_LEDGER_ID,
-                    "GOOGLE_SHEETS_LEDGER_FOLDER_ID": settings.GOOGLE_SHEETS_LEDGER_FOLDER_ID,
-                })
-                await runtime.hydrate()
-                cls.client = runtime._client
-                cls.db = runtime
-                scrub_mongo_runtime_configuration()
-                logger.info(
-                    "Connected to Google Sheets ledger %s; MongoDB esterno disattivato",
-                    settings.GOOGLE_SHEETS_LEDGER_ID,
+            backend = settings.DATA_BACKEND.strip().lower()
+            if backend != "sheets":
+                raise RuntimeError(
+                    "DATA_BACKEND 'mongodb' non è più supportato. Usare DATA_BACKEND=sheets "
+                    "e configurare GOOGLE_SHEETS_LEDGER_ID o GOOGLE_SHEETS_LEDGER_FOLDER_ID."
                 )
-                return
 
-            mongo_uri = settings.MONGODB_ATLAS_URI or settings.MONGO_URL
+            # Sheets runtime
+            from app.services.sheets_runtime_database import SheetsRuntimeDatabase
 
-            if mongo_uri and mongo_uri.startswith("mongomock://"):
-                from mongomock_motor import AsyncMongoMockClient
-
-                cls.client = AsyncMongoMockClient()
-                cls.db = cls.client[settings.DB_NAME]
-                if settings.RUN_STARTUP_INDEX_MIGRATIONS:
-                    await cls._create_indexes()
-                if settings.RUN_STARTUP_SEED_DATA:
-                    await cls._ensure_builtin_senders()
-                logger.info("Connected to isolated in-memory MongoDB for local testing")
-                return
-
-            logger.info("Connecting to MongoDB Atlas...")
-            cls.client = AsyncIOMotorClient(
-                mongo_uri,
-                maxPoolSize=settings.MONGODB_MAX_POOL_SIZE,
-                minPoolSize=settings.MONGODB_MIN_POOL_SIZE,
-                serverSelectionTimeoutMS=settings.MONGODB_TIMEOUT_MS,
-                connectTimeoutMS=settings.MONGODB_CONNECT_TIMEOUT_MS,
-                socketTimeoutMS=settings.MONGODB_SOCKET_TIMEOUT_MS,
-                waitQueueTimeoutMS=settings.MONGODB_WAIT_QUEUE_TIMEOUT_MS,
-                maxIdleTimeMS=settings.MONGODB_MAX_IDLE_TIME_MS,
-                retryReads=True,
-                retryWrites=True,
-                tz_aware=True,
-                uuidRepresentation="standard",
-                appname="GestionaleCloud",
+            runtime = SheetsRuntimeDatabase(settings.DB_NAME, {
+                "GOOGLE_SHEETS_LEDGER_ID": settings.GOOGLE_SHEETS_LEDGER_ID,
+                "GOOGLE_SHEETS_LEDGER_FOLDER_ID": settings.GOOGLE_SHEETS_LEDGER_FOLDER_ID,
+            })
+            await runtime.hydrate()
+            cls.client = runtime._client
+            cls.db = runtime
+            scrub_mongo_runtime_configuration()
+            logger.info(
+                "Connected to Google Sheets ledger %s; MongoDB support disabled",
+                settings.GOOGLE_SHEETS_LEDGER_ID,
             )
-            cls.db = cls.client[settings.DB_NAME]
-            
-            # Test connection
-            await cls.client.admin.command('ping')
-            logger.info(f"✅ Connected to MongoDB database: {settings.DB_NAME}")
-            
-            # Provisioning e migrazioni non appartengono al lifecycle web:
-            # 144 create_index sequenziali ad ogni avvio rallentavano il deploy
-            # e rendevano ogni replica capace di mutare lo schema.
-            if settings.RUN_STARTUP_INDEX_MIGRATIONS:
-                await cls._create_indexes()
+            return
 
-            if settings.RUN_STARTUP_SEED_DATA:
-                # Operazione idempotente ma comunque separata dallo startup.
-                await cls._ensure_builtin_senders()
-            
         except Exception as e:
             logger.error("Error connecting to configured database backend: %s", e)
             raise

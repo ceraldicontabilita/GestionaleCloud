@@ -1,8 +1,18 @@
-"""Provisioning MongoDB esplicito e ripetibile.
-
-Da eseguire come fase amministrativa/deploy, mai dentro ogni worker web.
-Non cancella dati. Le incompatibilita' degli indici vengono riportate nel log.
 """
+DEPRECATO: provisioning e manipolazioni MongoDB
+
+Questo script era usato per provisioning e migrazione su MongoDB. MongoDB è
+stato rimosso come backend supportato. Questo script è mantenuto solo a fini
+storici e non deve essere eseguito in produzione. Se serve eseguire una
+migrazione storica, usare una copia fuori repo e una procedura controllata.
+"""
+
+import sys
+
+if __name__ == "__main__":
+    print("ERROR: script deprecato — MongoDB non è più supportato. Non eseguire.")
+    sys.exit(1)
+
 from __future__ import annotations
 
 import argparse
