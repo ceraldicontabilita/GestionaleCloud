@@ -30,6 +30,10 @@ Questo evita letture Drive/Sheets duplicate, regole contabili divergenti e bypas
 - Il movimento bancario importato è prova finanziaria immutabile; la Prima Nota lo rappresenta ma non lo sostituisce.
 - Un F24 può contenere più codici tributo: stato e residuo si determinano per riga, non soltanto sul totale del modello.
 - XML RT, Numia, SumUp e PayPal sono fonti indipendenti. XML RT non attribuisce il gestore POS; payout e accrediti non sono nuovi ricavi.
+- SumUp corrente proviene dall'API, Numia corrente dalla chiusura manuale serale
+  e Numia storico dagli export operativi del gestore su Drive aggregati per
+  giorno. L'estratto conto bancario è solo evidenza di accredito e non crea il
+  fatto POS mancante.
 - Cassa configurata sul fornitore porta la fattura in Cassa; Banca resta Provvisoria finché non esiste un riscontro bancario valido.
 - Un risultato ambiguo resta da verificare: l'MCP propone, non inventa.
 

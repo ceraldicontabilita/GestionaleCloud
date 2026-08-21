@@ -43,6 +43,50 @@ def test_xlsx_pos_trova_header_alla_terza_riga():
     assert result["daily_totals"] == {"2026-06-03": 15.4}
 
 
+def test_xlsx_numia_reale_usa_id_provider_e_aggrega_il_netto_giornaliero():
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.append([
+        "Data e ora", "Codice autorizzazione", "Numero carta", "Importo",
+        "Circuito", "Tipo transazione", "Stato operazione",
+        "Importo in valuta originale", "Valuta originale", "Importo Cashback",
+        "Punto vendita", "ID Punto vendita", "MID", "ID Terminale / TML",
+        "Alias Terminale", "ID Transazione", "Codice ordine", "Codice IUV",
+        "Email utente", "Nota interna",
+    ])
+    sheet.append([
+        datetime(2026, 1, 2, 9, 0), "A1", "****1111", 100.0,
+        "PagoBancomat", "Acquisto", "Acquisto approvato", 100.0, "EUR", 0,
+        "CERALDI CAFFE'", "PDV1", "MID1", "TML1", "Cassa", "TX-REAL-1",
+        None, None, None, None,
+    ])
+    sheet.append([
+        datetime(2026, 1, 2, 10, 0), "A2", "****1111", -10.0,
+        "PagoBancomat", "Storno", "Storno approvato", -10.0, "EUR", 0,
+        "CERALDI CAFFE", "PDV1", "MID1", "TML1", "Cassa", "TX-REAL-2",
+        None, None, None, None,
+    ])
+    sheet.append([
+        datetime(2026, 1, 2, 11, 0), "A3", "****1111", 50.0,
+        "Mastercard", "Acquisto", "Acquisto negato", 50.0, "EUR", 0,
+        "CERALDI CAFFE", "PDV1", "MID1", "TML1", "Cassa", "TX-REAL-3",
+        None, None, None, None,
+    ])
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+
+    result = parse_pos_terminal_file(
+        buffer.getvalue(), "Export_Transazioni_gennaio 2026.xlsx",
+    )
+
+    assert result["rows"] == 3
+    assert result["approved"] == 2
+    assert result["daily_totals"] == {"2026-01-02": 90.0}
+    assert {row["identity_strength"] for row in result["transactions"]} == {
+        "provider_transaction_id",
+    }
+
+
 def test_csv_pos_deduplica_id_transazione_prima_dei_totali():
     content = (
         "Data e ora;Importo;Tipo transazione;Stato operazione;ID Transazione\n"
@@ -181,16 +225,22 @@ def test_import_terminale_crea_subito_l_attesa_bancaria():
             "source": "corrispettivo_import", "data": "2026-08-05",
             "tipo": "uscita",
         })
-        return banca, cassa
+        chiusura = await db["chiusure_pos_manuali"].find_one({
+            "data": "2026-08-05", "gestore": "numia",
+        })
+        return banca, cassa, chiusura
 
-    banca, cassa = asyncio.run(scenario())
+    banca, cassa, chiusura = asyncio.run(scenario())
     assert banca["importo"] == 30.0
     assert banca["record_role"] == "expectation"
     assert banca["expectation_type"] == "pos_bank_credit"
-    assert banca["expectation_owner"] == "pos_terminal"
+    assert banca["expectation_owner"] == "numia_provider_export"
     assert banca["expectation_status"] == "ATTESO"
     assert banca["source_fact_id"]
     assert banca["operation_id"] == cassa["operation_id"]
+    assert banca["quota_pos_fonte"] == "export_numia_storico"
+    assert cassa["quota_pos_fonte"] == "export_numia_storico"
+    assert chiusura["source"] == "import_storico_numia"
 
 
 def test_import_pos_grande_spezza_le_scritture_in_batch_limitati(monkeypatch):

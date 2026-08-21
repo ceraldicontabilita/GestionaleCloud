@@ -151,6 +151,10 @@ sempre la sorgente persistente.
   POS e i payout non sono nuovi ricavi.
 - POS: corrispettivo XML, chiusura terminale e accredito bancario sono tre
   fatti distinti. Numia e SumUp restano circuiti separati.
+- SumUp corrente è acquisito dall'API; Numia corrente è la chiusura manuale
+  serale; Numia storico è ricostruito dagli export operativi del gestore su
+  Drive, deduplicati e accorpati per giorno. Tutte e tre le fonti creano
+  l'attesa bancaria; l'estratto conto può soltanto riconciliarla.
 - Un versamento contanti genera uscita Cassa e corrispondente entrata Banca con
   lo stesso `operation_id`; l'estratto conto riconcilia il trasferimento.
 - Prima Nota Banca non è la copia dell'estratto conto: una riga entra quando è

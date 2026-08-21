@@ -126,7 +126,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
     8: page(
         [
             "Corrispettivi RT XML/ZIP da Drive o Import documenti: totale fiscale giornaliero e quota elettronica complessiva, senza attribuzione del gestore POS",
-            "Numia: chiusura giornaliera manuale o batch e transazioni dell'export ufficiale Banco BPM CSV/XLSX importato dalle cartelle Drive POS BPM/BNL",
+            "Numia corrente: chiusura giornaliera inserita manualmente dall'operatore; storico Numia: transazioni dell'export del gestore CSV/XLSX importato dalla cartella Drive configurata",
             "SumUp: API ufficiale transactions/history e payouts, configurata con SUMUP_API_KEY e SUMUP_MERCHANT_CODE",
             "Estratti conto Banco BPM e conto Mastercard SumUp: accrediti effettivi, commissioni, rimborsi e chargeback",
             "fatture, finanziamenti soci, versamenti contanti e relazioni operation_id",
@@ -141,7 +141,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
             "Calcolare saldi progressivi dal riporto iniziale e dalle righe ordinate; ogni giorno espone numero operazioni e totale netto.",
             "Un versamento contanti crea uscita Cassa ed entrata Banca attesa con lo stesso operation_id; il movimento di estratto conto la riconcilia senza crearne una terza.",
             "Il corrispettivo RT genera l'entrata Cassa totale, ma la sua quota elettronica non può essere ripartita tra Numia e SumUp: le uscite POS si creano soltanto dai totali reali dei singoli gestori.",
-            "Per Numia usare come fonte operativa la chiusura manuale/batch oppure l'export ufficiale Banco BPM; l'accredito NUMIA nell'estratto BPM è una prova finanziaria e solo un fallback storico esplicito, non una vendita né un feed live del terminale.",
+            "Per Numia usare come fonte operativa la chiusura manuale serale oppure, per il pregresso, l'export transazioni del gestore; l'accredito NUMIA nell'estratto BPM è soltanto una prova finanziaria successiva, mai una vendita né la fonte dell'attesa.",
             "Per SumUp archiviare le transazioni API riuscite per giorno Europe/Rome e i payout separati; le transazioni confermano il terminale ma non creano una seconda vendita, mentre il payout riconcilia il credito sul conto Mastercard tramite riferimenti provider.",
             "Ogni gestore genera una propria uscita Cassa e un proprio credito atteso; accredito effettivo, commissione, rimborso, chargeback e movimento banca restano fatti separati ma collegati.",
             "Se arriva una fonte Numia più autorevole, confermare il valore uguale oppure aprire una differenza sul valore discordante senza sovrascrivere o duplicare silenziosamente; priorità: manuale, export Excel, terminale/API.",
@@ -149,7 +149,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         ],
         [
             "La sincronizzazione SumUp gira ogni 30 minuti e rilegge gli ultimi 30 giorni in modo idempotente; l'aggiornamento manuale può richiamare POST /api/sumup/sincronizza.",
-            "L'import Drive degli export Banco BPM instrada CSV/XLSX/XLSM POS al parser Numia e deduplica le transazioni per identificativo/hash.",
+            "L'import Drive degli export del gestore Numia instrada CSV/XLSX/XLSM al parser POS e deduplica ogni transazione per ID provider o chiave canonica.",
             "Import estratto conto idempotente; generazione automatica di attesi POS/versamenti; associazioni certe e coda dei dubbi.",
         ],
         [
@@ -159,7 +159,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
         [
             "Non inserire movimenti bancari reali in Cassa; non usare saldi hardcoded; non marcare pagato senza prova coerente.",
             "Non usare l'elettronico XML RT come importo Numia o SumUp e non sommare chiusura POS, vendita RT e accredito come tre ricavi.",
-            "Nessun connettore API Numia è presunto: senza chiusura manuale/batch o export ufficiale la quota Numia resta mancante, mai zero inventato.",
+            "Nessun connettore API Numia è presunto: senza chiusura manuale serale o export storico del gestore la quota Numia resta mancante, mai zero inventato.",
         ],
         [
             "Saldo per conto ricalcolabile al centesimo; versamento e POS risultano nelle sezioni corrette dopo refresh senza duplicati.",
@@ -603,7 +603,7 @@ PAGE_LOGIC: dict[int, dict[str, Any]] = {
             "Il pulsante Aggiorna ricarica soltanto GET /api/pos-corrispettivi/verifica-coerenza, riepilogo-mensile, controllo-due-fasi e /api/sumup/riepilogo; scrive soltanto l'inserimento esplicito della chiusura Numia singola/batch o del corrispettivo serale provvisorio.",
         ],
         [
-            "SumUp viene sincronizzato ogni 30 minuti rileggendo gli ultimi 30 giorni; Numia si aggiorna da inserimento singolo/batch o import Drive dell'export ufficiale Banco BPM.",
+            "SumUp viene sincronizzato via API rileggendo la finestra configurata; Numia corrente si aggiorna dalla chiusura terminale manuale e lo storico dall'import Drive degli export del gestore.",
             "Il caso viene ricalcolato e riaperto se cambia una fonte; il riepilogo SumUp della pagina è una lettura dell'archivio e non chiama la rete.",
         ],
         [

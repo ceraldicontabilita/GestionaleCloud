@@ -220,7 +220,7 @@ def _xlsx_rows(content: bytes) -> Iterable[Dict[str, Any]]:
 
 
 def parse_pos_terminal_file(content: bytes, filename: str) -> Dict[str, Any]:
-    """Legge CSV/XLSX BPM senza scrivere sul database."""
+    """Legge l'export transazioni Numia CSV/XLSX senza scrivere dati."""
     lower = filename.lower()
     if lower.endswith(".csv"):
         rows = _csv_rows(content)
@@ -437,6 +437,7 @@ async def importa_pos_terminal_file(db, content: bytes, filename: str, *, drive_
             yield
 
     from app.services.scritture_contabili import (
+        FONTE_EXCEL,
         GESTORE_POS_DEFAULT,
         registra_chiusura_pos_reale,
     )
@@ -481,9 +482,9 @@ async def importa_pos_terminal_file(db, content: bytes, filename: str, *, drive_
             await registra_chiusura_pos_reale(
                 db, data_iso, total,
                 gestore=GESTORE_POS_DEFAULT,
-                fonte="excel",
-                note="Import automatico POS BPM/Numia: somma transazioni approvate",
-                actor={"user_id": "drive_pos_bpm", "name": "Import automatico Drive"},
+                fonte=FONTE_EXCEL,
+                note="Storico Numia da Drive: somma giornaliera delle transazioni approvate",
+                actor={"user_id": "drive_pos_numia", "name": "Import storico Numia da Drive"},
             )
             totals[data_iso] = total
 
