@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-REVIEW_DATE = "2026-08-20"
+REVIEW_DATE = "2026-08-21"
 
 GENERATED = {
     "memoria/AUDIT_FRONTEND_DEAD_CODE.md",
@@ -23,6 +23,7 @@ GENERATED = {
 
 CURRENT = {
     ".github/copilot-instructions.md",
+    "AGENTS.md",
     "CLAUDE.md",
     "DESIGN.md",
     "LOGICA_FUNZIONAMENTO.md",
@@ -33,6 +34,7 @@ CURRENT = {
     "docs/MARKDOWN_INVENTORY.md",
     "docs/MCP_GESTIONALE_RUNBOOK.md",
     "docs/MCP_GESTIONALE_SPEC.md",
+    "docs/PROMPT_CEDOLINI_NETTO_DRIVE_SALARI.md",
     "docs/rt-locale-drive.md",
     "frontend/README.md",
     "memoria/DISASTER_RECOVERY_DRIVE.md",
