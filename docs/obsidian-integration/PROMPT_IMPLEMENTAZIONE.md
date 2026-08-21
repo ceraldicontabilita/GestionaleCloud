@@ -1,17 +1,20 @@
 # Prompt operativo per implementare l’integrazione
 
 <!-- gestionalecloud-doc
-status: current
+status: planned
 reviewed_at: 2026-08-21
 storage_architecture: drive-only
 -->
+
+> [!WARNING]
+> Specifica o piano approvato, ma non ancora completamente operativo. Verificare il runbook corrente e il codice distribuito prima dell'uso.
 
 ```text
 Implementa nel repository canonico ceraldicontabilita/GestionaleCloud
 l’integrazione con Obsidian descritta in docs/obsidian-integration/.
 
-Prima sincronizza e verifica repository, branch main, test, database,
-registri Drive/Sheets e permessi correnti. Il codice e i dati attuali sono
+Prima sincronizza e verifica repository, branch main, test, registri canonici
+Drive/Sheets, API correnti e permessi. Non usare database legacy. Il codice e i dati attuali sono
 l’autorità; la documentazione è la specifica dell’obiettivo.
 
 Procedi per fasi e completa prima una proiezione in sola lettura:

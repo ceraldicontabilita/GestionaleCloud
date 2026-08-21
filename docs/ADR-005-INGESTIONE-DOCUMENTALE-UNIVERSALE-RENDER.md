@@ -9,7 +9,7 @@ storage_architecture: drive-only
 > [!NOTE]
 > Snapshot storico: non descrive lo stato operativo corrente. Per l'architettura Drive-only usare `README.md`, `PRODUCT.md`, `CLAUDE.md` e `LOGICA_FUNZIONAMENTO.md`.
 
-**Status:** Accepted
+**Status:** Superseded / Historical
 **Date:** 2026-08-21
 **Deciders:** Ceraldi Group S.r.l.
 
@@ -70,8 +70,10 @@ avvisi e verbali restano moduli di dominio della pipeline unica.
 
 1. Configurare `GOOGLE_DRIVE_DOCUMENT_INDEX_FILE_ID` nel Workflow Render.
 2. Verificare in anteprima l'indice e i conteggi senza trasmettere documenti.
-3. Collegare i soli hash nuovi a `/api/documenti/upload-auto` con autenticazione
-   di servizio, idempotency key e audit.
+3. Completato: i soli hash nuovi usano gli endpoint autenticati
+   `/api/documenti/upload-auto/render/preview` e
+   `/api/documenti/upload-auto/render`, con anteprima obbligatoria e audit.
 4. Aggiungere watermark/manifest delle sorgenti per saltare ZIP e file Drive
    invariati senza riscaricarli.
-5. Attivare il cron soltanto dopo collaudo e conferma esplicita.
+5. Il task resta manuale: ogni ingestione richiede `confirm=true`; un eventuale
+   cron futuro dovrà avere un'autorizzazione operativa separata.

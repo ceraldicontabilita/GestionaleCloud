@@ -1,10 +1,13 @@
 # Sicurezza e governance
 
 <!-- gestionalecloud-doc
-status: current
+status: reference
 reviewed_at: 2026-08-21
 storage_architecture: drive-only
 -->
+
+> [!IMPORTANT]
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi di collection restano soltanto contesto storico.
 
 ## Classificazione
 

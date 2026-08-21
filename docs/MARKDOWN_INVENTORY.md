@@ -15,16 +15,18 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 |---|---|
 | `current` | Descrive il comportamento o le regole operative correnti. |
 | `reference` | Approfondimento di dominio; l'architettura corrente prevale. |
+| `planned` | Specifica o piano approvato, non ancora completamente operativo. |
 | `generated` | Output di uno script, da non modificare manualmente. |
 | `historical` | Audit, piano o fotografia datata, conservata come prova. |
 
 ## Riepilogo
 
-- Correnti: **35**
-- Riferimento: **25**
+- Correnti: **25**
+- Riferimento: **28**
+- Pianificati: **7**
 - Generati: **5**
-- Storici: **5**
-- Totale: **70**
+- Storici: **6**
+- Totale: **71**
 
 ## Elenco completo
 
@@ -50,20 +52,21 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 | `docs/MARKDOWN_INVENTORY.md` | `current` | Autorità operativa corrente |
 | `docs/MCP_GESTIONALE_RUNBOOK.md` | `current` | Autorità operativa corrente |
 | `docs/MCP_GESTIONALE_SPEC.md` | `current` | Autorità operativa corrente |
-| `docs/OBSIDIAN_KNOWLEDGE_ARCHITECTURE_2026-08-20.md` | `current` | Autorità operativa corrente |
+| `docs/OBSIDIAN_KNOWLEDGE_ARCHITECTURE_2026-08-20.md` | `planned` | Specifica approvata ma non ancora completamente operativa |
 | `docs/PIANO_OPERATIVO_GESTIONALE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/PROMPT_CEDOLINI_NETTO_DRIVE_SALARI.md` | `current` | Autorità operativa corrente |
 | `docs/PROMPT_GESTIONALE_MITTENTI_TRIBUTI_DICHIARAZIONI_PARTENOPAY.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
 | `docs/REGOLA_FISSA_ATTESE.md` | `current` | Autorità operativa corrente |
-| `docs/obsidian-integration/ARCHITETTURA.md` | `current` | Autorità operativa corrente |
-| `docs/obsidian-integration/MAPPA_COLLEGAMENTI.md` | `current` | Autorità operativa corrente |
-| `docs/obsidian-integration/MODELLO_NOTE.md` | `current` | Autorità operativa corrente |
-| `docs/obsidian-integration/PIANO_IMPLEMENTAZIONE.md` | `current` | Autorità operativa corrente |
-| `docs/obsidian-integration/PROMPT_IMPLEMENTAZIONE.md` | `current` | Autorità operativa corrente |
-| `docs/obsidian-integration/README.md` | `current` | Autorità operativa corrente |
-| `docs/obsidian-integration/SICUREZZA_E_GOVERNANCE.md` | `current` | Autorità operativa corrente |
-| `docs/obsidian-integration/templates/ENTITA.md` | `current` | Autorità operativa corrente |
-| `docs/obsidian-integration/templates/RUN_GIORNALIERO.md` | `current` | Autorità operativa corrente |
+| `docs/RUNBOOK-OBSIDIAN-PROCEDURE.md` | `historical` | Snapshot/audit datato, conservato come evidenza |
+| `docs/obsidian-integration/ARCHITETTURA.md` | `planned` | Specifica approvata ma non ancora completamente operativa |
+| `docs/obsidian-integration/MAPPA_COLLEGAMENTI.md` | `planned` | Specifica approvata ma non ancora completamente operativa |
+| `docs/obsidian-integration/MODELLO_NOTE.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
+| `docs/obsidian-integration/PIANO_IMPLEMENTAZIONE.md` | `planned` | Specifica approvata ma non ancora completamente operativa |
+| `docs/obsidian-integration/PROMPT_IMPLEMENTAZIONE.md` | `planned` | Specifica approvata ma non ancora completamente operativa |
+| `docs/obsidian-integration/README.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
+| `docs/obsidian-integration/SICUREZZA_E_GOVERNANCE.md` | `reference` | Dettaglio di dominio subordinato ai documenti correnti |
+| `docs/obsidian-integration/templates/ENTITA.md` | `planned` | Specifica approvata ma non ancora completamente operativa |
+| `docs/obsidian-integration/templates/RUN_GIORNALIERO.md` | `planned` | Specifica approvata ma non ancora completamente operativa |
 | `docs/rt-locale-drive.md` | `current` | Autorità operativa corrente |
 | `frontend/README.md` | `current` | Autorità operativa corrente |
 | `memoria/AUDIT_FRONTEND_DEAD_CODE.md` | `generated` | Artefatto meccanico; rigenerare dalla sorgente indicata |

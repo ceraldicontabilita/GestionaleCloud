@@ -1,12 +1,20 @@
 # GestionaleCloud + Obsidian
 
 <!-- gestionalecloud-doc
-status: current
+status: reference
 reviewed_at: 2026-08-21
 storage_architecture: drive-only
 -->
 
+> [!IMPORTANT]
+> Documento di riferimento del dominio. Per persistenza e cutover vale l'architettura Drive-only descritta nei documenti correnti; eventuali nomi di collection restano soltanto contesto storico.
+
 Specifiche per usare Obsidian come livello di conoscenza navigabile del GestionaleCloud senza trasformarlo nel registro operativo o contabile.
+
+> [!IMPORTANT]
+> La proiezione privata del Gestionale e Obsidian Sync non sono ancora attivi.
+> È operativa soltanto la generazione sicura del vault pubblico Procedure,
+> descritta in [../RUNBOOK-OBSIDIAN-PROCEDURE.md](../RUNBOOK-OBSIDIAN-PROCEDURE.md).
 
 ## Decisione architetturale
 

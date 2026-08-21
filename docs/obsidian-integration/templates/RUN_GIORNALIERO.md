@@ -1,10 +1,13 @@
 # Controllo giornaliero {{run_date}}
 
 <!-- gestionalecloud-doc
-status: current
+status: planned
 reviewed_at: 2026-08-21
 storage_architecture: drive-only
 -->
+
+> [!WARNING]
+> Specifica o piano approvato, ma non ancora completamente operativo. Verificare il runbook corrente e il codice distribuito prima dell'uso.
 
 | Indicatore | Valore |
 | --- | ---: |

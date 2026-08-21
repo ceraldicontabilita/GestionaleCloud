@@ -87,10 +87,19 @@ def classify(path: str) -> str:
         or path.startswith(".github/agents/")
         or path.startswith(".github/instructions/")
         or path.startswith(".github/skills/")
-        or path.startswith("docs/obsidian-integration/")
-        or path == "docs/OBSIDIAN_KNOWLEDGE_ARCHITECTURE_2026-08-20.md"
     ):
         return "current"
+    if path in {
+        "docs/obsidian-integration/README.md",
+        "docs/obsidian-integration/MODELLO_NOTE.md",
+        "docs/obsidian-integration/SICUREZZA_E_GOVERNANCE.md",
+    }:
+        return "reference"
+    if (
+        path.startswith("docs/obsidian-integration/")
+        or path == "docs/OBSIDIAN_KNOWLEDGE_ARCHITECTURE_2026-08-20.md"
+    ):
+        return "planned"
     if path in REFERENCE or path.startswith("memoria/moduli/"):
         return "reference"
     if path.startswith("memoria/endpoints/") and path not in {
@@ -125,6 +134,12 @@ def notice(status: str) -> str:
             "> Documento di riferimento del dominio. Per persistenza e cutover "
             "vale l'architettura Drive-only descritta nei documenti correnti; "
             "eventuali nomi di collection restano soltanto contesto storico."
+        )
+    if status == "planned":
+        return (
+            "> [!WARNING]\n"
+            "> Specifica o piano approvato, ma non ancora completamente operativo. "
+            "Verificare il runbook corrente e il codice distribuito prima dell'uso."
         )
     return ""
 
@@ -173,7 +188,10 @@ def update_document(path: str, status: str) -> None:
 
 
 def inventory(paths: list[str]) -> str:
-    counts = {status: 0 for status in ("current", "reference", "generated", "historical")}
+    counts = {
+        status: 0
+        for status in ("current", "reference", "planned", "generated", "historical")
+    }
     rows: list[str] = []
     for path in paths:
         status = classify(path)
@@ -181,6 +199,7 @@ def inventory(paths: list[str]) -> str:
         role = {
             "current": "Autorità operativa corrente",
             "reference": "Dettaglio di dominio subordinato ai documenti correnti",
+            "planned": "Specifica approvata ma non ancora completamente operativa",
             "generated": "Artefatto meccanico; rigenerare dalla sorgente indicata",
             "historical": "Snapshot/audit datato, conservato come evidenza",
         }[status]
@@ -199,6 +218,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 |---|---|
 | `current` | Descrive il comportamento o le regole operative correnti. |
 | `reference` | Approfondimento di dominio; l'architettura corrente prevale. |
+| `planned` | Specifica o piano approvato, non ancora completamente operativo. |
 | `generated` | Output di uno script, da non modificare manualmente. |
 | `historical` | Audit, piano o fotografia datata, conservata come prova. |
 
@@ -206,6 +226,7 @@ Classifica i documenti senza riscrivere gli artefatti prodotti da altri script.
 
 - Correnti: **{counts['current']}**
 - Riferimento: **{counts['reference']}**
+- Pianificati: **{counts['planned']}**
 - Generati: **{counts['generated']}**
 - Storici: **{counts['historical']}**
 - Totale: **{len(paths)}**
