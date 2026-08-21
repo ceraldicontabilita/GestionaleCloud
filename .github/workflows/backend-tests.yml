@@ -21,10 +21,15 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: |
+            backend/requirements.txt
+            render_workflows/requirements.txt
 
       - name: Installa dipendenze backend
         run: pip install -r backend/requirements.txt
+
+      - name: Installa dipendenze Render Workflows
+        run: pip install -r render_workflows/requirements.txt
 
       - name: Suite di test (incl. route-map-consistency, endpoint-classification, anti-hardcode collection)
         run: python -m pytest -q
