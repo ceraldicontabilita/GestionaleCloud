@@ -1363,6 +1363,27 @@ def _read_sheet_rows_batch_sync(
     return [item.get("values", []) for item in value_ranges]
 
 
+def _sheet_last_row_sync(spreadsheet_id: str, sheet: LedgerSheet) -> int:
+    """Restituisce l'ultima riga usata leggendo soltanto l'indice A:B."""
+    rows = _sheets_service().spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=f"'{sheet.title}'!A2:B",
+    ).execute().get("values", [])
+    return len(rows) + 1
+
+
+def _read_sheet_row_chunk_sync(
+    spreadsheet_id: str,
+    sheet: LedgerSheet,
+    start_row: int,
+    end_row: int,
+) -> List[List[Any]]:
+    return _sheets_service().spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=f"'{sheet.title}'!A{start_row}:{LAST_COLUMN}{end_row}",
+    ).execute().get("values", [])
+
+
 async def restore_all(
     db, config: Optional[Dict[str, Any]] = None, *, apply: bool = False,
     provision: bool = True,
@@ -1378,90 +1399,101 @@ async def restore_all(
         workbook = await asyncio.to_thread(_existing_workbook_sync, config)
     definitions = workbook.pop("sheet_definitions")
     results = []
+    restore_chunk_rows = 500
     for sheet in definitions:
+        valid = 0
+        errors: List[Dict[str, Any]] = []
+        error_count = 0
+        seen_progressive = set()
+        seen_ids = set()
+        fingerprints: List[str] = []
+        table = db[sheet.collection] if apply else None
+        can_bulk_hydrate = bool(
+            apply
+            and getattr(db, "loading", False)
+            and hasattr(table, "hydrate_documents")
+            and await table.estimated_document_count() == 0
+        )
+
+        def add_error(row_number: int, message: str) -> None:
+            nonlocal error_count
+            error_count += 1
+            if len(errors) < 100:
+                errors.append({"riga": row_number, "errore": message})
+
+        async def process_rows(start_row: int, rows: List[List[Any]]) -> None:
+            """Valida e idrata un solo blocco, poi ne consente il rilascio."""
+            nonlocal valid
+            pending_documents: List[tuple[Dict[str, Any], Dict[str, Any]]] = []
+            for offset, row in enumerate(rows):
+                index = start_row + offset
+                if len(row) < len(HEADERS):
+                    row = list(row) + [""] * (len(HEADERS) - len(row))
+                progressive = str(row[0] or "").strip()
+                key = str(row[1] or "").strip()
+                try:
+                    payload = decode_payload("".join(str(part or "") for part in row[15:]))
+                except (ValueError, json.JSONDecodeError, gzip.BadGzipFile, binascii.Error) as exc:
+                    add_error(index, f"payload_json non valido: {exc}")
+                    continue
+                if not progressive or not key or not isinstance(payload, dict):
+                    add_error(index, "progressivo, canonical_id o payload mancanti")
+                    continue
+                if progressive in seen_progressive or key in seen_ids:
+                    add_error(index, "progressivo o canonical_id duplicato")
+                    continue
+                seen_progressive.add(progressive)
+                seen_ids.add(key)
+                if canonical_id(payload) != key:
+                    add_error(index, "canonical_id diverso dal payload")
+                    continue
+                valid += 1
+                fingerprints.append(document_fingerprint(payload))
+                if apply:
+                    storage_payload = dict(payload)
+                    record_id = storage_payload.pop("_record_id", None)
+                    if record_id not in (None, ""):
+                        storage_payload["_id"] = str(record_id)
+                        identity_filter = {"_id": str(record_id)}
+                    else:
+                        identity_filter = canonical_filter(storage_payload)
+                    pending_documents.append((identity_filter, storage_payload))
+            if apply and pending_documents:
+                if can_bulk_hydrate:
+                    await table.hydrate_documents(
+                        (payload for _identity, payload in pending_documents),
+                        copy_documents=False,
+                        append=True,
+                    )
+                else:
+                    for identity_filter, storage_payload in pending_documents:
+                        await table.replace_one(
+                            identity_filter, storage_payload, upsert=True,
+                        )
+
         if provision:
             rows = await asyncio.to_thread(
                 _read_sheet_rows_sync, workbook["spreadsheet_id"], sheet,
             )
+            await process_rows(2, rows)
         else:
-            # Il registro runtime puo' contenere decine di migliaia di righe
-            # POS. Una sola batchGet per tutti i fogli manteneva in memoria,
-            # insieme alla cache gia ricostruita, anche tutte le risposte JSON
-            # ancora da elaborare. Leggere un foglio alla volta conserva la
-            # stessa atomicita' di ogni archivio e riduce il picco di memoria.
-            rows_for_sheet = await asyncio.to_thread(
-                _read_sheet_rows_batch_sync,
-                workbook["spreadsheet_id"],
-                (sheet,),
+            # Legge solo l'indice per trovare il limite, poi idrata al massimo
+            # 500 righe per volta. In questo modo il grande archivio POS non
+            # viene mai duplicato interamente nella memoria dell'istanza.
+            last_row = await asyncio.to_thread(
+                _sheet_last_row_sync, workbook["spreadsheet_id"], sheet,
             )
-            rows = rows_for_sheet[0]
-        valid = 0
-        errors = []
-        seen_progressive = set()
-        seen_ids = set()
-        fingerprints: List[str] = []
-        pending_documents: List[tuple[Dict[str, Any], Dict[str, Any]]] = []
-        for index, row in enumerate(rows, start=2):
-            if len(row) < len(HEADERS):
-                row = list(row) + [""] * (len(HEADERS) - len(row))
-            progressive = str(row[0] or "").strip()
-            key = str(row[1] or "").strip()
-            try:
-                payload = decode_payload("".join(str(part or "") for part in row[15:]))
-            except (ValueError, json.JSONDecodeError, gzip.BadGzipFile, binascii.Error) as exc:
-                errors.append({"riga": index, "errore": f"payload_json non valido: {exc}"})
-                continue
-            if not progressive or not key or not isinstance(payload, dict):
-                errors.append({"riga": index, "errore": "progressivo, canonical_id o payload mancanti"})
-                continue
-            if progressive in seen_progressive or key in seen_ids:
-                errors.append({"riga": index, "errore": "progressivo o canonical_id duplicato"})
-                continue
-            seen_progressive.add(progressive)
-            seen_ids.add(key)
-            if canonical_id(payload) != key:
-                errors.append({"riga": index, "errore": "canonical_id diverso dal payload"})
-                continue
-            valid += 1
-            fingerprints.append(document_fingerprint(payload))
-            if apply:
-                storage_payload = dict(payload)
-                record_id = storage_payload.pop("_record_id", None)
-                if record_id not in (None, ""):
-                    # Le righe prive di ID applicativo conservano l'ID interno
-                    # portabile, ripristinato come vero ``_id`` del registro.
-                    storage_payload["_id"] = str(record_id)
-                    identity_filter = {"_id": str(record_id)}
-                else:
-                    identity_filter = canonical_filter(storage_payload)
-                pending_documents.append((identity_filter, storage_payload))
-        if apply and pending_documents:
-            table = db[sheet.collection]
-            # Il runtime appena creato parte da tabelle vuote. In quel caso
-            # carichiamo la cache con una singola operazione O(n), evitando gli
-            # upsert O(n^2) che impedivano a Render di completare lo startup
-            # dopo l'importazione di migliaia di transazioni POS. Il percorso
-            # ordinario resta attivo per restore amministrativi su cache gia'
-            # popolate, preservandone la semantica di upsert senza cancellare.
-            can_bulk_hydrate = (
-                bool(getattr(db, "loading", False))
-                and hasattr(table, "hydrate_documents")
-                and await table.estimated_document_count() == 0
-            )
-            if can_bulk_hydrate:
-                await table.hydrate_documents(
-                    (payload for _identity, payload in pending_documents),
-                    copy_documents=False,
+            for start_row in range(2, last_row + 1, restore_chunk_rows):
+                end_row = min(last_row, start_row + restore_chunk_rows - 1)
+                rows = await asyncio.to_thread(
+                    _read_sheet_row_chunk_sync,
+                    workbook["spreadsheet_id"], sheet, start_row, end_row,
                 )
-            else:
-                for identity_filter, storage_payload in pending_documents:
-                    await table.replace_one(
-                        identity_filter, storage_payload, upsert=True,
-                    )
+                await process_rows(start_row, rows)
         results.append({
             "foglio": sheet.title, "collezione": sheet.collection,
             "prefisso": sheet.prefix,
-            "valide": valid, "errori": errors[:100], "numero_errori": len(errors),
+            "valide": valid, "errori": errors, "numero_errori": error_count,
             "digest": collection_fingerprint(fingerprints),
         })
     return {

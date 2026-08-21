@@ -233,11 +233,11 @@ def test_restore_runtime_non_provisiona_e_legge_un_foglio_alla_volta(monkeypatch
             },
         )
 
-        def fake_batch(spreadsheet_id, definitions):
-            calls.append((spreadsheet_id, tuple(definitions)))
-            return [[] for _ in definitions]
+        def fake_last_row(spreadsheet_id, definition):
+            calls.append((spreadsheet_id, definition))
+            return 1
 
-        monkeypatch.setattr(ledger, "_read_sheet_rows_batch_sync", fake_batch)
+        monkeypatch.setattr(ledger, "_sheet_last_row_sync", fake_last_row)
 
         result = await ledger.restore_all(
             db,
@@ -248,8 +248,7 @@ def test_restore_runtime_non_provisiona_e_legge_un_foglio_alla_volta(monkeypatch
 
         assert len(calls) == len(ledger.SHEETS)
         assert all(call[0] == "SHEET-1" for call in calls)
-        assert all(len(call[1]) == 1 for call in calls)
-        assert [call[1][0] for call in calls] == list(ledger.SHEETS)
+        assert [call[1] for call in calls] == list(ledger.SHEETS)
         assert result["spreadsheet_id"] == "SHEET-1"
 
     run(scenario())
@@ -271,8 +270,12 @@ def test_restore_ricostruisce_record_id_tecnico_come_id_reale(monkeypatch):
             },
         )
         monkeypatch.setattr(
-            ledger, "_read_sheet_rows_batch_sync",
-            lambda _spreadsheet_id, _definitions: [[row]],
+            ledger, "_sheet_last_row_sync",
+            lambda _spreadsheet_id, _definition: 2,
+        )
+        monkeypatch.setattr(
+            ledger, "_read_sheet_row_chunk_sync",
+            lambda _spreadsheet_id, _definition, _start, _end: [row],
         )
 
         await ledger.restore_all(
@@ -313,9 +316,16 @@ def test_restore_runtime_carica_in_blocco_registro_pos_voluminoso(monkeypatch):
             },
         )
         monkeypatch.setattr(
-            ledger, "_read_sheet_rows_batch_sync",
-            lambda _spreadsheet_id, _definitions: [rows],
+            ledger, "_sheet_last_row_sync",
+            lambda _spreadsheet_id, _definition: len(rows) + 1,
         )
+        chunk_calls = []
+
+        def read_chunk(_spreadsheet_id, _definition, start_row, end_row):
+            chunk_calls.append((start_row, end_row))
+            return rows[start_row - 2:end_row - 1]
+
+        monkeypatch.setattr(ledger, "_read_sheet_row_chunk_sync", read_chunk)
 
         table = db.pos_terminal_transactions
 
@@ -329,6 +339,7 @@ def test_restore_runtime_carica_in_blocco_registro_pos_voluminoso(monkeypatch):
         )
 
         assert result["fogli"][0]["valide"] == 2_000
+        assert chunk_calls == [(2, 501), (502, 1001), (1002, 1501), (1502, 2001)]
         assert await table.count_documents({}) == 2_000
         assert await table.count_documents({"id": "POS-NUMIA-TX-01999"}) == 1
 

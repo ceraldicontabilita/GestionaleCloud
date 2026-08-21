@@ -653,6 +653,7 @@ class SheetTable:
         documents: Iterable[dict[str, Any]],
         *,
         copy_documents: bool = True,
+        append: bool = False,
     ) -> int:
         """Carica in blocco una tabella vuota durante l'avvio da Sheets.
 
@@ -666,10 +667,12 @@ class SheetTable:
         if not self.database.loading:
             raise RuntimeError("hydrate_documents consentito solo durante l'idratazione")
         async with self._lock:
-            if self._documents:
+            if self._documents and not append:
                 raise RuntimeError("hydrate_documents richiede una tabella vuota")
             stored_documents: list[dict[str, Any]] = []
-            seen_ids: set[str] = set()
+            seen_ids: set[str] = {
+                str(document.get("_id")) for document in self._documents
+            }
             for document in documents:
                 # Durante restore_all il payload e' appena decodificato da
                 # Sheets e viene ceduto alla cache: copiarlo nuovamente
@@ -684,7 +687,10 @@ class SheetTable:
                     )
                 seen_ids.add(record_id)
                 stored_documents.append(stored)
-            self._documents = stored_documents
+            if append:
+                self._documents.extend(stored_documents)
+            else:
+                self._documents = stored_documents
             return len(stored_documents)
 
     async def distinct(self, key: str, selector: dict[str, Any] | None = None, *args, **kwargs) -> list[Any]:
