@@ -71,6 +71,33 @@ def _clone(value: Any) -> Any:
     return copy.deepcopy(value)
 
 
+def _hashable_unique_value(value: Any) -> Any:
+    """Converte valori JSON-like in chiavi hashabili senza cambiarne l'uguaglianza."""
+    if value is MISSING:
+        return ("missing",)
+    if isinstance(value, dict):
+        return (
+            "dict",
+            tuple(
+                sorted(
+                    ((str(key), _hashable_unique_value(item)) for key, item in value.items()),
+                    key=lambda item: item[0],
+                )
+            ),
+        )
+    if isinstance(value, list):
+        return ("list", tuple(_hashable_unique_value(item) for item in value))
+    if isinstance(value, tuple):
+        return ("tuple", tuple(_hashable_unique_value(item) for item in value))
+    if isinstance(value, set):
+        return ("set", frozenset(_hashable_unique_value(item) for item in value))
+    try:
+        hash(value)
+    except TypeError:
+        return ("repr", repr(value))
+    return ("scalar", value)
+
+
 def _new_id() -> str:
     return uuid.uuid4().hex
 
@@ -668,8 +695,43 @@ class SheetTable:
             for document in documents:
                 stored = _clone(document)
                 stored.setdefault("_id", _new_id())
-                self._check_unique(stored)
                 stored_documents.append(stored)
+
+            # Convalida ogni indice univoco in O(righe esistenti + batch),
+            # anziche' scandire tutte le righe per ogni nuovo documento. Il
+            # percorso precedente diventava quadratico durante gli import POS
+            # e bloccava l'health check di Render prima del completamento.
+            for metadata in self._indexes.values():
+                if not metadata.get("unique"):
+                    continue
+                fields = [
+                    item[0] if isinstance(item, (tuple, list)) else item
+                    for item in metadata.get("key", [])
+                ]
+                if not fields:
+                    continue
+                partial = metadata.get("partialFilterExpression")
+                sparse = bool(metadata.get("sparse"))
+                seen: set[Any] = set()
+                for existing in self._documents:
+                    if partial and not matches_filter(existing, partial):
+                        continue
+                    values = tuple(get_path(existing, field, MISSING) for field in fields)
+                    if sparse and any(value is MISSING or value is None for value in values):
+                        continue
+                    seen.add(tuple(_hashable_unique_value(value) for value in values))
+                for stored in stored_documents:
+                    if partial and not matches_filter(stored, partial):
+                        continue
+                    values = tuple(get_path(stored, field, MISSING) for field in fields)
+                    if sparse and any(value is MISSING or value is None for value in values):
+                        continue
+                    marker = tuple(_hashable_unique_value(value) for value in values)
+                    if marker in seen:
+                        raise DuplicateRecordError(
+                            f"Valore duplicato nel foglio {self.name}: {fields}"
+                        )
+                    seen.add(marker)
             for original, stored in zip(documents, stored_documents):
                 original.setdefault("_id", stored["_id"])
             self._documents.extend(stored_documents)
