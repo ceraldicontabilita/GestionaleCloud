@@ -6,6 +6,7 @@ def test_indice_drive_classifica_solo_pdf_amministrativi(monkeypatch):
         {"ID documento": "v1", "Dominio": "VERBALI AUTO", "Categoria": "NOTIFICHE POLIZIA LOCALE", "Anno": "2026", "Nome file": "verbale.pdf", "Estensione": "pdf", "SHA-256": "a", "Percorso Drive": "VERBALI AUTO/verbale.pdf", "Stato": "VERIFICATO"},
         {"ID documento": "t1", "Dominio": "TRIBUTI LOCALI - TARI TARES TARSU", "Categoria": "TARI", "Anno": "2024", "Nome file": "tari.pdf", "Estensione": "pdf", "SHA-256": "b", "Percorso Drive": "TRIBUTI LOCALI/tari.pdf", "Stato": "DA VERIFICARE"},
         {"ID documento": "p1", "Dominio": "CORRISPONDENZA PEC - FONTI", "Categoria": "testo_email", "Anno": "2026", "Nome file": "dimissioni.txt", "Estensione": "txt", "SHA-256": "c", "Percorso Drive": "PEC/dimissioni.txt", "Stato": "VERIFICATO"},
+        {"ID documento": "id1", "Dominio": "DOCUMENTI AZIENDALI", "Categoria": "Documento di identita", "Anno": "2022", "Nome file": "carta.pdf", "Estensione": "pdf", "SHA-256": "d", "Percorso Drive": "DOCUMENTI AZIENDALI/carta.pdf", "ZIP origine": "ESTRAZIONE 5 MITTENTI", "Percorso nel pacchetto": "01_DOCUMENTI_PDF/tari/carta.pdf", "Stato": "VERIFICATO"},
     ]
     monkeypatch.setattr(index, "load_catalog", lambda service=None: ({}, records))
 

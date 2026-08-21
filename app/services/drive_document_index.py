@@ -413,9 +413,12 @@ _ADMINISTRATIVE_AREA_TERMS = {
 
 
 def _administrative_area(record: dict[str, Any]) -> str | None:
+    # La collocazione operativa Drive decide l'area. Il percorso storico nel
+    # pacchetto puo' descrivere solo l'email a cui un allegato apparteneva (per
+    # esempio un documento d'identita' allegato a una pratica TARI) e non deve
+    # quindi promuovere quell'allegato ad atto amministrativo.
     searchable = _norm(" ".join(str(record.get(field) or "") for field in (
         "Dominio", "Categoria", "Nome file", "Percorso Drive",
-        "ZIP origine", "Percorso nel pacchetto",
     )))
     for area, terms in _ADMINISTRATIVE_AREA_TERMS.items():
         if any(term in searchable for term in terms):
@@ -441,7 +444,12 @@ def list_administrative_documents(
         if not record_area:
             continue
         status = _norm(record.get("Stato"))
-        requires_review = status in {"da verificare", "da_verificare", "errore"}
+        category = _norm(record.get("Categoria"))
+        requires_review = (
+            status in {"da verificare", "da_verificare", "errore"}
+            or not str(record.get("Anno") or "").strip()
+            or category in {"esistente su drive", "documento"}
+        )
         overview_counts[record_area] += 1
         overview_review += int(requires_review)
 
