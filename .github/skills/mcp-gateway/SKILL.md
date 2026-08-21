@@ -28,7 +28,7 @@ Verificare che:
 - app/ e app/routers/ per validare i confini delle API
 
 ## Requisiti applicativi
-- Nessuna query diretta a MongoDB
+- Nessuna query diretta ad archivi esterni al registro Drive/Sheets
 - Nessun bypass del backend ERP
 - Nessuna inferenza di pagamento solo da importo
 - Nessun output binario, PDF, XML originale o credenziale
