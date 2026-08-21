@@ -21,7 +21,9 @@ logger = logging.getLogger(__name__)
 
 COLLECTION = "document_import_jobs"
 _ACTIVE_TASKS: dict[str, asyncio.Task] = {}
+_PENDING_JOBS: dict[str, Dict[str, Any]] = {}
 _POS_IMPORT_LOCK = asyncio.Lock()
+_JOB_START_DELAY_SECONDS = 0.25
 
 
 def _now() -> str:
@@ -47,9 +49,12 @@ def public_job(record: Dict[str, Any] | None) -> Dict[str, Any] | None:
 
 
 async def _save_job(db, job_id: str, values: Dict[str, Any]) -> None:
+    pending = _PENDING_JOBS.setdefault(job_id, {"id": job_id, "job_id": job_id})
+    pending.update(values)
+    pending["updated_at"] = _now()
     await db[COLLECTION].update_one(
         {"id": job_id},
-        {"$set": {**values, "updated_at": _now()}},
+        {"$set": dict(pending)},
         upsert=True,
     )
 
@@ -89,6 +94,19 @@ def _forget_task(job_id: str, task: asyncio.Task) -> None:
     current = _ACTIVE_TASKS.get(job_id)
     if current is task:
         _ACTIVE_TASKS.pop(job_id, None)
+        _PENDING_JOBS.pop(job_id, None)
+
+
+async def _run_pos_job_after_ack(
+    db, *, job_id: str, content: bytes, filename: str,
+    drive_file_id: str | None = None,
+) -> None:
+    """Lascia al gateway il tempo di inviare il 202 prima di scrivere su Sheets."""
+    await asyncio.sleep(_JOB_START_DELAY_SECONDS)
+    await _run_pos_job(
+        db, job_id=job_id, content=content, filename=filename,
+        drive_file_id=drive_file_id,
+    )
 
 
 async def enqueue_pos_import(
@@ -103,11 +121,12 @@ async def enqueue_pos_import(
     if existing and existing.get("status") == "completed":
         return {"queued": False, **(public_job(existing) or {})}
     if active is not None and not active.done():
-        return {"queued": True, **(public_job(existing) or {"job_id": job_id})}
+        visible = _PENDING_JOBS.get(job_id) or existing or {"job_id": job_id}
+        return {"queued": True, **(public_job(visible) or {"job_id": job_id})}
 
     attempts = int((existing or {}).get("attempts") or 0) + 1
     created_at = (existing or {}).get("created_at") or _now()
-    await _save_job(db, job_id, {
+    queued_record = {
         "id": job_id,
         "job_id": job_id,
         "operation_id": f"document-import:{digest}",
@@ -122,9 +141,11 @@ async def enqueue_pos_import(
         "failed_at": None,
         "result": None,
         "error": None,
-    })
+        "updated_at": _now(),
+    }
+    _PENDING_JOBS[job_id] = queued_record
     task = asyncio.create_task(
-        _run_pos_job(
+        _run_pos_job_after_ack(
             db, job_id=job_id, content=content, filename=filename,
             drive_file_id=drive_file_id,
         ),
@@ -134,18 +155,15 @@ async def enqueue_pos_import(
     task.add_done_callback(lambda done: _forget_task(job_id, done))
     return {
         "queued": True,
-        "id": job_id,
-        "job_id": job_id,
-        "status": "queued",
-        "filename": filename,
-        "document_type": "pos_terminal",
-        "content_sha256": digest,
-        "attempts": attempts,
-        "created_at": created_at,
+        **(public_job(queued_record) or {"job_id": job_id, "status": "queued"}),
     }
 
 
 async def get_import_job(db, job_id: str) -> Dict[str, Any] | None:
+    active = _ACTIVE_TASKS.get(job_id)
+    pending = _PENDING_JOBS.get(job_id)
+    if pending is not None and active is not None and not active.done():
+        return public_job(pending)
     return public_job(
         await db[COLLECTION].find_one({"id": job_id}, {"_id": 0})
     )
