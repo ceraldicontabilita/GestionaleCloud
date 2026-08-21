@@ -45,7 +45,7 @@ const BLU = '#0f2744';
 const VERDE = '#16a34a';
 const ROSSO = '#dc2626';
 const MESI = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
-const PER_PAGINA = 50;
+const RIGHE_PER_PAGINA_DEFAULT = 200;
 const CATEGORIA_STORICA = '__movimenti_storici__';
 
 const CATEGORIE = {
@@ -569,6 +569,7 @@ export function MovimentoModal({ tipo, movimento, onClose, onSaved }) {
 function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRiporto }) {
   const isMobile = useIsMobile();
   const [pagina, setPagina] = useState(1);
+  const [righePerPagina, setRighePerPagina] = useState(RIGHE_PER_PAGINA_DEFAULT);
   const [cerca, setCerca] = useState(selectedId);
   const [fNumeroFattura, setFNumeroFattura] = useState('');
   const [fNumeroDdt, setFNumeroDdt] = useState('');
@@ -652,9 +653,14 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
     fNumeroFattura, fDataFattura, fFornitore,
   ]);
 
-  const totPagine = Math.max(1, Math.ceil(visibili.length / PER_PAGINA));
+  const limitePagina = righePerPagina === 'tutte'
+    ? Math.max(1, visibili.length)
+    : Number(righePerPagina);
+  const totPagine = Math.max(1, Math.ceil(visibili.length / limitePagina));
   const paginaCorrente = Math.min(pagina, totPagine);
-  const righe = visibili.slice((paginaCorrente - 1) * PER_PAGINA, paginaCorrente * PER_PAGINA);
+  const primaRiga = visibili.length ? (paginaCorrente - 1) * limitePagina + 1 : 0;
+  const ultimaRiga = Math.min(paginaCorrente * limitePagina, visibili.length);
+  const righe = visibili.slice(primaRiga ? primaRiga - 1 : 0, ultimaRiga);
   const ultimaPagina = paginaCorrente === totPagine;
 
   const categorieUsate = useMemo(() => {
@@ -901,16 +907,34 @@ function Registro({ tipo, dati, mese, selectedId = '', onRicarica, onModificaRip
       </div>
 
       {/* paginazione */}
-      {totPagine > 1 && (
+      {visibili.length > 0 && (
         <div
           style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             background: BLU, color: 'white', borderRadius: 10, padding: '8px 12px', marginBottom: 10, fontSize: 13,
           }}
         >
-          <span>📄 {paginaCorrente}/{totPagine} — {visibili.length} movimenti</span>
-          <span style={{ display: 'flex', gap: 4 }}>
-            {[['«', 1], ['‹', paginaCorrente - 1], ['›', paginaCorrente + 1], ['»', totPagine]].map(([s, p]) => (
+          <span>
+            Mostrati <b>{primaRiga}–{ultimaRiga}</b> di <b>{visibili.length}</b> movimenti
+          </span>
+          <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label htmlFor={`righe-per-pagina-${tipo}`}>Righe:</label>
+            <select
+              id={`righe-per-pagina-${tipo}`}
+              aria-label={`Righe per pagina ${tipo}`}
+              value={righePerPagina}
+              onChange={e => {
+                setRighePerPagina(e.target.value === 'tutte' ? 'tutte' : Number(e.target.value));
+                setPagina(1);
+              }}
+              style={{ padding: '7px 8px', borderRadius: 7, border: 0 }}
+            >
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={200}>200</option>
+              <option value="tutte">Tutte</option>
+            </select>
+            {totPagine > 1 && [['«', 1], ['‹', paginaCorrente - 1], ['›', paginaCorrente + 1], ['»', totPagine]].map(([s, p]) => (
               <button
                 key={s} onClick={() => setPagina(Math.min(totPagine, Math.max(1, p)))}
                 aria-label={s === '«' ? 'Prima pagina' : s === '‹' ? 'Pagina precedente' : s === '›' ? 'Pagina successiva' : 'Ultima pagina'}

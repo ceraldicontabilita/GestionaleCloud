@@ -61,7 +61,7 @@ Non raggiunti dal grafo di import statico, ma il nome del file compare altrove n
 | `frontend/src/api.js` | COMPONENTE_USATO | 107 |
 | `frontend/src/components/AgentiPanel.jsx` | DINAMICO_DA_VERIFICARE | 0 |
 | `frontend/src/components/AssociaAssegnoFattura.jsx` | COMPONENTE_USATO | 2 |
-| `frontend/src/components/AssociaMovimentoBanca.jsx` | COMPONENTE_USATO | 1 |
+| `frontend/src/components/AssociaMovimentoBanca.jsx` | COMPONENTE_USATO | 2 |
 | `frontend/src/components/ChatIntelligente.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/CopiaTesto.jsx` | COMPONENTE_USATO | 1 |
 | `frontend/src/components/CopyLinkButton.jsx` | COMPONENTE_USATO | 5 |
