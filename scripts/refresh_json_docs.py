@@ -476,7 +476,9 @@ def rewrite_mcp_evals() -> None:
 
 
 def json_files() -> list[Path]:
-    excluded_parts = {".git", ".pytest_cache", "node_modules", "dist", "tmp"}
+    excluded_parts = {
+        ".claude", ".git", ".pytest_cache", "node_modules", "dist", "tmp",
+    }
     result: list[Path] = []
     for path in ROOT.rglob("*.json"):
         relative_path = path.relative_to(ROOT)
