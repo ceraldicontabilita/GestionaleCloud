@@ -35,6 +35,7 @@ _sync_lock = asyncio.Lock()
 _bg_task: Optional[asyncio.Task] = None
 _rebuild_lock = asyncio.Lock()
 _rebuild_task: Optional[asyncio.Task] = None
+_WEB_REBUILD_BATCH_SIZE = 10
 
 
 def _batch_size() -> int:
@@ -72,12 +73,21 @@ def start_background_sync(db) -> bool:
     return True
 
 
-def start_background_rebuild(db) -> bool:
-    """Avvia la ricostruzione idempotente senza spostare file Drive."""
+def start_background_rebuild(db, *, reset: bool = False) -> bool:
+    """Avvia un lotto riprendibile senza spostare file Drive.
+
+    Il web worker non deve tenere in memoria l'intero archivio per molti
+    minuti: su istanze con memoria contenuta Render terminerebbe il processo e
+    il recupero ripartirebbe sempre dal primo file. Il cursore del lotto viene
+    salvato in ``drive_sync_state`` e la chiamata successiva riprende dal file
+    seguente.
+    """
     global _rebuild_task
     if _rebuild_lock.locked() or _sync_lock.locked():
         return False
-    _rebuild_task = asyncio.create_task(ricostruisci_archivio_drive(db))
+    _rebuild_task = asyncio.create_task(
+        ricostruisci_archivio_drive_lotto(db, reset=reset)
+    )
     return True
 
 
@@ -400,6 +410,164 @@ async def _do_sync(db) -> Dict[str, Any]:
         upsert=True,
     )
     return result
+
+
+def _safe_rebuild_batch_size(value: int) -> int:
+    """Limita i lotti web per non saturare memoria o timeout del servizio."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = _WEB_REBUILD_BATCH_SIZE
+    return max(1, min(parsed, 20))
+
+
+async def ricostruisci_archivio_drive_lotto(
+    db,
+    *,
+    batch_size: int = _WEB_REBUILD_BATCH_SIZE,
+    reset: bool = False,
+) -> Dict[str, Any]:
+    """Ricostruisce un lotto ordinato e persiste un cursore riprendibile.
+
+    La scansione comprende radice, ``Da elaborare``, ``Elaborate`` ed
+    ``Errori`` e non modifica mai Drive. I file sono ordinati per ID Drive:
+    dopo ogni lotto viene memorizzato l'ultimo ID completato. Un riavvio del
+    servizio può quindi ripetere al massimo il lotto corrente (la pipeline è
+    idempotente), senza ricominciare l'intero archivio.
+    """
+    if _rebuild_lock.locked() or _sync_lock.locked():
+        return {"status": "running", "message": "Ricostruzione gia' in corso"}
+
+    async with _rebuild_lock:
+        if not is_configured():
+            return {"status": "not_configured", "message": "Drive fatture non configurato"}
+        creds, cred_err = _load_credentials_fatture()
+        if creds is None:
+            return {"status": "error", "message": f"Credenziali non valide: {cred_err}"}
+        service = _build_drive_service()
+        if service is None:
+            return {"status": "error", "message": "Service Drive non disponibile"}
+
+        from app.routers.invoices.fatture_upload import process_xml_bytes
+
+        state = await db[_SYNC_STATE_COLLECTION].find_one({"_id": _SYNC_STATE_ID}) or {}
+        previous = state.get("last_rebuild_result") or {}
+        can_resume = (
+            not reset
+            and previous.get("status") in {"pending", "running"}
+            and bool(previous.get("cursor"))
+        )
+        cursor = str(previous.get("cursor")) if can_resume else None
+        started_at = (
+            previous.get("started_at") if can_resume
+            else datetime.now(timezone.utc).isoformat()
+        )
+        counters = {
+            key: int(previous.get(key, 0) or 0) if can_resume else 0
+            for key in ("imported", "duplicates", "archiviate", "errors")
+        }
+        folders: Dict[str, int] = {}
+
+        try:
+            unique_files: Dict[str, Dict[str, Any]] = {}
+            for folder_name, folder_id in _source_folders(service, _folder_id()):
+                files = await asyncio.to_thread(_list_xml_files, service, folder_id)
+                folders[folder_name] = len(files)
+                for file_info in files:
+                    unique_files.setdefault(file_info["id"], file_info)
+
+            ordered = sorted(unique_files.values(), key=lambda item: str(item["id"]))
+            if cursor:
+                remaining = [item for item in ordered if str(item["id"]) > cursor]
+            else:
+                remaining = ordered
+            already_processed = len(ordered) - len(remaining)
+            batch = remaining[:_safe_rebuild_batch_size(batch_size)]
+            details: List[Dict[str, str]] = []
+
+            for file_info in batch:
+                content = None
+                outcome = None
+                try:
+                    content = await asyncio.to_thread(
+                        _download_bytes, service, file_info["id"],
+                    )
+                    outcome = await process_xml_bytes(
+                        db,
+                        content,
+                        file_info["name"],
+                        source="ricostruzione_drive",
+                        applica_filtro_anno=True,
+                        replay_storico=True,
+                    )
+                    status = outcome.get("status")
+                    if status == "imported":
+                        counters["imported"] += 1
+                    elif status == "duplicate":
+                        counters["duplicates"] += 1
+                    elif status == "archiviata":
+                        counters["archiviate"] += 1
+                    else:
+                        counters["errors"] += 1
+                        details.append({
+                            "file": file_info["name"],
+                            "error": str(outcome.get("error") or "errore")[:200],
+                        })
+                except Exception as exc:
+                    logger.exception(
+                        "Ricostruzione Drive a lotti: errore sul file %s",
+                        file_info["name"],
+                    )
+                    counters["errors"] += 1
+                    details.append({
+                        "file": file_info["name"], "error": str(exc)[:200],
+                    })
+                finally:
+                    # Non trattenere XML/parsing tra un documento e il successivo.
+                    content = None
+                    outcome = None
+                await asyncio.sleep(0)
+
+            processed = already_processed + len(batch)
+            pending = max(len(ordered) - processed, 0)
+            completed = pending == 0
+            completed_at = datetime.now(timezone.utc).isoformat() if completed else None
+            checkpoint: Dict[str, Any] = {
+                "status": "ok" if completed else "pending",
+                "total": len(ordered),
+                "processed": processed,
+                "pending": pending,
+                **counters,
+                "folders": folders,
+                "cursor": str(batch[-1]["id"]) if batch else cursor,
+                "batch_processed": len(batch),
+                "batch_size": _safe_rebuild_batch_size(batch_size),
+                "started_at": started_at,
+                "details": details[:10],
+            }
+            update: Dict[str, Any] = {"last_rebuild_result": checkpoint}
+            if completed_at:
+                update["last_rebuild"] = completed_at
+            await db[_SYNC_STATE_COLLECTION].update_one(
+                {"_id": _SYNC_STATE_ID}, {"$set": update}, upsert=True,
+            )
+            return checkpoint
+        except Exception as exc:
+            logger.exception("Ricostruzione Drive a lotti fallita")
+            checkpoint = {
+                "status": "error",
+                "message": str(exc)[:300],
+                "cursor": cursor,
+                "started_at": started_at,
+                **counters,
+                "folders": folders,
+            }
+            await db[_SYNC_STATE_COLLECTION].update_one(
+                {"_id": _SYNC_STATE_ID},
+                {"$set": {"last_rebuild_result": checkpoint}},
+                upsert=True,
+            )
+            return checkpoint
 
 
 async def ricostruisci_archivio_drive(db) -> Dict[str, Any]:

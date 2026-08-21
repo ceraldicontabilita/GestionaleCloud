@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1136 endpoint** in **112 gruppi**.
+> Totale **1137 endpoint** in **112 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 695 · ext esterni = 83 · — da verificare = 358
+**Riepilogo uso:** ✓ frontend = 695 · ext esterni = 83 · — da verificare = 359
 
 ## AI Parser  (11)
 
@@ -859,12 +859,13 @@
 | POST | `/api/f24-public/upload` | ext | f24.f24_public |
 | POST | `/api/f24-public/upload-overwrite` | ext | f24.f24_public |
 
-## Fatture Drive  (4)
+## Fatture Drive  (5)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | POST | `/api/fatture/drive/quadratura` | — | invoices.fatture_drive |
 | POST | `/api/fatture/drive/ricostruzione` | — | invoices.fatture_drive |
+| POST | `/api/fatture/drive/ricostruzione/lotto` | — | invoices.fatture_drive |
 | GET | `/api/fatture/drive/status` | ✓ | invoices.fatture_drive |
 | POST | `/api/fatture/drive/sync` | ✓ | invoices.fatture_drive |
 
