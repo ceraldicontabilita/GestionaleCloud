@@ -699,7 +699,7 @@ Gli alias senza valore vanno configurati nel secret/config store di Render. Non 
 
 ## Appendice D — Tutti i router e tutti gli endpoint
 
-Route table sorgente: **1137**; attivi da ricreare: **737**; quarantena: **400** (`verificare` 373, `admin-only` 27).
+Route table sorgente: **1140**; attivi da ricreare: **738**; quarantena: **402** (`verificare` 375, `admin-only` 27).
 
 `attivo` significa da ricreare con contratto e test; `quarantena` significa non esporre nel nuovo runtime finché consumer, autorizzazione e test non sono provati. L'elenco è completo e include entrambe le categorie.
 
@@ -770,7 +770,7 @@ Route table sorgente: **1137**; attivi da ricreare: **737**; quarantena: **400**
 - **attivo** — `DELETE /api/piano-conti/{conto_id}` — in uso: FE
 - **attivo** — `PUT /api/piano-conti/{conto_id}` — in uso: FE
 
-### Router `accounting.prima_nota_salari` (20)
+### Router `accounting.prima_nota_salari` (23)
 
 - **quarantena: verificare** — `POST /api/prima-nota-salari/consolida-record` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `GET /api/prima-nota-salari/dipendenti-lista` — in uso: FE
@@ -779,10 +779,12 @@ Route table sorgente: **1137**; attivi da ricreare: **737**; quarantena: **400**
 - **quarantena: verificare** — `GET /api/prima-nota-salari/export-excel` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `POST /api/prima-nota-salari/import-bonifici` — in uso: FE
 - **attivo** — `POST /api/prima-nota-salari/import-paghe` — in uso: FE
-- **attivo** — `POST /api/prima-nota-salari/import-salari-verificati` — import JSON idempotente dei netti verificati da Drive, senza pandas/openpyxl
+- **quarantena: verificare** — `POST /api/prima-nota-salari/import-salari-ricostruiti` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
+- **quarantena: verificare** — `POST /api/prima-nota-salari/import-salari-verificati` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **quarantena: verificare** — `DELETE /api/prima-nota-salari/pulisci-righe-vuote` — nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare
 - **attivo** — `POST /api/prima-nota-salari/ricalcola-progressivi` — in uso: FE
 - **attivo** — `GET /api/prima-nota-salari/salari` — in uso: FE
+- **attivo** — `GET /api/prima-nota-salari/salari-ricostruiti` — in uso: FE
 - **attivo** — `POST /api/prima-nota-salari/salari/aggiustamento` — in uso: FE
 - **quarantena: admin-only** — `DELETE /api/prima-nota-salari/salari/reset` — endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7)
 - **attivo** — `GET /api/prima-nota-salari/salari/riepilogo` — in uso: FE

@@ -156,6 +156,19 @@ def _chiave_busta_excel(
     return "busta_excel:" + hashlib.sha256(base.encode("utf-8")).hexdigest()
 
 
+def _chiave_salario_ricostruito(row: Dict[str, Any]) -> str:
+    """Identita' stabile della singola riga del prospetto, senza aggregare il mese."""
+    base = "|".join([
+        str(row.get("workbook_row") or row.get("excel_row") or ""),
+        normalize_name(str(row.get("employee") or row.get("dipendente") or "")),
+        str(row.get("year") or row.get("anno") or ""),
+        str(row.get("month_label") or row.get("mese_competenza") or row.get("month") or ""),
+        str(row.get("payslip_source") or row.get("source") or "").strip(),
+        f"{float(row.get('reconstructed_amount') or 0):.2f}",
+    ])
+    return "salario_ricostruito:" + hashlib.sha256(base.encode("utf-8")).hexdigest()
+
+
 # ============== ENDPOINTS ==============
 
 @router.get("/salari")
@@ -268,12 +281,29 @@ async def get_cedolino_pdf(
         },
     )
     if not salario:
+        salario = await db["salari_ricostruiti"].find_one(
+            {"id": record_id},
+            {
+                "_id": 0, "cedolino_id": 1, "dipendente": 1,
+                "mese": 1, "anno": 1, "tipo_cedolino": 1,
+                "fonte_cedolino": 1,
+            },
+        )
+    if not salario:
         raise HTTPException(status_code=404, detail="Riga salario non trovata")
 
     cedolino = None
     if salario.get("cedolino_id"):
         cedolino = await db["cedolini"].find_one(
             {"id": salario["cedolino_id"]},
+            {"_id": 0, "pdf_data": 1},
+        )
+    if (not cedolino or not cedolino.get("pdf_data")) and salario.get("fonte_cedolino"):
+        cedolino = await db["cedolini"].find_one(
+            {
+                "filename": salario["fonte_cedolino"],
+                "pdf_data": {"$exists": True, "$nin": [None, ""]},
+            },
             {"_id": 0, "pdf_data": 1},
         )
     if not cedolino or not cedolino.get("pdf_data"):
@@ -1051,6 +1081,128 @@ async def import_salari_verificati(data: Dict[str, Any] = Body(...)) -> Dict[str
         "totale_importato": round(totale, 2),
         "progressivi_ricalcolati": False,
         "errors": errors[:20],
+    }
+
+
+@router.get("/salari-ricostruiti")
+async def get_salari_ricostruiti(
+    anno: Optional[int] = Query(None),
+    dipendente: Optional[str] = Query(None),
+) -> List[Dict[str, Any]]:
+    """Prospetto storico documentale: non genera scritture di prima nota."""
+    query: Dict[str, Any] = {}
+    if anno:
+        query["anno"] = anno
+    if dipendente:
+        query["dipendente"] = {"$regex": dipendente, "$options": "i"}
+    db = Database.get_db()
+    salari = await db["salari_ricostruiti"].find(
+        query, {"_id": 0}
+    ).sort([("anno", -1), ("mese_ordine", 1), ("dipendente", 1), ("workbook_row", 1)]).to_list(5000)
+    cedolini = await db["cedolini"].find(
+        {}, {"_id": 0, "id": 1, "filename": 1, "nome_dipendente": 1, "anno": 1, "mese": 1, "tipo_cedolino": 1}
+    ).to_list(10000)
+    per_filename: Dict[str, List[Dict[str, Any]]] = {}
+    for cedolino in cedolini:
+        filename = str(cedolino.get("filename") or "").strip().casefold()
+        if filename:
+            per_filename.setdefault(filename, []).append(cedolino)
+    for salario in salari:
+        candidati = per_filename.get(str(salario.get("fonte_cedolino") or "").strip().casefold(), [])
+        if len(candidati) == 1:
+            salario["cedolino_id"] = candidati[0].get("id")
+            salario["cedolino_disponibile"] = bool(candidati[0].get("id"))
+        else:
+            salario["cedolino_disponibile"] = False
+            salario["cedolino_associazione_ambigua"] = len(candidati) > 1
+    return salari
+
+
+@router.post("/import-salari-ricostruiti")
+async def import_salari_ricostruiti(
+    data: Dict[str, Any] = Body(...),
+    _current_user: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Importa il prospetto verificato mantenendo ogni cedolino e le evidenze banca.
+
+    L'importo dovuto e' sempre ``reconstructed_amount``. Date e riferimenti del
+    prospetto sono evidenza documentale, non una riconciliazione bancaria.
+    """
+    righe = data.get("righe") or []
+    if not isinstance(righe, list) or not righe:
+        raise HTTPException(status_code=400, detail="righe deve essere una lista non vuota")
+    if len(righe) > 5000:
+        raise HTTPException(status_code=413, detail="Massimo 5000 righe per richiesta")
+
+    db = Database.get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    record_validi: List[Dict[str, Any]] = []
+    errori: List[str] = []
+    for indice, row in enumerate(righe, 1):
+        try:
+            dipendente = normalize_name(str(row.get("employee") or row.get("dipendente") or ""))
+            anno = int(row.get("year") or row.get("anno"))
+            mese_label = str(row.get("month_label") or row.get("mese_competenza") or "").strip()
+            mese = get_mese_numero(mese_label or row.get("month") or row.get("mese"))
+            importo_raw = row.get("reconstructed_amount")
+            importo = float(importo_raw or 0)
+            if importo < 0:
+                raise ValueError("importo ricostruito negativo")
+            if not dipendente or not 2018 <= anno <= date.today().year or not 1 <= mese <= 14:
+                raise ValueError("dipendente, periodo o importo ricostruito non valido")
+            date_pagamento = str(row.get("payment_dates") or "").strip()
+            riferimenti = str(row.get("bank_references") or "").strip()
+            if date_pagamento and riferimenti:
+                stato = "EVIDENZA_DOCUMENTALE_COMPLETA"
+            elif date_pagamento or riferimenti:
+                stato = "EVIDENZA_DOCUMENTALE_INCOMPLETA"
+            else:
+                stato = "PAGAMENTO_DA_ASSOCIARE"
+            record_validi.append({
+                "id": _chiave_salario_ricostruito(row),
+                "import_key": _chiave_salario_ricostruito(row),
+                "workbook_row": int(row.get("workbook_row") or row.get("excel_row") or indice + 1),
+                "dipendente": dipendente,
+                "anno": anno,
+                "mese": mese if mese <= 12 else 0,
+                "mese_ordine": mese,
+                "mese_nome": MESI_NOMI[mese - 1],
+                "tipo_cedolino": "tredicesima" if mese == 13 else "quattordicesima" if mese == 14 else "mensile",
+                "netto_residuo_busta": round(float(row.get("net_residual") or 0), 2),
+                "acconto_indicato_busta": round(float(row.get("payslip_advance") or 0), 2),
+                "importo_busta": round(importo, 2),
+                "importo_busta_ricostruito": round(importo, 2),
+                "acconto_assegno": round(float(row.get("cheque_advance") or 0), 2),
+                "acconto_bonifico": round(float(row.get("transfer_advance") or 0), 2),
+                "residuo_da_pagare": round(float(row.get("residual_to_pay") or importo), 2),
+                "date_pagamento_documentate": date_pagamento or None,
+                "riferimenti_bancari_documentati": riferimenti or None,
+                "beneficiari_documentati": str(row.get("beneficiaries") or "").strip() or None,
+                "causali_documentate": str(row.get("descriptions") or "").strip() or None,
+                "fonte_cedolino": str(row.get("payslip_source") or "").strip() or None,
+                "stato_pagamento": stato,
+                "stato_importo": "RICOSTRUITO" if importo > 0 else "IMPORTO_DA_VERIFICARE",
+                "riconciliato": False,
+                "fonte": "prospetto_cedolini_pagamenti_verificato",
+                "updated_at": now,
+            })
+        except Exception as exc:
+            errori.append(f"Riga {indice}: {exc}")
+
+    esistenti = await db["salari_ricostruiti"].find({}, {"_id": 0, "import_key": 1}).to_list(10000)
+    chiavi_esistenti = {r.get("import_key") for r in esistenti}
+    nuovi = [r for r in record_validi if r["import_key"] not in chiavi_esistenti]
+    if nuovi:
+        await db["salari_ricostruiti"].insert_many([r.copy() for r in nuovi])
+
+    return {
+        "success": not errori,
+        "created": len(nuovi),
+        "duplicates": len(record_validi) - len(nuovi),
+        "errors": errori[:20],
+        "totale_ricostruito": round(sum(r["importo_busta_ricostruito"] for r in record_validi), 2),
+        "evidenze_complete": sum(r["stato_pagamento"] == "EVIDENZA_DOCUMENTALE_COMPLETA" for r in record_validi),
+        "evidenze_incomplete": sum(r["stato_pagamento"] == "EVIDENZA_DOCUMENTALE_INCOMPLETA" for r in record_validi),
     }
 
 

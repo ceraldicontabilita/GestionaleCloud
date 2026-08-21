@@ -7,7 +7,6 @@ import {
   FileText,
   Landmark,
   Loader2,
-  Paperclip,
   Search,
   TriangleAlert,
 } from 'lucide-react';
@@ -53,7 +52,7 @@ function aggregaRighe(righe) {
   const dipendenti = new Map();
   for (const gruppo of mensilita.values()) {
     const valoriBusta = gruppo.righe.map(r => numero(r.importo_busta)).filter(v => v > 0);
-    gruppo.importoBusta = valoriBusta.length ? Math.max(...valoriBusta) : 0;
+    gruppo.importoBusta = valoriBusta.reduce((totale, valore) => totale + valore, 0);
     gruppo.importoAcconti = gruppo.righe.reduce((totale, r) => totale + importoAccontoRiga(r), 0);
     gruppo.saldo = gruppo.importoBusta - gruppo.importoAcconti;
     gruppo.rigaCedolino = gruppo.righe.find(r => r.cedolino_disponibile);
@@ -63,6 +62,11 @@ function aggregaRighe(righe) {
     const righeConPagamento = gruppo.righe.filter(r => importoAccontoRiga(r) > 0);
     gruppo.riconciliato = righeConPagamento.length > 0 && righeConPagamento.every(r => r.riconciliato === true);
     gruppo.daRivedere = gruppo.righe.some(r => r.riconciliazione_precedente_da_rivedere);
+    gruppo.datePagamento = [...new Set(gruppo.righe.map(r => r.date_pagamento_documentate).filter(Boolean))].join(' · ');
+    gruppo.riferimentiBancari = [...new Set(gruppo.righe.map(r => r.riferimenti_bancari_documentati).filter(Boolean))].join(' · ');
+    gruppo.evidenzaCompleta = gruppo.righe.some(r => r.stato_pagamento === 'EVIDENZA_DOCUMENTALE_COMPLETA');
+    gruppo.evidenzaIncompleta = gruppo.righe.some(r => r.stato_pagamento === 'EVIDENZA_DOCUMENTALE_INCOMPLETA');
+    gruppo.importoDaVerificare = gruppo.righe.some(r => r.stato_importo === 'IMPORTO_DA_VERIFICARE');
 
     if (!dipendenti.has(gruppo.identita)) dipendenti.set(gruppo.identita, { id: gruppo.identita, nome: gruppo.dipendente, anni: new Map() });
     const dipendente = dipendenti.get(gruppo.identita);
@@ -96,7 +100,7 @@ export default function CedoliniSalari() {
   useEffect(() => {
     let attivo = true;
     setLoading(true);
-    api.get('/api/prima-nota-salari/salari')
+    api.get('/api/prima-nota-salari/salari-ricostruiti')
       .then(r => { if (attivo) setRighe(Array.isArray(r.data) ? r.data : []); })
       .catch(() => { if (attivo) toast.error('Impossibile caricare i cedolini'); })
       .finally(() => { if (attivo) setLoading(false); });
@@ -166,9 +170,9 @@ export default function CedoliniSalari() {
     <main style={{ maxWidth: 1680, margin: '0 auto', padding: '22px 20px 60px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end', gap: 16, flexWrap: 'wrap', marginBottom: 18 }}>
         <div>
-          <h1 style={{ margin: 0, color: '#0f2744', fontSize: 27 }}>Cedolini, acconti e bonifici per dipendente</h1>
+          <h1 style={{ margin: 0, color: '#0f2744', fontSize: 27 }}>Cedolini ricostruiti e pagamenti per dipendente</h1>
           <p style={{ margin: '6px 0 0', color: '#64748b' }}>
-            I documenti vengono acquisiti esclusivamente da Documenti. Qui controlli importi, allegati gia acquisiti e riscontro bancario reale.
+            I PDF sono acquisiti esclusivamente da Documenti. L'importo comprende netto residuo e acconti indicati in busta; date e riferimenti documentali restano distinti dal riscontro bancario verificato.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'end', flexWrap: 'wrap' }}>
@@ -227,11 +231,11 @@ export default function CedoliniSalari() {
                     <span><small style={{ opacity: .75 }}>Saldo</small><b style={{ display: 'block' }}>{formatEuroD(anno.saldo)}</b></span>
                   </header>
                   <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1040 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1320 }}>
                       <thead style={{ background: '#eef2f7', color: '#475569' }}>
                         <tr>
-                          {['Mese', 'Importo busta', 'Acconti / bonifici', 'Saldo', 'Cedolino', 'Bonifico', 'Stato banca'].map(titolo => (
-                            <th key={titolo} style={{ padding: '10px 12px', textAlign: ['Mese', 'Cedolino', 'Bonifico', 'Stato banca'].includes(titolo) ? 'left' : 'right', fontSize: 11 }}>{titolo}</th>
+                          {['Mese', 'Importo ricostruito', 'Acconti / bonifici', 'Saldo', 'Data pagamento', 'Riferimento bancario', 'Cedolino', 'Stato'].map(titolo => (
+                            <th key={titolo} style={{ padding: '10px 12px', textAlign: ['Mese', 'Data pagamento', 'Riferimento bancario', 'Cedolino', 'Stato'].includes(titolo) ? 'left' : 'right', fontSize: 11 }}>{titolo}</th>
                           ))}
                         </tr>
                       </thead>
@@ -244,6 +248,8 @@ export default function CedoliniSalari() {
                               <td style={{ padding: '11px 12px', textAlign: 'right', fontWeight: 800 }}>{formatEuroD(mese.importoBusta)}</td>
                               <td style={{ padding: '11px 12px', textAlign: 'right', fontWeight: 800 }}>{formatEuroD(mese.importoAcconti)}</td>
                               <td style={{ padding: '11px 12px', textAlign: 'right' }}><span style={{ ...stileSaldo, borderRadius: 999, padding: '5px 9px', fontWeight: 850 }}>{formatEuroD(mese.saldo)}</span></td>
+                              <td style={{ padding: '11px 12px', color: '#334155' }}>{mese.datePagamento || '—'}</td>
+                              <td style={{ padding: '11px 12px', color: '#334155', maxWidth: 260, overflowWrap: 'anywhere' }}>{mese.riferimentiBancari || '—'}</td>
                               <td style={{ padding: '8px 12px' }}>
                                 {mese.cedolinoDisponibile ? (
                                   <button type="button" onClick={() => apriDocumento('cedolino', mese.rigaCedolino)} disabled={documentoInApertura === `cedolino-${mese.rigaCedolino.id}`} style={{ minHeight: 38, border: 0, borderRadius: 8, padding: '8px 10px', background: '#2563eb', color: '#fff', fontWeight: 750, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -251,17 +257,10 @@ export default function CedoliniSalari() {
                                   </button>
                                 ) : <span style={{ color: '#64748b' }}>Non acquisito</span>}
                               </td>
-                              <td style={{ padding: '8px 12px' }}>
-                                {mese.bonificoDisponibile ? (
-                                  <button type="button" onClick={() => apriDocumento('bonifico', mese.rigaBonifico)} disabled={documentoInApertura === `bonifico-${mese.rigaBonifico.id}`} style={{ minHeight: 38, border: 0, borderRadius: 8, padding: '8px 10px', background: '#7c3aed', color: '#fff', fontWeight: 750, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                                    <Paperclip size={16} /> Vedi
-                                  </button>
-                                ) : <span style={{ color: '#64748b' }}>Non acquisito</span>}
-                              </td>
                               <td style={{ padding: '11px 12px' }}>
-                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: mese.riconciliato ? '#15803d' : '#b45309', fontWeight: 750 }}>
-                                  {mese.riconciliato ? <CheckCircle2 size={17} /> : <TriangleAlert size={17} />}
-                                  {mese.riconciliato ? 'Riconciliato con estratto conto' : mese.daRivedere ? 'Associazione da rivedere' : 'Da verificare in banca'}
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: mese.riconciliato ? '#15803d' : mese.evidenzaCompleta ? '#0369a1' : '#b45309', fontWeight: 750 }}>
+                                  {mese.riconciliato || mese.evidenzaCompleta ? <CheckCircle2 size={17} /> : <TriangleAlert size={17} />}
+                                  {mese.importoDaVerificare ? 'Importo da verificare' : mese.riconciliato ? 'Riscontro bancario verificato' : mese.daRivedere ? 'Associazione da rivedere' : mese.evidenzaCompleta ? 'Data e riferimento documentati' : mese.evidenzaIncompleta ? 'Evidenza incompleta' : 'Pagamento da associare'}
                                 </span>
                               </td>
                             </tr>
