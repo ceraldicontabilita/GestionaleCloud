@@ -226,7 +226,12 @@ def test_documented_tax_payments_only_include_quietanze_and_keep_bank_unverified
     }]
     rows = [{
         "ID documento": "DOC-Q", "Tipo documento": "Quietanza AE",
-        "Codice tributo": "1001", "Debito": 100, "Credito": 0,
+        "Protocollo": "26060212304532735/000001",
+        "Codice tributo": "3918", "Debito": 3574, "Credito": 0,
+    }, {
+        "ID documento": "DOC-Q", "Tipo documento": "Quietanza AE",
+        "Protocollo": "26060212304532735/000001",
+        "Codice tributo": "6099", "Debito": 0, "Credito": 1604.90,
     }, {
         "ID documento": "DOC-S", "Tipo documento": "Modello F24",
         "Percorso Drive": r"F24\formato_stampabile\formato-stampabile.pdf",
@@ -244,8 +249,12 @@ def test_documented_tax_payments_only_include_quietanze_and_keep_bank_unverified
 
     payload = list_documented_tax_payments()
 
-    assert payload["total"] == 1
-    assert {item["tax_code"] for item in payload["items"]} == {"1001"}
+    assert payload["total"] == 3
+    assert {item["tax_code"] for item in payload["items"]} == {"3918", "6099", "1704"}
+    protocol_rows = [item for item in payload["items"] if item["document_id"] == "DOC-Q"]
+    assert sum(item["debit_amount"] for item in protocol_rows) == 3574
+    assert sum(item["credit_amount"] for item in protocol_rows) == 1604.90
+    assert sum(item["debit_amount"] - item["credit_amount"] for item in protocol_rows) == 1969.10
     assert all(item["payment_status"] == "DOCUMENTATO_DA_QUIETANZA" for item in payload["items"])
     assert all(item["bank_status"] == "DA_VERIFICARE" for item in payload["items"])
 

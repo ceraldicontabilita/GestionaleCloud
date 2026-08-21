@@ -518,7 +518,12 @@ def list_f24_rows(
 def list_documented_tax_payments(
     service=None, *, offset: int = 0, limit: int = 5000,
 ) -> dict[str, Any]:
-    """Tributi coperti da quietanza Drive, senza attribuire una verifica bancaria."""
+    """Tutte le righe delle deleghe documentate da quietanza Drive.
+
+    Una quietanza F24 puo' contenere contemporaneamente righe a debito e righe
+    a credito.  Escludere queste ultime altera il documento e il saldo netto,
+    percio' l'intera delega viene restituita mantenendo ogni riga del PDF.
+    """
     _, catalog = load_full_catalog(service)
     documented_ids = {
         str(row.get("ID documento") or "")
@@ -529,8 +534,6 @@ def list_documented_tax_payments(
     items = []
     for row in rows:
         if str(row.get("document_id") or "") not in documented_ids:
-            continue
-        if _amount(row.get("debit_amount")) <= 0:
             continue
         items.append({
             **row,
